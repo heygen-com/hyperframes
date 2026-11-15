@@ -3,15 +3,24 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
-const publishState = vi.hoisted(() => ({ publish: vi.fn() }));
+const publishState = vi.hoisted(() => ({ publish: vi.fn(), noticeRelease: null as string | null }));
 
 vi.mock("../utils/publishProject.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/publishProject.js")>()),
   publishProjectArchive: publishState.publish,
 }));
 
+vi.mock("../share/publishTransition.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../share/publishTransition.js")>();
+  return {
+    ...actual,
+    checkPublishTransition: (args: { dir?: string; update?: string }) =>
+      actual.checkPublishTransition(args, publishState.noticeRelease),
+  };
+});
+
 import publishCommand, { examples, parseUpdateTarget } from "./publish.js";
-import { ensureProjectId } from "../utils/projectLink.js";
+import { ensureProjectId, writeProjectLink, writeTeamProject } from "../utils/projectLink.js";
 import { writeStore as writeUnboundStore, type Credentials } from "../auth/store.js";
 import { oauthIdentity } from "../auth/config.js";
 import { consumeCommandResult } from "../utils/commandResult.js";
@@ -370,4 +379,50 @@ describe("publish --update / --space ownership preflight", () => {
       error.mockRestore();
     }
   });
+});
+
+describe("expired transition preserves only owned legacy updates", () => {
+  it.each(["anonymous", "api-key", "oauth"])(
+    "checks %s ownership before publication",
+    async (kind) => {
+      const project = mkdtempSync(join(tmpdir(), "hf-publish-transition-owner-"));
+      const config = mkdtempSync(join(tmpdir(), "hf-publish-transition-config-"));
+      vi.stubEnv("HYPERFRAMES_CONFIG_DIR", config);
+      vi.stubEnv("HEYGEN_API_KEY", kind === "api-key" ? "fixture-key" : "");
+      vi.stubEnv("HYPERFRAMES_API_KEY", "");
+      writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
+      writeProjectLink(project, { projectId: "legacy", url: "https://hyperframes.dev/p/legacy" });
+      writeTeamProject(project, { projectId: "legacy" });
+      if (kind === "oauth")
+        await writeStore({ oauth: { access_token: "fixture-token" } }, join(config, "credentials"));
+      mockPublished({
+        projectId: "legacy",
+        url: "https://hyperframes.dev/p/legacy",
+        updated: true,
+      });
+      publishState.noticeRelease = "2020-01-01T00:00:00.000Z";
+      try {
+        const run = () =>
+          publishCommand.run?.({ args: { dir: project, yes: true, proxy: false } } as never);
+        if (kind === "oauth") {
+          await captureLog(run);
+          expect(publishState.publish).toHaveBeenCalledWith(
+            project,
+            expect.objectContaining({
+              projectId: "legacy",
+              credential: expect.objectContaining({ type: "oauth" }),
+            }),
+          );
+        } else {
+          await expect(run()).rejects.toMatchObject({ code: "legacy_publish_login_required" });
+          expect(publishState.publish).not.toHaveBeenCalled();
+        }
+      } finally {
+        publishState.noticeRelease = null;
+        vi.unstubAllEnvs();
+        rmSync(project, { recursive: true, force: true });
+        rmSync(config, { recursive: true, force: true });
+      }
+    },
+  );
 });

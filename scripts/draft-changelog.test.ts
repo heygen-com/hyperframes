@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 import {
   escapeForMdx,
   findSkippedReleaseTags,
+  releaseVersionsInSubjects,
   parseArgs,
   parseCommit,
   renderCommitBullet,
@@ -151,6 +156,28 @@ describe("skipped release tags", () => {
   });
 });
 
+describe("releases found by their commit", () => {
+  it("reads the version of each release commit, squash-merge suffix or not", () => {
+    assert.deepEqual(
+      releaseVersionsInSubjects([
+        "fix(core): a change (#1)",
+        "chore: release v0.9.37 (#7578)",
+        "chore: release v0.9.36",
+        "chore: release v0.9.35-alpha.1",
+      ]),
+      ["0.9.37", "0.9.36"],
+    );
+  });
+
+  it("names a release whose tag this clone never fetched", () => {
+    // The v0.9.38 cut: tags v0.9.32 to v0.9.37 were missing, so describe chose v0.9.31.
+    const released = releaseVersionsInSubjects(["chore: release v0.9.37 (#7578)"]);
+    assert.deepEqual(findSkippedReleaseTags(["0.9.31", ...released], "v0.9.31", "0.9.38"), [
+      "0.9.37",
+    ]);
+  });
+});
+
 describe("release tags", () => {
   it("names Release once, even when a commit is scoped to the release itself", () => {
     const commits = [
@@ -170,5 +197,62 @@ describe("release tags", () => {
     ].map((subject) => parseCommit(commit(subject)));
 
     assert.deepEqual(renderTags(commits), ["Release", "Core"]);
+  });
+});
+
+describe("drafting from a checkout that is behind", () => {
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync(
+      "git",
+      [
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "tag.gpgSign=false",
+        "-c",
+        "commit.gpgSign=false",
+        ...args,
+      ],
+      {
+        cwd,
+        encoding: "utf-8",
+      },
+    ).trim();
+  const land = (cwd: string, subject: string) => {
+    writeFileSync(join(cwd, "file.txt"), subject);
+    git(cwd, "add", ".");
+    git(cwd, "commit", "-m", subject);
+  };
+
+  it("lists what merged on the remote since the checkout was last pulled", () => {
+    const dir = mkdtempSync(join(tmpdir(), "draft-changelog-"));
+    try {
+      const origin = join(dir, "origin.git");
+      const author = join(dir, "author");
+      const stale = join(dir, "stale");
+      git(dir, "init", "--bare", "-b", "main", origin);
+      git(dir, "clone", origin, author);
+      land(author, "chore: start");
+      git(author, "tag", "v0.0.1");
+      land(author, "feat: already pulled");
+      git(author, "push", "origin", "main", "--tags");
+      git(dir, "clone", origin, stale);
+      land(author, "fix: merged after the pull");
+      git(author, "push", "origin", "main");
+      cpSync(join(import.meta.dirname, "."), join(stale, "scripts"), { recursive: true });
+      writeFileSync(join(stale, "package.json"), '{"type":"module"}');
+
+      const run = execFileSync(
+        process.execPath,
+        ["--import", import.meta.resolve("tsx"), "scripts/draft-changelog.ts", "0.0.2"],
+        { cwd: stale, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] },
+      );
+      assert.match(run, /merged after the pull/i);
+      assert.match(run, /already pulled/i);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

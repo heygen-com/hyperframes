@@ -7,6 +7,7 @@ import {
   readTagSnippetByTarget,
   type PatchOperation,
 } from "./sourcePatcher";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 
 describe("applyPatchByTarget", () => {
   it("removes all duplicate boolean attributes so unmuting cannot reveal another", () => {
@@ -676,6 +677,26 @@ describe("T3 — hfId targeting (spec for R1)", () => {
     expect(bluePos).toBeGreaterThan(-1);
     expect(bluePos).toBeLessThan(h1End);
     expect(result).toContain('<h2 class="b">B</h2>');
+  });
+});
+
+describe("a file nothing has stamped yet", () => {
+  // Added outside Studio: no id, no class. The preview serves it with an hf-id the file does not hold.
+  const ON_DISK = `<div data-composition-id="main"><p data-start="1" data-volume="0.5">Title</p></div>`;
+  const hfId = /<p data-hf-id="([^"]+)"/.exec(ensureHfIds(ON_DISK))?.[1] ?? "";
+  const op: PatchOperation = { type: "attribute", property: "volume", value: "0.9" };
+
+  it("reads, finds and patches the element by its served hf-id", () => {
+    expect(hfId).toMatch(/^hf-/);
+    expect(readAttributeByTarget(ON_DISK, { hfId }, "volume")).toBe("0.5");
+    expect(readTagSnippetByTarget(ON_DISK, { hfId })).toContain(`data-hf-id="${hfId}"`);
+    expect(
+      readAttributeByTarget(applyPatchByTarget(ON_DISK, { hfId }, op), { hfId }, "volume"),
+    ).toBe("0.9");
+  });
+
+  it("leaves the file as it was when no element has the id, ids and all", () => {
+    expect(applyPatchByTarget(ON_DISK, { hfId: "hf-gone" }, op)).toBe(ON_DISK);
   });
 });
 

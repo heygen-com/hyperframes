@@ -15,6 +15,7 @@
 
 import { findInjectedRenderFrame } from "../renderFrameSibling.js";
 import { isImageElement, isVideoElement } from "../domRealm";
+import { getPausedExternalVideoFrame, getPausedVideoFrame } from "../pausedVideoFrames";
 
 /**
  * Resolve the decoded render-frame `<img>` for a source `<video>`, if the
@@ -26,7 +27,9 @@ import { isImageElement, isVideoElement } from "../domRealm";
  * first (cheap) and fall back to an id lookup in case a node was inserted
  * between them.
  */
-function resolveRenderFrameImage(video: HTMLVideoElement): HTMLImageElement | null {
+function resolveRenderFrameImage(
+  video: HTMLVideoElement,
+): HTMLImageElement | HTMLCanvasElement | null {
   const sibling = video.nextElementSibling;
   if (
     isImageElement(sibling) &&
@@ -40,7 +43,48 @@ function resolveRenderFrameImage(video: HTMLVideoElement): HTMLImageElement | nu
   if (byId && byId.complete && byId.naturalWidth > 0) {
     return byId;
   }
-  return null;
+  return getPausedVideoFrame(video);
+}
+
+export function patchCanvasVideoFrameCompat(): void {
+  for (const ctor of [
+    globalThis.CanvasRenderingContext2D,
+    globalThis.OffscreenCanvasRenderingContext2D,
+  ]) {
+    if (!ctor?.prototype?.drawImage) continue;
+    const original = ctor.prototype.drawImage as ((...args: unknown[]) => void) & {
+      __hfVideoPatched?: boolean;
+    };
+    if (original.__hfVideoPatched) continue;
+    const patched = function (this: unknown, ...args: unknown[]) {
+      if (isVideoElement(args[0])) args[0] = getPausedVideoFrame(args[0]) ?? args[0];
+      original.apply(this, args);
+    };
+    patched.__hfVideoPatched = true;
+    ctor.prototype.drawImage = patched;
+  }
+}
+
+export function patchExternalVideoTextureCompat(): void {
+  const ctor = (globalThis as Record<string, unknown>).GPUDevice as
+    | {
+        prototype: {
+          importExternalTexture?: ((source: Record<string, unknown>) => unknown) & {
+            __hfVideoPatched?: boolean;
+          };
+        };
+      }
+    | undefined;
+  const original = ctor?.prototype.importExternalTexture;
+  if (!ctor || typeof original !== "function" || original.__hfVideoPatched) return;
+  const patched = function (this: unknown, descriptor: Record<string, unknown>) {
+    const frame = isVideoElement(descriptor.source)
+      ? getPausedExternalVideoFrame(descriptor.source)
+      : null;
+    return original.call(this, frame ? { ...descriptor, source: frame } : descriptor);
+  };
+  patched.__hfVideoPatched = true;
+  ctor.prototype.importExternalTexture = patched;
 }
 
 export function patchVideoTextureCompat(): void {

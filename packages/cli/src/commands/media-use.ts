@@ -1,10 +1,14 @@
 import { defineCommand } from "../utils/defineCommand.js";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { finishCommand } from "../utils/commandResult.js";
 import { withMediaAuthEnvironment } from "../auth/media-environment.js";
+import {
+  skipWorkingDirectoryInExeSearch,
+  withOnlyTrustedPathFolders,
+} from "../utils/windowsExeSearch.js";
 
 const MEDIA_USE_ARGS = {
   type: { type: "string", description: "What to find: bgm, sfx, image, icon, logo, voice" },
@@ -75,6 +79,17 @@ export function mediaUseVerbFlags(verb: MediaUseVerb): string[] {
   return verb === "resolve" ? [] : [`--${verb}`];
 }
 
+export function mediaUseEngineEnv(
+  env: NodeJS.ProcessEnv,
+  entry: string | undefined = process.argv[1],
+  platform: NodeJS.Platform = process.platform,
+): NodeJS.ProcessEnv {
+  const scoped = withOnlyTrustedPathFolders(env, platform);
+  skipWorkingDirectoryInExeSearch(scoped, platform);
+  if (!entry || /\.[cm]?ts$/.test(entry)) return scoped;
+  return { ...scoped, HYPERFRAMES_CLI_ENTRY: resolve(entry) };
+}
+
 type InvokeMediaUse = (verb: MediaUseVerb) => never | Promise<never>;
 
 async function invokeEngine(verb: MediaUseVerb): Promise<never> {
@@ -84,7 +99,7 @@ async function invokeEngine(verb: MediaUseVerb): Promise<never> {
   const result = await withMediaAuthEnvironment((env) =>
     spawnSync(process.execPath, [resolveMediaUseEnginePath(here), ...flag, ...passed], {
       stdio: "inherit",
-      env,
+      env: mediaUseEngineEnv(env),
     }),
   );
   if (result.error) throw result.error;

@@ -21,6 +21,7 @@ import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useKeyframeEaseCommits } from "./useKeyframeEaseCommits";
 import { useCommitPreflightCapabilities } from "./useCommitPreflightCapabilities";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import { selectionDataAttribute } from "../components/editor/previewSelection";
 import { membersForDelete, timelineElementsForDelete } from "./domEditDeleteMembers";
 import type { RecordEditInput } from "./domEditDeleteMembers";
 import type { DomEditTimelineParams } from "./useDomSelectionTypes";
@@ -351,7 +352,7 @@ export function useDomEditSession({
 
   const handleUngroupSelection = useCallback(() => {
     const sel = domEditSelectionRef.current;
-    if (!sel?.element.hasAttribute("data-hf-group")) {
+    if (!sel || selectionDataAttribute(sel, "data-hf-group") === null) {
       showToast("Select a group to ungroup", "info");
       return;
     }

@@ -495,3 +495,60 @@ describe.skipIf(!ffmpeg)("readAudio", () => {
     expect(analysis.warnings[1]).toContain("no transcript and no stems");
   });
 });
+
+describe.skipIf(!ffmpeg)("readAudio with a declared layer", () => {
+  const read = (path: string, name: string, cache: string, layer?: "music" | "sfx" | "voice") => {
+    vi.stubEnv("HEYGEN_API_KEY", "test-key");
+    return readAudio(path, name, { cacheDir: join(dir, cache), quality: "best", layer });
+  };
+
+  it("reads a music file whole, without separating it, and keeps its cache apart from a mix read", async () => {
+    const path = wav("layer-music.wav", 8, bed);
+    const callsBefore = stemCalls;
+    const first = await read(path, "layer-music.wav", "cache-layer-music", "music");
+    expect(stemCalls).toBe(callsBefore);
+    expect(first.analysis).toMatchObject({ separation: "mix", layer: "music", voice: null });
+    expect(first.analysis.music!.segments.length).toBeGreaterThan(0);
+    expect(first.analysis.bpm).toBe(first.analysis.music!.segments[0]!.bpm);
+    expect((await read(path, "layer-music.wav", "cache-layer-music", "music")).cached).toBe(true);
+    const asMix = await read(path, "layer-music.wav", "cache-layer-music");
+    expect(asMix.cached).toBe(false);
+    expect(asMix.analysis.layer).toBeUndefined();
+  });
+
+  it("reads a voice file whole: words and pauses from the file itself", async () => {
+    const path = wav("layer-voice.wav", 6, voiced);
+    writeFileSync(
+      `${path}.transcript.json`,
+      JSON.stringify({
+        words: [
+          { text: "one", start: 0.5, end: 2 },
+          { text: "two", start: 3, end: 4.5 },
+        ],
+      }),
+    );
+    const callsBefore = stemCalls;
+    const { analysis } = await read(path, "layer-voice.wav", "cache-layer-voice", "voice");
+    expect(stemCalls).toBe(callsBefore);
+    expect(analysis).toMatchObject({ separation: "mix", layer: "voice", effects: null });
+    expect(analysis.voice!.sentences.map((s) => s.text)).toEqual(["one", "two"]);
+    expect(analysis.voice!.pauses.length).toBeGreaterThan(0);
+  });
+
+  it("reads a sound-effect file whole, with no music read", async () => {
+    const path = wav("layer-sfx.wav", 5, boom);
+    const callsBefore = stemCalls;
+    const { analysis } = await read(path, "layer-sfx.wav", "cache-layer-sfx", "sfx");
+    expect(stemCalls).toBe(callsBefore);
+    expect(analysis).toMatchObject({ separation: "mix", layer: "sfx", voice: null, music: null });
+    expect(analysis.effects!.events.length).toBeGreaterThan(0);
+  });
+
+  it("records no layer when none is declared", async () => {
+    const path = wav("layer-none.wav", 3, voiced);
+    const { analysis } = await readAudio(path, "layer-none.wav", {
+      cacheDir: join(dir, "cache-layer-none"),
+    });
+    expect("layer" in analysis).toBe(false);
+  });
+});

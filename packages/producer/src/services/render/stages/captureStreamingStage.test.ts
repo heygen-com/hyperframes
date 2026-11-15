@@ -87,6 +87,10 @@ let initializeSessionErrorMessage = "initialize failed";
 const browserConsoleBuffer = ["[FrameCapture:ERROR] page.goto failed"];
 const closeCaptureSession = mock(async () => {});
 class DrawElementVerificationError extends Error {}
+// Ground truth the drawElement session arms, and the PSNR the fake comparison reports per frame.
+let sessionVerifyFrames: Map<number, Buffer> | undefined;
+let samplePsnr = (_frame: Buffer) => 50;
+const psnrCalls: number[] = [];
 
 async function replaySlowCapture(
   signal: AbortSignal | undefined,
@@ -165,6 +169,7 @@ function fakeSession(screenshot: boolean) {
     isScreenshotFallback: screenshot,
     onBeforeCapture: sessionHasBeforeCapture ? async () => {} : undefined,
     deRiskFrames: screenshot ? undefined : sessionRiskFrames,
+    deVerifyFrames: screenshot ? undefined : sessionVerifyFrames,
     isInitialized: false,
     browserConsoleBuffer,
     options: { captureBeyondViewport: false },
@@ -181,6 +186,11 @@ function fakeSession(screenshot: boolean) {
 
 mock.module("@hyperframes/engine", () => ({
   calculateOptimalWorkers: () => 1,
+  psnrDb: async (frame: Buffer, truth: Buffer) => {
+    psnrCalls.push(Number(truth.toString().split("-")[1]));
+    return samplePsnr(frame);
+  },
+  resolveDeVerifyMinDb: () => 32,
   convertTransfer: () => {},
   captureFrame: async () => {},
   captureFrameToBufferPipelined: async (_session: unknown, frameIndex: number) => {
@@ -471,6 +481,37 @@ describe("runCaptureStreamingStage", () => {
 
     expect(result.success).toBe(true);
     expect(spawnStreamingEncoder.mock.calls[0]?.[3]).toBe(cfg);
+  });
+
+  describe("drawElement self-verify on the sequential loop", () => {
+    const run = async (psnr: (frame: Buffer) => number) => {
+      const { runCaptureStreamingStage } = await import("./captureStreamingStage.js");
+      captureSessionMode = "drawelement";
+      sessionWorkerEncodeEnabled = false;
+      sessionVerifyFrames = new Map([[3, Buffer.from("truth-3")]]);
+      samplePsnr = psnr;
+      psnrCalls.length = 0;
+      const cfg = { forceScreenshot: false, ffmpegStreamingTimeout: 3_600_000 };
+      try {
+        return await runCaptureStreamingStage({ ...createInput(cfg), totalFrames: 6 }).catch(
+          (e: unknown) => e,
+        );
+      } finally {
+        sessionVerifyFrames = undefined;
+        samplePsnr = () => 50;
+      }
+    };
+
+    it("compares the armed sample against its ground truth", async () => {
+      const result = await run(() => 50);
+      expect(result).toMatchObject({ success: true });
+      expect(psnrCalls).toEqual([3]);
+    });
+
+    it("fails the render on a sample below the floor", async () => {
+      const error = await run(() => 20);
+      expect((error as { cause?: unknown }).cause).toBeInstanceOf(DrawElementVerificationError);
+    });
   });
 
   it("wraps sequential capture failures with the browser console buffer", async () => {

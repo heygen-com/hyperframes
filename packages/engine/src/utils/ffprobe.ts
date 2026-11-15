@@ -12,7 +12,7 @@ import {
   videoStreamHasAlpha,
 } from "@hyperframes/parsers/media-alpha";
 import { urlInputArgs } from "./urlInput.js";
-import { decodableAudioStream } from "@hyperframes/parsers/media-streams";
+import { decodableAudioStream, misstatesPcmByteRate } from "@hyperframes/parsers/media-streams";
 import { runFfmpeg } from "./runFfmpeg.js";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
 import { ManagedChildProcess } from "./managedChildProcess.js";
@@ -248,6 +248,8 @@ export interface AudioMetadata {
   audioStreamLeadSeconds?: number;
   mediaTimeOffsetSeconds?: number;
   audioStreamCount?: number;
+  /** PCM whose header byte rate is not sample rate x channels x sample size: a seek by it lands at the wrong time. */
+  misstatedByteRate?: boolean;
   /** The track read for these facts and for the mix, by its place among the audio streams (decodableAudioStream). */
   audioStream: number;
 }
@@ -270,6 +272,8 @@ interface FFProbeStream {
   avg_frame_rate?: string;
   sample_rate?: string;
   channels?: number;
+  bit_rate?: string;
+  bits_per_sample?: number;
   color_range?: string;
   color_transfer?: string;
   color_primaries?: string;
@@ -1343,6 +1347,7 @@ async function probeAudioMetadata(filePath: string, signal?: AbortSignal): Promi
     mediaTimeOffsetSeconds: mediaTimeOffsetSeconds(output),
     audioStreamCount: audioStreams.length,
     audioStream: audioStreamIndex,
+    misstatedByteRate: misstatesPcmByteRate(audioStream),
   };
 }
 

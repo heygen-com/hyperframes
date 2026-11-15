@@ -4,7 +4,12 @@ import { existsSync } from "node:fs";
 import { basename, dirname, extname, join, posix } from "node:path";
 import type { MediaProcessingJobState, StudioApiAdapter } from "../types.js";
 import { requestedProjectPath } from "../helpers/requestSubPath.js";
-import { mkdirWithinProject, pinWithinProject, resolveWithinProject } from "../helpers/safePath.js";
+import {
+  mkdirWithinProject,
+  pinWritableWithinProject,
+  resolveWithinProject,
+  resolveWritableWithinProject,
+} from "../helpers/safePath.js";
 import { probeMediaMetadata } from "../helpers/mediaMetadata.js";
 import { forgetJobsFinishedLongerThan } from "../helpers/finishedJobs.js";
 
@@ -195,14 +200,14 @@ export function registerMediaRoutes(
       if (requestedOutput && containsNullByte(requestedOutput)) {
         return c.json({ error: "forbidden" }, 403);
       }
-      if (requestedOutput && !resolveWithinProject(project.dir, requestedOutput)) {
+      if (requestedOutput && !resolveWritableWithinProject(project.dir, requestedOutput)) {
         return c.json({ error: "forbidden" }, 403);
       }
       const taken = outputsInFlight(mediaJobs);
       const outputAssetPath = requestedOutput
         ? uniqueAssetPath(project.dir, requestedOutput, taken)
         : defaultOutputPath(project.dir, inputAssetPath, taken);
-      const outputPath = pinWithinProject(project.dir, outputAssetPath);
+      const outputPath = pinWritableWithinProject(project.dir, outputAssetPath);
       if (!outputPath) return c.json({ error: "forbidden" }, 403);
       if (inputIsVideo && !VIDEO_OUTPUT_EXTENSIONS.has(extname(outputAssetPath).toLowerCase())) {
         return c.json({ error: "video background removal output must be .webm or .mov" }, 400);
@@ -220,7 +225,7 @@ export function registerMediaRoutes(
         taken.add(outputAssetPath);
         backgroundOutputAssetPath = defaultPlatePath(project.dir, inputAssetPath, taken);
         backgroundOutputPath =
-          pinWithinProject(project.dir, backgroundOutputAssetPath) ?? undefined;
+          pinWritableWithinProject(project.dir, backgroundOutputAssetPath) ?? undefined;
         if (!backgroundOutputPath) {
           return c.json({ error: "forbidden" }, 403);
         }

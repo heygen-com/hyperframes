@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  chmodSync,
   createReadStream,
   existsSync,
   mkdirSync,
@@ -21,6 +22,7 @@ import {
   type UploadableFile,
 } from "./offload.js";
 import { bytesMatchExtension } from "./offloadSniff.js";
+import { MEDIA_INPUT_ARGS } from "@hyperframes/studio-server/outside-file";
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -372,6 +374,70 @@ describe("offloadHeavyMedia", () => {
     });
   });
 
+  it.each([
+    ["an HLS playlist", "#EXTM3U\n#EXT-X-TARGETDURATION:10\n"],
+    ["a DASH manifest", '<?xml version="1.0"?><MPD>'],
+    ["a concat script", "ffconcat version 1.0\nfile clip.mp4\n"],
+  ])("leaves %s named as media in the zip without probing it", async (_name, text) => {
+    const playlist = Buffer.concat([Buffer.from(text), Buffer.alloc(OFFLOAD_MIN_BYTES, 0x20)]);
+    const dir = project({
+      "index.html": html(`<video src="clip.mp4"></video>`),
+      "clip.mp4": playlist,
+    });
+    const reencoder: Reencoder = { hasVideo: vi.fn(), choose: vi.fn(), run: vi.fn() };
+    const fileMap = buildPublishFileMap(dir);
+
+    const report = await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      reencoder,
+      cachePath: cachePath(),
+    });
+
+    expect(report).toEqual([]);
+    expect(reencoder.hasVideo).not.toHaveBeenCalled();
+    expect(reencoder.choose).not.toHaveBeenCalled();
+    expect(fileMap.has("clip.mp4")).toBe(true);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "opens media in ffprobe and ffmpeg only through the self-contained media demuxers",
+    async () => {
+      const bin = mkdtempSync(join(tmpdir(), "hf-offload-bin-"));
+      dirs.push(bin);
+      const log = join(bin, "calls.log");
+      const fake = join(bin, "ff");
+      writeFileSync(
+        fake,
+        [
+          "#!/bin/sh",
+          `printf '%s\\n' "$*" >> '${log}'`,
+          "for last; do :; done",
+          'case " $* " in *" -y "*) printf data > "$last" ;; *) printf "{}" ;; esac',
+        ].join("\n"),
+      );
+      chmodSync(fake, 0o755);
+      vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", fake);
+      vi.stubEnv("HYPERFRAMES_FFMPEG_PATH", fake);
+      try {
+        const dir = project({
+          "index.html": html(`<video src="clip.mkv"></video>`),
+          "clip.mkv": HEAVY,
+        });
+        await offloadHeavyMedia(dir, buildPublishFileMap(dir), {
+          apiBaseUrl: "https://api.example",
+          upload: fakeUpload(),
+          cachePath: cachePath(),
+        }).catch(() => undefined);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+      const calls = readFileSync(log, "utf8").trim().split("\n");
+      expect(calls.some((call) => call.includes(" -y "))).toBe(true);
+      for (const call of calls) expect(call).toContain(MEDIA_INPUT_ARGS.join(" "));
+    },
+  );
+
   it("treats an audio-only MP4 named .mp4 as audio, whatever brand its ftyp box has", async () => {
     const audioOnly = Buffer.concat([
       HEADERS[".mp4"]!,
@@ -501,6 +567,63 @@ describe("offloadHeavyMedia", () => {
     expect(fileMap.has("still.avif")).toBe(false);
     expect(fileMap.has("moving.avif")).toBe(true);
     expect(fileMap.get("index.html")!.toString()).toContain(`<img src="moving.avif">`);
+  });
+
+  it("prepares only staged GIFs, never one staging left out", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-offload-test-"));
+    dirs.push(root);
+    const frame = [0x21, 0xf9, 4, 0, 5, 0, 0, 0, 0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x4c, 1, 0];
+    const animated = Buffer.from([
+      ...Buffer.from("GIF89a"),
+      1,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      ...frame,
+      ...frame,
+      0x3b,
+    ]);
+    mkdirSync(join(root, "outside"));
+    writeFileSync(join(root, "outside", "clip.gif"), animated);
+    const dir = join(root, "p");
+    mkdirSync(join(dir, "media"), { recursive: true });
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(join(dir, "media", "loop.gif"), Buffer.concat([animated, HEAVY]));
+    writeFileSync(
+      join(dir, "index.html"),
+      html(`<img src="media/loop.gif" /><img src="../outside/clip.gif" />`),
+    );
+    writeFileSync(
+      join(dir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["index.html"] }),
+    );
+    const { prepareAnimatedGifInputs } = await import("@hyperframes/producer");
+    const transcoded: string[] = [];
+    const gifPrep: GifPrep = (input, options) =>
+      prepareAnimatedGifInputs(input, {
+        ...options,
+        cacheDir: options.outputDir,
+        transcode: async (request) => {
+          transcoded.push(
+            readFileSync(request.inputPath).length === animated.length ? "outside" : "staged",
+          );
+          writeFileSync(request.outputPath, honest(".webm"));
+        },
+      });
+    const fileMap = stagePublishFiles(dir, Infinity);
+
+    await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      gifPrep,
+      reencoder: { choose: async () => null, run: vi.fn() },
+      cachePath: cachePath(),
+    });
+
+    expect(transcoded).toEqual(["staged"]);
+    expect(fileMap.get("index.html")!.toString()).toContain(`src="../outside/clip.gif"`);
   });
 
   it("offloads the video the renderer's GIF prep makes from an entry GIF, and drops the GIF", async () => {
@@ -1076,5 +1199,33 @@ describe("offloadHeavyMedia", () => {
     expect(upload).not.toHaveBeenCalled();
     expect(gifPrep).not.toHaveBeenCalled();
     expect(fileMap.has("logo.png")).toBe(true);
+  });
+  it("offloads a file stored decomposed when the page names it composed, and the reverse", async () => {
+    const composed = "media/vid\u00e9o.mp4";
+    const decomposed = "media/vide\u0301o.mp4";
+    const dir = project({
+      "index.html": html(`<video src="${composed}"></video>`),
+      [decomposed]: HEAVY,
+    });
+    const fileMap = buildPublishFileMap(dir);
+    const report = await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      cachePath: cachePath(),
+    });
+    expect(report.map((item) => item.path)).toEqual([composed]);
+    expect(fileMap.get("index.html")!.toString()).toContain("https://assets.example/");
+
+    const other = project({
+      "index.html": html(`<video src="${decomposed}"></video>`),
+      [composed]: HEAVY,
+    });
+    const otherMap = buildPublishFileMap(other);
+    await offloadHeavyMedia(other, otherMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      cachePath: cachePath(),
+    });
+    expect(otherMap.get("index.html")!.toString()).toContain("https://assets.example/");
   });
 });

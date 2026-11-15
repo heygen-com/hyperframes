@@ -15,6 +15,9 @@
  */
 
 import type { Page } from "puppeteer-core";
+import { htmlInCanvasForm, type HtmlInCanvasForm } from "@hyperframes/core/html-in-canvas";
+import { SOFTWARE_WEBGL_RENDERER_TOKENS } from "./browserManager.js";
+import type { CaptureMode } from "./browserLeasePool.js";
 
 /**
  * Discriminant prefix embedded in every "capture canvas isn't set up yet"
@@ -56,22 +59,43 @@ export const DE_CANVAS_NOT_INITIALIZED_CODE = "HF_DE_CANVAS_NOT_INITIALIZED";
  *    destination additionally drops promoted sub-layers (Chromium bug
  *    521434899). The speedup is real only on a hardware GPU (macOS 1.6×), so
  *    SwiftShader always routes to the platform baseline.
- *
- * The former <video> gate (a proxy for the word-by-word caption opacity pattern)
- * was removed once Chrome 151 fixed crbug 521861819: video + nested-fade comps now
- * render correctly on the drawElement path (verified PSNR=inf vs baseline). 151 is
- * the pinned floor. See docs/fast-capture-limitations.md Lim 2.
+ *  - No WebGL at all (a GPU-less host asked for hardware GL) is software at best: `webgl_unavailable`.
+ *  - A BeginFrame launch (Linux headless-shell): the self-verify truth page has no BeginFrame
+ *    driver, so drawElement is gated as `beginframe_no_self_verify`.
  */
 export function resolveDrawElementCaptureMode(
-  isSwiftShader: boolean,
+  softwareBackend: boolean,
   transparent: boolean,
 ): "drawelement" | "screenshot" {
-  // `transparent` is retained for call-site clarity; SwiftShader blocks
+  // `transparent` is retained for call-site clarity; a software backend blocks
   // unconditionally now (no GPU egress to skip — parity at best), which
   // subsumes the former transparent-only SwiftShader case.
   void transparent;
-  if (isSwiftShader) return "screenshot";
+  if (softwareBackend) return "screenshot";
   return "drawelement";
+}
+
+export type DrawElementGateReason =
+  | "swiftshader"
+  | "webgl_unavailable"
+  | "beginframe_no_self_verify";
+
+/**
+ * The init-time gate that routes drawElement to the baseline capture, or null when it may engage.
+ * `swiftshader` covers any software GL; `webgl_unavailable` is a host with no WebGL at all.
+ * `beginframe_no_self_verify` is a BeginFrame launch, which cannot take the self-verify ground truth.
+ * `forceDE` (HF_FORCE_DRAWELEMENT) bypasses only the launch gate. Pure; exported for tests.
+ */
+export function drawElementGate(args: {
+  backend: Pick<GpuBackendInfo, "isSwiftShader" | "webglAvailable">;
+  launchCaptureMode: CaptureMode;
+  forceDE: boolean;
+}): DrawElementGateReason | null {
+  const { backend, launchCaptureMode, forceDE } = args;
+  if (backend.isSwiftShader) return "swiftshader";
+  if (!backend.webglAvailable) return "webgl_unavailable";
+  if (launchCaptureMode === "beginframe" && !forceDE) return "beginframe_no_self_verify";
+  return null;
 }
 
 /**
@@ -147,8 +171,10 @@ export function forcePreservedDrawingBuffer(): void {
 }
 
 export interface GpuBackendInfo {
-  /** SwiftShader (software rasterizer) — e.g. Docker headless-shell. */
+  /** Software GL (SwiftShader, llvmpipe, ...) — e.g. Docker headless-shell. Named for the common case. */
   isSwiftShader: boolean;
+  /** False when no WebGL context could be created (null or threw): not a real GPU. */
+  webglAvailable: boolean;
   /**
    * Raw UNMASKED_RENDERER_WEBGL string (e.g. "ANGLE (Apple, ANGLE Metal
    * Renderer: Apple M4 Pro, ...)", "ANGLE (NVIDIA, GeForce RTX 3080 Direct3D11
@@ -207,22 +233,32 @@ export function classifyGpuRenderer(renderer: string | null | undefined): string
  * Detect the page's WebGL backend: SwiftShader vs a real GPU, plus the raw
  * renderer string for telemetry.
  *
- * `isSwiftShader` is true inside Docker headless-shell with
- * --use-angle=swiftshader. Call once after window.__hf is ready; cache the
+ * `isSwiftShader` is true for any software GL, e.g. Docker headless-shell with
+ * --use-angle=swiftshader; `webglAvailable` is false with no WebGL at all. Call once after window.__hf is ready; cache the
  * result on the session.
  */
 export async function detectGpuBackend(page: Page): Promise<GpuBackendInfo> {
-  return page.evaluate((): GpuBackendInfo => {
+  return page.evaluate((softwareTokens: readonly string[]): GpuBackendInfo => {
     const canvas = document.createElement("canvas");
-    const gl =
-      canvas.getContext("webgl") ||
-      (canvas.getContext("experimental-webgl") as WebGLRenderingContext | null);
-    if (!gl) return { isSwiftShader: false, renderer: null };
+    let gl: WebGLRenderingContext | null = null;
+    try {
+      gl =
+        canvas.getContext("webgl") ||
+        (canvas.getContext("experimental-webgl") as WebGLRenderingContext | null);
+    } catch {
+      gl = null;
+    }
+    if (!gl) return { isSwiftShader: false, webglAvailable: false, renderer: null };
     const ext = gl.getExtension("WEBGL_debug_renderer_info");
-    if (!ext) return { isSwiftShader: false, renderer: null };
+    if (!ext) return { isSwiftShader: false, webglAvailable: true, renderer: null };
     const renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) as string;
-    return { isSwiftShader: renderer.toLowerCase().includes("swiftshader"), renderer };
-  });
+    const lower = renderer.toLowerCase();
+    return {
+      isSwiftShader: softwareTokens.some((token) => lower.includes(token)),
+      webglAvailable: true,
+      renderer,
+    };
+  }, SOFTWARE_WEBGL_RENDERER_TOKENS);
 }
 
 /**
@@ -234,7 +270,7 @@ export async function detectSwiftShader(page: Page): Promise<boolean> {
 }
 
 /**
- * Inject a `<canvas layoutsubtree>` around the composition root.
+ * Inject a capture canvas (`layoutsubtree`, or `content="drawable"` on Chrome 157+) around the composition root.
  *
  * The canvas must wrap `[data-composition-id]` for drawElementImage to read
  * its paint records. Idempotent — skips injection if `__hf_de_canvas` exists.
@@ -245,8 +281,9 @@ export async function injectDrawElementCanvas(
   width: number,
   height: number,
 ): Promise<void> {
+  const form = (await page.evaluate(htmlInCanvasForm)) ?? "layoutsubtree";
   await page.evaluate(
-    ({ w, h }: { w: number; h: number }) => {
+    ({ w, h, form }: { w: number; h: number; form: HtmlInCanvasForm }) => {
       const root = document.querySelector("[data-composition-id]") as HTMLElement | null;
       if (!root || document.getElementById("__hf_de_canvas")) return;
       // Record the root's base opacity (timeline at 0, before any entrance/
@@ -262,11 +299,13 @@ export async function injectDrawElementCanvas(
       }
       const parent = root.parentNode;
       if (!parent) throw new Error("drawElement: composition root has no parent node");
-      const canvas = document.createElement("canvas") as HTMLCanvasElement & {
-        layoutsubtree: boolean;
-      };
+      const canvas = document.createElement("canvas");
       canvas.id = "__hf_de_canvas";
-      canvas.setAttribute("layoutsubtree", "");
+      if (form === "layoutsubtree") canvas.setAttribute("layoutsubtree", "");
+      else {
+        canvas.setAttribute("content", "drawable");
+        root.setAttribute("drawable", "");
+      }
       canvas.width = w;
       canvas.height = h;
       canvas.style.cssText = "display:block;position:absolute;top:0;left:0;z-index:0";
@@ -314,7 +353,7 @@ export async function injectDrawElementCanvas(
         return false;
       };
     },
-    { w: width, h: height },
+    { w: width, h: height, form },
   );
 }
 
@@ -543,7 +582,7 @@ export async function captureDrawElementFrame(
           }
           // Encode OUTSIDE the paint handler — heavy canvas work inside the
           // paint event can stall the renderer.
-          setTimeout(() => {
+          (window.__HF_VIRTUAL_TIME__?.originalSetTimeout ?? setTimeout)(() => {
             try {
               resolveCapture(
                 fmt === "png"
@@ -576,7 +615,7 @@ export async function captureDrawElementFrame(
         // throttled page), fall back to an unsynchronized draw after 250 ms —
         // worst case one-frame-stale content (the root's alpha may lag its
         // transform by that frame) rather than a hung render.
-        setTimeout(() => {
+        (window.__HF_VIRTUAL_TIME__?.originalSetTimeout ?? setTimeout)(() => {
           canvas.removeEventListener("paint", onPaint);
           drawAndEncode();
         }, 250);
@@ -968,7 +1007,7 @@ export async function produceDrawElementFrame(
         // Sentinel dirty + requestPaint() — see __hfDeInvalidate in
         // injectDrawElementCanvas.
         usedRequestPaint = aw.__hfDeInvalidate?.() === true;
-        setTimeout(() => {
+        (window.__HF_VIRTUAL_TIME__?.originalSetTimeout ?? setTimeout)(() => {
           canvas.removeEventListener("paint", onPaint);
           drawAndKick();
         }, 250);
@@ -1099,7 +1138,7 @@ export async function produceDrawElementFrameBatch(
           // Sentinel dirty + requestPaint() — see __hfDeInvalidate in
           // injectDrawElementCanvas.
           usedRequestPaint = aw.__hfDeInvalidate?.() === true;
-          setTimeout(settle, 250);
+          (window.__HF_VIRTUAL_TIME__?.originalSetTimeout ?? setTimeout)(settle, 250);
         });
 
       let prevBitmap: Promise<void> = Promise.resolve();

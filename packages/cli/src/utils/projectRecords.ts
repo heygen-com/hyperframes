@@ -1,4 +1,13 @@
-import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  unlinkSync,
+} from "node:fs";
 import { join } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 
@@ -80,4 +89,16 @@ export function replaceFile(path: string, data: string, mode: number): boolean {
 export function writeRecord(projectDir: string, name: string, data: string): boolean {
   const dir = recordsDir(projectDir, true);
   return dir !== null && replaceFile(join(dir, name), data, 0o600);
+}
+
+/** Deletes a record that is a plain file; false when there is none to delete. */
+export function removeRecord(projectDir: string, name: string): boolean {
+  const dir = recordsDir(projectDir);
+  try {
+    if (!dir || !lstatSync(join(dir, name)).isFile()) return false;
+    unlinkSync(join(dir, name));
+    return true;
+  } catch {
+    return false;
+  }
 }

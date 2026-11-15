@@ -1,8 +1,11 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { GSAP_CDN_VERSION, gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { readBundleFile } from "./readBundleFile.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export const GSAP_VENDOR_FILES = new Set([
   "gsap.min.js",

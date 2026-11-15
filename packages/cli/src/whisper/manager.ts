@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication complexity
+import { runsWithoutInstallPrompt } from "../utils/appleStubs.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { platform } from "node:os";
@@ -8,6 +9,7 @@ import { downloadFile } from "../utils/download.js";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
 import { verifies, type ModelFile } from "./modelFile.js";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 
 const MODELS_DIR = hyperframesCacheDir("whisper", "models");
 const DEFAULT_MODEL = "small.en";
@@ -102,24 +104,6 @@ export function pinnedWhisperModel(model: string): ModelFile | undefined {
 
 // --- Find helpers -----------------------------------------------------------
 
-function whichBinary(name: string): string | undefined {
-  try {
-    const cmd = process.platform === "win32" ? "where" : "which";
-    const output = execFileSync(cmd, [name], {
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: 5000,
-    });
-    const first = output
-      .split(/\r?\n/)
-      .map((s) => s.trim())
-      .find(Boolean);
-    return first || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 function findFromEnv(): WhisperResult | undefined {
   const envPath = process.env["HYPERFRAMES_WHISPER_PATH"];
   if (envPath && existsSync(envPath)) {
@@ -130,7 +114,7 @@ function findFromEnv(): WhisperResult | undefined {
 
 function findFromSystem(): WhisperResult | undefined {
   // `whisper` is the OpenAI Python CLI; only whisper.cpp's binary accepts our flags.
-  const path = whichBinary("whisper-cli");
+  const path = findTrustedExecutable("whisper-cli");
   if (path) return { executablePath: path, source: "system" };
 
   // Check brew paths directly on macOS
@@ -147,11 +131,31 @@ function findFromSystem(): WhisperResult | undefined {
 
 const BUILD_DIR = hyperframesCacheDir("whisper", "whisper.cpp");
 const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
+// A reviewed release, checked by commit after the clone, so a moved tag is never built or run.
+const WHISPER_TAG = "v1.9.5";
+const WHISPER_COMMIT = "d1be6fde11ac6e0407606b4e42fe72d34add8037";
+
+function assertPinnedCheckout(git: string): void {
+  const head = execFileSync(git, ["rev-parse", "HEAD"], {
+    cwd: BUILD_DIR,
+    encoding: "utf-8",
+    stdio: ["ignore", "pipe", "ignore"],
+    timeout: 10_000,
+  }).trim();
+  if (head === WHISPER_COMMIT) return;
+  rmSync(BUILD_DIR, { recursive: true, force: true });
+  throw new Error(
+    `whisper.cpp ${WHISPER_TAG} resolved to commit ${head}, not the reviewed ${WHISPER_COMMIT}; refusing to build it`,
+  );
+}
 
 function findBuiltBinary(): WhisperResult | undefined {
+  // Windows (Visual Studio generator) writes bin/Release/whisper-cli.exe, not bin/whisper-cli.
+  const exe = platform() === "win32" ? ".exe" : "";
   for (const p of [
-    join(BUILD_DIR, "build", "bin", "whisper-cli"),
-    join(BUILD_DIR, "build", "whisper-cli"),
+    join(BUILD_DIR, "build", "bin", "Release", `whisper-cli${exe}`),
+    join(BUILD_DIR, "build", "bin", `whisper-cli${exe}`),
+    join(BUILD_DIR, "build", `whisper-cli${exe}`),
   ]) {
     if (existsSync(p)) return { executablePath: p, source: "build" };
   }
@@ -159,6 +163,7 @@ function findBuiltBinary(): WhisperResult | undefined {
 }
 
 async function buildFromSource(
+  { git, cmake }: BuildTools,
   onProgress?: (msg: string) => void,
   signal?: AbortSignal,
 ): Promise<WhisperResult> {
@@ -170,24 +175,29 @@ async function buildFromSource(
   if (!existsSync(BUILD_DIR)) {
     onProgress?.("Downloading whisper.cpp...");
     mkdirSync(BUILD_DIR, { recursive: true });
-    await stoppableExecFile("git", ["clone", "--depth", "1", WHISPER_REPO, "."], {
-      cwd: BUILD_DIR,
-      stdio: "ignore",
-      timeout: 60_000,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
-      signal,
-    });
+    await stoppableExecFile(
+      git,
+      ["clone", "--depth", "1", "--branch", WHISPER_TAG, WHISPER_REPO, "."],
+      {
+        cwd: BUILD_DIR,
+        stdio: "ignore",
+        timeout: 60_000,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        signal,
+      },
+    );
+    assertPinnedCheckout(git);
   }
 
   onProgress?.("Building whisper.cpp (this may take a minute)...");
   try {
-    await stoppableExecFile("cmake", ["-B", "build"], {
+    await stoppableExecFile(cmake, ["-B", "build"], {
       cwd: BUILD_DIR,
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 120_000,
       signal,
     });
-    await stoppableExecFile("cmake", ["--build", "build", "--config", "Release", "-j"], {
+    await stoppableExecFile(cmake, ["--build", "build", "--config", "Release", "-j"], {
       cwd: BUILD_DIR,
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 300_000,
@@ -233,24 +243,22 @@ export function getInstallInstructions(): string {
     return "brew install whisper-cpp";
   }
   if (platform() === "linux") {
-    return "Build from source: https://github.com/ggml-org/whisper.cpp#building (requires cmake and a C compiler)";
+    return "sudo apt-get install -y git cmake build-essential (Debian/Ubuntu; other distros: git, cmake and a C compiler, see https://github.com/ggml-org/whisper.cpp#building), then re-run";
   }
   if (platform() === "win32") {
-    return "Build with cmake: https://github.com/ggml-org/whisper.cpp#building";
+    return 'winget install -e --id Git.Git && winget install -e --id Kitware.CMake && winget install -e --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --add Microsoft.VisualStudio.Workload.VCTools", then re-run in a new terminal (or set HYPERFRAMES_WHISPER_PATH to the whisper-cli.exe in whisper-bin-x64.zip from https://github.com/ggml-org/whisper.cpp/releases)';
   }
   return "See https://github.com/ggml-org/whisper.cpp#building";
 }
 
-function hasBrew(): boolean {
-  return whichBinary("brew") !== undefined;
+interface BuildTools {
+  git: string;
+  cmake: string;
 }
 
-function hasGit(): boolean {
-  return whichBinary("git") !== undefined;
-}
-
-function hasCmake(): boolean {
-  return whichBinary("cmake") !== undefined;
+function trustedGit(): string | undefined {
+  const git = findTrustedExecutable("git");
+  return git !== undefined && runsWithoutInstallPrompt(git) ? git : undefined;
 }
 
 export async function ensureWhisper(options?: {
@@ -269,35 +277,47 @@ export async function ensureWhisper(options?: {
     );
   }
 
+  // What each attempt hit, so the final error names the real cause instead of a bare install hint.
+  const causes: string[] = [];
+  const why = (err: unknown) => (err instanceof Error ? err.message : String(err)).trim();
+
   // 2. Try brew (macOS, fastest — pre-built bottle)
-  if (platform() === "darwin" && hasBrew()) {
+  const brew = platform() === "darwin" ? findTrustedExecutable("brew") : undefined;
+  if (brew) {
     options?.onProgress?.("Installing whisper-cpp via Homebrew...");
     try {
-      await stoppableExecFile("brew", ["install", "whisper-cpp"], {
+      await stoppableExecFile(brew, ["install", "whisper-cpp"], {
         stdio: "ignore",
         timeout: 300_000,
         signal,
       });
       const installed = findFromSystem();
       if (installed) return { ...installed, source: "brew" };
-    } catch {
-      // brew failed — fall through
+    } catch (err) {
+      causes.push(`brew install whisper-cpp failed: ${why(err)}`);
     }
     signal?.throwIfAborted();
   }
 
   // 3. Build from source (needs git + cmake + C compiler)
-  if (hasGit() && hasCmake()) {
+  const git = trustedGit();
+  const cmake = findTrustedExecutable("cmake");
+  if (git && cmake && runsWithoutInstallPrompt("cc")) {
     try {
-      return await buildFromSource(options?.onProgress, signal);
-    } catch {
-      // build failed — fall through
+      return await buildFromSource({ git, cmake }, options?.onProgress, signal);
+    } catch (err) {
+      causes.push(why(err));
     }
     signal?.throwIfAborted();
+  } else {
+    const missing = [!git && "git", !cmake && "cmake"].filter(Boolean).join(" and ");
+    causes.push(`cannot build whisper.cpp: ${missing} not found on PATH`);
   }
 
-  // 4. Give up — tell the user how
-  throw new WhisperUnavailableError(`whisper-cpp not found. Install: ${getInstallInstructions()}`);
+  // 4. Give up — tell the user why and how
+  throw new WhisperUnavailableError(
+    `whisper-cpp not found (${causes.join("; ")}). Install: ${getInstallInstructions()}`,
+  );
 }
 
 export async function ensureModel(

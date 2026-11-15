@@ -27,6 +27,8 @@ Style templates are a HyperFrames Pro feature. The CLI pulls them and the server
 
 The person named a template, or their topic fits only one: go on with it. Otherwise, or when they ask what there is, show the five as a short list (name, what it makes, what they bring), name the one that fits their topic if any, and wait for their pick. Nothing is checked, pulled or paid before it.
 
+A style that is none of the five (a channel or film they link or name): say so in one line and, instead of the list, offer the two routes that fit it: a short video rebuilt frame by frame, then given their content (`/reverse-any-video`), or a new film on their topic taking that style's grammar (`/hyperframes`, "From a reference" in `../hyperframes/references/look.md`). Both need a video, so a style they only name gets a request for one example. They pick; nothing is pulled.
+
 ## Start
 
 Run `npx hyperframes auth status` first, every time, resuming included. It is for the sign-in: don't repeat its plan or credits line to the person.

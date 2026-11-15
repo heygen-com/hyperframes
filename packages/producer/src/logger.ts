@@ -92,4 +92,6 @@ export function createConsoleLogger(level: LogLevel = "info"): ProducerLogger {
 }
 
 /** Default logger singleton (level: "info"). */
-export const defaultLogger: ProducerLogger = createConsoleLogger("info");
+export const defaultLogger: ProducerLogger = createConsoleLogger(
+  process.env.HF_DEBUG_RENDER === "1" ? "debug" : "info",
+);

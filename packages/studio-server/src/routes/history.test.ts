@@ -477,6 +477,29 @@ describe("history routes", () => {
     ]);
   });
 
+  it("keeps a target's layer name, trimmed and capped, and never as its only identity", async () => {
+    const { projectDir, call } = await demoProject();
+    writeFileSync(join(projectDir, "index.html"), "B");
+    await call("/claim", {
+      label: "Move layer",
+      paths: ["index.html"],
+      targets: [
+        { file: "index.html", id: "title", name: "  Title  " },
+        { file: "index.html", id: "long", name: "x".repeat(500) },
+        { file: "index.html", id: "empty", name: "   " },
+        { file: "index.html", id: "typed", name: 7 },
+        { file: "index.html", name: "Nameless but no identity" },
+      ],
+    });
+    const { entries } = await (await call("")).json();
+    expect(entries[0].targets).toEqual([
+      { file: "index.html", id: "title", name: "Title" },
+      { file: "index.html", id: "long", name: "x".repeat(200) },
+      { file: "index.html", id: "empty" },
+      { file: "index.html", id: "typed" },
+    ]);
+  });
+
   it("end a window given idleMs by itself once its writes stop", async () => {
     const { projectDir, call } = await demoProject();
 

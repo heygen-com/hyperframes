@@ -87,4 +87,31 @@ describe("preview quality in the player store", () => {
     ).toBeUndefined();
     expect(parsePlaybackHealth(health)?.clockSource).toBeUndefined();
   });
+
+  it("keeps what held play when the runtime names it in its own shape, and drops any other shape", () => {
+    const health = {
+      droppedShare: 1,
+      seconds: 3,
+      choppy: true,
+      fps: 0,
+      worstFrameMs: 20,
+      mode: "play",
+    };
+    const heldBy = { kind: "audio", readyState: 1, networkState: 2, fetchMs: 3500 };
+    expect(parsePlaybackHealth({ ...health, heldBy })?.heldBy).toEqual(heldBy);
+    expect(
+      parsePlaybackHealth({ ...health, heldBy: { ...heldBy, fetchMs: null } })?.heldBy,
+    ).toEqual({
+      ...heldBy,
+      fetchMs: null,
+    });
+    expect(parsePlaybackHealth({ ...health, heldBy: null })?.heldBy).toBeNull();
+    expect(
+      parsePlaybackHealth({ ...health, heldBy: { ...heldBy, fetchMs: "3500" } })?.heldBy,
+    ).toBeUndefined();
+    expect(
+      parsePlaybackHealth({ ...health, heldBy: { ...heldBy, kind: "/a/b.mp3" } })?.heldBy,
+    ).toBeUndefined();
+    expect(parsePlaybackHealth(health)?.heldBy).toBeUndefined();
+  });
 });

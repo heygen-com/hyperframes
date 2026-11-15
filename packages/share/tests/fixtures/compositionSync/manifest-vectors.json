@@ -1,0 +1,4125 @@
+{
+  "policy_version": "portable-source-v4",
+  "about": "Golden vectors for the composition sync manifest. valid: build the canonical bytes from `manifest`; UTF-8 encoding `canonical` gives those bytes and `manifest_sha256` is their SHA-256. invalid: validating `manifest` fails with `error.code` (and `error.rule` for path-policy rules). limits: with `limits`, the first exceeded limit in the order file_count, file_size, project_size, manifest_size is `limit` (null: admitted). stored: base64 `body` is stored manifest bytes; reading them requires they are already canonical.",
+  "valid": [
+    {
+      "name": "minimal",
+      "description": "Only the entrypoint.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10}],\"format_version\":1}",
+      "manifest_sha256": "63fddbeea6bfbcae0680f96a62407a25e20cce85fb4adc41d96c638df88c4547",
+      "file_count": 1,
+      "project_bytes": 10
+    },
+    {
+      "name": "project-source",
+      "description": "Authored source and config, including project.json, lockfiles and AGENTS.md.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "hyperframes.json",
+            "sha256": "5b1abe04cdbb4d91eaa411a7106e6cee742d8f3eefac446c2f3da0db37ccbcc8",
+            "size": 16
+          },
+          {
+            "path": "meta.json",
+            "sha256": "61e02d96a75c79ab075606e62395cfebf1fc27a12f685dbd6acf7c9b108bb377",
+            "size": 9
+          },
+          {
+            "path": "project.json",
+            "sha256": "7680eb66f8e7b2155dfc25c4aa16a606a8fd3decb988265f218f3e11a8afa2be",
+            "size": 12
+          },
+          {
+            "path": "package.json",
+            "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519",
+            "size": 12
+          },
+          {
+            "path": "package-lock.json",
+            "sha256": "053150b640a7ce75eff69d1a22cae7f0f94ad64ce9a855db544dda0929316519",
+            "size": 17
+          },
+          {
+            "path": "AGENTS.md",
+            "sha256": "a54ff182c7e8acf56acfd6e4b9c3ff41e2c41a31c9b211b2deb9df75d9a478f9",
+            "size": 9
+          },
+          {
+            "path": "brief.md",
+            "sha256": "014c777fd4684e1994134767ade25b4db7b7e23d86379b6c01c2a2b22aac6641",
+            "size": 8
+          },
+          {
+            "path": "scenes/intro.html",
+            "sha256": "3da5cbe92a3fa8870e22a9ce0161ef4359e9bdf221e2a361e20775ff2c11f79b",
+            "size": 17
+          },
+          {
+            "path": "scenes/outro/scene.js",
+            "sha256": "8911604a0800a4704a94f85ae7d1783a562d3222a049ac2778246a1ba24e7219",
+            "size": 21
+          },
+          {
+            "path": "assets/logo.png",
+            "sha256": "90580d12fbd0edace7745ba49a090bc882d32c9f7d6bfa1345df935f7a6816d3",
+            "size": 15
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\"AGENTS.md\",\"sha256\":\"a54ff182c7e8acf56acfd6e4b9c3ff41e2c41a31c9b211b2deb9df75d9a478f9\",\"size\":9},{\"path\":\"assets/logo.png\",\"sha256\":\"90580d12fbd0edace7745ba49a090bc882d32c9f7d6bfa1345df935f7a6816d3\",\"size\":15},{\"path\":\"brief.md\",\"sha256\":\"014c777fd4684e1994134767ade25b4db7b7e23d86379b6c01c2a2b22aac6641\",\"size\":8},{\"path\":\"hyperframes.json\",\"sha256\":\"5b1abe04cdbb4d91eaa411a7106e6cee742d8f3eefac446c2f3da0db37ccbcc8\",\"size\":16},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"meta.json\",\"sha256\":\"61e02d96a75c79ab075606e62395cfebf1fc27a12f685dbd6acf7c9b108bb377\",\"size\":9},{\"path\":\"package-lock.json\",\"sha256\":\"053150b640a7ce75eff69d1a22cae7f0f94ad64ce9a855db544dda0929316519\",\"size\":17},{\"path\":\"package.json\",\"sha256\":\"7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519\",\"size\":12},{\"path\":\"project.json\",\"sha256\":\"7680eb66f8e7b2155dfc25c4aa16a606a8fd3decb988265f218f3e11a8afa2be\",\"size\":12},{\"path\":\"scenes/intro.html\",\"sha256\":\"3da5cbe92a3fa8870e22a9ce0161ef4359e9bdf221e2a361e20775ff2c11f79b\",\"size\":17},{\"path\":\"scenes/outro/scene.js\",\"sha256\":\"8911604a0800a4704a94f85ae7d1783a562d3222a049ac2778246a1ba24e7219\",\"size\":21}],\"format_version\":1}",
+      "manifest_sha256": "6c9a9486ad8df805d78074f5a86715db115635e7ad5fcdf90a18d41a3ecbe34d",
+      "file_count": 11,
+      "project_bytes": 146
+    },
+    {
+      "name": "input-order-ignored",
+      "description": "The same files as project-source in a different order produce the same canonical bytes.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "scenes/outro/scene.js",
+            "sha256": "8911604a0800a4704a94f85ae7d1783a562d3222a049ac2778246a1ba24e7219",
+            "size": 21
+          },
+          {
+            "path": "project.json",
+            "sha256": "7680eb66f8e7b2155dfc25c4aa16a606a8fd3decb988265f218f3e11a8afa2be",
+            "size": 12
+          },
+          {
+            "path": "assets/logo.png",
+            "sha256": "90580d12fbd0edace7745ba49a090bc882d32c9f7d6bfa1345df935f7a6816d3",
+            "size": 15
+          },
+          {
+            "path": "package-lock.json",
+            "sha256": "053150b640a7ce75eff69d1a22cae7f0f94ad64ce9a855db544dda0929316519",
+            "size": 17
+          },
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "brief.md",
+            "sha256": "014c777fd4684e1994134767ade25b4db7b7e23d86379b6c01c2a2b22aac6641",
+            "size": 8
+          },
+          {
+            "path": "meta.json",
+            "sha256": "61e02d96a75c79ab075606e62395cfebf1fc27a12f685dbd6acf7c9b108bb377",
+            "size": 9
+          },
+          {
+            "path": "AGENTS.md",
+            "sha256": "a54ff182c7e8acf56acfd6e4b9c3ff41e2c41a31c9b211b2deb9df75d9a478f9",
+            "size": 9
+          },
+          {
+            "path": "scenes/intro.html",
+            "sha256": "3da5cbe92a3fa8870e22a9ce0161ef4359e9bdf221e2a361e20775ff2c11f79b",
+            "size": 17
+          },
+          {
+            "path": "package.json",
+            "sha256": "7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519",
+            "size": 12
+          },
+          {
+            "path": "hyperframes.json",
+            "sha256": "5b1abe04cdbb4d91eaa411a7106e6cee742d8f3eefac446c2f3da0db37ccbcc8",
+            "size": 16
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\"AGENTS.md\",\"sha256\":\"a54ff182c7e8acf56acfd6e4b9c3ff41e2c41a31c9b211b2deb9df75d9a478f9\",\"size\":9},{\"path\":\"assets/logo.png\",\"sha256\":\"90580d12fbd0edace7745ba49a090bc882d32c9f7d6bfa1345df935f7a6816d3\",\"size\":15},{\"path\":\"brief.md\",\"sha256\":\"014c777fd4684e1994134767ade25b4db7b7e23d86379b6c01c2a2b22aac6641\",\"size\":8},{\"path\":\"hyperframes.json\",\"sha256\":\"5b1abe04cdbb4d91eaa411a7106e6cee742d8f3eefac446c2f3da0db37ccbcc8\",\"size\":16},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"meta.json\",\"sha256\":\"61e02d96a75c79ab075606e62395cfebf1fc27a12f685dbd6acf7c9b108bb377\",\"size\":9},{\"path\":\"package-lock.json\",\"sha256\":\"053150b640a7ce75eff69d1a22cae7f0f94ad64ce9a855db544dda0929316519\",\"size\":17},{\"path\":\"package.json\",\"sha256\":\"7ae45ad102eab3b6d7e7896acd08c427a9b25b346470d7bc6507b6481575d519\",\"size\":12},{\"path\":\"project.json\",\"sha256\":\"7680eb66f8e7b2155dfc25c4aa16a606a8fd3decb988265f218f3e11a8afa2be\",\"size\":12},{\"path\":\"scenes/intro.html\",\"sha256\":\"3da5cbe92a3fa8870e22a9ce0161ef4359e9bdf221e2a361e20775ff2c11f79b\",\"size\":17},{\"path\":\"scenes/outro/scene.js\",\"sha256\":\"8911604a0800a4704a94f85ae7d1783a562d3222a049ac2778246a1ba24e7219\",\"size\":21}],\"format_version\":1}",
+      "manifest_sha256": "6c9a9486ad8df805d78074f5a86715db115635e7ad5fcdf90a18d41a3ecbe34d",
+      "file_count": 11,
+      "project_bytes": 146
+    },
+    {
+      "name": "utf8-byte-order",
+      "description": "Files sort by UTF-8 bytes: U+E000 sorts before U+1F600 although UTF-16 code-unit order puts the emoji first.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "caf\u00e9.txt",
+            "sha256": "5996d1f7905c244c4fa2c38e29b4f1f2374831626a311489221ccb3f233cc4e8",
+            "size": 9
+          },
+          {
+            "path": "\ud83d\ude00.js",
+            "sha256": "3a104efc97344482a5f82f4649422c643e3ab1ad93d0683cb06a772cf32918e0",
+            "size": 7
+          },
+          {
+            "path": "\ue000.js",
+            "sha256": "09540a21a6bce7a79a8cbe278124fa179e1571b4611827f4d644e84c788ddda6",
+            "size": 6
+          },
+          {
+            "path": "line\u2028break.txt",
+            "sha256": "926be9d9e0842bee270b2999e0807889ff18237bea036da6573ce5fa09a4ccc6",
+            "size": 16
+          },
+          {
+            "path": "\u65e5\u672c\u8a9e/\u30b7\u30fc\u30f3.html",
+            "sha256": "fc18b4689e367cd842408c2d6d47456e545e13d2b1924fb0026b09e58acbc203",
+            "size": 24
+          },
+          {
+            "path": "\ud55c\uad6d\uc5b4.html",
+            "sha256": "930ff314ffaac67ac51d1038a4cb06a83f72c51c0c82c59b02ffae303538df16",
+            "size": 14
+          },
+          {
+            "path": "Zebra.txt",
+            "sha256": "b88ccf27f74370d6261042b79259c3b4ce22a4a02ebce66f312d74c038ad3e30",
+            "size": 9
+          },
+          {
+            "path": "apple.txt",
+            "sha256": "7269b27861e2a5ba6947b6279bb5e66b23439d83a65a3c0cf529f5834ed2e7fb",
+            "size": 9
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\"Zebra.txt\",\"sha256\":\"b88ccf27f74370d6261042b79259c3b4ce22a4a02ebce66f312d74c038ad3e30\",\"size\":9},{\"path\":\"apple.txt\",\"sha256\":\"7269b27861e2a5ba6947b6279bb5e66b23439d83a65a3c0cf529f5834ed2e7fb\",\"size\":9},{\"path\":\"caf\u00e9.txt\",\"sha256\":\"5996d1f7905c244c4fa2c38e29b4f1f2374831626a311489221ccb3f233cc4e8\",\"size\":9},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"line\u2028break.txt\",\"sha256\":\"926be9d9e0842bee270b2999e0807889ff18237bea036da6573ce5fa09a4ccc6\",\"size\":16},{\"path\":\"\u65e5\u672c\u8a9e/\u30b7\u30fc\u30f3.html\",\"sha256\":\"fc18b4689e367cd842408c2d6d47456e545e13d2b1924fb0026b09e58acbc203\",\"size\":24},{\"path\":\"\ud55c\uad6d\uc5b4.html\",\"sha256\":\"930ff314ffaac67ac51d1038a4cb06a83f72c51c0c82c59b02ffae303538df16\",\"size\":14},{\"path\":\"\ue000.js\",\"sha256\":\"09540a21a6bce7a79a8cbe278124fa179e1571b4611827f4d644e84c788ddda6\",\"size\":6},{\"path\":\"\ud83d\ude00.js\",\"sha256\":\"3a104efc97344482a5f82f4649422c643e3ab1ad93d0683cb06a772cf32918e0\",\"size\":7}],\"format_version\":1}",
+      "manifest_sha256": "0b646beea7798921286b56544f5fadf086121521a2248351ce596b858b2626f7",
+      "file_count": 9,
+      "project_bytes": 104
+    },
+    {
+      "name": "portable-hidden-and-media",
+      "description": "Completed .media assets with unused alternatives, .media/index.md, the named portable .hyperframes files, and hidden authored files.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".media/video/unused-take.mp4",
+            "sha256": "a3e29b7ba3f66207df6182ec09ed749df364378cf2cfb8cf589163a6cdac93e2",
+            "size": 28
+          },
+          {
+            "path": ".media/images/image_001.png",
+            "sha256": "35037cf8cd8a2d3e2b20a04563ecba015e6404678af5631c0e9e3a50fec200de",
+            "size": 27
+          },
+          {
+            "path": ".media/index.md",
+            "sha256": "8a925d0e3cc08cd0ed4601d0f94e8a781881d1b3034d07fe11cc02d296a2ad43",
+            "size": 15
+          },
+          {
+            "path": ".hyperframes/transcripts/a.json",
+            "sha256": "7ffb8ceda0a4b872cc4a9ba63bdd040a70631e3343157454a95206f2fc9f27cf",
+            "size": 31
+          },
+          {
+            "path": ".hyperframes/transcripts/nested/b.json",
+            "sha256": "a5222ca2063d161da3e06294d2ab5c6c32d7692a1177bb0f79ddde4001deb47b",
+            "size": 38
+          },
+          {
+            "path": ".hyperframes/brand-kit.json",
+            "sha256": "dda44abb548e99aad3ec261c6b87c5f545eb09f8fb1b261d3c75a7cfc21bfa94",
+            "size": 27
+          },
+          {
+            "path": ".hyperframes/transcription.json",
+            "sha256": "bc0b9ef4215d81d0ae7adabc471993f63ac70a24a693f4f91b4c18a103dd9ba1",
+            "size": 31
+          },
+          {
+            "path": ".hyperframes/studio-manual-edits.json",
+            "sha256": "450ba94d0f2fbb1ac30cc5e1dcae043e2f7f970357984a6bdfaf2f2087904fe0",
+            "size": 37
+          },
+          {
+            "path": ".hyperframes/studio-motion.json",
+            "sha256": "205f890f2a576608d6f009ef4738fc2b81df387329f2e20bdf67356c5365b55d",
+            "size": 31
+          },
+          {
+            "path": ".hyperframes/caption-skin.html",
+            "sha256": "a2e2d9315c6a9e3437f752e69a8514d8c662f53a9ade33db2686fa9affaa97b2",
+            "size": 30
+          },
+          {
+            "path": ".media/preferences.json",
+            "sha256": "888316c0c00d9d6929423a311f302500134d74315226a6a78a7a73bf66b4ef58",
+            "size": 23
+          },
+          {
+            "path": ".media/CREDITS.md",
+            "sha256": "4056dedc9ad51868f89af43f34035af851bb566f6d30f804e57551da7ec0dd9c",
+            "size": 17
+          },
+          {
+            "path": ".gitignore",
+            "sha256": "bc37d034bad564583790a46f19d807abfe519c5671395fd494d8cce506c42947",
+            "size": 10
+          },
+          {
+            "path": ".gitattributes",
+            "sha256": "618cd5b83d62060ba3d027e314a21ceaf75d36067ff820db126642944145393e",
+            "size": 14
+          },
+          {
+            "path": ".hyperframesignore",
+            "sha256": "4f7382fe2d1d64d27e88900b9997a85f9d9fa42062f04aab7426b03cabba7497",
+            "size": 18
+          },
+          {
+            "path": "CLAUDE.md",
+            "sha256": "6ebdb617a8104a7756d0cf36578ab01103dc9f07e4dc6feb751296b9c402faf7",
+            "size": 9
+          },
+          {
+            "path": "deck.key",
+            "sha256": "8e11a86cf1052f458f6766baba49f519b80b3eee7c35433debd93483515626d4",
+            "size": 8
+          },
+          {
+            "path": "notes/TRANSCRIPTS/file.bin",
+            "sha256": "0392523321b470965a29a3ec513f460128fe11513b1dc2e2396fe510d5e67b15",
+            "size": 26
+          },
+          {
+            "path": "docs/node_modules.md",
+            "sha256": "ef0612da92e8204f7277982d4d3ce82b4589d200192fcfa74371a5b80365d5ba",
+            "size": 20
+          },
+          {
+            "path": "templates/env.example.md",
+            "sha256": "bf8e2a33ac126e948ed744ea606beb8f150409bbfcea9fbdf3184a710d0d3bff",
+            "size": 24
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\".gitattributes\",\"sha256\":\"618cd5b83d62060ba3d027e314a21ceaf75d36067ff820db126642944145393e\",\"size\":14},{\"path\":\".gitignore\",\"sha256\":\"bc37d034bad564583790a46f19d807abfe519c5671395fd494d8cce506c42947\",\"size\":10},{\"path\":\".hyperframes/brand-kit.json\",\"sha256\":\"dda44abb548e99aad3ec261c6b87c5f545eb09f8fb1b261d3c75a7cfc21bfa94\",\"size\":27},{\"path\":\".hyperframes/caption-skin.html\",\"sha256\":\"a2e2d9315c6a9e3437f752e69a8514d8c662f53a9ade33db2686fa9affaa97b2\",\"size\":30},{\"path\":\".hyperframes/studio-manual-edits.json\",\"sha256\":\"450ba94d0f2fbb1ac30cc5e1dcae043e2f7f970357984a6bdfaf2f2087904fe0\",\"size\":37},{\"path\":\".hyperframes/studio-motion.json\",\"sha256\":\"205f890f2a576608d6f009ef4738fc2b81df387329f2e20bdf67356c5365b55d\",\"size\":31},{\"path\":\".hyperframes/transcription.json\",\"sha256\":\"bc0b9ef4215d81d0ae7adabc471993f63ac70a24a693f4f91b4c18a103dd9ba1\",\"size\":31},{\"path\":\".hyperframes/transcripts/a.json\",\"sha256\":\"7ffb8ceda0a4b872cc4a9ba63bdd040a70631e3343157454a95206f2fc9f27cf\",\"size\":31},{\"path\":\".hyperframes/transcripts/nested/b.json\",\"sha256\":\"a5222ca2063d161da3e06294d2ab5c6c32d7692a1177bb0f79ddde4001deb47b\",\"size\":38},{\"path\":\".hyperframesignore\",\"sha256\":\"4f7382fe2d1d64d27e88900b9997a85f9d9fa42062f04aab7426b03cabba7497\",\"size\":18},{\"path\":\".media/CREDITS.md\",\"sha256\":\"4056dedc9ad51868f89af43f34035af851bb566f6d30f804e57551da7ec0dd9c\",\"size\":17},{\"path\":\".media/images/image_001.png\",\"sha256\":\"35037cf8cd8a2d3e2b20a04563ecba015e6404678af5631c0e9e3a50fec200de\",\"size\":27},{\"path\":\".media/index.md\",\"sha256\":\"8a925d0e3cc08cd0ed4601d0f94e8a781881d1b3034d07fe11cc02d296a2ad43\",\"size\":15},{\"path\":\".media/preferences.json\",\"sha256\":\"888316c0c00d9d6929423a311f302500134d74315226a6a78a7a73bf66b4ef58\",\"size\":23},{\"path\":\".media/video/unused-take.mp4\",\"sha256\":\"a3e29b7ba3f66207df6182ec09ed749df364378cf2cfb8cf589163a6cdac93e2\",\"size\":28},{\"path\":\"CLAUDE.md\",\"sha256\":\"6ebdb617a8104a7756d0cf36578ab01103dc9f07e4dc6feb751296b9c402faf7\",\"size\":9},{\"path\":\"deck.key\",\"sha256\":\"8e11a86cf1052f458f6766baba49f519b80b3eee7c35433debd93483515626d4\",\"size\":8},{\"path\":\"docs/node_modules.md\",\"sha256\":\"ef0612da92e8204f7277982d4d3ce82b4589d200192fcfa74371a5b80365d5ba\",\"size\":20},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"notes/TRANSCRIPTS/file.bin\",\"sha256\":\"0392523321b470965a29a3ec513f460128fe11513b1dc2e2396fe510d5e67b15\",\"size\":26},{\"path\":\"templates/env.example.md\",\"sha256\":\"bf8e2a33ac126e948ed744ea606beb8f150409bbfcea9fbdf3184a710d0d3bff\",\"size\":24}],\"format_version\":1}",
+      "manifest_sha256": "fef0aa616de293c3b89370e19a3df5839c9d99b862f7f0416b742b72d2986c36",
+      "file_count": 21,
+      "project_bytes": 474
+    },
+    {
+      "name": "podcast-prepared-media",
+      "description": "Desktop's podcast transcodes under .hyperframes/prepared-assets/podcast/ travel, because the page plays them by that path.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "podcast-lanes.html",
+            "sha256": "23f2572fb52084f5d1bfd67b8744730c538fa8d147636ad0d1359271c4f7f53a",
+            "size": 18
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/media/Wide/C1.MP4.mp4",
+            "sha256": "b2e0a5ccfef76057f4b7fab8df0d692adc387d3191a960a29d6df6472ef785dd",
+            "size": 58
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/proxies/Recorder/ZOOM0001.WAV.m4a",
+            "sha256": "ce43faf5a276945c1579f363336dafdaa24e7eb0fcaa457a7366e6583166f593",
+            "size": 70
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\".hyperframes/prepared-assets/podcast/media/Wide/C1.MP4.mp4\",\"sha256\":\"b2e0a5ccfef76057f4b7fab8df0d692adc387d3191a960a29d6df6472ef785dd\",\"size\":58},{\"path\":\".hyperframes/prepared-assets/podcast/proxies/Recorder/ZOOM0001.WAV.m4a\",\"sha256\":\"ce43faf5a276945c1579f363336dafdaa24e7eb0fcaa457a7366e6583166f593\",\"size\":70},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"podcast-lanes.html\",\"sha256\":\"23f2572fb52084f5d1bfd67b8744730c538fa8d147636ad0d1359271c4f7f53a\",\"size\":18}],\"format_version\":1}",
+      "manifest_sha256": "f9e62e4d5549f908d8389f513a51507ef381e46a5c0a6fc61f1a70e1ee0fb851",
+      "file_count": 4,
+      "project_bytes": 156
+    },
+    {
+      "name": "root-only-exclusions-below-the-root",
+      "description": "dist/, coverage/, remotion-src/, moments/ and references/moments/ are left out only at the project root; build/ and outputs/ travel, and a .media ledger name elsewhere is an ordinary file.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "build/index.js",
+            "sha256": "b45a82899e064eecd30590584dc256fbf4aecbf4a782d303c94091b56d659a50",
+            "size": 14
+          },
+          {
+            "path": "outputs/final-cut.json",
+            "sha256": "cf91e22a830da8b8ee66ad52f92a1cd1dd7729819fc54429a169c707373b1352",
+            "size": 22
+          },
+          {
+            "path": "site/dist/app.js",
+            "sha256": "efda832dc95fe712e14fee6d5ad65f81b33dc07ed97d02b1c469108710e6e546",
+            "size": 16
+          },
+          {
+            "path": "docs/coverage/index.html",
+            "sha256": "cc94d405c55521f535188b00011bc740a0c7ea22fccb597ea4d1dea12b8bbab7",
+            "size": 24
+          },
+          {
+            "path": "distribution.md",
+            "sha256": "83b8682bde66aedd4caaef8d64467832f54d7bf053c51b51dd77c9620c1beae6",
+            "size": 15
+          },
+          {
+            "path": "scenes/moments/intro.html",
+            "sha256": "e35994dd5678e2ed114526fa1f6c0959b1bcac5b02d8cd6577c7c51497197720",
+            "size": 25
+          },
+          {
+            "path": "moments.md",
+            "sha256": "03e8ca80fdbb8d01439c94c2766c11e0a704947fb2724171245bb566dff5fa3b",
+            "size": 10
+          },
+          {
+            "path": "references/brand.png",
+            "sha256": "a5bc608efc70f7851c7f96a26979a86b76c1f1c5c61fcdd442d55dd8f74ea9b6",
+            "size": 20
+          },
+          {
+            "path": "assets/remotion-src/notes.md",
+            "sha256": "d567b8f18b801aa7ff31dc3f483f1792276a91a84ff0960708f8f47fc3c18551",
+            "size": 28
+          },
+          {
+            "path": "assets/manifest.jsonl",
+            "sha256": "ec59c6727a8bf05b23d5db504a481d5bef3ac9ba2db6378940df276330ae0a12",
+            "size": 21
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\"assets/manifest.jsonl\",\"sha256\":\"ec59c6727a8bf05b23d5db504a481d5bef3ac9ba2db6378940df276330ae0a12\",\"size\":21},{\"path\":\"assets/remotion-src/notes.md\",\"sha256\":\"d567b8f18b801aa7ff31dc3f483f1792276a91a84ff0960708f8f47fc3c18551\",\"size\":28},{\"path\":\"build/index.js\",\"sha256\":\"b45a82899e064eecd30590584dc256fbf4aecbf4a782d303c94091b56d659a50\",\"size\":14},{\"path\":\"distribution.md\",\"sha256\":\"83b8682bde66aedd4caaef8d64467832f54d7bf053c51b51dd77c9620c1beae6\",\"size\":15},{\"path\":\"docs/coverage/index.html\",\"sha256\":\"cc94d405c55521f535188b00011bc740a0c7ea22fccb597ea4d1dea12b8bbab7\",\"size\":24},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"moments.md\",\"sha256\":\"03e8ca80fdbb8d01439c94c2766c11e0a704947fb2724171245bb566dff5fa3b\",\"size\":10},{\"path\":\"outputs/final-cut.json\",\"sha256\":\"cf91e22a830da8b8ee66ad52f92a1cd1dd7729819fc54429a169c707373b1352\",\"size\":22},{\"path\":\"references/brand.png\",\"sha256\":\"a5bc608efc70f7851c7f96a26979a86b76c1f1c5c61fcdd442d55dd8f74ea9b6\",\"size\":20},{\"path\":\"scenes/moments/intro.html\",\"sha256\":\"e35994dd5678e2ed114526fa1f6c0959b1bcac5b02d8cd6577c7c51497197720\",\"size\":25},{\"path\":\"site/dist/app.js\",\"sha256\":\"efda832dc95fe712e14fee6d5ad65f81b33dc07ed97d02b1c469108710e6e546\",\"size\":16}],\"format_version\":1}",
+      "manifest_sha256": "b002a2ef6570769789f378e2638a4ef9f7ad2fb3937971e920d1d4765377825c",
+      "file_count": 11,
+      "project_bytes": 205
+    },
+    {
+      "name": "reused-content-and-empty-file",
+      "description": "Two paths may share content; an empty file has size 0.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "copy.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "empty.txt",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "size": 0
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\"copy.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"empty.txt\",\"sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\",\"size\":0},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10}],\"format_version\":1}",
+      "manifest_sha256": "57e5be944cc6089467e890512fcda319e683bdb4daadae5dcdffa15965936089",
+      "file_count": 3,
+      "project_bytes": 20
+    },
+    {
+      "name": "allowed-punctuation",
+      "description": "Punctuation other than the forbidden characters is portable.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a b/c&d#e%.txt",
+            "sha256": "1fb67bec75eb557356b4041a1ff905f6b7306ac4817cc1c6c90aa067e709ef9b",
+            "size": 14
+          },
+          {
+            "path": "a,b;c=d'.txt",
+            "sha256": "2819f043cab3930987005eec2308929f30c621295c05613d9b9929ea7bb9bf40",
+            "size": 12
+          },
+          {
+            "path": "[x]{y}(z)!@$^~`+.txt",
+            "sha256": "9c420f8d454083d0bd63c9b68a1dab89a2f3f16eba95bb4a744a45b9e18b7f48",
+            "size": 20
+          },
+          {
+            "path": "-leading-dash.txt",
+            "sha256": "43c4babb12e54cd711ab4e1c03e4c57666376009002c656fb9f3a15e9e26878a",
+            "size": 17
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\"-leading-dash.txt\",\"sha256\":\"43c4babb12e54cd711ab4e1c03e4c57666376009002c656fb9f3a15e9e26878a\",\"size\":17},{\"path\":\"[x]{y}(z)!@$^~`+.txt\",\"sha256\":\"9c420f8d454083d0bd63c9b68a1dab89a2f3f16eba95bb4a744a45b9e18b7f48\",\"size\":20},{\"path\":\"a b/c&d#e%.txt\",\"sha256\":\"1fb67bec75eb557356b4041a1ff905f6b7306ac4817cc1c6c90aa067e709ef9b\",\"size\":14},{\"path\":\"a,b;c=d'.txt\",\"sha256\":\"2819f043cab3930987005eec2308929f30c621295c05613d9b9929ea7bb9bf40\",\"size\":12},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10}],\"format_version\":1}",
+      "manifest_sha256": "64c1e278a7bd74d33965eb4363796463a02706fbdd34db7aeb7f4cd08be45a37",
+      "file_count": 5,
+      "project_bytes": 73
+    },
+    {
+      "name": "length-boundaries",
+      "description": "A 240-byte segment and a 1,024-byte path are at the limit, not over it.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+            "sha256": "d4b313e9c9a1f2007c5479c7adaf8d10a3e8cb8457c515944e484160bb6e5361",
+            "size": 240
+          },
+          {
+            "path": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "sha256": "c5c6c3e05ec6aa09b2493bc5b309726a7ad678bb10575697a2a6405bc67d609d",
+            "size": 1024
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"sha256\":\"c5c6c3e05ec6aa09b2493bc5b309726a7ad678bb10575697a2a6405bc67d609d\",\"size\":1024},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss\",\"sha256\":\"d4b313e9c9a1f2007c5479c7adaf8d10a3e8cb8457c515944e484160bb6e5361\",\"size\":240}],\"format_version\":1}",
+      "manifest_sha256": "c66869a7fe7b94c200e752244796ff044f8bb3f76d2652e3896d476b59b131f5",
+      "file_count": 3,
+      "project_bytes": 1274
+    },
+    {
+      "name": "largest-safe-size",
+      "description": "Sizes up to 2^53 - 1 are valid manifests; the push size limits are checked separately.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "huge.bin",
+            "sha256": "3f25c33d62813f93fc81c0acb634181760cb83d1a6bc491c1c81fa29e7bca154",
+            "size": 9007199254740991
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\"huge.bin\",\"sha256\":\"3f25c33d62813f93fc81c0acb634181760cb83d1a6bc491c1c81fa29e7bca154\",\"size\":9007199254740991},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10}],\"format_version\":1}",
+      "manifest_sha256": "de1efa6fe285757b315b4ea3ba2ef857b16fc7c95ca1bc5cdfa1e60bb78f955a",
+      "file_count": 2,
+      "project_bytes": 9007199254741001
+    }
+  ],
+  "invalid": [
+    {
+      "name": "missing-files",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html"
+      },
+      "error": {
+        "code": "invalid_schema"
+      }
+    },
+    {
+      "name": "unknown-top-level-field",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ],
+        "author": "someone"
+      },
+      "error": {
+        "code": "invalid_schema"
+      }
+    },
+    {
+      "name": "unknown-file-field",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10,
+            "url": "https://example.com/index.html"
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_schema"
+      }
+    },
+    {
+      "name": "size-as-string",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": "10"
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_schema"
+      }
+    },
+    {
+      "name": "path-as-number",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": 7,
+            "sha256": "2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881",
+            "size": 1
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_schema"
+      }
+    },
+    {
+      "name": "format-version-2",
+      "manifest": {
+        "format_version": 2,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "unsupported_format_version"
+      }
+    },
+    {
+      "name": "other-entrypoint",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "scenes/main.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "scenes/main.html",
+            "sha256": "3850b0e48638480b2b9210e3131976ced8f8d66ae36b24936407dabf09923dca",
+            "size": 16
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_entrypoint"
+      }
+    },
+    {
+      "name": "entrypoint-not-listed",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "scenes/main.html",
+            "sha256": "3850b0e48638480b2b9210e3131976ced8f8d66ae36b24936407dabf09923dca",
+            "size": 16
+          }
+        ]
+      },
+      "error": {
+        "code": "entrypoint_not_listed"
+      }
+    },
+    {
+      "name": "uppercase-sha256",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0EB547304658805AAD788D320F10BF1F292797B5E6D745A3BF617584DA017051",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_sha256"
+      }
+    },
+    {
+      "name": "short-sha256",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da01705",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_sha256"
+      }
+    },
+    {
+      "name": "negative-size",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": -1
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_size"
+      }
+    },
+    {
+      "name": "size-above-2-53",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "huge.bin",
+            "sha256": "3f25c33d62813f93fc81c0acb634181760cb83d1a6bc491c1c81fa29e7bca154",
+            "size": 9007199254740992
+          }
+        ]
+      },
+      "error": {
+        "code": "invalid_size"
+      }
+    },
+    {
+      "name": "one-digest-two-sizes",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "b.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 1
+          }
+        ]
+      },
+      "error": {
+        "code": "inconsistent_digest_size"
+      }
+    },
+    {
+      "name": "duplicate-path",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a.js",
+            "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536",
+            "size": 4
+          },
+          {
+            "path": "a.js",
+            "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536",
+            "size": 4
+          }
+        ]
+      },
+      "error": {
+        "code": "duplicate_path"
+      }
+    },
+    {
+      "name": "case-collision",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a.js",
+            "sha256": "dc5985b2a377c4ea735c99979da277be3bd24be88cf411c11b52b5c3f9570536",
+            "size": 4
+          },
+          {
+            "path": "A.js",
+            "sha256": "9a75ab6bc200aa8acfb0e422b461e0f5875b983e426abc3a3dc4493aba31c233",
+            "size": 4
+          }
+        ]
+      },
+      "error": {
+        "code": "path_collision"
+      }
+    },
+    {
+      "name": "directory-case-collision",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "Assets/a.png",
+            "sha256": "aa838516b8faede2e75b29d6b0ad1b99b7cca1a6eec18cd20e09e9d63ac336dd",
+            "size": 12
+          },
+          {
+            "path": "assets/b.png",
+            "sha256": "6b5ccff86cd078bb49880b35ac1784320c768526f4199ab9f7923bf67effc4ee",
+            "size": 12
+          }
+        ]
+      },
+      "error": {
+        "code": "path_collision"
+      }
+    },
+    {
+      "name": "full-casefold-collision",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "stra\u00dfe.txt",
+            "sha256": "fbba3f5ff0440287811826d6c3c4160b1631c5541293c9959075610732f3b167",
+            "size": 11
+          },
+          {
+            "path": "strasse.txt",
+            "sha256": "d860b68ac02417bcde5058c0aa98fb6c77e24337c462d3756c2aab0c3f98ffa3",
+            "size": 11
+          }
+        ]
+      },
+      "error": {
+        "code": "path_collision"
+      }
+    },
+    {
+      "name": "final-sigma-collision",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "\u03a3/a",
+            "sha256": "32e8b8da0483605ae6db163a980d3a72385ac9c3118c33da049f6c7e383241b0",
+            "size": 4
+          },
+          {
+            "path": "\u03c2/b",
+            "sha256": "56d5841b83008207d8190915dec97a32d040b98ff1e41515555aa393819ebad8",
+            "size": 4
+          }
+        ]
+      },
+      "error": {
+        "code": "path_collision"
+      }
+    },
+    {
+      "name": "ligature-collision",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "\ufb01le.txt",
+            "sha256": "dca39d9d97123b2230297327532a68ac3a75014089707b91a4ee4fba8a4a9bc2",
+            "size": 9
+          },
+          {
+            "path": "file.txt",
+            "sha256": "aadf327c8267c09d6fffd87a1a80ad3c798469ff332b7a57b9e8c045d46b2af7",
+            "size": 8
+          }
+        ]
+      },
+      "error": {
+        "code": "path_collision"
+      }
+    },
+    {
+      "name": "file-and-directory",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a",
+            "sha256": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+            "size": 1
+          },
+          {
+            "path": "a/b",
+            "sha256": "c14cddc033f64b9dea80ea675cf280a015e672516090a5626781153dc68fea11",
+            "size": 3
+          }
+        ]
+      },
+      "error": {
+        "code": "file_directory_collision"
+      }
+    },
+    {
+      "name": "empty-path",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "size": 0
+          }
+        ]
+      },
+      "error": {
+        "code": "path_empty"
+      }
+    },
+    {
+      "name": "backslash",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a\\b",
+            "sha256": "c62016d0f8ee333350283fd879b50b692932e932794e5d686f7d37d67484e199",
+            "size": 3
+          }
+        ]
+      },
+      "error": {
+        "code": "path_invalid_character"
+      }
+    },
+    {
+      "name": "drive-letter",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "C:/x",
+            "sha256": "35a70e2c9b7d9f56c30880d982fbc7e3d5fddea11a37035a3c39d0328c265ddd",
+            "size": 4
+          }
+        ]
+      },
+      "error": {
+        "code": "path_invalid_character"
+      }
+    },
+    {
+      "name": "nul",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a\u0000b",
+            "sha256": "59b271ae1bbcb1d31d41929817f4b16fb439eb4f31520b5ad1d5ce98920a7138",
+            "size": 3
+          }
+        ]
+      },
+      "error": {
+        "code": "path_invalid_character"
+      }
+    },
+    {
+      "name": "c1-control",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a\u0085b",
+            "sha256": "75e7cf7e9bf896d878d3b49a7225fc0ef80d9b03356eb6d783bb276e67afe8fa",
+            "size": 4
+          }
+        ]
+      },
+      "error": {
+        "code": "path_invalid_character"
+      }
+    },
+    {
+      "name": "lone-surrogate",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a\ud800b",
+            "sha256": "45e334b6c74ca5db8d8f8fcd1157fb31a2ebc9953e0d8d182e37b6b67e6a1705",
+            "size": 5
+          }
+        ]
+      },
+      "error": {
+        "code": "path_invalid_character"
+      }
+    },
+    {
+      "name": "question-mark",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a?b",
+            "sha256": "c2a7b64a2d2520047bfc9248fdda834c9cc2c0c9e89826355c7a6ae16fe11179",
+            "size": 3
+          }
+        ]
+      },
+      "error": {
+        "code": "path_invalid_character"
+      }
+    },
+    {
+      "name": "unassigned-code-point",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "\u0378.txt",
+            "sha256": "e5a1e84dddf1b2d2dfd36a6351c188eef9104feeff775bdffbd406b7214d3bd7",
+            "size": 6
+          }
+        ]
+      },
+      "error": {
+        "code": "path_unassigned_code_point"
+      }
+    },
+    {
+      "name": "assigned-after-15-1",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "\u1c89.txt",
+            "sha256": "89262795c39f249edc772f152e0c4e0cc596dbf4f4035d6969edd98e503f6490",
+            "size": 7
+          }
+        ]
+      },
+      "error": {
+        "code": "path_unassigned_code_point"
+      }
+    },
+    {
+      "name": "decomposed",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "cafe\u0301.txt",
+            "sha256": "da33d471fceb496fca38f333c2169a3ebc666a5fb12f044cb617c87eac1f54ff",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "path_not_nfc"
+      }
+    },
+    {
+      "name": "angstrom-sign",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "\u212b.txt",
+            "sha256": "55c57fdf869ca6a036f6fd840abb97e5d9f28a08cc7c5ab98f43a3d38b718234",
+            "size": 7
+          }
+        ]
+      },
+      "error": {
+        "code": "path_not_nfc"
+      }
+    },
+    {
+      "name": "path-over-1024-bytes",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd/fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "sha256": "3b1c473b1463ccb1ab14f1f0a78e71dc49445f3f94e9290e3eb3bbfd4b8491e9",
+            "size": 1025
+          }
+        ]
+      },
+      "error": {
+        "code": "path_too_long"
+      }
+    },
+    {
+      "name": "absolute",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "/index.html",
+            "sha256": "213456c5dc963e03ec1f27600c46c954c70224985fa62603db2fb2ab1ca06d35",
+            "size": 11
+          }
+        ]
+      },
+      "error": {
+        "code": "path_not_relative"
+      }
+    },
+    {
+      "name": "double-slash",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a//b",
+            "sha256": "7a9acf331a5dc1e020c17901e85936a279e0aa49b04474b13fa2ee63f80fa57a",
+            "size": 4
+          }
+        ]
+      },
+      "error": {
+        "code": "path_empty_segment"
+      }
+    },
+    {
+      "name": "trailing-slash",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a/",
+            "sha256": "b3dda5b674f9ce730a37dee0a33bb31efeea2335f517774f6ea133d448df2178",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "path_empty_segment"
+      }
+    },
+    {
+      "name": "parent-segment",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "../x",
+            "sha256": "d6b96a97d147daaae49eb87a5ca7bfbc280e79551016df8aa5edc5920d21c274",
+            "size": 4
+          }
+        ]
+      },
+      "error": {
+        "code": "path_dot_segment"
+      }
+    },
+    {
+      "name": "dot-segment",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a/./b",
+            "sha256": "323f86c5ac40686f53f7cd0f4d3cb805d1a8f237bfee51a2d30943f81260e99d",
+            "size": 5
+          }
+        ]
+      },
+      "error": {
+        "code": "path_dot_segment"
+      }
+    },
+    {
+      "name": "segment-over-240-bytes",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss",
+            "sha256": "1b21942235ac8a80199d3b087703496ebd76d322ffe2b8730d920940421c0cff",
+            "size": 241
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_too_long"
+      }
+    },
+    {
+      "name": "trailing-dot",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "x.",
+            "sha256": "c92f00b196e2fb020317afd79909f3894536d631a3366d77c9653176e12a5c4f",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_trailing_dot_or_space"
+      }
+    },
+    {
+      "name": "trailing-space",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "dir /x",
+            "sha256": "11b00276f199a1890fca0cd5c9a41cd09c9ac318d9baaaece9a7061955668029",
+            "size": 6
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_trailing_dot_or_space"
+      }
+    },
+    {
+      "name": "device-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "con",
+            "sha256": "1143da2bc54c495c4be31d3868785d39ffdfd56df5668f0645d8f14d47647952",
+            "size": 3
+          }
+        ]
+      },
+      "error": {
+        "code": "reserved_name"
+      }
+    },
+    {
+      "name": "device-name-with-extension",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "assets/CON.txt",
+            "sha256": "975115b3c016b03653062c8ac360e25cab7b6bd5bb3824a39dcaef1be09cb764",
+            "size": 14
+          }
+        ]
+      },
+      "error": {
+        "code": "reserved_name"
+      }
+    },
+    {
+      "name": "device-name-double-extension",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a/nul.tar.gz",
+            "sha256": "6217f5ba481b78ab735c342e3ea6a4bf74d54922b36a44c2192d33984815c01e",
+            "size": 12
+          }
+        ]
+      },
+      "error": {
+        "code": "reserved_name"
+      }
+    },
+    {
+      "name": "device-name-superscript",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "LPT\u00b2.txt",
+            "sha256": "ca3aab60cfc72e6431367509c0b966332eb3f6123ee308f5446c7f89f4e2d02a",
+            "size": 9
+          }
+        ]
+      },
+      "error": {
+        "code": "reserved_name"
+      }
+    },
+    {
+      "name": "media-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".MEDIA/a.mp4",
+            "sha256": "9f65ed7eafecaafd9e800173934f233b95b0d9bb642811fbcd1b1d9674a7440a",
+            "size": 12
+          }
+        ]
+      },
+      "error": {
+        "code": "reserved_path_alias"
+      }
+    },
+    {
+      "name": "hyperframes-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".Hyperframes/transcripts/a.json",
+            "sha256": "c2821bb113dcb6bd956a4dc6b97f9a3083294f4db13904c0db3e665d620c0242",
+            "size": 31
+          }
+        ]
+      },
+      "error": {
+        "code": "reserved_path_alias"
+      }
+    },
+    {
+      "name": "transcripts-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/TRANSCRIPTS/a.json",
+            "sha256": "b1c2c648c3c99106e57916500c84220834c813ccdae5047dcb10d83b4bc1b045",
+            "size": 31
+          }
+        ]
+      },
+      "error": {
+        "code": "reserved_path_alias",
+        "rule": "portable-transcripts"
+      }
+    },
+    {
+      "name": "brand-kit-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/Brand-Kit.json",
+            "sha256": "44dbad5584a14ca61eaab0abbc4d943fe28b287ae941929b58408e8d19976cc2",
+            "size": 27
+          }
+        ]
+      },
+      "error": {
+        "code": "reserved_path_alias",
+        "rule": "portable-brand-kit"
+      }
+    },
+    {
+      "name": "studio-edits-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/Studio-Motion.json",
+            "sha256": "af4607f49d27b27af5f8e14025c60c20656b22c900f5cd0c84be580372b1c45f",
+            "size": 31
+          }
+        ]
+      },
+      "error": {
+        "code": "reserved_path_alias",
+        "rule": "portable-studio-edits"
+      }
+    },
+    {
+      "name": "media-lock",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".media/.lock",
+            "sha256": "9973d24679eb4fe7ca7e21cf03a5b5e5ce89380cf1e15f96bb3529b2045f68a9",
+            "size": 12
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "media-lock"
+      }
+    },
+    {
+      "name": "media-reservation",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".media/images/x.png.hfabcdef.tmp",
+            "sha256": "b1434ad4413cffbb82b9026ce05480a60c6af8d53415a1b3980d4df4c7397b4e",
+            "size": 32
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "media-reservation"
+      }
+    },
+    {
+      "name": "media-ledger",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".media/manifest.jsonl",
+            "sha256": "c35dbd7aec9f4cfeff3fef24916e8ed21a8432a6d3ed65924b857a65f55ac68f",
+            "size": 21
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "media-ledger"
+      }
+    },
+    {
+      "name": "media-ledger-case",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".media/Manifest.JSONL",
+            "sha256": "d7f76ede83651197b1e54d76b5227f272a5a19ad1ac6b758a9efc5af47b254cf",
+            "size": 21
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "media-ledger"
+      }
+    },
+    {
+      "name": "comments",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/comments.jsonl",
+            "sha256": "986857a0b40fb1ab13acd7718f74677a9b1329651a68b99bfdd827bd6065e2b1",
+            "size": 27
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "known-hyperframes-state"
+      }
+    },
+    {
+      "name": "chat-history",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/agent-runs.jsonl",
+            "sha256": "61aee44837a8fb87c824d703255c2e497f03b6a997de9773c7e4decda22a5f7c",
+            "size": 29
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "known-hyperframes-state"
+      }
+    },
+    {
+      "name": "sync-binding",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/sync/binding.json",
+            "sha256": "ca2bef6cb7269ec5b2a2aa291e668ca2c40379f3b729abc44019472b89cbf711",
+            "size": 30
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "sync-and-share-bindings"
+      }
+    },
+    {
+      "name": "sync-receipt",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/receipts/upload.json",
+            "sha256": "74cb6f7afd974d113a6cb6077ca1947d19d412b3ad2023ed771ee5db78536e43",
+            "size": 33
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "sync-and-share-bindings"
+      }
+    },
+    {
+      "name": "share-link",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/share.json",
+            "sha256": "2a90ff0795de7b1dee0003f8399d8ca926278eaabc7ebc9bfa7b94bde1894511",
+            "size": 23
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "sync-and-share-bindings"
+      }
+    },
+    {
+      "name": "review-link",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/review-abc123.json",
+            "sha256": "347fbe328490ebae27b54d768d6357091783ee516a32cf75c7bdd9ed78d50f7e",
+            "size": 31
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "sync-and-share-bindings"
+      }
+    },
+    {
+      "name": "cli-publish-id",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/project.json",
+            "sha256": "61162859aceaf2e637350d3eef12ad2dc0250c3dc07b35903e0b3e3bb689eb4f",
+            "size": 25
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "sync-and-share-bindings"
+      }
+    },
+    {
+      "name": "deploy-stack",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/lambda-stack-prod.json",
+            "sha256": "362688ebc40e3a9a8d09a0e8f74c54892bc3fddcedd163c2dead083d0aca54ee",
+            "size": 35
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "sync-and-share-bindings"
+      }
+    },
+    {
+      "name": "check-artifacts",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/artifacts/checks/frame.png",
+            "sha256": "5029a36abd99708a1e250ed716bd3e56d987b4e8b2f06de87755098fa306828b",
+            "size": 39
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "known-hyperframes-state"
+      }
+    },
+    {
+      "name": "voice-copies",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/voices.json",
+            "sha256": "642b37742a237f49a110881d85c4727531de98c26b7898e45944995c1012623e",
+            "size": 24
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "known-hyperframes-state"
+      }
+    },
+    {
+      "name": "prepared-assets-gif",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/gif/preview.gif",
+            "sha256": "e808f4eea9660b90af1fb56e282a50d24ccf9580fc5b1fa5c87570a5e060a34d",
+            "size": 44
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "known-hyperframes-state"
+      }
+    },
+    {
+      "name": "prepared-assets-downloads",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/downloads/clip.mp4",
+            "sha256": "c774b5f01db05f64c52e687fe891e56a0e3e0b14bf89cc8883f87a2eb1b22327",
+            "size": 47
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "known-hyperframes-state"
+      }
+    },
+    {
+      "name": "podcast-job-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/podcast/job.json",
+            "sha256": "190f70986587aae69e999eab453a9d0abf0f047067dd1bca6f1c48dfa18944ac",
+            "size": 29
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "known-hyperframes-state"
+      }
+    },
+    {
+      "name": "podcast-media-dotfile",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/media/.DS_Store",
+            "sha256": "25f927d71f5b2b5d14b76e5eda58e2470115fb53fc3c5cc757768afc07555b8b",
+            "size": 52
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "podcast-media-temporary",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/media/Wide/C1.MP4.mp4.0b1c2d3e-4f50-4617-8899-aabbccddeeff.tmp",
+            "sha256": "2b312ac98f86d15e6fc55391c518c437d99d38de6583c3073ca08578a6237e64",
+            "size": 99
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "unfinished-writes"
+      }
+    },
+    {
+      "name": "podcast-media-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/Prepared-Assets/podcast/media/C1.mp4",
+            "sha256": "7c315f54ae843132f5344c8488c98b94a05b045024d2605539440ea4905ba6aa",
+            "size": 49
+          }
+        ]
+      },
+      "error": {
+        "code": "reserved_path_alias",
+        "rule": "portable-podcast-media"
+      }
+    },
+    {
+      "name": "podcast-media-ssh-key",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/.ssh/id_rsa",
+            "sha256": "673c5f43bb96ed6dc6c179356b2b2d76925e25ff653029da8d5e520f37fad2c7",
+            "size": 48
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "podcast-media-aws-credentials",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/media/.aws/credentials",
+            "sha256": "33d38760a731ca8467010421db5441fcd80709a530155fafbc8f81ecc2948f0f",
+            "size": 59
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "podcast-media-pem",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/media/secret.pem",
+            "sha256": "ed4a446ead9b837b1e2119f32c39f505ed7c41aa39961c7a230c8f72c563de15",
+            "size": 53
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "podcast-media-git",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/.git/config",
+            "sha256": "bdba0ca5b99e8986612bbcdd8283e6f8235f9f4351505bd5abfd67272239b402",
+            "size": 48
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "dependencies-and-git"
+      }
+    },
+    {
+      "name": "podcast-media-node-modules",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/proxies/node_modules/x/index.js",
+            "sha256": "4614d76393b403e42faee1f5eafb433608f7dfdde5d8943b7077e554d910bf36",
+            "size": 68
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "dependencies-and-git"
+      }
+    },
+    {
+      "name": "podcast-media-env-dir",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/media/.env",
+            "sha256": "00466d6462cb60f88d59304017e03180138637c16340c5d5a6d0ba63aeb52bb7",
+            "size": 47
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "environment-secrets"
+      }
+    },
+    {
+      "name": "podcast-media-pip-conf",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/media/pip.conf",
+            "sha256": "e14fb225fed89b477192bbc3aaecd653872e80c9554391a264867bd387de23cc",
+            "size": 51
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "package-manager-config"
+      }
+    },
+    {
+      "name": "podcast-media-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/.claude/settings.json",
+            "sha256": "7f4b87b1dc55c173b7cec8369667397a06fdf612b48b1bc6e12aa027296de233",
+            "size": 58
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "podcast-media-build-cache",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/media/.cache/C1.mp4",
+            "sha256": "a3ca2e8f81d8bf18536e9e3ffd6d09cb0a6b10c67cd4452a5f20e9a26a8b9735",
+            "size": 56
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "build-caches"
+      }
+    },
+    {
+      "name": "podcast-media-ds-store-direct",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/.DS_Store",
+            "sha256": "937f699c059c74eb6fda2c02153fdf4c2c42ff23acf01111273f9b34dbb35ea3",
+            "size": 46
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "podcast-media-thumbs-db",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/media/Thumbs.db",
+            "sha256": "61fe6ac97e701da5ac15f0eb1fcd228198031bae829ce9bfeb31610beb042cc5",
+            "size": 52
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "podcast-media-macosx",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/__MACOSX/media/C1.mp4",
+            "sha256": "c04a5ac2f2f3969d261e003a2732db9f9c8dbe8f63b7943fa42a5ee4440bc805",
+            "size": 58
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "transcripts-env-json",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/transcripts/.env.json",
+            "sha256": "f968aafe086ade3c0a00627ee405350f6d235780c8b10025d9e3898614d3bb23",
+            "size": 34
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "environment-secrets"
+      }
+    },
+    {
+      "name": "transcripts-nested-npmrc",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/transcripts/x/.npmrc",
+            "sha256": "16efe6092c7243e9e2195f2fbdc34597bb23a1f192b13cf186016c85f59d9bc2",
+            "size": 33
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "package-manager-config"
+      }
+    },
+    {
+      "name": "transcripts-ssh-key",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/transcripts/.ssh/id_rsa.json",
+            "sha256": "c52be8541e42c47cc41addc845de1b86d8e9323d88497656995ab0fd363d10f0",
+            "size": 41
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "transcripts-nested-key-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/transcripts/x/id_ed25519.json",
+            "sha256": "edfeb0d890654f80a0f648a76e0a6295a81ad5c106f3d938f2d8021c97854f7e",
+            "size": 42
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "transcripts-git",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/transcripts/.git/config.json",
+            "sha256": "926f9e367e75853cda20a85232eb5e34c32782699536439b6133210da74de687",
+            "size": 41
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "dependencies-and-git"
+      }
+    },
+    {
+      "name": "transcripts-node-modules",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/transcripts/node_modules/a.json",
+            "sha256": "6f5267956792664a277aedebd91528445066cceeb250708601cf5fda9ae2a661",
+            "size": 44
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "dependencies-and-git"
+      }
+    },
+    {
+      "name": "transcripts-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/transcripts/.vscode/settings.json",
+            "sha256": "82b0657304c0738bd9091464ac35731d7e257792dc0a21bf825a2684b821b478",
+            "size": 46
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "transcripts-appledouble",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/transcripts/._a.json",
+            "sha256": "f1ec51871fdd2955d8a4caf4f9a38c8472817066a3622b4ff0862f6c2c5651fc",
+            "size": 33
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "transcripts-ds-store",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/transcripts/x/.DS_Store",
+            "sha256": "b33e190354e883e4646077d5516e019417e31d1d83b77378565be3a55be2e83e",
+            "size": 36
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "transcripts-macosx",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/transcripts/__MACOSX/a.json",
+            "sha256": "207e13b571365f4757569bc48864f70234e2c83ff99c5a6bcd5126f935e2736f",
+            "size": 40
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "run-traces",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/run-traces/t1.json",
+            "sha256": "ad72358819398bced031145bf0dccb2715a0bb64cd2a2e0db49e0b04126ec7da",
+            "size": 31
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "known-hyperframes-state"
+      }
+    },
+    {
+      "name": "unknown-hyperframes-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/notes.md",
+            "sha256": "171eb0417135308796aca9fe3b9015fe3ca772e6fc945e36db767b804a63dfe1",
+            "size": 21
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "unknown-hyperframes-state"
+      }
+    },
+    {
+      "name": "transcript-temporary",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/transcripts/a.json.tmp",
+            "sha256": "dcc3acb5f3b764c1c7ead0400126e0cdb352fa3da16dbdc4ab06032f3a6ab508",
+            "size": 35
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "unfinished-writes"
+      }
+    },
+    {
+      "name": "atomic-write-temp",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "index.html.hf1a2b3c.tmp",
+            "sha256": "98263e7b51ce89ee7ded7034737f988d62ce8fc45f19f9f59bcce29c5640c5dd",
+            "size": 23
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "unfinished-writes"
+      }
+    },
+    {
+      "name": "nested-tmp",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "compositions/scene.html.tmp",
+            "sha256": "1bfaa7a596c9009790a941be98740f72966389edac5e184cd423f86901a665f4",
+            "size": 27
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "unfinished-writes"
+      }
+    },
+    {
+      "name": "partial-download",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "assets/clip.mov.part",
+            "sha256": "8e76846fa546063f772cadf3fa7620e43aeb6572a83c380f2d4240eef7a25899",
+            "size": 20
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "unfinished-writes"
+      }
+    },
+    {
+      "name": "editor-swap",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".index.html.swp",
+            "sha256": "7993241a828f5ecb96321408a7d94838ea8f2ab988eaf51ba86f1ef8c6340512",
+            "size": 15
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "unfinished-writes"
+      }
+    },
+    {
+      "name": "editor-backup",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "notes.md~",
+            "sha256": "c3defad44cf17ab076123993461f4805daf5d435cae4bd777614d9a870c3e478",
+            "size": 9
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "unfinished-writes"
+      }
+    },
+    {
+      "name": "render-work-dir",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "work-0123abcd-0123-4567-89ab-0123456789ab-a1B2c3/frame-0001.png",
+            "sha256": "e0d88a5cc4c4a6f2d3de1139d7bfeb1f58da21e99d293a51ee0474a4b0bbd779",
+            "size": 63
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "render-temp-dirs"
+      }
+    },
+    {
+      "name": "hf-render-dir",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "out/hf-render-Zz9yX8/frame.png",
+            "sha256": "2fd4c9ff40809f7053d5514c38ac618910e429db16e1de6ffb2eecff8cc44d07",
+            "size": 30
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "render-temp-dirs"
+      }
+    },
+    {
+      "name": "transaction-dir",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".final.hf-transaction-Ab12Cd/final.mp4",
+            "sha256": "273e025f3d266ac7397591b02653baefc90c699d1fbadf384f77556e9ee5196b",
+            "size": 38
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "render-temp-dirs"
+      }
+    },
+    {
+      "name": "assemble-work-dir",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "final.mp4.assemble-work-xY12zQ/part-001.mp4",
+            "sha256": "818dc63f4d6feaf8dec362f872d0816625fe551b8b318fd0962a1ce85da5478e",
+            "size": 43
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "render-temp-dirs"
+      }
+    },
+    {
+      "name": "agent-client-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".claude/settings.json",
+            "sha256": "f27ac6f39d89fe021c56900069198aa7d9968f2cd6645c00b11ffd1b78fcf546",
+            "size": 21
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "cursor-rules",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".cursor/rules/style.md",
+            "sha256": "c5b4b1add518f55124c284201df673a8267c5021b27fa33c06a97a7e95da4d20",
+            "size": 22
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "vscode-settings",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "sub/.vscode/settings.json",
+            "sha256": "c5084aafd97d0f1a7b66a365fbdcc59a1889c05fa69c8663ff94a6bd43897d5c",
+            "size": 25
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "idea",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".idea/workspace.xml",
+            "sha256": "9f043e4e89d784b579b6d75ea8704b232f9475fa5b3afd11f805fdf8e74c675c",
+            "size": 19
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "agents-dir",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".agents/skills/x.md",
+            "sha256": "b425dd94d23650cb37df5e3e75eed78675f1784a2fc1509e7608963cc4bce27a",
+            "size": 19
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "svn",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".svn/entries",
+            "sha256": "ff1bd8565d1ae3f065b4df1171319ac45642883cebb67d159d17556ceb7c621e",
+            "size": 12
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "dependencies-and-git"
+      }
+    },
+    {
+      "name": "mercurial",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "vendor/.hg/store/data",
+            "sha256": "37400dbc74c76d0efd45d654e29b2c2bd4a8511383679a64ad772264cd7410d4",
+            "size": 21
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "dependencies-and-git"
+      }
+    },
+    {
+      "name": "snapshots",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "snapshots/frame-0001.png",
+            "sha256": "94a2fe06458a8c9532a6b3aee28a297c3041d1946c43fb5054952832d8cdea37",
+            "size": 24
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "root-generated-output"
+      }
+    },
+    {
+      "name": "root-dist",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "dist/index.js",
+            "sha256": "3d2b59189eeedc2d428ddd632e97658fe310f587f7cb63b01f9b98ffc11c0197",
+            "size": 13
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "root-build-output"
+      }
+    },
+    {
+      "name": "root-coverage",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "coverage/lcov.info",
+            "sha256": "d38234dcd085270f6a057c86bd3e6c7771528a9ba0a78fd6128da5be9e0cc1de",
+            "size": 18
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "root-build-output"
+      }
+    },
+    {
+      "name": "remotion-src",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "remotion-src/src/Root.tsx",
+            "sha256": "a0c964a08bdb2b895b105242431c6c9ba536f3cd7f8cb4e11f7957528d366d71",
+            "size": 25
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "authoring-scratch"
+      }
+    },
+    {
+      "name": "moments",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "moments/m1/.work/clip.mp4",
+            "sha256": "54cd521aba75dd5a0e1bf63f0524b4427d5d46b482ac1ae86c1800b4e1f5ac35",
+            "size": 25
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "authoring-scratch"
+      }
+    },
+    {
+      "name": "references-moments",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "references/moments/ref.mp4",
+            "sha256": "a5ed787bcb0d6d53a9683378cbaef4e267a88b60252503e9e1aad56f5f1ed466",
+            "size": 26
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "authoring-scratch"
+      }
+    },
+    {
+      "name": "vite-cache",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".vite/deps/chunk.js",
+            "sha256": "c3a4237710998cee2dbb83bddfbe437842c04505b10b55f252ab6680354159fa",
+            "size": 19
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "build-caches"
+      }
+    },
+    {
+      "name": "nested-next",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "site/.next/cache/x",
+            "sha256": "e5ff1be6d5c5067c92f049eedd21f72572e90ce73718b4ae0f89f32810420788",
+            "size": 18
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "build-caches"
+      }
+    },
+    {
+      "name": "generic-cache",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".cache/thumbs/a.png",
+            "sha256": "84793a78d04a6dc0a78bb607ed12c9d0fd7a56a9aa4c708815bed4d38dc27af4",
+            "size": 19
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "build-caches"
+      }
+    },
+    {
+      "name": "viral-clone",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".viral-clone/ref.mp4",
+            "sha256": "74d8d7a4426313aa0c60436b14b029d1a4a226d6711121a633105cd905bd45b9",
+            "size": 20
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "reference-video"
+      }
+    },
+    {
+      "name": "npmrc",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".npmrc",
+            "sha256": "e813096d69c49812e40e00be9ac8fa14d77f0ec1f97ab4c45cb096b3bedd35de",
+            "size": 6
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "package-manager-config"
+      }
+    },
+    {
+      "name": "pip-conf",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "tools/pip.conf",
+            "sha256": "89297b895495ae041f60994bec31485ca633472556352f1a6778b85e24f90749",
+            "size": 14
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "package-manager-config"
+      }
+    },
+    {
+      "name": "netrc",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".netrc",
+            "sha256": "3de95a09ee1730e3dc474455103e6db896a8efe5a860f85ba57e548c2f276465",
+            "size": 6
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "pem",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "certs/server.PEM",
+            "sha256": "3689af7a474196cce74bbd95034f5a1beb662e273ea9f601098c264514835be3",
+            "size": 16
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "ssh-key",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "id_ed25519.pub",
+            "sha256": "f7184d2ebba2aba7182214d1c36ebb1af7a36215c96117bafd63ad2901e35444",
+            "size": 14
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "ssh-dir",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".ssh/config",
+            "sha256": "19b529d4faff68e955a68c11da36f42da81f792d32d3c101b0bd4e64c740f6ca",
+            "size": 11
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "aws-dir",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".aws/credentials",
+            "sha256": "c0515f87612986c6296a343be4a69b67e142dd55076a885f2c8604eaf7cf694e",
+            "size": 16
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "git-credentials",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".git-credentials",
+            "sha256": "fd3e0d72bea3532d2615d9f8bd5bf849d31505795102e687529b9aca2957cf80",
+            "size": 16
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "ds-store",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".DS_Store",
+            "sha256": "e2eb93a61ffd7877ea5c751abcb3a618e8e2e9a2073a27f66d4114fe10819f86",
+            "size": 9
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "thumbs-db",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "assets/Thumbs.db",
+            "sha256": "addf73f06bac0cdf3076663b0285957d1fbd7a0f13e3cc204dc6d01e2a77a683",
+            "size": 16
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "desktop-ini",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "desktop.ini",
+            "sha256": "f13dbd1ccb62e9262979f2763488d6be8882507c5fee47a45c64981005ec2289",
+            "size": 11
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "appledouble",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "assets/._logo.png",
+            "sha256": "b65e2349788f187108d2be235870acaef9aab0eaefb1a42011058f14d2cb63b5",
+            "size": 17
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "macosx-archive-dir",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "__MACOSX/assets/._logo.png",
+            "sha256": "d6b504fa7e54cf226dda8285d98803b121425b9d32f1a7c9674cb346fd1e8dba",
+            "size": 26
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "os-metadata"
+      }
+    },
+    {
+      "name": "git",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".git/config",
+            "sha256": "24d5d24b83021e1b2d03e9db75e2b0211bcc4db36d989a90fc0018ac39532f1b",
+            "size": 11
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "dependencies-and-git"
+      }
+    },
+    {
+      "name": "nested-git-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "vendor/.GIT/HEAD",
+            "sha256": "01586f537b463dbf237f9d81c1be9fb415f142e147397f495c9672b45abce31f",
+            "size": 16
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "dependencies-and-git"
+      }
+    },
+    {
+      "name": "node-modules",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "tools/node_modules/x/index.js",
+            "sha256": "4dc9a7d37083252de686764e8d40b758ecc55be5d36d54057d00330918458f60",
+            "size": 29
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "dependencies-and-git"
+      }
+    },
+    {
+      "name": "cache",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".thumbnails/a.png",
+            "sha256": "c619acdc2c5fe699cad09544842a6645fe5b544816be734cd2fa5f24e936da11",
+            "size": 17
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "root-generated-output"
+      }
+    },
+    {
+      "name": "renders",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "renders/final.mp4",
+            "sha256": "9467c7c20a7b98b344ba740bcd09cb407c0c399e5fee553a6b999937489f2492",
+            "size": 17
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "root-generated-output"
+      }
+    },
+    {
+      "name": "env",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".env",
+            "sha256": "e9cbb0224c4a3d23a6019ba557e0cd568c1ad5e1582ff1e335fb7d99b7a1055d",
+            "size": 4
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "environment-secrets"
+      }
+    },
+    {
+      "name": "nested-env-local",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "server/.env.local",
+            "sha256": "4d7ff31f5c459d4fa73b5fe648698597448cfc1f5ec48d85986cd1457e3446fb",
+            "size": 17
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "environment-secrets"
+      }
+    },
+    {
+      "name": "env-uppercase",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".ENV",
+            "sha256": "d2e25423e23bb13c9e87726ce664945c343f4fd7fe4f99030ba3e6e66e34af6e",
+            "size": 4
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "environment-secrets"
+      }
+    },
+    {
+      "name": "env-example",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".env.example",
+            "sha256": "a3046da0d15a27e89f2afe639b25748a7ad4d9290af3e7b1b6c1a5533c8f0a8c",
+            "size": 12
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "environment-secrets"
+      }
+    },
+    {
+      "name": "envrc",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".envrc",
+            "sha256": "d33e979799a45c7c51752e9c8d96a3e452015d1a40b1e4b6ec6a98e92c4d8430",
+            "size": 6
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "environment-secrets"
+      }
+    },
+    {
+      "name": "codex-agent-state-1",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".codex/config.toml",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "codex-agent-state-2",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "scenes/.CoDeX/agents/private.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "codex-agent-state-3",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".hyperframes/prepared-assets/podcast/media/.codex/config.toml",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "codex-agent-state-4",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".hyperframes/transcripts/.codex/private.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    }
+  ],
+  "limits": [
+    {
+      "name": "within-limits",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a.bin",
+            "sha256": "4fef9cffec13baaa0b8bab5ae61005c5ee8bdb7880b255d60c27e8b7b45202ba",
+            "size": 100
+          },
+          {
+            "path": "b.bin",
+            "sha256": "87b6c6feb9fc94a9998018df8566c72835e2e25573894d97480bd8d47af927d0",
+            "size": 200
+          },
+          {
+            "path": "b-copy.bin",
+            "sha256": "87b6c6feb9fc94a9998018df8566c72835e2e25573894d97480bd8d47af927d0",
+            "size": 200
+          }
+        ]
+      },
+      "limits": {
+        "max_files": 4,
+        "max_file_bytes": 200,
+        "max_project_bytes": 510,
+        "max_manifest_bytes": 481
+      },
+      "limit": null
+    },
+    {
+      "name": "file-count",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a.bin",
+            "sha256": "4fef9cffec13baaa0b8bab5ae61005c5ee8bdb7880b255d60c27e8b7b45202ba",
+            "size": 100
+          },
+          {
+            "path": "b.bin",
+            "sha256": "87b6c6feb9fc94a9998018df8566c72835e2e25573894d97480bd8d47af927d0",
+            "size": 200
+          },
+          {
+            "path": "b-copy.bin",
+            "sha256": "87b6c6feb9fc94a9998018df8566c72835e2e25573894d97480bd8d47af927d0",
+            "size": 200
+          }
+        ]
+      },
+      "limits": {
+        "max_files": 3,
+        "max_file_bytes": 1,
+        "max_project_bytes": 1,
+        "max_manifest_bytes": 1
+      },
+      "limit": "file_count"
+    },
+    {
+      "name": "file-size",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a.bin",
+            "sha256": "4fef9cffec13baaa0b8bab5ae61005c5ee8bdb7880b255d60c27e8b7b45202ba",
+            "size": 100
+          },
+          {
+            "path": "b.bin",
+            "sha256": "87b6c6feb9fc94a9998018df8566c72835e2e25573894d97480bd8d47af927d0",
+            "size": 200
+          },
+          {
+            "path": "b-copy.bin",
+            "sha256": "87b6c6feb9fc94a9998018df8566c72835e2e25573894d97480bd8d47af927d0",
+            "size": 200
+          }
+        ]
+      },
+      "limits": {
+        "max_files": 4,
+        "max_file_bytes": 199,
+        "max_project_bytes": 1,
+        "max_manifest_bytes": 1
+      },
+      "limit": "file_size"
+    },
+    {
+      "name": "project-size-counts-reused-files",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a.bin",
+            "sha256": "4fef9cffec13baaa0b8bab5ae61005c5ee8bdb7880b255d60c27e8b7b45202ba",
+            "size": 100
+          },
+          {
+            "path": "b.bin",
+            "sha256": "87b6c6feb9fc94a9998018df8566c72835e2e25573894d97480bd8d47af927d0",
+            "size": 200
+          },
+          {
+            "path": "b-copy.bin",
+            "sha256": "87b6c6feb9fc94a9998018df8566c72835e2e25573894d97480bd8d47af927d0",
+            "size": 200
+          }
+        ]
+      },
+      "limits": {
+        "max_files": 4,
+        "max_file_bytes": 200,
+        "max_project_bytes": 509,
+        "max_manifest_bytes": 1
+      },
+      "limit": "project_size"
+    },
+    {
+      "name": "manifest-size",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a.bin",
+            "sha256": "4fef9cffec13baaa0b8bab5ae61005c5ee8bdb7880b255d60c27e8b7b45202ba",
+            "size": 100
+          },
+          {
+            "path": "b.bin",
+            "sha256": "87b6c6feb9fc94a9998018df8566c72835e2e25573894d97480bd8d47af927d0",
+            "size": 200
+          },
+          {
+            "path": "b-copy.bin",
+            "sha256": "87b6c6feb9fc94a9998018df8566c72835e2e25573894d97480bd8d47af927d0",
+            "size": 200
+          }
+        ]
+      },
+      "limits": {
+        "max_files": 4,
+        "max_file_bytes": 200,
+        "max_project_bytes": 510,
+        "max_manifest_bytes": 480
+      },
+      "limit": "manifest_size"
+    }
+  ],
+  "stored": [
+    {
+      "name": "canonical",
+      "body": "eyJlbnRyeXBvaW50IjoiaW5kZXguaHRtbCIsImZpbGVzIjpbeyJwYXRoIjoiY2Fmw6kudHh0Iiwic2hhMjU2IjoiNTk5NmQxZjc5MDVjMjQ0YzRmYTJjMzhlMjliNGYxZjIzNzQ4MzE2MjZhMzExNDg5MjIxY2NiM2YyMzNjYzRlOCIsInNpemUiOjl9LHsicGF0aCI6ImluZGV4Lmh0bWwiLCJzaGEyNTYiOiIwZWI1NDczMDQ2NTg4MDVhYWQ3ODhkMzIwZjEwYmYxZjI5Mjc5N2I1ZTZkNzQ1YTNiZjYxNzU4NGRhMDE3MDUxIiwic2l6ZSI6MTB9XSwiZm9ybWF0X3ZlcnNpb24iOjF9",
+      "error": null
+    },
+    {
+      "name": "pretty-printed",
+      "body": "ewogICJlbnRyeXBvaW50IjogImluZGV4Lmh0bWwiLAogICJmaWxlcyI6IFsKICAgIHsKICAgICAgInBhdGgiOiAiY2Fmw6kudHh0IiwKICAgICAgInNoYTI1NiI6ICI1OTk2ZDFmNzkwNWMyNDRjNGZhMmMzOGUyOWI0ZjFmMjM3NDgzMTYyNmEzMTE0ODkyMjFjY2IzZjIzM2NjNGU4IiwKICAgICAgInNpemUiOiA5CiAgICB9LAogICAgewogICAgICAicGF0aCI6ICJpbmRleC5odG1sIiwKICAgICAgInNoYTI1NiI6ICIwZWI1NDczMDQ2NTg4MDVhYWQ3ODhkMzIwZjEwYmYxZjI5Mjc5N2I1ZTZkNzQ1YTNiZjYxNzU4NGRhMDE3MDUxIiwKICAgICAgInNpemUiOiAxMAogICAgfQogIF0sCiAgImZvcm1hdF92ZXJzaW9uIjogMQp9",
+      "error": {
+        "code": "not_canonical"
+      }
+    },
+    {
+      "name": "ascii-escaped",
+      "body": "eyJlbnRyeXBvaW50IjoiaW5kZXguaHRtbCIsImZpbGVzIjpbeyJwYXRoIjoiY2FmXHUwMGU5LnR4dCIsInNoYTI1NiI6IjU5OTZkMWY3OTA1YzI0NGM0ZmEyYzM4ZTI5YjRmMWYyMzc0ODMxNjI2YTMxMTQ4OTIyMWNjYjNmMjMzY2M0ZTgiLCJzaXplIjo5fSx7InBhdGgiOiJpbmRleC5odG1sIiwic2hhMjU2IjoiMGViNTQ3MzA0NjU4ODA1YWFkNzg4ZDMyMGYxMGJmMWYyOTI3OTdiNWU2ZDc0NWEzYmY2MTc1ODRkYTAxNzA1MSIsInNpemUiOjEwfV0sImZvcm1hdF92ZXJzaW9uIjoxfQ==",
+      "error": {
+        "code": "not_canonical"
+      }
+    },
+    {
+      "name": "keys-unsorted",
+      "body": "eyJmb3JtYXRfdmVyc2lvbiI6MSwiZW50cnlwb2ludCI6ImluZGV4Lmh0bWwiLCJmaWxlcyI6W3sicGF0aCI6ImNhZsOpLnR4dCIsInNoYTI1NiI6IjU5OTZkMWY3OTA1YzI0NGM0ZmEyYzM4ZTI5YjRmMWYyMzc0ODMxNjI2YTMxMTQ4OTIyMWNjYjNmMjMzY2M0ZTgiLCJzaXplIjo5fSx7InBhdGgiOiJpbmRleC5odG1sIiwic2hhMjU2IjoiMGViNTQ3MzA0NjU4ODA1YWFkNzg4ZDMyMGYxMGJmMWYyOTI3OTdiNWU2ZDc0NWEzYmY2MTc1ODRkYTAxNzA1MSIsInNpemUiOjEwfV19",
+      "error": {
+        "code": "not_canonical"
+      }
+    },
+    {
+      "name": "files-unsorted",
+      "body": "eyJlbnRyeXBvaW50IjoiaW5kZXguaHRtbCIsImZpbGVzIjpbeyJwYXRoIjoiaW5kZXguaHRtbCIsInNoYTI1NiI6IjBlYjU0NzMwNDY1ODgwNWFhZDc4OGQzMjBmMTBiZjFmMjkyNzk3YjVlNmQ3NDVhM2JmNjE3NTg0ZGEwMTcwNTEiLCJzaXplIjoxMH0seyJwYXRoIjoiY2Fmw6kudHh0Iiwic2hhMjU2IjoiNTk5NmQxZjc5MDVjMjQ0YzRmYTJjMzhlMjliNGYxZjIzNzQ4MzE2MjZhMzExNDg5MjIxY2NiM2YyMzNjYzRlOCIsInNpemUiOjl9XSwiZm9ybWF0X3ZlcnNpb24iOjF9",
+      "error": {
+        "code": "not_canonical"
+      }
+    },
+    {
+      "name": "byte-order-mark",
+      "body": "77u/eyJlbnRyeXBvaW50IjoiaW5kZXguaHRtbCIsImZpbGVzIjpbeyJwYXRoIjoiY2Fmw6kudHh0Iiwic2hhMjU2IjoiNTk5NmQxZjc5MDVjMjQ0YzRmYTJjMzhlMjliNGYxZjIzNzQ4MzE2MjZhMzExNDg5MjIxY2NiM2YyMzNjYzRlOCIsInNpemUiOjl9LHsicGF0aCI6ImluZGV4Lmh0bWwiLCJzaGEyNTYiOiIwZWI1NDczMDQ2NTg4MDVhYWQ3ODhkMzIwZjEwYmYxZjI5Mjc5N2I1ZTZkNzQ1YTNiZjYxNzU4NGRhMDE3MDUxIiwic2l6ZSI6MTB9XSwiZm9ybWF0X3ZlcnNpb24iOjF9",
+      "error": {
+        "code": "invalid_json"
+      }
+    },
+    {
+      "name": "not-utf8",
+      "body": "eyJlbnRyeXBvaW50IjoiaW5kZXguaHRtbCIsImZpbGVzIjpbeyJwYXRoIjoiY2Fm6S50eHQiLCJzaGEyNTYiOiI1OTk2ZDFmNzkwNWMyNDRjNGZhMmMzOGUyOWI0ZjFmMjM3NDgzMTYyNmEzMTE0ODkyMjFjY2IzZjIzM2NjNGU4Iiwic2l6ZSI6OX0seyJwYXRoIjoiaW5kZXguaHRtbCIsInNoYTI1NiI6IjBlYjU0NzMwNDY1ODgwNWFhZDc4OGQzMjBmMTBiZjFmMjkyNzk3YjVlNmQ3NDVhM2JmNjE3NTg0ZGEwMTcwNTEiLCJzaXplIjoxMH1dLCJmb3JtYXRfdmVyc2lvbiI6MX0=",
+      "error": {
+        "code": "invalid_json"
+      }
+    },
+    {
+      "name": "truncated",
+      "body": "eyJlbnRyeXBvaW50IjoiaW5kZXguaHRtbCIsImZpbGVzIjpbeyJwYXRoIjoiY2Fmw6kudHh0Iiwic2hhMjU2IjoiNTk5NmQxZjc5MDVjMjQ0YzRmYTJjMzhlMjliNGYxZjIzNzQ4MzE2MjZhMzExNDg5MjIxY2NiM2YyMzNjYzRlOCIsInNpemUiOjl9LHsicGF0aCI6ImluZGV4Lmh0bWwiLCJzaGEyNTYiOiIwZWI1NDczMDQ2NTg4MDVhYWQ3ODhkMzIwZjEwYmYxZjI5Mjc5N2I1ZTZkNzQ1YTNiZjYxNzU4NGRhMDE3MDUxIiwic2l6ZSI6MTB9XSwiZm9ybWF0X3ZlcnNpb24iOjE=",
+      "error": {
+        "code": "invalid_json"
+      }
+    }
+  ]
+}

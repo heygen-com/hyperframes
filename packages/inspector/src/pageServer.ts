@@ -6,3 +6,12 @@ export function closeServer(server: Server): Promise<void> {
   server.removeAllListeners("request");
   return closed;
 }
+
+export function isLoopbackHost(host: string | undefined): boolean {
+  if (!host) return true;
+  const name = host
+    .replace(/:\d+$/, "")
+    .replace(/^\[|\]$/g, "")
+    .toLowerCase();
+  return name === "127.0.0.1" || name === "localhost" || name === "::1";
+}

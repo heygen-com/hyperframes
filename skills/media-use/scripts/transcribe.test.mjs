@@ -1,29 +1,38 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-// The stub stands in for `npx hyperframes transcribe <in> --dir <dir> ...`: it records its args,
-// writes the CLI's flat array and prints the CLI's --json line naming `cliEngine`.
+// The stub stands in for the `hyperframes` CLI the caller hands over in HYPERFRAMES_CLI_ENTRY,
+// run as `transcribe <in> --dir <dir> ...`: it records its args, writes the CLI's flat array and
+// prints the CLI's --json line naming `cliEngine`.
 function runScript(engine, cliEngine) {
   const root = mkdtempSync(join(tmpdir(), "media-use-transcribe-"));
   try {
-    const bin = join(root, "bin");
-    mkdirSync(bin);
+    const cli = join(root, "cli.mjs");
     writeFileSync(
-      join(bin, "npx"),
-      `#!/bin/sh\necho "$@" > "${root}/args"\nwhile [ "$1" != "--dir" ]; do shift; done\n` +
-        `echo '[{"text":"a","start":0,"end":1},{"text":"b","start":1,"end":2}]' > "$2/transcript.json"\n` +
-        `echo '{"ok":true,"engine":"${cliEngine}"}'\n`,
+      cli,
+      `import { writeFileSync } from "node:fs";\nconst a = process.argv.slice(2);\n` +
+        `writeFileSync(${JSON.stringify(join(root, "args"))}, a.join(" "));\n` +
+        `writeFileSync(a[a.indexOf("--dir") + 1] + "/transcript.json", ` +
+        `'[{"text":"a","start":0,"end":1},{"text":"b","start":1,"end":2}]');\n` +
+        `console.log('{"ok":true,"engine":"${cliEngine}"}');\n`,
     );
-    chmodSync(join(bin, "npx"), 0o755);
     const input = join(root, "in.wav");
     writeFileSync(input, "");
     const script = fileURLToPath(new URL("./transcribe.mjs", import.meta.url));
-    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, HOME: root };
+    const env = { ...process.env, HYPERFRAMES_CLI_ENTRY: cli, HOME: root };
     delete env.HYPERFRAMES_PARAKEET;
     const out = execFileSync(
       process.execPath,
@@ -80,11 +89,8 @@ test(
       mkdirSync(bin);
       const reason =
         "Parakeet is not installed. Install it with: hyperframes models install parakeet";
-      writeFileSync(
-        join(bin, "npx"),
-        `#!/bin/sh\necho '{"ok":false,"error":"${reason}"}'\nexit 1\n`,
-      );
-      chmodSync(join(bin, "npx"), 0o755);
+      const cli = join(bin, "cli.mjs");
+      writeFileSync(cli, `console.log('{"ok":false,"error":"${reason}"}');\nprocess.exit(1);\n`);
       const input = join(root, "in.wav");
       writeFileSync(input, "");
       const script = fileURLToPath(new URL("./transcribe.mjs", import.meta.url));
@@ -96,7 +102,7 @@ test(
           env: {
             ...process.env,
             HYPERFRAMES_PARAKEET: "",
-            PATH: `${bin}:${process.env.PATH}`,
+            HYPERFRAMES_CLI_ENTRY: cli,
             HOME: root,
             HYPERFRAMES_MEDIA_HOME: join(root, "home"),
             HYPERFRAMES_NO_TELEMETRY: "1",
@@ -105,6 +111,43 @@ test(
       );
       assert.equal(res.status, 1);
       assert.match(JSON.parse(res.stdout.trim()).error, /hyperframes models install parakeet/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "without a handed-over CLI it fails with the fix instead of running npx in the project",
+  { skip: process.platform === "win32" },
+  () => {
+    const root = mkdtempSync(join(tmpdir(), "media-use-transcribe-"));
+    try {
+      const bin = join(root, "bin");
+      mkdirSync(bin);
+      const marker = join(root, "npx-ran");
+      writeFileSync(join(bin, "npx"), `#!/bin/sh\ntouch "${marker}"\n`);
+      chmodSync(join(bin, "npx"), 0o755);
+      const input = join(root, "in.wav");
+      writeFileSync(input, "");
+      const script = fileURLToPath(new URL("./transcribe.mjs", import.meta.url));
+      const env = {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        HOME: root,
+        HYPERFRAMES_MEDIA_HOME: join(root, "home"),
+        HYPERFRAMES_NO_TELEMETRY: "1",
+      };
+      delete env.HYPERFRAMES_PARAKEET;
+      delete env.HYPERFRAMES_CLI_ENTRY;
+      const res = spawnSync(
+        process.execPath,
+        [script, "--input", input, "--engine", "whisper", "--json"],
+        { cwd: root, encoding: "utf8", env },
+      );
+      assert.equal(res.status, 1);
+      assert.match(JSON.parse(res.stdout.trim()).error, /HYPERFRAMES_CLI_ENTRY/);
+      assert.equal(existsSync(marker), false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

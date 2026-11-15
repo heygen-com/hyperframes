@@ -15,6 +15,7 @@ const initializeSession = vi.fn(async () => {});
 const captureFrame = vi.fn();
 const closeCaptureSession = vi.fn(async () => {});
 const verifyDiskDrawElementSamples = vi.fn(async () => {});
+const completeDeferredDrawElementInit = vi.fn(async () => {});
 const getCapturePerfSummary = vi.fn(() => ({}));
 const executeParallelCapture = vi.fn();
 
@@ -27,6 +28,8 @@ vi.mock("@hyperframes/engine", async (importOriginal) => {
     captureFrame: (...args: unknown[]) => captureFrame(...args),
     closeCaptureSession: (...args: unknown[]) => closeCaptureSession(...args),
     verifyDiskDrawElementSamples: (...args: unknown[]) => verifyDiskDrawElementSamples(...args),
+    completeDeferredDrawElementInit: (...args: unknown[]) =>
+      completeDeferredDrawElementInit(...args),
     getCapturePerfSummary: (...args: unknown[]) => getCapturePerfSummary(...args),
     executeParallelCapture: (...args: unknown[]) => executeParallelCapture(...args),
     mergeWorkerFrames: async () => {},
@@ -263,6 +266,52 @@ describe("runCaptureStage measured disk projection (both branches)", () => {
     executeParallelCapture.mockReset();
     freeBytes.mockReset();
     closeCaptureSession.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("sequential: gives up on a deferred drawElement init that never finishes, within the session-init budget", async () => {
+    const { workDir, framesDir } = makeDirs();
+    freeBytes.mockReturnValue({ bavail: 10_000_000_000, bsize: 1 });
+    completeDeferredDrawElementInit.mockImplementation(() => new Promise<void>(() => {}));
+    const probeSession = {
+      isInitialized: true,
+      browserConsoleBuffer: [],
+      options: { captureBeyondViewport: false, format: "jpeg" },
+      workerEncodeEnabled: false,
+      outputDir: framesDir,
+    };
+    const prevOptIn = process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE;
+    process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE = "true";
+    vi.useFakeTimers();
+    try {
+      const state = { done: false, error: undefined as unknown, elapsedMs: 0 };
+      runCaptureStage({
+        ...makeInput(1, workDir, framesDir),
+        probeSession: probeSession as never,
+      }).then(
+        () => (state.done = true),
+        (error: unknown) => Object.assign(state, { done: true, error }),
+      );
+      const flush = async () => {
+        for (let i = 0; i < 200; i++) await Promise.resolve();
+      };
+      await flush();
+      while (!state.done && state.elapsedMs < 30 * 60_000) {
+        vi.advanceTimersByTime(1_000);
+        state.elapsedMs += 1_000;
+        await flush();
+      }
+      expect(state.done).toBe(true);
+      expect(state.elapsedMs).toBeLessThanOrEqual(305_000);
+      expect((state.error as Error).message).toContain(
+        "no frame progress for 300000ms (stuck at frame 0/20)",
+      );
+      expect(closeCaptureSession).toHaveBeenCalledWith(probeSession);
+    } finally {
+      vi.useRealTimers();
+      completeDeferredDrawElementInit.mockReset().mockResolvedValue(undefined);
+      if (prevOptIn === undefined) delete process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE;
+      else process.env.PRODUCER_EXPERIMENTAL_FAST_CAPTURE = prevOptIn;
+    }
   });
 
   it("sequential: stops after ten frames when the measured remainder cannot fit", async () => {

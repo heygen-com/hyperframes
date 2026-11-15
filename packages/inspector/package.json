@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/inspector",
-  "version": "0.9.16",
+  "version": "0.9.52",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -79,6 +79,6 @@
   "devDependencies": {
     "@types/node": "^25.0.10",
     "typescript": "^5.0.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   }
 }

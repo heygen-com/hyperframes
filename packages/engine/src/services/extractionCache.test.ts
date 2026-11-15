@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -24,6 +26,7 @@ import {
   lookupCacheEntry,
   markCacheEntryComplete,
   partialCacheEntryDir,
+  privateCacheRoot,
   publishCacheEntry,
   readContentSha256,
   readKeyStat,
@@ -31,6 +34,7 @@ import {
   touchCacheDir,
   type CacheKeyInput,
 } from "./extractionCache.js";
+import { defaultExtractCacheDir } from "../config.js";
 
 const keyFor = (videoPath: string, overrides: Partial<CacheKeyInput> = {}): CacheKeyInput => {
   const stat = readKeyStat(videoPath);
@@ -67,8 +71,8 @@ function seedPartialDir(entry: { dir: string; keyHash: string }, frameContent: s
 }
 
 describe("extractionCache constants", () => {
-  it("exposes the v7 schema prefix", () => {
-    expect(SCHEMA_PREFIX).toBe("hfcache-v8-");
+  it("exposes the v10 schema prefix", () => {
+    expect(SCHEMA_PREFIX).toBe("hfcache-v10-");
   });
 
   it("exposes the frame filename prefix shared with the extractor", () => {
@@ -559,5 +563,55 @@ describe("gcExtractionCache", () => {
     gcExtractionCache(tmpRoot, { maxBytes: 1, minAgeMs: 60_000 });
 
     expect(existsSync(dependedOnDir)).toBe(true);
+  });
+});
+
+describe.skipIf(process.getuid === undefined)("privateCacheRoot", () => {
+  const savedTmpdir = process.env.TMPDIR;
+  let sharedTmp: string;
+  beforeEach(() => {
+    sharedTmp = mkdtempSync(join(tmpdir(), "hf-shared-tmp-"));
+    process.env.TMPDIR = sharedTmp;
+  });
+  afterEach(() => {
+    if (savedTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = savedTmpdir;
+    rmSync(sharedTmp, { recursive: true, force: true });
+  });
+  const uid = () => process.getuid!();
+
+  it("creates the default root closed to other users", () => {
+    const root = defaultExtractCacheDir();
+    expect(privateCacheRoot(root)).toBe(root);
+    expect(statSync(root).mode & 0o777).toBe(0o700);
+  });
+
+  it("closes an existing default root of this user and keeps its entries", () => {
+    const root = defaultExtractCacheDir();
+    mkdirSync(join(root, "hfcache-entry"), { recursive: true, mode: 0o755 });
+    chmodSync(root, 0o755);
+    expect(privateCacheRoot(root)).toBe(root);
+    expect(statSync(root).mode & 0o777).toBe(0o700);
+    expect(existsSync(join(root, "hfcache-entry"))).toBe(true);
+  });
+
+  it("refuses a default root owned by another user", () => {
+    const root = defaultExtractCacheDir();
+    mkdirSync(root, { mode: 0o777 });
+    expect(privateCacheRoot(root, uid() + 1)).toBeUndefined();
+  });
+
+  it("refuses a default root that is a link to another directory", () => {
+    const elsewhere = mkdtempSync(join(sharedTmp, "elsewhere-"));
+    symlinkSync(elsewhere, defaultExtractCacheDir());
+    expect(privateCacheRoot(defaultExtractCacheDir())).toBeUndefined();
+  });
+
+  it("leaves a configured root as it is", () => {
+    const configured = join(sharedTmp, "team-cache");
+    mkdirSync(configured, { mode: 0o775 });
+    chmodSync(configured, 0o775);
+    expect(privateCacheRoot(configured, uid() + 1)).toBe(configured);
+    expect(statSync(configured).mode & 0o777).toBe(0o775);
   });
 });

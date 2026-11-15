@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication
-import { afterAll, describe, expect, it, mock } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { afterAll, describe, expect, it, mock, vi } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -26,10 +26,18 @@ let sessionWorkerEncodeEnabled = false;
 let captureSessionMode: "drawelement" | "screenshot" = "drawelement";
 let failPrepareCaptureSessionForReuse = false;
 let initializeSessionErrorMessage = "initialize failed";
+let hangDeferredDrawElementInit = false;
+/** While set, opening a session waits for this promise instead of returning a fresh one. */
+let pendingOpen: Promise<unknown> | null = null;
 const browserConsoleBuffer = ["[FrameCapture:ERROR] page.goto failed"];
 const closeCaptureSession = mock(async () => {});
 const createdSessionConfigs: Array<{ enableBrowserPool?: boolean }> = [];
+const createdSessionHooks: unknown[] = [];
+const reusedSessionHooks: unknown[] = [];
 class DrawElementVerificationError extends Error {}
+/** PSNR the fake comparison reports for a frame; every call is recorded. */
+let samplePsnr = (_frame: Buffer) => 50;
+const psnrCalls: Array<{ frame: Buffer; truth: Buffer }> = [];
 
 mock.module("@hyperframes/engine", () => ({
   calculateOptimalWorkers: () => 1,
@@ -57,9 +65,12 @@ mock.module("@hyperframes/engine", () => ({
     return { buffer: Buffer.from("frame"), captureTimeMs: 1 };
   },
   closeCaptureSession,
-  completeDeferredDrawElementInit: async () => {},
+  completeDeferredDrawElementInit: () =>
+    hangDeferredDrawElementInit ? new Promise<void>(() => {}) : Promise.resolve(),
   createCaptureSession: async (...args: unknown[]) => {
     createdSessionConfigs.push(args[4] as { enableBrowserPool?: boolean });
+    createdSessionHooks.push(args[3]);
+    if (pendingOpen) return pendingOpen;
     return {
       isInitialized: false,
       browserConsoleBuffer,
@@ -128,12 +139,18 @@ mock.module("@hyperframes/engine", () => ({
     pixelFormat: "yuv420p",
   }),
   initTransparentBackground: async () => {},
-  prepareCaptureSessionForReuse: () => {
+  prepareCaptureSessionForReuse: (_session: unknown, _framesDir: string, hook: unknown) => {
+    reusedSessionHooks.push(hook);
     if (failPrepareCaptureSessionForReuse) {
       throw new Error("prepare reuse failed: ENOSPC");
     }
   },
+  psnrDb: async (frame: Buffer, truth: Buffer) => {
+    psnrCalls.push({ frame, truth });
+    return samplePsnr(frame);
+  },
   recaptureDrawElementFrameForVerify: async () => Buffer.from("frame"),
+  resolveDeVerifyMinDb: () => 32,
   resolveHeadlessShellPath: () => "/headless-shell",
   shouldDisableBrowserPoolForParallelWorker: ({ parallel }: { parallel?: boolean }) =>
     Boolean(parallel),
@@ -437,6 +454,81 @@ describe("runCaptureSegmentedStage", () => {
       deps: { spawnEncoder },
     });
     expect(result).toEqual({ success: false });
+  });
+
+  /** Runs the stage on a fake clock, a second at a time, until it settles or 30 minutes pass. */
+  const settleOnFakeClock = async (run: Promise<unknown>) => {
+    const state = { done: false, error: undefined as unknown, elapsedMs: 0 };
+    run.then(
+      () => (state.done = true),
+      (error: unknown) => Object.assign(state, { done: true, error }),
+    );
+    const flush = async () => {
+      for (let i = 0; i < 200; i++) await Promise.resolve();
+    };
+    await flush();
+    while (!state.done && state.elapsedMs < 30 * 60_000) {
+      vi.advanceTimersByTime(1_000);
+      state.elapsedMs += 1_000;
+      await flush();
+    }
+    return state;
+  };
+
+  it("gives up on a deferred drawElement init that never finishes, within the session-init budget", async () => {
+    hangDeferredDrawElementInit = true;
+    closeCaptureSession.mockClear();
+    const prev = process.env.HF_DE_STALL_MS;
+    delete process.env.HF_DE_STALL_MS;
+    vi.useFakeTimers();
+    try {
+      const input = fakeStageInput({ totalFrames: 3 });
+      const state = await settleOnFakeClock(
+        runCaptureSegmentedStage({ ...input, segmentFrames: 3 }),
+      );
+      expect(state.done).toBe(true);
+      expect(state.elapsedMs).toBeLessThanOrEqual(305_000);
+      expect((state.error as Error).message).toContain(
+        "no frame progress for 300000ms (stuck at frame 0/3)",
+      );
+      expect(closeCaptureSession.mock.calls.map((c) => c[0])).toContain(input.probeSession);
+    } finally {
+      vi.useRealTimers();
+      hangDeferredDrawElementInit = false;
+      if (prev !== undefined) process.env.HF_DE_STALL_MS = prev;
+    }
+  });
+
+  it("gives up on a session that never finishes opening, and closes it when it opens late", async () => {
+    let openLate: (session: unknown) => void = () => {};
+    pendingOpen = new Promise((resolve) => (openLate = resolve));
+    closeCaptureSession.mockClear();
+    const prev = process.env.HF_DE_STALL_MS;
+    delete process.env.HF_DE_STALL_MS;
+    vi.useFakeTimers();
+    try {
+      const state = await settleOnFakeClock(
+        runCaptureSegmentedStage({
+          ...fakeStageInput({ totalFrames: 3 }),
+          probeSession: undefined,
+          segmentFrames: 3,
+        }),
+      );
+      expect(state.done).toBe(true);
+      expect(state.elapsedMs).toBeLessThanOrEqual(305_000);
+      expect((state.error as Error).message).toContain(
+        "no frame progress for 300000ms (stuck at frame 0/3 while opening the capture session)",
+      );
+
+      const late = { browserConsoleBuffer: [] };
+      openLate(late);
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      expect(closeCaptureSession).toHaveBeenCalledWith(late);
+    } finally {
+      vi.useRealTimers();
+      pendingOpen = null;
+      if (prev !== undefined) process.env.HF_DE_STALL_MS = prev;
+    }
   });
 
   it("returns success:false when the first encoder cannot spawn, and has closed the probe", async () => {
@@ -926,5 +1018,467 @@ describe("runCaptureSegmentedStage", () => {
     // without the wait this assertion passes before they would have.
     await new Promise((r) => setTimeout(r, 40));
     expect(capturedAfterClose).toBe(0);
+  });
+
+  describe("drawElement self-verify", () => {
+    const truths = new Map([
+      [2, Buffer.from("truth-2")],
+      [7, Buffer.from("truth-7")],
+    ]);
+    const frameBuffer = (i: number) => Buffer.from(`frame-${i}`);
+
+    function verifiedRun(dir: string, written: number[]) {
+      return runCaptureSegmentedStage({
+        ...fakeStageInput({ totalFrames: 9 }),
+        probeSession: null,
+        segmentFrames: 3,
+        segmentDir: join(fixtureRoot, dir),
+        workerCount: 2,
+        sessionFactoryForWorker: (id) => ({
+          create: async () => ({
+            ...fakeSession(id),
+            captureMode: "drawelement" as const,
+            deVerifyFrames: truths,
+          }),
+        }),
+        deps: {
+          spawnEncoder: mock(async () => ({
+            ...okEncoder(),
+            writeFrame: async (buf: Buffer) => {
+              written.push(Number(buf.toString().split("-")[1]));
+              return true;
+            },
+          })),
+          captureFrame: mock(async (_s: unknown, i: number) => ({ buffer: frameBuffer(i) })),
+          concat: mock(async () => ({ success: true as const })),
+          closeSession: mock(async () => {}),
+          removeFile: () => {},
+        },
+      });
+    }
+
+    it("compares every armed sample against its ground truth", async () => {
+      psnrCalls.length = 0;
+      samplePsnr = () => 50;
+      const result = await verifiedRun("verify-pass", []);
+      expect(result.success).toBe(true);
+      const checked = psnrCalls
+        .map((c) => ({ frame: c.frame.toString(), truth: c.truth.toString() }))
+        .sort((a, b) => a.frame.localeCompare(b.frame));
+      expect(checked).toEqual([
+        { frame: "frame-2", truth: "truth-2" },
+        { frame: "frame-7", truth: "truth-7" },
+      ]);
+    });
+
+    it("fails the render before a sample below the floor is encoded", async () => {
+      psnrCalls.length = 0;
+      samplePsnr = (frame) => (frame.toString() === "frame-7" ? 20 : 50);
+      const written: number[] = [];
+      const error = await verifiedRun("verify-breach", written).catch((e: unknown) => e);
+      expect((error as { cause?: unknown }).cause).toBeInstanceOf(DrawElementVerificationError);
+      expect(written).not.toContain(7);
+      samplePsnr = () => 50;
+    });
+  });
+});
+
+describe("runCaptureSegmentedStage with segmentVideoFrames", () => {
+  type Slice = { index: number; startFrame: number; endFrame: number };
+
+  /** A stand-in for the windowed frames: every call is logged, and prepare makes a real folder so release is observable. */
+  function fakeVideoFrames(
+    events: string[],
+    options: { prepare?: (segment: Slice) => Promise<void>; folderRoot?: string } = {},
+  ) {
+    const hooks: Array<(...args: unknown[]) => Promise<void>> = [];
+    const prepared: number[] = [];
+    let current: string | null = null;
+    return {
+      hooks,
+      prepared,
+      segmentVideoFrames: {
+        forWorker: () => {
+          const hook = async () => {};
+          hooks.push(hook);
+          return {
+            hook,
+            prepare: async (segment: Slice) => {
+              events.push(`prepare ${segment.index}`);
+              prepared.push(segment.index);
+              if (options.folderRoot) {
+                current = join(options.folderRoot, `segment_${segment.index}`);
+                mkdirSync(current, { recursive: true });
+              }
+              await options.prepare?.(segment);
+            },
+            release: () => {
+              events.push("release");
+              if (current) rmSync(current, { recursive: true, force: true });
+            },
+          };
+        },
+      },
+    };
+  }
+
+  function loggingEncoder(events: string[]) {
+    let segment = -1;
+    return mock(async (outputPath: string) => {
+      segment = Number(/segment_(\d+)/.exec(outputPath)![1]);
+      events.push(`spawn ${segment}`);
+      const own = segment;
+      return {
+        writeFrame: async (buffer: Buffer) => {
+          events.push(`frame ${buffer.readUInt32BE(0)}`);
+          return true;
+        },
+        close: async () => {
+          events.push(`close ${own}`);
+          return { success: true, durationMs: 1, fileSize: 1 };
+        },
+        getExitStatus: () => "success" as const,
+        getExitError: () => undefined,
+      };
+    });
+  }
+
+  const frameBuffer = async (_s: unknown, frameIndex: number) => {
+    const buffer = Buffer.alloc(4);
+    buffer.writeUInt32BE(frameIndex, 0);
+    return { buffer };
+  };
+
+  function stageDeps(overrides: Record<string, unknown> = {}) {
+    return {
+      captureFrame: mock(frameBuffer),
+      concat: mock(async () => ({ success: true as const })),
+      closeSession: mock(async () => {}),
+      removeFile: () => {},
+      ...overrides,
+    };
+  }
+
+  it("prepares before the encoder's first frame and releases after the segment closes, in order, for each segment", async () => {
+    const events: string[] = [];
+    const input = fakeStageInput({ totalFrames: 4 });
+    const { segmentVideoFrames } = fakeVideoFrames(events, {
+      prepare: async () => {
+        events.push(`stage "${input.job.currentStage}"`);
+      },
+    });
+
+    await runCaptureSegmentedStage({
+      ...input,
+      segmentFrames: 2,
+      segmentDir: join(fixtureRoot, "windowed-order"),
+      segmentVideoFrames,
+      deps: stageDeps({ spawnEncoder: loggingEncoder(events) }),
+    });
+
+    expect(events).toEqual([
+      "prepare 0",
+      'stage "Reading video for segment 1/2"',
+      "spawn 0",
+      "frame 0",
+      "frame 1",
+      "close 0",
+      "release",
+      "prepare 1",
+      'stage "Reading video for segment 2/2"',
+      "spawn 1",
+      "frame 2",
+      "frame 3",
+      "close 1",
+      "release",
+    ]);
+  });
+
+  it("a retried segment prepares again from a released state", async () => {
+    const events: string[] = [];
+    let next = 0;
+    let failed = false;
+    const { segmentVideoFrames } = fakeVideoFrames(events);
+
+    await runCaptureSegmentedStage({
+      ...fakeStageInput({ totalFrames: 4 }),
+      segmentFrames: 2,
+      segmentDir: join(fixtureRoot, "windowed-retry"),
+      sessionFactory: {
+        create: async () => ({ ...fakeStageInput({ totalFrames: 1 }).probeSession, id: next++ }),
+      },
+      segmentVideoFrames,
+      deps: stageDeps({
+        spawnEncoder: loggingEncoder(events),
+        captureFrame: mock(async (session: unknown, i: number) => {
+          if (i === 2 && !failed) {
+            failed = true;
+            throw new Error("Protocol error (Page.captureScreenshot): Target closed");
+          }
+          return frameBuffer(session, i);
+        }),
+      }),
+    });
+
+    expect(events.filter((e) => e.startsWith("prepare") || e === "release")).toEqual([
+      "prepare 0",
+      "release",
+      "prepare 1",
+      "release",
+      "prepare 1",
+      "release",
+    ]);
+  });
+
+  it("a segment skipped on resume never prepares", async () => {
+    const events: string[] = [];
+    const frames = fakeVideoFrames(events);
+
+    await runCaptureSegmentedStage({
+      ...fakeStageInput({ totalFrames: 6 }),
+      segmentFrames: 2,
+      segmentDir: join(fixtureRoot, "windowed-resume"),
+      completedSegments: new Set([0]),
+      segmentVideoFrames: frames.segmentVideoFrames,
+      deps: stageDeps({ spawnEncoder: loggingEncoder(events) }),
+    });
+
+    expect(frames.prepared).toEqual([1, 2]);
+  });
+
+  it("an abort mid-segment releases its folder", async () => {
+    const folderRoot = join(fixtureRoot, "windowed-abort-folders");
+    const folderOf = (index: number) => join(folderRoot, `segment_${index}`);
+
+    const midCapture = new AbortController();
+    await expect(
+      runCaptureSegmentedStage({
+        ...fakeStageInput({ totalFrames: 4 }),
+        segmentFrames: 4,
+        segmentDir: join(fixtureRoot, "windowed-abort-capture"),
+        abortSignal: midCapture.signal,
+        assertNotAborted: () => {
+          if (midCapture.signal.aborted) throw new Error("render cancelled");
+        },
+        segmentVideoFrames: fakeVideoFrames([], { folderRoot }).segmentVideoFrames,
+        deps: stageDeps({
+          spawnEncoder: loggingEncoder([]),
+          captureFrame: mock(async (session: unknown, i: number) => {
+            if (i === 1) midCapture.abort();
+            return frameBuffer(session, i);
+          }),
+        }),
+      }),
+    ).rejects.toThrow("render cancelled");
+    expect(existsSync(folderOf(0))).toBe(false);
+
+    const midExtraction = new AbortController();
+    const extraction = runCaptureSegmentedStage({
+      ...fakeStageInput({ totalFrames: 4 }),
+      segmentFrames: 4,
+      segmentDir: join(fixtureRoot, "windowed-abort-extraction"),
+      abortSignal: midExtraction.signal,
+      assertNotAborted: () => {
+        if (midExtraction.signal.aborted) throw new Error("render cancelled");
+      },
+      segmentVideoFrames: fakeVideoFrames([], {
+        folderRoot,
+        prepare: () =>
+          new Promise((_resolve, reject) => {
+            expect(existsSync(folderOf(0))).toBe(true);
+            midExtraction.signal.addEventListener("abort", () => reject(new Error("aborted")));
+            setTimeout(() => midExtraction.abort(), 5);
+          }),
+      }).segmentVideoFrames,
+      deps: stageDeps({ spawnEncoder: loggingEncoder([]) }),
+    });
+    await expect(extraction).rejects.toThrow("aborted");
+    expect(existsSync(folderOf(0))).toBe(false);
+  });
+
+  it("a recycled session keeps the worker's hook", async () => {
+    createdSessionHooks.length = 0;
+    const frames = fakeVideoFrames([]);
+
+    await runCaptureSegmentedStage({
+      ...fakeStageInput({ totalFrames: 6 }),
+      probeSession: null,
+      segmentFrames: 2,
+      segmentDir: join(fixtureRoot, "windowed-recycle"),
+      browserRecycleEverySegments: 1,
+      segmentVideoFrames: frames.segmentVideoFrames,
+      deps: stageDeps({ spawnEncoder: loggingEncoder([]) }),
+    });
+
+    expect(frames.hooks).toHaveLength(1);
+    expect(createdSessionHooks).toEqual([frames.hooks[0], frames.hooks[0], frames.hooks[0]]);
+  });
+
+  it("gives each worker its own hook, on the reused probe session and on a fresh one", async () => {
+    createdSessionHooks.length = 0;
+    reusedSessionHooks.length = 0;
+    const frames = fakeVideoFrames([]);
+
+    await runCaptureSegmentedStage({
+      ...fakeStageInput({ totalFrames: 6 }),
+      segmentFrames: 3,
+      segmentDir: join(fixtureRoot, "windowed-two-workers"),
+      workerCount: 2,
+      segmentVideoFrames: frames.segmentVideoFrames,
+      deps: stageDeps({ spawnEncoder: loggingEncoder([]) }),
+    });
+
+    expect(frames.hooks).toHaveLength(2);
+    expect(reusedSessionHooks).toHaveLength(1);
+    expect(createdSessionHooks).toHaveLength(1);
+    expect(new Set([...reusedSessionHooks, ...createdSessionHooks])).toEqual(new Set(frames.hooks));
+  });
+
+  it("time spent preparing does not count toward the capture stall timeout", async () => {
+    // The stall clock runs inside the frame loop, which starts once the encoder is
+    // open. Preparing happens before it, so a slow read of the source video is not a stall.
+    const previous = process.env.HF_DE_STALL_MS;
+    process.env.HF_DE_STALL_MS = "60";
+    try {
+      const frames = fakeVideoFrames([], {
+        prepare: () => new Promise((resolve) => setTimeout(resolve, 250)),
+      });
+      const result = await runCaptureSegmentedStage({
+        ...fakeStageInput({ totalFrames: 2 }),
+        segmentFrames: 2,
+        segmentDir: join(fixtureRoot, "windowed-stall"),
+        segmentVideoFrames: frames.segmentVideoFrames,
+        deps: stageDeps({ spawnEncoder: loggingEncoder([]) }),
+      });
+      expect(result.success).toBe(true);
+      expect(frames.prepared).toEqual([0]);
+    } finally {
+      if (previous === undefined) delete process.env.HF_DE_STALL_MS;
+      else process.env.HF_DE_STALL_MS = previous;
+    }
+  });
+
+  it("with segmentVideoFrames, segment files are removed after the join succeeds", async () => {
+    const events: string[] = [];
+    const segmentDir = join(fixtureRoot, "windowed-join");
+
+    await runCaptureSegmentedStage({
+      ...fakeStageInput({ totalFrames: 6 }),
+      segmentFrames: 2,
+      segmentDir,
+      segmentVideoFrames: fakeVideoFrames([]).segmentVideoFrames,
+      deps: stageDeps({
+        spawnEncoder: loggingEncoder([]),
+        concat: mock(async () => {
+          events.push("concat");
+          return { success: true as const };
+        }),
+        removeFile: (path: string) => events.push(`remove ${path}`),
+      }),
+    });
+
+    expect(events).toEqual([
+      "concat",
+      ...[0, 1, 2].map((i) => `remove ${segmentOutputPath(segmentDir, i)}`),
+    ]);
+  });
+
+  it("with segmentVideoFrames, a resume that only joins removes the segment files too", async () => {
+    const removed: string[] = [];
+    const segmentDir = join(fixtureRoot, "windowed-resume-join");
+
+    await runCaptureSegmentedStage({
+      ...fakeStageInput({ totalFrames: 4 }),
+      segmentFrames: 2,
+      segmentDir,
+      completedSegments: new Set([0, 1]),
+      segmentVideoFrames: fakeVideoFrames([]).segmentVideoFrames,
+      deps: stageDeps({ removeFile: (path: string) => removed.push(path) }),
+    });
+
+    expect(removed).toEqual([0, 1].map((i) => segmentOutputPath(segmentDir, i)));
+  });
+
+  it("a failed join removes no segment files", async () => {
+    const removed: string[] = [];
+
+    await expect(
+      runCaptureSegmentedStage({
+        ...fakeStageInput({ totalFrames: 4 }),
+        segmentFrames: 2,
+        segmentDir: join(fixtureRoot, "windowed-join-fails"),
+        segmentVideoFrames: fakeVideoFrames([]).segmentVideoFrames,
+        deps: stageDeps({
+          spawnEncoder: loggingEncoder([]),
+          concat: mock(async () => ({ success: false as const, error: "concat failed" })),
+          removeFile: (path: string) => removed.push(path),
+        }),
+      }),
+    ).rejects.toThrow(/concat failed/);
+
+    expect(removed).toEqual([]);
+  });
+
+  it("with keepSegments, a windowed render keeps its segment files", async () => {
+    const removed: string[] = [];
+    const input = fakeStageInput({ totalFrames: 4 });
+
+    const result = await runCaptureSegmentedStage({
+      ...input,
+      job: { ...input.job, config: { ...input.job.config, keepSegments: true } },
+      segmentFrames: 2,
+      segmentDir: join(fixtureRoot, "windowed-keep-segments"),
+      segmentVideoFrames: fakeVideoFrames([]).segmentVideoFrames,
+      deps: stageDeps({
+        spawnEncoder: loggingEncoder([]),
+        removeFile: (path: string) => removed.push(path),
+      }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(removed).toEqual([]);
+  });
+
+  it("a segment file that will not delete is logged and does not fail the stage", async () => {
+    const attempted: string[] = [];
+    const warnings: string[] = [];
+    const segmentDir = join(fixtureRoot, "windowed-remove-throws");
+    const input = fakeStageInput({ totalFrames: 6 });
+
+    const result = await runCaptureSegmentedStage({
+      ...input,
+      log: { ...input.log, warn: (message: string) => void warnings.push(message) },
+      segmentFrames: 2,
+      segmentDir,
+      segmentVideoFrames: fakeVideoFrames([]).segmentVideoFrames,
+      deps: stageDeps({
+        spawnEncoder: loggingEncoder([]),
+        removeFile: (path: string) => {
+          attempted.push(path);
+          if (path === segmentOutputPath(segmentDir, 0)) throw new Error("EPERM");
+        },
+      }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(attempted).toEqual([0, 1, 2].map((i) => segmentOutputPath(segmentDir, i)));
+    expect(warnings).toEqual(["[Render] could not remove a joined segment file"]);
+  });
+
+  it("without segmentVideoFrames, segment files are kept", async () => {
+    const removed: string[] = [];
+
+    const result = await runCaptureSegmentedStage({
+      ...fakeStageInput({ totalFrames: 4 }),
+      segmentFrames: 2,
+      segmentDir: join(fixtureRoot, "plain-keeps-files"),
+      deps: stageDeps({
+        spawnEncoder: loggingEncoder([]),
+        removeFile: (path: string) => removed.push(path),
+      }),
+    });
+
+    expect(result.success).toBe(true);
+    expect(removed).toEqual([]);
   });
 });

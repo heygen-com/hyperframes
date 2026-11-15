@@ -30,7 +30,7 @@ interface UsePlaybackKeyboardParams {
   play: () => void;
   playBackward: (rate: number) => void;
   pause: () => void;
-  seek: (time: number, options?: { keepPlaying?: boolean }) => void;
+  seek: (time: number, options?: { keepPlaying?: boolean; settled?: boolean }) => void;
 }
 
 const FRAME_STEPS = {
@@ -112,6 +112,7 @@ export function usePlaybackKeyboard({
       const currentTime = adapter?.getTime() ?? usePlayerStore.getState().currentTime;
       seek(
         stepFrameTime(currentTime, deltaFrames, useLinkedClipPreferences.getState().compositionFps),
+        { settled: true },
       );
     },
     [getAdapter, seek],

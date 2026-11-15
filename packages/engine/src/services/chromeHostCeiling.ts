@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { debuglog } from "node:util";
 import { release } from "node:os";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 
 /** Chrome 151 dropped macOS 12 and older (Darwin < 22); 150 is the last major that launches there. */
 const MACOS_12_LAST_CHROME_MAJOR = 150;
@@ -70,6 +71,7 @@ export function shellStarts(binary: string, timeoutMs = 10_000): boolean {
     const probe = ["--no-sandbox", "--dump-dom", "about:blank"];
     answer =
       spawnSync(binary, probe, {
+        env: buildChromeLaunchEnv(),
         stdio: "ignore",
         timeout: timeoutMs,
         killSignal: "SIGKILL",

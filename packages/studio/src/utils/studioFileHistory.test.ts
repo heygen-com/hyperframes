@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { saveProjectFilesWithHistory } from "./studioFileHistory";
+import { editContextTarget, saveProjectFilesWithHistory } from "./studioFileHistory";
 import { serializeStudioFileMutation } from "./studioFileMutationCoordinator";
 
 describe("saveProjectFilesWithHistory", () => {
@@ -233,5 +233,33 @@ describe("saveProjectFilesWithHistory", () => {
         files: { "index.html": { before: "sdk-after", after: "sdk-after+editor" } },
       }),
     );
+  });
+});
+
+describe("editContextTarget", () => {
+  it("names the element by identity and carries the layer name the person saw", () => {
+    expect(
+      editContextTarget("index.html", {
+        id: "title",
+        hfId: "hf-1",
+        selector: ".title",
+        selectorIndex: 0,
+        label: "Title",
+      }),
+    ).toEqual({
+      file: "index.html",
+      id: "title",
+      hfId: "hf-1",
+      selector: ".title",
+      selectorIndex: 0,
+      name: "Title",
+    });
+  });
+
+  it("leaves the name out when the layer has none", () => {
+    expect(editContextTarget("index.html", { id: "title", label: "" })).toEqual({
+      file: "index.html",
+      id: "title",
+    });
   });
 });

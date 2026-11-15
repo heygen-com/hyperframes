@@ -1,3 +1,4 @@
+import { wallSetTimeout } from "./wallClock";
 import {
   PREVIEW_PROXY_PRIORITY_HEADER,
   PREVIEW_PROXY_PROGRESS_HEADER,
@@ -53,7 +54,7 @@ export async function waitForServedProxy(
     if (!pending && res?.ok) return true;
     if (!pending && ++failed > MAX_FAILED_ASKS) return false;
     const seconds = Math.min(Number(res?.headers.get("Retry-After")) || 2, 30);
-    await new Promise((resolveWait) => setTimeout(resolveWait, seconds * 1000));
+    await new Promise((resolveWait) => wallSetTimeout(resolveWait, seconds * 1000));
   }
   return false;
 }

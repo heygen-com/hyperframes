@@ -949,6 +949,58 @@ describe("inlineSubCompositions – #3490 nested SVG id collisions", () => {
   });
 });
 
+describe("inlineSubCompositions – SVG ids in top-level scene clips", () => {
+  const portrait = (color: string) =>
+    `<svg><defs><linearGradient id="skin"><stop stop-color="${color}"/></linearGradient>` +
+    `<symbol id="portrait"><rect fill="${color}"/></symbol></defs>` +
+    `<rect class="face" fill="url(#skin)" clip-path="url(#shared)"/><use class="piece" href="#portrait"/></svg>`;
+  const compile = (clips: string) => {
+    const { document } = parseHTML(`<!DOCTYPE html><html><body>
+      <svg width="0" height="0"><clipPath id="shared"><circle r="40"/></clipPath></svg>
+      <div data-composition-id="main" data-start="0" data-duration="20">${clips}</div></body></html>`);
+    inlineSubCompositions(document, [], {
+      resolveHtml: () => null,
+      parseHtml: (html) => parseHTML(html).document,
+      hostIdentityMap: assignTestRuntimeCompositionIds([]),
+    });
+    return document;
+  };
+  // The first element with an id is what the browser resolves `url(#id)` and `href="#id"` to.
+  const resolved = (document: Document, value: string | null) =>
+    document.getElementById(value!.replace(/^url\(#|\)$|^#/g, ""));
+
+  // fails without the fix: the second scene's gradient and <use> resolved to the first scene's portrait.
+  it("gives each scene clip its own portrait when two scenes reuse the same SVG ids", () => {
+    const document = compile(
+      `<div class="scene" data-start="0" data-duration="10">${portrait("red")}</div>` +
+        `<div class="scene" data-start="10" data-duration="10">${portrait("blue")}</div>`,
+    );
+    const [first, second] = [...document.querySelectorAll(".scene")];
+    for (const scene of [first!, second!]) {
+      expect(
+        scene.contains(resolved(document, scene.querySelector(".face")!.getAttribute("fill"))),
+      ).toBe(true);
+      expect(
+        scene.contains(resolved(document, scene.querySelector(".piece")!.getAttribute("href"))),
+      ).toBe(true);
+    }
+    expect(first!.querySelector("linearGradient")!.id).toBe("skin");
+    expect(first!.querySelector("symbol")!.id).toBe("portrait");
+  });
+
+  it("leaves a page-level definition the scenes share where it is", () => {
+    const document = compile(
+      `<div class="scene" data-start="0" data-duration="10">${portrait("red")}</div>` +
+        `<div class="scene" data-start="10" data-duration="10">${portrait("blue")}</div>`,
+    );
+    const shared = document.getElementById("shared")!;
+    expect(shared.closest(".scene")).toBeNull();
+    for (const face of document.querySelectorAll(".face")) {
+      expect(face.getAttribute("clip-path")).toBe("url(#shared)");
+    }
+  });
+});
+
 describe("inlineSubCompositions – renamed SVG ids stay reachable from author scripts", () => {
   // These tests execute the compiled, scoped scripts inside a real jsdom
   // window built from the assembled document — the same thing the browser

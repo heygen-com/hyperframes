@@ -135,8 +135,8 @@ describe("verifyStaticFramesSafe catches drift the old fixed-point density would
 
     expect(result.outcome).toBe("time_budget");
     expect(result.verifiedFrames.size).toBe(0);
-    // 8 s shots: the 300 s ceiling, not the 15 s floor, ends it
-    expect(pageScreenshotCapture).toHaveBeenCalledTimes(38);
+    // 8 s shots: the 60 s ceiling, not the 15 s floor, ends it
+    expect(pageScreenshotCapture).toHaveBeenCalledTimes(8);
   });
 });
 
@@ -256,7 +256,7 @@ describe("composition-wide static verification planner", () => {
       {
         now: () => nowMs,
         capture: async () => {
-          nowMs += 1_000;
+          nowMs += 500;
           return Buffer.from("same");
         },
       },

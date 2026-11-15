@@ -73,6 +73,7 @@ import {
   createRenderJob,
   RenderQualityError,
 } from "./renderOrchestrator.js";
+import { shouldWindowVideoFrames } from "./render/videoFrameWindow.js";
 import { probeRequiresBrowser } from "./render/stages/probeStage.js";
 import { EncoderInterruptedError } from "./render/encoderInterruption.js";
 import { ensureFrameWritten } from "./render/stages/captureHdrFrameShared.js";
@@ -1096,6 +1097,44 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     expect(copies).toEqual([{ src: outputDir, dest: linkPath }]);
     expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
   });
+
+  it("gives ids that differ only by case their own frames on a case-insensitive disk", () => {
+    // macOS and Windows disks fold case: `s12-vB1` and `s12-vb1` named as-is are one folder.
+    const entries = new Map<string, string>();
+    const fold = (path: string) => path.toLowerCase();
+    const clip = (videoId: string, cacheDir: string, frameCount: number) => ({
+      videoId,
+      outputDir: cacheDir,
+      framePaths: new Map(
+        Array.from({ length: frameCount }, (_, i): [number, string] => [
+          i,
+          join(cacheDir, `frame_${String(i + 1).padStart(5, "0")}.jpg`),
+        ]),
+      ),
+    });
+    const short = clip("s12-vB1", "/cache/hook", 64);
+    const long = clip("s12-vb1", "/cache/sparks", 66);
+
+    materializeExtractedFramesForCompiledDir([short, long], "/job/compiled", {
+      fileSystem: {
+        existsSync: (path) => entries.has(fold(String(path))),
+        mkdirSync: () => undefined,
+        symlinkSync: (target, path) => {
+          if (entries.has(fold(String(path)))) {
+            throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
+          }
+          entries.set(fold(String(path)), String(target));
+        },
+        cpSync: () => {
+          throw new Error("a symlink is expected");
+        },
+      },
+    });
+
+    const targetOf = (framePath: string) => entries.get(fold(join(framePath, "..")));
+    expect(targetOf(long.framePaths.get(64)!)).toBe("/cache/sparks");
+    expect(targetOf(short.framePaths.get(63)!)).toBe("/cache/hook");
+  });
 });
 
 describe("writeCompiledArtifacts — external assets on Windows drive-letter paths (GH #321)", () => {
@@ -1187,6 +1226,37 @@ describe("writeCompiledArtifacts — external assets on Windows drive-letter pat
 
     const escapeTarget = join(workDir, "etc", "passwd");
     expect(existsSync(escapeTarget)).toBe(false);
+  });
+
+  it("writes sub-compositions only inside compileDir", () => {
+    const sandboxRoot = mkdtempSync(join(tmpdir(), "hf-orch-root-"));
+    tempDirs.push(sandboxRoot);
+    const workDir = join(sandboxRoot, "work");
+    mkdirSync(workDir, { recursive: true });
+
+    const compiled = {
+      html: "<!doctype html>",
+      subCompositions: new Map<string, string>([
+        ["scenes/intro.html", "intro"],
+        ["outro.html?v=2", "outro"],
+        ["outro.html?/../../../escaped.html", "escaped"],
+      ]),
+      videos: [],
+      audios: [],
+      unresolvedCompositions: [],
+      externalAssets: new Map<string, string>(),
+      width: 1920,
+      height: 1080,
+      staticDuration: 10,
+      renderModeHints: { recommendScreenshot: false, reasons: [] },
+      hasShaderTransitions: false,
+    };
+
+    writeCompiledArtifacts(compiled, workDir, false);
+
+    expect(readFileSync(join(workDir, "compiled", "scenes", "intro.html"), "utf-8")).toBe("intro");
+    expect(readFileSync(join(workDir, "compiled", "outro.html?v=2"), "utf-8")).toBe("outro");
+    expect(existsSync(join(sandboxRoot, "escaped.html"))).toBe(false);
   });
 });
 
@@ -1678,6 +1748,18 @@ describe("estimateMeasuredCaptureCostMultiplier", () => {
 
     expect(estimate.multiplier).toBe(4);
     expect(estimate.reasons).toEqual(["calibration-p95=2400ms"]);
+  });
+
+  it("records the typical calibration frame next to the slowest", () => {
+    const estimate = estimateMeasuredCaptureCostMultiplier(
+      [92, 1243, 1183, 983, 717].map((captureTimeMs, i) => ({
+        frameIndex: i * 100,
+        captureTimeMs,
+      })),
+    );
+
+    expect(estimate.p95Ms).toBe(1243);
+    expect(estimate.medianMs).toBe(983);
   });
 
   it("keeps fast calibration samples at baseline cost", () => {
@@ -3597,6 +3679,33 @@ describe("resolveParallelCaptureMode", () => {
     expect(resolveParallelCaptureMode({ ...beginframe, deviceScaleFactor: undefined })).toBe(
       "beginframe",
     );
+  });
+});
+
+describe("shouldWindowVideoFrames", () => {
+  const segmentsAt = (env: Record<string, string | undefined>, outputFormat: string) =>
+    shouldSegmentCapture({
+      env: { HF_SEGMENTED_CAPTURE: "true", ...env },
+      durationSeconds: 900,
+      outputFormat,
+      layeredOrEffectRoute: false,
+      streamingOk: true,
+    });
+  const windows = (env: Record<string, string | undefined>, outputFormat = "mp4") =>
+    shouldWindowVideoFrames({ env, segmented: segmentsAt(env, outputFormat) });
+
+  it("windows only when the flag is true and the render segments", () => {
+    expect(windows({ HF_VIDEO_FRAME_WINDOW: "true" })).toBe(true);
+    expect(windows({ HF_VIDEO_FRAME_WINDOW: " TRUE " }, "mov")).toBe(true);
+    for (const off of ["false", "0", "off", "no", "", "1", "yes", undefined]) {
+      expect(windows({ HF_VIDEO_FRAME_WINDOW: off })).toBe(false);
+    }
+    // Excluded outputs never segment, so the flag has nothing to window.
+    expect(windows({ HF_VIDEO_FRAME_WINDOW: "true" }, "webm")).toBe(false);
+    expect(windows({ HF_VIDEO_FRAME_WINDOW: "true" }, "png-sequence")).toBe(false);
+    expect(
+      shouldWindowVideoFrames({ env: { HF_VIDEO_FRAME_WINDOW: "true" }, segmented: false }),
+    ).toBe(false);
   });
 });
 

@@ -240,11 +240,7 @@ describe("resolveVisualDomEditSelectionTarget", () => {
     setElementRect(container, { width: 900, height: 520 });
     setElementRect(headline, { left: 240, top: 160, width: 180, height: 36 });
 
-    expect(
-      resolveVisualDomEditSelectionTarget([container, headline], {
-        activeCompositionPath: "index.html",
-      }),
-    ).toBe(headline);
+    expect(resolveVisualDomEditSelectionTarget([container, headline])).toBe(headline);
   });
 
   it("skips hidden and zero-size elements before picking a rendered candidate", () => {
@@ -260,11 +256,7 @@ describe("resolveVisualDomEditSelectionTarget", () => {
     setElementRect(empty, { width: 0, height: 0 });
     setElementRect(visible, { width: 120, height: 32 });
 
-    expect(
-      resolveVisualDomEditSelectionTarget([hidden, empty, visible], {
-        activeCompositionPath: "index.html",
-      }),
-    ).toBe(visible);
+    expect(resolveVisualDomEditSelectionTarget([hidden, empty, visible])).toBe(visible);
   });
 
   it("skips transparent elements that still report a box", () => {
@@ -277,11 +269,7 @@ describe("resolveVisualDomEditSelectionTarget", () => {
     setElementRect(transparent, { width: 120, height: 32 });
     setElementRect(visible, { width: 120, height: 32 });
 
-    expect(
-      resolveVisualDomEditSelectionTarget([transparent, visible], {
-        activeCompositionPath: "index.html",
-      }),
-    ).toBe(visible);
+    expect(resolveVisualDomEditSelectionTarget([transparent, visible])).toBe(visible);
   });
 
   it("falls back to the nearest stable editable ancestor when a visual child has no target", () => {
@@ -295,11 +283,7 @@ describe("resolveVisualDomEditSelectionTarget", () => {
     setElementRect(card, { width: 400, height: 200 });
     setElementRect(span, { left: 40, top: 40, width: 140, height: 28 });
 
-    expect(
-      resolveVisualDomEditSelectionTarget([span, card], {
-        activeCompositionPath: "index.html",
-      }),
-    ).toBe(card);
+    expect(resolveVisualDomEditSelectionTarget([span, card])).toBe(card);
   });
 
   it("keeps explicit layer selection able to target containers", async () => {
@@ -313,9 +297,7 @@ describe("resolveVisualDomEditSelectionTarget", () => {
     setElementRect(container, { width: 900, height: 520 });
     setElementRect(headline, { left: 240, top: 160, width: 180, height: 36 });
 
-    const visualTarget = resolveVisualDomEditSelectionTarget([container, headline], {
-      activeCompositionPath: "index.html",
-    });
+    const visualTarget = resolveVisualDomEditSelectionTarget([container, headline]);
     const explicitSelection = await resolveDomEditSelection(container, {
       activeCompositionPath: "index.html",
       isMasterView: false,
@@ -341,11 +323,7 @@ describe("resolveVisualDomEditSelectionTarget", () => {
     setElementRect(sfChrome, { left: 0, top: 0, width: 1920, height: 1080 });
     setElementRect(subComp, { left: 0, top: 0, width: 1920, height: 1080 });
 
-    expect(
-      resolveVisualDomEditSelectionTarget([pipStudio, subComp, sfChrome], {
-        activeCompositionPath: "index.html",
-      }),
-    ).toBe(pipStudio);
+    expect(resolveVisualDomEditSelectionTarget([pipStudio, subComp, sfChrome])).toBe(pipStudio);
   });
 });
 

@@ -35,6 +35,7 @@ import {
 } from "./compositionScoping";
 import {
   namespaceCollidingSvgIds,
+  sceneClipRoots,
   rewriteSvgIdReferencesInCss,
   type SvgIdScope,
 } from "./svgIdNamespacing";
@@ -778,6 +779,8 @@ export function inlineSubCompositions(
   // `<style>` text gets the same substitution its DOM just received. See
   // svgIdNamespacing.ts for why this is a rename, unlike the sibling
   // getElementById/media-id fixes.
+  const hostRoots = svgIdScopes.map(({ root }) => root);
+  const clips = sceneClipRoots(document, hostRoots);
   const svgIdMaps = namespaceCollidingSvgIds(document, [
     ...svgIdScopes.map(({ root, namespace, exclude, styleStart, styleEnd }) => ({
       root,
@@ -789,9 +792,14 @@ export function inlineSubCompositions(
       root: document.documentElement,
       namespace: "",
       referenceTarget: "document",
-      exclude: svgIdScopes.map(({ root }) => root),
+      exclude: [...hostRoots, ...clips],
       cssTexts: rootStyles.map((style) => style.textContent ?? ""),
     },
+    ...clips.map((root, index) => ({
+      root,
+      namespace: `clip-${index}`,
+      exclude: hostRoots.filter((host) => root.contains(host)),
+    })),
   ]);
   svgIdMaps.slice(0, svgIdScopes.length).forEach((idMap, index) => {
     const { styleStart, styleEnd } = svgIdScopes[index]!;

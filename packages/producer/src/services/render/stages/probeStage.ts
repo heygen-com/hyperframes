@@ -36,6 +36,7 @@ import {
   type CompositionLengthSource,
   type EngineConfig,
   type SubTimelineWaitMemo,
+  type StaticDedupMemo,
   closeCaptureSession,
   compositionRequiresWebGpu,
   createCaptureSession,
@@ -72,22 +73,29 @@ import {
   type FileServerHandle,
   VIRTUAL_TIME_SHIM,
 } from "../../fileServer.js";
+import { servedPath } from "../../servedPath.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
   BROWSER_MEDIA_EPSILON,
+  noteStaticDedupActivity,
   projectBrowserEndToCompositionTimeline,
   resolveBrowserMediaEnd,
   writeCompiledArtifacts,
   type CompositionMetadata,
 } from "../shared.js";
-import type { RenderJob } from "../../renderOrchestrator.js";
+import type { RenderConfig, RenderJob } from "../../renderOrchestrator.js";
 import { isActionableProbeFailure } from "./probeFailures.js";
-import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
-import { resolveCaptureImageFormat, resolveCaptureJpegQuality } from "../captureImageFormat.js";
+import {
+  dropMediaOutsideProject,
+  preflightCompositionAssetMediaTypes,
+} from "../../assetMediaType.js";
+import { resolveCaptureSurface } from "../captureImageFormat.js";
+import { computeCompositionObservabilityHash } from "../observability.js";
 
 export interface ProbeStageInput {
   projectDir: string;
   workDir: string;
+  measuresShownBoxes?: boolean;
   recordReferenceBackground?: CaptureOptions["recordReferenceBackground"];
   job: RenderJob;
   cfg: EngineConfig;
@@ -109,6 +117,7 @@ export interface ProbeStageInput {
   needsAlpha: boolean;
   deviceScaleFactor: number;
   subTimelineWaitMemo: SubTimelineWaitMemo;
+  staticDedupMemo?: StaticDedupMemo;
 }
 
 const FRAME_BOUNDARY_EPSILON = 1e-3;
@@ -122,6 +131,7 @@ function durationToFrameCount(duration: number, fps: number): number {
 }
 
 export interface ProbeStageResult {
+  strictVariablesChecked: boolean | undefined;
   /** May be reassigned from `recompileWithResolutions`. */
   compiled: CompiledComposition;
   /** Created when `needsBrowser` was true; `null` otherwise. */
@@ -308,18 +318,23 @@ function hasRuntimeMediaChanges(html: string): boolean {
   return false;
 }
 
+/** A strict render with variables to check needs the loaded page; with none there is nothing to read. */
+function checksVariablesInBrowser(config: RenderConfig): boolean {
+  return config.strictVariables === true && Object.keys(config.variables ?? {}).length > 0;
+}
+
+/** Reported `strictVariables`: undefined if not asked; true if checked or nothing needed checking; else false. */
+export function strictVariablesAttestation(
+  config: RenderConfig,
+  probeSession: CaptureSession | null,
+): boolean | undefined {
+  if (config.strictVariables !== true) return undefined;
+  return !checksVariablesInBrowser(config) || probeSession?.strictVariablesChecked === true;
+}
+
 /**
- * Does this render need a browser probe at all?
- *
- * Extracted as a pure predicate because whether a probe runs decides whether
- * a LIVE DOM element count is available downstream, and the short-comp
- * inversion band fails closed without one (see
- * `resolveCompositionElementCount` / `resolveDeShortBand`). Notably NONE of
- * these conditions fire for a known-duration, media-free composition that
- * builds thousands of `div`/`span` nodes in its own init script —
- * `hasRuntimeMediaChanges` matches only media creation/source changes — so
- * that shape is measured statically and must never reach the band's `applied`
- * cohort (review finding, R4).
+ * Does this render need a browser probe at all? A pure predicate, because a probe decides whether a LIVE DOM element
+ * count exists downstream, and the short-comp inversion band fails closed without one.
  */
 export function probeRequiresBrowser(args: {
   durationSeconds: number;
@@ -328,8 +343,10 @@ export function probeRequiresBrowser(args: {
   hasScriptedAudio: boolean;
   hasVariableMedia: boolean;
   hasInsertedMedia: boolean;
+  requiresVariablesCheck?: boolean;
 }): boolean {
   return (
+    args.requiresVariablesCheck === true ||
     args.durationSeconds <= 0 ||
     args.unresolvedCompositionCount > 0 ||
     args.hasAutoStart ||
@@ -370,6 +387,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     needsAlpha,
     deviceScaleFactor,
     subTimelineWaitMemo,
+    staticDedupMemo,
   } = input;
   let { compiled } = input;
 
@@ -393,6 +411,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   const hasInsertedMedia = hasRuntimeMediaChanges(compiled.html);
   const needsBrowser =
     cfg.videoLayerPassthrough ||
+    input.measuresShownBoxes === true ||
     probeRequiresBrowser({
       durationSeconds: composition.duration,
       unresolvedCompositionCount: compiled.unresolvedCompositions.length,
@@ -400,6 +419,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       hasScriptedAudio,
       hasVariableMedia,
       hasInsertedMedia,
+      requiresVariablesCheck: checksVariablesInBrowser(job.config),
     });
 
   try {
@@ -412,6 +432,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       if (hasScriptedAudio) reasons.push("scripted audio volume");
       if (hasInsertedMedia) reasons.push("runtime-created or source-mutated media");
       if (hasVariableMedia) reasons.push("variable-bound media source(s)");
+      if (input.measuresShownBoxes) reasons.push("video(s) larger than the canvas");
 
       log.info("Launching browser for composition probe...", {
         reasons,
@@ -423,30 +444,35 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         port: 0,
         preHeadScripts: [VIRTUAL_TIME_SHIM],
         fps: job.config.fps,
+        allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
       });
       assertNotAborted();
 
-      // Motion blur averages the sub-frame samples pixel by pixel, so the frames have to be
-      // captured losslessly even when the output container wants no alpha. This is the one
-      // place a render picks its capture format; the encoder reads the result rather than
-      // re-deriving it, so the two cannot disagree about what is on disk.
+      // Motion blur and 4:4:4 output need lossless frames even when the output container
+      // wants no alpha. This is the one place a render picks its capture format; the encoder
+      // reads the result rather than re-deriving it, so the two cannot disagree about what
+      // is on disk.
       const motionBlur = job.config.motionBlur;
-      const captureFormat = resolveCaptureImageFormat({ needsAlpha, motionBlur });
       const captureOpts: CaptureOptions = {
         recordReferenceBackground: input.recordReferenceBackground,
         width,
         height,
         fps: job.config.fps,
-        format: captureFormat,
-        transparent: needsAlpha,
-        quality:
-          captureFormat === "png" ? undefined : resolveCaptureJpegQuality(job.config.quality),
+        ...resolveCaptureSurface(
+          { needsAlpha, motionBlur, chromaSubsampling: job.config.chromaSubsampling },
+          job.config.quality,
+        ),
         variables: job.config.variables,
+        strictVariables: job.config.strictVariables,
         deviceScaleFactor,
         motionBlur,
         pageMotionBlur: job.config.pageMotionBlur,
         requiresWebGpu: compositionRequiresWebGpu(compiled.html),
         subTimelineWaitMemo,
+        staticDedupMemo,
+        compositionHash: computeCompositionObservabilityHash(compiled.html),
+        deferStaticDedup: true,
+        onStaticDedupActivity: () => noteStaticDedupActivity(job),
       };
 
       const PROBE_MAX_ATTEMPTS = 2;
@@ -604,6 +630,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             resolutions,
             projectDir,
             join(workDir, "downloads"),
+            job.config.allowOutsideProjectAssets ? undefined : projectDir,
           );
           assertNotAborted();
           // Update composition metadata with re-parsed media
@@ -642,7 +669,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
               const existing = composition.videos.find((v) => v.id === el.id);
               if (existing) {
-                const sourceChanged = existing.src !== src;
+                const sourceChanged = servedPath(existing.src) !== servedPath(src);
                 if (sourceChanged) {
                   existing.src = src;
                 }
@@ -692,7 +719,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             if (existingAudioIds.has(el.id)) {
               const existing = composition.audios.find((a) => a.id === el.id);
               if (existing) {
-                const sourceChanged = existing.src !== src;
+                const sourceChanged = servedPath(existing.src) !== servedPath(src);
                 if (sourceChanged) {
                   existing.src = src;
                 }
@@ -816,6 +843,13 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       }
     }
 
+    dropMediaOutsideProject({
+      projectDir,
+      workDir,
+      composition,
+      log,
+      allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+    });
     await preflightCompositionAssetMediaTypes({
       projectDir,
       compiledDir: join(workDir, "compiled"),
@@ -914,6 +948,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
   }
 
   return {
+    strictVariablesChecked: strictVariablesAttestation(job.config, probeSession),
     compiled,
     fileServer,
     probeSession,

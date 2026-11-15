@@ -1,4 +1,5 @@
 import "../utils/hideChildConsoles.js";
+import "../utils/windowsExeSearch.js";
 import { createRequire } from "node:module";
 import {
   droppedSpeechGaps,

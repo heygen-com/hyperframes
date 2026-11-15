@@ -32,13 +32,18 @@ const ZERO_BBOX: CheckBbox = { x: 0, y: 0, width: 0, height: 0 };
 const WORD_RUNS = /[\p{L}\p{M}\p{N}%$]+(?:['’][\p{L}\p{M}\p{N}]+)*/gu;
 // Chinese and Japanese have no spaces; a dictionary segmenter counts their words like an English line's.
 const WORD_SEGMENTER = new Intl.Segmenter("ja", { granularity: "word" });
+const UNSPACED_SCRIPT =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
 
 /** Words a viewer reads: letter/number runs, with CJK runs split into dictionary words. */
 export function readingWords(text: string): number {
   const runs = text.toLowerCase().normalize("NFC").match(WORD_RUNS) ?? [];
   return runs.reduce(
     (count, run) =>
-      count + Math.max(1, [...WORD_SEGMENTER.segment(run)].filter((s) => s.isWordLike).length),
+      count +
+      (UNSPACED_SCRIPT.test(run)
+        ? Math.max(1, [...WORD_SEGMENTER.segment(run)].filter((s) => s.isWordLike).length)
+        : 1),
     0,
   );
 }
@@ -206,7 +211,7 @@ interface CraftRect {
 }
 
 interface BlockTrack {
-  key: number;
+  blockKeys: Set<number>;
   selector: string;
   sourceFile: string;
   /** Frame index → what the block showed there. */
@@ -253,20 +258,47 @@ interface Anchor {
 }
 
 function trackBlocks(frames: CraftFrame[], readHeight: number): BlockTrack[] {
-  const tracks = new Map<number, BlockTrack>();
+  const tracks: BlockTrack[] = [];
+  const byKey = new Map<number, BlockTrack>();
   frames.forEach((frame, index) => {
     for (const [key, block] of readableBlocks(frame, readHeight)) {
-      const track = tracks.get(key) ?? {
-        key,
-        selector: block.selector,
-        sourceFile: block.sourceFile,
-        seen: new Map<number, BlockFrame>(),
-      };
+      let track = byKey.get(key) ?? trackContinuedBy(tracks, index, block);
+      if (!track) {
+        track = {
+          blockKeys: new Set(),
+          selector: block.selector,
+          sourceFile: block.sourceFile,
+          seen: new Map(),
+        };
+        tracks.push(track);
+      }
+      track.blockKeys.add(key);
+      byKey.set(key, track);
       track.seen.set(index, { text: block.text, rect: block.rect });
-      tracks.set(key, track);
     }
   });
-  return [...tracks.values()];
+  return tracks;
+}
+
+function trackContinuedBy(
+  tracks: BlockTrack[],
+  index: number,
+  block: BlockFrame,
+): BlockTrack | undefined {
+  return tracks.find((track) => {
+    const last = track.seen.get(index) ?? track.seen.get(index - 1);
+    return !!last && last.text === block.text && sameBox(last.rect, block.rect);
+  });
+}
+
+const SAME_BOX_OVERLAP = 0.9;
+
+function sameBox(a: CraftRect, b: CraftRect): boolean {
+  const width = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+  const height = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+  if (width <= 0 || height <= 0) return false;
+  const area = (rect: CraftRect) => (rect.right - rect.left) * (rect.bottom - rect.top);
+  return (width * height) / Math.max(area(a), area(b)) >= SAME_BOX_OVERLAP;
 }
 
 /** Maximal runs of consecutive frame indices. */
@@ -301,6 +333,7 @@ interface LineCandidate {
   floor: number;
   window: LineWindow;
   firstIndex: number;
+  lastIndex: number;
 }
 
 /** A run that reaches the last sample lasts to the film's end; one at sample 0 starts exactly there. */
@@ -348,7 +381,16 @@ function lineCandidates(frames: CraftFrame[], duration: number, canvas: Canvas):
     const floor = lineFloorSec(words, finalLine);
     // Clearly long enough even at the shortest the grid allows.
     if (window.endIn - window.startIn >= floor) continue;
-    candidates.push({ track, words, text, finalLine, floor, window, firstIndex: run[0] });
+    candidates.push({
+      track,
+      words,
+      text,
+      finalLine,
+      floor,
+      window,
+      firstIndex: run[0],
+      lastIndex: run[1],
+    });
   }
   return candidates;
 }
@@ -359,8 +401,10 @@ async function refineWindow(
   canvas: Canvas,
 ): Promise<LineWindow> {
   const readHeight = T.readHeightAt1080 * (Math.min(canvas.width, canvas.height) / 1080);
-  const visibleAt = async (time: number) =>
-    readableBlocks(await probe(time), readHeight).has(candidate.track.key);
+  const visibleAt = async (time: number) => {
+    const blocks = readableBlocks(await probe(time), readHeight);
+    return [...candidate.track.blockKeys].some((key) => blocks.has(key));
+  };
   const window = { ...candidate.window };
   for (let step = 0; step < T.refineSteps; step += 1) {
     if (window.startIn > window.startOut) {
@@ -393,7 +437,7 @@ export async function detectLineUnread(
     const held = windowSeconds(window);
     if (held >= candidate.floor - T.measureToleranceSec) continue;
     const error = Math.max(window.startIn - window.startOut, window.endOut - window.endIn) / 2;
-    findings.push(lineUnreadFinding(candidate, window, held, error));
+    findings.push(lineUnreadFinding(candidate, window, held, error, frames));
   }
   return findings;
 }
@@ -403,6 +447,7 @@ function lineUnreadFinding(
   window: LineWindow,
   held: number,
   error: number,
+  frames: CraftFrame[],
 ): CraftFinding {
   const { track, words, text, finalLine, floor } = candidate;
   const quoted = quote(text, 60);
@@ -429,7 +474,41 @@ function lineUnreadFinding(
     words,
     seconds: round(held),
     floorSeconds: round(floor),
+    measured: measuredAround(frames, track.blockKeys, candidate.firstIndex, candidate.lastIndex),
   };
+}
+
+const MEASURED_SPAN = 3;
+
+/** The samples at both ends of the line's run, as the sampler measured them. */
+function measuredAround(
+  frames: CraftFrame[],
+  keys: Set<number>,
+  first: number,
+  last: number,
+): NonNullable<CraftFinding["measured"]> {
+  const indices = new Set<number>();
+  for (const edge of [first, last]) {
+    for (let at = edge - MEASURED_SPAN; at <= edge + MEASURED_SPAN; at += 1) indices.add(at);
+  }
+  const out: NonNullable<CraftFinding["measured"]> = [];
+  for (const index of [...indices].sort((a, b) => a - b)) {
+    const frame = frames[index];
+    if (!frame) continue;
+    const parts = frame.parts.filter((part) => keys.has(part.block) && !part.captions);
+    if (parts.length === 0) {
+      out.push({ time: round(frame.time), opacity: null, heightPx: null });
+      continue;
+    }
+    const top = Math.min(...parts.map((part) => part.rect.top));
+    const bottom = Math.max(...parts.map((part) => part.rect.top + part.rect.height));
+    out.push({
+      time: round(frame.time),
+      opacity: round(Math.max(...parts.map((part) => part.opacity))),
+      heightPx: Math.round(bottom - top),
+    });
+  }
+  return out;
 }
 
 // ---------- text_below_floor ----------

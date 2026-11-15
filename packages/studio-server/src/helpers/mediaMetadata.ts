@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createReadStream } from "node:fs";
 import { extname } from "node:path";
 import {
   firstFrameColourArgs,
@@ -10,6 +11,7 @@ import {
   type ToneMapFrameColour,
 } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { MEDIA_INPUT_ARGS, NOT_MEDIA, startsAsMediaPlaylist } from "./mediaExtensions.js";
 import { videoStreamHasAlpha } from "@hyperframes/parsers/media-alpha";
 import { decodableAudioStream, type FfprobeStreamCodec } from "@hyperframes/parsers/media-streams";
 
@@ -101,6 +103,8 @@ interface FfprobeStream {
   width?: number;
   height?: number;
   bit_rate?: string;
+  r_frame_rate?: string;
+  avg_frame_rate?: string;
   disposition?: Record<string, number | undefined>;
   tags?: Record<string, string | undefined>;
 }
@@ -198,16 +202,24 @@ export async function probeFirstFrameColour(
     findFfBinary("ffmpeg", { configuredMustExist: true }) ??
     (runner === execFileRunner ? undefined : "ffmpeg");
   if (!ffmpegPath) return {};
-  const result = await runner(ffmpegPath, firstFrameColourArgs(filePath), {
-    timeout: 15_000,
-    maxBuffer: 1024 * 1024,
-  });
+  const result = await runner(
+    ffmpegPath,
+    [...MEDIA_INPUT_ARGS, ...firstFrameColourArgs(filePath)],
+    {
+      timeout: 15_000,
+      maxBuffer: 1024 * 1024,
+    },
+  );
   const first = result.status === 0 ? parseFirstFrameColour(String(result.stderr)) : {};
   if (result.status !== 0 || !readsKeyframeTransfers(first)) return first;
-  const keyframes = await runner(ffmpegPath, keyframeTransferArgs(filePath, codec), {
-    timeout: 30_000,
-    maxBuffer: 8 * 1024 * 1024,
-  });
+  const keyframes = await runner(
+    ffmpegPath,
+    [...MEDIA_INPUT_ARGS, ...keyframeTransferArgs(filePath, codec)],
+    {
+      timeout: 30_000,
+      maxBuffer: 8 * 1024 * 1024,
+    },
+  );
   const keyframeTransfers =
     keyframes.status === 0 ? parseKeyframeTransfers(String(keyframes.stderr)) : [];
   return { ...first, keyframeTransfers };
@@ -226,11 +238,25 @@ function sourceFactsOf(
 ): PreviewSourceFacts | undefined {
   if (!stream?.width || !stream.height) return undefined;
   const bitrate = Number(stream.bit_rate ?? formatBitrate);
+  const rate = (raw: string | undefined) => {
+    const [numerator, denominator = "1"] = (raw ?? "0").split("/");
+    const value = Number(numerator) / Number(denominator);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  };
+  const nominal = rate(stream.r_frame_rate);
+  const average = rate(stream.avg_frame_rate);
   return {
     width: stream.width,
     height: stream.height,
     bitDepth: bitDepthOf(stream),
     bitrate: Number.isFinite(bitrate) ? bitrate : 0,
+    ...(nominal > 0
+      ? {
+          frameRate: nominal,
+          variableFrameRate:
+            average > 0 && Math.abs(nominal - average) / Math.max(nominal, average) > 0.1,
+        }
+      : {}),
   };
 }
 
@@ -273,16 +299,42 @@ function metadataFromProbe(kind: MediaMetadata["kind"], parsed: ProbeOutput): Me
   return metadata;
 }
 
+async function readsAsMediaPlaylist(filePath: string): Promise<boolean> {
+  try {
+    const chunks: Buffer[] = [];
+    for await (const chunk of createReadStream(filePath, { start: 0, end: 63 })) {
+      chunks.push(chunk as Buffer);
+    }
+    return startsAsMediaPlaylist(Buffer.concat(chunks));
+  } catch {
+    return false;
+  }
+}
+
 /** The audio track ffmpeg can decode in a file, with its channel count; null when it has none. */
 export async function probeAudioTrack(
   filePath: string,
   runner: FfprobeRunner = execFileRunner,
 ): Promise<{ stream: number; channels: number } | null> {
+  if (await readsAsMediaPlaylist(filePath)) return null;
+  const ffprobePath =
+    findFfBinary("ffprobe", { configuredMustExist: true }) ??
+    (runner === execFileRunner ? undefined : "ffprobe");
+  if (!ffprobePath) return null;
   const result = await runner(
-    findFfBinary("ffprobe") ?? "ffprobe",
+    ffprobePath,
     [
-      ...["-v", "error", "-select_streams", "a"],
-      ...["-show_entries", "stream=codec_type,codec_name,channels", "-of", "json", "--", filePath],
+      "-v",
+      "error",
+      "-select_streams",
+      "a",
+      "-show_entries",
+      "stream=codec_type,codec_name,channels",
+      "-of",
+      "json",
+      ...MEDIA_INPUT_ARGS,
+      "--",
+      filePath,
     ],
     { timeout: 30_000 },
   );
@@ -301,6 +353,9 @@ export async function probeMediaMetadata(
   if (kind === "audio" || kind === "unknown") {
     return { kind, color: classifyMediaColor(null) };
   }
+  if (await readsAsMediaPlaylist(filePath)) {
+    return { kind, color: classifyMediaColor(null), probeError: NOT_MEDIA };
+  }
 
   // The default runner degrades a missing ffprobe to "unavailable" without
   // spawning; injected runners own execution and receive the normal command.
@@ -317,9 +372,10 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate:stream_disposition:stream_tags=alpha_mode:format=duration,bit_rate",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate,r_frame_rate,avg_frame_rate:stream_disposition:stream_tags=alpha_mode:format=duration,bit_rate",
       "-of",
       "json",
+      ...MEDIA_INPUT_ARGS,
       "--",
       filePath,
     ],

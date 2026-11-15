@@ -1,3 +1,4 @@
+import { assertLegacyPublishOwner, checkPublishTransition } from "../share/publishTransition.js";
 import { join, posix, relative, resolve } from "node:path";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { existsSync } from "node:fs";
@@ -30,6 +31,12 @@ import {
   writeTeamProject,
 } from "../utils/projectLink.js";
 import { cliSourced } from "../utils/sourceTag.js";
+import {
+  type LeftOutReference,
+  type OutsideFileReference,
+  outsideFilesNotice,
+} from "../utils/leftOutReference.js";
+import { trackUploadLeftOut } from "../telemetry/uploadLeftOut.js";
 
 export const examples: Example[] = [
   ["Publish the current project privately to a stable URL", "hyperframes publish"],
@@ -61,7 +68,7 @@ export function parseUpdateTarget(value: string): string {
 export default defineCommand({
   meta: {
     name: "publish",
-    description: "Upload the project to a stable URL (private by default)",
+    description: "Legacy source publishing; use share for new video reviews",
   },
   args: {
     dir: { type: "positional", description: "Project directory", required: false },
@@ -96,6 +103,7 @@ export default defineCommand({
     },
   },
   async run({ args }) {
+    const publishPhase = checkPublishTransition(args);
     if (args.yes !== true && isUnattended()) {
       clack.confirmationRequired("hyperframes publish", "Pass --yes to publish without asking.");
     }
@@ -183,6 +191,8 @@ export default defineCommand({
       return;
     }
 
+    assertLegacyPublishOwner(publishPhase, credential?.type === "oauth");
+
     // --update / --space only take effect for a login (an API-key publish is never owned).
     // Fail loudly rather than silently minting a fresh URL.
     if (updateTarget || spaceOverride) {
@@ -229,13 +239,30 @@ export default defineCommand({
       // committed config, else on by default.
       const proxyFlagValue = typeof args.proxy === "boolean" ? args.proxy : undefined;
       const autoProxy = resolveAutoProxy(dir, proxyFlagValue);
-      const fileMap = buildPublishFileMap(dir);
+      const leftOut: string[] = [];
+      const references: LeftOutReference[] = [];
+      const outsideFiles: OutsideFileReference[] = [];
+      const fileMap = buildPublishFileMap(
+        dir,
+        (warning, reference) => {
+          leftOut.push(warning);
+          references.push(reference);
+        },
+        (reference) => outsideFiles.push(reference),
+      );
+      trackUploadLeftOut("publish", references);
       let proxyBakeManifest: Awaited<ReturnType<typeof bakeMediaProxies>> | undefined;
       if (autoProxy) {
         proxyBakeManifest = await bakeMediaProxies(dir, fileMap);
       }
       const archive = zipPublishFileMap(fileMap);
-      publishSpinner.message("Uploading project...");
+      if (outsideFiles.length > 0) {
+        publishSpinner.stop("Project prepared");
+        clack.log.info(outsideFilesNotice(outsideFiles));
+        publishSpinner.start("Uploading project...");
+      } else {
+        publishSpinner.message("Uploading project...");
+      }
 
       const published = await publishProjectArchive(dir, {
         public: args.public === true,
@@ -245,6 +272,7 @@ export default defineCommand({
         credential,
       });
       publishSpinner.stop(c.success("Project published"));
+      for (const warning of leftOut) clack.log.warn(c.warn(warning));
 
       console.log();
       console.log(`  ${c.dim("Project")}              ${c.accent(published.title)}`);

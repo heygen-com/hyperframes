@@ -4,7 +4,7 @@ Use it whenever a run makes or changes a storyboard: when the person asks for on
 
 A film's shots are planned in the SHOTS line of `SPEC.md` (`spec.md`); a storyboard turns those shots into stills when the person wants to approve them first, one frame per shot, carrying its `reads` and `sound` (`storyboard-format.md`).
 
-The person sees the plan as stills on the board, comments or draws on a frame, and says go. The board is `boards/storyboard.html`, and tools that show it find its frames by the classes in § 2; boxes marked any other way (`cell` boxes, `id="frame-NN"` markers) are not found.
+The person sees the plan as stills on the board, comments or draws on a frame, and says go. The board is `boards/storyboard.html`, and tools that show it find its frames by the classes in § 2; boxes marked any other way (`cell` boxes, `id="frame-NN"` markers) are not found. HyperFrames Desktop and the Studio of `npx hyperframes preview` show the board in a Storyboard tab beside the preview and bring it to the front when it is written, so hand it over as that tab: with no preview running, start one and give its link, never the file's path. In that Studio, Approve copies "The storyboard is approved. Build the video from it." for the person to paste to you: that is their go.
 
 ## 1. The run
 

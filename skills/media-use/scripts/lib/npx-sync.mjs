@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 
 function resolveNpxCliPath(env, pathExists) {
   const npmExecPath = env.npm_execpath;
@@ -24,6 +24,26 @@ function resolveNpxCliPath(env, pathExists) {
 // so tests can exercise the win32 branch without mocking node:child_process
 // (its ESM exports are non-configurable) — same idiom as spawnP and
 // localTtsGenerate.
+// The HyperFrames CLI or plugin launcher that starts this code hands over its own entry file, so
+// `npx hyperframes` runs that same CLI with the same Node. Without one it fails rather than
+// letting npx resolve `hyperframes` from the project.
+function launchingCliInvocation(argv, opts, env) {
+  if (argv[0] !== "hyperframes") return null;
+  const entry = env.HYPERFRAMES_CLI_ENTRY;
+  if (!entry || !isAbsolute(entry)) {
+    throw new Error(
+      "No HyperFrames CLI was handed to this helper, and it does not look one up in the project. " +
+        "Run the helper through the plugin launcher (`plugin-cli.mjs --script <helper> ...`), or set " +
+        "HYPERFRAMES_CLI_ENTRY to the absolute path of your installed CLI's bin/hyperframes.mjs.",
+    );
+  }
+  return {
+    cmd: process.execPath,
+    args: [entry, ...argv.slice(1).map((arg) => String(arg))],
+    opts: { stdio: "ignore", windowsHide: true, ...opts },
+  };
+}
+
 export function resolveNpxInvocation(
   argv,
   opts,
@@ -32,7 +52,8 @@ export function resolveNpxInvocation(
   pathExists = existsSync,
 ) {
   const resolved =
-    platform !== "win32"
+    launchingCliInvocation(argv, opts, env) ??
+    (platform !== "win32"
       ? { cmd: "npx", args: argv, opts: { stdio: "ignore", ...opts } }
       : (() => {
           const nodeExecPath = env.npm_node_execpath || process.execPath;
@@ -44,7 +65,7 @@ export function resolveNpxInvocation(
                 opts: { stdio: "ignore", windowsHide: true, ...opts },
               }
             : null;
-        })();
+        })());
   if (!resolved) {
     // npx-on-win32 with no resolvable npx-cli.js — same terminal condition
     // spawnP warns about, surfaced as a throw for callers with no fallback.

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -153,6 +153,24 @@ async function buildApp(project: ProjectDir, autoProxy: boolean): Promise<Hono> 
 }
 
 describe("registerCompositionRoute", () => {
+  it("does not serve env files, Git data or the tools' own records", async () => {
+    const project = tmpProject();
+    mkdirSync(join(project.dir, ".git"));
+    mkdirSync(join(project.dir, ".hyperframes"));
+    writeFileSync(join(project.dir, ".env"), "KEY=secret");
+    writeFileSync(join(project.dir, ".env.local"), "KEY=secret");
+    writeFileSync(join(project.dir, ".git", "config"), "[core]");
+    writeFileSync(join(project.dir, ".hyperframes", "lambda-stack-x.json"), "{}");
+    writeFileSync(join(project.dir, "logo.png"), "png");
+    const app = await buildApp(project, false);
+
+    for (const path of [".env", ".ENV", ".env.local", ".git/config"]) {
+      expect((await app.request(`/composition/${path}`)).status).toBe(404);
+    }
+    expect((await app.request("/composition/.hyperframes/lambda-stack-x.json")).status).toBe(404);
+    expect((await app.request("/composition/logo.png")).status).toBe(200);
+  });
+
   it("lets a browser revalidate the composition and its assets instead of refetching them", async () => {
     const project = tmpProject();
     writeFileSync(join(project.dir, "index.html"), "<html><head></head><body></body></html>");
@@ -413,5 +431,61 @@ describe("registerCompositionRoute", () => {
     const proxyRes = await app.request("/composition/clip.mp4?hf-proxy=h264");
     expect(proxyRes.status).toBe(404);
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
+  });
+});
+
+describe("a composition document another site loads", () => {
+  const MARK = '<meta name="hyperframes-preview-for-another-site">';
+  const SANDBOX = "sandbox allow-scripts";
+
+  async function setup() {
+    const project = tmpProject();
+    writeFileSync(join(project.dir, "index.html"), "<html><head></head><body></body></html>");
+    return buildApp(project, false);
+  }
+
+  it("is marked and sandboxed when another site frames it", async () => {
+    const app = await setup();
+    const res = await app.request("/composition/index.html", {
+      headers: { "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Dest": "iframe" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(MARK);
+    expect(res.headers.get("Content-Security-Policy")).toBe(SANDBOX);
+    expect(res.headers.get("ETag")).toBeNull();
+  });
+
+  it("gets a marked 200, not a 304, for the unmarked copy's validators", async () => {
+    const app = await setup();
+    const own = await app.request("/composition/index.html", {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+    });
+    const etag = own.headers.get("ETag") ?? "";
+    expect(etag).not.toBe("");
+    const res = await app.request("/composition/index.html", {
+      headers: { "Sec-Fetch-Site": "cross-site", "If-None-Match": etag },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(MARK);
+  });
+
+  it("stays unmarked for the play page's own player", async () => {
+    const app = await setup();
+    const res = await app.request("/composition/index.html", {
+      headers: { "Sec-Fetch-Site": "same-origin", "Sec-Fetch-Dest": "iframe" },
+    });
+    expect(await res.text()).not.toContain(MARK);
+    expect(res.headers.get("Content-Security-Policy")).toBeNull();
+  });
+
+  it("is marked on a LAN name with no fetch metadata unless the play page sent it", async () => {
+    const app = await setup();
+    const lan = "http://192.168.1.20:3003";
+    const foreign = await app.request(`${lan}/composition/index.html`);
+    expect(await foreign.text()).toContain(MARK);
+    const own = await app.request(`${lan}/composition/index.html`, {
+      headers: { Referer: `${lan}/` },
+    });
+    expect(await own.text()).not.toContain(MARK);
   });
 });

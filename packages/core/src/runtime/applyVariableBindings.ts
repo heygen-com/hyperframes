@@ -145,7 +145,12 @@ function applyCssCustomProperties(roots: Iterable<Element>, cache: ScopeValuesCa
   }
 }
 
-function variableSrcFor(el: Element, cache: ScopeValuesCache, warn = true): string | null {
+/** The src `values` bind to `el` through its `data-var-src`, or null when nothing safe is bound. */
+export function boundMediaSrc(
+  el: Element,
+  values: Record<string, unknown>,
+  warn = true,
+): string | null {
   const id = el.getAttribute("data-var-src")?.trim();
   if (!id) return null;
   // Only media elements may take a variable-driven src (see VAR_SRC_TAGS) — a
@@ -157,13 +162,17 @@ function variableSrcFor(el: Element, cache: ScopeValuesCache, warn = true): stri
       );
     return null;
   }
-  const url = resolveUrl(valuesForElement(el, cache)[id]);
+  const url = resolveUrl(values[id]);
   if (url === null) return null;
   if (!isSafeMediaUrl(url)) {
     if (warn) console.warn(`[hyperframes] Ignoring data-var-src="${id}": unsafe URL protocol.`);
     return null;
   }
   return url;
+}
+
+function variableSrcFor(el: Element, cache: ScopeValuesCache, warn = true): string | null {
+  return boundMediaSrc(el, valuesForElement(el, cache), warn);
 }
 
 /** The src an element loads, preview proxy aside: its bound variable's value, else its attribute. */

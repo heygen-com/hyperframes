@@ -19,6 +19,7 @@ import {
   desktopInstalled,
   openCommandFor,
   openInDesktop,
+  previewStopCommandFor,
 } from "./desktopApp.js";
 
 const LIVE = { ready: true, platform: "darwin" as const, env: {}, installed: () => true };
@@ -103,6 +104,84 @@ describe("openInDesktop", () => {
       expect(existsSync(record)).toBe(false);
       openInDesktop(dir, { ...LIVE, cta: "page-1", open: () => true });
       expect(JSON.parse(readFileSync(record, "utf8"))).toMatchObject({ cta: "page-1" });
+      expect(JSON.parse(readFileSync(record, "utf8"))).not.toHaveProperty("doc");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("tells the app to open on the storyboard when the press came from the Storyboard tab", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-doc-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      openInDesktop(dir, { ...LIVE, cta: "page-1", doc: "storyboard", open: () => true });
+      expect(JSON.parse(readFileSync(record, "utf8"))).toMatchObject({
+        cta: "page-1",
+        doc: "storyboard",
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("has the storyboard ask in place when the app is handed the folder, not after", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-order-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      let seen: unknown = null;
+      openInDesktop(dir, {
+        ...LIVE,
+        cta: "page-1",
+        doc: "storyboard",
+        open: () => {
+          seen = JSON.parse(readFileSync(record, "utf8"));
+          return true;
+        },
+      });
+      expect(seen).toMatchObject({ cta: "page-1", doc: "storyboard" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("doesn't reuse an earlier storyboard ask on a later header or plain open", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-later-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    const read = () => JSON.parse(readFileSync(record, "utf8"));
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      openInDesktop(dir, { ...LIVE, cta: "page-1", doc: "storyboard", open: () => true });
+      let seen: unknown = null;
+      openInDesktop(dir, { ...LIVE, cta: "page-2", open: () => ((seen = read()), true) });
+      expect(seen).toMatchObject({ cta: "page-2" });
+      expect(seen).not.toHaveProperty("doc");
+
+      openInDesktop(dir, { ...LIVE, cta: "page-1", doc: "storyboard", open: () => true });
+      openInDesktop(dir, { ...LIVE, open: () => ((seen = read()), true) });
+      expect(seen).toMatchObject({ cta: "page-1" });
+      expect(seen).not.toHaveProperty("doc");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("puts the earlier record back when the app didn't take the folder", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-cta-undo-"));
+    const record = join(dir, ".hyperframes", "desktop-cta.json");
+    try {
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      openInDesktop(dir, { ...LIVE, cta: "page-1", open: () => true });
+      const earlier = readFileSync(record, "utf8");
+      openInDesktop(dir, {
+        ...LIVE,
+        cta: "page-2",
+        doc: "storyboard",
+        open: () => false,
+        installed: () => true,
+      });
+      expect(readFileSync(record, "utf8")).toBe(earlier);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -316,9 +395,34 @@ describe("openCommandFor", () => {
       "hyperframes open .",
     );
     expect(openCommandFor(join(work, "films", "a"), work)).toBe(
-      `hyperframes open ${join("films", "a")}`,
+      process.platform === "win32" ? 'hyperframes open "films\\a"' : "hyperframes open films/a",
     );
     expect(openCommandFor(join(work, "my film"), work)).toBe('hyperframes open "my film"');
+  });
+
+  it("spells a Windows folder so PowerShell and Git Bash run no part of its name", () => {
+    const work = resolve("work");
+    expect(openCommandFor(join(work, "$(calc)"), work, "win32")).toBe(
+      "hyperframes open from the project folder",
+    );
+    expect(openCommandFor(join(work, "$(calc)&calc"), work, "win32")).toBe(
+      "hyperframes open from the project folder",
+    );
+  });
+
+  it("has no Windows stop command for a folder with no safe spelling", () => {
+    const work = resolve("work");
+    expect(previewStopCommandFor(join(work, "$(calc)&calc"), 3002, work, "win32")).toBeNull();
+  });
+
+  it("names the matching `preview --stop` the same way", () => {
+    const work = resolve("work");
+    expect(previewStopCommandFor(work, 3002, work)).toBe(
+      "hyperframes preview . --stop --port 3002",
+    );
+    expect(previewStopCommandFor(join(work, "my film"), 4567, work)).toBe(
+      'hyperframes preview "my film" --stop --port 4567',
+    );
   });
 });
 
@@ -405,6 +509,19 @@ describe("desktopHint", () => {
     );
   });
 
+  it("tells a preview's reader that the app can't edit while the preview runs", () => {
+    const installed = { ...mac, ready: true, installed: true };
+    expect(desktopHint(process.cwd(), { ...installed, preview: "background" })).toBe(
+      "Keep editing by chatting with Framey in the desktop app: hyperframes open . (this stops the background preview)",
+    );
+    expect(desktopHint(process.cwd(), { ...installed, preview: "foreground" })).toBe(
+      "Keep editing by chatting with Framey in the desktop app: stop this preview, then run hyperframes open .",
+    );
+    expect(desktopHint(process.cwd(), { ...mac, installed: false, preview: "background" })).toBe(
+      MAC_HINT,
+    );
+  });
+
   it("says nothing inside the app, whose runs carry HYPERFRAMES_DESKTOP_PROJECT", () => {
     const inApp = {
       ...mac,
@@ -422,7 +539,13 @@ describe("desktopHint", () => {
   });
 
   it("still gives the line to a coding agent, which passes it on to the person", () => {
-    const agent = { ...mac, ready: true, installed: true, tty: false, env: { CLAUDECODE: "1" } };
+    const agent = {
+      ...mac,
+      ready: true,
+      installed: true,
+      tty: false,
+      env: { CLAUDE_CODE_CHILD_SESSION: "1" },
+    };
     expect(desktopHint(process.cwd(), agent)).toBe(
       "Keep editing by chatting with Framey in the desktop app: hyperframes open .",
     );

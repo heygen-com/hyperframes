@@ -6,6 +6,7 @@ import { acceleratedCanvasTrackerSource } from "@hyperframes/core";
 import { decodePng } from "../../../utils/alphaBlit.js";
 import { resolveHeadlessShellPath } from "../../browserManager.js";
 import { waitForPendingSeekCompletion } from "../../frameCapture.js";
+import { closeTestChrome } from "../loopback.js";
 import type { Rgba } from "../blurDifferential.js";
 
 export const RUNTIME = resolve(
@@ -13,10 +14,22 @@ export const RUNTIME = resolve(
   "../../../../../core/dist/hyperframe.runtime.iife.js",
 );
 export const chromePath = resolveHeadlessShellPath();
-export const hasBrowser =
-  chromePath !== undefined &&
-  existsSync(RUNTIME) &&
-  spawnSync(chromePath, ["--version"]).status === 0;
+const chromeRuns = (): boolean =>
+  chromePath !== undefined && spawnSync(chromePath, ["--version"]).status === 0;
+const mustRun = Boolean(process.env.CI);
+export const hasBrowser = mustRun || (chromeRuns() && existsSync(RUNTIME));
+
+export function requireBlurBrowser(supported: boolean): void {
+  if (!mustRun) return;
+  const missing = [
+    !chromeRuns() && `a Chrome that runs (found: ${chromePath ?? "none"})`,
+    !existsSync(RUNTIME) && `the core runtime build at ${RUNTIME}`,
+    !supported && "CanvasRenderingContext2D.drawElementImage in that Chrome",
+  ].filter(Boolean);
+  if (missing.length > 0) {
+    throw new Error(`the blur browser tests cannot run on CI: missing ${missing.join(", ")}`);
+  }
+}
 
 export interface BlurReport {
   state: string;
@@ -35,6 +48,7 @@ export type BlurWindow = Window & {
 };
 
 export async function launch(): Promise<{ browser: Browser; supported: boolean }> {
+  requireBlurBrowser(true);
   const browser = await puppeteer.launch({
     executablePath: chromePath,
     headless: true,
@@ -52,6 +66,12 @@ export async function launch(): Promise<{ browser: Browser; supported: boolean }
     () => typeof Reflect.get(CanvasRenderingContext2D.prototype, "drawElementImage") === "function",
   );
   await probe.close();
+  try {
+    requireBlurBrowser(supported);
+  } catch (error) {
+    await closeTestChrome(browser);
+    throw error;
+  }
   return { browser, supported };
 }
 

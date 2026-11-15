@@ -1,6 +1,5 @@
 import { failCommand, failUsage, requestCliExit } from "../../utils/commandResult.js";
-import { envFlagEnabled, isCI } from "../../utils/attendedTerminal.js";
-import { isAgentDriven } from "../../telemetry/agent_runtime.js";
+import { isCI, isRemoteOrHeadless } from "../../utils/attendedTerminal.js";
 /**
  * `hyperframes auth login` — sign in to HeyGen.
  *
@@ -100,29 +99,6 @@ export default defineCommand({
     await runOAuthLogin();
   },
 });
-
-function isRemoteOrHeadless(): boolean {
-  const remoteEnvironment = [
-    "CODESPACES",
-    "GITHUB_CODESPACES",
-    "REMOTE_CONTAINERS",
-    "GITPOD_WORKSPACE_ID",
-    "container",
-  ].some(envFlagEnabled);
-  return Boolean(
-    process.env["SSH_CONNECTION"] ||
-    process.env["SSH_CLIENT"] ||
-    process.env["SSH_TTY"] ||
-    process.env["BROWSER"] === "none" ||
-    process.env["HF_NO_BROWSER"] === "1" ||
-    remoteEnvironment ||
-    (process.stdout.isTTY !== true && !agentShellOnThisMachine()),
-  );
-}
-
-function agentShellOnThisMachine(): boolean {
-  return !isCI() && isAgentDriven();
-}
 
 function assertDeviceFlowAllowed(): void {
   if (isCI()) {

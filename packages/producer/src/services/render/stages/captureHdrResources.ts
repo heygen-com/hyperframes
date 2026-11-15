@@ -16,8 +16,7 @@
  * exist, leaving the caller with empty maps that the hot loop tolerates.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, statfsSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, rmSync, statSync, statfsSync } from "node:fs";
 import {
   type CaptureSession,
   decodePngToRgb48le,
@@ -46,6 +45,7 @@ import type { HdrDiagnostics, RenderJob } from "../../renderOrchestrator.js";
 import type { CompositionMetadata } from "../shared.js";
 import { createHdrFrameWindows, type HdrFrameWindows } from "../../hdrFrameWindows.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 function tempDirSafePrefix(id: string): string {
   const safe = id.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 80);
@@ -464,7 +464,7 @@ export async function extractHdrVideoFrames(args: {
       if (!video || !planned) continue;
       const { window, metadata } = planned;
       mkdirSync(framesDir, { recursive: true });
-      const frameDir = mkdtempSync(join(framesDir, `hdr_${tempDirSafePrefix(videoId)}-`));
+      const frameDir = createStagingDir(framesDir, `hdr_${tempDirSafePrefix(videoId)}-`);
       createdFrameDirs.add(frameDir);
       const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
       const frameSize = dims.width * dims.height * 6;

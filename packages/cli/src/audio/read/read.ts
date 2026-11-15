@@ -28,7 +28,14 @@ import {
   spanDb,
 } from "./signal.js";
 import { DRUM_STEM, VOICE_STEM, cachedStems, fetchStems, stemsAccess } from "./stems.js";
-import { READ_VERSION, type AudibleStem, type Music, type ReadAudio, type Voice } from "./types.js";
+import {
+  READ_VERSION,
+  type AudibleStem,
+  type Layer,
+  type Music,
+  type ReadAudio,
+  type Voice,
+} from "./types.js";
 import { voiceFromActivity, voiceFromWords, type TimedWord } from "./voice.js";
 
 export interface ReadOptions {
@@ -37,6 +44,7 @@ export interface ReadOptions {
   /** A transcript of the recording; `<file>.transcript.json` next to it is used when absent. */
   transcript?: string;
   quality?: AnalysisQuality;
+  layer?: Layer;
 }
 
 export interface ReadResult {
@@ -379,6 +387,46 @@ async function analyze(
   return { ...about, voice, effects, music: null, ambience: null, warnings };
 }
 
+async function analyzeLayer(
+  path: string,
+  file: string,
+  sha: string,
+  transcript: string | null,
+  layer: Layer,
+): Promise<ReadAudio> {
+  const samples = await decodeMono(path);
+  const about = {
+    ...base(file, sha, round(samples.length / READ_RATE, 3), null, transcript),
+    layer,
+  };
+  const none = { voice: null, effects: null, music: null, ambience: null, warnings: [] };
+  if (layer === "music") {
+    const { music, ambience } = musicOf({ music: samples }, null, samples);
+    return { ...about, ...none, music, ambience, bpm: tempoOf(music) };
+  }
+  if (layer === "sfx") {
+    const effects = findEffects({
+      sources: [{ samples }],
+      sampleRate: READ_RATE,
+      mix: samples,
+      music: null,
+      beats: [],
+      speech: [],
+    });
+    return { ...about, ...none, effects };
+  }
+  const words = transcript ? wordsOf(transcript) : [];
+  const pitch = pitchTrack(await decodeMono(path, PITCH_RATE));
+  const levelOf = (span: Span) => spanDb(samples, READ_RATE, span.start, span.end);
+  const voice = words.length
+    ? voiceFromWords(words, pitch, levelOf)
+    : voiceFromActivity(samples, READ_RATE, pitch, levelOf);
+  const warnings = words.length
+    ? []
+    : [`no transcript: voice lines carry no words; ${transcribeHint(file)}`];
+  return { ...about, ...none, voice, warnings };
+}
+
 function base(
   file: string,
   sha: string,
@@ -408,6 +456,7 @@ export async function readAudio(
   options: ReadOptions,
 ): Promise<ReadResult> {
   const quality = options.quality ?? "local";
+  const { layer } = options;
   const sha = await sha256(path);
   const transcript = transcriptFor(path, options.transcript);
   const transcriptKey = fingerprint(transcript);
@@ -419,12 +468,14 @@ export async function readAudio(
   if (existsSync(jsonPath) && existsSync(textPath)) {
     const entry = JSON.parse(readFileSync(jsonPath, "utf8")) as CacheEntry;
     const stemsNowPossible =
+      !layer &&
       entry.analysis.separation === "mix" &&
       quality === "best" &&
       (cachedStems(stemDir) !== null || typeof (await stemsAccess()) !== "string");
     if (
       (entry.analysis.separation !== "stems" || cachedStems(stemDir) !== null) &&
       entry.analysis.version === READ_VERSION &&
+      entry.analysis.layer === layer &&
       entry.revision === CACHE_REVISION &&
       entry.transcriptKey === transcriptKey &&
       !stemsNowPossible &&
@@ -437,7 +488,9 @@ export async function readAudio(
     )
       return { analysis: entry.analysis, textPath, jsonPath, cached: true };
   }
-  const analysis = await analyze(path, file, sha, transcript, stemDir, quality, options.cacheDir);
+  const analysis = layer
+    ? await analyzeLayer(path, file, sha, transcript, layer)
+    : await analyze(path, file, sha, transcript, stemDir, quality, options.cacheDir);
   writeAtomic(
     jsonPath,
     JSON.stringify({ revision: CACHE_REVISION, analysis, transcriptKey } satisfies CacheEntry),

@@ -8,6 +8,7 @@ import { runFfmpeg } from "../utils/runFfmpeg.js";
 // Four CPUs: two extraction slots.
 vi.mock("os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("os")>()),
+  availableParallelism: () => 4,
   cpus: () => [{}, {}, {}, {}],
 }));
 

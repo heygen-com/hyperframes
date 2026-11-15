@@ -4,8 +4,8 @@ Read this reference when the person asks about installing or updating skills, wh
 
 For a plugin installation, follow [plugin execution rules](plugin-installation.md); the plugin manager owns updates and every skill is bundled. The commands below apply only to standalone skills.
 
-- **Core set:** `/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry` and `/media-use`.
-- **On demand:** `/figma`, `/slideshow`, `/remotion-to-hyperframes`, `/reverse-any-video` and `/style-sampling`, which the person installs with `npx hyperframes skills update <name>`.
+- **Core set:** `/hyperframes`, `/hyperframes-cli`, `/hyperframes-registry`, `/media-use`, `/reverse-any-video` and `/style-sampling`.
+- **On demand:** `/figma`, `/slideshow` and `/remotion-to-hyperframes`, which the person installs with `npx hyperframes skills update <name>`.
 
 ## What `init` does
 

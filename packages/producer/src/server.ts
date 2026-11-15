@@ -25,6 +25,7 @@ import {
 import { resolve, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { parseArgs } from "node:util";
+import { isIP } from "node:net";
 import crypto from "node:crypto";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -34,10 +35,12 @@ import {
   REFERENCE_BACKGROUND_FIELD,
   referenceBackgroundResult,
 } from "@hyperframes/engine";
+import { isSafePath } from "@hyperframes/core/safe-path";
 import {
   RenderCancelledError,
   createRenderJob,
   executeRenderJob,
+  resolveRenderDebugDir,
   type ProgressCallback,
   type RenderConfig,
   type RenderJob,
@@ -56,6 +59,7 @@ import {
 import { parseEncoderOptions } from "@hyperframes/studio-server/encoder-options";
 import { createRenderRequest, renderConfigFromRequest } from "./renderRequest.js";
 import { extractSafeRenderErrorCode } from "./services/safeRenderErrorCode.js";
+import { readProducerVersion } from "./services/distributed/shared.js";
 
 export { extractSafeRenderErrorCode };
 
@@ -75,11 +79,23 @@ export interface HandlerOptions {
   artifactTtlMs?: number;
   /** Max renders that execute simultaneously. Queued requests wait FIFO. Default: 2. */
   maxConcurrentRenders?: number;
+  /** Extra browser-facing host names (e.g. a proxy's); merged with PRODUCER_ALLOWED_HOSTS. */
+  allowedHosts?: readonly string[];
+  /** Confine request paths and debug as below. Default: true in `createProducerApp`, false in `createRenderHandlers`. */
+  confineRequests?: boolean;
+  /** With `confineRequests`: where every `projectDir` must resolve. Defaults to PRODUCER_PROJECTS_DIR or the working directory. */
+  projectsDir?: string;
+  /** With `confineRequests`: let requests set `debug: true`, which keeps work dirs on disk. Defaults to PRODUCER_ALLOW_DEBUG=1. */
+  allowDebug?: boolean;
+  /** Bearer token `createProducerApp` requires on every route but /health. Defaults to PRODUCER_AUTH_TOKEN. */
+  authToken?: string;
 }
 
 export interface ServerOptions extends HandlerOptions {
   /** Port to listen on. Default: 9847. */
   port?: number;
+  /** Address to listen on. Default: PRODUCER_HOST or 127.0.0.1. A non-loopback address requires `authToken`. */
+  hostname?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +117,7 @@ interface RenderInput {
   keyframeIntervalSeconds?: number;
   maxBitrate?: string;
   bufferSize?: string;
+  chromaSubsampling?: RenderConfig["chromaSubsampling"];
   useGpu: boolean;
   debug: boolean;
   forceScreenshot?: true;
@@ -112,6 +129,8 @@ interface RenderInput {
    * composition's declared defaults, ignoring per-request overrides.
    */
   variables?: Record<string, unknown>;
+  /** Fails with `VARIABLES_INVALID` before any frame if `variables` mismatch the page's declarations. Default off. */
+  strictVariables?: boolean;
   /**
    * Output resolution preset (e.g. `landscape-4k`). Drives the same
    * `resolveDeviceScaleFactor` supersampling path the local CLI uses — Chrome
@@ -162,6 +181,12 @@ export function extractSafeRenderErrorMetadata(
     retryable: typeof retryable === "boolean" ? retryable : undefined,
     ...(isPlainObject(publicMetadata) ? { errorMetadata: publicMetadata } : {}),
   };
+}
+
+function strictVariablesResult(job: RenderJob): { strictVariablesChecked?: boolean } {
+  return job.strictVariablesChecked === undefined
+    ? {}
+    : { strictVariablesChecked: job.strictVariablesChecked };
 }
 
 function parseServerFps(value: unknown): RenderInput["fps"] {
@@ -234,10 +259,17 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     parseServerOutputDynamicRange(body.outputDynamicRange) ??
     fromRenderHdrMode(parseLegacyServerHdrMode(body.hdrMode));
   const encoder = parseEncoderOptions(body, format ?? "mp4");
-  const { crf, videoBitrate, videoFrameFormat, keyframeIntervalSeconds, maxBitrate, bufferSize } =
-    encoder.ok ? encoder.options : {};
+  const {
+    crf,
+    videoBitrate,
+    videoFrameFormat,
+    keyframeIntervalSeconds,
+    maxBitrate,
+    bufferSize,
+    chromaSubsampling,
+  } = encoder.ok ? encoder.options : {};
 
-  const { variables, outputResolution, outputResolutionAspectAgnostic } =
+  const { variables, strictVariables, outputResolution, outputResolutionAspectAgnostic } =
     parseRenderOverrides(body);
 
   return {
@@ -251,6 +283,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     keyframeIntervalSeconds,
     maxBitrate,
     bufferSize,
+    chromaSubsampling,
     useGpu,
     debug,
     forceScreenshot,
@@ -259,6 +292,7 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     format,
     outputDynamicRange,
     variables,
+    strictVariables,
     outputResolution,
     outputResolutionAspectAgnostic,
     videoFrameFormat,
@@ -277,11 +311,13 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
  */
 function parseRenderOverrides(body: Record<string, unknown>): {
   variables?: Record<string, unknown>;
+  strictVariables?: boolean;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic?: boolean;
 } {
   // Only forward a plain JSON object. Arrays / primitives / null → undefined.
   const variables = isPlainObject(body.variables) ? body.variables : undefined;
+  const strictVariables = body.strictVariables === true ? true : undefined;
   // Accept canonical presets and aliases ("4k", "landscape-4k", …).
   const rawOutputResolution =
     typeof body.outputResolution === "string" ? body.outputResolution : undefined;
@@ -294,7 +330,7 @@ function parseRenderOverrides(body: Record<string, unknown>): {
   const outputResolutionAspectAgnostic = outputResolution
     ? isAspectAgnosticResolutionAlias(rawOutputResolution)
     : undefined;
-  return { variables, outputResolution, outputResolutionAspectAgnostic };
+  return { variables, strictVariables, outputResolution, outputResolutionAspectAgnostic };
 }
 
 /**
@@ -318,11 +354,13 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       keyframeIntervalSeconds: input.keyframeIntervalSeconds,
       maxBitrate: input.maxBitrate,
       bufferSize: input.bufferSize,
+      chromaSubsampling: input.chromaSubsampling,
       useGpu: input.useGpu,
       debug: input.debug,
       strictness: input.strictness,
       entryFile: input.entryFile,
       variables: input.variables,
+      strictVariables: input.strictVariables,
       outputResolution: input.outputResolution,
       outputResolutionAspectAgnostic: input.outputResolutionAspectAgnostic,
       videoFrameFormat: input.videoFrameFormat,
@@ -343,12 +381,49 @@ function resolvePreparedRenderOutput(
   prepared: PreparedRenderInput,
   rendersDir: string,
   log: ProducerLogger,
+  confineOutput: boolean,
 ): { input: RenderInput; cleanupProjectDir?: string; absoluteOutputPath: string } {
   const { input, cleanupProjectDir } = prepared;
   const absoluteOutputPath = resolveOutputPath(input.projectDir, input.outputPath, rendersDir, log);
+  if (confineOutput) {
+    mkdirSync(rendersDir, { recursive: true });
+    if (!isSafePath(rendersDir, absoluteOutputPath)) {
+      throw new Error("outputPath must be inside the renders directory");
+    }
+  }
   const outputDir = dirname(absoluteOutputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
   return { input, cleanupProjectDir, absoluteOutputPath };
+}
+
+type PreparedRenderJob =
+  | {
+      job: RenderJob;
+      input: RenderInput;
+      cleanupProjectDir?: string;
+      absoluteOutputPath: string;
+    }
+  | { error: string };
+
+/**
+ * Build the render job before a render slot is taken, so a request the strict
+ * render-request validator rejects never holds a slot. On failure the inline
+ * project directory is removed here, since no handler cleanup will run.
+ */
+function prepareRenderJob(
+  prepared: PreparedRenderInput,
+  rendersDir: string,
+  log: ProducerLogger,
+  confineOutput: boolean,
+): PreparedRenderJob {
+  try {
+    const output = resolvePreparedRenderOutput(prepared, rendersDir, log, confineOutput);
+    const job = createRenderJob(buildRenderJobConfig(output.input, output.absoluteOutputPath, log));
+    return { ...output, job };
+  } catch (error) {
+    cleanupTempDir(prepared.cleanupProjectDir, log);
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 /**
@@ -367,8 +442,14 @@ function validateRenderOverrides(body: Record<string, unknown>): string | undefi
   ) {
     return "maxRenderMs must be a non-negative integer number of milliseconds";
   }
+  if (typeof body.workers === "number" && (!Number.isInteger(body.workers) || body.workers < 1)) {
+    return "workers must be a positive integer";
+  }
   if (body.variables !== undefined && !isPlainObject(body.variables)) {
     return 'variables must be a JSON object keyed by variable id (e.g. {"title":"Hello"})';
+  }
+  if (body.strictVariables !== undefined && typeof body.strictVariables !== "boolean") {
+    return "strictVariables must be a boolean";
   }
   if (
     body.outputDynamicRange !== undefined &&
@@ -387,6 +468,9 @@ function validateRenderOverrides(body: Record<string, unknown>): string | undefi
     outputDynamicRange !== fromRenderHdrMode(legacyHdrMode)
   ) {
     return "outputDynamicRange and legacy hdrMode must describe the same output policy";
+  }
+  if (body.chromaSubsampling === "444" && outputDynamicRange === "hdr") {
+    return 'chromaSubsampling "444" is SDR only, not outputDynamicRange "hdr"';
   }
   return validateOutputResolutionOverride(body);
 }
@@ -412,19 +496,55 @@ type PrepareRenderResult = { prepared: PreparedRenderInput } | { error: string }
 
 const MAX_PREVIEW_HTML_BYTES = 20 * 1024 * 1024;
 
+/** What a request may reach on disk; see `HandlerOptions.projectsDir` and `allowDebug`. */
+export interface RenderRequestPolicy {
+  projectsDir: string;
+  allowDebug: boolean;
+}
+
+function resolveRenderRequestPolicy(options: HandlerOptions): RenderRequestPolicy {
+  return {
+    projectsDir: resolve(
+      options.projectsDir ?? (process.env.PRODUCER_PROJECTS_DIR || process.cwd()),
+    ),
+    allowDebug: options.allowDebug ?? process.env.PRODUCER_ALLOW_DEBUG === "1",
+  };
+}
+
+/** Inside the projects root, and not in the debug dir where earlier requests' compiled HTML persists. */
+function isAllowedProjectPath(projectsDir: string, path: string): boolean {
+  return isSafePath(projectsDir, path) && !isSafePath(resolveRenderDebugDir(), path);
+}
+
+/** An entry the project may serve: inside it, symlinks included, and allowed by the policy. */
+function isAllowedEntryPath(
+  policy: RenderRequestPolicy,
+  projectDir: string,
+  path: string,
+): boolean {
+  return isSafePath(projectDir, path) && isAllowedProjectPath(policy.projectsDir, path);
+}
+
 function prepareProjectDirectory(
   projectDir: unknown,
   options: Omit<RenderInput, "projectDir">,
+  policy: RenderRequestPolicy | undefined,
 ): PrepareRenderResult | null {
   const candidate = nonEmptyString(projectDir);
   if (!candidate) return null;
-  const absProjectDir = resolve(candidate);
-  if (!existsSync(absProjectDir) || !statSync(absProjectDir).isDirectory()) {
-    return { error: `Project directory not found: ${absProjectDir}` };
+  const absProjectDir = policy ? resolve(policy.projectsDir, candidate) : resolve(candidate);
+  const shown = policy ? candidate : absProjectDir;
+  if (
+    (policy && !isAllowedProjectPath(policy.projectsDir, absProjectDir)) ||
+    !existsSync(absProjectDir) ||
+    !statSync(absProjectDir).isDirectory()
+  ) {
+    return { error: `Project directory not found: ${shown}` };
   }
   const entry = options.entryFile || "index.html";
-  if (!existsSync(resolve(absProjectDir, entry))) {
-    return { error: `Entry file "${entry}" not found in project directory: ${absProjectDir}` };
+  const entryPath = resolve(absProjectDir, entry);
+  if ((policy && !isAllowedEntryPath(policy, absProjectDir, entryPath)) || !existsSync(entryPath)) {
+    return { error: `Entry file "${entry}" not found in project directory: ${shown}` };
   }
   return { prepared: { input: { projectDir: absProjectDir, ...options } } };
 }
@@ -466,18 +586,22 @@ function materializeInlineProject(
 
 export async function prepareRenderBody(
   body: Record<string, unknown>,
+  policy?: RenderRequestPolicy,
 ): Promise<PrepareRenderResult> {
   // Reject explicitly-supplied-but-malformed overrides up front so the caller
   // gets a clear 400 instead of a silently-ignored value.
   const overrideError = validateRenderOverrides(body);
   if (overrideError) return { error: overrideError };
+  if (policy && body.debug === true && !policy.allowDebug) {
+    return { error: "debug is disabled on this server (set allowDebug or PRODUCER_ALLOW_DEBUG=1)" };
+  }
 
   const pageMotionBlur = body.pageMotionBlur;
   if (pageMotionBlur !== undefined && pageMotionBlur !== "off") {
     return { error: "pageMotionBlur must be off when supplied" };
   }
   const options: Omit<RenderInput, "projectDir"> = { ...parseRenderOptions(body), pageMotionBlur };
-  const project = prepareProjectDirectory(body.projectDir, options);
+  const project = prepareProjectDirectory(body.projectDir, options, policy);
   if (project) return project;
   const source = await resolveInlineRenderHtml(body);
   return "error" in source ? source : materializeInlineProject(source.html, options);
@@ -549,6 +673,11 @@ function cleanupTempDir(dir: string | undefined, log: ProducerLogger): void {
   }
 }
 
+/** The job id names the render's work dir (kept on disk under `debug`), so it stays server-side. */
+function publicPerfSummary(job: RenderJob) {
+  return job.perfSummary ? { ...job.perfSummary, renderId: undefined } : null;
+}
+
 function outputFileSize(path: string): number {
   return existsSync(path) ? statSync(path).size : 0;
 }
@@ -571,6 +700,7 @@ async function prepareSseRenderRequest(
   c: Context,
   stream: SseWriter,
   requestId: string,
+  policy: RenderRequestPolicy | undefined,
 ): Promise<PreparedRenderInput | null> {
   let body: Record<string, unknown>;
   try {
@@ -586,7 +716,7 @@ async function prepareSseRenderRequest(
     });
     return null;
   }
-  const prepared = await prepareRenderBody(body);
+  const prepared = await prepareRenderBody(body, policy);
   if (!("error" in prepared)) return prepared.prepared;
   await stream.writeSSE({
     data: JSON.stringify({
@@ -686,6 +816,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     options.getRequestId ?? ((c: Context) => c.req.header("x-request-id") || crypto.randomUUID());
   const outputUrlPrefix = options.outputUrlPrefix ?? "/outputs";
   const rendersDir = options.rendersDir ?? process.env.PRODUCER_RENDERS_DIR ?? "/tmp";
+  const policy = options.confineRequests ? resolveRenderRequestPolicy(options) : undefined;
   const artifactTtlMs =
     options.artifactTtlMs ?? Number(process.env.PRODUCER_OUTPUT_ARTIFACT_TTL_MS || 15 * 60 * 1000);
   const store = createArtifactStore(artifactTtlMs);
@@ -711,7 +842,19 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       return c.json({ success: false, requestId, error: "Invalid JSON body" }, 400);
     }
 
-    const preparedResult = prepareHyperframeLintBody(body);
+    const lintProjectDir = nonEmptyString(body.projectDir);
+    let isAllowedEntry: ((path: string) => boolean) | undefined;
+    if (policy && lintProjectDir) {
+      const absProjectDir = resolve(policy.projectsDir, lintProjectDir);
+      if (!isAllowedProjectPath(policy.projectsDir, absProjectDir)) {
+        const error = `Project directory not found: ${lintProjectDir}`;
+        return c.json({ success: false, requestId, error }, 400);
+      }
+      body = { ...body, projectDir: absProjectDir };
+      isAllowedEntry = (path) => isAllowedEntryPath(policy, absProjectDir, path);
+    }
+
+    const preparedResult = prepareHyperframeLintBody(body, isAllowedEntry);
     if ("error" in preparedResult) {
       return c.json({ success: false, requestId, error: preparedResult.error }, 400);
     }
@@ -745,16 +888,16 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       return c.json({ success: false, requestId, error: "Invalid JSON body" }, 400);
     }
 
-    const preparedResult = await prepareRenderBody(body);
+    const preparedResult = await prepareRenderBody(body, policy);
     if ("error" in preparedResult) {
       return c.json({ success: false, requestId, error: preparedResult.error }, 400);
     }
 
-    const { input, cleanupProjectDir, absoluteOutputPath } = resolvePreparedRenderOutput(
-      preparedResult.prepared,
-      rendersDir,
-      log,
-    );
+    const preparedJob = prepareRenderJob(preparedResult.prepared, rendersDir, log, !!policy);
+    if ("error" in preparedJob) {
+      return c.json({ success: false, requestId, error: preparedJob.error }, 400);
+    }
+    const { job, input, cleanupProjectDir, absoluteOutputPath } = preparedJob;
 
     const release = await renderSemaphore.acquire();
 
@@ -764,8 +907,6 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       fps: input.fps,
       quality: input.quality,
     });
-
-    const job = createRenderJob(buildRenderJobConfig(input, absoluteOutputPath, log));
 
     try {
       await executeRenderJob(
@@ -798,7 +939,8 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
         videoDurationSeconds: job.duration ?? null,
         outcome: job.outcome ?? "completed",
         warnings: job.warnings,
-        perf: job.perfSummary ?? null,
+        perf: policy ? publicPerfSummary(job) : (job.perfSummary ?? null),
+        ...strictVariablesResult(job),
       });
     } catch (error) {
       const durationMs = Date.now() - t0;
@@ -836,18 +978,24 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       const requestId = getRequestId(c);
       const t0 = Date.now();
 
-      const prepared = await prepareSseRenderRequest(c, stream, requestId);
+      const prepared = await prepareSseRenderRequest(c, stream, requestId, policy);
       if (!prepared) return;
 
-      const { input, cleanupProjectDir, absoluteOutputPath } = resolvePreparedRenderOutput(
-        prepared,
-        rendersDir,
-        log,
-      );
+      const preparedJob = prepareRenderJob(prepared, rendersDir, log, !!policy);
+      if ("error" in preparedJob) {
+        await stream.writeSSE({
+          data: JSON.stringify({
+            type: "error",
+            requestId,
+            error: preparedJob.error,
+            stage: "validation",
+          }),
+        });
+        return;
+      }
+      const { job, input, cleanupProjectDir, absoluteOutputPath } = preparedJob;
 
       log.info("render-stream started", { requestId, projectDir: input.projectDir });
-
-      const job = createRenderJob(buildRenderJobConfig(input, absoluteOutputPath, log));
       const abortController = new AbortController();
       const onRequestAbort = () =>
         abortController.abort(new RenderCancelledError("request_aborted"));
@@ -894,7 +1042,9 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
             videoDurationSeconds: job.duration ?? null,
             outcome: job.outcome ?? "completed",
             warnings: job.warnings,
-            perf: job.perfSummary ?? null,
+            perf: policy ? publicPerfSummary(job) : (job.perfSummary ?? null),
+            producerVersion: readProducerVersion(),
+            ...strictVariablesResult(job),
           }),
         });
       } catch (error) {
@@ -949,11 +1099,117 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
 // ---------------------------------------------------------------------------
 
 /**
+ * True when a browser sent the request from a page on another origin. The browser's own
+ * Sec-Fetch-Site verdict wins when present, so a same-origin page behind a proxy that rewrites
+ * Host is still served; older browsers fall back to comparing Origin with Host.
+ */
+function isCrossOriginBrowserRequest(c: Context): boolean {
+  const fetchSite = c.req.header("sec-fetch-site");
+  if (fetchSite) return fetchSite !== "same-origin" && fetchSite !== "none";
+  const origin = c.req.header("origin");
+  if (!origin) return false;
+  try {
+    return new URL(origin).host !== c.req.header("host");
+  } catch {
+    return true;
+  }
+}
+
+function hostnameOf(host: string): string | null {
+  try {
+    return new URL(`http://${host}`).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** A rebound page arrives under its own DNS name; IP literals and localhost can't be rebound. */
+function isAllowedBrowserHostname(hostname: string | null, allowed: ReadonlySet<string>): boolean {
+  if (!hostname) return false;
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
+  if (isIP(hostname.replace(/^\[|\]$/g, "")) !== 0) return true;
+  return allowed.has(hostname);
+}
+
+function allowedHostnames(options: HandlerOptions): Set<string> {
+  const fromEnv = (process.env.PRODUCER_ALLOWED_HOSTS ?? "").split(",");
+  const names = new Set<string>();
+  for (const entry of [...(options.allowedHosts ?? []), ...fromEnv]) {
+    const hostname = entry.trim() ? hostnameOf(entry.trim()) : null;
+    if (hostname) names.add(hostname);
+  }
+  return names;
+}
+
+/** A blank token is no token: it neither guards a route nor unlocks a wider listen address. */
+function resolveAuthToken(options: HandlerOptions): string {
+  return options.authToken?.trim() || process.env.PRODUCER_AUTH_TOKEN?.trim() || "";
+}
+
+function hasBearerToken(c: Context, token: string): boolean {
+  const digest = (value: string) => crypto.createHash("sha256").update(value).digest();
+  return crypto.timingSafeEqual(
+    digest(c.req.header("authorization") ?? ""),
+    digest(`Bearer ${token}`),
+  );
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return host === "localhost" || host === "::1" || (isIP(host) === 4 && host.startsWith("127."));
+}
+
+/** Header-less callers (curl, services) pass; a page's POST always carries Origin. */
+function isDisallowedBrowserHost(c: Context, allowed: ReadonlySet<string>): boolean {
+  const origin = c.req.header("origin");
+  if (!origin && !c.req.header("sec-fetch-site")) return false;
+  if (!isAllowedBrowserHostname(hostnameOf(c.req.header("host") ?? ""), allowed)) return true;
+  if (!origin) return false;
+  try {
+    return !isAllowedBrowserHostname(new URL(origin).hostname.toLowerCase(), allowed);
+  } catch {
+    return true;
+  }
+}
+
+/**
  * Create a Hono app with clean public routes for OSS use.
  */
 export function createProducerApp(options: HandlerOptions = {}): Hono {
   const app = new Hono();
-  const handlers = createRenderHandlers(options);
+  const handlers = createRenderHandlers({
+    ...options,
+    confineRequests: options.confineRequests ?? true,
+  });
+  const allowed = allowedHostnames(options);
+  const authToken = resolveAuthToken(options);
+
+  app.use("*", async (c, next) => {
+    if (authToken && c.req.path !== "/health" && !hasBearerToken(c, authToken)) {
+      return c.json({ success: false, error: "Unauthorized" }, 401);
+    }
+    await next();
+  });
+
+  app.use("*", async (c, next) => {
+    if (isDisallowedBrowserHost(c, allowed)) {
+      return c.json(
+        {
+          success: false,
+          error: "Host not allowed. Add it to allowedHosts or PRODUCER_ALLOWED_HOSTS.",
+        },
+        403,
+      );
+    }
+    await next();
+  });
+
+  app.post("*", async (c, next) => {
+    if (isCrossOriginBrowserRequest(c)) {
+      return c.json({ success: false, error: "Cross-origin requests are not allowed" }, 403);
+    }
+    await next();
+  });
 
   app.get("/health", handlers.health);
   app.post("/render", handlers.render);
@@ -974,11 +1230,18 @@ export function createProducerApp(options: HandlerOptions = {}): Hono {
  */
 export function startServer(options: ServerOptions = {}) {
   const port = options.port ?? parseInt(process.env.PRODUCER_PORT ?? "9847", 10);
+  const hostname = options.hostname || process.env.PRODUCER_HOST || "127.0.0.1";
   const log = options.logger ?? defaultLogger;
+  if (!isLoopbackHostname(hostname) && !resolveAuthToken(options)) {
+    throw new Error(
+      `Refusing to listen on ${hostname} without an auth token. Set authToken or PRODUCER_AUTH_TOKEN, or listen on a loopback address.`,
+    );
+  }
   const app = createProducerApp(options);
 
-  const server = serve({ fetch: app.fetch, port }, () => {
-    log.info(`Listening on http://localhost:${port}`);
+  const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
+    const address = info.family === "IPv6" ? `[${info.address}]` : info.address;
+    log.info(`Listening on http://${address}:${info.port}`);
   });
 
   // Disable timeouts for long renders

@@ -1,4 +1,5 @@
 import postcss from "postcss";
+import { styleRoot } from "../styleRoots";
 import type { SourceLocation } from "../sourceCoordinates";
 import {
   FONT_ALIAS_KEYS,
@@ -34,9 +35,9 @@ const GENERIC_FAMILIES = new Set([
   "revert",
 ]);
 
-function parseFontCss(css: string): postcss.Root | null {
+function parseFontCss(style: { content: string }): postcss.Root | null {
   try {
-    return postcss.parse(css);
+    return styleRoot(style);
   } catch {
     return null;
   }
@@ -54,7 +55,7 @@ function isFontFaceDeclaration(decl: postcss.Declaration): boolean {
 export function extractFontFaceFamilies(styles: Array<{ content: string }>): Set<string> {
   const families = new Set<string>();
   for (const style of styles) {
-    parseFontCss(style.content)?.walkDecls(/^font-family$/i, (decl) => {
+    parseFontCss(style)?.walkDecls(/^font-family$/i, (decl) => {
       if (!isFontFaceDeclaration(decl)) return;
       const name = normalizeUsedFontName(decl.value);
       if (name) families.add(name);
@@ -85,7 +86,7 @@ function normalizeUsedFontName(part: string): string | null {
 function collectFontCustomProperties(styles: Array<{ content: string }>): Map<string, string> {
   const properties = new Map<string, string>();
   for (const style of styles) {
-    parseFontCss(style.content)?.walkDecls(/^--/, (decl) => {
+    parseFontCss(style)?.walkDecls(/^--/, (decl) => {
       if (!isFontFaceDeclaration(decl)) properties.set(decl.prop, decl.value);
     });
   }
@@ -125,7 +126,7 @@ function extractUsedFontFamilies(styles: Array<{ content: string }>): string[] {
   const seen = new Set<string>();
   const properties = collectFontCustomProperties(styles);
   for (const style of styles) {
-    parseFontCss(style.content)?.walkDecls(FONT_FAMILY_PROPS, (decl) => {
+    parseFontCss(style)?.walkDecls(FONT_FAMILY_PROPS, (decl) => {
       for (const name of resolveUsedFontNames(usedFamilyList(decl), properties)) {
         if (!GENERIC_FAMILIES.has(name) && !seen.has(name)) {
           seen.add(name);
@@ -267,7 +268,7 @@ export const fontRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
     if (isRegistrySourceFile(options.filePath) || isRegistryInstalledFile(rawSource)) return [];
     const findings: HyperframeLintFinding[] = [];
     for (const style of styles) {
-      parseFontCss(style.content)?.walkAtRules(/^font-face$/i, (rule) => {
+      parseFontCss(style)?.walkAtRules(/^font-face$/i, (rule) => {
         let family: string | null = null;
         let sources = "";
         rule.walkDecls((decl) => {
@@ -304,7 +305,7 @@ function uniqueFontLocation(
   const properties = collectFontCustomProperties(styles);
   for (const style of styles) {
     try {
-      postcss.parse(style.content).walkDecls(FONT_FAMILY_PROPS, (decl) => {
+      styleRoot(style).walkDecls(FONT_FAMILY_PROPS, (decl) => {
         const named = resolveUsedFontNames(usedFamilyList(decl), properties);
         if (!named.some((name) => families.includes(name))) return;
         locations.push(locate(style, decl.source?.start?.offset));

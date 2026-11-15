@@ -1,6 +1,6 @@
 # init, capture, skills
 
-<!-- registry-items: allow=blank,landscape-4k,portrait-4k,square-4k,media-use -->
+<!-- registry-items: allow=blank,landscape-4k,portrait-4k,square-4k,landscape-1440p,portrait-1440p,square-1440p,media-use -->
 
 Scaffolding commands. Use these instead of creating files by hand — they set up the right file structure, copy media, and run transcription.
 
@@ -22,7 +22,7 @@ Templates: `blank`, `warm-grain`, `play-mode`, `swiss-grid`, `vignelli`, `decisi
 
 Other useful flags:
 
-- `--resolution` — preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k`, `portrait-4k`, `square` (1080×1080), `square-4k`. Aliases: `1080p`, `4k`, `uhd`, `1080p-square`, `4k-square`.
+- `--resolution` — preset: `landscape` (1920×1080), `portrait` (1080×1920), `landscape-4k`, `portrait-4k`, `square` (1080×1080), `square-4k`, `landscape-1440p` (2560×1440), `portrait-1440p`, `square-1440p`. Aliases: `1080p`, `4k`, `uhd`, `1440p`, `qhd`, `1080p-square`, `4k-square`.
 - `--skill=<slug>` — record the owning skill (e.g. `hyperframes`) in `hyperframes.json`, so every later render of this project — re-renders, `npm run render`, `--batch` — is attributed to it on usage telemetry without re-passing the flag. You rarely pass it by hand.
 - `--skip-skills` — leave AI coding skills alone: `init` does not install the core set. `HYPERFRAMES_SKIP_SKILLS=1` does the same. Always pass it: without it `init` installs any missing core skill, and installing skills is the person's step. When a core skill is missing, tell the person they can install it with `npx hyperframes skills update`.
 - `--skip-transcribe` — don't auto-transcribe `--audio` / `--video` with Whisper.

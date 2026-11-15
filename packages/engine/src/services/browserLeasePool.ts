@@ -10,6 +10,7 @@ export interface BrowserLaunchFingerprint {
   readonly browserTimeoutMs: number;
   readonly protocolTimeoutMs: number;
   readonly requestedCaptureMode: CaptureMode;
+  readonly publicOnly?: { readonly pageServerHost?: string };
 }
 
 export interface BrowserLaunchResult {
@@ -60,6 +61,7 @@ function fingerprintKey(fingerprint: Readonly<BrowserLaunchFingerprint>): string
     fingerprint.browserTimeoutMs,
     fingerprint.protocolTimeoutMs,
     fingerprint.requestedCaptureMode,
+    fingerprint.publicOnly ?? null,
   ]);
 }
 

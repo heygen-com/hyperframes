@@ -1,5 +1,7 @@
+import { emptyStyleBlocks, hasScriptWithSrc, replaceBlockComments } from "../linearScans";
 import type { LintContext, HyperframeLintFinding, ExtractedBlock, OpenTag } from "../context";
 import selectorParser from "postcss-selector-parser";
+import { parseHTML } from "linkedom";
 import {
   findHtmlTag,
   extractTimelineRegistryKeys,
@@ -20,6 +22,7 @@ import {
   isSafeMediaUrl,
 } from "@hyperframes/parsers/composition";
 import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { rawCssUrlMatches } from "@hyperframes/parsers/css-url-scans";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import {
   readAuthoredDurationSeconds,
@@ -95,7 +98,7 @@ function countPhysicalLines(source: string): number {
 }
 
 function countStructuralLines(source: string): number {
-  return countPhysicalLines(source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "<style></style>"));
+  return countPhysicalLines(emptyStyleBlocks(source));
 }
 
 function isCaptionCue(tag: OpenTag): boolean {
@@ -130,11 +133,8 @@ function isCompositionRootOrMount(rawTag: string): boolean {
 // rules that consume this — the helper just yields raw URL values.
 function extractCssUrlReferences(css: string): string[] {
   const out: string[] = [];
-  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  const urlPattern = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = urlPattern.exec(noComments)) !== null) {
-    const raw = (m[2] ?? "").trim();
+  for (const { parts } of rawCssUrlMatches(replaceBlockComments(css, ""))) {
+    const raw = (parts[2] ?? "").trim();
     if (raw) out.push(raw);
   }
   return out;
@@ -165,8 +165,8 @@ function climbsAboveRoot(fileDepth: number, path: string): boolean {
 // full CSS parser, and rules elsewhere in this file scan CSS the same way.
 function extractCssSelectors(css: string): string[] {
   const out: string[] = [];
-  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  const ruleHeader = /([^{}]+)\{/g;
+  const noComments = replaceBlockComments(css, "");
+  const ruleHeader = /(?<![^{}])([^{}]+)\{/g;
   let m: RegExpExecArray | null;
   while ((m = ruleHeader.exec(noComments)) !== null) {
     const header = (m[1] ?? "").trim();
@@ -207,8 +207,8 @@ function collectHeavyOverlayHooks(styles: ExtractedBlock[]): {
   const classes = new Set<string>();
   const ids = new Set<string>();
   for (const style of styles) {
-    const noComments = style.content.replace(/\/\*[\s\S]*?\*\//g, "");
-    const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
+    const noComments = replaceBlockComments(style.content, "");
+    const ruleWithBody = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     let m: RegExpExecArray | null;
     while ((m = ruleWithBody.exec(noComments)) !== null) {
       const header = (m[1] ?? "").trim();
@@ -555,7 +555,7 @@ function stylesheetCanvasZoomHits(
 ): CanvasZoomHit[] {
   const hits: CanvasZoomHit[] = [];
   for (const style of styles) {
-    const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
+    const ruleWithBody = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     const content = stripCssComments(style.content);
     // At-rules and style attributes can restrict selector applicability.
     const allowNewHits = style.attrs.trim() === "" && !content.includes("@");
@@ -786,7 +786,7 @@ function stackingContextSelectors(styles: readonly ExtractedBlock[]): Set<string
   const selectors = new Set<string>();
   for (const style of styles) {
     const content = stripCssComments(style.content);
-    const rule = /([^{}]+)\{([^{}]*)\}/g;
+    const rule = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     let match: RegExpExecArray | null;
     while ((match = rule.exec(content)) !== null) {
       if (!STACKING_CONTEXT_DECLARATION.test(match[2] ?? "")) continue;
@@ -1258,7 +1258,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     if (!rootCompositionId || !rootTag) return [];
     // Can't scan external script files for timeline registration; skip to avoid
     // false positives on compositions that register via a bundled JS file.
-    if (/<script\b[^>]*\bsrc\s*=/i.test(rawSource)) return [];
+    if (hasScriptWithSrc(rawSource)) return [];
     // A computed key may map to any authored id. When static analysis cannot
     // resolve that key, stay silent rather than claim a registration is absent.
     if (hasComputedTimelineRegistration(scripts)) return [];
@@ -1624,7 +1624,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
 
     const allCss = styles.map((s) => s.content).join("\n");
     const allInlineStyles = tags.map((t) => readAttr(t.raw, "style") || "").join("\n");
-    const combinedCss = `${allCss}\n${allInlineStyles}`.replace(/\/\*[\s\S]*?\*\//g, "");
+    const combinedCss = replaceBlockComments(`${allCss}\n${allInlineStyles}`, "");
 
     const usesLottie =
       tags.some((t) => readAttr(t.raw, "data-lottie-src") !== null) ||
@@ -1945,6 +1945,32 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         fixHint: `Move the #${rootId} rules into a <style> inside the <template>, where they are rewritten for the merged root, or select a child element of the root in the linked file instead of the root itself.`,
         snippet: truncateSnippet(style.content.slice(0, 120)),
       }));
+  },
+
+  // multiple_scene_templates: the renderer takes the first scene template of a file with no live root.
+  ({ rawSource }) => {
+    const { document } = parseHTML(rawSource);
+    if (document.querySelector("[data-composition-id]")) return [];
+    const scenes = Array.from(document.querySelectorAll("template")).flatMap((template, index) => {
+      const compositionId = parseHTML(template.innerHTML)
+        .document.querySelector("[data-composition-id]")
+        ?.getAttribute("data-composition-id");
+      if (compositionId === undefined) return [];
+      const id = template.getAttribute("id");
+      return [
+        `template #${index + 1}${id ? ` (id="${id}")` : ""} holding composition "${compositionId}"`,
+      ];
+    });
+    if (scenes.length < 2) return [];
+    return [
+      {
+        code: "multiple_scene_templates",
+        severity: "warning",
+        message: `This file has more than one scene template and no live composition root, so only the first renders: ${scenes.join("; ")}.`,
+        fixHint:
+          "Keep one composition root per file, or move the other scenes into their own files.",
+      },
+    ];
   },
 ];
 

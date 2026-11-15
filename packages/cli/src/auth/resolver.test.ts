@@ -1,11 +1,12 @@
 import { oauthIdentity } from "./config.js";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setupTempAuthEnv } from "./_test-utils.js";
 import { ErrApi, ErrLoginChanged, ErrRefreshFailed, isAuthError } from "./errors.js";
 import { afterRefreshFailure, resolveCredential, tryResolveCredential } from "./resolver.js";
 import { writeStore as writeUnboundStore, type Credentials } from "./store.js";
+import { loadProjectDotEnv } from "../utils/dotEnv.js";
 
 async function writeStore(credentials: Credentials): Promise<void> {
   await writeUnboundStore({
@@ -129,6 +130,118 @@ describe("auth/resolver", () => {
     await writeStore({ api_key: "file-key" });
     const r = await resolveCredential();
     expect(r).toEqual({ type: "api_key", key: "env-key", source: "env" });
+  });
+
+  /** Loads `<name>=<key>` from a project `.env`; `received` writes the received-files record. */
+  async function projectEnvKey(
+    key: string,
+    received?: string,
+    name = "HEYGEN_API_KEY",
+  ): Promise<void> {
+    const project = await fs.mkdtemp(join(dir, "project-"));
+    await fs.writeFile(join(project, ".env"), `${name}=${key}\n`);
+    if (received !== undefined) {
+      await fs.mkdir(join(project, ".hyperframes"));
+      await fs.writeFile(join(project, ".hyperframes", "received-files.json"), received);
+    }
+    loadProjectDotEnv(project, process.env, () => {});
+  }
+
+  it("keeps a person's own project .env key ahead of the saved API key", async () => {
+    await projectEnvKey("own-key-1");
+    await writeStore({ api_key: "file-key" });
+    expect(await resolveCredential()).toEqual({ type: "api_key", key: "own-key-1", source: "env" });
+  });
+
+  it.each([
+    ["lists it", JSON.stringify({ files: [".env"] })],
+    ["cannot be read", "{oops"],
+  ])(
+    "puts the saved API key ahead of a project .env key when the received record %s",
+    async (_, record) => {
+      await projectEnvKey(`received-key-${record.length}`, record);
+      await writeStore({ api_key: "file-key" });
+      expect(await resolveCredential()).toEqual({
+        type: "api_key",
+        key: "file-key",
+        source: "file_json",
+      });
+    },
+  );
+
+  it.each([
+    ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY", "env_alias"],
+    ["HYPERFRAMES_API_KEY", "HEYGEN_API_KEY", "env"],
+  ] as const)(
+    "uses the shell's key over a received .env's %s, with or without a saved key",
+    async (receivedName, shellName, source) => {
+      process.env[shellName] = "shell-key";
+      await projectEnvKey("received-key-5", JSON.stringify({ files: [".env"] }), receivedName);
+      expect(await resolveCredential()).toEqual({ type: "api_key", key: "shell-key", source });
+      await writeStore({ api_key: "file-key" });
+      expect(await resolveCredential()).toEqual({ type: "api_key", key: "shell-key", source });
+    },
+  );
+
+  it("uses a received project .env key when no credential is saved, and says so once", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await projectEnvKey("received-key-2", JSON.stringify({ files: [".env"] }));
+      expect(await resolveCredential()).toEqual({
+        type: "api_key",
+        key: "received-key-2",
+        source: "env",
+      });
+      await resolveCredential();
+      expect(stderr.mock.calls.map(([line]) => String(line))).toEqual([
+        "[hyperframes] Using HEYGEN_API_KEY from this folder's .env: uploads and renders go to that key's HeyGen account.\n",
+      ]);
+    } finally {
+      stderr.mockRestore();
+    }
+  });
+
+  it.each([
+    [
+      "expired without a refresh token",
+      { access_token: "stale-at", expires_at: "2020-01-01T00:00:00Z" },
+    ],
+    ["from another OAuth client", { access_token: "foreign", client_id: "shared-heygen-cli" }],
+  ])(
+    "asks to log in again over a received .env key when the saved login is %s",
+    async (_, oauth) => {
+      await projectEnvKey("received-key-3", JSON.stringify({ files: [".env"] }));
+      await writeStore({ oauth });
+      await expect(resolveCredential()).rejects.toSatisfy(isAuthError);
+    },
+  );
+
+  it("says the credentials file cannot be read rather than use a received .env key", async () => {
+    await projectEnvKey("received-key-6", JSON.stringify({ files: [".env"] }));
+    await fs.writeFile(join(dir, "credentials"), "{not valid", { mode: 0o600 });
+    await expect(resolveCredential()).rejects.toMatchObject({ code: "INVALID_STORE" });
+  });
+
+  it("keeps a person's own project .env key in place of a broken credentials file", async () => {
+    await projectEnvKey("own-key-3");
+    await fs.writeFile(join(dir, "credentials"), "{not valid", { mode: 0o600 });
+    expect(await resolveCredential()).toEqual({ type: "api_key", key: "own-key-3", source: "env" });
+  });
+
+  it("keeps a person's own project .env key in place of a login that expired", async () => {
+    await projectEnvKey("own-key-2");
+    await writeStore({ oauth: { access_token: "stale-at", expires_at: anHourAgo() } });
+    expect(await resolveCredential()).toEqual({ type: "api_key", key: "own-key-2", source: "env" });
+  });
+
+  it("never lets a received .env key replace a login HeyGen refused to refresh", async () => {
+    await projectEnvKey("received-key-4", JSON.stringify({ files: [".env"] }));
+    await writeStore({
+      oauth: { access_token: "at", refresh_token: "rt", expires_at: anHourAgo() },
+    });
+    const refused = ErrRefreshFailed("invalid_grant", { refused: true });
+    await expect(afterRefreshFailure(refused, "rt")).rejects.toBe(refused);
+    expect(await resolveCredential()).toMatchObject({ type: "oauth", refreshable: true });
   });
 
   it("falls through to HYPERFRAMES_API_KEY", async () => {

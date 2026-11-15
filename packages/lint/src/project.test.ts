@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, writeFileSync, rmSync, symlinkSync } from "node
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { HyperframeLintFinding } from "./types.js";
-import { lintProject } from "./project.js";
+import { lintProject, unmountedNotice } from "./project.js";
 
 // Keep project lint tests independent of the host's ffprobe installation.
 vi.mock("node:child_process", () => {
@@ -548,6 +548,25 @@ describe("texture_mask_asset_not_found declarations", () => {
       expect(findings[0]?.message).not.toContain("example.png");
     },
   );
+
+  it("reads long runs of unclosed urls in valid and malformed stylesheets in linear time", async () => {
+    // A linear scan lints these stylesheets in about 0.1 s on a laptop. A quadratic one takes
+    // over 10 s, because it reads to the end of broken.css after each unclosed url(. The cap
+    // leaves room for slow shared CI runners.
+    const links =
+      '<link rel="stylesheet" href="nested.css"><link rel="stylesheet" href="broken.css">';
+    const project = makeProject(validHtml().replace("<body>", `<head>${links}</head><body>`));
+    writeFileSync(
+      join(project, "nested.css"),
+      `a{background:${"url(".repeat(40_000)}${")".repeat(40_000)}}`,
+    );
+    writeFileSync(join(project, "broken.css"), `a{${"mask-image:url(".repeat(30_000)}`);
+
+    const started = performance.now();
+    await lintProject(project);
+
+    expect(performance.now() - started).toBeLessThan(4000);
+  }, 60_000);
 });
 
 describe("template shell style sources", () => {
@@ -676,7 +695,7 @@ describe("sub-composition stylesheet links", () => {
   }
 
   async function fontFaceFindings(project: string): Promise<HyperframeLintFinding[]> {
-    const { results } = await lintProject(project);
+    const { results } = await lintProject(project, undefined, {}, { includeUnmounted: true });
     return results
       .flatMap((entry) => entry.result.findings)
       .filter((finding) => finding.code === "font_family_without_font_face");
@@ -1307,6 +1326,23 @@ describe("audio-aware project rules", () => {
       expect(codes).toContain("duplicate_audio_track");
     });
 
+    it("says both clips still play, since the track index only picks the Studio lane", async () => {
+      const sfx = (id: string, start: string, duration: string) =>
+        `<audio id="${id}" src="${id}.wav" data-start="${start}" data-duration="${duration}" data-track-index="6"></audio>`;
+      const project = makeProject(
+        composition(sfx("whoosh", "5.13", "0.7") + sfx("land", "5.79", "0.34")),
+      );
+      const { results } = await lintProject(project);
+      const finding = results
+        .flatMap((result) => result.result.findings)
+        .find((f) => f.code === "duplicate_audio_track");
+      expect(finding?.message).toContain("whoosh.wav at 5.13-5.83s and land.wav at 5.79-6.13s");
+      expect(finding?.message).toContain("Both play at once whatever their track");
+      expect(finding?.fixHint).toContain(
+        "give one its own data-track-index; the mix does not change",
+      );
+    });
+
     it("stays quiet when one of the overlapping videos is muted", async () => {
       const codes = await codesFor(
         composition(video('data-has-audio="true"', 0) + video("muted", 2)),
@@ -1395,8 +1431,9 @@ describe("audio-aware project rules", () => {
 
 describe("sub-composition files", () => {
   const sceneFindings = async (project: string) =>
-    (await lintProject(project)).results.find((result) => result.file === "compositions/scene.html")
-      ?.result.findings ?? [];
+    (await lintProject(project, undefined, {}, { includeUnmounted: true })).results.find(
+      (result) => result.file === "compositions/scene.html",
+    )?.result.findings ?? [];
 
   it("resolves a scene's ../assets/ path from its own folder, as preview and render do", async () => {
     const project = makeProject(validHtml(), {
@@ -1437,7 +1474,7 @@ describe("sub-composition files", () => {
       join(project, "styles", "escape.css"),
       ".a { background: url('../../outside.png'); }",
     );
-    const { results } = await lintProject(project);
+    const { results } = await lintProject(project, undefined, {}, { includeUnmounted: true });
     const traversal = (file: string) =>
       results
         .find((result) => result.file === file)
@@ -1512,5 +1549,157 @@ describe("a page saved as UTF-16", () => {
     const codes = async (dir: string) =>
       (await lintProject(dir)).results.flatMap((r) => r.result.findings.map((f) => f.code)).sort();
     expect(await codes(utf16)).toEqual(await codes(utf8));
+  });
+});
+
+describe("compositions the entry never mounts", () => {
+  const mounting = (src: string) => `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    <div data-composition-id="scene" data-composition-src="${src}" data-start="0" data-duration="5"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+  const broken =
+    '<div data-composition-id="unused"><section data-composition-id="bare"></section></div>';
+
+  it("are not linted and are named in unmountedCompositions", async () => {
+    const project = makeProject(mounting("compositions/used.html"), {
+      "used.html": validHtml("scene"),
+      "unused.html": broken,
+      "nested/also-unused.html": broken,
+    });
+
+    const result = await lintProject(project);
+
+    expect(result.results.map((entry) => entry.file)).toEqual([
+      "index.html",
+      "compositions/used.html",
+    ]);
+    expect(result.unmountedCompositions).toEqual([
+      "compositions/nested/also-unused.html",
+      "compositions/unused.html",
+    ]);
+  });
+
+  it("are linted again with includeUnmounted", async () => {
+    const project = makeProject(mounting("compositions/used.html"), {
+      "used.html": validHtml("scene"),
+      "unused.html": broken,
+    });
+
+    const result = await lintProject(project, undefined, {}, { includeUnmounted: true });
+
+    expect(result.results.map((entry) => entry.file)).toContain("compositions/unused.html");
+    expect(result.unmountedCompositions).toEqual([]);
+  });
+
+  it("follows mounts made by a mounted composition", async () => {
+    const project = makeProject(mounting("compositions/outer.html"), {
+      "outer.html": `<div data-composition-id="scene"><div data-composition-id="inner" data-composition-src="compositions/inner.html"></div></div>`,
+      "inner.html": validHtml("inner"),
+    });
+
+    const result = await lintProject(project);
+
+    expect(result.results.map((entry) => entry.file)).toContain("compositions/inner.html");
+    expect(result.unmountedCompositions).toEqual([]);
+  });
+});
+
+it("names the unmounted count in one line", () => {
+  expect(unmountedNotice(1)).toBe(
+    "1 file in compositions/ is not mounted from index.html, so not checked; --include-unmounted adds them.",
+  );
+  expect(unmountedNotice(3)).toContain("3 files in compositions/ are not mounted");
+});
+
+describe("references that leave the project", () => {
+  const findingsOf = async (project: string) =>
+    (await lintProject(project)).results.flatMap((entry) => entry.result.findings);
+
+  function hostOf(srcPath: string): string {
+    return `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+    <div data-composition-src="${srcPath}" data-composition-id="scene" data-start="0" data-duration="5"></div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3/dist/gsap.min.js"></script>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["main"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+  }
+
+  function outsideScene(project: string): string {
+    const outside = join(dirname(project), `${project.split(/[\\/]/).pop()}-scene.html`);
+    writeFileSync(
+      outside,
+      `<html><body><div data-composition-id="scene" data-width="1920" data-height="1080">
+  <audio id="leak" src="outside-audio.mp3" data-start="0" data-duration="1"></audio>
+</div></body></html>`,
+    );
+    dirs.push(outside);
+    return outside;
+  }
+
+  it.each([
+    (outside: string) => `../${outside.split(/[\\/]/).pop()}`,
+    (outside: string) => outside,
+  ])(
+    "reports a sub-composition outside the project folder without reading it (%#)",
+    async (srcOf) => {
+      const project = makeProject("");
+      const outside = outsideScene(project);
+      writeFileSync(join(project, "index.html"), hostOf(srcOf(outside)));
+      const findings = await findingsOf(project);
+      const sub = findings.find((f) => f.code === "missing_or_empty_sub_composition");
+      expect(sub?.message ?? "").toMatch(/outside the project folder|does not exist/);
+      expect(JSON.stringify(findings)).not.toContain("outside-audio.mp3");
+    },
+  );
+
+  it("reads a sub-composition written with a leading slash from the project root, as the render does", async () => {
+    const project = makeProject(hostOf("/compositions/scene.html"), {
+      "scene.html": `<html><body><div data-composition-id="scene" data-width="1920" data-height="1080"></div></body></html>`,
+    });
+    const findings = await findingsOf(project);
+    expect(findings.find((f) => f.code === "missing_or_empty_sub_composition")).toBeUndefined();
+  });
+
+  it("does not read an import map through an encoded absolute path", async () => {
+    const project = makeProject("");
+    const secret = join(dirname(project), `${project.split(/[\\/]/).pop()}-secret.txt`);
+    writeFileSync(secret, "TOP-SECRET-VALUE not json");
+    dirs.push(secret);
+    writeFileSync(
+      join(project, "index.html"),
+      validHtml().replace(
+        "</body>",
+        `<script type="importmap" src="/%2F${secret.slice(1)}"></script>\n<link rel="stylesheet" href="/%2F${secret.slice(1)}">\n</body>`,
+      ),
+    );
+    expect(JSON.stringify(await findingsOf(project))).not.toContain("TOP-SECRET-VALUE");
+  });
+});
+
+describe("missing_timeline_registry with a script outside the project", () => {
+  const rootWithScript = (src: string) => `<html><body>
+  <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div>
+  <script src="${src}"></script>
+</body></html>`;
+  const registryErrors = async (project: string) =>
+    (await lintProject(project)).results
+      .flatMap((result) => result.result.findings)
+      .filter((finding) => finding.code === "missing_timeline_registry");
+
+  it("is not reported when the timeline may be registered in a script lint did not read", async () => {
+    const project = makeProject(rootWithScript("../shared/timeline.js"));
+
+    expect(await registryErrors(project)).toEqual([]);
+  });
+
+  it("is still reported when every script is in the project and none registers", async () => {
+    const project = makeProject(rootWithScript("scene.js"));
+    writeFileSync(join(project, "scene.js"), "console.log('no timeline');");
+
+    expect(await registryErrors(project)).toHaveLength(1);
   });
 });

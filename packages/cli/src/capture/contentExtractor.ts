@@ -75,6 +75,61 @@ class VisionRequestTimeoutError extends Error {
   }
 }
 
+const GOOGLE_TOKEN_URIS = new Set([
+  "https://oauth2.googleapis.com/token",
+  "https://accounts.google.com/o/oauth2/token",
+]);
+const CREDENTIAL_SOURCE_FIELDS = [
+  "credential_source",
+  "service_account_impersonation_url",
+  "source_credentials",
+  "executable",
+];
+
+// Only a plain service-account key is accepted. Other credential types (external_account,
+// impersonated_service_account) make Google's auth library read files or URLs named in the
+// JSON and send the result to the token endpoint the JSON names.
+function isServiceAccountKey(credentials: Record<string, unknown>): boolean {
+  if (!credentials || typeof credentials !== "object" || credentials.type !== "service_account")
+    return false;
+  const tokenUri = credentials.token_uri;
+  if (tokenUri !== undefined && !GOOGLE_TOKEN_URIS.has(String(tokenUri))) return false;
+  return !CREDENTIAL_SOURCE_FIELDS.some((field) => Object.hasOwn(credentials, field));
+}
+
+function vertexCredentials(raw: string): Record<string, unknown> | string {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT is not valid JSON; skipped vision captioning.";
+  }
+  return isServiceAccountKey(parsed)
+    ? parsed
+    : "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT is not a service-account key; skipped vision captioning.";
+}
+
+// The SDK builds the request host from the location and the request path from the model id.
+// `:` stays legal inside a segment for endpoint paths in domain-scoped projects (`example.com:proj`).
+const VERTEX_LOCATION = /^[a-z][a-z0-9-]*$/;
+const GOOGLE_MODEL_ID = /^[A-Za-z0-9][\w.:@-]*(?:\/[A-Za-z0-9][\w.:@-]*)*$/;
+
+function googleClientSettingsProblem(
+  provider: "vertex" | "gemini",
+  model: string,
+  location: string,
+): string | undefined {
+  if (provider === "vertex" && !VERTEX_LOCATION.test(location)) {
+    return "HYPERFRAMES_VERTEX_LOCATION is not a Google Cloud region; skipped vision captioning.";
+  }
+  if (!GOOGLE_MODEL_ID.test(model)) {
+    const variable =
+      provider === "vertex" ? "HYPERFRAMES_VERTEX_MODEL" : "HYPERFRAMES_GEMINI_MODEL";
+    return `${variable} is not a model id; skipped vision captioning.`;
+  }
+  return undefined;
+}
+
 function resolveVisionRequestTimeoutMs(): number {
   const configured = Number(process.env.HYPERFRAMES_VISION_TIMEOUT_MS);
   return Number.isFinite(configured) && configured > 0
@@ -364,6 +419,14 @@ export async function captionImagesWithGemini(
         }, timeoutMs);
       };
     } else {
+      const vertexLocation = process.env.HYPERFRAMES_VERTEX_LOCATION || "us-central1";
+      const settingsProblem = googleClientSettingsProblem(provider, model, vertexLocation);
+      if (settingsProblem) {
+        warnings.push(settingsProblem);
+        internalError = true;
+        reportOutcome();
+        return geminiCaptions;
+      }
       let GoogleGenAI: OptionalPackageModules["@google/genai"]["GoogleGenAI"];
       try {
         ({ GoogleGenAI } = await loadOptionalPackage("@google/genai", "vision captioning"));
@@ -377,13 +440,9 @@ export async function captionImagesWithGemini(
       if (provider === "vertex") {
         // Re-narrow for TS; `useVertex` already guaranteed both are set.
         if (!vertexProject || !vertexServiceAccount) return geminiCaptions;
-        let credentials: Record<string, unknown>;
-        try {
-          credentials = JSON.parse(vertexServiceAccount) as Record<string, unknown>;
-        } catch {
-          warnings.push(
-            "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT is not valid JSON; skipped vision captioning.",
-          );
+        const credentials = vertexCredentials(vertexServiceAccount);
+        if (typeof credentials === "string") {
+          warnings.push(credentials);
           internalError = true;
           reportOutcome();
           return geminiCaptions;
@@ -391,7 +450,7 @@ export async function captionImagesWithGemini(
         ai = new GoogleGenAI({
           vertexai: true,
           project: vertexProject,
-          location: process.env.HYPERFRAMES_VERTEX_LOCATION || "us-central1",
+          location: vertexLocation,
           googleAuthOptions: { credentials },
         });
       } else {

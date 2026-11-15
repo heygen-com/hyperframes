@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { margin: 0; background: #000; width: 640px; height: 360px; overflow: hidden; }
+  .bar { position: absolute; left: 0; height: 80px; width: 0; }
+  #timeout { top: 20px; background: #f87171; }
+  #interval { top: 140px; background: #60a5fa; }
+  #clock { top: 260px; background: #9ca3af; }
+</style>
+</head>
+<body>
+  <div id="root" data-composition-id="timers" data-width="640" data-height="360" data-start="0" data-duration="3" data-no-timeline>
+    <div id="timeout" class="bar clip" data-start="0" data-duration="3"></div>
+    <div id="interval" class="bar clip" data-start="0" data-duration="3"></div>
+    <div id="clock" class="bar clip" data-start="0" data-duration="3"></div>
+  </div>
+  <script>
+    // Each bar grows 200 px per second of film time: by 20 px every 100 ms timeout, by 50 px every
+    // 250 ms interval, and continuously from performance.now as the reference.
+    const timeoutBar = document.getElementById("timeout");
+    const intervalBar = document.getElementById("interval");
+    const clockBar = document.getElementById("clock");
+    let started = false;
+    function frame(now) {
+      if (!started) {
+        started = true;
+        let steps = 0;
+        (function step() {
+          timeoutBar.style.width = 20 * steps++ + "px";
+          setTimeout(step, 100);
+        })();
+        let ticks = 0;
+        intervalBar.style.width = "0px";
+        setInterval(() => (intervalBar.style.width = 50 * ++ticks + "px"), 250);
+      }
+      clockBar.style.width = (now / 1000) * 200 + "px";
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+    window.__timelines = window.__timelines || {};
+  </script>
+</body>
+</html>

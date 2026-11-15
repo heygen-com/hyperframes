@@ -279,7 +279,7 @@ class HyperframesPlayer extends HTMLElement {
         // message fire before connectedCallback installs the parent message listener. Initial
         // attributes are applied below by connectedCallback; only live changes navigate here.
         if (!this.isConnected) break;
-        if (val) this._navigateSrc(val);
+        if (val || this._videoSource) this._navigateSrc(val ?? "");
         break;
       case "type": {
         const src = this.getAttribute("src");
@@ -1100,7 +1100,11 @@ class HyperframesPlayer extends HTMLElement {
     this.controlsApi?.updateTime(0, 0);
     this._syncVideoAudio();
     adapter.timeScale?.(this.playbackRate);
-    video.src = src;
+    if (src) video.src = src;
+    else {
+      video.removeAttribute("src");
+      video.load();
+    }
   }
 
   private _teardownVideo(): void {

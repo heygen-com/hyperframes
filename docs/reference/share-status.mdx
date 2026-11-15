@@ -1,0 +1,28 @@
+---
+title: "CLI sharing status"
+description: "Follow an upload from local rendering to a ready review link."
+---
+
+Run `hyperframes share --status` in another terminal to see an active share in
+this project. You can also run it from a project subdirectory; an explicit
+project directory always takes precedence.
+
+```bash
+hyperframes share --status --json
+```
+
+During a running local command, `state` reports `preparing`, `rendering`,
+`uploading_source`, `uploading_video`, or `checking`. `activity.startedAt`
+identifies when the operation began. These states have `ready: false` and
+`url: null`; `previousUrl` can still point to an earlier ready version.
+After the command finishes, status reflects the server's processing result.
+A crashed local process does not leave an active progress indicator forever.
+
+Free workspaces can share privately or with anyone who has the link. Team and
+invite-only access require a paid plan. Free sharing includes the video;
+editable project sources require Pro. The five-project Free limit still applies.
+
+Alpha installations check the alpha release channel for updates, so their
+update notice does not recommend a stable release that lacks alpha features.
+
+See [CLI sharing](/packages/cli#share) for audience selection, updates and failures.

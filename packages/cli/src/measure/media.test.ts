@@ -1,10 +1,21 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { selectFirstFrameAfterEach } from "../commands/snapshot.js";
-import { meanAbsDiff, probeVideo, readClip, readFrames, sumOf, videoClip } from "./media.js";
+import {
+  Fix,
+  ffprobeReason,
+  meanAbsDiff,
+  missingFileFix,
+  probeVideo,
+  readClip,
+  readFrames,
+  sumOf,
+  unreadableFix,
+  videoClip,
+} from "./media.js";
 
 const terms = (n: number) => Array.from({ length: n }, (_, i) => `eq(n\\,${i * 2})`);
 
@@ -81,6 +92,90 @@ describe.skipIf(!ffmpeg)("an odd box", () => {
       const box = readFrames(path, { roi: [x, y, w, h], gray }).frames;
       expect(box).toHaveLength(10);
       expect(meanAbsDiff(box[9]!, there)).toBe(0);
+    }
+  });
+});
+
+describe("a path that is not there", () => {
+  it("says the shell dropped a Windows path's backslashes", () => {
+    expect(missingFileFix("D:videoclip.mp4")).toMatch(/dropped the backslashes/);
+  });
+
+  it("otherwise asks for the path from the project folder", () => {
+    expect(missingFileFix(join(tmpdir(), "nope.mp4"))).toBe(
+      "pass the video's path from the project folder",
+    );
+  });
+});
+
+describe("a file ffprobe cannot read", () => {
+  it("keeps ffprobe's reason without the path it repeats", () => {
+    const err = { stderr: Buffer.from("x.mp4: Invalid data found when processing input\n") };
+    expect(ffprobeReason(err, "x.mp4")).toBe("Invalid data found when processing input");
+    expect(ffprobeReason(new Error("boom"), "x.mp4")).toBeUndefined();
+  });
+
+  it("keeps the specific cause of a cut-short file over ffprobe's generic last line", () => {
+    const err = {
+      stderr: Buffer.from(
+        "[mov,mp4,m4a,3gp,3g2,mj2 @ 0x12e808c00] moov atom not found\nhalf.mp4: Invalid data found when processing input\n",
+      ),
+    };
+    const reason = ffprobeReason(err, "half.mp4");
+    expect(reason).toBe("moov atom not found");
+    expect(unreadableFix(reason, true)).toMatch(/download it again/);
+    // A web page named .mp4 gets the same two lines from ffprobe: only the header tells them apart.
+    expect(unreadableFix(reason, false)).toMatch(/not a video/);
+  });
+
+  it.each([
+    ["moov atom not found", true, /download it again/],
+    ["moov atom not found", false, /not a video/],
+    ["End of file", false, /download it again/],
+    ["Invalid data found when processing input", false, /not a video/],
+    ["Permission denied", false, /permissions/],
+    [undefined, false, /pass a video file/],
+  ])("answers %s (MP4 header: %s)", (reason, mp4Header, fix) => {
+    expect(unreadableFix(reason, mp4Header)).toMatch(fix);
+  });
+
+  it.skipIf(!ffmpeg)(
+    "tells a cut-short download to download again, not that it is no video",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-cut-"));
+      const full = join(dir, "full.mp4");
+      const half = join(dir, "half.mp4");
+      execFileSync("ffmpeg", [
+        ...["-v", "error", "-f", "lavfi", "-i", "testsrc=size=640x360:rate=30:duration=4"],
+        ...["-pix_fmt", "yuv420p", full],
+      ]);
+      const bytes = readFileSync(full);
+      writeFileSync(half, bytes.subarray(0, bytes.length >> 1));
+      try {
+        probeVideo(half);
+        expect.unreachable();
+      } catch (err) {
+        expect((err as Fix).message).toMatch(/moov atom not found/);
+        expect((err as Fix).fix).toMatch(/download it again/);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(!ffmpeg)("puts the reason and its fix on the error", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-probe-"));
+    const page = join(dir, "ref.mp4");
+    writeFileSync(page, "<!doctype html><title>Sign in</title>");
+    try {
+      probeVideo(page);
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toBeInstanceOf(Fix);
+      expect((err as Fix).message).toMatch(/^ffprobe cannot read .*: .+/);
+      expect((err as Fix).fix).toMatch(/not a video/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

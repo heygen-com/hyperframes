@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it, spyOn } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,6 +11,15 @@ function makeClip(path: string, seconds: number): void {
   const source = `color=c=red:s=16x16:r=5:d=${seconds}`;
   const args = ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", source];
   args.push("-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", path);
+  const made = spawnSync(ffmpeg, args, { encoding: "utf8" });
+  if (made.status !== 0) throw new Error(made.stderr || "failed to create fixture");
+}
+
+function makeToneClip(path: string, seconds: number): void {
+  const ffmpeg = process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg";
+  const args = ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i"];
+  args.push(`color=c=red:s=16x16:r=5:d=${seconds}`, "-f", "lavfi", "-i", `sine=d=${seconds}`);
+  args.push("-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-y", path);
   const made = spawnSync(ffmpeg, args, { encoding: "utf8" });
   if (made.status !== 0) throw new Error(made.stderr || "failed to create fixture");
 }
@@ -43,5 +52,52 @@ describe("compileForRender variable-bound media", () => {
     // Compile reads the authored 3 s placeholder; only the browser knows the mount binds the 13 s clip.
     expect(compiled.videos.map((video) => video.src)).toEqual(["assets/placeholder.mp4"]);
     expect(hasVariableBoundMedia(compiled.html, undefined)).toBe(true);
+  });
+
+  it("reads the length and the one sound lane from the clip a variable binds", async () => {
+    makeToneClip(join(projectDir, "assets", "tone-3.mp4"), 3);
+    makeToneClip(join(projectDir, "assets", "tone-13.mp4"), 13);
+    writeFileSync(
+      join(projectDir, "bound.html"),
+      `<!doctype html><html data-composition-variables='[{"id":"clip","type":"string","default":"assets/tone-3.mp4"}]'><body><main data-composition-id="root" data-start="0" data-width="16" data-height="16"><video id="v" src="assets/tone-3.mp4" data-var-src="clip" data-start="0" data-track-index="0"></video></main></body></html>`,
+    );
+    const entry = join(projectDir, "bound.html");
+    const options = { allowSystemFontCapture: false, variables: { clip: "assets/tone-13.mp4" } };
+    const compiled = await compileForRender(projectDir, entry, projectDir, options);
+
+    expect(compiled.videos.map((v) => [v.src, Math.round(v.end)])).toEqual([
+      ["assets/tone-13.mp4", 13],
+    ]);
+    expect(compiled.audios.map((a) => [a.src, Math.round(a.end)])).toEqual([
+      ["assets/tone-13.mp4", 13],
+    ]);
+  });
+
+  it("binds a declared default when no value is passed, and an audio element the same way", async () => {
+    writeFileSync(
+      join(projectDir, "audio.html"),
+      `<!doctype html><html data-composition-variables='[{"id":"vo","type":"string","default":"assets/tone-13.mp4"}]'><body><main data-composition-id="root" data-start="0" data-width="16" data-height="16"><audio id="a" src="assets/tone-3.mp4" data-var-src="vo" data-start="0" data-track-index="0"></audio></main></body></html>`,
+    );
+    const entry = join(projectDir, "audio.html");
+    const compiled = await compileForRender(projectDir, entry, projectDir, {
+      allowSystemFontCapture: false,
+    });
+
+    expect(compiled.audios.map((a) => [a.src, Math.round(a.end)])).toEqual([
+      ["assets/tone-13.mp4", 13],
+    ]);
+  });
+
+  it("keeps the authored clip, and says why, when the bound value fails the URL gate", async () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const entry = join(projectDir, "bound.html");
+    const options = { allowSystemFontCapture: false, variables: { clip: "javascript:alert(1)" } };
+    const compiled = await compileForRender(projectDir, entry, projectDir, options);
+
+    expect(compiled.videos.map((v) => [v.src, Math.round(v.end)])).toEqual([
+      ["assets/tone-3.mp4", 3],
+    ]);
+    expect(warn.mock.calls.flat().join(" ")).toContain("unsafe URL protocol");
+    warn.mockRestore();
   });
 });

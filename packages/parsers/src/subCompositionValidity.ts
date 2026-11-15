@@ -55,11 +55,25 @@ export interface ParsableDocumentLike {
   documentElement: { outerHTML?: string } | null;
   body?: { innerHTML?: string | null } | null;
   querySelector(selector: string): { innerHTML?: string | null } | null;
+  querySelectorAll(selector: string): ArrayLike<{ innerHTML?: string | null } & SceneTemplateLike>;
+}
+
+export interface SceneTemplateLike {
+  content: { querySelector(selector: string): unknown };
+}
+
+export function findSceneTemplate<T extends SceneTemplateLike>(
+  templates: ArrayLike<T>,
+): T | undefined {
+  return Array.from(templates).find(
+    (template) => template.content.querySelector("[data-composition-id]") != null,
+  );
 }
 
 /** Resolve authored content without invoking linkedom's synthetic body getter. */
 export function resolveSubCompositionContent(html: string, document: ParsableDocumentLike) {
-  const template = document.querySelector("template");
+  const templates = Array.from(document.querySelectorAll("template"));
+  const template = findSceneTemplate(templates) ?? templates[0];
   if (template) return { contentHtml: template.innerHTML ?? "", hasTemplate: true };
 
   const body = document.querySelector("body");

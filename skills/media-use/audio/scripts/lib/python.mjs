@@ -15,6 +15,7 @@
 // `HYPERFRAMES_PYTHON` (the documented PEP 668 venv setup) wins over the PATH probe, matching
 // the CLI's `findPython()`; ignoring it made BGM silently disable itself (#4614).
 
+import "../../../scripts/lib/windows-exe-search.mjs";
 import { spawnSync } from "node:child_process";
 
 // Accept only an interpreter whose `--version` reports Python 3, as the CLI's
@@ -62,13 +63,28 @@ export function pythonCommand() {
   return cached;
 }
 
+// `python -c` and `python -m` put the working directory first on sys.path, ahead of installed
+// packages. Dropping that entry first keeps a project file named `pip`, `numpy` or any other
+// imported module from running; `sys` is built into the interpreter.
+const WITHOUT_WORKING_DIRECTORY =
+  "import sys\nif sys.path and sys.path[0] == '': del sys.path[0]\n";
+
+function withoutWorkingDirectory(extraArgs) {
+  const [flag, value, ...rest] = extraArgs;
+  if (flag === "-c") return ["-c", WITHOUT_WORKING_DIRECTORY + value, ...rest];
+  if (flag !== "-m") return extraArgs;
+  const runModule = `import runpy\nrunpy.run_module(${JSON.stringify(value)}, run_name="__main__", alter_sys=True)\n`;
+  return ["-c", WITHOUT_WORKING_DIRECTORY + runModule, ...rest];
+}
+
 /**
  * Build a `{ cmd, args }` for running Python 3 with `extraArgs`, using the
  * resolved (or supplied) prefix. Keeps the launcher's `-3` (and any future
- * prefix args) ahead of the caller's own arguments.
+ * prefix args) ahead of the caller's own arguments. Inline code and modules
+ * import only installed packages, never files in the working directory.
  */
 export function pythonInvocation(extraArgs, prefix = pythonCommand()) {
-  return { cmd: prefix[0], args: [...prefix.slice(1), ...extraArgs] };
+  return { cmd: prefix[0], args: [...prefix.slice(1), ...withoutWorkingDirectory(extraArgs)] };
 }
 
 /** Test-only: clear the cached resolution so a test can re-probe. */

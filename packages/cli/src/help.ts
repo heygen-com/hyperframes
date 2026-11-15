@@ -26,6 +26,7 @@ const GROUPS: Group[] = [
       ["catalog", "Browse and install blocks and components"],
       ["preview", "Start the studio for previewing compositions"],
       ["present", "Open a slideshow deck in presenter mode (with audience sync)"],
+      ["share", "Share a rendered video for review"],
       ["publish", "Upload a project to a stable URL (private by default)"],
       ["render", "Render a composition to MP4 or WebM"],
       ["open", "Open a project in the HyperFrames desktop app"],

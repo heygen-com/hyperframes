@@ -1,5 +1,9 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { classifyMediaColor, probeMediaMetadata } from "./mediaMetadata.js";
+import { MEDIA_INPUT_ARGS, NOT_MEDIA, startsAsMediaPlaylist } from "./mediaExtensions.js";
+import { classifyMediaColor, probeAudioTrack, probeMediaMetadata } from "./mediaMetadata.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -168,6 +172,20 @@ describe("probeMediaMetadata", () => {
         .source?.bitDepth,
     ).toBe(12);
     expect((await probe({ pix_fmt: "yuv420p" })).source).toBeUndefined();
+    expect(
+      (
+        await probe({
+          width: 1920,
+          height: 1080,
+          r_frame_rate: "30000/1001",
+          avg_frame_rate: "30000/1001",
+        })
+      ).source,
+    ).toMatchObject({ frameRate: 30000 / 1001, variableFrameRate: false });
+    expect(
+      (await probe({ width: 1920, height: 1080, r_frame_rate: "60/1", avg_frame_rate: "24/1" }))
+        .source,
+    ).toMatchObject({ frameRate: 60, variableFrameRate: true });
   });
 
   it("lists every stream with its flags, for a failure report", async () => {
@@ -233,6 +251,23 @@ describe("probeMediaMetadata", () => {
     });
   });
 
+  it.each([
+    ["an HLS playlist", "#EXTM3U\n#EXT-X-TARGETDURATION:10\n/elsewhere/clip.mp4\n"],
+    ["a DASH manifest", '\uFEFF<?xml version="1.0"?>\n<MPD xmlns="urn:mpeg:dash:schema:mpd:2011">'],
+    ["a concat script", "ffconcat version 1.0\nfile clip.mp4\n"],
+  ])("never hands %s named as a video to ffprobe", async (_name, text) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-media-metadata-"));
+    try {
+      writeFileSync(join(dir, "clip.mp4"), text);
+      const runner = vi.fn();
+      const metadata = await probeMediaMetadata(join(dir, "clip.mp4"), runner);
+      expect(metadata).toMatchObject({ kind: "video", probeError: NOT_MEDIA });
+      expect(runner).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("supports an injected async runner without requiring local ffprobe", async () => {
     vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", "/definitely/missing/ffprobe");
     const metadata = await probeMediaMetadata("/tmp/clip.mp4", async () => ({
@@ -243,5 +278,53 @@ describe("probeMediaMetadata", () => {
       stderr: "",
     }));
     expect(metadata).toMatchObject({ kind: "video", color: { codecName: "h264" } });
+  });
+});
+
+describe("startsAsMediaPlaylist", () => {
+  it.each([
+    [
+      "a concat script with a control byte in a comment",
+      "ffconcat version 1.0\n#\u0001\nfile seg.ts",
+      true,
+    ],
+    ["an HLS playlist with a control byte", "#EXTM3U\n\u0002", true],
+    ["markup", '<?xml version="1.0"?><MPD>', true],
+    ["binary that starts with <", "<\u0000\u0001\u0002binary", false],
+    ["an MP4 header", "\u0000\u0000\u0000\u0018ftypisom", false],
+  ])("reads %s as %s", (_name, text, playlist) => {
+    expect(startsAsMediaPlaylist(Buffer.from(text, "latin1"))).toBe(playlist);
+  });
+});
+
+describe("probeAudioTrack", () => {
+  it("never hands a playlist named as audio to ffprobe", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-media-metadata-"));
+    try {
+      writeFileSync(join(dir, "song.mp3"), "#EXTM3U\n#EXT-X-TARGETDURATION:10\n/elsewhere.mp3\n");
+      const runner = vi.fn();
+      expect(await probeAudioTrack(join(dir, "song.mp3"), runner)).toBeNull();
+      expect(runner).not.toHaveBeenCalled();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("the media probes", () => {
+  it("hand ffprobe only the self-contained media demuxers", async () => {
+    vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", "/definitely/missing/ffprobe");
+    const seen: string[][] = [];
+    const runner = async (_command: string, args: string[]) => {
+      seen.push(args);
+      return { status: 0, stdout: "{}", stderr: "" };
+    };
+    await probeMediaMetadata("/tmp/missing-clip.mp4", runner);
+    await probeAudioTrack("/tmp/missing-song.mp3", runner);
+    expect(seen).toHaveLength(2);
+    for (const args of seen) {
+      const at = args.indexOf("--");
+      expect(args.slice(at - MEDIA_INPUT_ARGS.length, at)).toEqual(MEDIA_INPUT_ARGS);
+    }
   });
 });

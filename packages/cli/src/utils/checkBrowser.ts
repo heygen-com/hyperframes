@@ -63,7 +63,7 @@ import {
   resolveProxies,
   type ProxyProgress,
 } from "@hyperframes/studio-server/proxy-transcoder";
-import { rectToBbox } from "./checkTypes.js";
+import { rectToBbox, type MediaCopyFacts } from "./checkTypes.js";
 import type {
   AnchoredLayoutIssue,
   CheckAnchor,
@@ -245,6 +245,7 @@ export async function preResolveHostileMediaProxies(
   html: string,
   autoProxyOverride?: boolean,
   budgetMs?: number,
+  record?: (facts: MediaCopyFacts) => void,
 ): Promise<ProxyPreResolution> {
   const none: ProxyPreResolution = {
     findings: [],
@@ -333,6 +334,11 @@ export async function preResolveHostileMediaProxies(
   const unfinished = sources.flatMap(({ file }, index) =>
     results[index]!.status === "rejected" ? [`${file} ${heartbeat.percent(index)}`] : [],
   );
+  record?.({
+    total,
+    waitedMs: Date.now() - startedAt,
+    unfinished: overBudget === undefined ? 0 : unfinished.length,
+  });
   if (overBudget !== undefined && unfinished.length > 0) {
     throw new CheckCopiesUnfinishedError(overBudget, unfinished);
   }
@@ -439,6 +445,8 @@ export async function runBrowserCheck(
 ): Promise<CheckBrowserResult> {
   const html = await loadCheckHtmlWithDeferredMedia(project.dir);
   deadline?.enter("copies");
+  let mediaCopies: MediaCopyFacts | undefined;
+  deadline?.keepPartial(() => (mediaCopies ? { mediaCopies } : {}));
   const {
     findings: drafts,
     failedPaths,
@@ -448,6 +456,9 @@ export async function runBrowserCheck(
     html,
     options.autoProxy,
     Math.min(COPY_BUDGET_MS, deadline?.remainingMs() ?? COPY_BUDGET_MS),
+    (facts) => {
+      mediaCopies = facts;
+    },
   );
   deadline?.enter("launch");
   const server = await serveStaticProjectHtml(
@@ -533,6 +544,7 @@ export async function runBrowserCheck(
     const unreachable = await networkChangesStillFailing(merged);
     return {
       ...result,
+      ...(mediaCopies && { mediaCopies }),
       timings: { ...result.timings, launchSettleMs },
       renderReadyTimedOut: session.renderReadyTimedOut,
       runtimeFindings: dropFailedProxyEchoes(
@@ -857,6 +869,9 @@ function runtimeInfoFindingCode(text: string): string | null {
     : "media_proxy_fallback";
 }
 
+const READ_PIXELS_STALL =
+  /^\[\.WebGL-[^\]]*\]GL Driver Message \([^)]*\): GPU stall due to ReadPixels/;
+
 function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], clock: RuntimeClock): void {
   followSampleTimeMarkers(page, clock.at);
   page.on("console", (message) => {
@@ -873,6 +888,7 @@ function wireRuntimeListeners(page: Page, drafts: RuntimeDraft[], clock: Runtime
         line: location.lineNumber,
       });
     } else if (type === "warn") {
+      if (READ_PIXELS_STALL.test(text)) return;
       const location = message.location();
       const webGpuFailure = isWebGpuRuntimeFailure(text);
       pushRuntimeDraft(drafts, {
@@ -2109,7 +2125,8 @@ function parseGeometryIdentity(
   value: Record<string, unknown>,
 ): Pick<CheckGeometryCandidate, "kind" | "tag" | "text"> | null {
   const kindValue = Reflect.get(value, "kind");
-  const kind = kindValue === "text" || kindValue === "media" ? kindValue : null;
+  const kind =
+    kindValue === "text" || kindValue === "media" || kindValue === "block" ? kindValue : null;
   if (!kind) return null;
   const tag = stringValue(value, "tag");
   if (!tag) return null;
@@ -2279,6 +2296,7 @@ const LAYOUT_ISSUE_CODES: readonly LayoutIssueCode[] = [
   "video_alpha_unread",
   "text_not_painted",
   "caption_zone_collision",
+  "outside_safe_zone",
   "frame_out_of_frame",
   "escaped_container",
   "panel_out_of_canvas",

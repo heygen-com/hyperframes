@@ -1,5 +1,6 @@
 import type { TimelineRequest } from "../../core/src/runtime/timelineInspection";
 import { withHyperframesBrowserMarker } from "../../core/src/browserMarker";
+import { buildChromeLaunchEnv } from "../../core/src/chromeEnv";
 import {
   inspectComponents,
   inspectElementMap,
@@ -28,7 +29,7 @@ import {
   bundleToSingleHtml,
   type BundleScriptProvenance,
 } from "../../core/src/compiler/htmlBundler";
-import { closeServer } from "./pageServer";
+import { closeServer, isLoopbackHost } from "./pageServer";
 import { Sources, fingerprint } from "./sources";
 import type { InspectRequest, Snippet } from "./types";
 import { hyperframesCacheDir } from "../../core/src/cacheDir";
@@ -121,6 +122,7 @@ export class Inspector {
     if (fingerprint(this.project) !== digest)
       throw new Error("source_changed_during_load: retry against a stable project");
     const server = createServer((req, res) => {
+      if (!isLoopbackHost(req.headers.host)) return void res.writeHead(403).end();
       try {
         const path = decodeURIComponent(new URL(req.url ?? "/", "http://localhost").pathname);
         if (path === "/" || path === "/index.html") {
@@ -176,6 +178,7 @@ export class Inspector {
       if (!this.browser) {
         this.browser = await puppeteer.launch({
           executablePath: this.options.executablePath ?? chromePath(),
+          env: buildChromeLaunchEnv(),
           headless: true,
           args: withHyperframesBrowserMarker([
             "--disable-dev-shm-usage",

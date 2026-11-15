@@ -2,7 +2,8 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { cpus, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
+import { usableCpuCount } from "./systemMemory.js";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { VideoElement } from "../types.js";
@@ -89,7 +90,7 @@ describe.skipIf(!HAS_FFMPEG)("deferred windows of a remote source", { timeout: 1
     const result = await defer((i) => 5 + i * 0.05);
 
     expect(result.extracted.length).toBe(24);
-    expect(peak).toBeGreaterThan(Math.max(1, Math.floor(cpus().length / 2)));
+    expect(peak).toBeGreaterThan(Math.max(1, Math.floor(usableCpuCount() / 2)));
   });
 });
 

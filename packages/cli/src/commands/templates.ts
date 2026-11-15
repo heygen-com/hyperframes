@@ -6,7 +6,6 @@ import {
   existsSync,
   fstatSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   readdirSync,
@@ -25,6 +24,11 @@ import { c } from "../ui/colors.js";
 import { failCommand } from "../utils/commandResult.js";
 import { fetchExplained, NetworkFailure } from "../utils/networkFailure.js";
 import { defineCommand } from "../utils/defineCommand.js";
+import { projectConfigPath, seedProjectAuthoringSkill } from "../utils/projectConfig.js";
+import { trackSkillCommandRan } from "../telemetry/events.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
+
+const STYLE_SAMPLING = "style-sampling";
 
 export interface TemplatePack {
   /** The private bundle's id on the plan-gated route. */
@@ -37,28 +41,28 @@ export interface TemplatePack {
 export const TEMPLATES: Record<string, TemplatePack> = {
   "animated-science-explainer": {
     id: "M9003",
-    sha256: "42fc622292e323c5d620480428a4f3162b6a8844c0330abf29a367fa214bbe6a",
-    bytes: 25535207,
+    sha256: "205011f9ed345db786a611bfff43036e6c971368420c87120ff376a7797a26ee",
+    bytes: 25535379,
   },
   "finance-explainer": {
     id: "M9002",
-    sha256: "52be65859022d8c6b1ed2e3701d875d95b6dce87a8e5bf16e4f2581a56cf746e",
-    bytes: 140483725,
+    sha256: "e8ace0e0e4fe8219010ce01e7ca1eae6ab03741d6eb60140e0b2a4ff9628dd30",
+    bytes: 140485130,
   },
   "3d-true-crime": {
     id: "M9005",
-    sha256: "62959b0b978fb97727f06346b9ea5aaf3d8dcf6992f574cbe525bbe893cff287",
-    bytes: 6544603,
+    sha256: "2c27e08dd83984c0470f3c4f9f0c94f2b4528bbc27160312bbda580e89a43d63",
+    bytes: 6544517,
   },
   "collage-explainer": {
     id: "M9001",
-    sha256: "a25529d8ee1dfb09187a6ccc0978d7127a4306992287e68c06f358914d9f1496",
-    bytes: 36702236,
+    sha256: "bb9f71ee3b27cc046e161e53d9c6c7bd7ce9a6d6b6f41acc01da4eb455a63230",
+    bytes: 36702348,
   },
   "3d-brand-explainer": {
     id: "M9004",
-    sha256: "24d1f3e4bc1d5e6d843e12fc094223f8df6f27f798094940f23c33076ac434a6",
-    bytes: 20126746,
+    sha256: "33bbabcf94db88bedf0f2ef97331a7a34dff4ba6d5b09846ec759600b99d15ae",
+    bytes: 20126308,
   },
 };
 
@@ -103,6 +107,8 @@ async function download(url: string, pack: TemplatePack): Promise<Buffer> {
   return data;
 }
 
+const PLAIN_FILE_OR_FOLDER_LISTING = /^[-d]/;
+
 function assertSafeEntries(data: Buffer): void {
   const names = execFileSync("tar", ["-tzf", "-"], {
     input: data,
@@ -112,6 +118,14 @@ function assertSafeEntries(data: Buffer): void {
   for (const name of names.split("\n"))
     if (name.startsWith("/") || name.split("/").includes(".."))
       throw new PullRefused(`The template holds an unsafe path (${name}); nothing was unpacked.`);
+  const kinds = execFileSync("tar", ["-tvzf", "-"], {
+    input: data,
+    encoding: "utf8",
+    maxBuffer: 1 << 26,
+  });
+  for (const line of kinds.split("\n"))
+    if (line && !PLAIN_FILE_OR_FOLDER_LISTING.test(line))
+      throw new PullRefused("The template holds a link or special file; nothing was unpacked.");
 }
 
 const PULLED_HASH = ".template-sha256";
@@ -175,22 +189,27 @@ function pullOwner(path: string, name: string, dest: string): number | null {
   return pid !== null && markedBy(readPullMarker(path), pid) ? pid : null;
 }
 
-function removeAbandonedParts(dest: string): void {
-  const parent = dirname(dest);
-  if (!existsSync(parent)) return;
-  for (const entry of readdirSync(parent, { withFileTypes: true })) {
+function removeAbandonedParts(stage: string, dest: string): void {
+  if (!existsSync(stage)) return;
+  for (const entry of readdirSync(stage, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const path = join(parent, entry.name);
+    const path = join(stage, entry.name);
     const pid = pullOwner(path, entry.name, dest);
     if (pid !== null && !processIsAlive(pid)) rmSync(path, { recursive: true, force: true });
   }
 }
 
-/** Unpacks the pack beside `dest` and moves it in whole, so `dest` only ever holds a complete template. */
-async function unpack(data: Buffer, dest: string, pack: TemplatePack): Promise<void> {
+/** Unpacks in `stage`, which watchers skip (a held file fails the rename on Windows), then moves it in whole. */
+async function unpack(
+  data: Buffer,
+  dest: string,
+  stage: string,
+  pack: TemplatePack,
+): Promise<void> {
   makeOutputFolder(dirname(dest));
-  removeAbandonedParts(dest);
-  const work = mkdtempSync(join(dirname(dest), `${partPrefix(dest)}${process.pid}-`));
+  makeOutputFolder(stage);
+  removeAbandonedParts(stage, dest);
+  const work = createStagingDir(stage, `${partPrefix(dest)}${process.pid}-`);
   const stopWatching = removeOnStop(work);
   try {
     writeFileSync(join(work, PULL_MARKER), JSON.stringify({ owner: PULL_OWNER, pid: process.pid }));
@@ -216,7 +235,9 @@ export async function pullTemplate(slug: string, dir: string): Promise<string> {
     );
   const dest = resolve(dir, "templates", slug);
   if (alreadyPulled(dest, pack)) return dest;
-  await unpack(await download(await bundleUrl(pack), pack), dest, pack);
+  const stage = resolve(dir, ".hyperframes", "template-pulls");
+  await unpack(await download(await bundleUrl(pack), pack), dest, stage, pack);
+  trackSkillCommandRan({ skill: STYLE_SAMPLING, command: "templates pull" });
   return dest;
 }
 
@@ -236,6 +257,12 @@ function alreadyPulled(dest: string, pack: TemplatePack): boolean {
   throw new PullRefused(
     `${dest} is there but is not this template; nothing was downloaded. Move it aside and run the pull again.`,
   );
+}
+
+export function tagStyleSamplingProject(dir: string, pulled: string): void {
+  for (const folder of [dir, pulled]) {
+    if (existsSync(projectConfigPath(folder))) seedProjectAuthoringSkill(folder, STYLE_SAMPLING);
+  }
 }
 
 /** Downloads a style template for a HyperFrames Pro account. The server decides who may have it. */
@@ -264,6 +291,7 @@ export default defineCommand({
     }
     try {
       const path = await pullTemplate(String(args.slug), args.dir ?? ".");
+      tagStyleSamplingProject(args.dir ?? ".", path);
       console.log(c.success(`✓ ${path}`));
     } catch (error) {
       if (!(error instanceof PullRefused || error instanceof NetworkFailure)) throw error;

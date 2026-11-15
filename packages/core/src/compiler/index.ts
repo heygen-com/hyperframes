@@ -33,6 +33,7 @@ export {
   type BundledHostCompositionIdentity,
   bundleToSingleHtml,
   type BundleOptions,
+  type BundlePrivateFiles,
   type BundleScriptProvenance,
   prepareFlattenedInnerRoot,
   FLATTENED_INNER_ROOT_STRIP_ATTRS,
@@ -40,6 +41,7 @@ export {
   parsesAsScript,
 } from "./htmlBundler";
 export { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
+export { boundMediaSrc } from "../runtime/applyVariableBindings";
 
 export {
   extractCompiledHtmlParityContract,

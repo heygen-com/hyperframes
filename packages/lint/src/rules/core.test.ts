@@ -1074,6 +1074,24 @@ describe("core rules", () => {
       expect(finding?.message).toContain("Math.random");
     });
 
+    it("detects crypto.randomUUID() in script content", async () => {
+      const html = `
+<html><body>
+  <div data-composition-id="c1" data-width="1920" data-height="1080"></div>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const id = crypto.randomUUID();
+    window.__timelines["c1"] = gsap.timeline({ paused: true });
+  </script>
+</body></html>`;
+      const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find((f) => f.code === "non_deterministic_code");
+      expect(finding).toBeDefined();
+      expect(finding?.severity).toBe("error");
+      expect(finding?.message).toContain("crypto.randomUUID");
+      expect(finding?.fixHint).toContain("seeded PRNG");
+    });
+
     it("detects Date.now() in script content", async () => {
       const html = `
 <html><body>

@@ -115,19 +115,10 @@ const CASES: readonly SweepCase[] = [
       measuredMae: S.C,
     },
   },
-  ...(["capture", "filter"] as const).map(
-    (tier): SweepCase => ({
-      fixture: "pseudo-after",
-      tier,
-      frame: 14,
-      check: "inside",
-      bug: {
-        finding: "D",
-        reason: "an ::after drawn outside the mover's box is cut off",
-        regions: [rect(376, 150, 72, 68)],
-        measuredMae: tier === "capture" ? S.D_CAPTURE : S.D_FILTER,
-      },
-    }),
+  ...(["pseudo-after", "pseudo-before"] as const).flatMap((fixture) =>
+    (["capture", "filter"] as const).map(
+      (tier): SweepCase => ({ fixture, tier, frame: 14, check: "inside" }),
+    ),
   ),
   {
     fixture: "own-clip-polygon",
@@ -158,13 +149,6 @@ const CASES: readonly SweepCase[] = [
     tier: "filter",
     frame: 11,
     check: "outside",
-    bug: {
-      finding: "F",
-      reason:
-        "the blur filter makes the mover a containing block, so its fixed child jumps into it",
-      regions: [rect(10, 10, 60, 30), trail(152)],
-      measuredMae: S.F_FILTER,
-    },
   },
   {
     fixture: "body-child-selector",
@@ -184,12 +168,6 @@ const CASES: readonly SweepCase[] = [
     tier: "filter",
     frame: 11,
     check: "outside",
-    bug: {
-      finding: "I",
-      reason: "the filter tier's svg becomes the root's last child, so :last-child moves to it",
-      regions: [rect(0, 0, 0, 0), rect(494, 14, 112, 62)],
-      measuredMae: S.I,
-    },
   },
   {
     fixture: "overflow-card",

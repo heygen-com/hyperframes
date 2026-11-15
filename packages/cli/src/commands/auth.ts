@@ -38,7 +38,7 @@ ${c.bold("SUBCOMMANDS:")}
   ${c.accent("logout")}   ${c.dim("Remove the stored credential (--keep-api-key for OAuth-only).")}
 
 ${c.bold("ENV VARS:")}
-  ${c.accent("HEYGEN_API_KEY")}              API key; used when no login is active (or it can't refresh), before a saved key.
+  ${c.accent("HEYGEN_API_KEY")}              API key; used when no login is active (or it can't refresh), before a saved key. A received project's .env key is used only when no login or key is saved.
   ${c.accent("HYPERFRAMES_API_KEY")}         Alias for HEYGEN_API_KEY.
   ${c.accent("HEYGEN_ACCESS_TOKEN")}         OAuth token from a host app; used first, never refreshed or saved.
   ${c.accent("HEYGEN_API_URL")}              Override the API base URL (default https://api.heygen.com).

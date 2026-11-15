@@ -20,6 +20,7 @@ import { validRegistryName, validRegistryManifest, validRegistryItem } from "./v
 
 import { join, basename } from "node:path";
 import { mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { namedCacheDir } from "@hyperframes/core/cache-dir";
 import {
@@ -33,6 +34,19 @@ import {
 export const DEFAULT_REGISTRY_URL =
   "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
 
+/** Whether `registry` is the public registry or a folder in it, read the way a fetch reads it. */
+export function isPublicRegistry(registry: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(registry);
+  } catch {
+    return false;
+  }
+  if (url.username || url.password || url.search || url.hash) return false;
+  const href = url.href.replace(/\/+$/, "");
+  return href === DEFAULT_REGISTRY_URL || href.startsWith(`${DEFAULT_REGISTRY_URL}/`);
+}
+
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_MANIFEST_BYTES = 10 * 1024 * 1024;
 
@@ -45,12 +59,15 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 interface CacheEntry<T> {
   fetchedAt: number;
+  source?: string;
   data: T;
 }
 
+// The slug alone maps different URLs to one name; the digest and recorded source keep registries apart.
 function cachePath(baseUrl: string, key: string): string {
   const slug = baseUrl.replace(/[^a-zA-Z0-9]/g, "_");
-  return join(cacheDir(), `${slug}__${key}.json`);
+  const digest = createHash("sha256").update(baseUrl).digest("hex").slice(0, 16);
+  return join(cacheDir(), `${slug}-${digest}__${key}.json`);
 }
 
 /**
@@ -64,6 +81,7 @@ function cachePath(baseUrl: string, key: string): string {
  */
 function readCacheEntry<T>(
   path: string,
+  source: string,
   validate: (value: unknown) => value is T,
 ): CacheEntry<T> | undefined {
   try {
@@ -72,6 +90,7 @@ function readCacheEntry<T>(
     ) as CacheEntry<unknown>;
     if (!entry || typeof entry.fetchedAt !== "number" || !Number.isFinite(entry.fetchedAt))
       return undefined;
+    if (entry.source !== source) return undefined;
     // The callers now test the entry rather than the payload, so an empty
     // payload would satisfy them: `null` data would short-circuit the fetch
     // and be handed back as a RegistryItem. Rejecting it here keeps the miss
@@ -89,11 +108,11 @@ function isFresh<T>(entry: CacheEntry<T>): boolean {
   return Date.now() - entry.fetchedAt <= CACHE_TTL_MS;
 }
 
-function writeCache<T>(path: string, data: T): void {
+function writeCache<T>(path: string, source: string, data: T): void {
   try {
     mkdirSync(cacheDir(), { recursive: true });
     const root = registryRoot(cacheDir());
-    const entry: CacheEntry<T> = { fetchedAt: Date.now(), data };
+    const entry: CacheEntry<T> = { fetchedAt: Date.now(), source, data };
     publishRegistryFile(root, basename(path), JSON.stringify(entry));
   } catch {
     // Cache writes are opportunistic. A read-only home directory or sandboxed
@@ -138,12 +157,12 @@ export async function readRegistryManifest(
 ): Promise<RegistryManifest> {
   const url = registryPathUrl(baseUrl, "registry.json");
   const cacheFile = cachePath(baseUrl, "registry");
-  const cached = readCacheEntry(cacheFile, validRegistryManifest);
+  const cached = readCacheEntry(cacheFile, baseUrl, validRegistryManifest);
   if (!options?.skipCache && cached && isFresh(cached)) return cached.data;
 
   try {
     const manifest = await fetchJson(url, validRegistryManifest);
-    writeCache(cacheFile, manifest);
+    writeCache(cacheFile, baseUrl, manifest);
     return manifest;
   } catch (err) {
     if (cached) return cached.data;
@@ -169,14 +188,14 @@ export async function fetchItemManifest(
   const validate = (value: unknown): value is RegistryItem => validRegistryItem(value, name, type);
   const url = registryPathUrl(baseUrl, dir, name, "registry-item.json");
   const cacheFile = cachePath(baseUrl, `${dir}__${name}`);
-  const cached = readCacheEntry(cacheFile, validate);
+  const cached = readCacheEntry(cacheFile, baseUrl, validate);
   if (cached && (options?.cacheOnly || (!options?.skipCache && isFresh(cached))))
     return cached.data;
   if (options?.cacheOnly) throw new Error("not fetched after an earlier registry timeout");
 
   try {
     const item = await fetchJson(url, validate);
-    writeCache(cacheFile, item);
+    writeCache(cacheFile, baseUrl, item);
     return item;
   } catch (err) {
     if (cached) return cached.data;

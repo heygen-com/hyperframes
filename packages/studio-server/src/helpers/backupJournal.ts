@@ -2,7 +2,12 @@ import { readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import { join, relative } from "node:path";
-import { isProjectRootMissing, isSafePath, mkdirWithinProject } from "./safePath.js";
+import {
+  isLinkFreeWithinProject,
+  isProjectRootMissing,
+  isSafePath,
+  mkdirWithinProject,
+} from "./safePath.js";
 
 const DEFAULT_KEEP_PER_FILE = 10;
 
@@ -37,6 +42,7 @@ export function snapshotBeforeWrite(
 
     const relativePath = relative(projectDir, absPath);
     const backupDir = join(projectDir, ".hyperframes", "backup");
+    if (!isLinkFreeWithinProject(projectDir, backupDir)) return { backupPath: null };
     mkdirWithinProject(projectDir, backupDir);
 
     const pathKey = Buffer.from(relativePath, "utf-8").toString("base64url");
@@ -44,8 +50,10 @@ export function snapshotBeforeWrite(
       pathKey.length <= 200
         ? pathKey
         : `sha256~${createHash("sha256").update(relativePath).digest("hex")}`;
+    const [newest] = backupsNewestFirst(backupDir, [pathKey, backupKey]);
+    if (newest && readFileSync(newest).equals(content)) return { backupPath: newest };
     const backupPath = nextBackupPath(backupDir, backupKey);
-    writeFileSync(backupPath, content);
+    writeFileSync(backupPath, content, { flag: "wx" });
     pruneBackups(backupDir, [pathKey, backupKey], options.keepPerFile ?? DEFAULT_KEEP_PER_FILE);
     return { backupPath };
   } catch (error) {
@@ -80,17 +88,17 @@ function nextBackupPath(backupDir: string, backupKey: string): string {
   }
 }
 
-function pruneBackups(backupDir: string, backupKeys: string[], keepPerFile: number): void {
-  const keep = Math.max(1, Math.floor(keepPerFile));
+function backupsNewestFirst(backupDir: string, backupKeys: string[]): string[] {
   const suffix = new RegExp(`-(?:${backupKeys.join("|")})(?:-\\d+)?$`);
-  const matches = readdirSync(backupDir)
+  return readdirSync(backupDir)
     .filter((name) => suffix.test(name))
     .map((name) => join(backupDir, name))
-    .sort((a, b) => {
-      return b.localeCompare(a);
-    });
+    .sort((a, b) => b.localeCompare(a));
+}
 
-  for (const file of matches.slice(keep)) {
+function pruneBackups(backupDir: string, backupKeys: string[], keepPerFile: number): void {
+  const keep = Math.max(1, Math.floor(keepPerFile));
+  for (const file of backupsNewestFirst(backupDir, backupKeys).slice(keep)) {
     try {
       unlinkSync(file);
     } catch {

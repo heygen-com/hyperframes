@@ -1078,6 +1078,43 @@ it("elevates and deduplicates WebGPU validation warnings while preserving ordina
   );
 });
 
+// fails without the narrowing: every GL driver Performance note was hidden, not only the ReadPixels stall.
+it("hides only the ReadPixels stall check's own reads cause, not the film's other GL driver notes", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture();
+  const page = fakePage();
+  const stall = fakeConsoleMessage(
+    "warn",
+    "[.WebGL-0x2c84001d4800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+  );
+  const ordinaryWarning = fakeConsoleMessage("warn", "Optional caption font was not loaded");
+  const otherDriverNote = fakeConsoleMessage(
+    "warn",
+    "[.WebGL-0x2c84001d4800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): Program undefined behavior warning",
+  );
+  page.on = vi.fn(
+    (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
+      if (event === "console") {
+        handler(stall);
+        handler(otherDriverNote);
+        handler(ordinaryWarning);
+      }
+    },
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(
+    result.runtimeFindings.filter(({ code }) => code === "console_warning").map((f) => f.message),
+  ).toEqual([otherDriverNote.text(), ordinaryWarning.text()]);
+});
+
 describe("collectSeekClock", () => {
   afterEach(() => {
     Reflect.deleteProperty(window, "__timelines");

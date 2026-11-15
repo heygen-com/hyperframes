@@ -67,8 +67,9 @@ project `.env` (auto-loaded, walks up ≤5 dirs) → an API key saved in
 `Authorization: Bearer`; an API key as `X-Api-Key`; only OAuth includes
 `X-HeyGen-Source: cli`. The server decides HyperFrames eligibility and charges;
 explicit API keys use API billing. An expired or foreign OAuth session gives way
-to an env key; without one it stops rather than selecting a saved API key, with
-a hint to run `npx hyperframes auth refresh`.
+to an env key that a received project's `.env` did not set; without one it stops
+rather than selecting a saved API key, with a hint to run `npx hyperframes auth refresh`
+(or `auth login` for a session from another OAuth client).
 
 ```bash
 # Only needed if you haven't run `npx hyperframes auth login`:

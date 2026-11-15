@@ -1,0 +1,311 @@
+{
+  "policy_version": "portable-source-v4",
+  "manifest": {
+    "format_version": 1,
+    "entrypoint": "index.html",
+    "fields": ["format_version", "entrypoint", "files"],
+    "file_fields": ["path", "sha256", "size"],
+    "sha256": "64 lowercase hex characters: the SHA-256 of the file's exact bytes",
+    "size": "the file's byte length, an integer from 0 to 9007199254740991 (2^53 - 1, the largest integer every JSON client reads exactly)",
+    "same_digest_same_size": "two entries with the same sha256 must have the same size",
+    "not_in_manifest": "upload state, latest pointer, authors, comments, timestamps, URLs, S3 keys and sync binding metadata"
+  },
+  "canonical_encoding": {
+    "files_order": "ascending by the UTF-8 bytes of path (not UTF-16 code units: JavaScript's default sort differs above U+FFFF)",
+    "object_keys": "sorted; every key is ASCII, so byte, code-point and UTF-16 order agree",
+    "whitespace": "none outside strings: separators are ',' and ':'",
+    "strings": "UTF-8; only '\"' and '\\' are escaped, because policy-valid paths contain no control characters or lone surrogates",
+    "numbers": "integers in decimal with no sign, fraction or exponent",
+    "manifest_sha256": "lowercase hex SHA-256 of the canonical bytes"
+  },
+  "unicode": {
+    "version": "15.1.0",
+    "table": "unicode-15.1.0.json",
+    "assigned_only": "every code point must be assigned in Unicode 15.1; unassigned and future code points are refused",
+    "normalization": "every path must already be NFC",
+    "comparison_key": "NFC(full_casefold(NFC(segment))), with default full case folding (CaseFolding.txt status C and F)"
+  },
+  "path": {
+    "max_path_bytes": 1024,
+    "max_segment_bytes": 240,
+    "separator": "/",
+    "forbidden_characters": "<>:\"|?*\\",
+    "reserved_segment_regex": "(?:con|prn|aux|nul|com[1-9\u00b9\u00b2\u00b3]|lpt[1-9\u00b9\u00b2\u00b3])(?:\\..*)?",
+    "reserved_segment_match": "full match against each segment's comparison key, so CON, Con.txt and nul.tar.gz are all reserved",
+    "canonical_spelling_roots": [".media", ".hyperframes"],
+    "checks": [
+      {
+        "code": "path_empty",
+        "rule": "the path is not the empty string"
+      },
+      {
+        "code": "path_invalid_character",
+        "rule": "no C0 or C1 control character, DEL, lone surrogate or forbidden character"
+      },
+      {
+        "code": "path_unassigned_code_point",
+        "rule": "every code point is assigned in Unicode 15.1"
+      },
+      {
+        "code": "path_not_nfc",
+        "rule": "the path equals its NFC form"
+      },
+      {
+        "code": "path_too_long",
+        "rule": "at most max_path_bytes UTF-8 bytes"
+      },
+      {
+        "code": "path_not_relative",
+        "rule": "does not start with '/'"
+      },
+      {
+        "code": "path_empty_segment",
+        "rule": "no empty segment ('a//b', a trailing '/')"
+      },
+      {
+        "code": "path_dot_segment",
+        "rule": "no '.' or '..' segment"
+      },
+      {
+        "code": "segment_too_long",
+        "rule": "each segment is at most max_segment_bytes UTF-8 bytes"
+      },
+      {
+        "code": "segment_trailing_dot_or_space",
+        "rule": "no segment ends in '.' or ' ' (Windows strips them)"
+      },
+      {
+        "code": "reserved_name",
+        "rule": "no segment matches reserved_segment_regex"
+      },
+      {
+        "code": "reserved_path_alias",
+        "rule": "a first segment whose comparison key equals a canonical_spelling_roots entry is spelled exactly like it, and an allowed rule that matches the folded path also matches the path as spelled"
+      },
+      {
+        "code": "excluded_path",
+        "rule": "the first rule matching the folded path does not have server_action 'reject'"
+      }
+    ],
+    "check_order": "checks run in the order listed; the first failing check names the error"
+  },
+  "matching": {
+    "syntax": "each rule's regex must match the whole path (Python re.fullmatch, JavaScript ^(?:regex)$ with the 's' and 'u' flags)",
+    "subject": "the folded path: every segment replaced by its comparison key, joined with '/'",
+    "first_match_wins": true,
+    "case": "rule regexes are written in lowercase, because they are matched against the case-folded path",
+    "client_actions": {
+      "include": "list the file",
+      "exclude": "leave the file out",
+      "wait_then_exclude": "wait for the writer to finish (the reserved sibling may be incomplete), then leave the marker out"
+    },
+    "rule_order": "every rule that rejects at any depth comes before the first allow rule, so a credential, environment file, package-manager config, VCS or dependency directory, agent state, build cache or OS metadata inside an allowed .hyperframes subtree stays out"
+  },
+  "rules": [
+    {
+      "id": "media-lock",
+      "regex": "\\.media/\\.lock",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Process lock held by the media writer, not project content"
+    },
+    {
+      "id": "media-reservation",
+      "regex": "\\.media/(?:audio/(?:bgm|sfx|voice)|images|video|luts|recipes)/[^/]+\\.hf[0-9a-f]{6}\\.tmp",
+      "client_action": "wait_then_exclude",
+      "server_action": "reject",
+      "basis": "Media id reservation: the sibling asset may still be incomplete, so capture waits for the writer to finish"
+    },
+    {
+      "id": "media-ledger",
+      "regex": "\\.media/manifest\\.jsonl",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Generated media metadata that the project does not use for preview or rendering"
+    },
+    {
+      "id": "unfinished-writes",
+      "regex": "(?:[^/]+/)*(?:[^/]+\\.hf[0-9a-f]{6}\\.tmp|[^/]*\\.(?:tmp|part|swp)|[^/]+~)",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Unfinished or abandoned writes at any depth: core's atomic-write temp <file>.hfXXXXXX.tmp, *.tmp, *.part, editor *.swp and *~"
+    },
+    {
+      "id": "render-temp-dirs",
+      "regex": "(?:[^/]+/)*(?:(?:work-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|hf-render|\\.[^/]+\\.hf-transaction)-[A-Za-z0-9]{6}|[^/]+\\.assemble-work-[A-Za-z0-9]{6})(?:/.*)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Render work directories at any depth (frames, often GBs): core RENDER_TEMP_DIR (packages/core/src/projectFolders.ts) plus distributed assembly's <output>.assemble-work-XXXXXX"
+    },
+    {
+      "id": "agent-client-state",
+      "regex": "(?:[^/]+/)*(?:\\.claude|\\.codex|\\.agents|\\.cursor|\\.vscode|\\.idea)(?:/.*)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Agent and IDE state at any depth; Desktop vendors .claude/skills into every project and regenerates it"
+    },
+    {
+      "id": "dependencies-and-git",
+      "regex": "(?:[^/]+/)*(?:\\.git|\\.svn|\\.hg|node_modules)(?:/.*)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Version control and installed dependencies at any depth"
+    },
+    {
+      "id": "build-caches",
+      "regex": "(?:[^/]+/)*(?:\\.cache|\\.vite|\\.next|\\.turbo|\\.parcel-cache)(?:/.*)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Build tool caches at any depth"
+    },
+    {
+      "id": "environment-secrets",
+      "regex": "(?:[^/]+/)*\\.env(?:rc|\\.[^/]+)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Credentials: .env, every .env.* (templates included: real keys land there and no reader needs them) and .envrc, at any depth"
+    },
+    {
+      "id": "package-manager-config",
+      "regex": "(?:[^/]+/)*(?:\\.npmrc|\\.yarnrc|\\.yarnrc\\.yml|pip\\.conf)",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "May hold registry tokens, and nothing in a HyperFrames project reads them; stripping credentials would change the bytes"
+    },
+    {
+      "id": "credential-files",
+      "regex": "(?:[^/]+/)*(?:\\.netrc|\\.pypirc|\\.git-credentials|[^/]*\\.(?:pem|p12|pfx)|id_rsa[^/]*|id_ed25519[^/]*|(?:\\.ssh|\\.aws)(?:/.*)?)",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Credential files by name at any depth. *.key is deliberately absent: Keynote decks are plausible project sources"
+    },
+    {
+      "id": "os-metadata",
+      "regex": "(?:[^/]+/)*(?:\\.ds_store|thumbs\\.db|desktop\\.ini|\\._[^/]*|__macosx(?:/.*)?)",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Operating-system metadata: it changes when a folder is browsed and would show as false edits and conflicts"
+    },
+    {
+      "id": "portable-transcripts",
+      "regex": "\\.hyperframes/transcripts/(?:[^/]+/)*[^/]+\\.json",
+      "client_action": "include",
+      "server_action": "allow",
+      "basis": "Completed transcripts, keyed by media hash; costly to regenerate"
+    },
+    {
+      "id": "portable-transcription-settings",
+      "regex": "\\.hyperframes/transcription\\.json",
+      "client_action": "include",
+      "server_action": "allow",
+      "basis": "Transcription (ASR) preferences, not run state; Desktop's Duplicate copies it with the transcripts"
+    },
+    {
+      "id": "portable-brand-kit",
+      "regex": "\\.hyperframes/brand-kit\\.json",
+      "client_action": "include",
+      "server_action": "allow",
+      "basis": "The project's brand kit selection is authored, portable project content"
+    },
+    {
+      "id": "portable-studio-edits",
+      "regex": "\\.hyperframes/(?:studio-manual-edits|studio-motion)\\.json",
+      "client_action": "include",
+      "server_action": "allow",
+      "basis": "Studio edits read at render and preview time; without them a pulled project renders differently"
+    },
+    {
+      "id": "portable-caption-skin",
+      "regex": "\\.hyperframes/caption-skin\\.html",
+      "client_action": "include",
+      "server_action": "allow",
+      "basis": "Authored input to the caption build; rebuilding captions needs it"
+    },
+    {
+      "id": "portable-podcast-media",
+      "regex": "\\.hyperframes/prepared-assets/podcast/(?:[^/]+/)*[^./][^/]*",
+      "client_action": "include",
+      "server_action": "allow",
+      "basis": "Desktop's podcast camera and recorder transcodes (media/, proxies/), which the page plays by this path and a receiving client cannot regenerate without the original files; a dotfile there stays out"
+    },
+    {
+      "id": "sync-and-share-bindings",
+      "regex": "\\.hyperframes/(?:share\\.json|review\\.json|review-export\\.json|review-[^/]+\\.json|project\\.json|lambda-stack-[^/]+\\.json|(?:sync|receipts)/.*)",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "External bindings and sync receipts: share and review links (review files carry the owner's email), the CLI publish id and deploy stacks. A copy must start unbound, so these never travel"
+    },
+    {
+      "id": "known-hyperframes-state",
+      "regex": "\\.hyperframes/(?:comments\\.jsonl|agent-runs\\.jsonl|app-history\\.jsonl|chat-starts\\.json|agent-handoff\\.json|agent-handoff-read\\.json|history-id|video-state\\.json|film-snapshot\\.json|moved-from\\.jsonl|hf-ids-stamped\\.json|settled-signature|render-outputs\\.json|render-outputs-lock|project\\.lock|history-turn\\.json|history-turns\\.json|voices\\.json|asset-creation\\.json|lesson\\.json|element-map\\.txt|\\.gitignore|(?:live-runs|run-traces|agent-sessions|agent-steps|video-state-lock|backup|preview|history|undo|artifacts|heygen-recipes|heygen-reperform|fixes|heygen-jobs|heygen-paid|podcast|prepared-assets|requests|recordings|frames|refs|references|review|heygen-previews|frame-packets|anim-map|contrast|bin|diagnostics)(?:/.*)?)",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Known client state: comments, chat and run logs; machine pointers, locks and caches; personal data (photo and voice copies) and account-bound job state, podcast job state included; studio preview caches under prepared-assets/ other than the podcast media above"
+    },
+    {
+      "id": "unknown-hyperframes-state",
+      "regex": "\\.hyperframes(?:/.*)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Reserved client state area: only the named portable files above travel"
+    },
+    {
+      "id": "root-generated-output",
+      "regex": "(?:\\.thumbnails|\\.transcode-cache|\\.waveform-cache|renders|snapshots)(?:/.*)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Caches and render or snapshot output at the project root"
+    },
+    {
+      "id": "root-build-output",
+      "regex": "(?:dist|coverage)(?:/.*)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Web build and test-coverage output at the project root, which the CLI publish leaves out and render never reads (build/ and outputs/ travel, because the publish ships them)"
+    },
+    {
+      "id": "authoring-scratch",
+      "regex": "(?:remotion-src|moments|references/moments)(?:/.*)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Authoring scratch at the project root: a Remotion port's source and the moment working copies with their references, none of which preview or render reads"
+    },
+    {
+      "id": "reference-video",
+      "regex": "\\.viral-clone(?:/.*)?",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Third-party reference video, large and re-downloadable"
+    },
+    {
+      "id": "default-authored-file",
+      "regex": ".+",
+      "client_action": "include",
+      "server_action": "allow",
+      "basis": "Authored source and config (index.html, compositions/, scenes/, assets/, hyperframes.json, meta.json, project.json, package.json, lockfiles, .hyperframesignore, .gitignore), portable briefs, AGENTS.md and CLAUDE.md, completed .media assets with unused alternatives, .media/index.md, .media/preferences.json and .media/CREDITS.md, build/ and outputs/, and any unknown regular file outside a reserved area"
+    }
+  ],
+  "client_notes": {
+    "project_json": "Root project.json is portable project content and is included. It is not sync identity: the owner workspace, composition, base snapshot, revision and receipts live outside the inventory, never in project.json.",
+    "capture_preconditions": "Do not capture while .hyperframes/history-turn.json exists (an agent turn is open) or while .hyperframes/project.lock is held.",
+    "render_outputs": "Leave out every path listed in .hyperframes/render-outputs.json: render outputs written outside renders/ are recorded there, and the server cannot know them.",
+    "complete_capture": "A file the client cannot read fails the capture; it never becomes a deletion. The exclusions above and the symlinks client_symlinks skips are the only files left out.",
+    "symlinks": "Symlinks and special files fail the capture, listing them; they are neither followed nor skipped, except the symlinks client_symlinks skips.",
+    "empty_directories": "Empty directories are not represented. Pull never deletes a local empty directory."
+  },
+  "client_prefilter": {
+    "names": ["Icon\r"],
+    "rule": "skip a file whose last segment is one of these before running any path check; macOS writes 'Icon\\r' for a folder with a custom icon, and the carriage return would otherwise fail the whole capture with path_invalid_character"
+  },
+  "client_symlinks": {
+    "default": "fail_capture",
+    "skip_prefixes": ["assets/podcast/"],
+    "match": "a symlink whose folded path (each segment replaced by its comparison key, as for rules) starts with a listed prefix, at any depth below it",
+    "rule": "skip such a symlink instead of failing the capture, and on Pull leave such a local symlink in place as local state; a regular file under the prefix is captured like any other, and every other symlink or special file fails the capture",
+    "basis": "Desktop's podcast intake links the original camera files, which live outside the project, under assets/podcast/, and the page plays the transcodes under .hyperframes/prepared-assets/podcast/; real files there, such as the joins under assets/podcast/joins/, travel normally"
+  },
+  "stored_manifest": {
+    "legacy_agent_state_regex": "(?:[^/]+/)*(?:\\.claude|\\.agents|\\.cursor|\\.vscode|\\.idea)(?:/.*)?",
+    "rule": "Only stored snapshot reads use the v3 agent-state rule to retain immutable manifest digests. New captures and uploads use the current rules. Clients never install excluded paths; the server never signs their download URLs."
+  }
+}

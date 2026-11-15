@@ -1,13 +1,18 @@
 import { describe, it, expect, onTestFinished, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type IncomingHttpHeaders } from "node:http";
+import { createServer, type IncomingHttpHeaders, type IncomingMessage } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HyperframesApiError } from "./_gen/client.js";
 import type { HyperframesCloudClient } from "./_gen/client.js";
-import { uploadAssetViaDirectUpload, uploadZipViaDirectUpload } from "./upload.js";
+import {
+  putTimings,
+  uploadAssetViaDirectUpload,
+  uploadZipViaDirectUpload,
+  type UploadProgressEvent,
+} from "./upload.js";
 
 function sha256Hex(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
@@ -368,6 +373,153 @@ describe("uploadAssetViaDirectUpload from a file on disk", () => {
           contentType: "video/mp4",
         }),
       ).rejects.toThrow(/Direct upload PUT failed: 403.*SignatureDoesNotMatch/);
+    });
+  });
+});
+
+const BIG_BYTES = 16 * 1024 * 1024;
+
+/** Reads the body; "cut" and "slow" take 8 MB/s, and "cut" drops the connection at 400 ms. */
+async function drain(req: IncomingMessage, answer: unknown): Promise<"read" | "dropped"> {
+  const slow = answer === "cut" || answer === "slow";
+  const born = Date.now();
+  try {
+    for await (const chunk of req as AsyncIterable<Buffer>) {
+      if (!slow) continue;
+      await new Promise((resolve) => setTimeout(resolve, Math.ceil(chunk.length / 8192)));
+      if (answer === "cut" && Date.now() - born >= 400) {
+        req.socket.destroy();
+        return "dropped";
+      }
+    }
+  } catch {
+    return "dropped";
+  }
+  return "read";
+}
+
+describe("a PUT that stalls or fails on the network is sent again", () => {
+  /** Answers its Nth request as `plan[n]`, the last one for any later: "hang" never answers, "cut" drops the
+   * connection at 400 ms, "slow" drains slowly and answers 200, a number is the status. */
+  async function withPlan(
+    plan: Array<"hang" | "cut" | "slow" | number>,
+    run: (url: string, requests: () => number) => Promise<void>,
+  ): Promise<void> {
+    let n = 0;
+    const open: Array<() => void> = [];
+    const server = createServer(async (req, res) => {
+      const answer = plan[Math.min(n++, plan.length - 1)]!;
+      if ((await drain(req, answer)) === "dropped") return;
+      if (answer === "hang") return void open.push(() => res.destroy());
+      if (answer === "cut" || answer === "slow") return void res.writeHead(200).end();
+      res.writeHead(answer).end(answer === 200 ? "" : "refused");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    try {
+      await run(`http://127.0.0.1:${(server.address() as AddressInfo).port}/put`, () => n);
+    } finally {
+      for (const close of open) close();
+      server.close();
+    }
+  }
+
+  const upload = (
+    url: string,
+    asBytes = false,
+    big?: { onProgress: (event: UploadProgressEvent) => void },
+  ) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-upload-retry-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const content = big ? Buffer.alloc(BIG_BYTES, 1) : Buffer.from("bytes");
+    writeFileSync(join(dir, "clip.mp4"), content);
+    const was = { ...putTimings };
+    Object.assign(putTimings, {
+      stallMs: big ? 5000 : 150,
+      backoffMs: 5,
+      progressMs: 50,
+      sampleMs: 50,
+    });
+    onTestFinished(() => void Object.assign(putTimings, was));
+    return uploadAssetViaDirectUpload({
+      client: makeClient({
+        createAssetUpload: vi.fn(async () => ({
+          asset_id: "asset_xyz",
+          upload_url: url,
+          upload_headers: {},
+          expires_in_seconds: 3600,
+          max_bytes: 200 * 1024 * 1024,
+          status: "pending_upload" as const,
+        })),
+      } as Partial<HyperframesCloudClient>),
+      ...(asBytes
+        ? { bytes: Buffer.from("bytes") }
+        : { path: join(dir, "clip.mp4"), size: content.byteLength }),
+      filename: "clip.mp4",
+      contentType: "video/mp4",
+      onProgress: big?.onProgress,
+    });
+  };
+
+  it("ends a try that moves no data and sends the file again", async () => {
+    await withPlan(["hang", 200], async (url, requests) => {
+      await upload(url);
+      expect(requests()).toBe(2);
+    });
+  });
+
+  it("bounds the project zip, which is sent from memory, the same way", async () => {
+    await withPlan(["hang", 200], async (url, requests) => {
+      await upload(url, true);
+      expect(requests()).toBe(2);
+    });
+  });
+
+  it("sends it again after a server error, and gives up after the retries with the last words", async () => {
+    await withPlan([503, 200], async (url, requests) => {
+      await upload(url);
+      expect(requests()).toBe(2);
+    });
+    await withPlan(["hang"], async (url, requests) => {
+      await expect(upload(url)).rejects.toThrow(/Upload stalled/);
+      expect(requests()).toBe(1 + putTimings.retries);
+    });
+  });
+
+  it("does not send it again when S3 refuses it", async () => {
+    await withPlan([403], async (url, requests) => {
+      await expect(upload(url)).rejects.toThrow(/PUT failed: 403/);
+      expect(requests()).toBe(1);
+    });
+  });
+  it("stops after a second identical cut instead of repeating the doomed try", async () => {
+    await withPlan(["cut"], async (url, requests) => {
+      await expect(upload(url, false, { onProgress: () => undefined })).rejects.toThrow(
+        /cut at \d+ s on two tries in a row.*Every try restarts the file/,
+      );
+      expect(requests()).toBe(2);
+    });
+  });
+
+  it("reports the bytes sent while a slow PUT runs, and the restart of a second try", async () => {
+    const events: UploadProgressEvent[] = [];
+    await withPlan([503, "slow"], async (url) => {
+      await upload(url, false, { onProgress: (event) => events.push(event) });
+    });
+    const sent = events.flatMap((e) => (e.phase === "upload" && e.attempt === 2 ? [e] : []));
+    const live = sent.filter((e) => (e.sentBytes ?? 0) > 0);
+    expect(live.length).toBeGreaterThan(1);
+    expect(live.map((e) => e.sentBytes)).toEqual(
+      [...live.map((e) => e.sentBytes)].sort((a, b) => a! - b!),
+    );
+    expect(live.every((e) => e.totalBytes === BIG_BYTES)).toBe(true);
+    expect(events.some((e) => e.phase === "upload" && e.attempt === 2 && e.sentBytes === 0)).toBe(
+      true,
+    );
+  });
+
+  it("says how many tries it made and how far the last got when the retries run out", async () => {
+    await withPlan([503], async (url) => {
+      await expect(upload(url)).rejects.toThrow(/503.*4 tries, each from the first byte/);
     });
   });
 });

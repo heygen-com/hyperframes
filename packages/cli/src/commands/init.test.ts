@@ -625,6 +625,25 @@ describe("applyResolutionPreset", () => {
     });
   });
 
+  it("rewrites every dimension fingerprint for landscape-1440p", () => {
+    withFixture((dir) => {
+      const file = join(dir, "index.html");
+      writeFileSync(file, sampleHtml, "utf-8");
+
+      applyResolutionPreset(dir, "landscape-1440p");
+      const out = readFileSync(file, "utf-8");
+
+      expect(out).toContain('data-resolution="landscape-1440p"');
+      expect(out).toContain('data-width="2560"');
+      expect(out).toContain('data-height="1440"');
+      expect(out).toContain("width: 2560px");
+      expect(out).toContain("height: 1440px");
+      expect(out).toContain('content="width=2560, height=1440"');
+      expect(out).not.toContain("1920");
+      expect(out).not.toContain("1080");
+    });
+  });
+
   it("swaps to portrait dimensions for portrait-4k", () => {
     withFixture((dir) => {
       const file = join(dir, "index.html");

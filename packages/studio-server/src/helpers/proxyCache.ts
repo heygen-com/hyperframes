@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
-import { extname, join } from "node:path";
+import { dirname, extname, join } from "node:path";
 import { PROXY_STILL_EXTENSION, PROXY_VARIANT_CONFIG } from "./mediaCodecMap.js";
+import { isLinkFreeWithinProject } from "./safePath.js";
 
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024 * 1024;
 const DEFAULT_STALE_TEMP_MS = 60 * 60 * 1000;
@@ -167,7 +168,7 @@ export function cleanupProxyCache(
   if (shouldSkipSweep(cacheDir, now, minSweepIntervalMs)) {
     return { removed: [], bytesBefore: 0, bytesAfter: 0, skipped: true };
   }
-  if (!existsSync(cacheDir)) {
+  if (!existsSync(cacheDir) || !isLinkFreeWithinProject(dirname(cacheDir), cacheDir)) {
     return { removed: [], bytesBefore: 0, bytesAfter: 0, skipped: false };
   }
 

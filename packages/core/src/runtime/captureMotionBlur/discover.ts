@@ -9,7 +9,7 @@
 
 import { isHtmlElement } from "../domRealm";
 import { inkPad } from "./ink";
-import { individualIs3d, parseTransform } from "./pose";
+import { individualIs3d } from "./pose";
 
 /** Under this peak speed (px per frame) a smear is invisible, so the element stays sharp. */
 const MIN_SPEED = 2;
@@ -38,6 +38,7 @@ export interface DiscoverOptions {
   /** Seek the composition (timeline + adapters) to a time. */
   seek: (t: number) => void;
   onStep?: (i: number, steps: number) => void;
+  onFast?: (i: number, steps: number, fast: ReadonlySet<HTMLElement>) => void;
   onStepBoxes?: (i: number, boxes: ReadonlyArray<DOMRect | undefined>) => void;
 }
 
@@ -47,7 +48,6 @@ export interface Discovery {
   dynamic: Set<Element>;
   /** Px each mover's ink reaches past its box (shadows, glows), the largest seen. */
   pads: Map<HTMLElement, number>;
-  translationOnly: boolean;
 }
 
 // The whole inline style in one read; opacity or colour tweens only cost a rect check.
@@ -74,22 +74,6 @@ function in3d(el: Element, scene: Element): boolean {
     }
   }
   return false;
-}
-
-function linearSignature(el: Element, scene: Element): string {
-  const parts: string[] = [];
-  for (let n: Element | null = el; n && n !== scene; n = n.parentElement) {
-    const cs = getComputedStyle(n);
-    const m = parseTransform(cs.transform);
-    parts.push(m ? [m.a, m.b, m.c, m.d].map((v) => v.toFixed(3)).join(",") : "1,0,0,1");
-    parts.push(cs.rotate ?? "none", cs.scale ?? "none");
-  }
-  return parts.join("|");
-}
-
-function hasOwnContext(el: Element): boolean {
-  const cs = getComputedStyle(el);
-  return cs.transform !== "none" || (cs.translate ?? "none") !== "none";
 }
 
 /** Elements a CSS animation or WAAPI animation moves (no inline style to diff). */
@@ -188,6 +172,7 @@ export function discoverMovers({
   fps,
   seek,
   onStep,
+  onFast,
   onStepBoxes,
 }: DiscoverOptions): Discovery {
   seek(0);
@@ -203,15 +188,8 @@ export function discoverMovers({
   const fast = new Set<HTMLElement>();
   const threeD = new Set<HTMLElement>();
   const pads = new Map<HTMLElement, number>();
-  const signatures = new Map<HTMLElement, string>();
-  const notPlain = new Set<HTMLElement>();
   const measure = (el: HTMLElement): void => {
     pads.set(el, Math.max(pads.get(el) ?? 0, inkPad(el)));
-    const sig = linearSignature(el, scene);
-    const first = signatures.get(el);
-    if (first === undefined) signatures.set(el, sig);
-    else if (first !== sig) notPlain.add(el);
-    if (!hasOwnContext(el)) notPlain.add(el);
   };
   const seeThrough = new Set<HTMLElement>();
   const alphaCache = new Map<Bitmap, boolean>();
@@ -256,6 +234,7 @@ export function discoverMovers({
       )
         seeThrough.add(el);
     });
+    onFast?.(i, steps, fast);
     // Style reads up the chain are the costly part; every 10th step is enough to see a 3D turn.
     if (i % 10 === 0 || i === steps) {
       for (const el of fast) {
@@ -270,8 +249,7 @@ export function discoverMovers({
     (el) => fast.has(el) && !threeD.has(el) && !seeThrough.has(el) && !optedOut(el, scene),
   );
   const movers = candidates.filter((el) => !candidates.some((o) => o !== el && o.contains(el)));
-  const translationOnly = movers.length > 0 && movers.every((el) => !notPlain.has(el));
-  return { movers, dynamic, pads, translationOnly };
+  return { movers, dynamic, pads };
 }
 
 export interface ScanOptions extends Omit<DiscoverOptions, "seek"> {
@@ -292,80 +270,17 @@ function boxesKey(boxes: ReadonlyArray<DOMRect | undefined>): number {
   return h;
 }
 
-type FirstValue = [namespace: string | null, name: string, old: string | null];
-
-type DomJournal = { flush: () => void; undo: () => void; stop: () => void };
-
-function journalDom(doc: Document): DomJournal {
-  const firstValues = new Map<Node, Map<string, FirstValue>>();
-  const trees: MutationRecord[] = [];
-  const fold = (records: MutationRecord[]): void => {
-    for (const r of records) {
-      if (r.type === "childList") {
-        trees.push(r);
-        continue;
-      }
-      const own = firstValues.get(r.target) ?? new Map<string, FirstValue>();
-      firstValues.set(r.target, own);
-      const key = `${r.attributeNamespace}:${r.attributeName}`;
-      if (!own.has(key)) own.set(key, [r.attributeNamespace, r.attributeName ?? "", r.oldValue]);
-    }
-  };
-  const observer = new MutationObserver(fold);
-  observer.observe(doc, {
-    subtree: true,
-    childList: true,
-    attributes: true,
-    attributeOldValue: true,
-    characterData: true,
-    characterDataOldValue: true,
-  });
-  return {
-    flush: () => fold(observer.takeRecords()),
-    stop: () => observer.disconnect(),
-    undo: () => {
-      fold(observer.takeRecords());
-      observer.disconnect();
-      for (const r of trees.reverse()) {
-        r.addedNodes.forEach((n) => n.parentNode === r.target && r.target.removeChild(n));
-        r.removedNodes.forEach((n) => r.target.insertBefore(n, r.nextSibling));
-      }
-      for (const [node, values] of firstValues) {
-        for (const [ns, name, old] of values.values()) {
-          putBack(node, ns, name, old);
-        }
-      }
-    },
-  };
-}
-
-const isElement = (node: Node): node is Element => node.nodeType === 1;
-
-function putBack(node: Node, ns: string | null, name: string, old: string | null): void {
-  if (!isElement(node)) {
-    const text = old ?? "";
-    if ((node as CharacterData).data !== text) (node as CharacterData).data = text;
-    return;
+export function whileCallbacksMuted<T>(
+  host: { muteCallbacks?: () => () => void },
+  muted: boolean,
+  run: () => T,
+): T {
+  const unmute = muted ? host.muteCallbacks?.() : undefined;
+  try {
+    return run();
+  } finally {
+    unmute?.();
   }
-  if (node.getAttributeNS(ns, name) === old) return;
-  if (old === null) node.removeAttributeNS(ns, name);
-  else node.setAttributeNS(ns, name, old);
-}
-
-// A callback a loud seek fired cannot be un-fired: land with callbacks on, then put the DOM back.
-export function landThenUndoDom(
-  seek: (t: number) => void,
-  doc: Document,
-): Omit<DomJournal, "undo"> & { land: (t: number) => void } {
-  const journal = journalDom(doc);
-  return {
-    flush: journal.flush,
-    stop: journal.stop,
-    land: (t) => {
-      seek(t);
-      journal.undo();
-    },
-  };
 }
 
 /** Discovery, and whether pose reads need callbacks: when they change an element's style or box. */
@@ -373,17 +288,21 @@ export function scanMovers({
   seek,
   events,
   onStep,
+  onFast,
   ...scan
 }: ScanOptions): Discovery & { readEvents: boolean } {
   const quiet = (t: number): void => seek(t, true);
   const rewindThroughEveryCall = (): void => seek(0, false);
-  if (!events) return { ...discoverMovers({ ...scan, seek: quiet, onStep }), readEvents: false };
+  if (!events) {
+    return { ...discoverMovers({ ...scan, seek: quiet, onStep, onFast }), readEvents: false };
+  }
   // Loud first: run after the silent scan, it starts at the end and fires a one-off call once more.
   const loud: number[] = [];
   const found = discoverMovers({
     ...scan,
     seek: (t) => seek(t, false),
     onStep,
+    onFast,
     onStepBoxes: (i, boxes) => {
       loud[i] = boxesKey(boxes);
     },
