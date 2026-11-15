@@ -4,6 +4,7 @@ import {
   leftOutWarning as leftOutText,
 } from "@hyperframes/studio-server/outside-file";
 import { realFilePath } from "@hyperframes/studio-server/safe-path";
+import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 import { terminalText } from "./terminalText.js";
 
 export type { LeftOutReason };
@@ -32,7 +33,9 @@ export function outsideFileReference(
   reference: string,
   absPath: string,
 ): OutsideFileReference {
-  const path = relative(realFilePath(projectDir), realFilePath(absPath)).replaceAll("\\", "/");
+  const onAnotherShare = namesAnotherNetworkRoot(projectDir, absPath);
+  const target = onAnotherShare ? absPath : realFilePath(absPath);
+  const path = relative(realFilePath(projectDir), target).replaceAll("\\", "/");
   const levels_up = isAbsolute(path) ? null : path.split("/").filter((s) => s === "..").length;
   return { file, reference, path, levels_up };
 }

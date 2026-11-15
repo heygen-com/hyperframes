@@ -44,6 +44,7 @@ import {
   decodeTextHonoringBom,
   resolveCompositionSrc,
 } from "@hyperframes/parsers/asset-resolution";
+import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
@@ -516,34 +517,57 @@ function leaveOut(
   );
 }
 
+function leftOnAnotherNetworkRoot(
+  ctx: ExternalAssetContext,
+  entryPath: string,
+  rawPath: string,
+  absPath: string,
+): boolean {
+  if (!namesAnotherNetworkRoot(ctx.absProjectDir, absPath)) return false;
+  leaveOut(ctx, entryPath, rawPath, absPath, "network_share");
+  return true;
+}
+
+function outsideFileLeftOutReason(
+  ctx: ExternalAssetContext,
+  absPath: string,
+): LeftOutReason | null {
+  if (isPrivateOutsideFile(ctx.absProjectDir, absPath)) return "blocklisted";
+  return isUploadedOutsideFileType(absPath) ? null : "file_type";
+}
+
 function archiveTargetOf(
   ctx: ExternalAssetContext,
   absPath: string,
   rawPath: string,
   options: { entryPath: string; requireOnDisk: boolean; filesystemPath: boolean },
 ): string | null | undefined {
+  if (leftOnAnotherNetworkRoot(ctx, options.entryPath, rawPath, absPath)) return null;
   if (isPathInside(absPath, ctx.absProjectDir)) {
     includeReferencedProjectFile(ctx, absPath, rawPath, options.requireOnDisk, options.entryPath);
     return options.filesystemPath ? relativeToProject(ctx, absPath) : null;
   }
+  if (ctx.received(options.entryPath)) {
+    leaveOut(ctx, options.entryPath, rawPath, absPath, "received");
+    return undefined;
+  }
   try {
     if (!existsSync(absPath) || !statSync(absPath).isFile()) return undefined;
-    if (ctx.received(options.entryPath)) {
-      leaveOut(ctx, options.entryPath, rawPath, absPath, "received");
-      return undefined;
-    }
-    if (isPrivateOutsideFile(ctx.absProjectDir, absPath)) {
-      leaveOut(ctx, options.entryPath, rawPath, absPath);
-      return undefined;
-    }
-    if (!isUploadedOutsideFileType(absPath)) {
-      leaveOut(ctx, options.entryPath, rawPath, absPath, "file_type");
+    const reason = outsideFileLeftOutReason(ctx, absPath);
+    if (reason) {
+      leaveOut(ctx, options.entryPath, rawPath, absPath, reason);
       return undefined;
     }
   } catch {
     return undefined;
   }
   return encodeUrlPath(addExternalAsset(ctx, absPath, options.entryPath, rawPath));
+}
+
+// The ? of a \\?\ device path is part of the path, not a query.
+function splitPathSuffix(rawPath: string): [string, string] {
+  const cut = rawPath.search(/(?<!^[\\/]{2})[?#]/);
+  return cut < 0 ? [rawPath, ""] : [rawPath.slice(0, cut), rawPath.slice(cut)];
 }
 
 function tryResolveExternal(
@@ -555,8 +579,7 @@ function tryResolveExternal(
 ): string | null {
   const filesystemPath = isAbsolute(rawPath) && !rawPath.startsWith("//");
   if (isNonRelativeUrl(rawPath) && !filesystemPath) return null;
-  const cut = filesystemPath ? rawPath.search(/[?#]/) : -1;
-  const [path, suffix] = cut < 0 ? [rawPath, ""] : [rawPath.slice(0, cut), rawPath.slice(cut)];
+  const [path, suffix] = filesystemPath ? splitPathSuffix(rawPath) : [rawPath, ""];
   for (const variant of decodeUrlPathVariants(path)) {
     const target = archiveTargetOf(ctx, resolve(referrerAbsDir, variant), rawPath, {
       entryPath,
@@ -816,7 +839,7 @@ function composeNamesInText(fileContents: Map<string, StagedFile>, filePaths: st
   }
 }
 
-type WalkedLeftOutReason = Exclude<LeftOutReason, "file_type">;
+type WalkedLeftOutReason = Exclude<LeftOutReason, "file_type" | "network_share">;
 
 const WALKED_LEFT_OUT: Record<WalkedLeftOutReason, string> = {
   private: "holds secrets or tool data (an env file, Git data or Studio records)",

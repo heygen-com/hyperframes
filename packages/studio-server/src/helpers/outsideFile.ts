@@ -146,13 +146,14 @@ export function isPrivateOutsideFile(projectDir: string, absPath: string): boole
 export const linksOutside = (projectDir: string, filePath: string): boolean =>
   isOutside(relative(realFilePath(projectDir), realFilePath(filePath)));
 
-/** `blocklisted`: a private location; `received`: reached from an imported file; `file_type`: not a type uploads copy. */
-export type LeftOutReason = "blocklisted" | "received" | "file_type" | "private";
+/** `blocklisted`: a private location; `received`: reached from an imported file; `file_type`: not a type uploads copy; `network_share`: on another computer. */
+export type LeftOutReason = "blocklisted" | "received" | "file_type" | "private" | "network_share";
 
 const WHY: Record<Exclude<LeftOutReason, "file_type">, string> = {
   private: "which holds secrets or tool data",
   blocklisted: "which is outside the project in a private location",
   received: "which leads outside the project and came in with an imported project",
+  network_share: "which is on another computer's network share or is a Windows device path",
 };
 
 const COPIED_TYPES = {
