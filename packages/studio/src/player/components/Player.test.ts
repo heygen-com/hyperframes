@@ -198,6 +198,55 @@ describe("preview errors", () => {
   });
 });
 
+describe("a host's sandbox origin", () => {
+  const token = "T".repeat(43);
+  const stubFrameToken = (body: { token?: string } | null) =>
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      expect(String(input)).toBe("/api/projects/demo/frame-token");
+      return { ok: body !== null, json: async () => body } as Response;
+    });
+  const settle = () =>
+    act(async () => {
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    });
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([
+    ["/api/projects/demo/preview", `/api/projects/demo/preview/~${token}`],
+    [
+      "/api/projects/demo/preview/comp/scene.html",
+      `/api/projects/demo/preview/~${token}/comp/scene.html`,
+    ],
+    ["/api/projects/demo/preview?_t=1", `/api/projects/demo/preview/~${token}?_t=1`],
+  ])(
+    "seals an opaque preview of %s and loads it under its project's frame token",
+    async (directUrl, sealed) => {
+      stubFrameToken({ token });
+      const { player } = await mountPlayer({ directUrl, sandboxOrigin: "opaque" });
+      await settle();
+      expect(player.hasAttribute("sandbox-origin")).toBe(true);
+      expect(player.getAttribute("src")).toBe(sealed);
+    },
+  );
+
+  it("still seals the preview when the project has no frame token to give", async () => {
+    stubFrameToken(null);
+    const { player } = await mountPlayer({ sandboxOrigin: "opaque" });
+    await settle();
+    expect(player.hasAttribute("sandbox-origin")).toBe(true);
+    expect(player.getAttribute("src")).toBe("/api/projects/demo/preview");
+  });
+
+  it("leaves a same-origin preview on its plain path without asking for a token", async () => {
+    const fetch = vi.spyOn(globalThis, "fetch");
+    const { player } = await mountPlayer();
+    await settle();
+    expect(player.hasAttribute("sandbox-origin")).toBe(false);
+    expect(player.getAttribute("src")).toBe("/api/projects/demo/preview");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("callbacks after the player is already mounted", () => {
   it("runs the latest onLoad on a later load, not the one captured at mount", async () => {
     const first = vi.fn();
