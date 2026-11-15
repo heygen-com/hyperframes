@@ -201,6 +201,48 @@ describe("playlistLeavesItsFolder", () => {
     expect(await isNotMediaPayload(file)).toBe(true);
   });
 
+  function writeTree(files: Record<string, string>): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-playlist-tree-"));
+    for (const [name, contents] of Object.entries(files)) {
+      mkdirSync(join(dir, name, ".."), { recursive: true });
+      writeFileSync(join(dir, name), contents);
+    }
+    return join(dir, Object.keys(files)[0]!);
+  }
+
+  it("refuses a list whose nested list names a file outside the top folder", async () => {
+    const master = writeTree({
+      "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
+      "sub/inner.m3u8": hls("#EXTINF:1,", "/var/renders/other/out.mp4"),
+    });
+    expect(await playlistLeavesItsFolder(master)).toBe(true);
+  });
+
+  it("refuses a nested list that steps above the top folder from its own", async () => {
+    const master = writeTree({
+      "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
+      "sub/inner.m3u8": hls("#EXTINF:1,", "../../other/out.mp4"),
+    });
+    expect(await playlistLeavesItsFolder(master)).toBe(true);
+  });
+
+  it("refuses lists nested deeper than it reads", async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 12; i++)
+      files[`l${i}.m3u8`] = `#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nl${i + 1}.m3u8\n`;
+    files["l12.m3u8"] = hls("#EXTINF:1,", "seg.ts");
+    expect(await playlistLeavesItsFolder(writeTree(files))).toBe(true);
+  });
+
+  it("keeps nested lists that stay in the top folder, cycles included", async () => {
+    const master = writeTree({
+      "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
+      "sub/inner.m3u8": hls("#EXTINF:1,", "../seg.ts", "#EXTINF:1,", "../master.m3u8"),
+      "seg.ts": "segment",
+    });
+    expect(await playlistLeavesItsFolder(master)).toBe(false);
+  });
+
   it.each([
     ["segments beside it", hls("#EXTINF:1,", "seg0.ts", "#EXTINF:1,", "parts/seg1.ts")],
     ["https segments", hls("#EXTINF:1,", "https://cdn.example.com/seg0.ts")],

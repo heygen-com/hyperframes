@@ -25,6 +25,7 @@ import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
 import { cannotHardLink, createStagingDir } from "@hyperframes/core/atomic-file";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
+import { playlistLeavesItsFolder } from "./notMediaPayload.js";
 
 const inFlightDownloads = new Map<string, Promise<string>>();
 const signalScopes = new WeakMap<AbortSignal, number>();
@@ -1212,6 +1213,15 @@ async function runDownloadAttempt(
     }
     const integrity = await fetchToPartial(url, partialPath, controller, options, onBodyBytes);
     clearTimeout(floorCheckId);
+    if (await playlistLeavesItsFolder(partialPath, localPath)) {
+      throw new UrlDownloadError(
+        "invalid_payload",
+        false,
+        "Download is a playlist naming files outside its folder",
+        integrity.status,
+        integrity,
+      );
+    }
     let outcome = await syncAndPublishPartial(partialPath, localPath, timeoutMs, signal);
     let publishedIntegrity = integrity;
     if (outcome === "race_reused") {

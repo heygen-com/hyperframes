@@ -45,6 +45,59 @@ describe("parseSlideshowManifest", () => {
     expect((island + island).replace(slideshowIslandRegex("gi"), "")).toBe("");
   });
 
+  it("finds the island in every page exactly where the island regex does", () => {
+    const viaRegex = (html: string) => {
+      const raw = slideshowIslandRegex("i").exec(html)?.[1]?.trim();
+      return raw
+        ? parseSlideshowManifest(
+            `<script type="application/hyperframes-slideshow+json">${raw}</script>`,
+          )
+        : null;
+    };
+    const outcome = (read: () => unknown) => {
+      try {
+        return { value: read() };
+      } catch (error) {
+        return { error: String(error) };
+      }
+    };
+    const tokens = [
+      "<script",
+      "<SCRIPT ",
+      ">",
+      "</script>",
+      "</SCRIPT>",
+      "</script >",
+      ' type="application/hyperframes-slideshow+json"',
+      " TYPE = 'APPLICATION/HYPERFRAMES-SLIDESHOW+JSON'",
+      ' type="text/javascript"',
+      '{"slides":[{"sceneId":"a"}]}',
+      "{",
+      " ",
+      "\n",
+      "x",
+    ];
+    let seed = 3;
+    const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let i = 0; i < 20_000; i++) {
+      const html = Array.from(
+        { length: 1 + Math.floor(next() * 16) },
+        () => tokens[Math.floor(next() * tokens.length)],
+      ).join("");
+      expect(
+        outcome(() => parseSlideshowManifest(html)),
+        html,
+      ).toEqual(outcome(() => viaRegex(html)));
+    }
+  });
+
+  it("reads a 4 MB page of unclosed script tags in well under a second", () => {
+    const html = "<script ".repeat(500_000);
+    const started = performance.now();
+    expect(parseSlideshowManifest(html)).toBeNull();
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   it("throws when slideSequences is present but not an array", () => {
     const html = `<script type="application/hyperframes-slideshow+json">
       { "slides": [{ "sceneId": "a" }], "slideSequences": {} }

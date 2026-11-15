@@ -35,7 +35,7 @@ export async function oversizedVideos(
   return videos.filter((_, index) => sized[index]);
 }
 
-/** Each video's first and last frame before `duration` and every stride between, in seconds, ascending. */
+/** Each video's first and last frame before `duration`, and the one stride grid all videos share between. */
 export function shownBoxTimes(
   videos: readonly VideoElement[],
   fps: { num: number; den: number },
@@ -47,8 +47,13 @@ export function shownBoxTimes(
     const end = Math.min(authoredEnd, duration);
     if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) continue;
     const last = Math.max(start, end - frame);
-    for (let step = 0; start + step * SHOWN_BOX_STRIDE_S < last; step += 1) {
-      times.add(start + step * SHOWN_BOX_STRIDE_S);
+    times.add(start);
+    for (
+      let step = Math.floor(start / SHOWN_BOX_STRIDE_S) + 1;
+      step * SHOWN_BOX_STRIDE_S < last;
+      step += 1
+    ) {
+      times.add(step * SHOWN_BOX_STRIDE_S);
     }
     times.add(last);
   }
