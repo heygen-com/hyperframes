@@ -160,6 +160,25 @@ export function receivedFiles(projectDir: string): (path: string) => boolean {
   return (path) => listedInAnyRecord.some((listed) => listed(path));
 }
 
+function listedUnder(record: ReceivedRecord): string[] {
+  const prefix = record.projectDirFromRoot ? `${record.projectDirFromRoot}/`.normalize("NFC") : "";
+  return (record.listed as unknown[])
+    .map(String)
+    .filter((entry) => entry.normalize("NFC").startsWith(prefix))
+    .map((entry) => join(record.root, entry));
+}
+
+export function receivedRecordStatus(
+  projectDir: string,
+): { path: string; listed: string[] | null } | null {
+  const records = receivedRecordsAtOrAbove(projectDir);
+  const [nearest] = records;
+  if (!nearest) return null;
+  const unreadable = records.find((record) => !Array.isArray(record.listed));
+  if (unreadable) return { path: join(unreadable.root, RECEIVED_RECORD), listed: null };
+  return { path: join(nearest.root, RECEIVED_RECORD), listed: records.flatMap(listedUnder) };
+}
+
 /** Project files no composition loads, so none is served or uploaded for one: env files, Git data, tool records. */
 export function isPrivateCompositionFile(projectDir: string, filePath: string): boolean {
   return (

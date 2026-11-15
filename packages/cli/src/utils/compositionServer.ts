@@ -9,6 +9,14 @@ import { fileURLToPath } from "node:url";
 import { getMimeType, openRangeEnd } from "@hyperframes/studio-server";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
+import {
+  PREVIEW_ALLOWED_HOSTS_ENV,
+  previewAllowedHostsFromEnv,
+  requestFromAnotherSite,
+  wildcardBindHostAllowed,
+} from "@hyperframes/studio-server/request-identity";
+import type { Context, Hono } from "hono";
 
 /**
  * `window.__HF_MEDIA_CODEC_MAP__` injection + proxy pre-warm for HTML served
@@ -172,6 +180,66 @@ export function buildRangeResponse(
       "Content-Range": `bytes ${start}-${end}/${size}`,
       "Content-Length": String(end - start + 1),
     },
+  });
+}
+
+/**
+ * The server listens on every interface, so every route answers only loopback,
+ * this machine's own addresses and names, or a host named in
+ * HYPERFRAMES_PREVIEW_ALLOWED_HOSTS. A browser cannot forge Host, which keeps a
+ * rebound page name from reading project files.
+ */
+export function refuseUnknownHosts(app: Hono): void {
+  const allowedHosts = previewAllowedHostsFromEnv();
+  app.use(async function refuseUnknownHost(c, next) {
+    const host = c.req.header("host") ?? new URL(c.req.url).host;
+    if (wildcardBindHostAllowed(host, allowedHosts)) return next();
+    return c.json(
+      {
+        error:
+          `forbidden: host "${host}" is not allowed. ` +
+          `Set ${PREVIEW_ALLOWED_HOSTS_ENV}=${host} to allow it ` +
+          `(comma separated for several hosts).`,
+      },
+      403,
+    );
+  });
+}
+
+function withoutValidators(request: Request): Request {
+  const headers = new Headers(request.headers);
+  headers.delete("if-none-match");
+  headers.delete("if-modified-since");
+  return new Request(request, { headers });
+}
+
+async function markDocumentForAnotherSite(c: Context): Promise<void> {
+  if (c.res.status !== 200 || !c.res.headers.get("content-type")?.startsWith("text/html")) return;
+  const headers = new Headers(c.res.headers);
+  headers.delete("content-length");
+  headers.delete("etag");
+  const marked = injectTagsAtHeadStart(
+    await c.res.text(),
+    `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`,
+  );
+  c.res = undefined;
+  c.res = new Response(marked, { status: 200, headers });
+}
+
+/** Files under `path` that another site loads come back sandboxed, and documents marked so their runtime offers that site no editing port. */
+export function sandboxForAnotherSite(app: Hono, path: string): void {
+  app.use(path, async function sandboxAnotherSiteLoad(c, next) {
+    const anotherSite = requestFromAnotherSite({
+      fetchSite: c.req.header("sec-fetch-site"),
+      host: c.req.header("host") ?? new URL(c.req.url).host,
+      referer: c.req.header("referer"),
+    });
+    if (anotherSite) c.req.raw = withoutValidators(c.req.raw);
+    await next();
+    c.header("Vary", "Sec-Fetch-Site", { append: true });
+    if (!anotherSite) return;
+    c.header("Content-Security-Policy", "sandbox allow-scripts");
+    await markDocumentForAnotherSite(c);
   });
 }
 

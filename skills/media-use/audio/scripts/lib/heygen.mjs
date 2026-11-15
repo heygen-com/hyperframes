@@ -5,8 +5,8 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // $HEYGEN_API_KEY) → a host-injected OAuth $HEYGEN_ACCESS_TOKEN (Bearer) →
 // the live login in ~/.hyperframes/credentials → $HEYGEN_API_KEY /
 // $HYPERFRAMES_API_KEY → the API key saved in ~/.hyperframes/credentials →
-// a key from a nearby .env that came in with a received project. An expired login gives way to an env key but
-// never to the saved API key ($HYPERFRAMES_CONFIG_DIR overrides the dir).
+// a key from a nearby .env that came in with a received project. An expired login gives way to the person's own
+// env key, never to the saved API key or a received .env key ($HYPERFRAMES_CONFIG_DIR overrides the dir).
 // $HEYGEN_API_BASE moves every request to that host, as it does for the
 // heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
 // Vendored so the skill ships standalone. Pure node.
@@ -174,7 +174,7 @@ export function loadEnvFromDir(startDir) {
   }
 }
 
-// → { headers } | { expired: true } | null. Never throws.
+// → { headers } | { expired: true, foreign? } | null. Never throws.
 export function heygenCredential() {
   const cred = resolveCredential();
   return cred?.unreadable ? null : cred;
@@ -196,9 +196,9 @@ function resolveCredential() {
   const envKey = envName && process.env[envName];
   const fromProject = envName !== undefined && receivedProjectKey(envName, envKey);
   const stored = storedCredential();
-  // A live login wins over an env key; an expired, foreign or unreadable store gives way to one.
+  // A live login wins over an env key; an expired, foreign or unreadable store gives way only to the person's own.
   if (stored?.headers && "Authorization" in stored.headers) return stored;
-  if (!envKey || (fromProject && stored?.headers)) return stored;
+  if (!envKey || (fromProject && stored)) return stored;
   if (fromProject && !projectKeyNoted) {
     projectKeyNoted = true;
     process.stderr.write(
@@ -208,7 +208,7 @@ function resolveCredential() {
   return { headers: { "X-Api-Key": envKey } };
 }
 
-// The credential saved in ~/.hyperframes/credentials: { headers } | { expired: true } | { unreadable } | null.
+// The credential saved in ~/.hyperframes/credentials: { headers } | { expired: true, foreign? } | { unreadable } | null.
 function storedCredential() {
   const root = process.env.HYPERFRAMES_CONFIG_DIR || join(homedir(), ".hyperframes");
   const file = join(root, ...(process.env.HYPERFRAMES_ENV === "dev" ? ["dev"] : []), "credentials");
@@ -221,13 +221,12 @@ function storedCredential() {
   if (!raw) return null;
   if (!raw.startsWith("{")) return { headers: { "X-Api-Key": raw } };
 
-  // A malformed credentials file (partial write / wrong shape) must degrade to
-  // "no credential", not crash the engine at startup.
+  // A malformed credentials file (partial write) is unreadable, not a crash at startup.
   let cred;
   try {
     cred = JSON.parse(raw);
   } catch {
-    return null;
+    return { unreadable: { file, code: "not valid JSON" } };
   }
   const oauth = cred.oauth;
   if (oauth?.access_token) {
@@ -239,7 +238,7 @@ function storedCredential() {
       oauth.client_id !== expectedClient ||
       oauth.token_endpoint !== expectedTokenEndpoint
     )
-      return { expired: true };
+      return { expired: true, foreign: true };
     const expired = oauth.expires_at && new Date(oauth.expires_at).getTime() - 60_000 < Date.now();
     if (!expired) return { headers: { Authorization: `Bearer ${oauth.access_token}` } };
     return { expired: true };
@@ -274,6 +273,10 @@ export function heygenAuthHeaders() {
   if (cred?.unreadable)
     throw new Error(
       `HeyGen credentials at ${cred.unreadable.file} can't be read (${cred.unreadable.code}) — fix or remove that path, then run \`npx hyperframes auth login\``,
+    );
+  if (cred?.foreign)
+    throw new Error(
+      "The saved HeyGen login belongs to another OAuth client or environment — run `npx hyperframes auth login`",
     );
   if (cred?.expired)
     throw new Error(

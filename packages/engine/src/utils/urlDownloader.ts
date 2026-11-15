@@ -20,6 +20,12 @@ import dns from "node:dns";
 import { fetchGoesThroughEnvProxy } from "@hyperframes/core/env-proxy";
 import { type LookupFunction } from "node:net";
 import { isBlockedNetworkHost } from "./networkPolicy.js";
+import { resolveRestrictPageNetwork } from "../config.js";
+import {
+  assertPublicHostname,
+  NonPublicHostError,
+  resolvePublicAddress,
+} from "../services/publicNetwork/publicNetwork.js";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
@@ -240,8 +246,18 @@ export function assertPublicHttpsUrl(url: string): void {
   if (parsed.protocol !== "https:") {
     throw new Error(`[URLDownloader] Only HTTPS URLs are permitted in compositions`);
   }
-  if (isBlockedNetworkHost(parsed.hostname)) {
+  if (isBlockedNetworkHost(parsed.hostname) || refusedByRestrictedNetwork(parsed.hostname)) {
     throw new Error("[URLDownloader] URL targets a private/reserved address and is not permitted");
+  }
+}
+
+function refusedByRestrictedNetwork(hostname: string): boolean {
+  if (!resolveRestrictPageNetwork()) return false;
+  try {
+    assertPublicHostname(hostname);
+    return false;
+  } catch {
+    return true;
   }
 }
 
@@ -438,6 +454,12 @@ const MAX_REDIRECTS = 5;
 
 const NON_PUBLIC_ADDRESS_CODE = "HF_NON_PUBLIC_ADDRESS";
 
+function nonPublicAddressError(): Error {
+  return Object.assign(new Error("host resolves to a non-public address"), {
+    code: NON_PUBLIC_ADDRESS_CODE,
+  });
+}
+
 /** Resolves a host and refuses to connect when any answer is a non-public address. */
 const publicOnlyLookup: LookupFunction = (hostname, options, callback) => {
   dns.lookup(hostname, { ...options, all: true }, (error, answers) => {
@@ -446,28 +468,49 @@ const publicOnlyLookup: LookupFunction = (hostname, options, callback) => {
       answers.length === 0 ||
       answers.some((a) => isBlockedNetworkHost(a.address.split("%")[0]!))
     ) {
-      const refused = Object.assign(new Error("host resolves to a non-public address"), {
-        code: NON_PUBLIC_ADDRESS_CODE,
-      });
-      return callback(refused, "", 0);
+      return callback(nonPublicAddressError(), "", 0);
     }
     if (options.all) return callback(null, answers as never);
     return callback(null, answers[0]!.address, answers[0]!.family);
   });
 };
 
+/** The capture proxy's resolver: IPv4 answers only, every one public, and the checked address is dialled. */
+const capturePolicyLookup: LookupFunction = (hostname, options, callback) => {
+  resolvePublicAddress(hostname).then(
+    (address) =>
+      options.all ? callback(null, [{ address, family: 4 }]) : callback(null, address, 4),
+    (error: unknown) =>
+      callback(
+        error instanceof NonPublicHostError ? nonPublicAddressError() : (error as Error),
+        "",
+        0,
+      ),
+  );
+};
+
 type DownloadFetch = (url: string, init: RequestInit) => Promise<Response>;
 
-let undiciTransport: Promise<DownloadFetch> | undefined;
+const undiciTransports = new Map<LookupFunction, Promise<DownloadFetch>>();
+
+function undiciTransport(lookup: LookupFunction): Promise<DownloadFetch> {
+  let transport = undiciTransports.get(lookup);
+  if (!transport) {
+    transport = import("undici").then(({ Agent, fetch: undiciFetch }) => {
+      const dispatcher = new Agent({ connect: { lookup } });
+      return (target, options) =>
+        undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
+    });
+    undiciTransports.set(lookup, transport);
+  }
+  return transport;
+}
+
 const fetchPublic: DownloadFetch = async (url, init) => {
+  if (resolveRestrictPageNetwork()) return (await undiciTransport(capturePolicyLookup))(url, init);
   // Behind an env proxy the proxy resolves the name; the URL and redirect checks are the guard then.
   if (fetchGoesThroughEnvProxy()) return fetch(url, init);
-  undiciTransport ??= import("undici").then(({ Agent, fetch: undiciFetch }) => {
-    const dispatcher = new Agent({ connect: { lookup: publicOnlyLookup } });
-    return (target, options) =>
-      undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
-  });
-  return (await undiciTransport)(url, init);
+  return (await undiciTransport(publicOnlyLookup))(url, init);
 };
 
 let downloadFetch: DownloadFetch = fetchPublic;
