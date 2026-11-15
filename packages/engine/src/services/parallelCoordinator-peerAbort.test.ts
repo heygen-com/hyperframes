@@ -51,10 +51,15 @@ describe("executeParallelCapture peer abort", () => {
         () => null,
       );
 
-      await expect(result).rejects.toMatchObject({
-        name: "CaptureFailure",
-        kind: "authoring",
-      });
+      const failure = await result.then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      expect(failure).toMatchObject({ name: "CaptureFailure", kind: "authoring" });
+      const message = (failure as Error).message;
+      expect(message).toContain("Worker 0: Composition has zero duration");
+      expect(message).toContain("(1 other worker was stopped after this failure)");
+      expect(message).not.toContain("Worker 1");
       expect(captureFrame).not.toHaveBeenCalled();
       expect(closeCaptureSession).toHaveBeenCalledTimes(2);
     } finally {
