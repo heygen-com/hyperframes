@@ -1718,15 +1718,46 @@ export const CatalogDetail = ({
     });
   }
 
-  /** The entries of a parsed query object that name a declared id and hold a primitive value. */
-  function declaredValues(parsed, ids) {
+  /**
+   * Whether a value from a link fits the variable it names.
+   *
+   * A link is written by whoever shares it, and the value goes into a
+   * composition that may put it straight into markup. So each value has to look
+   * like what its control could have produced: a number for a slider, one of the
+   * listed options for a choice, a colour for a swatch, an address for an image,
+   * and text with no markup for a string. The declared default always passes.
+   */
+  function fitsVariable(variable, value) {
+    if (JSON.stringify(value) === JSON.stringify(variable.default)) return true;
+    switch (variable.type) {
+      case "number":
+        return typeof value === "number" && Number.isFinite(value);
+      case "boolean":
+        return typeof value === "boolean";
+      case "enum":
+        return (variable.options ?? []).some((option) => option.value === value);
+      case "color":
+        return (
+          typeof value === "string" &&
+          /^(?:#[0-9a-f]{3,8}|[a-z]{3,24}|(?:rgb|hsl)a?\([\d\s.,%/+-]{1,48}\))$/i.test(value)
+        );
+      case "image":
+        return (
+          typeof value === "string" &&
+          value.length <= 2048 &&
+          /^(?:https?:\/\/|[\w./-])[^\s<>"'`()\\]*$/i.test(value)
+        );
+      default:
+        return typeof value === "string" && value.length <= 10000 && !/[<>]/.test(value);
+    }
+  }
+
+  /** The entries of a parsed query object that name a declared variable and fit its type. */
+  function declaredValues(parsed, variables) {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const byId = new Map(variables.map((variable) => [variable.id, variable]));
     return Object.fromEntries(
-      Object.entries(parsed).filter(([id, value]) => {
-        if (!ids.has(id)) return false;
-        if (typeof value === "number") return Number.isFinite(value);
-        return typeof value === "string" || typeof value === "boolean";
-      }),
+      Object.entries(parsed).filter(([id, value]) => byId.has(id) && fitsVariable(byId.get(id), value)),
     );
   }
   // <<< preview values
@@ -1739,8 +1770,9 @@ export const CatalogDetail = ({
       // `URLSearchParams` has already decoded this once. Decoding again turned
       // a path full of percent-escapes into something that no longer parsed,
       // and doubled the length of every link.
-      // Only ids this item declares; a stale link must not inject stray keys.
-      return declaredValues(JSON.parse(raw), new Set(variables.map((v) => v.id)));
+      // Only ids this item declares, each holding what its control could have
+      // set; a stale or hand-made link must not inject stray keys or markup.
+      return declaredValues(JSON.parse(raw), variables);
     } catch {
       return {};
     }
@@ -1880,6 +1912,10 @@ export const CatalogDetail = ({
     "    arm(resumeAt || 0);",
     "  }",
     "  player = document.createElement('hyperframes-player');",
+    // The composition runs with values a shared link chose, so it gets an
+    // origin of its own rather than this page's: whatever it does stays inside
+    // the preview. This script only ever talks to it through the player's API.
+    "  player.setAttribute('sandbox-origin', 'opaque');",
     "  player.setAttribute('controls', ''); player.setAttribute('muted', '');",
     "  document.body.appendChild(player);",
     "  player.addEventListener('ended', function () { player.seek(0); player.play(); });",

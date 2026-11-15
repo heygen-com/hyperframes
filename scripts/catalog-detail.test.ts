@@ -535,6 +535,13 @@ for (const wrapped of [false, true]) {
   });
 }
 
+interface Variable {
+  id: string;
+  type: string;
+  default?: unknown;
+  options?: { value: unknown }[];
+}
+
 const previewValues = (() => {
   const source = readFileSync(
     join(dirname(fileURLToPath(import.meta.url)), "..", "docs", "snippets", "catalog-detail.jsx"),
@@ -545,7 +552,7 @@ const previewValues = (() => {
   assert.ok(open !== -1 && close > open, "the preview values markers are missing");
   return new Function(`${source.slice(open, close)}\nreturn { scriptJson, declaredValues };`)() as {
     scriptJson: (value: unknown) => string;
-    declaredValues: (parsed: unknown, ids: Set<string>) => Record<string, unknown>;
+    declaredValues: (parsed: unknown, variables: Variable[]) => Record<string, unknown>;
   };
 })();
 
@@ -558,17 +565,63 @@ test("preview values embed as JSON with no markup characters and read back uncha
   assert.equal(previewValues.scriptJson({ a: "plain", n: 1.5 }), '{"a":"plain","n":1.5}');
 });
 
-test("a link's values keep only declared ids holding a string, finite number or boolean", () => {
-  const ids = new Set(["a", "b", "c", "d"]);
+const declared: Variable[] = [
+  { id: "title", type: "string", default: "Hello" },
+  { id: "prompt", type: "string", default: ">" },
+  { id: "size", type: "number", default: 4 },
+  { id: "loop", type: "boolean", default: false },
+  { id: "mode", type: "enum", default: "a", options: [{ value: "a" }, { value: "b" }] },
+  { id: "tint", type: "color", default: "#ffffff" },
+  { id: "logo", type: "image", default: "https://example.com/logo.png" },
+];
+
+test("a link's values keep only declared ids holding what their control could set", () => {
+  const fitting = {
+    title: "Ship it, 'today' & \"tomorrow\"",
+    prompt: ">",
+    size: 2.5,
+    loop: true,
+    mode: "b",
+    tint: "rgba(10, 20, 30, 0.5)",
+    logo: "/images/logo.svg",
+  };
+  assert.deepEqual(previewValues.declaredValues({ ...fitting, stray: "x" }, declared), fitting);
+  assert.deepEqual(previewValues.declaredValues(["title"], declared), {});
+  assert.deepEqual(previewValues.declaredValues(null, declared), {});
   assert.deepEqual(
-    previewValues.declaredValues({ a: "x", b: 2, c: true, d: { nested: 1 }, e: "stray" }, ids),
-    { a: "x", b: 2, c: true },
+    previewValues.declaredValues({ tint: "red", logo: "https://cdn.example/a.png?w=2" }, declared),
+    {
+      tint: "red",
+      logo: "https://cdn.example/a.png?w=2",
+    },
   );
-  assert.deepEqual(previewValues.declaredValues(["a"], ids), {});
-  assert.deepEqual(previewValues.declaredValues(null, ids), {});
 });
 
-test("a link value that closes a script element stays inside the preview's bootstrap script", async () => {
+test("a link value that does not fit its variable falls back to the default", () => {
+  const misfits = {
+    title: "<img src=x onerror=alert(1)>",
+    prompt: "a > b",
+    size: "4",
+    loop: "true",
+    mode: "c",
+    tint: "red;background:url(https://example.com/x)",
+    logo: "javascript:alert(1)",
+  };
+  for (const [id, value] of Object.entries(misfits)) {
+    assert.deepEqual(previewValues.declaredValues({ [id]: value }, declared), {}, id);
+  }
+  assert.deepEqual(previewValues.declaredValues({ title: "x".repeat(10001) }, declared), {});
+  assert.deepEqual(
+    previewValues.declaredValues({ logo: 'x.png" onerror="alert(1)' }, declared),
+    {},
+  );
+  assert.deepEqual(
+    previewValues.declaredValues({ size: Number.NaN, title: { nested: 1 } }, declared),
+    {},
+  );
+});
+
+test("a link value carrying markup never reaches the preview, which runs in an origin of its own", async () => {
   const injected = "</script><script>window.hacked=1</script>";
   const query = new URLSearchParams({ "vars-x": JSON.stringify({ label: injected }) });
   Object.assign(globalThis, {
@@ -587,8 +640,9 @@ test("a link value that closes a script element stays inside the preview's boots
       .replace(/&gt;/g, ">")
       .replace(/&amp;/g, "&");
     assert.equal(doc.match(/<script/gi)?.length, 2, "only the player and bootstrap scripts");
-    assert.ok(!doc.includes("window.hacked=1</script>"));
-    assert.match(doc, /var INITIAL = \{"label":"\\u003c\/script\\u003e/);
+    assert.ok(!doc.includes("window.hacked"));
+    assert.match(doc, /var INITIAL = \{"label":"hello"\};/);
+    assert.match(doc, /player\.setAttribute\('sandbox-origin', 'opaque'\)/);
     const body = /<body><script>([\s\S]*)<\/script><\/body>/.exec(doc)?.[1] ?? "";
     assert.doesNotThrow(() => new Function(body), "the bootstrap script still parses");
     assert.match(body, /var scriptJson = function scriptJson\(value\)/);
