@@ -1,0 +1,137 @@
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import type { VideoElement } from "../types.js";
+import { runFfmpeg } from "../utils/runFfmpeg.js";
+
+// The download hands back `served.main`, with `served.beside` saved next to it.
+const served = vi.hoisted(() => ({ main: "", beside: [] as string[] }));
+vi.mock("../utils/urlDownloader.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/urlDownloader.js")>()),
+  downloadToTemp: async (_url: string, destDir: string) => {
+    for (const file of served.beside) copyFileSync(file, join(destDir, basename(file)));
+    const local = join(destDir, "download.mp4");
+    copyFileSync(served.main, local);
+    return local;
+  },
+}));
+
+const probed = vi.hoisted(() => ({ paths: [] as string[] }));
+vi.mock("../utils/ffprobe.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../utils/ffprobe.js")>();
+  return {
+    ...actual,
+    extractMediaMetadata: (path: string) => {
+      probed.paths.push(path);
+      return actual.extractMediaMetadata(path);
+    },
+  };
+});
+
+const { extractAllVideoFrames } = await import("./videoFrameExtractor.js");
+
+describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded payloads", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-extract-download-payload-"));
+  let renders = 0;
+  let mp4 = "";
+  let mov = "";
+  let webm = "";
+  let segment = "";
+
+  async function synth(name: string, codec: string[]): Promise<string> {
+    const clip = join(dir, name);
+    const made = await runFfmpeg([
+      ...["-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=32x16:d=1:r=30"],
+      ...codec,
+      clip,
+    ]);
+    expect(made.success, made.stderr).toBe(true);
+    return clip;
+  }
+
+  function write(name: string, text: string): string {
+    const path = join(dir, name);
+    writeFileSync(path, text);
+    return path;
+  }
+
+  function render(main: string, beside: string[] = []) {
+    served.main = main;
+    served.beside = beside;
+    probed.paths = [];
+    const outputDir = join(dir, `render-${++renders}`);
+    mkdirSync(outputDir, { recursive: true });
+    const video: VideoElement = {
+      id: "clip",
+      src: "https://cdn.example.com/clip.mp4",
+      ...{ start: 0, end: 1, mediaStart: 0, loop: false, hasAudio: false },
+    };
+    return extractAllVideoFrames([video], dir, {
+      fps: 30,
+      outputDir,
+      collectProbeFailures: true,
+    });
+  }
+
+  function framesOf(result: Awaited<ReturnType<typeof render>>): Buffer[] {
+    const extracted = result.extracted[0];
+    if (!extracted) throw new Error("nothing extracted");
+    return [...extracted.framePaths.values()].map((path) => readFileSync(path));
+  }
+
+  beforeAll(async () => {
+    const h264 = ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"];
+    mp4 = await synth("real.mp4", h264);
+    mov = await synth("real.mov", h264);
+    webm = await synth("real.webm", ["-c:v", "libvpx-vp9", "-deadline", "realtime"]);
+    segment = await synth("segment.ts", h264);
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("refuses a downloaded manifest as not media before any probe reads it", async () => {
+    const manifest = write(
+      "manifest.mpd",
+      '<?xml version="1.0"?>\n<MPD profiles="urn:mpeg:dash:profile:isoff-on-demand:2011">' +
+        `<Period><AdaptationSet><Representation id="1"><BaseURL>${mp4}</BaseURL>` +
+        "</Representation></AdaptationSet></Period></MPD>\n",
+    );
+    const result = await render(manifest);
+    expect(result.extracted).toEqual([]);
+    expect(result.errors).toEqual([
+      expect.objectContaining({ videoId: "clip", kind: "invalid_media", retryable: false }),
+    ]);
+    expect(result.errors[0]?.error).toContain("text documents");
+    expect(probed.paths).toEqual([]);
+  });
+
+  it("on a render service refuses a downloaded playlist naming a file beside it", async () => {
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
+    const playlist = write(
+      "playlist.m3u8",
+      `#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n${basename(segment)}\n#EXT-X-ENDLIST\n`,
+    );
+    const result = await render(playlist, [segment]);
+    expect(result.extracted).toEqual([]);
+    expect(result.errors).toEqual([
+      expect.objectContaining({ videoId: "clip", kind: "invalid_media", retryable: false }),
+    ]);
+    expect(probed.paths).toEqual([]);
+  });
+
+  it.each([
+    ["mp4", () => mp4],
+    ["mov", () => mov],
+    ["webm", () => webm],
+  ])("extracts a real %s download the same on a render service", async (_kind, clip) => {
+    const local = await render(clip());
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
+    const restricted = await render(clip());
+    expect(local.errors).toEqual([]);
+    expect(restricted.errors).toEqual([]);
+    expect(restricted.extracted[0]?.totalFrames).toBe(30);
+    expect(framesOf(restricted)).toEqual(framesOf(local));
+  });
+});
