@@ -130,7 +130,7 @@ function withHint(body: CliErrorBody, hint: string | undefined): CliErrorBody {
 }
 
 function errorCode(error: unknown, result: CommandResult): string {
-  if (error instanceof CliUsageError) return error.code;
+  if (error instanceof CliUsageError || error instanceof CliRuntimeError) return error.code;
   return result.kind === "usage_error" ? "usage_error" : "runtime_error";
 }
 

@@ -385,7 +385,7 @@ describe("acquireRenderSlot", () => {
         undefined,
         { path, env: {} },
       ),
-    ).rejects.toThrow("Command failed");
+    ).rejects.toMatchObject({ message: "Command failed", code: "render_locked" });
 
     const said = vi.mocked(console.error).mock.calls.flat().join("\n");
     expect(said).toContain("Another render is running for this user account");

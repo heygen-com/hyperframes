@@ -57,4 +57,29 @@ describe("jsonErrorBody", () => {
       hint: "Run npx hyperframes init",
     });
   });
+
+  it("keeps a runtime error's own code next to the failure the command reported", () => {
+    recordFailure("FFmpeg not found", "Configured path does not exist");
+    const error = new CliRuntimeError("Command failed", {
+      presented: true,
+      code: "ffmpeg_not_found",
+    });
+    expect(jsonErrorBody(error, runtime, "x")).toEqual({
+      code: "ffmpeg_not_found",
+      message: "FFmpeg not found",
+      hint: "Configured path does not exist",
+    });
+  });
+
+  it("keeps a runtime error's own code when the message comes from its cause", () => {
+    const error = new CliRuntimeError("Command failed", {
+      presented: true,
+      cause: new Error("Another render is running (pid 7)"),
+      code: "render_locked",
+    });
+    expect(jsonErrorBody(error, runtime, "x")).toEqual({
+      code: "render_locked",
+      message: "Another render is running (pid 7)",
+    });
+  });
 });

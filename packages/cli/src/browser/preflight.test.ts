@@ -130,6 +130,7 @@ describe("runEnvironmentChecks", () => {
         ok: false,
         level: "error",
         title: "FFprobe not found",
+        code: "ffprobe_not_found",
       }),
     );
     expect(result.ffprobePath).toBeUndefined();
@@ -143,6 +144,7 @@ describe("runEnvironmentChecks", () => {
 
     expect(ffmpeg).toMatchObject({
       ok: false,
+      code: "ffmpeg_not_found",
       detail: 'Configured path does not exist: HYPERFRAMES_FFMPEG_PATH="/missing/ffmpeg.exe"',
     });
   });
@@ -289,6 +291,7 @@ describe("runEnvironmentChecks", () => {
       expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
         ok: false,
         title: "Chrome not found",
+        code: "chrome_not_found",
         detail: "ENOTDIR: not a directory, scandir 'chrome-headless-shell'",
         hint: "Run: npx hyperframes browser ensure",
       });
@@ -341,6 +344,7 @@ describe("runEnvironmentChecks", () => {
     expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
       ok: false,
       title: "Chrome not found",
+      code: "chrome_not_found",
     });
   });
 });
