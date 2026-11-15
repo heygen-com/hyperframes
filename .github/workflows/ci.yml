@@ -1224,6 +1224,25 @@ jobs:
             STUDIO_PROJECT_DIR="$PWD/packages/studio/data/projects/preview-video-regression" \
             OUT_DIR=/tmp/preview-video-regression \
             node packages/studio/tests/e2e/preview-video-regression.mjs
+      - name: Verify a sealed preview's proxy wait gets past its preflight
+        if: success() || failure()
+        run: |
+          set -euo pipefail
+          project=packages/studio/data/projects/sealed-proxy
+          mkdir -p "$project"
+          cp packages/cli/src/templates/blank/index.html "$project/index.html"
+          ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc=size=320x180:rate=30 -t 1 \
+            -c:v libx264 -pix_fmt yuv420p "$project/clip.mov"
+          VITE_STUDIO_OPAQUE_PREVIEW_ENABLED=1 NODE_ENV=production \
+            bun run --cwd packages/studio dev -- --port 5319 --strictPort &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            if curl -sf "http://localhost:5319/" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          STUDIO_URL="http://localhost:5319/#project/sealed-proxy" \
+            node packages/studio/tests/e2e/sealed-preview-proxy.mjs
       - name: Upload gate evidence
         # The gate's whole output is machine-readable evidence, and a red run is
         # exactly when someone needs to read it. Keep it on failure too.
