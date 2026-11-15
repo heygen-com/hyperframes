@@ -324,16 +324,17 @@ export async function probeAudioTrack(
   const result = await runner(
     ffprobePath,
     [
-      ...["-v", "error", "-select_streams", "a"],
-      ...[
-        "-show_entries",
-        "stream=codec_type,codec_name,channels",
-        "-of",
-        "json",
-        ...MEDIA_INPUT_ARGS,
-        "--",
-        filePath,
-      ],
+      "-v",
+      "error",
+      "-select_streams",
+      "a",
+      "-show_entries",
+      "stream=codec_type,codec_name,channels",
+      "-of",
+      "json",
+      ...MEDIA_INPUT_ARGS,
+      "--",
+      filePath,
     ],
     { timeout: 30_000 },
   );

@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+import { MEDIA_INPUT_ARGS } from "@hyperframes/studio-server/outside-file";
 import {
   audioNormalizationPlan,
   audioTags,
@@ -76,7 +77,13 @@ describe("loudnessMeasureArgs", () => {
     const args = loudnessMeasureArgs("clip.wav", { mediaStart: 2, duration: 4 }, 0);
     expect(args.indexOf("-ss")).toBeLessThan(args.indexOf("-i"));
     expect(args.indexOf("-t")).toBeLessThan(args.indexOf("-i"));
-    expect(args.slice(args.indexOf("-ss"), args.indexOf("-i"))).toEqual(["-ss", "2", "-t", "4"]);
+    expect(args.slice(args.indexOf("-ss"), args.indexOf("-i"))).toEqual([
+      "-ss",
+      "2",
+      "-t",
+      "4",
+      ...MEDIA_INPUT_ARGS,
+    ]);
   });
 
   it("leaves an untrimmed clip unbounded", () => {

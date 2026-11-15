@@ -363,17 +363,15 @@ async function durationSeconds(sourcePath: string): Promise<number | null> {
   const ffprobe = findFFprobe();
   if (!ffprobe) return null;
   const { stdout } = await execFileAsync(ffprobe, [
-    ...[
-      "-v",
-      "error",
-      "-show_entries",
-      "format=duration",
-      "-of",
-      "csv=p=0",
-      ...MEDIA_INPUT_ARGS,
-      "--",
-      sourcePath,
-    ],
+    "-v",
+    "error",
+    "-show_entries",
+    "format=duration",
+    "-of",
+    "csv=p=0",
+    ...MEDIA_INPUT_ARGS,
+    "--",
+    sourcePath,
   ]);
   const value = Number(stdout.trim());
   return Number.isFinite(value) && value > 0 ? value : null;
