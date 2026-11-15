@@ -802,6 +802,48 @@ async function compileHtmlFile(
   return { html: compiledHtml, unresolvedCompositions };
 }
 
+/** The sub-composition files a render reads for `hosts`, resolved and normalized as the render resolves them. */
+function subCompositionReads(
+  hosts: Iterable<Element>,
+  projectDir: string,
+  visited: ReadonlySet<string>,
+  assetRoot: string | undefined,
+): Array<{ srcPath: string; filePath: string; rawSubHtml: string }> {
+  const reads: Array<{ srcPath: string; filePath: string; rawSubHtml: string }> = [];
+  for (const el of hosts) {
+    const srcPath = el.getAttribute("data-composition-src");
+    if (!srcPath) continue;
+    const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
+    if (filePath === null || isPrivateCompositionFile(projectDir, filePath)) continue;
+    if (visited.has(filePath)) continue;
+    const read = readProjectFile(filePath);
+    if (read.kind !== "file") continue;
+    reads.push({ srcPath, filePath, rawSubHtml: normalizeCompositionSrcs(read.text, projectDir) });
+  }
+  return reads;
+}
+
+/** The entry and every sub-composition file a render of it reads, found by the render's own traversal. */
+export function renderCompositionFiles(
+  projectDir: string,
+  htmlPath: string,
+  assetRoot?: string,
+): string[] {
+  const files = [htmlPath];
+  const seen = new Set([htmlPath]);
+  const entryHtml = rebaseDirectEntryAssetPaths(readTextFile(htmlPath), projectDir, htmlPath);
+  const pending = [normalizeCompositionSrcs(entryHtml, projectDir)];
+  for (let html = pending.pop(); html !== undefined; html = pending.pop()) {
+    const hosts = parseHTML(html).document.querySelectorAll("[data-composition-src]");
+    for (const read of subCompositionReads(hosts, projectDir, seen, assetRoot)) {
+      seen.add(read.filePath);
+      files.push(read.filePath);
+      pending.push(read.rawSubHtml);
+    }
+  }
+  return files;
+}
+
 /**
  * Compile every sub-composition referenced via data-composition-src, keyed by
  * its source path for the inliner to hoist into the render document.
@@ -834,27 +876,14 @@ async function parseSubCompositions(
     nestedVisited: Set<string>;
   }> = [];
 
-  for (const el of compEls) {
-    const srcPath = el.getAttribute("data-composition-src");
-    if (!srcPath) continue;
-
-    const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
-    if (filePath === null || isPrivateCompositionFile(projectDir, filePath)) continue;
-
-    // Circular reference guard
-    if (visited.has(filePath)) {
-      continue;
-    }
-
-    const read = readProjectFile(filePath);
-    if (read.kind !== "file") {
-      continue;
-    }
-
-    const rawSubHtml = normalizeCompositionSrcs(read.text, projectDir);
+  for (const { srcPath, filePath, rawSubHtml } of subCompositionReads(
+    compEls,
+    projectDir,
+    visited,
+    assetRoot,
+  )) {
     const nestedVisited = new Set(visited);
     nestedVisited.add(filePath);
-
     workItems.push({ srcPath, filePath, rawSubHtml, nestedVisited });
   }
 

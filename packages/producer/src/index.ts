@@ -74,6 +74,7 @@ export {
   localizeRemoteMediaSources,
   localizeRemoteImageSources,
   localizeRemoteFontFaces,
+  renderCompositionFiles,
 } from "./services/htmlCompiler.js";
 
 // ── Frame capture (lower-level) ─────────────────────────────────────────────

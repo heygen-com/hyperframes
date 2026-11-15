@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { compileForRender } from "../../../producer/src/services/htmlCompiler.js";
 import { outsideAssetsAllowed } from "./receivedRender.js";
 
 let root: string | undefined;
@@ -185,5 +186,56 @@ describe("outsideAssetsAllowed", () => {
     const started = performance.now();
     await decide(dir);
     expect(performance.now() - started).toBeLessThan(5_000);
+  });
+
+  describe("parity with the render compiler", () => {
+    const scene = (id: string) =>
+      `<template><div data-composition-id="${id}" data-width="320" data-height="180" data-duration="1">` +
+      `<p>${id}-marker</p><img src="../../outside/pic.png"></div></template>`;
+
+    it.each([
+      {
+        name: "a root-relative reference with a leading slash",
+        files: { "compositions/scene.html": scene("received-scene") },
+        src: "/compositions/scene.html",
+        receivedFile: "compositions/scene.html",
+      },
+      {
+        name: "a percent-encoded reference",
+        files: { "compositions/my scene.html": scene("received-scene") },
+        src: "compositions/my%20scene.html",
+        receivedFile: "compositions/my scene.html",
+      },
+      {
+        name: "a nested reference resolved from the project root",
+        files: {
+          "compositions/outer.html":
+            `<template><div data-composition-id="outer" data-width="320" data-height="180" data-duration="1">` +
+            `<div data-composition-src="compositions/inner.html"></div></div></template>`,
+          "compositions/inner.html": scene("received-scene"),
+        },
+        src: "compositions/outer.html",
+        receivedFile: "compositions/inner.html",
+      },
+    ])("refuses outside files for $name the render compiler reads", async (probe) => {
+      const dir = project(received(probe.receivedFile));
+      for (const [file, text] of Object.entries(probe.files)) write(join(dir, file), text);
+      write(
+        join(dir, "index.html"),
+        `<div data-composition-id="main" data-width="320" data-height="180" data-duration="1">` +
+          `<div data-composition-src="${probe.src}"></div></div>`,
+      );
+
+      const compiled = await compileForRender(dir, join(dir, "index.html"), join(dir, ".dl"), {
+        allowOutsideProjectAssets: true,
+      });
+      const rendered = [compiled.html, ...compiled.subCompositions.values()].join("\n");
+      expect(rendered).toContain("received-scene-marker");
+
+      const { allowed, line } = await decide(dir);
+      expect(allowed).toBe(false);
+      expect(line).toContain(`${probe.receivedFile} came from someone else`);
+      expect(line).toContain("../../outside/pic.png");
+    });
   });
 });

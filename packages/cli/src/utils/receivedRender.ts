@@ -3,7 +3,9 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseHTML } from "linkedom";
 import { isNonRelativeUrl, isPathInside } from "@hyperframes/core";
+import { resolveCompositionSrc } from "@hyperframes/parsers/asset-resolution";
 import { runRenderSetupWorker } from "./cancellableProcess.js";
+import { loadProducer } from "./producer.js";
 import { linksOutside, receivedFiles, receivedRecordStatus } from "./privateProjectFile.js";
 
 const REFERENCE_ATTRS = ["src", "href", "poster"];
@@ -36,23 +38,29 @@ function cssReferences(css: string): Reference[] {
   return refs;
 }
 
+function elementReferences(el: Element): Reference[] {
+  const follow = el.localName === "link";
+  const refs: Reference[] = REFERENCE_ATTRS.flatMap((attr) => {
+    const raw = el.getAttribute(attr)?.trim();
+    return raw ? [{ raw, composition: false, follow }] : [];
+  });
+  const composition = el.getAttribute("data-composition-src")?.trim();
+  if (composition) refs.push({ raw: composition, composition: true, follow: true });
+  return refs;
+}
+
 function htmlReferences(html: string): Reference[] {
   const { document } = parseHTML(html);
-  const refs: Reference[] = [];
-  for (const el of document.querySelectorAll("[src], [href], [poster], [data-composition-src]")) {
-    const follow = el.localName === "link";
-    for (const attr of REFERENCE_ATTRS) {
-      const raw = el.getAttribute(attr)?.trim();
-      if (raw) refs.push({ raw, composition: false, follow });
-    }
-    const composition = el.getAttribute("data-composition-src")?.trim();
-    if (composition) refs.push({ raw: composition, composition: true, follow: true });
-  }
+  const hosts = document.querySelectorAll("[src], [href], [poster], [data-composition-src]");
+  const refs = [...hosts].flatMap(elementReferences);
   for (const style of document.querySelectorAll("style")) {
     refs.push(...cssReferences(style.textContent ?? ""));
   }
   for (const el of document.querySelectorAll("[style]")) {
     refs.push(...cssReferences(el.getAttribute("style") ?? ""));
+  }
+  for (const template of document.querySelectorAll("template")) {
+    refs.push(...htmlReferences(template.innerHTML));
   }
   return refs;
 }
@@ -114,6 +122,16 @@ interface OutsideReferences {
   complete: boolean;
 }
 
+// A composition resolves as the render compiler resolves it; one that leaves the project resolves as written.
+function referencePath(ref: Reference, file: string, projectDir: string): string | null {
+  if (!ref.composition) return localPath(ref.raw, dirname(file));
+  try {
+    return resolveCompositionSrc(projectDir, ref.raw) ?? localPath(ref.raw, projectDir);
+  } catch {
+    return null;
+  }
+}
+
 function referencesIn(found: OutsideReferences, file: string): Reference[] {
   const read = readHead(file);
   if (read === null || !read.whole) found.complete = false;
@@ -142,7 +160,7 @@ function noteReference(
 function scanFile(found: OutsideReferences, file: string, projectDir: string): string[] {
   const next: string[] = [];
   for (const ref of referencesIn(found, file)) {
-    const path = localPath(ref.raw, ref.composition ? projectDir : dirname(file));
+    const path = referencePath(ref, file, projectDir);
     if (path === null || !isFile(path)) continue;
     const follow = noteReference(found, ref, path, projectDir);
     if (follow !== null) next.push(follow);
@@ -188,13 +206,14 @@ function projectRelative(projectDir: string, realProjectDir: string | null, path
     .join("/");
 }
 
-/** The project files the compiler reads, or looks for, to build this composition. */
+/** The project files a render of this composition reads: the render compiler's own composition traversal, plus every file the bundler reads or looks for. */
 export async function compilerReadsInProcess(
   projectDir: string,
   entryFile: string,
 ): Promise<string[]> {
+  const { renderCompositionFiles } = await loadProducer();
+  const reads = renderCompositionFiles(projectDir, resolve(projectDir, entryFile));
   const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
-  const reads: string[] = [];
   await bundleToSingleHtml(projectDir, {
     entryFile,
     runtime: "placeholder",
