@@ -164,6 +164,40 @@ describe("prepareBatchRender", () => {
     expect(error.message).toMatch(/Row 0 resolves to/);
   });
 
+  it.each(["{name}.mp4", join("{name}", "out.mp4")])(
+    "refuses a row value that leaves the working folder when %s starts with a placeholder",
+    (template) => {
+      const batchPath = writeJson("rows.json", JSON.stringify([{ name: "../escaped" }]));
+      const error = expectBatchError(
+        () =>
+          prepareBatchRender({
+            batchPath,
+            outputTemplate: template,
+            indexPath: writeIndex(),
+            strictVariables: false,
+            quiet: true,
+            json: false,
+          }),
+        "Batch output outside --output folder",
+      );
+      expect(error.message).toMatch(/Row 0 resolves to/);
+    },
+  );
+
+  it("keeps a template that starts with a placeholder inside the working folder", () => {
+    const batchPath = writeJson("rows.json", '[{"name":"acme"}]');
+    const prepared = prepareBatchRender({
+      batchPath,
+      outputTemplate: join("{index}", "{name}.mp4"),
+      indexPath: writeIndex(),
+      strictVariables: false,
+      quiet: true,
+      json: false,
+    });
+
+    expect(prepared.rows.map((row) => row.outputPath)).toEqual([resolve("0", "acme.mp4")]);
+  });
+
   it("keeps a backslash in a row value or file name on every platform", () => {
     const batchPath = writeJson("rows.json", '[{"name":"a\\\\b"}]');
     const outDir = join(tmpDir, "renders\\");
@@ -178,7 +212,7 @@ describe("prepareBatchRender", () => {
     expect(prepared.rows[0]?.outputPath).toBe(resolve(`${outDir}a\\b.mp4`));
   });
 
-  it("lets the rows name the whole path when the template starts with a placeholder", () => {
+  it("lets the rows name the whole path when the template is a bare {path}", () => {
     const elsewhere = join(tmpDir, "elsewhere", "launch.mp4");
     const batchPath = writeJson("rows.json", JSON.stringify([{ path: elsewhere }]));
     const prepared = prepareBatchRender({

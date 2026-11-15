@@ -160,9 +160,12 @@ function folderOfPrefix(prefix: string): string {
 }
 
 function checkOutputsInsideTemplateFolder(rows: readonly PreparedBatchRow[], template: string) {
+  // A bare {path} lets each row name its whole output path; any other template stays under its folder or the cwd.
+  if (template === "{path}") return;
   const firstPlaceholder = template.search(PLACEHOLDER_RE);
-  if (firstPlaceholder <= 0) return;
-  const folder = folderOfPrefix(template.slice(0, firstPlaceholder));
+  if (firstPlaceholder < 0) return;
+  const folder =
+    firstPlaceholder === 0 ? resolve() : folderOfPrefix(template.slice(0, firstPlaceholder));
   for (const row of rows) {
     const rel = relative(folder, row.outputPath);
     const outside = rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
