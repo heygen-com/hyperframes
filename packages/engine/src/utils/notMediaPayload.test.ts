@@ -104,6 +104,32 @@ describe("isNotMediaPayload", () => {
     expect(await isNotMediaPayload(writeFixture("clip.bin", Buffer.from(bytes)))).toBe(false);
   });
 
+  it.each([
+    ["<", 0x3c, "ftyp"],
+    ["#", 0x23, "ftyp"],
+    ["{", 0x7b, "styp"],
+    ["[", 0x5b, "moof"],
+    ["space", 0x20, "ftyp"],
+    ["tab", 0x09, "free"],
+    ["newline", 0x0a, "sidx"],
+  ])("does not flag an mp4 box whose size byte reads as %s", async (_label, size, type) => {
+    const box = Buffer.concat([Buffer.from([0, 0, 0, size]), Buffer.from(`${type}isom`)]);
+    expect(await isNotMediaPayload(writeFixture("clip.mp4", box))).toBe(false);
+  });
+
+  it.each([
+    ["to the end of the file", 0],
+    ["with a 64-bit size", 1],
+  ])("does not flag an mp4 box sized %s", async (_label, size) => {
+    const box = Buffer.concat([Buffer.from([0, 0, 0, size]), Buffer.from("mdat<html>")]);
+    expect(await isNotMediaPayload(writeFixture("clip.mp4", box))).toBe(false);
+  });
+
+  it("still detects a document shaped like a box header with no media box type", async () => {
+    const xml = Buffer.concat([Buffer.from([0, 0, 0]), Buffer.from('<?xml version="1.0"?><MPD/>')]);
+    expect(await isNotMediaPayload(writeFixture("manifest.mp4", xml))).toBe(true);
+  });
+
   it("does not flag a container that merely contains a document byte further in", async () => {
     const filePath = writeFixture(
       "not-html.bin",

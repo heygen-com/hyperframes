@@ -45,6 +45,7 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
   let mov = "";
   let webm = "";
   let segment = "";
+  let wideFtyp = "";
 
   async function synth(name: string, codec: string[]): Promise<string> {
     const clip = join(dir, name);
@@ -55,6 +56,25 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
     ]);
     expect(made.success, made.stderr).toBe(true);
     return clip;
+  }
+
+  // A fragmented mp4 addresses its samples from each moof, so a longer ftyp shifts nothing it names.
+  async function fragmentedWithSixtyByteFtyp(h264: string[]): Promise<string> {
+    const fragmented = await synth("fragmented.mp4", [
+      ...h264,
+      ...["-movflags", "frag_keyframe+empty_moov+default_base_moof"],
+    ]);
+    const bytes = readFileSync(fragmented);
+    expect(bytes.toString("latin1", 4, 8)).toBe("ftyp");
+    const brands = "isomiso2avc1mp41iso5iso6dashmsdhmsixcmfcmp42";
+    const ftyp = Buffer.alloc(60);
+    ftyp.writeUInt32BE(60, 0);
+    ftyp.write(`ftypisom`, 4, "latin1");
+    ftyp.writeUInt32BE(0x200, 12);
+    ftyp.write(brands, 16, "latin1");
+    const path = join(dir, "wide-ftyp.mp4");
+    writeFileSync(path, Buffer.concat([ftyp, bytes.subarray(bytes.readUInt32BE(0))]));
+    return path;
   }
 
   function write(name: string, text: string): string {
@@ -95,6 +115,7 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
     mov = await synth("real.mov", h264);
     webm = await synth("real.webm", ["-c:v", "libvpx-vp9", "-deadline", "realtime"]);
     segment = await synth("segment.ts", h264);
+    wideFtyp = await fragmentedWithSixtyByteFtyp(h264);
   });
 
   afterEach(() => vi.unstubAllEnvs());
@@ -142,6 +163,7 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
     ["mp4", () => mp4],
     ["mov", () => mov],
     ["webm", () => webm],
+    ["fragmented mp4 with a 60-byte ftyp", () => wideFtyp],
   ])("extracts a real %s download the same on a render service", async (_kind, clip) => {
     const local = await render(clip());
     vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");

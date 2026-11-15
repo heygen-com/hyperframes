@@ -66,9 +66,8 @@ const SNIFF_BYTES = 512;
 // error body, which some gateways return with a 200.
 const DOCUMENT_OPENING_BYTES = new Set([0x3c, 0x7b, 0x5b]);
 // NUL is skippable so UTF-16-encoded text (`3C 00 68 00 …`) is caught, and so
-// is a payload padded with NULs. No supported container is defeated by this:
-// mp4/mov open with a box size whose first non-NUL byte is the size itself, and
-// MPEG-PS `00 00 01 BA` stops at 0x01.
+// is a payload padded with NULs. An mp4/mov box header is recognised before
+// skipping, since its size byte can read as `<`; MPEG-PS `00 00 01 BA` stops at 0x01.
 const SKIPPABLE_LEADING_BYTES = new Set([0x00, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20]);
 const BYTE_ORDER_MARKS = [
   Buffer.from([0xef, 0xbb, 0xbf]), // UTF-8
@@ -127,7 +126,27 @@ async function readHead(filePath: string): Promise<Buffer | null> {
   }
 }
 
+const BMFF_BOX_TYPES = new Set([
+  "ftyp",
+  "styp",
+  "moov",
+  "moof",
+  "mdat",
+  "free",
+  "skip",
+  "wide",
+  "sidx",
+  "pdin",
+]);
+
+function opensWithMediaBox(head: Buffer): boolean {
+  if (head.length < 8) return false;
+  const size = head.readUInt32BE(0);
+  return (size < 2 || size >= 8) && BMFF_BOX_TYPES.has(head.toString("latin1", 4, 8));
+}
+
 function startsWithDocumentByte(head: Buffer): boolean {
+  if (opensWithMediaBox(head)) return false;
   for (let index = byteOrderMarkLength(head); index < head.length; index++) {
     const byte = head[index];
     if (byte === undefined) break;
