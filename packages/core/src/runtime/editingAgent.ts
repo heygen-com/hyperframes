@@ -118,9 +118,13 @@ function onWatchedKeyUp(e: KeyboardEvent): void {
 }
 
 function listenForKeys(on: boolean): void {
-  const method = on ? "addEventListener" : "removeEventListener";
-  window[method]("keydown", onWatchedKeyDown, true);
-  window[method]("keyup", onWatchedKeyUp, true);
+  if (on) {
+    window.addEventListener("keydown", onWatchedKeyDown, true);
+    window.addEventListener("keyup", onWatchedKeyUp, true);
+  } else {
+    window.removeEventListener("keydown", onWatchedKeyDown, true);
+    window.removeEventListener("keyup", onWatchedKeyUp, true);
+  }
 }
 
 function watchKeys(port: MessagePort, combos: string[]): { watching: number } {
