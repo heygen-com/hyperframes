@@ -819,12 +819,28 @@ export function resolvePageNavigationTimeout(): number {
   return Number.isFinite(parsed) ? parsed : DEFAULT_CONFIG.pageNavigationTimeout;
 }
 
+const RESTRICT_PAGE_NETWORK_ON = new Set(["true", "1", "yes", "on"]);
+const RESTRICT_PAGE_NETWORK_OFF = new Set(["false", "0", "no", "off"]);
+let warnedRestrictPageNetworkValue: string | undefined;
+
 /**
  * `PRODUCER_RESTRICT_PAGE_NETWORK=true`: the render page may reach only its own server and public addresses.
+ * Unset or blank is off. `true`, `1`, `yes` and `on` turn it on and `false`, `0`, `no` and `off` turn it off,
+ * in any letter case and with surrounding whitespace. Any other value restricts and logs a warning once.
  * A property of the host (a shared render service), not of one render, so it stays out of EngineConfig snapshots.
  */
 export function resolveRestrictPageNetwork(): boolean {
-  return process.env.PRODUCER_RESTRICT_PAGE_NETWORK === "true";
+  const raw = process.env.PRODUCER_RESTRICT_PAGE_NETWORK ?? "";
+  const value = raw.trim().toLowerCase();
+  if (value === "" || RESTRICT_PAGE_NETWORK_OFF.has(value)) return false;
+  if (RESTRICT_PAGE_NETWORK_ON.has(value)) return true;
+  if (warnedRestrictPageNetworkValue !== raw) {
+    warnedRestrictPageNetworkValue = raw;
+    console.warn(
+      `[hyperframes] PRODUCER_RESTRICT_PAGE_NETWORK=${JSON.stringify(raw)} is neither true nor false; the render network stays restricted.`,
+    );
+  }
+  return true;
 }
 
 export function resolveConfig(overrides?: Partial<EngineConfig>): EngineConfig {
