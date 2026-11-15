@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { readFileSync } from "node:fs";
@@ -15,7 +16,6 @@ import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
 import { resolveReferencedStart } from "@hyperframes/engine";
 import { withMeta } from "../utils/updateCheck.js";
-import { terminalText } from "../utils/terminalText.js";
 
 interface CompositionInfo {
   id: string;

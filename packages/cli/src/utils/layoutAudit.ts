@@ -1,5 +1,5 @@
+import { terminalText } from "@hyperframes/core";
 import { formatFindingTimes } from "./checkFindings.js";
-import { terminalText } from "./terminalText.js";
 export interface LayoutRect {
   left: number;
   top: number;

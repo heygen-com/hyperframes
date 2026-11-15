@@ -1,5 +1,5 @@
+import { terminalText } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
-import { terminalText } from "./terminalText.js";
 import type { ProjectLintResult } from "./lintProject.js";
 
 export interface LintFormatOptions {

@@ -88,6 +88,7 @@ import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 import { assignMediaRenderIds } from "./mediaRenderIds";
+import { terminalText } from "../terminalText.js";
 
 const DEFAULT_RUNTIME_SCRIPT_URL = "";
 
@@ -1226,7 +1227,9 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     scriptErrorLabel: "[HyperFrames] composition script error:",
     onMissingComposition: (srcPath: string, reason?: string) => {
       console.warn(
-        `[Bundler] Skipping sub-composition "${srcPath}": ${reason ?? "the file could not be found"}.`,
+        terminalText(
+          `[Bundler] Skipping sub-composition "${srcPath}": ${reason ?? "the file could not be found"}.`,
+        ),
       );
     },
   });

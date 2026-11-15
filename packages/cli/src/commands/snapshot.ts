@@ -88,6 +88,7 @@ import {
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
+  terminalText,
 } from "@hyperframes/core";
 import { parseHTML } from "linkedom";
 import { resolveProject } from "../utils/project.js";
@@ -101,7 +102,6 @@ import { normalizeErrorMessage, atStep } from "../utils/errorMessage.js";
 import { describeSharpLoadFailure } from "../utils/sharpLoadFailure.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
-import { terminalText } from "../utils/terminalText.js";
 import { writeCaptureFileSync } from "../capture/captureFile.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";

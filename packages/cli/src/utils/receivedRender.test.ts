@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compileForRender } from "../../../producer/src/services/htmlCompiler.js";
 import { outsideAssetsAllowed } from "./receivedRender.js";
-import { terminalText } from "./terminalText.js";
+import { terminalText } from "@hyperframes/core";
 
 const SIGNATURES = {
   png: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]),

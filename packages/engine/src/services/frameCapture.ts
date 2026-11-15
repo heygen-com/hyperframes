@@ -31,6 +31,7 @@ import {
   RUNTIME_BOOTSTRAP_ATTR,
   SCENE_CALLBACK_ERROR_PREFIX,
   type RawAuthoredTiming,
+  terminalText,
 } from "@hyperframes/core";
 
 import { readReferenceBackground } from "./referenceBackground.js";
@@ -2350,7 +2351,9 @@ export async function pollSubCompositionTimelines(
   onPending?.(pendingIds);
   const missing = pendingIds.join(", ");
   if (scriptFailureBail) {
-    console.warn(`[FrameCapture] Composition(s) still waiting on the failed script: ${missing}.`);
+    console.warn(
+      `[FrameCapture] Composition(s) still waiting on the failed script: ${terminalText(missing)}.`,
+    );
   } else {
     console.warn(
       `[FrameCapture] Sub-composition timelines not registered after ${timeoutMs}ms: ${missing}. ` +
@@ -2548,7 +2551,10 @@ function recordCaptureWarnings(session: CaptureSession, warnings: readonly Captu
       continue;
     }
     session.warnings.push(warning);
-    console.warn(`[FrameCapture:${warning.code}] ${warning.message}`, warning.details ?? {});
+    console.warn(
+      `[FrameCapture:${warning.code}] ${terminalText(warning.message)}`,
+      warning.details ?? {},
+    );
   }
 }
 
