@@ -1,5 +1,6 @@
 import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
 import {
+  cssRuleMatches,
   cssUrlMatches,
   fontFaceBlockMatches,
   hasBackgroundImageDeclaration,
@@ -9,6 +10,7 @@ import {
   remoteFontFaceUrlMatches,
   replaceMatches,
   styleBlockMatches,
+  stylesheetLinkMatches,
 } from "@hyperframes/parsers/css-url-scans";
 // fallow-ignore-file code-duplication complexity
 /**
@@ -506,8 +508,8 @@ export function detectAncestorBackgroundImage(html: string): boolean {
   // covered, not just literal `body`/`html`.
   for (const styleEl of document.querySelectorAll("style")) {
     const css = styleEl.textContent ?? "";
-    for (const rule of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
-      const [, selectorList = "", declarations = ""] = rule;
+    for (const { parts: rule } of cssRuleMatches(css)) {
+      const [, selectorList, declarations] = rule;
       if (!hasBackgroundImageDeclaration(`{${declarations}}`)) continue;
       for (const selector of selectorList.split(",")) {
         const sel = selector.trim();
@@ -1774,26 +1776,34 @@ async function fetchExternalStylesheetCss(href: string): Promise<string | null> 
  * Uses a depth-tracking scan instead of `[^}]*` so blocks with nested
  * descriptor values that happen to contain `}` (rare but valid in
  * `format(...)` hints with custom idents) are captured correctly.
+ *
+ * @internal exported for unit testing only
  */
-function extractFontFaceBlocks(css: string): string[] {
+export function extractFontFaceBlocks(css: string): string[] {
   const blocks: string[] = [];
+  const closes = matchingBraces(css);
   const atRule = /@font-face\s*/gi;
-  let m: RegExpExecArray | null;
-  while ((m = atRule.exec(css)) !== null) {
-    const openIdx = css.indexOf("{", m.index + m[0].length);
-    if (openIdx === -1) break;
-    let depth = 1;
-    let i = openIdx + 1;
-    for (; i < css.length && depth > 0; i++) {
-      if (css[i] === "{") depth++;
-      else if (css[i] === "}") depth--;
-    }
-    if (depth === 0) {
-      blocks.push(css.slice(m.index, i));
-      atRule.lastIndex = i;
-    }
+  let open = -1;
+  for (let m = atRule.exec(css); m; m = atRule.exec(css)) {
+    if (open < atRule.lastIndex) open = css.indexOf("{", atRule.lastIndex);
+    if (open === -1) break;
+    const close = closes.get(open);
+    if (close === undefined) continue;
+    blocks.push(css.slice(m.index, close + 1));
+    atRule.lastIndex = close + 1;
   }
   return blocks;
+}
+
+/** The `}` that closes each `{` that has one, as a depth count from that `{` finds it. */
+function matchingBraces(css: string): Map<number, number> {
+  const closes = new Map<number, number>();
+  const unclosed: number[] = [];
+  for (let i = 0; i < css.length; i++) {
+    if (css[i] === "{") unclosed.push(i);
+    else if (css[i] === "}" && unclosed.length > 0) closes.set(unclosed.pop()!, i);
+  }
+  return closes;
 }
 
 /**
@@ -1808,13 +1818,11 @@ function extractFontFaceBlocks(css: string): string[] {
  */
 // fallow-ignore-next-line complexity
 async function inlineExternalFontStylesheets(html: string): Promise<string> {
-  const linkRe = /<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi;
   const hrefRe = /\bhref=["']([^"']+)["']/i;
 
   const linkMatches: { fullMatch: string; href: string }[] = [];
-  let linkMatch: RegExpExecArray | null;
-  while ((linkMatch = linkRe.exec(html)) !== null) {
-    const tag = linkMatch[0];
+  for (const { parts } of stylesheetLinkMatches(html)) {
+    const tag = parts[0];
     const hrefMatch = hrefRe.exec(tag);
     if (!hrefMatch?.[1]) continue;
     const href = hrefMatch[1];
@@ -1858,7 +1866,9 @@ async function inlineExternalFontStylesheets(html: string): Promise<string> {
 // Families a linked project stylesheet declares with an @font-face file the project ships.
 function projectStylesheetFontFamilies(html: string, projectDir: string): string[] {
   const families: string[] = [];
-  for (const [tag] of html.matchAll(/<link\b[^>]*\brel=["']stylesheet["'][^>]*>/gi)) {
+  for (const {
+    parts: [tag],
+  } of stylesheetLinkMatches(html)) {
     const href = /\bhref=["']([^"']+)["']/i.exec(tag)?.[1];
     if (!href || /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href)) continue;
     const sheet = resolve(projectDir, decodedUrlPath(href).replace(/^(?:\.?\/)+/, ""));
