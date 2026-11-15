@@ -115,7 +115,6 @@ function urlScheme(url: string): string | undefined {
 
 export interface StudioApiOptions extends CaptureSandboxOption {
   allowedHosts?: readonly string[];
-  /** How long a sub-composition page may take to build (default SUB_COMPOSITION_DEADLINE_MS). */
   subCompositionDeadlineMs?: number;
 }
 

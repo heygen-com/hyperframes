@@ -34,8 +34,8 @@ const adapter: StudioApiAdapter = {
 };
 const DEADLINE_MS = 200;
 const api = createStudioApi(adapter, { subCompositionDeadlineMs: DEADLINE_MS });
-const comp = (file: string) =>
-  api.request(`http://localhost/projects/demo/preview/comp/scenes/${file}`);
+const comp = (file: string, on = api) =>
+  on.request(`http://localhost/projects/demo/preview/comp/scenes/${file}`);
 
 /** The longest the request thread went without running a timer while `work` ran. */
 async function longestStall(work: Promise<unknown>): Promise<number> {
@@ -59,6 +59,16 @@ describe("a sub-composition preview build", () => {
     expect(status).toBe(503);
     expect(stall).toBeLessThan(DEADLINE_MS);
   }, 30_000);
+
+  // Rames on #7857: the passes after the build parse the page too; they run on the worker as well.
+  it("inside its deadline is served whole, and the request thread stays free for all of it", async () => {
+    const patient = createStudioApi(adapter, { subCompositionDeadlineMs: 120_000 });
+    let res: Response | undefined;
+    const stall = await longestStall(comp("huge.html", patient).then((answer) => (res = answer)));
+    expect(res?.status).toBe(200);
+    expect((await res?.text())?.length).toBeGreaterThan(cells.length);
+    expect(stall).toBeLessThan(DEADLINE_MS);
+  }, 150_000);
 
   it("after a refused one, the next page still builds", async () => {
     expect((await comp("huge.html")).status).toBe(503);

@@ -162,7 +162,7 @@ function parseStudioMotionManifestContent(content: string): {
 }
 
 /** Preview hooks must install before authored head scripts register media consumers. */
-function withPreviewRuntime(html: string, runtimeUrl: string): string {
+export function withPreviewRuntime(html: string, runtimeUrl: string): string {
   const tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
   return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag, true);
 }
@@ -376,9 +376,9 @@ var name=e.error&&e.error.constructor&&e.error.constructor.name,path="";
 try{var url=e.filename&&new URL(e.filename,window.location.href);if(url&&url.origin===window.location.origin)path=url.pathname}catch(_){}
 kinds.push({name:known[name]===1?name:"other",origin:!path?"unknown":path===runtime?"runtime":path.indexOf("/api/projects/")===0?"project":"studio"})});})();</script>`;
 
-function injectStudioPreviewAugmentations(
+export function injectStudioPreviewAugmentations(
   html: string,
-  adapter: StudioApiAdapter,
+  runtimeUrl: string,
   signature: string,
   projectDir: string,
   activeCompositionPath: string,
@@ -391,7 +391,7 @@ function injectStudioPreviewAugmentations(
       )
     : injectTagsAtHeadStart(
         lazyPreviewImages(html),
-        `<meta name="${STUDIO_PREVIEW_MARK_META}">${earlyErrorsScript(adapter.runtimeUrl)}`,
+        `<meta name="${STUDIO_PREVIEW_MARK_META}">${earlyErrorsScript(runtimeUrl)}`,
       );
   const withFallback = injectGsapCdnFallback(
     injectProjectSignature(
@@ -556,7 +556,7 @@ export function registerPreviewRoutes(
       // Also covers elements the adapter injected; ids already present are kept.
       bundled = injectStudioPreviewAugmentations(
         ensureHfIds(await transformPreviewHtml(bundled, adapter, project, mainCompositionPath)),
-        adapter,
+        adapter.runtimeUrl,
         signature,
         project.dir,
         mainCompositionPath,
@@ -587,7 +587,7 @@ export function registerPreviewRoutes(
         );
         let fallbackAugmented = injectStudioPreviewAugmentations(
           await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
-          adapter,
+          adapter.runtimeUrl,
           signature,
           project.dir,
           fallback.compositionPath,
@@ -686,41 +686,30 @@ export function registerPreviewRoutes(
     }
 
     const baseHref = previewBaseHref(project.id);
-    // The page is the project's own, so a shared project's can be anything: it is built and stamped on the build
-    // worker, within one deadline for the request.
+    // A shared project's page can be anything: every pass that parses it runs on the build worker, and the request
+    // has one deadline, the host's transform and the media probes included.
     const deadline = performance.now() + (subCompositionDeadlineMs ?? SUB_COMPOSITION_DEADLINE_MS);
-    let html: string | null;
+    const job = { projectDir: project.dir, compPath, runtimeUrl: adapter.runtimeUrl };
     try {
-      html = await runOffThread(
-        {
-          kind: "build",
-          projectDir: project.dir,
-          compPath,
-          compFile,
-          runtimeUrl: adapter.runtimeUrl,
-          baseHref,
-          gsapBaseUrl,
-        },
+      const built = await runOffThread(
+        { kind: "build", ...job, compFile, baseHref, gsapBaseUrl },
         deadline,
         compPath,
       );
-      if (!html) return c.text("not found", 404);
-      html = withPreviewRuntime(withRootImportMap(html, baseHref), adapter.runtimeUrl);
-      recordPreviewReferences(project.dir, html);
-      const transformed = await transformPreviewHtml(html, adapter, project, compPath);
-      html = (await runOffThread({ kind: "ids", html: transformed }, deadline, compPath)) ?? "";
-    } catch (error) {
-      if (error instanceof SubCompositionDeadlineError) return c.text(error.message, 503);
-      throw error;
-    }
-    html = injectStudioPreviewAugmentations(html, adapter, signature, project.dir, compPath, {
-      capture,
-      gsapBaseUrl,
-      sandboxedCapture: sandboxThumbnailCaptures,
-    });
-    if (previewVariables) html = injectPreviewVariables(html, previewVariables);
-    try {
-      // Probes the page's media, which a shared page can name by the thousand: within the same deadline.
+      if (!built) return c.text("not found", 404);
+      for (const path of built.references) recordPreviewRead(project.dir, path);
+      const transformed = await withinDeadline(
+        transformPreviewHtml(built.html, adapter, project, compPath),
+        deadline,
+        compPath,
+      );
+      const options = { capture, gsapBaseUrl, sandboxedCapture: sandboxThumbnailCaptures };
+      const finish = { kind: "finish" as const, ...job, html: transformed, signature, options };
+      const html = await runOffThread(
+        { ...finish, ...(previewVariables && { variables: previewVariables }) },
+        deadline,
+        compPath,
+      );
       const probed = injectMediaCodecMap(
         html,
         adapter,
@@ -728,12 +717,15 @@ export function registerPreviewRoutes(
         compPath,
         mediaCodecProbeCache,
       );
-      html = await withinDeadline(probed, deadline, compPath);
+      return c.html(
+        await withinDeadline(probed, deadline, compPath),
+        200,
+        previewCacheHeaders(etag),
+      );
     } catch (error) {
       if (error instanceof SubCompositionDeadlineError) return c.text(error.message, 503);
       throw error;
     }
-    return c.html(html, 200, previewCacheHeaders(etag));
   });
 
   // Static asset serving (with range request support for audio/video seeking)
