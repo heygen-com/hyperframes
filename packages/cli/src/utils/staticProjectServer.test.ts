@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, type ReadStream } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+  type ReadStream,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fs from "node:fs";
@@ -720,4 +727,37 @@ describe("serveStaticProjectHtml private project files", () => {
       expect((await fetch(`${server.url}asset.txt`)).status).toBe(200);
     },
   );
+});
+
+function writeToolRecords(projectDir: string): void {
+  mkdirSync(join(projectDir, ".hyperframes", "prepared-assets"), { recursive: true });
+  for (const name of ["app-history.jsonl", "agent-handoff.json", "comments.jsonl"]) {
+    writeFileSync(join(projectDir, ".hyperframes", name), "PRIVATE_RECORD");
+  }
+  writeFileSync(join(projectDir, ".hyperframes", "prepared-assets", "clip.txt"), "prepared");
+  symlinkSync(
+    join(projectDir, ".hyperframes", "app-history.jsonl"),
+    join(projectDir, "linked-history.json"),
+  );
+}
+
+describe("serveStaticProjectHtml tool records", () => {
+  it.each([
+    ".hyperframes/app-history.jsonl",
+    ".hyperframes/agent-handoff.json",
+    ".hyperframes/comments.jsonl",
+    "%2ehyperframes/agent-handoff.json",
+    ".hyperframes%2fcomments.jsonl",
+    "linked-history.json",
+  ])("answers %s with 404 and still serves prepared assets", async (requestPath) => {
+    dir = mkdtempSync(join(tmpdir(), "hf-static-records-"));
+    writeToolRecords(dir);
+    server = await serveStaticProjectHtml(dir, "<html></html>");
+
+    const res = await fetch(`${server.url}${requestPath}`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("PRIVATE_RECORD");
+    const prepared = await fetch(`${server.url}.hyperframes/prepared-assets/clip.txt`);
+    expect(await prepared.text()).toBe("prepared");
+  });
 });

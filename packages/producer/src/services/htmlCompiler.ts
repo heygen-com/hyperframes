@@ -90,7 +90,7 @@ import {
   readTextFile,
   resolveCompositionSrc,
 } from "@hyperframes/parsers/asset-resolution";
-import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import {
   escapesAssetRoot,
@@ -270,9 +270,9 @@ function resolveCompositionFile(
   return file !== null && COMPOSITION_FILE.test(file) ? file : null;
 }
 
-// Git metadata and env files are never inlined into a render, as the preview bundler refuses them.
+// Git metadata, env files and the app's `.hyperframes/` records are never inlined into a render, as preview refuses them.
 const isPrivateCompositionFile = (projectDir: string, filePath: string): boolean =>
-  isPrivateFileUnder(projectDir, filePath, isVcsOrSecretPath);
+  isPrivateFileUnder(projectDir, filePath, isStudioPrivatePath);
 
 /**
  * Recursively walk every `data-composition-src` reference reachable from
@@ -314,7 +314,10 @@ function assertSubCompositionsUsable(
       continue;
     }
     if (isPrivateCompositionFile(projectDir, filePath)) {
-      problems.push({ srcPath, detail: "it is git metadata or an env file" });
+      problems.push({
+        srcPath,
+        detail: "it is git metadata, an env file or a private tool record",
+      });
       continue;
     }
     if (!COMPOSITION_FILE.test(filePath)) {

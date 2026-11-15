@@ -14,6 +14,7 @@ import {
   folderGone,
   isProjectRootMissing,
   isSafePath,
+  isStudioPrivatePath,
   mkdirWithinProject,
   resolveWithinProject,
 } from "./safePath.js";
@@ -262,4 +263,34 @@ describe("folderGone", () => {
       }
     },
   );
+});
+
+describe("isStudioPrivatePath", () => {
+  it.each([
+    ".hyperframes",
+    ".hyperframes/app-history.jsonl",
+    ".hyperframes/agent-handoff.json",
+    ".HYPERFRAMES/comments.jsonl",
+    ".hyperframes./heygen-jobs.jsonl",
+    ".hyperframes /agent-handoff.json",
+    ".hyperframes\\comments.jsonl",
+    ".hyperframes:stream/comments.jsonl",
+    ".git/config",
+    ".env.local",
+  ])("refuses %s", (path) => {
+    expect(isStudioPrivatePath(path)).toBe(true);
+  });
+
+  it.each([
+    ".hyperframes/prepared-assets/gif/clip.gif",
+    ".HYPERFRAMES/Prepared-Assets./heif/photo.png",
+    ".hyperframes/requests/sketch.png",
+    ".hyperframes/studio-motion.json",
+    ".hyperframes/studio-manual-edits.json",
+    ".hyperframes-pull.json",
+    "assets/.hyperframes/logo.png",
+    "assets/logo.png",
+  ])("allows %s", (path) => {
+    expect(isStudioPrivatePath(path)).toBe(false);
+  });
 });
