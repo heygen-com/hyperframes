@@ -24,10 +24,19 @@ const withSysctl = (path: string, value: string) => (candidate: string) =>
   candidate === path ? value : undefined;
 
 describe("chromeSandboxEnabled", () => {
-  it.each(["darwin", "win32"] as const)("keeps the sandbox on %s", (platform) => {
-    expect(chromeSandboxEnabled(host({ platform }))).toBe(true);
-    expect(chromeSandboxEnabled(host({ platform, uid: 0 }))).toBe(true);
+  it.each(["darwin", "win32"] as const)("runs without the sandbox on %s by default", (platform) => {
+    expect(chromeSandboxEnabled(host({ platform }))).toBe(false);
+    expect(chromeSandboxEnabled(host({ platform, uid: 0 }))).toBe(false);
   });
+
+  it.each(["darwin", "win32"] as const)(
+    "keeps the sandbox on %s when HYPERFRAMES_CHROME_SANDBOX=1",
+    (platform) => {
+      expect(
+        chromeSandboxEnabled(host({ platform, env: { HYPERFRAMES_CHROME_SANDBOX: "1" } })),
+      ).toBe(true);
+    },
+  );
 
   it("keeps the sandbox for a non-root Linux user outside containers", () => {
     expect(chromeSandboxEnabled(host())).toBe(true);
