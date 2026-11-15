@@ -218,6 +218,12 @@ describe("a host's sandbox origin", () => {
       `/api/projects/demo/preview/~${token}/comp/scene.html`,
     ],
     ["/api/projects/demo/preview?_t=1", `/api/projects/demo/preview/~${token}?_t=1`],
+    // A reload starts from the frame's own src, which already carries a token, maybe a stale one.
+    [`/api/projects/demo/preview/~${token}?_t=2`, `/api/projects/demo/preview/~${token}?_t=2`],
+    [
+      `/api/projects/demo/preview/~${"S".repeat(43)}/comp/scene.html`,
+      `/api/projects/demo/preview/~${token}/comp/scene.html`,
+    ],
   ])(
     "seals an opaque preview of %s and loads it under its project's frame token",
     async (directUrl, sealed) => {
