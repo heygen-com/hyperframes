@@ -1,6 +1,6 @@
 import { accessSync, constants, existsSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 /**
  * The one rule for finding a helper program by name. A project folder can come from anyone, so a
@@ -9,13 +9,17 @@ import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "no
  */
 
 function comparable(path: string): string {
-  let full = resolve(path);
-  try {
-    full = realpathSync.native(full);
-  } catch {
-    full = resolve(path);
+  const full = resolve(path);
+  const missing: string[] = [];
+  for (let dir = full; ; dir = dirname(dir)) {
+    try {
+      const real = join(realpathSync.native(dir), ...missing.reverse());
+      return process.platform === "win32" ? real.toLowerCase() : real;
+    } catch {
+      if (dirname(dir) === dir) return process.platform === "win32" ? full.toLowerCase() : full;
+      missing.push(basename(dir));
+    }
   }
-  return process.platform === "win32" ? full.toLowerCase() : full;
 }
 
 function contains(parent: string, child: string): boolean {
@@ -33,17 +37,33 @@ function projectRoot(cwd: string, home: string): string {
   return root;
 }
 
-/** Whether a program in `dir` may be run without the person naming it. */
-export function isTrustedDirectory(dir: string): boolean {
-  if (!dir || !isAbsolute(dir)) return false;
-  const target = comparable(dir);
+function ancestorNodeModules(cwd: string): string[] {
+  const folders: string[] = [];
+  for (let dir = dirname(cwd); ; dir = dirname(dir)) {
+    folders.push(comparable(join(dir, "node_modules")));
+    if (dirname(dir) === dir) return folders;
+  }
+}
+
+function trustRule(): (dir: string) => boolean {
   const cwd = comparable(process.cwd());
-  if (target === cwd) return false;
   const home = comparable(homedir());
   // From the home folder (or above it) every per-user install dir is inside; skip only the folder.
-  if (contains(cwd, home)) return true;
-  // `npm run` puts every ancestor's node_modules/.bin on PATH, so from a subfolder the whole project is untrusted.
-  return !contains(projectRoot(cwd, home), target);
+  const fromHome = contains(cwd, home);
+  const project = fromHome ? cwd : projectRoot(cwd, home);
+  // `npm run` puts every ancestor's node_modules/.bin on PATH, at and above home too.
+  const nodeModules = ancestorNodeModules(cwd);
+  return (dir) => {
+    if (!dir || !isAbsolute(dir)) return false;
+    const target = comparable(dir);
+    if (target === cwd || nodeModules.some((folder) => contains(folder, target))) return false;
+    return fromHome || !contains(project, target);
+  };
+}
+
+/** Whether a program in `dir` may be run without the person naming it. */
+export function isTrustedDirectory(dir: string): boolean {
+  return trustRule()(dir);
 }
 
 /** Whether `file` is an absolute path in a folder {@link isTrustedDirectory} accepts. */
@@ -59,7 +79,8 @@ function expandHome(dir: string): string {
 /** The PATH folders a helper program may come from, in PATH order. */
 export function trustedPathDirs(pathValue = process.env.PATH ?? ""): string[] {
   const entries = pathValue.split(delimiter).map(expandHome);
-  return [...new Set(entries.filter((dir) => isTrustedDirectory(dir)))];
+  const trusted = trustRule();
+  return [...new Set(entries.filter((dir) => trusted(dir)))];
 }
 
 function windowsExtensions(): string[] {

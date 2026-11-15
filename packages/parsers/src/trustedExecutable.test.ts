@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
@@ -44,6 +52,96 @@ describe("isTrustedDirectory", () => {
       expect(isTrustedDirectory(join(home, ".local", "bin"))).toBe(true);
     }
   });
+});
+
+/** Makes `dir` the home folder, so a marker in a folder above the temp folder cannot move the project root. */
+function homeAt(dir: string): void {
+  vi.stubEnv("HOME", dir);
+  vi.stubEnv("USERPROFILE", dir);
+}
+
+describe("isTrustedDirectory from a subfolder of a project", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  // fails without the fix: only folders inside the working directory were dropped, so the
+  // node_modules/.bin a package runner adds for the project root stayed ahead of system folders.
+  it("drops every ancestor's node_modules and the folders of the project above", () => {
+    const root = tempDir("hf-trusted-tree-");
+    homeAt(root);
+    const project = join(root, "project");
+    const sub = join(project, "video");
+    const venv = join(project, ".venv", "bin");
+    mkdirSync(join(sub, "node_modules", ".bin"), { recursive: true });
+    mkdirSync(join(project, "node_modules", ".bin"), { recursive: true });
+    mkdirSync(venv, { recursive: true });
+    writeFileSync(join(project, "package.json"), "{}");
+    vi.spyOn(process, "cwd").mockReturnValue(sub);
+
+    expect(isTrustedDirectory(join(sub, "node_modules", ".bin"))).toBe(false);
+    expect(isTrustedDirectory(join(project, "node_modules", ".bin"))).toBe(false);
+    expect(isTrustedDirectory(join(root, "node_modules", ".bin"))).toBe(false);
+    expect(isTrustedDirectory(venv)).toBe(false);
+    expect(isTrustedDirectory(project)).toBe(false);
+    expect(isTrustedDirectory(join(root, "tools"))).toBe(true);
+  });
+
+  // fails without the fix: a folder that does not exist kept the spelling it was given, so a project
+  // folder named through a link (or a Windows short name such as RUNNER~1) never matched.
+  it.skipIf(process.platform === "win32")(
+    "drops a project folder that does not exist yet, named through a link",
+    () => {
+      const root = tempDir("hf-trusted-link-");
+      homeAt(root);
+      const project = join(root, "project");
+      const sub = join(project, "video");
+      mkdirSync(sub, { recursive: true });
+      symlinkSync(root, join(root, "link"));
+      vi.spyOn(process, "cwd").mockReturnValue(sub);
+
+      expect(isTrustedDirectory(join(root, "link", "project", "node_modules", ".bin"))).toBe(false);
+      expect(isTrustedDirectory(join(root, "link", "node_modules", ".bin"))).toBe(false);
+    },
+  );
+
+  it("keeps the per-user install dirs when the home folder itself holds a package.json or .git", () => {
+    const home = tempDir("hf-trusted-home-");
+    const sub = join(home, "films", "launch", "video");
+    mkdirSync(sub, { recursive: true });
+    mkdirSync(join(home, ".git"));
+    writeFileSync(join(home, "package.json"), "{}");
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("USERPROFILE", home);
+    vi.spyOn(process, "cwd").mockReturnValue(sub);
+
+    expect(isTrustedDirectory(join(home, ".local", "bin"))).toBe(true);
+    expect(isTrustedDirectory(join(home, ".bun", "bin"))).toBe(true);
+    expect(isTrustedDirectory(join(home, "node_modules", ".bin"))).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "never finds a helper in the project when run from its subfolder through a package runner",
+    () => {
+      const root = tempDir("hf-trusted-runner-");
+      homeAt(root);
+      const project = join(root, "project");
+      const sub = join(project, "video");
+      const tools = join(root, "tools");
+      const subBin = join(sub, "node_modules", ".bin");
+      const projectBin = join(project, "node_modules", ".bin");
+      for (const dir of [subBin, projectBin, tools]) {
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "ffmpeg"), "", { mode: 0o755 });
+      }
+      vi.spyOn(process, "cwd").mockReturnValue(sub);
+      vi.stubEnv("PATH", [subBin, projectBin, tools, "/usr/bin", "/bin"].join(delimiter));
+
+      expect(trustedPathDirs()).toEqual([tools, "/usr/bin", "/bin"]);
+      expect(findTrustedExecutable("ffmpeg")).toBe(join(tools, "ffmpeg"));
+    },
+  );
 });
 
 function tempDir(prefix: string): string {
