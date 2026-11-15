@@ -112,6 +112,7 @@ import {
   localVideos,
   probeHeldVideo,
   projectLocalFile,
+  projectVideoFile,
   type HeldVideoProbe,
 } from "./snapshotHeldVideos.js";
 import type { Example } from "./_examples.js";
@@ -1335,9 +1336,16 @@ export async function captureSnapshots(
               // since headless Chrome can't seek them and they would render blank.
               let ffmpegInput: string | null = null;
               let inputIsLocal = false;
-              const projectFile = projectLocalFile(projectDir, v.src);
-              if (projectFile) {
-                ffmpegInput = projectFile;
+              const project = await projectVideoFile(projectDir, v.src);
+              if (project?.refused) {
+                const message = `${relative(projectDir, project.file)} is not media: a document or a playlist naming files outside its folder`;
+                warnings.push(message);
+                console.warn(`   ${c.warn("⚠")} ${message}`);
+                unreadVideoFrames += 1;
+                return null;
+              }
+              if (project) {
+                ffmpegInput = project.file;
                 inputIsLocal = true;
               } else {
                 try {

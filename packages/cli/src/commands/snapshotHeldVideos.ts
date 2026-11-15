@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { parseHTML } from "linkedom";
 import { MEDIA_RENDER_ID_ATTR } from "@hyperframes/core";
-import type { CaptureVideoMetadataHint } from "@hyperframes/engine";
+import { isNotMediaPayload, type CaptureVideoMetadataHint } from "@hyperframes/engine";
 import { findFFprobe } from "../browser/ffmpeg.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 
@@ -34,6 +34,14 @@ export function projectLocalFile(projectDir: string, src: string): string | null
   } catch {
     return null;
   }
+}
+
+export async function projectVideoFile(
+  projectDir: string,
+  src: string,
+): Promise<{ file: string; refused: boolean } | null> {
+  const file = projectLocalFile(projectDir, src);
+  return file ? { file, refused: await isNotMediaPayload(file) } : null;
 }
 
 const PROBE_TIMEOUT_MS = 30_000;
@@ -84,7 +92,7 @@ export function probeHeldVideo(
   const known = cache.get(path);
   if (known) return known;
   const read = (async () => {
-    if (!ffprobe) return UNKNOWN_VIDEO;
+    if (!ffprobe || (await isNotMediaPayload(path))) return UNKNOWN_VIDEO;
     try {
       const { stdout } = await runCancellableProcess(
         ffprobe,
