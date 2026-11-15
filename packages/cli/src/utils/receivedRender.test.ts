@@ -49,7 +49,7 @@ function project(record?: string): string {
 
 const received = (...files: string[]) => JSON.stringify({ files });
 
-const SOMEONE_ELSE = "This project has files that came from someone else";
+const SOMEONE_ELSE = "came from someone else and can load other files";
 
 function decide(dir: string, entry?: string) {
   const warn = vi.fn();
@@ -114,6 +114,30 @@ describe("outsideAssetsAllowed", () => {
     expect(allowed).toBe(false);
     expect(line).toContain(SOMEONE_ELSE);
     expect(line).toContain("../outside/secret.js");
+  });
+
+  it.each([
+    ["an image", "assets/in.png"],
+    ["a video", "media/clip.mp4"],
+    ["a font", "fonts/brand.woff2"],
+  ])("keeps outside files when only %s was received", (_kind, file) => {
+    const dir = project(received(file));
+    if (file !== "assets/in.png") write(join(dir, file), "\u0000binary\u0000");
+    const { allowed, warn } = decide(dir);
+    expect(allowed).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["HTML", "notes.txt", "<div><img src='../outside/pic.png'></div>"],
+    ["CSS", "theme.dat", "body { background: url(../outside/bg.png); }"],
+    ["SVG", "logo.img", "<?xml version='1.0'?><svg></svg>"],
+  ])("refuses outside files when a received file sniffs as %s", (_kind, file, text) => {
+    const dir = project(received(file));
+    write(join(dir, file), text);
+    const { allowed, line } = decide(dir);
+    expect(allowed).toBe(false);
+    expect(line).toContain(`${file} ${SOMEONE_ELSE}`);
   });
 
   it("keeps outside files when the record lists no files", () => {

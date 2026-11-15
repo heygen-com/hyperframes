@@ -90,11 +90,17 @@ export function receivedFiles(projectDir: string): (path: string) => boolean {
 
 export function receivedRecordStatus(
   projectDir: string,
-): { path: string; listedCount: number | null } | null {
+): { path: string; listed: string[] | null } | null {
   const record = nearestReceivedRecordAtOrAbove(projectDir);
   if (!record) return null;
-  const listedCount = Array.isArray(record.listed) ? record.listed.length : null;
-  return { path: join(record.root, RECEIVED_RECORD), listedCount };
+  const path = join(record.root, RECEIVED_RECORD);
+  if (!Array.isArray(record.listed)) return { path, listed: null };
+  const prefix = record.projectDirFromRoot ? `${record.projectDirFromRoot}/` : "";
+  const listed = record.listed
+    .map((entry) => String(entry).normalize("NFC"))
+    .filter((entry) => entry.startsWith(prefix))
+    .map((entry) => join(record.root, entry));
+  return { path, listed };
 }
 
 /** Project files no composition loads, so none is served or uploaded for one: env files, Git data, tool records. */

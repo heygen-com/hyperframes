@@ -1,5 +1,5 @@
 import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseHTML } from "linkedom";
 import { isNonRelativeUrl, isPathInside } from "@hyperframes/core";
@@ -202,7 +202,42 @@ function refusedReferences(found: OutsideReferences): string {
   return parts.join("");
 }
 
-/** False when the project's received-files record lists any file, or cannot be read: the render then reads nothing outside the project, and `warn` says why and names the references it refuses. */
+const REFERENCING_EXTENSION = /\.(?:html?|css|[cm]?js|svg)$/i;
+const SNIFFED_BYTES = 4096;
+
+function firstBytes(path: string): Buffer | null {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, "r");
+    const head = Buffer.alloc(SNIFFED_BYTES);
+    return head.subarray(0, readSync(fd, head, 0, SNIFFED_BYTES, 0));
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+function readsAsPageOrStylesheet(text: string): boolean {
+  if (text.startsWith("<") || text.includes("@import") || text.includes("url(")) return true;
+  return text.includes("{") && text.includes(":") && text.includes("}");
+}
+
+function sniffsAsPageOrStylesheet(path: string): boolean {
+  const bytes = isFile(path) ? firstBytes(path) : null;
+  if (bytes === null || bytes.includes(0)) return false;
+  return readsAsPageOrStylesheet(
+    bytes
+      .toString("utf-8")
+      .replace(/^\uFEFF/, "")
+      .trimStart(),
+  );
+}
+
+const canReferenceFiles = (path: string) =>
+  REFERENCING_EXTENSION.test(path) || sniffsAsPageOrStylesheet(path);
+
+/** False when the received-files record cannot be read, or lists a received page, stylesheet, script or SVG; the render then reads nothing outside the project, and `warn` says why and names the references it refuses. */
 export function outsideAssetsAllowed(
   projectDir: string,
   entryFile: string | undefined,
@@ -210,15 +245,17 @@ export function outsideAssetsAllowed(
 ): boolean {
   const absProjectDir = resolve(projectDir);
   const record = receivedRecordStatus(absProjectDir);
-  if (record === null || record.listedCount === 0) return true;
+  if (record === null) return true;
+  const referencing = record.listed?.find(canReferenceFiles);
+  if (record.listed !== null && referencing === undefined) return true;
   const refused = refusedReferences(outsideReferences(absProjectDir, entryFile ?? "index.html"));
-  if (record.listedCount === null) {
+  if (referencing === undefined) {
     warn(
       `Could not read ${record.path}, so the render treats the project as received and reads nothing outside it.${refused}`,
     );
   } else if (refused !== "") {
     warn(
-      `This project has files that came from someone else (listed in ${record.path}), so the render reads nothing outside it.${refused}`,
+      `${relative(realOrNull(absProjectDir) ?? absProjectDir, referencing)} came from someone else and can load other files, so the render reads nothing outside the project.${refused}`,
     );
   }
   return false;
