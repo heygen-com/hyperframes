@@ -192,6 +192,30 @@ describe("upload archives leave out credentials and agent or editor state", () =
     }
   });
 
+  // fails without the fix: the reference check used the outside-upload type list, which leaves out scripts, so a
+  // page's own .js and .mjs files in a hidden folder were dropped from every archive while the stylesheet stayed.
+  it("brings back scripts and stylesheets a page names from a hidden folder in every archive", () => {
+    write(".assets/animation.js", "console.log(1)");
+    write(".assets/module.mjs", "export {}");
+    write(".assets/style.css", "body{}");
+    write(
+      "index.html",
+      `<link rel="stylesheet" href=".assets/style.css">` +
+        `<script src=".assets/animation.js"></script>` +
+        `<script type="module" src=".assets/module.mjs"></script>`,
+    );
+    const wanted = [".assets/animation.js", ".assets/module.mjs", ".assets/style.css"];
+
+    const publishMap = [...buildPublishFileMap(dir).keys()];
+    const cloudStaged = [...stagePublishFiles(dir, 1).keys()];
+    const feedback = new AdmZip(createPublishArchive(dir).buffer)
+      .getEntries()
+      .map((entry) => entry.entryName);
+
+    for (const entries of [publishMap, cloudStaged, feedback])
+      expect(entries).toEqual(expect.arrayContaining(wanted));
+  });
+
   it("brings back a skipped file a page names only when it is an asset or not hidden", () => {
     write("renders/data.json", "{}");
     write("snapshots/frame.png", "png");

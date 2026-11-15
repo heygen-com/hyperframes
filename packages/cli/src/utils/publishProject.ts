@@ -39,7 +39,7 @@ import {
   type OnOutsideFile,
   outsideFileReference,
 } from "./leftOutReference.js";
-import { isUploadedOutsideFileType } from "./outsideFileType.js";
+import { isCopiedOutsideFileType, isUploadedOutsideFileType } from "./outsideFileType.js";
 import {
   collectSubCompositionSrcs,
   decodeTextHonoringBom,
@@ -459,7 +459,7 @@ function staysOut(ctx: ExternalAssetContext, rel: string): boolean {
 }
 
 const loadableReference = (absProjectDir: string, absPath: string): boolean =>
-  isUploadedOutsideFileType(absPath) || !isHiddenProjectFile(absProjectDir, absPath);
+  isCopiedOutsideFileType(absPath) || !isHiddenProjectFile(absProjectDir, absPath);
 
 function referencedFileLeftOut(
   ctx: ExternalAssetContext,
