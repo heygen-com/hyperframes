@@ -760,6 +760,26 @@ function composeNamesInText(fileContents: Map<string, StagedFile>, filePaths: st
   }
 }
 
+type WalkedLeftOutReason = Exclude<LeftOutReason, "file_type">;
+
+const WALKED_LEFT_OUT: Record<WalkedLeftOutReason, string> = {
+  private: "holds secrets or tool data (an env file, Git data or Studio records)",
+  blocklisted: "links to a file outside the project in a private location",
+  received: "links to a file outside the project and came in with an imported project",
+};
+
+function walkedFileLeftOut(
+  absProjectDir: string,
+  filePath: string,
+  absPath: string,
+  received: (path: string) => boolean,
+): WalkedLeftOutReason | null {
+  if (isPrivateCompositionFile(absProjectDir, absPath)) return "private";
+  if (linksToPrivateOutsideFile(absProjectDir, absPath)) return "blocklisted";
+  if (received(filePath) && linksOutside(absProjectDir, absPath)) return "received";
+  return null;
+}
+
 /** {@link buildPublishFileMap}, but non-text files of `onDiskMinBytes` or more stay on disk. */
 export function stagePublishFiles(
   projectDir: string,
@@ -780,16 +800,10 @@ export function stagePublishFiles(
   const received = receivedFiles(absProjectDir);
   for (const filePath of filePaths) {
     const absPath = join(absProjectDir, filePath);
-    const reason = linksToPrivateOutsideFile(absProjectDir, absPath)
-      ? "blocklisted"
-      : received(filePath) && linksOutside(absProjectDir, absPath)
-        ? "received"
-        : null;
+    const reason = walkedFileLeftOut(absProjectDir, filePath, absPath, received);
     if (reason) {
-      const why =
-        reason === "received" ? "and came in with an imported project" : "in a private location";
       onLeftOut?.(
-        `${filePath} links to a file outside the project ${why}; it was left out of the upload.`,
+        `${filePath} ${WALKED_LEFT_OUT[reason]}; it was left out of the upload.`,
         leftOutReference(absProjectDir, filePath, filePath, absPath, reason),
       );
       continue;
