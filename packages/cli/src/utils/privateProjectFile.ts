@@ -190,7 +190,7 @@ const CREDENTIAL_FOLDERS = new Set([
   ".idea",
 ]);
 const CREDENTIAL_CONFIG_FOLDERS = new Set(["gcloud", "gh"]);
-const KEY_FILE = /^id_(?:rsa|dsa|ecdsa|ed25519)|\.(?:pem|key|p12|pfx)$/;
+const KEY_FILE = /^(?:id_(?:rsa|dsa|ecdsa|ed25519).*|.*\.(?:pem|key|p12|pfx))$/;
 
 export function isCredentialOrToolStatePath(relPath: string): boolean {
   const segments = projectPathSegments(relPath);
