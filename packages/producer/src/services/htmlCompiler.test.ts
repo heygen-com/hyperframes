@@ -3286,6 +3286,24 @@ describe("compileForRender non-media payload sniff (STUDIO-5433)", () => {
     // error and this assertion would fail.
   });
 
+  it("aborts before ffprobe when a <video> playlist names a file outside its folder", async () => {
+    const projectDir = writeProject(
+      '<video id="v1" src="assets/clip.m3u8" data-start="0" muted></video>',
+    );
+    writeFileSync(
+      join(projectDir, "assets", "clip.m3u8"),
+      "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n../../outside.mp4\n#EXT-X-ENDLIST\n",
+    );
+    let caught: unknown;
+    try {
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(NotMediaPayloadError);
+    expect((caught as NotMediaPayloadError).message).not.toContain("clip.m3u8");
+  });
+
   it("drops an <audio> document payload to duration 0 and warns instead of failing the render", async () => {
     // The audio/video split is the compiler's contract: an unprobeable audio
     // src is excluded from the render, and only video surfaces its probe

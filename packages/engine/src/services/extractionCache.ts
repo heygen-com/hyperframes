@@ -34,6 +34,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import {
+  chmodSync,
   createReadStream,
   existsSync,
   lstatSync,
@@ -46,6 +47,7 @@ import {
 } from "node:fs";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { join } from "node:path";
+import { defaultExtractCacheDir } from "../config.js";
 import type { VideoMetadata } from "../utils/ffprobe.js";
 import { FRAME_FILENAME_PREFIX, framePathsFromDirectory } from "./extractedFrameIndex.js";
 
@@ -57,6 +59,19 @@ export const COMPLETE_SENTINEL = ".hf-complete";
 
 /** Marker file stamped after each GC sweep; drives the staleness fallback. */
 export const GC_MARKER = ".hf-last-gc";
+
+/**
+ * `root` when it may hold cache entries, else undefined. The default root sits in the shared temp directory, so it
+ * is used only as a real directory this user owns, closed to every other user.
+ */
+export function privateCacheRoot(root: string, uid = process.getuid?.()): string | undefined {
+  if (uid === undefined || root !== defaultExtractCacheDir()) return root;
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(root);
+  if (!stat.isDirectory() || stat.uid !== uid) return undefined;
+  if ((stat.mode & 0o077) !== 0) chmodSync(root, 0o700);
+  return root;
+}
 
 /**
  * Current schema version. Bump it whenever extraction writes different frames for the same key,

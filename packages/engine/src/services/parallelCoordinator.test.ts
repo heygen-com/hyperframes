@@ -8,6 +8,7 @@ import {
   distributeFrames,
   expectedFramesForTask,
   flagSilentWorkerExits,
+  formatPoolFailure,
   formatWorkerFailure,
   isFfmpegInfrastructureFailure,
   isPoolFatalWorkerFailure,
@@ -284,6 +285,35 @@ describe("worker failure diagnostics", () => {
       "[Browser:HTTP404] GET https://cdn.example.com/missing.png resource=image Not Found",
       "[FrameCapture:ERROR] page.goto failed mode=screenshot timeoutMs=60000 elapsedMs=60001 url=http://127.0.0.1:4173/index.html error=timeout",
     ]);
+  });
+
+  it("names the worker that failed and counts the peers it stopped", () => {
+    const worker = (workerId: number, failure: CaptureFailure): WorkerResult => ({
+      workerId,
+      framesCaptured: 0,
+      startFrame: 0,
+      endFrame: 30,
+      durationMs: 10,
+      error: failure.message,
+      failure,
+    });
+    const stopped = (workerId: number) =>
+      worker(
+        workerId,
+        new CaptureFailure({ kind: "cancelled", message: "Parallel worker cancelled" }),
+      );
+    const cause = worker(3, new CaptureFailure({ kind: "io", message: "disk is full" }));
+
+    expect(formatPoolFailure([stopped(0), stopped(1), cause, stopped(4)])).toBe(
+      "Worker 3: disk is full (3 other workers were stopped after this failure)",
+    );
+    expect(formatPoolFailure([cause, stopped(4)])).toBe(
+      "Worker 3: disk is full (1 other worker was stopped after this failure)",
+    );
+    expect(formatPoolFailure([cause])).toBe("Worker 3: disk is full");
+    expect(formatPoolFailure([stopped(0), stopped(1)])).toBe(
+      "Worker 0: Parallel worker cancelled; Worker 1: Parallel worker cancelled",
+    );
   });
 
   it("adds compact diagnostics to the worker failure message", () => {

@@ -55,8 +55,17 @@ function destination(raw: string, tunnel: boolean): URL {
 
 type OnRefused = (hostClass: RefusedHostClass) => void;
 
-export const logRefusal: OnRefused = (hostClass) =>
+const refusalListeners = new Set<OnRefused>();
+
+export function onRenderRefusal(listener: OnRefused): () => void {
+  refusalListeners.add(listener);
+  return () => refusalListeners.delete(listener);
+}
+
+export const logRefusal: OnRefused = (hostClass) => {
   console.warn(`[CaptureProxy:REFUSED] class=${hostClass}`);
+  for (const listener of refusalListeners) listener(hostClass);
+};
 
 function reportRefusal(error: unknown, onRefused: OnRefused | undefined): void {
   if (error instanceof NonPublicHostError) onRefused?.(error.hostClass);

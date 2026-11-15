@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { open as openFile } from "node:fs/promises";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 export const NOT_MEDIA_PAYLOAD = "NOT_MEDIA_PAYLOAD" as const;
 
@@ -44,7 +45,7 @@ export class NotMediaPayloadError extends Error {
     const elided = elementFingerprints.length - MAX_LISTED_FINGERPRINTS;
     super(
       `${elementFingerprints.length} media source(s) are text documents ` +
-        `(HTML/XML/JSON), not media containers ` +
+        `(HTML/XML/JSON, or a playlist naming files outside its own folder), not media containers ` +
         `[elements=${listed}${elided > 0 ? `,+${elided}` : ""}]. Either an unresolved ` +
         "nested-composition preview URL was authored as a media src, or the source answered with " +
         "an error page or API error body carrying a success status.",
@@ -83,11 +84,11 @@ function byteOrderMarkLength(head: Buffer): number {
   return 0;
 }
 
-/** Read up to {@link SNIFF_BYTES} from the front of the file. */
-async function readHead(filePath: string): Promise<Buffer> {
+/** Read up to `bytes` (default {@link SNIFF_BYTES}) from the front of the file. */
+async function readHead(filePath: string, bytes = SNIFF_BYTES): Promise<Buffer> {
   const fh = await openFile(filePath, "r");
   try {
-    const buf = Buffer.alloc(SNIFF_BYTES);
+    const buf = Buffer.alloc(bytes);
     let filled = 0;
     // Looped because a single read can come back short on NFS/FUSE and on
     // FIFOs, which would truncate the window mid-prefix.
@@ -132,7 +133,9 @@ function startsWithDocumentByte(head: Buffer): boolean {
  */
 export async function isNotMediaPayload(filePath: string): Promise<boolean> {
   try {
-    return startsWithDocumentByte(await readHead(filePath));
+    return (
+      startsWithDocumentByte(await readHead(filePath)) || (await playlistLeavesItsFolder(filePath))
+    );
   } catch {
     return false;
   }
@@ -149,4 +152,110 @@ export async function assertMediaPayload(filePath: string, elementId: string): P
   if (await isNotMediaPayload(filePath)) {
     throw new NotMediaPayloadError([fingerprintElementId(elementId)]);
   }
+}
+
+const MAX_PLAYLIST_BYTES = 8 * 1024 * 1024;
+const MAX_PLAYLIST_DEPTH = 8;
+const HTTP_URL = /^https?:\/\//i;
+const OTHER_SCHEME = /^[a-z][a-z0-9+.-]+:/i;
+const DRIVE_PATH = /^[a-z]:[\\/]/i;
+
+function playlistEntries(text: string): string[] | undefined {
+  const body = text.replace(/^\uFEFF/, "").trimStart();
+  if (body.startsWith("#EXTM3U")) {
+    return body.split(/\r?\n/).flatMap((raw) => {
+      const line = raw.trim();
+      const uris = [...line.matchAll(/URI="([^"]*)"/gi)].map((match) => match[1]!);
+      return line && !line.startsWith("#") ? [line, ...uris] : uris;
+    });
+  }
+  if (/^ffconcat\s+version/i.test(body)) {
+    return body.split(/\r?\n/).flatMap((raw) => {
+      const match = /^\s*file\s+(.*)$/.exec(raw);
+      if (!match) return [];
+      const value = match[1]!.trim();
+      return [value.startsWith("'") ? value.slice(1, -1).replace(/\\(.)/g, "$1") : value];
+    });
+  }
+  return undefined;
+}
+
+function entryLeavesFolder(entry: string, base: string, folder: string): boolean {
+  if (HTTP_URL.test(entry)) return false;
+  if (OTHER_SCHEME.test(entry) && !DRIVE_PATH.test(entry)) return true;
+  return [entry, safeDecode(entry)].some((path) => {
+    if (isAbsolute(path) || DRIVE_PATH.test(path) || path.startsWith("\\")) return true;
+    const inside = relative(folder, resolve(base, path));
+    return (
+      inside === ".." || inside.startsWith("../") || inside.startsWith("..\\") || isAbsolute(inside)
+    );
+  });
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * True for an HLS or ffconcat list naming a file outside its folder; ffmpeg would open it. Never throws.
+ * `placedAt` is where the file will live when it is read from elsewhere first (a download not yet published).
+ */
+export async function playlistLeavesItsFolder(
+  filePath: string,
+  placedAt = filePath,
+): Promise<boolean> {
+  const placed = resolve(placedAt);
+  return listLeaves(resolve(filePath), placed, dirname(placed), new Set(), 0);
+}
+
+async function startsAsPlaylist(path: string): Promise<boolean> {
+  const head = (await readHead(path))
+    .toString("utf8")
+    .replace(/^\uFEFF/, "")
+    .trimStart();
+  return head.startsWith("#EXTM3U") || /^ffconcat\s+version/i.test(head);
+}
+
+/** Every list a list names is read too, against the top list's folder. */
+async function listLeaves(
+  readPath: string,
+  path: string,
+  folder: string,
+  seen: Set<string>,
+  depth: number,
+): Promise<boolean> {
+  try {
+    if (!(await startsAsPlaylist(readPath))) return false;
+    if (depth >= MAX_PLAYLIST_DEPTH) return true;
+    if (seen.has(path)) return false;
+    seen.add(path);
+    const body = await readHead(readPath, MAX_PLAYLIST_BYTES + 1);
+    if (body.length > MAX_PLAYLIST_BYTES) return true;
+    for (const entry of playlistEntries(body.toString("utf8")) ?? []) {
+      if (await entryLeaves(entry, dirname(path), folder, seen, depth)) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+async function entryLeaves(
+  entry: string,
+  base: string,
+  folder: string,
+  seen: Set<string>,
+  depth: number,
+): Promise<boolean> {
+  if (entryLeavesFolder(entry, base, folder)) return true;
+  if (HTTP_URL.test(entry)) return false;
+  for (const local of new Set([entry, safeDecode(entry)])) {
+    const nested = resolve(base, local);
+    if (await listLeaves(nested, nested, folder, seen, depth + 1)) return true;
+  }
+  return false;
 }

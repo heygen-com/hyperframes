@@ -894,6 +894,46 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     expect(temporaryDownloadEntries(dir)).toEqual([]);
   });
 
+  it.each([
+    ["names a file outside its folder", () => "/var/renders/other/out.mp4"],
+    [
+      "names a list beside it that leaves the folder",
+      (dir: string) => {
+        writeFileSync(
+          join(dir, "download_000000000000.m3u8"),
+          "#EXTM3U\n#EXTINF:1,\n/var/renders/other/out.mp4\n",
+        );
+        return "download_000000000000.m3u8";
+      },
+    ],
+  ])("never publishes a downloaded playlist that %s", async (_name, entry) => {
+    const dir = makeTempDir();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(`#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n${entry(dir)}\n`));
+    stubFetch(fetchMock);
+
+    await expect(downloadToTemp("https://cdn.example/clip.m3u8", dir, 1_000)).rejects.toMatchObject(
+      {
+        kind: "invalid_payload",
+        retryable: false,
+      },
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const published = `download_${createHash("md5").update("https://cdn.example/clip.m3u8").digest("hex").slice(0, 12)}.m3u8`;
+    expect(readdirSync(dir)).not.toContain(published);
+    expect(temporaryDownloadEntries(dir)).toEqual([]);
+  });
+
+  it("publishes a downloaded playlist whose segments sit beside it", async () => {
+    const dir = makeTempDir();
+    stubFetch(vi.fn().mockResolvedValue(new Response("#EXTM3U\n#EXTINF:1,\nseg0.ts\n")));
+
+    const path = await downloadToTemp("https://cdn.example/clip.m3u8", dir, 1_000);
+
+    expect(readFileSync(path, "utf8")).toContain("seg0.ts");
+  });
+
   it("rejects a BOM-prefixed remote error document without retrying", async () => {
     const payload = Buffer.from("\uFEFF  <!doctype html><html><body>denied</body></html>");
     const fetchMock = vi.fn().mockResolvedValue(new Response(payload));

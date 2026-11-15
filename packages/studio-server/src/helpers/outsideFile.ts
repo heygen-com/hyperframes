@@ -1,10 +1,16 @@
 import { homedir } from "node:os";
 import { dirname, extname, isAbsolute, join, relative, sep } from "node:path";
 import { MIME_TYPES } from "./mime.js";
-import { AUDIO_EXTS, CONVERTIBLE_IMAGE_EXTS, VIDEO_EXTS } from "./mediaExtensions.js";
+import {
+  AUDIO_EXTS,
+  CONVERTIBLE_IMAGE_EXTS,
+  MEDIA_INPUT_ARGS,
+  startsAsMediaPlaylist,
+  VIDEO_EXTS,
+} from "./mediaExtensions.js";
 import { realFilePath } from "./safePath.js";
 
-export { AUDIO_EXTS, CONVERTIBLE_IMAGE_EXTS, VIDEO_EXTS };
+export { AUDIO_EXTS, CONVERTIBLE_IMAGE_EXTS, MEDIA_INPUT_ARGS, startsAsMediaPlaylist, VIDEO_EXTS };
 
 const COPIED_TYPE = /^(?:image|video|audio|font)\/|^text\/(?:css|javascript);/;
 
@@ -84,9 +90,10 @@ export const linksOutside = (projectDir: string, filePath: string): boolean =>
   isOutside(relative(realFilePath(projectDir), realFilePath(filePath)));
 
 /** `blocklisted`: a private location; `received`: reached from an imported file; `file_type`: not a type uploads copy. */
-export type LeftOutReason = "blocklisted" | "received" | "file_type";
+export type LeftOutReason = "blocklisted" | "received" | "file_type" | "private";
 
 const WHY: Record<LeftOutReason, string> = {
+  private: "which holds secrets or tool data",
   blocklisted: "which is outside the project in a private location",
   received: "which leads outside the project and came in with an imported project",
   file_type: "which is outside the project and is not an image, video, audio, font, CSS or JS file",
