@@ -205,6 +205,16 @@ describe("an opaque preview frame's loads under its token", () => {
     expect(html).toContain(`<base href="${tokened}">`);
     expect(html.replaceAll(tokened, "")).not.toContain("/api/projects/demo/preview/");
   });
+
+  it("serves the main preview under the token, re-based", async () => {
+    const res = await api.request(`http://localhost/projects/demo/preview/~${token}`, {
+      headers: { "sec-fetch-site": "same-origin", "sec-fetch-dest": "iframe" },
+    });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('data-composition-id="main"');
+    expect(html).toContain(`<base href="/api/projects/demo/preview/~${token}/">`);
+  });
 });
 
 describe("a frame without the project's token", () => {
