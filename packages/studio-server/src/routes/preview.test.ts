@@ -1941,6 +1941,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         12.34,
         undefined,
         expect.any(Function),
+        expect.any(AbortSignal),
       );
 
       expect((await app.request(`${url}&hf-proxy-still=-1`)).status).toBe(404);
