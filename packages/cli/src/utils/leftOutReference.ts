@@ -15,6 +15,21 @@ export interface LeftOutReference {
 
 export type OnLeftOut = (warning: string, reference: LeftOutReference) => void;
 
+export type OutsideFileReference = Omit<LeftOutReference, "reason">;
+
+export type OnOutsideFile = (reference: OutsideFileReference) => void;
+
+export function outsideFileReference(
+  projectDir: string,
+  file: string,
+  reference: string,
+  absPath: string,
+): OutsideFileReference {
+  const path = relative(realFilePath(projectDir), realFilePath(absPath)).replaceAll("\\", "/");
+  const levels_up = isAbsolute(path) ? null : path.split("/").filter((s) => s === "..").length;
+  return { file, reference, path, levels_up };
+}
+
 export function leftOutReference(
   projectDir: string,
   file: string,
@@ -22,7 +37,14 @@ export function leftOutReference(
   absPath: string,
   reason: LeftOutReason,
 ): LeftOutReference {
-  const path = relative(realFilePath(projectDir), realFilePath(absPath)).replaceAll("\\", "/");
-  const levels_up = isAbsolute(path) ? null : path.split("/").filter((s) => s === "..").length;
+  const { path, levels_up } = outsideFileReference(projectDir, file, reference, absPath);
   return { file, reference, path, reason, levels_up };
+}
+
+export function outsideFilesNotice(references: OutsideFileReference[]): string {
+  const count = references.length === 1 ? "1 file" : `${references.length} files`;
+  const lines = references.map(({ file, reference, path }) =>
+    file === reference ? `  ${path} (linked from ${file})` : `  ${path} (referenced by ${file})`,
+  );
+  return [`Uploading ${count} from outside the project folder:`, ...lines].join("\n");
 }

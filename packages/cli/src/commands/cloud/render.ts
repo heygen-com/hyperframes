@@ -63,7 +63,13 @@ import {
   validateVariablesAgainstProject,
 } from "../../utils/variables.js";
 import { withMeta } from "../../utils/updateCheck.js";
-import type { LeftOutReference, OnLeftOut } from "../../utils/leftOutReference.js";
+import {
+  type LeftOutReference,
+  type OnLeftOut,
+  type OnOutsideFile,
+  type OutsideFileReference,
+  outsideFilesNotice,
+} from "../../utils/leftOutReference.js";
 import { trackUploadLeftOut } from "../../telemetry/uploadLeftOut.js";
 import type { Example } from "../_examples.js";
 
@@ -341,6 +347,7 @@ export default defineCommand({
               render: { render_id: renderId, status: "queued" as const },
               swapped_fonts: preparedArchive?.swappedFonts ?? [],
               left_out: preparedArchive?.leftOut ?? [],
+              outside_files: preparedArchive?.outsideFiles ?? [],
             }),
             null,
             2,
@@ -388,6 +395,7 @@ export default defineCommand({
             bytes_written: downloadResult.bytes,
             swapped_fonts: preparedArchive?.swappedFonts ?? [],
             left_out: preparedArchive?.leftOut ?? [],
+            outside_files: preparedArchive?.outsideFiles ?? [],
           }),
           null,
           2,
@@ -669,6 +677,7 @@ interface PreparedLocalArchive {
   offloaded: OffloadedMedia[];
   swappedFonts: string[];
   leftOut: LeftOutReference[];
+  outsideFiles: OutsideFileReference[];
 }
 
 function summarizeLargestFiles(fileMap: Map<string, StagedFile>): ArchiveFileSummary[] {
@@ -690,13 +699,12 @@ async function prepareLocalArchive(
     console.log("");
     console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
   }
-  const leftOut: LeftOutReference[] = [];
-  const { fileMap, entryPath } = stageProjectFiles(
+  const { fileMap, entryPath, leftOut, outsideFiles } = stageAndReport(
     project,
     composition,
-    warnAndListLeftOut(leftOut, asJson),
+    asJson,
+    !upload,
   );
-  trackUploadLeftOut("cloud_render", leftOut, !upload);
   const swappedFonts = await embedSystemFonts({
     dir: project.dir,
     entryFile: composition,
@@ -728,6 +736,7 @@ async function prepareLocalArchive(
     offloaded,
     swappedFonts,
     leftOut,
+    outsideFiles,
   };
   if (upload) assertArchiveFits(sizeBytes, largestFiles);
   if (!asJson && sizeBytes >= ARCHIVE_DIAGNOSTIC_THRESHOLD_BYTES) {
@@ -745,13 +754,43 @@ function warnAndListLeftOut(leftOut: LeftOutReference[], asJson: boolean): OnLef
   };
 }
 
+function stageAndReport(
+  project: ProjectDir,
+  composition: string | undefined,
+  asJson: boolean,
+  dryRun: boolean,
+) {
+  const leftOut: LeftOutReference[] = [];
+  const outsideFiles: OutsideFileReference[] = [];
+  const staged = stageProjectFiles(
+    project,
+    composition,
+    warnAndListLeftOut(leftOut, asJson),
+    (reference) => outsideFiles.push(reference),
+  );
+  trackUploadLeftOut("cloud_render", leftOut, dryRun);
+  listOutsideFiles(outsideFiles, asJson);
+  return { ...staged, leftOut, outsideFiles };
+}
+
+function listOutsideFiles(outsideFiles: OutsideFileReference[], asJson: boolean): void {
+  if (outsideFiles.length === 0) return;
+  if (!asJson) return console.log(c.dim(indentLines(outsideFilesNotice(outsideFiles))));
+  for (const reference of outsideFiles) {
+    console.error(JSON.stringify({ event: "outside_file", ...reference }));
+  }
+}
+
+const indentLines = (text: string) => text.replace(/^/gm, "   ");
+
 function stageProjectFiles(
   project: ProjectDir,
   composition: string | undefined,
   onLeftOut: OnLeftOut,
+  onOutsideFile: OnOutsideFile,
 ): { fileMap: Map<string, StagedFile>; entryPath: string } {
   try {
-    const fileMap = stagePublishFiles(project.dir, OFFLOAD_MIN_BYTES, onLeftOut);
+    const fileMap = stagePublishFiles(project.dir, OFFLOAD_MIN_BYTES, onLeftOut, onOutsideFile);
     const entryPath = archiveKey(
       relative(project.dir, resolvePath(project.dir, composition ?? "index.html")).replaceAll(
         "\\",
@@ -894,6 +933,7 @@ function reportDryRun(prepared: PreparedLocalArchive, asJson: boolean): void {
             offloaded_media: prepared.offloaded,
             swapped_fonts: prepared.swappedFonts,
             left_out: prepared.leftOut,
+            outside_files: prepared.outsideFiles,
           },
         }),
         null,
