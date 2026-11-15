@@ -1,4 +1,5 @@
 import { execFileSync, spawn as realSpawn, spawnSync, type ChildProcess } from "node:child_process";
+import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
 import os from "node:os";
 import { EventEmitter, once } from "node:events";
 import {
@@ -537,9 +538,10 @@ describe("resolveProxy", () => {
     const vp8 = resolveProxy(projectDir, sourcePath, "vp8");
     await flush();
     const vp8Args = calls[0]!.args;
-    expect(vp8Args.slice(vp8Args.indexOf("-i") - 2, vp8Args.indexOf("-i"))).toEqual([
+    expect(vp8Args.slice(vp8Args.indexOf("-i") - 4, vp8Args.indexOf("-i"))).toEqual([
       "-c:v",
       "libvpx-vp9",
+      ...MEDIA_INPUT_ARGS,
     ]);
     succeed(calls[0]!, "fake-vp8-bytes");
     await vp8;
@@ -1993,6 +1995,21 @@ describe("resolveProxy", () => {
 
 describe("resolveStill", () => {
   const canStill = Boolean(realFfmpeg) && Boolean(findFfBinary("ffprobe"));
+
+  it("refuses a playlist named as a video without running ffmpeg", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("node:child_process", () => ({ spawn, default: { spawn } }));
+    vi.doMock("@hyperframes/parsers/ff-binaries", () => ({ findFfBinary: () => FFMPEG_PATH }));
+    vi.doUnmock("./mediaMetadata.js");
+    const { resolveStill } = await import("./proxyTranscoder.js");
+    const projectDir = tmpProject();
+    const clip = join(projectDir, "clip.mp4");
+    writeFileSync(clip, "ffconcat version 1.0\n#\u0001\nfile seg.ts\n");
+
+    await expect(resolveStill(projectDir, clip, 1)).rejects.toThrow("not a media file");
+    expect(calls).toHaveLength(0);
+  });
 
   it.skipIf(!canStill)(
     "cuts one JPEG at the asked time and reuses it for the same tenth of a second",
