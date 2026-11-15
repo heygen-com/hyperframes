@@ -31,7 +31,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, delimiter, dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep, win32 } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { managedChromeVersion } from "./manager.js";
 
@@ -364,7 +364,7 @@ describe("findBrowser — cache resolution", () => {
     const project = join("/", "projects", "shared");
     const tools = join("/", "tools", "chrome");
     vi.spyOn(process, "cwd").mockReturnValue(project);
-    vi.stubEnv("PATH", [project, tools].join(delimiter));
+    vi.stubEnv("PATH", [project, tools].join(win32.delimiter));
     const existing = installFsMocks({ existing: new Set([join(project, "google-chrome.exe")]) });
     installPuppeteerBrowsersMock();
     const { findSystemBrowser } = await import("./manager.js");

@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, join, resolve, win32 } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 type FfBinariesModule = typeof import("./ffBinaries.js");
@@ -239,7 +239,7 @@ describe("findFfBinary", () => {
     skipped = {};
     vi.stubEnv("HYPERFRAMES_FFMPEG_PATH", "");
     vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", "");
-    process.env.PATH = pathDirs.join(delimiter);
+    process.env.PATH = pathDirs.join(process.platform === "win32" ? win32.delimiter : delimiter);
     vi.spyOn(process, "cwd").mockReturnValue(project);
     vi.resetModules();
     vi.doMock("node:fs", async (importOriginal) => {
