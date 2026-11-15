@@ -28,10 +28,13 @@ import { promisify } from "node:util";
 import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
 import { fpsToNumber, type Fps } from "@hyperframes/core";
 import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { openRangeEnd } from "@hyperframes/studio-server/media-range";
+import { isLoopbackHost } from "@hyperframes/studio-server/request-identity";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
 import { servedPath } from "./servedPath.js";
 import { getHfEarlyStub } from "../generated/hf-early-stub-inline.js";
@@ -731,6 +734,8 @@ export interface FileServerHandle {
   addPreHeadScript: (script: string) => void;
 }
 
+const OFFER_NO_FRAMING_SITE_AN_EDITING_PORT = `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`;
+
 /**
  * Set before the Hyperframes runtime executes so render/probe pages can avoid
  * preview-only initialization work that mutates the live visual timeline.
@@ -823,6 +828,11 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     c.res.headers.set("X-Content-Type-Options", "nosniff");
   });
 
+  app.use(async function refuseHostThatIsNotLoopback(c, next) {
+    if (isLoopbackHost(c.req.header("host") ?? new URL(c.req.url).host)) return next();
+    return c.text("Forbidden: unknown host", 403);
+  });
+
   app.get("/*", async (c) => {
     let requestPath = c.req.path;
     if (requestPath === "/") requestPath = "/index.html";
@@ -872,6 +882,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
         html = isIndex
           ? injectScriptsIntoHtml(html, headScripts, bodyScripts, stripEmbeddedRuntime)
           : html;
+        html = injectTagsAtHeadStart(html, OFFER_NO_FRAMING_SITE_AN_EDITING_PORT);
         return c.text(html, 200, { "Content-Type": contentType });
       }
 
