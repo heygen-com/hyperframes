@@ -76,6 +76,12 @@
       "import": "./src/assets.ts",
       "types": "./src/assets.ts"
     },
+    "./css-url-scans": {
+      "bun": "./src/cssUrlScans.ts",
+      "node": "./dist/cssUrlScans.js",
+      "import": "./src/cssUrlScans.ts",
+      "types": "./src/cssUrlScans.ts"
+    },
     "./composition": {
       "bun": "./src/composition.ts",
       "node": "./dist/composition.js",
@@ -216,6 +222,10 @@
       "./asset-paths": {
         "import": "./dist/assets.js",
         "types": "./dist/assets.d.ts"
+      },
+      "./css-url-scans": {
+        "import": "./dist/cssUrlScans.js",
+        "types": "./dist/cssUrlScans.d.ts"
       },
       "./composition": {
         "import": "./dist/composition.js",

@@ -68,6 +68,12 @@
       "types": "./dist/assets.d.ts",
       "environments": ["bun", "node"]
     },
+    "./css-url-scans": {
+      "source": "./src/cssUrlScans.ts",
+      "runtime": "./dist/cssUrlScans.js",
+      "types": "./dist/cssUrlScans.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./composition": {
       "source": "./src/composition.ts",
       "runtime": "./dist/composition.js",
