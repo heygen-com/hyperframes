@@ -74,4 +74,27 @@ describe("kind cache", () => {
       expect(readdirSync(outside)).toEqual(["victim.json"]);
     },
   );
+
+  it.skipIf(process.platform === "win32")(
+    "reads no entry through a link in place of .hyperframes or audio-kind",
+    () => {
+      const outside = join(dir, "linked-outside");
+      mkdirSync(join(outside, "audio-kind"), { recursive: true });
+      writeFileSync(join(outside, "entry.json"), JSON.stringify(kind));
+      writeFileSync(join(outside, "audio-kind", "entry.json"), JSON.stringify(kind));
+      expect(readKindCache(join(outside, "entry.json"))).not.toBeNull();
+
+      const linkedKind = join(dir, "linked-kind", ".hyperframes");
+      mkdirSync(linkedKind, { recursive: true });
+      symlinkSync(outside, join(linkedKind, "audio-kind"));
+      expect(readKindCache(join(linkedKind, "audio-kind", "entry.json"))).toBeNull();
+
+      const linkedRecords = join(dir, "linked-records");
+      mkdirSync(linkedRecords);
+      symlinkSync(outside, join(linkedRecords, ".hyperframes"));
+      expect(
+        readKindCache(join(linkedRecords, ".hyperframes", "audio-kind", "entry.json")),
+      ).toBeNull();
+    },
+  );
 });

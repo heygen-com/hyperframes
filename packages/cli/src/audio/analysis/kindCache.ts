@@ -3,7 +3,7 @@ import { statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { readPlainFile } from "../../utils/projectRecords.js";
-import { isPlainFile, makeRealFolder } from "../cacheFolder.js";
+import { isPlainFile, isRealFolder, makeRealFolder } from "../cacheFolder.js";
 import type { KindFeatures, KindGuess } from "@hyperframes/core/audio-analysis";
 import type { AnalyzeOptions, Analysis } from "./analyze.js";
 import type { AudioTarget } from "./targets.js";
@@ -72,7 +72,10 @@ export function readKindCache(file: string | null): Analysis | null {
   if (file === null) return null;
   let value: unknown;
   try {
-    value = isPlainFile(file) ? JSON.parse(readPlainFile(file, MAX_ENTRY_BYTES)) : null;
+    value =
+      isRealFolder(dirname(file), 2) && isPlainFile(file)
+        ? JSON.parse(readPlainFile(file, MAX_ENTRY_BYTES))
+        : null;
   } catch {
     return null;
   }
