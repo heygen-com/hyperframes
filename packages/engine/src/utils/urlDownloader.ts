@@ -12,6 +12,7 @@ import {
   rmdirSync,
   rmSync,
   statSync,
+  statfsSync,
   type Stats,
   unlinkSync,
 } from "fs";
@@ -804,7 +805,10 @@ function checksumMismatchError(
   );
 }
 
-const DEFAULT_MAX_DOWNLOAD_BYTES = 20 * 1024 ** 3;
+const DEFAULT_MAX_DOWNLOAD_BYTES = 8 * 1024 ** 3;
+const DEFAULT_MAX_DOWNLOAD_MS = 30 * 60 * 1000;
+const DEFAULT_DOWNLOAD_MIN_FREE_BYTES = 512 * 1024 ** 2;
+const FREE_SPACE_CHECK_INTERVAL_BYTES = 4 * 1024 ** 2;
 const DEFAULT_MIN_DOWNLOAD_BYTES_PER_SEC = 32 * 1024;
 const THROUGHPUT_WINDOW_SECONDS = 60;
 
@@ -820,6 +824,87 @@ const maxDownloadBytes = (): number =>
 
 const minDownloadBytesPerSec = (): number =>
   integerFromEnv("HYPERFRAMES_MIN_DOWNLOAD_BYTES_PER_SEC", DEFAULT_MIN_DOWNLOAD_BYTES_PER_SEC, 0);
+
+const maxDownloadMs = (): number =>
+  integerFromEnv("HYPERFRAMES_MAX_DOWNLOAD_MS", DEFAULT_MAX_DOWNLOAD_MS, 1);
+
+const downloadMinFreeBytes = (): number =>
+  integerFromEnv("HYPERFRAMES_DOWNLOAD_MIN_FREE_BYTES", DEFAULT_DOWNLOAD_MIN_FREE_BYTES, 0);
+
+function freeDiskBytes(path: string): number | null {
+  try {
+    const stat = statfsSync(path);
+    return stat.bavail * stat.bsize;
+  } catch {
+    return null;
+  }
+}
+
+// Bytes that in-flight downloads declared but have not received yet, per device.
+const unreceivedBytesByDevice = new Map<number, number>();
+
+/**
+ * Keeps `minFreeBytes` free on the download volume across parallel downloads: a declared size
+ * is claimed up front, and free space is measured again every few MiB as bytes arrive. Free
+ * space that cannot be measured counts as enough, and a minimum of 0 turns the guard off.
+ */
+class DiskHeadroomGuard {
+  private unreceivedBytes = 0;
+  private bytesSinceCheck = 0;
+  private device = 0;
+
+  constructor(
+    private readonly dir: string,
+    readonly minFreeBytes: number,
+  ) {}
+
+  claim(declaredBytes: number): boolean {
+    if (this.minFreeBytes === 0) return true;
+    this.device = statSync(this.dir).dev;
+    this.adjustUnreceived(declaredBytes);
+    return this.keepsMinimum();
+  }
+
+  receive(byteCount: number): boolean {
+    if (this.minFreeBytes === 0) return true;
+    this.adjustUnreceived(-Math.min(byteCount, this.unreceivedBytes));
+    this.bytesSinceCheck += byteCount;
+    if (this.bytesSinceCheck < FREE_SPACE_CHECK_INTERVAL_BYTES) return true;
+    this.bytesSinceCheck = 0;
+    return this.keepsMinimum();
+  }
+
+  release(): void {
+    this.adjustUnreceived(-this.unreceivedBytes);
+  }
+
+  private keepsMinimum(): boolean {
+    const free = freeDiskBytes(this.dir);
+    if (free === null) return true;
+    return free - (unreceivedBytesByDevice.get(this.device) ?? 0) >= this.minFreeBytes;
+  }
+
+  private adjustUnreceived(delta: number): void {
+    this.unreceivedBytes += delta;
+    const total = (unreceivedBytesByDevice.get(this.device) ?? 0) + delta;
+    if (total > 0) unreceivedBytesByDevice.set(this.device, total);
+    else unreceivedBytesByDevice.delete(this.device);
+  }
+}
+
+function lowDiskSpaceError(
+  minFreeBytes: number,
+  status: number,
+  telemetry: Partial<UrlDownloadTelemetry>,
+): UrlDownloadError {
+  return new UrlDownloadError(
+    "filesystem",
+    false,
+    `Download stopped: it would leave less than ${minFreeBytes} bytes free on the download volume`,
+    status,
+    telemetry,
+  );
+}
 
 function isCompressedEncoding(contentEncoding: string | null): boolean {
   const encoding = contentEncoding?.trim().toLowerCase();
@@ -886,6 +971,7 @@ async function fetchToPartial(
   controller: AbortController,
   options: UrlDownloadOptions,
   onBodyBytes: (byteCount: number, sized: boolean) => void,
+  headroom: DiskHeadroomGuard,
 ): Promise<PartialIntegrity> {
   const { response, finalUrl } = await fetchWithValidatedRedirects(url, controller);
   const finalIdentity = safeDownloadUrlIdentity(finalUrl);
@@ -969,6 +1055,13 @@ async function fetchToPartial(
       expectedBytes: declaredLength,
     });
   }
+  if (!headroom.claim(declaredLength ?? 0)) {
+    await cancelResponseBody(response);
+    throw lowDiskSpaceError(headroom.minFreeBytes, response.status, {
+      ...responseTelemetry,
+      expectedBytes: declaredLength,
+    });
+  }
   const expectedBytes = declaredLength;
 
   let receivedBytes = 0;
@@ -984,6 +1077,16 @@ async function fetchToPartial(
       if (receivedBytes > maxBytes) {
         callback(
           overByteLimitError(maxBytes, response.status, {
+            ...responseTelemetry,
+            expectedBytes,
+            receivedBytes,
+          }),
+        );
+        return;
+      }
+      if (!headroom.receive(bytes.length)) {
+        callback(
+          lowDiskSpaceError(headroom.minFreeBytes, response.status, {
             ...responseTelemetry,
             expectedBytes,
             receivedBytes,
@@ -1187,6 +1290,13 @@ async function runDownloadAttempt(
     }, timeoutMs);
   };
   armTimeout();
+  // Unlike the attempt timeout, incoming data never moves this deadline.
+  const deadlineMs = maxDownloadMs();
+  let pastDeadline = false;
+  const deadlineId = setTimeout(() => {
+    pastDeadline = true;
+    controller.abort();
+  }, deadlineMs);
   let sizedBodyStarted = false;
   const extendTimeout = (): void => {
     sizedBodyStarted = true;
@@ -1214,12 +1324,21 @@ async function runDownloadAttempt(
     throughput.record(byteCount, Date.now());
   };
   const identity = safeDownloadUrlIdentity(url);
+  const headroom = new DiskHeadroomGuard(attemptDir, downloadMinFreeBytes());
 
   try {
     if (callerAborted) {
       throw new UrlDownloadError("cancelled", false, "Download cancelled");
     }
-    const integrity = await fetchToPartial(url, partialPath, controller, options, onBodyBytes);
+    const integrity = await fetchToPartial(
+      url,
+      partialPath,
+      controller,
+      options,
+      onBodyBytes,
+      headroom,
+    );
+    clearTimeout(deadlineId);
     clearTimeout(floorCheckId);
     if (await playlistLeavesItsFolder(partialPath, localPath)) {
       throw new UrlDownloadError(
@@ -1273,50 +1392,32 @@ async function runDownloadAttempt(
     });
     return localPath;
   } catch (error) {
+    let classified: UrlDownloadError;
     if (callerAborted) {
-      const classified = new UrlDownloadError("cancelled", false, "Download cancelled");
-      emitDownloadTelemetry(options, {
-        urlFingerprint: identity.urlFingerprint,
-        initialHost: identity.host,
-        attempt,
-        outcome: "attempt_failed",
-        failureKind: classified.kind,
-      });
-      throw classified;
-    }
-    if (timedOut) {
-      const classified = new UrlDownloadError(
+      classified = new UrlDownloadError("cancelled", false, "Download cancelled");
+    } else if (pastDeadline) {
+      classified = new UrlDownloadError(
+        "timeout",
+        false,
+        `Download exceeded the ${deadlineMs / 1000}s time limit`,
+      );
+    } else if (timedOut) {
+      classified = new UrlDownloadError(
         "timeout",
         true,
         sizedBodyStarted
           ? `Download stalled: no data for ${timeoutMs / 1000}s`
           : `Download timeout after ${timeoutMs / 1000}s`,
       );
-      emitDownloadTelemetry(options, {
-        urlFingerprint: identity.urlFingerprint,
-        initialHost: identity.host,
-        attempt,
-        outcome: "attempt_failed",
-        failureKind: classified.kind,
-      });
-      throw classified;
-    }
-    if (tooSlow) {
-      const classified = new UrlDownloadError(
+    } else if (tooSlow) {
+      classified = new UrlDownloadError(
         "timeout",
         true,
         `Download too slow: under ${minBytesPerSec} bytes/s over the last ${THROUGHPUT_WINDOW_SECONDS}s`,
       );
-      emitDownloadTelemetry(options, {
-        urlFingerprint: identity.urlFingerprint,
-        initialHost: identity.host,
-        attempt,
-        outcome: "attempt_failed",
-        failureKind: classified.kind,
-      });
-      throw classified;
+    } else {
+      classified = classifyDownloadFailure(error);
     }
-    const classified = classifyDownloadFailure(error);
     emitDownloadTelemetry(options, {
       urlFingerprint: identity.urlFingerprint,
       initialHost: identity.host,
@@ -1328,7 +1429,9 @@ async function runDownloadAttempt(
     throw classified;
   } finally {
     clearTimeout(timeoutId);
+    clearTimeout(deadlineId);
     clearTimeout(floorCheckId);
+    headroom.release();
     signal?.removeEventListener("abort", onCallerAbort);
     controller.abort();
     rmSync(attemptDir, { recursive: true, force: true });
