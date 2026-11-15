@@ -14,7 +14,7 @@ export const examples: Example[] = [
 
 import { existsSync, readFileSync } from "node:fs";
 import { parseHTML } from "linkedom";
-import { resolve, relative } from "node:path";
+import { resolve, relative, sep } from "node:path";
 import {
   isProjectRootMissing,
   ITEM_TYPE_DIRS,
@@ -24,6 +24,7 @@ import {
 import { c } from "../ui/colors.js";
 import {
   DEFAULT_REGISTRY_URL,
+  isPublicRegistry,
   prepareItem,
   publishItem,
   resolveItemsByTag,
@@ -37,12 +38,14 @@ import {
 } from "../registry/compatibility.js";
 import {
   DEFAULT_PROJECT_CONFIG,
+  PROJECT_CONFIG_FILENAME,
   loadProjectConfig,
   projectConfigPath,
   recordProjectRegistryItems,
   createProjectConfig,
 } from "../utils/projectConfig.js";
 import { copyToClipboard } from "../utils/clipboard.js";
+import { receivedFiles, recordReceivedFiles } from "../utils/privateProjectFile.js";
 import { readJsonFlag } from "../utils/jsonFlag.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 
@@ -294,6 +297,22 @@ function assertCompatibleOrThrow(items: RegistryItem[], cliVersion?: string): st
   }
 }
 
+// A registry that a received hyperframes.json names serves files that came from its sender.
+function fromReceivedRegistry(projectDir: string, registry: string): boolean {
+  return !isPublicRegistry(registry) && receivedFiles(projectDir)(PROJECT_CONFIG_FILENAME);
+}
+
+function recordReceivedPlan(prepared: PreparedItem[]): void {
+  const root = prepared[0]?.root;
+  if (!root) return;
+  const paths = prepared.flatMap((item) =>
+    item.outcomes.flatMap((o) =>
+      o.bytes ? [relative(item.root, o.destPath).split(sep).join("/")] : [],
+    ),
+  );
+  recordReceivedFiles(root, paths);
+}
+
 // Install a topologically-ordered plan (dependencies first, requested item
 // last). Every item is fetched and checked before any is written, so a refusal
 // or failed fetch anywhere in the plan writes nothing. Returns all written paths.
@@ -305,6 +324,7 @@ async function installAll(
   requestedName: string,
   variableValues: Record<string, unknown> | null,
   installDirs: string[],
+  received: boolean,
 ): Promise<{
   written: string[];
   preserved: string[];
@@ -330,6 +350,7 @@ async function installAll(
         }),
       );
     }
+    if (received) recordReceivedPlan(prepared);
     for (const [i, planItem] of installPlan.entries()) {
       const result = publishItem(prepared[i]!);
       written.push(...result.written);
@@ -449,6 +470,7 @@ export async function addToProject(
     item.name,
     variableValues,
     [config.paths.blocks, config.paths.components, config.paths.assets],
+    fromReceivedRegistry(projectDir, config.registry),
   );
 
   // Report what landed, not what was asked for: a failed install throws above,

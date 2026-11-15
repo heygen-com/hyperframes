@@ -6,6 +6,7 @@ import {
   linksOutside,
 } from "@hyperframes/studio-server/outside-file";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
+import { publishRegistryFile } from "../registry/publication.js";
 
 export { isEnvOrGitPath, isPrivateOutsideFile, linksOutside };
 
@@ -37,6 +38,15 @@ function readRecord(dir: string, ownFolder: boolean): { listed: unknown } | null
     const code = (error as NodeJS.ErrnoException).code;
     return ownFolder && (code === "ENOENT" || code === "ENOTDIR") ? null : { listed: undefined };
   }
+}
+
+export function recordReceivedFiles(root: string, paths: string[]): void {
+  if (paths.length === 0) return;
+  const record = readRecord(root, true);
+  if (record && !Array.isArray(record.listed)) return;
+  const files = new Set(((record?.listed ?? []) as unknown[]).map(String));
+  for (const path of paths) files.add(path.normalize("NFC"));
+  publishRegistryFile(root, RECEIVED_RECORD, `${JSON.stringify({ files: [...files].sort() })}\n`);
 }
 
 function receivedRecordsAtOrAbove(projectDir: string): ReceivedRecord[] {

@@ -1,6 +1,14 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { runCommand as runCittyCommand, type CommandDef } from "citty";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RegistryItem, RegistryManifest } from "@hyperframes/core";
@@ -16,6 +24,8 @@ import addCommand, {
   runAdd,
   tagAddJson,
 } from "./add.js";
+import { DEFAULT_REGISTRY_URL } from "../registry/index.js";
+import { stagePublishFiles } from "../utils/publishProject.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
 import { trackCommandFailures } from "../utils/command-failure-tracking.js";
 
@@ -754,5 +764,140 @@ describe("tag installation failures", () => {
         scenario.installed.includes(name),
       );
     }
+  });
+});
+
+describe("installs from the registry a received hyperframes.json names", () => {
+  let dir: string;
+  const recordPath = () => join(dir, ".hyperframes", "received-files.json");
+  const listed = () => JSON.parse(readFileSync(recordPath(), "utf-8")).files;
+  const receive = (files: string[]) => {
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(recordPath(), JSON.stringify({ files }));
+  };
+  const writeConfig = (registry: string, name = "hyperframes.json", prefix = "") =>
+    writeFileSync(join(dir, name), prefix + JSON.stringify({ registry }));
+
+  beforeEach(() => {
+    dir = tmp();
+    mockFetch();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("lists every file the install writes as received, dependencies included", async () => {
+    writeConfig(uniqueBase());
+    receive(["hyperframes.json"]);
+
+    await runAdd({ name: "dep-block", projectDir: dir, skipClipboard: true });
+
+    expect(listed()).toEqual([
+      "compositions/components/base-component/base-component.css",
+      "compositions/dep-block.html",
+      "hyperframes.json",
+    ]);
+  });
+
+  it("keeps a publish from carrying an outside file the installed block names", async () => {
+    mkdirSync(join(dir, "shared"));
+    writeFileSync(join(dir, "shared", "logo.png"), "png");
+    const project = join(dir, "p");
+    mkdirSync(join(project, ".hyperframes"), { recursive: true });
+    writeFileSync(join(project, "hyperframes.json"), JSON.stringify({ registry: uniqueBase() }));
+    writeFileSync(
+      join(project, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["hyperframes.json"] }),
+    );
+    writeFileSync(join(project, "index.html"), `<div data-composition-id="main"></div>`);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = new URL(input);
+        if (url.pathname.endsWith("/registry.json")) return Response.json(MANIFEST);
+        if (url.pathname.endsWith("/blocks/my-block/registry-item.json"))
+          return Response.json(BLOCK_ITEM);
+        return new Response(`<div data-composition-id="b"><img src="../../shared/logo.png"></div>`);
+      }),
+    );
+
+    await runAdd({ name: "my-block", projectDir: project, skipClipboard: true });
+
+    const staged = stagePublishFiles(project, Infinity, () => {});
+    expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([]);
+  });
+
+  it("lists what an install by tag writes", async () => {
+    writeConfig(uniqueBase());
+    receive(["hyperframes.json"]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL) => {
+        const url = new URL(input);
+        if (url.pathname.endsWith("/registry.json")) return Response.json(MANIFEST);
+        if (url.pathname.endsWith("/blocks/my-block/registry-item.json"))
+          return Response.json({ ...BLOCK_ITEM, tags: ["test-tag"] });
+        if (url.pathname.endsWith("/blocks/my-block/my-block.html"))
+          return new Response(FILE_BODIES["my-block.html"]);
+        return new Response("not found", { status: 404 });
+      }),
+    );
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCittyCommand(addCommand, { rawArgs: ["test-tag", "--dir", dir, "--no-clipboard"] });
+
+    expect(listed()).toEqual(["compositions/my-block.html", "hyperframes.json"]);
+  });
+
+  it("reads a received config that starts with a byte-order mark", async () => {
+    writeConfig(uniqueBase(), "hyperframes.json", "\uFEFF");
+    receive(["hyperframes.json"]);
+
+    await runAdd({ name: "my-block", projectDir: dir, skipClipboard: true });
+
+    expect(listed()).toEqual(["compositions/my-block.html", "hyperframes.json"]);
+  });
+
+  it("finds a received config listed under another spelling of the file it opens", async () => {
+    writeConfig(uniqueBase(), "HyperFrames.json");
+    // A disk that tells case apart gets a second name for the same file, as one that ignores case has.
+    if (!existsSync(join(dir, "hyperframes.json")))
+      linkSync(join(dir, "HyperFrames.json"), join(dir, "hyperframes.json"));
+    receive(["HyperFrames.json"]);
+
+    await runAdd({ name: "my-block", projectDir: dir, skipClipboard: true });
+
+    expect(listed()).toEqual(["HyperFrames.json", "compositions/my-block.html"]);
+  });
+
+  it("leaves what a person's own config installs off the record", async () => {
+    writeConfig(uniqueBase());
+
+    await runAdd({ name: "my-block", projectDir: dir, skipClipboard: true });
+
+    expect(existsSync(join(dir, "compositions/my-block.html"))).toBe(true);
+    expect(existsSync(recordPath())).toBe(false);
+  });
+
+  it("leaves what the public registry installs off the record", async () => {
+    writeConfig(`${DEFAULT_REGISTRY_URL}/${crypto.randomUUID()}`);
+    receive(["hyperframes.json"]);
+
+    await runAdd({ name: "my-block", projectDir: dir, skipClipboard: true });
+
+    expect(existsSync(join(dir, "compositions/my-block.html"))).toBe(true);
+    expect(listed()).toEqual(["hyperframes.json"]);
+  });
+
+  it("leaves a record it cannot read as it is", async () => {
+    writeConfig(uniqueBase());
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(recordPath(), "{oops");
+
+    await runAdd({ name: "my-block", projectDir: dir, skipClipboard: true });
+
+    expect(readFileSync(recordPath(), "utf-8")).toBe("{oops");
   });
 });
