@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { outsideAssetsAllowed } from "./receivedRender.js";
@@ -46,6 +46,8 @@ describe("outsideAssetsAllowed", () => {
     expect(warn).toHaveBeenCalledTimes(1);
     const line = String(warn.mock.calls[0]?.[0]);
     expect(line).toContain("index.html came from someone else");
+    expect(line).toContain("It leaves out");
+    expect(line).not.toContain("compositions");
     for (const ref of [
       "../outside/secret.js",
       "../outside/pic.png",
@@ -79,7 +81,49 @@ describe("outsideAssetsAllowed", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it("treats an unreadable record as received", () => {
-    expect(outsideAssetsAllowed(project("{not json"), undefined, vi.fn())).toBe(false);
+  it.each(["{not json", "", "{}"])(
+    "keeps outside files and names the record when it cannot be read: %j",
+    (record) => {
+      const dir = project(record);
+      const warn = vi.fn();
+      expect(outsideAssetsAllowed(dir, undefined, warn)).toBe(true);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const line = String(warn.mock.calls[0]?.[0]);
+      expect(line).toContain(join(dir, ".hyperframes", "received-files.json"));
+      expect(line).not.toContain("someone else");
+    },
+  );
+
+  it("says the render stops on a composition outside the project", () => {
+    const dir = project(received("index.html"));
+    write(join(dir, "..", "outside", "shared.html"), "<div></div>");
+    write(join(dir, "index.html"), `<div data-composition-src="../outside/shared.html"></div>`);
+    const warn = vi.fn();
+    expect(outsideAssetsAllowed(dir, undefined, warn)).toBe(false);
+    const line = String(warn.mock.calls[0]?.[0]);
+    expect(line).toContain("stops on the compositions ../outside/shared.html");
+    expect(line).not.toContain("leaves out");
+  });
+
+  it("skips a stylesheet it cannot read instead of failing", () => {
+    const dir = project(received("index.html"));
+    rmSync(join(dir, "style.css"));
+    mkdirSync(join(dir, "style.css"));
+    if (process.platform !== "win32") {
+      write(join(dir, "locked.css"), "body { background: url(../outside/bg.png); }");
+      chmodSync(join(dir, "locked.css"), 0o000);
+      write(join(dir, "index.html"), `<link href="locked.css"><img src="../outside/pic.png">`);
+    }
+    const warn = vi.fn();
+    expect(() => outsideAssetsAllowed(dir, undefined, warn)).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("../outside/pic.png"));
+  });
+
+  it("scans a long unclosed url( run in linear time", () => {
+    const dir = project(received("index.html"));
+    write(join(dir, "style.css"), "url(".repeat(1_000_000));
+    const started = performance.now();
+    outsideAssetsAllowed(dir, undefined, vi.fn());
+    expect(performance.now() - started).toBeLessThan(2_000);
   });
 });
