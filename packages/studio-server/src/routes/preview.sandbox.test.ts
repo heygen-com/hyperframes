@@ -176,11 +176,14 @@ describe("a plain-HTTP request to a LAN name, which carries no fetch metadata", 
   const lanGet = (path: string, headers: Record<string, string> = {}) =>
     api.request(`${LAN}${path}`, { headers });
 
-  it.each(documents)("%s is marked and sandboxed with no Referer", async (_n, path) => {
-    const res = await lanGet(path);
-    expect(await res.text()).toContain(MARK);
-    expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
-  });
+  it.each(documents)(
+    "%s is marked and sandboxed for a frame that sends no Referer",
+    async (_n, path) => {
+      const res = await lanGet(path);
+      expect(await res.text()).toContain(MARK);
+      expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+    },
+  );
 
   it.each(documents)("%s is marked and sandboxed for another site's Referer", async (_n, path) => {
     const res = await lanGet(path, { referer: "http://elsewhere.example/page" });
@@ -188,8 +191,8 @@ describe("a plain-HTTP request to a LAN name, which carries no fetch metadata", 
     expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
   });
 
-  it.each(documents)("%s stays unmarked for the Studio's own page", async (_n, path) => {
-    const res = await lanGet(path, { referer: `${LAN}/#project/demo` });
+  it.each(documents)("%s stays unmarked for the Studio's own player", async (_n, path) => {
+    const res = await lanGet(path, { referer: `${LAN}/?project=demo` });
     expect(await res.text()).not.toContain(MARK);
     expect(res.headers.get("content-security-policy")).toBeNull();
   });
