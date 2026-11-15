@@ -8,7 +8,8 @@
  * it lives here once instead of being re-derived inline.
  */
 
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 import { readFileSync } from "fs";
 import { availableParallelism, cpus, freemem, platform, totalmem } from "os";
 
@@ -234,7 +235,9 @@ export function getAvailableMemoryMb(): number {
 
   if (platform() === "darwin") {
     try {
-      const raw = execSync("vm_stat", { encoding: "utf-8", timeout: 5000 });
+      const vmStat = findTrustedExecutable("vm_stat");
+      if (!vmStat) return fallback;
+      const raw = execFileSync(vmStat, [], { encoding: "utf-8", timeout: 5000 });
       const pageSize = parseInt(raw.match(/page size of (\d+)/)?.[1] ?? "0", 10);
       if (!pageSize) return fallback;
 

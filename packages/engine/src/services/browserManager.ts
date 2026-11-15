@@ -18,7 +18,7 @@ import {
 } from "./sandboxLaunch.js";
 import { scanHtmlOpeningTags } from "@hyperframes/parsers/html-attribute-spans";
 import type { Browser, LaunchOptions, Page, PuppeteerNode } from "puppeteer-core";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import { existsSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
@@ -56,6 +56,7 @@ export type {
   CaptureMode,
 } from "./browserLeasePool.js";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 
 let _puppeteer: PuppeteerNode | undefined;
 
@@ -1105,13 +1106,19 @@ let _cachedVramMb: number | null = null;
 function probeNvidiaVramMb(): number | null {
   if (_cachedVramMb !== null) return _cachedVramMb;
   try {
+    const nvidiaSmi = findTrustedExecutable("nvidia-smi");
+    if (!nvidiaSmi) return null;
     // Synchronous, runs once per process (cached). ~50ms on typical systems.
-    const out = execSync("nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits", {
-      timeout: 3000,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    }).trim();
+    const out = execFileSync(
+      nvidiaSmi,
+      ["--query-gpu=memory.total", "--format=csv,noheader,nounits"],
+      {
+        timeout: 3000,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
+      },
+    ).trim();
     const mb = parseInt(out.split("\n")[0] ?? "", 10);
     if (Number.isFinite(mb) && mb > 0) {
       _cachedVramMb = mb;

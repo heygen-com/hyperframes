@@ -25,6 +25,7 @@ import {
 import { resolve, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { parseArgs } from "node:util";
+import { isIP } from "node:net";
 import crypto from "node:crypto";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -76,6 +77,8 @@ export interface HandlerOptions {
   artifactTtlMs?: number;
   /** Max renders that execute simultaneously. Queued requests wait FIFO. Default: 2. */
   maxConcurrentRenders?: number;
+  /** Extra browser-facing host names (e.g. a proxy's); merged with PRODUCER_ALLOWED_HOSTS. */
+  allowedHosts?: readonly string[];
 }
 
 export interface ServerOptions extends HandlerOptions {
@@ -1033,12 +1036,65 @@ function isCrossOriginBrowserRequest(c: Context): boolean {
   }
 }
 
+function hostnameOf(host: string): string | null {
+  try {
+    return new URL(`http://${host}`).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+/** A rebound page arrives under its own DNS name; IP literals and localhost can't be rebound. */
+function isAllowedBrowserHostname(hostname: string | null, allowed: ReadonlySet<string>): boolean {
+  if (!hostname) return false;
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
+  if (isIP(hostname.replace(/^\[|\]$/g, "")) !== 0) return true;
+  return allowed.has(hostname);
+}
+
+function allowedHostnames(options: HandlerOptions): Set<string> {
+  const fromEnv = (process.env.PRODUCER_ALLOWED_HOSTS ?? "").split(",");
+  const names = new Set<string>();
+  for (const entry of [...(options.allowedHosts ?? []), ...fromEnv]) {
+    const hostname = entry.trim() ? hostnameOf(entry.trim()) : null;
+    if (hostname) names.add(hostname);
+  }
+  return names;
+}
+
+/** Header-less callers (curl, services) pass; a page's POST always carries Origin. */
+function isDisallowedBrowserHost(c: Context, allowed: ReadonlySet<string>): boolean {
+  const origin = c.req.header("origin");
+  if (!origin && !c.req.header("sec-fetch-site")) return false;
+  if (!isAllowedBrowserHostname(hostnameOf(c.req.header("host") ?? ""), allowed)) return true;
+  if (!origin) return false;
+  try {
+    return !isAllowedBrowserHostname(new URL(origin).hostname.toLowerCase(), allowed);
+  } catch {
+    return true;
+  }
+}
+
 /**
  * Create a Hono app with clean public routes for OSS use.
  */
 export function createProducerApp(options: HandlerOptions = {}): Hono {
   const app = new Hono();
   const handlers = createRenderHandlers(options);
+  const allowed = allowedHostnames(options);
+
+  app.use("*", async (c, next) => {
+    if (isDisallowedBrowserHost(c, allowed)) {
+      return c.json(
+        {
+          success: false,
+          error: "Host not allowed. Add it to allowedHosts or PRODUCER_ALLOWED_HOSTS.",
+        },
+        403,
+      );
+    }
+    await next();
+  });
 
   app.post("*", async (c, next) => {
     if (isCrossOriginBrowserRequest(c)) {

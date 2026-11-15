@@ -10,6 +10,7 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { delimiter, dirname, join, posix } from "node:path";
 import { compareVersions } from "compare-versions";
 import { isSafeVersion } from "./safeVersion.js";
+import { originalPath } from "./windowsExeSearch.js";
 
 export type InstallerKind = "npm" | "bun" | "pnpm" | "brew" | "skip";
 
@@ -327,8 +328,8 @@ function resolvedOrNull(path: string): string | null {
 }
 
 /** The first `hyperframes` on PATH that is neither this copy nor another npx/bunx cache copy. */
-function firstGlobalOnPath(self: string | null): string | null {
-  for (const dir of (process.env["PATH"] ?? "").split(delimiter)) {
+function firstGlobalOnPath(self: string | null, pathValue = originalPath()): string | null {
+  for (const dir of pathValue.split(delimiter)) {
     const real = dir ? resolvedOrNull(join(dir, "hyperframes")) : null;
     if (real && real !== self && !isEphemeralExec(real)) return real;
   }

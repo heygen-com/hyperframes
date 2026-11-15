@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { MEDIA_INPUT_ARGS } from "../helpers/mediaExtensions.js";
 import { Hono } from "hono";
 import {
   chmodSync,
@@ -74,7 +75,14 @@ describe("freeze-frame route", () => {
       await res.json();
     expect(res.status).toBe(200);
     const output = calls[0]?.at(-1) ?? "";
-    expect(calls[0]?.slice(0, 5)).toEqual(["-y", "-ss", "2.5", "-i", join(dir, "media/talk.mp4")]);
+    expect(calls[0]?.slice(0, 7)).toEqual([
+      "-y",
+      "-ss",
+      "2.5",
+      ...MEDIA_INPUT_ARGS,
+      "-i",
+      join(dir, "media/talk.mp4"),
+    ]);
     expect(isAtomicTempPath(output)).toBe(true);
     const still = stillOf(output);
     expect(dirname(still)).toBe(join(dir, "assets/freeze"));

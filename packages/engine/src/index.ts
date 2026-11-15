@@ -413,6 +413,7 @@ export {
   NOT_MEDIA_PAYLOAD,
   NotMediaPayloadError,
   assertMediaPayload,
+  playlistLeavesItsFolder,
   fingerprintElementId,
   isNotMediaPayload,
 } from "./utils/notMediaPayload.js";
@@ -432,6 +433,8 @@ export {
   type PublicHttpsTextOptions,
 } from "./utils/urlDownloader.js";
 export { isBlockedNetworkHost } from "./utils/networkPolicy.js";
+export { onRenderRefusal } from "./services/publicNetwork/captureProxy.js";
+export type { RefusedHostClass } from "./services/publicNetwork/publicNetwork.js";
 export {
   runFfmpeg,
   formatFfmpegError,
@@ -566,7 +569,12 @@ export {
   pipeLaunchClosedOnMac,
   sandboxDeniedRemediation,
 } from "./services/sandboxLaunch.js";
-export { launchWithChromeSandboxFallback } from "./services/chromeSandbox.js";
+export {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  launchWithChromeSandboxFallback,
+  type ChromeSandboxHost,
+} from "./services/chromeSandbox.js";
 export {
   VariablesInvalidError,
   type VariablesIssue,

@@ -188,6 +188,13 @@ import { startServer } from "@hyperframes/producer";
 await startServer({ port: 8080 });
 ```
 
+A browser request (one that carries an `Origin` or `Sec-Fetch-Site` header) is accepted
+only under an IP address, `localhost` or a `*.localhost` name, so a page that points its
+own domain at the server cannot start renders or lint. If browsers reach the server
+through a proxy name, list that name in `allowedHosts` or in the comma-separated
+`PRODUCER_ALLOWED_HOSTS` variable. Requests without those headers, such as curl or
+another service, are unaffected.
+
 For larger workloads, the `@hyperframes/producer/distributed` entry exposes the
 three rendering activities—`plan`, `renderChunk`, and `assemble`. Your
 orchestrator remains responsible for dispatch, retries, storage, and networking.
@@ -199,6 +206,11 @@ workers, WebSockets and WebRTC alike, goes through a local proxy that checks eve
 address a name resolves to and connects to the address it checked. A refused request
 fails like any other unreachable asset. Leave it unset for local renders that load
 assets from your own machine or network.
+
+If your network routes a range that is not a private one, such as a cluster's pod range,
+add it with `PRODUCER_NON_PUBLIC_CIDRS`, a comma-separated list like `192.160.0.0/16`. Asset
+downloads and the render browser then refuse those addresses too. A malformed entry
+refuses every address rather than being skipped, and logs a warning.
 
 ## Related topics
 

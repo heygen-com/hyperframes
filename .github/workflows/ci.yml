@@ -113,6 +113,8 @@ jobs:
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
         run: sh scripts/check-large-files.sh --range "$BASE_SHA" HEAD
+      - name: Reject symbolic links outside the allowlist
+        run: node scripts/check-symlinks.mjs
       - name: Find a release-only diff
         id: release
         uses: ./.github/actions/release-only-diff

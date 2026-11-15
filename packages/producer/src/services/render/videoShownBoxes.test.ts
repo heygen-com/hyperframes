@@ -46,15 +46,34 @@ function page(ranges: unknown, error?: Error): Page {
 
 describe("shownBoxTimes", () => {
   it("samples each video from its first frame every 0.25 s to its last frame", () => {
-    expect(shownBoxTimes([video("a", 1, 2)], fps)).toEqual([1, 1.25, 1.5, 1.75, 2 - 1 / 30]);
+    expect(shownBoxTimes([video("a", 1, 2)], fps, 10)).toEqual([1, 1.25, 1.5, 1.75, 2 - 1 / 30]);
   });
 
   it("merges the times of several videos once each, in order", () => {
-    expect(shownBoxTimes([video("a", 0, 0.5), video("b", 0.25, 0.5)], fps)).toEqual([
+    expect(shownBoxTimes([video("a", 0, 0.5), video("b", 0.25, 0.5)], fps, 10)).toEqual([
       0,
       0.25,
       0.5 - 1 / 30,
     ]);
+  });
+
+  it("cuts each window at the composition's end", () => {
+    expect(shownBoxTimes([video("a", 0.5, Number.POSITIVE_INFINITY)], fps, 1)).toEqual([
+      0.5,
+      0.75,
+      1 - 1 / 30,
+    ]);
+    expect(shownBoxTimes([video("a", 0, 1e12)], fps, 0.5)).toEqual([0, 0.25, 0.5 - 1 / 30]);
+  });
+
+  it("returns promptly for a start too large for the stride to advance", () => {
+    expect(shownBoxTimes([video("a", 2 ** 53, 2 ** 54)], fps, 10)).toEqual([]);
+    expect(shownBoxTimes([video("a", Number.NaN, 1)], fps, 10)).toEqual([]);
+  });
+
+  it("puts every video's strides on one grid, so many offset videos add only their own first and last frames", () => {
+    const offset = Array.from({ length: 1000 }, (_, i) => video(`v${i}`, i / 1000, 10));
+    expect(shownBoxTimes(offset, fps, 10).length).toBeLessThanOrEqual(10 / 0.25 + 2 * 1000);
   });
 });
 
@@ -71,6 +90,7 @@ describe("measureLocalShownBoxes", () => {
       ]),
       [video("still", 0, 1), video("zoom", 0, 1)],
       fps,
+      1,
       log,
     );
     expect(Object.fromEntries(boxes!)).toEqual({
@@ -90,6 +110,7 @@ describe("measureLocalShownBoxes", () => {
       page(undefined, new Error("Target closed")),
       [video("clip", 0, 1)],
       fps,
+      1,
       log,
     );
     expect(boxes).toBeUndefined();

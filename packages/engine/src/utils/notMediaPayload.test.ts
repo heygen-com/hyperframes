@@ -7,6 +7,7 @@ import {
   fingerprintElementId,
   isNotMediaPayload,
   NotMediaPayloadError,
+  playlistLeavesItsFolder,
 } from "./notMediaPayload.js";
 
 function writeFixture(name: string, contents: string | Buffer): string {
@@ -173,5 +174,81 @@ describe("assertMediaPayload", () => {
     );
     expect(error.message).toContain("+4");
     expect(error.message.length).toBeLessThan(500);
+  });
+});
+
+describe("playlistLeavesItsFolder", () => {
+  const hls = (...lines: string[]) =>
+    ["#EXTM3U", "#EXT-X-TARGETDURATION:1", ...lines, "#EXT-X-ENDLIST"].join("\n");
+  const concat = (entry: string) => `ffconcat version 1.0\nfile ${entry}\n`;
+
+  it.each([
+    ["an absolute segment", hls("#EXTINF:1,", "/var/renders/other/out.mp4")],
+    ["a segment above its folder", hls("#EXTINF:1,", "../other/out.mp4")],
+    ["an encoded escape", hls("#EXTINF:1,", "%2e%2e/other/out.mp4")],
+    ["a file: segment", hls("#EXTINF:1,", "file:///var/renders/other/out.ts")],
+    [
+      "a key outside its folder",
+      hls('#EXT-X-KEY:METHOD=AES-128,URI="/etc/key.bin"', "#EXTINF:1,", "seg.ts"),
+    ],
+    ["a Windows drive path", hls("#EXTINF:1,", "C:\\renders\\out.mp4")],
+    ["an absolute concat entry", concat("'/var/renders/other/out.mp4'")],
+    ["a concat entry above its folder", concat("../other/out.mp4")],
+    ["a list too long to read whole", hls("#EXTINF:1,\nseg.ts\n".repeat(700_000))],
+  ])("refuses %s", async (_name, contents) => {
+    const file = writeFixture("clip.m3u8", contents);
+    expect(await playlistLeavesItsFolder(file)).toBe(true);
+    expect(await isNotMediaPayload(file)).toBe(true);
+  });
+
+  function writeTree(files: Record<string, string>): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-playlist-tree-"));
+    for (const [name, contents] of Object.entries(files)) {
+      mkdirSync(join(dir, name, ".."), { recursive: true });
+      writeFileSync(join(dir, name), contents);
+    }
+    return join(dir, Object.keys(files)[0]!);
+  }
+
+  it("refuses a list whose nested list names a file outside the top folder", async () => {
+    const master = writeTree({
+      "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
+      "sub/inner.m3u8": hls("#EXTINF:1,", "/var/renders/other/out.mp4"),
+    });
+    expect(await playlistLeavesItsFolder(master)).toBe(true);
+  });
+
+  it("refuses a nested list that steps above the top folder from its own", async () => {
+    const master = writeTree({
+      "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
+      "sub/inner.m3u8": hls("#EXTINF:1,", "../../other/out.mp4"),
+    });
+    expect(await playlistLeavesItsFolder(master)).toBe(true);
+  });
+
+  it("refuses lists nested deeper than it reads", async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 12; i++)
+      files[`l${i}.m3u8`] = `#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nl${i + 1}.m3u8\n`;
+    files["l12.m3u8"] = hls("#EXTINF:1,", "seg.ts");
+    expect(await playlistLeavesItsFolder(writeTree(files))).toBe(true);
+  });
+
+  it("keeps nested lists that stay in the top folder, cycles included", async () => {
+    const master = writeTree({
+      "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
+      "sub/inner.m3u8": hls("#EXTINF:1,", "../seg.ts", "#EXTINF:1,", "../master.m3u8"),
+      "seg.ts": "segment",
+    });
+    expect(await playlistLeavesItsFolder(master)).toBe(false);
+  });
+
+  it.each([
+    ["segments beside it", hls("#EXTINF:1,", "seg0.ts", "#EXTINF:1,", "parts/seg1.ts")],
+    ["https segments", hls("#EXTINF:1,", "https://cdn.example.com/seg0.ts")],
+    ["a concat entry beside it", concat("'part 1.mp4'")],
+    ["a media file", Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])],
+  ])("keeps %s", async (_name, contents) => {
+    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", contents))).toBe(false);
   });
 });
