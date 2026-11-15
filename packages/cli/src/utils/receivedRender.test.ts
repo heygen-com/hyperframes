@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   chmodSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -398,6 +399,67 @@ describe("outsideAssetsAllowed", () => {
           }),
         ).rejects.toThrow(/assets\/scene\.png: it is not an \.html file/);
         expect(decide(dir).allowed).toBe(true);
+      },
+    );
+  });
+
+  describe("another name for a received media file", () => {
+    const MEDIA_PAGE = Buffer.concat([
+      SIGNATURES.png,
+      Buffer.from(
+        `<template><div data-composition-id="scene" data-width="320" data-height="180" data-duration="1">` +
+          `<p>received-scene-marker</p><img src="../outside/pic.png"></div></template>`,
+      ),
+    ]);
+
+    function aliasProject(makeAlias: (target: string, alias: string) => void, alias: string) {
+      const dir = project(received("assets/scene.png"));
+      write(join(dir, "assets", "scene.png"), MEDIA_PAGE);
+      makeAlias(join(dir, "assets", "scene.png"), join(dir, alias));
+      write(
+        join(dir, "index.html"),
+        `<div data-composition-id="main" data-width="320" data-height="180" data-duration="1">` +
+          `<div data-composition-src="${alias}"></div></div>`,
+      );
+      return dir;
+    }
+
+    it.each([
+      ["hardlink", (target: string, alias: string) => linkSync(target, alias)],
+      ["symlink", (target: string, alias: string) => symlinkSync(target, alias)],
+    ])("refuses outside files when a %s with an HTML name reaches it", async (_kind, makeAlias) => {
+      const dir = aliasProject(makeAlias, "scene.html");
+      const compiled = await compileForRender(dir, join(dir, "index.html"), join(dir, ".dl"), {
+        allowOutsideProjectAssets: true,
+      });
+      const rendered = [compiled.html, ...compiled.subCompositions.values()].join("\n");
+      expect(rendered).toContain("received-scene-marker");
+
+      const { allowed, line } = decide(dir);
+      expect(allowed).toBe(false);
+      expect(line).toContain("scene.html is another name for a file that came from someone else");
+    });
+
+    it("keeps outside files when the other name is also a media name", () => {
+      const dir = project(received("assets/scene.png"));
+      write(join(dir, "assets", "scene.png"), SIGNATURES.png);
+      linkSync(join(dir, "assets", "scene.png"), join(dir, "assets", "copy.png"));
+      expect(decide(dir).allowed).toBe(true);
+    });
+
+    it.runIf(process.platform !== "win32")(
+      "refuses outside files when it cannot check every project file",
+      () => {
+        const dir = project(received("assets/in.png"));
+        mkdirSync(join(dir, "locked"));
+        chmodSync(join(dir, "locked"), 0o000);
+        try {
+          const { allowed, line } = decide(dir);
+          expect(allowed).toBe(false);
+          expect(line).toContain("Could not check every project file");
+        } finally {
+          chmodSync(join(dir, "locked"), 0o755);
+        }
       },
     );
   });

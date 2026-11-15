@@ -1,10 +1,18 @@
-import { closeSync, openSync, readSync, realpathSync, statSync } from "node:fs";
-import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
+import {
+  closeSync,
+  openSync,
+  readdirSync,
+  readSync,
+  realpathSync,
+  statSync,
+  type Dirent,
+} from "node:fs";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseHTML } from "linkedom";
 import { isNonRelativeUrl, isPathInside } from "@hyperframes/core";
 import { resolveCompositionSrc } from "@hyperframes/parsers/asset-resolution";
-import { linksOutside, receivedRecordStatus } from "./privateProjectFile.js";
+import { fileIdentity, linksOutside, receivedRecordStatus } from "./privateProjectFile.js";
 
 const REFERENCE_ATTRS = ["src", "href", "poster"];
 const MAX_SCANNED_BYTES = 2 * 1024 * 1024;
@@ -263,7 +271,88 @@ function isMediaFontOrImage(path: string): boolean {
   return bytes !== null && matches !== undefined && matches(bytes);
 }
 
-/** False when the received-files record cannot be read, or lists a received file that is not positively media, a font or an image by extension and leading bytes; the render then reads nothing outside the project, and `warn` says why and names the references it refuses. */
+const ALIAS_WALK_MAX_ENTRIES = 20_000;
+const ALIAS_WALK_MAX_MS = 2_000;
+
+function aliasIdentity(path: string, isLink: boolean): string | null {
+  const target = isLink ? realOrNull(path) : path;
+  return target === null ? null : fileIdentity(target);
+}
+
+function listDir(dir: string): Dirent[] | null {
+  try {
+    return readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+}
+
+function receivedAlias(dir: string, entry: Dirent, received: ReadonlySet<string>): string | null {
+  const path = join(dir, entry.name);
+  if (MEDIA_SIGNATURES[extname(path).toLowerCase()] !== undefined) return null;
+  const identity = aliasIdentity(path, entry.isSymbolicLink());
+  return identity !== null && received.has(identity) ? path : null;
+}
+
+function walkBudget(): (entries: number) => boolean {
+  const deadline = Date.now() + ALIAS_WALK_MAX_MS;
+  let seen = 0;
+  return (entries) => {
+    seen += entries;
+    return seen <= ALIAS_WALK_MAX_ENTRIES && Date.now() <= deadline;
+  };
+}
+
+// Project files whose own identity, or whose link target's, is a received file's, under a name that is not media; null when the walk could not finish.
+function nonMediaAliases(projectDir: string, received: ReadonlySet<string>): string[] | null {
+  const withinBudget = walkBudget();
+  const aliases: string[] = [];
+  const pending = [projectDir];
+  for (let dir = pending.pop(); dir !== undefined; dir = pending.pop()) {
+    const listing = listDir(dir);
+    if (listing === null || !withinBudget(listing.length)) return null;
+    for (const entry of listing) {
+      const alias = entry.isDirectory() ? null : receivedAlias(dir, entry, received);
+      if (entry.isDirectory()) pending.push(join(dir, entry.name));
+      if (alias !== null) aliases.push(alias);
+    }
+  }
+  return aliases;
+}
+
+interface Refusal {
+  reason: string;
+  alwaysWarn: boolean;
+}
+
+const READS_NOTHING_OUTSIDE = "so the render reads nothing outside the project.";
+
+function receivedRefusal(
+  projectDir: string,
+  record: { path: string; listed: string[] | null },
+): Refusal | null {
+  const shown = (path: string) => relative(realOrNull(projectDir) ?? projectDir, path);
+  if (record.listed === null) {
+    return { reason: `Could not read ${record.path}, ${READS_NOTHING_OUTSIDE}`, alwaysWarn: true };
+  }
+  const nonMedia = record.listed.find((path) => !isMediaFontOrImage(path));
+  if (nonMedia !== undefined) {
+    const reason = `${shown(nonMedia)} came from someone else and is not a media, font or image file, ${READS_NOTHING_OUTSIDE}`;
+    return { reason, alwaysWarn: false };
+  }
+  const received = new Set(record.listed.flatMap((path) => fileIdentity(path) ?? []));
+  const aliases = nonMediaAliases(projectDir, received);
+  if (aliases === null) {
+    const reason = `Could not check every project file for another name of a received file, ${READS_NOTHING_OUTSIDE}`;
+    return { reason, alwaysWarn: true };
+  }
+  const [alias] = aliases;
+  if (alias === undefined) return null;
+  const reason = `${shown(alias)} is another name for a file that came from someone else, ${READS_NOTHING_OUTSIDE}`;
+  return { reason, alwaysWarn: false };
+}
+
+/** False when the received-files record cannot be read, lists a received file that is not positively media, a font or an image by extension and leading bytes, or a project file reaches a received file under another kind of name; `warn` then says why and names the references outside the project it refuses. */
 export function outsideAssetsAllowed(
   projectDir: string,
   entryFile: string | undefined,
@@ -271,18 +360,9 @@ export function outsideAssetsAllowed(
 ): boolean {
   const absProjectDir = resolve(projectDir);
   const record = receivedRecordStatus(absProjectDir);
-  if (record === null) return true;
-  const referencing = record.listed?.find((path) => !isMediaFontOrImage(path));
-  if (record.listed !== null && referencing === undefined) return true;
+  const refusal = record === null ? null : receivedRefusal(absProjectDir, record);
+  if (refusal === null) return true;
   const refused = refusedReferences(outsideReferences(absProjectDir, entryFile ?? "index.html"));
-  if (referencing === undefined) {
-    warn(
-      `Could not read ${record.path}, so the render treats the project as received and reads nothing outside it.${refused}`,
-    );
-  } else if (refused !== "") {
-    warn(
-      `${relative(realOrNull(absProjectDir) ?? absProjectDir, referencing)} came from someone else and is not a media, font or image file, so the render reads nothing outside the project.${refused}`,
-    );
-  }
+  if (refusal.alwaysWarn || refused !== "") warn(`${refusal.reason}${refused}`);
   return false;
 }

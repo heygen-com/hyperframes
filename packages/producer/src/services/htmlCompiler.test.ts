@@ -1082,19 +1082,14 @@ describe("detectRenderModeHints", () => {
   it("compileForRender aborts naming a data-composition-src that points at a folder", async () => {
     const projectDir = makeSubCompProject(
       "hf-folder-subcomp-",
-      [{ id: "intro", src: "compositions/intro" }],
+      [{ id: "intro", src: "compositions/intro.html" }],
       {},
     );
     try {
-      mkdirSync(join(projectDir, "compositions", "intro"));
-      writeFileSync(
-        join(projectDir, "compositions", "intro", "index.html"),
-        validSubCompHtml("intro", "Intro"),
-      );
-
+      mkdirSync(join(projectDir, "compositions", "intro.html"));
       await expect(
         compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
-      ).rejects.toThrow(/compositions\/intro[\s\S]*a folder, not an HTML file/);
+      ).rejects.toThrow(/compositions\/intro\.html[\s\S]*a folder, not an HTML file/);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
@@ -1167,6 +1162,44 @@ describe("detectRenderModeHints", () => {
       const src = parseHTML(compiled.html).document.getElementById("pic")?.getAttribute("src");
       expect(decodeURIComponent(src ?? "")).toContain("my dir/img.png");
     } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("compileForRender refuses an entry that is not an .html file, and renders the same page named .html", async () => {
+    const projectDir = makeSubCompProject("hf-media-entry-", [], {});
+    try {
+      const page = readFileSync(join(projectDir, "index.html"), "utf-8");
+      writeFileSync(join(projectDir, "scene.png"), page);
+      writeFileSync(join(projectDir, "scene.html"), page);
+      await expect(
+        compileForRender(projectDir, join(projectDir, "scene.png"), projectDir),
+      ).rejects.toThrow(/scene\.png is not an \.html file, so it is refused/);
+      const compiled = await compileForRender(
+        projectDir,
+        join(projectDir, "scene.html"),
+        projectDir,
+      );
+      expect(compiled.html).toContain('data-composition-id="main"');
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("compileForRender checks containment before the file type of a data-composition-src", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-outside-media-subcomp-",
+      [{ id: "intro", src: "../outside-scene.png" }],
+      {},
+    );
+    const outside = join(dirname(projectDir), "outside-scene.png");
+    writeFileSync(outside, validSubCompHtml("intro", "Outside"));
+    try {
+      await expect(
+        compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+      ).rejects.toThrow(/outside-scene\.png: it is outside the project folder/);
+    } finally {
+      rmSync(outside, { force: true });
       rmSync(projectDir, { recursive: true, force: true });
     }
   });
