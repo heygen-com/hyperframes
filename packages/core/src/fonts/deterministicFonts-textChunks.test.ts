@@ -113,10 +113,10 @@ describe("Google Fonts text= past one request's budget", () => {
     });
   }
 
-  async function render(body: string) {
+  async function render(body: string, style = "") {
     const { fetchImpl, cssUrls } = googleFetch();
     const html = await injectDeterministicFontFaces(
-      `<!doctype html><html><head><style>h1 { font-family: "Hf Chunk Test", serif; }</style></head><body><h1>${body}</h1></body></html>`,
+      `<!doctype html><html><head><style>h1 { font-family: "Hf Chunk Test", serif;${style} }</style></head><body><h1>${body}</h1></body></html>`,
       { fetchImpl, allowSystemFontCapture: false },
     );
     return { html, cssUrls };
@@ -145,6 +145,29 @@ describe("Google Fonts text= past one request's budget", () => {
       String.fromCodePoint(0x0400 + index),
     ).join("");
     const { cssUrls } = await render(cyrillic);
+
+    expect(cssUrls.map((url) => url.searchParams.has("text"))).toEqual([false]);
+  });
+
+  it.each([
+    ["Hangul syllable + trailing jamo", "\uAC00\u11A8", "\uAC01"],
+    ["Latin + combining acute", "a\u0301", "\u00E1"],
+    ["kana + combining dakuten", "\u30AB\u3099", "\u30AC"],
+    ["half-width kana + dakuten", "\uFF76\uFF9E", "\uFF76"],
+  ])(
+    "keeps a composing cluster and its composed form in one face: %s",
+    async (_, cluster, composed) => {
+      const { html } = await render(`${CJK}${cluster}`);
+
+      const owner = faceOwning(html, [...cluster][0]!);
+      expect(owner).toBeGreaterThanOrEqual(0);
+      for (const character of [...cluster, composed])
+        expect(faceOwning(html, character)).toBe(owner);
+    },
+  );
+
+  it("asks for the whole family when a text-transform draws characters the page does not contain", async () => {
+    const { cssUrls } = await render(CJK, " text-transform: full-width;");
 
     expect(cssUrls.map((url) => url.searchParams.has("text"))).toEqual([false]);
   });

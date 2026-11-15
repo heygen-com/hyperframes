@@ -1936,30 +1936,30 @@ type PageText = readonly string[];
 // pairs, combining marks) stays in the first run, so text that shapes together shares one face.
 const STANDALONE_CHARACTER_RE =
   /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\uAC00-\uD7A3]$/u;
-// A standalone character a mark or variation selector attaches to must share that mark's face.
-const ATTACHED_CHARACTER_RE =
-  /([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\uAC00-\uD7A3])(?=[\p{M}\uFE00-\uFE0F\u{E0100}-\u{E01EF}])/gu;
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 function encodedLength(text: string): number {
   return encodeURIComponent(text).length;
 }
 
-/** Undefined when the characters that must share one face do not fit one request: the whole family, as before. */
-function pageTextRuns(
-  characters: readonly string[],
-  sources: readonly string[],
-): PageText | undefined {
-  if (characters.length === 0) return undefined;
-  const attached = new Set(
-    sources.flatMap((text) => [...text.matchAll(ATTACHED_CHARACTER_RE)].map((m) => m[1]!)),
-  );
-  const isLoose = (character: string) =>
-    STANDALONE_CHARACTER_RE.test(character) && !attached.has(character);
-  let run = characters.filter((character) => !isLoose(character)).join("");
-  if (encodedLength(run) > GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH) return undefined;
+/** Characters of every cluster that composes (가+ᆨ, a+◌́, ｶﾞ), with each form the browser may draw it with. */
+function composingCharacters(sources: readonly string[]): Set<string> {
+  const pinned = new Set<string>();
+  for (const text of sources) {
+    for (const { segment } of GRAPHEMES.segment(text)) {
+      const composed = segment.normalize("NFC");
+      if (composed === segment && [...segment].length === 1) continue;
+      for (const character of segment + composed + segment.normalize("NFD")) pinned.add(character);
+    }
+  }
+  return pinned;
+}
+
+function packRuns(first: string, rest: readonly string[]): string[] {
   const runs: string[] = [];
+  let run = first;
   let length = encodedLength(run);
-  for (const character of characters.filter(isLoose)) {
+  for (const character of rest) {
     const size = encodedLength(character);
     if (run && length + size > GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH) {
       runs.push(run);
@@ -1971,6 +1971,25 @@ function pageTextRuns(
   }
   runs.push(run);
   return runs;
+}
+
+/** Undefined when the characters that must share one face do not fit one request: the whole family, as before. */
+function pageTextRuns(
+  characters: readonly string[],
+  sources: readonly string[],
+  transformed: boolean,
+): PageText | undefined {
+  if (characters.length === 0) return undefined;
+  const whole = characters.join("");
+  if (encodedLength(whole) <= GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH) return [whole];
+  // A text-transform draws characters the page source does not contain, so no split is safe.
+  if (transformed) return undefined;
+  const pinned = composingCharacters(sources);
+  const isLoose = (character: string) =>
+    STANDALONE_CHARACTER_RE.test(character) && !pinned.has(character);
+  const first = [...new Set([...characters.filter((c) => !isLoose(c)), ...pinned])].join("");
+  if (encodedLength(first) > GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH) return undefined;
+  return packRuns(first, characters.filter(isLoose));
 }
 
 const SMALL_TO_FULL_KANA: ReadonlyMap<string, string> = new Map([
@@ -2095,11 +2114,12 @@ function extractGoogleFontsText(html: string): PageText | undefined {
     }
   }
 
-  if (hasTextTransformKeyword(html, FULL_WIDTH_KEYWORD_RE)) addFullwidthVariants(uniqueCharacters);
-  if (hasTextTransformKeyword(html, FULL_SIZE_KANA_KEYWORD_RE))
-    addFullSizeKanaVariants(uniqueCharacters);
+  const fullWidth = hasTextTransformKeyword(html, FULL_WIDTH_KEYWORD_RE);
+  const fullSizeKana = hasTextTransformKeyword(html, FULL_SIZE_KANA_KEYWORD_RE);
+  if (fullWidth) addFullwidthVariants(uniqueCharacters);
+  if (fullSizeKana) addFullSizeKanaVariants(uniqueCharacters);
 
-  return pageTextRuns([...uniqueCharacters], [html, decodedBodyText]);
+  return pageTextRuns([...uniqueCharacters], [html, decodedBodyText], fullWidth || fullSizeKana);
 }
 
 function resolveFontFetchRetryPolicy(
