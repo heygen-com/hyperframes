@@ -324,9 +324,15 @@ function summarizeEvent(
 
 let runtimeEnvPrimed = false;
 function primeRuntimeEnv(): void {
+  restrictPageNetworkByDefault();
   if (runtimeEnvPrimed) return;
   runtimeEnvPrimed = true;
   useBundledBinaries(process.env.LAMBDA_TASK_ROOT ?? "/var/task");
+}
+
+/** Render pages reach only public addresses unless the function sets PRODUCER_RESTRICT_PAGE_NETWORK=false. */
+function restrictPageNetworkByDefault(env: NodeJS.ProcessEnv = process.env): void {
+  if (!env.PRODUCER_RESTRICT_PAGE_NETWORK?.trim()) env.PRODUCER_RESTRICT_PAGE_NETWORK = "true";
 }
 
 const BUNDLED_FF_BINARIES = [

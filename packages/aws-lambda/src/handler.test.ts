@@ -47,6 +47,7 @@ import {
   useBundledBinaries,
 } from "./handler.js";
 import { S3PlanV2ArtifactPublisher } from "./s3PlanV2Publisher.js";
+import { resolveRestrictPageNetwork } from "../../engine/src/config.js";
 
 interface FakeS3Op {
   kind: "download" | "upload" | "copy";
@@ -260,6 +261,25 @@ describe("unwrapEvent", () => {
     expect(() => unwrapEvent({ Action: "doSomething" } as unknown as LambdaEvent)).toThrow(
       /no recognised Action/,
     );
+  });
+});
+
+describe("render page address rules", () => {
+  it("are on for every invocation unless the function turns them off", async () => {
+    const before = process.env.PRODUCER_RESTRICT_PAGE_NETWORK;
+    try {
+      delete process.env.PRODUCER_RESTRICT_PAGE_NETWORK;
+      await handleEvent({ Action: "warm" } as never, { skipChromeResolution: true });
+      expect(process.env.PRODUCER_RESTRICT_PAGE_NETWORK).toBe("true");
+      expect(resolveRestrictPageNetwork()).toBe(true);
+
+      process.env.PRODUCER_RESTRICT_PAGE_NETWORK = "false";
+      await handleEvent({ Action: "warm" } as never, { skipChromeResolution: true });
+      expect(resolveRestrictPageNetwork()).toBe(false);
+    } finally {
+      if (before === undefined) delete process.env.PRODUCER_RESTRICT_PAGE_NETWORK;
+      else process.env.PRODUCER_RESTRICT_PAGE_NETWORK = before;
+    }
   });
 });
 
