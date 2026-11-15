@@ -214,6 +214,7 @@ describe("runAudioStage", () => {
         ffmpegProcessTimeout: 3_600_000,
         audioGain: 1,
         keepEncoderInputAt: expect.stringMatching(/audio-source\.wav$/),
+        assetRoots: expect.any(Array),
       },
       expect.any(String),
     );
@@ -268,6 +269,7 @@ describe("runAudioStage", () => {
         audioGain: 1,
         masterFxChain: chain,
         keepEncoderInputAt: expect.stringMatching(/audio-source\.wav$/),
+        assetRoots: expect.any(Array),
       },
       expect.any(String),
     );

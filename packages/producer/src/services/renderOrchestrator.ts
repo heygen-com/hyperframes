@@ -3749,6 +3749,7 @@ async function executeRenderPipeline(input: {
           audioGain: cfg.audioGain,
           audios: composition.audios,
           masterFxChain: composition.masterFxChain,
+          allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
           abortSignal: executionSignal,
           assertNotAborted,
           log,

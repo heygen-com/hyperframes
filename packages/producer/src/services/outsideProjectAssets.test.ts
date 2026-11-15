@@ -17,7 +17,12 @@ import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolveConfig } from "@hyperframes/engine";
 import { runCompileStage } from "./render/stages/compileStage.js";
-import { runExtractVideosStage } from "./render/stages/extractVideosStage.js";
+import {
+  appendVideoAudioFromProbe,
+  runExtractVideosStage,
+} from "./render/stages/extractVideosStage.js";
+import { runAudioStage } from "./render/stages/audioStage.js";
+import { collectRenderMedia } from "./renderMediaCollector.js";
 import { createRenderJob } from "./renderOrchestrator.js";
 import { createFileServer } from "./fileServer.js";
 import { plan } from "./distributed/plan.js";
@@ -99,7 +104,10 @@ function outsideProject(media: boolean) {
     video("dotdot", "../outside/clip.mp4"),
     video("encoded", "..%2Foutside%2Fclip.mp4"),
     video("remote", "https://media.example.com/clip.mp4"),
+    video("data-scheme", "data:x/../../outside/clip.mp4"),
+    video("blob-scheme", "BLOB:a/../../outside/clip.mp4"),
     `<audio id="tone" src="../outside/clip.mp4" data-start="0" data-duration="1"></audio>`,
+    `<audio id="tone-scheme" src="Data:x/../../outside/clip.mp4" data-start="0" data-duration="1"></audio>`,
   ].join("");
   writeFileSync(
     join(projectDir, "index.html"),
@@ -227,9 +235,10 @@ describe.skipIf(!HAS_FFMPEG)("render servers keep markup inside the project", ()
     ).toEqual([]);
     expect(existsSync(join(compiledDir, "hf-ext"))).toBe(false);
     expect(result.composition.videos.map((video) => video.id)).toEqual(["remote"]);
-    expect(result.composition.audios.filter((audio) => audio.id === "tone")).toEqual([]);
+    expect(result.composition.audios.filter((audio) => audio.id.startsWith("tone"))).toEqual([]);
     expect(result.composition.images).toEqual([]);
-    for (const id of ["absolute", "fileurl", "dotdot", "encoded", "tone"]) {
+    const dropped = ["absolute", "fileurl", "dotdot", "encoded", "data-scheme", "blob-scheme"];
+    for (const id of [...dropped, "tone", "tone-scheme"]) {
       expect(warnings.some((line) => line.includes(`"${id}" source is missing`))).toBe(true);
     }
     expect(extracted.extractionResult?.extracted.map((frames) => frames.videoId)).toEqual([
@@ -353,5 +362,77 @@ describe.skipIf(!HAS_FFMPEG)("render servers keep markup inside the project", ()
     const linked = symlinkedComposition("scene");
     const { result } = await compileInProcess(linked.projectDir, true);
     expect(result.compiled.html).toContain("OUTSIDE-SCENE");
+  });
+});
+
+// These sources skip the earlier filters on purpose: each reader must refuse them on its own.
+describe.skipIf(!HAS_FFMPEG)("render readers open nothing outside the project", () => {
+  const escaping = (file: string) => [
+    `data:x/../../outside/${file}`,
+    `BLOB:a/../../outside/${file}`,
+  ];
+  const videos = escaping("clip.mp4")
+    .map(
+      (src, i) =>
+        `<video id="v${i}" src="${src}" data-start="0" data-duration="1" data-has-audio="true"></video>`,
+    )
+    .join("");
+
+  function reachedReaders(media: string) {
+    const { root, projectDir, outsideDir } = outsideProject(false);
+    const workDir = join(root, "work");
+    const compiledDir = join(workDir, "compiled");
+    mkdirSync(compiledDir, { recursive: true });
+    const collected = collectRenderMedia(
+      `<div data-composition-id="root" data-width="320" data-height="240" data-duration="1">${media}</div>`,
+    );
+    const composition = { ...collected, duration: 1, width: 320, height: 240 };
+    tool.calls.length = 0;
+    const openedOutside = () => tool.calls.filter((call) => call.includes(outsideDir));
+    return { projectDir, workDir, compiledDir, composition, openedOutside };
+  }
+
+  it.each(["force-sdr", "auto"] as const)(
+    "video frame extraction and HDR probes (hdrMode %s)",
+    async (hdrMode) => {
+      const images = escaping("secret.png")
+        .map((src, i) => `<img id="i${i}" src="${src}" data-start="0" data-duration="1">`)
+        .join("");
+      const { projectDir, compiledDir, composition, openedOutside } = reachedReaders(
+        videos + images,
+      );
+      expect(composition.videos).toHaveLength(2);
+      expect(composition.images).toHaveLength(2);
+      const job = createRenderJob({ fps: { num: 30, den: 1 }, quality: "draft", hdrMode });
+      const log = { error() {}, info() {}, debug() {}, warn() {} };
+      await runExtractVideosStage({
+        ...{ projectDir, compiledDir, job, cfg: resolveConfig(), log, composition },
+        ...{ abortSignal: undefined, assertNotAborted: () => {} },
+      }).catch(() => undefined);
+      expect(openedOutside()).toEqual([]);
+    },
+  );
+
+  it("audio probes of video sound", async () => {
+    const { projectDir, compiledDir, composition, openedOutside } = reachedReaders(videos);
+    composition.audios.length = 0;
+    await appendVideoAudioFromProbe({ projectDir, compiledDir, composition });
+    expect(openedOutside()).toEqual([]);
+    expect(composition.audios).toEqual([]);
+  });
+
+  it("audio mix", async () => {
+    const audios = escaping("clip.mp4")
+      .map((src, i) => `<audio id="a${i}" src="${src}" data-start="0" data-duration="1"></audio>`)
+      .join("");
+    const { projectDir, workDir, compiledDir, composition, openedOutside } = reachedReaders(audios);
+    expect(composition.audios).toHaveLength(2);
+    const result = await runAudioStage({
+      ...{ projectDir, workDir, compiledDir, audios: composition.audios },
+      ...{ totalFrames: 30, fps: { num: 30, den: 1 }, ffmpegProcessTimeout: 30_000, audioGain: 1 },
+      ...{ abortSignal: undefined, assertNotAborted: () => {} },
+    });
+    expect(openedOutside()).toEqual([]);
+    expect(result.hasAudio).toBe(false);
   });
 });
