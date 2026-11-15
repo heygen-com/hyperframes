@@ -112,6 +112,7 @@ import {
   localVideos,
   probeHeldVideo,
   projectLocalFile,
+  projectVideoFile,
   type HeldVideoProbe,
 } from "./snapshotHeldVideos.js";
 import type { Example } from "./_examples.js";
@@ -1015,12 +1016,12 @@ export async function captureSnapshots(
   const fps = compositionFps(html);
   const heldVideoIds = localVideoRenderIds(html);
   const heldProbes = new Map<string, Promise<HeldVideoProbe>>();
-  const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
 
   const savedPaths: string[] = [];
   let pairSheetFailure: string | null = null;
 
   try {
+    const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
     const {
       browser: chromeBrowser,
       page,
@@ -1217,6 +1218,21 @@ export async function captureSnapshots(
         remoteCopies.set(href, copy);
         return copy;
       };
+      const projectVideos = new Map<string, ReturnType<typeof projectVideoFile>>();
+      const checkedProjectVideo = (src: string): ReturnType<typeof projectVideoFile> => {
+        const known = projectVideos.get(src);
+        if (known) return known;
+        const checked = projectVideoFile(projectDir, src).then((project) => {
+          if (project?.refused) {
+            const message = `${relative(projectDir, project.file)} is not media: a document, a pipe or device, or a playlist naming files outside its folder`;
+            warnings.push(message);
+            console.warn(`   ${c.warn("⚠")} ${message}`);
+          }
+          return project;
+        });
+        projectVideos.set(src, checked);
+        return checked;
+      };
       const shouldUseVp9AlphaDecoder = (filePath: string): Promise<boolean> => {
         if (!extractMediaMetadata) return Promise.resolve(false);
         const cached = alphaDecoderCache.get(filePath);
@@ -1335,9 +1351,13 @@ export async function captureSnapshots(
               // since headless Chrome can't seek them and they would render blank.
               let ffmpegInput: string | null = null;
               let inputIsLocal = false;
-              const projectFile = projectLocalFile(projectDir, v.src);
-              if (projectFile) {
-                ffmpegInput = projectFile;
+              const project = await checkedProjectVideo(v.src);
+              if (project?.refused) {
+                unreadVideoFrames += 1;
+                return null;
+              }
+              if (project) {
+                ffmpegInput = project.file;
                 inputIsLocal = true;
               } else {
                 try {

@@ -18,6 +18,7 @@ import { isUnderCompositions, resolveLintTarget } from "../utils/project.js";
 import { trackLintRun } from "../telemetry/lintRun.js";
 import { getRunId } from "../telemetry/runId.js";
 import { withMeta } from "../utils/updateCheck.js";
+import { terminalText } from "../utils/terminalText.js";
 
 export default defineCommand({
   meta: {
@@ -96,7 +97,9 @@ export default defineCommand({
       const fileCount = lintResult.results.length;
       const fileLabel =
         fileCount === 1 ? (lintResult.results[0]?.file ?? "index.html") : `${fileCount} files`;
-      console.log(`${c.accent("◆")}  Linting ${c.accent(`${project.name}/${fileLabel}`)}`);
+      console.log(
+        `${c.accent("◆")}  Linting ${c.accent(terminalText(`${project.name}/${fileLabel}`))}`,
+      );
       if (unmounted.length > 0) console.log(c.dim(unmountedNotice(unmounted.length)));
       console.log();
 

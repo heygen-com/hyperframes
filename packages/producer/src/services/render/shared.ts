@@ -60,6 +60,10 @@ export interface CompositionMetadata {
  * slightly different `end` / `mediaStart` / `volume` than the compiled
  * HTML and we want to ignore sub-millisecond float noise.
  */
+export function audioWorkDir(workDir: string): string {
+  return join(workDir, "audio-work");
+}
+
 export const BROWSER_MEDIA_EPSILON = 0.0001;
 
 /**

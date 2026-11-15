@@ -14,7 +14,8 @@ import { parseHTML } from "linkedom";
 import AdmZip from "adm-zip";
 import type { Ignore } from "ignore";
 import { projectIgnore } from "@hyperframes/lint";
-import { CSS_URL_RE, isNonRelativeUrl, isPathInside, rewriteSrcsetUrls } from "@hyperframes/core";
+import { isNonRelativeUrl, isPathInside, rewriteSrcsetUrls } from "@hyperframes/core";
+import { cssUrlMatches, replaceMatches } from "@hyperframes/parsers/css-url-scans";
 import { decodeUrlPathVariants, encodeUrlPath } from "@hyperframes/parsers";
 import { buildAuthHeaders } from "../auth/client.js";
 import { tryResolveCredential } from "../auth/index.js";
@@ -580,7 +581,7 @@ export function rewriteCssUrls(
   resolveTarget: HtmlAttributeResolver,
 ): { css: string; modified: boolean } {
   let modified = false;
-  const rewritten = css.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+  const rewritten = replaceMatches(css, cssUrlMatches(css), (full, quote, rawUrl) => {
     const target = resolveTarget((rawUrl || "").trim(), referrerAbsDir);
     if (!target) return full;
     modified = true;

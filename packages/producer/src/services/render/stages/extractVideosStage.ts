@@ -52,6 +52,10 @@ import {
   resolveVideoExtractionWindow,
   isHttpUrl,
   assertPublicHttpsUrl,
+  downloadToTemp,
+  resolveRestrictPageNetwork,
+  isUrlNotPermittedError,
+  writeUrlDownloadTelemetry,
   resolveProjectRelativeSrc,
   runVideoExtractionWithRetry,
   safeVideoExtractionSourceIdentity,
@@ -102,6 +106,7 @@ export interface ExtractVideosStageInput {
   shownBoxes?: ReadonlyMap<string, ShownBox>;
   skipFrameExtractionIds?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+  audioDownloadDir?: string;
   onProgress?: ProgressCallback;
 }
 
@@ -428,6 +433,7 @@ export async function runExtractVideosStage(
     deferRangeExtraction,
     shownBoxes,
     urlByAbsentLocalPath,
+    audioDownloadDir,
     skipFrameExtractionIds = [],
   } = input;
 
@@ -530,7 +536,15 @@ export async function runExtractVideosStage(
   }
 
   if (skipFrameExtractionIds.length > 0) {
-    await appendVideoAudioFromProbe({ projectDir, compiledDir, composition, urlByAbsentLocalPath });
+    await appendVideoAudioFromProbe({
+      projectDir,
+      compiledDir,
+      composition,
+      urlByAbsentLocalPath,
+      downloadDir: audioDownloadDir,
+      signal: abortSignal,
+      log,
+    });
     videoReadinessSkipIds = [...skipFrameExtractionIds];
   } else if (composition.videos.length > 0) {
     const totalVideos = composition.videos.length;
@@ -653,28 +667,60 @@ function isPublicHttpsUrl(url: string): boolean {
   }
 }
 
-/**
- * The audio-only form of the extract stage: which videos carry sound takes a probe per source, not their frames.
- * Each video is moved to its extraction window first, as extraction does, so its sound lands where its picture does.
- */
-export async function appendVideoAudioFromProbe(input: {
+interface VideoAudioProbeInput {
   projectDir: string;
   compiledDir: string;
   composition: CompositionMetadata;
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
-}): Promise<void> {
-  const { projectDir, compiledDir, composition, urlByAbsentLocalPath } = input;
+  /** Where a composition URL is downloaded before probing on a render service: the mixer's work folder, so the mix reuses it. */
+  downloadDir?: string;
+  signal?: AbortSignal;
+  log?: ProducerLogger;
+}
+
+function localProbeSource(src: string, input: VideoAudioProbeInput): string | null {
+  const path = resolveProjectRelativeSrc(src, input.projectDir, input.compiledDir);
+  const readFrom = input.urlByAbsentLocalPath?.get(path) ?? path;
+  return isHttpUrl(readFrom) || existsSync(readFrom) ? readFrom : null;
+}
+
+/** On a render service a composition URL is fetched under the download address rules and probed from that copy. */
+async function remoteProbeSource(
+  video: CompositionMetadata["videos"][number],
+  input: VideoAudioProbeInput,
+): Promise<string | null> {
+  if (!isPublicHttpsUrl(video.src)) return null;
+  if (!resolveRestrictPageNetwork()) return video.src;
+  if (!video.hasAudio || video.hidden) return null;
+  const downloadDir = input.downloadDir ?? join(input.compiledDir, REMOTE_MEDIA_SUBDIR);
+  try {
+    return await downloadToTemp(video.src, downloadDir, undefined, input.signal, undefined, {
+      onTelemetry: writeUrlDownloadTelemetry,
+    });
+  } catch (error) {
+    if (!isUrlNotPermittedError(error)) throw error;
+    input.log?.warn("Video sound skipped: its URL is outside the download address rules", {
+      videoId: video.id,
+    });
+    return null;
+  }
+}
+
+/**
+ * The audio-only form of the extract stage: which videos carry sound takes a probe per source, not their frames.
+ * Each video is moved to its extraction window first, as extraction does, so its sound lands where its picture does.
+ */
+export async function appendVideoAudioFromProbe(input: VideoAudioProbeInput): Promise<void> {
+  const { composition } = input;
   const videos = composition.videos.filter(
     (video) => !isVideoPastTimelineEnd(video, composition.duration),
   );
   const probed = await Promise.all(
     videos.map(async (video) => {
-      if (isHttpUrl(video.src) && !isPublicHttpsUrl(video.src)) return null;
-      const path = isHttpUrl(video.src)
-        ? video.src
-        : resolveProjectRelativeSrc(video.src, projectDir, compiledDir);
-      const readFrom = urlByAbsentLocalPath?.get(path) ?? path;
-      if (!isHttpUrl(readFrom) && !existsSync(readFrom)) return null;
+      const readFrom = isHttpUrl(video.src)
+        ? await remoteProbeSource(video, input)
+        : localProbeSource(video.src, input);
+      if (readFrom === null) return null;
       const metadata = await extractMediaMetadata(readFrom);
       const window = await resolveFinalFrameExtractionWindow(
         readFrom,

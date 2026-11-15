@@ -620,7 +620,7 @@ npx hyperframes media-treatment --selector '#hero' --clear
 | `--capability <id>`    | Inspect one family, control, effect, preset, or palette               |
 | `--all`                | Print the exhaustive capability catalog                               |
 | `--project <dir>`      | Project directory (default: current directory)                        |
-| `--file <path>`        | Composition file (default `index.html`)                               |
+| `--file <path>`        | Composition file; omit to find the selector across mounted scenes      |
 | `--selector <css>`     | CSS selector; every matched `<img>`, `<video>` or `<canvas>` gets the patch |
 | `--selector-index <n>` | Zero-based match index to patch only one of several matches           |
 | `--grading <json>`     | Validated colour-grading patch                                        |
@@ -629,6 +629,11 @@ npx hyperframes media-treatment --selector '#hero' --clear
 | `--clear`              | Remove colour grading from the target                                 |
 | `--dry-run`            | Validate and report without writing                                   |
 | `--json`               | Agent-readable JSON                                                   |
+
+Without `--file`, the command searches `index.html` and every scene it mounts,
+including scenes nested inside another scene's `<template>`. It edits the file
+that contains the matching clip. If the selector matches in more than one file,
+pass `--file` to choose one.
 
 `--dry-run` accepts `--grading` without `--apply` and writes nothing. JSON includes `count`, `attribute`, the exact normalized `value` that apply would write (or `null` to remove it), and `lint`, the color-grading lint verdict and findings for the proposed HTML. When the selector matches several elements, each gets the patch merged into its own current grading, and JSON lists them under `targets` (each with its own `value`) instead of a single `value`; run `--clear` first for an identical look. Matches come from the main document or, when it has none, from the first `<template>` that has any, the same scope rule as Studio's source edits.
 
@@ -1011,6 +1016,10 @@ npx hyperframes normalize-audio --reference target-audio --target user-audio --j
 ```
 
 `--reference` and `--target` are `<audio>` element ids, with or without `#`.
+The command finds them in `index.html` and its mounted scenes, including scenes
+nested inside another scene's `<template>`. An id declared in more than one file
+is rejected; `--write` changes only the file that contains the target clip.
+
 The reference stays unchanged; the command accounts for both clips' current
 `data-volume` and writes the target's absolute matched gain. It measures
 `data-media-start` and `data-duration` and rejects remote or out-of-project sources.
@@ -1072,6 +1081,15 @@ the CLI itself, or when you set `HYPERFRAMES_LOCAL_STUDIO=1`; a Studio in the
 project's own `node_modules` is not used otherwise.
 `--background` works with the embedded server only.
 
+The preview server answers only the host names it serves. To open it through
+a tunnel, Codespaces or a reverse proxy, name that host in
+`HYPERFRAMES_PREVIEW_ALLOWED_HOSTS` (comma separated). A refused request
+answers 403 with the host named and this variable as the fix:
+
+```bash
+HYPERFRAMES_PREVIEW_ALLOWED_HOSTS=demo.tunnels.example hyperframes preview
+```
+
 The CLI ships GSAP, CustomEase, and MotionPathPlugin, so the GSAP scripts
 Studio adds to previews load from the preview server itself, not from jsDelivr.
 To use your own mirror instead, set `HYPERFRAMES_GSAP_BASE_URL` before starting
@@ -1104,6 +1122,17 @@ npx hyperframes present [dir] --port 3004
 `play` opens a composition in the lightweight Player instead of Studio — no
 editor, just playback. Same flags, `--port` defaults to 3003, plus `--proxy` /
 `--no-proxy`.
+
+Both listen on every network interface, so a phone or another computer on your
+network can open them at this machine's LAN address or `.local` name. They
+answer `localhost`, loopback addresses, and this machine's own addresses and
+names. Any other host name, such as a tunnel, Codespaces or a reverse proxy,
+gets a 403 until you name it in `HYPERFRAMES_PREVIEW_ALLOWED_HOSTS`, the same
+setting `preview` uses:
+
+```bash
+HYPERFRAMES_PREVIEW_ALLOWED_HOSTS=demo.tunnels.example hyperframes present
+```
 
 ### `publish`
 

@@ -305,6 +305,7 @@ export async function serveStaticProjectHtml(
 
   // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
     const url = req.url ?? "/";
     if (url === "/" || url === "/index.html") {
       res.writeHead(200, { "Content-Type": getMimeType("index.html") });

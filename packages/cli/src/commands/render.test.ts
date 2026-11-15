@@ -124,9 +124,17 @@ vi.mock("../utils/producer.js", () => ({
       }),
     ),
     renderConfigFromRequest: vi.fn(
-      (request: { options: Record<string, unknown> }, runtime: { logger?: unknown }) => {
+      (
+        request: { options: Record<string, unknown> },
+        runtime: { logger?: unknown; allowOutsideProjectAssets?: boolean },
+      ) => {
         const { engineConfig, ...options } = request.options;
-        return { ...options, producerConfig: engineConfig, logger: runtime.logger };
+        return {
+          ...options,
+          producerConfig: engineConfig,
+          logger: runtime.logger,
+          allowOutsideProjectAssets: runtime.allowOutsideProjectAssets,
+        };
       },
     ),
     createRenderJob: vi.fn((config: Record<string, unknown>) => {
@@ -578,6 +586,44 @@ describe("renderLocal browser GPU config", () => {
     expect(result?.outcome).toBe("completed");
     expect(result?.warnings?.map((warning) => warning.code)).toEqual(["audio_lowered"]);
     warn.mockRestore();
+  });
+
+  it.each([
+    { name: "a received entry", files: ["index.html"], allowed: false },
+    { name: "a record listing only an image", files: ["assets/in.png"], allowed: true },
+    { name: "a record listing a received stylesheet", files: ["style.css"], allowed: false },
+    { name: "a record listing no files", files: [], allowed: true },
+    { name: "no received-files record", files: undefined, allowed: true },
+  ])("brings in outside files for $name: $allowed", async ({ files, allowed }) => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-received-"));
+    writeFileSync(join(projectDir, "index.html"), "<div></div>");
+    mkdirSync(join(projectDir, "assets"));
+    writeFileSync(
+      join(projectDir, "assets", "in.png"),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    if (files) {
+      mkdirSync(join(projectDir, ".hyperframes"));
+      writeFileSync(
+        join(projectDir, ".hyperframes", "received-files.json"),
+        JSON.stringify({ files }),
+      );
+    }
+    try {
+      await renderLocal(projectDir, join(projectDir, "out.mp4"), {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: true,
+        throwOnError: true,
+      });
+      expect(producerState.createdJobs.at(-1)?.allowOutsideProjectAssets).toBe(allowed);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 
   it("cleans orphaned browser trees before starting a local render", async () => {

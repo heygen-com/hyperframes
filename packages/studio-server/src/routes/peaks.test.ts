@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerPeakRoutes } from "./peaks";
@@ -15,6 +15,8 @@ function setup(decode: (path: string) => Promise<number[]>) {
   const dir = mkdtempSync(join(tmpdir(), "hf-peaks-route-"));
   dirs.push(dir);
   writeFileSync(join(dir, "talk.mp4"), "video");
+  mkdirSync(join(dir, "media"));
+  writeFileSync(join(dir, "media", "talk.mp4"), "video");
   const app = new Hono();
   registerPeakRoutes(app, stubAdapter(dir), decode);
   return app;
@@ -42,6 +44,16 @@ describe("GET /projects/:id/peaks/*", () => {
     await vi.waitFor(() => expect(decode).toHaveBeenCalled());
     finish([0.5]);
     for (const res of await both) expect((await res.json()).bins).toEqual([0.5]);
+    expect(decode).toHaveBeenCalledTimes(1);
+  });
+
+  it("decodes a file once however the request spells its path", async () => {
+    const decode = vi.fn(async () => [0.4]);
+    const app = setup(decode);
+    for (const spelling of ["media/talk.mp4", "media//talk.mp4", "media/talk.mp4/"]) {
+      const res = await app.request(`http://localhost/projects/p/peaks/${spelling}`);
+      expect((await res.json()).bins).toEqual([0.4]);
+    }
     expect(decode).toHaveBeenCalledTimes(1);
   });
 
