@@ -62,11 +62,31 @@ describe("projectCopyHint", () => {
     );
   });
 
-  it("never names a copy outside the working directory", () => {
+  it("names a skipped copy above the working directory as a ../ path", () => {
+    const { project } = inProject();
+    // An npm or pnpm script run from a subfolder puts the project root's node_modules/.bin on PATH.
+    writeFileSync(join(project, "package.json"), "{}");
+    const sub = join(project, "video");
+    mkdirSync(sub);
+    vi.stubEnv("HOME", tempDir("hf-copy-hint-home-"));
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    vi.spyOn(process, "cwd").mockReturnValue(sub);
+    const bin = join(project, "node_modules", ".bin");
+    program(bin, "npx");
+
+    expect(skippedProjectCopy("npx", bin)).toMatch(
+      new RegExp(`^\\.\\.\\${sep}node_modules\\${sep}\\.bin\\${sep}npx(\\.exe)?$`),
+    );
+    expect(projectCopyHint("npx", bin)).toContain(`..${sep}node_modules`);
+  });
+
+  it("names a relative PATH entry outside the working directory too, since the rule never trusts one", () => {
     const { project } = inProject();
     const sibling = tempDir("hf-copy-hint-sibling-");
     program(sibling, "sam");
 
-    expect(projectCopyHint("sam", relative(project, sibling))).toBe("");
+    expect(skippedProjectCopy("sam", relative(project, sibling))).toMatch(/^\.\./);
   });
 });

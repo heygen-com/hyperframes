@@ -2,19 +2,26 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { executableIn, pathEntries, trustedPathDirs } from "@hyperframes/parsers/ff-binaries";
 import { originalPath } from "./windowsExeSearch.js";
 
-function insideWorkingDirectory(rel: string): boolean {
-  return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+/** `found` relative to `cwd`, with a leading `./` when it is inside; `undefined` when it is on another drive. */
+function shownPath(cwd: string, found: string): string | undefined {
+  const rel = relative(cwd, found);
+  if (isAbsolute(rel)) return undefined;
+  return rel === ".." || rel.startsWith(`..${sep}`) ? rel : `.${sep}${rel}`;
 }
 
-/** A copy of `name` in a PATH folder the trusted rule skipped, relative to the working directory. */
+/**
+ * A copy of `name` in a PATH folder the trusted rule skipped, relative to the working directory:
+ * `./node_modules/.bin/sam` in the project, or `../node_modules/.bin/sam` when an npm or pnpm
+ * script runs from a subfolder.
+ */
 export function skippedProjectCopy(name: string, pathValue = originalPath()): string | undefined {
   const trusted = new Set(trustedPathDirs(pathValue));
   const cwd = process.cwd();
   for (const entry of pathEntries(pathValue)) {
-    if (trusted.has(entry)) continue;
+    if (!entry || trusted.has(entry)) continue;
     const found = executableIn(resolve(cwd, entry), name);
-    const rel = found && relative(cwd, found);
-    if (rel && insideWorkingDirectory(rel)) return `.${sep}${rel}`;
+    const shown = found && shownPath(cwd, found);
+    if (shown) return shown;
   }
   return undefined;
 }
@@ -23,5 +30,5 @@ export function skippedProjectCopy(name: string, pathValue = originalPath()): st
 export function projectCopyHint(name: string, pathValue = originalPath()): string {
   const copy = skippedProjectCopy(name, pathValue);
   if (!copy) return "";
-  return ` A copy at ${copy} was not used: HyperFrames only runs programs from folders outside the current project. Install ${name} outside the project and retry.`;
+  return ` A copy at ${copy} was not used: HyperFrames only runs programs from absolute PATH folders outside the current project. Install ${name} outside the project and retry.`;
 }

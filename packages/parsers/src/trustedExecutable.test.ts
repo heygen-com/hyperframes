@@ -273,6 +273,27 @@ describe("trustedPathDirs on Windows", () => {
     ).toEqual([tools]);
   });
 
+  it("still skips the project root's and every ancestor's node_modules/.bin, quoted or not", () => {
+    const project = tempDir("hf-trusted-project-");
+    const tools = tempDir("hf-trusted-tools-");
+    writeFileSync(join(project, "package.json"), "{}");
+    const sub = join(project, "video");
+    mkdirSync(sub);
+    vi.stubEnv("HOME", tempDir("hf-trusted-home-"));
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    vi.spyOn(process, "cwd").mockReturnValue(sub);
+    const pathValue = [
+      `"${join(project, "node_modules", ".bin")}"`,
+      join(dirname(project), "node_modules", ".bin"),
+      `"${join(sub, "scripts")}"`,
+      `"${tools}"`,
+    ].join(win32.delimiter);
+
+    expect(trustedPathDirs(pathValue, "win32", {})).toEqual([tools]);
+  });
+
   it("keeps the system folders when started from inside System32", () => {
     vi.spyOn(process, "cwd").mockReturnValue("C:\\Windows\\System32");
     const pathValue = [
