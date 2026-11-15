@@ -155,6 +155,7 @@ export async function assertMediaPayload(filePath: string, elementId: string): P
 }
 
 const MAX_PLAYLIST_BYTES = 8 * 1024 * 1024;
+const MAX_PLAYLIST_DEPTH = 8;
 const HTTP_URL = /^https?:\/\//i;
 const OTHER_SCHEME = /^[a-z][a-z0-9+.-]+:/i;
 const DRIVE_PATH = /^[a-z]:[\\/]/i;
@@ -179,12 +180,12 @@ function playlistEntries(text: string): string[] | undefined {
   return undefined;
 }
 
-function entryLeavesFolder(entry: string, folder: string): boolean {
+function entryLeavesFolder(entry: string, base: string, folder: string): boolean {
   if (HTTP_URL.test(entry)) return false;
   if (OTHER_SCHEME.test(entry) && !DRIVE_PATH.test(entry)) return true;
   return [entry, safeDecode(entry)].some((path) => {
     if (isAbsolute(path) || DRIVE_PATH.test(path) || path.startsWith("\\")) return true;
-    const inside = relative(folder, resolve(folder, path));
+    const inside = relative(folder, resolve(base, path));
     return (
       inside === ".." || inside.startsWith("../") || inside.startsWith("..\\") || isAbsolute(inside)
     );
@@ -199,19 +200,47 @@ function safeDecode(value: string): string {
   }
 }
 
-/** True for an HLS or ffconcat list naming a file outside its folder; ffmpeg would open it. Never throws. */
-export async function playlistLeavesItsFolder(filePath: string): Promise<boolean> {
+/**
+ * True for an HLS or ffconcat list naming a file outside its folder; ffmpeg would open it. Never throws.
+ * `placedAt` is where the file will live when it is read from elsewhere first (a download not yet published).
+ */
+export async function playlistLeavesItsFolder(
+  filePath: string,
+  placedAt = filePath,
+): Promise<boolean> {
+  const placed = resolve(placedAt);
+  return listLeaves(resolve(filePath), placed, dirname(placed), new Set(), 0);
+}
+
+/** Every list a list names is read too, against the top list's folder. */
+async function listLeaves(
+  readPath: string,
+  path: string,
+  folder: string,
+  seen: Set<string>,
+  depth: number,
+): Promise<boolean> {
   try {
-    const head = (await readHead(filePath))
+    const head = (await readHead(readPath))
       .toString("utf8")
       .replace(/^\uFEFF/, "")
       .trimStart();
     if (!head.startsWith("#EXTM3U") && !/^ffconcat\s+version/i.test(head)) return false;
-    const body = await readHead(filePath, MAX_PLAYLIST_BYTES + 1);
+    if (depth >= MAX_PLAYLIST_DEPTH) return true;
+    if (seen.has(path)) return false;
+    seen.add(path);
+    const body = await readHead(readPath, MAX_PLAYLIST_BYTES + 1);
     if (body.length > MAX_PLAYLIST_BYTES) return true;
-    const entries = playlistEntries(body.toString("utf8")) ?? [];
-    const folder = dirname(resolve(filePath));
-    return entries.some((entry) => entryLeavesFolder(entry, folder));
+    const base = dirname(path);
+    for (const entry of playlistEntries(body.toString("utf8")) ?? []) {
+      if (entryLeavesFolder(entry, base, folder)) return true;
+      if (HTTP_URL.test(entry)) continue;
+      for (const local of new Set([entry, safeDecode(entry)])) {
+        const nested = resolve(base, local);
+        if (await listLeaves(nested, nested, folder, seen, depth + 1)) return true;
+      }
+    }
+    return false;
   } catch {
     return false;
   }
