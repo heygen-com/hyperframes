@@ -379,15 +379,22 @@ describe("uploadAssetViaDirectUpload from a file on disk", () => {
 
 const BIG_BYTES = 16 * 1024 * 1024;
 
-/** Reads the body; "cut" and "slow" take 8 MB/s, and "cut" drops the connection at 400 ms. */
+// Two cuts count as one within 20% of their age; a try's setup costs tens of ms on a busy Windows runner,
+// which overran 20% of a 400 ms cut.
+const CUT_MS = 1200;
+
+/** Reads the body; "cut" and "slow" take 8 MB/s, "cut" drops the connection CUT_MS after it starts reading, and
+ * "late cut" is a "cut" that starts reading 150 ms late, like a first try still setting up. */
 async function drain(req: IncomingMessage, answer: unknown): Promise<"read" | "dropped"> {
-  const slow = answer === "cut" || answer === "slow";
+  const cut = answer === "cut" || answer === "late cut";
+  const slow = cut || answer === "slow";
+  if (answer === "late cut") await new Promise((resolve) => setTimeout(resolve, 150));
   const born = Date.now();
   try {
     for await (const chunk of req as AsyncIterable<Buffer>) {
       if (!slow) continue;
       await new Promise((resolve) => setTimeout(resolve, Math.ceil(chunk.length / 8192)));
-      if (answer === "cut" && Date.now() - born >= 400) {
+      if (cut && Date.now() - born >= CUT_MS) {
         req.socket.destroy();
         return "dropped";
       }
@@ -399,10 +406,10 @@ async function drain(req: IncomingMessage, answer: unknown): Promise<"read" | "d
 }
 
 describe("a PUT that stalls or fails on the network is sent again", () => {
-  /** Answers its Nth request as `plan[n]`, the last one for any later: "hang" never answers, "cut" drops the
-   * connection at 400 ms, "slow" drains slowly and answers 200, a number is the status. */
+  /** Answers its Nth request as `plan[n]`, the last one for any later: "hang" never answers, "cut" and "late cut"
+   * drop the connection (see drain), "slow" drains slowly and answers 200, a number is the status. */
   async function withPlan(
-    plan: Array<"hang" | "cut" | "slow" | number>,
+    plan: Array<"hang" | "cut" | "late cut" | "slow" | number>,
     run: (url: string, requests: () => number) => Promise<void>,
   ): Promise<void> {
     let n = 0;
@@ -411,7 +418,8 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
       const answer = plan[Math.min(n++, plan.length - 1)]!;
       if ((await drain(req, answer)) === "dropped") return;
       if (answer === "hang") return void open.push(() => res.destroy());
-      if (answer === "cut" || answer === "slow") return void res.writeHead(200).end();
+      if (answer === "cut" || answer === "late cut" || answer === "slow")
+        return void res.writeHead(200).end();
       res.writeHead(answer).end(answer === 200 ? "" : "refused");
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -491,14 +499,14 @@ describe("a PUT that stalls or fails on the network is sent again", () => {
       expect(requests()).toBe(1);
     });
   });
-  it("stops after a second identical cut instead of repeating the doomed try", async () => {
-    await withPlan(["cut"], async (url, requests) => {
+  it("stops after a second identical cut, even when the first try was slow to start", async () => {
+    await withPlan(["late cut", "cut"], async (url, requests) => {
       await expect(upload(url, false, { onProgress: () => undefined })).rejects.toThrow(
         /cut at \d+ s on two tries in a row.*Every try restarts the file/,
       );
       expect(requests()).toBe(2);
     });
-  });
+  }, 15_000);
 
   it("reports the bytes sent while a slow PUT runs, and the restart of a second try", async () => {
     const events: UploadProgressEvent[] = [];
