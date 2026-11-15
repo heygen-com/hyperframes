@@ -1,5 +1,10 @@
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { VideoSourceExtractionError } from "../services/videoFrameExtractor.js";
+import { getFfmpegBinary, getFfprobeBinary } from "./ffmpegBinaries.js";
 import { redactUrlQueriesInError, urlInputArgs } from "./urlInput.js";
 
 const signed =
@@ -41,10 +46,39 @@ describe("urlInputArgs", () => {
           ...verifyAndReconnect,
           "-protocol_whitelist",
           "https,tls,tcp",
+          "-format_whitelist",
+          expect.any(String),
         ]);
         expect(urlInputArgs("/plan/compiled/bg.mp4", { caBundles: [] })).toEqual([]);
       } finally {
         vi.unstubAllEnvs();
+      }
+    },
+  );
+
+  it.skipIf(spawnSync(getFfprobeBinary(), ["-version"]).status !== 0)(
+    "on a render service lets ffprobe open a video but not a playlist or concat list named .mp4",
+    () => {
+      vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
+      const args = urlInputArgs(signed, { caBundles });
+      vi.unstubAllEnvs();
+      const formats = args[args.indexOf("-format_whitelist") + 1]!;
+      const dir = mkdtempSync(join(tmpdir(), "hf-url-input-"));
+      try {
+        const video = join(dir, "clip.mp4");
+        const lavfi = ["-f", "lavfi", "-i", "testsrc2=size=32x32:rate=5:duration=1"];
+        spawnSync(getFfmpegBinary(), ["-v", "error", "-y", ...lavfi, "-c:v", "mpeg4", video]);
+        const playlist = join(dir, "playlist.mp4");
+        writeFileSync(playlist, "#EXTM3U\n#EXTINF:1,\nhttps://127.0.0.1:9/a.ts\n#EXT-X-ENDLIST\n");
+        const concat = join(dir, "concat.mp4");
+        writeFileSync(concat, "ffconcat version 1.0\nfile https://127.0.0.1:9/a.mp4\n");
+        const probe = (path: string) =>
+          spawnSync(getFfprobeBinary(), ["-v", "error", "-format_whitelist", formats, path]).status;
+        expect(probe(video)).toBe(0);
+        expect(probe(playlist)).not.toBe(0);
+        expect(probe(concat)).not.toBe(0);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
       }
     },
   );
