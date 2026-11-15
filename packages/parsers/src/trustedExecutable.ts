@@ -4,9 +4,8 @@ import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from "no
 
 /**
  * The one rule for finding a helper program by name. A project folder can come from anyone, so a
- * program is taken only from an absolute PATH entry outside the project holding the working
- * directory, or a fixed install dir. Only an override the person sets in their own environment may
- * point into it.
+ * program comes only from an absolute PATH entry outside the working directory's project, or a
+ * fixed install dir. Only an override the person sets in their own environment may point into it.
  */
 
 function comparable(path: string): string {
@@ -26,7 +25,6 @@ function contains(parent: string, child: string): boolean {
 
 const PROJECT_MARKERS = [".git", "package.json", "node_modules", "hyperframes.json"];
 
-/** The outermost folder holding `cwd` that marks a project, below the home folder and the filesystem root. */
 function projectRoot(cwd: string, home: string): string {
   let root = cwd;
   for (let dir = cwd; dirname(dir) !== dir && !contains(dir, home); dir = dirname(dir)) {
