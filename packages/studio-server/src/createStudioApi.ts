@@ -62,8 +62,20 @@ async function markPreviewForAnotherSite(c: Context) {
   c.res = new Response(marked, { status: 200, headers });
 }
 
+const FRAMED_DESTS = new Set(["document", "iframe", "frame", "embed", "object", "fencedframe"]);
+const framedByAnotherSite = (c: Context) =>
+  fromAnotherSite(c) && FRAMED_DESTS.has(c.req.header("sec-fetch-dest") ?? "");
+
+function withoutValidators(request: Request): Request {
+  const headers = new Headers(request.headers);
+  headers.delete("if-none-match");
+  headers.delete("if-modified-since");
+  return new Request(request, { headers });
+}
+
 const sandboxPreviewForAnotherSiteOrCapture =
   (sandboxCaptures: boolean) => async (c: Context, next: Next) => {
+    if (framedByAnotherSite(c)) c.req.raw = withoutValidators(c.req.raw);
     await next();
     c.header("Vary", "Sec-Fetch-Site", { append: true });
     const anotherSite = fromAnotherSite(c);

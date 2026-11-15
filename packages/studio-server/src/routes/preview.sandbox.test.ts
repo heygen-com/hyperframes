@@ -92,17 +92,36 @@ describe("a preview document answered to another site", () => {
 });
 
 describe("a revalidated preview", () => {
-  it("still names Sec-Fetch-Site in Vary and carries the sandbox on a 304", async () => {
-    const first = await get("/projects/demo/preview", "same-origin");
-    const etag = first.headers.get("etag");
+  it("still names Sec-Fetch-Site in Vary on a 304 to the Studio's own pages", async () => {
+    const etag = (await get("/projects/demo/preview", "same-origin")).headers.get("etag");
     expect(etag).toBeTruthy();
     const res = await api.request("http://localhost/projects/demo/preview", {
-      headers: { "sec-fetch-site": "cross-site", "if-none-match": etag! },
+      headers: { "sec-fetch-site": "same-origin", "if-none-match": etag! },
     });
     expect(res.status).toBe(304);
     expect(res.headers.get("vary")).toBe("Sec-Fetch-Site");
-    expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
   });
+
+  it.each(["cross-site", "same-site"])(
+    "answers a %s frame load carrying the unmarked copy's validators with a marked 200",
+    async (site) => {
+      const first = await get("/projects/demo/preview", "same-origin");
+      const etag = first.headers.get("etag");
+      expect(etag).toBeTruthy();
+      const res = await api.request("http://localhost/projects/demo/preview", {
+        headers: {
+          "sec-fetch-site": site,
+          "sec-fetch-dest": "iframe",
+          "if-none-match": etag!,
+          "if-modified-since": new Date(Date.now() + 60_000).toUTCString(),
+        },
+      });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain('<meta name="hyperframes-preview-for-another-site">');
+      expect(res.headers.get("vary")).toBe("Sec-Fetch-Site");
+      expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+    },
+  );
 });
 
 describe("a thumbnail capture document", () => {
