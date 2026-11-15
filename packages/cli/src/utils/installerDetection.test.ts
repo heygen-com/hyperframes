@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The module inspects `process.argv[1]` + `realpathSync`. We stub both so
 // each test describes a hypothetical install layout without touching the
@@ -266,9 +266,13 @@ describe("runningInstall: which binary runs, and the command that updates it", (
 
 describe("shadowingInstall: the older global install a plain `npx hyperframes` runs instead", () => {
   const saved = { argv1: process.argv[1], path: process.env["PATH"] };
+  beforeEach(() => {
+    vi.resetModules();
+  });
   afterEach(() => {
     process.argv[1] = saved.argv1 ?? "";
     process.env["PATH"] = saved.path;
+    vi.restoreAllMocks();
   });
 
   /** An npx copy running now, and a global npm install of `globalVersion` first on PATH. */
@@ -335,6 +339,26 @@ describe("shadowingInstall: the older global install a plain `npx hyperframes` r
     });
   });
 
+  it("still sees an older copy in the project's node_modules/.bin after startup trims PATH", async () => {
+    const root = layout(null);
+    const pkg = onPathInstead(root, "app/node_modules/hyperframes");
+    writeFileSync(join(root, "app/bun.lock"), "");
+    const projectBin = join(root, "app/node_modules/.bin");
+    mkdirSync(projectBin, { recursive: true });
+    symlinkSync(join(pkg, "bin/hyperframes.mjs"), join(projectBin, "hyperframes"));
+    const [npxBin] = (process.env["PATH"] ?? "").split(delimiter);
+    process.env["PATH"] = [npxBin, projectBin].join(delimiter);
+    vi.spyOn(process, "cwd").mockReturnValue(join(root, "app"));
+
+    const { shadowingInstall } = await import("./installerDetection.js");
+
+    expect(process.env["PATH"]).toBe(npxBin);
+    expect(shadowingInstall("0.9.29")).toEqual({
+      version: "0.9.8",
+      updateCommand: "bun add hyperframes@0.9.29",
+    });
+  });
+
   it("stays quiet when no manager is known to move the older install", async () => {
     const root = layout(null);
     onPathInstead(root, "opt/hyperframes");
@@ -342,11 +366,15 @@ describe("shadowingInstall: the older global install a plain `npx hyperframes` r
     expect(shadowingInstall("0.9.29")).toBeNull();
   });
 
-  it("stays quiet when the global install is not older, or there is none", async () => {
-    const { shadowingInstall } = await import("./installerDetection.js");
+  it("stays quiet when the global install is not older", async () => {
     layout("0.9.29");
+    const { shadowingInstall } = await import("./installerDetection.js");
     expect(shadowingInstall("0.9.29")).toBeNull();
+  });
+
+  it("stays quiet when there is no global install", async () => {
     layout(null);
+    const { shadowingInstall } = await import("./installerDetection.js");
     expect(shadowingInstall("0.9.29")).toBeNull();
   });
 

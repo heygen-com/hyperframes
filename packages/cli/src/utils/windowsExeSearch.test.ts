@@ -1,9 +1,13 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, isAbsolute, join } from "node:path";
+import { delimiter, dirname, isAbsolute, join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
-import { searchOnlyTrustedFolders, skipWorkingDirectoryInExeSearch } from "./windowsExeSearch.js";
+import {
+  searchOnlyTrustedFolders,
+  skipWorkingDirectoryInExeSearch,
+  withOnlyTrustedPathFolders,
+} from "./windowsExeSearch.js";
 
 function tempDir(prefix: string): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
@@ -47,6 +51,7 @@ describe("searchOnlyTrustedFolders", () => {
     "keeps only absolute PATH folders outside the project, in order, on %s",
     (platform) => {
       const { project, outside } = inProject();
+      const separator = platform === "win32" ? win32.delimiter : delimiter;
       const env: NodeJS.ProcessEnv = {
         PATH: [
           "",
@@ -56,22 +61,73 @@ describe("searchOnlyTrustedFolders", () => {
           join(project, "node_modules", ".bin"),
           project,
           outside[1],
-        ].join(delimiter),
+        ].join(separator),
       };
 
       searchOnlyTrustedFolders(env, platform);
 
-      expect(env.PATH).toBe([outside[0], outside[1]].join(delimiter));
+      expect(env.PATH).toBe([outside[0], outside[1]].join(separator));
     },
   );
 
   it("finds the PATH key whatever its case, as Windows spells it Path", () => {
     const { project, outside } = inProject();
-    const env: NodeJS.ProcessEnv = { Path: [project, outside[0], "."].join(delimiter) };
+    const env: NodeJS.ProcessEnv = { Path: [project, outside[0], "."].join(win32.delimiter) };
 
     searchOnlyTrustedFolders(env, "win32");
 
     expect(env).toEqual({ Path: outside[0], NoDefaultCurrentDirectoryInExePath: "1" });
+  });
+
+  it("accepts a Windows PATH entry wrapped in double quotes", () => {
+    const { project, outside } = inProject();
+    const env: NodeJS.ProcessEnv = {
+      Path: [`"${outside[0]}"`, `"${project}"`, outside[1]].join(win32.delimiter),
+    };
+
+    expect(withOnlyTrustedPathFolders(env, "win32").Path).toBe(
+      [outside[0], outside[1]].join(win32.delimiter),
+    );
+  });
+
+  it("keeps the Windows system folders when started from inside System32", () => {
+    vi.spyOn(process, "cwd").mockReturnValue("C:\\Windows\\System32");
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+    });
+    const env: NodeJS.ProcessEnv = {
+      SystemRoot: "C:\\Windows",
+      Path: [
+        "C:\\Windows\\system32",
+        ".",
+        "C:\\Windows",
+        "C:/Windows/System32/Wbem/",
+        "C:\\Windows\\System32\\evil",
+        "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\",
+      ].join(win32.delimiter),
+    };
+
+    expect(withOnlyTrustedPathFolders(env, "win32").Path).toBe(
+      [
+        "C:\\Windows\\system32",
+        "C:\\Windows",
+        "C:/Windows/System32/Wbem/",
+        "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\",
+      ].join(win32.delimiter),
+    );
+  });
+
+  it("takes the system folders from SystemRoot", () => {
+    vi.spyOn(process, "cwd").mockReturnValue("C:\\Windows\\System32");
+    onTestFinished(() => {
+      vi.restoreAllMocks();
+    });
+    const env: NodeJS.ProcessEnv = {
+      SYSTEMROOT: "D:\\WinNT",
+      Path: ["C:\\Windows\\System32", "D:\\WinNT\\System32"].join(win32.delimiter),
+    };
+
+    expect(withOnlyTrustedPathFolders(env, "win32").Path).toBe("D:\\WinNT\\System32");
   });
 
   it("never leaves an empty PATH, which would mean the working directory", () => {

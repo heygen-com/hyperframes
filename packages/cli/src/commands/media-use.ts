@@ -84,7 +84,7 @@ export function mediaUseEngineEnv(
   entry: string | undefined = process.argv[1],
   platform: NodeJS.Platform = process.platform,
 ): NodeJS.ProcessEnv {
-  const scoped = withOnlyTrustedPathFolders(env);
+  const scoped = withOnlyTrustedPathFolders(env, platform);
   skipWorkingDirectoryInExeSearch(scoped, platform);
   if (!entry || /\.[cm]?ts$/.test(entry)) return scoped;
   return { ...scoped, HYPERFRAMES_CLI_ENTRY: resolve(entry) };
