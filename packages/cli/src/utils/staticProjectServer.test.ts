@@ -721,3 +721,108 @@ describe("serveStaticProjectHtml private project files", () => {
     },
   );
 });
+
+function requestWithHost(
+  url: string,
+  host: string,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; body: string }> {
+  return new Promise((resolveGet, rejectGet) => {
+    get(url, { headers: { ...headers, host } }, (res) => {
+      let body = "";
+      res.setEncoding("utf-8");
+      res.on("data", (chunk: string) => (body += chunk));
+      res.on("end", () => resolveGet({ status: res.statusCode ?? 0, body }));
+    }).on("error", rejectGet);
+  });
+}
+
+describe("serveStaticProjectHtml request Host", () => {
+  async function serveProject(): Promise<StaticProjectServer> {
+    dir = mkdtempSync(join(tmpdir(), "hf-static-host-"));
+    writeFileSync(join(dir, "asset.txt"), "project-file");
+    server = await serveStaticProjectHtml(dir, "<html><body>composition</body></html>");
+    return server;
+  }
+
+  it.each(["", "asset.txt"])("refuses /%s to a page name that is not loopback", async (path) => {
+    const { url, port } = await serveProject();
+    const res = await requestWithHost(`${url}${path}`, `rebound.example:${port}`);
+    expect(res.status).toBe(403);
+    expect(res.body).not.toContain("composition");
+    expect(res.body).not.toContain("project-file");
+  });
+
+  it.each(["127.0.0.1", "localhost", "[::1]"])(
+    "answers the capture browser on %s",
+    async (name) => {
+      const { url, port } = await serveProject();
+      expect((await requestWithHost(url, `${name}:${port}`)).body).toContain("composition");
+      expect((await requestWithHost(`${url}asset.txt`, `${name}:${port}`)).body).toBe(
+        "project-file",
+      );
+    },
+  );
+
+  it("answers its in-process name and refuses others when nothing listens", async () => {
+    vi.spyOn(Server.prototype, "listen").mockImplementation(function (this: Server) {
+      process.nextTick(() =>
+        this.emit("error", Object.assign(new Error("listen EPERM"), { code: "EPERM" })),
+      );
+      return this;
+    });
+    try {
+      const { answer, url } = await serveProject();
+      const own = await answer!({ method: "GET", path: "/", headers: { host: new URL(url).host } });
+      expect(own.body.toString()).toContain("composition");
+      const other = await answer!({
+        method: "GET",
+        path: "/asset.txt",
+        headers: { host: "rebound.example" },
+      });
+      expect(other.status).toBe(403);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+});
+
+describe("serveStaticProjectHtml page another site loads", () => {
+  const MARK = '<meta name="hyperframes-preview-for-another-site">';
+  const SANDBOX = "sandbox allow-scripts";
+
+  async function serveProject(): Promise<string> {
+    dir = mkdtempSync(join(tmpdir(), "hf-static-site-"));
+    writeFileSync(join(dir, "scene.html"), "<html><head></head><body>scene</body></html>");
+    server = await serveStaticProjectHtml(
+      dir,
+      "<html><head></head><body>composition</body></html>",
+    );
+    return server.url;
+  }
+
+  it.each(["", "scene.html"])(
+    "marks and sandboxes /%s when another site frames it",
+    async (path) => {
+      const url = await serveProject();
+      const res = await fetch(`${url}${path}`, {
+        headers: { "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Dest": "iframe" },
+      });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain(MARK);
+      expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+    },
+  );
+
+  it.each(["none", "same-origin"])(
+    "leaves the capture page unmarked for Sec-Fetch-Site %s",
+    async (site) => {
+      const url = await serveProject();
+      for (const path of ["", "scene.html"]) {
+        const res = await fetch(`${url}${path}`, { headers: { "Sec-Fetch-Site": site } });
+        expect(await res.text(), path).not.toContain(MARK);
+        expect(res.headers.get("content-security-policy"), path).toBeNull();
+      }
+    },
+  );
+});
