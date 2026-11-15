@@ -1,4 +1,13 @@
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -41,4 +50,28 @@ describe("kind cache", () => {
     writeFileSync(blocked, "file");
     expect(writeKindCache(join(blocked, "entry.json"), kind)).toMatch(/could not be cached/);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "never writes through a link at the entry or in place of its folders, and reads no linked entry",
+    () => {
+      const project = join(dir, "project");
+      const outside = join(dir, "outside");
+      const cache = join(project, ".hyperframes", "audio-kind");
+      mkdirSync(cache, { recursive: true });
+      mkdirSync(outside);
+      const victim = join(outside, "victim.json");
+      writeFileSync(victim, JSON.stringify(kind));
+      const entry = join(cache, "entry.json");
+      symlinkSync(victim, entry);
+      expect(readKindCache(entry)).toBeNull();
+      expect(writeKindCache(entry, { ...kind, value: "voice" })).toBeNull();
+      expect(JSON.parse(readFileSync(victim, "utf8")).value).toBe("music");
+      expect(lstatSync(entry).isFile()).toBe(true);
+
+      rmSync(cache, { recursive: true });
+      symlinkSync(outside, cache);
+      expect(writeKindCache(join(cache, "other.json"), kind)).toMatch(/could not be cached/);
+      expect(readdirSync(outside)).toEqual(["victim.json"]);
+    },
+  );
 });

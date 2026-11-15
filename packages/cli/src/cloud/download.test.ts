@@ -263,6 +263,25 @@ describe("cloud/download", () => {
   );
 
   it.skipIf(process.platform === "win32")(
+    "with replaceLink, replaces an output link instead of writing to its target",
+    async () => {
+      const target = join(dir, "target.mp4");
+      writeFileSync(target, "keep");
+      chmodSync(target, 0o755);
+      const alias = join(dir, "alias.mp4");
+      symlinkSync("target.mp4", alias);
+      await downloadToFile("https://example/x", alias, {
+        fetchImpl: makeBytesFetch(new Uint8Array([7])),
+        replaceLink: true,
+      });
+      expect(readFileSync(target, "utf8")).toBe("keep");
+      expect(lstatSync(alias).isFile()).toBe(true);
+      expect(statSync(alias).mode & 0o111).toBe(0);
+      expect(readFileSync(alias)).toEqual(Buffer.from([7]));
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
     "follows a relative output link inside a linked folder to the real target",
     async () => {
       mkdirSync(join(dir, "real/deep/sub"), { recursive: true });
