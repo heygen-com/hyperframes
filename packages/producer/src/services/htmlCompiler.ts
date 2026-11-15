@@ -249,13 +249,25 @@ function normalizeCompositionSrcs(html: string, projectDir: string): string {
   });
 }
 
-function resolveCompositionFile(
+const COMPOSITION_FILE = /\.html?$/i;
+const NOT_A_COMPOSITION_FILE = "it is not an .html file, so it is refused";
+
+function resolveCompositionPath(
   projectDir: string,
   src: string,
   assetRoot: string | undefined,
 ): string | null {
   const file = resolveCompositionSrc(projectDir, src);
   return file === null || escapesAssetRoot(file, assetRoot) ? null : file;
+}
+
+function resolveCompositionFile(
+  projectDir: string,
+  src: string,
+  assetRoot: string | undefined,
+): string | null {
+  const file = resolveCompositionPath(projectDir, src, assetRoot);
+  return file !== null && COMPOSITION_FILE.test(file) ? file : null;
 }
 
 // Git metadata, env files and the app's `.hyperframes/` records are never inlined into a render, as preview refuses them.
@@ -292,7 +304,7 @@ function assertSubCompositionsUsable(
     if (!srcPath) continue;
     if (isUnresolvedAssetPlaceholder(srcPath)) continue; // __UPPER__ placeholder or unresolved templating token — not a real reference (shared with lint via @hyperframes/parsers)
 
-    const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
+    const filePath = resolveCompositionPath(projectDir, srcPath, assetRoot);
     if (filePath === null) {
       problems.push({ srcPath, detail: "it is outside the project folder" });
       continue;
@@ -306,6 +318,10 @@ function assertSubCompositionsUsable(
         srcPath,
         detail: "it is git metadata, an env file or a private tool record",
       });
+      continue;
+    }
+    if (!COMPOSITION_FILE.test(filePath)) {
+      problems.push({ srcPath, detail: NOT_A_COMPOSITION_FILE });
       continue;
     }
     // Circular reference guard. parseSubCompositions (below) silently
@@ -2215,6 +2231,9 @@ export async function compileForRender(
   const assetRoot = options.allowOutsideProjectAssets ? undefined : projectDir;
   if (isPathInside(htmlPath, projectDir) && escapesAssetRoot(htmlPath, assetRoot)) {
     throw new Error(`Entry file ${htmlPath} leads outside the project folder`);
+  }
+  if (!COMPOSITION_FILE.test(htmlPath)) {
+    throw new Error(`Entry file ${htmlPath} is not an .html file, so it is refused`);
   }
   const entryHtml = rebaseDirectEntryAssetPaths(readTextFile(htmlPath), projectDir, htmlPath);
   const rawHtml = bindVariableMediaSources(

@@ -99,6 +99,7 @@ const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
   ".mjs": "application/javascript; charset=utf-8",
+  ".cjs": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".cube": "text/plain; charset=utf-8",
   ".png": "image/png",
@@ -816,6 +817,11 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
 
   const app = new Hono();
   const warnLeftOut = (line: string) => console.warn(`[FileServer] ${line}`);
+
+  app.use(async function loadEachFileOnlyAsItsNamedType(c, next) {
+    await next();
+    c.res.headers.set("X-Content-Type-Options", "nosniff");
+  });
 
   app.get("/*", async (c) => {
     let requestPath = c.req.path;
