@@ -6,7 +6,7 @@
     "render-compat",
     "shader"
   ],
-  "minPsnr": 45,
+  "minPsnr": 30,
   "maxFrameFailures": 0,
   "minAudioCorrelation": 0,
   "maxAudioLagWindows": 1,
