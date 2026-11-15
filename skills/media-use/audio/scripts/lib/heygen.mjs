@@ -90,7 +90,7 @@ function isFile(path) {
   }
 }
 
-// The CLI's received-files rule: a `.hyperframes/received-files.json` at or above `dir` that lists the file
+// The CLI's received-files rule: a received-files record at or above `dir` that lists the file
 // (by path or as the same file on disk), or that cannot be read, makes it received.
 function recordFiles(root, ownFolder) {
   const record = join(root, ".hyperframes", "received-files.json");
