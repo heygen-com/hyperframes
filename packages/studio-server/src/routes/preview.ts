@@ -48,7 +48,13 @@ import {
 import { getMimeType } from "../helpers/mime.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
 import { openRangeEnd } from "../helpers/mediaRange.js";
-import { buildSubCompositionHtml, hasBaseElement } from "../helpers/subComposition.js";
+import { hasBaseElement } from "../helpers/subComposition.js";
+import {
+  runOffThread,
+  SUB_COMPOSITION_DEADLINE_MS,
+  SubCompositionDeadlineError,
+  withinDeadline,
+} from "../helpers/subCompositionBuild.js";
 import { withRootImportMap } from "../helpers/rootImportMap.js";
 import { withRootPathsRelative } from "../helpers/rootPaths.js";
 import {
@@ -491,7 +497,10 @@ function resolvePreviewGsapBaseUrl(adapter: PreviewApiAdapter): string {
 export function registerPreviewRoutes(
   api: Hono,
   adapter: PreviewApiAdapter,
-  { sandboxThumbnailCaptures = false }: { sandboxThumbnailCaptures?: boolean } = {},
+  {
+    sandboxThumbnailCaptures = false,
+    subCompositionDeadlineMs,
+  }: { sandboxThumbnailCaptures?: boolean; subCompositionDeadlineMs?: number } = {},
 ): void {
   const gsapBaseUrl = resolvePreviewGsapBaseUrl(adapter);
   const gsapEtagSalt = `:gsap:${createHash("sha1").update(gsapBaseUrl).digest("hex").slice(0, 12)}`;
@@ -639,17 +648,6 @@ export function registerPreviewRoutes(
     return c.html(html, 200, previewCacheHeaders(etag));
   });
 
-  /** Ids minted from the raw file before the build rewrites attributes, so they match the source's;
-   * in memory only, since a write here reaches the watcher as an outside edit. null: the file vanished. */
-  function pinSubCompHfIds(compFile: string, compPath: string): string | undefined | null {
-    if (!/\.html?$/i.test(compPath)) return undefined;
-    try {
-      return ensureHfIds(readFileSync(compFile, "utf-8"));
-    } catch {
-      return null;
-    }
-  }
-
   // Sub-composition preview
   // fallow-ignore-next-line complexity
   api.get("/projects/:id/preview/comp/*", async (c) => {
@@ -687,29 +685,54 @@ export function registerPreviewRoutes(
       });
     }
 
-    const stamped = pinSubCompHfIds(compFile, compPath);
-    if (stamped === null) return c.text("not found", 404); // file removed between stat and read
-
     const baseHref = previewBaseHref(project.id);
-    let html = buildSubCompositionHtml(
-      project.dir,
-      compPath,
-      adapter.runtimeUrl,
-      baseHref,
-      stamped,
-      gsapBaseUrl,
-    );
-    if (!html) return c.text("not found", 404);
-    html = withPreviewRuntime(withRootImportMap(html, baseHref), adapter.runtimeUrl);
-    recordPreviewReferences(project.dir, html);
-    html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
+    // The page is the project's own, so a shared project's can be anything: it is built and stamped on the build
+    // worker, within one deadline for the request.
+    const deadline = performance.now() + (subCompositionDeadlineMs ?? SUB_COMPOSITION_DEADLINE_MS);
+    let html: string | null;
+    try {
+      html = await runOffThread(
+        {
+          kind: "build",
+          projectDir: project.dir,
+          compPath,
+          compFile,
+          runtimeUrl: adapter.runtimeUrl,
+          baseHref,
+          gsapBaseUrl,
+        },
+        deadline,
+        compPath,
+      );
+      if (!html) return c.text("not found", 404);
+      html = withPreviewRuntime(withRootImportMap(html, baseHref), adapter.runtimeUrl);
+      recordPreviewReferences(project.dir, html);
+      const transformed = await transformPreviewHtml(html, adapter, project, compPath);
+      html = (await runOffThread({ kind: "ids", html: transformed }, deadline, compPath)) ?? "";
+    } catch (error) {
+      if (error instanceof SubCompositionDeadlineError) return c.text(error.message, 503);
+      throw error;
+    }
     html = injectStudioPreviewAugmentations(html, adapter, signature, project.dir, compPath, {
       capture,
       gsapBaseUrl,
       sandboxedCapture: sandboxThumbnailCaptures,
     });
     if (previewVariables) html = injectPreviewVariables(html, previewVariables);
-    html = await injectMediaCodecMap(html, adapter, project.dir, compPath, mediaCodecProbeCache);
+    try {
+      // Probes the page's media, which a shared page can name by the thousand: within the same deadline.
+      const probed = injectMediaCodecMap(
+        html,
+        adapter,
+        project.dir,
+        compPath,
+        mediaCodecProbeCache,
+      );
+      html = await withinDeadline(probed, deadline, compPath);
+    } catch (error) {
+      if (error instanceof SubCompositionDeadlineError) return c.text(error.message, 503);
+      throw error;
+    }
     return c.html(html, 200, previewCacheHeaders(etag));
   });
 

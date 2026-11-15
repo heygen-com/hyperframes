@@ -14,7 +14,9 @@ writeFileSync(
   '<div data-composition-id="small" data-width="320" data-height="180"><p>Hi</p></div>',
 );
 // A page a shared project could carry: big enough that building it takes seconds.
-const cells = '<div class="c" style="background:url(a.png)"><img src="b.png"></div>'.repeat(300_000);
+const cells = '<div class="c" style="background:url(a.png)"><img src="b.png"></div>'.repeat(
+  300_000,
+);
 writeFileSync(
   join(projectDir, "scenes", "huge.html"),
   `<div data-composition-id="huge" data-width="320" data-height="180">${cells}</div>`,
@@ -32,7 +34,8 @@ const adapter: StudioApiAdapter = {
 };
 const DEADLINE_MS = 200;
 const api = createStudioApi(adapter, { subCompositionDeadlineMs: DEADLINE_MS });
-const comp = (file: string) => api.request(`http://localhost/projects/demo/preview/comp/scenes/${file}`);
+const comp = (file: string) =>
+  api.request(`http://localhost/projects/demo/preview/comp/scenes/${file}`);
 
 /** The longest the request thread went without running a timer while `work` ran. */
 async function longestStall(work: Promise<unknown>): Promise<number> {
