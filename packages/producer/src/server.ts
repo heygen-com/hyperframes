@@ -35,10 +35,12 @@ import {
   REFERENCE_BACKGROUND_FIELD,
   referenceBackgroundResult,
 } from "@hyperframes/engine";
+import { isSafePath } from "@hyperframes/core/safe-path";
 import {
   RenderCancelledError,
   createRenderJob,
   executeRenderJob,
+  resolveRenderDebugDir,
   type ProgressCallback,
   type RenderConfig,
   type RenderJob,
@@ -79,11 +81,19 @@ export interface HandlerOptions {
   maxConcurrentRenders?: number;
   /** Extra browser-facing host names (e.g. a proxy's); merged with PRODUCER_ALLOWED_HOSTS. */
   allowedHosts?: readonly string[];
+  /** Directory every request `projectDir` must resolve inside. Defaults to PRODUCER_PROJECTS_DIR or the working directory. */
+  projectsDir?: string;
+  /** Let requests set `debug: true`, which keeps work dirs on disk. Defaults to PRODUCER_ALLOW_DEBUG=1. */
+  allowDebug?: boolean;
+  /** Bearer token `createProducerApp` requires on every route but /health. Defaults to PRODUCER_AUTH_TOKEN. */
+  authToken?: string;
 }
 
 export interface ServerOptions extends HandlerOptions {
   /** Port to listen on. Default: 9847. */
   port?: number;
+  /** Address to listen on. Default: PRODUCER_HOST or 127.0.0.1. A non-loopback address requires `authToken`. */
+  hostname?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -372,6 +382,10 @@ function resolvePreparedRenderOutput(
 ): { input: RenderInput; cleanupProjectDir?: string; absoluteOutputPath: string } {
   const { input, cleanupProjectDir } = prepared;
   const absoluteOutputPath = resolveOutputPath(input.projectDir, input.outputPath, rendersDir, log);
+  mkdirSync(rendersDir, { recursive: true });
+  if (!isSafePath(rendersDir, absoluteOutputPath)) {
+    throw new Error("outputPath must be inside the renders directory");
+  }
   const outputDir = dirname(absoluteOutputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
   return { input, cleanupProjectDir, absoluteOutputPath };
@@ -476,19 +490,49 @@ type PrepareRenderResult = { prepared: PreparedRenderInput } | { error: string }
 
 const MAX_PREVIEW_HTML_BYTES = 20 * 1024 * 1024;
 
+/** What a request may reach on disk; see `HandlerOptions.projectsDir` and `allowDebug`. */
+export interface RenderRequestPolicy {
+  projectsDir: string;
+  allowDebug: boolean;
+}
+
+function resolveRenderRequestPolicy(options: HandlerOptions): RenderRequestPolicy {
+  return {
+    projectsDir: resolve(
+      options.projectsDir ?? (process.env.PRODUCER_PROJECTS_DIR || process.cwd()),
+    ),
+    allowDebug: options.allowDebug ?? process.env.PRODUCER_ALLOW_DEBUG === "1",
+  };
+}
+
+/** Inside the projects root, and not in the debug dir where earlier requests' compiled HTML persists. */
+function isAllowedProjectPath(projectsDir: string, path: string): boolean {
+  return isSafePath(projectsDir, path) && !isSafePath(resolveRenderDebugDir(), path);
+}
+
 function prepareProjectDirectory(
   projectDir: unknown,
   options: Omit<RenderInput, "projectDir">,
+  projectsDir: string,
 ): PrepareRenderResult | null {
   const candidate = nonEmptyString(projectDir);
   if (!candidate) return null;
-  const absProjectDir = resolve(candidate);
-  if (!existsSync(absProjectDir) || !statSync(absProjectDir).isDirectory()) {
-    return { error: `Project directory not found: ${absProjectDir}` };
+  const absProjectDir = resolve(projectsDir, candidate);
+  if (
+    !isAllowedProjectPath(projectsDir, absProjectDir) ||
+    !existsSync(absProjectDir) ||
+    !statSync(absProjectDir).isDirectory()
+  ) {
+    return { error: `Project directory not found in the projects directory: ${candidate}` };
   }
   const entry = options.entryFile || "index.html";
-  if (!existsSync(resolve(absProjectDir, entry))) {
-    return { error: `Entry file "${entry}" not found in project directory: ${absProjectDir}` };
+  const entryPath = resolve(absProjectDir, entry);
+  if (
+    !isSafePath(absProjectDir, entryPath) ||
+    !isAllowedProjectPath(projectsDir, entryPath) ||
+    !existsSync(entryPath)
+  ) {
+    return { error: `Entry file "${entry}" not found in project directory: ${candidate}` };
   }
   return { prepared: { input: { projectDir: absProjectDir, ...options } } };
 }
@@ -530,18 +574,22 @@ function materializeInlineProject(
 
 export async function prepareRenderBody(
   body: Record<string, unknown>,
+  policy: RenderRequestPolicy = resolveRenderRequestPolicy({}),
 ): Promise<PrepareRenderResult> {
   // Reject explicitly-supplied-but-malformed overrides up front so the caller
   // gets a clear 400 instead of a silently-ignored value.
   const overrideError = validateRenderOverrides(body);
   if (overrideError) return { error: overrideError };
+  if (body.debug === true && !policy.allowDebug) {
+    return { error: "debug is disabled on this server (set allowDebug or PRODUCER_ALLOW_DEBUG=1)" };
+  }
 
   const pageMotionBlur = body.pageMotionBlur;
   if (pageMotionBlur !== undefined && pageMotionBlur !== "off") {
     return { error: "pageMotionBlur must be off when supplied" };
   }
   const options: Omit<RenderInput, "projectDir"> = { ...parseRenderOptions(body), pageMotionBlur };
-  const project = prepareProjectDirectory(body.projectDir, options);
+  const project = prepareProjectDirectory(body.projectDir, options, policy.projectsDir);
   if (project) return project;
   const source = await resolveInlineRenderHtml(body);
   return "error" in source ? source : materializeInlineProject(source.html, options);
@@ -613,6 +661,11 @@ function cleanupTempDir(dir: string | undefined, log: ProducerLogger): void {
   }
 }
 
+/** The job id names the render's work dir (kept on disk under `debug`), so it stays server-side. */
+function publicPerfSummary(job: RenderJob) {
+  return job.perfSummary ? { ...job.perfSummary, renderId: undefined } : null;
+}
+
 function outputFileSize(path: string): number {
   return existsSync(path) ? statSync(path).size : 0;
 }
@@ -635,6 +688,7 @@ async function prepareSseRenderRequest(
   c: Context,
   stream: SseWriter,
   requestId: string,
+  policy: RenderRequestPolicy,
 ): Promise<PreparedRenderInput | null> {
   let body: Record<string, unknown>;
   try {
@@ -650,7 +704,7 @@ async function prepareSseRenderRequest(
     });
     return null;
   }
-  const prepared = await prepareRenderBody(body);
+  const prepared = await prepareRenderBody(body, policy);
   if (!("error" in prepared)) return prepared.prepared;
   await stream.writeSSE({
     data: JSON.stringify({
@@ -750,6 +804,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
     options.getRequestId ?? ((c: Context) => c.req.header("x-request-id") || crypto.randomUUID());
   const outputUrlPrefix = options.outputUrlPrefix ?? "/outputs";
   const rendersDir = options.rendersDir ?? process.env.PRODUCER_RENDERS_DIR ?? "/tmp";
+  const policy = resolveRenderRequestPolicy(options);
   const artifactTtlMs =
     options.artifactTtlMs ?? Number(process.env.PRODUCER_OUTPUT_ARTIFACT_TTL_MS || 15 * 60 * 1000);
   const store = createArtifactStore(artifactTtlMs);
@@ -773,6 +828,16 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       body = await c.req.json();
     } catch {
       return c.json({ success: false, requestId, error: "Invalid JSON body" }, 400);
+    }
+
+    const lintProjectDir = nonEmptyString(body.projectDir);
+    if (lintProjectDir) {
+      const absProjectDir = resolve(policy.projectsDir, lintProjectDir);
+      if (!isAllowedProjectPath(policy.projectsDir, absProjectDir)) {
+        const error = `Project directory not found in the projects directory: ${lintProjectDir}`;
+        return c.json({ success: false, requestId, error }, 400);
+      }
+      body = { ...body, projectDir: absProjectDir };
     }
 
     const preparedResult = prepareHyperframeLintBody(body);
@@ -809,7 +874,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       return c.json({ success: false, requestId, error: "Invalid JSON body" }, 400);
     }
 
-    const preparedResult = await prepareRenderBody(body);
+    const preparedResult = await prepareRenderBody(body, policy);
     if ("error" in preparedResult) {
       return c.json({ success: false, requestId, error: preparedResult.error }, 400);
     }
@@ -860,7 +925,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
         videoDurationSeconds: job.duration ?? null,
         outcome: job.outcome ?? "completed",
         warnings: job.warnings,
-        perf: job.perfSummary ?? null,
+        perf: publicPerfSummary(job),
         ...strictVariablesResult(job),
       });
     } catch (error) {
@@ -899,7 +964,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
       const requestId = getRequestId(c);
       const t0 = Date.now();
 
-      const prepared = await prepareSseRenderRequest(c, stream, requestId);
+      const prepared = await prepareSseRenderRequest(c, stream, requestId, policy);
       if (!prepared) return;
 
       const preparedJob = prepareRenderJob(prepared, rendersDir, log);
@@ -963,7 +1028,7 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
             videoDurationSeconds: job.duration ?? null,
             outcome: job.outcome ?? "completed",
             warnings: job.warnings,
-            perf: job.perfSummary ?? null,
+            perf: publicPerfSummary(job),
             producerVersion: readProducerVersion(),
             ...strictVariablesResult(job),
           }),
@@ -1062,6 +1127,23 @@ function allowedHostnames(options: HandlerOptions): Set<string> {
   return names;
 }
 
+function resolveAuthToken(options: HandlerOptions): string {
+  return options.authToken || process.env.PRODUCER_AUTH_TOKEN || "";
+}
+
+function hasBearerToken(c: Context, token: string): boolean {
+  const digest = (value: string) => crypto.createHash("sha256").update(value).digest();
+  return crypto.timingSafeEqual(
+    digest(c.req.header("authorization") ?? ""),
+    digest(`Bearer ${token}`),
+  );
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  return host === "localhost" || host === "::1" || (isIP(host) === 4 && host.startsWith("127."));
+}
+
 /** Header-less callers (curl, services) pass; a page's POST always carries Origin. */
 function isDisallowedBrowserHost(c: Context, allowed: ReadonlySet<string>): boolean {
   const origin = c.req.header("origin");
@@ -1082,6 +1164,14 @@ export function createProducerApp(options: HandlerOptions = {}): Hono {
   const app = new Hono();
   const handlers = createRenderHandlers(options);
   const allowed = allowedHostnames(options);
+  const authToken = resolveAuthToken(options);
+
+  app.use("*", async (c, next) => {
+    if (authToken && c.req.path !== "/health" && !hasBearerToken(c, authToken)) {
+      return c.json({ success: false, error: "Unauthorized" }, 401);
+    }
+    await next();
+  });
 
   app.use("*", async (c, next) => {
     if (isDisallowedBrowserHost(c, allowed)) {
@@ -1122,11 +1212,19 @@ export function createProducerApp(options: HandlerOptions = {}): Hono {
  */
 export function startServer(options: ServerOptions = {}) {
   const port = options.port ?? parseInt(process.env.PRODUCER_PORT ?? "9847", 10);
+  const hostname = options.hostname || process.env.PRODUCER_HOST || "127.0.0.1";
   const log = options.logger ?? defaultLogger;
+  // The API trusts its caller with server-side paths: off this machine, only with a credential.
+  if (!isLoopbackHostname(hostname) && !resolveAuthToken(options)) {
+    throw new Error(
+      `Refusing to listen on ${hostname} without an auth token. Set authToken or PRODUCER_AUTH_TOKEN, or listen on a loopback address.`,
+    );
+  }
   const app = createProducerApp(options);
 
-  const server = serve({ fetch: app.fetch, port }, () => {
-    log.info(`Listening on http://localhost:${port}`);
+  const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
+    const address = info.family === "IPv6" ? `[${info.address}]` : info.address;
+    log.info(`Listening on http://${address}:${info.port}`);
   });
 
   // Disable timeouts for long renders
