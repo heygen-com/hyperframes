@@ -118,7 +118,6 @@ function readProjectEntryFile(
   };
 }
 
-/** `isAllowedEntry` lets a server's request policy refuse entries the lexical check passes (symlinks, private dirs). */
 export function prepareHyperframeLintBody(
   body: Record<string, unknown>,
   isAllowedEntry?: (absolutePath: string) => boolean,

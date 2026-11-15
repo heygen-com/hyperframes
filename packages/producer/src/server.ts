@@ -81,11 +81,7 @@ export interface HandlerOptions {
   maxConcurrentRenders?: number;
   /** Extra browser-facing host names (e.g. a proxy's); merged with PRODUCER_ALLOWED_HOSTS. */
   allowedHosts?: readonly string[];
-  /**
-   * Hold requests to the paths below: `projectDir` and `entryFile` inside `projectsDir`, outputs
-   * inside `rendersDir`, `debug` only with `allowDebug`. `createProducerApp` and `startServer`
-   * default it to true; `createRenderHandlers`, for trusted embedded callers, to false.
-   */
+  /** Confine request paths and debug as below. Default: true in `createProducerApp`, false in `createRenderHandlers`. */
   confineRequests?: boolean;
   /** With `confineRequests`: where every `projectDir` must resolve. Defaults to PRODUCER_PROJECTS_DIR or the working directory. */
   projectsDir?: string;
@@ -537,7 +533,6 @@ function prepareProjectDirectory(
   const candidate = nonEmptyString(projectDir);
   if (!candidate) return null;
   const absProjectDir = policy ? resolve(policy.projectsDir, candidate) : resolve(candidate);
-  // Under the policy, echo the caller's own value rather than the server's absolute layout.
   const shown = policy ? candidate : absProjectDir;
   if (
     (policy && !isAllowedProjectPath(policy.projectsDir, absProjectDir)) ||
@@ -1237,7 +1232,6 @@ export function startServer(options: ServerOptions = {}) {
   const port = options.port ?? parseInt(process.env.PRODUCER_PORT ?? "9847", 10);
   const hostname = options.hostname || process.env.PRODUCER_HOST || "127.0.0.1";
   const log = options.logger ?? defaultLogger;
-  // The API trusts its caller with server-side paths: off this machine, only with a credential.
   if (!isLoopbackHostname(hostname) && !resolveAuthToken(options)) {
     throw new Error(
       `Refusing to listen on ${hostname} without an auth token. Set authToken or PRODUCER_AUTH_TOKEN, or listen on a loopback address.`,
