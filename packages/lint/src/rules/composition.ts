@@ -22,6 +22,7 @@ import {
   isSafeMediaUrl,
 } from "@hyperframes/parsers/composition";
 import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { rawCssUrlMatches } from "@hyperframes/parsers/css-url-scans";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import {
   readAuthoredDurationSeconds,
@@ -132,11 +133,8 @@ function isCompositionRootOrMount(rawTag: string): boolean {
 // rules that consume this — the helper just yields raw URL values.
 function extractCssUrlReferences(css: string): string[] {
   const out: string[] = [];
-  const noComments = replaceBlockComments(css, "");
-  const urlPattern = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = urlPattern.exec(noComments)) !== null) {
-    const raw = (m[2] ?? "").trim();
+  for (const { parts } of rawCssUrlMatches(replaceBlockComments(css, ""))) {
+    const raw = (parts[2] ?? "").trim();
     if (raw) out.push(raw);
   }
   return out;

@@ -549,21 +549,34 @@ describe("texture_mask_asset_not_found declarations", () => {
     },
   );
 
-  it("reads long runs of unclosed urls in valid and malformed stylesheets in well under two seconds", async () => {
-    const links =
-      '<link rel="stylesheet" href="nested.css"><link rel="stylesheet" href="broken.css">';
-    const project = makeProject(validHtml().replace("<body>", `<head>${links}</head><body>`));
-    writeFileSync(
-      join(project, "nested.css"),
-      `a{background:${"url(".repeat(40_000)}${")".repeat(40_000)}}`,
-    );
-    writeFileSync(join(project, "broken.css"), `a{${"mask-image:url(".repeat(3_000)}`);
+  it("reads long runs of unclosed urls in valid and malformed stylesheets in linear time", async () => {
+    // Shared CI runners are often several times slower than a laptop, so a fixed time limit
+    // fails at random. Four times the input takes about four times as long when the scan is
+    // linear, and about sixteen times as long when it is quadratic.
+    const fastestLint = async (runs: number): Promise<number> => {
+      const links =
+        '<link rel="stylesheet" href="nested.css"><link rel="stylesheet" href="broken.css">';
+      const project = makeProject(validHtml().replace("<body>", `<head>${links}</head><body>`));
+      writeFileSync(
+        join(project, "nested.css"),
+        `a{background:${"url(".repeat(runs)}${")".repeat(runs)}}`,
+      );
+      writeFileSync(join(project, "broken.css"), `a{${"mask-image:url(".repeat(runs / 10)}`);
+      let fastest = Number.POSITIVE_INFINITY;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const started = performance.now();
+        await lintProject(project);
+        fastest = Math.min(fastest, performance.now() - started);
+      }
+      return fastest;
+    };
 
-    const started = performance.now();
-    await lintProject(project);
+    const small = await fastestLint(20_000);
+    const large = await fastestLint(80_000);
 
-    expect(performance.now() - started).toBeLessThan(2000);
-  });
+    expect(large / small).toBeLessThan(8);
+    expect(large).toBeLessThan(10_000);
+  }, 60_000);
 });
 
 describe("template shell style sources", () => {
