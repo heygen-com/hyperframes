@@ -18,6 +18,7 @@ import type { ArgsDef } from "citty";
 import type { Example } from "./_examples.js";
 import { parseAt } from "./layout.js";
 import { c } from "../ui/colors.js";
+import { terminalText } from "../utils/terminalText.js";
 import { registerBrowserSessionCleanup } from "../browser/launch.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { CliUsageError, failUsage, setCommandExitCode } from "../utils/commandResult.js";
@@ -883,10 +884,10 @@ function printSnapshotSection(report: CheckReport): void {
 }
 
 function printFinding(finding: CheckFinding): void {
-  const where = `${finding.sourceFile} ${finding.selector} ${formatFindingTimes(finding)}`;
-  console.log(`  ${findingIcon(finding)} ${finding.code}: ${finding.message}`);
+  const where = `${terminalText(finding.sourceFile)} ${terminalText(finding.selector)} ${formatFindingTimes(finding)}`;
+  console.log(`  ${findingIcon(finding)} ${finding.code}: ${terminalText(finding.message)}`);
   console.log(`    ${c.dim(where)}`);
-  if (finding.fixHint) console.log(`    ${c.dim(`Fix: ${finding.fixHint}`)}`);
+  if (finding.fixHint) console.log(`    ${c.dim(`Fix: ${terminalText(finding.fixHint)}`)}`);
 }
 
 function findingIcon(finding: CheckFinding): string {

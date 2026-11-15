@@ -803,6 +803,41 @@ it("distinguishes unavailable HDR inspection from no promotion", async () => {
   expect(report.hdr).toEqual({ autoPromotion: null, inspection: "unavailable" });
 });
 
+it("prints composition text in a finding with its control characters as visible escapes", async () => {
+  const planted: CheckFinding = {
+    code: "audio_source_unreadable",
+    severity: "error",
+    message: "voice\u001b[2K.wav has no audio",
+    selector: "#v\u001b]0;t\u0007",
+    dataAttributes: {},
+    sourceFile: "scene\u009b2J.html",
+    fixHint: "use \u001b]52;c;Y2xpcA==\u0007",
+    bbox: { x: 0, y: 0, width: 0, height: 0 },
+    time: 1,
+  };
+  const { report } = await runScenario(
+    fakeDriver(),
+    {},
+    { inspectAudio: vi.fn(async () => [planted]) },
+  );
+  const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+  const command = createCheckCommand({
+    resolveProject: () => PROJECT,
+    runPipeline: vi.fn(async () => report),
+    prepareMedia: vi.fn(async () => []),
+    withMeta: (value) => value,
+  });
+
+  await runCommand(command, { rawArgs: [] }).catch(() => undefined);
+
+  const out = log.mock.calls.map((call) => String(call[0] ?? "")).join("\n");
+  for (const control of ["\u0007", "\u001b]", "\u001b[2K", "\u009b"])
+    expect(out).not.toContain(control);
+  expect(out).toContain("voice\\x1b[2K.wav has no audio");
+  expect(out).toContain("scene\\x9b2J.html #v\\x1b]0;t\\x07");
+  expect(out).toContain("Fix: use \\x1b]52;c;Y2xpcA==\\x07");
+});
+
 it("fails the check on an audio error and reports it in its own section", async () => {
   const unreadable: CheckFinding = {
     code: "audio_source_unreadable",
