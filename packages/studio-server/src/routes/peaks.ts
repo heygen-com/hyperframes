@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
@@ -46,7 +46,7 @@ export function registerPeakRoutes(
     if (!stats?.isFile()) return c.json({ error: "file not found" }, 404);
 
     const cacheDir = join(project.dir, ".waveform-cache");
-    const cachePath = join(cacheDir, buildPeakMapCacheKey(assetPath, stats));
+    const cachePath = join(cacheDir, buildPeakMapCacheKey(relative(project.dir, mediaPath), stats));
     const cached = readCachedBins(cacheDir, cachePath);
     if (cached) return c.json({ binSeconds: PEAK_BIN_SECONDS, bins: cached });
 

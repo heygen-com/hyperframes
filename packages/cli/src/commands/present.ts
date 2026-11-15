@@ -27,6 +27,7 @@ import {
   resolvePlayerPath,
   resolveSlideshowPath,
   listenOnFreePort,
+  refuseUnknownHosts,
   assetContentType,
 } from "../utils/compositionServer.js";
 import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
@@ -123,6 +124,7 @@ export default defineCommand({
     const { createAdaptorServer } = await import("@hono/node-server");
 
     const app = new Hono();
+    refuseUnknownHosts(app);
 
     app.get("/player.js", (ctx) =>
       ctx.body(readFileSync(playerPath, "utf-8"), 200, {

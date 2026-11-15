@@ -60,6 +60,7 @@ export type {
 export {
   resolveConfig,
   resolvePageNavigationTimeout,
+  resolveRestrictPageNetwork,
   validateEngineConfigSnapshot,
   DEFAULT_CONFIG,
   scaleProtocolTimeoutForComposition,
@@ -300,7 +301,11 @@ export {
 } from "./services/videoFrameExtractor.js";
 export { qualifyVideoLayer } from "./services/videoLayerPassthrough.js";
 export { isSelfOrAncestorHidden } from "./services/mediaHidden.js";
-export { directorySizeBytes, gcExtractionCache } from "./services/extractionCache.js";
+export {
+  directorySizeBytes,
+  gcExtractionCache,
+  privateCacheRoot,
+} from "./services/extractionCache.js";
 
 export {
   resolveReferencedStart,
@@ -422,6 +427,7 @@ export {
   fetchPublicHttpsText,
   isHttpUrl,
   safeDownloadUrlIdentity,
+  isUrlNotPermittedError,
   writeUrlDownloadTelemetry,
   type SafeDownloadUrlIdentity,
   type UrlDownloadOptions,

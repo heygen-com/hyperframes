@@ -62,7 +62,7 @@ The handler uses `@sparticuz/chromium` by default, with a build-time fallback fo
 
 The handler sets `PRODUCER_RESTRICT_PAGE_NETWORK=true` unless the function already sets it, so a rendered page reaches only its own project files and public internet addresses. Loopback, private, link-local and IPv6 addresses are refused for anything the page loads. An asset on a VPC-only host or behind private DNS is missing from the video.
 
-Keep it on when you render compositions you did not write. To turn it off, set `PRODUCER_RESTRICT_PAGE_NETWORK=false` in the function's environment.
+Keep it on when you render compositions you did not write. To turn it off, set `PRODUCER_RESTRICT_PAGE_NETWORK=false` in the function's environment. Only `false`, `0`, `no` or `off` turn it off. Any other value keeps it on, and a value the handler does not recognise logs a warning.
 
 ## Using the SDK
 

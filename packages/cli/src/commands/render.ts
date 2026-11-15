@@ -72,6 +72,7 @@ import { freemem, tmpdir } from "node:os";
 import { resolve, dirname, join, basename } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { loadProducer } from "../utils/producer.js";
+import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { c } from "../ui/colors.js";
 import { desktopHint } from "../utils/desktopApp.js";
 import {
@@ -1162,6 +1163,9 @@ async function executeLocalRender(
     process.env.HYPERFRAMES_GSAP_VENDOR_DIR = gsapVendorDir;
   }
   const producer = await loadProducer();
+  const allowOutsideProjectAssets = outsideAssetsAllowed(projectDir, options.entryFile, (line) =>
+    console.warn(c.warn(`  ${line}`)),
+  );
   const deParallelRouterActive =
     options.manageDeParallelRouterBreaker === true
       ? applyDeParallelRouterCircuitBreaker(options.quiet)
@@ -1242,10 +1246,11 @@ async function executeLocalRender(
       startTime,
       cpu,
       signal: cancellation.signal,
+      allowOutsideProjectAssets,
     });
   }
   const job = producer.createRenderJob(
-    producer.renderConfigFromRequest(request, { logger, allowOutsideProjectAssets: true }),
+    producer.renderConfigFromRequest(request, { logger, allowOutsideProjectAssets }),
   );
 
   const onProgress = options.quiet
@@ -1363,6 +1368,7 @@ async function renderRange(input: {
   startTime: number;
   cpu: RenderCpuSampler;
   signal: AbortSignal;
+  allowOutsideProjectAssets: boolean;
 }): Promise<SingleRenderResult> {
   const { producer, options } = input;
   let framesEncoded = 0;
@@ -1377,7 +1383,7 @@ async function renderRange(input: {
       config,
       input.range,
       input.outputPath,
-      { allowOutsideProjectAssets: true },
+      { allowOutsideProjectAssets: input.allowOutsideProjectAssets },
     );
     framesEncoded = spanResult.framesEncoded;
     reference = producer.referenceBackgroundResult(spanResult[producer.REFERENCE_BACKGROUND_FIELD]);

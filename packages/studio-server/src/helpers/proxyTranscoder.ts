@@ -1145,27 +1145,63 @@ export async function resolveProxies(
   return results;
 }
 
-const stillsInFlight = new Map<string, Promise<string>>();
+interface StillJob {
+  made: Promise<string>;
+  /** Requests still waiting; one without a signal never leaves, so its still is always made. */
+  waiters: number;
+  abandoned: AbortController;
+}
 
-/** One JPEG of the source at a time (to a tenth of a second), sized like the copy's box. */
+const stillsInFlight = new Map<string, StillJob>();
+
+/** One JPEG of the source at a time (to a tenth of a second), sized like the copy's box. A
+ * caller's `signal` detaches that caller; once no caller is left, the still's ffmpeg is ended. */
 export function resolveStill(
   projectDir: string,
   absoluteSourcePath: string,
   atSeconds: number,
   box?: PreviewProxyBox,
+  startUncachedStill: (make: () => Promise<string>) => Promise<string> = (make) => make(),
+  signal?: AbortSignal,
 ): Promise<string> {
+  if (signal?.aborted) return Promise.reject(signal.reason);
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
   const at = Math.max(0, Math.round(atSeconds * 10) / 10);
   const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
   const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
   if (existsSync(cachePath)) return Promise.resolve(cachePath);
-  const shared = stillsInFlight.get(cachePath);
-  if (shared) return shared;
-  const made = makeStill(source, at, box, cachePath).finally(() =>
-    stillsInFlight.delete(cachePath),
-  );
-  stillsInFlight.set(cachePath, made);
-  return made;
+  let job = stillsInFlight.get(cachePath);
+  if (!job) {
+    const abandoned = new AbortController();
+    const made = startUncachedStill(() =>
+      makeStill(source, at, box, cachePath, abandoned.signal),
+    ).finally(() => forgetStill(cachePath, started));
+    const started: StillJob = { made, waiters: 0, abandoned };
+    stillsInFlight.set(cachePath, started);
+    job = started;
+  }
+  return waitForStill(job, cachePath, signal);
+}
+
+function forgetStill(cachePath: string, job: StillJob): void {
+  if (stillsInFlight.get(cachePath) === job) stillsInFlight.delete(cachePath);
+}
+
+function waitForStill(job: StillJob, cachePath: string, signal?: AbortSignal): Promise<string> {
+  job.waiters++;
+  if (!signal) return job.made;
+  return new Promise((resolveWait, rejectWait) => {
+    const leave = (): void => {
+      rejectWait(signal.reason);
+      if (--job.waiters > 0) return;
+      forgetStill(cachePath, job);
+      job.abandoned.abort();
+    };
+    signal.addEventListener("abort", leave, { once: true });
+    job.made
+      .finally(() => signal.removeEventListener("abort", leave))
+      .then(resolveWait, rejectWait);
+  });
 }
 
 async function makeStill(
@@ -1173,6 +1209,7 @@ async function makeStill(
   at: number,
   box: PreviewProxyBox | undefined,
   cachePath: string,
+  signal: AbortSignal,
 ): Promise<string> {
   const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpegPath) throw new FfmpegUnavailableError();
@@ -1193,7 +1230,7 @@ async function makeStill(
       "0:V:0",
     ];
     args.push("-frames:v", "1", "-vf", filter, "-pix_fmt", "yuvj420p", "-q:v", "3", tempPath);
-    await spawnFfmpeg(ffmpegPath, args, TRANSCODE_STALL_MS, new AbortController().signal);
+    await spawnFfmpeg(ffmpegPath, args, TRANSCODE_STALL_MS, signal);
     renameSync(tempPath, cachePath);
   } finally {
     rmSync(tempPath, { force: true });

@@ -70,9 +70,24 @@ function readEntryHtml(filePath: string): string | null {
   }
 }
 
+function leavesProject(
+  absProjectDir: string,
+  absoluteEntryPath: string,
+  isAllowedEntry?: (absolutePath: string) => boolean,
+): boolean {
+  const entryRelativePath = relative(absProjectDir, absoluteEntryPath);
+  return (
+    entryRelativePath === ".." ||
+    entryRelativePath.startsWith(`..${sep}`) ||
+    isAbsolute(entryRelativePath) ||
+    (isAllowedEntry !== undefined && !isAllowedEntry(absoluteEntryPath))
+  );
+}
+
 function readProjectEntryFile(
   projectDir: string,
   preferredEntryFile?: string,
+  isAllowedEntry?: (absolutePath: string) => boolean,
 ): PreparedHyperframeLintInput | { error: string } {
   const absProjectDir = resolve(projectDir);
   if (!existsSync(absProjectDir) || !statSync(absProjectDir).isDirectory()) {
@@ -85,12 +100,7 @@ function readProjectEntryFile(
 
   for (const entryFile of entryCandidates) {
     const absoluteEntryPath = resolve(absProjectDir, entryFile);
-    const entryRelativePath = relative(absProjectDir, absoluteEntryPath);
-    if (
-      entryRelativePath === ".." ||
-      entryRelativePath.startsWith(`..${sep}`) ||
-      isAbsolute(entryRelativePath)
-    ) {
+    if (leavesProject(absProjectDir, absoluteEntryPath, isAllowedEntry)) {
       return { error: `Entry file must stay inside project directory: ${entryFile}` };
     }
     const html = readEntryHtml(absoluteEntryPath);
@@ -110,6 +120,7 @@ function readProjectEntryFile(
 
 export function prepareHyperframeLintBody(
   body: Record<string, unknown>,
+  isAllowedEntry?: (absolutePath: string) => boolean,
 ): { prepared: PreparedHyperframeLintInput } | { error: string } {
   const requestedEntryFile =
     typeof body.entryFile === "string" && body.entryFile.trim().length > 0
@@ -117,7 +128,7 @@ export function prepareHyperframeLintBody(
       : undefined;
 
   if (typeof body.projectDir === "string" && body.projectDir.trim().length > 0) {
-    const prepared = readProjectEntryFile(body.projectDir, requestedEntryFile);
+    const prepared = readProjectEntryFile(body.projectDir, requestedEntryFile, isAllowedEntry);
     if ("error" in prepared) {
       return prepared;
     }

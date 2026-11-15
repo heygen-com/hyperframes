@@ -36,6 +36,7 @@ import {
   resolveRuntimePath,
   resolvePlayerPath,
   listenOnFreePort,
+  refuseUnknownHosts,
   injectRuntime,
   injectMediaCodecMap,
   buildRangeResponse,
@@ -145,6 +146,7 @@ export default defineCommand({
     const { createAdaptorServer } = await import("@hono/node-server");
 
     const app = new Hono();
+    refuseUnknownHosts(app);
 
     // Serve the player JS
     app.get("/player.js", (ctx) =>

@@ -155,6 +155,7 @@ import {
   type MemorySampler,
   reportExtractProgress,
   updateJobStatus,
+  audioWorkDir,
 } from "./render/shared.js";
 import { frameCacheOptions } from "./render/frameCacheBudget.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
@@ -3628,6 +3629,7 @@ async function executeRenderPipeline(input: {
           log,
           composition,
           skipFrameExtractionIds: videoLayer ? [videoLayer.videoId] : [],
+          audioDownloadDir: audioWorkDir(workDir),
           abortSignal: executionSignal,
           assertNotAborted,
           // Local staging can use links; distributed plan() alone requires real copies.

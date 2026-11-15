@@ -702,6 +702,13 @@ export function createApp(deps?: HandlerDeps): Hono {
 
   // fallow-ignore-next-line complexity
   app.post("/", async (c) => {
+    const sentByBrowserPage = c.req.header("origin") !== undefined;
+    if (sentByBrowserPage) {
+      return c.json(
+        { error: "FORBIDDEN", message: "requests from a browser page are refused" },
+        403,
+      );
+    }
     let body: CloudRunEvent;
     try {
       body = (await c.req.json()) as CloudRunEvent;

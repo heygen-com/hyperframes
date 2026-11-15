@@ -14,7 +14,8 @@ import { parseHTML } from "linkedom";
 import AdmZip from "adm-zip";
 import type { Ignore } from "ignore";
 import { projectIgnore } from "@hyperframes/lint";
-import { CSS_URL_RE, isNonRelativeUrl, isPathInside, rewriteSrcsetUrls } from "@hyperframes/core";
+import { isNonRelativeUrl, isPathInside, rewriteSrcsetUrls } from "@hyperframes/core";
+import { cssUrlMatches, replaceMatches } from "@hyperframes/parsers/css-url-scans";
 import { decodeUrlPathVariants, encodeUrlPath } from "@hyperframes/parsers";
 import { buildAuthHeaders } from "../auth/client.js";
 import { tryResolveCredential } from "../auth/index.js";
@@ -34,8 +35,10 @@ import {
   leftOutWarning,
   type LeftOutReason,
   type OnLeftOut,
+  type OnOutsideFile,
+  outsideFileReference,
 } from "./leftOutReference.js";
-import { isCopiedOutsideFileType } from "./outsideFileType.js";
+import { isUploadedOutsideFileType } from "./outsideFileType.js";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
@@ -406,12 +409,19 @@ interface ExternalAssetContext {
   usedArchivePaths: Set<string>;
   leftOut: Set<string>;
   onLeftOut?: OnLeftOut;
+  onOutsideFile?: OnOutsideFile;
   received: (path: string) => boolean;
 }
 
-function addExternalAsset(ctx: ExternalAssetContext, absPath: string): string {
+function addExternalAsset(
+  ctx: ExternalAssetContext,
+  absPath: string,
+  entryPath: string,
+  rawPath: string,
+): string {
   const existing = ctx.externalMap.get(absPath);
   if (existing) return existing;
+  ctx.onOutsideFile?.(outsideFileReference(ctx.absProjectDir, entryPath, rawPath, absPath));
 
   const rel = relative(ctx.absProjectDir, absPath).replaceAll("\\", "/");
   const stripped = rel.replace(/^(?:\.\.\/)+/, "");
@@ -439,6 +449,17 @@ function staysOut(ctx: ExternalAssetContext, rel: string, absPath: string): bool
   );
 }
 
+function reportProjectLinkOutside(
+  absProjectDir: string,
+  file: string,
+  absPath: string,
+  onOutsideFile: OnOutsideFile | undefined,
+): void {
+  if (onOutsideFile && linksOutside(absProjectDir, absPath)) {
+    onOutsideFile(outsideFileReference(absProjectDir, file, file, absPath));
+  }
+}
+
 /** Ships a referenced in-project file the ignore rules skipped, resolved from its folder or the root. */
 function includeReferencedProjectFile(
   ctx: ExternalAssetContext,
@@ -458,6 +479,7 @@ function includeReferencedProjectFile(
       return leaveOut(ctx, entryPath, rawPath, absPath, "received");
     }
     if (statSync(absPath).isFile()) {
+      reportProjectLinkOutside(ctx.absProjectDir, rel, absPath, ctx.onOutsideFile);
       ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
     }
     return;
@@ -508,14 +530,14 @@ function archiveTargetOf(
       leaveOut(ctx, options.entryPath, rawPath, absPath);
       return undefined;
     }
-    if (!isCopiedOutsideFileType(absPath)) {
+    if (!isUploadedOutsideFileType(absPath)) {
       leaveOut(ctx, options.entryPath, rawPath, absPath, "file_type");
       return undefined;
     }
   } catch {
     return undefined;
   }
-  return encodeUrlPath(addExternalAsset(ctx, absPath));
+  return encodeUrlPath(addExternalAsset(ctx, absPath, options.entryPath, rawPath));
 }
 
 function tryResolveExternal(
@@ -559,7 +581,7 @@ export function rewriteCssUrls(
   resolveTarget: HtmlAttributeResolver,
 ): { css: string; modified: boolean } {
   let modified = false;
-  const rewritten = css.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+  const rewritten = replaceMatches(css, cssUrlMatches(css), (full, quote, rawUrl) => {
     const target = resolveTarget((rawUrl || "").trim(), referrerAbsDir);
     if (!target) return full;
     modified = true;
@@ -702,6 +724,7 @@ export function localizeExternalAssets(
   fileContents: Map<string, StagedFile>,
   onDiskMinBytes = Infinity,
   onLeftOut?: OnLeftOut,
+  onOutsideFile?: OnOutsideFile,
 ): number {
   const ctx: ExternalAssetContext = {
     absProjectDir,
@@ -711,6 +734,7 @@ export function localizeExternalAssets(
     usedArchivePaths: new Set(),
     leftOut: new Set(),
     onLeftOut,
+    onOutsideFile,
     received: receivedFiles(absProjectDir),
   };
 
@@ -736,8 +760,9 @@ export function localizeExternalAssets(
 export function buildPublishFileMap(
   projectDir: string,
   onLeftOut?: OnLeftOut,
+  onOutsideFile?: OnOutsideFile,
 ): Map<string, Buffer> {
-  return stagePublishFiles(projectDir, Infinity, onLeftOut) as Map<string, Buffer>;
+  return stagePublishFiles(projectDir, Infinity, onLeftOut, onOutsideFile) as Map<string, Buffer>;
 }
 
 export const archiveKey = (path: string): string => path.normalize("NFC");
@@ -785,6 +810,7 @@ export function stagePublishFiles(
   projectDir: string,
   onDiskMinBytes: number,
   onLeftOut?: OnLeftOut,
+  onOutsideFile?: OnOutsideFile,
 ): Map<string, StagedFile> {
   const absProjectDir = resolve(projectDir);
   const filePaths: string[] = [];
@@ -816,11 +842,12 @@ export function stagePublishFiles(
       );
     }
     diskPathOf.set(key, filePath);
+    reportProjectLinkOutside(absProjectDir, filePath, absPath, onOutsideFile);
     fileContents.set(key, stageFile(absPath, onDiskMinBytes));
   }
 
   composeNamesInText(fileContents, filePaths);
-  localizeExternalAssets(absProjectDir, fileContents, onDiskMinBytes, onLeftOut);
+  localizeExternalAssets(absProjectDir, fileContents, onDiskMinBytes, onLeftOut, onOutsideFile);
   return fileContents;
 }
 
@@ -869,8 +896,9 @@ export function zipPublishFileMap(fileContents: Map<string, Buffer>): PublishArc
 export function createPublishArchive(
   projectDir: string,
   onLeftOut?: OnLeftOut,
+  onOutsideFile?: OnOutsideFile,
 ): PublishArchiveResult {
-  return zipPublishFileMap(buildPublishFileMap(projectDir, onLeftOut));
+  return zipPublishFileMap(buildPublishFileMap(projectDir, onLeftOut, onOutsideFile));
 }
 
 export function getPublishApiBaseUrl(): string {

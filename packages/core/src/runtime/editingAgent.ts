@@ -2,8 +2,8 @@
  * The runtime's end of the editing channel (wire types in `editingPort.ts`).
  *
  * Each connect from `window.parent` gets a fresh port, so only the parent holds a channel and a
- * remounted client is served too; a connect from anything else is ignored. Earlier ports stay
- * open: a client may take any one of them, and a disposed client closes its own.
+ * remounted client is served too; any other connect, or any in a page served to another site, is
+ * ignored. Earlier ports stay open: a client may take any of them; a disposed one closes its own.
  * Requests on the port are validated; a bad one gets a typed error reply, never a throw.
  */
 import { swallow } from "./diagnostics";
@@ -32,7 +32,7 @@ import { pointerTargetsAt } from "./editingTargets";
 import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
 import { gestureStart } from "./editingGestureStart";
-import { getLogicalOpacity } from "../studioPreviewMark";
+import { getLogicalOpacity, servedToAnotherSite } from "../studioPreviewMark";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -144,7 +144,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     const data = event.data;
     if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
       return;
-    if (data.v !== EDITING_PROTOCOL_VERSION) return;
+    if (data.v !== EDITING_PROTOCOL_VERSION || servedToAnotherSite(document)) return;
     const channel = new MessageChannel();
     const port = channel.port1;
     ports.add(port);

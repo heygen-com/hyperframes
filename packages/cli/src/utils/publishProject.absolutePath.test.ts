@@ -444,6 +444,36 @@ describe("outside references in files that came in with an imported project", ()
     ]);
   });
 
+  it("keeps the project's record when the staged subfolder carries its own record listing nothing", () => {
+    const { root } = stageReceived(
+      {
+        "index.html": "<html></html>",
+        "sub/index.html": `<img src="../../shared/logo.png">`,
+        "sub/.hyperframes/received-files.json": JSON.stringify({ files: [] }),
+      },
+      { files: ["index.html", "sub/index.html", "sub/.hyperframes/received-files.json"] },
+    );
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, "p", "sub"), Infinity, (w) => warnings.push(w));
+    expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([]);
+    expect(warnings).toEqual([
+      "index.html references ../../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload.",
+    ]);
+  });
+
+  it("counts a file a nested record lists even when the project's record does not", () => {
+    const { root } = stageReceived(
+      {
+        "index.html": "<html></html>",
+        "sub/index.html": `<img src="../../shared/logo.png">`,
+        "sub/.hyperframes/received-files.json": JSON.stringify({ files: ["index.html"] }),
+      },
+      { files: ["index.html"] },
+    );
+    const staged = stagePublishFiles(join(root, "p", "sub"), Infinity);
+    expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([]);
+  });
+
   it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     "skips a parent folder whose state it cannot read, and still copies the person's reference",
     () => {

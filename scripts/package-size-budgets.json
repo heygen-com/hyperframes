@@ -12,7 +12,7 @@
     "unpacked": 4374000
   },
   "@hyperframes/engine": {
-    "packed": 490452,
+    "packed": 500000,
     "unpacked": 1742862
   },
   "@hyperframes/gcp-cloud-run": {
@@ -21,23 +21,23 @@
   },
   "@hyperframes/inspector": {
     "packed": 880000,
-    "unpacked": 3722000
+    "unpacked": 3780000
   },
   "@hyperframes/lint": {
     "packed": 191022,
     "unpacked": 737342
   },
   "@hyperframes/parsers": {
-    "packed": 203731,
-    "unpacked": 885314
+    "packed": 208000,
+    "unpacked": 900000
   },
   "@hyperframes/player": {
     "packed": 159000,
     "unpacked": 541601
   },
   "@hyperframes/producer": {
-    "packed": 920000,
-    "unpacked": 3350000
+    "packed": 931000,
+    "unpacked": 3395000
   },
   "@hyperframes/sdk": {
     "packed": 90662,
@@ -57,6 +57,6 @@
   },
   "@hyperframes/studio-server": {
     "packed": 172000,
-    "unpacked": 654000
+    "unpacked": 672000
   }
 }
