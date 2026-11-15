@@ -5,7 +5,7 @@ import { setupTempAuthEnv } from "./_test-utils.js";
 import { persistFreshOAuth } from "./oauth.js";
 import { withMediaAuthEnvironment } from "./media-environment.js";
 import { writeStore } from "./store.js";
-import { applyDotEnv, PROJECT_ENV_KEYS } from "../utils/dotEnv.js";
+import { loadProjectDotEnv } from "../utils/dotEnv.js";
 
 describe("media-use authentication", () => {
   let fixture: Awaited<ReturnType<typeof setupTempAuthEnv>>;
@@ -72,9 +72,16 @@ describe("media-use authentication", () => {
     });
   });
 
-  it("passes the saved API key, not a HEYGEN_API_KEY that only a project .env set", async () => {
+  it("passes the saved API key, not a HEYGEN_API_KEY from a received project .env", async () => {
     await writeStore({ api_key: "saved-key" });
-    applyDotEnv("HEYGEN_API_KEY=project-key-3", process.env, PROJECT_ENV_KEYS);
+    const project = join(fixture.dir, "project");
+    await fs.mkdir(join(project, ".hyperframes"), { recursive: true });
+    await fs.writeFile(join(project, ".env"), "HEYGEN_API_KEY=received-key-3\n");
+    await fs.writeFile(
+      join(project, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: [".env"] }),
+    );
+    loadProjectDotEnv(project, process.env, () => {});
     await withMediaAuthEnvironment(async (env) => {
       expect(env.HEYGEN_API_KEY).toBe("saved-key");
     });

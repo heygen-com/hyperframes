@@ -6,7 +6,7 @@ import { setupTempAuthEnv } from "./_test-utils.js";
 import { ErrApi, ErrLoginChanged, ErrRefreshFailed, isAuthError } from "./errors.js";
 import { afterRefreshFailure, resolveCredential, tryResolveCredential } from "./resolver.js";
 import { writeStore as writeUnboundStore, type Credentials } from "./store.js";
-import { applyDotEnv, PROJECT_ENV_KEYS } from "../utils/dotEnv.js";
+import { loadProjectDotEnv } from "../utils/dotEnv.js";
 
 async function writeStore(credentials: Credentials): Promise<void> {
   await writeUnboundStore({
@@ -132,23 +132,46 @@ describe("auth/resolver", () => {
     expect(r).toEqual({ type: "api_key", key: "env-key", source: "env" });
   });
 
-  it("keeps the saved API key over a HEYGEN_API_KEY that only a project .env set", async () => {
-    applyDotEnv("HEYGEN_API_KEY=project-key-1", process.env, PROJECT_ENV_KEYS);
+  /** Loads `HEYGEN_API_KEY=<key>` from a project `.env`; `received` writes the received-files record. */
+  async function projectEnvKey(key: string, received?: string): Promise<void> {
+    const project = await fs.mkdtemp(join(dir, "project-"));
+    await fs.writeFile(join(project, ".env"), `HEYGEN_API_KEY=${key}\n`);
+    if (received !== undefined) {
+      await fs.mkdir(join(project, ".hyperframes"));
+      await fs.writeFile(join(project, ".hyperframes", "received-files.json"), received);
+    }
+    loadProjectDotEnv(project, process.env, () => {});
+  }
+
+  it("keeps a person's own project .env key ahead of the saved API key", async () => {
+    await projectEnvKey("own-key-1");
     await writeStore({ api_key: "file-key" });
-    expect(await resolveCredential()).toEqual({
-      type: "api_key",
-      key: "file-key",
-      source: "file_json",
-    });
+    expect(await resolveCredential()).toEqual({ type: "api_key", key: "own-key-1", source: "env" });
   });
 
-  it("uses a project .env key when no credential is saved, and says so once", async () => {
-    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    try {
-      applyDotEnv("HEYGEN_API_KEY=project-key-2", process.env, PROJECT_ENV_KEYS);
+  it.each([
+    ["lists it", JSON.stringify({ files: [".env"] })],
+    ["cannot be read", "{oops"],
+  ])(
+    "puts the saved API key ahead of a project .env key when the received record %s",
+    async (_, record) => {
+      await projectEnvKey(`received-key-${record.length}`, record);
+      await writeStore({ api_key: "file-key" });
       expect(await resolveCredential()).toEqual({
         type: "api_key",
-        key: "project-key-2",
+        key: "file-key",
+        source: "file_json",
+      });
+    },
+  );
+
+  it("uses a received project .env key when no credential is saved, and says so once", async () => {
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      await projectEnvKey("received-key-2", JSON.stringify({ files: [".env"] }));
+      expect(await resolveCredential()).toEqual({
+        type: "api_key",
+        key: "received-key-2",
         source: "env",
       });
       await resolveCredential();

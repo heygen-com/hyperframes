@@ -5,15 +5,15 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // $HEYGEN_API_KEY) → a host-injected OAuth $HEYGEN_ACCESS_TOKEN (Bearer) →
 // the live login in ~/.hyperframes/credentials → $HEYGEN_API_KEY /
 // $HYPERFRAMES_API_KEY → the API key saved in ~/.hyperframes/credentials →
-// a key a nearby .env set. An expired login gives way to an env key but
+// a key from a nearby .env that came in with a received project. An expired login gives way to an env key but
 // never to the saved API key ($HYPERFRAMES_CONFIG_DIR overrides the dir).
 // $HEYGEN_API_BASE moves every request to that host, as it does for the
 // heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
 // Vendored so the skill ships standalone. Pure node.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 
 export const HEYGEN_BASE = "https://api.heygen.com/v3";
 
@@ -82,6 +82,40 @@ const PROJECT_ENV_KEYS = new Set([
 const projectEnvValues = new Map();
 let projectKeyNoted = false;
 
+function isFile(path) {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+// The CLI's received-files rule: any `.hyperframes/received-files.json` at or above `dir` that lists the
+// file, or that cannot be read, makes it received.
+function receivedEnvFile(dir) {
+  const start = resolve(dir);
+  for (let root = start; ; root = dirname(root)) {
+    const record = join(root, ".hyperframes", "received-files.json");
+    if (isFile(record)) {
+      let files;
+      try {
+        files = JSON.parse(readFileSync(record, "utf8")).files;
+      } catch {
+        return true;
+      }
+      if (!Array.isArray(files)) return true;
+      const key = relative(root, join(start, ".env")).split(sep).join("/").normalize("NFC");
+      if (files.some((file) => String(file).normalize("NFC") === key)) return true;
+    }
+    if (dirname(root) === root) return false;
+  }
+}
+
+const receivedProjectKey = (name, key) => {
+  const set = projectEnvValues.get(name);
+  return set?.val === key && receivedEnvFile(set.dir);
+};
+
 // Walk up ≤5 dirs from startDir; load the first .env (shell env always wins).
 export function loadEnvFromDir(startDir) {
   let dir = resolve(startDir);
@@ -103,7 +137,7 @@ export function loadEnvFromDir(startDir) {
         }
         if (PROJECT_ENV_KEYS.has(key) && !(key in process.env)) {
           process.env[key] = val;
-          projectEnvValues.set(key, val);
+          projectEnvValues.set(key, { val, dir });
         }
       }
       return;
@@ -132,7 +166,7 @@ function resolveCredential() {
   if (accessToken) return { headers: { Authorization: `Bearer ${accessToken}` } };
   const envName = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"].find((name) => process.env[name]);
   const envKey = envName && process.env[envName];
-  const fromProject = envKey !== undefined && projectEnvValues.get(envName) === envKey;
+  const fromProject = envKey !== undefined && receivedProjectKey(envName, envKey);
   const stored = storedCredential();
   // A live login wins over an env key; an expired, foreign or unreadable store gives way to one.
   if (stored?.headers && "Authorization" in stored.headers) return stored;

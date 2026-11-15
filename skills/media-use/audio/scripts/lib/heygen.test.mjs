@@ -161,7 +161,8 @@ test("a live login wins over HEYGEN_API_KEY; an expired one gives way to it", ()
   });
 });
 
-test("a key only a project .env set gives way to the saved API key, and is named when used", () => {
+// Runs fn(dir, project, notes) with a temp credentials dir and a project whose .env sets HEYGEN_API_KEY=key.
+function withProjectEnv(key, received, fn) {
   withCleanHeygenEnv(() => {
     const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
     const project = mkdtempSync(join(tmpdir(), "heygen-env-"));
@@ -170,22 +171,48 @@ test("a key only a project .env set gives way to the saved API key, and is named
     process.stderr.write = (line) => notes.push(String(line));
     try {
       process.env.HYPERFRAMES_CONFIG_DIR = dir;
-      writeFileSync(join(project, ".env"), "HEYGEN_API_KEY=hg_project\n");
+      writeFileSync(join(project, ".env"), `HEYGEN_API_KEY=${key}\n`);
+      if (received !== undefined) {
+        mkdirSync(join(project, ".hyperframes"));
+        writeFileSync(join(project, ".hyperframes", "received-files.json"), received);
+      }
       loadEnvFromDir(project);
-      writeFileSync(join(dir, "credentials"), JSON.stringify({ api_key: "saved-wallet" }));
-      assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "saved-wallet" } });
-      assert.deepEqual(notes, []);
-      rmSync(join(dir, "credentials"));
-      assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "hg_project" } });
-      heygenCredential();
-      assert.deepEqual(notes, [
-        "[hyperframes] Using HEYGEN_API_KEY from this folder's .env: generated media goes to that key's HeyGen account.\n",
-      ]);
+      fn(dir, notes);
     } finally {
       process.stderr.write = write;
       rmSync(dir, { recursive: true, force: true });
       rmSync(project, { recursive: true, force: true });
     }
+  });
+}
+
+test("a person's own project .env key stays ahead of the saved API key", () => {
+  withProjectEnv("hg_own", undefined, (dir, notes) => {
+    writeFileSync(join(dir, "credentials"), JSON.stringify({ api_key: "saved-wallet" }));
+    assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "hg_own" } });
+    assert.deepEqual(notes, []);
+  });
+});
+
+for (const [why, record] of [
+  ["lists it", JSON.stringify({ files: [".env"] })],
+  ["cannot be read", "{oops"],
+]) {
+  test(`a received .env key gives way to the saved API key when the record ${why}`, () => {
+    withProjectEnv("hg_received", record, (dir) => {
+      writeFileSync(join(dir, "credentials"), JSON.stringify({ api_key: "saved-wallet" }));
+      assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "saved-wallet" } });
+    });
+  });
+}
+
+test("a received .env key still works with no saved credential, and is named once", () => {
+  withProjectEnv("hg_received", JSON.stringify({ files: [".env"] }), (_dir, notes) => {
+    assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "hg_received" } });
+    heygenCredential();
+    assert.deepEqual(notes, [
+      "[hyperframes] Using HEYGEN_API_KEY from this folder's .env: generated media goes to that key's HeyGen account.\n",
+    ]);
   });
 });
 
