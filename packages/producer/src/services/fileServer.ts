@@ -10,7 +10,7 @@
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { settleOnBrowserSafePort } from "@hyperframes/engine";
+import { answerOwnLoopbackHostOnly, settleOnBrowserSafePort } from "@hyperframes/engine";
 import type { IncomingMessage } from "node:http";
 import {
   existsSync,
@@ -817,11 +817,13 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
 
   const app = new Hono();
   const warnLeftOut = (line: string) => console.warn(`[FileServer] ${line}`);
+  let listeningPort = -1;
 
   app.use(async function loadEachFileOnlyAsItsNamedType(c, next) {
     await next();
     c.res.headers.set("X-Content-Type-Options", "nosniff");
   });
+  answerOwnLoopbackHostOnly(app, () => listeningPort);
 
   app.get("/*", async (c) => {
     let requestPath = c.req.path;
@@ -971,6 +973,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       const bound =
         port === 0 ? settleOnBrowserSafePort(server, "127.0.0.1") : Promise.resolve(info.port);
       bound.then((boundPort) => {
+        listeningPort = boundPort;
         resolve({
           url: `http://localhost:${boundPort}`,
           port: boundPort,

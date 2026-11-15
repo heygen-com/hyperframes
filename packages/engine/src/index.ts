@@ -387,6 +387,12 @@ export {
   settleOnBrowserSafePort,
 } from "./utils/browserSafePort.js";
 
+export {
+  answerOwnLoopbackHostOnly,
+  isOwnLoopbackHost,
+  SAME_ORIGIN_FRAMING_HEADERS,
+} from "./utils/loopbackOnly.js";
+
 export { readWebGlVendorInfoFromCanvas } from "./utils/readWebGlVendorInfoFromCanvas.js";
 
 export {
