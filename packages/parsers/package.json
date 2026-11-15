@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/parsers",
-  "version": "0.9.52",
+  "version": "0.9.54",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -75,6 +75,12 @@
       "node": "./dist/assets.js",
       "import": "./src/assets.ts",
       "types": "./src/assets.ts"
+    },
+    "./css-url-scans": {
+      "bun": "./src/cssUrlScans.ts",
+      "node": "./dist/cssUrlScans.js",
+      "import": "./src/cssUrlScans.ts",
+      "types": "./src/cssUrlScans.ts"
     },
     "./composition": {
       "bun": "./src/composition.ts",
@@ -216,6 +222,10 @@
       "./asset-paths": {
         "import": "./dist/assets.js",
         "types": "./dist/assets.d.ts"
+      },
+      "./css-url-scans": {
+        "import": "./dist/cssUrlScans.js",
+        "types": "./dist/cssUrlScans.d.ts"
       },
       "./composition": {
         "import": "./dist/composition.js",

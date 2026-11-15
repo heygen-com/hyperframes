@@ -15,6 +15,7 @@ import { parseHTML } from "linkedom";
 import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
+import { isInsideAssetRoots } from "../utils/assetRoots.js";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import {
   MEDIA_RENDER_ID_ATTR,
@@ -57,13 +58,19 @@ import {
   readMetadataCache,
   readStoredFinalFrame,
   resolvePlayableVideoDuration,
+  runFfprobe,
   videoStartOnMediaTimeline,
   writeMetadataCache,
   type MediaProbeCacheEntry,
   type VideoMetadata,
 } from "../utils/ffprobe.js";
 import { inputAlphaOpaqueWarning, probeInputAlphaPlane } from "../utils/alphaPlaneProbe.js";
-import { redactUrlQueriesInError, urlInputArgs } from "../utils/urlInput.js";
+import {
+  redactUrlQueriesInError,
+  selfContainedFormatArgs,
+  urlInputArgs,
+} from "../utils/urlInput.js";
+import { assertMediaPayload, NotMediaPayloadError } from "../utils/notMediaPayload.js";
 import {
   analyzeCompositionHdr,
   isHdrColorSpace as isHdrColorSpaceUtil,
@@ -93,6 +100,7 @@ import {
   publishCacheEntry,
   readContentSha256,
   readKeyStat,
+  privateCacheRoot,
   rehydrateCacheEntry,
   touchCacheEntry,
   type CacheEntry,
@@ -310,11 +318,25 @@ export interface ExtractionOptions {
   /** Directories the caller rewrites on every render (downloaded media); their sources are cached by content. */
   contentKeyedDirs?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+  /** Folders a local source must be in; one outside them is never opened. Unset allows any folder. */
+  assetRoots?: readonly string[];
   shownBox?: { width: number; height: number };
   shownBoxes?: ReadonlyMap<string, { width: number; height: number }>;
 }
 
 const DOWNLOAD_SUBDIR = "_downloads";
+
+/** A downloaded video passes the not-media sniff, and on a render service opens only as a self-contained container, before anything reads it as media. */
+async function assertDownloadedVideoIsMedia(
+  path: string,
+  videoId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  await assertMediaPayload(path, videoId);
+  const formatLimit = selfContainedFormatArgs();
+  if (formatLimit.length === 0) return;
+  await runFfprobe(path, [...formatLimit, "-show_entries", "format=format_name"], signal);
+}
 
 export const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
 const GC_STALENESS_MS = 24 * 60 * 60 * 1000;
@@ -642,6 +664,14 @@ export function classifyVideoExtractionError(error: unknown): VideoSourceExtract
       "internal",
       false,
       "Video source download failed internally",
+      diagnostic,
+    );
+  }
+  if (error instanceof NotMediaPayloadError) {
+    return new VideoSourceExtractionError(
+      "invalid_media",
+      false,
+      "Video source is a text document, not media",
       diagnostic,
     );
   }
@@ -2241,6 +2271,16 @@ export async function extractAllVideoFrames(
         resolvedVideos.push({ video, videoPath: remoteUrl });
         continue;
       }
+      const roots = options.assetRoots;
+      if (!isHttpUrl(videoPath) && roots && !isInsideAssetRoots(videoPath, roots)) {
+        errors.push({
+          videoId: video.id,
+          kind: "source_missing",
+          retryable: false,
+          error: `Video source is outside the project folder: ${video.src}`,
+        });
+        continue;
+      }
 
       if (isHttpUrl(videoPath)) {
         const downloadDir = join(options.outputDir, DOWNLOAD_SUBDIR);
@@ -2253,6 +2293,7 @@ export async function extractAllVideoFrames(
           () => recordTransientRetries(1),
           { onTelemetry: writeUrlDownloadTelemetry },
         );
+        await assertDownloadedVideoIsMedia(videoPath, video.id, signal);
       }
 
       if (!existsSync(videoPath)) {
@@ -2468,11 +2509,14 @@ export async function extractAllVideoFrames(
   let cacheRootDir: string | undefined;
   if (configuredCacheRootDir) {
     try {
-      mkdirSync(configuredCacheRootDir, { recursive: true });
-      cacheRootDir = configuredCacheRootDir;
+      cacheRootDir = privateCacheRoot(configuredCacheRootDir);
+      if (cacheRootDir) mkdirSync(cacheRootDir, { recursive: true });
     } catch {
+      cacheRootDir = undefined;
+    }
+    if (!cacheRootDir) {
       process.stderr.write(
-        `[hyperframes:render] WARNING: extraction cache dir ${configuredCacheRootDir} is not writable; caching disabled for this render\n`,
+        `[hyperframes:render] WARNING: extraction cache dir ${configuredCacheRootDir} is not a writable directory of this user; caching disabled for this render\n`,
       );
     }
   }

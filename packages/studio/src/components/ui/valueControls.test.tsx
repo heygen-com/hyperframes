@@ -17,7 +17,7 @@ import { NumberField } from "./NumberField";
 import { Select } from "./Select";
 import { Slider } from "./Slider";
 import { Toggle } from "./Toggle";
-import { isTypingTarget } from "../../utils/typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 import { shouldIgnorePlaybackShortcutTarget } from "../../player/lib/playbackShortcuts";
 import { __resetDesignInputThrottle, trackDesignInput } from "../../utils/designInputTracking";
 import { cleanupMounted, mountHost as render } from "./mountHost.testHelpers";

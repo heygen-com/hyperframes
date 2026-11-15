@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Span } from "@hyperframes/core/audio-analysis";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { readPlainFile } from "../../utils/projectRecords.js";
+import { isPlainFile, makeRealFolder } from "../cacheFolder.js";
 import {
   runFile,
   serviceAccess,
@@ -155,6 +158,8 @@ async function generate(
   }
 }
 
+const MAX_ANSWER_BYTES = 1024 * 1024;
+
 interface Ask {
   path: string | null;
   prompt: string;
@@ -162,8 +167,7 @@ interface Ask {
 }
 
 async function answers(asks: Ask[], cacheDir: string, access: ServiceAccess) {
-  const dir = join(cacheDir, "describe");
-  mkdirSync(dir, { recursive: true });
+  const dir = makeRealFolder(join(cacheDir, "describe"), 1);
   const scratch = await mkdtemp(join(tmpdir(), "hf-describe-"));
   try {
     // Wait for every conversion before removing their shared scratch directory.
@@ -176,11 +180,10 @@ async function answers(asks: Ask[], cacheDir: string, access: ServiceAccess) {
           .update(structured ? JSON.stringify(OVERALL_SCHEMA) : "plain");
         const id = (audio ? hash.update(audio) : hash).digest("hex");
         const file = join(dir, `${id.slice(0, 24)}.txt`);
-        if (existsSync(file)) return readFileSync(file, "utf8");
+        if (isPlainFile(file)) return readPlainFile(file, MAX_ANSWER_BYTES);
         const text = await generate(access, audio, prompt, structured);
         if (structured) descriptionOf(text);
-        writeFileSync(`${file}.tmp`, text);
-        renameSync(`${file}.tmp`, file);
+        replaceFileAtomically(file, text);
         return text;
       }),
     );

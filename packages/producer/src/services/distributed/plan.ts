@@ -78,6 +78,7 @@ import {
   withChunkCaptureCost,
 } from "./chunkWeights.js";
 import { runAudioStage } from "../render/stages/audioStage.js";
+import { audioWorkDir } from "../render/shared.js";
 import { runCompileStage } from "../render/stages/compileStage.js";
 import {
   appendVideoAudioFromProbe,
@@ -1468,6 +1469,7 @@ function mixPlanAudio(c: PlanComposition, compiledDir: string) {
     compiledDir,
     urlByAbsentLocalPath: c.urlByAbsentLocalPath,
     audioSidecarUrlByLocalPath: c.audioSidecarUrlByLocalPath,
+    allowOutsideProjectAssets: c.job.config.allowOutsideProjectAssets,
     totalFrames: c.totalFrames,
     fps: c.job.config.fps,
     ffmpegProcessTimeout: c.cfg.ffmpegProcessTimeout,
@@ -1874,7 +1876,12 @@ export async function buildPlanAudio(
   });
   try {
     let stageStarted = Date.now();
-    await appendVideoAudioFromProbe(c);
+    await appendVideoAudioFromProbe({
+      ...c,
+      downloadDir: audioWorkDir(c.workDir),
+      allowOutsideProjectAssets: c.job.config.allowOutsideProjectAssets,
+      signal: c.abortSignal,
+    });
     logPlanStage(c.log, "extract", stageStarted);
     stageStarted = Date.now();
     const mixed = await mixPlanAudio(c, c.compiledDir);

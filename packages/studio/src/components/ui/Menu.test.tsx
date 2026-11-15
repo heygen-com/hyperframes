@@ -16,7 +16,7 @@ import {
   MenuSeparator,
 } from "./Menu";
 import { Popover } from "./Popover";
-import { isTypingTarget } from "../../utils/typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 import { shouldIgnorePlaybackShortcutTarget } from "../../player/lib/playbackShortcuts";
 import { cleanupMounted, mountHost as render } from "./mountHost.testHelpers";
 

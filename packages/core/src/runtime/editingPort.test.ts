@@ -75,6 +75,7 @@ describe("createEditingPortClient", () => {
           "layers",
           "draft",
           "gesture-start",
+          "console-errors",
         ],
       });
     } finally {

@@ -6,6 +6,7 @@
  * data-hf-authored-id for script lookup compatibility.
  */
 
+import { replaceMatches, urlHashRefMatches } from "@hyperframes/parsers/css-url-scans";
 import postcss from "postcss";
 import { escapeCssIdentifier } from "./selectorIdTokens";
 import {
@@ -23,21 +24,6 @@ const ID_ATTR = "id";
 export const SVG_AUTHORED_ID_ATTR = "data-hf-authored-id";
 
 /**
- * Matches a `url(#id)` funcref value — quoted or bare — as used by
- * `clip-path`, `filter`, `mask`, `fill`, `stroke`, `marker-start/mid/end`,
- * `cursor`, `mask-image`, and equally by any of those written into an inline
- * `style` attribute or a `<style>` declaration value. One pattern covers all
- * of them because CSS only ever spells an id reference this way in a
- * property VALUE — a bare `#id` (no `url()`) is exclusively a *selector*.
- *
- * The captured id is the literal fragment text. A fragment is a URL, not a
- * CSS identifier, so it carries no CSS escapes; the replacement keeps the
- * original quoting and only swaps the id, which stays a valid fragment
- * because the namespace prefix is restricted to `[A-Za-z0-9_-]`.
- */
-const URL_HASH_REF_RE = /(url\(\s*)(["']?)#([^"')\s]+)\2(\s*\))/gi;
-
-/**
  * Attributes carrying a bare `#id` fragment reference rather than a
  * `url(#id)` funcref — SVG's `<use>`, `<a>`, `<pattern>`, `<textPath>`,
  * `<feImage>`, `<mpath>`, and so on. Matching by suffix also covers
@@ -51,9 +37,16 @@ function sanitizeNamespaceSegment(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, "-");
 }
 
+/**
+ * Rewrites each `url(#id)` funcref, quoted or bare, in a property value: `clip-path`, `filter`,
+ * `mask`, `fill`, `stroke`, markers, `cursor` and `mask-image`, inline or in a `<style>`. CSS
+ * spells an id reference this way only in a value; a bare `#id` is a selector. A fragment is a
+ * URL, not a CSS identifier, so it carries no escapes; the replacement keeps the quoting and
+ * swaps only the id, which stays a valid fragment because the prefix is `[A-Za-z0-9_-]`.
+ */
 function rewriteUrlHashRefs(value: string, idMap: ReadonlyMap<string, string>): string {
   if (!value || !value.toLowerCase().includes("url(")) return value;
-  return value.replace(URL_HASH_REF_RE, (full, pre, quote, id: string, post) => {
+  return replaceMatches(value, urlHashRefMatches(value), (full, pre, quote, id, post) => {
     const mapped = idMap.get(id);
     return mapped ? `${pre}${quote}#${mapped}${quote}${post}` : full;
   });
@@ -73,9 +66,7 @@ function nativeReferenceValue(
     const mapped = idMap.get(value.slice(1));
     return mapped ? `#${mapped}` : value;
   }
-  URL_HASH_REF_RE.lastIndex = 0;
-  const hasUrl = URL_HASH_REF_RE.test(value);
-  URL_HASH_REF_RE.lastIndex = 0;
+  const hasUrl = !urlHashRefMatches(value).next().done;
   return hasUrl ? rewriteUrlHashRefs(value, idMap) : null;
 }
 
@@ -176,11 +167,8 @@ function collectUrlHashRefsFromText(
   filter: ReadonlySet<string>,
   out: Set<string>,
 ): void {
-  let m: RegExpExecArray | null;
-  URL_HASH_REF_RE.lastIndex = 0;
-  while ((m = URL_HASH_REF_RE.exec(text))) {
-    const refId = m[3]!;
-    if (filter.has(refId)) out.add(refId);
+  for (const { parts } of urlHashRefMatches(text)) {
+    if (filter.has(parts[3])) out.add(parts[3]);
   }
 }
 

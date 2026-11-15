@@ -3656,7 +3656,10 @@ describe("HyperframesPlayer retained runtime data", () => {
     expect(player.iframeElement.sandbox.contains("allow-scripts")).toBe(true);
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
     expect(player.iframeElement.sandbox.contains("allow-top-navigation")).toBe(false);
-    expect(player.iframeElement.referrerPolicy).toBe("no-referrer");
+  });
+
+  it("sends its host page's URL only to a composition on the same origin", () => {
+    expect(player.iframeElement.referrerPolicy).toBe("same-origin");
   });
 
   it("supports an opaque-origin sandbox for hosts that do not need direct iframe DOM access", () => {

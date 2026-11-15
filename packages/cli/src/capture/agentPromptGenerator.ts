@@ -42,9 +42,6 @@ function inferColorRole(hex: string): string {
   return "neutral";
 }
 
-// Agents load these files as instructions, so a page font goes in only as a plain name.
-const FONT_NAME = /^[\p{L}\p{N}_][\p{L}\p{N} _-]{0,39}$/u;
-
 const HEX_COLOR = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 
 const AGENT_FILES = ["AGENTS.md", "CLAUDE.md", ".cursorrules"] as const;
@@ -95,19 +92,6 @@ function buildPrompt(
     .slice(0, 10)
     .map((hex) => `${hex} (${inferColorRole(hex)})`)
     .join(", ");
-  const fontSummary =
-    tokens.fonts
-      .filter((f) => typeof f.family === "string" && FONT_NAME.test(f.family))
-      .map(
-        (f) =>
-          f.family +
-          (f.variable && f.weightRange
-            ? ` (${Number(f.weightRange[0])}-${Number(f.weightRange[1])} variable)`
-            : f.weights.length > 0
-              ? ` (${f.weights.map(Number).join(",")})`
-              : ""),
-      )
-      .join(", ") || "none detected";
 
   // Build the data inventory table rows
   // Helper: find all contact sheet pages for a given base name. Matches the
@@ -216,7 +200,6 @@ function buildPrompt(
   // Brand summary — just the essentials
   const brandLines: string[] = [];
   brandLines.push(`- **Colors**: ${colorSummary || "see tokens.json"}`);
-  brandLines.push(`- **Fonts**: ${fontSummary}`);
 
   return `# ${title}
 

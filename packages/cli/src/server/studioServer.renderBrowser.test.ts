@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
+import { terminalText } from "../utils/terminalText.js";
 
 const mocks = vi.hoisted(() => ({
   resolveRenderBrowser: vi.fn(),
@@ -43,9 +44,23 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function startStudioRender(extra: Record<string, unknown> = {}) {
+function startStudioRender(
+  extra: Record<string, unknown> = {},
+  receivedFiles?: string[],
+  entry = `<div data-composition-src="scene.html"></div>`,
+) {
   const dir = mkdtempSync(join(tmpdir(), "hf-studio-render-browser-"));
   dirs.push(dir);
+  writeFileSync(join(dir, "index.html"), entry);
+  writeFileSync(join(dir, "scene.html"), "<div></div>");
+  writeFileSync(join(dir, "other.html"), "<div></div>");
+  if (receivedFiles) {
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(
+      join(dir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: receivedFiles }),
+    );
+  }
   server = createStudioServer({ projectDir: dir });
   return server.adapter.startRender({
     project: { dir, id: "p", title: "p" },
@@ -135,5 +150,69 @@ describe("Studio render motion blur", () => {
     expect(mocks.createRenderJob).not.toHaveBeenCalledWith(
       expect.objectContaining({ pageMotionBlur: expect.anything() }),
     );
+  });
+});
+
+describe("Studio render of a received composition", () => {
+  it.each([
+    { name: "a received entry", extra: {}, files: ["index.html"], allowed: false },
+    {
+      name: "a received composition picked to render",
+      extra: { composition: "scene.html" },
+      files: ["scene.html"],
+      allowed: false,
+    },
+    {
+      name: "the person's own entry playing a received composition",
+      extra: {},
+      files: ["scene.html"],
+      allowed: false,
+    },
+    {
+      name: "a record listing a file the render never opens",
+      extra: {},
+      files: ["other.html"],
+      allowed: false,
+    },
+    { name: "a record listing no files", extra: {}, files: [], allowed: true },
+    { name: "no received-files record", extra: {}, files: undefined, allowed: true },
+  ])("brings in outside files for $name: $allowed", async ({ extra, files, allowed }) => {
+    mocks.resolveRenderBrowser.mockResolvedValue({
+      executablePath: "/opt/chrome",
+      source: "cache",
+    });
+
+    startStudioRender(extra, files);
+    await vi.waitFor(() => expect(mocks.createRenderJob).toHaveBeenCalledTimes(1), {
+      timeout: 10_000,
+    });
+
+    expect(mocks.createRenderJob).toHaveBeenCalledWith(
+      expect.objectContaining({ allowOutsideProjectAssets: allowed }),
+    );
+  });
+
+  it("logs the references it leaves out without their control characters", async () => {
+    mocks.resolveRenderBrowser.mockResolvedValue({
+      executablePath: "/opt/chrome",
+      source: "cache",
+    });
+    const outside = mkdtempSync(join(tmpdir(), "hf-studio-render-outside-"));
+    dirs.push(outside);
+    writeFileSync(join(outside, "pic.png"), "png");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    startStudioRender({}, ["index.html"], `<img src="${outside}/pic.png?\u001b[2K\u001b[1A">`);
+    await vi.waitFor(() => expect(mocks.createRenderJob).toHaveBeenCalledTimes(1), {
+      timeout: 10_000,
+    });
+
+    const lines = warn.mock.calls
+      .map(([line]) => String(line))
+      .filter((l) => l.startsWith("[studio]"));
+    warn.mockRestore();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("/pic.png?\\x1b[2K\\x1b[1A");
+    expect(lines[0]).toBe(terminalText(lines[0]!));
   });
 });

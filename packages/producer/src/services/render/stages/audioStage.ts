@@ -29,7 +29,8 @@ import {
   type AudioProcessingFailure,
   type MixResult,
 } from "@hyperframes/engine";
-import type { CompositionMetadata } from "../shared.js";
+import { audioWorkDir, type CompositionMetadata } from "../shared.js";
+import { mediaAssetRoots } from "../../assetMediaType.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import { limitDeliveryPeaks } from "../audioDeliveryLimit.js";
@@ -52,6 +53,7 @@ export interface AudioStageInput {
   masterFxChain?: string;
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   audioSidecarUrlByLocalPath?: ReadonlyMap<string, string>;
+  allowOutsideProjectAssets?: boolean;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   /** Where a per-track failure's detail goes. Optional so tests need not pass one. */
@@ -202,7 +204,7 @@ async function mixAudioForDelivery(
       audioResult = await processCompositionAudio(
         audios,
         projectDir,
-        join(workDir, "audio-work"),
+        audioWorkDir(workDir),
         audioOutputPath,
         duration,
         abortSignal,
@@ -213,6 +215,9 @@ async function mixAudioForDelivery(
           urlByAbsentLocalPath,
           audioSidecarUrlByLocalPath,
           keepEncoderInputAt: pcmSourcePath,
+          assetRoots: input.allowOutsideProjectAssets
+            ? undefined
+            : mediaAssetRoots(projectDir, compiledDir),
         },
         compiledDir,
       );

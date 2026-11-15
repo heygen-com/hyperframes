@@ -101,6 +101,7 @@ import { normalizeErrorMessage, atStep } from "../utils/errorMessage.js";
 import { describeSharpLoadFailure } from "../utils/sharpLoadFailure.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
+import { terminalText } from "../utils/terminalText.js";
 import { writeCaptureFileSync } from "../capture/captureFile.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
@@ -112,6 +113,7 @@ import {
   localVideos,
   probeHeldVideo,
   projectLocalFile,
+  projectVideoFile,
   type HeldVideoProbe,
 } from "./snapshotHeldVideos.js";
 import type { Example } from "./_examples.js";
@@ -828,7 +830,7 @@ export async function frameOrWarn(
   } catch (error) {
     if (!(error instanceof FrameExtractError)) throw error;
     warnings.push(error.message);
-    console.warn(`   ${c.warn("⚠")} ${error.message}`);
+    console.warn(`   ${c.warn("⚠")} ${terminalText(error.message)}`);
     return null;
   }
 }
@@ -1009,18 +1011,18 @@ export async function captureSnapshots(
     : null;
   if (swallowed) {
     warnings.push(swallowed);
-    console.warn(`   ${c.warn("⚠")} ${swallowed}`);
+    console.warn(`   ${c.warn("⚠")} ${terminalText(swallowed)}`);
   }
   const server = await serveCapturePage(projectDir, html, opts.autoProxy);
   const fps = compositionFps(html);
   const heldVideoIds = localVideoRenderIds(html);
   const heldProbes = new Map<string, Promise<HeldVideoProbe>>();
-  const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
 
   const savedPaths: string[] = [];
   let pairSheetFailure: string | null = null;
 
   try {
+    const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
     const {
       browser: chromeBrowser,
       page,
@@ -1073,7 +1075,7 @@ export async function captureSnapshots(
         if (fontReport.unused.length > 0) parts.push(`${fontReport.unused.length} unused`);
         log(`\n   ${c.dim("Fonts:")} ${parts.join(", ")}`);
         if (fontReport.errored.length > 0) {
-          log(`   ${c.error("Fonts FAILED:")} ${fontReport.errored.join(", ")}`);
+          log(`   ${c.error("Fonts FAILED:")} ${terminalText(fontReport.errored.join(", "))}`);
         }
       }
 
@@ -1217,6 +1219,21 @@ export async function captureSnapshots(
         remoteCopies.set(href, copy);
         return copy;
       };
+      const projectVideos = new Map<string, ReturnType<typeof projectVideoFile>>();
+      const checkedProjectVideo = (src: string): ReturnType<typeof projectVideoFile> => {
+        const known = projectVideos.get(src);
+        if (known) return known;
+        const checked = projectVideoFile(projectDir, src).then((project) => {
+          if (project?.refused) {
+            const message = `${relative(projectDir, project.file)} is not media: a document, a pipe or device, or a playlist naming files outside its folder`;
+            warnings.push(message);
+            console.warn(`   ${c.warn("⚠")} ${terminalText(message)}`);
+          }
+          return project;
+        });
+        projectVideos.set(src, checked);
+        return checked;
+      };
       const shouldUseVp9AlphaDecoder = (filePath: string): Promise<boolean> => {
         if (!extractMediaMetadata) return Promise.resolve(false);
         const cached = alphaDecoderCache.get(filePath);
@@ -1335,9 +1352,13 @@ export async function captureSnapshots(
               // since headless Chrome can't seek them and they would render blank.
               let ffmpegInput: string | null = null;
               let inputIsLocal = false;
-              const projectFile = projectLocalFile(projectDir, v.src);
-              if (projectFile) {
-                ffmpegInput = projectFile;
+              const project = await checkedProjectVideo(v.src);
+              if (project?.refused) {
+                unreadVideoFrames += 1;
+                return null;
+              }
+              if (project) {
+                ffmpegInput = project.file;
                 inputIsLocal = true;
               } else {
                 try {
@@ -1610,7 +1631,7 @@ function warnUnsettledImages(images: UnsettledImages, time: number, warnings: st
     if (sources.length === 0) continue;
     const message = `${sources.length} image(s) ${what} at ${time}s, so the frame may be missing them: ${sources.join(", ")}`;
     warnings.push(message);
-    console.warn(`   ${c.warn("⚠")} ${message}`);
+    console.warn(`   ${c.warn("⚠")} ${terminalText(message)}`);
   }
 }
 
@@ -1727,19 +1748,19 @@ function printReview(
   log: (message: string) => void,
 ): void {
   const beats = review.plan.beats.map(
-    (beat) => `${formatSnapshotTimestamp(beat.time)} ${beat.label}`,
+    (beat) => `${formatSnapshotTimestamp(beat.time)} ${terminalText(beat.label)}`,
   );
   log(`   Beat sheet (settled frame per scene): ${sheets.beats.join(", ") || "none"}`);
   log(`     ${c.dim(beats.join(" · "))}`);
   review.plan.seams.forEach((seam, index) => {
-    const sides = `${seam.from ?? "start"} -> ${seam.to ?? "end"}`;
+    const sides = terminalText(`${seam.from ?? "start"} -> ${seam.to ?? "end"}`);
     const strip = sheets.seams[index] ?? "not written";
     log(`   Seam ${index + 1} at ${formatSnapshotTimestamp(seam.time)} (${sides}): ${strip}`);
   });
   log(
     `   Phone sheet (beats at ${REVIEW_PHONE_WIDTH} px wide): ${sheets.phone.join(", ") || "none"}`,
   );
-  for (const note of review.plan.notes) log(`   ${c.dim(note)}`);
+  for (const note of review.plan.notes) log(`   ${c.dim(terminalText(note))}`);
 }
 
 export default defineCommand({
@@ -1921,7 +1942,9 @@ export default defineCommand({
       camera && (camera.yaw !== 0 || camera.pitch !== 0)
         ? ` ${c.dim(`(angle yaw ${camera.yaw}° pitch ${camera.pitch}°)`)}`
         : "";
-    log(`${c.accent("◆")}  Capturing ${label} from ${c.accent(project.name)}${angleLabel}`);
+    log(
+      `${c.accent("◆")}  Capturing ${label} from ${c.accent(terminalText(project.name))}${angleLabel}`,
+    );
 
     let managedSnapshotDir: string | undefined;
     let exitCode = 0;
@@ -2113,7 +2136,7 @@ export default defineCommand({
             }
           } catch (descErr) {
             const msg = normalizeErrorMessage(descErr);
-            log(`   ${c.dim(`--describe failed: ${msg}`)}`);
+            log(`   ${c.dim(`--describe failed: ${terminalText(msg)}`)}`);
           }
         }
         if (asJson) {
@@ -2131,7 +2154,7 @@ export default defineCommand({
       if (err instanceof CliRuntimeError && err.result.presented) throw err;
       const msg = failureMessage(err);
       if (asJson) console.log(JSON.stringify(withMeta(jsonFailure("runtime_error", msg)), null, 2));
-      else console.error(`\n${c.error("✗")} Snapshot failed: ${msg}`);
+      else console.error(`\n${c.error("✗")} Snapshot failed: ${terminalText(msg)}`);
       failCommand();
     } finally {
       if (managedSnapshotDir)

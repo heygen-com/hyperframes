@@ -26,7 +26,7 @@ async function executeRegistered<T>(
   return (await tool.execute(input, { signal })) as T;
 }
 
-/** The call shape `@mcp-b/global` uses: the input and nothing else. */
+/** The call shape `@mcp-b/global` used before 6.0: the input and nothing else. */
 async function executeRegisteredWithoutOptions<T>(
   registered: ModelContextTool[],
   name: string,
@@ -362,7 +362,7 @@ describe("useStudioAgentTools", () => {
   });
 
   it("runs every write tool when execute is called with the input alone", async () => {
-    // `@mcp-b/global` invokes `execute(input)` with no options object, both from
+    // `@mcp-b/global` before 6.0 invoked `execute(input)` with no options object, both from
     // its in-page server and from the descriptor it mirrors into a native
     // `document.modelContext`. Handlers that destructured `{ signal }` threw a
     // TypeError before running, which `runToolBody` reports as `internal`.

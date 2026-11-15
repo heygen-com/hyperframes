@@ -1,11 +1,15 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { statSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { readPlainFile } from "../../utils/projectRecords.js";
+import { isPlainFile, isRealFolder, makeRealFolder } from "../cacheFolder.js";
 import type { KindFeatures, KindGuess } from "@hyperframes/core/audio-analysis";
 import type { AnalyzeOptions, Analysis } from "./analyze.js";
 import type { AudioTarget } from "./targets.js";
 
 const CACHE_VERSION = 1;
+const MAX_ENTRY_BYTES = 64 * 1024;
 
 const record = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
@@ -68,7 +72,10 @@ export function readKindCache(file: string | null): Analysis | null {
   if (file === null) return null;
   let value: unknown;
   try {
-    value = JSON.parse(readFileSync(file, "utf8"));
+    value =
+      isRealFolder(dirname(file), 2) && isPlainFile(file)
+        ? JSON.parse(readPlainFile(file, MAX_ENTRY_BYTES))
+        : null;
   } catch {
     return null;
   }
@@ -82,21 +89,14 @@ export function readKindCache(file: string | null): Analysis | null {
   };
 }
 
+/** Saves a guess in `<project>/.hyperframes/audio-kind`, both real folders; a link there is replaced, not followed. */
 export function writeKindCache(file: string, value: KindGuess): string | null {
-  const temporary = `${file}.${randomUUID()}.tmp`;
   try {
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(temporary, JSON.stringify(value));
-    renameSync(temporary, file);
+    makeRealFolder(dirname(file), 2);
+    replaceFileAtomically(file, JSON.stringify(value));
     return null;
   } catch {
     return "kind could not be cached; another query will analyze the clip again";
-  } finally {
-    try {
-      rmSync(temporary, { force: true });
-    } catch {
-      // A failed cache cleanup must not discard measured audio.
-    }
   }
 }
 

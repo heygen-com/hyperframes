@@ -13,6 +13,7 @@ import {
   type AudioMetadata,
 } from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
+import { isInsideAssetRoots } from "../utils/assetRoots.js";
 import { urlInputArgs } from "../utils/urlInput.js";
 import { clampAudioGain, clipGain } from "@hyperframes/core/audio-gain";
 import { clampFadesToDuration, readElementFades } from "@hyperframes/core/audio-fade";
@@ -1432,6 +1433,8 @@ export async function processCompositionAudio(
     urlByAbsentLocalPath?: ReadonlyMap<string, string>;
     audioSidecarUrlByLocalPath?: ReadonlyMap<string, string>;
     keepEncoderInputAt?: string;
+    /** Folders a local source must be in; one outside them is never opened. Unset allows any folder. */
+    assetRoots?: readonly string[];
   },
   compiledDir?: string,
 ): Promise<MixResult> {
@@ -1496,6 +1499,18 @@ export async function processCompositionAudio(
               audioSidecarUrl = config?.audioSidecarUrlByLocalPath?.get(srcPath);
               srcPath = remoteUrl;
               readInPlace = true;
+            } else if (config?.assetRoots && !isInsideAssetRoots(srcPath, config.assetRoots)) {
+              failures.push({
+                stage: "source",
+                reason: "source_not_found",
+                owner: "user",
+                retryable: false,
+                elementId: element.id,
+                detail: boundedDetail(
+                  `Audio element ${element.id} source is outside the project folder`,
+                ),
+              });
+              return;
             }
           }
 
