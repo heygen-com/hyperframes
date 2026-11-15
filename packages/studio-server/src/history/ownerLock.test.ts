@@ -332,3 +332,42 @@ describe.skipIf(process.platform === "win32" || processStart(process.pid) === nu
     });
   },
 );
+
+describe.skipIf(!canRefuseRead || processStart(process.pid) === null)(
+  "takeHistoryOwnership with a read-only entry at the start record's name",
+  () => {
+    it.each(["symlink", "file"])("takes the lock past a read-only %s", async (kind) => {
+      const home = newHome();
+      const sentinel = join(newHome(), "sentinel");
+      writeFileSync(sentinel, "unchanged");
+      chmodSync(sentinel, 0o444);
+      const entry = join(home, "owner.pid.start");
+      if (kind === "symlink") symlinkSync(sentinel, entry);
+      else {
+        writeFileSync(entry, "unchanged");
+        chmodSync(entry, 0o444);
+      }
+      const release = await takeHistoryOwnership(home, 1_000);
+      expect(lstatSync(entry).isFile()).toBe(true);
+      release();
+      expect(readFileSync(sentinel, "utf-8")).toBe("unchanged");
+    });
+  },
+);
+
+describe.skipIf(process.platform === "win32")(
+  "takeHistoryOwnership with a symlink at owner.pid",
+  () => {
+    it("clears the link as a lock without a pid and leaves its target as it was", async () => {
+      const home = newHome();
+      const sentinel = join(newHome(), "sentinel");
+      writeFileSync(sentinel, String(process.ppid));
+      symlinkSync(sentinel, join(home, "owner.pid"));
+      const release = await takeHistoryOwnership(home, 1_000);
+      expect(lstatSync(join(home, "owner.pid")).isFile()).toBe(true);
+      expect(readFileSync(join(home, "owner.pid"), "utf-8")).toBe(String(process.pid));
+      release();
+      expect(readFileSync(sentinel, "utf-8")).toBe(String(process.ppid));
+    });
+  },
+);

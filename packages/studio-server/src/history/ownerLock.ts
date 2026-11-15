@@ -68,7 +68,7 @@ export function processStart(pid: number): string | null {
 }
 
 /** The text of `path` when it names a regular file, else null; a link is never followed, a FIFO never waited on. */
-function readPlainFile(path: string): string | null {
+export function readPlainFile(path: string): string | null {
   const fd = openSync(path, constants.O_RDONLY | NO_FOLLOW | NON_BLOCK);
   try {
     return fstatSync(fd).isFile() ? readFileSync(fd, "utf-8") : null;
@@ -86,9 +86,14 @@ function recordedStart(file: string, pid: number): string | null {
   }
 }
 
+export function replaceOwnFile(path: string, content: string): void {
+  rmSync(path, { force: true });
+  replaceFileAtomically(path, content);
+}
+
 function recordStart(file: string): void {
   const start = processStart(process.pid);
-  if (start) replaceFileAtomically(`${file}.start`, `${process.pid}\n${start}`);
+  if (start) replaceOwnFile(`${file}.start`, `${process.pid}\n${start}`);
 }
 
 /** Whether `pid` still runs the process that took `file`: its recorded start matches, else the lock postdates boot. */
