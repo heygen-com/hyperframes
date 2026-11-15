@@ -3,11 +3,11 @@
  *   1. `HEYGEN_ACCESS_TOKEN` env (an OAuth token a host app injects)
  *   2. The stored login: fresh, or expired with a refresh token
  *   3. `HEYGEN_API_KEY` env, then `HYPERFRAMES_API_KEY`, unless a received project `.env` set it
- *   4. The API key saved in `~/.hyperframes/credentials`, then a received project `.env` key
+ *   4. The API key saved in `~/.hyperframes/credentials`, else a received project `.env` key
  *
  * The env key goes first for a host app's gateway, and once HeyGen refused to refresh the login.
- * A broken store gives way to an env key, else surfaces `ErrInvalidStore`. A saved API key
- * never replaces an expired login (60s skew).
+ * A broken store gives way to an env key, else surfaces `ErrInvalidStore`. Neither a saved API key
+ * nor a received `.env` key replaces an expired login (60s skew).
  */
 
 import { isHeaderSafe, readStore } from "./store.js";
@@ -99,8 +99,8 @@ async function apiKeyWithoutLogin(
   source: CredentialSource,
   envKey: ApiKeyCredential | undefined,
 ): Promise<ApiKeyCredential> {
-  const savedKey = credentials.oauth ? undefined : credentials.api_key;
-  if (envKey && !(savedKey && (await fromReceivedProjectEnv(envKey)))) return envKey;
+  const saved = Boolean(credentials.oauth || credentials.api_key);
+  if (envKey && !(saved && (await fromReceivedProjectEnv(envKey)))) return envKey;
   return storedApiKey(credentials, source);
 }
 
@@ -174,9 +174,9 @@ function boundToThisClient(tokens: Parameters<typeof assertOAuthIdentity>[0]): b
 let loginRefreshFailed = false;
 
 /**
- * After refreshing `refreshToken` failed: a login another process stored since, else the env key when HeyGen refused
- * the grant (it then replaces the login for this process), else the error. A network or server error, or a reply the
- * CLI couldn't read, throws: the login may still work, and the next call refreshes again.
+ * After refreshing `refreshToken` failed: a login another process stored since, else an env key not from a received
+ * `.env` when HeyGen refused the grant (it then replaces the login for this process), else the error. A network or
+ * server error, or a reply the CLI couldn't read, throws: the login may still work, and the next call refreshes again.
  */
 export async function afterRefreshFailure(
   err: unknown,
@@ -193,9 +193,9 @@ export async function afterRefreshFailure(
   }
   if (!err.refused && err.code !== "LOGIN_EXPIRED") throw err;
   const key = await envApiKey();
-  if (!key) throw err;
+  if (!key || (await fromReceivedProjectEnv(key))) throw err;
   loginRefreshFailed = true;
-  return noteProjectKey(key);
+  return key;
 }
 
 export function _resetLoginRefreshFailureForTests(): void {

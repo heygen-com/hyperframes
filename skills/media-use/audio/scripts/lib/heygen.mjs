@@ -5,8 +5,8 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // $HEYGEN_API_KEY) → a host-injected OAuth $HEYGEN_ACCESS_TOKEN (Bearer) →
 // the live login in ~/.hyperframes/credentials → $HEYGEN_API_KEY /
 // $HYPERFRAMES_API_KEY → the API key saved in ~/.hyperframes/credentials →
-// a key from a nearby .env that came in with a received project. An expired login gives way to an env key but
-// never to the saved API key ($HYPERFRAMES_CONFIG_DIR overrides the dir).
+// a key from a nearby .env that came in with a received project. An expired login gives way to the person's own
+// env key, never to the saved API key or a received .env key ($HYPERFRAMES_CONFIG_DIR overrides the dir).
 // $HEYGEN_API_BASE moves every request to that host, as it does for the
 // heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
 // Vendored so the skill ships standalone. Pure node.
@@ -196,9 +196,9 @@ function resolveCredential() {
   const envKey = envName && process.env[envName];
   const fromProject = envName !== undefined && receivedProjectKey(envName, envKey);
   const stored = storedCredential();
-  // A live login wins over an env key; an expired, foreign or unreadable store gives way to one.
+  // A live login wins over an env key; an expired or foreign login gives way to the person's own, an unreadable store to any.
   if (stored?.headers && "Authorization" in stored.headers) return stored;
-  if (!envKey || (fromProject && stored?.headers)) return stored;
+  if (!envKey || (fromProject && (stored?.headers || stored?.expired))) return stored;
   if (fromProject && !projectKeyNoted) {
     projectKeyNoted = true;
     process.stderr.write(

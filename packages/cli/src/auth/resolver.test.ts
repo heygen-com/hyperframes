@@ -201,6 +201,37 @@ describe("auth/resolver", () => {
     }
   });
 
+  it.each([
+    [
+      "expired without a refresh token",
+      { access_token: "stale-at", expires_at: "2020-01-01T00:00:00Z" },
+    ],
+    ["from another OAuth client", { access_token: "foreign", client_id: "shared-heygen-cli" }],
+  ])(
+    "asks to log in again over a received .env key when the saved login is %s",
+    async (_, oauth) => {
+      await projectEnvKey("received-key-3", JSON.stringify({ files: [".env"] }));
+      await writeStore({ oauth });
+      await expect(resolveCredential()).rejects.toSatisfy(isAuthError);
+    },
+  );
+
+  it("keeps a person's own project .env key in place of a login that expired", async () => {
+    await projectEnvKey("own-key-2");
+    await writeStore({ oauth: { access_token: "stale-at", expires_at: anHourAgo() } });
+    expect(await resolveCredential()).toEqual({ type: "api_key", key: "own-key-2", source: "env" });
+  });
+
+  it("never lets a received .env key replace a login HeyGen refused to refresh", async () => {
+    await projectEnvKey("received-key-4", JSON.stringify({ files: [".env"] }));
+    await writeStore({
+      oauth: { access_token: "at", refresh_token: "rt", expires_at: anHourAgo() },
+    });
+    const refused = ErrRefreshFailed("invalid_grant", { refused: true });
+    await expect(afterRefreshFailure(refused, "rt")).rejects.toBe(refused);
+    expect(await resolveCredential()).toMatchObject({ type: "oauth", refreshable: true });
+  });
+
   it("falls through to HYPERFRAMES_API_KEY", async () => {
     process.env["HYPERFRAMES_API_KEY"] = "alias-key";
     await writeStore({ api_key: "file-key" });

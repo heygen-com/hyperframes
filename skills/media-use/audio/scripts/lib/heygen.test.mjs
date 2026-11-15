@@ -293,6 +293,41 @@ test("a received .env key still works with no saved credential, and is named onc
   });
 });
 
+for (const [why, oauth] of [
+  ["expired", { client_id: "Zg3LF4FCLoeJoGs2YqMtZ17g", expires_at: "2000-01-01T00:00:00Z" }],
+  [
+    "from another client",
+    { client_id: "shared-heygen-client", expires_at: "2099-01-01T00:00:00Z" },
+  ],
+]) {
+  test(`a received .env key never replaces a saved login that is ${why}`, () => {
+    withProjectEnv("hg_received", JSON.stringify({ files: [".env"] }), (dir, notes) => {
+      const login = {
+        token_endpoint: "https://api2.heygen.com/v1/oauth/token",
+        access_token: "at_login",
+        ...oauth,
+      };
+      writeFileSync(join(dir, "credentials"), JSON.stringify({ oauth: login }));
+      assert.deepEqual(heygenCredential(), { expired: true });
+      assert.throws(() => heygenAuthHeaders(), /OAuth token expired/);
+      assert.deepEqual(notes, []);
+    });
+  });
+}
+
+test("a person's own project .env key stands in for a saved login that expired", () => {
+  withProjectEnv("hg_own", undefined, (dir) => {
+    const login = {
+      client_id: "Zg3LF4FCLoeJoGs2YqMtZ17g",
+      token_endpoint: "https://api2.heygen.com/v1/oauth/token",
+      access_token: "at_login",
+      expires_at: "2000-01-01T00:00:00Z",
+    };
+    writeFileSync(join(dir, "credentials"), JSON.stringify({ oauth: login }));
+    assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "hg_own" } });
+  });
+});
+
 test("heygenAuthMethod returns api_key for an env API key, without tagging headers", () => {
   withCleanHeygenEnv(() => {
     process.env.HEYGEN_API_KEY = "hg_test";
