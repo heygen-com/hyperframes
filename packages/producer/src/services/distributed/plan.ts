@@ -1,3 +1,4 @@
+import type { ExpectedOutputDimensions } from "../render/outputDimensions.js";
 import {
   REFERENCE_BACKGROUND_FIELD,
   referenceBackgroundResult,
@@ -313,6 +314,7 @@ export interface DistributedRenderConfig extends Pick<RenderRequestOptions, "pag
   variables?: Record<string, unknown>;
   /** Fails with `VARIABLES_INVALID` before any frame if `variables` mismatch the page's declarations. Default off. */
   strictVariables?: boolean;
+  expectedOutputDimensions?: ExpectedOutputDimensions;
 }
 
 /** Shared local representation consumed by both distributed plan transports. */
@@ -329,6 +331,7 @@ export interface LocalExecutionPlan extends Partial<ReferenceBackgroundResult> {
   producerVersion: string;
   /** Present when `strictVariables` was asked; true only if this producer honoured it. */
   strictVariablesChecked?: boolean;
+  outputDimensionsChecked?: boolean;
 }
 
 export interface BuildLocalExecutionPlanOptions {
@@ -395,6 +398,7 @@ export interface PlanResult extends Partial<ReferenceBackgroundResult> {
   producerVersion: string;
   /** Present when `strictVariables` was asked; true only if this producer honoured it. */
   strictVariablesChecked?: boolean;
+  outputDimensionsChecked?: boolean;
 }
 
 /** Applies the same audio correctness policy used by the in-process renderer. */
@@ -1243,6 +1247,7 @@ async function compilePlanComposition(
     producerConfig: cfg,
     variables: config.variables,
     strictVariables: config.strictVariables,
+    expectedOutputDimensions: config.expectedOutputDimensions,
     pageMotionBlur: config.pageMotionBlur,
     allowOutsideProjectAssets: options.allowOutsideProjectAssets === true,
   });
@@ -1853,6 +1858,9 @@ export async function buildLocalExecutionPlan(
     format: config.format,
     ffmpegVersion,
     producerVersion,
+    ...(job.outputDimensionsChecked === undefined
+      ? {}
+      : { outputDimensionsChecked: job.outputDimensionsChecked }),
     ...(job.strictVariablesChecked === undefined
       ? {}
       : { strictVariablesChecked: job.strictVariablesChecked }),
@@ -1926,6 +1934,9 @@ export async function plan(
     format: executionPlan.format,
     ffmpegVersion: executionPlan.ffmpegVersion,
     producerVersion: executionPlan.producerVersion,
+    ...(executionPlan.outputDimensionsChecked === undefined
+      ? {}
+      : { outputDimensionsChecked: executionPlan.outputDimensionsChecked }),
     ...(executionPlan.strictVariablesChecked === undefined
       ? {}
       : { strictVariablesChecked: executionPlan.strictVariablesChecked }),

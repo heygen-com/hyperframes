@@ -651,3 +651,36 @@ describe("runCompileStage — chromaSubsampling 444 drawElement gate", () => {
     }
   });
 });
+
+describe("compiled output dimension contract", () => {
+  it.each([
+    [1920, 1080, true],
+    [1280, 720, false],
+    [8000, 8000, false],
+  ])("checks actual HTML size %i by %i before capture", async (width, height, accepted) => {
+    const fixture = setupFixture(orientedHtml(width, height));
+    const job = createJob();
+    job.config.expectedOutputDimensions = { width: 1920, height: 1080 };
+    try {
+      const result = runCompileStage({
+        projectDir: join(fixture.workDir, "project"),
+        workDir: fixture.workDir,
+        entryFile: "index.html",
+        job,
+        cfg: createCfg(),
+        needsAlpha: false,
+        log: noopLog,
+        assertNotAborted: () => {},
+      });
+      if (accepted) {
+        await expect(result).resolves.toMatchObject({ outputWidth: 1920, outputHeight: 1080 });
+        expect(job.outputDimensionsChecked).toBe(true);
+      } else {
+        await expect(result).rejects.toMatchObject({ code: "OUTPUT_DIMENSIONS_MISMATCH" });
+        expect(job.outputDimensionsChecked).toBeUndefined();
+      }
+    } finally {
+      fixture.cleanup();
+    }
+  });
+});

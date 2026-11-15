@@ -106,6 +106,18 @@ segment starts on a keyframe. HLS is SDR only (`hdrMode: "force-hdr"` is
 rejected), refuses GPU encoding (GPU encoders ignore the keyframe lock), and is
 not available in distributed rendering, Lambda, or Cloud Run.
 
+## Require specific output dimensions
+
+Services can set `expectedOutputDimensions: { width: 1280, height: 720 }` in the render
+config or HTTP request. The producer checks the compiled composition and any output
+resolution scaling before opening the capture browser. A mismatch fails with
+`OUTPUT_DIMENSIONS_MISMATCH`; this option does not resize the composition.
+
+Successful jobs and HTTP completion responses include `outputDimensionsChecked: true`
+when this check ran. Distributed planning accepts the same option and reports the
+confirmation through `onPlanned`. A caller that requires this contract must reject
+an absent confirmation, including responses from older producer versions.
+
 ## Inspect output validation
 
 A matching output duration does not prove that every expected frame is present.

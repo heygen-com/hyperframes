@@ -35,6 +35,7 @@
  *     same behavior as before this PR.
  */
 
+import { requireOutputDimensions } from "../outputDimensions.js";
 import { existsSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { escapesAssetRoot } from "../../../utils/paths.js";
@@ -415,6 +416,8 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
   });
   const outputWidth = Math.round(width * deviceScaleFactor);
   const outputHeight = Math.round(height * deviceScaleFactor);
+  requireOutputDimensions(job.config.expectedOutputDimensions, outputWidth, outputHeight);
+  if (job.config.expectedOutputDimensions !== undefined) job.outputDimensionsChecked = true;
   if (deviceScaleFactor !== 1) {
     log.info("Scaling composition via deviceScaleFactor", {
       compositionWidth: width,
