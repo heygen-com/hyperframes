@@ -127,18 +127,19 @@ async function readHead(filePath: string): Promise<{ head: Buffer; fileSize: num
   }
 }
 
-const BMFF_BOX_TYPES = new Set([
+const FIRST_BOX_TYPES = new Set([
   "ftyp",
   "styp",
-  "moov",
-  "moof",
-  "mdat",
   "free",
   "skip",
   "wide",
-  "sidx",
+  "uuid",
   "pdin",
+  "moov",
+  "mdat",
+  "moof",
 ]);
+const BOX_TYPE = /^[\x21-\x7e\xa9][\x21-\x7e]{3}$/;
 
 /** A box's declared length, from its 64-bit size when its size is 1; -1 when shorter than its own header. */
 function boxLength(head: Buffer, offset: number): number {
@@ -149,21 +150,24 @@ function boxLength(head: Buffer, offset: number): number {
   return largeSize >= 16 ? largeSize : -1;
 }
 
-/** Where the media box at `offset` ends, or -1 when no box header that fits the file is there. */
-function mediaBoxEnd(head: Buffer, offset: number, fileSize: number): number {
-  const type = head.toString("latin1", offset + 4, offset + 8);
-  if (offset + 8 > head.length || !BMFF_BOX_TYPES.has(type)) return -1;
-  if (head.readUInt32BE(offset) === 0) return type === "mdat" ? fileSize : -1;
+/** Where the box at `offset` ends, or -1 when no box header with a printable type that fits the file is there. */
+function boxEnd(head: Buffer, offset: number, fileSize: number): number {
+  if (offset + 8 > head.length || !BOX_TYPE.test(head.toString("latin1", offset + 4, offset + 8))) {
+    return -1;
+  }
+  if (head.readUInt32BE(offset) === 0) return fileSize;
   const length = boxLength(head, offset);
   return length >= 0 && offset + length <= fileSize ? offset + length : -1;
 }
 
-/** An mp4/mov opening: an ftyp or styp box that fits the file, then another media box when the sniff window holds its header. */
+/** An mp4/mov opening: a box an mp4 or QuickTime file can start with, then boxes that each fit the file, as far as the sniff window holds their headers. */
 function opensWithMediaBox(head: Buffer, fileSize: number): boolean {
-  if (!["ftyp", "styp"].includes(head.toString("latin1", 4, 8))) return false;
-  const end = mediaBoxEnd(head, 0, fileSize);
-  if (end < 0) return false;
-  return end === fileSize || end + 16 > head.length || mediaBoxEnd(head, end, fileSize) >= 0;
+  if (!FIRST_BOX_TYPES.has(head.toString("latin1", 4, 8))) return false;
+  let offset = boxEnd(head, 0, fileSize);
+  while (offset >= 0 && offset < fileSize && offset + 16 <= head.length) {
+    offset = boxEnd(head, offset, fileSize);
+  }
+  return offset >= 0;
 }
 
 function startsWithDocumentByte(head: Buffer, fileSize: number): boolean {

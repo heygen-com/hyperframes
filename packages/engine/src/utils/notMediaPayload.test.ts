@@ -131,6 +131,15 @@ describe("isNotMediaPayload", () => {
     expect(await isNotMediaPayload(writeFixture("clip.mp4", mp4))).toBe(false);
   });
 
+  it.each([
+    ["leading padding", [box("free", 0x3c), box("ftyp", 0x3c), box("moov", 16)]],
+    ["an extension box after ftyp", [box("ftyp", 0x3c), box("uuid", 24), box("moov", 16)]],
+    ["a QuickTime movie opening with wide", [box("wide", 8), box("mdat", 0x3c), box("moov", 16)]],
+    ["a QuickTime metadata box", [box("ftyp", 0x3c), box("\xa9nam", 12), box("moov", 16)]],
+  ])("does not flag an mp4 with %s", async (_label, boxes) => {
+    expect(await isNotMediaPayload(writeFixture("clip.mp4", Buffer.concat(boxes)))).toBe(false);
+  });
+
   it("does not flag an mp4 whose second box runs to the end or has a 64-bit size", async () => {
     const toEnd = Buffer.concat([box("ftyp", 0x3c), box("mdat", 0), Buffer.from("<html>")]);
     const large = Buffer.concat([box("ftyp", 0x3c), largeBox("mdat", 24n, Buffer.alloc(8))]);
@@ -148,7 +157,7 @@ describe("isNotMediaPayload", () => {
       "a second box whose 64-bit size runs past the file",
       Buffer.concat([box("ftyp", 0x3c), largeBox("mdat", 1n << 40n, Buffer.from("<html>"))]),
     ],
-    ["a box type no mp4 opens with", box("moov", 0x3c, Buffer.from("<?xml?>".padEnd(52)))],
+    ["a box type no mp4 opens with", box("html", 0x3c, Buffer.from("<?xml?>".padEnd(52)))],
     ["an XML manifest behind NULs", Buffer.from('\0\0\0<?xml version="1.0"?><MPD/>', "latin1")],
   ])("still detects a document shaped like %s", async (_label, bytes) => {
     expect(await isNotMediaPayload(writeFixture("fake.mp4", bytes))).toBe(true);

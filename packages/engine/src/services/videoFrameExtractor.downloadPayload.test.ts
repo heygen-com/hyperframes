@@ -46,6 +46,8 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
   let webm = "";
   let segment = "";
   let wideFtyp = "";
+  let leadingFree = "";
+  let uuidAfterFtyp = "";
 
   async function synth(name: string, codec: string[]): Promise<string> {
     const clip = join(dir, name);
@@ -58,23 +60,34 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
     return clip;
   }
 
-  // A fragmented mp4 addresses its samples from each moof, so a longer ftyp shifts nothing it names.
-  async function fragmentedWithSixtyByteFtyp(h264: string[]): Promise<string> {
-    const fragmented = await synth("fragmented.mp4", [
+  function box(type: string, size: number, fill = 0): Buffer {
+    const bytes = Buffer.alloc(size, fill);
+    bytes.writeUInt32BE(size, 0);
+    bytes.write(type, 4, "latin1");
+    return bytes;
+  }
+
+  // A fragmented mp4 addresses its samples from each moof, so boxes added ahead of them shift nothing they name.
+  async function fragmentedWith(name: string, h264: string[], edit: (ftyp: Buffer) => Buffer[]) {
+    const fragmented = await synth(`${name}-source.mp4`, [
       ...h264,
       ...["-movflags", "frag_keyframe+empty_moov+default_base_moof"],
     ]);
     const bytes = readFileSync(fragmented);
     expect(bytes.toString("latin1", 4, 8)).toBe("ftyp");
-    const brands = "isomiso2avc1mp41iso5iso6dashmsdhmsixcmfcmp42";
-    const ftyp = Buffer.alloc(60);
-    ftyp.writeUInt32BE(60, 0);
-    ftyp.write(`ftypisom`, 4, "latin1");
-    ftyp.writeUInt32BE(0x200, 12);
-    ftyp.write(brands, 16, "latin1");
-    const path = join(dir, "wide-ftyp.mp4");
-    writeFileSync(path, Buffer.concat([ftyp, bytes.subarray(bytes.readUInt32BE(0))]));
+    const ftypSize = bytes.readUInt32BE(0);
+    const path = join(dir, `${name}.mp4`);
+    const rest = bytes.subarray(ftypSize);
+    writeFileSync(path, Buffer.concat([...edit(bytes.subarray(0, ftypSize)), rest]));
     return path;
+  }
+
+  function sixtyByteFtyp(): Buffer {
+    const ftyp = box("ftyp", 60);
+    ftyp.write("isom", 8, "latin1");
+    ftyp.writeUInt32BE(0x200, 12);
+    ftyp.write("isomiso2avc1mp41iso5iso6dashmsdhmsixcmfcmp42", 16, "latin1");
+    return ftyp;
   }
 
   function write(name: string, text: string): string {
@@ -115,7 +128,12 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
     mov = await synth("real.mov", h264);
     webm = await synth("real.webm", ["-c:v", "libvpx-vp9", "-deadline", "realtime"]);
     segment = await synth("segment.ts", h264);
-    wideFtyp = await fragmentedWithSixtyByteFtyp(h264);
+    wideFtyp = await fragmentedWith("wide-ftyp", h264, () => [sixtyByteFtyp()]);
+    leadingFree = await fragmentedWith("leading-free", h264, (ftyp) => [box("free", 60), ftyp]);
+    uuidAfterFtyp = await fragmentedWith("uuid", h264, () => [
+      sixtyByteFtyp(),
+      box("uuid", 24, 0x5a),
+    ]);
   });
 
   afterEach(() => vi.unstubAllEnvs());
@@ -164,6 +182,8 @@ describe.skipIf(process.platform === "win32")("extractAllVideoFrames downloaded 
     ["mov", () => mov],
     ["webm", () => webm],
     ["fragmented mp4 with a 60-byte ftyp", () => wideFtyp],
+    ["fragmented mp4 opening with a 60-byte free box", () => leadingFree],
+    ["fragmented mp4 with a uuid box after a 60-byte ftyp", () => uuidAfterFtyp],
   ])("extracts a real %s download the same on a render service", async (_kind, clip) => {
     const local = await render(clip());
     vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
