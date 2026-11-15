@@ -1943,13 +1943,18 @@ function encodedLength(text: string): number {
 }
 
 /** Characters of every cluster that composes (가+ᆨ, a+◌́, ｶﾞ), with each form the browser may draw it with. */
-function composingCharacters(sources: readonly string[]): Set<string> {
+function composingCharacters(
+  sources: readonly string[],
+  locales: ReadonlySet<string>,
+): Set<string> {
   const pinned = new Set<string>();
   for (const text of sources) {
     for (const { segment } of GRAPHEMES.segment(text)) {
       const composed = segment.normalize("NFC");
       if (composed === segment && [...segment].length === 1) continue;
-      for (const character of segment + composed + segment.normalize("NFD")) pinned.add(character);
+      for (const character of segment + composed + segment.normalize("NFD")) {
+        addCaseClosure(pinned, character, locales);
+      }
     }
   }
   return pinned;
@@ -1977,6 +1982,7 @@ function packRuns(first: string, rest: readonly string[]): string[] {
 function pageTextRuns(
   characters: readonly string[],
   sources: readonly string[],
+  locales: ReadonlySet<string>,
   transformed: boolean,
 ): PageText | undefined {
   if (characters.length === 0) return undefined;
@@ -1984,7 +1990,7 @@ function pageTextRuns(
   if (encodedLength(whole) <= GOOGLE_FONTS_TEXT_MAX_ENCODED_LENGTH) return [whole];
   // A text-transform draws characters the page source does not contain, so no split is safe.
   if (transformed) return undefined;
-  const pinned = composingCharacters(sources);
+  const pinned = composingCharacters(sources, locales);
   const isLoose = (character: string) =>
     STANDALONE_CHARACTER_RE.test(character) && !pinned.has(character);
   const first = [...new Set([...characters.filter((c) => !isLoose(c)), ...pinned])].join("");
@@ -2119,7 +2125,12 @@ function extractGoogleFontsText(html: string): PageText | undefined {
   if (fullWidth) addFullwidthVariants(uniqueCharacters);
   if (fullSizeKana) addFullSizeKanaVariants(uniqueCharacters);
 
-  return pageTextRuns([...uniqueCharacters], [html, decodedBodyText], fullWidth || fullSizeKana);
+  return pageTextRuns(
+    [...uniqueCharacters],
+    [html, decodedBodyText],
+    locales,
+    fullWidth || fullSizeKana,
+  );
 }
 
 function resolveFontFetchRetryPolicy(

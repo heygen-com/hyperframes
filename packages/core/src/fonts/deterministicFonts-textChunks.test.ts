@@ -166,6 +166,20 @@ describe("Google Fonts text= past one request's budget", () => {
     },
   );
 
+  it.each([
+    ["uppercase", "a\u0301", "\u00C1"],
+    ["lowercase", "A\u0301", "\u00E1"],
+  ])(
+    "keeps the %s composed form of a cluster in its face",
+    async (transform, cluster, composed) => {
+      const { html } = await render(`${CJK}${cluster}`, ` text-transform: ${transform};`);
+
+      const owner = faceOwning(html, [...cluster][0]!);
+      expect(owner).toBeGreaterThanOrEqual(0);
+      expect(faceOwning(html, composed)).toBe(owner);
+    },
+  );
+
   it("asks for the whole family when a text-transform draws characters the page does not contain", async () => {
     const { cssUrls } = await render(CJK, " text-transform: full-width;");
 
