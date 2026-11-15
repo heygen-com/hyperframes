@@ -379,9 +379,9 @@ describe("uploadAssetViaDirectUpload from a file on disk", () => {
 
 const BIG_BYTES = 16 * 1024 * 1024;
 
-// Two cuts count as one within 20% of their age; a try's setup costs tens of ms on a busy Windows runner,
-// which overran 20% of a 400 ms cut.
-const CUT_MS = 1200;
+// Two cuts count as one within 20% of their age; a busy Windows runner adds up to ~150 ms to a first try, which
+// overran 20% of a 400 ms cut. The 16 MB body takes 2 s at 8 MB/s, so the cut still comes first.
+const CUT_MS = 1600;
 
 /** Reads the body; "cut" and "slow" take 8 MB/s, "cut" drops the connection CUT_MS after it starts reading, and
  * "late cut" is a "cut" that starts reading 150 ms late, like a first try still setting up. */
