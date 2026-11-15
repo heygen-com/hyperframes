@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   chmodSync,
+  existsSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
@@ -57,6 +58,15 @@ function project(record?: string): string {
 }
 
 const received = (...files: string[]) => JSON.stringify({ files });
+
+function caseInsensitiveDisk(): boolean {
+  const probe = mkdtempSync(join(tmpdir(), "hf-case-probe-"));
+  try {
+    return existsSync(probe.toUpperCase()) && existsSync(probe.toLowerCase());
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+}
 
 const SOMEONE_ELSE = "came from someone else and is not a media, font or image file";
 
@@ -194,6 +204,34 @@ describe("outsideAssetsAllowed", () => {
     expect(allowed).toBe(false);
     expect(line).toContain(`index.html ${SOMEONE_ELSE}`);
   });
+
+  it.each([
+    ["a folder", (path: string) => mkdirSync(path, { recursive: true })],
+    ["a dangling link", (path: string) => symlinkSync(join(path, "..", "gone.json"), path)],
+  ])("refuses outside files when an ancestor's record path holds %s", (_kind, place) => {
+    root = mkdtempSync(join(tmpdir(), "hf-received-render-"));
+    write(join(root, "outside", "pic.png"), SIGNATURES.png);
+    const dir = join(root, "sub");
+    write(join(dir, "index.html"), `<img src="../outside/pic.png">`);
+    mkdirSync(join(root, ".hyperframes"));
+    place(join(root, ".hyperframes", "received-files.json"));
+    const { allowed, line } = decide(dir);
+    expect(allowed).toBe(false);
+    expect(line).toContain("Could not read");
+  });
+
+  it.skipIf(!caseInsensitiveDisk())(
+    "refuses outside files for a received subfolder named in another letter case",
+    () => {
+      root = mkdtempSync(join(tmpdir(), "hf-received-render-"));
+      write(join(root, "outside", "pic.png"), SIGNATURES.png);
+      write(join(root, "Scenes", "Intro", "index.html"), `<img src="../../outside/pic.png">`);
+      write(join(root, ".hyperframes", "received-files.json"), received("Scenes/Intro/index.html"));
+      const { allowed, line } = decide(join(root, "scenes", "intro"));
+      expect(allowed).toBe(false);
+      expect(line).toContain(`index.html ${SOMEONE_ELSE}`);
+    },
+  );
 
   it("keeps outside files when the record lists no files", () => {
     expect(decide(project(received())).allowed).toBe(true);
