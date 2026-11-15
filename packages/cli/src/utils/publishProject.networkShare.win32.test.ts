@@ -38,7 +38,12 @@ vi.mock("node:fs", async () => {
     if (file === undefined) throw missing(path);
     return fileStat(file.text, path);
   };
-  const lstatSync = (path: string) => fileStat(found("lstat", path).text, path);
+  const lstatSync = (path: string, options?: { throwIfNoEntry?: boolean }) => {
+    const file = look("lstat", path);
+    if (file === undefined && options?.throwIfNoEntry === false) return undefined;
+    if (file === undefined) throw missing(path);
+    return fileStat(file.text, path);
+  };
   const existsSync = (path: string) => {
     disk.touched.push({ op: "exists", path });
     const folder = `${path.toLowerCase()}\\`;
