@@ -16,24 +16,32 @@ export async function launchWithPageNetwork(
   if (!resolveRestrictPageNetwork()) return launch({ args: [] });
   if (!pageUrl)
     throw new Error("A restricted page network needs the page's URL before Chrome launches.");
-  const { browserProxyArgs, createPublicOnlyProfile, logRefusal, startCaptureProxy } =
-    await import("@hyperframes/engine/public-network");
+  const {
+    browserProxyArgs,
+    createPublicOnlyProfile,
+    logRefusal,
+    pageServerDirectHost,
+    startCaptureProxy,
+  } = await import("@hyperframes/engine/public-network");
   const { rm } = await import("node:fs/promises");
   const proxy = await startCaptureProxy(null, logRefusal);
-  let userDataDir: string | undefined;
+  let profile: Promise<string> | undefined;
   let released: Promise<void> | undefined;
   let stopWatching = () => {};
   const release = () =>
     (released ??= (async () => {
       stopWatching();
       await proxy.close();
+      const userDataDir = await profile?.catch(() => undefined);
       if (userDataDir) await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
     })());
   try {
     stopWatching = registerBrowserSessionCleanup(release);
-    userDataDir = await createPublicOnlyProfile("hf-cli-profile-");
+    profile = createPublicOnlyProfile("hf-cli-profile-");
+    const userDataDir = await profile;
+    if (released) throw new Error("The CLI is stopping; Chrome was not launched.");
     const browser = await launch({
-      args: browserProxyArgs(proxy.url, new URL(pageUrl).host),
+      args: browserProxyArgs(proxy.url, pageServerDirectHost(pageUrl)),
       userDataDir,
     });
     if (browser.connected) browser.once("disconnected", () => void release());

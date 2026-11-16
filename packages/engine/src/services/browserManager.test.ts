@@ -696,6 +696,18 @@ describe("browser launch capture-mode contract", () => {
     expect(fingerprint().publicOnly).toEqual({ pageServerHost: "localhost:4321" });
     vi.unstubAllEnvs();
   });
+
+  // fails without the fix: a page server on its scheme's default port gave a direct host with no port, which
+  // Chrome's bypass list takes as every port on that host.
+  it("names the page server's port even when the URL leaves out the default", () => {
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
+    const host = (pageServerUrl: string) =>
+      _createBrowserLaunchFingerprintForTests([], { pageServerUrl }).publicOnly?.pageServerHost;
+    expect(host("http://localhost/")).toBe("localhost:80");
+    expect(host("https://127.0.0.1/")).toBe("127.0.0.1:443");
+    expect(host("http://[::1]:4321/")).toBe("[::1]:4321");
+    vi.unstubAllEnvs();
+  });
 });
 
 describe("resolveBrowserGpuMode", () => {

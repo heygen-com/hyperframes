@@ -766,6 +766,23 @@ describe("Studio thumbnail capture", () => {
     ]);
   });
 
+  // fails without the fix: the direct host came from each preview URL, which a request's loopback Host header
+  // can name, so a request could open another local port to the thumbnail page and two spellings of one server
+  // closed each other's browser.
+  it("gives the thumbnail browser the server's own origin, whatever host a request named", async () => {
+    fakePageBrowser();
+    const launch = vi.spyOn(engineState, "acquireBrowser");
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir, origin: () => "http://127.0.0.1:4100" });
+    const at = (previewUrl: string) => ({ ...opts(dir), previewUrl });
+    await server.adapter.generateThumbnail?.(at("http://127.0.0.1:4100/api/projects/demo/preview"));
+    await server.adapter.generateThumbnail?.(at("http://localhost:4100/api/projects/demo/preview"));
+    await server.adapter.generateThumbnail?.(at("http://localhost:9999/api/projects/demo/preview"));
+    expect(
+      launch.mock.calls.map((call) => (call[1] as { pageServerUrl?: string }).pageServerUrl),
+    ).toEqual(["http://127.0.0.1:4100"]);
+  });
+
   it("undoes a row's isolation after its screenshot, since the page is reused", async () => {
     const { screenshot, evaluate } = fakePageBrowser();
     const dir = tmpProject();
