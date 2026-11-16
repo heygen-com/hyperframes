@@ -511,6 +511,21 @@ function ownedStopTargetPid(
   return isDescendant(liveServerPid, saved.pid) ? saved.pid : liveServerPid;
 }
 
+function provenStopTargetPid(
+  projectDir: string,
+  server: ActiveServer,
+  saved: PreviewSession | null,
+  liveServerPid: number,
+  dependencies: LifecycleDependencies,
+): number {
+  if (server.pidSource === "os") return ownedStopTargetPid(saved, liveServerPid, dependencies);
+  if (saved && isCurrentPreviewWrapper(saved, dependencies)) return saved.pid;
+  throw new Error(
+    `preview ownership could not be proven for ${resolve(projectDir)}: the system did not say which process listens on port ${server.port}. ` +
+      "Stop that preview from the terminal it runs in.",
+  );
+}
+
 async function stopOwnedPreviewBeforeReplacement(
   owned: ActiveServer | null,
   projectDir: string,
@@ -744,7 +759,7 @@ export async function stopBackgroundPreview(
   }
 
   const kill = dependencies.kill ?? stopProcess;
-  await kill(ownedStopTargetPid(saved, pid, dependencies));
+  await kill(provenStopTargetPid(projectDir, server, saved, pid, dependencies));
 
   if (!(await awaitServerGone(projectDir, server.port, dependencies))) {
     throw new Error(`background preview did not stop for ${resolve(projectDir)}`);
