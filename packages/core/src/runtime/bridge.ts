@@ -1,5 +1,6 @@
 import { wallSetTimeout } from "./wallClock";
 import { swallow } from "./diagnostics";
+import { isStylableElement } from "./domRealm";
 import type { HfColorGradingTarget } from "../colorGrading";
 import type { RuntimeBridgeControlMessage, RuntimeOutboundMessage } from "./types";
 import {
@@ -263,9 +264,7 @@ function flashElements(selectors: string[], duration: number): void {
     try {
       const els = document.querySelectorAll(selector);
       els.forEach((el) => {
-        if (el instanceof HTMLElement || el instanceof SVGElement) {
-          el.style.setProperty("--hf-flash-duration", `${duration}ms`);
-        }
+        if (isStylableElement(el)) el.style.setProperty("--hf-flash-duration", `${duration}ms`);
         el.classList.add("__hf-flash");
         wallSetTimeout(() => el.classList.remove("__hf-flash"), duration);
       });
