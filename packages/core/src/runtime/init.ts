@@ -3111,10 +3111,13 @@ export function initSandboxRuntimeModular(): void {
   };
   // Where Studio's loop wraps to (window.__hf.setLoopStart); null when it does not loop.
   let loopStartSeconds: number | null = null;
-  // A clip with no authored length loads as in a render: a reload would drop the duration it is
-  // timed by.
+  // A clip with no authored length is timed by its file, so once loaded it stays: a reload would drop
+  // that length. On a capture page one not loaded yet waits until due like the rest, or a film of a
+  // thousand such clips opens a decoder for each and runs the renderer out of memory.
   const inPreloadWindow = (el: HTMLMediaElement) =>
-    mediaDeferred && el.hasAttribute("data-start") && lengthIsAuthored(el);
+    mediaDeferred &&
+    el.hasAttribute("data-start") &&
+    (lengthIsAuthored(el) || (!loadsAhead && el.readyState === HTMLMediaElement.HAVE_NOTHING));
 
   // Media on screen or due within the look-ahead loads; the rest stops holding a connection to
   // the origin that also serves Studio's thumbnails.
