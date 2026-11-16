@@ -1,9 +1,21 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { noHandlerMessage, type StageDeps, stagePrebuiltHandler } from "./prebuiltHandler.js";
+
+const ownedByAnotherAccount = vi.hoisted(() => new Set<string>());
+vi.mock("node:fs", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  const lstatSync = ((path: string, options?: object) => {
+    const stat = fs.lstatSync(path, options as never);
+    return stat && ownedByAnotherAccount.has(path)
+      ? Object.assign(stat, { uid: process.getuid!() + 1 })
+      : stat;
+  }) as typeof fs.lstatSync;
+  return { ...fs, lstatSync };
+});
 
 const ZIP = Buffer.from("prebuilt handler zip");
 const SHA = createHash("sha256").update(ZIP).digest("hex");
@@ -45,6 +57,7 @@ function missingModule(): Error {
 }
 
 afterEach(() => {
+  ownedByAnotherAccount.clear();
   vi.unstubAllEnvs();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -63,6 +76,35 @@ describe("stagePrebuiltHandler", () => {
     expect(await stagePrebuiltHandler(deps)).toBe(dir);
     expect(downloads).toEqual([URL]);
   });
+
+  it.skipIf(!process.getuid)(
+    "downloads nothing into a handler folder another account owns",
+    async () => {
+      const { deps, downloads } = setup();
+      const dir = join(deps.cacheDir, `9.8.7-${SHA}`);
+      mkdirSync(dir, { recursive: true });
+      ownedByAnotherAccount.add(dir);
+      await expect(stagePrebuiltHandler(deps)).rejects.toThrow(
+        `${dir} can be changed by another user account`,
+      );
+      expect(downloads).toEqual([]);
+    },
+  );
+
+  it.skipIf(!process.getuid)(
+    "hands on no handler whose folder stops being this account's during the download",
+    async () => {
+      const { deps } = setup();
+      const dir = join(deps.cacheDir, `9.8.7-${SHA}`);
+      deps.download = async (_url, dest) => {
+        writeFileSync(dest, ZIP);
+        ownedByAnotherAccount.add(dir);
+      };
+      await expect(stagePrebuiltHandler(deps)).rejects.toThrow(
+        `${dir} can be changed by another user account`,
+      );
+    },
+  );
 
   it("re-downloads a cached copy that no longer matches the pin", async () => {
     const { deps, downloads } = setup();

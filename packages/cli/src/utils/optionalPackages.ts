@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
-  mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
@@ -15,6 +14,7 @@ import { createRequire } from "node:module";
 import { basename, dirname, join, sep } from "node:path";
 import { buildNpmCommand } from "./npxCommand.js";
 import {
+  ensurePrivateCacheDir,
   foreignWritablePath,
   sealCacheInstall,
   trustedCacheRoot,
@@ -352,7 +352,7 @@ export async function install(
 ): Promise<void> {
   sweepStaleStaging(dir);
   const staging = `${dir}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
-  mkdirSync(staging, { recursive: true, mode: 0o700 });
+  ensurePrivateCacheDir(staging, dirname(dir));
   writeFileSync(join(staging, "package.json"), "{}");
   try {
     await run(

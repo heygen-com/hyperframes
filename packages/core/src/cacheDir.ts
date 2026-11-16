@@ -1,6 +1,14 @@
-import { chmodSync, lstatSync, readdirSync, statSync, type Stats } from "node:fs";
+import {
+  chmodSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+  type Stats,
+} from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 
 const userCacheRoot = () => join(homedir(), ".cache", "hyperframes");
 
@@ -11,9 +19,11 @@ const STICKY = 0o1000;
 const ownedByAnotherAccount = (stat: Stats, uid: number) => stat.uid !== uid && stat.uid !== 0;
 const stickyFolder = (stat: Stats) => stat.isDirectory() && (stat.mode & STICKY) !== 0;
 
-const anotherAccountCanWrite = (stat: Stats, uid: number) =>
+const anotherAccountCanWrite = (stat: Stats, uid: number, insideRoot: boolean) =>
   ownedByAnotherAccount(stat, uid) ||
-  ((stat.mode & GROUP_OR_WORLD_WRITE) !== 0 && !stickyFolder(stat));
+  (!stat.isSymbolicLink() &&
+    (stat.mode & GROUP_OR_WORLD_WRITE) !== 0 &&
+    (insideRoot || !stickyFolder(stat)));
 
 function statIfPresent(path: string): Stats | undefined {
   try {
@@ -21,6 +31,27 @@ function statIfPresent(path: string): Stats | undefined {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
+  }
+}
+
+const lstatIfPresent = (path: string) => lstatSync(path, { throwIfNoEntry: false });
+
+function realpathIfPresent(path: string): string | undefined {
+  try {
+    return realpathSync(path);
+  } catch {
+    return undefined;
+  }
+}
+
+const within = (path: string, top: string) => path === top || path.startsWith(top + sep);
+
+function firstWritableByAnother(path: string, top: string, uid: number): string | undefined {
+  for (let at = path; ; at = dirname(at)) {
+    const stat = lstatIfPresent(at);
+    const insideRoot = within(at, top);
+    if (stat && anotherAccountCanWrite(stat, uid, insideRoot)) return at;
+    if ((stat && !insideRoot) || at === dirname(at)) return undefined;
   }
 }
 
@@ -37,12 +68,54 @@ export function foreignWritablePath(path: string, root: string): string | undefi
   const uid = process.getuid?.();
   if (uid === undefined) return undefined;
   const top = resolve(root);
-  for (let at = resolve(path); ; at = dirname(at)) {
-    const stat = statIfPresent(at);
-    if (stat && anotherAccountCanWrite(stat, uid)) return at;
-    const pastRoot = at === top || !at.startsWith(top + sep);
-    if ((stat && pastRoot) || at === dirname(at)) return undefined;
+  const at = resolve(path);
+  const lexical = firstWritableByAnother(at, top, uid);
+  if (lexical || !within(at, top)) return lexical;
+  const realTop = realpathIfPresent(top);
+  const real = realpathIfPresent(at);
+  if (!realTop || !real) return undefined;
+  return within(real, realTop) ? firstWritableByAnother(real, realTop, uid) : at;
+}
+
+export class CacheFolderNotPrivate extends Error {
+  constructor(readonly path: string) {
+    super(
+      `${path} can be changed by another user account, so HyperFrames will not install or run code from it. ` +
+        "Remove it, or set HYPERFRAMES_CACHE_DIR to a folder only you can write.",
+    );
+    this.name = "CacheFolderNotPrivate";
   }
+}
+
+export function assertPrivateCachePath(path: string, root: string): string {
+  const foreign = foreignWritablePath(path, root);
+  if (foreign) throw new CacheFolderNotPrivate(foreign);
+  return path;
+}
+
+export function ensurePrivateCacheDir(path: string, root: string, mode = 0o700): string {
+  const top = resolve(root);
+  const target = resolve(path);
+  if (!within(target, top)) throw new Error(`${target} is not inside ${top}`);
+  const uid = process.getuid?.();
+  if (uid === undefined) {
+    mkdirSync(target, { recursive: true, mode });
+    return target;
+  }
+  mkdirSync(dirname(top), { recursive: true });
+  let at = top;
+  for (const name of ["", ...relative(top, target).split(sep).filter(Boolean)]) {
+    at = join(at, name);
+    try {
+      mkdirSync(at, { mode });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const stat = lstatSync(at);
+    if (stat.isDirectory() && stat.uid === uid && (stat.mode & GROUP_OR_WORLD_WRITE) !== 0)
+      chmodSync(at, stat.mode & WITHOUT_GROUP_OR_WORLD_WRITE);
+  }
+  return assertPrivateCachePath(target, top);
 }
 
 export function trustedCacheRoot(): string {

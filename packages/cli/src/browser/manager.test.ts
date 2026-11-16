@@ -553,10 +553,7 @@ describe("findBrowser — cache resolution", () => {
     expect(paths.has(redownloadedBinary)).toBe(true);
   });
 
-  it.skipIf(!process.getuid).each([
-    ["the binary", HF_BINARY],
-    ["a folder above it", HF_CACHE],
-  ])(
+  it.skipIf(!process.getuid).each([["the binary", HF_BINARY]])(
     "re-downloads instead of launching a cached build when another account owns %s",
     async (_what, foreign) => {
       const redownloadedBinary = join(HF_CACHE, "chrome-headless-shell", "redownloaded");
@@ -584,6 +581,33 @@ describe("findBrowser — cache resolution", () => {
       });
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining(`writable by another account at ${HF_BINARY}`),
+      );
+    },
+  );
+
+  it.skipIf(!process.getuid)(
+    "neither launches nor installs into a chrome folder another account owns",
+    async () => {
+      installFsMocks({
+        existing: new Set([HF_CACHE, HF_BINARY]),
+        otherAccounts: new Set([HF_CACHE]),
+      });
+      installPuppeteerBrowsersMock({
+        installedInHfCache: [
+          {
+            browser: "chrome-headless-shell",
+            executablePath: HF_BINARY,
+            buildId: CHROME_VERSION,
+          },
+        ],
+        installResult: { executablePath: join(HF_CACHE, "chrome-headless-shell", "redownloaded") },
+      });
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { findBrowser } = await import("./manager.js");
+
+      await expect(findBrowser()).rejects.toThrow(
+        `${HF_CACHE} can be changed by another user account`,
       );
     },
   );

@@ -3,12 +3,14 @@ import { runsWithoutInstallPrompt } from "../utils/appleStubs.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { platform } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { downloadFile } from "../utils/download.js";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
 import { verifies, type ModelFile } from "./modelFile.js";
 import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
   foreignWritablePath,
   hyperframesCacheDir,
   sealCacheInstall,
@@ -174,6 +176,7 @@ async function buildFromSource(
   onProgress?: (msg: string) => void,
   signal?: AbortSignal,
 ): Promise<WhisperResult> {
+  ensurePrivateCacheDir(dirname(BUILD_DIR), CODE_ROOT);
   // Clean stale builds — if BUILD_DIR exists but has no binary, nuke and re-clone
   if (existsSync(BUILD_DIR) && !findBuiltBinary()) {
     rmSync(BUILD_DIR, { recursive: true, force: true });
@@ -181,7 +184,7 @@ async function buildFromSource(
 
   if (!existsSync(BUILD_DIR)) {
     onProgress?.("Downloading whisper.cpp...");
-    mkdirSync(BUILD_DIR, { recursive: true, mode: 0o700 });
+    ensurePrivateCacheDir(BUILD_DIR, CODE_ROOT);
     await stoppableExecFile(
       git,
       ["clone", "--depth", "1", "--branch", WHISPER_TAG, WHISPER_REPO, "."],
@@ -197,6 +200,8 @@ async function buildFromSource(
   }
 
   onProgress?.("Building whisper.cpp (this may take a minute)...");
+  sealCacheInstall(BUILD_DIR, CODE_ROOT);
+  assertPrivateCachePath(BUILD_DIR, CODE_ROOT);
   try {
     await stoppableExecFile(cmake, ["-B", "build"], {
       cwd: BUILD_DIR,
@@ -224,6 +229,7 @@ async function buildFromSource(
   }
 
   sealCacheInstall(BUILD_DIR, CODE_ROOT);
+  assertPrivateCachePath(BUILD_DIR, CODE_ROOT);
   const result = findBuiltBinary();
   if (!result) throw new Error("Build completed but whisper-cli not found");
   return result;

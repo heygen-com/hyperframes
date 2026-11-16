@@ -6,7 +6,6 @@ import {
   copyFileSync,
   createReadStream,
   existsSync,
-  mkdirSync,
   readdirSync,
   renameSync,
   unlinkSync,
@@ -16,6 +15,8 @@ import { downloadFile } from "../../utils/download.js";
 import { isMissingPackageError } from "../../utils/missingPackage.js";
 import { VERSION } from "../../version.js";
 import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
   foreignWritablePath,
   sealCacheInstall,
   trustedCacheRoot,
@@ -86,7 +87,7 @@ export async function fetchPinned(
   // Override for mirrors and pre-release testing; the pinned sha256 still decides.
   const url = asset.urlOverride ?? pinned.url;
   deps.log(`→ Downloading ${asset.label} ${pinned.version} (${pinned.bytes} bytes)`);
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  ensurePrivateCacheDir(dir, deps.cacheDir);
   const partial = `${file}.download`;
   await deps.download(url, partial, { maxBytes: pinned.bytes });
   const actual = await sha256File(partial);
@@ -101,7 +102,7 @@ export async function fetchPinned(
   renameSync(partial, file);
   sealCacheInstall(file, deps.cacheDir);
   deps.log(`→ Verified sha256 ${pinned.sha256}`);
-  return file;
+  return assertPrivateCachePath(file, deps.cacheDir);
 }
 
 /** Returns the directory holding the verified `handler.zip` and its `template.yaml`. */

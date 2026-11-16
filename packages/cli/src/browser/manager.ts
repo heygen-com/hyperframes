@@ -27,6 +27,8 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { unzipArchive } from "./unzipArchive.js";
 import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
   foreignWritablePath,
   sealCacheInstall,
   trustedCacheRoot,
@@ -855,7 +857,7 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
   const unzipLog = { lines: [] as string[] };
   const install = stagedInstaller(browsers, platform, stagingDir, options, unzipLog);
   const runInstall = () => {
-    mkdirSync(stagingDir, { recursive: true, mode: 0o700 });
+    ensurePrivateCacheDir(stagingDir, CACHE_ROOT_DIR);
     return install();
   };
 
@@ -917,7 +919,7 @@ function moveStagedInstallIntoCache(
   const target = join(CACHE_DIR, relative(stagingDir, staged.path));
   const aside = join(CACHE_ROOT_DIR, `${REPLACED_PREFIX}${randomUUID()}`);
   sealCacheInstall(staged.path, stagingDir);
-  mkdirSync(dirname(target), { recursive: true, mode: 0o755 });
+  ensurePrivateCacheDir(dirname(target), CACHE_ROOT_DIR, 0o755);
   let replaced = false;
   try {
     renameSync(target, aside);
@@ -933,7 +935,10 @@ function moveStagedInstallIntoCache(
   }
   if (replaced) removeLeftover(aside);
   sealCacheInstall(target, CACHE_ROOT_DIR);
-  return join(target, relative(staged.path, staged.executablePath));
+  return assertPrivateCachePath(
+    join(target, relative(staged.path, staged.executablePath)),
+    CACHE_ROOT_DIR,
+  );
 }
 
 const STAGING_PREFIX = ".chrome-staging-";

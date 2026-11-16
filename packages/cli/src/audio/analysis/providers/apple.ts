@@ -1,11 +1,13 @@
 import { runsWithoutInstallPrompt } from "../../../utils/appleStubs.js";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AudioAnalysisProvider, AudioSignal } from "@hyperframes/core/audio-analysis";
 import { AVAILABLE, runFile, unavailable, withWavFile } from "./shared.js";
 import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
   foreignWritablePath,
   sealCacheInstall,
   trustedCacheRoot,
@@ -115,7 +117,7 @@ function compiled(name: string, source: string): Promise<string> {
   let build = builds.get(binary);
   if (!build) {
     build = (async () => {
-      await mkdir(helperDir(), { recursive: true, mode: 0o700 });
+      ensurePrivateCacheDir(helperDir(), trustedCacheRoot());
       const file = `${binary}.swift`;
       await writeFile(file, source);
       const args = swiftcArgs(file, `${binary}.tmp`);
@@ -124,7 +126,7 @@ function compiled(name: string, source: string): Promise<string> {
       });
       await rename(`${binary}.tmp`, binary);
       sealCacheInstall(binary, trustedCacheRoot());
-      return binary;
+      return assertPrivateCachePath(binary, trustedCacheRoot());
     })();
     builds.set(binary, build);
   }
