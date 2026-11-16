@@ -7,9 +7,10 @@ import { resolveSpawnCommand } from "../../audio/scripts/lib/tts.mjs";
 
 // Local voiceover via the packaged Kokoro-82M TTS (the `hyperframes tts` CLI),
 // the free/private default now that HeyGen TTS costs wallet credits. Kokoro runs
-// on-device (CPU, faster-than-realtime, bundled voices, native word timestamps),
-// so no key and no per-call charge. When Kokoro is not set up, this returns null
-// and the registry falls through to the HeyGen TTS upsell.
+// on-device (CPU, faster-than-realtime, bundled voices), so no key and no
+// per-call charge. `hyperframes tts` returns no word timestamps: word timing
+// comes from `hyperframes transcribe` over the output. When Kokoro is not set
+// up, this returns null and the registry falls through to the HeyGen TTS upsell.
 //
 // Delegated to the hyperframes CLI (same as transcribe / remove-background), not
 // re-implemented here. ffprobe reads the duration back for the ledger.
