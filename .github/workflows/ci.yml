@@ -115,6 +115,8 @@ jobs:
         run: sh scripts/check-large-files.sh --range "$BASE_SHA" HEAD
       - name: Reject symbolic links outside the allowlist
         run: node scripts/check-symlinks.mjs
+      - name: Reject values shaped like a live HeyGen API key
+        run: node scripts/check-committed-keys.mjs
       - name: Find a release-only diff
         id: release
         uses: ./.github/actions/release-only-diff
