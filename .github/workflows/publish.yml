@@ -31,8 +31,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release-source:
+    name: Check the release commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'release/v'))
+    steps:
+      # A prerelease tag can name any commit, one nobody reviewed included; every job after this builds what it names.
+      - name: Check the tagged commit is on main
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAGGED: ${{ github.sha }}
+        run: |
+          status="$(gh api "repos/$REPO/compare/main...$TAGGED" --jq .status)"
+          case "$status" in
+            identical | behind) ;;
+            *)
+              echo "::error::v-tag commit $TAGGED is not on main ($status); only reviewed main commits publish"
+              exit 1
+              ;;
+          esac
+
   lambda-arm64-ffmpeg:
     name: Lambda arm64 ffmpeg
+    needs: [release-source]
     runs-on: ubuntu-24.04-arm
     # A cache miss compiles ffmpeg natively, 15-20 minutes.
     timeout-minutes: 60
@@ -74,6 +103,7 @@ jobs:
 
   lambda-handler-zip:
     name: Lambda handler zip
+    needs: [release-source]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Runs apart from the publish job: read-only token, no secrets, no stored git credentials.
@@ -429,43 +459,6 @@ jobs:
             exit 1
           fi
 
-      - name: Create release tag
-        if: github.event_name == 'pull_request'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          : "${GITHUB_TOKEN:?}"
-          BASIC_AUTH="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
-          echo "::add-mask::$BASIC_AUTH"
-          export GIT_CONFIG_COUNT=1
-          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
-          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $BASIC_AUTH"
-
-          TAG="v$VERSION"
-          EXPECTED_TAG_SHA="$(git rev-parse HEAD)"
-
-          verify_remote_tag() {
-            git fetch --force --no-tags origin "+refs/tags/$TAG:refs/tags/$TAG"
-            ACTUAL_TAG_SHA="$(git rev-parse "refs/tags/$TAG^{commit}")"
-            if [ "$ACTUAL_TAG_SHA" != "$EXPECTED_TAG_SHA" ]; then
-              echo "::error::Release tag $TAG points to $ACTUAL_TAG_SHA, expected $EXPECTED_TAG_SHA"
-              exit 1
-            fi
-            echo "Release tag $TAG already exists at the expected commit — skipping"
-          }
-
-          if [ -n "$(git ls-remote --refs origin "refs/tags/$TAG")" ]; then
-            verify_remote_tag
-          else
-            git tag --no-sign "$TAG" "$EXPECTED_TAG_SHA"
-            if ! git push origin "refs/tags/$TAG"; then
-              # A concurrent retry may have created the tag after ls-remote.
-              git tag -d "$TAG"
-              verify_remote_tag
-            fi
-          fi
-
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -543,6 +536,76 @@ jobs:
             exit 1
           fi
           cat "$ORDER"
+
+      # npm publish reads each tarball with its own node-tar, and a header GNU tar reads another way gives it a different
+      # package.json than the one checked above. This asks that same npm, without uploading, what it would publish.
+      - name: Check what npm will publish
+        working-directory: ${{ runner.temp }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          DIST_TAG: ${{ steps.version.outputs.dist_tag }}
+        run: |
+          while IFS=$'\t' read -r name tarball; do
+            if ! view="$(npm publish "$tarball" --dry-run --json --ignore-scripts --access public --tag "$DIST_TAG" \
+                --registry https://registry.npmjs.org/ 2>/dev/null)"; then
+              echo "::error::npm cannot read $(basename "$tarball")"
+              exit 1
+            fi
+            # npm 10 prints one object, npm 11 keys it by package name.
+            read_as="$(jq -r 'if has("name") then . else (to_entries | if length == 1 then .[0].value else error("more than one package") end) end
+              | "\(.name)@\(.version)\t\([.files[].path | select(. != "")] | sort | join("\n"))"' <<<"$view")" || {
+              echo "::error::npm reads $(basename "$tarball") as more than one package"
+              exit 1
+            }
+            npm_id="${read_as%%$'\t'*}"
+            npm_files="${read_as#*$'\t'}"
+            tar_files="$(tar -tzf "$tarball" | grep -v '/$' | sed 's#^package/##' | LC_ALL=C sort)"
+            if [ "$npm_id" != "$name@$VERSION" ]; then
+              echo "::error::npm would publish $(basename "$tarball") as $npm_id, not $name@$VERSION"
+              exit 1
+            fi
+            if [ "$npm_files" != "$(LC_ALL=C sort <<<"$npm_files")" ] || [ "$npm_files" != "$tar_files" ]; then
+              echo "::error::npm and tar read different files in $(basename "$tarball")"
+              exit 1
+            fi
+          done < publish-order.tsv
+
+      - name: Create release tag
+        if: github.event_name == 'pull_request'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          : "${GITHUB_TOKEN:?}"
+          BASIC_AUTH="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          echo "::add-mask::$BASIC_AUTH"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $BASIC_AUTH"
+
+          TAG="v$VERSION"
+          EXPECTED_TAG_SHA="$(git rev-parse HEAD)"
+
+          verify_remote_tag() {
+            git fetch --force --no-tags origin "+refs/tags/$TAG:refs/tags/$TAG"
+            ACTUAL_TAG_SHA="$(git rev-parse "refs/tags/$TAG^{commit}")"
+            if [ "$ACTUAL_TAG_SHA" != "$EXPECTED_TAG_SHA" ]; then
+              echo "::error::Release tag $TAG points to $ACTUAL_TAG_SHA, expected $EXPECTED_TAG_SHA"
+              exit 1
+            fi
+            echo "Release tag $TAG already exists at the expected commit — skipping"
+          }
+
+          if [ -n "$(git ls-remote --refs origin "refs/tags/$TAG")" ]; then
+            verify_remote_tag
+          else
+            git tag --no-sign "$TAG" "$EXPECTED_TAG_SHA"
+            if ! git push origin "refs/tags/$TAG"; then
+              # A concurrent retry may have created the tag after ls-remote.
+              git tag -d "$TAG"
+              verify_remote_tag
+            fi
+          fi
 
       - name: Check published Lambda pins
         env:
