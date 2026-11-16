@@ -1,5 +1,5 @@
 import { failCommand } from "../utils/commandResult.js";
-import { writeFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -345,7 +345,7 @@ function summarizeManifest(manifest: BatchManifest): void {
 function writeManifest(manifest: BatchManifest): void {
   summarizeManifest(manifest);
   makeOutputFolder(dirname(manifest.manifestPath));
-  writeFileSync(manifest.manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+  replaceFileAtomically(manifest.manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 }
 
 async function renderBatchRow(

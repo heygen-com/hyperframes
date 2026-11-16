@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import { closeSync, existsSync, mkdirSync, openSync, readSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { recordFolder } from "../utils/projectRecords.js";
 
 const MAX_BUFFER = 1 << 30;
 /** ffmpeg flags on every run. Inline before a spread, the ffprobe `--` contract test reads them as a probe wrapper. */
@@ -420,10 +421,20 @@ export function parseRoi(text: unknown, width?: number, height?: number): Roi {
   return roi;
 }
 
-/** The folder a tool writes its pictures to, made on demand: --out, or .hyperframes/<tool> in the current folder. */
+/** The folder a tool writes its pictures to, made on demand: --out, or .hyperframes/<tool> in the current folder.
+ * The default is used only when each folder on the way is a real one: a cloned project can link any of them out. */
 export function outDir(out: unknown, tool: string): string {
-  const dir = typeof out === "string" && out ? resolve(out) : resolve(join(".hyperframes", tool));
-  mkdirSync(dir, { recursive: true });
+  if (typeof out === "string" && out) {
+    const dir = resolve(out);
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+  const dir = recordFolder(resolve("."), tool);
+  if (!dir)
+    throw new Fix(
+      `${join(".hyperframes", tool)} is a link or not a folder here, so nothing is written into it`,
+      "pass --out <folder>",
+    );
   return dir;
 }
 
