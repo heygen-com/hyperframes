@@ -22,8 +22,7 @@ const LIB_DIR =
   ].find((candidate) => existsSync(candidate)) ||
   join(import.meta.dirname, "..", "..", "audio", "assets", "sfx");
 
-export const BUNDLED_SFX_RECOVERY_COMMAND =
-  "npx hyperframes skills update media-use";
+export const BUNDLED_SFX_RECOVERY_COMMAND = "npx hyperframes skills update media-use";
 
 export class BundledSfxAssetsError extends Error {
   constructor(health) {
@@ -47,8 +46,7 @@ function unhealthy(detail) {
 
 export function inspectBundledSfxAssets(libraryDir = LIB_DIR) {
   const manifestPath = join(libraryDir, "manifest.json");
-  if (!existsSync(manifestPath))
-    return unhealthy(`manifest not found: ${manifestPath}`);
+  if (!existsSync(manifestPath)) return unhealthy(`manifest not found: ${manifestPath}`);
 
   let manifest;
   try {
@@ -61,15 +59,13 @@ export function inspectBundledSfxAssets(libraryDir = LIB_DIR) {
   }
 
   const entries = Object.entries(manifest);
-  if (entries.length === 0)
-    return unhealthy(`manifest contains no SFX entries: ${manifestPath}`);
+  if (entries.length === 0) return unhealthy(`manifest contains no SFX entries: ${manifestPath}`);
   for (const [key, entry] of entries) {
     if (!entry?.file || typeof entry.file !== "string") {
       return unhealthy(`manifest entry "${key}" has no file`);
     }
     const assetPath = join(libraryDir, entry.file);
-    if (!existsSync(assetPath))
-      return unhealthy(`asset not found: ${assetPath}`);
+    if (!existsSync(assetPath)) return unhealthy(`asset not found: ${assetPath}`);
   }
 
   return {
@@ -94,8 +90,7 @@ const AUDIO_FILE_NAME =
  * file name; the result must still be a regular file inside the folder after realpath.
  */
 export function bundledSfxAssetPath(file, libraryDir = LIB_DIR) {
-  if (typeof file !== "string" || !file.startsWith(INDEX_FILE_PREFIX))
-    return null;
+  if (typeof file !== "string" || !file.startsWith(INDEX_FILE_PREFIX)) return null;
   const name = file.slice(INDEX_FILE_PREFIX.length);
   if (!AUDIO_FILE_NAME.test(name)) return null;
   try {
@@ -115,9 +110,7 @@ export const bundledSfxProvider = {
     const libraryDir = ctx.libraryDir || LIB_DIR;
     const health = inspectBundledSfxAssets(libraryDir);
     if (!health.ok) throw new BundledSfxAssetsError(health);
-    const manifest = JSON.parse(
-      readFileSync(join(libraryDir, "manifest.json"), "utf8"),
-    );
+    const manifest = JSON.parse(readFileSync(join(libraryDir, "manifest.json"), "utf8"));
 
     const rows = Object.entries(manifest).map(([key, entry]) => ({
       id: key,

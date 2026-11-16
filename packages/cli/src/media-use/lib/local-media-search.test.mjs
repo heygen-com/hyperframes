@@ -1,12 +1,6 @@
 import { strict as assert } from "node:assert";
 import { createHash } from "node:crypto";
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -38,9 +32,7 @@ function writeIndex(t, metadata) {
 }
 
 function withRevision(metadata) {
-  const metadataRevision = createHash("sha256")
-    .update(JSON.stringify(metadata.rows))
-    .digest("hex");
+  const metadataRevision = createHash("sha256").update(JSON.stringify(metadata.rows)).digest("hex");
   return { ...metadata, metadataRevision };
 }
 
@@ -73,10 +65,7 @@ test("a media index in the user's cache folder is never read", (t) => {
 test("an index whose rows do not match its metadata revision is refused", (t) => {
   const metadata = shippedIndex();
   metadata.rows[0] = { ...metadata.rows[0], file: "/etc/hosts" };
-  assert.throws(
-    () => mediaVectorRows(writeIndex(t, metadata)),
-    /metadataRevision/,
-  );
+  assert.throws(() => mediaVectorRows(writeIndex(t, metadata)), /metadataRevision/);
 });
 
 test("an index with the wrong dimensions or malformed rows is refused", (t) => {
@@ -89,25 +78,15 @@ test("an index with the wrong dimensions or malformed rows is refused", (t) => {
     ...base,
     rows: [{ ...base.rows[0], file: 7 }, ...base.rows.slice(1)],
   });
-  assert.throws(
-    () => mediaVectorRows(writeIndex(t, badRow)),
-    /malformed or out of order/,
-  );
+  assert.throws(() => mediaVectorRows(writeIndex(t, badRow)), /malformed or out of order/);
   const reordered = withRevision({ ...base, rows: [...base.rows].reverse() });
+  assert.throws(() => mediaVectorRows(writeIndex(t, reordered)), /malformed or out of order/);
   assert.throws(
-    () => mediaVectorRows(writeIndex(t, reordered)),
-    /malformed or out of order/,
-  );
-  assert.throws(
-    () =>
-      mediaVectorRows(writeIndex(t, { ...base, names: base.names.slice(1) })),
+    () => mediaVectorRows(writeIndex(t, { ...base, names: base.names.slice(1) })),
     /do not line up/,
   );
 });
 
 test("a missing media index has no rows", () => {
-  assert.deepEqual(
-    mediaVectorRows(join(tmpdir(), "hf-no-such-index", "media-vectors.json")),
-    [],
-  );
+  assert.deepEqual(mediaVectorRows(join(tmpdir(), "hf-no-such-index", "media-vectors.json")), []);
 });
