@@ -191,7 +191,7 @@ const CHECK_COMMAND_ARGS = {
   },
   samples: {
     type: "string",
-    description: "Number of midpoint samples across the duration (default: 9)",
+    description: "Number of midpoint samples across the duration",
     default: "9",
   },
   range: {
@@ -221,17 +221,17 @@ const CHECK_COMMAND_ARGS = {
   },
   "max-issues": {
     type: "string",
-    description: "Maximum issues to print or return after static collapse (default: 80)",
+    description: "Maximum issues to print or return after static collapse",
     default: "80",
   },
   "collapse-static": {
     type: "boolean",
-    description: "Collapse repeated static issues across samples (default: true)",
+    description: "Collapse repeated static issues across samples",
     default: true,
   },
   tolerance: {
     type: "string",
-    description: "Allowed pixel overflow before reporting an issue (default: 2)",
+    description: "Allowed pixel overflow before reporting an issue",
     default: "2",
   },
   budget: {

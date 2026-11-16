@@ -98,7 +98,7 @@ export default defineCommand({
     },
     "lint-verbose": {
       type: "boolean",
-      description: "Show full lint findings before publishing (default: a one-line summary)",
+      description: "Show full lint findings before publishing instead of a one-line summary",
       default: false,
     },
   },

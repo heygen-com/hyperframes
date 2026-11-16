@@ -1791,7 +1791,7 @@ export default defineCommand({
     },
     frames: {
       type: "string",
-      description: "Number of evenly-spaced frames to capture (default: 5)",
+      description: "Number of evenly-spaced frames to capture",
       default: "5",
     },
     at: {
@@ -1811,7 +1811,7 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: `Ms to wait for the composition to become render-ready, and for each still's seek to settle, up to 170 s (default: ${RENDER_READY_TIMEOUT_MS})`,
+      description: `Ms to wait for the composition to become render-ready, and for each still's seek to settle, up to 170 s`,
       default: String(RENDER_READY_TIMEOUT_MS),
     },
     angle: {
@@ -1822,7 +1822,7 @@ export default defineCommand({
     end: {
       type: "boolean",
       description:
-        "Always include a readable end-of-timeline frame (default: true). Pass --no-end to capture only your exact --at times.",
+        "Always include a readable end-of-timeline frame. Pass --no-end to capture only your exact --at times.",
       default: true,
     },
     keep: {
@@ -1838,7 +1838,7 @@ export default defineCommand({
     },
     "zoom-scale": {
       type: "string",
-      description: "Device-scale-factor density for --zoom crops (default: 3)",
+      description: "Device-scale-factor density for --zoom crops",
       default: "3",
     },
     against: {
