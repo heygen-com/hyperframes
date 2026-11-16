@@ -79,40 +79,30 @@ export class Refusal extends Error {}
 
 const turnFile = (dir: string) => join(dir, ".hyperframes", "history-turn.json");
 
-/** The open turn, or null; a marker with no last write time cannot say when the turn ended, so it has. */
-const MAX_MARKER_TEXT = 200;
 const WHO_KINDS: readonly unknown[] = ["person", "agent", "outside"] satisfies HistoryWho["kind"][];
 const isId = (value: unknown): value is string => typeof value === "string" && isHistoryId(value);
-const isMarkerText = (value: unknown): value is string =>
-  typeof value === "string" && value.length <= MAX_MARKER_TEXT;
+const isIds = (value: unknown): value is string[] => Array.isArray(value) && value.every(isId);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object";
+const isVia = (value: unknown): value is Turn["via"] => value === "preview" || value === "direct";
 
-function parseTurn(value: unknown): Turn | null {
-  if (!value || typeof value !== "object") return null;
-  const turn = value as Record<string, unknown>;
-  const who = (turn.who ?? {}) as Record<string, unknown>;
-  const parts = turn.parts ?? [];
-  const valid =
-    (turn.via === "preview" || turn.via === "direct") &&
-    isId(turn.id) &&
-    WHO_KINDS.includes(who.kind) &&
-    isMarkerText(who.name) &&
-    isMarkerText(turn.label) &&
-    typeof turn.startedAt === "number" &&
-    typeof turn.lastWriteAt === "number" &&
-    Array.isArray(parts) &&
-    parts.every(isId);
-  if (!valid) return null;
-  return {
-    via: turn.via as Turn["via"],
-    id: turn.id as string,
-    who: { kind: who.kind as HistoryWho["kind"], name: who.name as string },
-    label: turn.label as string,
-    startedAt: turn.startedAt as number,
-    lastWriteAt: turn.lastWriteAt as number,
-    parts: parts as string[],
-  };
+function whoOf(value: unknown): HistoryWho | null {
+  if (!isRecord(value) || !WHO_KINDS.includes(value.kind) || typeof value.name !== "string")
+    return null;
+  return { kind: value.kind as HistoryWho["kind"], name: value.name };
 }
 
+function parseTurn(value: unknown): Turn | null {
+  if (!isRecord(value) || !isVia(value.via) || !isId(value.id)) return null;
+  const who = whoOf(value.who);
+  const parts = value.parts ?? [];
+  const { label, startedAt, lastWriteAt } = value;
+  if (!who || typeof label !== "string" || !isIds(parts)) return null;
+  if (typeof startedAt !== "number" || typeof lastWriteAt !== "number") return null;
+  return { via: value.via, id: value.id, who, label, startedAt, lastWriteAt, parts };
+}
+
+/** The open turn, or null; a marker with no last write time cannot say when the turn ended, so it has. */
 function readTurn(dir: string): Turn | null {
   try {
     return parseTurn(JSON.parse(readFileSync(turnFile(dir), "utf-8")));
@@ -136,7 +126,7 @@ function readLastTurns(dir: string): Record<string, string[]> {
     if (!turns || typeof turns !== "object") return {};
     return Object.fromEntries(
       Object.entries(turns).filter(
-        ([name, parts]) => isMarkerText(name) && Array.isArray(parts) && parts.every(isId),
+        ([, parts]) => isIds(parts),
       ),
     );
   } catch {

@@ -215,6 +215,18 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     expect(files()).toEqual(["A", "N2"]);
   });
 
+  it("a turn with a long label and agent name still ends and undoes as that agent's", async () => {
+    const { write, json, hf, files } = await setup();
+    const name = "agent-".repeat(40);
+    await hf("begin", "--who", name, "--label", "x".repeat(201));
+    write("index.html", "A2");
+
+    const ended = await json("end");
+    expect(ended.entry).toMatchObject({ who: { kind: "agent", name }, files: ["index.html"] });
+    expect((await hf("undo", "--who", name)).code).toBe(0);
+    expect(files()[0]).toBe("A");
+  });
+
   it("undo by one agent leaves another agent's open turn open", async () => {
     const { write, read, json, hf, turn } = await setup();
     await turn("gemini", "Notes", "notes.html", "N2");
