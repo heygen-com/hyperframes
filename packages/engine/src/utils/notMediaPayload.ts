@@ -56,6 +56,14 @@ export class NotMediaPayloadError extends Error {
   }
 }
 
+/** A file ffmpeg reads as text art, which it would draw into video frames. */
+export class TextArtMediaError extends NotMediaPayloadError {
+  constructor() {
+    super([]);
+    this.message = "Media source is a text file, not a media container";
+  }
+}
+
 /** Stable, bounded correlation key. Never the raw element id or source. */
 export function fingerprintElementId(elementId: string): string {
   return createHash("sha256").update(elementId).digest("hex").slice(0, 16);

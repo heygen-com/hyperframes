@@ -692,6 +692,22 @@ describe("video extraction failure taxonomy and bounded retry", () => {
     }
   });
 
+  it.skipIf(!HAS_FFMPEG)("refuses a text file that ffmpeg would draw as video", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-extract-text-art-"));
+    try {
+      writeFileSync(join(dir, "notes.nfo"), "API_TOKEN=not-for-the-frame\nhello\n");
+      const video = { id: "v1", src: "notes.nfo", start: 0, end: 1, mediaStart: 0, loop: false };
+      const extraction = extractAllVideoFrames([{ ...video, hasAudio: false }], dir, {
+        fps: 30,
+        outputDir: join(dir, "out"),
+        assetRoots: [dir],
+      });
+      await expect(extraction).rejects.toThrow(/text file, not a media container/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it.each([".git/clip.mp4", ".hyperframes/clip.mp4", ".ssh/clip.mp4"])(
     "treats the private project file %s as a missing source",
     async (src) => {
