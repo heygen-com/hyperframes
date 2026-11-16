@@ -164,9 +164,8 @@ export const NLEPreview = memo(function NLEPreview({
     };
 
     updateStageSize();
-    // Rendered before the browser paints: a window going full screen otherwise shows (and macOS animates) a frame with
-    // the old, small stage.
-    const observer = new ResizeObserver(() => flushSync(updateStageSize));
+    const resizeBeforePaint = () => flushSync(updateStageSize);
+    const observer = new ResizeObserver(resizeBeforePaint);
     observer.observe(viewport);
     return () => observer.disconnect();
   }, [compositionSize, hintWidth, hintHeight, portrait, gutterPx, insetPx]);
