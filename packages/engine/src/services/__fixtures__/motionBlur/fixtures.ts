@@ -34,7 +34,7 @@ const SLIDE = 0.4;
 const frame = (k: number): number => k / 30;
 const frames = (...ks: number[]): number[] => ks.map(frame);
 
-interface Spec {
+export interface Spec {
   name: string;
   width?: number;
   height?: number;
@@ -114,7 +114,7 @@ function compose(spec: Spec, blur: "on" | "off", tier?: "capture" | "filter"): s
   </body></html>`;
 }
 
-function fixture(spec: Spec): BlurFixture {
+export function fixture(spec: Spec): BlurFixture {
   return {
     name: spec.name,
     width: spec.width ?? 320,

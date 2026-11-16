@@ -1,5 +1,7 @@
+import { emptyStyleBlocks, hasScriptWithSrc, replaceBlockComments } from "../linearScans";
 import type { LintContext, HyperframeLintFinding, ExtractedBlock, OpenTag } from "../context";
 import selectorParser from "postcss-selector-parser";
+import { parseHTML } from "linkedom";
 import {
   findHtmlTag,
   extractTimelineRegistryKeys,
@@ -19,7 +21,8 @@ import {
   isCompositionVariable,
   isSafeMediaUrl,
 } from "@hyperframes/parsers/composition";
-import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { rawCssUrlMatches } from "@hyperframes/parsers/css-url-scans";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import {
   readAuthoredDurationSeconds,
@@ -35,7 +38,7 @@ import {
 const INSPECTION_VIEWPORT_CAP = 4096;
 
 const MAX_COMPOSITION_LINES = 300;
-const MAX_TIMED_ELEMENTS_PER_TRACK = 3;
+const MAX_TIMED_ELEMENTS_PER_FILE = 3;
 const TRACK_DENSITY_EXEMPT_TAGS = new Set(["audio", "script", "style", "video"]);
 const CAPTION_CUE_TOKEN =
   /^(?:caption(?:[-_](?:group|word|line|block|cue|text))?|subtitle(?:[-_](?:group|line|cue|text))?|cg-.+)$/i;
@@ -95,7 +98,7 @@ function countPhysicalLines(source: string): number {
 }
 
 function countStructuralLines(source: string): number {
-  return countPhysicalLines(source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "<style></style>"));
+  return countPhysicalLines(emptyStyleBlocks(source));
 }
 
 function isCaptionCue(tag: OpenTag): boolean {
@@ -130,11 +133,8 @@ function isCompositionRootOrMount(rawTag: string): boolean {
 // rules that consume this — the helper just yields raw URL values.
 function extractCssUrlReferences(css: string): string[] {
   const out: string[] = [];
-  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  const urlPattern = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = urlPattern.exec(noComments)) !== null) {
-    const raw = (m[2] ?? "").trim();
+  for (const { parts } of rawCssUrlMatches(replaceBlockComments(css, ""))) {
+    const raw = (parts[2] ?? "").trim();
     if (raw) out.push(raw);
   }
   return out;
@@ -165,8 +165,8 @@ function climbsAboveRoot(fileDepth: number, path: string): boolean {
 // full CSS parser, and rules elsewhere in this file scan CSS the same way.
 function extractCssSelectors(css: string): string[] {
   const out: string[] = [];
-  const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  const ruleHeader = /([^{}]+)\{/g;
+  const noComments = replaceBlockComments(css, "");
+  const ruleHeader = /(?<![^{}])([^{}]+)\{/g;
   let m: RegExpExecArray | null;
   while ((m = ruleHeader.exec(noComments)) !== null) {
     const header = (m[1] ?? "").trim();
@@ -207,8 +207,8 @@ function collectHeavyOverlayHooks(styles: ExtractedBlock[]): {
   const classes = new Set<string>();
   const ids = new Set<string>();
   for (const style of styles) {
-    const noComments = style.content.replace(/\/\*[\s\S]*?\*\//g, "");
-    const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
+    const noComments = replaceBlockComments(style.content, "");
+    const ruleWithBody = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     let m: RegExpExecArray | null;
     while ((m = ruleWithBody.exec(noComments)) !== null) {
       const header = (m[1] ?? "").trim();
@@ -555,7 +555,7 @@ function stylesheetCanvasZoomHits(
 ): CanvasZoomHit[] {
   const hits: CanvasZoomHit[] = [];
   for (const style of styles) {
-    const ruleWithBody = /([^{}]+)\{([^{}]*)\}/g;
+    const ruleWithBody = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     const content = stripCssComments(style.content);
     // At-rules and style attributes can restrict selector applicability.
     const allowNewHits = style.attrs.trim() === "" && !content.includes("@");
@@ -786,7 +786,7 @@ function stackingContextSelectors(styles: readonly ExtractedBlock[]): Set<string
   const selectors = new Set<string>();
   for (const style of styles) {
     const content = stripCssComments(style.content);
-    const rule = /([^{}]+)\{([^{}]*)\}/g;
+    const rule = /(?<![^{}])([^{}]+)\{([^{}]*)\}/g;
     let match: RegExpExecArray | null;
     while ((match = rule.exec(content)) !== null) {
       if (!STACKING_CONTEXT_DECLARATION.test(match[2] ?? "")) continue;
@@ -1027,35 +1027,28 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   },
 
   // timeline_track_too_dense
-  // fallow-ignore-next-line complexity
+  // Counted per file, so moving clips to other lanes never silences it.
   ({ tags, options }) => {
-    const trackCounts = new Map<string, number>();
-    for (const tag of tags) {
-      if (TRACK_DENSITY_EXEMPT_TAGS.has(tag.name)) continue;
-      if (isCaptionCue(tag)) continue;
-      if (isCompositionRootOrMount(tag.raw)) continue;
-      if (!readAttr(tag.raw, "data-start")) continue;
+    const count = tags.filter(
+      (tag) =>
+        !TRACK_DENSITY_EXEMPT_TAGS.has(tag.name) &&
+        !isCaptionCue(tag) &&
+        !isCompositionRootOrMount(tag.raw) &&
+        readAttr(tag.raw, "data-start"),
+    ).length;
+    if (count <= MAX_TIMED_ELEMENTS_PER_FILE) return [];
 
-      const track = readAttr(tag.raw, COMPOSITION_ATTRIBUTES.trackIndex);
-      if (!track) continue;
-      trackCounts.set(track, (trackCounts.get(track) ?? 0) + 1);
-    }
-
-    const findings: HyperframeLintFinding[] = [];
-    for (const [track, count] of trackCounts) {
-      if (count <= MAX_TIMED_ELEMENTS_PER_TRACK) continue;
-      const splitTarget = options.isSubComposition
-        ? "Move coherent scene groups into smaller .html files"
-        : "Move coherent scene groups into separate .html files under compositions/";
-      findings.push({
+    const splitTarget = options.isSubComposition
+      ? "Move coherent scene groups into smaller .html files"
+      : "Move coherent scene groups into separate .html files under compositions/";
+    return [
+      {
         code: "timeline_track_too_dense",
         severity: "warning",
-        message: `Track ${track} has ${count} timed elements in this HTML file. Smaller sub-compositions keep timelines easier to read, iterate on, and diff.`,
+        message: `This HTML file has ${count} timed elements. Smaller sub-compositions keep timelines easier to read, iterate on, and diff.`,
         fixHint: `${splitTarget} and mount them from the parent with data-composition-src so the timeline stays easier to inspect, revise, and validate.`,
-      });
-    }
-
-    return findings;
+      },
+    ];
   },
 
   // deprecated_data_layer + deprecated_data_end
@@ -1258,7 +1251,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     if (!rootCompositionId || !rootTag) return [];
     // Can't scan external script files for timeline registration; skip to avoid
     // false positives on compositions that register via a bundled JS file.
-    if (/<script\b[^>]*\bsrc\s*=/i.test(rawSource)) return [];
+    if (hasScriptWithSrc(rawSource)) return [];
     // A computed key may map to any authored id. When static analysis cannot
     // resolve that key, stay silent rather than claim a registration is absent.
     if (hasComputedTimelineRegistration(scripts)) return [];
@@ -1624,7 +1617,7 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
 
     const allCss = styles.map((s) => s.content).join("\n");
     const allInlineStyles = tags.map((t) => readAttr(t.raw, "style") || "").join("\n");
-    const combinedCss = `${allCss}\n${allInlineStyles}`.replace(/\/\*[\s\S]*?\*\//g, "");
+    const combinedCss = replaceBlockComments(`${allCss}\n${allInlineStyles}`, "");
 
     const usesLottie =
       tags.some((t) => readAttr(t.raw, "data-lottie-src") !== null) ||
@@ -1945,6 +1938,32 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
         fixHint: `Move the #${rootId} rules into a <style> inside the <template>, where they are rewritten for the merged root, or select a child element of the root in the linked file instead of the root itself.`,
         snippet: truncateSnippet(style.content.slice(0, 120)),
       }));
+  },
+
+  // multiple_scene_templates: the renderer takes the first scene template of a file with no live root.
+  ({ rawSource }) => {
+    const { document } = parseHTML(rawSource);
+    if (document.querySelector("[data-composition-id]")) return [];
+    const scenes = Array.from(document.querySelectorAll("template")).flatMap((template, index) => {
+      const compositionId = parseHTML(template.innerHTML)
+        .document.querySelector("[data-composition-id]")
+        ?.getAttribute("data-composition-id");
+      if (compositionId === undefined) return [];
+      const id = template.getAttribute("id");
+      return [
+        `template #${index + 1}${id ? ` (id="${id}")` : ""} holding composition "${compositionId}"`,
+      ];
+    });
+    if (scenes.length < 2) return [];
+    return [
+      {
+        code: "multiple_scene_templates",
+        severity: "warning",
+        message: `This file has more than one scene template and no live composition root, so only the first renders: ${scenes.join("; ")}.`,
+        fixHint:
+          "Keep one composition root per file, or move the other scenes into their own files.",
+      },
+    ];
   },
 ];
 

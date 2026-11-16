@@ -228,7 +228,7 @@ it("a hold for data does not reload a later clip", () => {
 });
 
 it("a film held for data reads as choppy, so the app can lower it", () => {
-  const reports: Array<{ choppy: boolean; waitingShare: number }> = [];
+  const reports: Array<{ choppy: boolean; waitingShare: number; heldBy: unknown }> = [];
   const { voiceReady, playFor } = playPodcast(0, "video");
   voiceReady.value = 4;
   playFor(0.5);
@@ -239,12 +239,13 @@ it("a film held for data reads as choppy, so the app can lower it", () => {
   for (const [message] of post.mock.calls) {
     const m = message as {
       type?: string;
-      health: { choppy: boolean; waitingShare: number } | null;
+      health: { choppy: boolean; waitingShare: number; heldBy: unknown } | null;
     };
     if (m?.type === "preview-health" && m.health) reports.push(m.health);
   }
   expect(reports.at(-1)?.choppy).toBe(true);
   expect(reports.at(-1)?.waitingShare).toBeGreaterThan(0.9);
+  expect(reports.at(-1)?.heldBy).toMatchObject({ kind: "video", readyState: 1 });
 });
 
 it("a video far behind the film lands on it when it starves", () => {
@@ -280,6 +281,25 @@ it("a pause while buffering stays paused once the track is ready", () => {
   expect(window.__player!.getTime()).toBeLessThan(0.1);
   expect(music.paused).toBe(true);
   expect(states.at(-1)).toEqual({ isPlaying: false, buffering: false });
+});
+
+// A Studio preview reloading a far scene re-seeks with keepPlaying. When that lands while the film is held
+// for data, the hold must survive it and the film plays on.
+it("a seek that keeps playing during a hold for data plays on once the track is ready", () => {
+  const mark = document.createElement("meta");
+  mark.name = STUDIO_PREVIEW_MARK_META;
+  document.head.append(mark);
+  const { voiceReady, states, playFor } = playPodcast(0, "video");
+
+  playFor(0.5);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
+  window.__player!.seek(0, { keepPlaying: true });
+  voiceReady.value = 4;
+  playFor(1);
+
+  mark.remove();
+  expect(window.__player!.getTime()).toBeGreaterThan(0.5);
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
 });
 
 afterEach(() => {

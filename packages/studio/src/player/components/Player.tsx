@@ -8,6 +8,8 @@ import { HyperframesLoader } from "../../components/ui";
 import { usePlayerStore } from "../store/playerStore";
 import { announcePreviewDocumentLoaded } from "../sceneSwap";
 import type { IframeWindow } from "../lib/playbackTypes";
+import { watchPreviewFrame } from "../lib/bridgePlayback";
+import { previewUnderFrameToken } from "../lib/frameToken";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
 // `typeof window` guard. Kicking it here rather than in the mount effect puts
@@ -42,6 +44,7 @@ interface PlayerProps {
   suppressLoadingOverlay?: boolean;
   loadingUi?: "studio" | "host";
   noLoadTimeout?: boolean;
+  sandboxOrigin?: "opaque";
 }
 
 interface HyperframesPlayerElement extends HTMLElement {
@@ -138,6 +141,13 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
   }
 }
 
+async function playerSrc(previewSource: string, opaque: boolean): Promise<string> {
+  const url = new URL(previewSource, window.location.origin);
+  applyPreviewVariablesToUrl(url);
+  const src = url.pathname + url.search;
+  return opaque ? previewUnderFrameToken(src) : src;
+}
+
 const runtimeBootedIn = (iframe: HTMLIFrameElement) =>
   (iframe.contentWindow as IframeWindow | null)?.__playerReady === true;
 
@@ -218,14 +228,13 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       let canceled = false;
       let cleanup: (() => void) | undefined;
 
-      void loadPlayerModule().then(() => {
+      const opaque = host.sandboxOrigin === "opaque";
+
+      void Promise.all([loadPlayerModule(), playerSrc(previewSource, opaque)]).then(([, src]) => {
         if (canceled) return;
 
         // Create the web component imperatively to avoid JSX custom-element typing.
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
-        const srcUrl = new URL(previewSource, window.location.origin);
-        applyPreviewVariablesToUrl(srcUrl);
-        const src = srcUrl.pathname + srcUrl.search;
         const retryPreview = () => {
           retryCountRef.current += 1;
           const retryUrl = new URL(src, window.location.origin);
@@ -332,7 +341,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.addEventListener("painted", handlePainted);
         player.addEventListener("error", handleError);
 
-        // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
+        // Sealed before the ref (useTimelinePlayer's bridge) sees the frame, never unsealed: a host may seal it too.
+        if (opaque) player.toggleAttribute("sandbox-origin", true);
         if (typeof ref === "function") {
           ref(iframe);
         } else if (ref) {
@@ -353,6 +363,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         loadIdRef.current += 1;
         player.setAttribute("src", src);
         container.appendChild(player);
+        watchPreviewFrame(iframe);
 
         enableInteractiveIframe(player);
 
@@ -377,11 +388,11 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // During crossfade refreshes the retiring Player unmounts after the
           // new Player has already assigned its iframe to the same ref — blindly
           // nulling it would break seeking in the new Player.
-          // Callback refs are skipped — we can't read back the current value to
-          // guard against clobbering a newer assignment. The mutable-ref branch
-          // (the only path used today) is guarded by identity check.
+          // Callback refs are left alone: a shadow reload's promotion repoints
+          // the live frame without calling them, so a null here would wipe it.
+          // Their owners check `isConnected` instead (useShadowPreviewReload).
           if (typeof ref === "function") {
-            // no-op: can't safely guard callback refs
+            // no-op
           } else if (ref) {
             const mutableRef = ref as React.MutableRefObject<HTMLIFrameElement | null>;
             if (mutableRef.current === iframe) {

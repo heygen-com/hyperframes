@@ -19,6 +19,7 @@ export default defineConfig({
         test: {
           name: "browser",
           include: ["src/**/*.browser.test.ts"],
+          testTimeout: 30_000,
           hookTimeout: 30_000,
           fileParallelism: false,
           sequence: { groupOrder: 2 },

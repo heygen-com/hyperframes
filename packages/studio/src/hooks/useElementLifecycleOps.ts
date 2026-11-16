@@ -172,6 +172,7 @@ export function useElementLifecycleOps({
               throw await createStudioSaveHttpError(
                 removeResponse,
                 `Failed to delete element from ${targetPath}`,
+                { path: targetPath },
               );
             }
             const removeData = (await removeResponse.json()) as {

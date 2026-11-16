@@ -1,3 +1,4 @@
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   attachElementFxChain,
   readElementAutomation,
@@ -213,7 +214,9 @@ const decodeKey = (el: HTMLMediaElement): string | null => {
   const src = el.currentSrc || el.getAttribute("src");
   if (!src) return null;
   try {
-    return assetUrl(src);
+    const url = new URL(assetUrl(src));
+    url.hash = "";
+    return url.href;
   } catch {
     return src;
   }
@@ -294,6 +297,12 @@ export class WebAudioTransport {
   private _restTimer: ReturnType<typeof setTimeout> | null = null;
 
   async init(): Promise<boolean> {
+    return this.open();
+  }
+
+  /** Builds the context on the calling thread: on Windows that opens the audio device and can block seconds. */
+  open(): boolean {
+    if (this._ctx) return true;
     try {
       this._ctx = new AudioContext();
       this._ctx.onstatechange = () => this.rest();
@@ -318,10 +327,10 @@ export class WebAudioTransport {
   }
 
   private rest(): void {
-    if (this._restTimer !== null) clearTimeout(this._restTimer);
+    if (this._restTimer !== null) wallClearTimeout(this._restTimer);
     this._restTimer = null;
     if (!this._ctx || this._ctx.state !== "running" || this._suspendPending) return;
-    this._restTimer = setTimeout(() => {
+    this._restTimer = wallSetTimeout(() => {
       this._restTimer = null;
       this.suspendIfIdle();
     }, IDLE_SUSPEND_MS);
@@ -674,7 +683,7 @@ export class WebAudioTransport {
       ramp(1);
     };
     ramp(0);
-    setTimeout(() => {
+    wallSetTimeout(() => {
       // A stop or a new pass in the meantime owns the element now.
       if (!this._activeSources.includes(source)) return;
       for (const type of DIP_END_EVENTS) el.addEventListener(type, rise);
@@ -1251,7 +1260,7 @@ export class WebAudioTransport {
     this._mediaElementSources = new WeakMap();
     this._playingCaptured.clear();
     this._suspendPending = false;
-    if (this._restTimer !== null) clearTimeout(this._restTimer);
+    if (this._restTimer !== null) wallClearTimeout(this._restTimer);
     this._restTimer = null;
     if (this._ctx) {
       try {

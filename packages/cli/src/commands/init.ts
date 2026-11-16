@@ -57,12 +57,14 @@ import {
   type CanvasResolution,
 } from "@hyperframes/core";
 import {
-  HTML_BODY_CSS_HEIGHT_FIRST_RE,
-  HTML_BODY_CSS_WIDTH_FIRST_RE,
-  VIEWPORT_META_SIZE_RE,
+  matchHtmlBodyCssHeightFirst,
+  matchHtmlBodyCssWidthFirst,
+  matchViewportMetaSize,
+  replaceCanvasScaffoldSize,
 } from "@hyperframes/parsers";
 import { decodableAudioStream } from "@hyperframes/parsers/media-streams";
 import { cliSourced } from "../utils/sourceTag.js";
+import { shellArg } from "../utils/shellArg.js";
 
 function resolveScaffoldTemplateId(exampleFlag: string | undefined, hasMediaFile: boolean): string {
   const example = exampleFlag === "agent" ? "blank" : exampleFlag;
@@ -632,20 +634,19 @@ function applyCanvasSize(
       }
     }
 
-    // Inline `html, body { ... }` CSS: handle width-before-height and
-    // height-before-width orderings. Hand-authored templates can use either.
-    // Groups 1 and 3 are the text before each dimension, 2 and 4 the digits.
-    if (HTML_BODY_CSS_WIDTH_FIRST_RE.test(html)) {
-      html = html.replace(HTML_BODY_CSS_WIDTH_FIRST_RE, `$1${width}px$3${height}px`);
+    const widthFirst = matchHtmlBodyCssWidthFirst(html);
+    if (widthFirst) {
+      html = replaceCanvasScaffoldSize(html, widthFirst, width, height);
       changed = true;
     }
-    if (HTML_BODY_CSS_HEIGHT_FIRST_RE.test(html)) {
-      html = html.replace(HTML_BODY_CSS_HEIGHT_FIRST_RE, `$1${height}px$3${width}px`);
+    const heightFirst = matchHtmlBodyCssHeightFirst(html);
+    if (heightFirst) {
+      html = replaceCanvasScaffoldSize(html, heightFirst, height, width);
       changed = true;
     }
-
-    if (VIEWPORT_META_SIZE_RE.test(html)) {
-      html = html.replace(VIEWPORT_META_SIZE_RE, `$1${width}$3${height}`);
+    const viewport = matchViewportMetaSize(html);
+    if (viewport) {
+      html = replaceCanvasScaffoldSize(html, viewport, width, height);
       changed = true;
     }
 
@@ -842,7 +843,7 @@ export default defineCommand({
     resolution: {
       type: "string",
       description:
-        "Canvas resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160). Aliases: 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square. Default: a --video clip's own shape as it plays, 1080 on the short side (4:3 -> 1440x1080), else the template's dimensions (typically 1920x1080).",
+        "Canvas resolution preset: landscape (1920x1080), portrait (1080x1920), landscape-4k (3840x2160), portrait-4k (2160x3840), square (1080x1080), square-4k (2160x2160), landscape-1440p (2560x1440), portrait-1440p (1440x2560), square-1440p (1440x1440). Aliases: 1080p, 4k, uhd, 1440p, qhd, 1080p-square, square-1080p, 4k-square, 1440p-portrait, 1440p-square. Default: a --video clip's own shape as it plays, 1080 on the short side (4:3 -> 1440x1080), else the template's dimensions (typically 1920x1080).",
     },
     skill: {
       type: "string",
@@ -894,8 +895,9 @@ export default defineCommand({
         console.error(
           c.error(
             `Invalid --resolution: "${args.resolution}". ` +
-              `Use one of: landscape, portrait, landscape-4k, portrait-4k, square, square-4k ` +
-              `(or aliases 1080p, 4k, uhd, 1080p-square, square-1080p, 4k-square).`,
+              `Use one of: landscape, portrait, landscape-4k, portrait-4k, square, square-4k, ` +
+              `landscape-1440p, portrait-1440p, square-1440p ` +
+              `(or aliases 1080p, 4k, uhd, 1440p, qhd, 1080p-square, square-1080p, 4k-square, 1440p-portrait, 1440p-square).`,
           ),
         );
         failUsage();
@@ -1027,6 +1029,8 @@ export default defineCommand({
         await keepSkillsCurrent(destDir);
       }
 
+      const shownName = shellArg(name);
+      const cdLine = shownName === null ? "go into the project folder" : `cd ${shownName}`;
       console.log();
       console.log("Get started:");
       console.log();
@@ -1043,7 +1047,7 @@ export default defineCommand({
       console.log();
       console.log(`  ${c.accent("2.")} Open this project with your AI coding agent:`);
       console.log(
-        `     ${c.accent(`cd ${name}`)} then start ${c.accent("Claude Code")}, ${c.accent("Cursor")}, or your preferred agent`,
+        `     ${c.accent(cdLine)} then start ${c.accent("Claude Code")}, ${c.accent("Cursor")}, or your preferred agent`,
       );
       console.log();
       console.log(`  ${c.accent("3.")} Try a starter prompt:`);
@@ -1055,13 +1059,13 @@ export default defineCommand({
       );
       console.log();
       console.log(`  ${c.accent("4.")} Preview in the browser:`);
-      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run dev")}`);
+      console.log(`     ${c.accent(cdLine)} && ${c.accent("npm run dev")}`);
       console.log();
       console.log(`  ${c.accent("5.")} Check the composition:`);
-      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run check")}`);
+      console.log(`     ${c.accent(cdLine)} && ${c.accent("npm run check")}`);
       console.log();
       console.log(`  ${c.accent("6.")} Render to MP4 when ready:`);
-      console.log(`     ${c.accent(`cd ${name}`)} && ${c.accent("npm run render")}`);
+      console.log(`     ${c.accent(cdLine)} && ${c.accent("npm run render")}`);
       console.log();
       console.log(`  ${c.dim(`Full docs: ${cliSourced("https://hyperframes.heygen.com")}`)}`);
       return;

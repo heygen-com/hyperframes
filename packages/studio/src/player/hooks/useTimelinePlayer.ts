@@ -4,7 +4,7 @@ import { useMountEffect } from "../../hooks/useMountEffect";
 import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 import { useShadowPreviewReload } from "./useShadowPreviewReload";
-import { resolvePlaybackAdapter } from "./playbackAdapterResolution";
+import { resolveFramePlaybackAdapter } from "./playbackAdapterResolution";
 import { subscribePreviewFrame, transportAdapter } from "../store/previewFrameStore";
 import { clampToDuration } from "../lib/time";
 import { useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
@@ -28,6 +28,7 @@ export {
 } from "../lib/playbackShortcuts";
 
 import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
+import { setFrameLoopStart } from "../lib/previewChannel";
 import { releaseStaticSeekCache, type StaticSeekCacheEntry } from "../lib/playbackAdapter";
 import { mergeTimelineElementsPreservingDowngrades } from "../lib/timelineDOM";
 import { findTimelineElementInIframe } from "../../hooks/timelineEditingHelpers";
@@ -50,6 +51,7 @@ export interface UseTimelinePlayerOptions {
   onShadowPromoted?: () => void;
   /** A reload was abandoned (cause in the message); the previous preview is still showing. */
   onPreviewReloadFailed?: (message: string) => void;
+  holdPreviewStill?: (live: HTMLIFrameElement) => Promise<(() => void) | null>;
 }
 
 const publishSeek = (time: number, options?: { follow?: boolean }) =>
@@ -59,6 +61,7 @@ const publishSeek = (time: number, options?: { follow?: boolean }) =>
 export function useTimelinePlayer({
   onShadowPromoted,
   onPreviewReloadFailed,
+  holdPreviewStill,
 }: UseTimelinePlayerOptions = {}) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const rafRef = useRef<number>(0);
@@ -148,9 +151,8 @@ export function useTimelinePlayer({
       try {
         // undefined means "no override"; an explicit null override means "no adapter".
         const iframe = overrideIframe !== undefined ? overrideIframe : iframeRef.current;
-        const win = iframe?.contentWindow as IframeWindow | null;
-        if (!iframe || !win) return null;
-        const adapter = resolvePlaybackAdapter(iframe, win, {
+        if (!iframe) return null;
+        const adapter = resolveFramePlaybackAdapter(iframe, {
           cache: staticSeekAdapterRef,
           warned: staticSeekWarnedRef,
         });
@@ -163,9 +165,7 @@ export function useTimelinePlayer({
   );
 
   const setLoopStart = useCallback((seconds: number | null) => {
-    try {
-      (iframeRef.current?.contentWindow as IframeWindow | null)?.__hf?.setLoopStart?.(seconds);
-    } catch {}
+    if (iframeRef.current) setFrameLoopStart(iframeRef.current, seconds);
   }, []);
   const { startRAFLoop, stopRAFLoop, stopReverseLoop } = useTimelinePlayerLoop({
     rafRef,
@@ -295,7 +295,7 @@ export function useTimelinePlayer({
     stopRAFLoop();
   }, [getAdapter, setCurrentTime, setIsPlaying, stopRAFLoop, stopReverseLoop]);
   const seek = useCallback(
-    (time: number, options?: { keepPlaying?: boolean; follow?: boolean }) => {
+    (time: number, options?: { keepPlaying?: boolean; follow?: boolean; settled?: boolean }) => {
       const wasReverseShuttle = shuttleDirectionRef.current === "backward";
       stopReverseLoop();
       const adapter = getAdapter();
@@ -422,6 +422,7 @@ export function useTimelinePlayer({
     beginShadowReload,
     resetPreviewSlots,
     previewGeneration,
+    onLiveLoaded,
   } = useShadowPreviewReload({
     iframeRef,
     getAdapter,
@@ -436,6 +437,7 @@ export function useTimelinePlayer({
     applyPreviewAudioState,
     onPromoted: onShadowPromoted,
     onReloadFailed: onPreviewReloadFailed,
+    holdStill: holdPreviewStill,
     handOverPlayback: (time, playing) => {
       // keepPlaying: move the playhead without the paused-seek audio scrub.
       seek(time, { keepPlaying: true, follow: false });
@@ -568,13 +570,21 @@ export function useTimelinePlayer({
     });
   }, [applyPlaybackRate, applyPreviewAudioState]);
 
+  const onLiveIframeLoad = useCallback(
+    (context?: number) => {
+      onIframeLoad(context);
+      onLiveLoaded();
+    },
+    [onIframeLoad, onLiveLoaded],
+  );
+
   return {
     iframeRef,
     play,
     pause,
     togglePlay,
     seek,
-    onIframeLoad,
+    onIframeLoad: onLiveIframeLoad,
     refreshPlayer,
     saveSeekPosition,
     resetPlayer,

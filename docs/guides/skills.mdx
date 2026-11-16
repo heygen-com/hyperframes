@@ -131,13 +131,22 @@ Make any video by asking for it; the `/hyperframes` skill carries the contract a
 | `/hyperframes-cli` | The CLI by job: scaffold, check, look at frames, edit the timeline, preview, render locally or in the cloud, publish, project history. |
 | `/hyperframes-registry` | About 450 ready-made blocks and components installed as editable source: transitions, overlays, titles, kinetic type, captions, charts, maps, 3D, camera moves. |
 | `/media-use` | Music, sound effects, images, icons, logos, voiceover, avatar and generated video, transcripts, cutouts, colour grades and looks, with HeyGen or free local tools; mixes placed audio. |
+| `/reverse-any-video` | Rebuilding any video file as an editable HyperFrames project (motion graphics, talking heads, live action, AI-generated footage), checked frame by frame against the original. HyperFrames Pro. |
+| `/style-sampling` | Making a new episode on your topic in one of five proven styles: Collage Explainer, Finance Explainer, Animated Science Explainer, 3D Brand Explainer, 3D True Crime. HyperFrames Pro. |
 | `/figma` | A Figma file or frame: rendered assets, brand tokens, components, and storyboard frames as reconstructed motion. |
 | `/slideshow` | A presentation, pitch deck or interactive deck. Output is a navigable deck, not a rendered MP4. |
 | `/remotion-to-hyperframes` | Bringing existing video code or footage into HyperFrames (Remotion first; also Motion Canvas, Lottie, Three.js, canvas, other tools' renders), verified frame by frame. |
-| `/reverse-any-video` | Rebuilding any video file as an editable HyperFrames project (motion graphics, talking heads, live action, AI-generated footage), checked frame by frame against the original. HyperFrames Pro. |
-| `/style-sampling` | Making a new episode on your topic in one of five proven styles: Collage Explainer, Finance Explainer, Animated Science Explainer, 3D Brand Explainer, 3D True Crime. HyperFrames Pro. |
 
 You can name a skill directly, but you do not need to memorize the names to start.
+
+## How the agent runs the CLI
+
+The skills have your agent start the CLI through a launcher that ships with them,
+`hyperframes/scripts/plugin-cli.mjs`, from your project folder. The launcher starts npm in
+your home folder, so a project's `package.json`, `node_modules` or `.npmrc` cannot swap in a
+different program. This matters most for a project someone sent you. With standalone skills it
+runs the newest published CLI; in a plugin it runs the version the plugin pins. The agent runs
+a project's own npm scripts only when you ask for one by name.
 
 ## Install more only when you need it
 

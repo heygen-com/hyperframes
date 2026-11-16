@@ -32,9 +32,11 @@ const vitestFiles = tests.filter((test) => test.runner === "vitest").map((test) 
 const vitestEnv = unit
   ? { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --import ${noNetwork.href}`.trim() }
   : {};
-// Files that start many Chromes at once run alone, after the rest: next to them, the Chrome
-// node-count assertions in coreRuntimeBrowser.test.ts see a different garbage-collection schedule.
-const runsAlone = (file) => /\/blurDifferential(\.\w+)?\.integration\.test\.ts$/.test(file);
+// Files that start many Chromes at once run alone, after the rest and one file at a time: next to
+// them, the Chrome node-count assertions in coreRuntimeBrowser.test.ts see a different
+// garbage-collection schedule.
+const runsAlone = (file) =>
+  /(^|\/)blur(Differential|Chunks)[^/]*\.integration\.test\.ts$/.test(file);
 const shared = vitestFiles.filter((file) => !runsAlone(file));
 const alone = vitestFiles.filter(runsAlone);
 if (shared.length > 0) run(["x", "vitest", "run", ...shared], vitestEnv);

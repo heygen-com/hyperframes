@@ -47,6 +47,8 @@ import type { SegmentVideoFrames, SegmentWorkerFrames } from "../segmentVideoFra
 import { createSegmentQueue } from "../segmentQueue.js";
 import { isTargetLossError } from "../segmentRecycle.js";
 import {
+  OPENING_CAPTURE_SESSION,
+  createSessionInitBudget,
   raceAgainstStall,
   resolveCaptureStallTimeoutMs,
   verifyDrawElementSample,
@@ -337,14 +339,32 @@ function defaultSessionFactory(input: CaptureSegmentedStageInput): SessionFactor
         await closeCaptureSession(probeSession).catch(() => {});
         probeSession = null;
       }
-      const session = probeSession ?? (await openSegmentedSession(input, injector));
+      const withinInitBudget = createSessionInitBudget({
+        frameIndex: input.job.framesRendered ?? 0,
+        totalFrames: input.totalFrames,
+        abortSignal: input.abortSignal,
+      });
+      const openSession = async (): Promise<CaptureSession> => {
+        const opening = openSegmentedSession(input, injector);
+        try {
+          return await withinInitBudget(opening, OPENING_CAPTURE_SESSION);
+        } catch (error) {
+          void opening.then(closeCaptureSession, () => {});
+          throw error;
+        }
+      };
+      const session = probeSession ?? (await openSession());
       if (probeSession) {
-        openSegmentedSessionReuse(input, probeSession, injector);
+        const reused = probeSession;
         probeSession = null;
+        await openSegmentedSessionReuse(input, reused, injector).catch(async (error: unknown) => {
+          await closeCaptureSession(reused).catch(() => {});
+          throw error;
+        });
       }
       try {
-        if (!session.isInitialized) await initializeSession(session);
-        await completeDeferredDrawElementInit(session);
+        if (!session.isInitialized) await withinInitBudget(initializeSession(session), session);
+        await withinInitBudget(completeDeferredDrawElementInit(session), session);
       } catch (error) {
         await closeCaptureSession(session).catch(() => {});
         throw error;
@@ -354,12 +374,12 @@ function defaultSessionFactory(input: CaptureSegmentedStageInput): SessionFactor
   };
 }
 
-function openSegmentedSessionReuse(
+async function openSegmentedSessionReuse(
   input: CaptureSegmentedStageInput,
   session: CaptureSession,
   injector: () => BeforeCaptureHook | null,
-): void {
-  prepareCaptureSessionForReuse(session, input.framesDir, injector());
+): Promise<void> {
+  await prepareCaptureSessionForReuse(session, input.framesDir, injector());
 }
 
 async function openSegmentedSession(

@@ -11,6 +11,7 @@ import {
   insertRuntimeTag,
   hasCompositionOutsideTemplates,
   isFullHtmlDocument,
+  mapStartTagsAndStyles,
   parseHTMLContent,
   stripEmbeddedRuntimeScripts,
 } from "./htmlDocument.js";
@@ -63,7 +64,41 @@ function scannedChars(run: () => void): number {
 const workGrowth = (scan: (n: number) => void) =>
   scannedChars(() => scan(20_000)) / scannedChars(() => scan(10_000));
 
+/** Lowercased copies `run` makes of any string at least `size` long. */
+function lowercasedCopies(size: number, run: () => void): number {
+  const proto = String.prototype as unknown as Record<string, (...args: unknown[]) => unknown>;
+  const originals = ["replace", "toLowerCase"].map((name) => [name, proto[name]!] as const);
+  let copies = 0;
+  for (const [name, original] of originals) {
+    proto[name] = function (this: string, ...args: unknown[]) {
+      if (this.length >= size) copies += 1;
+      return original.apply(this, args);
+    };
+  }
+  try {
+    run();
+  } finally {
+    for (const [name, original] of originals) proto[name] = original;
+  }
+  return copies;
+}
+
 describe("htmlDocument helpers", () => {
+  it("finds a large page's tags without lowercasing a copy of the page for each pass", () => {
+    const clip = '<VIDEO SRC="a.mov" DATA-HF-ID="v" MUTED></VIDEO>';
+    const page = `<!DOCTYPE html><HTML><HEAD><TITLE>x</TITLE></HEAD><BODY>${clip.repeat(20_000)}<SCRIPT>window.x = 1;</SCRIPT></BODY></HTML>`;
+    const copies = lowercasedCopies(page.length / 2, () => {
+      insertBeforeCloseTag(page, "head", "<meta>");
+      insertBeforeCloseTag(page, "body", "<i></i>");
+      injectTagsAtHeadStart(page, "<meta>");
+      findStartTags(page, "base");
+      mapStartTagsAndStyles(page, { tag: (tag) => tag, style: (css) => css });
+      hasCompositionOutsideTemplates(page);
+      stripEmbeddedRuntimeScripts(page);
+    });
+    expect(copies).toBe(0);
+  });
+
   it("strips runtimes from large mixed-case base64 HTML within a bounded heap", () => {
     const moduleUrl = pathToFileURL(resolve(__dirname, "htmlDocument.ts")).href;
     const result = spawnSync(
@@ -467,6 +502,14 @@ describe("insertRuntimeTag", () => {
     expect(tracker).toBeGreaterThan(-1);
     expect(tracker).toBeLessThan(out.indexOf("window.author"));
     expect(out.indexOf("window.author")).toBeLessThan(out.indexOf(runtime));
+  });
+
+  it("keeps the tracker and runtime ahead of author scripts for Studio previews", () => {
+    const out = insertRuntimeTag(page('data-motion-blur="on"'), runtime, true);
+    const tracker = out.indexOf("data-hf-accel-tracker");
+    expect(tracker).toBeGreaterThan(-1);
+    expect(tracker).toBeLessThan(out.indexOf(runtime));
+    expect(out.indexOf(runtime)).toBeLessThan(out.indexOf("window.author"));
   });
 
   it("adds the tracker once, however many times the runtime is placed", () => {

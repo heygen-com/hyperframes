@@ -4,6 +4,32 @@ import { lintHyperframeHtml } from "../hyperframeLinter.js";
 import { parseCompositionVariables } from "@hyperframes/parsers/composition";
 
 describe("composition rules", () => {
+  describe("multiple_scene_templates", () => {
+    const scene = (id: string) =>
+      `<div data-composition-id="${id}" data-width="320" data-height="180"></div>`;
+    const find = async (html: string) =>
+      (await lintHyperframeHtml(html, { isSubComposition: true })).findings.find(
+        (f) => f.code === "multiple_scene_templates",
+      );
+
+    it("warns, naming each scene template", async () => {
+      const finding = await find(
+        `<template id="intro">${scene("a")}</template><template>${scene("b")}</template>`,
+      );
+      expect(finding?.severity).toBe("warning");
+      expect(finding?.message).toContain('template #1 (id="intro") holding composition "a"');
+      expect(finding?.message).toContain('template #2 holding composition "b"');
+    });
+
+    it.each([
+      `<template>${scene("a")}</template>`,
+      `<template><svg></svg></template><template>${scene("a")}</template>`,
+      `<template>${scene("a")}</template><template>${scene("b")}</template>${scene("live")}`,
+    ])("is quiet for %s", async (html) => {
+      expect(await find(html)).toBeUndefined();
+    });
+  });
+
   describe("canonical timing contract", () => {
     it("rejects deprecated attributes even when canonical attributes are also present", async () => {
       const result = await lintHyperframeHtml(`<!doctype html><html><body>
@@ -169,7 +195,7 @@ describe("composition rules", () => {
       expect(finding?.fixHint).toContain("Split this sub-composition further");
     });
 
-    it("warns when more than 3 timed elements share the same track", async () => {
+    it("warns when a file has more than 3 timed elements", async () => {
       const html = `<!DOCTYPE html>
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0">
@@ -186,10 +212,10 @@ describe("composition rules", () => {
       const finding = result.findings.find((f) => f.code === "timeline_track_too_dense");
       expect(finding).toBeDefined();
       expect(finding?.severity).toBe("warning");
-      expect(finding?.message).toContain("Track 0 has 4 timed elements");
+      expect(finding?.message).toContain("4 timed elements");
     });
 
-    it("does not warn when 3 timed elements share the same track", async () => {
+    it("does not warn on 3 timed elements", async () => {
       const html = `<!DOCTYPE html>
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0">
@@ -204,20 +230,29 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
 
-    it("does not warn when timed elements are split across tracks", async () => {
-      const html = `<!DOCTYPE html>
+    const tenScenes = (track: (i: number) => string) => `<!DOCTYPE html>
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0">
-    <div class="clip" data-start="0" data-duration="1" data-track-index="0">A</div>
-    <div class="clip" data-start="1" data-duration="1" data-track-index="0">B</div>
-    <div class="clip" data-start="2" data-duration="1" data-track-index="1">C</div>
-    <div class="clip" data-start="3" data-duration="1" data-track-index="1">D</div>
+${Array.from({ length: 10 }, (_, i) => `    <div class="clip" data-start="${i}" data-duration="1"${track(i)}>S${i}</div>`).join("\n")}
   </div>
 </body></html>`;
+    const denseFinding = async (html: string) =>
+      (await lintHyperframeHtml(html, { filePath: "/project/index.html" })).findings.find(
+        (f) => f.code === "timeline_track_too_dense",
+      );
 
-      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
-      const finding = result.findings.find((f) => f.code === "timeline_track_too_dense");
-      expect(finding).toBeUndefined();
+    it("never advises another lane for scenes that share one", async () => {
+      const finding = await denseFinding(tenScenes(() => ` data-track-index="0"`));
+      expect(finding?.message).toContain("10 timed elements");
+      expect(`${finding?.message} ${finding?.fixHint}`).not.toMatch(/track|lane/i);
+    });
+
+    it("still warns the same when the scenes are spread over lanes or have none", async () => {
+      const oneLane = await denseFinding(tenScenes(() => ` data-track-index="0"`));
+      const tenLanes = await denseFinding(tenScenes((i) => ` data-track-index="${i}"`));
+      const noLane = await denseFinding(tenScenes(() => ""));
+      expect(tenLanes).toEqual(oneLane);
+      expect(noLane).toEqual(oneLane);
     });
 
     it("does not count timed media or script/style tags as dense track elements", async () => {
@@ -1349,6 +1384,15 @@ describe("composition rules", () => {
     it("checks a declaration on the composition root too", async () => {
       const html = `<html><body><div data-composition-id="x" data-composition-variables='[{"id":12345}]'></div></body></html>`;
       const result = await lintHyperframeHtml(html);
+      const finding = result.findings.find(
+        (f) => f.code === "invalid_composition_variables_declaration",
+      );
+      expect(finding).toBeDefined();
+    });
+
+    it("checks a declaration on a template-fragment composition root", async () => {
+      const html = `<template><div id="main" data-composition-id="main" data-no-timeline data-width="1920" data-height="1080" data-duration="10" data-composition-variables='broken'></div></template>`;
+      const result = await lintHyperframeHtml(html, { isSubComposition: true });
       const finding = result.findings.find(
         (f) => f.code === "invalid_composition_variables_declaration",
       );

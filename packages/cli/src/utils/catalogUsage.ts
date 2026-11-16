@@ -15,7 +15,10 @@
 
 import { readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
-import { collectSubCompositionSrcs } from "@hyperframes/parsers/asset-resolution";
+import {
+  collectSubCompositionSrcs,
+  resolveCompositionSrc,
+} from "@hyperframes/parsers/asset-resolution";
 import { type RegistryItemRecord, readProjectConfigWithStatus } from "./projectConfig.js";
 
 /** Installed catalog items, and the subset the rendered composition reaches. */
@@ -105,7 +108,8 @@ function reachableCompositions(projectDir: string, entryPath: string): Set<strin
     }
     if (html.length > MAX_HTML_BYTES) continue;
     for (const src of collectSubCompositionSrcs(html)) {
-      queue.push(resolve(projectDir, src));
+      const file = resolveCompositionSrc(projectDir, src);
+      if (file) queue.push(file);
     }
   }
   return seen;

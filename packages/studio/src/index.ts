@@ -14,8 +14,8 @@ export {
   studioKeyClash,
   useStudioKeys,
 } from "./player/components/studioShortcuts";
-export { formatCombo, matchCombo, parseCombo } from "./player/components/studioCombo";
-export type { Combo } from "./player/components/studioCombo";
+export { formatCombo, matchCombo, parseCombo } from "@hyperframes/core/key-combo";
+export type { Combo } from "@hyperframes/core/key-combo";
 export type { StudioKeyAction, StudioKeys } from "./player/components/studioShortcuts";
 export { ShortcutsButton } from "./player/components/ShortcutsPanel";
 export { dispatchLinkShortcut } from "./hooks/linkShortcuts";
@@ -45,6 +45,24 @@ export {
   formatTime,
 } from "./player";
 export { usePreviewIframeStore } from "./player/store/previewIframeStore";
+export { previewEditingClient, previewFrameOpaque } from "./player/lib/previewChannel";
+export {
+  describePreviewElements,
+  previewAncestors,
+  previewElementsAtPoint,
+  previewGeometry,
+  previewLayers,
+  previewPointerTargets,
+  queryPreviewElements,
+  type PreviewElement,
+  type PreviewElementHit,
+} from "./player/lib/previewElements";
+export {
+  findPreviewElementForSelection,
+  findPreviewElementForTimelineElement,
+  readable,
+  standInFor,
+} from "./components/editor/previewSelection";
 export { PREVIEW_QUALITY_LEVELS, type PreviewQuality } from "@hyperframes/core/preview-quality";
 export type {
   PlaybackHealth,

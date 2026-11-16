@@ -19,6 +19,15 @@ export const skillModuleCopies = [
       "packages/cli/src/media-use/lib/main-module.mjs",
     ],
   ],
+  [
+    "skills/hyperframes/scripts/lib/windows-exe-search.mjs",
+    [
+      "skills/media-use/scripts/lib/windows-exe-search.mjs",
+      "skills/figma/scripts/lib/windows-exe-search.mjs",
+      // The CLI build replaces the published media-use scripts/lib with this folder.
+      "packages/cli/src/media-use/lib/windows-exe-search.mjs",
+    ],
+  ],
 ];
 
 function synchronizeCopy(content, target, check) {

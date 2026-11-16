@@ -10,6 +10,7 @@ import {
   isWaiting,
   labelOf,
   moodOf,
+  type DesktopCtaPlacement,
   type DesktopRoute,
   type Progress,
 } from "./DesktopGuideCard";
@@ -47,7 +48,7 @@ const eligibilityOf = (route: DesktopRoute): Eligibility =>
   route.handoff ? "open_in_app" : route.downloadUrl ? "download" : "no_app_for_platform";
 
 /** The preview server's answer, or null when there is none (the desktop's own Studio, or no server). */
-async function readRoute(): Promise<DesktopRoute | null> {
+async function readRoute(placement: DesktopCtaPlacement): Promise<DesktopRoute | null> {
   const res = await studioApiFetch(ROUTE);
   if (!res.ok) return null;
   const body = (await res.json()) as {
@@ -66,16 +67,17 @@ async function readRoute(): Promise<DesktopRoute | null> {
       os: typeof body.os === "string" ? body.os : "unknown",
       app_installed: body.installed === true,
       download_available: downloadUrl !== null,
+      placement,
     },
   };
 }
 
 /** Null hides the button: no route, or nothing here to open or download. `setRoute` takes a fresher answer. */
-function useDesktopRoute() {
+function useDesktopRoute(placement: DesktopCtaPlacement) {
   const [route, setRoute] = useState<DesktopRoute | null>(null);
   useEffect(() => {
     let live = true;
-    readRoute()
+    readRoute(placement)
       .then((answered) => {
         if (!live || !answered) return;
         trackStudioEvent("desktop_cta_eligibility", {
@@ -88,7 +90,7 @@ function useDesktopRoute() {
     return () => {
       live = false;
     };
-  }, []);
+  }, [placement]);
   return [route, setRoute] as const;
 }
 
@@ -145,12 +147,16 @@ function useGaze(
 }
 
 /** While the card is open and the app is not here, ask the preview server again; stops on close or once found. */
-function useInstallWatch(watching: boolean, onAnswer: (route: DesktopRoute) => void): void {
+function useInstallWatch(
+  watching: boolean,
+  placement: DesktopCtaPlacement,
+  onAnswer: (route: DesktopRoute) => void,
+): void {
   useEffect(() => {
     if (!watching) return;
     let live = true;
     const ask = () =>
-      readRoute()
+      readRoute(placement)
         .then((answered) => live && answered && onAnswer(answered))
         .catch(() => {});
     void ask();
@@ -159,7 +165,7 @@ function useInstallWatch(watching: boolean, onAnswer: (route: DesktopRoute) => v
       live = false;
       clearInterval(timer);
     };
-  }, [watching, onAnswer]);
+  }, [watching, placement, onAnswer]);
 }
 
 const LOOK =
@@ -167,7 +173,11 @@ const LOOK =
 const LOOK_FAILED = "border-danger/45 bg-danger/8 text-danger-ink enabled:hover:bg-danger/14";
 
 /** The guide's state and the two actions that move it: the download and the hand-off. */
-function useGuide(route: DesktopRoute | null, setRoute: (route: DesktopRoute) => void) {
+function useGuide(
+  route: DesktopRoute | null,
+  setRoute: (route: DesktopRoute) => void,
+  placement: DesktopCtaPlacement,
+) {
   const { showToast } = useStudioShellContext();
   const [cardOpen, setCardOpen] = useState(false);
   const [opening, setOpening] = useState(false);
@@ -190,7 +200,7 @@ function useGuide(route: DesktopRoute | null, setRoute: (route: DesktopRoute) =>
     },
     [setRoute],
   );
-  useInstallWatch(cardOpen && route !== null && !installed, onAnswer);
+  useInstallWatch(cardOpen && route !== null && !installed, placement, onAnswer);
 
   useEffect(() => {
     if (!downloaded || installed) return;
@@ -256,7 +266,10 @@ function useGuide(route: DesktopRoute | null, setRoute: (route: DesktopRoute) =>
       const res = await studioApiFetch(ROUTE, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ cta: resolveTabId() }),
+        body: JSON.stringify({
+          cta: resolveTabId(),
+          ...(placement === "storyboard" ? { doc: "storyboard" } : {}),
+        }),
       });
       await landed((await res.json()) as OpenResult);
     } catch {
@@ -271,14 +284,18 @@ function useGuide(route: DesktopRoute | null, setRoute: (route: DesktopRoute) =>
   return { progress, cardOpen, showCard, download, open };
 }
 
-export function OpenInDesktopButton() {
+export function OpenInDesktopButton({
+  placement = "header",
+}: {
+  placement?: DesktopCtaPlacement;
+} = {}) {
   const projectDir = useFileManagerContextOptional()?.projectDir ?? null;
-  const [route, setRoute] = useDesktopRoute();
+  const [route, setRoute] = useDesktopRoute(placement);
   const trigger = useRef<HTMLButtonElement>(null);
   const eye = useRef<SVGGElement>(null);
   useGaze(trigger, eye);
   useImpression(trigger, route);
-  const guide = useGuide(route, setRoute);
+  const guide = useGuide(route, setRoute, placement);
   if (!guide) return null;
   const { progress, cardOpen, showCard, download, open } = guide;
   const label = labelOf(progress);
@@ -300,7 +317,7 @@ export function OpenInDesktopButton() {
         <Button
           ref={trigger}
           variant="ghost"
-          data-testid="header-open-in-desktop"
+          data-testid={`${placement}-open-in-desktop`}
           data-opening={progress.opening || undefined}
           aria-busy={progress.opening || waiting || undefined}
           title={

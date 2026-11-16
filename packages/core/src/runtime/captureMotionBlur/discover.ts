@@ -38,6 +38,7 @@ export interface DiscoverOptions {
   /** Seek the composition (timeline + adapters) to a time. */
   seek: (t: number) => void;
   onStep?: (i: number, steps: number) => void;
+  onFast?: (i: number, steps: number, fast: ReadonlySet<HTMLElement>) => void;
   onStepBoxes?: (i: number, boxes: ReadonlyArray<DOMRect | undefined>) => void;
 }
 
@@ -171,6 +172,7 @@ export function discoverMovers({
   fps,
   seek,
   onStep,
+  onFast,
   onStepBoxes,
 }: DiscoverOptions): Discovery {
   seek(0);
@@ -232,6 +234,7 @@ export function discoverMovers({
       )
         seeThrough.add(el);
     });
+    onFast?.(i, steps, fast);
     // Style reads up the chain are the costly part; every 10th step is enough to see a 3D turn.
     if (i % 10 === 0 || i === steps) {
       for (const el of fast) {
@@ -285,17 +288,21 @@ export function scanMovers({
   seek,
   events,
   onStep,
+  onFast,
   ...scan
 }: ScanOptions): Discovery & { readEvents: boolean } {
   const quiet = (t: number): void => seek(t, true);
   const rewindThroughEveryCall = (): void => seek(0, false);
-  if (!events) return { ...discoverMovers({ ...scan, seek: quiet, onStep }), readEvents: false };
+  if (!events) {
+    return { ...discoverMovers({ ...scan, seek: quiet, onStep, onFast }), readEvents: false };
+  }
   // Loud first: run after the silent scan, it starts at the end and fires a one-off call once more.
   const loud: number[] = [];
   const found = discoverMovers({
     ...scan,
     seek: (t) => seek(t, false),
     onStep,
+    onFast,
     onStepBoxes: (i, boxes) => {
       loud[i] = boxesKey(boxes);
     },

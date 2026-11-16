@@ -24,13 +24,15 @@ import {
   CANVAS_DIMENSIONS,
   checkOutputResolutionCompatibility,
   type CanvasResolution,
+  terminalText,
 } from "@hyperframes/core";
-import type {
-  AudioElement,
-  ExtractedFrames,
-  ImageElement,
-  ParallelProgress,
-  VideoElement,
+import {
+  mediaIdPathSegment,
+  type AudioElement,
+  type ExtractedFrames,
+  type ImageElement,
+  type ParallelProgress,
+  type VideoElement,
 } from "@hyperframes/engine";
 import type { CompiledComposition } from "../htmlCompiler.js";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
@@ -59,6 +61,10 @@ export interface CompositionMetadata {
  * slightly different `end` / `mediaStart` / `volume` than the compiled
  * HTML and we want to ignore sub-millisecond float noise.
  */
+export function audioWorkDir(workDir: string): string {
+  return join(workDir, "audio-work");
+}
+
 export const BROWSER_MEDIA_EPSILON = 0.0001;
 
 /**
@@ -162,6 +168,10 @@ export function writeCompiledArtifacts(
 
   for (const [srcPath, html] of compiled.subCompositions) {
     const outPath = join(compileDir, srcPath);
+    if (!isPathInside(outPath, compileDir)) {
+      console.warn(`[Render] Skipping sub-composition with unsafe path: ${terminalText(srcPath)}`);
+      continue;
+    }
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, html, "utf-8");
   }
@@ -174,7 +184,9 @@ export function writeCompiledArtifacts(
   for (const [relativePath, absolutePath] of compiled.externalAssets) {
     const outPath = resolve(join(compileDir, relativePath));
     if (!isPathInside(outPath, compileDir)) {
-      console.warn(`[Render] Skipping external asset with unsafe path: ${relativePath}`);
+      console.warn(
+        `[Render] Skipping external asset with unsafe path: ${terminalText(relativePath)}`,
+      );
       continue;
     }
     mkdirSync(dirname(outPath), { recursive: true });
@@ -394,6 +406,17 @@ const workerPhasesByJob = new WeakMap<object, Map<number, string>>();
 
 export function forgetWorkerPhases(job: object): void {
   workerPhasesByJob.delete(job);
+}
+
+const staticDedupActivityByJob = new WeakMap<object, number>();
+
+/** Counts a render's still-frame check screenshots; the capture stall watcher reads it as activity. */
+export function noteStaticDedupActivity(job: object): void {
+  staticDedupActivityByJob.set(job, (staticDedupActivityByJob.get(job) ?? 0) + 1);
+}
+
+export function staticDedupActivity(job: object): number {
+  return staticDedupActivityByJob.get(job) ?? 0;
 }
 
 export function describeWorkerPhases(job: object): string | undefined {
@@ -677,7 +700,7 @@ export function materializeExtractedFramesForCompiledDir(
     const resolvedOut = pathModule.resolve(ext.outputDir);
     if (isPathInside(resolvedOut, resolvedCompiledDir, { pathModule })) continue;
 
-    const linkPath = pathModule.join(compiledFrameRoot, ext.videoId);
+    const linkPath = pathModule.join(compiledFrameRoot, mediaIdPathSegment(ext.videoId));
     if (!fileSystem.existsSync(linkPath)) {
       fileSystem.mkdirSync(pathModule.dirname(linkPath), { recursive: true });
       stageExtractedFrameDir(

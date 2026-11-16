@@ -262,7 +262,7 @@ async function runFilm(base: string, browser: Browser, origin: string, fixture: 
         window.__bench = null;
         window.__hfBench(arguments[0]).then(
         (r) => { window.__bench = { ok: r }; },
-        (e) => { window.__bench = { error: String(e && e.stack || e) }; });`,
+        (e) => { window.__bench = { error: [String(e), e && e.stack].filter(Boolean).join("\\n") }; });`,
       args: [{ playMs: PLAY_MS, seekFractions: SEEK_FRACTIONS }],
     });
     const deadline = Date.now() + 180_000;

@@ -4,6 +4,7 @@ import type {
   RuntimeTimelineScene,
   RuntimeTimelineLike,
 } from "./types";
+import { unproxiedSrc } from "./proxySrc";
 import { stableClipId } from "./clipTree";
 import { findRootCompositionElement, parseCompositionDimension } from "./compositionDimension";
 import {
@@ -166,13 +167,13 @@ function toAbsoluteAssetUrl(rawValue: string | null | undefined): string | null 
 }
 
 function resolveNodeAssetUrl(node: Element): string | null {
-  const src = node.getAttribute("src") ?? node.getAttribute("data-src");
+  const src = unproxiedSrc(node) ?? node.getAttribute("data-src");
   if (src) return toAbsoluteAssetUrl(src);
   const compositionSrc = node.getAttribute("data-composition-src");
   if (compositionSrc) return toAbsoluteAssetUrl(compositionSrc);
   const mediaDescendant = node.querySelector("img[src], video[src], audio[src], source[src]");
   if (!mediaDescendant) return null;
-  return toAbsoluteAssetUrl(mediaDescendant.getAttribute("src"));
+  return toAbsoluteAssetUrl(unproxiedSrc(mediaDescendant));
 }
 
 function getFirstClassToken(node: Element): string | null {

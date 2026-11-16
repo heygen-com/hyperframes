@@ -1,7 +1,11 @@
 import { existsSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
   fingerprintElementId,
+  isHttpUrl,
+  isInsideAssetRoots,
   isNotMediaPayload,
+  playlistLeavesItsFolder,
   NotMediaPayloadError,
   probeMediaProfile,
   resolveProjectRelativeSrc,
@@ -11,6 +15,8 @@ import {
   type VideoElement,
 } from "@hyperframes/engine";
 import { withMediaProbeSlot } from "../utils/mediaProbeConcurrency.js";
+import { leftOutOfRender, outsideAssetRefusal } from "../utils/paths.js";
+import type { ProducerLogger } from "../logger.js";
 
 export const ASSET_MEDIA_TYPE_MISMATCH = "ASSET_MEDIA_TYPE_MISMATCH" as const;
 
@@ -25,8 +31,11 @@ export interface AssetMediaTypeMismatch {
 }
 
 export class AssetMediaTypeMismatchError extends Error {
+  // fallow-ignore-next-line unused-class-member
   readonly code = ASSET_MEDIA_TYPE_MISMATCH;
+  // fallow-ignore-next-line unused-class-member
   readonly owner = "user" as const;
+  // fallow-ignore-next-line unused-class-member
   readonly retryable = false as const;
   readonly mismatches: readonly AssetMediaTypeMismatch[];
 
@@ -84,8 +93,47 @@ interface MediaReference {
   expected: AssetElementMediaType;
 }
 
-function isRemoteOrInlineSource(src: string): boolean {
-  return /^(?:https?:|data:|blob:|about:)/i.test(src.trim());
+export function mediaAssetRoots(projectDir: string, compiledDir: string): string[] {
+  return [projectDir, compiledDir, join(dirname(compiledDir), "downloads")];
+}
+
+/** Treats local media outside the project, compiled and download dirs as missing: no probe or extraction opens it. */
+export function dropMediaOutsideProject(input: {
+  projectDir: string;
+  workDir: string;
+  composition: { videos: VideoElement[]; audios: AudioElement[]; images: ImageElement[] };
+  log: ProducerLogger;
+  allowOutsideProjectAssets?: boolean;
+}): void {
+  const { projectDir, workDir, composition, log } = input;
+  const compiledDir = join(workDir, "compiled");
+  const roots = mediaAssetRoots(projectDir, compiledDir);
+  const staysInside = ({ id, src }: { id: string; src: string }) => {
+    if (!src || isHttpUrl(src)) return true;
+    const path = resolveProjectRelativeSrc(src, projectDir, compiledDir);
+    if (isInsideAssetRoots(path, roots)) return true;
+    if (input.allowOutsideProjectAssets) {
+      const refusal = outsideAssetRefusal(projectDir, path);
+      if (refusal) log.warn(`[Render] ${leftOutOfRender(`Media "${id}"`, src, refusal)}`);
+      return refusal === null;
+    }
+    log.warn(`[Render] Media "${id}" source is missing: it is outside the project folder`, { src });
+    return false;
+  };
+  composition.videos = composition.videos.filter(staysInside);
+  composition.audios = composition.audios.filter(staysInside);
+  composition.images = composition.images.filter(staysInside);
+}
+
+// STUDIO-5433: the one place every local src is seen whatever its timing. Documents are refused under <video> only
+// (an <img> may be SVG, a bad audio track is per-element in audioMixer); a playlist leaving its folder, under any.
+async function notMediaReferences(
+  path: string,
+  references: MediaReference[],
+): Promise<MediaReference[]> {
+  const videos = references.filter((ref) => ref.expected === "video");
+  if (videos.length > 0 && (await isNotMediaPayload(path))) return videos;
+  return (await playlistLeavesItsFolder(path)) ? references : [];
 }
 
 /**
@@ -120,7 +168,7 @@ export async function preflightCompositionAssetMediaTypes(input: {
 
   const byPath = new Map<string, MediaReference[]>();
   for (const reference of references) {
-    if (!reference.src || isRemoteOrInlineSource(reference.src)) continue;
+    if (!reference.src || isHttpUrl(reference.src)) continue;
     const resolvedPath = resolveProjectRelativeSrc(
       reference.src,
       input.projectDir,
@@ -136,21 +184,9 @@ export async function preflightCompositionAssetMediaTypes(input: {
   await Promise.all(
     entries.map(([resolvedPath, pathReferences]) =>
       withMediaProbeSlot(async () => {
-        // STUDIO-5433. This preflight is the only place every local media src is
-        // seen regardless of its authored timing, so it is where a document
-        // payload behind a `data-end` video gets caught — the compiler's own
-        // sniff only runs for elements whose duration it has to resolve.
-        //
-        // Video only, deliberately. An `<img>` may legitimately be an SVG,
-        // which ffprobe reads through its `svg_pipe` demuxer. And a bad audio
-        // source is non-fatal by existing policy (audioStage ships the render
-        // without the track and reports `audioError`), so it is classified
-        // per-element in audioMixer instead of aborted here.
-        const sniffableReferences = pathReferences.filter((ref) => ref.expected === "video");
-        if (sniffableReferences.length > 0 && (await isNotMediaPayload(resolvedPath))) {
-          notMediaFingerprints.push(
-            ...sniffableReferences.map((ref) => fingerprintElementId(ref.id)),
-          );
+        const refused = await notMediaReferences(resolvedPath, pathReferences);
+        if (refused.length > 0) {
+          notMediaFingerprints.push(...refused.map((ref) => fingerprintElementId(ref.id)));
           return;
         }
 

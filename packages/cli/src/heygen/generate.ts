@@ -19,6 +19,7 @@ import { findCuts, signatures } from "../measure/cuts.js";
 import { Fix, probeVideo, projectOf, round, runFfmpeg, videoClip } from "../measure/media.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 import {
+  chargedCredits,
   idempotencyKey,
   keepVoice,
   keptVoice,
@@ -162,7 +163,33 @@ interface Route extends JobRoute {
 
 type Media = (path: string, kind: "image" | "audio" | "video") => Record<string, unknown>;
 
-const DEFAULTS = { image: "nano-banana-2", video: "heygen-video-1", music: "lyria-3-pro" } as const;
+const DEFAULTS = {
+  image: "nano-banana-2.1",
+  video: "heygen-video-1",
+  music: "lyria-3-pro",
+} as const;
+export const VENDOR_PRICED_IMAGES = new Set([
+  "gpt-image-2.5",
+  "gpt-image-2.6",
+  "gpt-image-2.6-flare",
+  "minimax-h3-image",
+  "minimax-h3-image-4k",
+]);
+const GPT_ASPECTS = ["1:1", "16:9", "9:16", "4:3", "3:4"];
+const GEMINI_ASPECTS = [...GPT_ASPECTS, "3:2", "2:3", "21:9"];
+const MINIMAX_ASPECTS = [...GPT_ASPECTS, "21:9"];
+/** What /v3/images accepts from each model: its aspect ratios and how many reference pictures. */
+const IMAGE_MODELS: Record<string, { aspects: string[]; references: number }> = {
+  "nano-banana-2": { aspects: GEMINI_ASPECTS, references: 14 },
+  "nano-banana-2.1": { aspects: GEMINI_ASPECTS, references: 14 },
+  "gpt-image-2.5": { aspects: GPT_ASPECTS, references: 16 },
+  "gpt-image-2.6": { aspects: GPT_ASPECTS, references: 16 },
+  "gpt-image-2.6-flare": { aspects: GPT_ASPECTS, references: 16 },
+  "minimax-h3-image": { aspects: MINIMAX_ASPECTS, references: 16 },
+  "minimax-h3-image-4k": { aspects: MINIMAX_ASPECTS, references: 16 },
+};
+export const isVendorPriced = (r: GenerateRequest): boolean =>
+  r.type === "image" && VENDOR_PRICED_IMAGES.has(r.model ?? "");
 const VIDEO_RESOLUTION = "768p";
 /** HeyGen follows at most this many seconds of a guide clip; the rest is not sent. */
 export const GUIDE_MAX_S = 15;
@@ -174,6 +201,21 @@ const need = <T>(value: T | undefined, flag: string, example: string): T => {
   return value;
 };
 
+function imageModel(r: GenerateRequest): string {
+  const model = r.model ?? DEFAULTS.image;
+  const spec = IMAGE_MODELS[model];
+  if (!spec) return model;
+  if (r.aspect && !spec.aspects.includes(r.aspect))
+    throw new Fix(`${model} does not make ${r.aspect}`, `--aspect ${spec.aspects.join("|")}`);
+  const refs = r.references?.length ?? 0;
+  if (refs > spec.references)
+    throw new Fix(
+      `${model} takes at most ${spec.references} --reference pictures, not ${refs}`,
+      `pass the ${spec.references} that matter most`,
+    );
+  return model;
+}
+
 const ROUTES: Record<GenerateType, Route> = {
   image: {
     path: "/v3/images",
@@ -181,7 +223,7 @@ const ROUTES: Record<GenerateType, Route> = {
       c.createImage({ body: body as ImageCreateRequest, idempotencyKey: key, signal }),
     status: (c, id, signal) => c.getImage({ generation_id: id, signal }),
     body: (r, media) => ({
-      model: r.model ?? DEFAULTS.image,
+      model: imageModel(r),
       prompt: need(r.prompt, "--prompt", '--prompt "the same room, empty, no text"'),
       num_images: 1,
       ...(r.aspect ? { aspect_ratio: r.aspect } : {}),
@@ -660,6 +702,7 @@ export interface Generated {
   cuts_inside?: number[] | null;
   /** What was changed or looks wrong in the result: a crop to the requested aspect, text that may have come back. */
   notes?: string[];
+  charged_credits?: number;
 }
 
 // fallow-ignore-next-line complexity
@@ -693,6 +736,7 @@ export async function generate(
       onWait: (j) => onWait?.(j.status),
       timeoutMs: 30 * 60_000,
       credits,
+      vendorPriced: isVendorPriced(r),
     });
     const url = urlOf(job, route.urls);
     if (!url)
@@ -707,6 +751,7 @@ export async function generate(
         "run the same command again; it re-reads the job",
       );
     writeFileSync(out, Buffer.from(await res.arrayBuffer()));
+    const charged = chargedCredits(job);
     // HeyGen sometimes cuts inside a shot on its own; the shot is paid for and kept, the cuts are reported.
     let cuts: number[] | null | undefined;
     if (r.type === "video")
@@ -761,6 +806,7 @@ export async function generate(
             : {}),
           ...(r.voice ? { voice: r.voice } : {}),
           ...(cuts !== undefined ? { cuts_inside: cuts } : {}),
+          ...(charged !== undefined ? { charged_credits: charged } : {}),
         },
       }).id;
       regenerateIndex(project);
@@ -773,6 +819,7 @@ export async function generate(
       ...(ledger ? { ledger } : {}),
       ...(cuts !== undefined ? { cuts_inside: cuts } : {}),
       ...(notes.length ? { notes } : {}),
+      ...(charged !== undefined ? { charged_credits: charged } : {}),
     };
   } finally {
     rmSync(work, { recursive: true, force: true });

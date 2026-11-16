@@ -12,7 +12,7 @@ describe("getSystemMeta execution context", () => {
   it("retains a harness marker after the child agent is recognized", async () => {
     const savedEnv = { ...process.env };
     try {
-      process.env["CLAUDECODE"] = "1";
+      process.env["CLAUDE_CODE_CHILD_SESSION"] = "1";
       process.env["HARBOR_AGENT"] = "private-harness-value";
       const { getSystemMeta } = await import("./system.js");
       const meta = getSystemMeta();
@@ -20,6 +20,53 @@ describe("getSystemMeta execution context", () => {
       expect(meta.execution_harness_hint).toBe("harbor");
       expect(meta.agent_env_hints).toBeNull();
       expect(JSON.stringify(meta)).not.toContain("private-harness-value");
+    } finally {
+      process.env = savedEnv;
+    }
+  });
+});
+
+describe("getSystemMeta CI provider", () => {
+  const CI_KEYS = [
+    "GITHUB_ACTIONS",
+    "GITLAB_CI",
+    "CIRCLECI",
+    "JENKINS_URL",
+    "BUILDKITE",
+    "TRAVIS",
+    "CODEBUILD_BUILD_ID",
+    "CONTINUOUS_INTEGRATION",
+    "CI",
+  ];
+
+  it("names AWS CodeBuild from CODEBUILD_BUILD_ID", async () => {
+    const savedEnv = { ...process.env };
+    try {
+      for (const key of CI_KEYS) delete process.env[key];
+      process.env["CODEBUILD_BUILD_ID"] = "project:0123";
+      const { getSystemMeta } = await import("./system.js");
+      const meta = getSystemMeta();
+      expect(meta.is_ci).toBe(true);
+      expect(meta.ci_name).toBe("codebuild");
+    } finally {
+      process.env = savedEnv;
+    }
+  });
+});
+
+describe("getSystemMeta agent hints", () => {
+  it("keeps the raw AI_AGENT name in agent_hint when it classifies as other_ai_agent", async () => {
+    const savedEnv = { ...process.env };
+    try {
+      for (const key of Object.keys(process.env)) {
+        if (/AGENT|CLAUDE|CODEX|COPILOT|CURSOR|TERM_PROGRAM/.test(key)) delete process.env[key];
+      }
+      process.env["AGENT"] = "1";
+      process.env["AI_AGENT"] = "some-new-agent";
+      const { getSystemMeta } = await import("./system.js");
+      const meta = getSystemMeta();
+      expect(meta.agent_runtime).toBe("other_ai_agent");
+      expect(meta.agent_hint).toBe("some-new-agent");
     } finally {
       process.env = savedEnv;
     }

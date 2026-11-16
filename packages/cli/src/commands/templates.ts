@@ -5,15 +5,15 @@ import {
   constants,
   existsSync,
   fstatSync,
+  lstatSync,
   mkdirSync,
-  mkdtempSync,
   openSync,
   readFileSync,
   readdirSync,
+  readSync,
   renameSync,
   rmSync,
   rmdirSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { makeOutputFolder } from "../utils/outputFolder.js";
@@ -25,6 +25,12 @@ import { c } from "../ui/colors.js";
 import { failCommand } from "../utils/commandResult.js";
 import { fetchExplained, NetworkFailure } from "../utils/networkFailure.js";
 import { defineCommand } from "../utils/defineCommand.js";
+import { projectConfigPath, seedProjectAuthoringSkill } from "../utils/projectConfig.js";
+import { trackSkillCommandRan } from "../telemetry/events.js";
+import { createStagingDir, replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+
+const STYLE_SAMPLING = "style-sampling";
 
 export interface TemplatePack {
   /** The private bundle's id on the plan-gated route. */
@@ -103,6 +109,8 @@ async function download(url: string, pack: TemplatePack): Promise<Buffer> {
   return data;
 }
 
+const PLAIN_FILE_OR_FOLDER_LISTING = /^[-d]/;
+
 function assertSafeEntries(data: Buffer): void {
   const names = execFileSync("tar", ["-tzf", "-"], {
     input: data,
@@ -112,6 +120,14 @@ function assertSafeEntries(data: Buffer): void {
   for (const name of names.split("\n"))
     if (name.startsWith("/") || name.split("/").includes(".."))
       throw new PullRefused(`The template holds an unsafe path (${name}); nothing was unpacked.`);
+  const kinds = execFileSync("tar", ["-tvzf", "-"], {
+    input: data,
+    encoding: "utf8",
+    maxBuffer: 1 << 26,
+  });
+  for (const line of kinds.split("\n"))
+    if (line && !PLAIN_FILE_OR_FOLDER_LISTING.test(line))
+      throw new PullRefused("The template holds a link or special file; nothing was unpacked.");
 }
 
 const PULLED_HASH = ".template-sha256";
@@ -175,22 +191,27 @@ function pullOwner(path: string, name: string, dest: string): number | null {
   return pid !== null && markedBy(readPullMarker(path), pid) ? pid : null;
 }
 
-function removeAbandonedParts(dest: string): void {
-  const parent = dirname(dest);
-  if (!existsSync(parent)) return;
-  for (const entry of readdirSync(parent, { withFileTypes: true })) {
+function removeAbandonedParts(stage: string, dest: string): void {
+  if (!existsSync(stage)) return;
+  for (const entry of readdirSync(stage, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const path = join(parent, entry.name);
+    const path = join(stage, entry.name);
     const pid = pullOwner(path, entry.name, dest);
     if (pid !== null && !processIsAlive(pid)) rmSync(path, { recursive: true, force: true });
   }
 }
 
-/** Unpacks the pack beside `dest` and moves it in whole, so `dest` only ever holds a complete template. */
-async function unpack(data: Buffer, dest: string, pack: TemplatePack): Promise<void> {
+/** Unpacks in `stage`, which watchers skip (a held file fails the rename on Windows), then moves it in whole. */
+async function unpack(
+  data: Buffer,
+  dest: string,
+  stage: string,
+  pack: TemplatePack,
+): Promise<string | null> {
   makeOutputFolder(dirname(dest));
-  removeAbandonedParts(dest);
-  const work = mkdtempSync(join(dirname(dest), `${partPrefix(dest)}${process.pid}-`));
+  makeOutputFolder(stage);
+  removeAbandonedParts(stage, dest);
+  const work = createStagingDir(stage, `${partPrefix(dest)}${process.pid}-`);
   const stopWatching = removeOnStop(work);
   try {
     writeFileSync(join(work, PULL_MARKER), JSON.stringify({ owner: PULL_OWNER, pid: process.pid }));
@@ -199,15 +220,47 @@ async function unpack(data: Buffer, dest: string, pack: TemplatePack): Promise<v
     mkdirSync(out);
     await extract(data, out);
     writeFileSync(join(out, PULLED_HASH), pack.sha256);
-    removeEmptyPlaceholder(dest);
-    renameSync(out, dest);
+    const verified = listKit(out);
+    if (!verified)
+      throw new PullRefused("The template holds a link or special file; nothing was unpacked.");
+    saveManifest(pack, verified);
+    return install(out, dest, verified);
   } finally {
     stopWatching();
     rmSync(work, { recursive: true, force: true });
   }
 }
 
-/** Fetches the template into `<dir>/templates/<slug>/` and returns that path; one this pull left there is kept. */
+function install(out: string, dest: string, verified: KitManifest): string | null {
+  if (sameKit(listKit(dest), verified)) return null;
+  const aside = moveAside(dest);
+  try {
+    renameSync(out, dest);
+  } catch (error) {
+    if (aside) renameSync(aside, dest);
+    throw error;
+  }
+  return aside;
+}
+
+function moveAside(dest: string): string | null {
+  const found = lstatSync(dest, { throwIfNoEntry: false });
+  if (!found) return null;
+  if (found.isDirectory() && readdirSync(dest).length === 0) {
+    rmdirSync(dest);
+    return null;
+  }
+  const at = new Date();
+  const two = (n: number) => String(n).padStart(2, "0");
+  const stamp = `${at.getFullYear()}${two(at.getMonth() + 1)}${two(at.getDate())}-${two(at.getHours())}${two(at.getMinutes())}${two(at.getSeconds())}`;
+  let aside = `${dest}.changed-${stamp}`;
+  for (let n = 2; lstatSync(aside, { throwIfNoEntry: false }); n++)
+    aside = `${dest}.changed-${stamp}-${n}`;
+  renameSync(dest, aside);
+  return aside;
+}
+
+/** Fetches the template into `<dir>/templates/<slug>/` and returns that path; a verified copy already there is kept. */
 export async function pullTemplate(slug: string, dir: string): Promise<string> {
   const pack = TEMPLATES[slug];
   if (!pack)
@@ -216,26 +269,119 @@ export async function pullTemplate(slug: string, dir: string): Promise<string> {
     );
   const dest = resolve(dir, "templates", slug);
   if (alreadyPulled(dest, pack)) return dest;
-  await unpack(await download(await bundleUrl(pack), pack), dest, pack);
+  const stage = resolve(dir, ".hyperframes", "template-pulls");
+  const aside = await unpack(await download(await bundleUrl(pack), pack), dest, stage, pack);
+  if (aside)
+    console.log(
+      c.warn(
+        `${dest} did not match HeyGen's verified template, so it was moved to ${aside} and is no longer used.`,
+      ),
+    );
+  trackSkillCommandRan({ skill: STYLE_SAMPLING, command: "templates pull" });
   return dest;
 }
 
-const removeEmptyPlaceholder = (dest: string) => existsSync(dest) && rmdirSync(dest);
+type KitEntry = { size: number; sha256: string } | "folder";
+type KitManifest = Map<string, KitEntry>;
 
+const manifestFile = (pack: TemplatePack) =>
+  hyperframesCacheDir("template-manifests", `${pack.sha256}.json`);
+
+const isKitEntry = (value: unknown): value is KitEntry =>
+  value === "folder" ||
+  (typeof value === "object" &&
+    value !== null &&
+    "size" in value &&
+    typeof value.size === "number" &&
+    "sha256" in value &&
+    typeof value.sha256 === "string");
+
+const isManifestRow = (row: unknown): row is [string, KitEntry] =>
+  Array.isArray(row) && row.length === 2 && typeof row[0] === "string" && isKitEntry(row[1]);
+
+/** The file list a verified download of `pack` unpacked to, kept in the user's cache, never in the project. */
+function readManifest(pack: TemplatePack): KitManifest | null {
+  try {
+    const rows: unknown = JSON.parse(readFileSync(manifestFile(pack), "utf8"));
+    return Array.isArray(rows) && rows.every(isManifestRow) ? new Map(rows) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveManifest(pack: TemplatePack, verified: KitManifest): void {
+  try {
+    mkdirSync(dirname(manifestFile(pack)), { recursive: true });
+    replaceFileAtomically(manifestFile(pack), JSON.stringify([...verified]));
+  } catch {}
+}
+
+const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+function hashFile(path: string): KitEntry | null {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, READ_FLAGS);
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.nlink > 1) return null;
+    const hash = createHash("sha256");
+    const chunk = Buffer.alloc(1 << 20);
+    let size = 0;
+    for (let read = readSync(fd, chunk); read > 0; read = readSync(fd, chunk)) {
+      hash.update(chunk.subarray(0, read));
+      size += read;
+    }
+    return { size, sha256: hash.digest("hex") };
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+function listKit(root: string): KitManifest | null {
+  if (lstatSync(root, { throwIfNoEntry: false })?.isDirectory() !== true) return null;
+  const kit: KitManifest = new Map();
+  const walk = (folder: string): boolean => {
+    for (const entry of readdirSync(join(root, folder), { withFileTypes: true })) {
+      const path = folder ? `${folder}/${entry.name}` : entry.name;
+      const found = entry.isDirectory() ? "folder" : entry.isFile() && hashFile(join(root, path));
+      if (!found) return false;
+      kit.set(path, found);
+      if (found === "folder" && !walk(path)) return false;
+    }
+    return true;
+  };
+  return walk("") ? kit : null;
+}
+
+const sameEntry = (found: KitEntry | undefined, expected: KitEntry): boolean =>
+  found === expected ||
+  (typeof found === "object" &&
+    typeof expected === "object" &&
+    found.size === expected.size &&
+    found.sha256 === expected.sha256);
+
+function sameKit(found: KitManifest | null, expected: KitManifest): boolean {
+  if (!found || found.size !== expected.size) return false;
+  for (const [path, entry] of expected) if (!sameEntry(found.get(path), entry)) return false;
+  return true;
+}
+
+/** True only when every path under `dest` matches the files a verified download of `pack` unpacked to. */
 function alreadyPulled(dest: string, pack: TemplatePack): boolean {
-  if (!existsSync(dest)) return false;
-  const folder = statSync(dest).isDirectory();
-  const record = join(dest, PULLED_HASH);
-  const pulledHash = folder && existsSync(record) ? readFileSync(record, "utf8") : null;
-  if (pulledHash === pack.sha256) return true;
-  if (folder && readdirSync(dest).length === 0) return false;
-  if (pulledHash)
+  if (lstatSync(dest, { throwIfNoEntry: false })?.isFile())
     throw new PullRefused(
-      `${dest} holds an older pull of this template; nothing was downloaded. Move it aside and run the pull again to update.`,
+      `${dest} is there but is not this template; nothing was downloaded. Move it aside and run the pull again.`,
     );
-  throw new PullRefused(
-    `${dest} is there but is not this template; nothing was downloaded. Move it aside and run the pull again.`,
-  );
+  const expected = readManifest(pack);
+  return expected !== null && sameKit(listKit(dest), expected);
+}
+
+export function tagStyleSamplingProject(dir: string, pulled: string): void {
+  for (const folder of [dir, pulled]) {
+    if (existsSync(projectConfigPath(folder))) seedProjectAuthoringSkill(folder, STYLE_SAMPLING);
+  }
 }
 
 /** Downloads a style template for a HyperFrames Pro account. The server decides who may have it. */
@@ -264,6 +410,7 @@ export default defineCommand({
     }
     try {
       const path = await pullTemplate(String(args.slug), args.dir ?? ".");
+      tagStyleSamplingProject(args.dir ?? ".", path);
       console.log(c.success(`✓ ${path}`));
     } catch (error) {
       if (!(error instanceof PullRefused || error instanceof NetworkFailure)) throw error;

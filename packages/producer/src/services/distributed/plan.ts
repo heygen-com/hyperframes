@@ -49,6 +49,7 @@ import {
   fpsToNumber,
   HF_COLOR_GRADING_ATTR,
 } from "@hyperframes/core";
+import { isSafePath } from "@hyperframes/core/safe-path";
 import {
   type EngineConfig,
   type VideoFrameFormat,
@@ -63,6 +64,7 @@ import {
   declareProbeFactsUrl,
 } from "@hyperframes/engine";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
+import { refusesOutsideLink } from "../../utils/paths.js";
 import {
   applyRenderWarningPolicy,
   type RenderJob,
@@ -76,6 +78,7 @@ import {
   withChunkCaptureCost,
 } from "./chunkWeights.js";
 import { runAudioStage } from "../render/stages/audioStage.js";
+import { audioWorkDir } from "../render/shared.js";
 import { runCompileStage } from "../render/stages/compileStage.js";
 import {
   appendVideoAudioFromProbe,
@@ -221,17 +224,19 @@ export interface DistributedRenderConfig extends Pick<RenderRequestOptions, "pag
    * chunks whose per-chunk frame count stays at or below this bound, still
    * capped by `maxParallelChunks`:
    *
-   *     chunkCount = clamp(ceil(totalFrames / targetChunkFrames), 1, maxParallelChunks)
+   *     chunkCount = clamp(ceil(totalFrames / targetChunkFrames), minParallelChunks, maxParallelChunks)
    *
    * This bounds per-chunk render *time* (which scales with frames-per-chunk) so
    * a single chunk can't exceed a downstream per-chunk timeout on a long video,
-   * while short videos still collapse to few chunks. It is a ceiling, not a
+   * while short videos drop to `minParallelChunks` (default 1). It is a ceiling, not a
    * fixed size: a video short enough to fit in fewer chunks gets fewer. Ignored
    * when `chunkSize` is set (an explicit fixed size already pins per-chunk
    * frames). Mutually exclusive with `chunkSize` in intent; if both are passed,
    * `chunkSize` wins and `targetChunkFrames` is a no-op.
    */
   targetChunkFrames?: number;
+  /** Fewest chunks a `targetChunkFrames`-sized plan uses, so a short video keeps this fan-out. */
+  minParallelChunks?: number;
   /** Runtime hint; consumed by future per-runtime budget checks. The current implementation records the value but does not enforce. */
   runtimeCap?: "lambda" | "temporal" | "cloud-run-job" | "k8s-job" | "none";
 
@@ -306,6 +311,8 @@ export interface DistributedRenderConfig extends Pick<RenderRequestOptions, "pag
    * rather than mid-plan; the producer-side throw is the fallback.
    */
   variables?: Record<string, unknown>;
+  /** Fails with `VARIABLES_INVALID` before any frame if `variables` mismatch the page's declarations. Default off. */
+  strictVariables?: boolean;
 }
 
 /** Shared local representation consumed by both distributed plan transports. */
@@ -320,6 +327,8 @@ export interface LocalExecutionPlan extends Partial<ReferenceBackgroundResult> {
   format: DistributedFormat;
   ffmpegVersion: string;
   producerVersion: string;
+  /** Present when `strictVariables` was asked; true only if this producer honoured it. */
+  strictVariablesChecked?: boolean;
 }
 
 export interface BuildLocalExecutionPlanOptions {
@@ -347,6 +356,8 @@ export interface BuildLocalExecutionPlanOptions {
   readonly sliceChunkAudio?: boolean;
   /** Leave the audio to {@link buildPlanAudio}; chunks render video only. mp4 without `cfr` only. */
   readonly deferAudio?: boolean;
+  /** Trusted local callers only; see CompileForRenderOptions. Never read from config. */
+  readonly allowOutsideProjectAssets?: boolean;
 }
 
 export interface RemoteProjectFile {
@@ -382,6 +393,8 @@ export interface PlanResult extends Partial<ReferenceBackgroundResult> {
   format: DistributedFormat;
   ffmpegVersion: string;
   producerVersion: string;
+  /** Present when `strictVariables` was asked; true only if this producer honoured it. */
+  strictVariablesChecked?: boolean;
 }
 
 /** Applies the same audio correctness policy used by the in-process renderer. */
@@ -767,8 +780,8 @@ function assertPlanSizeWithinLimit(input: {
  * on tiny renders). Explicit numbers, including `240`, take precedence.
  *
  * Optional `targetChunkFrames` caps per-chunk frames in the auto-sized path:
- * the auto-sizer then targets `clamp(ceil(totalFrames / targetChunkFrames), 1,
- * maxParallelChunks)` chunks, so short videos collapse to fewer chunks and long
+ * the auto-sizer then targets `clamp(ceil(totalFrames / targetChunkFrames), minParallelChunks,
+ * maxParallelChunks)` chunks, so short videos drop to `minParallelChunks` and long
  * videos add chunks (up to the cap) to keep each one under the bound. It is a
  * no-op when omitted, and ignored when `configChunkSize` is set.
  */
@@ -777,6 +790,7 @@ export function resolveChunkPlan(
   configChunkSize: number | undefined,
   maxParallelChunks: number,
   targetChunkFrames?: number,
+  minParallelChunks = 1,
 ): { chunkCount: number; effectiveChunkSize: number } {
   // Integer-only inputs: a fractional `totalFrames` (e.g. 10.5) would
   // otherwise produce a last chunk with non-integer `endFrame`, and the
@@ -795,6 +809,7 @@ export function resolveChunkPlan(
   if (targetChunkFrames !== undefined) {
     assertPositiveInteger("targetChunkFrames", targetChunkFrames);
   }
+  assertPositiveInteger("minParallelChunks", minParallelChunks);
   // `targetChunkFrames` lowers the auto-sizer's effective parallelism so the
   // chosen chunk count keeps frames-per-chunk at or below the bound, without
   // ever exceeding `maxParallelChunks`. It only affects the auto-sized path
@@ -805,7 +820,10 @@ export function resolveChunkPlan(
   const autoSizeParallel =
     targetChunkFrames === undefined
       ? maxParallelChunks
-      : Math.min(maxParallelChunks, Math.max(1, Math.ceil(totalFrames / targetChunkFrames)));
+      : Math.min(
+          maxParallelChunks,
+          Math.max(minParallelChunks, Math.ceil(totalFrames / targetChunkFrames)),
+        );
   const resolvedChunkSize =
     configChunkSize ?? Math.max(MIN_CHUNK_SIZE, Math.ceil(totalFrames / autoSizeParallel));
   const naiveCount = Math.ceil(totalFrames / resolvedChunkSize);
@@ -1177,7 +1195,10 @@ async function compilePlanComposition(
   projectDir: string,
   config: DistributedRenderConfig,
   planDir: string,
-  options: Pick<BuildLocalExecutionPlanOptions, "executionPlanSizeLimitBytes" | "remoteFiles">,
+  options: Pick<
+    BuildLocalExecutionPlanOptions,
+    "executionPlanSizeLimitBytes" | "remoteFiles" | "allowOutsideProjectAssets"
+  >,
 ) {
   // Plan-time validation. Rejections here surface as typed errors with
   // non-retryable codes so workflow adapters don't waste retry budget on
@@ -1221,6 +1242,9 @@ async function compilePlanComposition(
     logger: config.logger,
     producerConfig: cfg,
     variables: config.variables,
+    strictVariables: config.strictVariables,
+    pageMotionBlur: config.pageMotionBlur,
+    allowOutsideProjectAssets: options.allowOutsideProjectAssets === true,
   });
   const entryFile = config.entryFile ?? "index.html";
   const htmlPath = join(projectDir, entryFile);
@@ -1255,6 +1279,9 @@ async function compilePlanComposition(
       // false-positive every descendant.
       const rel = relative(projectDir, src);
       if (rel === "" || rel.startsWith("..")) return true;
+      if (job.config.allowOutsideProjectAssets) {
+        if (refusesOutsideLink(projectDir, src, (line) => log.warn(`[Plan] ${line}`))) return false;
+      } else if (!isSafePath(projectDir, src)) return false;
       const firstSegment = rel.split(sep, 1)[0];
       return firstSegment === undefined || !PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(firstSegment);
     },
@@ -1384,6 +1411,7 @@ async function compilePlanComposition(
     logPlanStage(log, "reference_background", stageStarted);
   }
   compiled = probeResult.compiled;
+  job.strictVariablesChecked = probeResult.strictVariablesChecked;
   job.duration = probeResult.duration;
   job.totalFrames = probeResult.totalFrames;
   const totalFrames = probeResult.totalFrames;
@@ -1441,6 +1469,7 @@ function mixPlanAudio(c: PlanComposition, compiledDir: string) {
     compiledDir,
     urlByAbsentLocalPath: c.urlByAbsentLocalPath,
     audioSidecarUrlByLocalPath: c.audioSidecarUrlByLocalPath,
+    allowOutsideProjectAssets: c.job.config.allowOutsideProjectAssets,
     totalFrames: c.totalFrames,
     fps: c.job.config.fps,
     ffmpegProcessTimeout: c.cfg.ffmpegProcessTimeout,
@@ -1673,6 +1702,7 @@ export async function buildLocalExecutionPlan(
     config.chunkSize,
     maxParallel,
     config.targetChunkFrames,
+    config.minParallelChunks,
   );
   const chunks = buildPlanChunkSlices(
     frameWeights,
@@ -1823,6 +1853,9 @@ export async function buildLocalExecutionPlan(
     format: config.format,
     ffmpegVersion,
     producerVersion,
+    ...(job.strictVariablesChecked === undefined
+      ? {}
+      : { strictVariablesChecked: job.strictVariablesChecked }),
   };
 }
 
@@ -1843,7 +1876,12 @@ export async function buildPlanAudio(
   });
   try {
     let stageStarted = Date.now();
-    await appendVideoAudioFromProbe(c);
+    await appendVideoAudioFromProbe({
+      ...c,
+      downloadDir: audioWorkDir(c.workDir),
+      allowOutsideProjectAssets: c.job.config.allowOutsideProjectAssets,
+      signal: c.abortSignal,
+    });
     logPlanStage(c.log, "extract", stageStarted);
     stageStarted = Date.now();
     const mixed = await mixPlanAudio(c, c.compiledDir);
@@ -1869,7 +1907,10 @@ export async function plan(
   projectDir: string,
   config: DistributedRenderConfig,
   planDir: string,
-  options: Pick<BuildLocalExecutionPlanOptions, "chunksCarryAudio"> = {},
+  options: Pick<
+    BuildLocalExecutionPlanOptions,
+    "chunksCarryAudio" | "allowOutsideProjectAssets"
+  > = {},
 ): Promise<PlanResult> {
   const executionPlan = await buildLocalExecutionPlan(projectDir, config, planDir, options);
   return {
@@ -1885,5 +1926,8 @@ export async function plan(
     format: executionPlan.format,
     ffmpegVersion: executionPlan.ffmpegVersion,
     producerVersion: executionPlan.producerVersion,
+    ...(executionPlan.strictVariablesChecked === undefined
+      ? {}
+      : { strictVariablesChecked: executionPlan.strictVariablesChecked }),
   };
 }

@@ -29,6 +29,7 @@ vi.mock("../../player", async () => {
         onReadyToShowChange?: (ready: boolean) => void;
         suppressLoadingOverlay?: boolean;
         style?: React.CSSProperties;
+        sandboxOrigin?: "opaque";
       },
       ref: React.ForwardedRef<HTMLIFrameElement>,
     ) {
@@ -41,6 +42,7 @@ vi.mock("../../player", async () => {
       return React.createElement("div", {
         ref: ref as React.ForwardedRef<HTMLDivElement>,
         "data-testid": "mock-player",
+        "data-sandbox-origin": props.sandboxOrigin,
         style: props.style,
       });
     }),
@@ -89,10 +91,12 @@ function renderPreview(
     box = { width: 800, height: 600 },
     fillBox,
     compositionSizeHint,
+    sandboxOrigin,
   }: {
     box?: { width: number; height: number };
     fillBox?: boolean;
     compositionSizeHint?: { width: number; height: number };
+    sandboxOrigin?: "opaque";
   } = {},
 ) {
   resizeCallbacks = [];
@@ -116,6 +120,7 @@ function renderPreview(
           resetPreviewSlots: () => {},
           fillBox,
           compositionSizeHint,
+          sandboxOrigin,
         }),
       );
     });
@@ -390,6 +395,78 @@ describe("NLEPreview", () => {
       view.cleanup();
     });
 
+    /** Opens the zoom readout's input, types `text` into it and presses `key`. */
+    function typeZoom(view: ReturnType<typeof renderPreview>, text: string, key: string) {
+      act(() => {
+        view.host.querySelector<HTMLButtonElement>('[data-testid="preview-zoom-readout"]')!.click();
+      });
+      const input = view.host.querySelector<HTMLInputElement>(
+        '[data-testid="preview-zoom-input"]',
+      )!;
+      act(() => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+          input,
+          text,
+        );
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      act(() => {
+        input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+      });
+      act(() => vi.advanceTimersByTime(300));
+    }
+    const pixelGrid = (view: ReturnType<typeof renderPreview>) =>
+      view.host.querySelector<HTMLElement>('[data-testid="preview-pixel-grid"]');
+
+    it("applies a typed zoom on Enter, clamped to the zoom limit, and closes the input", () => {
+      const view = renderPreview();
+      pinchIn(view, 10);
+      typeZoom(view, "350%", "Enter");
+      expect(view.stage.style.transform).toContain("scale(3.5)");
+      expect(chip(view)?.textContent).toBe("Zoomed 350%·Fit");
+
+      typeZoom(view, "99999", "Enter");
+      expect(view.stage.style.transform).toContain("scale(16)");
+      expect(view.host.querySelector('[data-testid="preview-zoom-input"]')).toBeNull();
+      view.cleanup();
+    });
+
+    it("keeps the zoom when the typed value is cancelled with Esc or is not a number", () => {
+      const view = renderPreview();
+      pinchIn(view, 10);
+      const before = view.stage.style.transform;
+
+      typeZoom(view, "500", "Escape");
+      expect(view.stage.style.transform).toBe(before);
+      expect(view.host.querySelector('[data-testid="preview-zoom-input"]')).toBeNull();
+
+      typeZoom(view, "abc", "Enter");
+      expect(view.stage.style.transform).toBe(before);
+      view.cleanup();
+    });
+
+    it("draws a one-pixel grid above 800% over the stage, one cell per composition pixel", () => {
+      const view = renderPreview(undefined, { compositionSizeHint: { width: 1920, height: 1080 } });
+      pinchIn(view, 10);
+      typeZoom(view, "800", "Enter");
+      expect(pixelGrid(view)?.hidden).toBe(true);
+
+      typeZoom(view, "1000", "Enter");
+      const grid = pixelGrid(view)!;
+      expect(grid.hidden).toBe(false);
+      expect(view.stage.contains(grid)).toBe(false);
+      const stageWidth = parseFloat(view.stage.style.width);
+      expect(parseFloat(grid.style.width)).toBeCloseTo(stageWidth * 10, 2);
+      expect(parseFloat(grid.style.backgroundSize)).toBeCloseTo((stageWidth * 10) / 1920, 3);
+
+      act(() => {
+        view.host.querySelector<HTMLButtonElement>('[data-testid="preview-zoom-fit"]')!.click();
+      });
+      act(() => vi.advanceTimersByTime(300));
+      expect(pixelGrid(view)).toBeNull();
+      view.cleanup();
+    });
+
     it("keeps a zoom only while the project is open: nothing is saved, and another project opens at Fit", () => {
       const view = renderPreview();
       pinchIn(view, 10);
@@ -460,6 +537,26 @@ describe("NLEPreview", () => {
     expect(players[1].style.pointerEvents).toBe("none");
     view.cleanup();
   });
+
+  it.each([["opaque" as const], [undefined]])(
+    "gives every player it draws the host's sandbox origin (%s)",
+    (sandboxOrigin) => {
+      const view = renderPreview(
+        [
+          { gen: 0, role: "live" },
+          { gen: 1, role: "shadow", url: "/api/projects/p/preview?_t=1" },
+        ],
+        { sandboxOrigin },
+      );
+      view.render("/api/projects/p/preview/components/card.html", "p");
+      const players = [...view.stage.querySelectorAll('[data-testid="mock-player"]')];
+      expect(players).toHaveLength(3);
+      for (const player of players) {
+        expect(player.getAttribute("data-sandbox-origin")).toBe(sandboxOrigin ?? null);
+      }
+      view.cleanup();
+    },
+  );
 
   it("covers the live preview with the cached frame-0 poster until it is ready to show", () => {
     const view = renderPreview();

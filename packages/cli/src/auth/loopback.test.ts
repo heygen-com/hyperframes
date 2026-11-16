@@ -27,7 +27,7 @@ describe("auth/loopback", () => {
     expect(result.redirectUri).toContain(redirect.host);
     expect(res.status).toBe(200);
     const body = await res.text();
-    expect(body).toContain("Signed in");
+    expect(body).toContain("You&#39;re connected");
   });
 
   async function expectRejection(args: {
@@ -55,6 +55,29 @@ describe("auth/loopback", () => {
       query: "error=access_denied&error_description=user+denied&state=s",
       pattern: /access_denied/,
     });
+  });
+
+  async function pageFor(query: string): Promise<string> {
+    const handle = await startLoopback({ state: "s", timeoutMs: 5_000 });
+    active = handle;
+    handle.result.catch(() => {});
+    const res = await fetch(`${handle.redirectUri}?${query}`);
+    expect(res.status).toBe(400);
+    return res.text();
+  }
+
+  it("says Not authorized only when the person pressed Cancel", async () => {
+    const body = await pageFor("error=access_denied&state=s");
+    expect(body).toContain("Not authorized");
+    expect(body).not.toContain("Couldn't connect");
+  });
+
+  it("says Couldn't connect, with the code, for a failure that is not a Cancel", async () => {
+    const body = await pageFor("error=server_error&error_description=try+later&state=s");
+    expect(body).toContain("Couldn&#39;t connect");
+    expect(body).toContain("server_error");
+    expect(body).toContain("try later");
+    expect(body).not.toContain("Not authorized");
   });
 
   it("rejects when code is missing from the callback", async () => {

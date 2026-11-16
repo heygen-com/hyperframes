@@ -13,6 +13,7 @@
   "shardCount": 9,
   "distributedShardCount": 1,
   "timings": {
+    "page-side-shader-compositor-unavailable": 30,
     "animejs-adapter": 16,
     "nested-sequential-video-local-start": 3,
     "audio-mux-parity": 16,
@@ -38,6 +39,8 @@
     "png-sequence": 3,
     "portrait-edge-bleed": 6,
     "raf-ball-render-compat": 10,
+    "random-stagger-workers": 8,
+    "timers-on-film-time": 8,
     "render-symlinked-assets": 6,
     "static-volume-future-set": 9,
     "speed-ramp": 7,

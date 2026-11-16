@@ -455,6 +455,35 @@ export const ShowcaseWall = () => {
     }
   }, [reduced]);
 
+  // A tile fetches and plays its card only once it is near the viewport (and pauses when it leaves), so films far down
+  // the page do not compete with what the visitor is looking at; until then its poster shows, the same first frame.
+  const [near, setNear] = useState({});
+  useEffect(() => {
+    const wall = wallRef.current;
+    if (reduced || !wall) return;
+    const tiles = wall.querySelectorAll("video[data-film]");
+    if (typeof IntersectionObserver === "undefined") {
+      setNear(Object.fromEntries([...tiles].map((video) => [video.dataset.film, true])));
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const video = entry.target;
+          if (entry.isIntersecting) {
+            setNear((current) => (current[video.dataset.film] ? current : { ...current, [video.dataset.film]: true }));
+            if (video.getAttribute("src")) video.play().catch(() => {});
+          } else {
+            video.pause();
+          }
+        }
+      },
+      { rootMargin: "200px 0px" },
+    );
+    for (const video of tiles) observer.observe(video);
+    return () => observer.disconnect();
+  }, [reduced, openId]);
+
   const open = films.find((film) => film.id === openId) || null;
 
   if (open) {
@@ -537,9 +566,10 @@ export const ShowcaseWall = () => {
           }}
         >
           <video
-            src={reduced ? undefined : film.tile}
+            data-film={film.id}
+            src={reduced || !near[film.id] ? undefined : film.tile}
             poster={film.poster}
-            autoPlay={!reduced}
+            autoPlay={!reduced && !!near[film.id]}
             muted
             loop={!reduced}
             playsInline

@@ -56,16 +56,34 @@
       "types": "./dist/safePath.d.ts",
       "environments": ["bun", "node"]
     },
+    "./safe-areas": {
+      "source": "./src/safeAreas.ts",
+      "runtime": "./dist/safeAreas.js",
+      "types": "./dist/safeAreas.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./browser-marker": {
       "source": "./src/browserMarker.ts",
       "runtime": "./dist/browserMarker.js",
       "types": "./dist/browserMarker.d.ts",
       "environments": ["bun", "node"]
     },
+    "./chrome-env": {
+      "source": "./src/chromeEnv.ts",
+      "runtime": "./dist/chromeEnv.js",
+      "types": "./dist/chromeEnv.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./atomic-file": {
       "source": "./src/atomicFile.ts",
       "runtime": "./dist/atomicFile.js",
       "types": "./dist/atomicFile.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./preview-proof": {
+      "source": "./src/previewProof.ts",
+      "runtime": "./dist/previewProof.js",
+      "types": "./dist/previewProof.d.ts",
       "environments": ["bun", "node"]
     },
     "./cache-dir": {
@@ -126,6 +144,18 @@
       "source": "./src/compositionContract.ts",
       "runtime": "./dist/compositionContract.js",
       "types": "./dist/compositionContract.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./key-combo": {
+      "source": "./src/keyCombo.ts",
+      "runtime": "./dist/keyCombo.js",
+      "types": "./dist/keyCombo.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./typing-target": {
+      "source": "./src/typingTarget.ts",
+      "runtime": "./dist/typingTarget.js",
+      "types": "./dist/typingTarget.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./studio-preview-mark": {
@@ -414,6 +444,12 @@
       "source": "./src/runtime/protocol.ts",
       "runtime": "./dist/runtime/protocol.js",
       "types": "./dist/runtime/protocol.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/editing-port": {
+      "source": "./src/runtime/editingPort.ts",
+      "runtime": "./dist/runtime/editingPort.js",
+      "types": "./dist/runtime/editingPort.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./runtime/clip-window": {

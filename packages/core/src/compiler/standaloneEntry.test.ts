@@ -1,24 +1,95 @@
 import { parseHTML } from "linkedom";
 import { describe, expect, it } from "vitest";
+import { locateSceneRoot } from "./htmlDocument";
 import { extractStandaloneEntryFromIndex, isTemplateEntry } from "./standaloneEntry";
+
+const ROOT = `<div id="root" data-composition-id="scene" data-width="640" data-height="360" data-duration="3"><p id="label">Hello</p></div>`;
+const SCENE_SCRIPT = `<script>window.__timelines = window.__timelines || {}; const tl = gsap.timeline({ paused: true }); tl.to("#label", { opacity: 1, duration: 3 }, 0); window.__timelines["scene"] = tl;</script>`;
+const SCENE_STYLE = `<style>#root { position: absolute; inset: 0; background: #123456; }</style>`;
 
 describe("isTemplateEntry", () => {
   it.each([
-    "<template></template>",
-    " \n<!-- Scene author notes -->\n<template id='scene'></template>",
-    "<!-- a --><!-- <template> is inert --><TEMPLATE></TEMPLATE>",
-    "<!--><template></template>",
-  ])("recognizes a template entry past leading comments: %s", (html) => {
+    `<template>${ROOT}</template>`,
+    ` \n<!-- Scene author notes -->\n<template id='scene'>${ROOT}</template>`,
+    `<!-- a --><!-- <template> is inert --><TEMPLATE>${ROOT}</TEMPLATE>`,
+    `<!--><template>${ROOT}</template>`,
+  ])("recognizes a template-first fragment entry: %s", (html) => {
+    expect(isTemplateEntry(html)).toBe(true);
+  });
+
+  it("recognizes the full-document shape whose composition root lives in the body template", () => {
+    const html = `<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      ${SCENE_STYLE}
+      ${ROOT}
+      ${SCENE_SCRIPT}
+    </template>
+  </body>
+</html>`;
     expect(isTemplateEntry(html)).toBe(true);
   });
 
   it.each([
     "<template-card></template-card>",
-    "<!doctype html><html><body><template></template></body></html>",
-    "<div></div><template></template>",
-    "<!-- <template></template> -->",
+    `<template-card>${ROOT}</template-card>`,
+    `<!doctype html><html><body><template></template></body></html>`,
+    `<div></div><template></template>`,
+    `<!-- <template>${ROOT}</template> -->`,
+    `<!doctype html><html><body>${ROOT}</body></html>`,
   ])("does not mistake other entries for a template scene: %s", (html) => {
     expect(isTemplateEntry(html)).toBe(false);
+  });
+
+  it("keeps a full document with a live composition root outside the template a plain entry", () => {
+    const html = `<!doctype html>
+<html>
+  <body>
+    <div id="live" data-composition-id="live" data-width="640" data-height="360" data-duration="3"></div>
+    <template>${ROOT}</template>
+  </body>
+</html>`;
+    expect(isTemplateEntry(html)).toBe(false);
+  });
+
+  it("keeps a template-first fragment with a live composition root beside it a plain entry", () => {
+    const html = `<template>${ROOT}</template><div data-composition-id="live"></div>`;
+    expect(isTemplateEntry(html)).toBe(false);
+  });
+
+  it.each([
+    `<template id="card"><div class="card">Card</div></template><template id="scene">${ROOT}</template>`,
+    `<!doctype html><html><body><template><svg><symbol id="i"></symbol></svg></template><template>${ROOT}</template></body></html>`,
+    `<template></template><template><p>x</p></template><template>${ROOT}</template>`,
+  ])("finds the scene template when an earlier template holds no composition root: %s", (html) => {
+    expect(isTemplateEntry(html)).toBe(true);
+    expect(locateSceneRoot(html).root?.getAttribute("data-composition-id")).toBe("scene");
+  });
+
+  it("renders the first scene template when several hold a composition root and none is live", () => {
+    const html = `<template id="intro">${ROOT}</template><template><div data-composition-id="later"></div></template>`;
+    expect(locateSceneRoot(html).root?.getAttribute("data-composition-id")).toBe("scene");
+    expect(isTemplateEntry(html)).toBe(true);
+  });
+
+  it("does not refuse when a live root makes the file a plain entry", () => {
+    const html = `<template>${ROOT}</template><template>${ROOT}</template><div data-composition-id="live"></div>`;
+    expect(isTemplateEntry(html)).toBe(false);
+  });
+
+  it("reports no root when no template holds a composition root", () => {
+    const lookup = locateSceneRoot(`<template><p>a</p></template><template><p>b</p></template>`);
+    expect(lookup).toMatchObject({ root: null, hasTemplate: true, hasLiveRoot: false });
+  });
+
+  it("reads a single template and a template-free document as before", () => {
+    expect(locateSceneRoot(`<template>${ROOT}</template>`).root?.id).toBe("root");
+    expect(locateSceneRoot(`<!doctype html><html><body>${ROOT}</body></html>`)).toMatchObject({
+      hasTemplate: false,
+      hasLiveRoot: true,
+    });
   });
 });
 

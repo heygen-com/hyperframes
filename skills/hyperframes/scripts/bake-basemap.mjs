@@ -20,6 +20,7 @@
 //   PITCH=40 DUR=10 HOLD=0.8 node bake-basemap.mjs
 // It encodes frames-<NAME>/f%04d.png → <NAME>.mp4 (all-intra: -g 1) and writes <NAME>-coords.json
 // for the HF composition. One bake at a time: several headless Chromes on a small machine stall.
+import "./lib/windows-exe-search.mjs";
 import { join } from "node:path";
 import { mkdirSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { homedir } from "node:os";

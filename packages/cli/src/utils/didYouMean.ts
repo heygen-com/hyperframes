@@ -49,7 +49,6 @@ const COMMAND_REDIRECTS: Record<string, { command: string; then?: string }> = {
   search: { command: "catalog" },
   find: { command: "catalog" },
   browse: { command: "catalog" },
-  registry: { command: "catalog" },
   list: { command: "catalog" },
   install: { command: "add" },
   captions: {
@@ -75,7 +74,9 @@ export const REDIRECTS_WITH_NEXT_STEP = Object.keys(COMMAND_REDIRECTS).filter(
 );
 
 export function fileHint(word: string, path: string[], names: string[]): string | undefined {
-  if (path.length === 0 || names.length === 0 || !existsSync(word)) return undefined;
+  if (path.length === 0 || names.length === 0) return undefined;
+  const kind = existsSync(word) ? "is" : /[\\/]|\.\w{2,4}$/.test(word) ? "looks like" : undefined;
+  if (!kind) return undefined;
   const group = ["hyperframes", ...path].join(" ");
-  return `'${word}' is a file; name a command first: '${group} <${names.join("|")}> ${word}'.`;
+  return `'${word}' ${kind} a file; name a command first: '${group} <${names.join("|")}> ${word}'.`;
 }

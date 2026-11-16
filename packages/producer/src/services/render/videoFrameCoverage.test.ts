@@ -92,21 +92,21 @@ describe("expectedFramesForClip", () => {
     expect(expectedFramesForClip(0, 0.316666, 30)).toBe(10);
   });
 
-  it("matches the CFR fps filter's nearest-boundary rounding when requested", () => {
-    expect(expectedFramesForClip(0, 0.616666, 30, "nearest")).toBe(18);
-    expect(expectedFramesForClip(0, 0.316666, 30, "nearest")).toBe(9);
-    expect(expectedFramesForClip(0, 0.633333, 30, "nearest")).toBe(19);
+  it("counts every output slot a CFR window covers when requested", () => {
+    expect(expectedFramesForClip(0, 0.616666, 30, "slots")).toBe(19);
+    expect(expectedFramesForClip(0, 0.316666, 30, "slots")).toBe(10);
+    expect(expectedFramesForClip(0, 0.633333, 30, "slots")).toBe(19);
   });
 
   it("uses exact NTSC rationals for short CFR and VFR boundaries", () => {
-    expect(expectedFramesForClip(0, 0.25025, { num: 30000, den: 1001 }, "nearest")).toBe(8);
+    expect(expectedFramesForClip(0, 0.25025, { num: 30000, den: 1001 }, "slots")).toBe(8);
     expect(expectedFramesForClip(0, 0.125125, { num: 24000, den: 1001 })).toBe(3);
     expect(expectedFramesForClip(0, 0.5005, { num: 24000, den: 1001 })).toBe(12);
   });
 
   it("requires one frame for every positive sub-frame clip", () => {
     expect(expectedFramesForClip(0, 0.001, 30)).toBe(1);
-    expect(expectedFramesForClip(0, 0.001, 30, "nearest")).toBe(1);
+    expect(expectedFramesForClip(0, 0.001, 30, "slots")).toBe(1);
     expect(expectedFramesForClip(1, 1, 30)).toBe(0);
   });
 });
@@ -166,15 +166,22 @@ describe("computeVideoFrameCoverage", () => {
     });
   });
 
-  it("reports full coverage for a short CFR clip matching FFmpeg boundary rounding", () => {
+  it("expects a short CFR clip to fill every output slot it covers", () => {
     const videos = [makeVideo({ id: "short", start: 0, end: 0.616666 })];
-    const reports = computeVideoFrameCoverage(videos, [makeExtracted("short", 18)], 30);
+    const reports = computeVideoFrameCoverage(videos, [makeExtracted("short", 19)], 30);
     expect(reports[0]).toMatchObject({
-      expectedFrames: 18,
-      capturedFrames: 18,
+      expectedFrames: 19,
+      capturedFrames: 19,
       ratio: 1,
     });
     expect(() => assertVideoFrameCoverage(reports, 0.95)).not.toThrow();
+  });
+
+  it("rejects a short CFR clip missing the last output slot it covers", () => {
+    const videos = [makeVideo({ id: "aligned", start: 1 / 30, end: 0.28 })];
+    const reports = computeVideoFrameCoverage(videos, [makeExtracted("aligned", 7)], 30);
+    expect(reports[0]).toMatchObject({ expectedFrames: 8, capturedFrames: 7 });
+    expect(() => assertVideoFrameCoverage(reports, 0.95)).toThrow(/captured 7 of expected 8/);
   });
 
   it("tolerates a single FFmpeg boundary frame on a short 18/19 VFR extraction", () => {

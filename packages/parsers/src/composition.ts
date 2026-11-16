@@ -13,6 +13,8 @@ export { fontShorthandFamilies, parseFontShorthand } from "./fontShorthand.js";
 export { decodeUrlPathVariants } from "./utils/urlPath.js";
 export {
   parseCompositionVariables,
+  readCompositionVariables,
+  type ReadCompositionVariables,
   isCompositionVariable,
   isFontValue,
   isImageValue,

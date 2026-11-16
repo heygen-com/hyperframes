@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -161,6 +161,180 @@ test("a live login wins over HEYGEN_API_KEY; an expired one gives way to it", ()
   });
 });
 
+// Runs fn(dir, notes, project) with a temp credentials dir and a project whose .env sets name=key.
+function withProjectEnv(key, received, fn, name = "HEYGEN_API_KEY") {
+  withCleanHeygenEnv(() => {
+    const dir = mkdtempSync(join(tmpdir(), "heygen-cred-"));
+    const project = mkdtempSync(join(tmpdir(), "heygen-env-"));
+    const write = process.stderr.write;
+    const notes = [];
+    process.stderr.write = (line) => notes.push(String(line));
+    try {
+      process.env.HYPERFRAMES_CONFIG_DIR = dir;
+      writeFileSync(join(project, ".env"), `${name}=${key}\n`);
+      if (received !== undefined) {
+        mkdirSync(join(project, ".hyperframes"));
+        writeFileSync(join(project, ".hyperframes", "received-files.json"), received);
+      }
+      loadEnvFromDir(project);
+      fn(dir, notes, project);
+    } finally {
+      process.stderr.write = write;
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+}
+
+// A cloned or copied folder has no received-files record; a received one lists its .env.
+const PROJECT_KINDS = [
+  ["a folder with no received-files record", undefined],
+  ["a received folder", JSON.stringify({ files: [".env"] })],
+];
+
+for (const [kind, record] of [...PROJECT_KINDS, ["an unreadable received-files record", "{oops"]]) {
+  test(`a project .env key from ${kind} gives way to the saved API key`, () => {
+    withProjectEnv("hg_project", record, (dir, notes) => {
+      writeFileSync(join(dir, "credentials"), JSON.stringify({ api_key: "saved-wallet" }));
+      assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "saved-wallet" } });
+      assert.deepEqual(notes, []);
+    });
+  });
+}
+
+for (const [projectName, shellName] of [
+  ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"],
+  ["HYPERFRAMES_API_KEY", "HEYGEN_API_KEY"],
+]) {
+  test(`the shell's ${shellName} wins over a project .env's ${projectName}, with or without a saved key`, () => {
+    withProjectEnv(
+      "hg_project",
+      undefined,
+      (dir) => {
+        process.env[shellName] = "hg_shell";
+        assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "hg_shell" } });
+        writeFileSync(join(dir, "credentials"), JSON.stringify({ api_key: "saved-wallet" }));
+        assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "hg_shell" } });
+      },
+      projectName,
+    );
+  });
+}
+
+// Loads a project .env with HEYGEN_API_KEY=hg_received and a saved key; arrange(root, project) places the record.
+function receivedBy(arrange, load = (project) => project) {
+  return withCleanHeygenEnv(() => {
+    const root = mkdtempSync(join(tmpdir(), "heygen-rec-"));
+    const project = join(root, "real", "p");
+    mkdirSync(project, { recursive: true });
+    writeFileSync(join(project, ".env"), "HEYGEN_API_KEY=hg_received\n");
+    process.env.HYPERFRAMES_CONFIG_DIR = join(root, "cred");
+    mkdirSync(process.env.HYPERFRAMES_CONFIG_DIR);
+    writeFileSync(join(root, "cred", "credentials"), JSON.stringify({ api_key: "saved-wallet" }));
+    try {
+      arrange(root, project);
+      loadEnvFromDir(load(project, root));
+      return heygenCredential().headers["X-Api-Key"];
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+}
+
+test(
+  "a received .env reached through a linked folder is still received",
+  { skip: process.platform === "win32" },
+  () => {
+    const key = receivedBy(
+      (root, project) => {
+        mkdirSync(join(root, "real", ".hyperframes"));
+        writeFileSync(
+          join(root, "real", ".hyperframes", "received-files.json"),
+          JSON.stringify({ files: ["p/.env"] }),
+        );
+        symlinkSync(project, join(root, "link"));
+      },
+      (_project, root) => join(root, "link"),
+    );
+    assert.equal(key, "saved-wallet");
+  },
+);
+
+test("a received .env listed under another path to the same file is received", () => {
+  const key = receivedBy((_root, project) => {
+    mkdirSync(join(project, ".hyperframes"));
+    linkSync(join(project, ".env"), join(project, "copy.env"));
+    writeFileSync(
+      join(project, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["copy.env"] }),
+    );
+  });
+  assert.equal(key, "saved-wallet");
+});
+
+test("an unreadable record in the project's own folder counts its .env as received", () => {
+  const key = receivedBy((_root, project) => {
+    mkdirSync(join(project, ".hyperframes", "received-files.json"), { recursive: true });
+  });
+  assert.equal(key, "saved-wallet");
+});
+
+test("a project .env key works with no saved credential, and the process names its file once", () => {
+  const lines = [];
+  for (const [, record] of PROJECT_KINDS) {
+    withProjectEnv("hg_project", record, (_dir, notes, project) => {
+      assert.deepEqual(heygenCredential(), { headers: { "X-Api-Key": "hg_project" } });
+      heygenCredential();
+      lines.push(...notes.map((line) => line.replace(join(project, ".env"), "<file>")));
+    });
+  }
+  assert.deepEqual(lines, [
+    "[hyperframes] Using HEYGEN_API_KEY from the project .env (<file>): generated media goes to that key's HeyGen account.\n",
+  ]);
+});
+
+for (const [why, oauth, state, hint] of [
+  [
+    "expired",
+    { client_id: "Zg3LF4FCLoeJoGs2YqMtZ17g", expires_at: "2000-01-01T00:00:00Z" },
+    { expired: true },
+    /OAuth token expired — run `npx hyperframes auth refresh`/,
+  ],
+  [
+    "from another client",
+    { client_id: "shared-heygen-client", expires_at: "2099-01-01T00:00:00Z" },
+    { expired: true, foreign: true },
+    /another OAuth client or environment — run `npx hyperframes auth login`/,
+  ],
+]) {
+  for (const [kind, record] of PROJECT_KINDS) {
+    test(`a project .env key from ${kind} never replaces a saved login that is ${why}`, () => {
+      withProjectEnv("hg_project", record, (dir, notes) => {
+        const login = {
+          token_endpoint: "https://api2.heygen.com/v1/oauth/token",
+          access_token: "at_login",
+          ...oauth,
+        };
+        writeFileSync(join(dir, "credentials"), JSON.stringify({ oauth: login }));
+        assert.deepEqual(heygenCredential(), state);
+        assert.throws(() => heygenAuthHeaders(), hint);
+        assert.deepEqual(notes, []);
+      });
+    });
+  }
+}
+
+for (const [kind, record] of PROJECT_KINDS) {
+  test(`a malformed credentials file refuses a project .env key from ${kind} and says to fix that file`, () => {
+    withProjectEnv("hg_project", record, (dir, notes) => {
+      writeFileSync(join(dir, "credentials"), "{not valid");
+      assert.equal(heygenCredential(), null);
+      assert.throws(() => heygenAuthHeaders(), /can't be read \(not valid JSON\)/);
+      assert.deepEqual(notes, []);
+    });
+  });
+}
+
 test("heygenAuthMethod returns api_key for an env API key, without tagging headers", () => {
   withCleanHeygenEnv(() => {
     process.env.HEYGEN_API_KEY = "hg_test";
@@ -222,7 +396,7 @@ test("an expired or foreign OAuth login never falls back to a saved API wallet",
       credential.oauth.expires_at = "2099-01-01T00:00:00Z";
       credential.oauth.client_id = "shared-heygen-client";
       writeFileSync(join(dir, "credentials"), JSON.stringify(credential));
-      assert.deepEqual(heygenCredential(), { expired: true });
+      assert.deepEqual(heygenCredential(), { expired: true, foreign: true });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -233,13 +407,46 @@ test("loadEnvFromDir skips a .env folder and loads the .env file above it", () =
   const root = mkdtempSync(join(tmpdir(), "heygen-env-"));
   const project = join(root, "project");
   mkdirSync(join(project, ".env"), { recursive: true });
-  writeFileSync(join(root, ".env"), "MEDIA_USE_ENV_DIR_TEST=from-parent\n");
+  writeFileSync(join(root, ".env"), "ELEVENLABS_API_KEY=from-parent\n");
+  const saved = process.env.ELEVENLABS_API_KEY;
+  delete process.env.ELEVENLABS_API_KEY;
   try {
     loadEnvFromDir(project);
-    assert.equal(process.env.MEDIA_USE_ENV_DIR_TEST, "from-parent");
+    assert.equal(process.env.ELEVENLABS_API_KEY, "from-parent");
   } finally {
-    delete process.env.MEDIA_USE_ENV_DIR_TEST;
+    if (saved === undefined) delete process.env.ELEVENLABS_API_KEY;
+    else process.env.ELEVENLABS_API_KEY = saved;
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a project's .env supplies provider keys only, never programs, runtime options or another account", () => {
+  const keys = [
+    "ELEVENLABS_API_KEY",
+    "HYPERFRAMES_PYTHON",
+    "HYPERFRAMES_PARAKEET",
+    "NODE_OPTIONS",
+    "npm_config_registry",
+    "DYLD_INSERT_LIBRARIES",
+    "HYPERFRAMES_CONFIG_DIR",
+    "HEYGEN_ACCESS_TOKEN",
+    "HYPERFRAMES_CLI_ENTRY",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+  ];
+  const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  for (const key of keys) delete process.env[key];
+  const project = mkdtempSync(join(tmpdir(), "heygen-env-"));
+  writeFileSync(join(project, ".env"), keys.map((key) => `${key}=/project/value`).join("\n"));
+  try {
+    loadEnvFromDir(project);
+    assert.equal(process.env.ELEVENLABS_API_KEY, "/project/value");
+    for (const key of keys.slice(1)) assert.equal(process.env[key], undefined, key);
+  } finally {
+    for (const key of keys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+    rmSync(project, { recursive: true, force: true });
   }
 });
 
@@ -248,17 +455,20 @@ test("a project's .env cannot name the HeyGen base, so a shell key never leaves 
     const project = mkdtempSync(join(tmpdir(), "heygen-env-"));
     writeFileSync(
       join(project, ".env"),
-      "HEYGEN_API_BASE=https://proxy.example.com\nHEYGEN_ALLOW_HTTP=1\nMEDIA_USE_ENV_BASE_TEST=loaded\n",
+      "HEYGEN_API_BASE=https://proxy.example.com\nHEYGEN_ALLOW_HTTP=1\nHYPERFRAMES_TTS_CONCURRENCY=3\n",
     );
+    const savedConcurrency = process.env.HYPERFRAMES_TTS_CONCURRENCY;
+    delete process.env.HYPERFRAMES_TTS_CONCURRENCY;
     try {
       process.env.HEYGEN_API_KEY = "hg_shell_real";
       loadEnvFromDir(project);
-      assert.equal(process.env.MEDIA_USE_ENV_BASE_TEST, "loaded");
+      assert.equal(process.env.HYPERFRAMES_TTS_CONCURRENCY, "3");
       assert.equal(process.env.HEYGEN_API_BASE, undefined);
       assert.equal(process.env.HEYGEN_ALLOW_HTTP, undefined);
       assert.equal(heygenBase(), "https://api.heygen.com/v3");
     } finally {
-      delete process.env.MEDIA_USE_ENV_BASE_TEST;
+      if (savedConcurrency === undefined) delete process.env.HYPERFRAMES_TTS_CONCURRENCY;
+      else process.env.HYPERFRAMES_TTS_CONCURRENCY = savedConcurrency;
       rmSync(project, { recursive: true, force: true });
     }
   });

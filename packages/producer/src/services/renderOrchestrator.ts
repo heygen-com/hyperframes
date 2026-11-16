@@ -57,7 +57,15 @@ import {
   toFps,
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
-import { HTML_BODY_CSS_HEIGHT_FIRST_RE, HTML_BODY_CSS_WIDTH_FIRST_RE } from "@hyperframes/parsers";
+import type { CompileForRenderOptions } from "./htmlCompiler.js";
+import {
+  countCompositionSrcMounts,
+  countTagsWithAttr,
+  countedTagNames,
+  firstCompositionIdTag,
+  removeScriptAndStyleBlocks,
+} from "./htmlTagScans.js";
+import { matchHtmlBodyCssHeightFirst, matchHtmlBodyCssWidthFirst } from "@hyperframes/parsers";
 import {
   type EngineConfig,
   extractMediaMetadata,
@@ -71,6 +79,7 @@ import {
   type CaptureOptions,
   type CaptureVideoMetadataHint,
   type SubTimelineWaitMemo,
+  type StaticDedupMemo,
   type CaptureSession,
   type BeforeCaptureHook,
   createVideoFrameInjector,
@@ -108,7 +117,9 @@ import {
   augmentProtocolTimeoutError,
   augmentPageNavigationTimeoutError,
   displaySize,
+  type ChromaSubsampling,
   type MotionBlurOptions,
+  type PageMotionBlurSummary,
 } from "@hyperframes/engine";
 import {
   referenceBackgroundResult,
@@ -139,12 +150,19 @@ import {
   validateDeliveryEncoderConfig,
 } from "./render/deliveryEncoder.js";
 import {
+  assertChromaSubsamplingSdr,
+  validateChromaSubsamplingConfig,
+} from "./render/chromaSubsampling.js";
+import {
   createMemorySampler,
   describeWorkerPhases,
   forgetWorkerPhases,
+  noteStaticDedupActivity,
+  staticDedupActivity,
   type MemorySampler,
   reportExtractProgress,
   updateJobStatus,
+  audioWorkDir,
 } from "./render/shared.js";
 import { frameCacheOptions } from "./render/frameCacheBudget.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
@@ -169,12 +187,13 @@ import {
 import { runCaptureSegmentedStage } from "./render/stages/captureSegmentedStage.js";
 import {
   RenderTooSlowError,
-  checkRenderEta,
+  checkCalibratedRenderEta,
   startRenderEtaGuard,
 } from "./render/renderEtaGuard.js";
 import { checkPageNeverReady } from "./render/pageNeverReady.js";
 import { resolveSegmentFrames } from "./render/segmentPlan.js";
 import { extractAllDeferredFrames } from "./render/deferredVideoFrames.js";
+import { measureLocalShownBoxes, oversizedVideos } from "./render/videoShownBoxes.js";
 import { createSegmentVideoFrames } from "./render/segmentVideoFrames.js";
 import { shouldWindowVideoFrames, trackSegmentFramePeak } from "./render/videoFrameWindow.js";
 import { resolveSegmentBrowserRecycle } from "./render/segmentRecycle.js";
@@ -257,10 +276,7 @@ import {
 } from "./render/stages/encodeStage.js";
 import { recordLimiterAttenuation, runAssembleStage } from "./render/stages/assembleStage.js";
 import { shouldUseLayeredComposite } from "./hdrCompositor.js";
-import {
-  resolveCaptureImageFormat,
-  resolveCaptureJpegQuality,
-} from "./render/captureImageFormat.js";
+import { resolveCaptureSurface } from "./render/captureImageFormat.js";
 import { assertMotionBlurSupported, pageMotionBlurForRoute } from "./render/motionBlurRoute.js";
 import { assertOutputScaleSupported } from "./render/outputScaleRoute.js";
 
@@ -433,6 +449,7 @@ export interface RenderConfig {
   strictness?: RenderStrictness;
   /** Entry HTML file relative to projectDir. Defaults to "index.html". */
   entryFile?: string;
+  allowOutsideProjectAssets?: CompileForRenderOptions["allowOutsideProjectAssets"];
   /** Full producer config. When provided, env vars are not read. */
   producerConfig?: EngineConfig;
   /** Custom logger. Defaults to console-based defaultLogger. */
@@ -449,6 +466,8 @@ export interface RenderConfig {
   maxBitrate?: string;
   /** Rate-cap buffer; defaults to twice `maxBitrate`. */
   bufferSize?: string;
+  /** MP4 chroma, default `"420"`. `"444"` captures PNG and encodes yuv444p (SDR, software). */
+  chromaSubsampling?: ChromaSubsampling;
   /**
    * Source-video frame extraction format. Defaults to `"auto"`, which preserves
    * the historical behavior: alpha/alpha-capable sources extract as PNG, all
@@ -473,6 +492,7 @@ export interface RenderConfig {
    * `--variables-file <path>`. Must be a JSON-serializable plain object.
    */
   variables?: Record<string, unknown>;
+  strictVariables?: boolean;
   /**
    * Override the output resolution via Chrome `deviceScaleFactor` (DPR).
    * The composition's authored dimensions are unchanged. See
@@ -623,6 +643,7 @@ export interface RenderPerfSummary {
     noDamageFrames: number;
     hasDamageFrames: number;
   };
+  motionBlur?: PageMotionBlurSummary;
   /**
    * drawElement fast-capture outcome for this render (default-on release
    * visibility). Undefined when no capture session ran.
@@ -672,7 +693,7 @@ export interface RenderPerfSummary {
     parallelRouter?: string;
     /** Worker count the auto-resolution chose BEFORE the router pinned it to 3 — the single-worker-inversion counterfactual. Only set when the router fired. */
     preRouterWorkers?: number;
-    /** Engine init-time gate: swiftshader | css_effect:* | at_risk_timeline | 3d_init_failed | supersampling | render_mode_hint. */
+    /** Engine init-time gate: swiftshader | webgl_unavailable | beginframe_no_self_verify | css_effect:* | at_risk_timeline | 3d_init_failed | supersampling | render_mode_hint. */
     gateReason?: string;
     /** Low-cardinality GPU bucket from DE session init (`<backend>/<vendor>`, e.g. `d3d11/nvidia`); |-joined across parallel sessions (bounded: one bucket per distinct backend on the host). */
     gpuRenderer?: string;
@@ -782,6 +803,7 @@ export interface RenderStageProgress {
 
 export interface RenderJob extends Partial<ReferenceBackgroundResult> {
   id: string;
+  strictVariablesChecked?: boolean;
   config: RenderConfig;
   status: RenderStatus;
   progress: number;
@@ -1217,23 +1239,35 @@ export function resetCaptureAttemptProgress(job: { framesRendered?: number }): v
 }
 
 const FIRST_FRAME_STALL_MS = 300_000;
+// Capture browsers start like the probe's did: allow twice its start-up before the first frame, up to the ceiling.
+const FIRST_FRAME_STARTUP_FACTOR = 2;
+const FIRST_FRAME_STALL_CEILING_MS = 900_000;
 const TAIL_STALL_MS = FIRST_FRAME_STALL_MS;
+
+/** Allowed wait for the first frame, given how long the probe's browser took to start; 0 or unknown keeps 300 s. */
+export function firstFrameWindowMs(probeStartupMs: number | undefined): number {
+  const fromStartup = (probeStartupMs ?? 0) * FIRST_FRAME_STARTUP_FACTOR;
+  if (!Number.isFinite(fromStartup)) return FIRST_FRAME_STALL_MS;
+  return Math.max(FIRST_FRAME_STALL_MS, Math.min(FIRST_FRAME_STALL_CEILING_MS, fromStartup));
+}
 
 /** The no-progress rule for capture stages that have no watchdog of their own: disk, HDR, chunk. Once
  * `totalFrames` have landed the frame count can no longer change, so the stage is judged on the tail budget. */
 export function frameStallRule(
   job: { framesRendered?: number },
   totalFrames: number,
+  probeStartupMs: number | undefined,
 ): StageStallRule {
   const noProgressMs = resolveCaptureStallTimeoutMs();
   return {
     progress: () => job.framesRendered ?? 0,
     noProgressMs,
-    firstProgressMs: Math.max(FIRST_FRAME_STALL_MS, noProgressMs),
+    firstProgressMs: Math.max(firstFrameWindowMs(probeStartupMs), noProgressMs),
     complete: () => (job.framesRendered ?? 0) >= totalFrames,
     tailMs: Math.max(TAIL_STALL_MS, noProgressMs),
     detail: () => describeWorkerPhases(job),
     attemptOpened: () => forgetWorkerPhases(job),
+    activity: () => staticDedupActivity(job),
   };
 }
 
@@ -1712,12 +1746,9 @@ export interface ElementTagScan {
 }
 
 const MAX_REPORTED_ELEMENT_TAGS = 50;
+const MAX_SCRIPT_STYLE_STRIP_PASSES = 8;
 /** none < self < backdrop — mirrors @hyperframes/core vfx.ts's internal CAPTURE_RANK, duplicated here (not exported) to combine per-host captures across an entire composition's static scan. */
 const VFX_CAPTURE_RANK: Record<HfVfxCapture, number> = { none: 0, self: 1, backdrop: 2 };
-
-/** First element carrying data-composition-id, the same root marker other `[data-composition-id]` queries here use. */
-const ROOT_COMPOSITION_TAG_RE =
-  /<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\bdata-composition-id=["'][^"']*["'][^>]*>/i;
 
 function bucketPxDelta(delta: number): NonNullable<ElementTagScan["rootBodyDeltaPxBucket"]> {
   if (delta === 0) return "0";
@@ -1732,15 +1763,16 @@ function bucketPxDelta(delta: number): NonNullable<ElementTagScan["rootBodyDelta
 function detectRootBodySizeMismatch(
   html: string,
 ): Pick<ElementTagScan, "rootBodyMismatch" | "rootBodyDeltaPxBucket"> {
-  const rootTag = html.match(ROOT_COMPOSITION_TAG_RE)?.[0];
+  // The first element carrying data-composition-id, the root marker other queries here use.
+  const rootTag = firstCompositionIdTag(html);
   const dataWidth = rootTag && Number(rootTag.match(/\bdata-width=["'](\d+)["']/i)?.[1]);
   const dataHeight = rootTag && Number(rootTag.match(/\bdata-height=["'](\d+)["']/i)?.[1]);
   if (!dataWidth || !dataHeight) return {};
 
   // Groups 1 and 3 are prefix text for applyResolutionPreset's in-place
   // replace; this read-only comparison only needs the digit groups (2 and 4).
-  const widthFirst = html.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
-  const heightFirst = widthFirst ? undefined : html.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
+  const widthFirst = matchHtmlBodyCssWidthFirst(html);
+  const heightFirst = widthFirst ? undefined : matchHtmlBodyCssHeightFirst(html);
   const [cssWidth, cssHeight] = widthFirst
     ? [Number(widthFirst[2]), Number(widthFirst[4])]
     : heightFirst
@@ -1809,20 +1841,24 @@ export function scanElementTags(html: string): ElementTagScan {
   // CodeQL flags as incomplete multi-character sanitization. The impact here
   // is nil — the stripped string is counted and discarded, never rendered —
   // but the incompleteness is real, and a stray reformed tag would perturb
-  // the count this gate reads. Converges: every iteration strictly shortens
-  // the string or changes nothing and exits.
+  // the count this gate reads. Each pass takes time linear in the markup, and
+  // the loop stops after MAX_SCRIPT_STYLE_STRIP_PASSES passes. Only a tag
+  // re-formed from pieces nested more deeply than that stops short of the
+  // fixed point, which no real composition does.
   let markup = html;
-  for (let previous = ""; markup !== previous; ) {
+  for (
+    let previous = "", pass = 0;
+    markup !== previous && pass < MAX_SCRIPT_STYLE_STRIP_PASSES;
+    pass++
+  ) {
     previous = markup;
-    markup = markup.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
+    markup = removeScriptAndStyleBlocks(markup);
   }
   let total = 0;
   const counts = new Map<string, number>();
-  for (const m of markup.matchAll(
-    /<\/([a-zA-Z][-a-zA-Z0-9]*)|<(img|br|hr|input|source|track|area|base|col|embed|link|meta|param|wbr)\b|<([a-zA-Z][-a-zA-Z0-9]*)\b[^>]*\/>/gi,
-  )) {
+  for (const name of countedTagNames(markup)) {
     total++;
-    const tag = (m[1] ?? m[2] ?? m[3] ?? "").toLowerCase();
+    const tag = name.toLowerCase();
     counts.set(tag, (counts.get(tag) ?? 0) + 1);
   }
   const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
@@ -1841,14 +1877,16 @@ export function scanElementTags(html: string): ElementTagScan {
   // gate), but this count is scoped to <video> only, matching its name: a-roll
   // is a video-editing term for primary-take footage, and every real usage in
   // this codebase's fixtures stamps it on video elements.
-  const arollVideoCount =
-    markup.match(/<video\b[^>]*\bdata-aroll=["']true["'][^>]*>/gi)?.length ?? 0;
+  const arollVideoCount = countTagsWithAttr(markup, "video", `\\bdata-aroll=["']true["']`);
   // `data-media-source="heygen"` is the media-use skill's own provenance
   // stamp (see resolve.md), written only when the mounted video's ledger
   // record traces to the "heygen.video" provider — never any other provider
   // or value, so a plain presence check is exact, not a substring guess.
-  const heygenVideoCount =
-    markup.match(/<video\b[^>]*\bdata-media-source=["']heygen["'][^>]*>/gi)?.length ?? 0;
+  const heygenVideoCount = countTagsWithAttr(
+    markup,
+    "video",
+    `\\bdata-media-source=["']heygen["']`,
+  );
   // Uncapped `counts` Map, not `byTag`: 50+ distinct tags could push these
   // into the "other" bucket, zeroing a named field the cap shouldn't affect.
   const audioCount = counts.get("audio") ?? 0;
@@ -1857,9 +1895,7 @@ export function scanElementTags(html: string): ElementTagScan {
   // Not collectSubCompositionSrcs (@hyperframes/parsers/asset-resolution):
   // that dedupes by src and drops placeholder/remote mounts, so its length is
   // distinct resolvable sub-comps, not this field's mount-element count.
-  const subCompositionCount =
-    markup.match(/<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\bdata-composition-src=["'][^"']*["']/gi)?.length ??
-    0;
+  const subCompositionCount = countCompositionSrcMounts(markup);
   let colorGradingCount = 0;
   let hasLut = false;
   for (const m of markup.matchAll(
@@ -2966,6 +3002,26 @@ export function shouldDiscardProbeSessionForPageSideCompositing(args: {
   return args.hasProbeSession && args.usePageSideCompositing;
 }
 
+// Every published @hyperframes/shader-transitions build adds this canvas once its page-side compositor installs.
+const PAGE_SIDE_COMPOSITOR_CANVAS_ID = "__hf-page-side-compositor";
+
+/** Loads the page with the page-side stub and reports whether its shader-transitions build installed the compositor. */
+export async function pageInstallsShaderCompositor(
+  open: () => Promise<CaptureSession>,
+  session = { initializeSession, closeCaptureSession },
+): Promise<boolean> {
+  const probe = await open();
+  try {
+    await session.initializeSession(probe);
+    return await probe.page.evaluate(
+      (id) => document.getElementById(id) !== null,
+      PAGE_SIDE_COMPOSITOR_CANVAS_ID,
+    );
+  } finally {
+    await session.closeCaptureSession(probe);
+  }
+}
+
 /**
  * Main render pipeline
  */
@@ -3023,6 +3079,7 @@ export async function executeRenderJob(
   // cannot honor must fail before anything is written to disk.
   validateHlsRenderConfig(job.config);
   validateDeliveryEncoderConfig(job.config);
+  validateChromaSubsamplingConfig(job.config);
   const debugDir = resolveRenderDebugDir();
   const outputDir = dirname(outputPath);
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
@@ -3408,6 +3465,14 @@ async function executeRenderPipeline(input: {
       Object.assign(job, result),
     );
     const subTimelineWaitMemo: SubTimelineWaitMemo = {};
+    const staticDedupMemo: StaticDedupMemo = {};
+    // Only a video larger than the canvas can be extracted smaller; the probe page then measures where it is drawn.
+    const largerThanCanvas = await oversizedVideos(
+      composition.videos,
+      projectDir,
+      join(workDir, "compiled"),
+      { width: outputWidth, height: outputHeight },
+    );
     const probeResult = await observeRenderStage(
       observability,
       "browser_probe",
@@ -3416,6 +3481,7 @@ async function executeRenderPipeline(input: {
         runProbeStage({
           projectDir,
           workDir,
+          measuresShownBoxes: largerThanCanvas.length > 0,
           job,
           cfg,
           forceScreenshot: captureForceScreenshot,
@@ -3429,6 +3495,7 @@ async function executeRenderPipeline(input: {
           needsAlpha,
           deviceScaleFactor,
           subTimelineWaitMemo,
+          staticDedupMemo,
           recordReferenceBackground,
         }),
       // Browser probe is pre-capture; report `browser calibrating` so a
@@ -3440,6 +3507,7 @@ async function executeRenderPipeline(input: {
     compositionHash = computeCompositionObservabilityHash(compiled.html);
     fileServer = probeResult.fileServer;
     probeSession = probeResult.probeSession;
+    job.strictVariablesChecked = probeResult.strictVariablesChecked;
     lastBrowserConsole = probeResult.lastBrowserConsole;
     let resolvedCaptureBeyondViewport = probeSession?.options.captureBeyondViewport;
     if (resolvedCaptureBeyondViewport !== undefined) {
@@ -3456,6 +3524,17 @@ async function executeRenderPipeline(input: {
       totalFrames,
       fps: fpsToNumber(job.config.fps),
     });
+    // Before the video layer may close the probe page; no box means full size, as before.
+    const shownBoxes =
+      largerThanCanvas.length > 0 && probeSession?.isInitialized
+        ? await measureLocalShownBoxes(
+            probeSession.page,
+            largerThanCanvas,
+            job.config.fps,
+            probeResult.duration,
+            log,
+          )
+        : undefined;
 
     perfStages.browserProbeMs = probeResult.browserProbeMs;
     perfStages.compileMs = Date.now() - stage1Start;
@@ -3571,11 +3650,13 @@ async function executeRenderPipeline(input: {
           log,
           composition,
           skipFrameExtractionIds: videoLayer ? [videoLayer.videoId] : [],
+          audioDownloadDir: audioWorkDir(workDir),
           abortSignal: executionSignal,
           assertNotAborted,
           // Local staging can use links; distributed plan() alone requires real copies.
           materializeSymlinks: false,
           deferRangeExtraction: windowVideoFrames ? true : undefined,
+          shownBoxes,
           onProgress,
         }),
     );
@@ -3677,6 +3758,7 @@ async function executeRenderPipeline(input: {
           audioGain: cfg.audioGain,
           audios: composition.audios,
           masterFxChain: composition.masterFxChain,
+          allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
           abortSignal: executionSignal,
           assertNotAborted,
           log,
@@ -3687,9 +3769,12 @@ async function executeRenderPipeline(input: {
 
     // ── Stage 4: Frame capture ──────────────────────────────────────────
     const stage4Start = Date.now();
-    updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress, {
-      code: "start_browsers",
-    });
+    const EFFECT_SCAN_STAGE = "Checking effects";
+    const startingFrameCapture = () =>
+      updateJobStatus(job, "rendering", "Starting frame capture", 25, onProgress, {
+        code: "start_browsers",
+      });
+    startingFrameCapture();
 
     // Start file server (may already be running from duration discovery).
     // The page-side compositing stub is injected later (after hasHdrContent
@@ -3703,6 +3788,7 @@ async function executeRenderPipeline(input: {
           port: 0,
           preHeadScripts: [VIRTUAL_TIME_SHIM],
           fps: job.config.fps,
+          allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
         });
         assertNotAborted();
         observability.stageEnd("file_server", fileServerStart);
@@ -3728,6 +3814,7 @@ async function executeRenderPipeline(input: {
       chromePath: resolveHeadlessShellPath(cfg),
       browserTimeout: cfg.browserTimeout,
     });
+    startingFrameCapture();
     // Apply the software-GPU→screenshot clamp to the AUTHORITATIVE local
     // `captureForceScreenshot` (not just the observability copy) so all
     // downstream strategy + telemetry code reads the corrected value.
@@ -3752,19 +3839,30 @@ async function executeRenderPipeline(input: {
     });
     const videoCaptureBeyondViewport = resolveVideoCaptureBeyondViewport(composition.videos.length);
 
-    const captureImageFormat = resolveCaptureImageFormat({
-      needsAlpha,
-      motionBlur: job.config.motionBlur,
-    });
+    const captureSurface = resolveCaptureSurface(
+      {
+        needsAlpha,
+        motionBlur: job.config.motionBlur,
+        chromaSubsampling: job.config.chromaSubsampling,
+      },
+      job.config.quality,
+    );
+    if (job.config.chromaSubsampling === "444") {
+      log.info("[Render] Capture: png (chromaSubsampling 444, lossless)");
+    }
     const captureOptions: CaptureOptions = {
       width,
       height,
       fps: job.config.fps,
-      format: videoLayer ? "png" : captureImageFormat,
-      transparent: needsAlpha || videoLayer !== undefined,
-      ...(videoLayer ? { hiddenElementIds: [videoLayer.videoId] } : {}),
-      quality:
-        captureImageFormat === "png" ? undefined : resolveCaptureJpegQuality(job.config.quality),
+      ...captureSurface,
+      ...(videoLayer
+        ? {
+            format: "png",
+            quality: undefined,
+            transparent: true,
+            hiddenElementIds: [videoLayer.videoId],
+          }
+        : {}),
       variables: job.config.variables,
       deviceScaleFactor,
       motionBlur: job.config.motionBlur,
@@ -3796,6 +3894,9 @@ async function executeRenderPipeline(input: {
       videoMetadataHints,
       skipReadinessVideoIds: videoReadinessSkipIds,
       subTimelineWaitMemo,
+      staticDedupMemo,
+      compositionHash,
+      onStaticDedupActivity: () => noteStaticDedupActivity(job),
       // Probe-resolved duration: drawElement self-verification derives its
       // sample frame indices from this so they land inside the drained range.
       compositionDurationSeconds: job.duration,
@@ -3805,10 +3906,13 @@ async function executeRenderPipeline(input: {
         updateJobStatus(
           job,
           "rendering",
-          `Checking effects, ${scanned} of ${total} frames`,
+          `${EFFECT_SCAN_STAGE}, ${scanned} of ${total} frames`,
           25,
           onProgress,
         ),
+      onEffectScanEnd: () => {
+        if (job.currentStage.startsWith(EFFECT_SCAN_STAGE)) startingFrameCapture();
+      },
       requiresWebGpu: compositionRequiresWebGpu(compiled.html),
       // Live route for Chrome memory (spec §5 Phase −1). The aggregate route
       // through CapturePerfSummary only exists on success; a mid-capture
@@ -3853,6 +3957,7 @@ async function executeRenderPipeline(input: {
           cfg,
           injectorOptions: frameCacheOptions(cfg, workerCount),
           abortSignal: executionSignal,
+          shownBoxes,
         }),
         workDir,
         (bytes) => updateCaptureObservability({ videoFrameWindowPeakBytes: bytes }),
@@ -3873,6 +3978,7 @@ async function executeRenderPipeline(input: {
         extractAllDeferredFrames(extracted, {
           fps: job.config.fps,
           cfg,
+          shownBoxes,
           signal: executionSignal,
           maxTransientRetries: resolveVideoExtractionPolicy().maxTransientRetries,
           onProgress: (done, total) => reportExtractProgress(job, done, total, onProgress),
@@ -3903,6 +4009,7 @@ async function executeRenderPipeline(input: {
     // comps that route to the layered/HDR paths.)
     const nativeHdrIds = new Set([...nativeHdrVideoIds, ...nativeHdrImageIds]);
     const hasHdrContent = Boolean(effectiveHdr && nativeHdrIds.size > 0);
+    assertChromaSubsamplingSdr(job.config, hasHdrContent);
     if (hasHdrContent) assertOutputScaleSupported(deviceScaleFactor, "hdr_layered");
     routePageMotionBlur = pageMotionBlurForRoute({ hasHdrContent, useLayeredComposite: false });
     // DE priority inversion eligibility — evaluated BEFORE capture calibration
@@ -4235,6 +4342,7 @@ async function executeRenderPipeline(input: {
       } finally {
         calibrationFrames?.release();
       }
+      startingFrameCapture();
       captureCalibration = outcome.calibration;
       calibrationEvaluateTimedOut = outcome.calibrationEvaluateTimedOut;
       captureForceScreenshot = outcome.forceScreenshot;
@@ -4247,6 +4355,7 @@ async function executeRenderPipeline(input: {
         forceScreenshot: captureForceScreenshot,
         multiplier: outcome.calibration?.estimate.multiplier ?? null,
         p95Ms: outcome.calibration?.estimate.p95Ms ?? null,
+        medianMs: outcome.calibration?.estimate.medianMs ?? null,
       });
     } else {
       observability.checkpoint("capture_calibration", "skipped", {
@@ -4383,12 +4492,12 @@ async function executeRenderPipeline(input: {
 
     // No calibration estimate (explicit workers, short or forced-screenshot renders) skips the
     // pre-capture check; the measured-rate guard below still covers capture.
-    const calibratedTooSlow = checkRenderEta("capture_calibration", {
+    const calibratedTooSlow = checkCalibratedRenderEta({
       maxRenderMs: job.config.maxRenderMs,
       elapsedMs: Date.now() - pipelineStart,
-      framesCompleted: 0,
       totalFrames,
-      msPerFrame: (captureCalibration?.estimate.p95Ms ?? 0) / workerCount,
+      estimate: captureCalibration?.estimate,
+      workerCount,
     });
     if (calibratedTooSlow) throw calibratedTooSlow;
     execution.defer(
@@ -4578,7 +4687,7 @@ async function executeRenderPipeline(input: {
     // path so the palette encoder can preserve transparency. HDR content still
     // forces the layered path (HDR layers need per-layer alpha + native HDR raw
     // frame compositing in Node; that's out of scope for this opt-in).
-    const usePageSideCompositingForTransitions =
+    let usePageSideCompositingForTransitions =
       (cfg.enablePageSideCompositing || isGif) &&
       compiled.hasShaderTransitions &&
       !hasHdrContent &&
@@ -4599,6 +4708,30 @@ async function executeRenderPipeline(input: {
           "[Render] Recreating capture session so page-side compositing pre-head script is loaded.",
         );
       }
+      // The composition's own shader-transitions build decides whether it can composite in this
+      // browser; a build that cannot leaves the blend to the Node-side layered path.
+      try {
+        usePageSideCompositingForTransitions = await pageInstallsShaderCompositor(() =>
+          createCaptureSession(activeFileServer.url, framesDir, buildPrepCaptureOptions(), null, {
+            ...cfg,
+            forceScreenshot: true,
+          }),
+        );
+      } catch (error) {
+        assertNotAborted();
+        // The capture stage opens its own session and owns retrying or failing it.
+        log.warn("[Render] Shader compositor check failed; keeping page-side compositing.", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      if (!usePageSideCompositingForTransitions) {
+        log.warn(
+          "[Render] The page's shader-transitions build cannot composite in this browser; " +
+            "shader transitions blend on the Node-side layered path.",
+        );
+      }
+    }
+    if (usePageSideCompositingForTransitions) {
       captureForceScreenshot = resolveCaptureForceScreenshotForPageSideCompositing({
         forceScreenshot: captureForceScreenshot,
         usePageSideCompositing: true,
@@ -4759,6 +4892,8 @@ async function executeRenderPipeline(input: {
       hasHdrContent: capturePlan.hasHdrContent,
       hasShaderTransitions: compiled.hasShaderTransitions,
       isPngSequence,
+      captureImageFormat: captureOptions.format ?? "jpeg",
+      chromaSubsampling: job.config.chromaSubsampling ?? "420",
     });
     const encoderHdr = hasHdrContent ? effectiveHdr : undefined;
     // png-sequence has no encoder, but the rest of the orchestrator still
@@ -4772,6 +4907,7 @@ async function executeRenderPipeline(input: {
       presetFormat,
       encoderHdr,
       job.config.proresProfile,
+      job.config.chromaSubsampling,
     );
 
     // CLI overrides (--crf, --video-bitrate) flow through job.config and must
@@ -4888,7 +5024,7 @@ async function executeRenderPipeline(input: {
             onProgress,
           });
         },
-        { stall: frameStallRule(job, totalFrames) },
+        { stall: frameStallRule(job, totalFrames, perfStages.browserProbeMs) },
       );
       lastBrowserConsole = hdrRes.lastBrowserConsole;
       layeredCaptureWarnings.push(...hdrRes.warnings);
@@ -5465,7 +5601,7 @@ async function executeRenderPipeline(input: {
                 interleaveFrames: overlap !== null,
                 openAttempt,
               }),
-            { stall: frameStallRule(job, totalFrames) },
+            { stall: frameStallRule(job, totalFrames, perfStages.browserProbeMs) },
           );
         let captureRes;
         try {

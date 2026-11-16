@@ -12,46 +12,78 @@
 import { closeSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { PLAN_PROJECT_DIR_SKIP_SEGMENTS } from "./plan.js";
 
 // Bump when the hashed set changes so uploads cached under an older scheme are never reused.
 const SITE_ID_SCHEME = "site-v2\0";
 const READ_CHUNK_BYTES = 256 * 1024;
 
+/** Whether a site's `/`-separated project path is one no upload ships: env, Git, credentials, tool state, app records. */
+export const isPrivateSitePath = (relPath: string): boolean => isStudioPrivatePath(relPath);
+
+function statEntry(full: string, relPath: string) {
+  try {
+    return statSync(full);
+  } catch (err) {
+    throw new Error(`[listSiteFiles] cannot read ${relPath} (dangling symlink?)`, { cause: err });
+  }
+}
+
 /**
  * The files a site upload ships, as `/`-separated paths under `projectDir`. Symlinks are followed
  * (root included), top-level {@link PLAN_PROJECT_DIR_SKIP_SEGMENTS} are left out as the plan stage
- * does, and a dangling symlink throws.
+ * does, and a dangling symlink throws. Private files (env, Git, credentials, tool and agent state,
+ * app records) are left out at every depth, by name or by where a link points; `onPrivate` hears
+ * each one left out, a folder once.
  */
-export function listSiteFiles(projectDir: string): string[] {
+export function listSiteFiles(projectDir: string, onPrivate?: (relPath: string) => void): string[] {
   const files: string[] = [];
   const ancestors = new Set([realpathSync(projectDir)]);
+  function visit(full: string, relPath: string): void {
+    if (isPrivateFileUnder(projectDir, full, isStudioPrivatePath)) return void onPrivate?.(relPath);
+    const stat = statEntry(full, relPath);
+    if (stat.isFile()) return void files.push(relPath);
+    if (!stat.isDirectory()) return;
+    const real = realpathSync(full);
+    // A folder linking back to an ancestor is skipped rather than walked forever.
+    if (ancestors.has(real)) return;
+    ancestors.add(real);
+    walk(full, relPath);
+    ancestors.delete(real);
+  }
   function walk(dir: string, rel: string): void {
     for (const name of readdirSync(dir).sort()) {
       if (rel === "" && PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(name)) continue;
-      const full = join(dir, name);
-      const relPath = rel === "" ? name : `${rel}/${name}`;
-      let stat;
-      try {
-        stat = statSync(full);
-      } catch (err) {
-        throw new Error(`[listSiteFiles] cannot read ${relPath} (dangling symlink?)`, {
-          cause: err,
-        });
-      }
-      if (stat.isFile()) {
-        files.push(relPath);
-      } else if (stat.isDirectory()) {
-        const real = realpathSync(full);
-        // A folder linking back to an ancestor is skipped rather than walked forever.
-        if (ancestors.has(real)) continue;
-        ancestors.add(real);
-        walk(full, relPath);
-        ancestors.delete(real);
-      }
+      visit(join(dir, name), rel === "" ? name : `${rel}/${name}`);
     }
   }
   walk(projectDir, "");
+  return files;
+}
+
+const printablePath = (path: string): string =>
+  [...path]
+    .map((ch) => {
+      const code = ch.charCodeAt(0);
+      const control = (code < 0x20 && code !== 0x09) || (code >= 0x7f && code <= 0x9f);
+      return control ? `\\x${code.toString(16).padStart(2, "0")}` : ch;
+    })
+    .join("");
+
+/** {@link listSiteFiles} for an upload: one line to `onNotice` names the private files left out. */
+export function listSiteFilesForUpload(
+  projectDir: string,
+  onNotice?: (message: string) => void,
+): string[] {
+  const leftOut: string[] = [];
+  const files = listSiteFiles(projectDir, (path) => leftOut.push(path));
+  if (leftOut.length > 0) {
+    const more = leftOut.length > 5 ? ` and ${leftOut.length - 5} more` : "";
+    onNotice?.(
+      `[deploySite] left out private files no composition loads (env, Git, credentials, tool state): ${leftOut.slice(0, 5).map(printablePath).join(", ")}${more}`,
+    );
+  }
   return files;
 }
 

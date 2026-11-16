@@ -203,7 +203,6 @@ describe("classifyPageError", () => {
       emit("error", "Failed to load resource", "https://fonts.gstatic.com/font.woff2");
 
       expect(stderr.mock.calls).toEqual([
-        ["[HyperFrames] render runtime fps"],
         ["[Browser:WARN] GPU readback warning"],
         ["[Browser:ERROR] [HyperFrames] composition script error: scene TypeError: x"],
       ]);

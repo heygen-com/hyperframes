@@ -149,6 +149,27 @@ describe("loadCompositions external hosts", () => {
     ).toBe(false);
   });
 
+  it.each([
+    ["a card template before the scene", `<template><div class="card">card</div></template>`, ""],
+    [
+      "two scene templates",
+      "",
+      `<template><div data-composition-id="other"><p>second scene</p></div></template>`,
+    ],
+  ])("mounts the scene template of a fetched file with %s", async (_label, before, after) => {
+    const host = appendExternalHost("https://example.com/comp.html", "scene-1");
+    const scene = `<template><div data-composition-id="scene-1"><p>Hello World</p></div></template>`;
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(`${before}${scene}${after}`, { status: 200 }),
+    );
+
+    await loadFixture();
+
+    expect(host.textContent).toContain("Hello World");
+    expect(host.textContent).not.toContain("card");
+    expect(host.textContent).not.toContain("second scene");
+  });
+
   it("sizes a flattened inner root from a px-suffixed or fractional size", async () => {
     const host = appendExternalHost("https://example.com/comp.html", "scene-1");
     const compositionHtml = `
@@ -415,6 +436,25 @@ describe("loadCompositions external hosts", () => {
       }),
     );
   });
+
+  it.each(["https://example.com/scene.png", "https://example.com/scene.mp4?x=.html", "scene"])(
+    "never fetches a data-composition-src that is not an .html file: %s",
+    async (src) => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", src);
+      document.body.appendChild(host);
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response("<p>media as page</p>"));
+      const onDiagnostic = vi.fn();
+      await loadCompositions({ ...createLoaderParams(), onDiagnostic });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(host.innerHTML).not.toContain("media as page");
+      expect(onDiagnostic).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "external_composition_load_failed" }),
+      );
+    },
+  );
 
   it("calls onDiagnostic when HTTP response is not ok", async () => {
     const host = document.createElement("div");

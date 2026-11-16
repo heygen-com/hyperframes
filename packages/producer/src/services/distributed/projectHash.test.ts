@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { hashProjectDir, listSiteFiles } from "./projectHash.js";
+import { hashProjectDir, listSiteFiles, listSiteFilesForUpload } from "./projectHash.js";
 
 const dirs: string[] = [];
 function tempDir(): string {
@@ -48,6 +48,80 @@ describe("listSiteFiles / hashProjectDir", () => {
     const dir = project();
     mkdirSync(join(dir, "node_modules"));
     writeFileSync(join(dir, "node_modules", "junk.js"), "x");
+    expect(listSiteFiles(dir)).toEqual(["index.html"]);
+  });
+
+  it("leaves env files out at every depth", () => {
+    const dir = project();
+    mkdirSync(join(dir, "sub"));
+    writeFileSync(join(dir, ".env"), "KEY=1");
+    writeFileSync(join(dir, "sub", ".env.local"), "KEY=1");
+    writeFileSync(join(dir, ".envrc"), "KEY=1");
+    writeFileSync(join(dir, "sub", ".env-local"), "KEY=1");
+    writeFileSync(join(dir, "sub", ".env_prod"), "KEY=1");
+    writeFileSync(join(dir, "sub", "environment.css"), "a{}");
+    expect(listSiteFiles(dir)).toEqual(["index.html", "sub/environment.css"]);
+  });
+
+  it("leaves credentials and tool state out at every depth, and names each one", () => {
+    const dir = project();
+    for (const folder of [".claude", ".aws", "sub"]) mkdirSync(join(dir, folder));
+    writeFileSync(join(dir, ".npmrc"), "//registry.npmjs.org/:_authToken=x");
+    writeFileSync(join(dir, ".mcp.json"), "{}");
+    writeFileSync(join(dir, ".claude", "settings.local.json"), "{}");
+    writeFileSync(join(dir, ".aws", "credentials"), "[default]");
+    writeFileSync(join(dir, "sub", "id_ed25519"), "key");
+    writeFileSync(join(dir, "sub", "cert.PEM"), "key");
+    writeFileSync(join(dir, "sub", "logo.png"), "png");
+    const leftOut: string[] = [];
+    expect(listSiteFiles(dir, (path) => leftOut.push(path))).toEqual([
+      "index.html",
+      "sub/logo.png",
+    ]);
+    expect(leftOut.sort()).toEqual([
+      ".aws",
+      ".claude",
+      ".mcp.json",
+      ".npmrc",
+      "sub/cert.PEM",
+      "sub/id_ed25519",
+    ]);
+  });
+
+  it("names the private files an upload left out in one line, and says nothing when none was", () => {
+    const notices: string[] = [];
+    const clean = project();
+    expect(listSiteFilesForUpload(clean, (line) => notices.push(line))).toEqual(["index.html"]);
+    expect(notices).toEqual([]);
+    const dir = project();
+    mkdirSync(join(dir, ".ssh"));
+    for (const name of [".npmrc", ".mcp.json", "a.pem", "b.pem", "c.pem", "d.pem"]) {
+      writeFileSync(join(dir, name), "secret");
+    }
+    expect(listSiteFilesForUpload(dir, (line) => notices.push(line))).toEqual(["index.html"]);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain(".mcp.json, .npmrc, .ssh, a.pem, b.pem and 2 more");
+  });
+
+  it("shows control characters in a left-out path as escapes, never raw", () => {
+    const dir = project();
+    const folder = "evil\u001b[2J\u009b";
+    mkdirSync(join(dir, folder));
+    writeFileSync(join(dir, folder, ".npmrc"), "secret");
+    const notices: string[] = [];
+    expect(listSiteFilesForUpload(dir, (line) => notices.push(line))).toEqual(["index.html"]);
+    expect(notices[0]).toContain("evil\\x1b[2J\\x9b/.npmrc");
+    expect(notices[0]).not.toContain("\u001b");
+    expect(notices[0]).not.toContain("\u009b");
+  });
+
+  it("leaves out a file whose link points at a credential", () => {
+    const dir = project();
+    const home = tempDir();
+    mkdirSync(join(dir, "assets"));
+    mkdirSync(join(home, ".ssh"));
+    writeFileSync(join(home, ".ssh", "config"), "Host x");
+    symlinkSync(join(home, ".ssh"), join(dir, "assets", "keys"));
     expect(listSiteFiles(dir)).toEqual(["index.html"]);
   });
 

@@ -28,8 +28,8 @@ export default defineCommand({
   },
   args: {
     video: videoArg,
-    start: { type: "string", description: "First second (default 0)" },
-    end: { type: "string", description: "Last second (default: the end)" },
+    start: { type: "string", alias: ["from"], description: "First second (default 0)" },
+    end: { type: "string", alias: ["to"], description: "Last second (default: the end)" },
     fps: { type: "string", description: "Frames sampled per second (default 2)" },
     roi: roiArg,
     at: { type: "string", description: "With --grid: the moment to read" },

@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { runInNewContext } from "node:vm";
 import { Window } from "happy-dom";
 import type { Page } from "puppeteer-core";
-import { publicRequest } from "./publicNetwork.js";
+import { publicRequest } from "@hyperframes/engine/public-network";
 
-vi.mock("./publicNetwork.js", () => ({ publicRequest: vi.fn() }));
+vi.mock("@hyperframes/engine/public-network", () => ({ publicRequest: vi.fn() }));
 afterEach(() => vi.mocked(publicRequest).mockReset());
 import { annotateGifAssetMetadata, catalogAssets, type CatalogedAsset } from "./assetCataloger.js";
 

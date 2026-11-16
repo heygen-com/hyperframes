@@ -20,7 +20,8 @@ import {
   buildAudioSidecar,
   buildProbeFacts,
   hashProjectDir,
-  listSiteFiles,
+  isPrivateSitePath,
+  listSiteFilesForUpload,
   wantsAudioSidecar,
   wantsProbeFacts,
 } from "@hyperframes/producer/distributed";
@@ -116,7 +117,9 @@ export async function ensureSiteStored(
       } catch (error) {
         if ((error as Error).name !== "PLAN_ARTIFACT_MISSING") throw error;
         const localPath = projectDir && join(projectDir, path);
-        if (!localPath || !(await hasContent(localPath, sha256))) return void missing.push(path);
+        const reupload =
+          localPath && !isPrivateSitePath(path) && (await hasContent(localPath, sha256));
+        if (!reupload) return void missing.push(path);
         await putContentStoreFile(s3, localPath, bucket, sha256);
       }
     });
@@ -156,7 +159,7 @@ export async function deploySite(opts: DeploySiteOptions): Promise<SiteHandle> {
   if (!statSync(opts.projectDir).isDirectory()) {
     throw new Error(`[deploySite] projectDir is not a directory: ${opts.projectDir}`);
   }
-  const files = listSiteFiles(opts.projectDir);
+  const files = listSiteFilesForUpload(opts.projectDir, opts.onNotice);
   const siteId = opts.siteId ?? hashProjectDir(opts.projectDir, files);
   const projectS3Uri = siteManifestUri(opts.bucketName, siteId);
 

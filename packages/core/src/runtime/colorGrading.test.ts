@@ -1,6 +1,7 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
+import { PREVIEW_SEEK_HOLD_ATTR } from "../studioPreviewMark";
 import {
   HF_COLOR_GRADING_ATTR,
   HF_COLOR_GRADING_EFFECT_KEYS,
@@ -349,6 +350,26 @@ describe("createColorGradingRuntime", () => {
     video.style.transform = "translate(120px, 60px)";
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
+    expect(texImage2DCalls.length).toBeGreaterThan(drawsBefore);
+  });
+
+  it("keeps graded layers on the committed picture until a preview seek lands", () => {
+    const { video } = startRuntimeWithVideo();
+    const drawsBefore = texImage2DCalls.length;
+    const canvas = document.querySelector("[data-hf-color-grading-canvas]");
+    document.documentElement.setAttribute(PREVIEW_SEEK_HOLD_ATTR, "");
+    try {
+      video.dispatchEvent(new Event("seeked"));
+      video.style.setProperty("--hf-color-grading-exposure", "1");
+      runtime?.refresh();
+      expect(runtime?.redraw()).toBe(0);
+      expect(texImage2DCalls).toHaveLength(drawsBefore);
+      expect(document.querySelector("[data-hf-color-grading-canvas]")).toBe(canvas);
+      expect(canvas?.isConnected).toBe(true);
+    } finally {
+      document.documentElement.removeAttribute(PREVIEW_SEEK_HOLD_ATTR);
+    }
+    expect(runtime?.redraw()).toBe(1);
     expect(texImage2DCalls.length).toBeGreaterThan(drawsBefore);
   });
 

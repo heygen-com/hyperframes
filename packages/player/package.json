@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/player",
-  "version": "0.9.19",
+  "version": "0.9.56",
   "description": "Embeddable web component for HyperFrames compositions",
   "repository": {
     "type": "git",
@@ -46,6 +46,6 @@
     "puppeteer-core": "^25.2.1",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   }
 }

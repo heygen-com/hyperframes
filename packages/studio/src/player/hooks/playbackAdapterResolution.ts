@@ -11,6 +11,9 @@ import {
   type StaticSeekCacheEntry,
 } from "../lib/playbackAdapter";
 import { readTimelineDurationFromDocument } from "../lib/timelineDOM";
+import { attachPausedVideoProvider } from "../lib/pausedVideoProvider";
+import { previewFrameOpaque } from "../lib/previewChannel";
+import { bridgePlaybackAdapter } from "../lib/bridgePlayback";
 
 /**
  * Timeline-based adapters (`__timeline`, then `__timelines`): `match` is the first that covers
@@ -95,4 +98,16 @@ export function resolvePlaybackAdapter(
   }
 
   return bestAdapter;
+}
+
+/** A frame Studio cannot script (opaque origin) is driven over the control bridge. */
+export function resolveFramePlaybackAdapter(
+  iframe: HTMLIFrameElement,
+  refs: StaticSeekRefs,
+): PlaybackAdapter | null {
+  if (previewFrameOpaque(iframe)) return bridgePlaybackAdapter(iframe);
+  const win = iframe.contentWindow as IframeWindow | null;
+  if (!win) return null;
+  attachPausedVideoProvider(iframe, win);
+  return resolvePlaybackAdapter(iframe, win, refs);
 }

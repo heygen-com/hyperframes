@@ -27,7 +27,7 @@ import {
   type PreviewZoomState,
 } from "./previewZoom";
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
-import { PreviewZoomOverlay, usePreviewNavigator } from "./PreviewZoomOverlay";
+import { PreviewZoomOverlay, usePreviewZoomOverlay } from "./PreviewZoomOverlay";
 import {
   PREVIEW_STAGE_INSET_PX,
   resolvePreviewStageSize,
@@ -58,6 +58,7 @@ interface NLEPreviewProps extends Pick<
   /** Draws the picture edge to edge in this box, without Studio's inset band. */
   fillBox?: boolean;
   compositionSizeHint?: PreviewCompositionSize;
+  sandboxOrigin?: "opaque";
 }
 
 export function getPreviewPlayerKey({
@@ -92,6 +93,7 @@ export const NLEPreview = memo(function NLEPreview({
   onCompositionSizeChange,
   fillBox,
   compositionSizeHint,
+  sandboxOrigin,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -192,11 +194,13 @@ export const NLEPreview = memo(function NLEPreview({
   const stageSizeRef = useRef(stageSize);
   stageSizeRef.current = stageSize;
 
-  const { draw: drawNavigator, setRegion: setNavigatorRegion } = usePreviewNavigator(
+  const zoomOverlay = usePreviewZoomOverlay(
     viewportRef,
     stageSize,
     zoomRef,
+    compositionSize?.width ?? hintWidth,
   );
+  const { draw: drawZoomOverlay } = zoomOverlay;
   const writeTransform = useCallback(
     (state: PreviewZoomState) => {
       const stage = stageRef.current;
@@ -205,9 +209,9 @@ export const NLEPreview = memo(function NLEPreview({
       const px = toDomPrecision(state.panX);
       const py = toDomPrecision(state.panY);
       stage.style.transform = `translate3d(${px}px, ${py}px, 0) scale(${s})`;
-      drawNavigator(state);
+      drawZoomOverlay(state);
     },
-    [drawNavigator],
+    [drawZoomOverlay],
   );
 
   const zoomProjectRef = useRef(projectId);
@@ -485,6 +489,7 @@ export const NLEPreview = memo(function NLEPreview({
                 onLoad={() => {}}
                 portrait={portrait}
                 suppressLoadingOverlay
+                sandboxOrigin={sandboxOrigin}
                 style={{ position: "absolute", inset: 0, zIndex: 0 }}
               />
             )}
@@ -507,6 +512,7 @@ export const NLEPreview = memo(function NLEPreview({
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
                   loadingUi={loadingUi}
+                  sandboxOrigin={sandboxOrigin}
                   style={
                     directUrl?.includes("/components/")
                       ? { position: "absolute", inset: 0, zIndex: 1 }
@@ -526,6 +532,7 @@ export const NLEPreview = memo(function NLEPreview({
                   portrait={portrait}
                   suppressLoadingOverlay
                   noLoadTimeout
+                  sandboxOrigin={sandboxOrigin}
                   style={SHADOW_IFRAME_STYLE}
                 />
               ),
@@ -551,11 +558,8 @@ export const NLEPreview = memo(function NLEPreview({
         <PreviewZoomOverlay
           zoom={settledZoom}
           stageSize={stageSize}
-          onFit={() => {
-            applyZoom(DEFAULT_PREVIEW_ZOOM);
-            viewportRef.current?.focus();
-          }}
-          navigatorRegionRef={setNavigatorRegion}
+          onZoom={applyZoom}
+          controls={zoomOverlay}
         />
       </div>
     </div>

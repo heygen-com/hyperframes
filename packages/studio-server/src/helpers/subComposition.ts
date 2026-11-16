@@ -13,6 +13,7 @@ import {
 } from "@hyperframes/core/compiler";
 import { findStartTags, isFullHtmlDocument } from "@hyperframes/core/compiler/html-document";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
+import { resolveWithinProject } from "@hyperframes/core/safe-path";
 import { htmlHasGsapCore, insertGsapCoreBeforeHeadPlugin } from "./gsapCoreScript.js";
 import { withRootPathsRelative } from "./rootPaths.js";
 
@@ -232,19 +233,67 @@ function promoteTemplateCompositionId(rawComp: string, body: Element): void {
  * studio resolves its top-level elements to the right source file. Idempotent;
  * a no-op when no composition element is present.
  */
-function tagRootCompositionFile(bodyHtml: string, compPath: string): string {
-  const match = bodyHtml.match(/<[a-zA-Z][^>]*\bdata-composition-id=/);
-  if (match?.index == null) return bodyHtml;
-  const tagEnd = bodyHtml.indexOf(">", match.index);
-  if (tagEnd === -1) return bodyHtml;
-  if (bodyHtml.slice(match.index, tagEnd).includes("data-composition-file")) return bodyHtml;
+export function tagRootCompositionFile(bodyHtml: string, compPath: string): string {
+  const tag = firstCompositionIdTag(bodyHtml);
+  if (!tag) return bodyHtml;
+  if (bodyHtml.slice(tag.start, tag.end).includes("data-composition-file")) return bodyHtml;
   return (
-    bodyHtml.slice(0, tagEnd) + ` data-composition-file="${compPath}"` + bodyHtml.slice(tagEnd)
+    bodyHtml.slice(0, tag.end) +
+    ` data-composition-file="${escapeAttrValue(compPath)}"` +
+    bodyHtml.slice(tag.end)
   );
 }
 
+const TAG_OPENER = /<[a-zA-Z]/g;
+const COMPOSITION_ID_ATTR = "data-composition-id=";
+
+/**
+ * The first start tag with a `data-composition-id=` attribute, from its `<` to its `>`: the tag
+ * `/<[a-zA-Z][^>]*\bdata-composition-id=/` finds, in time linear in the page. That regex rescans to
+ * the next `>` from every opener, which is quadratic on a long run of openers with no `>`. An opener
+ * inside another opener's tag can only do worse than that opener, so each tag is checked once.
+ * Null when there is no such tag, or it never closes.
+ */
+function firstCompositionIdTag(html: string): { start: number; end: number } | null {
+  TAG_OPENER.lastIndex = 0;
+  for (let open = TAG_OPENER.exec(html); open; open = TAG_OPENER.exec(html)) {
+    const close = html.indexOf(">", open.index);
+    const tag = html.slice(open.index, close === -1 ? html.length : close);
+    if (hasBoundedAttr(tag, COMPOSITION_ID_ATTR, 2)) {
+      return close === -1 ? null : { start: open.index, end: close };
+    }
+    if (close === -1) return null;
+    TAG_OPENER.lastIndex = close;
+  }
+  return null;
+}
+
+/** Whether `name` appears in `tag` at or after `from` with a non-word character before it, as `\bname` would. */
+function hasBoundedAttr(tag: string, name: string, from: number): boolean {
+  for (let at = tag.indexOf(name, from); at !== -1; at = tag.indexOf(name, at + 1)) {
+    if (!/\w/.test(tag[at - 1] ?? "")) return true;
+  }
+  return false;
+}
+
+const HEAD_OPENER = /<head/gi;
+const HEAD_CLOSER = /<\/head>/gi;
+
+/**
+ * The inner HTML of the page's `<head>`: what `/<head[^>]*>([\s\S]*?)<\/head>/i` captures, in time
+ * linear in the page. That regex rescans to the end of the page from every `<head` opener when the
+ * `>` or the `</head>` is missing. Only the first opener can match: a later one has no `>` or
+ * `</head>` that the first could not also use.
+ */
 export function rootHeadContent(rootHtml: string): string {
-  return rootHtml.match(/<head[^>]*>([\s\S]*?)<\/head>/i)?.[1] ?? "";
+  HEAD_OPENER.lastIndex = 0;
+  const open = HEAD_OPENER.exec(rootHtml);
+  if (!open) return "";
+  const gt = rootHtml.indexOf(">", open.index + open[0].length);
+  if (gt === -1) return "";
+  HEAD_CLOSER.lastIndex = gt + 1;
+  const close = HEAD_CLOSER.exec(rootHtml);
+  return close ? rootHtml.slice(gt + 1, close.index) : "";
 }
 
 /**
@@ -273,8 +322,8 @@ export function buildSubCompositionHtml(
   rawOverride?: string,
   gsapBaseUrl?: string,
 ): string | null {
-  const compFile = join(projectDir, compPath);
-  if (!existsSync(compFile)) return null;
+  const compFile = resolveWithinProject(projectDir, compPath);
+  if (!compFile || !existsSync(compFile)) return null;
 
   // rawOverride lets the preview route thread the hf-id-stamped content in
   // directly, so the build uses ids minted from the raw file, which is never
@@ -332,10 +381,11 @@ export function buildSubCompositionHtml(
   rewrittenContent = tagRootCompositionFile(rewrittenContent, compPath);
 
   // Use the project's index.html <head> to preserve all dependencies
-  const indexPath = join(projectDir, "index.html");
+  const indexPath = resolveWithinProject(projectDir, "index.html");
   let headContent = "";
 
-  if (existsSync(indexPath)) headContent = rootHeadContent(readFileSync(indexPath, "utf-8"));
+  if (indexPath && existsSync(indexPath))
+    headContent = rootHeadContent(readFileSync(indexPath, "utf-8"));
 
   // Inject <base> for relative asset resolution (before other tags)
   if (baseHref && !hasBaseElement(headContent)) {

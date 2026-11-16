@@ -132,11 +132,13 @@ describe("buildManifest", () => {
 });
 
 describe("isCoreSkill", () => {
-  it("classifies the entry router, hyperframes-* domain skills, and media-use as core", () => {
+  it("classifies the entry router, hyperframes-* domain skills, media-use and the video rebuilds as core", () => {
     expect(isCoreSkill("hyperframes")).toBe(true);
     expect(isCoreSkill("hyperframes-cli")).toBe(true);
     expect(isCoreSkill("hyperframes-registry")).toBe(true);
     expect(isCoreSkill("media-use")).toBe(true);
+    expect(isCoreSkill("reverse-any-video")).toBe(true);
+    expect(isCoreSkill("style-sampling")).toBe(true);
     // Decks, ports and optional integrations install on demand.
     expect(isCoreSkill("slideshow")).toBe(false);
     expect(isCoreSkill("remotion-to-hyperframes")).toBe(false);

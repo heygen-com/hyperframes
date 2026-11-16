@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
@@ -27,7 +27,10 @@ export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): vo
     const cacheDir = join(project.dir, ".waveform-cache");
     // Keyed on the file's size and mtime as well as its name, so re-encoding an
     // asset in place invalidates its peaks instead of drawing the old ones.
-    const cachePath = join(cacheDir, buildWaveformCacheKey(assetPath, stats));
+    const cachePath = join(
+      cacheDir,
+      buildWaveformCacheKey(relative(project.dir, audioPath), stats),
+    );
 
     try {
       if (isWaveformCacheDirectory(cacheDir) && existsSync(cachePath)) {

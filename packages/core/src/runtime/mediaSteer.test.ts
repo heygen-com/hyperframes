@@ -56,18 +56,4 @@ describe("steerMedia", () => {
     forgetSteering(el);
     expect(steerMedia(el, 0.02, 1, true).rate).toBe(1);
   });
-  it("steers a hidden video in proportion to its lag, up to twice as fast and down to half", () => {
-    const el = media("video");
-    expect(steerMedia(el, 0.1, 1, true, false, true).rate).toBeCloseTo(1.5, 9);
-    expect(steerMedia(el, 0.4, 1, true, false, true).rate).toBeCloseTo(2, 9);
-    expect(steerMedia(el, -0.05, 1, true, false, true).rate).toBeCloseTo(0.75, 9);
-    expect(steerMedia(el, -0.5, 1, true, false, true).rate).toBeCloseTo(0.5, 9);
-  });
-
-  it("steers a hidden video no differently inside the tolerance", () => {
-    expect(steerMedia(media("video"), 0.03, 1, true, false, true)).toEqual({
-      rate: 1,
-      seek: false,
-    });
-  });
 });

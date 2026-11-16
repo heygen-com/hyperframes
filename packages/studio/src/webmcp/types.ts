@@ -14,8 +14,8 @@
  * Only the surface Studio registers against is declared. `getTools` and
  * `executeTool` are the consumer side; Studio registers, it does not call.
  *
- * These stay hand-written rather than imported from `@mcp-b/webmcp-types`,
- * which the polyfill pulls in. That package's `registerTool` is overloaded to
+ * These stay hand-written rather than imported from `webmcp-types`, which
+ * the polyfill pulls in. That package's `registerTool` is overloaded to
  * infer argument types from a literal `inputSchema`, which is useful when you
  * register one tool inline and actively hostile when you register a uniform
  * list of them, as `registerStudioTools` does. Narrower is the safe operation
@@ -59,7 +59,7 @@ export interface ModelContextTool {
    * instead. See `toolResult.ts`.
    *
    * `options` is optional here although the spec always passes it: the
-   * `@mcp-b/global` polyfill (through 5.1.0) calls `execute(input)` with no
+   * `@mcp-b/global` polyfill before 6.0 called `execute(input)` with no
    * second argument, so a Studio handler must not depend on receiving one.
    */
   execute: (input: object, options?: ToolExecuteCallbackOptions) => Promise<unknown>;

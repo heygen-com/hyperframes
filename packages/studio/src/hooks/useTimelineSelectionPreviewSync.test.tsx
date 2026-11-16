@@ -80,6 +80,36 @@ function makeSyncFixture() {
 }
 
 describe("useTimelineSelectionPreviewSync", () => {
+  it("keeps an opaque frame's selection that matches a clip known only by its id", async () => {
+    // An opaque frame's rows carry only the clip id; its selections carry the frame's handle.
+    const timelineElements = [
+      { id: "clip-1", tag: "div", start: 0, duration: 1, track: 0 },
+    ] as TimelineElement[];
+    const element = document.createElement("div");
+    element.id = "clip-1";
+    const selection = { ...makeSelection("First", element), handle: "0123456789abcdef:1" };
+    const applyDomSelection = vi.fn();
+    const applyMarqueeSelection = vi.fn();
+    const buildDomSelectionForTimelineElement = vi.fn(async () => null);
+    const harness = renderHarness();
+
+    await harness.rerender({
+      selectedElementId: "clip-1",
+      selectedElementIds: new Set(["clip-1"]),
+      timelineElements,
+      domEditSelection: selection,
+      domEditGroupSelections: [selection],
+      buildDomSelectionForTimelineElement,
+      applyDomSelection,
+      applyMarqueeSelection,
+      onSelectionNotFound: vi.fn(),
+    });
+
+    expect(buildDomSelectionForTimelineElement).not.toHaveBeenCalled();
+    expect(applyDomSelection).not.toHaveBeenCalled();
+    harness.cleanup();
+  });
+
   it("syncs a multi-id timeline selection into preview group selections", async () => {
     const { firstSelection, secondSelection, timelineElements, selectionById } = makeSyncFixture();
     const applyDomSelection = vi.fn();

@@ -31,7 +31,7 @@ function clientToMover(pose: Affine, scene: HTMLElement, frameW: number): Affine
 
 const SUBPIXEL = 0.5;
 
-const within = (r: DOMRect, o: DOMRect): boolean =>
+export const within = (r: DOMRect, o: DOMRect): boolean =>
   r.left >= o.left - SUBPIXEL &&
   r.top >= o.top - SUBPIXEL &&
   r.right <= o.right + SUBPIXEL &&
@@ -53,10 +53,18 @@ function growToRect(box: Box, back: Affine, r: DOMRect): void {
   }
 }
 
+export function holdsFixedChild(el: HTMLElement): boolean {
+  const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_ELEMENT);
+  for (let n = 0; n < CONTENT_NODE_LIMIT && walker.nextNode(); n++) {
+    if (getComputedStyle(walker.currentNode as Element).position === "fixed") return true;
+  }
+  return false;
+}
+
 const POSITIONED = new Set(["absolute", "fixed"]);
 const NO_CONTENT = new Set(["none", "normal"]);
 
-function pseudoBox(el: HTMLElement, which: "::before" | "::after"): Box | null {
+export function pseudoBox(el: HTMLElement, which: "::before" | "::after"): Box | null {
   const cs = getComputedStyle(el, which);
   if (NO_CONTENT.has(cs.content) || !POSITIONED.has(cs.position)) return null;
   const left = parseFloat(cs.left) + el.clientLeft;

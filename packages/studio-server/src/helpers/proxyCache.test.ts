@@ -1,5 +1,13 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -30,6 +38,29 @@ afterEach(() => {
 });
 
 describe("cleanupProxyCache", () => {
+  it.skipIf(process.platform === "win32")(
+    "removes nothing from the folder a linked .transcode-cache points at",
+    () => {
+      const project = mkdtempSync(join(tmpdir(), "hf-proxy-cache-project-"));
+      const outside = mkdtempSync(join(tmpdir(), "hf-proxy-cache-outside-"));
+      tempDirs.push(project, outside);
+      const now = 1_800_000_000_000;
+      const theirs = proxy(outside, "someone-elses-file");
+      writeEntry(theirs, 4, now - 31 * 24 * 60 * 60 * 1000);
+      symlinkSync(outside, join(project, ".transcode-cache"));
+
+      const result = cleanupProxyCache(join(project, ".transcode-cache"), {
+        now,
+        maxBytes: Number.POSITIVE_INFINITY,
+        maxIdleMs: 60 * 60 * 1000,
+        minSweepIntervalMs: 0,
+      });
+
+      expect(result.removed).toEqual([]);
+      expect(existsSync(theirs)).toBe(true);
+    },
+  );
+
   it("removes idle and oldest entries until the cache is within its byte budget", () => {
     const cache = cacheDir();
     const now = 1_800_000_000_000;

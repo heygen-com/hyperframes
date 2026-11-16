@@ -1,4 +1,11 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -263,6 +270,18 @@ describe.skipIf(noTools)("diffVideos", () => {
     expect(r.ssim.frames).toBe(90);
     expect(r.ssim.mean).toBeGreaterThan(0.999);
     expect(r.worst).toEqual([]);
+  });
+
+  it("writes the side-by-side over a link at sbs.mp4, never through it", async () => {
+    const out = join(dir, "sbs");
+    mkdirSync(out, { recursive: true });
+    const victim = join(dir, "sbs-victim.txt");
+    writeFileSync(victim, "keep me");
+    symlinkSync(victim, join(out, "sbs.mp4"));
+    const r = await diffVideos({ reference: ref, yours: ref, outDir: out, sbs: true });
+    expect(readFileSync(victim, "utf8")).toBe("keep me");
+    expect(r.sbs).toBe(join(out, "sbs.mp4"));
+    expect(lstatSync(join(out, "sbs.mp4")).isFile()).toBe(true);
   });
 
   it("finds a wrong element by its cell when the whole frame still scores high", async () => {

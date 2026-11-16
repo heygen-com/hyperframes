@@ -21,7 +21,6 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -31,7 +30,12 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperframes/core";
-import { createFrameLookupTable, type ExtractedFrames, renameWithRetry } from "@hyperframes/engine";
+import {
+  createFrameLookupTable,
+  type ExtractedFrames,
+  mediaIdPathSegment,
+  renameWithRetry,
+} from "@hyperframes/engine";
 import {
   readPlanRemoteFiles,
   planFileSha256,
@@ -69,6 +73,7 @@ import {
   PlanVideosMetadataError,
   type PlanVideosJson,
 } from "./shared.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 const PLAN_V2_HASH_PREFIX = "hyperframes-plan-manifest-hash-v2\x00";
 // The engine's content-addressed extraction cache keeps this ownership marker
@@ -155,6 +160,7 @@ export interface PlanV2WithPublisherOptions {
   readonly remoteFiles?: BuildLocalExecutionPlanOptions["remoteFiles"];
   readonly chunksCarryAudio?: boolean;
   readonly deferAudio?: boolean;
+  readonly onPlanned?: (summary: { readonly strictVariablesChecked?: boolean }) => void;
 }
 
 export interface PlanV2MaterializationResult {
@@ -276,7 +282,7 @@ function isExtractionCacheCompleteSentinelPath(path: string): boolean {
 
 function resolveExtractedVideoOutputDir(planDir: string, videoId: string): string {
   const videoRoot = resolve(planDir, "video-frames");
-  const outputDir = resolve(videoRoot, videoId);
+  const outputDir = resolve(videoRoot, mediaIdPathSegment(videoId));
   if (outputDir === videoRoot || !outputDir.startsWith(`${videoRoot}${sep}`)) {
     throw new PlanV2IntegrityError(`unsafe extracted video id: ${JSON.stringify(videoId)}`);
   }
@@ -508,7 +514,7 @@ function computeManifestHash(manifest: Omit<PlanV2Manifest, "planHash">): string
 function writeBlob(sourcePath: string, destinationPath: string): void {
   if (existsSync(destinationPath)) return;
   mkdirSync(dirname(destinationPath), { recursive: true });
-  const temporaryDir = mkdtempSync(join(dirname(destinationPath), ".plan-v2-blob-"));
+  const temporaryDir = createStagingDir(dirname(destinationPath), ".plan-v2-blob-");
   const temporaryPath = join(temporaryDir, "blob");
   try {
     copyFileSync(sourcePath, temporaryPath);
@@ -673,7 +679,7 @@ export function createPlanV2FromExecutionPlan(
     throw new PlanV2IntegrityError("a local plan v2 directory cannot reference remote files");
   }
   mkdirSync(dirname(planV2Dir), { recursive: true });
-  const tempDir = mkdtempSync(join(dirname(planV2Dir), ".plan-v2-build-"));
+  const tempDir = createStagingDir(dirname(planV2Dir), ".plan-v2-build-");
   try {
     for (const blob of publication.blobs) {
       writeBlob(blob.sourcePath, planV2BlobPath(tempDir, blob.sha256));
@@ -764,10 +770,10 @@ export async function planV2WithPublisher(
   publisher: PlanV2ArtifactPublisher,
   options: Readonly<PlanV2WithPublisherOptions> = {},
 ): Promise<PlanV2Manifest> {
-  const stagingRoot = mkdtempSync(join(options.stagingParentDir ?? tmpdir(), ".execution-plan-"));
+  const stagingRoot = createStagingDir(options.stagingParentDir ?? tmpdir(), ".execution-plan-");
   const digests: PlanFileDigests = new Map();
   try {
-    await buildLocalExecutionPlan(projectDir, config, stagingRoot, {
+    const planned = await buildLocalExecutionPlan(projectDir, config, stagingRoot, {
       executionPlanSizeLimitBytes: Number.MAX_SAFE_INTEGER,
       deferVideoExtraction: true,
       remoteFiles: options.remoteFiles,
@@ -784,6 +790,7 @@ export async function planV2WithPublisher(
       sliceChunkAudio: true,
       deferAudio: options.deferAudio,
     });
+    options.onPlanned?.({ strictVariablesChecked: planned.strictVariablesChecked });
     return await publishExecutionPlan(stagingRoot, publisher, { digests, log: config.logger });
   } catch (error) {
     try {
@@ -1066,7 +1073,7 @@ export function materializePlanV2Target(
       sourcePath: verifyBlob(planV2Dir, artifact),
     }));
   mkdirSync(dirname(destinationDir), { recursive: true });
-  const tempDir = mkdtempSync(join(dirname(destinationDir), ".plan-v2-materialize-"));
+  const tempDir = createStagingDir(dirname(destinationDir), ".plan-v2-materialize-");
   try {
     for (const { artifact, sourcePath } of verified) {
       const destinationPath = join(tempDir, ...artifact.path.split("/"));

@@ -41,12 +41,13 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runAsCommand } from "./entrypoint.ts";
 // Import from source, like every other script here: bun workspace linking does
@@ -126,10 +127,23 @@ function needsHosting(file: FileTarget): boolean {
   return file.url === undefined && HOSTED_EXTENSIONS.has(extname(file.path).toLowerCase());
 }
 
+/** The declared file's path, refused unless it is inside the item and reached without a symlink. */
+function itemSource(itemName: string, itemDir: string, path: string): string {
+  const root = realpathSync(itemDir);
+  const source = resolve(root, path);
+  if (!source.startsWith(root + sep)) {
+    throw new Error(`${itemName}: files[] declares "${path}", which is outside the item.`);
+  }
+  if (realpathSync(source) !== source) {
+    throw new Error(`${itemName}: files[] declares "${path}", which goes through a symlink.`);
+  }
+  return source;
+}
+
 /** Point one file at the CDN, and say which bytes have to get there. */
 function hostFile(itemName: string, itemDir: string, file: FileTarget): Plan {
-  const source = resolve(itemDir, file.path);
-  const fd = openSync(source, constants.O_RDONLY | constants.O_NONBLOCK);
+  const source = itemSource(itemName, itemDir, file.path);
+  const fd = openSync(source, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
   let digest: string;
   try {
     if (!fstatSync(fd).isFile()) {

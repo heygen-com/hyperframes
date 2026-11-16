@@ -3,12 +3,13 @@ import { createReadStream, existsSync, readFileSync, renameSync, statSync } from
 import { isAbsolute, join, resolve } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { pinProjectRecord } from "../helpers/safePath.js";
-import { listProjectFiles } from "../helpers/projectSignature.js";
+import { listProjectFilesAsync } from "../helpers/projectSignature.js";
 import { readId } from "./historyId.js";
 import { takeHistoryOwnership } from "./ownerLock.js";
 import {
   planArtifactCleanup,
   finishArtifactCleanup,
+  recordedFileGone,
   type PendingArtifactCleanup,
 } from "./artifactCleanup.js";
 import {
@@ -198,7 +199,9 @@ function dropArtifactsOfGoneRevisions(state: VideoState): void {
 
 async function fileHashes(dir: string): Promise<Record<string, string>> {
   const files: Record<string, string> = {};
-  for (const { path } of listProjectFiles(dir).sort((a, b) => a.path.localeCompare(b.path))) {
+  for (const { path } of (await listProjectFilesAsync(dir)).sort((a, b) =>
+    a.path.localeCompare(b.path),
+  )) {
     const hash = createHash("sha256");
     for await (const chunk of createReadStream(join(dir, path))) hash.update(chunk);
     files[path] = hash.digest("hex");
@@ -266,7 +269,7 @@ export async function recordArtifacts(
         attribution,
       };
       const artifacts = kind === "check" ? state.checks : state.snapshots;
-      dropSupersededArtifacts(artifacts, artifact);
+      dropSupersededArtifacts(projectDir, artifacts, artifact);
       const list = revision ? (artifacts.revisions[revision] ??= []) : artifacts.unversioned;
       list.push(record);
       records.push(record);
@@ -288,18 +291,26 @@ function attributionOf(unchanged: boolean, revision: string | null): ArtifactRec
 }
 
 // An explicit output path can be reused; never retain a reference to overwritten evidence.
-function supersedes(artifact: ArtifactInput, previous: ArtifactRecord): boolean {
-  if (previous.status !== "cleaned" && !existsSync(previous.image ?? previous.report ?? ""))
-    return true;
+function supersedes(
+  projectDir: string,
+  artifact: ArtifactInput,
+  previous: ArtifactRecord,
+): boolean {
+  const path = previous.image ?? previous.report ?? "";
+  if (previous.status !== "cleaned" && recordedFileGone(projectDir, path)) return true;
   if (previous.id === artifact.id) return true;
   if (artifact.image && previous.image === artifact.image) return true;
   return Boolean(artifact.report && previous.report === artifact.report);
 }
 
-function dropSupersededArtifacts(artifacts: ArtifactCollection, artifact: ArtifactInput): void {
+function dropSupersededArtifacts(
+  projectDir: string,
+  artifacts: ArtifactCollection,
+  artifact: ArtifactInput,
+): void {
   for (const list of [...Object.values(artifacts.revisions), artifacts.unversioned]) {
     for (let i = list.length - 1; i >= 0; i--) {
-      if (supersedes(artifact, list[i]!)) list.splice(i, 1);
+      if (supersedes(projectDir, artifact, list[i]!)) list.splice(i, 1);
     }
   }
 }

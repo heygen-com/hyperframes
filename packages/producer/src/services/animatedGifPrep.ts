@@ -5,7 +5,9 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { parseHTML } from "linkedom";
 import { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "@hyperframes/core";
 import { DEFAULT_VP9_CPU_USED, runFfmpeg, renameWithRetry } from "@hyperframes/engine";
+import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 import { isHttpUrl } from "../utils/urlDownloader.js";
+import { escapesAssetRoot, outsideAssetRefusal } from "../utils/paths.js";
 import { encoderFailureError } from "./render/encoderInterruption.js";
 
 const PREPARED_GIF_SUBDIR = "_animated_gif";
@@ -31,6 +33,7 @@ export interface PrepareAnimatedGifInputsOptions {
   sourceAssets?: Map<string, string>;
   timeoutMs?: number;
   transcode?: (input: AnimatedGifTranscodeRequest) => Promise<void>;
+  assetRoot?: string;
 }
 
 export interface AnimatedGifTranscodeRequest {
@@ -78,7 +81,10 @@ function readLoopOverride(el: Element): boolean | null {
 
 export function resolveLocalImageSourcePath(
   src: string,
-  options: Pick<PrepareAnimatedGifInputsOptions, "projectDir" | "downloadDir" | "sourceAssets">,
+  options: Pick<
+    PrepareAnimatedGifInputsOptions,
+    "projectDir" | "downloadDir" | "sourceAssets" | "assetRoot"
+  >,
 ): string | null {
   const trimmed = src.trim();
   if (!trimmed || trimmed.startsWith("data:")) return null;
@@ -98,7 +104,12 @@ export function resolveLocalImageSourcePath(
     resolve(options.downloadDir, normalizedBase),
   ];
 
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+  const allowed = (candidate: string) =>
+    !namesAnotherNetworkRoot(options.projectDir, candidate) &&
+    ((!escapesAssetRoot(candidate, options.assetRoot) &&
+      outsideAssetRefusal(options.projectDir, candidate) !== "blocklisted") ||
+      !escapesAssetRoot(candidate, options.downloadDir));
+  return candidates.find((candidate) => allowed(candidate) && existsSync(candidate)) ?? null;
 }
 
 function isUsableFile(path: string): boolean {

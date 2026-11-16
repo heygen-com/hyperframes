@@ -1,7 +1,8 @@
 /**
  * @vitest-environment jsdom
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { Parser } from "acorn";
 import { ensureHfIds } from "./hfIds.js";
 import {
   parseHtml,
@@ -594,6 +595,59 @@ describe("addElementToHtml", () => {
 });
 
 describe("removeElementFromHtml", () => {
+  it.each([
+    "const nested = gsap.timeline();",
+    "nested = gsap.timeline();",
+    'window.__timelines["nested"] = gsap.timeline();',
+  ])("rediscovers a timeline when its declaration is deleted: %s", (declaration) => {
+    const html = `<html><body><div id="box"></div><div id="keep"></div>
+      <script>gsap.set("#box", { onComplete: () => { ${declaration} } });
+        const tl = gsap.timeline();
+        tl.to("#box", { x: 2 }); tl.to("#keep", { x: 3 });
+      </script></body></html>`;
+    const updated = removeElementFromHtml(html, "box");
+    expect(updated).not.toContain('"#box"');
+    expect(updated).not.toContain(declaration);
+    expect(updated).toContain('tl.to("#keep", { x: 3 });');
+  });
+
+  it("parses a script once when deleting a subtree with many tweens", () => {
+    const html = `<!doctype html><html><body>
+      <div id="parent"><div id="box"></div></div>
+      <div id="keep"></div>
+      <script>const tl = gsap.timeline();
+        tl.to("#box", { x: 10 }, 0); tl.to("#box", { x: 20 }, 0);
+        tl.to("#parent", { opacity: 0 }, 1);
+        tl.to("#keep", { x: 30 }, 2);
+      </script></body></html>`;
+    const parse = vi.spyOn(Parser, "parse");
+    try {
+      const updated = removeElementFromHtml(html, "parent");
+      expect(updated).not.toContain('"#box"');
+      expect(updated).not.toContain('"#parent"');
+      expect(updated).toContain('tl.to("#keep", { x: 30 }, 2);');
+      expect(parse).toHaveBeenCalledTimes(1);
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
+  it.each([
+    ['tl.to("#box", { x: 10 }).to("#box", { x: 20 });', ""],
+    [
+      'tl.to("#box", { x: 10 }).addLabel("hold", 1).to("#keep", { x: 20 });',
+      'tl.addLabel("hold", 1).to("#keep", { x: 20 });',
+    ],
+  ])("preserves surviving chain operations when deleting tweens: %s", (chain, expected) => {
+    const preamble = "const tl = gsap.timeline();";
+    const html = `<html><body><div id="box"></div><div id="keep"></div><script>${preamble}${chain}</script></body></html>`;
+    const updated = removeElementFromHtml(html, "box");
+    const script = new DOMParser()
+      .parseFromString(updated, "text/html")
+      .querySelector("script")?.textContent;
+    expect(script).toBe(preamble + expected);
+  });
+
   it("removes an element by id", () => {
     const html = `<!DOCTYPE html>
 <html><body>

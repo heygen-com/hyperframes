@@ -39,7 +39,7 @@ import { useAudioMetersVisible } from "../utils/audioMeterVisibility";
 import { LinkedSelectionToggle } from "./LinkedSelectionToggle";
 import { useProjectHasAudio } from "../utils/audioMeterMath";
 import { canAddBeatAt, addBeatAtCompositionTime } from "../utils/beatEditActions";
-import { isTypingTarget } from "../utils/typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 import { keyHint, matchesKey, useStudioKeys } from "../player/components/studioShortcuts";
 import type { TimelineProps } from "../player/components/TimelineTypes";
 

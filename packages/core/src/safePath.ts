@@ -1,4 +1,4 @@
-import { resolve, sep, join, dirname, basename, relative, isAbsolute } from "node:path";
+import { resolve, sep, join, dirname, basename, relative, isAbsolute, parse } from "node:path";
 import { lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
 
 export function realpath(path: string): string {
@@ -27,6 +27,12 @@ function isMissingPath(path: string): boolean {
   }
 }
 
+// On Windows even a realpath or lstat of a UNC or device path (\\host\share, \\?\, \\.\) connects to that host.
+function namesAnotherNetworkRoot(base: string, target: string): boolean {
+  const root = parse(target).root;
+  return /^[\\/]{2}/.test(root) && root.toLowerCase() !== parse(base).root.toLowerCase();
+}
+
 /**
  * Reject paths that escape the `base` directory — including via symlinks.
  *
@@ -50,6 +56,8 @@ function isMissingPath(path: string): boolean {
  * from there without a backwards edge.
  */
 export function isSafePath(base: string, resolved: string): boolean {
+  const target = resolve(resolved);
+  if (namesAnotherNetworkRoot(resolve(base), target)) return false;
   let baseReal: string;
   try {
     baseReal = realpath(resolve(base));
@@ -58,7 +66,6 @@ export function isSafePath(base: string, resolved: string): boolean {
     return false;
   }
 
-  const target = resolve(resolved);
   const trailing: string[] = [];
   let probe = target;
 
@@ -96,6 +103,110 @@ export function isSafePath(base: string, resolved: string): boolean {
 export function resolveWithinProject(base: string, relativePath: string): string | null {
   const resolved = resolve(base, relativePath);
   return isSafePath(base, resolved) ? resolved : null;
+}
+
+/** Segments as Windows opens them: any case, no trailing dots or spaces, no `:stream` suffix. */
+export function projectPathSegments(relPath: string): string[] {
+  return relPath
+    .toLowerCase()
+    .split(/[\\/]/)
+    .map((segment) => withoutTrailingDotsOrSpaces(segment.split(":", 1)[0] ?? ""));
+}
+
+function withoutTrailingDotsOrSpaces(segment: string): string {
+  let end = segment.length;
+  while (end > 0 && (segment[end - 1] === "." || segment[end - 1] === " ")) end--;
+  return segment.slice(0, end);
+}
+
+// Git metadata and env files hold commands other tools run and secrets: nothing serves or inlines them.
+export function isVcsOrSecretPath(relPath: string): boolean {
+  return projectPathSegments(relPath).some(
+    (segment) => segment === ".git" || segment.startsWith(".env"),
+  );
+}
+
+// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): no file
+// server serves any of it, the folder itself included, but Studio's own files and the assets compositions load.
+const STUDIO_FILES = new Set([
+  ".hyperframes/studio-motion.json",
+  ".hyperframes/studio-manual-edits.json",
+]);
+const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
+
+// Credentials and coding-tool state that projects often sit next to: registry tokens, MCP and agent settings, cloud and
+// SSH keys. No composition loads one, so no file server serves one and no upload ships one.
+const CREDENTIAL_FILES = new Set([
+  ".npmrc",
+  ".yarnrc",
+  ".yarnrc.yml",
+  ".pypirc",
+  "pip.conf",
+  "pip.ini",
+  ".netrc",
+  "_netrc",
+  ".git-credentials",
+  ".gitconfig",
+  ".mcp.json",
+]);
+const CREDENTIAL_FOLDERS = new Set([
+  ".ssh",
+  ".aws",
+  ".gnupg",
+  ".docker",
+  ".kube",
+  ".azure",
+  ".claude",
+  ".codex",
+  ".cursor",
+  ".agents",
+  ".gemini",
+  ".vscode",
+  ".idea",
+]);
+const CREDENTIAL_CONFIG_FOLDERS = new Set(["gcloud", "gh"]);
+const KEY_FILE = /^(?:id_(?:rsa|dsa|ecdsa|ed25519).*|.*\.(?:pem|key|p12|pfx))$/;
+
+/** Credential files and tool or agent state, for a project-relative path in any spelling Windows opens. */
+export function isCredentialOrToolStatePath(relPath: string): boolean {
+  const segments = projectPathSegments(relPath);
+  const name = segments.at(-1) ?? "";
+  return (
+    CREDENTIAL_FILES.has(name) ||
+    KEY_FILE.test(name) ||
+    segments.some(
+      (segment, at) =>
+        CREDENTIAL_FOLDERS.has(segment) ||
+        (segment === ".config" && CREDENTIAL_CONFIG_FOLDERS.has(segments[at + 1] ?? "")),
+    )
+  );
+}
+
+/** Files no composition loads, for a project-relative path in any spelling Windows opens: git, env, credentials, tool
+ * state, app records. */
+export function isStudioPrivatePath(relPath: string): boolean {
+  if (isVcsOrSecretPath(relPath) || isCredentialOrToolStatePath(relPath)) return true;
+  const path = projectPathSegments(relPath).join("/");
+  return (
+    (path === ".hyperframes" || path.startsWith(".hyperframes/")) &&
+    !STUDIO_FILES.has(path) &&
+    !STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
+  );
+}
+
+/** Whether `isPrivate` holds for a file under `projectDir`, spelled as given or with its links resolved. */
+export function isPrivateFileUnder(
+  projectDir: string,
+  filePath: string,
+  isPrivate: (relPath: string) => boolean,
+): boolean {
+  const rel = (from: string, to: string) => relative(from, to).split(sep).join("/");
+  if (isPrivate(rel(resolve(projectDir), resolve(filePath)))) return true;
+  try {
+    return isPrivate(rel(realpath(resolve(projectDir)), realpath(filePath)));
+  } catch {
+    return false;
+  }
 }
 
 /** The project folder is gone, renamed or deleted while open; a write must not bring it back. */

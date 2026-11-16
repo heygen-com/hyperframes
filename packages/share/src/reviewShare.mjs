@@ -446,9 +446,17 @@ async function spaceRefusal(client, refused, error) {
 
 /** Share's press: the first registers the project into the space given (none: the signed-in one) and opens its link
  * to that space; a later one reads the link, turning it back on when it was off. A registered project keeps its space.
+ * A host can prepare review content after registration is saved and before the link or its audience changes.
  * @param {{ projectPath: string, title: string, client: ReviewClient, spaceId?: string | null, audience?:
- * import("./types/share.js").AccessMode | undefined }} request */
-export const shareForReview = ({ projectPath, title, client, spaceId = null, audience }) =>
+ * import("./types/share.js").AccessMode | undefined, beforeOpen?: (projectId: string) => Promise<void> }} request */
+export const shareForReview = ({
+  projectPath,
+  title,
+  client,
+  spaceId = null,
+  audience,
+  beforeOpen,
+}) =>
   oneAtATime(projectPath, async () => {
     const read = await recordToShare(client, projectPath, spaceId);
     const id = read.projectId ?? (await registerOnce(client, projectPath, read, title));
@@ -458,6 +466,7 @@ export const shareForReview = ({ projectPath, title, client, spaceId = null, aud
     if (!read.projectId) await writeJsonAtomic(recordPath(projectPath), record);
     const share = await readShare(client, id, projectPath);
     if (takenDown(share)) return shown(client, share);
+    if (!record.opened || share.revoked) await beforeOpen?.(id);
     return openLink(client, projectPath, record, id, share, audience).then(
       (opened) => shown(client, opened),
       heldInstead(client, id),

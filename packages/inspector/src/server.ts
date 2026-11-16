@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import { isLoopbackHost } from "./pageServer";
 import { Inspector } from "./service";
 import type { InspectRequest } from "./types";
 
@@ -26,15 +27,6 @@ function failureOf(error: unknown) {
   if (message.startsWith(BROWSER_MISSING)) return { status: 503, message: "browser_unavailable" };
   if (!(error instanceof Error)) return { status: 500, message: "internal_error" };
   return { status: message === "no-composition" ? 404 : 400, message };
-}
-
-function loopback(host: string | undefined) {
-  if (!host) return true;
-  const name = host
-    .replace(/:\d+$/, "")
-    .replace(/^\[|\]$/g, "")
-    .toLowerCase();
-  return name === "127.0.0.1" || name === "localhost" || name === "::1";
 }
 
 function readBody(req: IncomingMessage): Promise<Buffer | "too_large"> {
@@ -73,7 +65,7 @@ export function createInspectorServer(project: string) {
   const inspector = new Inspector(project);
   const server = createServer(async (req, res) => {
     res.setHeader("Content-Type", "application/json");
-    if (!loopback(req.headers.host)) {
+    if (!isLoopbackHost(req.headers.host)) {
       send(res, 403, "host_not_allowed");
       return;
     }

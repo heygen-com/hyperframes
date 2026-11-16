@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   existsSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -123,7 +124,11 @@ test("two effects never share a file when one's name is taken by the person, run
       const files = sfx.map(({ file }) => file);
       recordInManifest(
         dir,
-        [...new Set(files)].map((path) => ({ path, type: "sfx", source: "search" })),
+        [...new Set(files)].map((path) => ({
+          path,
+          type: "sfx",
+          source: "search",
+        })),
       );
       return files;
     };
@@ -174,12 +179,12 @@ test("a numeric string speed, as the adapters forward it, passes the check", () 
   assert.doesNotMatch(runEngineWith({ speed: "0.8" }, "--only", "tts").stderr, /speed must/);
 });
 
-// Stand-ins on PATH for the Kokoro path: `tts` copies the line's text into the wav, `transcribe`
-// reads it back as one word, and ffprobe reports a tenth of a second per byte.
-const npxStub = `#!${process.execPath}
-const fs = require("node:fs");
+// Stand-ins for the Kokoro path: the CLI handed over in HYPERFRAMES_CLI_ENTRY copies the line's
+// text into the wav for `tts` and reads it back as one word for `transcribe`, and ffprobe on PATH
+// reports a tenth of a second per byte.
+const cliStub = `const fs = require("node:fs");
 const path = require("node:path");
-const [, command, input, ...rest] = process.argv.slice(2);
+const [command, input, ...rest] = process.argv.slice(2);
 const after = (name) => rest[rest.indexOf(name) + 1];
 if (command === "tts") {
   fs.mkdirSync(path.dirname(after("--output")), { recursive: true });
@@ -201,13 +206,10 @@ test("re-voicing one line keeps every other voice", { skip: process.platform ===
     const project = join(dir, "project");
     mkdirSync(bin);
     mkdirSync(project);
-    for (const [name, source] of [
-      ["npx", npxStub],
-      ["ffprobe", ffprobeStub],
-    ]) {
-      writeFileSync(join(bin, name), source);
-      chmodSync(join(bin, name), 0o755);
-    }
+    const cli = join(bin, "cli.cjs");
+    writeFileSync(cli, cliStub);
+    writeFileSync(join(bin, "ffprobe"), ffprobeStub);
+    chmodSync(join(bin, "ffprobe"), 0o755);
     const run = (lines, args = ["--only", "tts"]) => {
       const request = { provider: "kokoro", lines };
       writeFileSync(join(project, "audio_request.json"), JSON.stringify(request));
@@ -220,7 +222,8 @@ test("re-voicing one line keeps every other voice", { skip: process.platform ===
           env: {
             ...process.env,
             PATH: bin,
-            HEYGEN_CONFIG_DIR: dir,
+            HYPERFRAMES_CLI_ENTRY: cli,
+            HYPERFRAMES_CONFIG_DIR: dir,
             HEYGEN_API_KEY: "",
             HYPERFRAMES_API_KEY: "",
             HYPERFRAMES_MEDIA_HOME: dir,
@@ -257,5 +260,65 @@ test("re-voicing one line keeps every other voice", { skip: process.platform ===
     );
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// A BGM job carried over from audio_meta.json keeps its pid and log only when the log is the
+// engine's own in assets/bgm; any other log is dropped so wait-bgm never reads it.
+for (const [label, bgmLog, kept] of [
+  ["an outside log is dropped", () => "/etc/hosts", false],
+  ["a climbing log is dropped", () => "../../.hyperframes/credentials", false],
+  ["the engine's own log is kept", (dir) => join(dir, "assets/bgm/bgm-1700000000000.log"), true],
+]) {
+  test(`a run without bgm: ${label}`, () => {
+    const dir = mkdtempSync(join(tmpdir(), "audio-bgm-carry-"));
+    try {
+      mkdirSync(join(dir, "assets/bgm"), { recursive: true });
+      writeFileSync(join(dir, "assets/bgm/bgm-1700000000000.log"), "rendering");
+      writeFileSync(join(dir, "audio_request.json"), JSON.stringify({ lines: [] }));
+      const log = bgmLog(dir);
+      writeFileSync(
+        join(dir, "audio_meta.json"),
+        JSON.stringify({
+          bgm: { path: "assets/bgm/track.wav" },
+          bgm_pending: true,
+          bgm_pid: 4242,
+          bgm_log: log,
+        }),
+      );
+      const run = spawnSync(
+        process.execPath,
+        [join(HERE, "audio.mjs"), "--hyperframes", dir, "--only", "sfx"],
+        { encoding: "utf8", env: { ...process.env, HOME: dir } },
+      );
+      assert.equal(run.status, 0, run.stderr);
+      const meta = JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8"));
+      assert.equal(meta.bgm_pending, true);
+      assert.equal(meta.bgm_log, kept ? log : null);
+      assert.equal(meta.bgm_pid, kept ? 4242 : null);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test("an audio_meta.json in the project that links outside it is refused and left alone", () => {
+  const base = mkdtempSync(join(tmpdir(), "audio-meta-link-"));
+  const dir = join(base, "project");
+  try {
+    mkdirSync(dir);
+    writeFileSync(join(base, "theirs.json"), "{}");
+    symlinkSync(join(base, "theirs.json"), join(dir, "audio_meta.json"));
+    writeFileSync(join(dir, "audio_request.json"), JSON.stringify({ lines: [] }));
+    const run = spawnSync(
+      process.execPath,
+      [join(HERE, "audio.mjs"), "--hyperframes", dir, "--only", "sfx"],
+      { encoding: "utf8", env: { ...process.env, HOME: dir } },
+    );
+    assert.equal(run.status, 1, run.stdout);
+    assert.match(run.stderr, /audio_meta\.json leads outside the project folder/);
+    assert.equal(readFileSync(join(base, "theirs.json"), "utf8"), "{}");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
   }
 });

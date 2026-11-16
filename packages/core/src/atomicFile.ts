@@ -3,16 +3,29 @@ import { createHash, randomBytes } from "node:crypto";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { realpath } from "./safePath.js";
 import { renameWithRetry } from "./renameWithRetry.js";
+import { terminalText } from "./terminalText.js";
 
 type SiblingFileSystem = Pick<typeof fs, "writeFileSync" | "chmodSync" | "unlinkSync">;
 type DirectFileSystem = SiblingFileSystem & Pick<typeof fs, "openSync" | "closeSync">;
 
-// Codes a volume without hard links (FAT, exFAT, some network shares) answers link() with.
+// Codes a volume without hard links (FAT, exFAT, some network shares, Android app data) answers link() with.
 // EISDIR: libuv maps Windows ERROR_INVALID_FUNCTION (FAT/exFAT refusing a link) to it; nodejs/node#65817.
-const NO_HARD_LINKS = new Set(["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EISDIR"]);
+const NO_HARD_LINKS = new Set([
+  "EPERM",
+  "ENOTSUP",
+  "EOPNOTSUPP",
+  "ENOSYS",
+  "EXDEV",
+  "EISDIR",
+  "EACCES",
+]);
 const MAX_LINK_HOPS = 40;
 const TEMP_NAME_TRIES = 3;
 const TEMP_SUFFIX = /\.hf[0-9a-f]{6}\.tmp$/;
+
+export function cannotHardLink(error: unknown): boolean {
+  return NO_HARD_LINKS.has(errorCode(error));
+}
 
 /** A fresh temp sibling for a write that publishes `filePath`. 13 bytes, so a 242-byte name still fits. */
 export function atomicTempPath(filePath: string): string {
@@ -48,10 +61,19 @@ export function replaceFileAtomically(
   operations: SiblingFileSystem & Pick<typeof fs, "renameSync"> = fs,
 ): void {
   traceWrite(filePath, content);
+  refuseReadOnly(filePath);
   // Node fs.rename uses libuv uv_fs_rename; win32 calls MoveFileExW with MOVEFILE_REPLACE_EXISTING.
   publishSibling(filePath, content, mode, operations, (tempPath) =>
     renameWithRetry(tempPath, filePath, { rename: operations.renameSync }),
   );
+}
+
+export function refuseReadOnly(filePath: string): void {
+  try {
+    fs.accessSync(filePath, fs.constants.W_OK);
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") throw error;
+  }
 }
 
 /** Create a file that must not exist yet (EEXIST otherwise); readers never see it empty or partial. */
@@ -64,13 +86,17 @@ export function createFileAtomically(
     try {
       operations.linkSync(tempPath, filePath);
     } catch (error) {
-      if (!NO_HARD_LINKS.has(errorCode(error))) throw error;
+      if (!cannotHardLink(error)) throw error;
       createDirectly(filePath, content, operations);
     }
     try {
       operations.unlinkSync(tempPath);
     } catch (error) {
-      console.warn(`[hyperframes] created ${filePath} but could not remove ${tempPath}: ${error}`);
+      console.warn(
+        terminalText(
+          `[hyperframes] created ${filePath} but could not remove ${tempPath}: ${error}`,
+        ),
+      );
     }
   });
 }
@@ -174,4 +200,31 @@ function writeTempSibling(
 
 function errorCode(error: unknown): string {
   return String((error as NodeJS.ErrnoException)?.code);
+}
+
+const WIN32_LONG_PREFIX = "\\\\?\\";
+const WIN32_ABSOLUTE = /^([A-Za-z]:\\|\\\\)/;
+const WIN32_DOS_DEVICE = /^\\\\[.?]\\/;
+
+function toWin32LongPath(path: string): string {
+  const full = resolve(path);
+  if (!WIN32_ABSOLUTE.test(full) || WIN32_DOS_DEVICE.test(full)) return path;
+  return full.startsWith("\\\\")
+    ? `${WIN32_LONG_PREFIX}UNC\\${full.slice(2)}`
+    : `${WIN32_LONG_PREFIX}${full}`;
+}
+
+/** `prefix` + 6 random characters in `parent`, made private; Windows past 260 characters needs the long path. */
+export function createStagingDir(parent: string, prefix: string): string {
+  const requested = join(parent, prefix);
+  const long = toWin32LongPath(requested);
+  const created = fs.mkdtempSync(long);
+  return long === requested ? created : withoutAddedLongPrefix(created);
+}
+
+function withoutAddedLongPrefix(path: string): string {
+  const unc = `${WIN32_LONG_PREFIX}UNC\\`;
+  return path.startsWith(unc)
+    ? `\\\\${path.slice(unc.length)}`
+    : path.slice(WIN32_LONG_PREFIX.length);
 }

@@ -10,6 +10,7 @@ const SAFE_RENDER_ERROR_CODES = new Set<string>([
   "RENDER_TOO_SLOW",
   "RENDER_STAGE_STALLED",
   "PAGE_NEVER_READY",
+  "VARIABLES_INVALID",
 ]);
 
 /**

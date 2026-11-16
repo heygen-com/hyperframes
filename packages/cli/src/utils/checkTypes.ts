@@ -1,6 +1,6 @@
 import type { CheckDeadline } from "./checkDeadline.js";
 import type { CheckProgress } from "./checkProgress.js";
-import type { ProjectLintResult } from "./lintProject.js";
+import type { ProjectLintOptions, ProjectLintResult } from "./lintProject.js";
 import type { LayoutIssue, LayoutOverflow, LayoutRect } from "./layoutAudit.js";
 import type { Canvas, MotionFrame } from "./motionAudit.js";
 import type { MotionSpec } from "./motionSpec.js";
@@ -11,6 +11,7 @@ import type { HdrAutoPromotion } from "@hyperframes/engine";
 import type { ComponentReport } from "@hyperframes/inspector/live";
 import type { PrelaunchedBrowser } from "../capture/captureCompositionFrame.js";
 import type { CheckPhase } from "./checkDeadline.js";
+import type { SafeZone } from "./safeZones.js";
 
 export interface CheckOptions {
   samples: number;
@@ -31,12 +32,16 @@ export interface CheckOptions {
   findingFrames?: boolean;
   inspect?: boolean;
   captionZone?: CaptionZoneOptions;
+  safeZones?: SafeZone[];
   frameCheck?: FrameCheckOptions;
   /** Opt-in layout-audit knobs (`--layout "proseCoverageFloor=0.05"`). Defaults stay in the browser audit. */
   layout?: LayoutOptions;
   /** Explicit --proxy/--no-proxy override; undefined preserves project config. */
   autoProxy?: boolean;
   browserGpuMode?: BrowserGpuMode;
+  includeUnmounted?: boolean;
+  cache?: boolean;
+  craft?: boolean;
 }
 
 export interface CaptionZoneOptions {
@@ -132,6 +137,7 @@ export interface ContrastCapture {
 export interface GeometryCandidateRequest {
   text: boolean;
   media: boolean;
+  blocks: boolean;
   tolerance: number;
 }
 
@@ -169,7 +175,7 @@ export interface CheckFindingInspection {
 }
 
 export interface CheckGeometryCandidate extends CheckAnchor {
-  kind: "text" | "media";
+  kind: "text" | "media" | "block";
   tag: string;
   text: string;
   rect: LayoutRect;
@@ -395,6 +401,7 @@ export interface CheckReport {
     notes: string[];
   };
   ok: boolean;
+  cached?: { at: string };
   strict: boolean;
   browserSkipped: boolean;
   lint: CheckSection & { filesScanned: number };
@@ -422,7 +429,7 @@ export interface CheckReport {
 }
 
 export interface CheckDependencies {
-  lintProject(projectDir: string): Promise<ProjectLintResult>;
+  lintProject(projectDir: string, options?: ProjectLintOptions): Promise<ProjectLintResult>;
   resolveMotionSpec(projectDir: string): MotionSpecResolution;
   runBrowserCheck(
     project: ProjectDir,

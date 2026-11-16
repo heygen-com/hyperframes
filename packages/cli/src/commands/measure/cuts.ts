@@ -17,8 +17,8 @@ export default defineCommand({
   },
   args: {
     video: videoArg,
-    start: { type: "string", description: "First second to read (default 0)" },
-    end: { type: "string", description: "Last second to read (default: the end)" },
+    start: { type: "string", alias: ["from"], description: "First second to read (default 0)" },
+    end: { type: "string", alias: ["to"], description: "Last second to read (default: the end)" },
     json: jsonArg,
   },
   async run({ args }) {

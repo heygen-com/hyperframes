@@ -521,6 +521,78 @@ describe("resolveEntryHtmlPath", () => {
     expect(html).not.toContain('id="other"');
   });
 
+  describe("canonical sub-composition document", () => {
+    const SCENE_ROOT = `<div id="root" data-composition-id="scene" data-width="640" data-height="360" data-duration="3"><p id="label">Hello</p></div>`;
+    const SCENE_SCRIPT = `<script>window.__timelines = window.__timelines || {}; const tl = gsap.timeline({ paused: true }); tl.to("#label", { opacity: 1, duration: 3 }, 0); window.__timelines["scene"] = tl;</script>`;
+    const SCENE_STYLE = `<style>#root { position: absolute; inset: 0; background: #123456; }</style>`;
+    const INDEX = `<!doctype html><html><body>
+        <div data-composition-id="root" data-width="640" data-height="360" data-duration="9">
+          <div id="scene" data-composition-id="scene" data-composition-src="compositions/scene.html"></div>
+        </div>
+      </body></html>`;
+
+    function writeScene(html: string): void {
+      if (!fixture) throw new Error("fixture not set up");
+      mkdirSync(join(fixture.workDir, "project", "compositions"));
+      writeFileSync(join(fixture.workDir, "project", "compositions", "scene.html"), html);
+    }
+
+    it("isolates a full-document scene whose root lives in the body template", () => {
+      fixture = setupFixture(INDEX);
+      writeScene(`<!doctype html>
+<html>
+  <head><meta charset="UTF-8" /></head>
+  <body>
+    <template>
+      ${SCENE_STYLE}
+      ${SCENE_ROOT}
+      ${SCENE_SCRIPT}
+    </template>
+  </body>
+</html>`);
+      const wrapper = resolve("compositions/scene.html");
+      expect(wrapper).toBe(join(fixture.workDir, "standalone-entry.html"));
+      const html = readFileSync(wrapper, "utf-8");
+      expect(html).toContain('id="scene"');
+      expect(html).toContain('data-duration="3"');
+      expect(html).not.toContain('data-duration="9"');
+    });
+
+    it("still isolates the template-first fragment form of the same scene", () => {
+      fixture = setupFixture(INDEX);
+      writeScene(`<template>${SCENE_STYLE}${SCENE_ROOT}${SCENE_SCRIPT}</template>`);
+      const wrapper = resolve("compositions/scene.html");
+      expect(wrapper).toBe(join(fixture.workDir, "standalone-entry.html"));
+      expect(readFileSync(wrapper, "utf-8")).toContain('data-duration="3"');
+    });
+
+    it("isolates the first scene template when a file holds two and no live root", () => {
+      fixture = setupFixture(INDEX);
+      writeScene(
+        `<template>${SCENE_ROOT}</template><template><div data-composition-id="other" data-duration="5"></div></template>`,
+      );
+      const wrapper = resolve("compositions/scene.html");
+      expect(wrapper).toBe(join(fixture.workDir, "standalone-entry.html"));
+      const html = readFileSync(wrapper, "utf-8");
+      expect(html).toContain('data-duration="3"');
+      expect(html).not.toContain('id="other"');
+    });
+
+    it("leaves a full document with a live root outside its template untouched", () => {
+      fixture = setupFixture(INDEX);
+      writeScene(`<!doctype html>
+<html>
+  <body>
+    <div id="live" data-composition-id="live" data-width="640" data-height="360" data-duration="3"></div>
+    <template>${SCENE_ROOT}</template>
+  </body>
+</html>`);
+      expect(resolve("compositions/scene.html")).toBe(
+        join(fixture.workDir, "project", "compositions", "scene.html"),
+      );
+    });
+  });
+
   it("refuses a template entry that index.html does not mount", () => {
     fixture = setupFixture(PLAIN_HTML);
     mkdirSync(join(fixture.workDir, "project", "compositions"));
@@ -533,5 +605,49 @@ describe("resolveEntryHtmlPath", () => {
     rmSync(fixture.htmlPath);
     writeFileSync(join(fixture.workDir, "project", "scene.html"), TEMPLATE);
     expect(() => resolve("scene.html")).toThrow(/requires a project index\.html/);
+  });
+});
+
+describe("runCompileStage — chromaSubsampling 444 drawElement gate", () => {
+  let fixture: CompileFixture | null = null;
+
+  afterEach(() => {
+    fixture?.cleanup();
+    fixture = null;
+  });
+
+  async function compileWithChroma(
+    chromaSubsampling: "420" | "444" | undefined,
+  ): Promise<{ result: CompileStageResult; cfg: EngineConfig }> {
+    fixture = setupFixture(PLAIN_HTML);
+    const cfg = createCfg({ useDrawElement: true });
+    const result = await runCompileStage({
+      projectDir: join(fixture.workDir, "project"),
+      workDir: fixture.workDir,
+      htmlPath: fixture.htmlPath,
+      entryFile: "index.html",
+      job: createJob(chromaSubsampling ? { chromaSubsampling } : {}),
+      cfg,
+      needsAlpha: false,
+      log: noopLog,
+      assertNotAborted: () => {},
+    });
+    return { result, cfg };
+  }
+
+  it("turns drawElement off for 4:4:4, whose lossless PNG frames it cannot capture", async () => {
+    const { result, cfg } = await compileWithChroma("444");
+    expect(cfg.useDrawElement).toBe(false);
+    expect(result.deCompileGate).toBe("chroma_444");
+  });
+
+  it("leaves drawElement on for the default and for explicit 4:2:0", async () => {
+    for (const chroma of [undefined, "420"] as const) {
+      const { result, cfg } = await compileWithChroma(chroma);
+      expect(cfg.useDrawElement).toBe(true);
+      expect(result.deCompileGate).toBeUndefined();
+      fixture?.cleanup();
+      fixture = null;
+    }
   });
 });

@@ -282,6 +282,24 @@ describe("registerPreviewRoutes", () => {
     expect(html).toContain("window.AUTHOR_SEEN = 1");
   });
 
+  it("keeps the accelerated-canvas tracker before authored scripts in blur previews", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<html><head><script>window.AUTHOR_CANVAS = 1</script></head><body data-motion-blur="on"></body></html>',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+    expect(html.indexOf("data-hf-accel-tracker")).toBeGreaterThan(-1);
+    expect(html.indexOf("data-hf-accel-tracker")).toBeLessThan(
+      html.indexOf("window.AUTHOR_CANVAS"),
+    );
+    expect(html.indexOf('src="/api/runtime.js"')).toBeLessThan(
+      html.indexOf("window.AUTHOR_CANVAS"),
+    );
+  });
+
   it("serves one preview runtime when the page on disk already links one", async () => {
     const projectDir = createProjectDir();
     writeFileSync(
@@ -634,6 +652,117 @@ describe("registerPreviewRoutes", () => {
     const plugin = scripts[gsapAt + 1];
     expect(plugin?.getAttribute("src")).toContain("gsap@3/dist/MotionPathPlugin.min.js");
     expect(plugin?.getAttribute("type")).toBe(AFTER_FONTS_SCRIPT_TYPE);
+  });
+
+  it("does not inline project files no route serves", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, ".hyperframes"), { recursive: true });
+    writeFileSync(join(projectDir, ".hyperframes", "handoff.json"), '{"note":"PRIVATE_RECORD"}');
+    writeFileSync(join(projectDir, ".env"), "TOKEN=PRIVATE_ENV");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head><link rel="stylesheet" href=".env"></head><body>
+        <div data-composition-id="root" data-width="320" data-height="180"></div>
+        <script src=".hyperframes/handoff.json"></script>
+      </body></html>`,
+    );
+    const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+    const app = new Hono();
+    registerPreviewRoutes(
+      app,
+      createAdapter(projectDir, {
+        bundle: (dir, options) =>
+          bundleToSingleHtml(dir, { ...PREVIEW_BUNDLE_OPTIONS, ...options }),
+      }),
+    );
+
+    const html = await (await app.request("http://localhost/projects/demo/preview")).text();
+
+    expect(html).toContain('data-composition-id="root"');
+    expect(html).not.toContain("PRIVATE_RECORD");
+    expect(html).not.toContain("PRIVATE_ENV");
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "does not serve an env file that index.html links to, but still serves a main file linked from outside",
+    async () => {
+      const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+      const preview = async (projectDir: string) => {
+        const app = new Hono();
+        registerPreviewRoutes(
+          app,
+          createAdapter(projectDir, {
+            bundle: async (dir, options) => {
+              try {
+                return await bundleToSingleHtml(dir, { ...PREVIEW_BUNDLE_OPTIONS, ...options });
+              } catch {
+                return null;
+              }
+            },
+          }),
+        );
+        return (await app.request("http://localhost/projects/demo/preview")).text();
+      };
+
+      const linkedToEnv = createProjectDir();
+      writeFileSync(join(linkedToEnv, ".env"), "TOKEN=LINKED_ENV_SECRET");
+      rmSync(join(linkedToEnv, "index.html"));
+      if (!tryCreateSymlink(".env", join(linkedToEnv, "index.html"), "file")) return;
+      expect(await preview(linkedToEnv)).not.toContain("LINKED_ENV_SECRET");
+
+      const shared = mkdtempSync(join(tmpdir(), "hf-preview-shared-main-"));
+      tempDirs.push(shared);
+      writeFileSync(
+        join(shared, "main.html"),
+        "<html><head></head><body>SHARED_MAIN</body></html>",
+      );
+      const linkedOut = createProjectDir();
+      rmSync(join(linkedOut, "index.html"));
+      if (!tryCreateSymlink(join(shared, "main.html"), join(linkedOut, "index.html"), "file"))
+        return;
+      expect(await preview(linkedOut)).toContain("SHARED_MAIN");
+    },
+  );
+
+  it("asks for private files to be refused with plain data, so a build thread can join same-content builds", async () => {
+    const projectDir = createProjectDir();
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!doctype html><html><head></head><body><div data-composition-id="root"></div></body></html>`,
+    );
+    const { bundleToSingleHtml } = await import("@hyperframes/core/compiler");
+    // A host that builds on another thread: only plain data crosses, and builds with equal data are shared.
+    const shared = new Map<string, Promise<string>>();
+    const sent: unknown[] = [];
+    let builds = 0;
+    const threaded: StudioApiAdapter["bundle"] = (dir, options = {}) => {
+      const { onRead: _onRead, ...data } = options;
+      expect(Object.values(data).some((value) => typeof value === "function")).toBe(false);
+      sent.push(structuredClone(data));
+      const key = `${dir}\0${JSON.stringify(data)}`;
+      let build = shared.get(key);
+      if (!build) {
+        builds++;
+        build = bundleToSingleHtml(dir, { ...PREVIEW_BUNDLE_OPTIONS, ...data });
+        shared.set(key, build);
+      }
+      return build;
+    };
+    const first = new Hono();
+    const second = new Hono();
+    registerPreviewRoutes(first, createAdapter(projectDir, { bundle: threaded }));
+    registerPreviewRoutes(second, createAdapter(projectDir, { bundle: threaded }));
+
+    await Promise.all([
+      first.request("http://localhost/projects/demo/preview"),
+      second.request("http://localhost/projects/demo/preview"),
+    ]);
+
+    expect(sent).toEqual([
+      { stampHfIds: true, privateFiles: "studio" },
+      { stampHfIds: true, privateFiles: "studio" },
+    ]);
+    expect(builds).toBe(1);
   });
 
   async function previewScriptSrcs(bodyGsapTag: string) {
@@ -1545,6 +1674,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       absoluteSourcePath: string,
       at: number,
       box?: { width: number; height: number },
+      startUncachedStill?: (make: () => Promise<string>) => Promise<string>,
     ) => Promise<string>;
     scanMapImpl?: ScanMapImpl;
     probeAssetCodecImpl?: () => Promise<{
@@ -1625,6 +1755,71 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
     }));
     return import("./preview.js");
   }
+
+  it.each(["bundled", "disk after null bundle", "disk after failed bundle"])(
+    "installs preview hooks before authored head consumers with flags, facts and error capture already present (%s)",
+    async (path) => {
+      const projectDir = createProjectDir();
+      const authored = `<!doctype html><html><head>
+        <script data-hf-accel-tracker>window.TRACKER_KEPT = true;</script>
+        <script data-hyperframes-preview-runtime="1" src="/stale-runtime.js"></script>
+        <script id="head-consumer">window.HEAD_CONSUMER = document.createElement("video").requestVideoFrameCallback;</script>
+        <script id="head-library" src="assets/head-library.js"></script>
+      </head><body><main data-composition-id="main" data-duration="2" data-motion-blur="on"></main>
+        <script id="body-consumer">window.BODY_CONSUMER = true;</script>
+      </body></html>`;
+      writeFileSync(join(projectDir, "index.html"), authored);
+      writeFileSync(
+        join(projectDir, "scene.html"),
+        `<template><main data-composition-id="scene" data-duration="2"></main><script id="body-consumer">window.BODY_CONSUMER = true;</script></template>`,
+      );
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        scanMapImpl: async () => ({
+          "/clip.webm": {
+            codecName: "vp9",
+            browserHostile: true,
+            representativeMime: 'video/webm; codecs="vp09.00.10.08"',
+          },
+        }),
+      });
+      const app = new Hono();
+      register(
+        app,
+        createAdapter(projectDir, {
+          bundle: async () => {
+            if (path === "disk after failed bundle") throw new Error("bundler unavailable");
+            return path === "bundled" ? authored : null;
+          },
+        }),
+      );
+      for (const suffix of ["", "/comp/scene.html"]) {
+        const response = await app.request("http://localhost/projects/demo/preview" + suffix);
+        expect(response.status).toBe(200);
+        const html = await response.text();
+        const runtime = html.indexOf('src="/api/runtime.js"');
+        expect(runtime).toBeGreaterThan(-1);
+        for (const early of [
+          `name="${STUDIO_PREVIEW_MARK_META}"`,
+          `window.${STUDIO_PREVIEW_ERRORS}=`,
+          "window.__HF_MEDIA_CODEC_MAP__=",
+          "window.__HF_MEDIA_SOURCE_FACTS__=",
+        ]) {
+          expect(html.indexOf(early)).toBeGreaterThan(-1);
+          expect(html.indexOf(early)).toBeLessThan(runtime);
+        }
+        for (const authoredId of ["head-consumer", "head-library", "body-consumer"])
+          expect(runtime).toBeLessThan(html.indexOf(`id="${authoredId}"`));
+        expect(html).not.toContain("stale-runtime.js");
+        expect(
+          parseHTML(html).document.querySelectorAll("script[data-hyperframes-preview-runtime]"),
+        ).toHaveLength(1);
+        expect(
+          parseHTML(html).document.querySelectorAll("script[data-hf-accel-tracker]"),
+        ).toHaveLength(1);
+        expect(html).toContain("window.TRACKER_KEPT = true;");
+      }
+    },
+  );
 
   describe("?hf-proxy=h264 on the static asset route", () => {
     it("serves proxy bytes with Accept-Ranges on a full request, and a 206 range slice on a Range request", async () => {
@@ -1745,6 +1940,8 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         join(projectDir, "clip.mp4"),
         12.34,
         undefined,
+        expect.any(Function),
+        expect.any(AbortSignal),
       );
 
       expect((await app.request(`${url}&hf-proxy-still=-1`)).status).toBe(404);
@@ -1754,6 +1951,108 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
           .status,
       ).toBe(404);
       expect(resolveStillMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("makes at most four new stills at once, and serves a finished still without waiting", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const stillPath = join(projectDir, "still.jpg");
+      writeFileSync(stillPath, "jpegbytes");
+      const finishers: Array<() => void> = [];
+      let running = 0;
+      let mostRunning = 0;
+      const resolveStillMock = vi.fn(
+        async (
+          _dir: string,
+          _file: string,
+          at: number,
+          _box?: { width: number; height: number },
+          startUncachedStill?: (make: () => Promise<string>) => Promise<string>,
+        ) => {
+          if (at === 99) return stillPath;
+          return startUncachedStill!(async () => {
+            mostRunning = Math.max(mostRunning, ++running);
+            await new Promise<void>((resolve) => finishers.push(resolve));
+            running--;
+            return stillPath;
+          });
+        },
+      );
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveStillImpl: resolveStillMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=";
+
+      const made = Array.from({ length: 40 }, (_, i) => app.request(`${url}${i}`));
+      await vi.waitFor(() => expect(finishers).toHaveLength(4));
+      const finished = await app.request(`${url}99`);
+      expect(finished.status).toBe(200);
+      expect(finishers).toHaveLength(4);
+
+      let ended = 0;
+      while (ended < 40) {
+        await vi.waitFor(() => expect(finishers.length).toBeGreaterThan(0));
+        finishers.shift()?.();
+        ended++;
+      }
+      for (const res of await Promise.all(made)) expect(res.status).toBe(200);
+      expect(mostRunning).toBe(4);
+    });
+
+    it("makes a still again for a request that shared a waiter whose client left", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const stillPath = join(projectDir, "still.jpg");
+      writeFileSync(stillPath, "jpegbytes");
+      const finishers: Array<() => void> = [];
+      const inFlight = new Map<number, Promise<string>>();
+      const made: number[] = [];
+      const resolveStillMock = vi.fn(
+        (
+          _dir: string,
+          _file: string,
+          at: number,
+          _box?: { width: number; height: number },
+          startUncachedStill?: (make: () => Promise<string>) => Promise<string>,
+        ) => {
+          const shared = inFlight.get(at);
+          if (shared) return shared;
+          const making = startUncachedStill!(async () => {
+            made.push(at);
+            await new Promise<void>((resolve) => finishers.push(resolve));
+            return stillPath;
+          }).finally(() => inFlight.delete(at));
+          inFlight.set(at, making);
+          return making;
+        },
+      );
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveStillImpl: resolveStillMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=";
+
+      const busy = [1, 2, 3, 4].map((at) => app.request(`${url}${at}`));
+      await vi.waitFor(() => expect(finishers).toHaveLength(4));
+      const leaving = new AbortController();
+      const first = app.request(`${url}10`, { signal: leaving.signal }).catch(() => null);
+      await vi.waitFor(() => expect(resolveStillMock).toHaveBeenCalledTimes(5));
+      const second = app.request(`${url}10`);
+      await vi.waitFor(() => expect(resolveStillMock).toHaveBeenCalledTimes(6));
+      leaving.abort();
+      await first;
+      await vi.waitFor(() => expect(resolveStillMock).toHaveBeenCalledTimes(7));
+
+      for (let ended = 0; ended < 5; ended++) {
+        await vi.waitFor(() => expect(finishers.length).toBeGreaterThan(0));
+        finishers.shift()?.();
+      }
+      expect((await second).status).toBe(200);
+      for (const res of await Promise.all(busy)) expect(res.status).toBe(200);
+      expect(made).toEqual([1, 2, 3, 4, 10]);
     });
 
     it("honors If-None-Match on a repeat request with a 304, without re-invoking resolveProxy", async () => {
@@ -2841,6 +3140,29 @@ describe("the desktop app's private folder", () => {
       );
       expect(res.status).toBe(404);
       expect(await res.text()).not.toContain("secret");
+    }
+  });
+  it("is joined by credentials and tool state, which neither preview route serves", async () => {
+    const projectDir = createProjectDir();
+    const credentials = [
+      ".npmrc",
+      ".mcp.json",
+      ".claude/x.json",
+      ".aws/credentials",
+      "id_ed25519",
+      "cert.pem",
+    ];
+    for (const folder of [".claude", ".aws"])
+      mkdirSync(join(projectDir, folder), { recursive: true });
+    for (const file of credentials) writeFileSync(join(projectDir, file), "secret");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    for (const route of ["preview", "preview/comp"]) {
+      for (const file of credentials) {
+        const res = await app.request(`http://localhost/projects/demo/${route}/${file}`);
+        expect(res.status).toBe(404);
+        expect(await res.text()).not.toContain("secret");
+      }
     }
   });
   it("still serves the app's request pictures", async () => {

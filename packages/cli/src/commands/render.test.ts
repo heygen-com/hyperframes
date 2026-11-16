@@ -124,9 +124,17 @@ vi.mock("../utils/producer.js", () => ({
       }),
     ),
     renderConfigFromRequest: vi.fn(
-      (request: { options: Record<string, unknown> }, runtime: { logger?: unknown }) => {
+      (
+        request: { options: Record<string, unknown> },
+        runtime: { logger?: unknown; allowOutsideProjectAssets?: boolean },
+      ) => {
         const { engineConfig, ...options } = request.options;
-        return { ...options, producerConfig: engineConfig, logger: runtime.logger };
+        return {
+          ...options,
+          producerConfig: engineConfig,
+          logger: runtime.logger,
+          allowOutsideProjectAssets: runtime.allowOutsideProjectAssets,
+        };
       },
     ),
     createRenderJob: vi.fn((config: Record<string, unknown>) => {
@@ -578,6 +586,44 @@ describe("renderLocal browser GPU config", () => {
     expect(result?.outcome).toBe("completed");
     expect(result?.warnings?.map((warning) => warning.code)).toEqual(["audio_lowered"]);
     warn.mockRestore();
+  });
+
+  it.each([
+    { name: "a received entry", files: ["index.html"], allowed: false },
+    { name: "a record listing only an image", files: ["assets/in.png"], allowed: true },
+    { name: "a record listing a received stylesheet", files: ["style.css"], allowed: false },
+    { name: "a record listing no files", files: [], allowed: true },
+    { name: "no received-files record", files: undefined, allowed: true },
+  ])("brings in outside files for $name: $allowed", async ({ files, allowed }) => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-render-received-"));
+    writeFileSync(join(projectDir, "index.html"), "<div></div>");
+    mkdirSync(join(projectDir, "assets"));
+    writeFileSync(
+      join(projectDir, "assets", "in.png"),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    if (files) {
+      mkdirSync(join(projectDir, ".hyperframes"));
+      writeFileSync(
+        join(projectDir, ".hyperframes", "received-files.json"),
+        JSON.stringify({ files }),
+      );
+    }
+    try {
+      await renderLocal(projectDir, join(projectDir, "out.mp4"), {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: true,
+        throwOnError: true,
+      });
+      expect(producerState.createdJobs.at(-1)?.allowOutsideProjectAssets).toBe(allowed);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 
   it("cleans orphaned browser trees before starting a local render", async () => {
@@ -1217,6 +1263,21 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.createdJobs[0]?.videoFrameFormat).toBe("png");
   });
 
+  it("forwards chromaSubsampling to createRenderJob", async () => {
+    await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      chromaSubsampling: "444",
+    });
+
+    expect(producerState.createdJobs[0]?.chromaSubsampling).toBe("444");
+  });
+
   it("forwards debug mode to createRenderJob", async () => {
     await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
       fps: { num: 30, den: 1 },
@@ -1420,6 +1481,35 @@ describe("renderLocal browser GPU config", () => {
 
     vi.advanceTimersByTime(100);
     expect(consumeCommandResult().exitCode).toBe(0);
+  });
+
+  it("does not finalize the host command or mask a later upload failure when embedded", async () => {
+    const success = await import("../utils/render-success-state.js");
+    const lifecycle = await import("../utils/commandResult.js");
+    const exit = vi.spyOn(lifecycle, "scheduleCliExit");
+    success._resetRenderSuccessForTests();
+    const uploadFailure = new Error("upload failed after render");
+    try {
+      const share = async () => {
+        await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+          fps: { num: 30, den: 1 },
+          quality: "standard",
+          format: "mp4",
+          gpu: false,
+          browserGpuMode: "software",
+          hdrMode: "auto",
+          quiet: true,
+          embedded: true,
+          exitAfterComplete: true,
+        });
+        throw uploadFailure;
+      };
+      await expect(share()).rejects.toBe(uploadFailure);
+      expect(exit).not.toHaveBeenCalled();
+      expect(success.isRunDelivered()).toBe(false);
+    } finally {
+      success._resetRenderSuccessForTests();
+    }
   });
 
   it("still completes the render when the output registry cannot be written", async () => {
@@ -2089,6 +2179,21 @@ describe("checkRenderResolutionPreflight", () => {
       ).toBeUndefined();
     });
 
+    it("clears a landscape-1440p preset on a portrait 720p composition (an exact 2×)", async () => {
+      expect(
+        await checkRenderResolutionPreflight(comp(720, 1280), "landscape-1440p", agnostic),
+      ).toBeUndefined();
+    });
+
+    it("refuses `--resolution 1440p` on a 1920×1080 composition: 4/3 is not an integer scale", async () => {
+      const result = await checkRenderResolutionPreflight(
+        landscapeHtml,
+        "landscape-1440p",
+        agnostic,
+      );
+      expect(result?.kind).toBe("non-integer-scale");
+    });
+
     it("clears a landscape preset on a square composition", async () => {
       // aspect > 1 → landscape, aspect = 1 → square. Both self-heal.
       expect(
@@ -2370,6 +2475,9 @@ describe("normalizeStageCode", () => {
     expect(normalizeStageCode("Encoding frame 600/600")).toBe("encoding_video");
     expect(normalizeStageCode("Encoding frame 12/90")).toBe("encoding_video");
     expect(normalizeStageCode("Capturing frame 120/600 (6 workers)")).toBe("capturing_frame");
+    expect(normalizeStageCode("Checking effects, 240 of 240 frames")).toBe(
+      normalizeStageCode("Checking effects, 12 of 90 frames"),
+    );
     expect(normalizeStageCode("Streaming frame 3/40 (segment 1/2, 2 workers)")).toBe(
       "streaming_frame",
     );

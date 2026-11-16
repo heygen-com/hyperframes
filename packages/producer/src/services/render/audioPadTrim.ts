@@ -20,7 +20,6 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
 import { dirname, join } from "node:path";
 import {
   DEFAULT_CONFIG,
@@ -38,6 +37,7 @@ import {
 } from "@hyperframes/engine";
 import { redactKnownPaths, redactTelemetryString } from "@hyperframes/core";
 import { measureTruePeakDbfs } from "./audioTruePeak.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 /**
  * Tolerance used to decide whether an audio file is already short enough to
@@ -467,7 +467,7 @@ async function enforceAacTruePeak(input: EnforceAacTruePeakInput): Promise<{
 }> {
   let scratchDir: string | undefined;
   try {
-    scratchDir = mkdtempSync(join(dirname(input.audioPath), ".true-peak-"));
+    scratchDir = createStagingDir(dirname(input.audioPath), ".true-peak-");
     const correctedPath = join(scratchDir, "audio.m4a");
     const measurements: string[] = [];
     let attenuationDb = 0;

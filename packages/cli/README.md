@@ -104,8 +104,11 @@ Piped, non-quiet renders also emit a single `@hf-result ` JSON line after a loca
 render succeeds, never after a failure. Version 1 has `operation: "render"` and
 `reference_background`, the background the render measured from the composition's
 root and body: `{"kind":"solid","rgb":[r,g,b]}`, `{"kind":"none"}`,
-`{"kind":"unsupported_non_solid"}` or `{"kind":"unknown"}`. Consumers must ignore
-unknown versions and fields. A `--docker` render prints no result line from the
+`{"kind":"unsupported_non_solid"}` or `{"kind":"unknown"}`. A render that applied
+motion blur also carries `motion_blur`: `tier` (`"capture"` or `"filter"`, absent
+when none ran), `movers`, `failed_frames` and a `fingerprint` of 14 snake_case
+counts (absent when the page produced none); it is absent when the render has no
+blur summary. Consumers must ignore unknown versions and fields. A `--docker` render prints no result line from the
 launcher. In batch mode each manifest row carries the same `reference_background` value (`null` until the row completes, and for a
 row that failed).
 

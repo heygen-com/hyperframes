@@ -1,3 +1,6 @@
+import { rawCssUrlMatches, replaceMatches } from "@hyperframes/parsers/css-url-scans";
+import { findSceneTemplate } from "@hyperframes/parsers/sub-composition-validity";
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   SVG_REFERENCE_ALIASES_ATTR,
   readSvgReferenceAliases,
@@ -73,7 +76,6 @@ type PendingScript =
 
 const EXTERNAL_SCRIPT_LOAD_TIMEOUT_MS = 8000;
 const BARE_RELATIVE_PATH_RE = /^(?![a-zA-Z][a-zA-Z\d+\-.]*:)(?!\/\/)(?!\/)(?!\.\.?\/).+/;
-const CSS_URL_RE = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
 const PATH_ATTRS = ["src", "href"] as const;
 
 /**
@@ -127,7 +129,7 @@ function rewriteRuntimeAssetPath(value: string, compositionUrl: URL | null): str
 
 function rewriteRuntimeCssAssetUrls(cssText: string, compositionUrl: URL | null): string {
   if (!compositionUrl || !cssText) return cssText;
-  return cssText.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+  return replaceMatches(cssText, rawCssUrlMatches(cssText), (full, quote, rawUrl) => {
     const rewritten = rewriteRuntimeAssetPath(rawUrl || "", compositionUrl);
     if (rewritten === rawUrl) return full;
     return `url(${quote || ""}${rewritten}${quote || ""})`;
@@ -185,6 +187,11 @@ function rewriteSubCompositionAssetPaths(root: ParentNode, compositionUrl: URL |
   }
 }
 
+function sceneOrFirstTemplate(doc: Document): HTMLTemplateElement | null {
+  const templates = Array.from(doc.querySelectorAll<HTMLTemplateElement>("template"));
+  return findSceneTemplate(templates) ?? templates[0] ?? null;
+}
+
 function uniqueCompositionId(baseId: string, index: number): string {
   return `${baseId}__hf${index}`;
 }
@@ -195,12 +202,12 @@ const waitForExternalScriptLoad = (
   new Promise((resolve) => {
     let settled = false;
     const startedAt = Date.now();
-    let timeoutId: number | null = null;
+    let timeoutId: ReturnType<typeof wallSetTimeout> | null = null;
     const settle = (status: "load" | "error" | "timeout") => {
       if (settled) return;
       settled = true;
       if (timeoutId != null) {
-        window.clearTimeout(timeoutId);
+        wallClearTimeout(timeoutId);
       }
       resolve({
         status,
@@ -209,7 +216,7 @@ const waitForExternalScriptLoad = (
     };
     scriptEl.addEventListener("load", () => settle("load"), { once: true });
     scriptEl.addEventListener("error", () => settle("error"), { once: true });
-    timeoutId = window.setTimeout(() => settle("timeout"), EXTERNAL_SCRIPT_LOAD_TIMEOUT_MS);
+    timeoutId = wallSetTimeout(() => settle("timeout"), EXTERNAL_SCRIPT_LOAD_TIMEOUT_MS);
   });
 
 function resetCompositionHost(host: Element) {
@@ -786,6 +793,9 @@ async function mountExternalCompositions(
             onDiagnostic: params.onDiagnostic,
           });
         }
+        if (!compositionUrl || !/\.html?$/i.test(compositionUrl.pathname)) {
+          throw new Error("data-composition-src must name an .html file");
+        }
         const response = await fetch(src);
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
@@ -800,7 +810,7 @@ async function mountExternalCompositions(
             ? doc.querySelector<HTMLTemplateElement>(
                 `template#${CSS.escape(authoredCompositionId)}-template`,
               )
-            : null) ?? doc.querySelector<HTMLTemplateElement>("template");
+            : null) ?? sceneOrFirstTemplate(doc);
         const sourceNode = template ? template.content : doc.body;
         return await mount({
           host,

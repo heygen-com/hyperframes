@@ -4,6 +4,9 @@ export const READ_VERSION = 7;
 
 export type Separation = "stems" | "mix";
 
+export const LAYERS = ["music", "sfx", "voice"] as const;
+export type Layer = (typeof LAYERS)[number];
+
 export type RateUnit = "chars" | "words";
 
 export type Ending = "rising" | "falling" | "level";
@@ -121,6 +124,7 @@ export interface ReadAudio {
   sha256: string;
   duration: number;
   separation: Separation;
+  layer?: Layer;
   stems: AudibleStem[];
   stemsDir: string | null;
   voiceFreeMix: string | null;

@@ -1,5 +1,6 @@
 import {
   DEFAULT_CONFIG,
+  assertPublicHttpsUrl,
   buildZeroDurationDiagnostic,
   downloadToTemp,
   evaluateHfDiagnostic,
@@ -44,6 +45,7 @@ import {
 import { defineCommand } from "../utils/defineCommand.js";
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -53,6 +55,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 import { sumOf } from "../measure/media.js";
 import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
 import {
@@ -85,6 +88,7 @@ import {
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
+  terminalText,
 } from "@hyperframes/core";
 import { parseHTML } from "linkedom";
 import { resolveProject } from "../utils/project.js";
@@ -109,6 +113,7 @@ import {
   localVideos,
   probeHeldVideo,
   projectLocalFile,
+  projectVideoFile,
   type HeldVideoProbe,
 } from "./snapshotHeldVideos.js";
 import type { Example } from "./_examples.js";
@@ -420,14 +425,38 @@ const processStderr = (error: unknown) =>
     ? error.stderr
     : "";
 
-const REMOTE_VIDEO_DIR = join(tmpdir(), "hyperframes-snapshot-media");
+/** `parent`'s folder for remote clips kept across runs, or a fresh one when that folder is not this user's alone. */
+export function privateMediaDir(parent: string): string {
+  const dir = join(parent, `hyperframes-snapshot-media-${process.getuid?.() ?? "u"}`);
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(dir);
+  const ours =
+    stat.isDirectory() &&
+    (process.platform === "win32" ||
+      (stat.uid === process.getuid?.() && (stat.mode & 0o077) === 0));
+  if (ours) return dir;
+  const staging = createStagingDir(parent, "hyperframes-snapshot-media-");
+  process.once("exit", () => rmSync(staging, { recursive: true, force: true }));
+  return staging;
+}
 
-/** A local copy of a remote clip, since an FFmpeg built without network protocols (the Desktop app's) reads no URL. */
-export async function remoteVideoInput(url: string, download = downloadToTemp): Promise<string> {
+let remoteVideoDir: string | undefined;
+
+/** A local copy of a remote clip, or null: FFmpeg never gets the URL, since it would follow redirects unchecked. */
+export async function remoteVideoInput(
+  url: string,
+  download = downloadToTemp,
+): Promise<string | null> {
   try {
-    return await download(url, REMOTE_VIDEO_DIR, FFMPEG_EXTRACT_TIMEOUT_MS);
+    assertPublicHttpsUrl(url);
   } catch {
-    return url;
+    return null;
+  }
+  try {
+    remoteVideoDir ??= privateMediaDir(tmpdir());
+    return await download(url, remoteVideoDir, FFMPEG_EXTRACT_TIMEOUT_MS);
+  } catch {
+    return null;
   }
 }
 
@@ -801,7 +830,7 @@ export async function frameOrWarn(
   } catch (error) {
     if (!(error instanceof FrameExtractError)) throw error;
     warnings.push(error.message);
-    console.warn(`   ${c.warn("⚠")} ${error.message}`);
+    console.warn(`   ${c.warn("⚠")} ${terminalText(error.message)}`);
     return null;
   }
 }
@@ -982,18 +1011,18 @@ export async function captureSnapshots(
     : null;
   if (swallowed) {
     warnings.push(swallowed);
-    console.warn(`   ${c.warn("⚠")} ${swallowed}`);
+    console.warn(`   ${c.warn("⚠")} ${terminalText(swallowed)}`);
   }
   const server = await serveCapturePage(projectDir, html, opts.autoProxy);
   const fps = compositionFps(html);
   const heldVideoIds = localVideoRenderIds(html);
   const heldProbes = new Map<string, Promise<HeldVideoProbe>>();
-  const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
 
   const savedPaths: string[] = [];
   let pairSheetFailure: string | null = null;
 
   try {
+    const heldHints = await heldVideoHints(projectDir, localVideos(html), heldProbes);
     const {
       browser: chromeBrowser,
       page,
@@ -1046,7 +1075,7 @@ export async function captureSnapshots(
         if (fontReport.unused.length > 0) parts.push(`${fontReport.unused.length} unused`);
         log(`\n   ${c.dim("Fonts:")} ${parts.join(", ")}`);
         if (fontReport.errored.length > 0) {
-          log(`   ${c.error("Fonts FAILED:")} ${fontReport.errored.join(", ")}`);
+          log(`   ${c.error("Fonts FAILED:")} ${terminalText(fontReport.errored.join(", "))}`);
         }
       }
 
@@ -1179,11 +1208,31 @@ export async function captureSnapshots(
         );
       }
       const alphaDecoderCache = new Map<string, Promise<boolean>>();
-      const remoteCopies = new Map<string, Promise<string>>();
-      const localCopy = (href: string): Promise<string> => {
-        const copy = remoteCopies.get(href) ?? remoteVideoInput(href);
+      const remoteCopies = new Map<string, Promise<string | null>>();
+      const leaveOutUnreadable = (href: string) => (path: string | null) => {
+        if (!path) warnings.push(`Remote video from ${new URL(href).host} could not be downloaded`);
+        return path;
+      };
+      const localCopy = (href: string): Promise<string | null> => {
+        const copy =
+          remoteCopies.get(href) ?? remoteVideoInput(href).then(leaveOutUnreadable(href));
         remoteCopies.set(href, copy);
         return copy;
+      };
+      const projectVideos = new Map<string, ReturnType<typeof projectVideoFile>>();
+      const checkedProjectVideo = (src: string): ReturnType<typeof projectVideoFile> => {
+        const known = projectVideos.get(src);
+        if (known) return known;
+        const checked = projectVideoFile(projectDir, src).then((project) => {
+          if (project?.refused) {
+            const message = `${relative(projectDir, project.file)} is not media: a document, a pipe or device, or a playlist naming files outside its folder`;
+            warnings.push(message);
+            console.warn(`   ${c.warn("⚠")} ${terminalText(message)}`);
+          }
+          return project;
+        });
+        projectVideos.set(src, checked);
+        return checked;
       };
       const shouldUseVp9AlphaDecoder = (filePath: string): Promise<boolean> => {
         if (!extractMediaMetadata) return Promise.resolve(false);
@@ -1299,20 +1348,24 @@ export async function captureSnapshots(
             active,
             VIDEO_FRAME_EXTRACT_CONCURRENCY,
             async (v) => {
-              // Prefer the project-local file; remote http(s) clips go to FFmpeg directly,
+              // Prefer the project-local file; remote http(s) clips go to FFmpeg as a downloaded copy,
               // since headless Chrome can't seek them and they would render blank.
               let ffmpegInput: string | null = null;
               let inputIsLocal = false;
-              const projectFile = projectLocalFile(projectDir, v.src);
-              if (projectFile) {
-                ffmpegInput = projectFile;
+              const project = await checkedProjectVideo(v.src);
+              if (project?.refused) {
+                unreadVideoFrames += 1;
+                return null;
+              }
+              if (project) {
+                ffmpegInput = project.file;
                 inputIsLocal = true;
               } else {
                 try {
                   const url = new URL(v.src);
                   if (url.protocol === "http:" || url.protocol === "https:") {
                     ffmpegInput = await localCopy(url.href);
-                    inputIsLocal = ffmpegInput !== url.href;
+                    inputIsLocal = true;
                   }
                 } catch {
                   /* unresolvable src (e.g. blob:, data:) — skip */
@@ -1578,7 +1631,7 @@ function warnUnsettledImages(images: UnsettledImages, time: number, warnings: st
     if (sources.length === 0) continue;
     const message = `${sources.length} image(s) ${what} at ${time}s, so the frame may be missing them: ${sources.join(", ")}`;
     warnings.push(message);
-    console.warn(`   ${c.warn("⚠")} ${message}`);
+    console.warn(`   ${c.warn("⚠")} ${terminalText(message)}`);
   }
 }
 
@@ -1695,19 +1748,19 @@ function printReview(
   log: (message: string) => void,
 ): void {
   const beats = review.plan.beats.map(
-    (beat) => `${formatSnapshotTimestamp(beat.time)} ${beat.label}`,
+    (beat) => `${formatSnapshotTimestamp(beat.time)} ${terminalText(beat.label)}`,
   );
   log(`   Beat sheet (settled frame per scene): ${sheets.beats.join(", ") || "none"}`);
   log(`     ${c.dim(beats.join(" · "))}`);
   review.plan.seams.forEach((seam, index) => {
-    const sides = `${seam.from ?? "start"} -> ${seam.to ?? "end"}`;
+    const sides = terminalText(`${seam.from ?? "start"} -> ${seam.to ?? "end"}`);
     const strip = sheets.seams[index] ?? "not written";
     log(`   Seam ${index + 1} at ${formatSnapshotTimestamp(seam.time)} (${sides}): ${strip}`);
   });
   log(
     `   Phone sheet (beats at ${REVIEW_PHONE_WIDTH} px wide): ${sheets.phone.join(", ") || "none"}`,
   );
-  for (const note of review.plan.notes) log(`   ${c.dim(note)}`);
+  for (const note of review.plan.notes) log(`   ${c.dim(terminalText(note))}`);
 }
 
 export default defineCommand({
@@ -1889,7 +1942,9 @@ export default defineCommand({
       camera && (camera.yaw !== 0 || camera.pitch !== 0)
         ? ` ${c.dim(`(angle yaw ${camera.yaw}° pitch ${camera.pitch}°)`)}`
         : "";
-    log(`${c.accent("◆")}  Capturing ${label} from ${c.accent(project.name)}${angleLabel}`);
+    log(
+      `${c.accent("◆")}  Capturing ${label} from ${c.accent(terminalText(project.name))}${angleLabel}`,
+    );
 
     let managedSnapshotDir: string | undefined;
     let exitCode = 0;
@@ -2081,7 +2136,7 @@ export default defineCommand({
             }
           } catch (descErr) {
             const msg = normalizeErrorMessage(descErr);
-            log(`   ${c.dim(`--describe failed: ${msg}`)}`);
+            log(`   ${c.dim(`--describe failed: ${terminalText(msg)}`)}`);
           }
         }
         if (asJson) {
@@ -2099,7 +2154,7 @@ export default defineCommand({
       if (err instanceof CliRuntimeError && err.result.presented) throw err;
       const msg = failureMessage(err);
       if (asJson) console.log(JSON.stringify(withMeta(jsonFailure("runtime_error", msg)), null, 2));
-      else console.error(`\n${c.error("✗")} Snapshot failed: ${msg}`);
+      else console.error(`\n${c.error("✗")} Snapshot failed: ${terminalText(msg)}`);
       failCommand();
     } finally {
       if (managedSnapshotDir)

@@ -16,8 +16,7 @@
  * exist, leaving the caller with empty maps that the hot loop tolerates.
  */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, statfsSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, rmSync, statSync, statfsSync } from "node:fs";
 import {
   type CaptureSession,
   decodePngToRgb48le,
@@ -46,6 +45,7 @@ import type { HdrDiagnostics, RenderJob } from "../../renderOrchestrator.js";
 import type { CompositionMetadata } from "../shared.js";
 import { createHdrFrameWindows, type HdrFrameWindows } from "../../hdrFrameWindows.js";
 import { encoderFailureError } from "../encoderInterruption.js";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 function tempDirSafePrefix(id: string): string {
   const safe = id.replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 80);
@@ -464,7 +464,7 @@ export async function extractHdrVideoFrames(args: {
       if (!video || !planned) continue;
       const { window, metadata } = planned;
       mkdirSync(framesDir, { recursive: true });
-      const frameDir = mkdtempSync(join(framesDir, `hdr_${tempDirSafePrefix(videoId)}-`));
+      const frameDir = createStagingDir(framesDir, `hdr_${tempDirSafePrefix(videoId)}-`);
       createdFrameDirs.add(frameDir);
       const dims = prep.hdrExtractionDims.get(videoId) ?? { width, height };
       const frameSize = dims.width * dims.height * 6;
@@ -609,60 +609,95 @@ function holdFirstFrameUntilStreamStarts(
   };
 }
 
+/** Shrinks the box uniformly so page CSS alone cannot size a buffer larger than the frame. */
+export function fitHdrImageLayoutToFrame(
+  layout: { width: number; height: number },
+  frameWidth: number,
+  frameHeight: number,
+): { width: number; height: number } {
+  const scale = Math.min(1, frameWidth / layout.width, frameHeight / layout.height);
+  if (scale === 1) return layout;
+  return {
+    width: Math.max(1, Math.floor(layout.width * scale)),
+    height: Math.max(1, Math.floor(layout.height * scale)),
+  };
+}
+
+export interface HdrImageDecodeResult {
+  buffers: Map<string, HdrImageBuffer>;
+  releaseReservation: () => void;
+}
+
 /**
  * Decode each HDR image into an rgb48le buffer, resampling to the element's
- * layout box if known. Failures abort the render to avoid shipping missing
- * layers (the hot loop has no fallback for a missing HDR layer that the
- * composition expects to see).
+ * layout box (fitted inside the output frame) if known. Every buffer is counted
+ * against the HDR extraction budget until the caller releases the reservation.
+ * Failures abort the render to avoid shipping missing layers (the hot loop has
+ * no fallback for a missing HDR layer that the composition expects to see).
  */
 export function decodeHdrImageBuffers(args: {
   log: ProducerLogger;
   hdrImageSrcPaths: Map<string, string>;
   prep: HdrResourcePrep;
   hdrDiagnostics: HdrDiagnostics;
-}): Map<string, HdrImageBuffer> {
-  const { log, hdrImageSrcPaths, prep, hdrDiagnostics } = args;
+  width: number;
+  height: number;
+}): HdrImageDecodeResult {
+  const { log, hdrImageSrcPaths, prep, hdrDiagnostics, width, height } = args;
+  const budgetBytes = resolveHdrExtractionBudgetBytes(process.env[HDR_EXTRACTION_MAX_BYTES_ENV]);
+  const releases: Array<() => void> = [];
+  const releaseReservation = () => {
+    for (const release of releases.splice(0)) release();
+  };
   const out = new Map<string, HdrImageBuffer>();
   for (const [imageId, srcPath] of hdrImageSrcPaths) {
     try {
       const decoded = decodePngToRgb48le(readFileSync(srcPath));
+      const releaseDecoded = reserveHdrExtractionBytes(decoded.data.length, budgetBytes);
       const layout = prep.hdrExtractionDims.get(imageId);
-      const fitInfo = prep.hdrImageFitInfo.get(imageId);
-      if (layout && (layout.width !== decoded.width || layout.height !== decoded.height)) {
-        const fit = normalizeObjectFit(fitInfo?.fit);
+      if (!layout || (layout.width === decoded.width && layout.height === decoded.height)) {
+        releases.push(releaseDecoded);
+        out.set(imageId, decoded);
+        continue;
+      }
+      const target = fitHdrImageLayoutToFrame(layout, width, height);
+      if (target !== layout) {
+        log.warn("HDR image layout box is larger than the output frame; drawing it smaller", {
+          imageId,
+          layout: `${layout.width}x${layout.height}`,
+          drawn: `${target.width}x${target.height}`,
+        });
+      }
+      try {
+        releases.push(reserveHdrExtractionBytes(target.width * target.height * 6, budgetBytes));
+        const fitInfo = prep.hdrImageFitInfo.get(imageId);
         const resampled = resampleRgb48leObjectFit(
           decoded.data,
           decoded.width,
           decoded.height,
-          layout.width,
-          layout.height,
-          fit,
+          target.width,
+          target.height,
+          normalizeObjectFit(fitInfo?.fit),
           fitInfo?.position,
         );
-        out.set(imageId, {
-          data: resampled,
-          width: layout.width,
-          height: layout.height,
-        });
-      } else {
-        out.set(imageId, {
-          data: Buffer.from(decoded.data),
-          width: decoded.width,
-          height: decoded.height,
-        });
+        out.set(imageId, { data: resampled, width: target.width, height: target.height });
+      } finally {
+        releaseDecoded();
       }
     } catch (err) {
+      releaseReservation();
       hdrDiagnostics.imageDecodeFailures += 1;
+      const message = err instanceof Error ? err.message : String(err);
       log.error("HDR image decode failed; aborting render", {
         imageId,
         srcPath,
-        error: err instanceof Error ? err.message : String(err),
+        error: message,
       });
       throw new Error(
-        `HDR image decode failed for image "${imageId}". ` +
+        `HDR image decode failed for image "${imageId}": ${message}. ` +
           `Aborting render to avoid shipping missing HDR image layers.`,
       );
     }
   }
-  return out;
+  return { buffers: out, releaseReservation };
 }

@@ -20,6 +20,7 @@
  */
 
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import type { Page, Browser, PuppeteerNode } from "puppeteer-core";
 import { resolveFullChromePath, ownedLaunchOptions } from "./browserManager.js";
 
@@ -242,7 +243,7 @@ export async function launchHdrBrowser(
   const chromePath = resolveFullChromePath();
   if (!chromePath) {
     throw new Error(
-      "[HDR] No Chrome binary found. Install: npx @puppeteer/browsers install chrome@stable",
+      "[HDR] Name a full Chrome in HYPERFRAMES_BROWSER_PATH: HDR capture does not start a cached browser.",
     );
   }
 
@@ -250,6 +251,7 @@ export async function launchHdrBrowser(
     ...ownedLaunchOptions(),
     headless: false,
     executablePath: chromePath,
+    env: buildChromeLaunchEnv(),
     args: withHyperframesBrowserMarker(buildHdrChromeArgs(width, height)),
   });
 

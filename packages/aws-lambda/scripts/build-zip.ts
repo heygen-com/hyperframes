@@ -33,12 +33,12 @@ import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   closeSync,
+  copyFileSync,
   cpSync,
   existsSync,
   mkdirSync,
   openSync,
   readdirSync,
-  readFileSync,
   readSync,
   rmSync,
   statSync,
@@ -49,6 +49,7 @@ import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
 import { formatBytes } from "./_formatBytes.js";
 import { HANDLER_BANNER } from "./_handlerBanner.js";
+import { RUNTIME_LOCK_DIR, assertRuntimeLockCurrent } from "./runtimeLock.js";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(scriptDir, "..");
@@ -251,67 +252,22 @@ async function bundleHandler(stagingDir: string): Promise<void> {
 }
 
 function stageRuntimeModules(stagingDir: string, source: BuildOptions["source"]): void {
-  // Bun's isolated-install layout means cpSync(@sparticuz/chromium) only
-  // copies the package's own files, missing transitive deps like `tar-fs`.
-  // The clean cross-package-manager solution: write a tiny package.json
-  // into staging/ that declares the production deps, then `npm install`
-  // there. npm flattens transitive deps into staging/node_modules/.
-  const pkg: Record<string, unknown> = {
-    name: "hyperframes-aws-lambda-bundled",
-    version: "0.0.0",
-    private: true,
-    dependencies: {
-      "puppeteer-core": readDepVersion("puppeteer-core"),
-    },
-  };
-  if (source === "sparticuz") {
-    (pkg.dependencies as Record<string, string>)["@sparticuz/chromium"] =
-      readDepVersion("@sparticuz/chromium");
-  }
-  writeFileSync(join(stagingDir, "package.json"), JSON.stringify(pkg, null, 2));
-
-  // --no-package-lock so we don't pollute staging with a lockfile we don't
-  // ship; --no-audit/--no-fund just for log noise.
+  // This runs in the publish job: node_modules come only from the committed lockfile, with
+  // lifecycle scripts off, and in the repo its direct versions must match bun.lock.
+  assertRuntimeLockCurrent(source);
+  const lockDir = join(RUNTIME_LOCK_DIR, source);
+  copyFileSync(join(lockDir, "package.json"), join(stagingDir, "package.json"));
+  copyFileSync(join(lockDir, "package-lock.json"), join(stagingDir, "package-lock.json"));
   const result = spawnSync(
     "npm",
-    ["install", "--no-package-lock", "--no-audit", "--no-fund", "--omit=dev", "--omit=optional"],
-    {
-      cwd: stagingDir,
-      stdio: "inherit",
-    },
+    ["ci", "--ignore-scripts", "--no-audit", "--no-fund", "--omit=dev", "--omit=optional"],
+    { cwd: stagingDir, stdio: "inherit" },
   );
   if (result.status !== 0) {
-    throw new Error(`[build-zip] npm install into staging failed (status ${result.status})`);
+    throw new Error(`[build-zip] npm ci into staging failed (status ${result.status})`);
   }
-  console.log(`[build-zip] staged node_modules via npm install`);
-}
-
-function readDepVersion(moduleName: string): string {
-  // Resolve the EXACT version bun installed into the workspace, not the
-  // semver range declared in package.json. The staging-dir npm install
-  // runs with `--no-package-lock`, so a caret range would float to the
-  // latest registry version at build time — diverging from what the
-  // workspace tests ran against and breaking ZIP-content determinism
-  // across consecutive builds. The lockfile pin gives us reproducibility.
-  const lockText = readFileSync(join(monorepoRoot, "bun.lock"), "utf-8");
-  // bun.lock lines look like:
-  //   "puppeteer-core": ["puppeteer-core@24.43.1", "", { ... }, "sha512-..."],
-  const re = new RegExp(
-    `"${moduleName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}":\\s*\\["${moduleName.replace(
-      /[.*+?^${}()|[\]\\]/g,
-      "\\$&",
-    )}@([^"]+)"`,
-  );
-  const match = re.exec(lockText);
-  if (!match || !match[1]) {
-    // Fall back to the manifest range — better than failing the build
-    // entirely if bun.lock's format changes between bun versions.
-    const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf-8")) as {
-      dependencies?: Record<string, string>;
-    };
-    return manifest.dependencies?.[moduleName] ?? "latest";
-  }
-  return match[1];
+  rmSync(join(stagingDir, "package-lock.json"));
+  console.log(`[build-zip] staged node_modules via npm ci from runtime-lock/${source}`);
 }
 
 function resolveModuleDir(moduleName: string): string {

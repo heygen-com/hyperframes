@@ -17,7 +17,7 @@ import { loadAllItems } from "../registry/resolver.js";
 import { readRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { relative, resolve } from "node:path";
-import { finishCommand } from "../utils/commandResult.js";
+import { CliUsageError, finishCommand } from "../utils/commandResult.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
 import { runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
@@ -226,8 +226,7 @@ export default defineCommand({
     if (args.type === "block") typeFilter = "hyperframes:block";
     else if (args.type === "component") typeFilter = "hyperframes:component";
     else if (args.type) {
-      console.error(`Invalid --type: "${args.type}". Use "block" or "component".`);
-      finishCommand(1);
+      throw new CliUsageError(`Invalid --type: "${args.type}". Use "block" or "component".`);
     }
 
     // Asked for the whole manifest on purpose: its item list defines coverage,

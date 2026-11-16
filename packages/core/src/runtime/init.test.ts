@@ -13,6 +13,7 @@ import { runtimeProtocolMetadata } from "./protocol";
 import { collectRuntimeTimelinePayload } from "./timeline";
 import { TYPEGPU_PRESENT_HEARTBEAT_MS } from "./adapters/typegpu";
 import { WebAudioTransport } from "./webAudioTransport";
+import { bytesOfSource } from "./preloadMedia";
 import type { RuntimeTimelineChildLike, RuntimeTimelineLike } from "./types";
 import {
   registerRuntimeDataHandler,
@@ -6047,9 +6048,9 @@ describe("initSandboxRuntimeModular", () => {
     const SAFARI =
       "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15";
 
-    const startRouted = async (userAgent?: string, duration = 10) => {
+    const startRouted = async (userAgent?: string, duration = 10, src = "/assets/track.mp3") => {
       if (userAgent) vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
-      const audio = mountAudio("/assets/track.mp3");
+      const audio = mountAudio(src);
       Object.defineProperty(audio, "duration", { value: duration });
       const capture = vi
         .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
@@ -6083,6 +6084,22 @@ describe("initSandboxRuntimeModular", () => {
 
     it("leaves an hour-long source on its element", async () => {
       const { schedule, release } = await startRouted(SAFARI, 3600);
+      await Promise.resolve();
+      expect(schedule).not.toHaveBeenCalled();
+      expect(release).not.toHaveBeenCalled();
+    });
+
+    it("leaves a clip of a long file on its element: decoding it would fetch the whole file first", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(null, { status: 206, headers: { "content-range": "bytes 0-0/68000000" } }),
+        ),
+      );
+      await bytesOfSource("/assets/long-film.mp4");
+      vi.unstubAllGlobals();
+      const { schedule, release } = await startRouted(SAFARI, 321, "/assets/long-film.mp4");
       await Promise.resolve();
       expect(schedule).not.toHaveBeenCalled();
       expect(release).not.toHaveBeenCalled();
@@ -6581,6 +6598,30 @@ describe("initSandboxRuntimeModular", () => {
 
       expect(window.__player?.getTime()).toBeLessThan(0.1);
       expect(seeks.filter((t) => t > 0.1)).toEqual([]);
+    });
+  });
+  describe("a video the browser never starts loading", () => {
+    it("moves the film on past it after the wait and names it", async () => {
+      const raf = createManualRaf();
+      vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+      window.requestAnimationFrame =
+        raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+      window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const video = mountAudio("/assets/clip.mp4", { muted: "" }, "video");
+      // What Safari reports for a video it never requested: loading, with no data and no bytes.
+      Object.defineProperty(video, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(video, "networkState", { value: 2, configurable: true });
+
+      await startPlayback();
+      for (let frame = 0; frame < 60 * 7; frame++) raf.step(1000 / 60);
+
+      expect(window.__player?.getTime()).toBeGreaterThan(1);
+      expect(
+        warn.mock.calls.some(([line]) =>
+          String(line).includes('clip.mp4": the browser never started loading it'),
+        ),
+      ).toBe(true);
     });
   });
   describe("an audible <video> routed through Web Audio", () => {

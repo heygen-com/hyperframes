@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it } from "vitest";
-import { isTypingTarget, ownsPlainKeys } from "./typingTarget";
+import { isTypingTarget, ownsPlainKeys } from "@hyperframes/core/typing-target";
 import { isEditableTarget } from "./timelineDiscovery";
 
 afterEach(() => {

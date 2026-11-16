@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SFNClient } from "@aws-sdk/client-sfn";
 import type { SerializableDistributedRenderConfig } from "../events.js";
-import { SITE_MANIFEST_INVALID } from "../siteManifest.js";
+import { createHash } from "node:crypto";
+import {
+  parseSiteManifest,
+  SITE_MANIFEST_INVALID,
+  serializeSiteManifest,
+} from "../siteManifest.js";
 import { asS3Client, FakeS3 } from "./__fixtures__/fakeS3.js";
 import { deploySite, type SiteHandle, siteHandleFromId } from "./deploySite.js";
 import { renderToLambda } from "./renderToLambda.js";
@@ -265,6 +270,26 @@ describe("renderToLambda", () => {
         name: "SITE_FILES_MISSING",
       });
       rmSync(join(projectDir, "index.html"));
+      await expect(renderWith(s3, sfn, site, projectDir)).rejects.toMatchObject({
+        name: "SITE_FILES_MISSING",
+      });
+      expect(s3.ops.filter((op) => op.kind === "put")).toHaveLength(0);
+      expect(sfn.starts).toHaveLength(0);
+    });
+
+    it("never re-uploads a private file an older site manifest still lists", async () => {
+      const s3 = new FakeS3();
+      const sfn = new FakeSFN();
+      const site = await deploySite({ projectDir, bucketName: "test-bucket", s3: asS3Client(s3) });
+      const token = "//registry.npmjs.org/:_authToken=secret";
+      writeFileSync(join(projectDir, ".npmrc"), token);
+      const manifestId = `test-bucket/sites/${site.siteId}/files.json`;
+      const files = parseSiteManifest(s3.bodies.get(manifestId)!.toString());
+      const sha256 = createHash("sha256").update(token).digest("hex");
+      files.push({ path: ".npmrc", sha256, sizeBytes: token.length });
+      s3.bodies.set(manifestId, Buffer.from(serializeSiteManifest(files)));
+      s3.ops.length = 0;
+
       await expect(renderWith(s3, sfn, site, projectDir)).rejects.toMatchObject({
         name: "SITE_FILES_MISSING",
       });

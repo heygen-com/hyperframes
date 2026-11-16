@@ -23,7 +23,9 @@ const PHASE_LABELS = {
   frames: "capturing finding frames",
 } as const;
 export type CheckPhase = keyof typeof PHASE_LABELS;
-const BEFORE_DEADLINE: ReadonlySet<CheckPhase> = new Set(["copies", "launch"]);
+const BEFORE_DEADLINE: ReadonlySet<CheckPhase> = new Set(["copies"]);
+
+const CHROME_START_WINDOW_MS = 180_000;
 
 export class CheckDeadlineError extends Error {
   constructor(
@@ -39,6 +41,7 @@ export class CheckDeadlineError extends Error {
 }
 
 export const COPY_BUDGET_MS = 120_000;
+const HEARTBEAT_MS = 30_000;
 
 export class CheckCopiesUnfinishedError extends Error {
   constructor(budgetMs: number, unfinished: readonly string[]) {
@@ -63,6 +66,15 @@ export class CheckStoppedError extends Error {
   }
 }
 
+export class CheckChromeStartError extends Error {
+  constructor(waitedMs: number, where: string) {
+    super(
+      `Chrome did not start within ${waitedMs / 1000} s${where || "."} ` +
+        "On a first run it may still be downloading: run `hyperframes browser ensure`, then run check again.",
+    );
+  }
+}
+
 /** Ends a check that makes no progress for its idle window; each phase entered or operation settled restarts it. */
 export class CheckDeadline {
   private readonly abort = new AbortController();
@@ -79,6 +91,7 @@ export class CheckDeadline {
   private readonly spent = new Map<CheckPhase, number>();
   private readonly partials: Array<() => Partial<CheckBrowserResult>> = [];
 
+  private heartbeat: NodeJS.Timeout | undefined;
   private readonly budgetTimer: NodeJS.Timeout | undefined;
   private readonly stopAt: number | undefined;
 
@@ -114,11 +127,17 @@ export class CheckDeadline {
   enter = (phase: CheckPhase, detail?: string): void => {
     if (this.expired) return;
     const now = Date.now();
+    if (this.work?.phase !== phase) this.announce(phase, PHASE_LABELS[phase]);
     if (this.work) this.spend(this.work.phase, now - this.work.since);
     this.work = { phase, since: now, detail };
     this.spend(phase, 0);
+    this.beat();
     this.rearm();
   };
+
+  private announce(phase: CheckPhase, text: string): void {
+    if (phase !== "copies") console.error(`[hyperframes] check: ${text}`);
+  }
 
   private spend(phase: CheckPhase, ms: number): void {
     this.spent.set(phase, (this.spent.get(phase) ?? 0) + ms);
@@ -145,16 +164,37 @@ export class CheckDeadline {
     this.enter("load");
   };
 
+  private beat(): void {
+    if (this.heartbeat || this.phase === "closed" || this.expired) return;
+    this.heartbeat = setInterval(() => {
+      if (this.work) {
+        const seconds = Math.round((Date.now() - this.work.since) / 1000);
+        const { phase } = this.work;
+        this.announce(phase, `still ${PHASE_LABELS[phase]} (${seconds} s in this step)`);
+      }
+    }, HEARTBEAT_MS);
+    this.heartbeat.unref();
+  }
+
   private rearm(): void {
-    if (this.phase !== "started" || this.expired) return;
+    if (this.phase === "closed" || this.expired) return;
+    const launching = this.work?.phase === "launch" && this.phase === "waiting";
+    if (this.phase !== "started" && !launching) return;
     clearTimeout(this.timer);
+    const window = launching ? Math.max(CHROME_START_WINDOW_MS, this.idleMs) : this.idleMs;
     this.timer = setTimeout(
-      () => this.expire(new CheckDeadlineError(this.scripts.at(-1), this.describe())),
-      this.idleMs,
+      () =>
+        this.expire(
+          launching
+            ? new CheckChromeStartError(window, this.where())
+            : new CheckDeadlineError(this.scripts.at(-1), this.describe()),
+        ),
+      window,
     );
   }
 
   private expire(error: Error): void {
+    clearInterval(this.heartbeat);
     clearTimeout(this.timer);
     clearTimeout(this.budgetTimer);
     this.expired = error;
@@ -204,6 +244,7 @@ export class CheckDeadline {
 
   async close(): Promise<void> {
     this.phase = "closed";
+    clearInterval(this.heartbeat);
     clearTimeout(this.timer);
     clearTimeout(this.budgetTimer);
     const closes = await Promise.allSettled([...this.browsers].map(closeManagedBrowser));

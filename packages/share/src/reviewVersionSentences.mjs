@@ -11,8 +11,10 @@ const SAID = {
   export_too_large: "This video is over 2 GB, the most a review page takes. Export a smaller one.",
   export_too_long:
     "This video is over 30 minutes, the most a review page takes. Export a shorter one.",
+  export_hourly_limit: (error) =>
+    `You've added the most versions for this hour. Try again ${laterIn(error.retryAfterMs, "in an hour")}.`,
   export_daily_limit: (error) =>
-    `You've added the most versions for today. Try again ${laterIn(error.retryAfterMs)}.`,
+    `You've added the most versions for today. Try again ${laterIn(error.retryAfterMs, "tomorrow")}.`,
   content_rejected: "This video can't be shared.",
   export_blocked: "Adding videos to review pages isn't available for this account.",
   feature_unavailable: "Review pages aren't available for your account yet.",
@@ -24,9 +26,9 @@ const SAID = {
   held_for_review: HELD_FOR_REVIEW,
 };
 
-/** @param {unknown} error */
-export function versionSentence(error) {
-  if (!(error instanceof ReviewFailed)) return "Couldn't add this version. Try again.";
+/** @param {unknown} error @param {string} [fallback] */
+export function versionSentence(error, fallback = "Couldn't add this version. Try again.") {
+  if (!(error instanceof ReviewFailed)) return fallback;
   const said = SAID[error.reason];
   if (said) return typeof said === "function" ? said(error) : said;
   if (error.status === 0) return "Couldn't reach HeyGen. Check your connection and try again.";
@@ -35,12 +37,12 @@ export function versionSentence(error) {
   // written for developers, so it is never shown.
   if (error.status === 200)
     return "HyperFrames couldn't process this video. Export it again, then try again.";
-  return "Couldn't add this version. Try again.";
+  return fallback;
 }
 
-/** "in about 3 hours", from the server's Retry-After. @param {number | undefined} ms */
-function laterIn(ms) {
-  if (!ms) return "tomorrow";
+/** "in about 3 hours", from the server's Retry-After; `unknown` when it sent none. @param {number | undefined} ms @param {string} unknown */
+function laterIn(ms, unknown) {
+  if (!ms) return unknown;
   const minutes = Math.ceil(ms / 60_000);
   if (minutes < 60) return `in ${minutes} minute${minutes === 1 ? "" : "s"}`;
   const hours = Math.round(minutes / 60);

@@ -1,6 +1,7 @@
+import { terminalText } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, readFileSync } from "node:fs";
-import { readProjectFile } from "@hyperframes/parsers/asset-resolution";
+import { isWithinProjectRoot, readProjectFile } from "@hyperframes/parsers/asset-resolution";
 import { resolve, dirname, basename, join, relative, sep } from "node:path";
 import {
   parseGsapScript,
@@ -735,6 +736,7 @@ export function collectCompositions(indexPath: string): SurfacedComposition[] {
     const src = div.getAttribute("data-composition-src");
     if (!src) continue;
     const subPath = resolve(baseDir, src);
+    if (!isWithinProjectRoot(baseDir, subPath)) continue;
     const sub = readProjectFile(subPath);
     if (sub.kind !== "file") continue;
     const id = div.getAttribute("data-composition-id") ?? src;
@@ -998,7 +1000,7 @@ function printCompositionTweens(cmp: SurfacedComposition): void {
 // Print one composition's traces + tweens (skipping strokes already shown in a trace).
 function printComposition(cmp: SurfacedComposition): void {
   if (isEmptyComposition(cmp)) return;
-  console.log(c.bold(`${cmp.composition}`) + c.dim(`  (${cmp.source})`));
+  console.log(c.bold(terminalText(cmp.composition)) + c.dim(`  (${terminalText(cmp.source)})`));
   for (const tr of cmp.traces) printTrace(tr);
   printCompositionTweens(cmp);
   for (const cssKeyframes of cmp.cssKeyframes) printCssKeyframes(cssKeyframes);

@@ -4,40 +4,40 @@
     "unpacked": 290508
   },
   "@hyperframes/cli": {
-    "packed": 7902966,
-    "unpacked": 25159107
+    "packed": 8577627,
+    "unpacked": 25500000
   },
   "@hyperframes/core": {
-    "packed": 1762752,
-    "unpacked": 4268445
+    "packed": 1800000,
+    "unpacked": 4374000
   },
   "@hyperframes/engine": {
-    "packed": 490452,
-    "unpacked": 1620913
+    "packed": 510000,
+    "unpacked": 1742862
   },
   "@hyperframes/gcp-cloud-run": {
     "packed": 49412,
     "unpacked": 170124
   },
   "@hyperframes/inspector": {
-    "packed": 858046,
-    "unpacked": 3645432
+    "packed": 880000,
+    "unpacked": 3780000
   },
   "@hyperframes/lint": {
     "packed": 191022,
     "unpacked": 737342
   },
   "@hyperframes/parsers": {
-    "packed": 203731,
-    "unpacked": 885314
+    "packed": 212000,
+    "unpacked": 900000
   },
   "@hyperframes/player": {
-    "packed": 158800,
+    "packed": 159000,
     "unpacked": 541601
   },
   "@hyperframes/producer": {
-    "packed": 857000,
-    "unpacked": 3130000
+    "packed": 921000,
+    "unpacked": 3290000
   },
   "@hyperframes/sdk": {
     "packed": 90662,
@@ -48,15 +48,15 @@
     "unpacked": 825937
   },
   "@hyperframes/share": {
-    "packed": 60820,
-    "unpacked": 240537
+    "packed": 148738,
+    "unpacked": 575775
   },
   "@hyperframes/studio": {
-    "packed": 5998328,
-    "unpacked": 24360208
+    "packed": 6589635,
+    "unpacked": 26703858
   },
   "@hyperframes/studio-server": {
-    "packed": 164800,
-    "unpacked": 646000
+    "packed": 178000,
+    "unpacked": 690000
   }
 }

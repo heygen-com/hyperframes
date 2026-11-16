@@ -26,7 +26,7 @@
 //   }
 //
 // ── audio_meta.json (output, id-keyed) ───────────────────────────────────────
-//   { tts_provider, voice_id,
+//   { tts_provider, voice_id, voice_credit,
 //     bgm: { path, volume, mode, query?, duration_s? } | null,
 //     bgm_pending, bgm_provider, bgm_pid, bgm_log, bgm_mode, bgm_target_duration_s, …,
 //     voices: [ { id, path, duration_s, words: [{id,text,start,end}] } ],
@@ -41,7 +41,7 @@
 // run wait-bgm.mjs before assembling.
 
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { heygenAuthHeaders, heygenCredential, loadEnvFromDir } from "./lib/heygen.mjs";
 import {
@@ -54,9 +54,12 @@ import {
 } from "./lib/tts.mjs";
 import { generateBgmDetached, inferBgmPrompt, retrieveBgm } from "./lib/bgm.mjs";
 import { BUNDLED_SFX_DIR, resolveSfx } from "./lib/sfx.mjs";
+import { voiceCredit } from "./lib/voice-credit.mjs";
+import { parseWords, recordingSource, scaleWords, stretchToWav } from "./lib/recording.mjs";
 import { mapWithConcurrency } from "./lib/concurrency.mjs";
 import { mergeVoices, openAudioMeta } from "./lib/audio-meta.mjs";
 import { recordInManifest, voicePaths, writtenAssets } from "./lib/media-record.mjs";
+import { engineBgmLog, projectPath } from "./lib/project-path.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -120,6 +123,11 @@ loadEnvFromDir(hyperframesDir);
 const heygenOK = heygenCredential() !== null;
 
 // ── merge base: preserve sections not selected by --only ──────────────────────
+// An output inside the project must stay there: a link planted at audio_meta.json must not lead outside.
+const outRel = relative(hyperframesDir, outPath);
+const outInProject = outRel !== ".." && !outRel.startsWith(`..${sep}`) && !isAbsolute(outRel);
+if (outInProject && !projectPath(hyperframesDir, outRel))
+  die(`${outPath} leads outside the project folder; replace it with a regular file`);
 const audioMeta = openAudioMeta(outPath);
 const prev = audioMeta.value;
 const anomalies = [];
@@ -130,42 +138,72 @@ let freshVoices = [];
 let ttsProvider = prev.tts_provider ?? null;
 let voiceId = prev.voice_id ?? null;
 if (only.has("tts") && lines.length) {
+  // Every voice file and recording path is checked before any TTS runs.
+  let paths;
+  const recordings = new Map();
   try {
-    ttsProvider = pickProvider(
-      providerOverride || (request.provider === "auto" ? null : request.provider),
-    );
+    paths = voicePaths(hyperframesDir, lines, anomalies);
+    for (const line of lines.filter((l) => l.audio))
+      recordings.set(String(line.id), recordingSource(hyperframesDir, line.audio));
   } catch (e) {
     die(e.message);
   }
-  voiceId = await resolveVoiceId({
-    provider: ttsProvider,
-    userVoice: voiceOverride || request.voice,
-    lang,
-  });
+  if (lines.some((l) => !l.audio)) {
+    try {
+      ttsProvider = pickProvider(
+        providerOverride || (request.provider === "auto" ? null : request.provider),
+      );
+    } catch (e) {
+      die(e.message);
+    }
+    voiceId = await resolveVoiceId({
+      provider: ttsProvider,
+      userVoice: voiceOverride || request.voice,
+      lang,
+    });
+  } else {
+    ttsProvider = "recording"; // every line is the person's own recording: no TTS provider to pick
+    voiceId = null;
+  }
   console.error(`· tts: ${ttsProvider} · voice ${voiceId} · ${lines.length} line(s)`);
-  const paths = voicePaths(hyperframesDir, lines, anomalies);
+  // A line with `audio` is the person's own recording (path inside the project), with optional
+  // `words`; `speed` applies to it like to a generated voice. Returns synthesizeOne's shape.
+  const useRecording = (line, abs) => {
+    const made = stretchToWav(recordings.get(String(line.id)), abs, speed);
+    if (!made.ok) return made;
+    try {
+      const given = parseWords(line.words);
+      return { ok: true, words: given && scaleWords(given, speed), source: "recording" };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  };
   const synthLine = async (line) => {
     const id = String(line.id);
     const text = String(line.text ?? "").trim();
-    if (!text) {
+    if (!text && !line.audio) {
       anomalies.push(`line ${id}: empty text — skipped`);
       return null;
     }
     const rel = paths.get(id);
     const abs = join(hyperframesDir, rel);
-    const { ok, words, error } = await synthesizeOne({
-      provider: ttsProvider,
-      text,
-      voiceId,
-      lang,
-      speed,
-      model: flag("tts-model", request.tts_model),
-      style: flag("style", line.style ?? request.style),
-      wavAbs: abs,
-      hyperframesDir,
-    });
+    const { ok, words, error, source } = line.audio
+      ? useRecording(line, abs)
+      : await synthesizeOne({
+          provider: ttsProvider,
+          text,
+          voiceId,
+          lang,
+          speed,
+          model: flag("tts-model", request.tts_model),
+          style: flag("style", line.style ?? request.style),
+          wavAbs: abs,
+          hyperframesDir,
+        });
     if (!ok) {
-      anomalies.push(`line ${id}: TTS failed — omitted${error ? ` (${error})` : ""}`);
+      anomalies.push(
+        `line ${id}: ${line.audio ? "recording" : "TTS"} failed — omitted${error ? ` (${error})` : ""}`,
+      );
       return null;
     }
     let wordArr = words; // heygen: native; else transcribe
@@ -175,7 +213,13 @@ if (only.has("tts") && lines.length) {
       anomalies.push(`line ${id}: bad voice duration — omitted`);
       return null;
     }
-    return { id, path: rel, duration_s: r3(dur), words: withWordIds(wordArr) };
+    return {
+      id,
+      path: rel,
+      duration_s: r3(dur),
+      words: withWordIds(wordArr),
+      ...(source && { source }),
+    };
   };
   const results = await mapWithConcurrency(lines, ttsConcurrency, synthLine);
   freshVoices = results.filter(Boolean);
@@ -193,11 +237,13 @@ const totalDuration = r3(voices.reduce((a, v) => a + (v.duration_s || 0), 0));
 
 // ── BGM ─────────────────────────────────────────────────────────────────────
 let bgm = prev.bgm ?? null;
+// A running job's pid and log carry over only with the engine's own log in assets/bgm.
+const ownJob = engineBgmLog(hyperframesDir, prev.bgm_log) !== null;
 const bgmFields = {
   bgm_pending: prev.bgm_pending ?? false,
   bgm_provider: prev.bgm_provider ?? null,
-  bgm_pid: prev.bgm_pid ?? null,
-  bgm_log: prev.bgm_log ?? null,
+  bgm_pid: ownJob ? (prev.bgm_pid ?? null) : null,
+  bgm_log: ownJob ? prev.bgm_log : null,
   bgm_mode: prev.bgm_mode ?? null,
   bgm_target_duration_s: prev.bgm_target_duration_s ?? null,
   bgm_seed_duration_s: prev.bgm_seed_duration_s ?? null,
@@ -296,6 +342,7 @@ if (only.has("sfx")) {
 const meta = {
   tts_provider: ttsProvider,
   voice_id: voiceId,
+  voice_credit: voiceCredit(voices, ttsProvider),
   bgm,
   ...bgmFields,
   voices,

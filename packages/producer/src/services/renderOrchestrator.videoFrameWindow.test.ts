@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -265,6 +265,9 @@ beforeEach(() => {
   state.folderAtNextStage = [];
   state.logs = [];
   state.stages = [];
+  stubRenderFlags();
+});
+function stubRenderFlags(): void {
   vi.stubEnv("HF_SEGMENTED_CAPTURE", "true");
   vi.stubEnv("HF_VIDEO_FRAME_WINDOW", "true");
   vi.stubEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "");
@@ -272,7 +275,7 @@ beforeEach(() => {
   vi.stubEnv("HF_DE_PARALLEL_ROUTER", "false");
   vi.stubEnv("HF_DE_PARALLEL_MIN_MEM_MB", "0");
   vi.stubEnv("HF_DE_SINGLE_MIN_FRAMES", "900");
-});
+}
 afterEach(() => {
   vi.unstubAllEnvs();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -299,6 +302,15 @@ function render(config: Partial<Parameters<typeof createRenderJob>[0]> = {}): Pr
     if (j.currentStage && state.stages.at(-1) !== j.currentStage) state.stages.push(j.currentStage);
   });
 }
+
+// A worker's first render pays a one-time start-up cost: tens of ms on an idle host, up to 6 s on a loaded CI
+// runner. One render here pays it outside the tests, so each test's 5 s covers only its own rule.
+beforeAll(async () => {
+  stubRenderFlags();
+  await render().catch(() => undefined);
+  vi.unstubAllEnvs();
+  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
 
 it("a segmented render with the flag on defers the long video and windows its frames", async () => {
   await expect(render()).rejects.toThrow(REACHED);

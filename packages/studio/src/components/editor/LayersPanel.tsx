@@ -40,6 +40,10 @@ import { zReorderCoalesceKey } from "../../hooks/useElementLifecycleOps";
 import { useLayerReorderTimelineMirror } from "../nle/useCanvasZOrderTimelineMirror";
 import { runZLaneGesture } from "../nle/zLaneGesture";
 import { useLayerRevealOverride } from "./useLayerRevealOverride";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import { describePreviewElements } from "../../player/lib/previewElements";
+import { collectPreviewLayerItems, layerDataAttribute } from "./previewLayers";
+import { resolvePreviewSelection, selectionDataAttribute } from "./previewSelection";
 
 // Rows this panel renders before it stops. A display budget, not a document limit.
 const LAYERS_PANEL_MAX_ROWS = 80;
@@ -146,9 +150,26 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
   const isMasterView = !activeCompPath || activeCompPath === "index.html";
 
   const livePreviewIframe = useLivePreviewIframe();
+  // The opaque read in flight; `again` holds a refresh that arrived meanwhile, run once it settles.
+  const opaqueRead = useRef<{ again: boolean } | null>(null);
   const collectLayers = useCallback(() => {
     const iframe = previewIframeRef.current;
     if (!iframe) return;
+    if (previewFrameOpaque(iframe)) {
+      if (opaqueRead.current) return void (opaqueRead.current.again = true);
+      const read = { again: false };
+      opaqueRead.current = read;
+      const scope = { activeCompositionPath: activeCompPath, activeGroupElement };
+      void collectPreviewLayerItems(iframe, scope, LAYERS_PANEL_MAX_ROWS).then((reply) => {
+        if (opaqueRead.current !== read) return;
+        opaqueRead.current = null;
+        // A reload took the drilled-into group; leave it as same-origin does below.
+        if (reply?.missingGroup) return setActiveGroupElement(null);
+        if (reply) setLayers(sortLayersByZIndex(reply.items));
+        if (read.again) collectLayers();
+      });
+      return;
+    }
     let doc: Document | null = null;
     try {
       doc = iframe.contentDocument;
@@ -175,6 +196,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
   }, [previewIframeRef, activeCompPath, isMasterView, activeGroupElement, setActiveGroupElement]);
 
   useEffect(() => {
+    opaqueRead.current = null;
     collectLayers();
   }, [collectLayers, refreshKey, zEditVersion, livePreviewIframe]);
 
@@ -210,15 +232,20 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
   }, [collectLayers]);
 
   const resolveSelection = useCallback(
-    (layer: DomEditLayerItem) => {
-      const doc = previewIframeRef.current?.contentDocument;
-      const el = liveLayerElement(layer, doc, activeCompPath);
-      return resolveDomEditSelection(el, {
+    async (layer: DomEditLayerItem) => {
+      const iframe = previewIframeRef.current;
+      const options = {
         activeCompositionPath: activeCompPath,
         isMasterView,
         preferClipAncestor: false,
         activeGroupElement,
-      });
+      };
+      if (layer.preview && iframe) {
+        const [described] = (await describePreviewElements(iframe, [layer.preview.handle])) ?? [];
+        return described ? resolvePreviewSelection(iframe, described, options) : null;
+      }
+      const el = liveLayerElement(layer, iframe?.contentDocument, activeCompPath);
+      return resolveDomEditSelection(el, options);
     },
     [activeCompPath, isMasterView, previewIframeRef, activeGroupElement],
   );
@@ -228,7 +255,8 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
       const selection = await resolveSelection(layer);
       if (!selection) return;
 
-      let matchedId = findMatchingTimelineElementId(selection, timelineElements);
+      const scope = activeCompPath || "index.html";
+      let matchedId = findMatchingTimelineElementId(selection, timelineElements, scope);
 
       if (!matchedId) {
         const sourceFile = selection.sourceFile ?? "index.html";
@@ -253,7 +281,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
         }
       }
     },
-    [currentTime, resolveSelection, timelineElements],
+    [activeCompPath, currentTime, resolveSelection, timelineElements],
   );
 
   const handleSelectLayer = useCallback(
@@ -275,7 +303,7 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
   const handleLayerDoubleClick = useCallback(
     async (layer: DomEditLayerItem) => {
       const selection = await resolveSelection(layer);
-      if (selection?.element.hasAttribute("data-hf-group")) {
+      if (selection && selectionDataAttribute(selection, "data-hf-group") !== null) {
         setActiveGroupElement(selection.element);
       } else {
         await handleSelectLayer(layer);
@@ -456,8 +484,11 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
           const draggable = isLayerDraggable(layer);
           const isCollapsed = collapsed[layer.key] ?? false;
           const hasChildren = layer.childCount > 0;
-          const isCompHost = isCompositionHost(layer.element);
-          const kind = layerKindOf(layer.element, hasChildren);
+          const isCompHost = layer.preview
+            ? layerDataAttribute(layer, "data-composition-src") !== null ||
+              layerDataAttribute(layer, "data-composition-file") !== null
+            : isCompositionHost(layer.element);
+          const kind = layer.preview?.kind ?? layerKindOf(layer.element, hasChildren);
           const KindIcon = KIND_ICON[kind];
           const kindName = kind[0].toUpperCase() + kind.slice(1);
           const hint = draggable

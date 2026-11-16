@@ -1,5 +1,6 @@
 import {
   createStudioSaveHttpError,
+  heldFileWordsOf,
   StudioSaveHttpError,
   trackStudioSaveFailure,
 } from "../utils/studioSaveDiagnostics";
@@ -195,7 +196,8 @@ export async function postPatchElement(
     },
   );
   if (!response.ok) {
-    showToast(formatPatchRejectionMessage(await readErrorResponseBody(response)), "error");
+    const held = await heldFileWordsOf(response, targetPath);
+    showToast(held ?? formatPatchRejectionMessage(await readErrorResponseBody(response)), "error");
     throw await createStudioSaveHttpError(response, `Failed to patch ${targetPath}`, {
       alreadyToasted: true,
     });

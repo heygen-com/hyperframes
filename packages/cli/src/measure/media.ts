@@ -1,9 +1,12 @@
 // Decode with ffmpeg into raw arrays, so measuring and comparing need nothing but node and ffmpeg.
 // Ported from the Studio's viral-clone media.mjs and tool.mjs.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
+import { recordFolder } from "../utils/projectRecords.js";
 
 const MAX_BUFFER = 1 << 30;
 /** ffmpeg flags on every run. Inline before a spread, the ffprobe `--` contract test reads them as a probe wrapper. */
@@ -51,6 +54,18 @@ export function runFfmpeg(args: string[], input?: Buffer, cwd?: string): Buffer 
     ...(input ? { input } : {}),
     ...(cwd ? { cwd } : {}),
   });
+}
+
+export function ffmpegToFile(args: string[], out: string, input?: Buffer): string {
+  const work = createStagingDir(dirname(out), ".ffmpeg-");
+  try {
+    const made = join(work, basename(out));
+    runFfmpeg([...args, made], input);
+    renameWithRetry(made, out);
+    return out;
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 }
 
 export interface VideoInfo {
@@ -109,28 +124,86 @@ export function probeSeconds(path: string): number {
   return Number(text) || 0;
 }
 
+/**
+ * What to do about a path that is not there. `D:video\clip.mp4` reaches us as `D:videoclip.mp4` (an unquoted
+ * Windows path in bash).
+ */
+export function missingFileFix(path: string): string {
+  if (/^[A-Za-z]:[^\\/]/.test(path))
+    return "the shell dropped the backslashes: quote the path or write it with / (D:/video/clip.mp4)";
+  return "pass the video's path from the project folder";
+}
+
+const CUT_SHORT = "the file is cut short, as an unfinished download is: download it again";
+const NOT_A_VIDEO =
+  "this is not a video: check what was saved (a web page saved as .mp4 reads like this)";
+
+/** ffprobe says "moov atom not found" for any file named .mp4; only an MP4's own header makes it cut short. */
+const UNREADABLE_CAUSES: readonly { pattern: RegExp; fix: (mp4Header: boolean) => string }[] = [
+  { pattern: /moov atom not found/i, fix: (mp4Header) => (mp4Header ? CUT_SHORT : NOT_A_VIDEO) },
+  { pattern: /end of file|partial file/i, fix: () => CUT_SHORT },
+  { pattern: /permission denied/i, fix: () => "the file cannot be read: check its permissions" },
+  { pattern: /invalid data found/i, fix: () => NOT_A_VIDEO },
+];
+
+/** ffprobe's most specific line on a file it could not read, without the demuxer tag or the path it repeats. */
+export function ffprobeReason(err: unknown, path: string): string | undefined {
+  const stderr = (err as { stderr?: Buffer | string } | null)?.stderr?.toString() ?? "";
+  const lines = stderr
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .replace(/^\[[^\]]*\]\s*/, "")
+        .replace(`${path}: `, "")
+        .trim(),
+    )
+    .filter(Boolean);
+  const specific = UNREADABLE_CAUSES.map(({ pattern }) => lines.find((l) => pattern.test(l))).find(
+    Boolean,
+  );
+  const line = specific ?? lines.at(-1);
+  return line ? line.slice(0, 160) : undefined;
+}
+
+/** The fix that goes with ffprobe's reason; `mp4Header` is whether the file starts with an MP4 `ftyp` box. */
+export function unreadableFix(reason: string | undefined, mp4Header = false): string {
+  const cause = reason ? UNREADABLE_CAUSES.find(({ pattern }) => pattern.test(reason)) : undefined;
+  return cause?.fix(mp4Header) ?? "pass a video file (mp4, mov, webm)";
+}
+
+function startsWithMp4Header(path: string): boolean {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, "r");
+    const head = Buffer.alloc(8);
+    readSync(fd, head, 0, 8, 0);
+    return head.toString("latin1", 4, 8) === "ftyp";
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
 /** Size (as displayed, rotation applied), clock and sound of a video. */
 // fallow-ignore-next-line complexity
 export function probeVideo(path: string): VideoInfo {
-  if (!existsSync(path))
-    throw new Fix(
-      `no file at ${path}`,
-      // `D:video\clip.mp4` reached us as `D:videoclip.mp4`: an unquoted Windows path in bash.
-      /^[A-Za-z]:[^\\/]/.test(path)
-        ? "the shell dropped the backslashes: quote the path or write it with / (D:/video/clip.mp4)"
-        : "pass the video's path from the project folder",
-    );
+  if (!existsSync(path)) throw new Fix(`no file at ${path}`, missingFileFix(path));
   let json: { streams?: ProbeStream[]; format?: { duration?: string } };
   try {
     json = JSON.parse(
       execFileSync(
         ffprobeBin(),
         ["-v", "error", "-show_streams", "-show_format", "-of", "json", "--", path],
-        { maxBuffer: MAX_BUFFER, windowsHide: true },
+        { maxBuffer: MAX_BUFFER, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
       ).toString(),
     );
-  } catch {
-    throw new Fix(`ffprobe cannot read ${path}`, "pass a video file (mp4, mov, webm)");
+  } catch (err) {
+    const reason = ffprobeReason(err, path);
+    throw new Fix(
+      `ffprobe cannot read ${path}${reason ? `: ${reason}` : ""}`,
+      unreadableFix(reason, startsWithMp4Header(path)),
+    );
   }
   const streams = json.streams ?? [];
   const video = streams.find((s) => s.codec_type === "video");
@@ -303,11 +376,11 @@ export function meanAbsDiff(a: Uint8Array, b: Uint8Array): number {
 /** Writes raw RGB (or grey) bytes as an image; the extension picks the format. */
 export function writeImage(path: string, px: Uint8Array, w: number, h: number, gray = false) {
   const header = Buffer.from(`${gray ? "P5" : "P6"}\n${w} ${h}\n255\n`);
-  runFfmpeg(
-    ["-y", "-f", gray ? "pgm_pipe" : "ppm_pipe", "-i", "-", "-frames:v", "1", path],
+  return ffmpegToFile(
+    ["-y", "-f", gray ? "pgm_pipe" : "ppm_pipe", "-i", "-", "-frames:v", "1"],
+    path,
     Buffer.concat([header, Buffer.from(px.buffer, px.byteOffset, px.byteLength)]),
   );
-  return path;
 }
 
 export const round = (n: number, d = 3) => Math.round(n * 10 ** d) / 10 ** d;
@@ -362,10 +435,20 @@ export function parseRoi(text: unknown, width?: number, height?: number): Roi {
   return roi;
 }
 
-/** The folder a tool writes its pictures to, made on demand: --out, or .hyperframes/<tool> in the current folder. */
+/** The folder a tool writes its pictures to, made on demand: --out, or .hyperframes/<tool> in the current folder.
+ * The default is used only when each folder on the way is a real one: a cloned project can link any of them out. */
 export function outDir(out: unknown, tool: string): string {
-  const dir = typeof out === "string" && out ? resolve(out) : resolve(join(".hyperframes", tool));
-  mkdirSync(dir, { recursive: true });
+  if (typeof out === "string" && out) {
+    const dir = resolve(out);
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+  const dir = recordFolder(resolve("."), tool);
+  if (!dir)
+    throw new Fix(
+      `${join(".hyperframes", tool)} is a link or not a folder here, so nothing is written into it`,
+      "pass --out <folder>",
+    );
   return dir;
 }
 

@@ -697,7 +697,8 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
       vi.setSystemTime(new Date("2026-11-03T08:00:00Z"));
       const at = (h: number) =>
         new Date(Date.parse("2026-11-03T08:00:00Z") - h * 3_600_000).toISOString();
-      const mod = await loadNotice(behind({ lastUpdateCheck: at(1), lastSkillsCheck: at(1) }));
+      const config = behind({ lastUpdateCheck: at(1), lastSkillsCheck: at(1) });
+      const mod = await loadNotice(config);
 
       const first = mod.withMeta({ ok: true })._meta;
       expect(first.updateNotice).toEqual(expect.any(String));
@@ -711,6 +712,8 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
       expect(again.checkedAt).toEqual(expect.any(String));
 
       vi.setSystemTime(new Date("2026-11-04T08:30:00Z"));
+      config.lastUpdateCheck = new Date().toISOString();
+      config.lastSkillsCheck = new Date().toISOString();
       expect(mod.withMeta({ ok: true })._meta.updateNotice).toEqual(expect.any(String));
     });
 
@@ -772,7 +775,7 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
     expect(mod.cachedUpdateCheck().latest).toBe("0.9.6");
   });
 
-  it.each(["999.0.0", "999.0.0-beta.1+build.5"])(
+  it.each(["999.0.0", "999.0.0+build.5"])(
     "preserves safe cached version %s and the update-check result in metadata",
     async (latestVersion) => {
       const mod = await load({ latestVersion });

@@ -1,6 +1,9 @@
+import { runsWithoutInstallPrompt } from "../utils/appleStubs.js";
 import { setCommandExitCode, CliResultSignal } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import { execFileSync, spawn } from "node:child_process";
+import { homedir, tmpdir } from "node:os";
+import { existsSync } from "node:fs";
 import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { diag } from "../ui/diagnostics.js";
@@ -25,6 +28,7 @@ import { invalidateSkillsCache } from "../utils/skillsUpdateCheck.js";
 import { trackSkillsInstallSkipped } from "../telemetry/events.js";
 import type { Example } from "./_examples.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
+import { projectCopyHint } from "../utils/projectCopyHint.js";
 
 export const examples: Example[] = [
   ["Install all HyperFrames skills", "hyperframes skills"],
@@ -34,10 +38,16 @@ export const examples: Example[] = [
   ["Also install one on-demand skill", "hyperframes skills update slideshow"],
 ];
 
+// The install is global, so npm never reads the project's node_modules or .npmrc.
+function npxCwd(): string {
+  const home = homedir();
+  return existsSync(home) ? home : tmpdir();
+}
+
 function hasNpx(): boolean {
   const npx = buildNpxCommand(["--version"]);
   try {
-    execFileSync(npx.command, npx.args, { stdio: "ignore", timeout: 5000 });
+    execFileSync(npx.command, npx.args, { stdio: "ignore", timeout: 5000, cwd: npxCwd() });
     return true;
   } catch {
     return false;
@@ -50,6 +60,7 @@ function hasNpx(): boolean {
 // up front and skip cleanly instead of letting that surface. `git` resolves as
 // a real executable on every platform, so no cmd.exe wrapping is needed.
 function hasGit(): boolean {
+  if (!runsWithoutInstallPrompt("git")) return false;
   try {
     execFileSync("git", ["--version"], { stdio: "ignore", timeout: 5000 });
     return true;
@@ -58,7 +69,7 @@ function hasGit(): boolean {
   }
 }
 
-function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
+function spawnNpx(args: string[]): Promise<void> {
   const npx = buildNpxCommand(args);
   return new Promise((resolve, reject) => {
     const child = spawn(npx.command, npx.args, {
@@ -72,7 +83,7 @@ function spawnNpx(args: string[], opts: { cwd?: string } = {}): Promise<void> {
       // path that bypasses the laggy skills.sh blob — see GLOBAL_INSTALL_ARGS_TAIL),
       // which is heavier than the blob fetch, so allow more headroom.
       timeout: 300_000,
-      cwd: opts.cwd,
+      cwd: npxCwd(),
       env: {
         ...process.env,
         // GH #316 — the upstream `skills` CLI shells out to `git clone`. When
@@ -135,15 +146,14 @@ function skillSelectionArgs(selection: SkillSelection): string[] {
 // Pinned: a bare `npx skills` runs whatever upstream published last.
 const SKILLS_CLI = "skills@1.5.13";
 
-function runSkillsAdd(
-  source: string,
-  selection: SkillSelection,
-  opts: { cwd?: string } = {},
-): Promise<void> {
-  return spawnNpx(
-    [SKILLS_CLI, "add", source, ...skillSelectionArgs(selection), ...GLOBAL_INSTALL_ARGS_TAIL],
-    opts,
-  );
+function runSkillsAdd(source: string, selection: SkillSelection): Promise<void> {
+  return spawnNpx([
+    SKILLS_CLI,
+    "add",
+    source,
+    ...skillSelectionArgs(selection),
+    ...GLOBAL_INSTALL_ARGS_TAIL,
+  ]);
 }
 
 // Skill names are kebab-case directory names. Refuse anything that isn't one
@@ -196,24 +206,29 @@ function mirrorToInstalledAgents(): void {
 // best-effort report (one calm line; init carries on and still scaffolds).
 const SKILLS_TOOLING: ReadonlyArray<{
   has: () => boolean;
-  error: string;
+  error: () => string;
   // Low-cardinality tag for the skip telemetry event (e.g. "git_missing").
   reason: string;
   report: () => void;
 }> = [
   {
     has: hasNpx,
-    error: "npx not found. Install Node.js and retry.",
+    error: () => `npx not found. Install Node.js and retry.${projectCopyHint("npx")}`,
     reason: "npx_missing",
-    report: () => clack.log.error(c.error("npx not found. Install Node.js and retry.")),
+    report: () =>
+      clack.log.error(
+        c.error(`npx not found. Install Node.js and retry.${projectCopyHint("npx")}`),
+      ),
   },
   {
     has: hasGit,
-    error: "git not found. Install git and retry to add AI coding skills.",
+    error: () =>
+      `git not found. Install git and retry to add AI coding skills.${projectCopyHint("git")}`,
     reason: "git_missing",
     // Skip cleanly rather than letting the upstream clone dump a noisy
     // multi-line `spawn git ENOENT` / "Installation failed" abort.
-    report: () => console.log(c.dim("Skipping AI coding skills: git not available.")),
+    report: () =>
+      console.log(c.dim(`Skipping AI coding skills: git not available.${projectCopyHint("git")}`)),
   },
 ];
 
@@ -221,7 +236,7 @@ const SKILLS_TOOLING: ReadonlyArray<{
 function skillsToolingReady(strict: boolean): boolean {
   for (const tool of SKILLS_TOOLING) {
     if (tool.has()) continue;
-    if (strict) throw new Error(tool.error);
+    if (strict) throw new Error(tool.error());
     tool.report();
     // Surface the rare best-effort skip (init on a box missing git/npx); the
     // event respects the telemetry opt-out inside trackEvent.
@@ -247,7 +262,7 @@ function sanitizeSelection(selection: SkillSelection): SkillSelection | null {
 
 async function installSkills(
   selection: SkillSelection,
-  opts: { cwd?: string; strict?: boolean; ref: string },
+  opts: { strict?: boolean; ref: string },
 ): Promise<void> {
   const safeSelection = sanitizeSelection(selection);
   if (safeSelection === null) return;
@@ -262,7 +277,7 @@ async function installSkills(
     diag.notice(c.bold(`Installing ${source.name} skills...`));
     diag.notice();
     try {
-      await runSkillsAdd(ref === "main" ? source.url : `${source.url}#${ref}`, safeSelection, opts);
+      await runSkillsAdd(ref === "main" ? source.url : `${source.url}#${ref}`, safeSelection);
     } catch (err) {
       if (opts.strict) throw err instanceof Error ? err : new Error(String(err));
       // warn, not notice: this is a non-fatal skip after a caught install error.
@@ -422,7 +437,7 @@ export async function updateSkills(
   };
 
   if (toInstall.length > 0) {
-    await installSkills(result.installed, { cwd: opts.cwd, strict, ref: check.ref ?? "main" });
+    await installSkills(result.installed, { strict, ref: check.ref ?? "main" });
     verifyInstalled(result.targets, { strict, cwd: opts.cwd });
   }
   // The install (or the fresh canonical check confirming everything current)
@@ -509,7 +524,6 @@ async function updateSkillsOffline(
 
   if (absent.length > 0) {
     await installSkills(absent, {
-      cwd: opts.cwd,
       strict: opts.strict,
       ref: cliReleaseTag(opts.cliVersion) ?? "main",
     });

@@ -1,9 +1,19 @@
 // @ts-check
-import fs, { open, readFile, realpath, unlink, writeFile } from "node:fs/promises";
+import fs, {
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rmdir,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
 import { join } from "node:path";
 import { hostname } from "node:os";
 import { randomUUID } from "node:crypto";
-import { errorCode, mkdirInside } from "./storage.mjs";
+import { errorCode, isJsonObject, mkdirInside } from "./storage.mjs";
 
 export class ShareBusyError extends Error {
   /** @param {string} path */
@@ -15,19 +25,27 @@ export class ShareBusyError extends Error {
   }
 }
 /** @typedef {{ token: string, pid: number, hostname: string }} Owner */
+/** @param {unknown} value @returns {value is Owner} */
+function isOwner(value) {
+  return (
+    isJsonObject(value) &&
+    typeof value.token === "string" &&
+    /^[a-f0-9-]{36}$/.test(value.token) &&
+    typeof value.pid === "number" &&
+    Number.isInteger(value.pid) &&
+    value.pid > 0 &&
+    typeof value.hostname === "string"
+  );
+}
+
 /** @param {string} path @returns {Promise<Owner | null>} */
 async function ownerAt(path) {
   try {
     const value = JSON.parse(await readFile(path, "utf8"));
-    return typeof value.token === "string" &&
-      /^[a-f0-9-]{36}$/.test(value.token) &&
-      Number.isInteger(value.pid) &&
-      value.pid > 0 &&
-      typeof value.hostname === "string"
-      ? value
-      : null;
+    return isOwner(value) ? value : null;
   } catch (error) {
-    if (errorCode(error) === "ENOENT" || error instanceof SyntaxError) return null;
+    if (missing(error) || errorCode(error) === "EISDIR" || error instanceof SyntaxError)
+      return null;
     throw error;
   }
 }
@@ -41,8 +59,21 @@ function isDead(owner) {
     return errorCode(error) === "ESRCH";
   }
 }
-/** A claim scoped to the old owner prevents two stale readers deleting a replacement lock. @param {string} path */
-async function reap(path) {
+/** @param {unknown} error */
+function missing(error) {
+  return errorCode(error) === "ENOENT" || errorCode(error) === "ENOTDIR";
+}
+
+/** @param {string} path */
+function lockAt(path) {
+  return lstat(path).catch((error) => {
+    if (missing(error)) return null;
+    throw error;
+  });
+}
+
+/** A claim scoped to the old owner prevents two stale readers deleting a replacement file. @param {string} path */
+async function reapFile(path) {
   const old = await ownerAt(path);
   if (!old || !isDead(old)) return;
   const claim = `${path}.reap-${old.token}`;
@@ -58,29 +89,77 @@ async function reap(path) {
     await unlink(claim);
   }
 }
-/** @param {string} candidate @param {string} lock @param {Owner} owner */
-async function claim(candidate, lock, owner) {
+/** Remove only an empty directory: a replacement is published with its owner already inside. @param {string} path */
+async function removeEmptyDirectory(path) {
+  await rmdir(path).catch((error) => {
+    if (!missing(error) && !["ENOTEMPTY", "EEXIST"].includes(String(errorCode(error)))) throw error;
+  });
+}
+
+/** @param {string} path @param {string} marker */
+async function releaseDirectory(path, marker) {
+  await unlink(join(path, marker)).catch((error) => {
+    if (!missing(error)) throw error;
+  });
+  await removeEmptyDirectory(path);
+}
+
+/** @param {string} path */
+async function reapDirectory(path) {
+  const entries = await readdir(path, { withFileTypes: true }).catch((error) => {
+    if (missing(error)) return [];
+    throw error;
+  });
+  if (entries.length === 0) return removeEmptyDirectory(path);
+  const [entry] = entries;
+  if (entries.length !== 1 || !entry?.isFile()) return;
+  const owner = await ownerAt(join(path, entry.name));
+  if (owner && entry.name === `${owner.token}.json` && isDead(owner))
+    await releaseDirectory(path, entry.name);
+}
+
+/** @param {string} path */
+async function reap(path) {
+  const stat = await lockAt(path);
+  if (stat?.isFile()) return reapFile(path);
+  if (stat?.isDirectory()) return reapDirectory(path);
+}
+
+/** @param {string} draft @param {string} marker @param {string} lock @param {number} deadline */
+async function claim(draft, marker, lock, deadline) {
   try {
-    await fs.link(candidate, lock);
+    await fs.link(join(draft, marker), lock);
+    return "file";
   } catch (error) {
+    if (errorCode(error) === "EEXIST") return null;
     if (
-      !["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EINVAL", "EISDIR"].includes(
+      !["EPERM", "ENOTSUP", "EOPNOTSUPP", "EXDEV", "EINVAL", "EISDIR", "EACCES"].includes(
         String(errorCode(error)),
       )
     )
       throw error;
-    const handle = await open(lock, "wx", 0o600);
-    let written = false;
-    try {
-      await handle.writeFile(JSON.stringify(owner));
-      written = true;
-    } finally {
-      await handle.close();
-      if (!written) await unlink(lock);
+  }
+  return claimDirectory(draft, lock, deadline);
+}
+
+/** @param {string} draft @param {string} lock @param {number} deadline */
+async function claimDirectory(draft, lock, deadline) {
+  // A directory rename publishes the owner atomically and cannot replace a file or a nonempty directory.
+  try {
+    await fs.rename(draft, lock);
+    return "directory";
+  } catch (error) {
+    const code = String(errorCode(error));
+    if (["EEXIST", "ENOTEMPTY", "ENOTDIR", "EISDIR"].includes(code)) return null;
+    if (["EPERM", "EACCES", "EBUSY"].includes(code)) {
+      if (await lockAt(lock)) return null;
+      // Windows can deny the rename while another process has a handle open on the draft.
+      if (process.platform === "win32" && Date.now() < deadline) return null;
     }
+    throw error;
   }
 }
-/** @template T @param {string} projectPath @param {"review" | "export"} lane @param {() => Promise<T>} run
+/** @template T @param {string} projectPath @param {"review" | "export" | "source" | "operation"} lane @param {() => Promise<T>} run
  * @param {{ timeoutMs?: number, signal?: AbortSignal }} [options] @returns {Promise<T>} */
 export async function withProjectShareLock(
   projectPath,
@@ -90,22 +169,27 @@ export async function withProjectShareLock(
 ) {
   const root = await realpath(projectPath);
   const folder = await mkdirInside(root, ".hyperframes");
-  const lock = join(folder, lane === "review" ? "review.lock" : "review-export.lock");
+  const lock = join(
+    folder,
+    lane === "operation"
+      ? "share-operation.lock"
+      : lane === "review"
+        ? "review.lock"
+        : lane === "source"
+          ? "share-source.lock"
+          : "review-export.lock",
+  );
   const owner = { token: randomUUID(), pid: process.pid, hostname: hostname() };
-  const candidate = `${lock}.${owner.token}.tmp`;
-  await writeFile(candidate, JSON.stringify(owner), { flag: "wx", mode: 0o600 });
+  const draft = `${lock}.${owner.token}.tmp`;
+  const marker = `${owner.token}.json`;
+  await mkdir(draft, { mode: 0o700 });
   const deadline = Date.now() + timeoutMs;
-  let held = false;
+  let held = null;
   try {
+    await writeFile(join(draft, marker), JSON.stringify(owner), { flag: "wx", mode: 0o600 });
     while (!held) {
       signal?.throwIfAborted();
-      held = await claim(candidate, lock, owner).then(
-        () => true,
-        (error) => {
-          if (errorCode(error) === "EEXIST") return false;
-          throw error;
-        },
-      );
+      held = await claim(draft, marker, lock, deadline);
       if (held) break;
       await reap(lock);
       if (Date.now() >= deadline) throw new ShareBusyError(lock);
@@ -114,7 +198,11 @@ export async function withProjectShareLock(
     signal?.throwIfAborted();
     return await run();
   } finally {
-    if (held && (await ownerAt(lock))?.token === owner.token) await unlink(lock);
-    await unlink(candidate);
+    try {
+      if (held === "directory") await releaseDirectory(lock, marker);
+      if (held === "file" && (await ownerAt(lock))?.token === owner.token) await unlink(lock);
+    } finally {
+      await releaseDirectory(draft, marker);
+    }
   }
 }

@@ -135,7 +135,7 @@ export function resolveVideoCoverageThreshold(
 
 /**
  * Count frames in a clip's authored `[start,end)` window. CFR extraction
- * rounds to the nearest output-frame boundary and VFR extraction rounds up,
+ * fills every output slot the window covers and VFR extraction rounds up,
  * as `extractionFrameCountForDuration` does. Missing entries
  * retain the fail-closed `ceil` default. Positive sub-frame clips emit one.
  */
@@ -143,7 +143,7 @@ export function expectedFramesForClip(
   start: number,
   end: number,
   fps: FpsInput,
-  rounding: "ceil" | "nearest" = "ceil",
+  rounding: "ceil" | "slots" = "ceil",
 ): number {
   const fpsValue = fpsToNumber(toFps(fps));
   if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isFinite(fpsValue)) return 0;
@@ -171,7 +171,7 @@ function expectedFramesForVideo(
   entry: ExtractedFrames | undefined,
   fps: FpsInput,
 ): number {
-  const rounding = entry && !entry.metadata.isVFR ? "nearest" : "ceil";
+  const rounding = entry && !entry.metadata.isVFR ? "slots" : "ceil";
   const slotSourceDuration = sourceTimeAt(
     normalizeRateSpec(video.playbackRate),
     Math.max(0, video.end - video.start),

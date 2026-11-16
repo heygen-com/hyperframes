@@ -87,6 +87,20 @@ describe("lint command exit handling", () => {
     expect(vi.mocked(process.exit)).not.toHaveBeenCalled();
     expect(consumeCommandResult().exitCode).toBe(1);
   });
+
+  it("names a file with control characters in it as visible escapes", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    lintProjectMock.mockResolvedValue({
+      results: [{ result: { findings: [] }, file: "a\u001b]0;t\u0007.html" }],
+      totalErrors: 0,
+      totalWarnings: 0,
+      totalInfos: 0,
+    });
+    await run({ json: false, verbose: false });
+    const header = String(log.mock.calls.find((call) => String(call[0]).includes("Linting"))?.[0]);
+    expect(header).toContain("proj/a\\x1b]0;t\\x07.html");
+    expect(header).not.toContain("\u001b]");
+  });
 });
 
 describe("lint --lint-verbose", () => {
@@ -126,5 +140,44 @@ describe("lint --lint-verbose", () => {
     expect(await codes({})).toEqual(["warn"]);
     expect(await codes({ verbose: true })).toEqual(["warn", "note"]);
     expect(await codes({ "lint-verbose": true })).toEqual(["warn", "note"]);
+  });
+});
+
+describe("lint and compositions the project never mounts", () => {
+  beforeEach(() => {
+    consumeCommandResult();
+    lintProjectMock.mockReset();
+    lintProjectMock.mockResolvedValue({
+      results: [{ file: "index.html", result: { findings: [] } }],
+      totalErrors: 0,
+      totalWarnings: 0,
+      totalInfos: 0,
+      unmountedCompositions: ["compositions/a.html", "compositions/b.html"],
+    });
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("says once how many it left out, and lints them with --include-unmounted", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await run({ _: [] });
+    const lines = log.mock.calls.map((call) => String(call[0]));
+    expect(lines.filter((line) => line.includes("not mounted from index.html"))).toEqual([
+      expect.stringContaining(
+        "2 files in compositions/ are not mounted from index.html, so not checked; --include-unmounted adds them.",
+      ),
+    ]);
+    expect(lintProjectMock.mock.calls[0]?.[3]).toEqual({ includeUnmounted: false });
+
+    await run({ _: [], "include-unmounted": true });
+    expect(lintProjectMock.mock.calls[1]?.[3]).toEqual({ includeUnmounted: true });
+  });
+
+  it("names them in the JSON report", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await run({ _: [], json: true });
+    expect(JSON.parse(String(log.mock.calls[0]?.[0])).unmountedCompositions).toEqual([
+      "compositions/a.html",
+      "compositions/b.html",
+    ]);
   });
 });

@@ -1,11 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
   deleteStackOutputs,
   listStackNames,
   readStackOutputs,
+  requireStack,
   stateFilePath,
   type StackOutputs,
   writeStackOutputs,
@@ -63,5 +64,21 @@ describe("lambda state file", () => {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, "{ not json");
     expect(readStackOutputs("bad", workdir)).toBeNull();
+  });
+
+  it("requireStack refuses a file that names a different stack", () => {
+    writeStackOutputs({ ...sample, stackName: "other" }, workdir);
+    const path = stateFilePath("other", workdir);
+    mkdirSync(dirname(stateFilePath("test", workdir)), { recursive: true });
+    writeFileSync(stateFilePath("test", workdir), readFileSync(path));
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(() => requireStack("test", workdir)).toThrow();
+      expect(requireStack("other", workdir).stackName).toBe("other");
+      writeFileSync(stateFilePath("OTHER", workdir), readFileSync(path));
+      expect(requireStack("OTHER", workdir).stackName).toBe("other");
+    } finally {
+      quiet.mockRestore();
+    }
   });
 });

@@ -192,15 +192,18 @@ describe("distributed synthetic render job", () => {
     expect(job.config.variables).toEqual(variables);
   });
 
-  it("turns the page's capture motion blur off for the plan probe (R19)", () => {
-    const job = buildSyntheticRenderJob({
-      fps: { num: 30, den: 1 },
-      format: "mp4",
-      quality: "high",
-      hdrMode: "force-sdr",
-      entryFile: "index.html",
-    });
-    expect(job.config.pageMotionBlur).toBe("off");
+  it("leaves the page's own motion blur in charge for the plan probe, unless the config says off", () => {
+    const job = (pageMotionBlur?: "off") =>
+      buildSyntheticRenderJob({
+        fps: { num: 30, den: 1 },
+        format: "mp4",
+        quality: "high",
+        hdrMode: "force-sdr",
+        entryFile: "index.html",
+        pageMotionBlur,
+      });
+    expect(job().config.pageMotionBlur).toBeUndefined();
+    expect(job("off").config.pageMotionBlur).toBe("off");
   });
 
   it("keeps the production software-GPU launch on BeginFrame control", () => {
@@ -391,6 +394,34 @@ describe("resolveChunkPlan", () => {
     expect(result.effectiveChunkSize).toBe(240);
   });
 
+  describe("sized in one plan from a frame budget and a fan-out floor", () => {
+    // The workflow's budget is 1600 frames a chunk and its fan-out 4 chunks, up to a tier cap of 16.
+    const size = (totalFrames: number, cap = 16) =>
+      resolveChunkPlan(totalFrames, undefined, cap, 1600, 4).chunkCount;
+
+    it("adds chunks to a long film so each stays inside the budget", () => {
+      expect(size(10929)).toBe(7);
+      expect(
+        resolveChunkPlan(10929, undefined, 16, 1600, 4).effectiveChunkSize,
+      ).toBeLessThanOrEqual(1600);
+    });
+
+    it("keeps a short film at the fan-out instead of collapsing it to the budget", () => {
+      expect(size(1800)).toBe(4);
+      expect(size(6400)).toBe(4);
+    });
+
+    it("rejects a non-positive or non-integer floor", () => {
+      expect(() => resolveChunkPlan(1800, undefined, 16, 1600, 0)).toThrow(/minParallelChunks/);
+      expect(() => resolveChunkPlan(1800, undefined, 16, 1600, 2.5)).toThrow(/minParallelChunks/);
+    });
+
+    it("never goes past the cap, however long the film", () => {
+      expect(size(54000, 9)).toBe(9);
+      expect(size(1800, 2)).toBe(2);
+    });
+  });
+
   it("rejects non-positive totalFrames", () => {
     expect(() => resolveChunkPlan(0, 240, 16)).toThrow();
     expect(() => resolveChunkPlan(-1, 240, 16)).toThrow();
@@ -554,25 +585,27 @@ describe("resolveChunkPlan", () => {
 });
 
 describe("plan() and page motion blur (R19)", () => {
-  const planCaptureMode = async (html: string, name: string) => {
+  const planCaptureMode = async (html: string, name: string, pageMotionBlur?: "off") => {
     const dir = join(runRoot, name);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "index.html"), html, "utf-8");
     const planDir = join(runRoot, `${name}-plan`);
-    await plan(dir, { fps: 30, width: 320, height: 240, format: "mp4" }, planDir);
+    await plan(dir, { fps: 30, width: 320, height: 240, format: "mp4", pageMotionBlur }, planDir);
     const meta = JSON.parse(readFileSync(join(planDir, "meta", "encoder.json"), "utf-8"));
     return { captureMode: meta.captureMode ?? null, forceScreenshot: meta.forceScreenshot ?? null };
   };
 
-  it("does not route a data-motion-blur composition through screenshot capture", async () => {
+  it("routes a data-motion-blur composition through screenshot capture unless the config says off", async () => {
     const blur = FIXTURE_HTML.replace(
       'data-composition-id="root"',
       'data-composition-id="root" data-motion-blur="on"',
     );
     const plain = await planCaptureMode(FIXTURE_HTML, "blur-plain");
     const blurred = await planCaptureMode(blur, "blur-on");
-    expect(blurred).toEqual(plain);
-  }, 30_000);
+    expect(blurred).toEqual({ captureMode: "screenshot", forceScreenshot: true });
+    expect(plain).toEqual({ captureMode: "beginframe", forceScreenshot: false });
+    expect(await planCaptureMode(blur, "blur-config-off", "off")).toEqual(plain);
+  }, 60_000);
 });
 
 describe("buildChunkSlices", () => {

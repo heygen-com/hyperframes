@@ -13,12 +13,12 @@
  * existing destination is replaced only after the download succeeds.
  */
 
-import { chmodSync, mkdtempSync, renameSync, rmSync, statSync } from "node:fs";
+import { chmodSync, lstatSync, renameSync, rmSync, statSync } from "node:fs";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { open } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { resolveWritePath } from "@hyperframes/core/atomic-file";
+import { createStagingDir, resolveWritePath } from "@hyperframes/core/atomic-file";
 
 // The first request asks for PART_BYTES; a larger file is split into up to
 // CONNECTIONS ranged GETs. A server that ignores Range answers 200 and is streamed.
@@ -34,6 +34,8 @@ export interface DownloadOptions {
   /** Called with (bytes downloaded, total or undefined). */
   onProgress?: (bytes: number, total: number | undefined) => void;
   partBytes?: number;
+  /** Replace a link at `destPath` with the download instead of writing to the file it points at. */
+  replaceLink?: boolean;
 }
 
 export interface DownloadResult {
@@ -76,10 +78,11 @@ export async function downloadToFile(
 
   makeOutputFolder(dirname(destPath));
 
-  // Writes through a caller-selected symlink, as before.
-  const destination = resolveWritePath(destPath);
-  const previous = statSync(destination, { throwIfNoEntry: false });
-  const stage = mkdtempSync(join(dirname(destination), ".hf-download-"));
+  const destination = options.replaceLink ? destPath : resolveWritePath(destPath);
+  const previous = options.replaceLink
+    ? lstatSync(destination, { throwIfNoEntry: false })
+    : statSync(destination, { throwIfNoEntry: false });
+  const stage = createStagingDir(dirname(destination), ".hf-download-");
   const stagedFile = join(stage, "download");
   let bytes = 0;
   let firstError: unknown;

@@ -253,6 +253,7 @@ describe("Studio bundle file reads", () => {
     const text = await response.text();
     expect(text).toContain("Studio");
     expect(text).toContain('"VITE_STUDIO_STATIC_TEST":"runtime-value"');
+    expect(text).toContain('<meta name="hyperframes-local-share" content="1">');
     expectClosed();
   });
 

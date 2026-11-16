@@ -2,6 +2,7 @@ import { studioApiFetch } from "../utils/studioApiFetch";
 import { studioFileRevision } from "../utils/studioFileVersion";
 import { logReload } from "../utils/reloadDebug";
 import { whileScriptWrites } from "./previewReloading";
+import { previewFrameOpaque } from "./lib/previewChannel";
 
 type SwapWindow = Window & {
   __hfSwapScenes?: (html: string, signal?: AbortSignal) => Promise<void>;
@@ -114,6 +115,7 @@ export function swapFreshly(
 export function sceneSwapFor(
   iframe: HTMLIFrameElement,
 ): ((url: string, isCurrent: () => boolean, cancel?: AbortSignal) => Promise<void>) | null {
+  if (previewFrameOpaque(iframe)) return null;
   const win = iframe.contentWindow as SwapWindow | null;
   const swap = win?.__hfSwapScenes;
   if (typeof swap !== "function") return null;

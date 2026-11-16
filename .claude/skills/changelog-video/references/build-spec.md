@@ -119,4 +119,4 @@ otherwise) and must stay flat 2D (no 3D ancestors).
   (0.14 sits under the VO; use a user-supplied track only when given one).
 - Preview server caches the bundle — RESTART after edits, then verify on the
   raw comp page (`/api/projects/<id>/preview/comp/index.html`) via
-  `window.__player.seek(t)`.
+  `await window.__player.seek(t)` (it resolves async; read after it settles).

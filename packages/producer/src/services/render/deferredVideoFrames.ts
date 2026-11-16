@@ -6,6 +6,7 @@ import {
   type ExtractedFrames,
   extractVideoFramesRange,
   type FrameRange,
+  mediaIdPathSegment,
   runVideoExtractionWithRetry,
   type ShownBox,
   type VideoElement,
@@ -71,7 +72,7 @@ export async function extractDeferredFrames(input: {
   const shown = shownDeferredFrameIndexes(input, input.frames, input.fps);
   return Promise.all(
     deferred.map(async (video) => {
-      const outputDir = join(input.outputRoot, video.videoId);
+      const outputDir = join(input.outputRoot, mediaIdPathSegment(video.videoId));
       const indexes = [...(shown.get(video.videoId) ?? [])].sort((a, b) => a - b);
       if (indexes.length === 0) {
         return { ...video, outputDir, framePaths: new Map<number, string>(), ownedByLookup: false };
@@ -110,6 +111,7 @@ export async function extractAllDeferredFrames(
     cfg: Pick<EngineConfig, "ffmpegProcessTimeout">;
     signal?: AbortSignal;
     sourceOf?: (video: ExtractedFrames) => string;
+    shownBoxes?: ReadonlyMap<string, ShownBox>;
     maxTransientRetries?: number;
     onProgress?: (framesDone: number, framesTotal: number) => void;
   },
@@ -129,7 +131,12 @@ export async function extractAllDeferredFrames(
           video.videoId,
           range.startTime,
           range.durationSeconds,
-          { fps: input.fps, outputDir: dirname(video.outputDir), format: range.format },
+          {
+            fps: input.fps,
+            outputDir: dirname(video.outputDir),
+            format: range.format,
+            shownBox: input.shownBoxes?.get(video.videoId),
+          },
           input.signal,
           input.cfg,
         ),

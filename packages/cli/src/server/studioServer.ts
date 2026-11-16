@@ -5,6 +5,8 @@
  * providing a CLI-specific adapter for single-project, in-process rendering.
  */
 
+import { PREVIEW_NONCE_HEADER, previewProof } from "@hyperframes/core/preview-proof";
+import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { realpath } from "@hyperframes/core";
@@ -36,9 +38,17 @@ import {
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import { startRenderCpuSampler } from "../telemetry/renderCpu.js";
 import { mountDesktopRoutes } from "./desktopRoutes.js";
+import {
+  hostHeaderAllowed,
+  PREVIEW_ALLOWED_HOSTS_ENV,
+  previewAllowedHostsFromEnv,
+} from "@hyperframes/studio-server/request-identity";
+import { mountShareRoutes } from "./shareRoutes.js";
 import { isDevMode } from "../utils/env.js";
+import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { insideHostApp } from "../utils/desktopApp.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
+import { acquireRenderLock, describeRenderLockHolder } from "../utils/renderLock.js";
 import type { ProjectLintResult } from "@hyperframes/lint";
 import { resolveRenderBrowser } from "../browser/preflight.js";
 import {
@@ -57,6 +67,7 @@ import {
   PREVIEW_BUNDLE_OPTIONS,
   createPreviewDocumentStore,
   thumbnailDeviceScaleFactor,
+  grantCaptureLoads,
   type ResolvedProject,
   type RenderJobState,
   type BackgroundRemovalRender,
@@ -67,6 +78,7 @@ import {
   historyCache,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
+import { isLinkFreeWithinProject } from "@hyperframes/studio-server/safe-path";
 import { resolveAutoProxy } from "../utils/projectConfig.js";
 import {
   clearElementScreenshotIsolation,
@@ -88,11 +100,15 @@ import {
 } from "../browser/gpuPolicy.js";
 import { loadSharpInBackground } from "../utils/optionalPackages.js";
 
+export { originForListeningAddress } from "@hyperframes/studio-server";
+
 const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 
 // Under preview.ts's 3s process-exit watchdog, so shutdown() always returns
 // before that watchdog can fire and skip this file's browser cleanup.
 const RENDER_SHUTDOWN_WAIT_MS = 2_000;
+
+const LINT_WORKER_TIMEOUT_MS = 120_000;
 
 // Vite emits only content-hashed files under dist/assets; hand-authored
 // public/ files land at the dist root. The route is the signal because the
@@ -556,6 +572,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const gifOutputDir = join(project.dir, ".hyperframes", "prepared-assets", "gif");
       const gifDownloadDir = join(project.dir, ".hyperframes", "prepared-assets", "downloads");
       const heifOutputDir = join(project.dir, ".hyperframes", "prepared-assets", "heif");
+      const preparedDirs = [gifOutputDir, gifDownloadDir, heifOutputDir];
+      if (!preparedDirs.every((dir) => isLinkFreeWithinProject(project.dir, dir)))
+        return injectDeterministicFontFaces(html);
       const { html: htmlWithJpegs } = await prepareHeifImageInputs(html, {
         projectDir: project.dir,
         downloadDir: gifDownloadDir,
@@ -590,15 +609,16 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     // Out of process: linting a large composition is seconds of synchronous parsing, and on
     // this event loop it stalls every other Studio request, the preview included.
-    lintProject: (dir: string) =>
+    lintProject: (dir: string, signal?: AbortSignal) =>
       runRenderSetupWorker<ProjectLintResult>(
         "lint",
         { projectDir: dir, host: "studio", background: true },
-        { maxBufferBytes: 8 * 1024 * 1024 },
+        { maxBufferBytes: 8 * 1024 * 1024, signal, timeoutMs: LINT_WORKER_TIMEOUT_MS },
       ),
 
     runtimeUrl: "/api/runtime.js",
     gsapLocalRoot: gsapVendorDir ? GSAP_LOCAL_ROOT : undefined,
+    serverOrigin: () => options.origin?.(),
 
     rendersDir: () => join(projectDir, "renders"),
 
@@ -652,6 +672,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             process.env.PRODUCER_HEADLESS_SHELL_PATH = browser.executablePath;
           }
 
+          const allowOutsideProjectAssets = outsideAssetsAllowed(
+            opts.project.dir,
+            opts.composition,
+            (line) => console.warn(`[studio] ${line}`),
+          );
           const manifestContent = readStudioManualEditManifestContent(opts.project.dir);
           const manualEditsRenderScript = createStudioManualEditsRenderBodyScript(manifestContent);
           const job = createRenderJob({
@@ -668,19 +693,34 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             ...encoderJobOptions(opts),
             ...(opts.useGpu ? { useGpu: true } : {}),
             ...(opts.pageMotionBlur ? { pageMotionBlur: opts.pageMotionBlur } : {}),
+            allowOutsideProjectAssets,
           });
           renderJob = job;
           const onProgress = (j: { progress: number; currentStage?: string }) => {
             state.progress = j.progress;
             if (j.currentStage) state.stage = j.currentStage;
           };
-          await executeRenderJob(
-            job,
-            opts.project.dir,
-            opts.outputPath,
-            onProgress,
-            abortController.signal,
-          );
+          // The CLI's one-render-slot-per-account lock: a Studio render waits behind it, and Cancel ends the wait.
+          const releaseSlot = await acquireRenderLock({
+            project: opts.project.dir,
+            wait: true,
+            signal: abortController.signal,
+            onWait: (holder) => {
+              state.stage = `Waiting for another render (${describeRenderLockHolder(holder, Date.now())})`;
+            },
+          });
+          state.stage = undefined;
+          try {
+            await executeRenderJob(
+              job,
+              opts.project.dir,
+              opts.outputPath,
+              onProgress,
+              abortController.signal,
+            );
+          } finally {
+            releaseSlot();
+          }
           if (abortController.signal.aborted) {
             // Cancel landed just as the render finished: honor the cancel the
             // route already reported instead of resurrecting a completed job.
@@ -777,6 +817,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           opts.seekTime,
           async (page) => {
             await page.setViewport(viewport);
+            await grantCaptureLoads(await page.createCDPSession(), opts.previewUrl);
             await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
             await assertWebGpuAdapterAvailable(
               page,
@@ -888,6 +929,23 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // ── Build the Hono app ─────────────────────────────────────────────────
 
   const app = new Hono();
+  // Extra hosts from HYPERFRAMES_PREVIEW_ALLOWED_HOSTS (Codespaces, tunnels).
+  const allowedHosts = previewAllowedHostsFromEnv();
+
+  // Every route answers only loopback, the bind or an allowed host; a browser cannot forge Host.
+  app.use(async function refuseUnknownHost(c, next) {
+    const host = c.req.header("host") ?? new URL(c.req.url).host;
+    if (hostHeaderAllowed(host, allowedHosts)) return next();
+    return c.json(
+      {
+        error:
+          `forbidden: host "${host}" is not allowed. ` +
+          `Set ${PREVIEW_ALLOWED_HOSTS_ENV}=${host} to allow it ` +
+          `(comma separated for several hosts).`,
+      },
+      403,
+    );
+  });
 
   // Config probe endpoint — used by port detection to identify existing
   // HyperFrames instances and reuse them instead of spawning duplicates.
@@ -895,7 +953,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   app.get("/__hyperframes_config", (c) => {
     const serve = async () => {
       const serverBuildSignature = await loadPreviewServerBuildSignature();
-      return c.json({
+      const config = {
         isHyperframes: true,
         pid: process.pid,
         projectName: projectId,
@@ -903,7 +961,17 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         serverBuildSignature,
         browserGpuMode,
         version,
-      });
+      };
+      const socket = (c.env as Partial<HttpBindings> | undefined)?.incoming?.socket;
+      const proof =
+        socket?.localAddress && socket.localPort
+          ? previewProof(
+              c.req.header(PREVIEW_NONCE_HEADER),
+              { address: socket.localAddress, port: socket.localPort },
+              config,
+            )
+          : null;
+      return c.json({ ...config, ...(proof && { proof }) });
     };
     return serve();
   });
@@ -1053,6 +1121,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   });
 
   mountDesktopRoutes(app, projectDir);
+  mountShareRoutes(app, projectDir);
 
   // ── Pre-flight checks for render ────────────────────────────────────────
   // Intercept render requests before they reach the shared API so we can
@@ -1073,7 +1142,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // Mount the shared studio API at /api.
   // Use fetch() forwarding (not .route()) so the sub-app sees paths without
   // the /api prefix — the shared module's path extraction uses c.req.path.
-  const api = createStudioApi(adapter);
+  const api = createStudioApi(adapter, { allowedHosts, sandboxThumbnailCaptures: true });
   app.all("/api/*", async (c) => {
     const url = new URL(c.req.url);
     url.pathname = url.pathname.slice(4); // Strip "/api" prefix
@@ -1197,9 +1266,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     // (`HYPERFRAMES_PREVIEW_HOST=0.0.0.0`) needs it to stay in agreement with
     // the CLI. See buildStudioHeadScriptsForHost.
     const headScript = buildStudioHeadScriptsForHost(buildRuntimeEnvScript(), c.req.header("host"));
-    if (headScript) {
-      html = html.replace("<head>", `<head>${headScript}`);
-    }
+    html = html.replace(
+      "<head>",
+      `<head><meta name="hyperframes-local-share" content="1">${headScript}`,
+    );
     // The shell names the current hashed bundle, so it always revalidates.
     // `no-cache` not `no-store`: same refetch without an ETag, but `no-store`
     // would blocklist the document from Chrome's bfcache.

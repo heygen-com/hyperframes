@@ -11,11 +11,11 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fpsToNumber, parseFps } from "@hyperframes/core";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { readCompositionFps } from "../utils/compositionFps.js";
 import { type Cut, classifiedCuts, confirmsCut, frameChanges, signatures } from "./cuts.js";
 import {
@@ -29,6 +29,7 @@ import { compareEnergy, energyCurve, type EnergyComparison } from "./energy.js";
 import { compareLook, look, sameLook, type LookComparison } from "./look.js";
 import {
   decode,
+  ffmpegToFile,
   Fix,
   frameAt,
   pearson,
@@ -383,7 +384,7 @@ function ssimSeries(ref: Clip, yours: Clip, logPath: string): Series {
       undefined,
       work,
     ).toString();
-    writeFileSync(logPath, text);
+    replaceFileAtomically(logPath, text);
     const frame = all(text);
     const perCell = Array.from({ length: GRID * GRID }, (_, i) =>
       all(readFileSync(join(work, `cell${i}.log`), "utf8")),
@@ -1214,13 +1215,15 @@ function sideBySide(
   offset = 0,
 ): string {
   const skip = (seconds: number) => (seconds > 0 ? ["-ss", String(seconds)] : []);
-  runFfmpeg([
-    ...["-y", ...skip(-offset), "-i", reference, ...skip(offset), "-i", yours, "-filter_complex"],
-    `[0:v]setsar=1[a];[1:v]scale=${ref.width}:${ref.height},setsar=1[b];[a][b]hstack=inputs=2,pad=ceil(iw/2)*2:ceil(ih/2)*2[v]`,
-    ...["-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p"],
-    ...["-c:a", "aac", "-shortest", out],
-  ]);
-  return out;
+  return ffmpegToFile(
+    [
+      ...["-y", ...skip(-offset), "-i", reference, ...skip(offset), "-i", yours, "-filter_complex"],
+      `[0:v]setsar=1[a];[1:v]scale=${ref.width}:${ref.height},setsar=1[b];[a][b]hstack=inputs=2,pad=ceil(iw/2)*2:ceil(ih/2)*2[v]`,
+      ...["-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-crf", "20", "-pix_fmt", "yuv420p"],
+      ...["-c:a", "aac", "-shortest"],
+    ],
+    out,
+  );
 }
 
 function choosePick(opts: DiffOptions, ref: VideoInfo): Pick {
@@ -1330,7 +1333,7 @@ export async function diffVideos(options: DiffOptions): Promise<DiffResult> {
       warnings.push(`yours ends early: ${series.frame.length} of ${ks.length} frames compared`);
     const worstCell = series.cells.map((cells) => Math.min(...cells));
     // Every compared frame, to find the stretches that fail.
-    writeFileSync(
+    replaceFileAtomically(
       join(opts.outDir, "frames.tsv"),
       [
         "t\tframe\tssim\tworst_cell\tcell",

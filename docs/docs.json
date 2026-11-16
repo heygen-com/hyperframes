@@ -196,6 +196,7 @@
                 "pages": [
                   "developers/cli",
                   "packages/cli",
+                  "developers/share-source",
                   "developers/catalog-search",
                   "developers/harness-tool-context",
                   "packages/lint"

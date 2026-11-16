@@ -8,7 +8,7 @@ import { trackPreviewEditResult } from "../../utils/previewFeatureUsage";
  */
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { ownsPlainKeys } from "../../utils/typingTarget";
+import { ownsPlainKeys } from "@hyperframes/core/typing-target";
 import { acquireCanvasNudgeKeys } from "../../utils/canvasNudgeGate";
 import {
   addStudioPendingEditFlushListener,
