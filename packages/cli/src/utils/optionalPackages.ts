@@ -14,7 +14,11 @@ import {
 import { createRequire } from "node:module";
 import { basename, dirname, join, sep } from "node:path";
 import { buildNpmCommand } from "./npxCommand.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 
 /** Module type of each optional package; the keys are the only names the loader accepts. */
 export interface OptionalPackageModules {
@@ -37,7 +41,7 @@ export const PINNED_PACKAGES = {
 
 type PinnedPackage = keyof typeof PINNED_PACKAGES;
 
-export const CACHE_DIR = hyperframesCacheDir("optional");
+export const OPTIONAL_CACHE_DIR = join(trustedCacheRoot(), "optional");
 
 /** Installed on first use only when a host bundled the CLI without its sharp dependency. */
 export const SHARP_VERSION = "0.35.5";
@@ -55,7 +59,7 @@ export interface OptionalPackageDeps {
 }
 
 /** One directory per package and version, so a version bump never reads a stale install. */
-export function optionalPackageDir(name: FirstUsePackage, cacheDir = CACHE_DIR): string {
+export function optionalPackageDir(name: FirstUsePackage, cacheDir = OPTIONAL_CACHE_DIR): string {
   return join(cacheDir, `${name.replace("/", "__")}@${versionOf(name)}`);
 }
 
@@ -66,7 +70,7 @@ function versionOf(name: FirstUsePackage): string {
 /** Installed version, or null. Reads the manifest only, so it never loads a native binding. */
 export function installedOptionalPackageVersion(
   name: OptionalPackage,
-  cacheDir = CACHE_DIR,
+  cacheDir = OPTIONAL_CACHE_DIR,
   cliUrl = import.meta.url,
 ): string | null {
   if (pinnedPackageBesideCli(name, cliUrl)?.resolution === "entry") return OPTIONAL_PACKAGES[name];
@@ -234,13 +238,17 @@ function manifestPath(dir: string, name: string): string {
   return join(dir, "node_modules", name, "package.json");
 }
 
+const writableByOthers = (dir: string, file: string) => !!foreignWritablePath(file, dirname(dir));
+
 export function isInstalled(dir: string, name: string): boolean {
-  return existsSync(manifestPath(dir, name));
+  const manifest = manifestPath(dir, name);
+  return existsSync(manifest) && !writableByOthers(dir, manifest);
 }
 
 export function installedPackagePath(dir: string, name: string): string | null {
   if (!isInstalled(dir, name)) return null;
-  return createRequire(join(dir, "package.json")).resolve(name);
+  const entry = createRequire(join(dir, "package.json")).resolve(name);
+  return writableByOthers(dir, entry) ? null : entry;
 }
 
 function loadInstalled(dir: string, name: string): unknown | null {
@@ -344,7 +352,7 @@ export async function install(
 ): Promise<void> {
   sweepStaleStaging(dir);
   const staging = `${dir}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
-  mkdirSync(staging, { recursive: true });
+  mkdirSync(staging, { recursive: true, mode: 0o700 });
   writeFileSync(join(staging, "package.json"), "{}");
   try {
     await run(
@@ -362,6 +370,7 @@ export async function install(
       staging,
     );
     if (isInstalled(dir, name)) return;
+    sealCacheInstall(staging, dirname(dir));
     rmSync(dir, { recursive: true, force: true });
     renameSync(staging, dir);
   } catch (err) {
@@ -372,7 +381,7 @@ export async function install(
 }
 
 const defaultDeps: OptionalPackageDeps = {
-  cacheDir: CACHE_DIR,
+  cacheDir: OPTIONAL_CACHE_DIR,
   loadBesideCli: (name) => (name === "sharp" ? null : loadBesideCli(name)),
   loadInstalled,
   install,

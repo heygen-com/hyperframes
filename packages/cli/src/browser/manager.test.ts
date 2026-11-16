@@ -126,6 +126,8 @@ interface FsMockOptions {
   osHost?: { platform: string; release: string };
   /** paths whose stat reports 0 bytes */
   emptyFiles?: ReadonlySet<string>;
+  /** paths whose stat reports another account as owner */
+  otherAccounts?: ReadonlySet<string>;
 }
 
 function installFsMocks({
@@ -135,6 +137,7 @@ function installFsMocks({
   initialMtimeMs = 0,
   osHost = { platform: "linux", release: "24.0.0" },
   emptyFiles,
+  otherAccounts,
 }: FsMockOptions) {
   // Mutable, and returned, so tests can pre-seed a "lock already held" path or
   // assert the lock dir doesn't leak after ensureBrowser resolves.
@@ -193,8 +196,24 @@ function installFsMocks({
         (err as NodeJS.ErrnoException).code = "ENOENT";
         throw err;
       }
-      return { mtimeMs: mtimes.get(p) ?? 0, size: emptyFiles?.has(p) ? 0 : 1, isFile: () => true };
+      return {
+        mtimeMs: mtimes.get(p) ?? 0,
+        size: emptyFiles?.has(p) ? 0 : 1,
+        isFile: () => true,
+        uid: otherAccounts?.has(p) ? 4242 : (process.getuid?.() ?? 0),
+        mode: 0o755,
+      };
     },
+    lstatSync: (p: string) =>
+      paths.has(p)
+        ? {
+            uid: otherAccounts?.has(p) ? 4242 : (process.getuid?.() ?? 0),
+            mode: 0o755,
+            isSymbolicLink: () => false,
+            isDirectory: () => false,
+          }
+        : undefined,
+    chmodSync: () => {},
     utimesSync: (p: string, _atime: Date, mtime: Date) => {
       if (touchError) throw touchError;
       if (!paths.has(p)) {
@@ -526,13 +545,48 @@ describe("findBrowser — cache resolution", () => {
       source: "download",
     });
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Cached binary missing or not the pinned build"),
+      expect.stringContaining("Cached binary missing, not the pinned build"),
     );
     // The partial extract is replaced wholesale, not merged into (install() would
     // otherwise throw "folder exists but exe missing", the bug both feedback reports hit).
     expect(paths.has(staleLeftover)).toBe(false);
     expect(paths.has(redownloadedBinary)).toBe(true);
   });
+
+  it.skipIf(!process.getuid).each([
+    ["the binary", HF_BINARY],
+    ["a folder above it", HF_CACHE],
+  ])(
+    "re-downloads instead of launching a cached build when another account owns %s",
+    async (_what, foreign) => {
+      const redownloadedBinary = join(HF_CACHE, "chrome-headless-shell", "redownloaded");
+      installFsMocks({
+        existing: new Set([HF_CACHE, HF_BINARY]),
+        otherAccounts: new Set([foreign]),
+      });
+      installPuppeteerBrowsersMock({
+        installedInHfCache: [
+          {
+            browser: "chrome-headless-shell",
+            executablePath: HF_BINARY,
+            buildId: CHROME_VERSION,
+          },
+        ],
+        installResult: { executablePath: redownloadedBinary },
+      });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { findBrowser } = await import("./manager.js");
+
+      expect(await findBrowser()).toEqual({
+        executablePath: redownloadedBinary,
+        source: "download",
+      });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`writable by another account at ${HF_BINARY}`),
+      );
+    },
+  );
 
   it("ensureBrowser({force: true}) re-downloads without purging the cache, bypassing any cache/system shortcut", async () => {
     const staleInstallDir = stagedVersionDir(HF_CACHE, "131.0.6778.85");
