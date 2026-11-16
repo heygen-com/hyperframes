@@ -1,4 +1,5 @@
 import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
+import { launchWithPageNetwork } from "../browser/pageNetwork.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, readFileSync } from "node:fs";
@@ -223,14 +224,20 @@ async function runLayoutAudit(
     const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, browser.executablePath);
     const requiresWebGpu = compositionRequiresWebGpu(html);
     const { gpuConfig, softwareWebGpu } = resolveLocalWebGpu(resolvedGpuMode, requiresWebGpu);
-    chromeBrowser = await launchManagedBrowser(puppeteer.default, {
-      headless: true,
-      executablePath: browser.executablePath,
-      args: buildChromeArgs(
-        { width: 1920, height: 1080, captureMode: "screenshot", requiresWebGpu },
-        gpuConfig,
-      ),
-    });
+    chromeBrowser = await launchWithPageNetwork(server.url, (network) =>
+      launchManagedBrowser(puppeteer.default, {
+        headless: true,
+        executablePath: browser.executablePath,
+        userDataDir: network.userDataDir,
+        args: [
+          ...buildChromeArgs(
+            { width: 1920, height: 1080, captureMode: "screenshot", requiresWebGpu },
+            gpuConfig,
+          ),
+          ...network.args,
+        ],
+      }),
+    );
 
     const page = await chromeBrowser.newPage();
     await installPageFunctionGuard(page);
