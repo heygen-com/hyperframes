@@ -34,8 +34,8 @@ vi.mock("node:child_process", async (importOriginal) => ({
   execFile: mocks.execFile,
 }));
 // The downloader's own lookup decides; an approved dial then lands on the local test server in clear text.
-vi.mock("undici", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("undici")>();
+vi.mock("undici/index.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("undici/index.js")>();
   class Agent extends actual.Agent {
     constructor(options: { connect: { lookup: LookupFunction } }) {
       super({
