@@ -66,13 +66,16 @@ describe("catch-up", () => {
     const esc = String.fromCharCode(27);
     const bel = String.fromCharCode(7);
     const osc = `${esc}]52;c;cHduZWQ=${bel}`;
+    // Windows refuses control characters in file and folder names, so there only the history
+    // text carries them.
+    const names = process.platform !== "win32";
     const parent = mkdtempSync(join(tmpdir(), "hf-catch-up-"));
-    const dir = join(parent, `video${esc}[2J`);
+    const dir = join(parent, names ? `video${esc}[2J` : "video");
     mkdirSync(join(dir, ".hyperframes"), { recursive: true });
     writeFileSync(join(dir, "index.html"), "<html></html>");
     const seenAt = Date.parse("2026-01-01T09:00:00Z");
     markSeen(dir, { at: seenAt, checked: seenAt });
-    writeFileSync(join(dir, `scene${esc}[1A.html`), "<html></html>");
+    writeFileSync(join(dir, names ? `scene${esc}[1A.html` : "scene.html"), "<html></html>");
     writeFileSync(
       join(dir, ".hyperframes", APP_HISTORY),
       `${JSON.stringify({
@@ -98,7 +101,9 @@ describe("catch-up", () => {
     expect(shown).toContain("make it red\\x1b]52;c;cHduZWQ=\\x07");
     expect(shown).toContain("done\\x0d\\x1b[2Kfaked");
     expect(shown).toContain("a\\x07.html");
-    expect(shown).toContain("scene\\x1b[1A.html");
-    expect(shown).toContain("video\\x1b[2J");
+    if (names) {
+      expect(shown).toContain("scene\\x1b[1A.html");
+      expect(shown).toContain("video\\x1b[2J");
+    }
   });
 });
