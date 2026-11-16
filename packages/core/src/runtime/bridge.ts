@@ -237,10 +237,8 @@ function handleFlashElements(data: BridgeControlData): void {
   flashElements(selectors, duration);
 }
 
-function controlFor(action: unknown): ControlHandler | undefined {
-  if (typeof action !== "string") return undefined;
-  if (forAnotherSite() && !ANOTHER_SITE_DRIVES.has(action)) return undefined;
-  return CONTROL_HANDLERS.get(action);
+function isActionTakenHere(action: unknown): action is string {
+  return typeof action === "string" && (!forAnotherSite() || ANOTHER_SITE_DRIVES.has(action));
 }
 
 export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEvent) => void {
@@ -249,7 +247,10 @@ export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEv
     const data = event.data as BridgeControlData | null;
     if (!data || data.source !== "hf-parent" || data.type !== "control") return;
     if (rejectUnsupportedProtocol(data)) return;
-    controlFor(data.action)?.(data, deps);
+    const action = data.action;
+    if (!isActionTakenHere(action)) return;
+    const fn = CONTROL_HANDLERS.get(action);
+    if (fn) fn(data, deps);
   };
   window.addEventListener("message", handler);
   // Announce that the bridge listener is installed so the parent can replay
