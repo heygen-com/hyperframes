@@ -410,6 +410,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           VERSION: ${{ steps.version.outputs.version }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          DIST_TAG: ${{ steps.version.outputs.dist_tag }}
         run: |
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z][0-9A-Za-z-]*(\.[0-9A-Za-z-]+)*)?$ ]]; then
             echo "::error::Invalid release version \"$VERSION\". Expected x.y.z or x.y.z-channel.N."
@@ -421,6 +422,10 @@ jobs:
           fi
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$PRERELEASE" != "false" ]; then
             echo "::error::Merged release PRs publish stable releases only; v$VERSION is a prerelease."
+            exit 1
+          fi
+          if [ "$PRERELEASE" = "true" ] && [ "$DIST_TAG" = "latest" ]; then
+            echo "::error::v$VERSION is a prerelease and cannot publish to the latest dist-tag."
             exit 1
           fi
 
@@ -486,7 +491,27 @@ jobs:
               echo "::error::Unexpected file in the packed tarballs: $file"
               exit 1
             fi
+            # npm unpacks every entry one level down, so anything but plain files under package/ could hand npm a
+            # different package.json than the one checked here.
+            entries="$(tar -tzf "$tarball")"
+            types="$(tar -tvzf "$tarball" | cut -c1 | sort -u)"
+            if grep -q -v '^package/' <<<"$entries" \
+              || grep -q -E '(^|/)\.\.?(/|$)|//|\\' <<<"$entries" \
+              || [ "$(grep -cx 'package/package.json' <<<"$entries")" -ne 1 ] \
+              || grep -q -v -E '^[-d]$' <<<"$types"; then
+              echo "::error::$file must hold one package/package.json and only plain files under package/"
+              exit 1
+            fi
             manifest="$(tar -xzOf "$tarball" package/package.json)"
+            # Publishing applies publishConfig, so it may only carry what our packages set.
+            if ! jq -e '(.publishConfig // {}) | type == "object"
+                and (keys - ["access", "registry", "exports", "main", "types"] | length == 0)
+                and ((.access // "public") == "public")
+                and ((.registry // "https://registry.npmjs.org/") == "https://registry.npmjs.org/")' \
+                <<<"$manifest" >/dev/null; then
+              echo "::error::$file has a publishConfig this release does not allow"
+              exit 1
+            fi
             name="$(jq -r '.name' <<<"$manifest")"
             version="$(jq -r '.version' <<<"$manifest")"
             if ! [[ "$name" =~ ^(@[a-z0-9-]+/)?[a-z0-9._-]+$ ]]; then
@@ -688,7 +713,7 @@ jobs:
             fi
 
             echo "📦 Publishing ${name}@${VERSION}..."
-            if npm publish "$tarball" --access public --tag "$DIST_TAG" --ignore-scripts; then
+            if npm publish "$tarball" --access public --tag "$DIST_TAG" --registry https://registry.npmjs.org/ --ignore-scripts; then
               echo "✅ ${name}@${VERSION} published"
             else
               echo "❌ ${name}@${VERSION} failed to publish"

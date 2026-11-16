@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -278,13 +286,97 @@ test("the publish job runs no code from the release commit", () => {
 
 test("the publish job checks the release channel without repo scripts", () => {
   const step = stepOf(publish, "Check release channel");
-  const check = (EVENT_NAME, VERSION, PRERELEASE) =>
-    runStep(step, { cwd: tmpdir(), env: { EVENT_NAME, VERSION, PRERELEASE } }).status;
+  const check = (EVENT_NAME, VERSION, PRERELEASE, DIST_TAG = "alpha") =>
+    runStep(step, { cwd: tmpdir(), env: { EVENT_NAME, VERSION, PRERELEASE, DIST_TAG } }).status;
   assert.equal(check("push", "0.9.55-alpha.1", "true"), 0);
   assert.equal(check("pull_request", "0.9.55", "false"), 0);
   assert.equal(check("push", "0.9.55", "false"), 1);
   assert.equal(check("pull_request", "0.9.55-alpha.1", "true"), 1);
   assert.equal(check("push", "0.9.55-alpha.1;id", "true"), 1);
+  assert.equal(check("push", "0.9.55-latest.1", "true", "latest"), 1);
+  assert.equal(check("push", "0.9.55-hdr.1", "true", "hdr"), 0);
+});
+
+test("the publish job takes only tarballs that npm reads the way the check does", () => {
+  const step = stepOf(publish, "Check packed tarballs");
+  const names = config.env.NPM_PACKAGES.split(/\s+/);
+  const version = "1.2.3-alpha.1";
+  // `build(staging)` lays out the first package's files and returns tar's arguments for them.
+  const run = (build) => {
+    const temp = mkdtempSync(join(tmpdir(), "hyperframes-publish-layout-"));
+    try {
+      const dir = join(temp, "release-bundle", "npm");
+      mkdirSync(dir, { recursive: true });
+      for (const name of names.slice(1)) {
+        packTarball(dir, `${name.replace(/^@/, "").replace("/", "-")}.tgz`, { name, version });
+      }
+      const staging = mkdtempSync(join(tmpdir(), "hyperframes-publish-staging-"));
+      try {
+        const args = build(staging, { name: names[0], version });
+        execFileSync("tar", ["-czf", join(dir, "first.tgz"), "-C", staging, ...args], {
+          stdio: "pipe",
+        });
+      } finally {
+        rmSync(staging, { recursive: true, force: true });
+      }
+      return runStep(step, { cwd: temp, env: { RUNNER_TEMP: temp, VERSION: version } });
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  };
+  const write = (staging, path, manifest) => {
+    mkdirSync(join(staging, path, ".."), { recursive: true });
+    writeFileSync(join(staging, path), JSON.stringify(manifest));
+  };
+  const plain = (publishConfig) => (staging, manifest) => {
+    write(staging, "package/package.json", { ...manifest, publishConfig });
+    return ["package"];
+  };
+
+  const ours = run(
+    plain({
+      access: "public",
+      registry: "https://registry.npmjs.org/",
+      exports: {},
+      main: "x",
+      types: "x",
+    }),
+  );
+  assert.equal(ours.status, 0, ours.stdout + ours.stderr);
+
+  const refused = {
+    "a second top-level folder": (staging, manifest) => {
+      write(staging, "package/package.json", manifest);
+      write(staging, "other/package.json", { ...manifest, scripts: { x: "y" } });
+      return ["package", "other"];
+    },
+    "a ./ prefix": (staging, manifest) => {
+      write(staging, "package/package.json", manifest);
+      return ["./package"];
+    },
+    "package.json twice": (staging, manifest) => {
+      write(staging, "package/package.json", manifest);
+      return ["package", "package/package.json"];
+    },
+    "a link": (staging, manifest) => {
+      write(staging, "package/package.json", manifest);
+      symlinkSync("/etc/hostname", join(staging, "package", "link"));
+      return ["package"];
+    },
+    "a publishConfig tag": plain({ tag: "latest" }),
+    "a publishConfig registry elsewhere": plain({ registry: "https://registry.example.com/" }),
+    "restricted access": plain({ access: "restricted" }),
+    "a publishConfig that is not an object": plain("latest"),
+  };
+  for (const [what, build] of Object.entries(refused)) {
+    const result = run(build);
+    assert.equal(result.status, 1, what);
+    assert.match(
+      result.stdout,
+      /first\.tgz (must hold one package\/package\.json|has a publishConfig)/,
+      what,
+    );
+  }
 });
 
 test("the publish job takes only tarballs whose name and version match the release", () => {
@@ -397,7 +489,10 @@ test("publishing skips only identical uploads and fails on a version it did not 
   const publishes = fresh.calls.split("\n").filter((line) => line.startsWith("npm publish"));
   assert.equal(publishes.length, 2);
   for (const line of publishes) {
-    assert.match(line, /core\.tgz --access public --tag alpha --ignore-scripts$/);
+    assert.match(
+      line,
+      /core\.tgz --access public --tag alpha --registry https:\/\/registry\.npmjs\.org\/ --ignore-scripts$/,
+    );
   }
 
   const identical = run({ viewResult: "same", attempt: 1 });
