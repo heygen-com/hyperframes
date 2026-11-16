@@ -98,21 +98,18 @@ export function resolveLocalImageSourcePath(
   if (mapped && existsSync(mapped)) return mapped;
   if (isHttpUrl(trimmed)) return null;
 
-  const protocolRelativeUrlOnShare =
-    basePath.startsWith("/") && namesAnotherNetworkRoot(options.projectDir, basePath);
   const projectRelative = basePath.startsWith("/") ? basePath.slice(1) : basePath;
   const candidates = [
-    ...(protocolRelativeUrlOnShare
-      ? []
-      : [isAbsolute(basePath) ? basePath : resolve(options.projectDir, projectRelative)]),
+    isAbsolute(basePath) ? basePath : resolve(options.projectDir, projectRelative),
     resolve(options.downloadDir, normalizedBase),
   ];
 
   const allowed = (candidate: string) =>
-    (!escapesAssetRoot(candidate, options.assetRoot) &&
+    !namesAnotherNetworkRoot(options.projectDir, candidate) &&
+    ((!escapesAssetRoot(candidate, options.assetRoot) &&
       outsideAssetRefusal(options.projectDir, candidate) !== "blocklisted") ||
-    !escapesAssetRoot(candidate, options.downloadDir);
-  return candidates.find((candidate) => existsSync(candidate) && allowed(candidate)) ?? null;
+      !escapesAssetRoot(candidate, options.downloadDir));
+  return candidates.find((candidate) => allowed(candidate) && existsSync(candidate)) ?? null;
 }
 
 function isUsableFile(path: string): boolean {

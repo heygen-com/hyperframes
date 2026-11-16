@@ -1476,8 +1476,9 @@ export function collectExternalAssets(
     if (isPathInside(absPath, absProjectDir)) {
       return null; // inside projectDir, file server handles this
     }
-    if (!existsSync(absPath)) return null;
-    const refusal = outsideAssetRefusal(absProjectDir, absPath);
+    const onShare = namesAnotherNetworkRoot(absProjectDir, absPath);
+    if (!onShare && !existsSync(absPath)) return null;
+    const refusal = onShare ? "network_share" : outsideAssetRefusal(absProjectDir, absPath);
     if (refusal) {
       if (!leftOut.has(trimmed)) log.warn(`[Compiler] ${leftOutOfRender(file, trimmed, refusal)}`);
       leftOut.add(trimmed);
