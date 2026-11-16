@@ -55,6 +55,8 @@ export function recordFailure(message: string, hint?: string): void {
   reported = { message, hint };
 }
 
+export const failureShown = (): boolean => reported !== undefined;
+
 /** Writes a notice (telemetry disclosure, deprecation, progress) that is never an error message. */
 export function asNotice(write: () => void): void {
   noticeDepth++;

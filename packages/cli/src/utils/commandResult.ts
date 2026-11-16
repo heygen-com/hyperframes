@@ -71,7 +71,15 @@ export function failUsage(exitCode = USAGE_EXIT_CODE): never {
   throw new CliUsageError("Invalid command usage", { exitCode, presented: true });
 }
 
+let firstFailureStack: string | undefined;
+const noteFailure = (exitCode: number) => {
+  if (exitCode !== 0) firstFailureStack ??= new Error("the run failed here").stack;
+};
+
+export const failureOrigin = (): string | undefined => firstFailureStack;
+
 export function finishCommand(exitCode = 0): never {
+  noteFailure(exitCode);
   throw new CliResultSignal({
     exitCode,
     kind: exitCode === 0 ? "success" : "runtime_error",
@@ -81,6 +89,7 @@ export function finishCommand(exitCode = 0): never {
 
 /** Record a non-fatal result while allowing output/finalizers to complete. */
 export function setCommandResult(result: CommandResult): void {
+  noteFailure(result.exitCode);
   if (pendingResult.exitCode !== 0 && result.exitCode === 0) return;
   pendingResult = result;
 }
@@ -141,6 +150,7 @@ export function endProcess(exitCode: number, host: ProcessEnd): void {
 
 /** Ask cli.ts to finalize telemetry/output and then terminate the process. */
 export function requestCliExit(exitCode = 0): void {
+  noteFailure(exitCode);
   if (!rootExitRequester) {
     setCommandResult({
       exitCode,
