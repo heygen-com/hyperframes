@@ -332,6 +332,7 @@ function dependencies(
     writeSnapshot?: CheckDependencies["writeSnapshot"];
     captureFindingCrops?: CheckDependencies["captureFindingCrops"];
     captureFindingFrames?: CheckDependencies["captureFindingFrames"];
+    collectMedia?: NonNullable<CheckDependencies["collectMedia"]>;
     inspectHdrAutoPromotion?: NonNullable<CheckDependencies["inspectHdrAutoPromotion"]>;
     inspectAudio?: NonNullable<CheckDependencies["inspectAudio"]>;
   } = {},
@@ -360,7 +361,8 @@ function dependencies(
     captureFindingCrops: options.captureFindingCrops ?? vi.fn(async () => []),
     captureFindingFrames:
       options.captureFindingFrames ?? vi.fn(async () => ({ written: [], inspected: [] })),
-    collectMedia: vi.fn(async () => ({ videos: [], images: [], audios: [], html: "" })),
+    collectMedia:
+      options.collectMedia ?? vi.fn(async () => ({ videos: [], images: [], audios: [], html: "" })),
     inspectHdrAutoPromotion: options.inspectHdrAutoPromotion ?? vi.fn(async () => null),
     inspectAudio: options.inspectAudio ?? vi.fn(async () => []),
   };
@@ -801,6 +803,27 @@ it("distinguishes unavailable HDR inspection from no promotion", async () => {
   );
 
   expect(report.hdr).toEqual({ autoPromotion: null, inspection: "unavailable" });
+});
+
+it("names the remote sources HDR inspection did not probe", async () => {
+  const { report } = await runScenario(
+    fakeDriver(),
+    {},
+    {
+      collectMedia: vi.fn(async () => ({
+        videos: [{ src: "https://media.example/clip.mp4?token=secret", hasAudio: false }],
+        images: [{ src: "assets/still.png" }, { src: "http://127.0.0.1:8080/still.png" }],
+        audios: [],
+        html: "",
+      })),
+    },
+  );
+
+  expect(report.hdr).toEqual({
+    autoPromotion: null,
+    inspection: "available",
+    remoteNotInspected: ["https://media.example/clip.mp4", "http://127.0.0.1:8080/still.png"],
+  });
 });
 
 it("prints composition text in a finding with its control characters as visible escapes", async () => {

@@ -27,9 +27,13 @@ export async function collectProjectMedia(projectDir: string): Promise<ProjectMe
   return { ...producer.collectRenderMedia(html), html };
 }
 
-/** The path the render reads a media `src` from, resolved like render; null for a local file it never opens. */
+export function isRemoteMediaSrc(src: string): boolean {
+  return /^https?:\/\//i.test(src);
+}
+
+/** The local file the render reads a media `src` from, resolved like render; null for a remote source or a local file it never opens. */
 export function mediaPath(src: string, projectDir: string): string | null {
-  if (/^https?:\/\//i.test(src)) return src;
+  if (isRemoteMediaSrc(src)) return null;
   const path = resolveProjectRelativeSrc(src, projectDir, projectDir);
   return assetRootsRefusal(path, [projectDir]) === null ? path : null;
 }
