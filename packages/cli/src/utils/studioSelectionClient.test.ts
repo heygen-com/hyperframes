@@ -13,6 +13,7 @@ import {
   studioSelectionUrl,
 } from "./studioSelectionClient";
 import type { ActiveServer } from "../server/portUtils";
+import { previewProof } from "@hyperframes/core/preview-proof";
 
 const servers: ActiveServer[] = [
   {
@@ -20,6 +21,7 @@ const servers: ActiveServer[] = [
     projectName: "other",
     projectDir: "/tmp/other",
     version: "0.7.17",
+    proven: true,
     pid: null,
   },
   {
@@ -27,12 +29,24 @@ const servers: ActiveServer[] = [
     projectName: "demo project",
     projectDir: "/tmp/demo",
     version: "0.7.17",
+    proven: true,
     pid: "123",
   },
 ];
 
+// A Studio's answer to the CLI's challenge, made with this test home's own preview token.
+function proofResponse(url: string): Response | null {
+  const nonce = /\/__hyperframes_config\?nonce=([0-9a-f]+)$/.exec(url)?.[1];
+  if (!nonce) return null;
+  return new Response(JSON.stringify({ isHyperframes: true, proof: previewProof(nonce) }), {
+    status: 200,
+  });
+}
+
 function mockProjectsFetch(port = 5190): typeof fetch {
   return vi.fn(async (url: string | URL | Request) => {
+    const proven = proofResponse(String(url));
+    if (proven) return proven;
     expect(String(url)).toBe(`http://127.0.0.1:${port}/api/projects`);
     return new Response(
       JSON.stringify({
@@ -61,6 +75,7 @@ describe("studioSelectionClient", () => {
         projectName: "third",
         projectDir: "/tmp/third",
         version: "0.7.17",
+        proven: true,
         pid: null,
       },
     ]);
@@ -119,6 +134,7 @@ describe("studioSelectionClient", () => {
       projectName: "demo project",
       projectDir: "/tmp/demo",
       version: "studio-dev",
+      proven: true,
       pid: null,
     });
   });
@@ -128,6 +144,8 @@ describe("studioSelectionClient", () => {
     // Vite binds ::1 only: the IPv4 probe is refused, the IPv6 probe succeeds.
     const fetchImpl = vi.fn(async (url: string | URL | Request) => {
       const u = String(url);
+      const proven = proofResponse(u);
+      if (proven) return proven;
       if (u === "http://127.0.0.1:5190/api/projects") throw new Error("ECONNREFUSED");
       expect(u).toBe("http://[::1]:5190/api/projects");
       return new Response(
@@ -144,6 +162,7 @@ describe("studioSelectionClient", () => {
       projectName: "demo project",
       projectDir: "/tmp/demo",
       version: "studio-dev",
+      proven: true,
       pid: null,
     });
     // Follow-up API calls must target the IPv6 host the server was found on.
