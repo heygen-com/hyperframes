@@ -1,6 +1,8 @@
 import "./utils/hideChildConsoles.js";
 import "./utils/windowsExeSearch.js";
+import { readFile, rm } from "node:fs/promises";
 import { constants, setPriority } from "node:os";
+import { lintHyperframeHtml } from "@hyperframes/lint";
 import { runBrowserInstall } from "./browser/installRun.js";
 import { ensureBrowser, releaseOwnedBrowserInstallLock } from "./browser/manager.js";
 import { lintProject } from "./utils/lintProject.js";
@@ -47,6 +49,13 @@ async function runMode(): Promise<unknown> {
       input.entryFile,
       input.host ? { host: input.host } : undefined,
     );
+  }
+  if (mode === "lint-html") {
+    try {
+      return await lintHyperframeHtml(await readFile(input.htmlPath, "utf-8"), input.opts);
+    } finally {
+      await rm(input.htmlPath, { force: true });
+    }
   }
   if (mode === "orphan-cleanup") {
     const killed = killOrphanedProcesses();
