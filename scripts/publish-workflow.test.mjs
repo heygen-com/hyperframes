@@ -492,3 +492,48 @@ test("every publish runs in the approval-gated npm-publish environment", () => {
     ["publish"],
   );
 });
+
+const pin = readFileSync(
+  new URL("../packages/aws-lambda/hf-media-linux-aarch64.sha256", import.meta.url),
+  "utf8",
+);
+const digestCheck = (steps) =>
+  steps.findIndex((step) => step.name === "Check the tarball against its committed digest");
+
+test("the Lambda ffmpeg ships only when it matches its committed digest", () => {
+  assert.match(pin, /^[0-9a-f]{64} {2}hf-media-linux-aarch64\.tar\.gz\n$/);
+  const steps = config.jobs["lambda-arm64-ffmpeg"].steps;
+  const at = digestCheck(steps);
+  const upload = steps.findIndex((step) => step.uses?.startsWith("actions/upload-artifact@"));
+  assert.ok(
+    at > 0 && at < upload,
+    "the check runs after the cache or the build, before the upload",
+  );
+  assert.equal(steps[at].if, undefined, "a cache hit and a fresh build are both checked");
+  assert.match(
+    steps[at].run,
+    /sha256sum --strict -c \.\.\/packages\/aws-lambda\/hf-media-linux-aarch64\.sha256$/,
+  );
+
+  const image = parse(
+    readFileSync(new URL("../.github/workflows/lambda-arm64-image.yml", import.meta.url), "utf8"),
+  );
+  assert.ok(
+    digestCheck(image.jobs.ffmpeg.steps) > 0,
+    "a pull request that changes the build must update the digest",
+  );
+  assert.ok(
+    image.on.pull_request.paths.includes("packages/aws-lambda/hf-media-linux-aarch64.sha256"),
+  );
+});
+
+test("the release installs no tool restored from the shared cache", () => {
+  const steps = Object.values(config.jobs).flatMap((job) => job.steps ?? []);
+  const bun = steps.filter((step) => step.uses?.startsWith("oven-sh/setup-bun@"));
+  assert.ok(bun.length >= 1);
+  assert.equal(bun.filter((step) => step.with?.["no-cache"] !== true).length, 0);
+  assert.equal(
+    steps.filter((step) => step.uses?.startsWith("actions/setup-node@") && step.with?.cache).length,
+    0,
+  );
+});
