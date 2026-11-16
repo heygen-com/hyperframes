@@ -494,12 +494,12 @@ type DownloadFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 const undiciTransports = new Map<LookupFunction, Promise<DownloadFetch>>();
 
+const importUndiciPackageEvenUnderBun = () => import("undici/index.js");
+
 function undiciTransport(lookup: LookupFunction): Promise<DownloadFetch> {
   let transport = undiciTransports.get(lookup);
   if (!transport) {
-    // Bun maps the bare "undici" to a built-in whose fetch ignores the dispatcher and its lookup;
-    // the file path loads the package itself on every runtime.
-    transport = import("undici/index.js").then(({ Agent, fetch: undiciFetch }) => {
+    transport = importUndiciPackageEvenUnderBun().then(({ Agent, fetch: undiciFetch }) => {
       const dispatcher = new Agent({ connect: { lookup } });
       return (target, options) =>
         undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
