@@ -51,7 +51,7 @@ import {
   resolveFinalFrameExtractionWindow,
   resolveVideoExtractionWindow,
   isHttpUrl,
-  isInsideAssetRoots,
+  assetRootsRefusal,
   assertPublicHttpsUrl,
   downloadToTemp,
   resolveRestrictPageNetwork,
@@ -687,7 +687,7 @@ interface VideoAudioProbeInput {
 }
 
 function opensLocally(path: string, assetRoots: readonly string[] | undefined): boolean {
-  return existsSync(path) && (!assetRoots || isInsideAssetRoots(path, assetRoots));
+  return existsSync(path) && (!assetRoots || assetRootsRefusal(path, assetRoots) === null);
 }
 
 function localProbeSource(src: string, input: VideoAudioProbeInput): string | null {

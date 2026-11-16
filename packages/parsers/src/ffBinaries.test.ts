@@ -477,3 +477,39 @@ describe("isX86OnlyMachO", () => {
     expect(isX86OnlyMachO("/nonexistent/ffprobe")).toBe(false);
   });
 });
+
+describe("mediaInputFormatArgs", () => {
+  const formatsOf = (args: string[]) => args[args.indexOf("-format_whitelist") + 1]!.split(",");
+
+  afterEach(async () => (await importFresh())._setDemuxerListingForTests());
+
+  it("reads an ffmpeg 4 listing, which has no device column", async () => {
+    const { _setDemuxerListingForTests, mediaInputFormatArgs } = await importFresh();
+    _setDemuxerListingForTests(
+      [
+        "File formats:",
+        " D. = Demuxing supported",
+        " .E = Muxing supported",
+        " --",
+        " D  3dostr          3DO STR",
+        " D  dash            Dynamic Adaptive Streaming over HTTP",
+        " D  mov,mp4,m4a     QuickTime / MOV",
+      ].join("\n"),
+    );
+    expect(formatsOf(mediaInputFormatArgs("/ffprobe"))).toEqual(["3dostr", "mov", "mp4", "m4a"]);
+  });
+
+  it.skipIf(process.platform === "win32")("asks a binary that failed once again", async () => {
+    const { mediaInputFormatArgs, SELF_CONTAINED_FORMATS } = await importFresh();
+    const dir = mkdtempSync(join(tmpdir(), "hf-demuxers-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const binary = join(dir, "ffprobe");
+    writeFileSync(
+      binary,
+      `#!/bin/sh\nif [ -e "${dir}/ran" ]; then echo ' D  wav  WAV'; else touch "${dir}/ran"; exit 1; fi\n`,
+    );
+    chmodSync(binary, 0o755);
+    expect(mediaInputFormatArgs(binary)).toEqual(["-format_whitelist", SELF_CONTAINED_FORMATS]);
+    expect(mediaInputFormatArgs(binary)).toEqual(["-format_whitelist", "wav"]);
+  });
+});

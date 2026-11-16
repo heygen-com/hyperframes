@@ -56,6 +56,7 @@ import {
   type RateSpec,
   type ResolvedDuration,
   type UnresolvedElement,
+  terminalText,
 } from "@hyperframes/core";
 import { MAX_AUDIO_GAIN } from "@hyperframes/core/audio-gain";
 import { CAPTURE_CANVAS_SELECTOR } from "@hyperframes/core/html-in-canvas";
@@ -117,6 +118,7 @@ import {
   type MediaProbeProfile,
   analyzeKeyframeIntervals,
   assertMediaPayload,
+  isPrivateUnderAssetRoots,
   NotMediaPayloadError,
   parseMasterFxChain,
   probeMediaProfile,
@@ -567,6 +569,7 @@ async function resolveMediaDuration(
   src: string,
   mediaStart: number,
   playbackRate: RateSpec,
+  projectDir: string,
   baseDir: string,
   downloadDir: string,
   tagName: string,
@@ -593,7 +596,12 @@ async function resolveMediaDuration(
   } else {
     filePath = decodedUrlPath(src);
     if (!filePath.startsWith("/")) filePath = join(baseDir, filePath);
-    if (escapesAssetRoot(filePath, assetRoot)) return { duration: null, resolvedPath: filePath };
+    if (
+      escapesAssetRoot(filePath, assetRoot) ||
+      isPrivateUnderAssetRoots(filePath, [projectDir, downloadDir])
+    ) {
+      return { duration: null, resolvedPath: filePath };
+    }
     // ffprobe reads only the header of a remote source, so it is probed in place.
     filePath = urlByAbsentLocalPath?.get(filePath) ?? filePath;
     if (!isHttpUrl(filePath) && namesAnotherNetworkRoot(baseDir, filePath)) {
@@ -711,6 +719,7 @@ function markInferredVariableMediaDurations(
 
 async function compileHtmlFile(
   html: string,
+  projectDir: string,
   baseDir: string,
   downloadDir: string,
   log?: ProducerLogger,
@@ -733,6 +742,7 @@ async function compileHtmlFile(
         el.src!,
         el.mediaStart,
         el.playbackRate,
+        projectDir,
         baseDir,
         downloadDir,
         el.tagName,
@@ -764,6 +774,7 @@ async function compileHtmlFile(
           el.src!,
           el.mediaStart,
           el.playbackRate,
+          projectDir,
           baseDir,
           downloadDir,
           el.tagName,
@@ -885,6 +896,7 @@ async function parseSubCompositions(
     workItems.map(async (item) => {
       const { html: compiledSub } = await compileHtmlFile(
         rewriteUnresolvableGsapToCdn(item.rawSubHtml, projectDir, item.srcPath),
+        projectDir,
         dirname(item.filePath),
         downloadDir,
         undefined,
@@ -1185,7 +1197,9 @@ function inlineSubCompositions(
         // hit here means the file changed on disk between that pre-flight
         // check and this later inline step (e.g. a concurrent scene-writer).
         console.warn(
-          `[Compiler] Skipping sub-composition "${srcPath}": ${reason ?? "the file is missing or empty"}.`,
+          terminalText(
+            `[Compiler] Skipping sub-composition "${srcPath}": ${reason ?? "the file is missing or empty"}.`,
+          ),
         );
       },
     },
@@ -1471,8 +1485,9 @@ export function collectExternalAssets(
     if (isPathInside(absPath, absProjectDir)) {
       return null; // inside projectDir, file server handles this
     }
-    if (!existsSync(absPath)) return null;
-    const refusal = outsideAssetRefusal(absProjectDir, absPath);
+    const onShare = namesAnotherNetworkRoot(absProjectDir, absPath);
+    if (!onShare && !existsSync(absPath)) return null;
+    const refusal = onShare ? "network_share" : outsideAssetRefusal(absProjectDir, absPath);
     if (refusal) {
       if (!leftOut.has(trimmed)) log.warn(`[Compiler] ${leftOutOfRender(file, trimmed, refusal)}`);
       leftOut.add(trimmed);
@@ -1994,6 +2009,7 @@ async function embedLocalFontFaces(
           embeddedPaths.add(localPath);
           continue;
         }
+        if (isPrivateCompositionFile(projectDir, absPath)) continue;
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
           if (fileBackedAbsolutePaths.has(absPath)) {
@@ -2218,6 +2234,7 @@ export async function compileForRender(
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,
+    projectDir,
     downloadDir,
     options.log,
     options.urlByAbsentLocalPath,
@@ -2430,7 +2447,8 @@ export async function compileForRender(
       advised.has(videoPath) ||
       namesAnotherNetworkRoot(projectDir, videoPath) ||
       !existsSync(videoPath) ||
-      escapesAssetRoot(videoPath, assetRoot)
+      escapesAssetRoot(videoPath, assetRoot) ||
+      isPrivateUnderAssetRoots(videoPath, [projectDir, downloadDir])
     )
       continue;
     advised.add(videoPath);

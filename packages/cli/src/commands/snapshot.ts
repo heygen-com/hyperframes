@@ -10,6 +10,7 @@ import {
   isHdrColorSpace,
   sdrCanvasColourFilters,
 } from "@hyperframes/engine";
+import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { screenshotOnceMore } from "../utils/screenshotOnceMore.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import type { Page } from "puppeteer-core";
@@ -88,6 +89,7 @@ import {
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
+  terminalText,
 } from "@hyperframes/core";
 import { parseHTML } from "linkedom";
 import { resolveProject } from "../utils/project.js";
@@ -101,7 +103,6 @@ import { normalizeErrorMessage, atStep } from "../utils/errorMessage.js";
 import { describeSharpLoadFailure } from "../utils/sharpLoadFailure.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { c } from "../ui/colors.js";
-import { terminalText } from "../utils/terminalText.js";
 import { writeCaptureFileSync } from "../capture/captureFile.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
@@ -491,7 +492,8 @@ export async function probeContainingSourceFrameSeek(
       const { stdout } = await runCancellableProcess(
         ffprobe,
         [
-          ...["-v", "error", "-select_streams", "v:0", "-read_intervals", readIntervals],
+          ...["-v", "error", ...mediaInputFormatArgs(ffprobe)],
+          ...["-select_streams", "v:0", "-read_intervals", readIntervals],
           ...["-show_entries", entries, "-of", "json", "--", videoPath],
         ],
         { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 32 * 1024 * 1024 },
@@ -615,7 +617,8 @@ async function probeSeekLanding(
     const { stdout } = await runCancellableProcess(
       ffmpeg,
       [
-        ...["-v", "error", "-copyts", "-noaccurate_seek", "-ss", String(seek), "-i", videoPath],
+        ...["-v", "error", "-copyts", "-noaccurate_seek", ...mediaInputFormatArgs(ffmpeg)],
+        ...["-ss", String(seek), "-i", videoPath],
         ...["-map", "0:v:0", "-c", "copy", "-frames:v", "1", "-f", "framecrc", "-"],
       ],
       { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 1024 * 1024 },
@@ -672,7 +675,12 @@ async function frameColour(
   videoPath: string,
   codec: string,
 ): Promise<ToneMapFrameColour> {
-  const read = (args: string[]) => runFfmpegOnce(ffmpegPath, args, FFMPEG_EXTRACT_TIMEOUT_MS);
+  const read = (args: string[]) =>
+    runFfmpegOnce(
+      ffmpegPath,
+      [...mediaInputFormatArgs(ffmpegPath), ...args],
+      FFMPEG_EXTRACT_TIMEOUT_MS,
+    );
   const probe = await read(firstFrameColourArgs(videoPath));
   const first = parseFirstFrameColour(probe.stderr);
   if (probe.code !== 0 || !readsKeyframeTransfers(first)) return first;
@@ -724,7 +732,7 @@ export async function extractVideoFrameToBuffer(
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
       if (seek.seek !== undefined) args.push("-ss", String(seek.seek));
-      args.push("-i", videoPath, "-map", "0:v:0");
+      args.push(...mediaInputFormatArgs(ffmpegPath), "-i", videoPath, "-map", "0:v:0");
       const filters = frameFilters(seek.select, displayedPixels, metadata, toneMapFilter);
       if (filters.length > 0) args.push("-vf", filters.join(","));
       args.push("-frames:v", "1", "-q:v", "2", "-y", outPath);
@@ -785,7 +793,8 @@ export async function decodeFramesInOnePass(
       const filters = [selectFirstFrameAfterEach(byTime.map(([offset]) => offset)), ...rest];
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
-      args.push("-ss", String(start), "-i", videoPath, "-map", "0:v:0", "-vf", filters.join(","));
+      args.push(...mediaInputFormatArgs(ffmpegPath), "-ss", String(start), "-i", videoPath);
+      args.push("-map", "0:v:0", "-vf", filters.join(","));
       args.push("-fps_mode", "passthrough", "-frames:v", String(byTime.length));
       args.push("-q:v", "2", "-y", join(tmp, "%d.png"));
       return args;

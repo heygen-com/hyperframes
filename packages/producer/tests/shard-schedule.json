@@ -23,6 +23,7 @@
     "font-variant-numeric": 7,
     "gsap-letters-render-compat": 9,
     "gsap-redraw-start-and-overlap": 6,
+    "graded-video-transitions": 10,
     "hdr-hlg-audio-windows": 150,
     "hdr-hlg-regression": 125,
     "hdr-regression": 207,

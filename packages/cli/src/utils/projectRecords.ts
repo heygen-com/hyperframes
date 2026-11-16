@@ -108,6 +108,10 @@ export function writeRecord(projectDir: string, name: string, data: string): boo
   return dir !== null && replaceFile(join(dir, recordFile(name)), data, 0o600);
 }
 
+export function recordFolder(projectDir: string, folder: string): string | null {
+  return recordsDir(projectDir, `${folder.replaceAll("\\", "/")}/`, true);
+}
+
 /** Deletes a record that is a plain file; false when there is none to delete. */
 export function removeRecord(projectDir: string, name: string): boolean {
   const dir = recordsDir(projectDir, name);

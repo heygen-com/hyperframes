@@ -8,14 +8,13 @@ export const examples: Example[] = [
   ["List the clips the render hears, on the film's clock", "hyperframes info --media --json"],
 ];
 import { join } from "node:path";
-import { parseHtml, CANVAS_DIMENSIONS } from "@hyperframes/core";
+import { parseHtml, CANVAS_DIMENSIONS, terminalText } from "@hyperframes/core";
 import {
   findRootCompositionElement,
   readCompositionSize,
 } from "@hyperframes/core/runtime/composition-length";
 import { readDataDurationSeconds } from "@hyperframes/parsers/media-duration";
 import { heardClips } from "../utils/projectMedia.js";
-import { terminalText } from "../utils/terminalText.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, label } from "../ui/format.js";
 import { ensureDOMParser } from "../utils/dom.js";

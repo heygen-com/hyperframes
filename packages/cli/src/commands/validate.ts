@@ -1,4 +1,5 @@
 import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
+import { launchWithPageNetwork } from "../browser/pageNetwork.js";
 // The media-metadata wait exists twice on purpose: once Node-side and once
 // inside a page.evaluate() body, which is serialized into the browser and
 // cannot import the Node helper. Line-level markers don't survive the clone
@@ -456,11 +457,17 @@ async function validateInBrowser(
     const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, browser.executablePath);
     const requiresWebGpu = compositionRequiresWebGpu(html);
     const { gpuConfig, softwareWebGpu } = resolveLocalWebGpu(resolvedGpuMode, requiresWebGpu);
-    const chromeBrowser = await launchManagedBrowser(puppeteer.default, {
-      headless: true,
-      executablePath: browser.executablePath,
-      args: buildChromeArgs({ ...viewport, captureMode: "screenshot", requiresWebGpu }, gpuConfig),
-    });
+    const chromeBrowser = await launchWithPageNetwork(server.url, (network) =>
+      launchManagedBrowser(puppeteer.default, {
+        headless: true,
+        executablePath: browser.executablePath,
+        userDataDir: network.userDataDir,
+        args: [
+          ...buildChromeArgs({ ...viewport, captureMode: "screenshot", requiresWebGpu }, gpuConfig),
+          ...network.args,
+        ],
+      }),
+    );
 
     try {
       const page = await chromeBrowser.newPage();

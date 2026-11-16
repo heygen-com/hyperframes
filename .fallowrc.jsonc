@@ -57,6 +57,9 @@
     "packages/producer/src/services/healthWorkerThread.ts",
     // Render-setup worker, spawned by path from cancellableProcess.ts.
     "packages/cli/src/renderSetupWorker.ts",
+    // Sub-composition build worker, started by path from subCompositionBuild.ts (.dev.mjs from source under Node).
+    "packages/studio-server/src/helpers/subCompositionWorker.ts",
+    "packages/studio-server/src/helpers/subCompositionWorker.dev.mjs",
     // Update/skills cache refresh, spawned detached by path from backgroundChecks.ts.
     "packages/cli/src/backgroundChecksWorker.ts",
     // Parakeet decode worker, spawned by path from whisper/sherpa.ts.
@@ -66,6 +69,7 @@
     "packages/cli/src/browser/chromeOrphans.fixture.ts",
     "packages/cli/src/capture/publicNetwork.fixture.ts",
     "packages/cli/src/utils/commandResult.fixture.ts",
+    "packages/studio-server/src/routes/recoveryDrafts.fixture.ts",
     // Test fixture worker, spawned by path via the pools' workerEntryPath
     // option from the crash-recovery tests; has no import-graph referrer.
     "packages/producer/src/services/__fixtures__/crashOnMessageWorker.mjs",

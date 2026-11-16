@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
 import { redactUrlQueryStrings } from "@hyperframes/core";
+import { SELF_CONTAINED_FORMATS, mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { resolveRestrictPageNetwork } from "../config.js";
+import { getFfmpegBinary, getFfprobeBinary } from "./ffmpegBinaries.js";
 
 // The Lambda nodejs image (Amazon Linux 2023) ships the first; Debian/Ubuntu the second; macOS the third.
 const CA_BUNDLES = [
@@ -12,14 +14,11 @@ const CA_BUNDLES = [
 // Lambda's ffprobe 4.0 accepts these but not -reconnect_on_network_error; a stalled read fails after 30 s.
 const RECONNECT_ARGS = ["-rw_timeout", "30000000", "-reconnect", "1", "-reconnect_delay_max", "2"];
 
-const SELF_CONTAINED_FORMATS =
-  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
-
 export function selfContainedFormatArgs(): string[] {
   return resolveRestrictPageNetwork() ? ["-format_whitelist", SELF_CONTAINED_FORMATS] : [];
 }
 
-/** ffmpeg and ffprobe skip TLS certificate checks unless told to; an https input must be verified, and on a render service be a self-contained container that names only HTTPS. */
+/** Every input of composition media reads only demuxers that open nothing by themselves. ffmpeg and ffprobe skip TLS certificate checks unless told to; an https input must be verified, and on a render service be a self-contained container that names only HTTPS. */
 export function urlInputArgs(
   input: string,
   {
@@ -27,7 +26,9 @@ export function urlInputArgs(
     caBundles = CA_BUNDLES,
   }: { tool?: "ffmpeg" | "ffprobe"; caBundles?: readonly string[] } = {},
 ): string[] {
-  if (!/^https:\/\//i.test(input)) return [];
+  const mediaFormats = () =>
+    mediaInputFormatArgs(tool === "ffprobe" ? getFfprobeBinary() : getFfmpegBinary());
+  if (!/^https:\/\//i.test(input)) return mediaFormats();
   const caFile = caBundles.find((path) => existsSync(path));
   if (!caFile) {
     throw new Error(
@@ -37,7 +38,7 @@ export function urlInputArgs(
   const networkRetry = tool === "ffmpeg" ? ["-reconnect_on_network_error", "1"] : [];
   const renderServiceLimits = resolveRestrictPageNetwork()
     ? ["-protocol_whitelist", "https,tls,tcp", ...selfContainedFormatArgs()]
-    : [];
+    : mediaFormats();
   return [
     "-tls_verify",
     "1",

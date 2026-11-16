@@ -16,6 +16,7 @@ import { registerPeakRoutes } from "./routes/peaks.js";
 import { registerFontRoutes } from "./routes/fonts.js";
 import { registerRegistryRoutes } from "./routes/registry.js";
 import { registerSelectionRoutes } from "./routes/selection.js";
+import { registerRecoveryDraftRoutes } from "./routes/recoveryDrafts.js";
 import { registerMediaRoutes } from "./routes/media.js";
 import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
@@ -114,6 +115,7 @@ function urlScheme(url: string): string | undefined {
 
 export interface StudioApiOptions extends CaptureSandboxOption {
   allowedHosts?: readonly string[];
+  subCompositionDeadlineMs?: number;
 }
 
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
@@ -216,12 +218,16 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
 
   registerProjectRoutes(api, adapter);
   registerFileRoutes(api, adapter);
-  registerPreviewRoutes(api, adapter, { sandboxThumbnailCaptures });
+  registerPreviewRoutes(api, adapter, {
+    sandboxThumbnailCaptures,
+    subCompositionDeadlineMs: options.subCompositionDeadlineMs,
+  });
   registerLintRoutes(api, adapter);
   registerRenderRoutes(api, adapter);
   registerThumbnailRoutes(api, adapter);
   registerImageThumbnailRoutes(api, adapter);
   registerSelectionRoutes(api, adapter);
+  registerRecoveryDraftRoutes(api, adapter);
   registerMediaRoutes(api, adapter);
   registerWaveformRoutes(api, adapter);
   registerFreezeFrameRoutes(api, adapter);

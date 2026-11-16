@@ -8,6 +8,7 @@ import { usePlaybackKeyboard } from "./usePlaybackKeyboard";
 import { usePlayerStore } from "../store/playerStore";
 import { setStudioKeys } from "../components/studioShortcuts";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
+import { detachedFakeIframe, serveEditingRequests } from "./timelinePlayerTestHarness";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -28,10 +29,11 @@ interface Spies {
 interface HookHandle {
   dispatch: (event: KeyboardEvent) => void;
   release: (event: KeyboardEvent) => void;
+  attach: () => void;
   spies: Spies;
 }
 
-function setupHook(): HookHandle {
+function setupHook(iframe: HTMLIFrameElement | null = null): HookHandle {
   const spies: Spies = {
     seek: vi.fn(),
     play: vi.fn(),
@@ -42,7 +44,7 @@ function setupHook(): HookHandle {
   let captured: ReturnType<typeof usePlaybackKeyboard> | null = null;
 
   function Harness() {
-    const iframeRef = React.useRef<HTMLIFrameElement | null>(null);
+    const iframeRef = React.useRef<HTMLIFrameElement | null>(iframe);
     const shuttleDirectionRef = React.useRef<"forward" | "backward" | null>(null);
     const shuttleSpeedIndexRef = React.useRef(0);
     const iframeShortcutCleanupRef = React.useRef<(() => void) | null>(null);
@@ -72,6 +74,7 @@ function setupHook(): HookHandle {
   return {
     dispatch: (event) => captured!.playbackKeyDownRef.current(event),
     release: (event) => captured!.playbackKeyUpRef.current(event),
+    attach: () => captured!.attachIframeShortcutListeners(),
     spies,
   };
 }
@@ -481,5 +484,107 @@ describe("usePlaybackKeyboard: modifier combos and named keys", () => {
     send(dispatch, { code: "KeyJ", key: "j" });
     expect(spies.seek).toHaveBeenCalledTimes(1);
     expect(spies.playBackward).not.toHaveBeenCalled();
+  });
+});
+
+describe("usePlaybackKeyboard: a sealed preview frame", () => {
+  const closers: Array<() => void> = [];
+  afterEach(() => closers.splice(0).forEach((close) => close()));
+
+  function sealedFrame() {
+    const frame: Record<string, unknown> = {};
+    const iframe = detachedFakeIframe(frame);
+    Object.defineProperty(iframe, "contentDocument", { value: null });
+    Object.defineProperty(frame, "document", {
+      get: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    });
+    const watched: string[][] = [];
+    let port: MessagePort | null = null;
+    closers.push(
+      serveEditingRequests(
+        frame,
+        (kind, params) => {
+          if (kind !== "watch-keys") return null;
+          const { combos } = params as { combos: string[] };
+          watched.push(combos);
+          return { watching: combos.length };
+        },
+        (framePort) => (port = framePort),
+      ),
+    );
+    const forward = (type: "keydown" | "keyup", key: string, code: string) =>
+      port!.postMessage({
+        v: 1,
+        event: "key",
+        key: {
+          type,
+          key,
+          code,
+          altKey: false,
+          ctrlKey: false,
+          metaKey: false,
+          shiftKey: false,
+          repeat: false,
+        },
+      });
+    return { iframe, watched, forward };
+  }
+
+  it("asks the frame for exactly the playback keys, and again when they are remapped", async () => {
+    const { iframe, watched } = sealedFrame();
+    setupHook(iframe).attach();
+    await vi.waitFor(() => expect(watched).toHaveLength(1));
+    expect(new Set(watched[0])).toEqual(
+      new Set([
+        "Space",
+        "ArrowLeft",
+        "ArrowRight",
+        "shift+ArrowLeft",
+        "shift+ArrowRight",
+        "m",
+        "shift+l",
+        "k",
+        "j",
+        "l",
+        "i",
+        "shift+i",
+        "o",
+        "shift+o",
+        "a",
+        "e",
+      ]),
+    );
+    act(() => setStudioKeys({ playPause: "p" }));
+    await vi.waitFor(() => expect(watched).toHaveLength(2));
+    expect(watched[1]).toContain("p");
+    expect(watched[1]).not.toContain("Space");
+  });
+
+  it("plays and steps from the keys the frame forwards, keyups included", async () => {
+    const { iframe, watched, forward } = sealedFrame();
+    const { attach, spies } = setupHook(iframe);
+    attach();
+    await vi.waitFor(() => expect(watched).toHaveLength(1));
+    forward("keydown", " ", "Space");
+    await vi.waitFor(() => expect(spies.play).toHaveBeenCalledOnce());
+    forward("keydown", "k", "KeyK");
+    forward("keydown", "l", "KeyL");
+    await vi.waitFor(() => expect(spies.seek).toHaveBeenCalledOnce());
+    forward("keyup", "k", "KeyK");
+    forward("keydown", "l", "KeyL");
+    await vi.waitFor(() => expect(spies.play).toHaveBeenCalledTimes(2));
+  });
+
+  it("stops watching when its listeners are replaced", async () => {
+    const { iframe, watched } = sealedFrame();
+    const { attach } = setupHook(iframe);
+    attach();
+    await vi.waitFor(() => expect(watched).toHaveLength(1));
+    attach();
+    await vi.waitFor(() => expect(watched).toHaveLength(3));
+    expect(watched[1]).toEqual([]);
+    expect(watched[2]).toEqual(watched[0]);
   });
 });

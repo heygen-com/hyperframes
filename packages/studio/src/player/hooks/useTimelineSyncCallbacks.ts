@@ -111,6 +111,10 @@ export function planShadowReload(
   return live ? [live, { gen: nextGen, role: "shadow", url }] : [{ gen: nextGen, role: "live" }];
 }
 
+export function planShadowAlone(nextGen: number, url: string): PreviewIframeSlot[] {
+  return [{ gen: nextGen, role: "shadow", url }];
+}
+
 /** Drop any pending shadow; the live slot (and its key) is untouched. */
 export function planShadowDiscard(slots: PreviewIframeSlot[]): PreviewIframeSlot[] {
   return slots.filter((slot) => slot.role === "live");

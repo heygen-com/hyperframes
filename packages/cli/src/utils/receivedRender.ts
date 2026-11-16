@@ -10,13 +10,12 @@ import {
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseHTML } from "linkedom";
-import { isNonRelativeUrl, isPathInside } from "@hyperframes/core";
+import { isNonRelativeUrl, isPathInside, terminalText } from "@hyperframes/core";
 import {
   namesAnotherNetworkRoot,
   resolveCompositionSrc,
 } from "@hyperframes/parsers/asset-resolution";
 import { linksOutside, receivedRecordStatus } from "./privateProjectFile.js";
-import { terminalText } from "./terminalText.js";
 import { walkBudget } from "./walkBudget.js";
 
 const REFERENCE_ATTRS = ["src", "href", "poster"];

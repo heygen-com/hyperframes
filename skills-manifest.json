@@ -6,7 +6,7 @@
       "files": 3
     },
     "hyperframes": {
-      "hash": "50c8974e4f2dd21a",
+      "hash": "90b4e96c091ebe16",
       "files": 80
     },
     "hyperframes-cli": {
@@ -18,8 +18,8 @@
       "files": 13
     },
     "media-use": {
-      "hash": "9b684507cb9ba9f8",
-      "files": 125
+      "hash": "fa655ce936dab4a5",
+      "files": 128
     },
     "remotion-to-hyperframes": {
       "hash": "e7982839c333759e",
@@ -34,7 +34,7 @@
       "files": 2
     },
     "style-sampling": {
-      "hash": "46f7b0d23385baf3",
+      "hash": "5378b0a22d46cd0d",
       "files": 2
     }
   }

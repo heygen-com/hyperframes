@@ -3,7 +3,7 @@
  * cloud file moves the whole interleaved file; the sidecar is a few MB.
  */
 
-import { extractAudioMetadata, runFfmpeg } from "@hyperframes/engine";
+import { extractAudioMetadata, runFfmpeg, urlInputArgs } from "@hyperframes/engine";
 import { extname } from "node:path";
 
 /** Smaller files are cheap to read whole. */
@@ -31,13 +31,19 @@ export async function buildAudioSidecar(
   if (!audio) return (await ffmpegIsMissing(signal)) ? "unavailable" : "none";
   if (audio.audioStreamCount !== 1 || (audio.audioStreamLeadSeconds ?? 0) > 0) return "none";
   const result = await runFfmpeg(
-    ["-v", "error", "-y", "-i", inputPath, "-map", "0:a:0", "-vn", "-c:a", "copy"].concat([
-      "-movflags",
-      "+faststart",
-      "-f",
-      "mp4",
-      outputPath,
-    ]),
+    [
+      "-v",
+      "error",
+      "-y",
+      ...urlInputArgs(inputPath),
+      "-i",
+      inputPath,
+      "-map",
+      "0:a:0",
+      "-vn",
+      "-c:a",
+      "copy",
+    ].concat(["-movflags", "+faststart", "-f", "mp4", outputPath]),
     { signal },
   );
   if (result.success) return "built";

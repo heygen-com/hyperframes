@@ -235,7 +235,7 @@ for (const [i, r] of results.entries()) {
   }
 }
 server.stop(true);
-const MAX_AUDIO_SEEKS = 15; // the loop made 50 to 190, a clean play 1 to 6
+const MAX_AUDIO_SEEKS = 30; // the loop made 50 to 190, a clean ten-take play 9 to 16 (its first run is the high one)
 const MAX_FROZEN_PCT = 15; // the loop froze 38 to 99%, a clean play 2 to 10%
 const bad = results.filter((r) => {
   const m = measure(r, cuts);

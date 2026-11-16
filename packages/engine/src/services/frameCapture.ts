@@ -31,6 +31,7 @@ import {
   RUNTIME_BOOTSTRAP_ATTR,
   SCENE_CALLBACK_ERROR_PREFIX,
   type RawAuthoredTiming,
+  terminalText,
 } from "@hyperframes/core";
 
 import { readReferenceBackground } from "./referenceBackground.js";
@@ -1201,7 +1202,9 @@ async function initDrawElementOrTransparentBackground(
         session.deGateReason = reason;
         session.deFallbackTrigger = trigger;
         console.error(
-          `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ${message}`,
+          terminalText(
+            `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ${message}`,
+          ),
         );
         await routeToFallback();
       };
@@ -1306,8 +1309,10 @@ async function initDrawElementOrTransparentBackground(
         session.deGateReason = "3d_init_failed";
         session.deFallbackTrigger = "3d_init_failed";
         console.error(
-          `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ` +
-            `3D projection init failed (${threeD.reason ?? "unknown"})`,
+          terminalText(
+            `[engine] fast capture falls back to ${session.launchCaptureMode} capture: ` +
+              `3D projection init failed (${threeD.reason ?? "unknown"})`,
+          ),
         );
         await routeToFallback();
         return;
@@ -1392,7 +1397,9 @@ async function cssEffectRiskFrames(
     return live && withFramesAfterCallback(live, scan.callbackFrom, fps, totalFrames);
   } catch (error) {
     console.error(
-      `[engine] fast capture: effect scan failed (${error instanceof Error ? error.message : String(error)})`,
+      terminalText(
+        `[engine] fast capture: effect scan failed (${error instanceof Error ? error.message : String(error)})`,
+      ),
     );
     return null;
   } finally {
@@ -2318,10 +2325,12 @@ export async function pollSubCompositionTimelines(
     if (failed.length > 0 && sinceFailure >= graceMs) {
       scriptFailureBail = true;
       console.warn(
-        `[FrameCapture] Sub-composition timeline wait cut short after ${now - start}ms: ` +
-          `script(s) failed (${failed.join(", ")}), so ` +
-          `the timeline registration they carry can never arrive. ` +
-          `Fix the script.`,
+        terminalText(
+          `[FrameCapture] Sub-composition timeline wait cut short after ${now - start}ms: ` +
+            `script(s) failed (${failed.join(", ")}), so ` +
+            `the timeline registration they carry can never arrive. ` +
+            `Fix the script.`,
+        ),
       );
       break;
     }
@@ -2351,12 +2360,16 @@ export async function pollSubCompositionTimelines(
   onPending?.(pendingIds);
   const missing = pendingIds.join(", ");
   if (scriptFailureBail) {
-    console.warn(`[FrameCapture] Composition(s) still waiting on the failed script: ${missing}.`);
+    console.warn(
+      `[FrameCapture] Composition(s) still waiting on the failed script: ${terminalText(missing)}.`,
+    );
   } else {
     console.warn(
-      `[FrameCapture] Sub-composition timelines not registered after ${timeoutMs}ms: ${missing}. ` +
-        `Compositions that load data asynchronously (e.g. fetch) must register window.__timelines[id] after setup completes. ` +
-        `Compositions intentionally driven without GSAP timelines (CSS animations / rAF) can mark the host with data-no-timeline to skip this wait.`,
+      terminalText(
+        `[FrameCapture] Sub-composition timelines not registered after ${timeoutMs}ms: ${missing}. ` +
+          `Compositions that load data asynchronously (e.g. fetch) must register window.__timelines[id] after setup completes. ` +
+          `Compositions intentionally driven without GSAP timelines (CSS animations / rAF) can mark the host with data-no-timeline to skip this wait.`,
+      ),
     );
   }
   return scriptFailureBail ? "script_failure" : "timeout";
@@ -2549,7 +2562,10 @@ function recordCaptureWarnings(session: CaptureSession, warnings: readonly Captu
       continue;
     }
     session.warnings.push(warning);
-    console.warn(`[FrameCapture:${warning.code}] ${warning.message}`, warning.details ?? {});
+    console.warn(
+      `[FrameCapture:${warning.code}] ${terminalText(warning.message)}`,
+      warning.details ?? {},
+    );
   }
 }
 
@@ -3112,7 +3128,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       !quietRuntimeDetail(text) &&
       !loggedEarlierInRender(session, text)
     ) {
-      console.error(diagnostic.text);
+      console.error(terminalText(diagnostic.text));
     }
     appendBrowserDiagnostic(session, diagnostic.text);
 
@@ -3128,7 +3144,7 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
     const text = `[Browser:PAGEERROR] ${message}`;
 
     // Benign play/pause race during frame capture — suppress terminal noise, keep in buffer.
-    if (!isPlayPauseAbort(message)) console.error(text);
+    if (!isPlayPauseAbort(message)) console.error(terminalText(text));
 
     appendBrowserDiagnostic(session, text);
   });
@@ -3256,8 +3272,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       pollVideosReady(page, skipVideoIds, pageReadyTimeout),
       waitForImagesReady(page, pageReadyTimeout, (failedImages) =>
         console.warn(
-          `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
-            `Continuing render. Affected images may appear blank/missing in early frames.`,
+          terminalText(
+            `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
+              `Continuing render. Affected images may appear blank/missing in early frames.`,
+          ),
         ),
       ),
       page.evaluate(`document.fonts?.ready`),
@@ -3276,8 +3294,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
           .join(", ");
       }, skipVideoIds);
       console.warn(
-        `[FrameCapture] Some video elements did not decode within ${pageReadyTimeout}ms: ${failedVideos}. ` +
-          `Continuing render. Affected videos will appear as blank/black frames.`,
+        terminalText(
+          `[FrameCapture] Some video elements did not decode within ${pageReadyTimeout}ms: ${failedVideos}. ` +
+            `Continuing render. Affected videos will appear as blank/black frames.`,
+        ),
       );
     }
     recordReadiness(
@@ -3399,8 +3419,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
       pollVideosReady(page, bfSkipVideoIds, pageReadyTimeout),
       waitForImagesReady(page, pageReadyTimeout, (failedImages) =>
         console.warn(
-          `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
-            `Continuing render. Affected images may appear blank/missing in early frames.`,
+          terminalText(
+            `[FrameCapture] Some image elements did not load within ${pageReadyTimeout}ms: ${failedImages}. ` +
+              `Continuing render. Affected images may appear blank/missing in early frames.`,
+          ),
         ),
       ),
       page.evaluate(`document.fonts?.ready`),
@@ -3419,8 +3441,10 @@ export async function initializeSession(session: CaptureSession): Promise<void> 
           .join(", ");
       }, bfSkipVideoIds);
       console.warn(
-        `[FrameCapture] Some video elements did not decode within ${pageReadyTimeout}ms: ${failedVideos}. ` +
-          `Continuing render. Affected videos will appear as blank/black frames.`,
+        terminalText(
+          `[FrameCapture] Some video elements did not decode within ${pageReadyTimeout}ms: ${failedVideos}. ` +
+            `Continuing render. Affected videos will appear as blank/black frames.`,
+        ),
       );
     }
     recordReadiness(
@@ -5581,7 +5605,7 @@ async function captureFrameCore(
         session.page,
         pageMotionBlurRecorder(session),
       ).catch(() => null);
-      if (blur) console.error(blur);
+      if (blur) console.error(terminalText(blur));
     }
 
     // Retain this freshly-captured buffer so the following static frames can reuse it.
@@ -5947,9 +5971,11 @@ export async function captureFramesBatchPipelined(
       throw new DrawElementCaptureError(frameIndices[failedAt] ?? failedAt, reason, error);
     } else {
       console.error(
-        `[engine] fast capture: batch produce failed at frame ` +
-          `${frameIndices[failedAt] ?? "?"} (${error ?? "?"}); ` +
-          `re-capturing ${frameIndices.length - failedAt} frame(s) per-frame`,
+        terminalText(
+          `[engine] fast capture: batch produce failed at frame ` +
+            `${frameIndices[failedAt] ?? "?"} (${error ?? "?"}); ` +
+            `re-capturing ${frameIndices.length - failedAt} frame(s) per-frame`,
+        ),
       );
       for (let i = failedAt; i < frameIndices.length; i++) {
         const frameIndex = frameIndices[i];
@@ -6049,7 +6075,7 @@ export async function closeCaptureSession(session: CaptureSession): Promise<void
       undefined,
       pageMotionBlurRecorder(session),
     );
-    if (blur) console.error(blur);
+    if (blur) console.error(terminalText(blur));
   }
   // Realized static-dedup telemetry: how much the cache actually helped this
   // render (vs the prediction logged at arm time). Both capture paths

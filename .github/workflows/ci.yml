@@ -1181,6 +1181,11 @@ jobs:
             node packages/studio/tests/e2e/timeline-snap-release.mjs || rc=1
           STUDIO_URL="http://localhost:5316/#project/aroll-backdrop" \
             node packages/studio/tests/e2e/aroll-backdrop.mjs || rc=1
+          rm -rf packages/studio/data/projects/graded-video-transitions
+          cp -R packages/studio/tests/e2e/fixtures/graded-video-transitions \
+            packages/studio/data/projects/graded-video-transitions
+          STUDIO_URL="http://localhost:5316/#project/graded-video-transitions" \
+            node packages/studio/tests/e2e/graded-video-transitions.mjs || rc=1
           exit "$rc"
       - name: Measure the caret of a text edited in place
         if: success() || failure()
