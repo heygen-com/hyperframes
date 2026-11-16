@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { get as httpGet, type IncomingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -38,6 +39,23 @@ beforeAll(() => {
 });
 
 afterAll(() => rmSync(base, { recursive: true, force: true }));
+
+function getWithHost(
+  url: string,
+  host: string,
+): Promise<{ status: number; headers: IncomingHttpHeaders; body: string }> {
+  return new Promise((resolveGet, rejectGet) => {
+    const request = httpGet(url, { headers: { host } }, (response) => {
+      let body = "";
+      response.setEncoding("utf8");
+      response.on("data", (chunk: string) => (body += chunk));
+      response.on("end", () =>
+        resolveGet({ status: response.statusCode ?? 0, headers: response.headers, body }),
+      );
+    });
+    request.on("error", rejectGet);
+  });
+}
 
 describe("resolveLocalCaptureTarget", () => {
   it("accepts a path, a file:// URL or a directory, rooted at the file's directory", () => {
@@ -123,6 +141,29 @@ describe("startLocalPageServer", () => {
 
   it.skipIf(process.platform === "win32")("refuses a symlink that leaves the root", async () => {
     expect((await fetch(`${server.origin}/link.txt`)).status).toBe(404);
+  });
+
+  it.each(["capture-fixture.example.com", "127.0.0.1", "127.0.0.1:1", "localhost.example.com"])(
+    "refuses Host %s before reading any file",
+    async (host) => {
+      const { status, headers, body } = await getWithHost(server.url, host);
+      expect(status).toBe(403);
+      expect(headers["x-content-type-options"]).toBe("nosniff");
+      expect(body).not.toContain("about");
+    },
+  );
+
+  it("answers its own port by every loopback name, with nosniff", async () => {
+    const port = new URL(server.origin).port;
+    for (const host of [`127.0.0.1:${port}`, `LOCALHOST:${port}`, `[::1]:${port}`]) {
+      const { status, headers, body } = await getWithHost(server.url, host);
+      expect(status).toBe(200);
+      expect(headers["x-content-type-options"]).toBe("nosniff");
+      expect(body).toBe("<h1>about</h1>");
+    }
+    expect(
+      (await fetch(`${server.origin}/missing.png`)).headers.get("x-content-type-options"),
+    ).toBe("nosniff");
   });
 
   it("refuses methods other than GET and HEAD", async () => {

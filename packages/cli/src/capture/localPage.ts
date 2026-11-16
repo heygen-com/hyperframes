@@ -13,7 +13,7 @@ import type { Socket } from "node:net";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { listenOnBrowserSafePort } from "@hyperframes/engine";
+import { isOwnLoopbackHost, listenOnBrowserSafePort } from "@hyperframes/engine";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 
 export interface LocalCaptureTarget {
@@ -148,10 +148,13 @@ function end(response: ServerResponse, status: number): void {
   response.end();
 }
 
-/** Serves only regular, non-private files whose real path lies inside `target.root`, on a loopback port. */
+/** Serves only regular, non-private files inside `target.root`, on a loopback port, to its own loopback Host. */
 export async function startLocalPageServer(target: LocalCaptureTarget): Promise<LocalPageServer> {
   const sockets = new Set<Socket>();
+  let port = -1;
   const server = createServer((request, response) => {
+    response.setHeader("X-Content-Type-Options", "nosniff");
+    if (!isOwnLoopbackHost(request.headers.host, port)) return end(response, 403);
     void (async () => {
       if (request.method !== "GET" && request.method !== "HEAD") return end(response, 405);
       const pathname = new URL(request.url ?? "/", "http://local").pathname;
@@ -171,7 +174,8 @@ export async function startLocalPageServer(target: LocalCaptureTarget): Promise<
   await listenOnBrowserSafePort(server, "127.0.0.1");
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Local page server did not bind");
-  const origin = `http://127.0.0.1:${address.port}`;
+  port = address.port;
+  const origin = `http://127.0.0.1:${port}`;
   const entryPath = relative(target.root, target.entry).split(sep).map(encodeURIComponent);
   activeSites.set(origin, { root: target.root, name: localSiteName(target.entry) });
   let closing: Promise<void> | undefined;
