@@ -58,7 +58,7 @@ import {
 } from "./motionAudit.js";
 import { findMotionSpec, readMotionSpec, type MotionAssertion } from "./motionSpec.js";
 import { auditCraft } from "./craftAudit.js";
-import { inspectHdrAutoPromotion } from "./hdrPromotion.js";
+import { inspectHdrAutoPromotion, remoteMediaNotInspected } from "./hdrPromotion.js";
 import { collectProjectMedia, type ProjectMedia } from "./projectMedia.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import {
@@ -1767,8 +1767,7 @@ export async function runCheckPipeline(
         { kind: "none" },
         [],
         [],
-        hdr.autoPromotion,
-        hdr.inspection,
+        hdr,
         await audio,
       );
     }
@@ -1813,8 +1812,7 @@ export async function runCheckPipeline(
         motion,
         specFindings,
         snapshotFiles,
-        hdr.autoPromotion,
-        hdr.inspection,
+        hdr,
         await audio,
       );
       outcome = {
@@ -2085,8 +2083,7 @@ function buildReport(
   motion: MotionSpecResolution,
   extraMotionFindings: CheckFinding[],
   snapshotFiles: string[],
-  hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null,
-  hdrInspection: CheckReport["hdr"]["inspection"] = "available",
+  hdr: CheckReport["hdr"] = { autoPromotion: null, inspection: "available" },
   audioFindings: CheckFinding[] = [],
 ): CheckReport {
   const shaping = options.components?.length
@@ -2148,7 +2145,7 @@ function buildReport(
       samples: browser.craft.samples,
     },
     audio: audioSection,
-    hdr: { autoPromotion: hdrPromotion, inspection: hdrInspection },
+    hdr,
     snapshots: {
       enabled: options.snapshots,
       files: snapshotFiles,
@@ -2454,11 +2451,17 @@ async function inspectProjectMedia(
   const media = (dependencies.collectMedia ?? collectMedia)(project);
   let hdr: CheckReport["hdr"];
   try {
+    const found = await media;
     const promotion = (dependencies.inspectHdrAutoPromotion ?? inspectHdrAutoPromotion)(
       project,
-      await media,
+      found,
     );
-    hdr = { autoPromotion: await promotion, inspection: "available" };
+    const remote = remoteMediaNotInspected(found);
+    hdr = {
+      autoPromotion: await promotion,
+      inspection: "available",
+      ...(remote.length > 0 ? { remoteNotInspected: remote } : {}),
+    };
   } catch {
     hdr = { autoPromotion: null, inspection: "unavailable" };
   }
