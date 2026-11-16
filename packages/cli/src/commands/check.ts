@@ -2,7 +2,7 @@ import { terminalText } from "@hyperframes/core";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
   recordArtifacts,
@@ -54,6 +54,7 @@ import {
   readCachedPass,
   storePass,
 } from "../utils/checkCache.js";
+import { recordFolder } from "../utils/projectRecords.js";
 import { VERSION } from "../version.js";
 
 export const examples: Example[] = [
@@ -113,6 +114,13 @@ export function checkReportFile(projectDir: string, id: string): string {
   return join(projectDir, ".hyperframes", "artifacts", "checks", `${id}.json`);
 }
 
+function makeReportFolder(path: string, projectDir: string): void {
+  if (!recordFolder(projectDir, "artifacts/checks"))
+    throw new Error(
+      `${dirname(path)} is reached through a link or a file; remove it and run again`,
+    );
+}
+
 async function saveCheckReport(
   project: ProjectDir,
   options: CheckOptions,
@@ -121,7 +129,7 @@ async function saveCheckReport(
   id: string,
 ): Promise<SavedCheck> {
   const path = checkReportFile(project.dir, id);
-  mkdirSync(dirname(path), { recursive: true });
+  makeReportFolder(path, project.dir);
   writeFileSync(path, JSON.stringify(report, null, 2) + "\n", { flag: "wx" });
   const reportScope =
     "scope" in report && typeof report.scope === "object" && report.scope !== null

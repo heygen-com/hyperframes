@@ -11,6 +11,7 @@ import {
   sdrCanvasColourFilters,
 } from "@hyperframes/engine";
 import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { projectFolder } from "../utils/projectRecords.js";
 import { screenshotOnceMore } from "../utils/screenshotOnceMore.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import type { Page } from "puppeteer-core";
@@ -1172,7 +1173,10 @@ export async function captureSnapshots(
           : null;
 
       const snapshotDir = opts.outputDir ?? artifactDirectory(projectDir, "snapshots");
-      mkdirSync(snapshotDir, { recursive: true });
+      if (!projectFolder(projectDir, snapshotDir))
+        throw new Error(
+          `${snapshotDir} is reached through a link or a file; remove it and run again`,
+        );
       if (!opts.keep) replaced.push(...clearEarlierStills(snapshotDir));
       if (replaced.length > 0) {
         log(`   ${c.warn("⚠")} ${clearedNote(replaced.length, snapshotDir)}`);

@@ -9,7 +9,7 @@ import {
   unlinkSync,
   writeSync,
 } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 
 // The records the CLI and the desktop app keep in a project's .hyperframes/. A project can be a clone of someone
@@ -162,6 +162,17 @@ export function recordKind(projectDir: string, name: string): "absent" | "file" 
 
 export function recordFolder(projectDir: string, folder: string): string | null {
   return recordsDir(projectDir, `${folder.replaceAll("\\", "/")}/`, true);
+}
+
+/** `folder`, made where missing. Inside the project's .hyperframes every level from there down must be a real folder
+ * (null otherwise, as `recordFolder`); a folder anywhere else is made as asked. */
+export function projectFolder(projectDir: string, folder: string): string | null {
+  const inside = relative(join(resolve(projectDir), ".hyperframes"), resolve(folder));
+  if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
+    mkdirSync(folder, { recursive: true });
+    return folder;
+  }
+  return recordFolder(projectDir, inside);
 }
 
 /** Deletes a record that is a plain file; false when there is none to delete. */

@@ -24,7 +24,7 @@ import {
   findingFrameRequests,
 } from "./checkFindingFrames.js";
 export { selectFindingFrames } from "./checkFindingFrames.js";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import type { PrelaunchedBrowser } from "../capture/captureCompositionFrame.js";
 import { join, relative } from "node:path";
@@ -2415,7 +2415,6 @@ async function writeSnapshot(
   pngBase64: string,
 ): Promise<string> {
   const snapshotDir = checkSnapshotDirectory(projectDir);
-  mkdirSync(snapshotDir, { recursive: true });
   const filename = `frame-${String(index).padStart(2, "0")}-at-${time.toFixed(1)}s.png`;
   const path = join(snapshotDir, filename);
   writeFileSync(path, Buffer.from(pngBase64, "base64"));
