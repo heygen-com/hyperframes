@@ -40,7 +40,7 @@ For hotfixes, branch from the last stable tag, cherry-pick only the fix, publish
 
 ## Alpha release
 
-Alpha releases must be reachable from a prerelease branch such as `origin/next` or `origin/alpha`.
+Alpha releases must be reachable from `origin/main`, `origin/next` or `origin/alpha`. The publish workflow refuses a tag on any other commit before it builds anything.
 Use the same changelog draft workflow when the prerelease contains changes that users should know about.
 
 ```bash
@@ -66,7 +66,7 @@ The publish workflow validates release channel boundaries before publishing:
 - Stable versions must publish with `latest`.
 - Prerelease versions must publish with the prerelease dist-tag, such as `alpha`.
 - Stable releases must come from a merged, reviewed `release/vX.Y.Z` PR.
-- Prerelease tags must be reachable from a prerelease branch.
+- Prerelease tags must point at a commit already on `main`, `next` or `alpha`.
 - Every publish, stable or prerelease, waits for a maintainer other than the one who started it to approve the run in the `npm-publish` environment.
 - Merged `release/vX.Y.Z` PRs publish stable releases only.
 - Every publish job verifies that its checkout matches the immutable event SHA.
