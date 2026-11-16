@@ -692,6 +692,15 @@ export async function tarDirectory(
   );
 }
 
+// Symbolic links could point anywhere on this machine; node-tar keeps hard links inside the folder.
+const UNPACKED_ENTRY_TYPES: ReadonlySet<string> = new Set([
+  "File",
+  "OldFile",
+  "ContiguousFile",
+  "Directory",
+  "Link",
+]);
+
 /**
  * Extract a `.tar.gz` produced by {@link tarDirectory} into `destDir`.
  * The directory is created (or cleared) before extraction so a retried
@@ -709,7 +718,11 @@ export async function untarDirectory(tarballPath: string, destDir: string): Prom
     rmSync(destDir, { recursive: true, force: true });
   }
   mkdirSync(destDir, { recursive: true });
-  await tar.extract({ file: tarballPath, cwd: destDir });
+  await tar.extract({
+    file: tarballPath,
+    cwd: destDir,
+    filter: (_path, entry) => "type" in entry && UNPACKED_ENTRY_TYPES.has(entry.type),
+  });
 }
 
 export async function putProbeFacts(

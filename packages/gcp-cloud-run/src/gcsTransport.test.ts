@@ -4,9 +4,20 @@
  */
 
 import { afterEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as tar from "tar";
 import { asStorage, FakeGcs } from "./__fixtures__/fakeGcs.js";
 import {
   downloadGcsObjectToFile,
@@ -88,6 +99,25 @@ describe("tarDirectory / untarDirectory", () => {
     await untarDirectory(tarball, dest);
     expect(existsSync(join(dest, "stale.txt"))).toBe(false);
     expect(readFileSync(join(dest, "keep.txt"), "utf8")).toBe("new");
+  });
+
+  it("untar leaves out symbolic links and keeps hard-linked files", async () => {
+    const src = mkTmp("hf-tar-links-");
+    const outside = mkTmp("hf-tar-outside-");
+    writeFileSync(join(outside, "secret.txt"), "OUTSIDE");
+    writeFileSync(join(src, "a.txt"), "shared");
+    linkSync(join(src, "a.txt"), join(src, "b.txt"));
+    symlinkSync(join(outside, "secret.txt"), join(src, "..x"));
+    symlinkSync(outside, join(src, "..dir"), "dir");
+    const work = mkTmp("hf-tar-work3-");
+    const tarball = join(work, "links.tar");
+    // Packed without following links, so the archive holds the links themselves.
+    tar.create({ file: tarball, cwd: src, sync: true }, ["."]);
+
+    const dest = join(work, "extracted");
+    await untarDirectory(tarball, dest);
+    expect(readdirSync(dest).sort()).toEqual(["a.txt", "b.txt"]);
+    expect(readFileSync(join(dest, "b.txt"), "utf8")).toBe("shared");
   });
 });
 
