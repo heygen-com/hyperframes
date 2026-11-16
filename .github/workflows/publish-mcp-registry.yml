@@ -15,6 +15,8 @@ on:
 
 jobs:
   publish:
+    # The registry trusts any OIDC token from this repo, so only main may request one.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -24,6 +26,9 @@ jobs:
       MCP_PUBLISHER_VERSION: v1.8.9
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Install cosign
         uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
