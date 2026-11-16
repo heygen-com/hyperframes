@@ -5,8 +5,15 @@ import { realpath, realProjectRoot } from "@hyperframes/core/safe-path";
 
 const DRIVE = /^[a-z]:/i;
 
+/** The name as Windows reads it, without its trailing dots and spaces (a scan, so a long run of them stays cheap). */
+function withoutTrailingDotsAndSpaces(name: string): string {
+  let end = name.length;
+  while (end > 0 && (name[end - 1] === "." || name[end - 1] === " ")) end -= 1;
+  return name.slice(0, end);
+}
+
 const isPlainName = (name: string) =>
-  name.replace(/[. ]+$/, "") !== "" &&
+  withoutTrailingDotsAndSpaces(name) !== "" &&
   !DRIVE.test(name) &&
   !(process.platform === "win32" && name.includes(":"));
 
