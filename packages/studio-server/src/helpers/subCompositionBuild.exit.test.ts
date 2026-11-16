@@ -50,8 +50,8 @@ ${body}
   });
 }
 
-const ended = (child: ReturnType<typeof host>, said: string) => {
-  expect(child.stdout.trim(), child.stderr).toBe(said);
+const ended = (child: ReturnType<typeof host>, said: string | RegExp) => {
+  expect(child.stdout.trim(), child.stderr).toMatch(said);
   expect(child.signal).toBeNull();
   expect(child.status).toBe(0);
 };
@@ -59,7 +59,7 @@ const ended = (child: ReturnType<typeof host>, said: string) => {
 // fails without the fix: the worker was unref'd before its "message" listener, which refs it again, so it stayed
 // ref'd after its last job and a host that built one page never exited (a test file or CLI run hung until killed).
 it("a host that built a page on the build worker exits on its own", () => {
-  ended(host(`console.log((await small()).includes("Hi") ? "built" : "not built");`), "built");
+  ended(host(`console.log((await small()).includes("Hi") ? "built" : "not built");`), /^built$/);
 }, 30_000);
 
 it("a host exits once a job past its deadline is refused and the one behind it is built", () => {
@@ -67,7 +67,7 @@ it("a host exits once a job past its deadline is refused and the one behind it i
 const [late, next] = await Promise.allSettled([slow(20), small()]);
 console.log(late.status, next.status);
 `);
-  ended(child, "rejected fulfilled");
+  ended(child, /^rejected fulfilled$/);
 }, 30_000);
 
 it("a host exits after its build worker dies mid-job", () => {
@@ -76,5 +76,6 @@ const job = slow(60_000);
 setTimeout(() => made[0].terminate(), 50);
 console.log(await job.then(() => "built", (error) => error.message));
 `);
-  ended(child, "the build worker exited (1)");
+  // Its exit code is the platform's (0 on some runners, 1 on others).
+  ended(child, /^the build worker exited \(\d+\)$/);
 }, 30_000);
