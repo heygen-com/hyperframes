@@ -70,5 +70,6 @@ The publish workflow validates release channel boundaries before publishing:
 - Builds, lifecycle scripts and `npm pack` run in a job with a read-only token and no secrets.
 - The job that holds the npm token runs no code from the release commit. It checks that every packed tarball is a package this workflow publishes, at exactly the release version, then uploads it with lifecycle scripts off.
 - A version already on npm is skipped only when its contents match the new tarball, or on a re-run of the same workflow run. Otherwise the publish fails, because something other than this run published that version.
+- The Lambda handler zip and arm64 video image are always built by the run, and `@hyperframes/aws-lambda` pins those builds. Once that version is on npm, the release keeps exactly the assets it pins. Before then, if the release already holds a Lambda asset this run did not produce, a first attempt fails and a re-run of the same workflow run replaces the asset.
 
 This prevents an alpha-only feature from being included in a stable hotfix by accident.

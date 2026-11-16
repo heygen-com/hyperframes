@@ -190,26 +190,19 @@ jobs:
           name: hyperframes-lambda-handler-zip
           path: dist/lambda-handler-build
 
-      # Before packing, so @hyperframes/aws-lambda pins this exact zip.
+      # Before packing, so @hyperframes/aws-lambda pins this exact zip. The pin
+      # is always this run's build; the publish job decides which asset the
+      # release keeps.
       - name: Pin Lambda handler zip
-        id: lambda_zip
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-          REPO: ${{ github.repository }}
           EXPECTED_SHA256: ${{ needs.lambda-handler-zip.outputs.sha256 }}
         run: |
-          # A retried run reuses the zip already on the release, so the pin still matches it.
-          if gh release download "v${VERSION}" --repo "$REPO" --pattern hyperframes-lambda-handler.zip --dir dist; then
-            echo "attached=true" >> "$GITHUB_OUTPUT"
-          else
-            ACTUAL_SHA256="$(sha256sum dist/lambda-handler-build/handler.zip | cut -d' ' -f1)"
-            if [ -z "$EXPECTED_SHA256" ] || [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
-              echo "::error::Lambda handler zip sha256 $ACTUAL_SHA256 does not match the build job's $EXPECTED_SHA256"
-              exit 1
-            fi
-            mv dist/lambda-handler-build/handler.zip dist/hyperframes-lambda-handler.zip
+          ACTUAL_SHA256="$(sha256sum dist/lambda-handler-build/handler.zip | cut -d' ' -f1)"
+          if [ -z "$EXPECTED_SHA256" ] || [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::Lambda handler zip sha256 $ACTUAL_SHA256 does not match the build job's $EXPECTED_SHA256"
+            exit 1
           fi
+          mv dist/lambda-handler-build/handler.zip dist/hyperframes-lambda-handler.zip
           rm -rf dist/lambda-handler-build
           bun packages/aws-lambda/scripts/pin-handler-zip.ts
 
@@ -220,24 +213,14 @@ jobs:
 
       # Built from the zip pinned above. The video stage only copies files, so no emulation is needed.
       - name: Build Lambda video image
-        id: lambda_video_image
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-          REPO: ${{ github.repository }}
         run: |
-          # A retried run reuses the image already on the release, so the pin still matches it.
-          if gh release download "v${VERSION}" --repo "$REPO" --pattern hyperframes-lambda-video-arm64.oci.tar --dir dist; then
-            echo "attached=true" >> "$GITHUB_OUTPUT"
-          else
-            bun packages/aws-lambda/scripts/stage-arm64-image.ts --zip=dist/hyperframes-lambda-handler.zip \
-              --ffmpeg=dist/hf-media/hf-media-linux-aarch64.tar.gz --out=dist/arm64-image
-            # OCI export needs a docker-container builder; no attestations, so index.json lists one image.
-            docker buildx create --use
-            docker buildx build --progress=plain --platform linux/arm64 --target video \
-              --provenance=false --sbom=false --build-context task=dist/arm64-image/task \
-              --output type=oci,dest=dist/hyperframes-lambda-video-arm64.oci.tar packages/aws-lambda/image
-          fi
+          bun packages/aws-lambda/scripts/stage-arm64-image.ts --zip=dist/hyperframes-lambda-handler.zip \
+            --ffmpeg=dist/hf-media/hf-media-linux-aarch64.tar.gz --out=dist/arm64-image
+          # OCI export needs a docker-container builder; no attestations, so index.json lists one image.
+          docker buildx create --use
+          docker buildx build --progress=plain --platform linux/arm64 --target video \
+            --provenance=false --sbom=false --build-context task=dist/arm64-image/task \
+            --output type=oci,dest=dist/hyperframes-lambda-video-arm64.oci.tar packages/aws-lambda/image
           bun packages/aws-lambda/scripts/pin-handler-zip.ts --video-image
 
       - run: bun run verify:packed-manifests
@@ -265,21 +248,13 @@ jobs:
       - name: Build portable agent plugin
         run: node scripts/package-agent-plugin.mjs
 
-      # A Lambda asset the release already has stays out of the bundle; the
-      # publish job attaches only what the bundle holds.
       - name: Collect release bundle
         env:
           VERSION: ${{ steps.version.outputs.version }}
-          ZIP_ATTACHED: ${{ steps.lambda_zip.outputs.attached }}
-          IMAGE_ATTACHED: ${{ steps.lambda_video_image.outputs.attached }}
         run: |
           mkdir -p release-bundle/assets release-bundle/plugin
-          if [ "$ZIP_ATTACHED" != "true" ]; then
-            mv dist/hyperframes-lambda-handler.zip dist/hyperframes-lambda-handler.sha256 release-bundle/assets/
-          fi
-          if [ "$IMAGE_ATTACHED" != "true" ]; then
-            mv dist/hyperframes-lambda-video-arm64.oci.tar dist/hyperframes-lambda-video-arm64.sha256 release-bundle/assets/
-          fi
+          mv dist/hyperframes-lambda-handler.zip dist/hyperframes-lambda-handler.sha256 release-bundle/assets/
+          mv dist/hyperframes-lambda-video-arm64.oci.tar dist/hyperframes-lambda-video-arm64.sha256 release-bundle/assets/
           mv dist/hyperframes-agent-plugin.zip dist/hyperframes-agent-plugin.sha256 dist/hyperframes-agent-plugin.json release-bundle/plugin/
           if [ -f "releases/v${VERSION}.md" ]; then
             cp "releases/v${VERSION}.md" release-bundle/notes.md
@@ -503,27 +478,71 @@ jobs:
             gh release create "v${VERSION}" "${FLAGS[@]}"
           fi
 
-      - name: Attach Lambda handler zip to release
+      # Users get these assets only through the sha256 pins in
+      # @hyperframes/aws-lambda. Once that version is on npm, the release must
+      # keep exactly the pinned files. Before then, an asset this bundle did not
+      # produce fails a first attempt, because something other than this run
+      # attached it, and a re-run of this workflow run replaces it.
+      - name: Attach Lambda assets to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           REPO: ${{ github.repository }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           ASSETS="$RUNNER_TEMP/release-bundle/assets"
-          if [ -f "$ASSETS/hyperframes-lambda-handler.zip" ]; then
-            gh release upload "v${VERSION}" "$ASSETS/hyperframes-lambda-handler.zip" "$ASSETS/hyperframes-lambda-handler.sha256" --repo "$REPO"
+          META="$RUNNER_TEMP/aws-lambda-version.json"
+          PUBLISHED="$RUNNER_TEMP/aws-lambda-published.tgz"
+          rm -f "$PUBLISHED"
+          STATUS="$(curl -sS -o "$META" -w '%{http_code}' "https://registry.npmjs.org/@hyperframes%2faws-lambda/${VERSION}")"
+          if [ "$STATUS" = "200" ]; then
+            curl -fsSL -o "$PUBLISHED" "$(jq -r '.dist.tarball' "$META")"
+            INTEGRITY="sha512-$(openssl dgst -sha512 -binary "$PUBLISHED" | base64 -w0)"
+            if [ "$INTEGRITY" != "$(jq -r '.dist.integrity' "$META")" ]; then
+              echo "::error::The @hyperframes/aws-lambda@${VERSION} tarball does not match its npm integrity"
+              exit 1
+            fi
+          elif [ "$STATUS" != "404" ]; then
+            echo "::error::The npm registry answered $STATUS for @hyperframes/aws-lambda@${VERSION}"
+            exit 1
           fi
+          ON_RELEASE="$RUNNER_TEMP/release-assets.tsv"
+          gh api "repos/$REPO/releases/tags/v${VERSION}" --jq '.assets[] | [.name, (.digest // "")] | @tsv' > "$ON_RELEASE"
 
-      - name: Attach Lambda video image to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ steps.version.outputs.version }}
-          REPO: ${{ github.repository }}
-        run: |
-          ASSETS="$RUNNER_TEMP/release-bundle/assets"
-          if [ -f "$ASSETS/hyperframes-lambda-video-arm64.oci.tar" ]; then
-            gh release upload "v${VERSION}" "$ASSETS/hyperframes-lambda-video-arm64.oci.tar" "$ASSETS/hyperframes-lambda-video-arm64.sha256" --repo "$REPO"
-          fi
+          attach_asset() {
+            local asset="$1" sidecar="$2" manifest="$3"
+            local line attached pinned built
+            line="$(awk -F'\t' -v name="$asset" '$1 == name' "$ON_RELEASE")"
+            attached="${line#*$'\t'}"
+            if [ -n "$line" ] && [ -z "$attached" ]; then
+              echo "::error::Release v${VERSION} has $asset without a digest to check it by"
+              exit 1
+            fi
+            if [ -f "$PUBLISHED" ]; then
+              pinned="sha256:$(tar -xzOf "$PUBLISHED" "package/prebuilt/$manifest" | jq -r '.sha256')"
+              if [ "$attached" != "$pinned" ]; then
+                echo "::error::@hyperframes/aws-lambda@${VERSION} on npm pins $asset at $pinned, but release v${VERSION} has ${attached:-no such asset}"
+                exit 1
+              fi
+              echo "$asset on the release is the one npm pins — keeping it"
+              return 0
+            fi
+            built="sha256:$(sha256sum "$ASSETS/$asset" | cut -d' ' -f1)"
+            if [ -z "$line" ]; then
+              gh release upload "v${VERSION}" "$ASSETS/$asset" "$ASSETS/$sidecar" --repo "$REPO"
+            elif [ "$attached" = "$built" ]; then
+              echo "$asset is already attached with these contents — skipping"
+            elif [ "$RUN_ATTEMPT" -gt 1 ]; then
+              echo "::warning::Replacing $asset on release v${VERSION}; nothing on npm pins it yet."
+              gh release upload "v${VERSION}" "$ASSETS/$asset" "$ASSETS/$sidecar" --repo "$REPO" --clobber
+            else
+              echo "::error::Release v${VERSION} already has $asset, and this run did not attach it. Find out who did before releasing this version."
+              exit 1
+            fi
+          }
+
+          attach_asset hyperframes-lambda-handler.zip hyperframes-lambda-handler.sha256 handler-zip.json
+          attach_asset hyperframes-lambda-video-arm64.oci.tar hyperframes-lambda-video-arm64.sha256 video-image.json
 
       # Runs outside the checkout so no project .npmrc applies, and with
       # --ignore-scripts so no lifecycle script runs next to the npm token.
