@@ -17,6 +17,7 @@
 
 import "../../../scripts/lib/windows-exe-search.mjs";
 import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 
 // Accept only an interpreter whose `--version` reports Python 3, as the CLI's
 // `validatePythonOverride()` does. Exit status alone would take a Python 2
@@ -45,7 +46,9 @@ export function resolvePythonCommand(
   probe = defaultProbe,
   env = process.env,
 ) {
-  const override = env.HYPERFRAMES_PYTHON;
+  // A path with a folder in it means the caller's folder, so it still names the same file when a
+  // child runs elsewhere, as MusicGen does; a bare name keeps its PATH lookup.
+  const override = env.HYPERFRAMES_PYTHON && withFolder(env.HYPERFRAMES_PYTHON);
   if (override && probe(override, ["--version"])) return [override];
   const candidates =
     platform === "win32" ? [["python3"], ["python"], ["py", "-3"]] : [["python3"], ["python"]];
@@ -53,6 +56,11 @@ export function resolvePythonCommand(
     if (probe(prefix[0], [...prefix.slice(1), "--version"])) return prefix;
   }
   return candidates[0];
+}
+
+/** `value` made absolute against the working folder when it names a folder, as is otherwise. */
+function withFolder(value) {
+  return /[\\/]/.test(value) ? resolve(value) : value;
 }
 
 let cached = null;

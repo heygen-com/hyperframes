@@ -64,6 +64,7 @@ function postFromRuntime(win: object, data: Record<string, unknown>) {
     window.dispatchEvent(
       new MessageEvent("message", {
         source: win as unknown as Window,
+        origin: window.location.origin,
         data: { source: "hf-preview", ...data },
       }),
     );

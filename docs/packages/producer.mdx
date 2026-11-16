@@ -232,6 +232,10 @@ add it with `PRODUCER_NON_PUBLIC_CIDRS`, a comma-separated list like `192.160.0.
 downloads and the render browser then refuse those addresses too. A malformed entry
 refuses every address rather than being skipped, and logs a warning.
 
+`hyperframes render --docker` passes both settings into its render container when they
+are set in the shell that runs it. When they are not set, the container's render page can
+reach anything the container's network can, including private addresses.
+
 ## Related topics
 
 <CardGroup cols={2}>

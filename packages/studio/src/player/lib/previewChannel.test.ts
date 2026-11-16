@@ -219,6 +219,19 @@ describe("bridge playback for a frame Studio cannot script", () => {
     expect(own.getTime()).toBe(5);
   });
 
+  it("accepts a frame its server sandboxed, which posts as null though its frame has no sandbox", () => {
+    const { iframe, frame } = opaqueFrame();
+    iframe.removeAttribute("sandbox");
+    iframe.setAttribute("src", "/api/projects/demo/preview");
+    watchPreviewFrame(iframe);
+    const adapter = bridgePlaybackAdapter(iframe)!;
+    fromFrame(frame, { type: "state", currentTime: 6, isPlaying: false }, "https://example.com");
+    fromFrame({}, { type: "state", currentTime: 7, isPlaying: false }, "null");
+    expect(adapter.getTime()).toBe(0);
+    fromFrame(frame, { type: "state", currentTime: 6, isPlaying: false }, "null");
+    expect(adapter.getTime()).toBe(6);
+  });
+
   it.each([
     ["srcdoc", (f: HTMLIFrameElement) => f.setAttribute("srcdoc", "<p>x</p>"), location.origin],
     [
