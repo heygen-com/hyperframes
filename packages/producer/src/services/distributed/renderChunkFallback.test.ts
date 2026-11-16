@@ -120,6 +120,30 @@ describe("distributed session isolation", () => {
     expect(calls).toEqual(["close"]);
   });
 
+  // A chunk captures only its range, so static-frame dedup verifies only that (heygen-com/hyperframes#7370).
+  it("hands the chunk's frame range to the session before initializing it", async () => {
+    const session = fakeSession();
+    let rangeAtInit: CaptureSession["staticDedupFrameRange"];
+    await createVerifiedDistributedCaptureSession(
+      "http://127.0.0.1:1234",
+      "/tmp/frames",
+      captureOptions,
+      resolveConfig(),
+      {
+        createCaptureSession: async () => session,
+        assertSwiftShader: async () => {},
+        initializeSession: async (initialized) => {
+          rangeAtInit = initialized.staticDedupFrameRange;
+        },
+        closeCaptureSession: async () => {},
+        readWebGlVendorInfo: readWebGlVendorInfoFromCanvas,
+      },
+      { startFrame: 240, endFrame: 360 },
+    );
+
+    expect(rangeAtInit).toEqual({ start: 240, end: 360 });
+  });
+
   it("creates fresh stateful video injectors for separate workers and retries", () => {
     const factory = createChunkVideoFrameInjectorFactory(createFrameLookupTable([], []));
     const firstAttempt = factory();
