@@ -58,14 +58,19 @@ test("the publish detector finds every known publishing job", () => {
   }
 });
 
+function targetsBranches(push) {
+  if (["branches", "branches-ignore"].some((filter) => Object.hasOwn(push, filter))) return true;
+  // A tags-only push filter disables branch pushes; an absent filter does not.
+  return !["tags", "tags-ignore"].some((filter) => Object.hasOwn(push, filter));
+}
+
 function branchPushViolations({ id, doc }) {
   const events = triggers(doc);
   if (!Object.hasOwn(events, "push")) return [];
   const push = events.push ?? {};
+  if (!targetsBranches(push)) return [];
   const branches = push.branches;
   if (branches?.length === 1 && branches[0] === "main") return [];
-  // A tags-only push filter disables branch pushes; an absent filter does not.
-  if (!branches && !push["branches-ignore"] && (push.tags || push["tags-ignore"])) return [];
   return [`${id} publishes from a branch push`];
 }
 
