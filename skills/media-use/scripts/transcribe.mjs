@@ -106,13 +106,27 @@ function report(engine, wordCount) {
     );
 }
 
+// parakeet-mlx reads a model id as a folder when one exists in its working directory, so it runs in
+// the home folder. A model written as a relative path (./ or ../) still means the caller's folder.
+function modelFor(model, cwd = process.cwd()) {
+  return /^\.\.?[\\/]/.test(model) ? resolve(cwd, model) : model;
+}
+
 function runParakeet(runner) {
   const workDir = mkdtempSync(join(tmpdir(), "media-use-asr-"));
   try {
     execFileSync(
       runner,
-      [inputPath, "--model", args.model, "--output-format", "json", "--output-dir", workDir],
-      { stdio: ["ignore", "pipe", "pipe"], timeout: 1_800_000 },
+      [
+        inputPath,
+        "--model",
+        modelFor(args.model),
+        "--output-format",
+        "json",
+        "--output-dir",
+        workDir,
+      ],
+      { cwd: homedir(), stdio: ["ignore", "pipe", "pipe"], timeout: 1_800_000 },
     );
     const jsonPath = join(workDir, `${basename(inputPath, extname(inputPath))}.json`);
     if (!existsSync(jsonPath)) throw new Error("parakeet produced no JSON");
