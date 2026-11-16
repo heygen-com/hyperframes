@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { heardClips } from "./projectMedia.js";
+import { heardClips, mediaPath } from "./projectMedia.js";
 
 let dir = "";
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
@@ -28,6 +28,36 @@ ${scene}
 }
 
 const probe = { seconds: async () => 6 };
+
+describe("mediaPath", () => {
+  it("never hands check a local file outside the project or private in it", () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-media-path-"));
+    for (const rel of [
+      ".git/clip.mp4",
+      ".hyperframes/clip.mp4",
+      "media/id_rsa",
+      "media/clip.mp4",
+    ]) {
+      mkdirSync(join(dir, rel, ".."), { recursive: true });
+      writeFileSync(join(dir, rel), "x");
+    }
+    expect(mediaPath(".git/clip.mp4", dir)).toBeNull();
+    expect(mediaPath(".hyperframes/clip.mp4", dir)).toBeNull();
+    expect(mediaPath("media/id_rsa", dir)).toBeNull();
+    expect(mediaPath("../../outside.mp4", dir)).toBeNull();
+    expect(mediaPath("media/clip.mp4", dir)).toBe(join(dir, "media", "clip.mp4"));
+    expect(mediaPath("https://cdn.example.com/a.mp4", dir)).toBe("https://cdn.example.com/a.mp4");
+  });
+
+  it("does not probe a private file a scene's audio names", async () => {
+    const seen: string[] = [];
+    const root = project('<audio id="a" src="../.git/voice.wav" data-start="0"></audio>');
+    mkdirSync(join(root, ".git"));
+    writeFileSync(join(root, ".git", "voice.wav"), "x");
+    await heardClips(root, { seconds: async (path) => (seen.push(path), 6) });
+    expect(seen).toEqual([]);
+  });
+});
 
 describe("heardClips", () => {
   it("hears a speaking video inside a timed wrapper in a scene, where the render plays it", async () => {

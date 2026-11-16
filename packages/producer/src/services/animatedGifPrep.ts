@@ -4,7 +4,12 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } f
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { parseHTML } from "linkedom";
 import { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "@hyperframes/core";
-import { DEFAULT_VP9_CPU_USED, runFfmpeg, renameWithRetry } from "@hyperframes/engine";
+import {
+  DEFAULT_VP9_CPU_USED,
+  isPrivateUnderAssetRoots,
+  runFfmpeg,
+  renameWithRetry,
+} from "@hyperframes/engine";
 import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 import { isHttpUrl } from "../utils/urlDownloader.js";
 import { escapesAssetRoot, outsideAssetRefusal } from "../utils/paths.js";
@@ -106,6 +111,7 @@ export function resolveLocalImageSourcePath(
 
   const allowed = (candidate: string) =>
     !namesAnotherNetworkRoot(options.projectDir, candidate) &&
+    !isPrivateUnderAssetRoots(candidate, [options.projectDir, options.downloadDir]) &&
     ((!escapesAssetRoot(candidate, options.assetRoot) &&
       outsideAssetRefusal(options.projectDir, candidate) !== "blocklisted") ||
       !escapesAssetRoot(candidate, options.downloadDir));

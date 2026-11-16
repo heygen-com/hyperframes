@@ -5,6 +5,7 @@ import {
   isHttpUrl,
   isInsideAssetRoots,
   isNotMediaPayload,
+  isPrivateUnderAssetRoots,
   playlistLeavesItsFolder,
   NotMediaPayloadError,
   probeMediaProfile,
@@ -97,7 +98,7 @@ export function mediaAssetRoots(projectDir: string, compiledDir: string): string
   return [projectDir, compiledDir, join(dirname(compiledDir), "downloads")];
 }
 
-/** Treats local media outside the project, compiled and download dirs as missing: no probe or extraction opens it. */
+/** Treats local media outside the project, compiled and download dirs, or private there, as missing: none is opened. */
 export function dropMediaOutsideProject(input: {
   projectDir: string;
   workDir: string;
@@ -111,6 +112,10 @@ export function dropMediaOutsideProject(input: {
   const staysInside = ({ id, src }: { id: string; src: string }) => {
     if (!src || isHttpUrl(src)) return true;
     const path = resolveProjectRelativeSrc(src, projectDir, compiledDir);
+    if (isPrivateUnderAssetRoots(path, roots)) {
+      log.warn(`[Render] Media "${id}" source is missing: it is a private project file`, { src });
+      return false;
+    }
     if (isInsideAssetRoots(path, roots)) return true;
     if (input.allowOutsideProjectAssets) {
       const refusal = outsideAssetRefusal(projectDir, path);

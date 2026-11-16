@@ -66,7 +66,7 @@ const GROUPS: Group[] = [
         "Measure a video file: clock, cuts, events, frames, motion, crops, boxes, eases, look",
       ],
       ["reverse", "Open a reverse-any-video run: note it with HeyGen, then probe the video"],
-      ["billing", "Open the HyperFrames plans or credits page and wait until it is done"],
+      ["billing", "Show your plan and where to manage or cancel it, or buy a plan or credits"],
       ["templates", "Pull a style template into this project (HyperFrames Pro)"],
       ["info", "Print project metadata"],
       ["compositions", "List all compositions in a project"],

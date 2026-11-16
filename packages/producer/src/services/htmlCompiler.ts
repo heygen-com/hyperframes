@@ -118,6 +118,7 @@ import {
   type MediaProbeProfile,
   analyzeKeyframeIntervals,
   assertMediaPayload,
+  isPrivateUnderAssetRoots,
   NotMediaPayloadError,
   parseMasterFxChain,
   probeMediaProfile,
@@ -568,6 +569,7 @@ async function resolveMediaDuration(
   src: string,
   mediaStart: number,
   playbackRate: RateSpec,
+  projectDir: string,
   baseDir: string,
   downloadDir: string,
   tagName: string,
@@ -594,7 +596,12 @@ async function resolveMediaDuration(
   } else {
     filePath = decodedUrlPath(src);
     if (!filePath.startsWith("/")) filePath = join(baseDir, filePath);
-    if (escapesAssetRoot(filePath, assetRoot)) return { duration: null, resolvedPath: filePath };
+    if (
+      escapesAssetRoot(filePath, assetRoot) ||
+      isPrivateUnderAssetRoots(filePath, [projectDir, downloadDir])
+    ) {
+      return { duration: null, resolvedPath: filePath };
+    }
     // ffprobe reads only the header of a remote source, so it is probed in place.
     filePath = urlByAbsentLocalPath?.get(filePath) ?? filePath;
     if (!isHttpUrl(filePath) && namesAnotherNetworkRoot(baseDir, filePath)) {
@@ -712,6 +719,7 @@ function markInferredVariableMediaDurations(
 
 async function compileHtmlFile(
   html: string,
+  projectDir: string,
   baseDir: string,
   downloadDir: string,
   log?: ProducerLogger,
@@ -734,6 +742,7 @@ async function compileHtmlFile(
         el.src!,
         el.mediaStart,
         el.playbackRate,
+        projectDir,
         baseDir,
         downloadDir,
         el.tagName,
@@ -765,6 +774,7 @@ async function compileHtmlFile(
           el.src!,
           el.mediaStart,
           el.playbackRate,
+          projectDir,
           baseDir,
           downloadDir,
           el.tagName,
@@ -886,6 +896,7 @@ async function parseSubCompositions(
     workItems.map(async (item) => {
       const { html: compiledSub } = await compileHtmlFile(
         rewriteUnresolvableGsapToCdn(item.rawSubHtml, projectDir, item.srcPath),
+        projectDir,
         dirname(item.filePath),
         downloadDir,
         undefined,
@@ -1998,6 +2009,7 @@ async function embedLocalFontFaces(
           embeddedPaths.add(localPath);
           continue;
         }
+        if (isPrivateCompositionFile(projectDir, absPath)) continue;
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
           if (fileBackedAbsolutePaths.has(absPath)) {
@@ -2222,6 +2234,7 @@ export async function compileForRender(
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,
+    projectDir,
     downloadDir,
     options.log,
     options.urlByAbsentLocalPath,
@@ -2434,7 +2447,8 @@ export async function compileForRender(
       advised.has(videoPath) ||
       namesAnotherNetworkRoot(projectDir, videoPath) ||
       !existsSync(videoPath) ||
-      escapesAssetRoot(videoPath, assetRoot)
+      escapesAssetRoot(videoPath, assetRoot) ||
+      isPrivateUnderAssetRoots(videoPath, [projectDir, downloadDir])
     )
       continue;
     advised.add(videoPath);
