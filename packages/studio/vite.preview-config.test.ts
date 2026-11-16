@@ -1,9 +1,21 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { newPreviewNonce, provesPreviewOwner } from "@hyperframes/core/preview-proof";
+import {
+  newPreviewNonce,
+  PREVIEW_NONCE_HEADER,
+  provesPreviewOwner,
+  type PreviewEndpoint,
+} from "@hyperframes/core/preview-proof";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { previewConfigPayload } from "./vite.preview-config";
+
+// The request the CLI's challenge arrives as, on a socket accepted at `endpoint`.
+const challenge = (nonce: string, { address, port }: PreviewEndpoint) =>
+  ({
+    headers: { [PREVIEW_NONCE_HEADER]: nonce },
+    socket: { localAddress: address, localPort: port },
+  }) as never;
 
 describe("previewConfigPayload", () => {
   it("identifies a detached Vite preview to the CLI lifecycle scanner", () => {
@@ -40,7 +52,7 @@ describe("previewConfigPayload", () => {
     };
     const nonce = newPreviewNonce();
     const endpoint = { address: "::1", port: 5190 };
-    const answer = previewConfigPayload(env, 1, "dev", { nonce, endpoint })!;
+    const answer = previewConfigPayload(env, 1, "dev", challenge(nonce, endpoint))!;
 
     expect(provesPreviewOwner(nonce, endpoint, answer)).toBe(true);
     expect(provesPreviewOwner(nonce, { ...endpoint, address: "127.0.0.1" }, answer)).toBe(false);
@@ -55,7 +67,7 @@ describe("previewConfigPayload", () => {
     onTestFinished(() => vi.unstubAllEnvs());
     const nonce = newPreviewNonce();
     const endpoint = { address: "127.0.0.1", port: 5190 };
-    const answer = previewConfigPayload({}, 1, "dev", { nonce, endpoint })!;
+    const answer = previewConfigPayload({}, 1, "dev", challenge(nonce, endpoint))!;
 
     expect(answer).not.toHaveProperty("isHyperframes");
     expect(answer).not.toHaveProperty("projectDir");

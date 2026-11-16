@@ -74,6 +74,9 @@ export function previewToken(dir = previewTokenDir()): string | null {
 
 export const newPreviewNonce = () => randomBytes(16).toString("hex");
 
+/** Carries the CLI's challenge; a custom header also makes a browser preflight any cross-site probe. */
+export const PREVIEW_NONCE_HEADER = "x-hyperframes-nonce";
+
 const endpointKey = ({ address, port }: PreviewEndpoint) =>
   `${address.replace(/^\[(.*)\]$/, "$1").replace(/^::ffff:/i, "")}:${port}`;
 

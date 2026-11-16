@@ -1,4 +1,8 @@
-import { newPreviewNonce, provesPreviewOwner } from "@hyperframes/core/preview-proof";
+import {
+  newPreviewNonce,
+  PREVIEW_NONCE_HEADER,
+  provesPreviewOwner,
+} from "@hyperframes/core/preview-proof";
 import { existsSync, realpathSync } from "node:fs";
 import { connect } from "node:net";
 import { resolve } from "node:path";
@@ -71,7 +75,7 @@ const LOOPBACK_CONNECT_TIMEOUT_MS = 1000;
  * 10 s connect timeout, and aborting it does not close the socket, so the
  * command's process stays alive that long anyway. A destroyed socket does not.
  */
-export async function fetchLoopback(url: string): Promise<Response> {
+export async function fetchLoopback(url: string, init?: RequestInit): Promise<Response> {
   const { hostname, port } = new URL(url);
   const host = hostname.replace(/^\[|\]$/g, "");
   await new Promise<void>((accept, refuse) => {
@@ -87,14 +91,14 @@ export async function fetchLoopback(url: string): Promise<Response> {
     socket.once("connect", () => close());
     socket.once("error", close);
   });
-  return fetch(url);
+  return fetch(url, init);
 }
 
 export async function findPreviewServerForProject(
   projectDir: string,
   startPort = 3002,
   scan: (startPort?: number) => Promise<ActiveServer[]> = scanActiveServers,
-  fetchImpl: (url: string) => Promise<Response> = fetchLoopback,
+  fetchImpl: (url: string, init?: RequestInit) => Promise<Response> = fetchLoopback,
   options: FindPreviewServerOptions = {},
 ): Promise<ActiveServer | null> {
   const normalizedProjectDir = normalizePath(projectDir);
@@ -136,10 +140,12 @@ const LOOPBACK_HOSTS = ["127.0.0.1", "[::1]"] as const;
 async function provesOwnerAt(
   host: string,
   port: number,
-  fetchImpl: (url: string) => Promise<Response>,
+  fetchImpl: (url: string, init?: RequestInit) => Promise<Response>,
 ): Promise<boolean> {
   const nonce = newPreviewNonce();
-  const response = await fetchImpl(`http://${host}:${port}/__hyperframes_config?nonce=${nonce}`);
+  const response = await fetchImpl(`http://${host}:${port}/__hyperframes_config`, {
+    headers: { [PREVIEW_NONCE_HEADER]: nonce },
+  });
   if (!response.ok) return false;
   const config = (await response.json()) as Record<string, unknown>;
   return provesPreviewOwner(nonce, { address: host, port }, config);
@@ -147,7 +153,7 @@ async function provesOwnerAt(
 
 async function findViteStudioServerForProject(
   normalizedProjectDir: string,
-  fetchImpl: (url: string) => Promise<Response>,
+  fetchImpl: (url: string, init?: RequestInit) => Promise<Response>,
   ports: readonly number[] = VITE_STUDIO_DISCOVERY_PORTS,
 ): Promise<ActiveServer | null> {
   for (const port of ports) {

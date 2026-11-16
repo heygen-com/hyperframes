@@ -5,7 +5,7 @@
  * providing a CLI-specific adapter for single-project, in-process rendering.
  */
 
-import { previewProof } from "@hyperframes/core/preview-proof";
+import { PREVIEW_NONCE_HEADER, previewProof } from "@hyperframes/core/preview-proof";
 import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -966,7 +966,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const proof =
         socket?.localAddress && socket.localPort
           ? previewProof(
-              c.req.query("nonce"),
+              c.req.header(PREVIEW_NONCE_HEADER),
               { address: socket.localAddress, port: socket.localPort },
               config,
             )

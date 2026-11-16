@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
-import { createServer } from "node:http";
-import type { AddressInfo, Socket } from "node:net";
+import { createServer, type IncomingMessage } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { previewProof } from "@hyperframes/core/preview-proof";
+import { PREVIEW_NONCE_HEADER, previewProof } from "@hyperframes/core/preview-proof";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   activeServerOnPort,
@@ -23,10 +23,9 @@ const config = {
   version: "test",
 };
 
-async function serve(answer: (url: URL, socket: Socket) => Promise<object>): Promise<number> {
+async function serve(answer: (request: IncomingMessage) => Promise<object>): Promise<number> {
   const server = createServer((request, response) => {
-    const url = new URL(request.url ?? "/", "http://x");
-    void answer(url, request.socket).then((body) => {
+    void answer(request).then((body) => {
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify(body));
     });
@@ -38,18 +37,21 @@ async function serve(answer: (url: URL, socket: Socket) => Promise<object>): Pro
 
 // A listener that answers the config probe for this project. Without the user's token it cannot answer the challenge.
 const listener = (answersChallenge: boolean) =>
-  serve(async (url, socket) => {
+  serve(async ({ headers, socket }) => {
     const endpoint = { address: socket.localAddress!, port: socket.localPort! };
     const proof = answersChallenge
-      ? previewProof(url.searchParams.get("nonce"), endpoint, config)
+      ? previewProof(headers[PREVIEW_NONCE_HEADER], endpoint, config)
       : null;
     return { ...config, ...(proof && { proof }) };
   });
 
 // Forwards the CLI's challenge to a genuine preview and passes its answer back, with the project changed or not.
 const relay = (genuinePort: number, projectDir?: string) =>
-  serve(async (url) => {
-    const answer = await fetch(`http://127.0.0.1:${genuinePort}${url.pathname}${url.search}`);
+  serve(async ({ headers }) => {
+    const nonce = String(headers[PREVIEW_NONCE_HEADER]);
+    const answer = await fetch(`http://127.0.0.1:${genuinePort}/__hyperframes_config`, {
+      headers: { [PREVIEW_NONCE_HEADER]: nonce },
+    });
     return { ...((await answer.json()) as object), ...(projectDir && { projectDir }) };
   });
 

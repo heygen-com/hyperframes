@@ -10,7 +10,11 @@
  * - Smart port selection with instance reuse
  */
 
-import { newPreviewNonce, provesPreviewOwner } from "@hyperframes/core/preview-proof";
+import {
+  newPreviewNonce,
+  PREVIEW_NONCE_HEADER,
+  provesPreviewOwner,
+} from "@hyperframes/core/preview-proof";
 import net from "node:net";
 import http from "node:http";
 import { execFile } from "node:child_process";
@@ -130,7 +134,8 @@ export function detectHyperframesServer(
       {
         hostname: "127.0.0.1",
         port,
-        path: `/__hyperframes_config?nonce=${nonce}`,
+        path: "/__hyperframes_config",
+        headers: { [PREVIEW_NONCE_HEADER]: nonce },
         timeout: PROBE_TIMEOUT_MS,
       },
       (res) => {
@@ -280,7 +285,8 @@ function probePort(port: number): Promise<HyperframesConfigResponse | null> {
       {
         hostname: "127.0.0.1",
         port,
-        path: `/__hyperframes_config?nonce=${nonce}`,
+        path: "/__hyperframes_config",
+        headers: { [PREVIEW_NONCE_HEADER]: nonce },
         timeout: PROBE_TIMEOUT_MS,
       },
       (res) => {
