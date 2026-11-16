@@ -1,10 +1,26 @@
-import { readdirSync, readFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { hyperframesCacheDir, namedCacheDir } from "./cacheDir.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  foreignWritablePath,
+  hyperframesCacheDir,
+  namedCacheDir,
+  trustedCacheRoot,
+} from "./cacheDir.js";
 
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
 
 describe("hyperframesCacheDir", () => {
   it("defaults to ~/.cache/hyperframes", () => {
@@ -27,6 +43,64 @@ describe("hyperframesCacheDir", () => {
     const elsewhere = join(tmpdir(), "elsewhere-cache");
     vi.stubEnv("HYPERFRAMES_CACHE_DIR", elsewhere);
     expect(namedCacheDir("state")).toBe(join(elsewhere, "state"));
+  });
+});
+
+describe.skipIf(process.platform === "win32")("foreignWritablePath", () => {
+  let root: string;
+  let binary: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "hf-trust-"));
+    mkdirSync(join(root, "chrome", "v1"), { recursive: true, mode: 0o755 });
+    binary = join(root, "chrome", "v1", "chrome-headless-shell");
+    writeFileSync(binary, "#!/bin/sh\n", { mode: 0o755 });
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  /** Every file the test made now reads as another account's, as it would without root to chown. */
+  const asAnotherAccount = () => vi.spyOn(process, "getuid").mockReturnValue(process.getuid!() + 1);
+
+  it("accepts a file that it and every folder up to the cache root are this account's alone", () => {
+    expect(foreignWritablePath(binary, root)).toBeUndefined();
+  });
+
+  it("names a file or folder another account owns", () => {
+    asAnotherAccount();
+    expect(foreignWritablePath(binary, root)).toBe(binary);
+  });
+
+  it.each([
+    ["group", 0o775],
+    ["world", 0o777],
+  ])("names the first folder up to the cache root that is %s-writable", (_who, mode) => {
+    chmodSync(join(root, "chrome"), mode);
+    expect(foreignWritablePath(binary, root)).toBe(join(root, "chrome"));
+    chmodSync(join(root, "chrome"), 0o755);
+    chmodSync(root, mode);
+    expect(foreignWritablePath(binary, root)).toBe(root);
+  });
+
+  it("checks the nearest folder above a cache root that does not exist yet", () => {
+    chmodSync(root, 0o777);
+    expect(foreignWritablePath(join(root, "cache", "x"), join(root, "cache"))).toBe(root);
+  });
+
+  it("is skipped on Windows, which has no uid", () => {
+    const getuid = process.getuid;
+    process.getuid = undefined;
+    try {
+      chmodSync(binary, 0o777);
+      expect(foreignWritablePath(binary, root)).toBeUndefined();
+    } finally {
+      process.getuid = getuid;
+    }
+  });
+
+  it("keeps code out of a HYPERFRAMES_CACHE_DIR another account can write, in this user's own cache", () => {
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", root);
+    expect(trustedCacheRoot()).toBe(root);
+    chmodSync(root, 0o777);
+    expect(trustedCacheRoot()).toBe(join(homedir(), ".cache", "hyperframes"));
   });
 });
 

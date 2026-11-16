@@ -1934,9 +1934,15 @@ landing, so a second local or `--docker` render from the same user account waits
 for the first and says which render it is waiting for (pid and project). The
 slot is a lock file in that account's HyperFrames cache folder, so renders by
 different user accounts do not queue behind each other; set
-`HYPERFRAMES_CACHE_DIR` to a folder they share to give them one slot. A render
-whose process died frees its slot on its own. `--workers` is unaffected: it sets
-the parallelism inside the one render that runs.
+`HYPERFRAMES_RENDER_LOCK_DIR` to the same folder in each account to give them
+one slot. That folder holds lock records only: the first render creates it
+writable by every account but sticky, so no account can delete or replace
+another's records. Do not share `HYPERFRAMES_CACHE_DIR` between accounts: it
+holds the browser, packages and helpers each account runs. HyperFrames never
+runs a cached one that another account can write: it installs its own copy,
+under `~/.cache/hyperframes` when another account can write the cache folder
+itself. A render whose process died frees its slot on its own. `--workers` is
+unaffected: it sets the parallelism inside the one render that runs.
 
 Low-memory detection reads **host** RAM, not cgroup or container limits, so
 containerised callers — including `--docker` — should set

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 import { readHolder, release } from "./projectLock.js";
 import {
@@ -44,7 +44,16 @@ export interface RenderLockOptions {
 
 const POLL_MS = 1_000;
 
-const renderLockPath = () => hyperframesCacheDir("locks", "render.lock");
+/** `HYPERFRAMES_RENDER_LOCK_DIR` names a folder of lock records only, where several accounts share one slot. */
+const sharedLockDir = (env: NodeJS.ProcessEnv) =>
+  env.HYPERFRAMES_RENDER_LOCK_DIR?.trim() || undefined;
+
+const renderLockPath = (env: NodeJS.ProcessEnv) => {
+  const shared = sharedLockDir(env);
+  return shared
+    ? join(resolve(shared), "render.lock")
+    : hyperframesCacheDir("locks", "render.lock");
+};
 
 /** `HYPERFRAMES_RENDER_LOCK=off` lets this account's renders run side by side. */
 function renderLockDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -78,8 +87,9 @@ const sameWaitTarget = (a: RenderLockHolder | null, b: RenderLockHolder | null) 
   a?.pid === b?.pid && a?.startedAt === b?.startedAt;
 
 /**
- * Takes the one render slot of this user account (its HyperFrames cache folder), waiting while a live
- * process holds it; a holder whose process is gone is taken over. Returns the release.
+ * Takes the one render slot of this user account (its HyperFrames cache folder, or the folder
+ * `HYPERFRAMES_RENDER_LOCK_DIR` shares across accounts), waiting while a live process holds it; a holder
+ * whose process is gone is taken over. Returns the release.
  */
 export async function acquireRenderLock(options: RenderLockOptions): Promise<() => void> {
   if (renderLockDisabled(options.env)) return () => {};
@@ -111,8 +121,9 @@ interface Contender {
 }
 
 function prepareContender(options: RenderLockOptions): Contender {
-  const path = options.path ?? renderLockPath();
-  ensureLockDir(dirname(path));
+  const env = options.env ?? process.env;
+  const path = options.path ?? renderLockPath(env);
+  ensureLockDir(dirname(path), sharedLockDir(env) !== undefined);
   liveOtherOwners(path);
   const pid = options.pid ?? process.pid;
   const identity = startToken(pid);

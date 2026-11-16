@@ -10,6 +10,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,6 +22,12 @@ import { startToken } from "./renderLockOwners.js";
 import { RenderLockStaleBreak } from "./renderLockClaim.js";
 import type { Holder } from "./projectLock.js";
 import { acquireRenderSlot } from "../commands/render/renderSlot.js";
+
+vi.mock("node:fs", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  return { ...fs, unlinkSync: vi.fn(fs.unlinkSync) };
+});
+const realUnlinkSync = (await vi.importActual<typeof import("node:fs")>("node:fs")).unlinkSync;
 
 let dir: string;
 let path: string;
@@ -196,11 +203,53 @@ describe("acquireRenderLock", () => {
     },
   );
 
-  describe.skipIf(process.platform === "win32")("a cache folder shared by accounts", () => {
-    it("creates its locks folder writable for every account", async () => {
+  describe.skipIf(process.platform === "win32")("the lock folder", () => {
+    it("is private to this account when it is the account's own", async () => {
       const release = await acquireRenderLock({ project: "/work/a", wait: false, path, env: {} });
-      expect(statSync(join(dir, "locks")).mode & 0o777).toBe(0o777);
+      expect(statSync(join(dir, "locks")).mode & 0o7777).toBe(0o700);
       release();
+    });
+
+    it("named by HYPERFRAMES_RENDER_LOCK_DIR is writable by every account but sticky, and outside the cache", async () => {
+      vi.stubEnv("HYPERFRAMES_CACHE_DIR", join(dir, "cache"));
+      const shared = join(dir, "shared-locks");
+      const env = { HYPERFRAMES_RENDER_LOCK_DIR: shared };
+      try {
+        const release = await acquireRenderLock({ project: "/work/a", wait: false, env });
+        expect(statSync(shared).mode & 0o7777).toBe(0o1777);
+        expect(existsSync(join(shared, "render.lock"))).toBe(true);
+        expect(existsSync(join(dir, "cache"))).toBe(false);
+        release();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it("says so when another account's stale lock cannot be removed from a sticky shared folder", async () => {
+      const stale: RenderLockHolder = {
+        pid: deadPid(),
+        command: "render",
+        startedAt: 1,
+        project: "/work/other-account",
+      };
+      mkdirSync(join(dir, "locks"), { recursive: true });
+      writeFileSync(path, JSON.stringify(stale));
+      const sticky = Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
+      vi.mocked(unlinkSync).mockImplementation((file) => {
+        if (file === path) throw sticky;
+        realUnlinkSync(file);
+      });
+
+      try {
+        for (const wait of [false, true]) {
+          await expect(
+            startAcquire({ project: "/work/next", wait, path, env: {} }),
+          ).rejects.toThrow(`A render of another account stopped and left ${path}`);
+        }
+      } finally {
+        vi.mocked(unlinkSync).mockImplementation(realUnlinkSync);
+      }
+      expect(JSON.parse(readFileSync(path, "utf8")).project).toBe("/work/other-account");
     });
 
     it.skipIf(process.getuid?.() === 0)(
@@ -211,7 +260,7 @@ describe("acquireRenderLock", () => {
         try {
           await expect(
             acquireRenderLock({ project: "/work/b", wait: false, path, env: {} }),
-          ).rejects.toThrow(`chmod 777 ${join(dir, "locks")}`);
+          ).rejects.toThrow("point HYPERFRAMES_RENDER_LOCK_DIR in each of them at one folder");
         } finally {
           chmodSync(join(dir, "locks"), 0o755);
         }
@@ -219,7 +268,7 @@ describe("acquireRenderLock", () => {
     );
   });
 
-  it("keeps the slot in this user's HyperFrames cache folder, which HYPERFRAMES_CACHE_DIR can share", async () => {
+  it("keeps the slot in this user's HyperFrames cache folder by default", async () => {
     vi.stubEnv("HYPERFRAMES_CACHE_DIR", join(dir, "shared"));
     try {
       const release = await acquireRenderLock({ project: "/work/brand", wait: false, env: {} });
@@ -389,7 +438,8 @@ describe("acquireRenderSlot", () => {
 
     const said = vi.mocked(console.error).mock.calls.flat().join("\n");
     expect(said).toContain("Another render is running for this user account");
-    expect(said).toContain("HYPERFRAMES_CACHE_DIR to a shared folder");
+    expect(said).toContain("Set HYPERFRAMES_RENDER_LOCK_DIR to one folder in every account");
+    expect(said).not.toContain("HYPERFRAMES_CACHE_DIR");
     expect(said).toContain(`pid ${process.pid}, project /work/brand`);
     release();
   });

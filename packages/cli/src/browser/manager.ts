@@ -26,7 +26,7 @@ import { BrowserDownloadStalledError, installInChild } from "./installInChild.js
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { unzipArchive } from "./unzipArchive.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { foreignWritablePath, trustedCacheRoot } from "@hyperframes/core/cache-dir";
 
 type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
 
@@ -42,8 +42,8 @@ async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
   }
 }
 
-const CACHE_ROOT_DIR = hyperframesCacheDir();
-const CACHE_DIR = hyperframesCacheDir("chrome");
+const CACHE_ROOT_DIR = trustedCacheRoot();
+const CACHE_DIR = join(CACHE_ROOT_DIR, "chrome");
 const ARCHIVE_PLUS_UNPACKED_SHELL_MB = 512;
 // Puppeteer's managed cache — where `@puppeteer/browsers install
 // chrome-headless-shell` (and `puppeteer install`) drop binaries. The engine's
@@ -334,7 +334,12 @@ async function findFromHyperframesCache(): Promise<CacheLookupResult> {
       b.buildId === managedChromeVersion() &&
       b.platform === hostPlatform,
   );
-  if (match && isPinnedHeadlessShell(match.executablePath)) {
+  // A build another account could have written is re-downloaded rather than launched as this user.
+  if (
+    match &&
+    isPinnedHeadlessShell(match.executablePath) &&
+    !foreignWritablePath(match.executablePath, CACHE_ROOT_DIR)
+  ) {
     return { result: { executablePath: match.executablePath, source: "cache" } };
   }
   if (match) {
@@ -453,7 +458,7 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
   if (fromCache.result) return fromCache.result;
   if (fromCache.staleHyperframesCachePath) {
     console.warn(
-      `[browser] Cached binary missing or not the pinned build at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+      `[browser] Cached binary missing, not the pinned build, or writable by another account at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
     );
     try {
       return await withInstallLock(() => downloadBrowser());
@@ -584,7 +589,7 @@ async function ensureBrowserInCurrentProcess(
     if (fromCache.result) return fromCache.result;
     if (fromCache.staleHyperframesCachePath) {
       console.warn(
-        `[browser] Cached binary missing or not the pinned build at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+        `[browser] Cached binary missing, not the pinned build, or writable by another account at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
       );
       return withInstallLock(() => downloadBrowser(options));
     }

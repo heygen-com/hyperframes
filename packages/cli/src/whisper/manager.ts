@@ -8,7 +8,11 @@ import { findFFmpeg } from "../browser/ffmpeg.js";
 import { downloadFile } from "../utils/download.js";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
 import { verifies, type ModelFile } from "./modelFile.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  hyperframesCacheDir,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 
 const MODELS_DIR = hyperframesCacheDir("whisper", "models");
@@ -129,7 +133,8 @@ function findFromSystem(): WhisperResult | undefined {
 
 // --- Build from source ------------------------------------------------------
 
-const BUILD_DIR = hyperframesCacheDir("whisper", "whisper.cpp");
+const CODE_ROOT = trustedCacheRoot();
+const BUILD_DIR = join(CODE_ROOT, "whisper", "whisper.cpp");
 const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
 // A reviewed release, checked by commit after the clone, so a moved tag is never built or run.
 const WHISPER_TAG = "v1.9.5";
@@ -157,7 +162,9 @@ function findBuiltBinary(): WhisperResult | undefined {
     join(BUILD_DIR, "build", "bin", `whisper-cli${exe}`),
     join(BUILD_DIR, "build", `whisper-cli${exe}`),
   ]) {
-    if (existsSync(p)) return { executablePath: p, source: "build" };
+    // A build another account could have written is rebuilt rather than run.
+    if (existsSync(p) && !foreignWritablePath(p, CODE_ROOT))
+      return { executablePath: p, source: "build" };
   }
   return undefined;
 }

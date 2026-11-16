@@ -40,7 +40,7 @@ export async function acquireRenderSlot(
       "Another render is running for this user account",
       describeRenderLockHolder(error.holder, Date.now()),
       "Rerun without --no-wait to start when it finishes, or set HYPERFRAMES_RENDER_LOCK=off to render side by side. " +
-        "Set HYPERFRAMES_CACHE_DIR to a shared folder to share the slot across user accounts.",
+        "Set HYPERFRAMES_RENDER_LOCK_DIR to one folder in every account to share the slot across user accounts.",
     );
     return failCommand(1, error);
   }

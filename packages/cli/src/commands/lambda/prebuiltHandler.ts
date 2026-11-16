@@ -15,11 +15,11 @@ import { dirname, join } from "node:path";
 import { downloadFile } from "../../utils/download.js";
 import { isMissingPackageError } from "../../utils/missingPackage.js";
 import { VERSION } from "../../version.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { foreignWritablePath, trustedCacheRoot } from "@hyperframes/core/cache-dir";
 import { cliSourced } from "../../utils/sourceTag.js";
 
 const DOCS_URL = cliSourced("https://hyperframes.heygen.com/deploy/aws-lambda");
-const HANDLER_CACHE_DIR = hyperframesCacheDir("lambda-handler");
+const HANDLER_CACHE_DIR = join(trustedCacheRoot(), "lambda-handler");
 
 type AdapterSdk = typeof import("@hyperframes/aws-lambda/sdk");
 
@@ -71,7 +71,11 @@ export async function fetchPinned(
 ): Promise<string> {
   const dir = join(deps.cacheDir, `${pinned.version}-${pinned.sha256}`);
   const file = join(dir, asset.fileName);
-  if (existsSync(file) && (await sha256File(file)) === pinned.sha256) {
+  if (
+    existsSync(file) &&
+    !foreignWritablePath(file, deps.cacheDir) &&
+    (await sha256File(file)) === pinned.sha256
+  ) {
     deps.log(`→ Using verified ${asset.label} ${pinned.version} from ${dir}`);
     return file;
   }
