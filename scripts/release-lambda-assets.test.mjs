@@ -1,91 +1,257 @@
 import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { reusableLambdaAssets, WORKFLOW_BOT } from "./release-lambda-assets.mjs";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { parse } from "yaml";
 
-const RUN_CREATED_AT = "2026-11-16T03:00:00Z";
-const ALL_ASSETS = [
+const workflow = parse(
+  readFileSync(new URL("../.github/workflows/publish.yml", import.meta.url), "utf8"),
+);
+const names = [
   "hyperframes-lambda-handler.zip",
   "hyperframes-lambda-handler.sha256",
   "hyperframes-lambda-video-arm64.oci.tar",
   "hyperframes-lambda-video-arm64.sha256",
 ];
+const hash = (value) => createHash("sha256").update(value).digest("hex");
+const step = (name, job = "publish") => workflow.jobs[job].steps.find((s) => s.name === name);
 
-const release = ({
-  author = WORKFLOW_BOT,
-  createdAt = "2026-11-16T03:10:00Z",
-  assets = ALL_ASSETS,
-  uploader = WORKFLOW_BOT,
-} = {}) => ({
-  tag_name: "v9.8.7",
-  author: { login: author },
-  created_at: createdAt,
-  assets: assets.map((name) => ({ name, uploader: { login: uploader } })),
+function fixture(t) {
+  const root = mkdtempSync(join(tmpdir(), "hf-release-receipt-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const dir of [
+    "bin",
+    "release-bundle/assets",
+    "release-receipt",
+    "dist/lambda-handler-build",
+  ])
+    mkdirSync(join(root, dir), { recursive: true });
+  for (const name of names)
+    writeFileSync(join(root, "release-bundle/assets", name), `built ${name}`);
+  writeFileSync(join(root, "dist/lambda-handler-build/handler.zip"), "built zip");
+  const statePath = join(root, "state.json");
+  const initial = { release: null, assets: [], calls: [], artifacts: [], failUpload: null };
+  writeFileSync(statePath, JSON.stringify(initial));
+  // Only this offline stub can service gh calls. No credentials or real network calls.
+  writeFileSync(
+    join(root, "bin/gh"),
+    `#!${process.execPath}
+const fs = require('node:fs'); const crypto = require('node:crypto');
+const state = JSON.parse(fs.readFileSync(process.env.STATE_FILE, 'utf8'));
+const args = process.argv.slice(2); state.calls.push(args);
+let response; let status = 0;
+const route = args.find(a => a.startsWith('repos/') || a.startsWith('https://uploads.github.com/'));
+if (route?.includes('/actions/runs/')) response = {artifacts:state.artifacts};
+else if (route?.endsWith('/generate-notes')) response = 'generated notes';
+else if (route === 'repos/test/repo/releases' && args.includes('POST')) {
+  if (state.release) status = 1;
+  else { state.release = {id:123, tag_name:'v9.8.7'}; response = state.release; }
+} else if (route?.includes('/releases/tags/')) {
+  if (!state.release) status = 1; else response = state.release;
+} else if (route?.startsWith('https://uploads.github.com/')) {
+  const id = Number(route.split('/releases/')[1].split('/')[0]);
+  const name = new URL(route).searchParams.get('name');
+  if (state.release?.id !== id || state.failUpload === name) status = 1;
+  else {
+    const file = args[args.indexOf('--input') + 1];
+    response = {id:state.assets.length+1,name,state:'uploaded',digest:'sha256:'+crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')};
+    state.assets.push(response);
+  }
+} else if (route?.includes('/releases/123/assets')) response = state.assets;
+else status = 1;
+fs.writeFileSync(process.env.STATE_FILE, JSON.stringify(state));
+if (response !== undefined) process.stdout.write(typeof response === 'string' ? response : JSON.stringify(response));
+process.exit(status);
+`,
+    { mode: 0o755 },
+  );
+  writeFileSync(
+    join(root, "bin/bun"),
+    "#!/bin/sh\ncp dist/hyperframes-lambda-handler.zip pinned.zip\n",
+    { mode: 0o755 },
+  );
+  const state = () => JSON.parse(readFileSync(statePath, "utf8"));
+  const update = (changes) => writeFileSync(statePath, JSON.stringify({ ...state(), ...changes }));
+  const receiptPath = join(root, "release-receipt/receipt.json");
+  const receipt = () => JSON.parse(readFileSync(receiptPath, "utf8"));
+  const run = (name, env = {}, job = "publish") => {
+    const command = step(name, job);
+    assert.ok(command, `Missing workflow step: ${name}`);
+    return spawnSync("bash", ["-euo", "pipefail", "-c", command.run], {
+      cwd: root,
+      encoding: "utf8",
+      timeout: 5000,
+      env: {
+        PATH: `${join(root, "bin")}:${process.env.PATH}`,
+        STATE_FILE: statePath,
+        RUNNER_TEMP: root,
+        GITHUB_OUTPUT: join(root, "outputs"),
+        REPO: "test/repo",
+        VERSION: "9.8.7",
+        RUN_ID: "55",
+        RUN_NUMBER: "55",
+        EXPECTED_RELEASE_SHA: "a".repeat(40),
+        PRERELEASE: "false",
+        RELEASE_ID: "123",
+        ...env,
+      },
+    });
+  };
+  return { root, run, state, update, receipt, receiptPath };
+}
+const succeeds = (result) => assert.equal(result.status, 0, result.stdout + result.stderr);
+const fails = (result) => assert.notEqual(result.status, 0, result.stdout + result.stderr);
+
+test("a first publish creates a durable receipt before uploads; same-run retry preserves bytes", (t) => {
+  const f = fixture(t);
+  succeeds(f.run("Create GitHub Release"));
+  assert.equal(f.receipt().release_id, 123);
+  assert.equal(f.receipt().run, "55");
+  assert.equal(f.receipt().assets[names[0]], hash(`built ${names[0]}`));
+  succeeds(f.run("Attach Lambda assets to release"));
+  succeeds(f.run("Verify Lambda release before npm publication"));
+  succeeds(f.run("Create GitHub Release"));
+  succeeds(f.run("Attach Lambda assets to release"));
+  assert.equal(f.state().assets.length, 4);
+  assert.equal(
+    f.state().calls.filter((args) => args.includes("repos/test/repo/releases")).length,
+    1,
+  );
 });
 
-describe("Lambda assets a release run may reuse", () => {
-  it("builds everything when the release does not exist yet", () => {
-    assert.deepEqual(
-      reusableLambdaAssets({ release: null, runCreatedAt: RUN_CREATED_AT, runAttempt: 1 }),
-      {
-        zip: false,
-        image: false,
-      },
-    );
-  });
+test("an existing foreign release is rejected, including a bot-authored creation race", (t) => {
+  const f = fixture(t);
+  f.update({ release: { id: 999, author: { login: "github-actions[bot]" } } });
+  fails(f.run("Create GitHub Release"));
+  assert.equal(f.state().assets.length, 0);
+});
 
-  it("reuses what an earlier attempt of this run attached", () => {
-    assert.deepEqual(
-      reusableLambdaAssets({ release: release(), runCreatedAt: RUN_CREATED_AT, runAttempt: 2 }),
-      {
-        zip: true,
-        image: true,
-      },
-    );
-    const zipOnly = release({ assets: ALL_ASSETS.slice(0, 2) });
-    assert.deepEqual(
-      reusableLambdaAssets({ release: zipOnly, runCreatedAt: RUN_CREATED_AT, runAttempt: 2 }),
-      {
-        zip: true,
-        image: false,
-      },
-    );
-  });
+test("receipt scope, release identity and original digests fail closed", (t) => {
+  const f = fixture(t);
+  succeeds(f.run("Create GitHub Release"));
+  const original = f.receipt();
+  for (const changed of [
+    { run: "other" },
+    { repo: "other/repo" },
+    { sha: "b".repeat(40) },
+    { tag: "v0.0.0" },
+    { release_id: null },
+    { release_id: 1.5 },
+    { release_id: 999 },
+    { assets: {} },
+  ]) {
+    writeFileSync(f.receiptPath, JSON.stringify({ ...original, ...changed }));
+    fails(f.run("Create GitHub Release"));
+  }
+  writeFileSync(f.receiptPath, JSON.stringify(original));
+  f.update({ release: { id: 999 } });
+  fails(f.run("Create GitHub Release"));
+  f.update({ release: { id: 123 } });
+  writeFileSync(join(f.root, "release-bundle/assets", names[0]), "replacement bundle");
+  fails(f.run("Create GitHub Release"));
+});
 
-  it("refuses a release that existed before this run's first attempt", () => {
-    for (const [args, reason] of [
-      [{ release: release(), runAttempt: 1 }, "first attempt"],
-      [{ release: release({ author: "someone" }), runAttempt: 2 }, "a person made it"],
-      [
-        { release: release({ createdAt: "2026-11-16T02:59:59Z" }), runAttempt: 2 },
-        "made before the run",
-      ],
-      [{ release: release({ assets: [] }), runAttempt: 1 }, "empty, first attempt"],
-    ]) {
-      assert.throws(
-        () => reusableLambdaAssets({ runCreatedAt: RUN_CREATED_AT, ...args }),
-        /did not create it/,
-        reason,
-      );
+test("partial pair upload is recoverable from the exact original bundle", (t) => {
+  const f = fixture(t);
+  succeeds(f.run("Create GitHub Release"));
+  f.update({ failUpload: names[1] });
+  fails(f.run("Attach Lambda assets to release"));
+  assert.equal(f.state().assets.length, 1);
+  f.update({ failUpload: null });
+  succeeds(f.run("Create GitHub Release"));
+  succeeds(f.run("Attach Lambda assets to release"));
+  succeeds(f.run("Verify Lambda release before npm publication"));
+  assert.equal(f.state().assets.length, 4);
+});
+
+test("missing, altered or ambiguous release assets never pass publication checks", (t) => {
+  const f = fixture(t);
+  succeeds(f.run("Create GitHub Release"));
+  succeeds(f.run("Attach Lambda assets to release"));
+  const original = f.state().assets;
+  for (const assets of [
+    original.slice(1),
+    [...original, original[0]],
+    original.map((a, i) => (i ? a : { ...a, digest: undefined })),
+    original.map((a, i) => (i ? a : { ...a, digest: "sha256:" + "0".repeat(64) })),
+  ]) {
+    f.update({ assets });
+    fails(f.run("Verify Lambda release before npm publication"));
+  }
+  f.update({ assets: original, release: { id: 999 } });
+  fails(f.run("Verify Lambda release before npm publication"));
+});
+
+test("a substituted asset is rejected on attachment retry instead of being trusted or clobbered", (t) => {
+  const f = fixture(t);
+  succeeds(f.run("Create GitHub Release"));
+  f.update({
+    assets: [{ id: 42, name: names[0], state: "uploaded", digest: "sha256:" + hash("attacker") }],
+  });
+  fails(f.run("Attach Lambda assets to release"));
+  assert.equal(f.state().assets.length, 1);
+});
+
+test("artifact lookup is run-scoped and refuses expired or ambiguous receipts and bundles", (t) => {
+  const f = fixture(t);
+  for (const [name, job, artifactName] of [
+    ["Find previous release bundle", "pack", "release-bundle"],
+    ["Find previous release receipt", "publish", "lambda-release-receipt"],
+  ]) {
+    for (const artifacts of [[], [{ id: 7, name: artifactName, expired: false }]]) {
+      f.update({ artifacts });
+      succeeds(f.run(name, {}, job));
     }
-  });
+    for (const artifacts of [
+      [{ id: 7, name: artifactName, expired: true }],
+      [
+        { id: 7, name: artifactName, expired: false },
+        { id: 8, name: artifactName, expired: false },
+      ],
+    ]) {
+      f.update({ artifacts });
+      fails(f.run(name, {}, job));
+    }
+  }
+  assert.ok(
+    f.state().calls.every((args) => args.some((arg) => arg.includes("/actions/runs/55/artifacts"))),
+  );
+});
 
-  it("refuses an asset someone else uploaded to this run's release", () => {
-    assert.throws(
-      () =>
-        reusableLambdaAssets({
-          release: release({ uploader: "someone" }),
-          runCreatedAt: RUN_CREATED_AT,
-          runAttempt: 2,
-        }),
-      /uploaded by someone other than this workflow/,
-    );
-  });
+test("fresh pack pins only the independent build hash and rejects mismatches", (t) => {
+  const f = fixture(t);
+  for (const expected of ["", "0".repeat(64)])
+    fails(f.run("Pin Lambda handler zip", { EXPECTED_SHA256: expected }, "pack"));
+  succeeds(f.run("Pin Lambda handler zip", { EXPECTED_SHA256: hash("built zip") }, "pack"));
+  assert.equal(readFileSync(join(f.root, "pinned.zip"), "utf8"), "built zip");
+  assert.equal(f.state().calls.length, 0);
+});
 
-  it("refuses half of an asset pair", () => {
-    const half = release({ assets: ["hyperframes-lambda-handler.zip"] });
-    assert.throws(
-      () => reusableLambdaAssets({ release: half, runCreatedAt: RUN_CREATED_AT, runAttempt: 2 }),
-      /without its pair/,
-    );
-  });
+test("receipt and bundle persistence precede side effects and do not overwrite provenance", () => {
+  const pack = workflow.jobs.pack;
+  const upload = pack.steps.find((s) => s.id === "bundle");
+  assert.equal(upload.with.overwrite, false);
+  const resolve = pack.steps.findIndex((s) => s.name === "Resolve version");
+  for (const s of pack.steps.slice(resolve))
+    assert.equal(s.if, "steps.previous_bundle.outputs.artifact == ''");
+  const publish = workflow.jobs.publish.steps;
+  assert.ok(
+    publish.findIndex((s) => s.name === "Save release receipt") <
+      publish.findIndex((s) => s.name === "Attach Lambda assets to release"),
+  );
+  assert.equal(step("Save release receipt").with.overwrite, false);
+  assert.ok(
+    publish.findIndex((s) => s.name === "Verify Lambda release before npm publication") <
+      publish.findIndex((s) => s.name === "Publish packages"),
+  );
+  const download = publish.find(
+    (s) =>
+      s.uses?.startsWith("actions/download-artifact@") &&
+      s.with.path === "${{ runner.temp }}/release-bundle",
+  );
+  assert.equal(download.with["artifact-ids"], "${{ needs.pack.outputs.bundle_id }}");
+  assert.equal(workflow.concurrency["cancel-in-progress"], false);
 });
