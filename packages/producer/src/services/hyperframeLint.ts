@@ -7,8 +7,10 @@ import {
   closeSync,
   constants,
 } from "node:fs";
-import { resolve, join, relative, isAbsolute, sep } from "node:path";
-import { lintHyperframeHtml, type HyperframeLintResult } from "@hyperframes/lint";
+import { resolve, join, relative, isAbsolute, sep, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { Worker } from "node:worker_threads";
+import type { HyperframeLintResult } from "@hyperframes/lint";
 
 export interface PreparedHyperframeLintInput {
   entryFile: string;
@@ -162,11 +164,122 @@ export function prepareHyperframeLintBody(
   return { error: "Missing lint source: provide projectDir, files, or html" };
 }
 
+const LINT_HEAP_MB = 512;
+const LINT_TIMEOUT_MS = 15_000;
+const LINT_MAX_WORKERS = 2;
+
+const waiting: Array<() => void> = [];
+let running = 0;
+
+function takeLintSlot(limit: number, waitMs: number): Promise<boolean> {
+  if (running < limit) {
+    running++;
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    const entry = () => {
+      clearTimeout(timer);
+      running++;
+      resolve(true);
+    };
+    const timer = setTimeout(
+      () => {
+        waiting.splice(waiting.indexOf(entry), 1);
+        resolve(false);
+      },
+      Math.max(0, waitMs),
+    );
+    waiting.push(entry);
+  });
+}
+
+function freeLintSlot(): void {
+  running--;
+  waiting.shift()?.();
+}
+
+export interface HyperframeLintWorkerOptions {
+  workerEntry?: string;
+  timeoutMs?: number;
+  heapMb?: number;
+  maxWorkers?: number;
+}
+
+function resolveLintWorkerEntry(): string | undefined {
+  const here = dirname(fileURLToPath(import.meta.url));
+  for (const name of ["hyperframeLintWorker.js", "hyperframeLintWorker.ts"]) {
+    const candidate = join(here, name);
+    if (existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+function abortedLintResult(filePath: string, afterMs: number): HyperframeLintResult {
+  return {
+    ok: false,
+    errorCount: 1,
+    warningCount: 0,
+    infoCount: 0,
+    findings: [
+      {
+        code: "lint_aborted",
+        severity: "error",
+        message:
+          "This composition's script could not be checked: linting it ran too long or out of memory, so it was stopped. A very large or deeply nested script is the usual cause.",
+        file: filePath,
+      },
+    ],
+    timings: { totalMs: afterMs, groupMs: {}, slowestRule: "", slowestRuleMs: 0 },
+  };
+}
+
 export async function runHyperframeLint(
   prepared: PreparedHyperframeLintInput,
+  options: HyperframeLintWorkerOptions = {},
 ): Promise<HyperframeLintResult> {
-  return lintHyperframeHtml(prepared.html, {
-    filePath: prepared.entryFile,
-    compSrcPath: prepared.entryFile,
+  const began = performance.now();
+  const aborted = () =>
+    abortedLintResult(prepared.entryFile, Math.round(performance.now() - began));
+  const entry = options.workerEntry ?? resolveLintWorkerEntry();
+  if (!entry) return aborted();
+
+  const timeoutMs = options.timeoutMs ?? LINT_TIMEOUT_MS;
+  const gotSlot = await takeLintSlot(options.maxWorkers ?? LINT_MAX_WORKERS, timeoutMs);
+  if (!gotSlot) return aborted();
+  const remainingMs = Math.max(0, timeoutMs - (performance.now() - began));
+
+  return new Promise<HyperframeLintResult>((resolvePromise, reject) => {
+    let worker: Worker;
+    try {
+      worker = new Worker(entry, {
+        workerData: {
+          html: prepared.html,
+          opts: { filePath: prepared.entryFile, compSrcPath: prepared.entryFile },
+        },
+        resourceLimits: { maxOldGenerationSizeMb: options.heapMb ?? LINT_HEAP_MB },
+        stdout: false,
+        stderr: false,
+      });
+    } catch {
+      freeLintSlot();
+      resolvePromise(aborted());
+      return;
+    }
+    let settled = false;
+    const settle = (finish: () => void) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      void worker.terminate().finally(freeLintSlot);
+      finish();
+    };
+    const timer = setTimeout(() => settle(() => resolvePromise(aborted())), remainingMs);
+    worker.on("message", (message: { result?: HyperframeLintResult; error?: string }) =>
+      settle(() =>
+        message.result ? resolvePromise(message.result) : reject(new Error(message.error)),
+      ),
+    );
+    worker.on("error", () => settle(() => resolvePromise(aborted())));
+    worker.on("exit", () => settle(() => resolvePromise(aborted())));
   });
 }
