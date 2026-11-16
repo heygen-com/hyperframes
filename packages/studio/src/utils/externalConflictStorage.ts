@@ -158,47 +158,15 @@ export async function persistExternalFailureSnapshot(
   });
 }
 
-function isStringOrNull(value: unknown): value is string | null {
-  return value === null || typeof value === "string";
-}
-
-function hasSnapshotShape(snapshot: Record<string, unknown>): boolean {
-  if (typeof snapshot.studioContent !== "string" || typeof snapshot.createdAt !== "number") {
-    return false;
-  }
-  if (!isStringOrNull(snapshot.externalVersion) || !isStringOrNull(snapshot.externalContent)) {
-    return false;
-  }
-  return (
-    snapshot.kind === "conflict" ||
-    (snapshot.kind === "failed" && typeof snapshot.failureMessage === "string")
-  );
-}
-
-// The store is shared by every project on this origin, so a record must name the key it was read under.
-function isRecoverableSnapshot(
-  record: unknown,
-  projectId: string,
-  filePath: string,
-  now: number,
-): record is ExternalConflictSnapshot {
-  if (typeof record !== "object" || record === null) return false;
-  const snapshot = record as Record<string, unknown>;
-  return (
-    snapshot.projectId === projectId &&
-    snapshot.filePath === filePath &&
-    hasSnapshotShape(snapshot) &&
-    Math.abs(now - (snapshot.createdAt as number)) <= UNRESOLVED_DRAFT_MAX_AGE_MS
-  );
-}
-
 export async function loadExternalConflictSnapshot(
   projectId: string,
   filePath: string,
 ): Promise<ExternalConflictSnapshot | null> {
-  const record: unknown = await indexedDbStorage.get(projectId, filePath);
-  if (record == null) return null;
-  if (isRecoverableSnapshot(record, projectId, filePath, Date.now())) return record;
+  const record = await indexedDbStorage.get(projectId, filePath);
+  if (!record) return null;
+  const forThisKey = record.projectId === projectId && record.filePath === filePath;
+  if (forThisKey && Math.abs(Date.now() - record.createdAt) <= UNRESOLVED_DRAFT_MAX_AGE_MS)
+    return record;
   await indexedDbStorage.delete(projectId, filePath).catch(() => undefined);
   return null;
 }

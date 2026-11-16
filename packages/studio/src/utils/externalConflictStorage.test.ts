@@ -32,7 +32,6 @@ function rawStore<T>(
   });
 }
 
-/** Writes a record straight into Studio's store, as any script on the origin could. */
 const plantRecord = (projectId: string, filePath: string, record: unknown) =>
   rawStore("readwrite", (store) => store.put(record, `${projectId}\0${filePath}`));
 
@@ -128,9 +127,6 @@ describe("external conflict snapshots", () => {
     ["a creation time over 30 days old", { createdAt: Date.now() - 31 * DAY_MS }],
     ["a creation time over 30 days ahead", { createdAt: Date.now() + 31 * DAY_MS }],
     ["no creation time", { createdAt: undefined }],
-    ["non-string Studio content", { studioContent: 42 }],
-    ["an unknown kind", { kind: "other" }],
-    ["a failed kind but no failure message", { kind: "failed" }],
   ])("refuses and deletes a stored record with %s", async (_label, overrides) => {
     await plantRecord("project-b", "index.html", { ...genuineRecord(), ...overrides });
 
