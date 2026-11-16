@@ -146,7 +146,6 @@ describe("pullTemplate", () => {
       vi.spyOn(console, "log").mockImplementation((line: unknown) => void said.push(String(line)));
     });
 
-    /** Pulls again and checks the folder was moved aside whole and a verified copy put in its place. */
     async function expectMovedAsideAndReplaced(
       fetchMock: ReturnType<typeof vi.fn>,
     ): Promise<string> {
