@@ -141,7 +141,6 @@ export interface EncodeStageInput {
   gopSize?: number;
 }
 
-/** The encode input before the audio mix is known: everything capture-time encoding reads. */
 export type VideoEncodeInput = Omit<EncodeStageInput, "hasAudio" | "audioOutputPath">;
 
 export interface EncodeStageResult {
@@ -435,7 +434,6 @@ export function encodeWhileCapturing(
           error: String(failure ?? result?.error),
         },
       );
-      // Never a PNG sequence (canEncodeWhileCapturing), so there is no audio sidecar to write.
       return runEncodeStage({ ...input, hasAudio: false });
     },
     abort: async () => {
