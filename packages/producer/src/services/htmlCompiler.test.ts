@@ -1556,6 +1556,35 @@ describe("system-primary font normalization", () => {
 });
 
 describe("local font embedding", () => {
+  it.each([".env", ".git/config", ".hyperframes/agent-handoff.json"])(
+    "never inlines the private project file %s that an @font-face url names",
+    async (file) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-private-font-"));
+      const secret = "HEYGEN_API_KEY=not-for-the-page";
+      mkdirSync(dirname(join(projectDir, file)), { recursive: true });
+      writeFileSync(join(projectDir, file), secret);
+      writeFileSync(
+        join(projectDir, "index.html"),
+        `<!DOCTYPE html>
+<html><head><style>
+  @font-face { font-family: "P"; src: url("${file}"); }
+</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Text</div>
+</body></html>`,
+      );
+
+      const { html } = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        projectDir,
+      );
+
+      expect(html).not.toContain(Buffer.from(secret).toString("base64"));
+      expect(html).not.toContain("data:font/");
+      rmSync(projectDir, { recursive: true, force: true });
+    },
+  );
+
   it("deduplicates assembled scene fonts before embedding and keeps the last descriptor order", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-repeated-scene-fonts-"));
     mkdirSync(join(projectDir, "fonts"));

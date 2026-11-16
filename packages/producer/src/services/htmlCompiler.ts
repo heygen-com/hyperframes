@@ -2009,6 +2009,7 @@ async function embedLocalFontFaces(
           embeddedPaths.add(localPath);
           continue;
         }
+        if (isPrivateCompositionFile(projectDir, absPath)) continue;
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
           if (fileBackedAbsolutePaths.has(absPath)) {
