@@ -1,10 +1,7 @@
 import { wallSetTimeout } from "./wallClock";
 import { swallow } from "./diagnostics";
 import type { HfColorGradingTarget } from "../colorGrading";
-import type {
-  RuntimeBridgeControlMessage,
-  RuntimeOutboundMessage,
-} from "./types";
+import type { RuntimeBridgeControlMessage, RuntimeOutboundMessage } from "./types";
 import {
   inspectRuntimeProtocol,
   runtimeProtocolFpsToNumber,
@@ -27,21 +24,14 @@ type BridgeDeps = {
   onSetIdleHeartbeat: (slow: boolean) => void;
   onSetRootDuration: (durationSeconds: number) => void;
   onSetPlayRange: (startSeconds: number, endSeconds: number | null) => void;
-  onSetColorGrading: (
-    target: HfColorGradingTarget | string | null,
-    grading: unknown,
-  ) => void;
+  onSetColorGrading: (target: HfColorGradingTarget | string | null, grading: unknown) => void;
   onSetColorGradingCompare: (
     target: HfColorGradingTarget | string | null,
     compare: unknown,
   ) => void;
   onEnablePickMode: () => void;
   onDisablePickMode: () => void;
-  onSetRuntimeData?: (
-    channel: string,
-    payload: unknown,
-    requestId?: number,
-  ) => void;
+  onSetRuntimeData?: (channel: string, payload: unknown, requestId?: number) => void;
   onClearRuntimeData?: (channel: string, requestId?: number) => void;
   onSetDisplayScale?: (scale: number) => void;
   onSetPreviewQuality?: (level: number) => void;
@@ -59,19 +49,14 @@ export function setRuntimeProtocolFps(fps: number): void {
 
 export function postRuntimeMessage(payload: RuntimeOutboundMessage): void {
   try {
-    window.parent.postMessage(
-      { ...payload, ...runtimeProtocolMetadata(runtimeProtocolFps) },
-      "*",
-    );
+    window.parent.postMessage({ ...payload, ...runtimeProtocolMetadata(runtimeProtocolFps) }, "*");
   } catch (err) {
     // Cross-frame posting can throw if the parent is gone or origin-isolated.
     swallow("bridge.postMessage", err);
   }
 }
 
-type BridgeControlData = Partial<
-  RuntimeBridgeControlMessage & RuntimeProtocolV1
->;
+type BridgeControlData = Partial<RuntimeBridgeControlMessage & RuntimeProtocolV1>;
 type ControlHandler = (data: BridgeControlData, deps: BridgeDeps) => void;
 
 const FLASH_DEFAULT_DURATION_MS = 800;
@@ -98,9 +83,7 @@ function isOptionalBoundedString(value: unknown): boolean {
   return value == null || isBoundedString(value);
 }
 
-function isGradingTarget(
-  value: unknown,
-): value is HfColorGradingTarget | string | null {
+function isGradingTarget(value: unknown): value is HfColorGradingTarget | string | null {
   if (value === null || isBoundedString(value)) return true;
   if (typeof value !== "object" || Array.isArray(value)) return false;
   const target = value as Record<string, unknown>;
@@ -142,8 +125,7 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
       const volume = readNumber(data.volume, 1);
       if (volume !== null) deps.onSetVolume(Math.max(0, Math.min(1, volume)));
     },
-    "set-media-output-muted": (data, deps) =>
-      deps.onSetMediaOutputMuted(data.muted === true),
+    "set-media-output-muted": (data, deps) => deps.onSetMediaOutputMuted(data.muted === true),
     "set-native-media-sync-disabled": (data, deps) =>
       deps.onSetNativeMediaSyncDisabled(data.disabled === true),
     "set-web-audio-media-disabled": (data, deps) =>
@@ -152,17 +134,14 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
       const rate = readNumber(data.playbackRate, 1);
       if (rate !== null) deps.onSetPlaybackRate(rate);
     },
-    "set-idle-heartbeat": (data, deps) =>
-      deps.onSetIdleHeartbeat(data.slow === true),
+    "set-idle-heartbeat": (data, deps) => deps.onSetIdleHeartbeat(data.slow === true),
     "set-display-scale": (data, deps) => {
-      if (isFiniteNumber(data.scale) && data.scale > 0)
-        deps.onSetDisplayScale?.(data.scale);
+      if (isFiniteNumber(data.scale) && data.scale > 0) deps.onSetDisplayScale?.(data.scale);
     },
     "set-preview-quality": (data, deps) => {
       if (isFiniteNumber(data.level)) deps.onSetPreviewQuality?.(data.level);
     },
-    "set-copies-ahead": (data, deps) =>
-      deps.onSetCopiesAhead?.(data.on === true),
+    "set-copies-ahead": (data, deps) => deps.onSetCopiesAhead?.(data.on === true),
     "retry-preview-copies": (_d, deps) => deps.onRetryPreviewCopies?.(),
     "request-preview-facts": (_d, deps) => deps.onRequestPreviewFacts?.(),
     "set-root-duration": (data, deps) => {
@@ -172,21 +151,13 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
     "set-play-range": (data, deps) => {
       const startSeconds = readNumber(data.startSeconds, 0);
       const endSeconds = data.endSeconds ?? null;
-      if (
-        startSeconds === null ||
-        (endSeconds !== null && !isFiniteNumber(endSeconds))
-      )
-        return;
+      if (startSeconds === null || (endSeconds !== null && !isFiniteNumber(endSeconds))) return;
       deps.onSetPlayRange(startSeconds, endSeconds);
     },
     "set-color-grading": (data, deps) =>
       dispatchColorGrading(data.target, data.grading, deps.onSetColorGrading),
     "set-color-grading-compare": (data, deps) =>
-      dispatchColorGrading(
-        data.target,
-        data.compare,
-        deps.onSetColorGradingCompare,
-      ),
+      dispatchColorGrading(data.target, data.compare, deps.onSetColorGradingCompare),
     "enable-pick-mode": (_d, deps) => deps.onEnablePickMode(),
     "disable-pick-mode": (_d, deps) => deps.onDisablePickMode(),
     "flash-elements": (data) => handleFlashElements(data),
@@ -195,20 +166,14 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
         deps.onSetRuntimeData?.(data.channel, data.payload, data.requestId);
     },
     "clear-runtime-data": (data, deps) => {
-      if (typeof data.channel === "string")
-        deps.onClearRuntimeData?.(data.channel, data.requestId);
+      if (typeof data.channel === "string") deps.onClearRuntimeData?.(data.channel, data.requestId);
     },
   } satisfies Record<string, ControlHandler>),
 );
 
-function resolveSeekTimeSeconds(
-  data: BridgeControlData,
-  deps: BridgeDeps,
-): number | null {
+function resolveSeekTimeSeconds(data: BridgeControlData, deps: BridgeDeps): number | null {
   if (data.timeSeconds != null) {
-    return isFiniteNumber(data.timeSeconds)
-      ? Math.max(0, data.timeSeconds)
-      : null;
+    return isFiniteNumber(data.timeSeconds) ? Math.max(0, data.timeSeconds) : null;
   }
   const frame = readNumber(data.frame, 0);
   if (frame === null) return null;
@@ -226,8 +191,7 @@ function rejectUnsupportedProtocol(data: BridgeControlData): boolean {
     code: `runtime.protocol.${protocol.code}`,
     details: {
       receivedVersion:
-        typeof protocol.receivedVersion === "string" ||
-        typeof protocol.receivedVersion === "number"
+        typeof protocol.receivedVersion === "string" || typeof protocol.receivedVersion === "number"
           ? protocol.receivedVersion
           : null,
     },
@@ -246,19 +210,11 @@ function handleFlashElements(data: BridgeControlData): void {
   const fields = data as Record<string, unknown>;
   const selectors = readFlashSelectors(fields.selectors);
   const duration = readNumber(fields.duration, FLASH_DEFAULT_DURATION_MS);
-  if (
-    !selectors ||
-    duration === null ||
-    duration <= 0 ||
-    duration > FLASH_MAX_DURATION_MS
-  )
-    return;
+  if (!selectors || duration === null || duration <= 0 || duration > FLASH_MAX_DURATION_MS) return;
   flashElements(selectors, duration);
 }
 
-export function installRuntimeControlBridge(
-  deps: BridgeDeps,
-): (event: MessageEvent) => void {
+export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEvent) => void {
   const handler = (event: MessageEvent) => {
     if (event.source !== window.parent && event.source !== window) return;
     const data = event.data as BridgeControlData | null;
@@ -283,6 +239,11 @@ const FLASH_STYLE_RULES = `
   .__hf-flash {
     outline: 2px solid rgba(59, 130, 246, 0.6) !important;
     outline-offset: 2px !important;
+    animation: __hf-flash-pulse var(--hf-flash-duration, 800ms) ease-out forwards !important;
+  }
+  @keyframes __hf-flash-pulse {
+    0% { outline-color: rgba(59, 130, 246, 0.8); }
+    100% { outline-color: transparent; }
   }
 `;
 
@@ -302,6 +263,9 @@ function flashElements(selectors: string[], duration: number): void {
     try {
       const els = document.querySelectorAll(selector);
       els.forEach((el) => {
+        if (el instanceof HTMLElement || el instanceof SVGElement) {
+          el.style.setProperty("--hf-flash-duration", `${duration}ms`);
+        }
         el.classList.add("__hf-flash");
         wallSetTimeout(() => el.classList.remove("__hf-flash"), duration);
       });

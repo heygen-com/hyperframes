@@ -218,13 +218,9 @@ describe("installRuntimeControlBridge", () => {
   it("dispatches set-native-media-sync-disabled command", () => {
     const deps = createMockDeps();
     const handler = installRuntimeControlBridge(deps);
-    handler(
-      makeControlMessage("set-native-media-sync-disabled", { disabled: true }),
-    );
+    handler(makeControlMessage("set-native-media-sync-disabled", { disabled: true }));
     expect(deps.onSetNativeMediaSyncDisabled).toHaveBeenCalledWith(true);
-    handler(
-      makeControlMessage("set-native-media-sync-disabled", { disabled: false }),
-    );
+    handler(makeControlMessage("set-native-media-sync-disabled", { disabled: false }));
     expect(deps.onSetNativeMediaSyncDisabled).toHaveBeenCalledWith(false);
   });
 
@@ -238,13 +234,9 @@ describe("installRuntimeControlBridge", () => {
   it("dispatches set-web-audio-media-disabled command", () => {
     const deps = createMockDeps();
     const handler = installRuntimeControlBridge(deps);
-    handler(
-      makeControlMessage("set-web-audio-media-disabled", { disabled: true }),
-    );
+    handler(makeControlMessage("set-web-audio-media-disabled", { disabled: true }));
     expect(deps.onSetWebAudioMediaDisabled).toHaveBeenCalledWith(true);
-    handler(
-      makeControlMessage("set-web-audio-media-disabled", { disabled: false }),
-    );
+    handler(makeControlMessage("set-web-audio-media-disabled", { disabled: false }));
     expect(deps.onSetWebAudioMediaDisabled).toHaveBeenCalledWith(false);
   });
 
@@ -311,9 +303,7 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     const compare = { enabled: true, position: 0.42 };
     const target = { id: "hero-video", selectorIndex: 0 };
-    handler(
-      makeControlMessage("set-color-grading-compare", { target, compare }),
-    );
+    handler(makeControlMessage("set-color-grading-compare", { target, compare }));
     expect(deps.onSetColorGradingCompare).toHaveBeenCalledWith(target, compare);
   });
 
@@ -518,12 +508,12 @@ describe("flash-elements", () => {
   it("highlights matching elements with only the fixed style rules", () => {
     document.body.innerHTML = '<div class="target"></div>';
     flash({ selectors: [".target"], duration: 500 });
-    expect(
-      document.querySelector(".target")?.classList.contains("__hf-flash"),
-    ).toBe(true);
+    expect(document.querySelector(".target")?.classList.contains("__hf-flash")).toBe(true);
     const css = flashStyleText();
     expect(css).toContain(".__hf-flash");
     expect(css).not.toContain("500");
+    const target = document.querySelector<HTMLElement>(".target");
+    expect(target?.style.getPropertyValue("--hf-flash-duration")).toBe("500ms");
   });
 
   it.each([
@@ -538,9 +528,7 @@ describe("flash-elements", () => {
     document.body.innerHTML = '<div class="target"></div>';
     flash({ selectors: [".target"], duration });
     expect(flashStyleText()).toBeNull();
-    expect(
-      document.querySelector(".target")?.classList.contains("__hf-flash"),
-    ).toBe(false);
+    expect(document.querySelector(".target")?.classList.contains("__hf-flash")).toBe(false);
   });
 
   it.each([
@@ -553,16 +541,12 @@ describe("flash-elements", () => {
     document.body.innerHTML = '<div class="target"></div>';
     flash({ selectors, duration: 500 });
     expect(flashStyleText()).toBeNull();
-    expect(
-      document.querySelector(".target")?.classList.contains("__hf-flash"),
-    ).toBe(false);
+    expect(document.querySelector(".target")?.classList.contains("__hf-flash")).toBe(false);
   });
 
   it("uses the default duration when none is given", () => {
     document.body.innerHTML = '<div class="target"></div>';
     flash({ selectors: [".target"] });
-    expect(
-      document.querySelector(".target")?.classList.contains("__hf-flash"),
-    ).toBe(true);
+    expect(document.querySelector(".target")?.classList.contains("__hf-flash")).toBe(true);
   });
 });
