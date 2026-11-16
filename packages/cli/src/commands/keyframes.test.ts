@@ -501,3 +501,41 @@ describe("keyframes project compositions", () => {
     },
   );
 });
+
+describe("keyframes text output", () => {
+  const printed = async (html: string, extra: string[]) => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-text-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const source = join(dir, "index.html");
+    writeFileSync(source, html);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    onTestFinished(() => log.mockRestore());
+    await runCommand(keyframesCommand, { rawArgs: [source, ...extra] });
+    return log.mock.calls.map((args) => args.join(" ")).join("\n");
+  };
+
+  // fails without the fix: a tween target or CSS rule from the project reached the terminal with its control bytes.
+  it.each([
+    [
+      "a GSAP tween target",
+      wrap(`
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#dot\u001b]52;c;cGF5\u0007", { x: 10, duration: 1 });
+        window.__timelines = [tl];
+      `),
+      [],
+    ],
+    [
+      "a CSS keyframes rule",
+      `<!doctype html><html><head><style>
+        .dot { animation: rise 1s both; }
+        @keyframes rise { 0% { content: "\u001b]52;c;cGF5\u0007"; } 100% { opacity: 1; } }
+      </style></head><body><div class="dot"></div></body></html>`,
+      ["--runtime", "css"],
+    ],
+  ])("prints %s with its control characters as visible escapes", async (_what, html, extra) => {
+    const output = await printed(html, extra);
+    expect(output).toContain("\\x1b]52;c;cGF5\\x07");
+    expect(output).not.toMatch(/[\u0007\u001b]/);
+  });
+});
