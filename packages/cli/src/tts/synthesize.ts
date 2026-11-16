@@ -12,7 +12,11 @@ import {
 } from "./manager.js";
 import { findPython, hasPythonPackage, workingPythonEnv } from "./python.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 
 // ---------------------------------------------------------------------------
 // Inline Python script for Kokoro synthesis
@@ -116,13 +120,17 @@ const ESPEAK_LANG_OVERRIDES: Partial<Record<SupportedLang, string>> = {
 // Cache the script to avoid rewriting it on every invocation.
 // The filename carries a version suffix so older installs automatically
 // upgrade when the script body changes (e.g., adding the `lang` kwarg).
-const SCRIPT_DIR = hyperframesCacheDir("tts");
+const CODE_ROOT = trustedCacheRoot();
+const SCRIPT_DIR = join(CODE_ROOT, "tts");
 const SCRIPT_PATH = join(SCRIPT_DIR, "synth-v4.py");
 
 function ensureSynthScript(): string {
+  if (existsSync(SCRIPT_PATH) && foreignWritablePath(SCRIPT_PATH, CODE_ROOT))
+    unlinkSync(SCRIPT_PATH);
   if (!existsSync(SCRIPT_PATH)) {
-    mkdirSync(SCRIPT_DIR, { recursive: true });
+    mkdirSync(SCRIPT_DIR, { recursive: true, mode: 0o700 });
     writeNewFileSync(SCRIPT_PATH, SYNTH_SCRIPT);
+    sealCacheInstall(SCRIPT_PATH, CODE_ROOT);
     // Best-effort: delete older versioned scripts left behind by previous
     // CLI releases so users don't accumulate stale files in ~/.cache.
     const currentName = basename(SCRIPT_PATH);

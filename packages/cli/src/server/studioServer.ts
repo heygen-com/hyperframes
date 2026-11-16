@@ -10,7 +10,7 @@ import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { realpath, terminalText } from "@hyperframes/core";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -45,6 +45,7 @@ import {
 } from "@hyperframes/studio-server/request-identity";
 import { mountShareRoutes } from "./shareRoutes.js";
 import { isDevMode } from "../utils/env.js";
+import { recordFolder } from "../utils/projectRecords.js";
 import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { insideHostApp } from "../utils/desktopApp.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
@@ -267,6 +268,7 @@ let _thumbnailBrowserModes: {
   requested: BrowserGpuMode;
   resolved: ResolvedBrowserGpuMode;
   softwareWebGpu: boolean;
+  pageServerHost: string;
 } | null = null;
 
 interface ThumbnailBrowserSession {
@@ -274,27 +276,35 @@ interface ThumbnailBrowserSession {
   requestedGpuMode: BrowserGpuMode;
   resolvedGpuMode: ResolvedBrowserGpuMode;
   softwareWebGpu: boolean;
+  pageServerHost: string;
 }
 
+// The browser gets the preview's server as its page server: with PRODUCER_RESTRICT_PAGE_NETWORK on, that is the
+// one host it reaches directly, so a preview on another host needs a new browser.
 async function getThumbnailBrowser(
   requestedGpuMode: BrowserGpuMode,
+  previewUrl: string,
   isShuttingDown: () => boolean,
 ): Promise<ThumbnailBrowserSession | null> {
   if (isShuttingDown()) return null;
+  const pageServerHost = new URL(previewUrl).host;
   if (
     _thumbnailBrowserLease?.browser.connected &&
-    _thumbnailBrowserModes?.requested === requestedGpuMode
+    _thumbnailBrowserModes?.requested === requestedGpuMode &&
+    _thumbnailBrowserModes.pageServerHost === pageServerHost
   ) {
     return {
       browser: _thumbnailBrowserLease.browser,
       requestedGpuMode: _thumbnailBrowserModes.requested,
       resolvedGpuMode: _thumbnailBrowserModes.resolved,
       softwareWebGpu: _thumbnailBrowserModes.softwareWebGpu,
+      pageServerHost,
     };
   }
   if (_thumbnailBrowserInitializing) {
     const session = await _thumbnailBrowserInitializing;
-    if (session?.requestedGpuMode === requestedGpuMode) return session;
+    if (session?.requestedGpuMode === requestedGpuMode && session.pageServerHost === pageServerHost)
+      return session;
   }
   if (_thumbnailBrowserLease) await closeThumbnailBrowser();
 
@@ -327,13 +337,14 @@ async function getThumbnailBrowser(
           },
           gpuConfig,
         ),
-        { forceScreenshot: true },
+        { forceScreenshot: true, pageServerUrl: previewUrl },
       );
       _thumbnailBrowserLease = acquired;
       _thumbnailBrowserModes = {
         requested: requestedGpuMode,
         resolved: resolvedGpuMode,
         softwareWebGpu,
+        pageServerHost,
       };
       acquired.browser.on("disconnected", () => {
         if (_thumbnailBrowserLease !== acquired) return;
@@ -341,7 +352,13 @@ async function getThumbnailBrowser(
         _thumbnailBrowserModes = null;
         _thumbnailBrowserInitializing = null;
       });
-      return { browser: acquired.browser, requestedGpuMode, resolvedGpuMode, softwareWebGpu };
+      return {
+        browser: acquired.browser,
+        requestedGpuMode,
+        resolvedGpuMode,
+        softwareWebGpu,
+        pageServerHost,
+      };
     } catch (err) {
       console.warn(
         "[Studio] Failed to launch thumbnail browser:",
@@ -451,11 +468,7 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
 }
 
 function createStateFolderBeforeWatching(projectDir: string): void {
-  try {
-    mkdirSync(join(projectDir, ".hyperframes"), { recursive: true });
-  } catch {
-    return;
-  }
+  recordFolder(projectDir, "");
 }
 
 export function createStudioServer(options: StudioServerOptions): StudioServer {
@@ -791,7 +804,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     },
 
     async generateThumbnail(opts): Promise<Buffer | null> {
-      const session = await getThumbnailBrowser(browserGpuMode, () => shuttingDown);
+      const session = await getThumbnailBrowser(
+        browserGpuMode,
+        opts.previewUrl,
+        () => shuttingDown,
+      );
       if (!session) {
         if (!shuttingDown) {
           console.warn("[Studio] Thumbnail: no browser available — Chrome may not be installed");

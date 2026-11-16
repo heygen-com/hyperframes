@@ -7,7 +7,11 @@ import {
   RenderLockBusy,
   type RenderLockOptions,
 } from "../../utils/renderLock.js";
-import { RenderLockStaleBreak, RenderLockUnwritable } from "../../utils/renderLockClaim.js";
+import {
+  RenderLockFolderRefused,
+  RenderLockStaleBreak,
+  RenderLockUnwritable,
+} from "../../utils/renderLockClaim.js";
 import type { RenderPlan } from "./plan.js";
 
 /** One local render at a time per user account: a second waits for the slot, or fails under --no-wait. */
@@ -31,7 +35,11 @@ export async function acquireRenderSlot(
       ...lock,
     });
   } catch (error) {
-    if (error instanceof RenderLockStaleBreak || error instanceof RenderLockUnwritable) {
+    if (
+      error instanceof RenderLockStaleBreak ||
+      error instanceof RenderLockUnwritable ||
+      error instanceof RenderLockFolderRefused
+    ) {
       errorBox("The render slot cannot be taken", error.message);
       return failCommand(1, error);
     }
@@ -40,7 +48,7 @@ export async function acquireRenderSlot(
       "Another render is running for this user account",
       describeRenderLockHolder(error.holder, Date.now()),
       "Rerun without --no-wait to start when it finishes, or set HYPERFRAMES_RENDER_LOCK=off to render side by side. " +
-        "Set HYPERFRAMES_CACHE_DIR to a shared folder to share the slot across user accounts.",
+        "Set HYPERFRAMES_RENDER_LOCK_DIR to one folder in every account to share the slot across user accounts.",
     );
     return failCommand(1, error);
   }

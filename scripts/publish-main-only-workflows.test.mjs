@@ -103,6 +103,7 @@ test("a publishing job that can be dispatched runs only for main", () => {
 test("the ClawHub token reaches only the pinned CLI login step", () => {
   const { source, doc } = workflows.find(({ file }) => file === "sync-skills-to-clawhub.yml");
   const sync = doc.jobs.sync;
+  assert.equal(sync.environment, "clawhub");
   assert.equal(source.match(/secrets\.CLAWHUB_TOKEN/g).length, 1);
   assert.ok(!usesPublishSecret(doc.env));
   assert.ok(!usesPublishSecret(sync.env));
@@ -151,4 +152,13 @@ test("dispatch arrays and OR suffixes cannot evade the main guard", () => {
       [],
     );
   }
+});
+
+test("a job that reads a stored secret binds an environment", () => {
+  const unbound = workflows.flatMap(({ file, doc }) =>
+    Object.entries(doc.jobs ?? {})
+      .filter(([, job]) => usesPublishSecret(job) && !job.environment)
+      .map(([name]) => `${file} ${name}`),
+  );
+  assert.deepEqual(unbound, []);
 });

@@ -1291,6 +1291,10 @@ a source with no audio track or that cannot be read as audio (error: render
 stops), a clip that starts past the end of its file, a clip whose played part is
 silent (warnings), and a film with no sound at all (info).
 
+`check` opens no remote media. A remote `src` is not probed for audio or HDR: a
+remote `<video>` the render may hear counts as sound, and `hdr.remoteNotInspected`
+lists the remote videos and images whose HDR colour space was not read.
+
 When the browser never ran (no composition to load, a linter crash, or a
 browser launch failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast`
 sections are empty, not clean.
@@ -1420,7 +1424,7 @@ whole-composition `keepsMoving` assertion sets its own limit.
 #### Audio findings
 
 The `audio` section checks the clips the render mixes. It runs even when lint
-stops the browser pass, and remote sources are not fetched.
+stops the browser pass, and remote sources are not probed.
 
 | Code                           | Severity | Triggers when                                                                                                | Fix                                                                                          |
 | ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
@@ -1930,9 +1934,18 @@ landing, so a second local or `--docker` render from the same user account waits
 for the first and says which render it is waiting for (pid and project). The
 slot is a lock file in that account's HyperFrames cache folder, so renders by
 different user accounts do not queue behind each other; set
-`HYPERFRAMES_CACHE_DIR` to a folder they share to give them one slot. A render
-whose process died frees its slot on its own. `--workers` is unaffected: it sets
-the parallelism inside the one render that runs.
+`HYPERFRAMES_RENDER_LOCK_DIR` to the same folder in each account to give them
+one slot. That folder holds lock records only: the first render creates it
+writable by every account but sticky, so no account can delete or replace
+another's records. A record that names a live process of another account
+counts as a running render, so an account in the group can hold the slot by
+naming a process that never ends; `HYPERFRAMES_RENDER_LOCK=off` renders without
+the slot. Do not share `HYPERFRAMES_CACHE_DIR` between accounts: it holds the
+browser, packages and helpers each account runs. HyperFrames never
+runs a cached one that another account can write: it installs its own copy,
+under `~/.cache/hyperframes` when another account can write the cache folder
+itself. A render whose process died frees its slot on its own. `--workers` is
+unaffected: it sets the parallelism inside the one render that runs.
 
 Low-memory detection reads **host** RAM, not cgroup or container limits, so
 containerised callers — including `--docker` — should set
@@ -2221,7 +2234,7 @@ duration, element counts by type, track count, and total size.
 ID, duration, resolution, and element count. Both take `--json`.
 `npx hyperframes info --media --json` adds `heard`: every clip the render mixes, scenes included, on the film's clock,
 each with `src`, `start`, `end` (where it stops, or where its media runs out if sooner; `0` runs to the media's end),
-`mediaStart`, `playbackRate`, `volume` and `type`.
+`mediaStart`, `playbackRate`, `volume` and `type`. A remote clip is not probed, so it keeps the end it was given.
 
 ### `update`
 

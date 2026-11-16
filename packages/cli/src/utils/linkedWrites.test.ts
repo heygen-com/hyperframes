@@ -13,10 +13,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { writeStackOutputs } from "../commands/lambda/state.js";
+import { pullTemplate } from "../commands/templates.js";
 import { outDir, writeImage } from "../measure/media.js";
 import { writeParakeetTranscript } from "../whisper/parakeet.js";
+import { checkSnapshotDirectory } from "./checkSnapshotDirectory.js";
 import { writeTurn, type Turn } from "./historyOwner.js";
+import { recordReceivedFiles } from "./privateProjectFile.js";
 import { recordProjectRegistryItems, seedProjectAuthoringSkill } from "./projectConfig.js";
+import { withProjectLock } from "./projectLock.js";
+import { projectFolder } from "./projectRecords.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -144,5 +149,61 @@ describe("fixed-name outputs", () => {
     expect(readFileSync(victim, "utf8")).toBe("keep me");
     expect(isLink(clip)).toBe(false);
     expect(readFileSync(clip).subarray(1, 4).toString()).toBe("PNG");
+  });
+});
+
+describe("every writer under a linked .hyperframes folder", () => {
+  const writers: [string, (project: string) => unknown][] = [
+    [
+      "the project lock",
+      (project) =>
+        withProjectLock(project, "test", async () => {}, { projectLock: { waitMs: 50 } }),
+    ],
+    [
+      "the lambda stack file",
+      (project) => writeStackOutputs({ stackName: "demo", region: "us-east-1" } as never, project),
+    ],
+    ["the received-files record", (project) => recordReceivedFiles(project, ["a.png"])],
+    ["a check's snapshot folder", (project) => checkSnapshotDirectory(project)],
+    [
+      "a snapshot --output inside .hyperframes",
+      (project) => {
+        if (!projectFolder(project, join(records(project), "shots"))) throw new Error("refused");
+      },
+    ],
+    [
+      "a template pull's staging folder",
+      (project) => {
+        vi.stubGlobal("fetch", async () => {
+          throw new Error("offline");
+        });
+        return pullTemplate("finance-explainer", project).finally(() => vi.unstubAllGlobals());
+      },
+    ],
+  ];
+
+  for (const [what, write] of writers) {
+    it(`refuses ${what}`, async () => {
+      const { project, outside } = setup();
+      linkRecordsFolderOut(project, outside);
+      await expect(Promise.resolve().then(() => write(project))).rejects.toThrow(
+        /link|refused|symlinks/,
+      );
+      expect(readdirSync(outside)).toEqual(["victim.txt"]);
+    });
+  }
+
+  it("replaces a linked received-files record instead of overwriting the project file it points at", () => {
+    const { project } = setup();
+    const data = join(project, "data.json");
+    writeFileSync(data, '{"files":[]}');
+    mkdirSync(records(project));
+    const record = join(records(project), "received-files.json");
+    symlinkSync("../data.json", record);
+
+    recordReceivedFiles(project, ["a.png"]);
+
+    expect(readFileSync(data, "utf8")).toBe('{"files":[]}');
+    expect(isLink(record)).toBe(false);
   });
 });
