@@ -86,6 +86,10 @@ function fakeTranscript(dir: string, text: string) {
   };
 }
 
+/** A caption name the disk takes, whose temp sibling (13 characters longer) it refuses on every OS, even as root. */
+const NO_ROOM_FOR_TEMP = "c".repeat(250);
+const NAME_REFUSED = /ENAMETOOLONG|ENOENT|EINVAL/;
+
 function errorMessage(json: Record<string, unknown>): string {
   return String((json.error as { message?: unknown } | undefined)?.message);
 }
@@ -859,8 +863,7 @@ Render video. Built for agents.
     dirs.push(dir);
     const input = join(dir, "subtitles.srt");
     writeFileSync(input, "1\n00:00:00,000 --> 00:00:01,000\nHello\n");
-    const output = join(dir, "through-file.vtt");
-    symlinkSync(join(input, "x.vtt"), output);
+    const output = join(dir, NO_ROOM_FOR_TEMP);
 
     await expect(
       transcribeCmd.run!({ args: { input, json: true, to: "vtt", output } } as never),
@@ -872,8 +875,7 @@ Render video. Built for agents.
         message: expect.stringContaining(`The caption file ${output} could not be written: `),
       }),
     });
-    // Windows and Unix report a path through a file with different error codes.
-    expect(errorMessage(lastJson())).toMatch(/ENOTDIR|ENOENT/);
+    expect(errorMessage(lastJson())).toMatch(NAME_REFUSED);
   });
 
   async function runWithInodeZero(zero: (path: string) => boolean, args: object): Promise<void> {
@@ -973,12 +975,9 @@ Render video. Built for agents.
       "it is the same file as",
     ],
     [
-      "a link that runs through a file",
-      (dir: string) => {
-        symlinkSync(join(dir, "narration.wav", "x.srt"), join(dir, "through-file.srt"));
-        return join(dir, "through-file.srt");
-      },
-      /ENOTDIR|ENOENT/,
+      "a name with no room for its temp file",
+      (dir: string) => join(dir, NO_ROOM_FOR_TEMP),
+      NAME_REFUSED,
     ],
   ])("keeps the transcript when --output is %s", async (_name, output, reason) => {
     const { dir, input } = dummyAudio();
@@ -1031,7 +1030,6 @@ Render video. Built for agents.
       await transcribeCmd.run!({ args: { input: transcript, json: true, to } } as never);
       expect(lastJson()).toMatchObject({ ok: true, outputPath: caption });
 
-      // The target is untouched while the name reads as captions, so the link was replaced.
       expect(readFileSync(target, "utf8")).toBe("keep me\n");
       expect(readFileSync(caption, "utf8")).toContain("-->");
     },
