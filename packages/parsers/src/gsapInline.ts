@@ -41,16 +41,9 @@ const GSAP_METHODS = new Set(["set", "to", "from", "fromTo"]);
 // Bounds on synthetic expansion (recursion + iteration runaway guards).
 const MAX_DEPTH = 8;
 const MAX_ITERS = 512;
-// Nodes one script's expansions may clone in total; past it the script is left as written.
-// MAX_DEPTH and MAX_ITERS bound one construct each, so nested loops, array unrolling and a
-// helper that calls itself k times multiply (511^8, k^8) and exhaust the host's heap.
-// ponytail: the largest total measured over the parser tests was 315 nodes, and over every
-// gsap script in registry/, examples/, skills/, docs/, the CLI templates and the producer
-// test compositions 20,760 (producer many-cuts). This is >10x that, so no current output
-// changes. Raise it only for a measured script that needs more.
+// ponytail: clone budget per script; >10x the measured max of 20,760 (registry, examples, skills, docs, producer tests).
 const MAX_EXPANDED_NODES = 250_000;
 
-/** Thrown from the charge point to abandon the whole run; never escapes `inlineComputedTimelines`. */
 class ExpansionBudgetExceeded extends Error {}
 
 export function isFunctionNode(node: Node): boolean {
@@ -183,7 +176,6 @@ interface ExpandCtx {
   order: { n: number };
   /** Source offset of the top-level statement being expanded; tweens inherit it as their sort site. */
   rootStart: number;
-  /** Nodes left to clone for the whole script, shared by every nested expansion. */
   budget: { left: number };
 }
 
@@ -518,13 +510,7 @@ function nodeCount(root: Node): number {
   return n;
 }
 
-/**
- * Charge the nodes `expandBody` is about to clone, before cloning them, and abandon the
- * run once the shared budget is spent. Counted in AST nodes, not source span: synthetic
- * statements (expression-bodied arrows) have no start/end. Each reference to a bound
- * name also costs the bound node's size, because `substituteParams` clones the binding
- * at every occurrence, so a large argument used many times cannot slip past the budget.
- */
+/** Charge the nodes about to be cloned, plus each bound argument's size per use, and abort past the budget. */
 function chargeBudget(bodyStmts: Node[], bindings: Map<string, Node>, ctx: ExpandCtx): void {
   const bindingSize = new Map<string, number>();
   for (const stmt of bodyStmts) {
@@ -782,9 +768,7 @@ function expandStatements(stmts: Node[], ctx: ExpandCtx): Node[] {
  * the freshly-parsed tree). Constructs it can't statically resolve are left
  * untouched, so the parser falls back to current behavior for them.
  *
- * If expansion would exceed MAX_EXPANDED_NODES the whole run is abandoned and `ast` is
- * left exactly as received: every expansion works on clones, and `ast.body` is assigned
- * only after all statements have expanded.
+ * An overrun leaves `ast` as received: `ast.body` is assigned only after every statement expanded.
  */
 export function inlineComputedTimelines(
   ast: Node,
