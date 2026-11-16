@@ -71,12 +71,12 @@ export default defineCommand({
     const seen = readSeen(project.dir);
     if (!seen.at) return printNotHandedOver(project.name, project.dir, args.json);
     const checking = Date.now();
-    const turns = unseenTurns(project.dir, seen.at, checking);
+    const { turns, history } = unseenTurns(project.dir, seen, checking);
     const files = filesChangedSince(project.dir, seen.checked);
     if (args.json) console.log(JSON.stringify({ project: project.dir, turns, files }, null, 2));
     else printNews(project.name, turns, files);
-    // Marked only once shown, and only up to the newest turn shown: one written after this read shows next time.
+    // Marked only once shown, and only up to the last whole line read: one written after this read shows next time.
     const newest = Math.max(seen.at, ...turns.map((turn) => Date.parse(turn.at)));
-    markSeen(project.dir, { at: newest, checked: checking });
+    markSeen(project.dir, { at: newest, checked: checking, history: history ?? seen.history });
   },
 });

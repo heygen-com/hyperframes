@@ -20,6 +20,7 @@ import {
   type HistoryResult,
   type HistoryWho,
   type UndoMode,
+  isHistoryId,
 } from "@hyperframes/studio-server/history";
 
 import { resolveProject } from "./project.js";
@@ -78,11 +79,38 @@ export class Refusal extends Error {}
 
 const turnFile = (dir: string) => join(dir, ".hyperframes", "history-turn.json");
 
+const WHO_KINDS: readonly unknown[] = ["person", "agent", "outside"] satisfies HistoryWho["kind"][];
+const isId = (value: unknown): value is string => typeof value === "string" && isHistoryId(value);
+const isIds = (value: unknown): value is string[] => Array.isArray(value) && value.every(isId);
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object";
+const isVia = (value: unknown): value is Turn["via"] => value === "preview" || value === "direct";
+
+function whoOf(value: unknown): HistoryWho | null {
+  if (!isRecord(value) || !WHO_KINDS.includes(value.kind) || typeof value.name !== "string")
+    return null;
+  return { kind: value.kind as HistoryWho["kind"], name: value.name };
+}
+
+const isTurnHead = (value: Record<string, unknown>) => isVia(value.via) && isId(value.id);
+const hasTurnFields = (value: Record<string, unknown>) =>
+  typeof value.label === "string" &&
+  typeof value.startedAt === "number" &&
+  typeof value.lastWriteAt === "number";
+
+function parseTurn(value: unknown): Turn | null {
+  if (!isRecord(value) || !isTurnHead(value) || !hasTurnFields(value)) return null;
+  const who = whoOf(value.who);
+  const parts = value.parts ?? [];
+  if (!who || !isIds(parts)) return null;
+  const { via, id, label, startedAt, lastWriteAt } = value as Omit<Turn, "who" | "parts">;
+  return { via, id, who, label, startedAt, lastWriteAt, parts };
+}
+
 /** The open turn, or null; a marker with no last write time cannot say when the turn ended, so it has. */
 function readTurn(dir: string): Turn | null {
   try {
-    const turn = JSON.parse(readFileSync(turnFile(dir), "utf-8")) as Turn;
-    return typeof turn.lastWriteAt === "number" ? { ...turn, parts: turn.parts ?? [] } : null;
+    return parseTurn(JSON.parse(readFileSync(turnFile(dir), "utf-8")));
   } catch {
     return null;
   }
@@ -100,7 +128,8 @@ const lastTurnsFile = (dir: string) => join(dir, ".hyperframes", "history-turns.
 function readLastTurns(dir: string): Record<string, string[]> {
   try {
     const turns: unknown = JSON.parse(readFileSync(lastTurnsFile(dir), "utf-8"));
-    return turns && typeof turns === "object" ? (turns as Record<string, string[]>) : {};
+    if (!turns || typeof turns !== "object") return {};
+    return Object.fromEntries(Object.entries(turns).filter(([, parts]) => isIds(parts)));
   } catch {
     return {};
   }
@@ -160,7 +189,8 @@ function previewOwner(route: (path: string) => string): Owner {
     via: "preview",
     list,
     peek: async (point) => (await json(`/peek/${encodeURIComponent(point)}`)).files,
-    blob: async (hash) => Buffer.from(await (await call(`/blob/${hash}`)).arrayBuffer()),
+    blob: async (hash) =>
+      Buffer.from(await (await call(`/blob/${encodeURIComponent(hash)}`)).arrayBuffer()),
     undo: (id, who, mode) => json("/undo", { entryId: id, who, mode }),
     restore: (point, who) => json("/restore", { point, who }),
     pin: async (id, pinned) => void (await json("/pin", { entryId: id, pinned })),
@@ -175,7 +205,7 @@ function previewOwner(route: (path: string) => string): Owner {
     },
     // A preview restarted since begin committed the window on its way down.
     end: (id) =>
-      json(`/window/${id}/close`, {})
+      json(`/window/${encodeURIComponent(id)}/close`, {})
         .then((closed) => closed.entry as HistoryEntry | null)
         .catch(async () => (await list()).find((entry) => entry.id === id) ?? null),
     checkpoint: async () => void (await json("/checkpoint", {}, AbortSignal.timeout(5_000))),
