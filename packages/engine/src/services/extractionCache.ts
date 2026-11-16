@@ -16,8 +16,9 @@
  * - Cache entries live under `<rootDir>/<SCHEMA_PREFIX><key[0..16]>/` so
  *   `ls` output and tracing logs stay short. Truncation to 16 hex chars
  *   leaves 64 bits of entropy — collision risk at cache scale is negligible.
- * - Frames are extracted into a unique `<entry>.partial-<pid>-<uuid>/` dir.
- *   Once all frames are written, the partial dir receives the `.hf-complete`
+ * - Frames are extracted into a `<entry>.partial-<pid>-<random>/` dir that
+ *   `mkdtemp` creates for that one writer. Once all frames are written and
+ *   their count is the writer's own, the partial dir receives the `.hf-complete`
  *   sentinel and is atomically renamed to the final key dir. Concurrent
  *   same-key writers may duplicate ffmpeg work, but readers only ever serve
  *   complete entries.
@@ -32,13 +33,14 @@
  * become inert and can be gc'd by the caller.
  */
 
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   createReadStream,
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   rmSync,
   statSync,
@@ -46,7 +48,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { defaultExtractCacheDir } from "../config.js";
 import type { VideoMetadata } from "../utils/ffprobe.js";
 import { FRAME_FILENAME_PREFIX, framePathsFromDirectory } from "./extractedFrameIndex.js";
@@ -234,12 +236,23 @@ export function ensureCacheEntryDir(entry: CacheEntry): void {
   mkdirSync(entry.dir, { recursive: true });
 }
 
+/** A new render-owned directory to populate a cache entry in before the atomic publish rename. */
+export function createPartialCacheEntryDir(entry: CacheEntry): string {
+  return createPartialDir(dirname(entry.dir), basename(entry.dir));
+}
+
 /**
- * Unique render-owned directory used to populate a cache entry before the
- * atomic publish rename.
+ * A new, empty `<name>.partial-<pid>-<random>` directory under `parent`, named so the GC's aged-partial
+ * sweep removes it if its writer dies. `mkdtemp` creates it atomically under a name no other writer
+ * can predict or reuse, so only its creator writes to it.
  */
-export function partialCacheEntryDir(entry: CacheEntry): string {
-  return `${entry.dir}.partial-${process.pid}-${randomUUID().slice(0, 8)}`;
+export function createPartialDir(parent: string, name: string): string {
+  mkdirSync(parent, { recursive: true });
+  return mkdtempSync(join(parent, `${name}.partial-${process.pid}-`));
+}
+
+function frameFileCount(dir: string): number {
+  return readdirSync(dir).filter((file) => file.startsWith(FRAME_FILENAME_PREFIX)).length;
 }
 
 function isTargetExistsRenameError(err: unknown): boolean {
@@ -247,14 +260,6 @@ function isTargetExistsRenameError(err: unknown): boolean {
   return code === "EEXIST" || code === "ENOTEMPTY" || code === "EPERM";
 }
 
-/**
- * Publish an extracted partial directory as the final cache entry.
- *
- * Same-filesystem directory rename is atomic: readers either see no entry or
- * a complete sentineled entry. When another writer wins the race, the caller
- * should rehydrate from the final dir. If publish cannot complete safely, the
- * partial remains render-owned and must be cleaned up by the render cleanup.
- */
 /**
  * If a concurrent writer's completed entry is visible, discard our partial
  * and serve theirs. Identical keys produce identical frames, so adopting the
@@ -266,8 +271,22 @@ function adoptPublishedWinner(entry: CacheEntry, partialDir: string): CachePubli
   return { dir: entry.dir, published: true };
 }
 
-export function publishCacheEntry(entry: CacheEntry, partialDir: string): CachePublishResult {
+/**
+ * Publish an extracted partial directory as the final cache entry, only when it
+ * holds exactly the `expectedFrames` its writer put there.
+ *
+ * Same-filesystem directory rename is atomic: readers either see no entry or
+ * a complete sentineled entry. When another writer wins the race, the caller
+ * should rehydrate from the final dir. If publish cannot complete safely, the
+ * partial remains render-owned and must be cleaned up by the render cleanup.
+ */
+export function publishCacheEntry(
+  entry: CacheEntry,
+  partialDir: string,
+  expectedFrames: number,
+): CachePublishResult {
   try {
+    if (frameFileCount(partialDir) !== expectedFrames) return { dir: partialDir, published: false };
     writeFileSync(join(partialDir, COMPLETE_SENTINEL), "", "utf-8");
   } catch {
     return { dir: partialDir, published: false };
