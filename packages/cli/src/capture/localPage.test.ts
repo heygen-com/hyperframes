@@ -25,6 +25,8 @@ beforeAll(() => {
   writeFileSync(join(site, "index.html"), "<h1>home</h1>");
   writeFileSync(join(site, "pages", "about page.html"), "<h1>about</h1>");
   writeFileSync(join(site, "logo.png"), "png-bytes");
+  writeFileSync(join(site, "app.cjs"), "window.cjs = 1;");
+  writeFileSync(join(site, "runner"), "window.runner = 1;");
   for (const folder of [".git", ".hyperframes", ".aws"]) mkdirSync(join(site, folder));
   for (const file of [".env", ".env.local", ".git/config", ".hyperframes/x.json", ".npmrc"]) {
     writeFileSync(join(site, file), "SECRET=1");
@@ -164,6 +166,16 @@ describe("startLocalPageServer", () => {
     expect(
       (await fetch(`${server.origin}/missing.png`)).headers.get("x-content-type-options"),
     ).toBe("nosniff");
+  });
+
+  it("names script and WebAssembly types, and leaves an unlisted type to the browser's sniffing", async () => {
+    const cjs = await fetch(`${server.origin}/app.cjs`);
+    expect(cjs.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+    expect(cjs.headers.get("x-content-type-options")).toBe("nosniff");
+    const bare = await fetch(`${server.origin}/runner`);
+    expect(await bare.text()).toBe("window.runner = 1;");
+    expect(bare.headers.get("content-type")).toBe("application/octet-stream");
+    expect(bare.headers.get("x-content-type-options")).toBeNull();
   });
 
   it("refuses methods other than GET and HEAD", async () => {

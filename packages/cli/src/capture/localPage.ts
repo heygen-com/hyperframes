@@ -38,7 +38,27 @@ const CONTENT_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".mjs": "text/javascript; charset=utf-8",
+  ".cjs": "text/javascript; charset=utf-8",
   ".json": "application/json",
+  ".map": "application/json",
+  ".webmanifest": "application/manifest+json",
+  ".xml": "application/xml",
+  ".xhtml": "application/xhtml+xml",
+  ".wasm": "application/wasm",
+  ".csv": "text/csv; charset=utf-8",
+  ".vtt": "text/vtt; charset=utf-8",
+  ".glb": "model/gltf-binary",
+  ".gltf": "model/gltf+json",
+  ".bmp": "image/bmp",
+  ".apng": "image/apng",
+  ".eot": "application/vnd.ms-fontobject",
+  ".m4v": "video/mp4",
+  ".ogv": "video/ogg",
+  ".ogg": "audio/ogg",
+  ".oga": "audio/ogg",
+  ".m4a": "audio/mp4",
+  ".aac": "audio/aac",
+  ".flac": "audio/flac",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
@@ -143,8 +163,16 @@ function contentType(file: string): string {
   return CONTENT_TYPES[extname(file).toLowerCase()] ?? "application/octet-stream";
 }
 
+const NOSNIFF = { "X-Content-Type-Options": "nosniff" };
+
+// A file of a type not listed above keeps the browser's sniffing, so a script with no extension still runs.
+function typeHeaders(file: string): Record<string, string> {
+  const known = CONTENT_TYPES[extname(file).toLowerCase()] !== undefined;
+  return { "Content-Type": contentType(file), ...(known ? NOSNIFF : {}) };
+}
+
 function end(response: ServerResponse, status: number): void {
-  response.writeHead(status, { "Content-Length": 0, Connection: "close" });
+  response.writeHead(status, { "Content-Length": 0, Connection: "close", ...NOSNIFF });
   response.end();
 }
 
@@ -153,14 +181,13 @@ export async function startLocalPageServer(target: LocalCaptureTarget): Promise<
   const sockets = new Set<Socket>();
   let port = -1;
   const server = createServer((request, response) => {
-    response.setHeader("X-Content-Type-Options", "nosniff");
     if (!isOwnLoopbackHost(request.headers.host, port)) return end(response, 403);
     void (async () => {
       if (request.method !== "GET" && request.method !== "HEAD") return end(response, 405);
       const pathname = new URL(request.url ?? "/", "http://local").pathname;
       const file = await servedFile(target.root, pathname);
       if (!file) return end(response, 404);
-      response.writeHead(200, { "Content-Type": contentType(file), "Cache-Control": "no-store" });
+      response.writeHead(200, { ...typeHeaders(file), "Cache-Control": "no-store" });
       if (request.method === "HEAD") return response.end();
       const stream = createReadStream(file);
       stream.on("error", () => response.destroy());
