@@ -26,7 +26,11 @@ import { BrowserDownloadStalledError, installInChild } from "./installInChild.js
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { unzipArchive } from "./unzipArchive.js";
-import { foreignWritablePath, trustedCacheRoot } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 
 type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
 
@@ -924,6 +928,7 @@ function moveStagedInstallIntoCache(
     throw err;
   }
   if (replaced) removeLeftover(aside);
+  sealCacheInstall(target, CACHE_ROOT_DIR);
   return join(target, relative(staged.path, staged.executablePath));
 }
 

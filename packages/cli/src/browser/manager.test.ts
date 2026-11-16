@@ -204,6 +204,16 @@ function installFsMocks({
         mode: 0o755,
       };
     },
+    lstatSync: (p: string) =>
+      paths.has(p)
+        ? {
+            uid: otherAccounts?.has(p) ? 4242 : (process.getuid?.() ?? 0),
+            mode: 0o755,
+            isSymbolicLink: () => false,
+            isDirectory: () => false,
+          }
+        : undefined,
+    chmodSync: () => {},
     utimesSync: (p: string, _atime: Date, mtime: Date) => {
       if (touchError) throw touchError;
       if (!paths.has(p)) {

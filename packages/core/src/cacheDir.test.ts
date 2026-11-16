@@ -14,6 +14,7 @@ import {
   foreignWritablePath,
   hyperframesCacheDir,
   namedCacheDir,
+  sealCacheInstall,
   trustedCacheRoot,
 } from "./cacheDir.js";
 
@@ -94,6 +95,22 @@ describe.skipIf(process.platform === "win32")("foreignWritablePath", () => {
     } finally {
       process.getuid = getuid;
     }
+  });
+
+  it("accepts on the next check what this account installed under umask 002, once sealed", () => {
+    const previous = process.umask(0o002);
+    let installed: string;
+    try {
+      installed = join(root, "optional", "pkg@1", "node_modules", "pkg");
+      mkdirSync(installed, { recursive: true });
+      writeFileSync(join(installed, "index.js"), "1");
+    } finally {
+      process.umask(previous);
+    }
+    const entry = join(installed, "index.js");
+    expect(foreignWritablePath(entry, root)).toBe(entry);
+    sealCacheInstall(join(root, "optional", "pkg@1"), root);
+    expect(foreignWritablePath(entry, root)).toBeUndefined();
   });
 
   it("keeps code out of a HYPERFRAMES_CACHE_DIR another account can write, in this user's own cache", () => {

@@ -15,7 +15,11 @@ import { dirname, join } from "node:path";
 import { downloadFile } from "../../utils/download.js";
 import { isMissingPackageError } from "../../utils/missingPackage.js";
 import { VERSION } from "../../version.js";
-import { foreignWritablePath, trustedCacheRoot } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 import { cliSourced } from "../../utils/sourceTag.js";
 
 const DOCS_URL = cliSourced("https://hyperframes.heygen.com/deploy/aws-lambda");
@@ -95,6 +99,7 @@ export async function fetchPinned(
     );
   }
   renameSync(partial, file);
+  sealCacheInstall(file, deps.cacheDir);
   deps.log(`→ Verified sha256 ${pinned.sha256}`);
   return file;
 }

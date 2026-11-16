@@ -12,7 +12,11 @@ import {
 } from "./manager.js";
 import { findPython, hasPythonPackage, workingPythonEnv } from "./python.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
-import { foreignWritablePath, trustedCacheRoot } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 
 // ---------------------------------------------------------------------------
 // Inline Python script for Kokoro synthesis
@@ -127,6 +131,7 @@ function ensureSynthScript(): string {
   if (!existsSync(SCRIPT_PATH)) {
     mkdirSync(SCRIPT_DIR, { recursive: true });
     writeNewFileSync(SCRIPT_PATH, SYNTH_SCRIPT);
+    sealCacheInstall(SCRIPT_PATH, CODE_ROOT);
     // Best-effort: delete older versioned scripts left behind by previous
     // CLI releases so users don't accumulate stale files in ~/.cache.
     const currentName = basename(SCRIPT_PATH);

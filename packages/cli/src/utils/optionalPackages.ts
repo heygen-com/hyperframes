@@ -14,7 +14,11 @@ import {
 import { createRequire } from "node:module";
 import { basename, dirname, join, sep } from "node:path";
 import { buildNpmCommand } from "./npxCommand.js";
-import { foreignWritablePath, trustedCacheRoot } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 
 /** Module type of each optional package; the keys are the only names the loader accepts. */
 export interface OptionalPackageModules {
@@ -367,6 +371,7 @@ export async function install(
       staging,
     );
     if (isInstalled(dir, name)) return;
+    sealCacheInstall(staging, dirname(dir));
     rmSync(dir, { recursive: true, force: true });
     renameSync(staging, dir);
   } catch (err) {

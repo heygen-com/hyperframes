@@ -4,7 +4,11 @@
 import { mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { foreignWritablePath, trustedCacheRoot } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 import { downloadToFile } from "../cloud/download.js";
 import { verifies, type ModelFile } from "../whisper/modelFile.js";
 import { Fix } from "./media.js";
@@ -149,6 +153,7 @@ async function ensureOpenCv(onStatus?: (message: string) => void): Promise<void>
       rmSync(temp, { force: true });
     }
   }
+  sealCacheInstall(OPENCV_DIR, CODE_ROOT);
 }
 
 let loaded: Promise<Cv> | null = null;

@@ -1,4 +1,4 @@
-import { statSync } from "node:fs";
+import { chmodSync, lstatSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 
@@ -37,4 +37,26 @@ export function foreignWritablePath(path: string, root: string): string | undefi
 export function trustedCacheRoot(): string {
   const root = hyperframesCacheDir();
   return foreignWritablePath(root, root) ? userCacheRoot() : root;
+}
+
+/**
+ * Takes group and world write off what this account just installed at `path`, and off the folders it
+ * sits in up to `root`, so that a umask such as 002 does not leave the install looking like another
+ * account could have written it. Symlinks and what other accounts own are left alone.
+ */
+export function sealCacheInstall(path: string, root: string): void {
+  const uid = process.getuid?.();
+  if (uid === undefined) return;
+  const seal = (at: string) => {
+    const stat = lstatSync(at, { throwIfNoEntry: false });
+    if (!stat || stat.isSymbolicLink() || stat.uid !== uid) return;
+    if ((stat.mode & 0o022) !== 0) chmodSync(at, stat.mode & 0o7755);
+    if (stat.isDirectory()) for (const name of readdirSync(at)) seal(join(at, name));
+  };
+  seal(resolve(path));
+  const top = resolve(root);
+  for (let at = dirname(resolve(path)); at === top || at.startsWith(top + sep); at = dirname(at)) {
+    const stat = statSync(at, { throwIfNoEntry: false });
+    if (stat?.uid === uid && (stat.mode & 0o022) !== 0) chmodSync(at, stat.mode & 0o7755);
+  }
 }

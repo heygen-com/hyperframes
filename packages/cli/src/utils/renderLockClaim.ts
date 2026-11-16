@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, unlinkSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, statSync, unlinkSync } from "node:fs";
 import { createFileAtomically } from "@hyperframes/core/atomic-file";
 import { readHolder, type Holder } from "./projectLock.js";
 import { liveOtherOwners, removeIfPresent, sameProcess } from "./renderLockOwners.js";
@@ -45,8 +45,32 @@ export class RenderLockUnwritable extends Error {
  * mkdir, since the umask would strip those bits.
  */
 export function ensureLockDir(dir: string, shared: boolean): void {
-  if (mkdirSync(dir, { recursive: true }) !== undefined && process.platform !== "win32") {
-    chmodSync(dir, shared ? 0o1777 : 0o700);
+  const created = mkdirSync(dir, { recursive: true }) !== undefined;
+  if (process.platform === "win32") return;
+  if (created) chmodSync(dir, shared ? 0o1777 : 0o700);
+  else if (shared) makeSticky(dir);
+  else makePrivate(dir);
+}
+
+/** Older releases made this account's own lock folder writable by every account. */
+function makePrivate(dir: string): void {
+  const stat = statSync(dir);
+  if (stat.uid === process.getuid?.() && (stat.mode & 0o077) !== 0) chmodSync(dir, 0o700);
+}
+
+const warnedNotSticky = new Set<string>();
+
+function makeSticky(dir: string): void {
+  if ((statSync(dir).mode & 0o1000) !== 0) return;
+  try {
+    chmodSync(dir, 0o1777);
+  } catch {
+    if (warnedNotSticky.has(dir)) return;
+    warnedNotSticky.add(dir);
+    console.warn(
+      `[render] ${dir} (HYPERFRAMES_RENDER_LOCK_DIR) has no sticky bit, so another account could ` +
+        `delete or replace this render's lock records. Have its owner run: chmod 1777 ${dir}`,
+    );
   }
 }
 

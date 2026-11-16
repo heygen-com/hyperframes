@@ -5,7 +5,11 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AudioAnalysisProvider, AudioSignal } from "@hyperframes/core/audio-analysis";
 import { AVAILABLE, runFile, unavailable, withWavFile } from "./shared.js";
-import { foreignWritablePath, trustedCacheRoot } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 
 const SOUND_ANALYSIS = "/System/Library/Frameworks/SoundAnalysis.framework";
 const MUSIC_UNDERSTANDING_MACOS = 27;
@@ -120,6 +124,7 @@ function compiled(name: string, source: string): Promise<string> {
         throw new Error(`could not build the ${name} helper: ${firstLine(error)}`);
       });
       await rename(`${binary}.tmp`, binary);
+      sealCacheInstall(binary, trustedCacheRoot());
       return binary;
     })();
     builds.set(binary, build);

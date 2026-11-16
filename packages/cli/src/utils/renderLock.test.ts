@@ -25,9 +25,10 @@ import { acquireRenderSlot } from "../commands/render/renderSlot.js";
 
 vi.mock("node:fs", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs")>();
-  return { ...fs, unlinkSync: vi.fn(fs.unlinkSync) };
+  return { ...fs, unlinkSync: vi.fn(fs.unlinkSync), chmodSync: vi.fn(fs.chmodSync) };
 });
-const realUnlinkSync = (await vi.importActual<typeof import("node:fs")>("node:fs")).unlinkSync;
+const { unlinkSync: realUnlinkSync, chmodSync: realChmodSync } =
+  await vi.importActual<typeof import("node:fs")>("node:fs");
 
 let dir: string;
 let path: string;
@@ -225,6 +226,45 @@ describe("acquireRenderLock", () => {
       }
     });
 
+    it("is made private again when an older release left it writable by every account", async () => {
+      mkdirSync(join(dir, "locks"));
+      chmodSync(join(dir, "locks"), 0o777);
+      const release = await acquireRenderLock({ project: "/work/a", wait: false, path, env: {} });
+      expect(statSync(join(dir, "locks")).mode & 0o7777).toBe(0o700);
+      release();
+    });
+
+    it("named by HYPERFRAMES_RENDER_LOCK_DIR gets the sticky bit when it already exists without it", async () => {
+      const shared = join(dir, "shared-locks");
+      mkdirSync(shared);
+      chmodSync(shared, 0o777);
+      const env = { HYPERFRAMES_RENDER_LOCK_DIR: shared };
+      const release = await acquireRenderLock({ project: "/work/a", wait: false, env });
+      expect(statSync(shared).mode & 0o7777).toBe(0o1777);
+      release();
+    });
+
+    it("warns once, naming the folder, when a shared lock folder it cannot change has no sticky bit", async () => {
+      const shared = join(dir, "not-ours");
+      mkdirSync(shared);
+      chmodSync(shared, 0o777);
+      const env = { HYPERFRAMES_RENDER_LOCK_DIR: shared };
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      vi.mocked(chmodSync).mockImplementation((file, mode) => {
+        if (file === shared) throw Object.assign(new Error("EPERM"), { code: "EPERM" });
+        realChmodSync(file, mode);
+      });
+      try {
+        for (let i = 0; i < 2; i++) {
+          (await acquireRenderLock({ project: "/work/a", wait: false, env }))();
+        }
+      } finally {
+        vi.mocked(chmodSync).mockImplementation(realChmodSync);
+      }
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]![0]).toContain(`chmod 1777 ${shared}`);
+    });
+
     it("says so when another account's stale lock cannot be removed from a sticky shared folder", async () => {
       const stale: RenderLockHolder = {
         pid: deadPid(),
@@ -257,6 +297,8 @@ describe("acquireRenderLock", () => {
       async () => {
         mkdirSync(join(dir, "locks"), { mode: 0o755 });
         chmodSync(join(dir, "locks"), 0o555);
+        // Another account's folder, which this render leaves as it is.
+        vi.spyOn(process, "getuid").mockReturnValue(process.getuid!() + 1);
         try {
           await expect(
             acquireRenderLock({ project: "/work/b", wait: false, path, env: {} }),

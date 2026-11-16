@@ -11,6 +11,7 @@ import { verifies, type ModelFile } from "./modelFile.js";
 import {
   foreignWritablePath,
   hyperframesCacheDir,
+  sealCacheInstall,
   trustedCacheRoot,
 } from "@hyperframes/core/cache-dir";
 import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
@@ -223,6 +224,7 @@ async function buildFromSource(
     );
   }
 
+  sealCacheInstall(BUILD_DIR, CODE_ROOT);
   const result = findBuiltBinary();
   if (!result) throw new Error("Build completed but whisper-cli not found");
   return result;

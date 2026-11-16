@@ -633,6 +633,23 @@ describe("install", () => {
         writeFileSync(join(prefix, "node_modules", name, "index.js"), body);
       };
 
+      it("is loaded on the next run when this account installed it under umask 002", async () => {
+        const { cache, dir } = setup();
+        const previous = process.umask(0o002);
+        try {
+          await install(dir, name, version, async (_args, prefix) => writePackage(prefix, "1"));
+        } finally {
+          process.umask(previous);
+        }
+        try {
+          expect(installedPackagePath(dir, name)).toBe(
+            realpathSync(join(dir, "node_modules", name, "index.js")),
+          );
+        } finally {
+          rmSync(cache, { recursive: true, force: true });
+        }
+      });
+
       it("is never loaded when another account owns it", () => {
         const { cache, dir } = setup();
         try {
