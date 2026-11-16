@@ -28,6 +28,8 @@ export interface DockerRunArgsInput {
    * byte-for-byte parity with amd64 renders.
    */
   platform?: string;
+  /** Environment read for the render-network settings forwarded into the container. Defaults to `process.env`. */
+  hostEnv?: Readonly<Record<string, string | undefined>>;
   options: DockerRenderOptions;
 }
 
@@ -106,6 +108,19 @@ export function resolveDockerPlatform(
   return arch === "arm64" ? "linux/arm64" : "linux/amd64";
 }
 
+/** Settings the in-container engine reads to restrict the render page's network, passed through as set on the host. */
+const FORWARDED_RENDER_NETWORK_ENV = [
+  "PRODUCER_RESTRICT_PAGE_NETWORK",
+  "PRODUCER_NON_PUBLIC_CIDRS",
+];
+
+function renderNetworkEnvArgs(env: Readonly<Record<string, string | undefined>>): string[] {
+  return FORWARDED_RENDER_NETWORK_ENV.flatMap((name) => {
+    const value = env[name];
+    return value?.trim() ? ["-e", `${name}=${value}`] : [];
+  });
+}
+
 // Pure argv builder — the cognitive count tracks the number of optional CLI
 // flags it forwards, not branching depth. Each conditional spread is one
 // option = O(1) to read. Inherited from main (#1196 added platform handling);
@@ -118,6 +133,7 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     "run",
     "--rm",
     ...(input.hostStdoutIsTty ? ["-e", "HYPERFRAMES_STDOUT_IS_TTY=1"] : []),
+    ...renderNetworkEnvArgs(input.hostEnv ?? process.env),
     "--platform",
     platform,
     "--shm-size=2g",

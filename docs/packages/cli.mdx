@@ -1938,6 +1938,14 @@ Low-memory detection reads **host** RAM, not cgroup or container limits, so
 containerised callers — including `--docker` — should set
 `PRODUCER_LOW_MEMORY_MODE` explicitly.
 
+`--docker` runs the render container on Docker's default network, which can
+reach your machine, your local network and the internet. It does not restrict
+what the rendered page loads unless you ask it to. When you set
+`PRODUCER_RESTRICT_PAGE_NETWORK` or `PRODUCER_NON_PUBLIC_CIDRS` in the shell
+that runs `hyperframes render --docker`, the CLI passes them into the container,
+so the render there refuses the same addresses a local render would. See
+[the producer docs](/packages/producer) for what the restriction allows.
+
 Render Chrome keeps its sandbox on macOS, on Windows, and on Linux for a
 non-root user outside a container. It runs without one as root, in Docker,
 Podman or Kubernetes, on AWS Lambda and Cloud Run, and where Linux restricts
