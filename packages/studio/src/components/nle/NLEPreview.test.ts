@@ -509,7 +509,16 @@ describe("NLEPreview", () => {
     // A host growing the preview from a quarter of its size: on screen the box is 480 x 270 for now.
     Object.defineProperty(view.viewport, "getBoundingClientRect", {
       configurable: true,
-      value: () => ({ x: 0, y: 0, left: 0, top: 0, right: 480, bottom: 270, width: 480, height: 270 }),
+      value: () => ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 480,
+        bottom: 270,
+        width: 480,
+        height: 270,
+      }),
     });
     for (const fire of resizeCallbacks) fire();
     expect([view.stage.style.width, view.stage.style.height]).toEqual(["1920px", "1080px"]);
