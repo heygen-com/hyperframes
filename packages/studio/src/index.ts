@@ -46,8 +46,6 @@ export {
 } from "./player";
 export { usePreviewIframeStore } from "./player/store/previewIframeStore";
 export { previewEditingClient, previewFrameOpaque } from "./player/lib/previewChannel";
-// A sealed (opaque) preview's elements, read over its editing port with every reply checked, and the stand-ins
-// selection code takes in place of an element it cannot touch.
 export {
   describePreviewElements,
   previewAncestors,
