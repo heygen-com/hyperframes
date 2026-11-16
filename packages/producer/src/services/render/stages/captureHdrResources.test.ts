@@ -545,6 +545,7 @@ describe("extractHdrVideoFrames", () => {
       try {
         expect(calls).toHaveLength(1);
         const args = calls[0] ?? [];
+        expect(args.slice(0, args.indexOf("-i"))).toContain("-format_whitelist");
         expect(args.slice(args.indexOf("-ss"), args.indexOf("-ss") + 2)).toEqual([
           "-ss",
           "60.000000",

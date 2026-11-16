@@ -270,6 +270,14 @@ describe("preflightCompositionAssetMediaTypes", () => {
       },
     );
 
+    it("refuses a manifest as an image source", async () => {
+      writeFileSync(
+        join(projectDir, "manifest.png"),
+        '<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011"><Period/></MPD>',
+      );
+      await expect(run({ imageSrc: "manifest.png" })).rejects.toBeInstanceOf(NotMediaPayloadError);
+    });
+
     it("leaves an SVG image source alone", async () => {
       // ffprobe reads SVG through its svg_pipe demuxer, so an XML body is a
       // legitimate <img> payload and must not be swept up by the sniff.

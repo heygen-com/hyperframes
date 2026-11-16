@@ -124,13 +124,17 @@ async function openRegular(path: string | Buffer): Promise<FileHandle | null> {
   return null;
 }
 
-/** Read up to {@link SNIFF_BYTES} from the front of the file, with its length; null when it is not a regular file. */
+/** Read up to {@link SNIFF_BYTES} from where ffmpeg starts reading (past ID3v2 tags), with the length from there; null when it is not a regular file or its tags never end. */
 async function readHead(filePath: string): Promise<{ head: Buffer; fileSize: number } | null> {
   const fh = await openRegular(filePath);
   if (!fh) return null;
   try {
     const { size } = await fh.stat();
-    return { head: await readAt(fh, SNIFF_BYTES, 0), fileSize: size };
+    const first = await readAt(fh, SNIFF_BYTES, 0);
+    const start = await textStart(fh, first);
+    if (start < 0) return null;
+    const head = start === 0 ? first : await readAt(fh, SNIFF_BYTES, start);
+    return { head, fileSize: size - start };
   } finally {
     await fh.close().catch(() => {});
   }
@@ -231,6 +235,42 @@ export async function isNotMediaPayload(filePath: string): Promise<boolean> {
 export async function assertMediaPayload(filePath: string, elementId: string): Promise<void> {
   if (await isNotMediaPayload(filePath)) {
     throw new NotMediaPayloadError([fingerprintElementId(elementId)]);
+  }
+}
+
+const IMAGE_SNIFF_BYTES = 64 * 1024;
+const MARKUP_PROLOG = /^(?:<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!doctype\b(?:[^>[]|\[[\s\S]*?\])*>)/i;
+
+function opensWithSvgRoot(markup: string): boolean {
+  let rest = markup.trimStart();
+  for (let prolog = MARKUP_PROLOG.exec(rest); prolog; prolog = MARKUP_PROLOG.exec(rest)) {
+    rest = rest.slice(prolog[0].length).trimStart();
+  }
+  return /^<svg[\s/>]/i.test(rest);
+}
+
+/**
+ * True when an `<img>` src opens as JSON or markup other than an SVG image, after the ID3v2 tags, byte order mark
+ * and blanks ffmpeg and a browser skip. A binary image passes. Like {@link isNotMediaPayload}, never throws.
+ */
+export async function isNotImagePayload(filePath: string): Promise<boolean> {
+  try {
+    const fh = await openRegular(filePath);
+    if (!fh) return true;
+    try {
+      const start = await textStart(fh, await readAt(fh, SNIFF_BYTES, 0));
+      if (start < 0) return true;
+      const text = await readAt(fh, IMAGE_SNIFF_BYTES, start);
+      let at = byteOrderMarkLength(text);
+      while (at < text.length && SKIPPABLE_LEADING_BYTES.has(text[at]!)) at++;
+      const byte = text[at];
+      if (byte === 0x7b || byte === 0x5b) return true;
+      return byte === 0x3c && !opensWithSvgRoot(text.toString("latin1", at));
+    } finally {
+      await fh.close().catch(() => {});
+    }
+  } catch {
+    return false;
   }
 }
 
@@ -388,15 +428,18 @@ function startsAsPlaylist(head: Buffer): boolean {
   return text.startsWith("#EXTM3U") || /^ffconcat\s+version/i.test(text);
 }
 
-/** The list's text as latin1, null when the file is not a list, true when it must be refused unread. One open. */
-async function readList(path: string): Promise<string | null | true> {
+/** The list's text as latin1, null when the file is not a list, true when it must be refused unread (a document, when `nested`). One open. */
+async function readList(path: string, nested: boolean): Promise<string | null | true> {
   const fh = await openRegular(Buffer.from(path, "latin1"));
   if (!fh) return true;
   try {
     const first = await readAt(fh, SNIFF_BYTES, 0);
     const start = await textStart(fh, first);
     if (start < 0) return true;
-    if (!startsAsPlaylist(start === 0 ? first : await readAt(fh, SNIFF_BYTES, start))) return null;
+    const head = start === 0 ? first : await readAt(fh, SNIFF_BYTES, start);
+    if (!startsAsPlaylist(head)) {
+      return nested && startsWithDocumentByte(head, (await fh.stat()).size - start) ? true : null;
+    }
     const body = await readAt(fh, MAX_PLAYLIST_BYTES + 1, start);
     return body.length > MAX_PLAYLIST_BYTES ? true : body.toString("latin1");
   } finally {
@@ -416,7 +459,7 @@ async function listLeaves(
   walk: Walk,
   depth: number,
 ): Promise<boolean> {
-  const text = await readList(readPath).catch((error: unknown) =>
+  const text = await readList(readPath, depth > 0).catch((error: unknown) =>
     depth > 0 && !isMissing(error) ? true : null,
   );
   if (text === null) return false;
