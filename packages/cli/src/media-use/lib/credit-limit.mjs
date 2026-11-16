@@ -20,9 +20,14 @@ export function creditLimit(projectDir) {
  *  positive finite number holds nothing, so no row counts below zero. */
 export function creditsSpent(projectDir) {
   const charged = new Map();
-  for (const row of read(join(projectDir, ".hyperframes", "heygen-jobs.jsonl")).split("\n")) {
-    if (!row) continue;
-    const { key, credits } = JSON.parse(row);
+  for (const line of read(join(projectDir, ".hyperframes", "heygen-jobs.jsonl")).split("\n")) {
+    let row;
+    try {
+      row = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const { key, credits } = Object(row);
     if (key && typeof credits === "number")
       charged.set(key, Number.isFinite(credits) && credits > 0 ? credits : 0);
   }

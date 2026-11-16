@@ -33,6 +33,11 @@ test("spent is the last credits each job key logged", () => {
   assert.deepEqual([...spent.keys], [["b", 30]]);
 });
 
+test("a malformed or null job log line is skipped", () => {
+  const rows = ['{"key":"a","credits":5}', "{not json", "null", '{"key":"b","credits":7}'];
+  assert.equal(creditsSpent(project({ "heygen-jobs.jsonl": rows.join("\n") })).total, 12);
+});
+
 test("a logged amount that is negative or not finite holds nothing", () => {
   const rows = [
     '{"key":"a","credits":-500}',
