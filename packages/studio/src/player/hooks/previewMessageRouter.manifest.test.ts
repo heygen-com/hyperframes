@@ -41,6 +41,7 @@ function routeStateTicks(opaque: boolean) {
     handle(
       new MessageEvent("message", {
         source: frame as unknown as Window,
+        origin: window.location.origin,
         data: { source: "hf-preview", type: "state", isPlaying: false },
       }),
     );

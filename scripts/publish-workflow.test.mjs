@@ -483,3 +483,12 @@ test("publishing skips only identical uploads and fails on a version it did not 
   assert.match(rerun.stdout, /::warning::/);
   assert.doesNotMatch(rerun.calls, /npm publish/);
 });
+
+test("every publish runs in the approval-gated npm-publish environment", () => {
+  assert.equal(publish.environment, "npm-publish");
+  const jobsWithEnvironment = Object.entries(config.jobs).filter(([, job]) => job.environment);
+  assert.deepEqual(
+    jobsWithEnvironment.map(([name]) => name),
+    ["publish"],
+  );
+});
