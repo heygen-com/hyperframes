@@ -42,6 +42,11 @@ function within(path: string, top: string): boolean {
   return suffix !== ".." && !suffix.startsWith(".." + sep) && !isAbsolute(suffix);
 }
 
+function linkTargetPath(path: string): string {
+  const link = readlinkSync(path);
+  return isAbsolute(link) ? link : dirname(path) + sep + link;
+}
+
 function firstWritableByAnother(
   path: string,
   top: string,
@@ -54,8 +59,7 @@ function firstWritableByAnother(
     if (stat?.isSymbolicLink()) {
       if (links.has(at)) return at;
       links.add(at);
-      const target = resolve(dirname(at), readlinkSync(at));
-      const foreign = firstWritableByAnother(target, top, uid, links);
+      const foreign = firstWritableByAnother(linkTargetPath(at), top, uid, links);
       if (foreign) return foreign;
       links.delete(at);
     }

@@ -143,6 +143,15 @@ describe.skipIf(process.platform === "win32")("foreignWritablePath", () => {
     expect(foreignWritablePath(join(root, "linked", "v1"), root)).toBe(intermediate);
   });
 
+  it("checks links traversed before a parent segment in a symlink target", () => {
+    const middle = join(root, "chrome", "middle");
+    mkdirSync(join(root, "chrome", "sibling"));
+    symlinkSync(join(root, "chrome", "sibling"), middle);
+    symlinkSync("chrome/middle/../v1", join(root, "linked"));
+    ownedByAnotherAccount.add(middle);
+    expect(foreignWritablePath(join(root, "linked", "chrome-headless-shell"), root)).toBe(middle);
+  });
+
   it("checks writable ancestors above a private immediate parent", () => {
     const cache = join(root, "private", "cache");
     mkdirSync(cache, { recursive: true, mode: 0o700 });
