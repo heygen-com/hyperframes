@@ -1,4 +1,6 @@
-import { dirname, resolve } from "node:path";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getHeapStatistics } from "node:v8";
 import { describe, expect, it } from "vitest";
@@ -49,4 +51,22 @@ describe("runHyperframeLint", () => {
     },
     30_000,
   );
+
+  it("with every worker slot taken, a waiting page is answered lint_aborted when its time is up and no extra worker starts", async () => {
+    const log = join(mkdtempSync(join(tmpdir(), "hf-lint-slots-")), "starts");
+    process.env.HF_LINT_FIXTURE_LOG = log;
+    try {
+      const limits = { workerEntry: STUCK, maxWorkers: 1 };
+      const holder = runHyperframeLint(prepared("hang"), { ...limits, timeoutMs: 1_500 });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const began = performance.now();
+      const waiter = await runHyperframeLint(prepared("hang"), { ...limits, timeoutMs: 300 });
+      expect(performance.now() - began).toBeLessThan(1_000);
+      expect(waiter.findings.map(({ code }) => code)).toEqual(["lint_aborted"]);
+      expect(readFileSync(log, "utf-8")).toBe("x");
+      expect((await holder).findings.map(({ code }) => code)).toEqual(["lint_aborted"]);
+    } finally {
+      delete process.env.HF_LINT_FIXTURE_LOG;
+    }
+  }, 30_000);
 });

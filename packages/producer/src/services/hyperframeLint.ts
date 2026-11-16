@@ -166,11 +166,43 @@ export function prepareHyperframeLintBody(
 
 const LINT_HEAP_MB = 512;
 const LINT_TIMEOUT_MS = 15_000;
+const LINT_MAX_WORKERS = 2;
+
+const waiting: Array<() => void> = [];
+let running = 0;
+
+function takeLintSlot(limit: number, waitMs: number): Promise<boolean> {
+  if (running < limit) {
+    running++;
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    const entry = () => {
+      clearTimeout(timer);
+      running++;
+      resolve(true);
+    };
+    const timer = setTimeout(
+      () => {
+        waiting.splice(waiting.indexOf(entry), 1);
+        resolve(false);
+      },
+      Math.max(0, waitMs),
+    );
+    waiting.push(entry);
+  });
+}
+
+function freeLintSlot(): void {
+  running--;
+  waiting.shift()?.();
+}
 
 export interface HyperframeLintWorkerOptions {
   workerEntry?: string;
   timeoutMs?: number;
   heapMb?: number;
+  maxWorkers?: number;
 }
 
 function resolveLintWorkerEntry(): string | undefined {
@@ -211,6 +243,11 @@ export async function runHyperframeLint(
   const entry = options.workerEntry ?? resolveLintWorkerEntry();
   if (!entry) return aborted();
 
+  const timeoutMs = options.timeoutMs ?? LINT_TIMEOUT_MS;
+  const gotSlot = await takeLintSlot(options.maxWorkers ?? LINT_MAX_WORKERS, timeoutMs);
+  if (!gotSlot) return aborted();
+  const remainingMs = Math.max(0, timeoutMs - (performance.now() - began));
+
   return new Promise<HyperframeLintResult>((resolvePromise, reject) => {
     let worker: Worker;
     try {
@@ -224,6 +261,7 @@ export async function runHyperframeLint(
         stderr: false,
       });
     } catch {
+      freeLintSlot();
       resolvePromise(aborted());
       return;
     }
@@ -232,13 +270,10 @@ export async function runHyperframeLint(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      void worker.terminate();
+      void worker.terminate().finally(freeLintSlot);
       finish();
     };
-    const timer = setTimeout(
-      () => settle(() => resolvePromise(aborted())),
-      options.timeoutMs ?? LINT_TIMEOUT_MS,
-    );
+    const timer = setTimeout(() => settle(() => resolvePromise(aborted())), remainingMs);
     worker.on("message", (message: { result?: HyperframeLintResult; error?: string }) =>
       settle(() =>
         message.result ? resolvePromise(message.result) : reject(new Error(message.error)),

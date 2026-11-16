@@ -1,7 +1,10 @@
 // Stands in for hyperframeLintWorker.ts on a page that sends the parser into a runaway: "hang" spins and never
 // answers, "alloc" allocates until the thread's heap cap ends it, "heap" answers with the thread's own heap limit.
+import { appendFileSync } from "node:fs";
 import { getHeapStatistics } from "node:v8";
 import { parentPort, workerData } from "node:worker_threads";
+
+if (process.env.HF_LINT_FIXTURE_LOG) appendFileSync(process.env.HF_LINT_FIXTURE_LOG, "x");
 
 if (workerData.html === "heap") {
   parentPort.postMessage({
