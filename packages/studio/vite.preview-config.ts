@@ -9,7 +9,12 @@ export function previewConfigPayload(
 ): Record<string, unknown> | null {
   const projectDir = env.HYPERFRAMES_PREVIEW_PROJECT_DIR;
   const projectName = env.HYPERFRAMES_PREVIEW_PROJECT_NAME;
-  if (!projectDir || !projectName) return null;
+  if (!projectDir || !projectName) {
+    // A Studio started by hand serves many projects: it proves only that it is this user's, never a project.
+    const studio = { isStudio: true };
+    const proof = challenge && previewProof(challenge.nonce, challenge.endpoint, studio);
+    return proof ? { ...studio, proof } : null;
+  }
 
   const browserGpuMode = env.HYPERFRAMES_PREVIEW_BROWSER_GPU_MODE;
   const config = {

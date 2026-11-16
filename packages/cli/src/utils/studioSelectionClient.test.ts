@@ -13,7 +13,7 @@ import {
   studioSelectionUrl,
 } from "./studioSelectionClient";
 import type { ActiveServer } from "../server/portUtils";
-import { previewProof } from "@hyperframes/core/preview-proof";
+import { previewConfigPayload } from "../../../studio/vite.preview-config";
 
 const servers: ActiveServer[] = [
   {
@@ -34,17 +34,13 @@ const servers: ActiveServer[] = [
   },
 ];
 
-// A Studio's answer to the CLI's challenge, made with this test home's own preview token.
+// The real Studio dev server's answer to the CLI's challenge, started by hand (no launch project).
 function proofResponse(url: string): Response | null {
   const { hostname, port, pathname, searchParams } = new URL(url);
   if (pathname !== "/__hyperframes_config") return null;
-  const config = { isHyperframes: true };
-  const proof = previewProof(
-    searchParams.get("nonce"),
-    { address: hostname, port: Number(port) },
-    config,
-  );
-  return new Response(JSON.stringify({ ...config, proof }), { status: 200 });
+  const endpoint = { address: hostname, port: Number(port) };
+  const answer = previewConfigPayload({}, 1, "dev", { nonce: searchParams.get("nonce"), endpoint });
+  return new Response(JSON.stringify(answer), { status: answer ? 200 : 404 });
 }
 
 function mockProjectsFetch(port = 5190): typeof fetch {

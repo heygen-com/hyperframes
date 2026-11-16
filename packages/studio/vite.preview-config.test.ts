@@ -47,6 +47,21 @@ describe("previewConfigPayload", () => {
     expect(previewConfigPayload(env, 1, "dev")).not.toHaveProperty("proof");
   });
 
+  it("proves a Studio started by hand is this user's, without claiming a project", () => {
+    const home = mkdtempSync(join(tmpdir(), "hf-vite-proof-"));
+    onTestFinished(() => rmSync(home, { recursive: true, force: true }));
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("LOCALAPPDATA", home);
+    onTestFinished(() => vi.unstubAllEnvs());
+    const nonce = newPreviewNonce();
+    const endpoint = { address: "127.0.0.1", port: 5190 };
+    const answer = previewConfigPayload({}, 1, "dev", { nonce, endpoint })!;
+
+    expect(answer).not.toHaveProperty("isHyperframes");
+    expect(answer).not.toHaveProperty("projectDir");
+    expect(provesPreviewOwner(nonce, endpoint, answer)).toBe(true);
+  });
+
   it("does not claim unrelated direct Vite sessions", () => {
     expect(previewConfigPayload({})).toBeNull();
   });
