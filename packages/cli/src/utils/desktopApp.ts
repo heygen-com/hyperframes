@@ -9,6 +9,7 @@ import { isCI } from "./attendedTerminal.js";
 import { isAgentDriven } from "../telemetry/agent_runtime.js";
 import { readRecord, removeRecord, writeRecord } from "./projectRecords.js";
 import { shellArg } from "./shellArg.js";
+import { projectEnvDir } from "./dotEnv.js";
 
 // The HyperFrames desktop app, then builds named in HYPERFRAMES_DESKTOP_BUNDLE_IDS / _APP_NAMES (comma-separated).
 const list = (name: string): string[] =>
@@ -78,11 +79,15 @@ export type DesktopOpenResult =
 const openWithBundle = (bundleId: string, dir: string): boolean =>
   spawnSync("open", ["-b", bundleId, dir], { stdio: "ignore" }).status === 0;
 
+const withoutProjectEnv = (): NodeJS.ProcessEnv =>
+  Object.fromEntries(Object.entries(process.env).filter(([name]) => !projectEnvDir(name)));
+
 /** Starts in home, not the caller's folder; a running copy gets the folder. Only a refused spawn counts as failed. */
 function launchApp(executable: string, dir: string): boolean {
   try {
     const child = spawn(executable, [dir], {
       cwd: homedir(),
+      env: withoutProjectEnv(),
       detached: true,
       stdio: "ignore",
       windowsHide: false,
