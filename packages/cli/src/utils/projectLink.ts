@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { CliRuntimeError } from "./commandResult.js";
 import { hyperframesConfigDir, seededConfigFile } from "./configDir.js";
+import { readRecord, recordKind, writeRecord } from "./projectRecords.js";
 
 interface ProjectLink {
   projectId: string;
@@ -13,13 +15,21 @@ type ProjectLinks = Record<string, ProjectLink>;
 const configDir = () => hyperframesConfigDir();
 const projectsFile = () => seededConfigFile("projects.json");
 
+/** Parse a JSON object, or null if it's not valid JSON or not an object. */
+function jsonObject(text: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 /** Read + parse a JSON object file, or null if it's missing, unreadable, or not an object. */
 function readJsonRecord(path: string): Record<string, unknown> | null {
   try {
-    if (!existsSync(path)) return null;
-    const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
-    return parsed as Record<string, unknown>;
+    return existsSync(path) ? jsonObject(readFileSync(path, "utf-8")) : null;
   } catch {
     return null;
   }
@@ -92,8 +102,20 @@ function teamProjectPath(projectDir: string): string {
   return join(resolve(projectDir), TEAM_PROJECT_DIR, TEAM_PROJECT_FILE);
 }
 
+const MAX_TEAM_PROJECT_BYTES = 64 * 1024;
+
+/** The committed descriptor, or null when there is none. A link or anything but a plain file in its place (or in
+ * place of .hyperframes) is refused, never read as absent: publish would otherwise write a new one through it. */
 export function readTeamProject(projectDir: string): TeamProject | null {
-  const record = readJsonRecord(teamProjectPath(projectDir));
+  const kind = recordKind(resolve(projectDir), TEAM_PROJECT_FILE);
+  if (kind === "absent") return null;
+  if (kind === "other")
+    throw new CliRuntimeError(
+      `${teamProjectPath(projectDir)} is a link or not a plain file, or ${TEAM_PROJECT_DIR} is not a real folder. Remove it and publish again.`,
+    );
+  const record = jsonObject(
+    readRecord(resolve(projectDir), TEAM_PROJECT_FILE, MAX_TEAM_PROJECT_BYTES),
+  );
   if (!record || typeof record.projectId !== "string" || record.projectId.length === 0) return null;
   const spaceId =
     typeof record.spaceId === "string" && record.spaceId.length > 0 ? record.spaceId : undefined;
@@ -107,7 +129,7 @@ export function writeTeamProject(projectDir: string, team: TeamProject): string 
     projectId: team.projectId,
     ...(team.spaceId ? { spaceId: team.spaceId } : {}),
   };
-  mkdirSync(join(resolve(projectDir), TEAM_PROJECT_DIR), { recursive: true });
-  writeFileSync(file, `${JSON.stringify(body, null, 2)}\n`);
+  if (!writeRecord(resolve(projectDir), TEAM_PROJECT_FILE, `${JSON.stringify(body, null, 2)}\n`))
+    throw new Error(`Could not write ${file}`);
   return file;
 }

@@ -10,6 +10,7 @@ import { resolveCredential } from "../auth/resolver.js";
 import { refreshIfNeeded, resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 import { HyperframesApiError, HyperframesCloudClient } from "../cloud/_gen/client.js";
 import { Fix } from "../measure/media.js";
+import { appendRecord } from "../utils/projectRecords.js";
 import { creditLimit, creditsSpent } from "../media-use/lib/credit-limit.mjs";
 import { cliCheckoutLink, pageUrl } from "./plan.js";
 
@@ -237,14 +238,25 @@ export interface JobLog {
   what: string;
 }
 
+const JOB_LOG = "heygen-jobs.jsonl";
+
+/** A line on the project's job log; refused, never written through, when a link or other file holds its place. */
+function appendJobLog(projectDir: string, line: Record<string, unknown>): void {
+  if (
+    !appendRecord(
+      projectDir,
+      JOB_LOG,
+      `${JSON.stringify({ at: new Date().toISOString(), ...line })}\n`,
+    )
+  )
+    throw new Fix(
+      `${join(projectDir, ".hyperframes", JOB_LOG)} could not be added to; a link or anything but a plain file there, or in place of .hyperframes, is never written through`,
+      "remove that link or file and run the same command again",
+    );
+}
+
 function log(entry: JobLog, record: Record<string, unknown>) {
-  if (!entry.projectDir) return;
-  const dir = join(entry.projectDir, ".hyperframes");
-  mkdirSync(dir, { recursive: true });
-  appendFileSync(
-    join(dir, "heygen-jobs.jsonl"),
-    `${JSON.stringify({ at: new Date().toISOString(), what: entry.what, ...record })}\n`,
-  );
+  if (entry.projectDir) appendJobLog(entry.projectDir, { what: entry.what, ...record });
 }
 
 export interface RunOptions {
@@ -420,6 +432,7 @@ export function keptVoice(projectDir: string | null, request: string): Voice | u
 }
 
 export function keepVoice(projectDir: string | null, request: string, voice: Voice): void {
+  if (projectDir) return appendJobLog(projectDir, { voice_pick: request, voice });
   const file = picksFile(projectDir);
   mkdirSync(dirname(file), { recursive: true });
   appendFileSync(

@@ -7,6 +7,7 @@ import {
   openSync,
   readSync,
   unlinkSync,
+  writeSync,
 } from "node:fs";
 import { join } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
@@ -37,9 +38,19 @@ function recordsDir(projectDir: string, name: string, create = false): string | 
 
 const recordFile = (name: string) => name.split("/").at(-1) ?? name;
 
+/** The open file's stats when `lstat` finds that same plain file at the path; null for a link, a device, or a swap.
+ * This is what holds where O_NOFOLLOW doesn't exist (Windows). */
+function plainFileAt(fd: number, path: string) {
+  const stats = fstatSync(fd);
+  const named = lstatSync(path);
+  return stats.isFile() && named.isFile() && named.ino === stats.ino && named.dev === stats.dev
+    ? stats
+    : null;
+}
+
 /** The last `maxBytes` of a plain file, and whether that is all of it; null for a link, a device, or a missing file.
- * The file is opened first and read only when `lstat` then finds the same plain file at the path, so this holds
- * where O_NOFOLLOW doesn't exist (Windows), and nothing path-based follows the check. */
+ * The file is opened first and read only when `lstat` then finds the same plain file at the path, so nothing
+ * path-based follows the check. */
 function readPlainTail(path: string, maxBytes: number): { text: string; whole: boolean } | null {
   let fd: number;
   try {
@@ -48,10 +59,8 @@ function readPlainTail(path: string, maxBytes: number): { text: string; whole: b
     return null;
   }
   try {
-    const stats = fstatSync(fd);
-    const named = lstatSync(path);
-    if (!stats.isFile() || !named.isFile() || named.ino !== stats.ino || named.dev !== stats.dev)
-      return null;
+    const stats = plainFileAt(fd, path);
+    if (!stats) return null;
     const length = Math.min(stats.size, maxBytes);
     const buffer = Buffer.alloc(length);
     readSync(fd, buffer, 0, length, stats.size - length);
@@ -106,6 +115,49 @@ export function replaceFile(path: string, data: string, mode: number): boolean {
 export function writeRecord(projectDir: string, name: string, data: string): boolean {
   const dir = recordsDir(projectDir, name, true);
   return dir !== null && replaceFile(join(dir, recordFile(name)), data, 0o600);
+}
+
+/** A line added to the end of a record that is a plain file (made owner-only when missing), in real folders all the
+ * way from .hyperframes; a link in its place is never written through. False when it could not be added. */
+export function appendRecord(projectDir: string, name: string, data: string): boolean {
+  const dir = recordsDir(projectDir, name, true);
+  if (!dir) return false;
+  const path = join(dir, recordFile(name));
+  if (recordKind(projectDir, name) === "other") return false;
+  let fd: number;
+  try {
+    const flags = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT;
+    fd = openSync(path, flags | NO_FOLLOW | NON_BLOCK, 0o600);
+  } catch {
+    return false;
+  }
+  try {
+    if (!plainFileAt(fd, path)) return false;
+    writeSync(fd, data);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/** Whether a record is missing, a plain file, or something else in its place: a link, a folder, or any level from
+ * .hyperframes down that is not a real folder. */
+export function recordKind(projectDir: string, name: string): "absent" | "file" | "other" {
+  const parts = [".hyperframes", ...name.split("/")];
+  let path = projectDir;
+  for (const [index, part] of parts.entries()) {
+    path = join(path, part);
+    try {
+      const stats = lstatSync(path, { throwIfNoEntry: false });
+      if (!stats) return "absent";
+      if (!(index === parts.length - 1 ? stats.isFile() : stats.isDirectory())) return "other";
+    } catch {
+      return "other";
+    }
+  }
+  return "file";
 }
 
 export function recordFolder(projectDir: string, folder: string): string | null {
