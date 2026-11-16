@@ -12,6 +12,7 @@ import { refusedPreviewStatus } from "@hyperframes/core/studio-preview-mark";
 import { logReload } from "../../utils/reloadDebug";
 import {
   useTimelineSyncCallbacks,
+  planShadowAlone,
   planShadowReload,
   planShadowPromotion,
   planShadowDiscard,
@@ -33,6 +34,31 @@ import { READY_TIMEOUT_CAUSE, useShadowReloadRetry } from "./useShadowReloadRetr
 export const SHADOW_READY_TIMEOUT_MS = 15_000;
 // A busy machine can need more than one budget; the shadow keeps loading for this many before it is dropped.
 export const SHADOW_READY_BUDGETS = 3;
+// A still is dropped by this time even if the new page never reports its painted seek.
+const STILL_RELEASE_MAX_MS = 3_000;
+
+/** The live frame shown as a still while its page is gone: what to drop it with, and where the live film was. */
+type HeldStill = {
+  release: () => void;
+  time: number | null;
+  playing: boolean;
+  liveSlot: PreviewIframeSlot;
+  liveIframe: HTMLIFrameElement;
+};
+
+/** Drops the still once `iframe` reports its seek painted and two frames are drawn, or after STILL_RELEASE_MAX_MS. */
+function releaseAfterPaint(iframe: HTMLIFrameElement | null, release: () => void) {
+  let done = false;
+  const go = () => {
+    if (done) return;
+    done = true;
+    release();
+  };
+  setTimeout(go, STILL_RELEASE_MAX_MS);
+  void (restoreSeekPainted(iframe) ?? Promise.resolve()).then(() =>
+    requestAnimationFrame(() => requestAnimationFrame(go)),
+  );
+}
 
 function restoreSeekPainted(iframe: HTMLIFrameElement | null): Promise<void> | undefined {
   if (!iframe) return undefined;
@@ -83,6 +109,10 @@ type UseShadowPreviewReloadParams = Omit<
   onReloadFailed?: (message: string) => void;
   /** Puts the promoted document at the live frame's time, playing if the live frame was. */
   handOverPlayback: (time: number, playing: boolean) => void;
+  /** A host that can show the live frame as a still (Desktop: a sealed page's pixels are its window's) gets a reload
+   * with one page at a time: the still covers the stage, the live page goes, the reload's page loads alone. Returns
+   * what drops the still, or null to keep both pages for this reload. */
+  holdStill?: (live: HTMLIFrameElement) => Promise<(() => void) | null>;
 };
 
 export function useShadowPreviewReload({
@@ -100,6 +130,7 @@ export function useShadowPreviewReload({
   onPromoted,
   onReloadFailed,
   handOverPlayback,
+  holdStill,
 }: UseShadowPreviewReloadParams) {
   const shadowIframeRef = useRef<HTMLIFrameElement | null>(null);
   const shadowProbeIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -127,6 +158,37 @@ export function useShadowPreviewReload({
   const retry = useShadowReloadRetry(shadowGenRef, shadowUrlRef, beginShadowReloadRef);
   const promoteWhenReadyRef = useRef<(gen: number) => void>(() => {});
   const [previewSlots, setPreviewSlots] = useState<PreviewIframeSlot[]>([{ gen: 0, role: "live" }]);
+  const slotsRef = useRef(previewSlots);
+  slotsRef.current = previewSlots;
+  const holdStillRef = useRef(holdStill);
+  holdStillRef.current = holdStill;
+  const heldRef = useRef<HeldStill | null>(null);
+  // The newest reload asked for while a still is being taken; it starts once the still is up.
+  const holdingUrlRef = useRef<string | null>(null);
+  // A composition switch or unmount while the still is taken makes its answer stale.
+  const holdTokenRef = useRef(0);
+
+  /** The live slot back, at its time, and the still dropped once its page has loaded. */
+  const restoreLive = useCallback(
+    (held: HeldStill) => {
+      setPreviewSlots([held.liveSlot]);
+      pendingSeekRef.current = held.time;
+      const until = Date.now() + SHADOW_READY_TIMEOUT_MS;
+      const watch = () => {
+        const frame = iframeRef.current;
+        if (frame && frame !== held.liveIframe && frame.isConnected) {
+          frame.addEventListener("load", () => releaseAfterPaint(frame, held.release), {
+            once: true,
+          });
+          return;
+        }
+        if (Date.now() > until) held.release();
+        else setTimeout(watch, 100);
+      };
+      watch();
+    },
+    [iframeRef, pendingSeekRef],
+  );
 
   const stopPendingShadow = useCallback(() => {
     clearTimeout(readyTimerRef.current);
@@ -153,7 +215,10 @@ export function useShadowPreviewReload({
       shadowIframeRef.current = null;
       isRefreshingRef.current = false;
       pendingSeekRef.current = null;
-      setPreviewSlots(planShadowDiscard);
+      const held = heldRef.current;
+      heldRef.current = null;
+      if (held) restoreLive(held);
+      else setPreviewSlots(planShadowDiscard);
       setPreviewReloading(false);
       const message = `The preview did not reload (${cause}). It was still waiting for ${waitingFor}.${got} The previous preview is still showing.`;
       logReload("shadow-failed", { cause, waitingFor });
@@ -163,7 +228,7 @@ export function useShadowPreviewReload({
       onReloadFailedRef.current?.(message);
       retry.afterFailure(cause, failedGen);
     },
-    [stopPendingShadow, retry, isRefreshingRef, pendingSeekRef],
+    [stopPendingShadow, retry, isRefreshingRef, pendingSeekRef, restoreLive],
   );
 
   const gestureSavesOnScreen = useCallback(() => {
@@ -195,11 +260,10 @@ export function useShadowPreviewReload({
         return waitThenRetry(gen, "gesture", (retry) =>
           afterStudioManualEditGestures(liveDoc, retry),
         );
-      if (
-        gestureSavesOnScreen() === savesAtRequestRef.current &&
-        studioFileRevision() === revisionAtRequestRef.current
-      )
-        return false;
+      // Behind a still the live page is gone, so it has no saves to count; only the file revision tells.
+      const savesSame =
+        heldRef.current !== null || gestureSavesOnScreen() === savesAtRequestRef.current;
+      if (savesSame && studioFileRevision() === revisionAtRequestRef.current) return false;
       if (isStudioEditSaving()) return waitThenRetry(gen, "save", afterStudioPendingEdits);
       logReload("shadow-reloaded-after-gesture-save", { gen });
       const url = new URL(shadowUrlRef.current, window.location.origin);
@@ -223,10 +287,13 @@ export function useShadowPreviewReload({
       if (!promotable || heldOrStale(gen)) return;
       const { shadow, pending } = promotable;
       stopPendingShadow();
-      // The live frame kept playing, stopped at the end or was seeked while the shadow loaded.
+      // The live frame kept playing, stopped at the end or was seeked while the shadow loaded; behind a still it was
+      // stopped where the still was taken.
+      const held = heldRef.current;
+      heldRef.current = null;
       const live = getAdapter();
-      const liveTime = live?.getTime();
-      const playing = usePlayerStore.getState().isPlaying;
+      const liveTime = held ? held.time : live?.getTime();
+      const playing = held ? held.playing : usePlayerStore.getState().isPlaying;
       live?.pause();
       // The store takes the new document's timeline only now that it is the one on screen, and reads it there.
       const retired = iframeRef.current;
@@ -237,6 +304,7 @@ export function useShadowPreviewReload({
       applyPreviewAudioState();
       setPreviewSlots((prev) => planShadowPromotion(prev, gen));
       if (liveTime != null) handOverPlaybackRef.current(liveTime, playing);
+      if (held) releaseAfterPaint(shadow, held.release);
       announcePreviewPromoted({ retired, live: shadow });
       onPromotedRef.current?.();
       setPreviewReloading(false);
@@ -349,8 +417,8 @@ export function useShadowPreviewReload({
     armReadyTimerRef.current(gen);
   }, []);
 
-  const beginShadowReload = useCallback(
-    (url: string) => {
+  const startShadowReload = useCallback(
+    (url: string, alone: boolean) => {
       retry.started();
       shadowGenRef.current += 1;
       const gen = shadowGenRef.current;
@@ -361,11 +429,50 @@ export function useShadowPreviewReload({
       savesAtRequestRef.current = gestureSavesOnScreen();
       revisionAtRequestRef.current = studioFileRevision();
       armReadyTimer(gen);
-      setPreviewSlots((prev) => planShadowReload(prev, gen, url));
+      setPreviewSlots((prev) =>
+        alone ? planShadowAlone(gen, url) : planShadowReload(prev, gen, url),
+      );
       // Thumbnails of the edit wait for the new preview instead of competing with it.
       setPreviewReloading(true);
     },
     [retry, stopPendingShadow, armReadyTimer, gestureSavesOnScreen],
+  );
+
+  const beginShadowReload = useCallback(
+    (url: string) => {
+      const live = iframeRef.current;
+      const take = holdStillRef.current;
+      if (heldRef.current || !take || !live?.isConnected) {
+        startShadowReload(url, heldRef.current !== null);
+        return;
+      }
+      if (holdingUrlRef.current !== null) {
+        holdingUrlRef.current = url;
+        return;
+      }
+      holdingUrlRef.current = url;
+      const token = ++holdTokenRef.current;
+      const time = getAdapter()?.getTime() ?? null;
+      const playing = usePlayerStore.getState().isPlaying;
+      const liveSlot = slotsRef.current.find((slot) => slot.role === "live");
+      void take(live)
+        // expected: a still that cannot be taken keeps both pages for this reload, as before
+        .catch(() => null)
+        .then((release) => {
+          if (token !== holdTokenRef.current) {
+            release?.();
+            return;
+          }
+          const latest = holdingUrlRef.current ?? url;
+          holdingUrlRef.current = null;
+          if (release && liveSlot && iframeRef.current === live) {
+            getAdapter()?.pause();
+            heldRef.current = { release, time, playing, liveSlot, liveIframe: live };
+          } else release?.();
+          startShadowReload(latest, heldRef.current !== null);
+        });
+    },
+    [iframeRef, getAdapter, startShadowReload],
   );
   beginShadowReloadRef.current = beginShadowReload;
 
@@ -378,7 +485,12 @@ export function useShadowPreviewReload({
     isRefreshingRef.current = false;
     pendingSeekRef.current = null;
     usePlayerStore.getState().setTimelineReady(false);
-    setPreviewSlots(planShadowDiscard);
+    const held = heldRef.current;
+    heldRef.current = null;
+    holdingUrlRef.current = null;
+    holdTokenRef.current += 1;
+    setPreviewSlots(held ? [held.liveSlot] : planShadowDiscard);
+    held?.release();
     setPreviewReloading(false);
   }, [retry, stopPendingShadow, isRefreshingRef, pendingSeekRef]);
 
@@ -397,6 +509,9 @@ export function useShadowPreviewReload({
       document.removeEventListener("visibilitychange", onVisibilityChange);
       retry.cancel();
       stopPendingShadow();
+      heldRef.current?.release();
+      heldRef.current = null;
+      holdTokenRef.current += 1;
       setPreviewReloading(false);
     };
   });

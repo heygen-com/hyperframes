@@ -51,6 +51,9 @@ export interface UseTimelinePlayerOptions {
   onShadowPromoted?: () => void;
   /** A reload was abandoned (cause in the message); the previous preview is still showing. */
   onPreviewReloadFailed?: (message: string) => void;
+  /** Shows the live frame as a still over the stage and returns what drops it, so a reload holds one page at a time;
+   * null keeps the live page beside the reload's (useShadowPreviewReload). */
+  holdPreviewStill?: (live: HTMLIFrameElement) => Promise<(() => void) | null>;
 }
 
 const publishSeek = (time: number, options?: { follow?: boolean }) =>
@@ -60,6 +63,7 @@ const publishSeek = (time: number, options?: { follow?: boolean }) =>
 export function useTimelinePlayer({
   onShadowPromoted,
   onPreviewReloadFailed,
+  holdPreviewStill,
 }: UseTimelinePlayerOptions = {}) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const rafRef = useRef<number>(0);
@@ -434,6 +438,7 @@ export function useTimelinePlayer({
     applyPreviewAudioState,
     onPromoted: onShadowPromoted,
     onReloadFailed: onPreviewReloadFailed,
+    holdStill: holdPreviewStill,
     handOverPlayback: (time, playing) => {
       // keepPlaying: move the playhead without the paused-seek audio scrub.
       seek(time, { keepPlaying: true, follow: false });

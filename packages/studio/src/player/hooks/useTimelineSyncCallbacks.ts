@@ -111,6 +111,11 @@ export function planShadowReload(
   return live ? [live, { gen: nextGen, role: "shadow", url }] : [{ gen: nextGen, role: "live" }];
 }
 
+/** The reload's page alone, its live page gone behind a host's still: one page at a time. */
+export function planShadowAlone(nextGen: number, url: string): PreviewIframeSlot[] {
+  return [{ gen: nextGen, role: "shadow", url }];
+}
+
 /** Drop any pending shadow; the live slot (and its key) is untouched. */
 export function planShadowDiscard(slots: PreviewIframeSlot[]): PreviewIframeSlot[] {
   return slots.filter((slot) => slot.role === "live");
