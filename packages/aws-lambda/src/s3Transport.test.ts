@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createHash } from "node:crypto";
 import {
   linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -127,7 +128,7 @@ describe("tar round-trip", () => {
     expect(existsSync(join(destDir, "stale.txt"))).toBe(false);
   });
 
-  it("leaves out symbolic links and keeps hard-linked files", async () => {
+  it("leaves out symbolic links and unpacks hard links as separate plain files", async () => {
     const sourceDir = join(scratchRoot, "src-links");
     const destDir = join(scratchRoot, "dest-links");
     const tarPath = join(scratchRoot, "links.tar");
@@ -143,8 +144,14 @@ describe("tar round-trip", () => {
     tar.create({ file: tarPath, cwd: sourceDir, sync: true }, ["."]);
     await untarDirectory(tarPath, destDir);
 
+    const types: string[] = [];
+    tar.list({ file: tarPath, sync: true, onReadEntry: (entry) => types.push(entry.type) });
+    expect(types).toEqual(expect.arrayContaining(["Link", "SymbolicLink"]));
     expect(readdirSync(destDir).sort()).toEqual(["a.txt", "b.txt"]);
-    expect(readFileSync(join(destDir, "b.txt"), "utf-8")).toBe("shared");
+    for (const name of ["a.txt", "b.txt"]) {
+      expect(readFileSync(join(destDir, name), "utf-8")).toBe("shared");
+      expect(lstatSync(join(destDir, name)).nlink).toBe(1);
+    }
   });
 });
 

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import {
   existsSync,
   linkSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -101,7 +102,7 @@ describe("tarDirectory / untarDirectory", () => {
     expect(readFileSync(join(dest, "keep.txt"), "utf8")).toBe("new");
   });
 
-  it("untar leaves out symbolic links and keeps hard-linked files", async () => {
+  it("untar leaves out symbolic links and unpacks hard links as separate plain files", async () => {
     const src = mkTmp("hf-tar-links-");
     const outside = mkTmp("hf-tar-outside-");
     writeFileSync(join(outside, "secret.txt"), "OUTSIDE");
@@ -116,8 +117,14 @@ describe("tarDirectory / untarDirectory", () => {
 
     const dest = join(work, "extracted");
     await untarDirectory(tarball, dest);
+    const types: string[] = [];
+    tar.list({ file: tarball, sync: true, onReadEntry: (entry) => types.push(entry.type) });
+    expect(types).toEqual(expect.arrayContaining(["Link", "SymbolicLink"]));
     expect(readdirSync(dest).sort()).toEqual(["a.txt", "b.txt"]);
-    expect(readFileSync(join(dest, "b.txt"), "utf8")).toBe("shared");
+    for (const name of ["a.txt", "b.txt"]) {
+      expect(readFileSync(join(dest, name), "utf8")).toBe("shared");
+      expect(lstatSync(join(dest, name)).nlink).toBe(1);
+    }
   });
 });
 

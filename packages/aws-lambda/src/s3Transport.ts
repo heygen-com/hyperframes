@@ -19,15 +19,20 @@
 
 import {
   createReadStream,
+  copyFileSync,
   createWriteStream,
   existsSync,
+  lstatSync,
   mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  renameSync,
   type ReadStream,
   rmSync,
   statSync,
 } from "node:fs";
 import { createHash, type Hash } from "node:crypto";
-import { dirname } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import {
   AbortMultipartUploadCommand,
@@ -692,7 +697,7 @@ export async function tarDirectory(
   );
 }
 
-// Symbolic links could point anywhere on this machine; node-tar keeps hard links inside the folder.
+// Symbolic links could point anywhere on this machine; hard links are unpacked, then made copies.
 const UNPACKED_ENTRY_TYPES: ReadonlySet<string> = new Set([
   "File",
   "OldFile",
@@ -700,6 +705,31 @@ const UNPACKED_ENTRY_TYPES: ReadonlySet<string> = new Set([
   "Directory",
   "Link",
 ]);
+
+function hardLinkedFiles(dir: string, found: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) hardLinkedFiles(path, found);
+    else if (entry.isFile() && lstatSync(path).nlink > 1) found.push(path);
+  }
+  return found;
+}
+
+function copyHardLinkedFiles(destDir: string): void {
+  const linked = hardLinkedFiles(destDir);
+  if (linked.length === 0) return;
+  const scratch = mkdtempSync(join(destDir, ".unlink-"));
+  try {
+    for (const path of linked) {
+      if (lstatSync(path).nlink === 1) continue;
+      const copy = join(scratch, basename(path));
+      copyFileSync(path, copy);
+      renameSync(copy, path);
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
 
 /**
  * Extract a `.tar.gz` produced by {@link tarDirectory} into `destDir`.
@@ -718,11 +748,17 @@ export async function untarDirectory(tarballPath: string, destDir: string): Prom
     rmSync(destDir, { recursive: true, force: true });
   }
   mkdirSync(destDir, { recursive: true });
+  let sawHardLink = false;
   await tar.extract({
     file: tarballPath,
     cwd: destDir,
-    filter: (_path, entry) => "type" in entry && UNPACKED_ENTRY_TYPES.has(entry.type),
+    filter: (_path, entry) => {
+      if (!("type" in entry) || !UNPACKED_ENTRY_TYPES.has(entry.type)) return false;
+      sawHardLink ||= entry.type === "Link";
+      return true;
+    },
   });
+  if (sawHardLink) copyHardLinkedFiles(destDir);
 }
 
 export async function putProbeFacts(
