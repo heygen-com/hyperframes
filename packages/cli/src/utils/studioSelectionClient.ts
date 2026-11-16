@@ -166,6 +166,7 @@ async function findViteStudioServerForProject(
           projectDir: project.dir,
           version: "studio-dev",
           pid: null,
+          proven: true,
         };
       } catch {
         // Not a Vite-served Studio on this host/port, or unreachable. Try next.
