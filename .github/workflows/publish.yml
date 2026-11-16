@@ -42,22 +42,22 @@ jobs:
       (github.event.pull_request.merged == true &&
        startsWith(github.event.pull_request.head.ref, 'release/v'))
     steps:
-      # A prerelease tag can name any commit, one nobody reviewed included; every job after this builds what it names.
-      - name: Check the tagged commit is on main
+      # A prerelease tag can name any commit; every job after this builds what it names. Alphas are cut from main,
+      # next or alpha (release-channels.mdx), so the tagged commit must already be on one of them.
+      - name: Check the tagged commit is on main, next or alpha
         if: github.event_name == 'push'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TAGGED: ${{ github.sha }}
         run: |
-          status="$(gh api "repos/$REPO/compare/main...$TAGGED" --jq .status)"
-          case "$status" in
-            identical | behind) ;;
-            *)
-              echo "::error::v-tag commit $TAGGED is not on main ($status); only reviewed main commits publish"
-              exit 1
-              ;;
-          esac
+          for branch in main next alpha; do
+            # A branch that does not exist answers 404; that branch holds nothing.
+            status="$(gh api "repos/$REPO/compare/$branch...$TAGGED" --jq .status 2>/dev/null)" || continue
+            case "$status" in identical | behind) exit 0 ;; esac
+          done
+          echo "::error::the tagged commit $TAGGED is not an ancestor of main, next or alpha, so it does not publish"
+          exit 1
 
   lambda-arm64-ffmpeg:
     name: Lambda arm64 ffmpeg

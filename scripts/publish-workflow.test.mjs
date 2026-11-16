@@ -706,31 +706,45 @@ test("both tarball checks pass before the release tag or anything else is writte
   );
 });
 
-test("a tag publishes only a commit already on main, before any job builds it", () => {
+test("a tag publishes only a commit already on main, next or alpha, before any job builds it", () => {
   const source = config.jobs["release-source"];
   assert.ok(source, "missing the release-source job");
   for (const name of ["lambda-arm64-ffmpeg", "lambda-handler-zip"]) {
     assert.deepEqual(config.jobs[name].needs, ["release-source"], name);
   }
   assert.deepEqual(pack.needs.sort(), ["lambda-arm64-ffmpeg", "lambda-handler-zip"]);
-  const step = stepOf(source, "Check the tagged commit is on main");
+  const step = stepOf(source, "Check the tagged commit is on main, next or alpha");
   assert.equal(step.if, "github.event_name == 'push'");
   const bin = mkdtempSync(join(tmpdir(), "hyperframes-fake-gh-"));
   try {
-    writeFileSync(join(bin, "gh"), '#!/bin/sh\necho "$FAKE_STATUS"\n');
+    // The fake answers compare/<branch>...<sha> from FAKE_<branch>; an unset branch answers like a 404.
+    writeFileSync(
+      join(bin, "gh"),
+      '#!/bin/sh\nb="${2#*compare/}"; b="${b%%...*}"\neval "v=\\${FAKE_$b-}"\n[ -n "$v" ] || exit 1\necho "$v"\n',
+    );
     chmodSync(join(bin, "gh"), 0o755);
-    const status = (FAKE_STATUS) =>
+    const status = (branches) =>
       runStep(step, {
         cwd: bin,
-        env: { FAKE_STATUS, REPO: "heygen-com/hyperframes", TAGGED: "abc" },
+        env: {
+          REPO: "heygen-com/hyperframes",
+          TAGGED: "abc",
+          ...Object.fromEntries(Object.entries(branches).map(([b, v]) => [`FAKE_${b}`, v])),
+        },
         path: `${bin}:${process.env.PATH}`,
       }).status;
-    assert.equal(status("identical"), 0);
-    assert.equal(status("behind"), 0);
-    // fails without the fix: a v*-* tag on an unreviewed branch commit went on to build and publish.
-    assert.equal(status("ahead"), 1);
-    assert.equal(status("diverged"), 1);
-    assert.equal(status(""), 1);
+    assert.equal(status({ main: "identical" }), 0);
+    assert.equal(status({ main: "behind" }), 0);
+    assert.equal(
+      status({ main: "diverged", next: "behind" }),
+      0,
+      "a commit on next publishes an alpha",
+    );
+    assert.equal(status({ main: "ahead", next: "diverged", alpha: "identical" }), 0);
+    // fails without the fix: a v*-* tag on any other commit went on to build and publish.
+    assert.equal(status({ main: "ahead", next: "diverged" }), 1, "a commit on no allowed branch");
+    assert.equal(status({ main: "diverged", next: "ahead", alpha: "ahead" }), 1);
+    assert.equal(status({}), 1, "no branch answers");
   } finally {
     rmSync(bin, { recursive: true, force: true });
   }
