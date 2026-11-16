@@ -35,7 +35,6 @@ import {
   isWithinProjectRoot,
   localAbsoluteAssetFile,
   maskNonScannableRanges,
-  readProjectFile,
   resolveCompositionSrc,
   resolveExistingLocalAsset,
   resolveLocalAssetCandidates,
@@ -50,6 +49,7 @@ import {
   lintVideoMediaStartPastEof,
 } from "./hevcPreviewLint.js";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
+import { readLinkedProjectFile } from "./linkedFile.js";
 import { collectGoogleFontFamilies, extractFontFaceFamilies } from "./rules/fonts.js";
 import { lintProjectShaderScripts } from "./projectShaders.js";
 import type {
@@ -132,6 +132,12 @@ function staysInsideProjectRoot(href: string): boolean {
   return !href.startsWith("/") && !href.split("/").includes("..");
 }
 
+const STYLESHEET_EXTENSIONS = new Set([".css"]);
+const SCRIPT_EXTENSIONS = new Set([".js", ".mjs", ".cjs"]);
+const IMPORT_MAP_EXTENSIONS = new Set([".json", ".importmap"]);
+const hasExtension = (path: string, kinds: ReadonlySet<string>) =>
+  kinds.has(extname(path).toLowerCase());
+
 function collectLocalStylesheets(
   projectDir: string,
   document: ParentNode,
@@ -149,8 +155,8 @@ function collectLocalStylesheets(
       (compSrcPath && staysInsideProjectRoot(href)
         ? resolveExistingLocalAsset(projectDir, href)
         : null);
-    if (!stylesheet) continue;
-    const read = readProjectFile(stylesheet.resolved);
+    if (!stylesheet || !hasExtension(stylesheet.resolved, STYLESHEET_EXTENSIONS)) continue;
+    const read = readLinkedProjectFile(projectDir, stylesheet.resolved);
     if (read.kind !== "file") continue;
     styles.push({ href, content: read.text, rootRelativePath: stylesheet.rootRelativePath });
   }
@@ -218,7 +224,12 @@ function collectExternalScripts(
       }
       continue;
     }
-    const read = readProjectFile(script.resolved);
+    const kinds =
+      element.getAttribute("type")?.trim().toLowerCase() === "importmap"
+        ? IMPORT_MAP_EXTENSIONS
+        : SCRIPT_EXTENSIONS;
+    if (!hasExtension(script.resolved, kinds)) continue;
+    const read = readLinkedProjectFile(projectDir, script.resolved);
     if (read.kind !== "file" || read.text.length > MAX_EXTERNAL_SCRIPT_BYTES) continue;
     const attrs = Array.from(element.attributes)
       .map(({ name, value }) => `${name}="${value.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"`)
@@ -293,7 +304,7 @@ function mountedSources(
       const path = resolve(projectDir, src);
       if (seen.has(path) || !isWithinProjectRoot(projectDir, path)) continue;
       seen.add(path);
-      const read = readProjectFile(path);
+      const read = readLinkedProjectFile(projectDir, path);
       if (read.kind !== "file") continue;
       sources.push({
         html: read.text,
@@ -866,7 +877,7 @@ function collectMainTimelineAudio(projectDir: string, rootHtml: string): AudioSp
       const file = src && !isUnresolvedAssetPlaceholder(src) && !isRemoteOrInlineUrl(src);
       const filePath = file ? resolveCompositionSrc(projectDir, src) : null;
       if (filePath && !at.mounting.includes(filePath)) {
-        const read = readProjectFile(filePath);
+        const read = readLinkedProjectFile(projectDir, filePath);
         if (read.kind === "file")
           mount(read.text, { ...inner, mounting: [...at.mounting, filePath] });
       }
@@ -998,7 +1009,7 @@ function lintMissingOrEmptySubComposition(
       if (visited.has(filePath)) continue;
       visited.add(filePath);
 
-      const read = readProjectFile(filePath);
+      const read = readLinkedProjectFile(projectDir, filePath);
       if (read.kind === "missing") {
         if (!checked.has(srcPath)) {
           checked.set(srcPath, { srcPath, problem: "the file does not exist" });

@@ -25,6 +25,7 @@ export default defineConfig({
     mediaAlpha: "src/mediaAlpha.ts",
     mediaStreams: "src/mediaStreams.ts",
     assetResolution: "src/assetResolution.ts",
+    privatePath: "src/privatePath.ts",
     htmlAttributeSpans: "src/htmlAttributeSpans.ts",
     timeSpans: "src/timeSpans.ts",
     mediaTiming: "src/mediaTiming.ts",

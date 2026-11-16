@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import {
   DELETED_VERSION,
   fileContentVersion,
@@ -248,9 +249,9 @@ async function inFirstCopySlot<T>(copy: () => Promise<T>): Promise<T> {
 const MEDIA_LEDGER = ".media/manifest.jsonl";
 const KEPT_HIDDEN_PATHS = new Set<string>([...STUDIO_SIGNATURE_MANIFEST_PATHS, MEDIA_LEDGER]);
 
-/** A hidden name (a tool's own record, .DS_Store) is nobody's work, except the kept ones above; nor is a path out. */
+/** A hidden name (a tool's own record) is nobody's work, except the kept ones above; nor is a path out or a private file. */
 function isHistoryPath(path: string): boolean {
-  if (!isRelativeProjectPath(path)) return false;
+  if (!isRelativeProjectPath(path) || isStudioPrivatePath(path)) return false;
   if (KEPT_HIDDEN_PATHS.has(path)) return true;
   return !path.split("/").some((segment) => segment.startsWith("."));
 }
@@ -269,6 +270,13 @@ function listOf(log: HistoryLog): HistoryListItem[] {
 function peekOf(log: HistoryLog, point: string): Record<string, string> | null {
   const files = manifestAt(log, point);
   return files && Object.fromEntries(files);
+}
+
+function namesBlob(log: HistoryLog, hash: string): boolean {
+  for (const kept of log.baseline.values()) if (kept === hash) return true;
+  return log.entries.some((entry) =>
+    entry.files.some((file) => file.before === hash || file.after === hash),
+  );
 }
 
 function withoutHiddenPaths(log: HistoryLog): HistoryLog {
@@ -1478,6 +1486,7 @@ class Engine {
       },
       readBlob: async (hash) => {
         this.assertOpen();
+        if (!namesBlob(this.log, hash)) throw new Error("That file is not kept in this history.");
         return this.blobs.read(hash);
       },
       pin: (id, pinned) => {
@@ -1594,7 +1603,7 @@ export function readProjectHistory(
     list: () => listOf(log),
     peek: (point) => peekOf(log, point),
     readBlob: async (hash) => {
-      if (!home) throw new Error("That is not a history blob.");
+      if (!home || !namesBlob(log, hash)) throw new Error("That is not a history blob.");
       return readBlob(join(home, "blobs"), hash);
     },
   };
