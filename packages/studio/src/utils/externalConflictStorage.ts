@@ -162,13 +162,19 @@ export async function loadExternalConflictSnapshot(
   projectId: string,
   filePath: string,
 ): Promise<ExternalConflictSnapshot | null> {
-  const record = await indexedDbStorage.get(projectId, filePath);
-  if (!record) return null;
-  const forThisKey = record.projectId === projectId && record.filePath === filePath;
-  if (forThisKey && Math.abs(Date.now() - record.createdAt) <= UNRESOLVED_DRAFT_MAX_AGE_MS)
-    return record;
-  await indexedDbStorage.delete(projectId, filePath).catch(() => undefined);
-  return null;
+  const isCurrent = (record?: ExternalConflictSnapshot): record is ExternalConflictSnapshot =>
+    record?.projectId === projectId &&
+    record.filePath === filePath &&
+    typeof record.createdAt === "number" &&
+    Math.abs(Date.now() - record.createdAt) <= UNRESOLVED_DRAFT_MAX_AGE_MS;
+  const record = await withStore<ExternalConflictSnapshot | undefined>("readwrite", (store) => {
+    const request = store.get(key(projectId, filePath));
+    request.addEventListener("success", () => {
+      if (request.result && !isCurrent(request.result)) store.delete(key(projectId, filePath));
+    });
+    return request;
+  });
+  return isCurrent(record) ? record : null;
 }
 
 export async function deleteExternalConflictSnapshot(

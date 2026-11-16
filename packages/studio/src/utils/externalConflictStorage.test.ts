@@ -134,6 +134,35 @@ describe("external conflict snapshots", () => {
     await expect(readRawRecord("project-b", "index.html")).resolves.toBeUndefined();
   });
 
+  it("keeps a fresh draft another tab saves while an expired one is being cleared", async () => {
+    await plantRecord("project-b", "index.html", {
+      ...genuineRecord(),
+      createdAt: Date.now() - 31 * DAY_MS,
+    });
+    const conflict = new StudioFileConflictError({
+      filePath: "index.html",
+      currentVersion: "v3",
+      currentContent: "external",
+      attemptedContent: "fresh draft",
+    });
+
+    const loading = loadExternalConflictSnapshot("project-b", "index.html");
+    const saving = persistExternalConflictSnapshot("project-b", conflict);
+    await Promise.all([loading, saving]);
+
+    await expect(readRawRecord("project-b", "index.html")).resolves.toMatchObject({
+      studioContent: "fresh draft",
+    });
+  });
+
+  it("refuses a creation time stored as a string", async () => {
+    await plantRecord("project-b", "index.html", {
+      ...genuineRecord(),
+      createdAt: String(Date.now()),
+    });
+    await expect(loadExternalConflictSnapshot("project-b", "index.html")).resolves.toBeNull();
+  });
+
   it("recovers a genuine draft up to 30 days old", async () => {
     const record = genuineRecord({ createdAt: Date.now() - 29 * DAY_MS });
     await plantRecord("project-b", "index.html", record);
