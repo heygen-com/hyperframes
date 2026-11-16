@@ -1,4 +1,5 @@
 import type { Browser } from "puppeteer-core";
+import { registerBrowserSessionCleanup } from "./launch.js";
 
 export interface PageNetworkLaunch {
   args: string[];
@@ -20,11 +21,16 @@ export async function launchWithPageNetwork(
   const { rm } = await import("node:fs/promises");
   const proxy = await startCaptureProxy(null, logRefusal);
   let userDataDir: string | undefined;
-  const release = async () => {
-    await proxy.close();
-    if (userDataDir) await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
-  };
+  let released: Promise<void> | undefined;
+  let stopWatching = () => {};
+  const release = () =>
+    (released ??= (async () => {
+      stopWatching();
+      await proxy.close();
+      if (userDataDir) await rm(userDataDir, { recursive: true, force: true }).catch(() => {});
+    })());
   try {
+    stopWatching = registerBrowserSessionCleanup(release);
     userDataDir = await createPublicOnlyProfile("hf-cli-profile-");
     const browser = await launch({
       args: browserProxyArgs(proxy.url, new URL(pageUrl).host),
