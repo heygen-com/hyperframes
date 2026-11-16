@@ -159,9 +159,44 @@ describe("a reload behind the host's still", () => {
     unmount(harness.root);
   });
 
-  it("keeps both pages for a reload when the host has no still to show", async () => {
-    const { getApi, root } = await reloadWithStill(async () => null);
-    expect(getApi().previewSlots.map((slot) => slot.role)).toEqual(["live", "shadow"]);
-    unmount(root);
+  it("keeps both pages for a reload when the host has no still to show, and a playing preview plays on", async () => {
+    const harness = renderTimelinePlayerHarness({ holdPreviewStill: async () => null });
+    const { adapter, win } = makeAdapterWindow();
+    adapter.play = vi.fn(adapter.play);
+    act(() => {
+      harness.getApi().iframeRef.current = makeFakeIframe(win);
+      harness.getApi().onIframeLoad();
+    });
+    act(() => usePlayerStore.getState().setIsPlaying(true));
+    await act(async () => {
+      harness.getApi().refreshPlayer();
+      await Promise.resolve();
+    });
+    expect(harness.getApi().previewSlots.map((slot) => slot.role)).toEqual(["live", "shadow"]);
+    expect(adapter.play).toHaveBeenCalled();
+    unmount(harness.root);
+  });
+
+  it("pauses a playing preview before the still is taken, so the reload resumes from the frame it shows", async () => {
+    const order: string[] = [];
+    const harness = renderTimelinePlayerHarness({
+      holdPreviewStill: async () => {
+        order.push("still");
+        return () => {};
+      },
+    });
+    const { adapter, win } = makeAdapterWindow();
+    act(() => {
+      harness.getApi().iframeRef.current = makeFakeIframe(win);
+      harness.getApi().onIframeLoad();
+    });
+    act(() => usePlayerStore.getState().setIsPlaying(true));
+    adapter.pause = vi.fn(() => void order.push("pause"));
+    await act(async () => {
+      harness.getApi().refreshPlayer();
+      await Promise.resolve();
+    });
+    expect(order).toEqual(["pause", "still"]);
+    unmount(harness.root);
   });
 });

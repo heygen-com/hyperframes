@@ -444,8 +444,10 @@ export function useShadowPreviewReload({
       }
       holdingUrlRef.current = url;
       const token = ++holdTokenRef.current;
-      const time = getAdapter()?.getTime() ?? null;
+      // Paused first, so the still is the frame the reload resumes from.
       const playing = usePlayerStore.getState().isPlaying;
+      getAdapter()?.pause();
+      const time = getAdapter()?.getTime() ?? null;
       const liveSlot = slotsRef.current.find((slot) => slot.role === "live");
       void take(live)
         // expected: a still that cannot be taken keeps both pages for this reload, as before
@@ -458,9 +460,11 @@ export function useShadowPreviewReload({
           const latest = holdingUrlRef.current ?? url;
           holdingUrlRef.current = null;
           if (release && liveSlot && iframeRef.current === live) {
-            getAdapter()?.pause();
             heldRef.current = { release, time, playing, liveSlot, liveIframe: live };
-          } else release?.();
+          } else {
+            release?.();
+            if (playing) getAdapter()?.play();
+          }
           startShadowReload(latest, heldRef.current !== null);
         });
     },
