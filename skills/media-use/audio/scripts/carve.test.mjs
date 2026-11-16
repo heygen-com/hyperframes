@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ import {
   carveSources,
   groupSourceRefusal,
   loadCore,
+  NEEDS_CORE,
   parseArgs,
 } from "./carve.mjs";
 
@@ -199,6 +200,45 @@ test("the CLI still runs when invoked through a symlinked path", () => {
     // the broken guard's symptom is a silent exit 0 with no output.
     assert.equal(status, 1, `expected the usage error, got status ${status}`);
     assert.match(stderr, /--comp is required/);
+  });
+});
+
+// fails without the fix: a direct run resolved @hyperframes/core from the composition's
+// folder, so a project someone else made could ship its own and have it run.
+test("run directly, it never loads a @hyperframes/core the project ships", () => {
+  return inTempDir((dir) => {
+    const marker = join(dir, "planted-core-ran");
+    const pkgDir = join(dir, "node_modules", "@hyperframes", "core");
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "received-project" }));
+    writeFileSync(join(dir, "index.html"), '<audio id="music" src="m.wav"></audio>');
+    writeFileSync(
+      join(pkgDir, "package.json"),
+      JSON.stringify({
+        name: "@hyperframes/core",
+        main: "./index.js",
+        exports: { "./*": "./index.js" },
+      }),
+    );
+    writeFileSync(
+      join(pkgDir, "index.js"),
+      `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "ran");`,
+    );
+    let status = 0;
+    let stderr = "";
+    try {
+      execFileSync(process.execPath, [join(SCRIPTS_DIR, "carve.mjs"), "--comp", "index.html"], {
+        cwd: dir,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      status = error.status;
+      stderr = String(error.stderr);
+    }
+    assert.equal(status, 1);
+    assert.equal(stderr.trim(), NEEDS_CORE);
+    assert.equal(existsSync(marker), false, "the project's @hyperframes/core ran");
   });
 });
 

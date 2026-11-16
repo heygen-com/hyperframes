@@ -30,7 +30,7 @@ can also sit on an `<hf-audio-group>`, where they apply to the group's whole bus
 **Write the JSON attributes double-quoted, escaping the JSON's own quotes as
 `&quot;` and `&` as `&amp;`** — as every example on this page does. The browser
 reads them through `getAttribute` and does not mind either way, but
-`carve.mjs` finds them with a `name="..."` regex, so a single-quoted
+the carve finds them with a `name="..."` regex, so a single-quoted
 attribute is invisible to it: a carve reports no existing chain and overwrites
 work it could not see.
 
@@ -479,10 +479,8 @@ effect and lane you built by hand exactly where it was.
 
 ### From the command line
 
-The script ships with the `media-use` skill; `<SKILL_DIR>` is that skill's folder.
-
 ```bash
-node <SKILL_DIR>/audio/scripts/carve.mjs --comp index.html
+npx hyperframes media-use carve --comp index.html
 ```
 
 That is the whole command — it finds the voice and the bed itself and prints what

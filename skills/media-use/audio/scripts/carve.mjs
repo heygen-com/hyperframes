@@ -18,10 +18,10 @@
  * voice is analysed together, so a bed running under a narrator and an answer makes
  * room for both.
  *
- * Needs `ffmpeg` on PATH (to decode the audio) and `@hyperframes/core` resolvable
- * from the composition's project (`npm i -D @hyperframes/core`) — the CLI bundles
- * core inline rather than shipping it as a package, so it cannot be borrowed from
- * there.
+ * Run it as `npx hyperframes media-use carve`, which hands this script the CLI's
+ * own analysis and FFmpeg. Run directly, it needs `--core <dir>` naming a
+ * `@hyperframes/core` the person installed: a project someone else made can ship
+ * its own `node_modules`, so the project is never searched for one.
  */
 
 import "../../scripts/lib/windows-exe-search.mjs";
@@ -46,7 +46,7 @@ const usage = `carve.mjs --comp <file.html> [--bed <elementId>] [--voice <elemen
   --voice     id of a voice to make room for; repeatable (detected if omitted)
   --strength  how hard to carve, 0..1 (default ${DEFAULT_STRENGTH})
   --dry-run   report what it would write, touch nothing
-  --core      directory to resolve @hyperframes/core from (default: the comp's)`;
+  --core      directory to resolve @hyperframes/core from (direct runs only)`;
 
 export function parseArgs(argv) {
   const args = { strength: DEFAULT_STRENGTH, dryRun: false, voices: [] };
@@ -82,9 +82,7 @@ function fail(message, code = 1) {
 /**
  * Load the carve analysis out of `@hyperframes/core`.
  *
- * Resolved from the project rather than from this script, which lives wherever
- * the skill was installed — a sibling of the composition is what has the
- * dependency.
+ * Resolved from the `--core` directory the person names, never from the project.
  */
 export async function loadCore(fromDir) {
   const require = createRequire(pathToFileURL(resolve(fromDir, "package.json")));
@@ -241,11 +239,11 @@ export function groupSourceRefusal(voices, bed, members) {
 }
 
 /** Mono float PCM for one media file, via ffmpeg. */
-function decode(path) {
+function decode(path, ffmpeg) {
   let raw;
   try {
     raw = execFileSync(
-      "ffmpeg",
+      ffmpeg,
       [
         "-v",
         "error",
@@ -379,11 +377,15 @@ const startOf = (tag) => {
   return Number.isFinite(raw) ? raw : 0;
 };
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
+/**
+ * Carves the composition `argv` names, with the carve and fx modules of
+ * `@hyperframes/core` in `core` and the FFmpeg at `ffmpeg`.
+ */
+export async function carveComposition(argv, core, ffmpeg = "ffmpeg") {
+  const args = parseArgs(argv);
   const compPath = resolve(args.comp);
   const compDir = dirname(compPath);
-  const { carve: carveApi, fx: fxApi } = await loadCore(args.core ? resolve(args.core) : compDir);
+  const { carve: carveApi, fx: fxApi } = core;
 
   const html = readFileSync(compPath, "utf-8");
   const {
@@ -415,7 +417,7 @@ async function main() {
   // when the answer comes from several people at different times.
   const voice = carveApi.mixCarveSources(
     voices.map((v) => ({
-      samples: decode(resolve(compDir, unescapeAttr(attrOf(v.tag, "src")))),
+      samples: decode(resolve(compDir, unescapeAttr(attrOf(v.tag, "src"))), ffmpeg),
       offsetSeconds: startOf(v.tag) - startOf(bedTag),
     })),
     SAMPLE_RATE,
@@ -426,7 +428,7 @@ async function main() {
   // The level half of the carve needs both sides: "how far over the speech is this
   // bed" cannot be answered by listening to one of them. No offset — the mix is
   // already on the bed's clock.
-  const bed = profile.duckDb > 0 ? decode(resolve(compDir, unescapeAttr(bedSrc))) : null;
+  const bed = profile.duckDb > 0 ? decode(resolve(compDir, unescapeAttr(bedSrc)), ffmpeg) : null;
   const duck = bed ? carveApi.analyseCarveDuck(voice, bed, SAMPLE_RATE, profile, 0) : [];
 
   // Anything the author built by hand survives a carve; only the previous
@@ -556,6 +558,18 @@ async function main() {
 
 // Only run as a CLI. Guarded so the pure helpers above can be unit-tested by
 // importing this module (`skills/**/*.test.mjs`, run by `bun run test:skills`).
+export const NEEDS_CORE =
+  "carve.mjs does not load @hyperframes/core from the project.\n" +
+  "  run it through the CLI:  npx hyperframes media-use carve --comp <file.html>\n" +
+  "  or name one you installed:  --core <dir containing node_modules/@hyperframes/core>";
+
+async function main() {
+  const argv = process.argv.slice(2);
+  const args = parseArgs(argv);
+  if (!args.core) fail(NEEDS_CORE);
+  await carveComposition(argv, await loadCore(resolve(args.core)));
+}
+
 if (isMainModule(import.meta.url)) {
   await main();
 }

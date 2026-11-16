@@ -120,6 +120,7 @@ export function createMediaUseCommand(invoke: InvokeMediaUse = invokeEngine) {
     generate: () => import("./media-use/generate.js").then((m) => m.default),
     voices: () => import("./media-use/voices.js").then((m) => m.default),
     avatars: () => import("./media-use/avatars.js").then((m) => m.default),
+    carve: () => import("./media-use/carve.js").then((m) => m.default),
   };
   return defineCommand({
     meta: { name: "media-use", description: "Resolve and operate on project media" },

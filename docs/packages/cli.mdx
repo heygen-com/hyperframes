@@ -666,6 +666,9 @@ npx hyperframes media-use resolve --type image --from ./photo.jpg
 npx hyperframes media-use voices
 npx hyperframes media-use avatars --limit 10
 
+# Make room in the music bed for the voices over it
+npx hyperframes media-use carve --comp index.html --dry-run
+
 # Check the setup, and see what has been used
 npx hyperframes media-use doctor
 npx hyperframes media-use stats --days 7
@@ -684,6 +687,7 @@ file yourself.
 | `analyze`    | Measure an image or video and print suggested exposure and color corrections, saving nothing. Needs `--type grade --for <file>`                                           |
 | `voices`     | List the voice clones on the HyperFrames account you are signed in with, for `--voice` in `generate`. Never lists the separate `heygen` CLI's account |
 | `avatars`    | List the avatar looks on the HyperFrames account you are signed in with, as `{avatars: [{avatar_id, name, avatar_type, group_id, gender, status, default_voice_id, preview_image_url}]}`, for `--avatar` in `generate --type avatar`. `--limit` (default 20). Never lists the separate `heygen` CLI's account |
+| `carve`      | Dip the music bed only in the bands the voices over it use, plus a level match, and write the result on the bed in `--comp`. The same analysis as Studio's carve panel. `--bed` and `--voice` (repeatable) name the tracks, `--strength` 0 to 1 (default 0.8), `--dry-run` writes nothing |
 | `doctor`     | Check ffmpeg, ffprobe, Node.js, the bundled sound library, and the `heygen` CLI (installed, v0.3.0 or newer, signed in). Changes nothing                                  |
 | `stats`      | Count requests, misses, and reuse from the project's `.media/` and the global `~/.media/`                                                                                 |
 
