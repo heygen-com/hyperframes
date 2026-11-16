@@ -258,7 +258,8 @@ const both = (seed: number, focused: readonly string[]) => [
   ...randomInputs(seed + 100, CASES, focused),
 ];
 
-describe("htmlTagScans agree with the regexes they replace", () => {
+// Each case runs tens of thousands of inputs through the old regexes too, which takes seconds on a CI runner.
+describe("htmlTagScans agree with the regexes they replace", { timeout: 60_000 }, () => {
   it("inline script blocks", () => {
     for (const html of both(1, FOCUSED.scripts)) {
       expect([...inlineScriptBlocks(html)], html).toEqual(reference.inlineScripts(html));
