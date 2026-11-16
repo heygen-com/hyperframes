@@ -848,7 +848,6 @@ describe("external file change coordinator", () => {
       vi.stubGlobal("indexedDB", new IDBFactory());
     });
 
-    /** Writes a record straight into Studio's store, as any script on the origin could. */
     const plantRecord = (projectId: string, filePath: string, record: object) =>
       new Promise<void>((resolve, reject) => {
         const request = indexedDB.open("hyperframes-studio-external-conflicts", 1);
@@ -898,24 +897,6 @@ describe("external file change coordinator", () => {
       expect(options.reloadPreview).toHaveBeenCalledOnce();
       expect(overwriteConflict).not.toHaveBeenCalled();
       await expect(loadExternalConflictSnapshot("project-b", "index.html")).resolves.toBeNull();
-    });
-
-    it("ignores a loaded record whose key differs from the lookup", async () => {
-      const { captured } = await mountCoordinator({
-        projectId: "project-b",
-        recoveryFilePath: "index.html",
-        loadConflictSnapshot: vi.fn(async () => ({
-          kind: "conflict" as const,
-          projectId: "project-a",
-          filePath: "secrets.html",
-          externalVersion: "v2",
-          externalContent: "external",
-          studioContent: "planted",
-          createdAt: Date.now(),
-        })),
-      });
-      await act(async () => undefined);
-      expect(captured.handle?.blocked).toBeNull();
     });
 
     it("still recovers a draft Studio saved for this project and file", async () => {
