@@ -61,6 +61,7 @@ class Refused extends Fix {
 const KEEPS_KEY = new Set([401, 403, 408, 409, 425, 429]);
 
 const failedKeysFile = () => join(configDir(), "heygen-failed-keys");
+const sentKeysFile = () => join(configDir(), "heygen-sent-keys");
 
 const noSignIn = (): never => {
   throw new Fix("no HeyGen sign-in on this machine", "npx hyperframes auth login");
@@ -88,23 +89,24 @@ async function jobSender(): Promise<Sender> {
   return { auth: buildAuthHeaders(credential), scope };
 }
 
-function failedKeys(scope: string): Set<string> {
-  const file = failedKeysFile();
+function scopedKeys(file: string, scope: string): Set<string> {
   const lines = existsSync(file) ? readFileSync(file, "utf8").split("\n") : [];
   return new Set(
     lines.filter((l) => l.startsWith(`${scope} `)).map((l) => l.slice(scope.length + 1)),
   );
 }
 
-function markFailed(key: string, scope: string | null): void {
+function noteKey(file: string, key: string, scope: string | null): void {
   if (!scope) return;
   mkdirSync(configDir(), { recursive: true });
-  appendFileSync(failedKeysFile(), `${scope} ${key}\n`);
+  appendFileSync(file, `${scope} ${key}\n`);
 }
+
+const markFailed = (key: string, scope: string | null) => noteKey(failedKeysFile(), key, scope);
 
 /** The key to send: `key` itself, or past every key whose job failed or was refused, so a retry is a new job. */
 function liveKey(key: string, scope: string | null): string {
-  const failed = scope ? failedKeys(scope) : new Set<string>();
+  const failed = scope ? scopedKeys(failedKeysFile(), scope) : new Set<string>();
   let sent = key;
   for (let n = 1; failed.has(sent); n++) sent = `${key}-${n}`;
   return sent;
@@ -271,10 +273,11 @@ export interface RunOptions {
 
 /** Refuses, before anything is sent, a new job past the project's credit limit, else reserves its credits. A vendor-priced
  *  image is checked and held at its estimate plus 10%, which its charge can pass, until HeyGen says what it charged.
- *  Every paid call comes through runJob. True when this call reserved. */
+ *  A logged key resumes unchecked only if this account sent it, else is priced as new. True when this call reserved. */
 function withinLimit(
   limitLog: JobLog | undefined,
   sent: string,
+  sentBefore: boolean,
   credits: number | undefined,
   vendorPriced?: boolean,
 ): boolean {
@@ -282,8 +285,9 @@ function withinLimit(
   const limit = creditLimit(limitLog.projectDir);
   if (limit === undefined) return false;
   const spent = creditsSpent(limitLog.projectDir);
-  if (spent.keys.has(sent)) return false;
-  const left = limit - spent.total;
+  const logged = spent.keys.get(sent) ?? 0;
+  if (logged > 0 && sentBefore) return false;
+  const left = limit - spent.total + logged;
   const fix =
     "tell the person what their limit leaves out, then ask whether to raise it or make the video without this piece";
   if (credits === undefined)
@@ -313,7 +317,9 @@ export async function runJob(
   const route = jobRoute.path;
   const { auth, scope } = await jobSender();
   const sent = liveKey(key, scope);
-  const reserved = withinLimit(opts.log, sent, opts.credits, opts.vendorPriced);
+  const sentBefore = scope !== null && scopedKeys(sentKeysFile(), scope).has(sent);
+  const reserved = withinLimit(opts.log, sent, sentBefore, opts.credits, opts.vendorPriced);
+  if (!sentBefore) noteKey(sentKeysFile(), sent, scope);
   const held =
     opts.credits === undefined ? undefined : limitCheck(opts.credits, opts.vendorPriced).checked;
   let job: Job;

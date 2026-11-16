@@ -184,6 +184,44 @@ describe("runJob", () => {
       await expect(runJob(X, {}, "k2", { log, credits: 100 })).rejects.toThrow(/leaves 0/);
     });
 
+    it("counts a logged row of negative or non-finite credits as nothing", async () => {
+      const calls = sent();
+      const log = project(100);
+      writeFileSync(
+        join(log.projectDir, ".hyperframes/heygen-jobs.jsonl"),
+        '{"key":"a","credits":-1000}\n{"key":"b","credits":-1e999}\n{"key":"c","credits":40}\n',
+      );
+      await expect(runJob(X, {}, "k1", { log, credits: 61 })).rejects.toThrow(/leaves 60/);
+      expect(calls).toHaveLength(0);
+    });
+
+    it("checks a logged key this account never sent as a new call", async () => {
+      const calls = sent();
+      const log = project(100);
+      writeFileSync(
+        join(log.projectDir, ".hyperframes/heygen-jobs.jsonl"),
+        '{"key":"k1","status":"completed","credits":1}\n',
+      );
+      await expect(runJob(X, {}, "k1", { log, credits: 150 })).rejects.toThrow(/leaves 100/);
+      expect(calls).toHaveLength(0);
+      await runJob(X, {}, "k1", { log, credits: 100 });
+      expect(calls).toHaveLength(1);
+    });
+
+    it("resumes a job this account sent unchecked, though its estimate is above what it was charged", async () => {
+      const log = project(100);
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", async (url: string) => {
+        calls.push(url);
+        const charged = { amount: 50, pool: "hyperframes_credits" };
+        return reply(200, { data: { id: "j", status: "completed", charged } });
+      });
+      await runJob(X, {}, "k1", { log, credits: 60 });
+      await runJob(X, {}, "k2", { log, credits: 50 });
+      await runJob(X, {}, "k1", { log, credits: 60 });
+      expect(calls).toHaveLength(3);
+    });
+
     it("lets the same job resume, and gives back a refused call's credits", async () => {
       const log = project(100);
       const calls = sent();

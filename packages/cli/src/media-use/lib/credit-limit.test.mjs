@@ -30,7 +30,18 @@ test("spent is the last credits each job key logged", () => {
   const dir = project({ "heygen-jobs.jsonl": rows.map((r) => JSON.stringify(r)).join("\n") });
   const spent = creditsSpent(dir);
   assert.equal(spent.total, 30);
-  assert.deepEqual([...spent.keys], ["b"]);
+  assert.deepEqual([...spent.keys], [["b", 30]]);
+});
+
+test("a logged amount that is negative or not finite holds nothing", () => {
+  const rows = [
+    '{"key":"a","credits":-500}',
+    '{"key":"b","credits":-1e999}',
+    '{"key":"c","credits":20}',
+  ];
+  const spent = creditsSpent(project({ "heygen-jobs.jsonl": rows.join("\n") }));
+  assert.equal(spent.total, 20);
+  assert.deepEqual([...spent.keys.keys()], ["c"]);
 });
 
 test("resolve's HeyGen voice is refused under a limit before the heygen CLI runs", async () => {
