@@ -12,6 +12,7 @@ import {
   videoStreamHasAlpha,
 } from "@hyperframes/parsers/media-alpha";
 import { urlInputArgs } from "./urlInput.js";
+import { TextArtMediaError } from "./notMediaPayload.js";
 import { decodableAudioStream, misstatesPcmByteRate } from "@hyperframes/parsers/media-streams";
 import { runFfmpeg } from "./runFfmpeg.js";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
@@ -571,7 +572,9 @@ async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise
     }
     return cached.promise;
   }
-  const promise = readProbeJson(filePath, signal).then(parseProbeJson);
+  const promise = readProbeJson(filePath, signal).then((json) =>
+    refuseTextArt(parseProbeJson(json)),
+  );
   if (identity !== null) {
     cache.set(filePath, { identity, promise });
     if (!signal && cache.size > MEDIA_PROBE_OUTPUT_CACHE_MAX_ENTRIES) {
@@ -588,6 +591,18 @@ async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise
 }
 
 class StructurallyIncompletePngError extends Error {}
+
+const TEXT_ART_CODECS = new Set(["ansi", "bintext", "xbin", "idf"]);
+
+function refuseTextArt(output: FFProbeOutput): FFProbeOutput {
+  const formats = (output.format?.format_name ?? "").toLowerCase().split(",");
+  const drawsText = (output.streams ?? []).some(
+    (stream) =>
+      stream.codec_type === "video" && TEXT_ART_CODECS.has(stream.codec_name?.toLowerCase() ?? ""),
+  );
+  if (formats.includes("tty") || drawsText) throw new TextArtMediaError();
+  return output;
+}
 
 async function readFileRange(
   filePath: string,

@@ -271,6 +271,27 @@ describe("playlistLeavesItsFolder", () => {
     expect(await isNotMediaPayload(file)).toBe(true);
   });
 
+  it.each([
+    ["a git segment", hls("#EXTINF:1,", ".git/objects/seg.ts")],
+    ["an encoded app record", hls("#EXTINF:1,", "%2ehyperframes/agent-handoff.ts")],
+    ["a key file", hls('#EXT-X-KEY:METHOD=AES-128,URI="keys/id_rsa"', "#EXTINF:1,", "seg.ts")],
+    ["a credential folder in a map", hls('#EXT-X-MAP:URI=".ssh/init.mp4"', "#EXTINF:1,", "seg.ts")],
+    ["a concat entry in agent state", concat("'.claude/part.mp4'")],
+    ["an env file", concat(".env")],
+  ])("refuses %s that stays in its folder", async (_name, contents) => {
+    const file = writeFixture("clip.m3u8", contents);
+    expect(await playlistLeavesItsFolder(file)).toBe(true);
+    expect(await isNotMediaPayload(file)).toBe(true);
+  });
+
+  it("refuses a nested list naming a private file from its own folder", async () => {
+    const master = writeTree({
+      "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
+      "sub/inner.m3u8": hls("#EXTINF:1,", ".git/seg.ts"),
+    });
+    expect(await playlistLeavesItsFolder(master)).toBe(true);
+  });
+
   it("refuses a list whose nested list names a file outside the top folder", async () => {
     const master = writeTree({
       "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",

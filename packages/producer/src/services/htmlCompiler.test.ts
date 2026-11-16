@@ -3398,6 +3398,25 @@ describe("compileForRender non-media payload sniff (STUDIO-5433)", () => {
     expect(warnings.join("\n")).toContain("text document");
     expect(warnings.join("\n")).toContain("a1");
   });
+
+  it.each([".git/clip.mp4", ".hyperframes/clip.mp4", ".claude/clip.mp4", "keys/id_rsa"])(
+    "never probes the private project file %s that a <video> or <audio> names",
+    async (src) => {
+      const projectDir = writeProject(
+        `<video id="v1" src="${src}" data-start="0" muted></video>` +
+          `<audio id="a1" src="${src}" data-start="0"></audio>`,
+      );
+      mkdirSync(dirname(join(projectDir, src)), { recursive: true });
+      writeFileSync(join(projectDir, src), readFileSync(join(projectDir, "assets", "nested.html")));
+      const warnings: string[] = [];
+      const log = { ...defaultLogger, warn: (message: string) => warnings.push(message) };
+
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir, { log });
+
+      expect(warnings.join("\n")).not.toContain("text document");
+      rmSync(projectDir, { recursive: true, force: true });
+    },
+  );
 });
 
 describe("duplicate media ids across nested compositions", () => {

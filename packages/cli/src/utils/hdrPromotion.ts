@@ -20,11 +20,10 @@ export async function inspectHdrAutoPromotion(
     colorSpace: Awaited<ReturnType<typeof extractMediaMetadata>>["colorSpace"];
   }> = [];
   for (const { src } of [...media.videos, ...media.images]) {
+    const path = mediaPath(src, project.dir);
+    if (path === null) continue;
     try {
-      assets.push({
-        asset: src,
-        colorSpace: (await extractMetadata(mediaPath(src, project.dir))).colorSpace,
-      });
+      assets.push({ asset: src, colorSpace: (await extractMetadata(path)).colorSpace });
     } catch {
       continue;
     }
