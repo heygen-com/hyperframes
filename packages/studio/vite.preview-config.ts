@@ -1,8 +1,8 @@
-import type { IncomingMessage } from "node:http";
 import { PREVIEW_NONCE_HEADER, previewProof } from "@hyperframes/core/preview-proof";
 export type PreviewConfigEnv = Record<string, string | undefined>;
+type ConfigRequest = Pick<import("node:http").IncomingMessage, "headers" | "socket">;
 
-function signed(config: Record<string, unknown>, req?: Pick<IncomingMessage, "headers" | "socket">) {
+function signed(config: Record<string, unknown>, req?: ConfigRequest) {
   const { localAddress: address, localPort: port } = req?.socket ?? {};
   const nonce = req?.headers[PREVIEW_NONCE_HEADER];
   const proof = address && port ? previewProof(nonce, { address, port }, config) : null;
@@ -13,7 +13,7 @@ export function previewConfigPayload(
   env: PreviewConfigEnv,
   pid = process.pid,
   version = "dev",
-  req?: Pick<IncomingMessage, "headers" | "socket">,
+  req?: ConfigRequest,
 ): Record<string, unknown> | null {
   const projectDir = env.HYPERFRAMES_PREVIEW_PROJECT_DIR;
   const projectName = env.HYPERFRAMES_PREVIEW_PROJECT_NAME;
