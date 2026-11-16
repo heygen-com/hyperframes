@@ -14,6 +14,7 @@
 import "../../../scripts/lib/windows-exe-search.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, openSync, closeSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { downloadTo, searchSounds } from "./heygen.mjs";
 import { agentWritePath } from "./media-record.mjs";
@@ -164,7 +165,9 @@ export function generateBgmDetached({
     const script = musicgenScript({ prompt, abs, targetS, seedS });
     const { cmd, args } = pythonInvocation(["-c", script]);
     rmSync(abs, { force: true });
-    const proc = spawn(cmd, args, { detached: true, stdio: ["ignore", fd, fd] });
+    // transformers reads "facebook/musicgen-small" as a folder when one exists in the working
+    // directory, so the model is never looked up in the project.
+    const proc = spawn(cmd, args, { cwd: homedir(), detached: true, stdio: ["ignore", fd, fd] });
     proc.unref();
     closeSync(fd);
     return {

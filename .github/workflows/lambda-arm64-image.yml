@@ -9,6 +9,7 @@ on:
   pull_request:
     paths:
       - "packages/aws-lambda/image/**"
+      - "packages/aws-lambda/hf-media-linux-aarch64.sha256"
       - "packages/aws-lambda/scripts/stage-arm64-image.ts"
       # A @sparticuz/chromium bump or a ZIP layout change must re-stage the image.
       - "packages/aws-lambda/package.json"
@@ -59,6 +60,10 @@ jobs:
           docker buildx build --progress=plain --platform linux/arm64 --target artifact
           --output type=local,dest=out packages/aws-lambda/image
       - run: cat out/hf-media-check.txt && sha256sum out/*.tar.gz
+      # The reviewed digest of the build; a tarball from the cache or this run that differs fails here.
+      - name: Check the tarball against its committed digest
+        working-directory: out
+        run: sha256sum hf-media-linux-aarch64.tar.gz && sha256sum --strict -c ../packages/aws-lambda/hf-media-linux-aarch64.sha256
       # Same path and key as publish.yml's lambda-arm64-ffmpeg job reads.
       - if: matrix.copy == 'a' && github.ref == 'refs/heads/main'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
