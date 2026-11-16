@@ -44,6 +44,7 @@ import {
   pinWritableWithinProject,
   resolveWithinProject,
   resolveWritableWithinProject,
+  toolTrustedFileWithin,
   walkDir,
 } from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
@@ -3067,6 +3068,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if ("error" in res) return res.error;
 
     const stat = statSync(res.absPath);
+    if (stat.isDirectory() && toolTrustedFileWithin(res.project.dir, res.absPath)) {
+      return c.json({ error: "forbidden", why: "protected_path" }, 403);
+    }
     const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
     if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
     if (stat.isDirectory()) {
@@ -3766,6 +3770,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     const isDirectory = statSync(res.absPath, { throwIfNoEntry: false })?.isDirectory() ?? false;
+    if (isDirectory && toolTrustedFileWithin(res.project.dir, res.absPath)) {
+      return c.json({ error: "forbidden", why: "protected_path" }, 403);
+    }
     ensureDir(res.project.dir, newAbs);
     renameSync(res.absPath, newAbs);
 

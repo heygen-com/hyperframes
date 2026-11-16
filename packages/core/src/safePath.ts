@@ -202,6 +202,72 @@ function isStudioOwnFile(path: string): boolean {
   );
 }
 
+// Files another program runs or trusts with the developer's rights: a package manager, a shell, a build or IDE tool, or
+// a coding agent. No composition needs one, so registry content never installs one (an example may bring its own
+// project configuration) and Studio's write routes never write, rename onto or delete one.
+const PROJECT_CONFIG_FILES = new Set(["package.json", "hyperframes.json", "hyperframes.lock.json"]);
+const LOCK_FILES = new Set([
+  "package-lock.json",
+  "npm-shrinkwrap.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "yarn.lock",
+  "bun.lock",
+  "bun.lockb",
+  "deno.lock",
+]);
+const TOOL_CONFIG_FILES = new Set([
+  "tsconfig.json",
+  "jsconfig.json",
+  "deno.json",
+  "deno.jsonc",
+  "bunfig.toml",
+  "makefile",
+  "gnumakefile",
+  "justfile",
+  "dockerfile",
+  "procfile",
+  "lefthook.yml",
+  "lefthook.yaml",
+]);
+// Node loads these on its own: vite.config.ts, eslint.config.mjs, tailwind.config.js and the like.
+const TOOL_CONFIG = /\.config\.[cm]?[jt]sx?$/;
+// Coding agents load these on their own, wherever they sit.
+const AGENT_INSTRUCTIONS =
+  /^(agents?|claude|gemini|qwen|crush|warp|conventions|copilot-instructions)(\.[a-z]+)?\.md$/;
+// Programs and scripts a shell, an OS or another tool runs; a browser composition never needs them.
+const PROGRAM =
+  /\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|wsf|hta|msi|scr|pif|cpl|lnk|dll|so|dylib|node|sh|bash|zsh|command|jar|appimage|py|rb|pl|php)$/;
+// A Windows short name such as `CLAUDE~1` or `PACKAG~1.JSO` can open any long name on NTFS.
+const SHORT_NAME = /~\d+(\.|$)/;
+
+/** What makes a file one another program runs or trusts; see `toolTrustedFileKind`. */
+export type ToolTrustedKind =
+  | "short-name"
+  | "project-config"
+  | "lock-file"
+  | "tool-config"
+  | "agent-instructions"
+  | "program";
+
+/**
+ * Why another program runs or trusts the file at a project-relative path, or null for an ordinary project file. The
+ * path is read in every spelling a case-insensitive file system or Windows opens: any case or Unicode form, either
+ * separator, trailing dots or spaces, a `:stream` suffix, or a short name for any of these.
+ */
+export function toolTrustedFileKind(relPath: string): ToolTrustedKind | null {
+  const segments = projectPathSegments(relPath.normalize("NFC"));
+  while (segments.length > 1 && segments.at(-1) === "") segments.pop();
+  const name = segments.at(-1) ?? "";
+  if (segments.some((segment) => SHORT_NAME.test(segment))) return "short-name";
+  if (PROJECT_CONFIG_FILES.has(name)) return "project-config";
+  if (LOCK_FILES.has(name)) return "lock-file";
+  if (TOOL_CONFIG_FILES.has(name) || TOOL_CONFIG.test(name)) return "tool-config";
+  if (AGENT_INSTRUCTIONS.test(name)) return "agent-instructions";
+  if (PROGRAM.test(name)) return "program";
+  return null;
+}
+
 /** Whether `isPrivate` holds for a file under `projectDir`, spelled as given or with its links resolved. */
 export function isPrivateFileUnder(
   projectDir: string,

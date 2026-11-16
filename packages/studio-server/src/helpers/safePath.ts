@@ -6,6 +6,7 @@ import {
   projectPathSegments,
   realpath,
   resolveWithinProject as resolveInProject,
+  toolTrustedFileKind,
 } from "@hyperframes/core/safe-path";
 import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
 
@@ -56,9 +57,9 @@ export function isPrivateProjectFile(projectDir: string, filePath: string): bool
 
 const WRITABLE_HIDDEN_FOLDERS = new Set([".hyperframes", ".media"]);
 
-/** Writes refuse the project folder, node_modules, and hidden paths but Studio's records and the media ledger. */
+/** Writes refuse the project folder, node_modules, hidden paths but Studio's records, and `toolTrustedFileKind` files. */
 export function isWritableProjectPath(relPath: string): boolean {
-  if (!relPath || isPrivateProjectPath(relPath)) return false;
+  if (!relPath || isPrivateProjectPath(relPath) || toolTrustedFileKind(relPath)) return false;
   const segments = projectPathSegments(relPath);
   return segments.every(
     (segment, at) =>
@@ -70,6 +71,16 @@ export function isWritableProjectPath(relPath: string): boolean {
 
 export function isWritableProjectFile(projectDir: string, filePath: string): boolean {
   return projectRelatives(projectDir, filePath).every(isWritableProjectPath);
+}
+
+/** The first `toolTrustedFileKind` file below `dir`, which a delete or move of the folder would take along. */
+export function toolTrustedFileWithin(projectDir: string, dir: string): string | null {
+  const base = projectRelativePath(projectDir, dir);
+  for (const file of walkDir(dir)) {
+    const rel = base ? `${base}/${file}` : file;
+    if (toolTrustedFileKind(rel)) return rel;
+  }
+  return null;
 }
 
 export function resolveWritableWithinProject(base: string, relativePath: string): string | null {
