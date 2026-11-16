@@ -124,11 +124,7 @@ function readLastTurns(dir: string): Record<string, string[]> {
   try {
     const turns: unknown = JSON.parse(readFileSync(lastTurnsFile(dir), "utf-8"));
     if (!turns || typeof turns !== "object") return {};
-    return Object.fromEntries(
-      Object.entries(turns).filter(
-        ([, parts]) => isIds(parts),
-      ),
-    );
+    return Object.fromEntries(Object.entries(turns).filter(([, parts]) => isIds(parts)));
   } catch {
     return {};
   }
