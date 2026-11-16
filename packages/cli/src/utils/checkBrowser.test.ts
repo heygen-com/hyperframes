@@ -23,6 +23,7 @@ import {
   runBrowserCheck,
   collectSeekClock,
   mergeHelperDrafts,
+  parseLayoutIssue,
   samplingBrowserCount,
   RENDER_READY_WARNING_SUFFIX,
 } from "./checkBrowser.js";
@@ -1113,6 +1114,28 @@ it("hides only the ReadPixels stall check's own reads cause, not the film's othe
   expect(
     result.runtimeFindings.filter(({ code }) => code === "console_warning").map((f) => f.message),
   ).toEqual([otherDriverNote.text(), ordinaryWarning.text()]);
+});
+
+describe("parseLayoutIssue", () => {
+  const rect = { left: 0, top: 0, right: 10, bottom: 10, width: 10, height: 10 };
+  const raw = (code: string) => ({
+    code,
+    severity: "error",
+    time: 1,
+    selector: "#title",
+    message: "clipped",
+    rect,
+  });
+
+  it("keeps an issue with a known code", () => {
+    expect(parseLayoutIssue(raw("clipped_text"))).toEqual([raw("clipped_text")]);
+  });
+
+  it("drops an issue whose code the audit never produces", () => {
+    expect(parseLayoutIssue(raw("clipped_text\u001b]52;c;Y2xpcA==\u0007"))).toEqual([]);
+    expect(parseLayoutIssue({ ...raw("clipped_text"), rect: "wide" })).toEqual([]);
+    expect(parseLayoutIssue("clipped_text")).toEqual([]);
+  });
 });
 
 describe("collectSeekClock", () => {
