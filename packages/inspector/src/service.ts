@@ -10,7 +10,7 @@ import {
 } from "./engine";
 import { playerStatePage, seekPage, type PageRunner } from "./pageQueries";
 import { assertGeneration, validateInspectRequest, validateTimelineRequest } from "./requests";
-import { createServer, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import {
   closeSync,
@@ -21,18 +21,24 @@ import {
   readFileSync,
   realpathSync,
   readdirSync,
+  rmSync,
 } from "node:fs";
-import { resolve, join, extname, sep } from "node:path";
+import { join, extname } from "node:path";
 import { getHyperframeRuntimeScript } from "../../core/src/generated/runtime-inline";
-import puppeteer, { type Browser, type Page } from "puppeteer-core";
+import puppeteer, { type Browser, type BrowserContext, type Page } from "puppeteer-core";
 import {
   bundleToSingleHtml,
   type BundleScriptProvenance,
 } from "../../core/src/compiler/htmlBundler";
-import { closeServer, isLoopbackHost } from "./pageServer";
+import { closeServer, isLoopbackHost, servableProjectFile } from "./pageServer";
 import { Sources, fingerprint } from "./sources";
 import type { InspectRequest, Snippet } from "./types";
-import { hyperframesCacheDir } from "../../core/src/cacheDir";
+import { foreignWritablePath, trustedCacheRoot } from "../../core/src/cacheDir";
+import {
+  browserProxyArgs,
+  createPublicOnlyProfile,
+  startCaptureProxy,
+} from "../../engine/src/services/publicNetwork/captureProxy";
 
 const pageRunner = (page: Page): PageRunner => ({
   run: <A, R>(fn: (arg: A) => R, arg: A) =>
@@ -40,13 +46,32 @@ const pageRunner = (page: Page): PageRunner => ({
 });
 
 interface Session {
+  context: BrowserContext;
   page: Page;
-  server: Server;
   generation: string;
   fingerprint: string;
   sourceContext: () => SourceContext;
   openMs: number;
 }
+interface PublicOnlyHost {
+  browser: Browser;
+  server: Server;
+  port: number;
+  proxy: { close(): Promise<void> };
+  profile: string;
+}
+type PageHandler = (req: IncomingMessage, res: ServerResponse) => void;
+
+async function releaseEach(steps: ReadonlyArray<() => unknown>): Promise<void> {
+  for (const step of steps) {
+    try {
+      await step();
+    } catch {
+      continue;
+    }
+  }
+}
+
 export interface InspectorOptions {
   executablePath?: string;
   idleMs?: number;
@@ -60,7 +85,8 @@ function chromePath() {
       "Set HF_INSPECT_CHROME to an installed Chrome executable; inspection does not download a browser.",
     );
   }
-  const root = hyperframesCacheDir("chrome", "chrome-headless-shell");
+  const cacheRoot = trustedCacheRoot();
+  const root = join(cacheRoot, "chrome", "chrome-headless-shell");
   if (existsSync(root))
     for (const version of readdirSync(root).sort().reverse()) {
       const dir = join(root, version);
@@ -70,7 +96,7 @@ function chromePath() {
           platform,
           process.platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell",
         );
-        if (existsSync(file)) return file;
+        if (existsSync(file) && !foreignWritablePath(file, cacheRoot)) return file;
       }
     }
   throw new Error(
@@ -79,7 +105,8 @@ function chromePath() {
 }
 export class Inspector {
   private session?: Session;
-  private browser?: Browser;
+  private host?: PublicOnlyHost;
+  private serve?: PageHandler;
   private tail: Promise<unknown> = Promise.resolve();
   private timer?: ReturnType<typeof setTimeout>;
   private closed = false;
@@ -101,10 +128,62 @@ export class Inspector {
     const session = this.session;
     this.session = undefined;
     this.catalog.clear();
-    if (session) {
-      await session.page.close().catch(() => {});
-      await closeServer(session.server);
+    this.serve = undefined;
+    if (session) await session.context.close().catch(() => {});
+  }
+  private async openHost(): Promise<PublicOnlyHost> {
+    if (this.host) return this.host;
+    const server = createServer((req, res) =>
+      this.serve ? this.serve(req, res) : void res.writeHead(404).end(),
+    );
+    let proxy: PublicOnlyHost["proxy"] | undefined;
+    let profile: string | undefined;
+    try {
+      await new Promise<void>((done, fail) => {
+        server.once("error", fail);
+        server.listen(0, "127.0.0.1", done);
+      });
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("preview address unavailable");
+      const started = await startCaptureProxy();
+      proxy = started;
+      profile = await createPublicOnlyProfile("hf-inspect-profile-");
+      const browser = await puppeteer.launch({
+        executablePath: this.options.executablePath ?? chromePath(),
+        env: buildChromeLaunchEnv(),
+        headless: true,
+        userDataDir: profile,
+        args: withHyperframesBrowserMarker([
+          "--disable-dev-shm-usage",
+          "--enable-webgl",
+          "--use-gl=angle",
+          "--use-angle=swiftshader",
+          ...browserProxyArgs(started.url, `127.0.0.1:${address.port}`),
+        ]),
+      });
+      this.stats.browserStarts++;
+      this.host = { browser, server, port: address.port, proxy: started, profile };
+      return this.host;
+    } catch (error) {
+      const leftover = profile;
+      await releaseEach([
+        () => proxy?.close(),
+        () => closeServer(server),
+        () => leftover && rmSync(leftover, { recursive: true, force: true }),
+      ]);
+      throw error;
     }
+  }
+  private async closeHost() {
+    const host = this.host;
+    this.host = undefined;
+    if (!host) return;
+    await releaseEach([
+      () => host.browser.close(),
+      () => closeServer(host.server),
+      () => host.proxy.close(),
+      () => rmSync(host.profile, { recursive: true, force: true }),
+    ]);
   }
   private async ensure(): Promise<{ session: Session; reused: boolean }> {
     const digest = fingerprint(this.project);
@@ -121,7 +200,7 @@ export class Inspector {
     });
     if (fingerprint(this.project) !== digest)
       throw new Error("source_changed_during_load: retry against a stable project");
-    const server = createServer((req, res) => {
+    const serve: PageHandler = (req, res) => {
       if (!isLoopbackHost(req.headers.host)) return void res.writeHead(403).end();
       try {
         const path = decodeURIComponent(new URL(req.url ?? "/", "http://localhost").pathname);
@@ -140,8 +219,8 @@ export class Inspector {
           res.end(getHyperframeRuntimeScript());
           return;
         }
-        const file = realpathSync(resolve(this.project, `.${path}`));
-        if (!file.startsWith(this.project + sep)) {
+        const file = servableProjectFile(this.project, path);
+        if (!file) {
           res.writeHead(404).end();
           return;
         }
@@ -169,27 +248,14 @@ export class Inspector {
       } catch {
         res.writeHead(404).end();
       }
-    });
-    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-    const address = server.address();
-    if (!address || typeof address === "string") throw new Error("preview address unavailable");
+    };
+    let context: BrowserContext | undefined;
     let page: Page | undefined;
     try {
-      if (!this.browser) {
-        this.browser = await puppeteer.launch({
-          executablePath: this.options.executablePath ?? chromePath(),
-          env: buildChromeLaunchEnv(),
-          headless: true,
-          args: withHyperframesBrowserMarker([
-            "--disable-dev-shm-usage",
-            "--enable-webgl",
-            "--use-gl=angle",
-            "--use-angle=swiftshader",
-          ]),
-        });
-        this.stats.browserStarts++;
-      }
-      page = await this.browser.newPage();
+      const host = await this.openHost();
+      this.serve = serve;
+      context = await host.browser.createBrowserContext();
+      page = await context.newPage();
       await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
       if (this.options.instrument !== false) {
         await page.evaluateOnNewDocument(
@@ -199,14 +265,14 @@ export class Inspector {
             readFileSync(new URL(`../dist/inspection.${"js"}`, import.meta.url), "utf8"),
         );
       }
-      await page.goto(`http://127.0.0.1:${address.port}/`, { waitUntil: "load", timeout: 30_000 });
+      await page.goto(`http://127.0.0.1:${host.port}/`, { waitUntil: "load", timeout: 30_000 });
       await page.waitForFunction("!!window.__renderReady", { timeout: 15_000 });
       await page.evaluate(() => document.fonts.ready);
       let sourceContext: SourceContext | undefined;
       const project = this.project;
       this.session = {
+        context,
         page,
-        server,
         generation,
         fingerprint: digest,
         sourceContext: () => {
@@ -222,8 +288,8 @@ export class Inspector {
       this.stats.pageLoads++;
       return { session: this.session, reused: false };
     } catch (error) {
-      await page?.close().catch(() => {});
-      await closeServer(server);
+      await context?.close().catch(() => {});
+      this.serve = undefined;
       throw error;
     }
   }
@@ -244,8 +310,7 @@ export class Inspector {
     this.timer = setTimeout(() => {
       void this.serialize(async () => {
         await this.closeSession();
-        await this.browser?.close();
-        this.browser = undefined;
+        await this.closeHost();
       });
     }, this.options.idleMs ?? 120_000);
     this.timer.unref();
@@ -333,8 +398,7 @@ export class Inspector {
       this.closed = true;
       clearTimeout(this.timer);
       await this.closeSession();
-      await this.browser?.close();
-      this.browser = undefined;
+      await this.closeHost();
     });
   }
 }

@@ -93,7 +93,7 @@ describe("registerLintRoutes — dot-directory exclusion (#1384)", () => {
     };
 
     expect(response.status).toBe(200);
-    expect(projectLint).toHaveBeenCalledWith(projectDir);
+    expect(projectLint).toHaveBeenCalledWith(projectDir, expect.any(AbortSignal));
     expect(singleFileLint).not.toHaveBeenCalled();
     expect(payload.findings).toContainEqual(
       expect.objectContaining({

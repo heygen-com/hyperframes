@@ -11,9 +11,9 @@ import { styleRoot } from "../styleRoots";
 import selectorParser from "postcss-selector-parser";
 import { GLSL_SCRIPT_TYPES } from "../shaderDomains";
 import {
-  HTML_BODY_CSS_WIDTH_FIRST_RE,
-  HTML_BODY_CSS_HEIGHT_FIRST_RE,
-  VIEWPORT_META_SIZE_RE,
+  matchHtmlBodyCssWidthFirst,
+  matchHtmlBodyCssHeightFirst,
+  matchViewportMetaSize,
 } from "@hyperframes/parsers/composition";
 import {
   readAttr,
@@ -378,12 +378,12 @@ type ScaffoldSize = { width: string; height: string };
 // Groups 1 and 3 are prefix text for applyResolutionPreset's in-place
 // replace; lint only reads the digit groups (2 and 4).
 function readHtmlBodyCssSize(source: string): ScaffoldSize | null {
-  const widthFirst = source.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
+  const widthFirst = matchHtmlBodyCssWidthFirst(source);
   if (widthFirst) {
     const [, , width = "", , height = ""] = widthFirst;
     return { width, height };
   }
-  const heightFirst = source.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
+  const heightFirst = matchHtmlBodyCssHeightFirst(source);
   if (heightFirst) {
     const [, , height = "", , width = ""] = heightFirst;
     return { width, height };
@@ -392,7 +392,7 @@ function readHtmlBodyCssSize(source: string): ScaffoldSize | null {
 }
 
 function readViewportMetaSize(source: string): ScaffoldSize | null {
-  const match = source.match(VIEWPORT_META_SIZE_RE);
+  const match = matchViewportMetaSize(source);
   if (!match) return null;
   const [, , width = "", , height = ""] = match;
   return { width, height };

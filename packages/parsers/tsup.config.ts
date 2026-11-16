@@ -12,6 +12,7 @@ export default defineConfig({
     gsapParser: "src/gsapParser.ts",
     slideshow: "src/slideshow/index.ts",
     assets: "src/assets.ts",
+    cssUrlScans: "src/cssUrlScans.ts",
     composition: "src/composition.ts",
     compositionContract: "src/compositionContract.ts",
     compositionDuration: "src/compositionDuration.ts",

@@ -11,7 +11,13 @@ import {
   pixelFormatHasAlpha,
   videoStreamHasAlpha,
 } from "@hyperframes/parsers/media-alpha";
-import { urlInputArgs } from "./urlInput.js";
+import {
+  contentAddressedSha256,
+  declareContentAddressedUrl,
+  urlInputArgs,
+  withPublicOnlyProxy,
+} from "./urlInput.js";
+import { TextArtMediaError } from "./notMediaPayload.js";
 import { decodableAudioStream, misstatesPcmByteRate } from "@hyperframes/parsers/media-streams";
 import { runFfmpeg } from "./runFfmpeg.js";
 import { FFPROBE_PATH_ENV, getFfprobeBinary } from "./ffmpegBinaries.js";
@@ -57,6 +63,8 @@ function sanitizeFfprobeDiagnostic(stderr: string, filePath: string): string {
 }
 
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
+const REFUSED_TEXT_ART = /^\[(?:tty|bin|xbin|idf|adf) @ [^\]]*\] Format not on whitelist/m;
+
 export async function runFfprobe(
   filePath: string,
   argsWithoutInput: string[],
@@ -82,7 +90,33 @@ export async function runFfprobe(
     "--",
     filePath,
   ];
+  // With a restricted page network, a URL input not declared by the render reaches only public hosts.
+  const proxying = withPublicOnlyProxy(args, [args.length - 1]);
+  const routed = proxying && (await proxying);
+  try {
+    return await spawnFfprobe(
+      command,
+      routed?.args ?? args,
+      routed?.env,
+      filePath,
+      signal,
+      stdoutOptions,
+    );
+  } finally {
+    await routed?.close();
+  }
+}
+
+async function spawnFfprobe(
+  command: string,
+  args: string[],
+  env: NodeJS.ProcessEnv | undefined,
+  filePath: string,
+  signal?: AbortSignal,
+  stdoutOptions?: { retainTail?: boolean; maxChars?: number },
+): Promise<string> {
   const proc = spawn(command, args, {
+    ...(env && { env }),
     // Nothing is ever written to the child's stdin; leaving it as a pipe is
     // what lets a stdin-reading invocation block indefinitely.
     stdio: ["ignore", "pipe", "pipe"],
@@ -141,6 +175,7 @@ export async function runFfprobe(
     throw outcome.error ?? new Error(outcome.stderr);
   }
   if (outcome.reason !== "exit" || outcome.exitCode !== 0) {
+    if (REFUSED_TEXT_ART.test(outcome.stderr)) throw new TextArtMediaError();
     const diagnostic = sanitizeFfprobeDiagnostic(outcome.stderr, filePath);
     throw new Error(
       `[FFmpeg] ffprobe ${outcome.reason} with code ${outcome.exitCode}: ${diagnostic}`,
@@ -370,13 +405,8 @@ function isPngImageProbe(output: FFProbeOutput): boolean {
   );
 }
 
-const contentAddressedUrls = new Map<string, string>();
 const withoutQuery = (url: string) => url.split(/[?#]/, 1)[0] ?? url;
-
-/** A URL whose bytes can never change (its path holds their hash), so probes of it are cacheable. */
-export function declareContentAddressedUrl(url: string, sha256: string): void {
-  contentAddressedUrls.set(withoutQuery(url), sha256);
-}
+export { declareContentAddressedUrl };
 
 const probeFactsUrls = new Map<string, string>();
 
@@ -387,7 +417,7 @@ export function declareProbeFactsUrl(url: string, factsUrl: string): void {
 
 export function mediaFileIdentity(filePath: string): string | null {
   if (/^https?:\/\//i.test(filePath)) {
-    const sha256 = contentAddressedUrls.get(withoutQuery(filePath));
+    const sha256 = contentAddressedSha256(filePath);
     return sha256 ? `sha256:${sha256}` : null;
   }
   try {
@@ -571,7 +601,9 @@ async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise
     }
     return cached.promise;
   }
-  const promise = readProbeJson(filePath, signal).then(parseProbeJson);
+  const promise = readProbeJson(filePath, signal).then((json) =>
+    refuseTextArt(parseProbeJson(json)),
+  );
   if (identity !== null) {
     cache.set(filePath, { identity, promise });
     if (!signal && cache.size > MEDIA_PROBE_OUTPUT_CACHE_MAX_ENTRIES) {
@@ -588,6 +620,18 @@ async function probeMediaOutput(filePath: string, signal?: AbortSignal): Promise
 }
 
 class StructurallyIncompletePngError extends Error {}
+
+const TEXT_ART_CODECS = new Set(["ansi", "bintext", "xbin", "idf"]);
+
+function refuseTextArt(output: FFProbeOutput): FFProbeOutput {
+  const formats = (output.format?.format_name ?? "").toLowerCase().split(",");
+  const drawsText = (output.streams ?? []).some(
+    (stream) =>
+      stream.codec_type === "video" && TEXT_ART_CODECS.has(stream.codec_name?.toLowerCase() ?? ""),
+  );
+  if (formats.includes("tty") || drawsText) throw new TextArtMediaError();
+  return output;
+}
 
 async function readFileRange(
   filePath: string,

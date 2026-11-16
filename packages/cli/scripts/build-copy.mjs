@@ -48,12 +48,15 @@ function copyDir(src, dest) {
 }
 
 // Source maps stay out: the CLI ships none of its own (tsup sourcemap: false).
+// Tests stay out too: the published skills run their scripts, never their tests.
+const isTestFile = (path) => /\.test\.[cm]?[jt]s$/.test(path);
+
 function copyDirContents(src, dest) {
   for (const entry of readdirSync(src)) {
     cpSync(join(src, entry), join(dest, entry), {
       recursive: true,
       force: true,
-      filter: (path) => !path.endsWith(".map"),
+      filter: (path) => !path.endsWith(".map") && !isTestFile(path),
     });
   }
 }
@@ -141,7 +144,7 @@ async function main() {
     }
     const destination = join(DIST, "skills", skill);
     rmSync(destination, { recursive: true, force: true });
-    copyDir(src, destination);
+    cpSync(src, destination, { recursive: true, force: true, filter: (path) => !isTestFile(path) });
   }
 
   // The media-use engine lives with the CLI source, but keeps its published
@@ -154,6 +157,12 @@ async function main() {
   cpSync(
     join(mediaEngine, "resolve.mjs"),
     join(DIST, "skills", "media-use", "scripts", "resolve.mjs"),
+  );
+  // The SFX media index ships with the release whose bundled SFX files it names.
+  mkdirSync(join(DIST, "catalog-artifact"), { recursive: true });
+  cpSync(
+    join(REPO_ROOT, "registry", "catalog-artifact", "media-vectors.json"),
+    join(DIST, "catalog-artifact", "media-vectors.json"),
   );
 
   const dockerfile = join(CLI_ROOT, "src", "docker", "Dockerfile.render");

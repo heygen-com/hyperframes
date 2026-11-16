@@ -1,8 +1,8 @@
 import { failCommand } from "../utils/commandResult.js";
-import { writeFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { c } from "../ui/colors.js";
 import { errorBox } from "../ui/format.js";
 import { normalizeErrorMessage as errorMessage } from "../utils/errorMessage.js";
@@ -87,6 +87,7 @@ interface RunBatchRenderOptions {
 }
 
 const PLACEHOLDER_RE = /\{([A-Za-z0-9_.-]+)\}/g;
+const ROWS_NAME_WHOLE_OUTPUT_PATH = "{path}";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -153,6 +154,28 @@ export function resolveOutputTemplate(
   return template.replace(PLACEHOLDER_RE, (_match, key: string) =>
     placeholderValue(row, key, index),
   );
+}
+
+function folderOfPrefix(prefix: string): string {
+  return prefix.endsWith("/") || prefix.endsWith(sep) ? resolve(prefix) : dirname(resolve(prefix));
+}
+
+function checkOutputsInsideTemplateFolder(rows: readonly PreparedBatchRow[], template: string) {
+  if (template === ROWS_NAME_WHOLE_OUTPUT_PATH) return;
+  const firstPlaceholder = template.search(PLACEHOLDER_RE);
+  if (firstPlaceholder < 0) return;
+  const folder =
+    firstPlaceholder === 0 ? resolve() : folderOfPrefix(template.slice(0, firstPlaceholder));
+  for (const row of rows) {
+    const rel = relative(folder, row.outputPath);
+    const outside = rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+    if (!outside) continue;
+    throw new BatchRenderInputError(
+      "Batch output outside --output folder",
+      `Row ${row.index} resolves to ${row.outputPath}, outside ${folder}.`,
+      "Row values may name subfolders of the --output folder but not leave it.",
+    );
+  }
 }
 
 function isSameOrChildPath(path: string, parent: string): boolean {
@@ -262,6 +285,7 @@ export function prepareBatchRender(options: PrepareBatchRenderOptions): Prepared
     variables,
     outputPath: resolve(resolveOutputTemplate(options.outputTemplate, variables, index)),
   }));
+  checkOutputsInsideTemplateFolder(rows, options.outputTemplate);
   const manifestPath = join(
     commonOutputDirectory(rows.map((row) => row.outputPath)),
     "manifest.json",
@@ -324,7 +348,7 @@ function summarizeManifest(manifest: BatchManifest): void {
 function writeManifest(manifest: BatchManifest): void {
   summarizeManifest(manifest);
   makeOutputFolder(dirname(manifest.manifestPath));
-  writeFileSync(manifest.manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+  replaceFileAtomically(manifest.manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 }
 
 async function renderBatchRow(

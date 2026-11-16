@@ -31,15 +31,13 @@ function importGraph(entry: string): { files: string[]; packages: string[] } {
 }
 
 describe("@hyperframes/studio/keys", () => {
-  it("imports only the key helpers: no package and no editor module", () => {
+  it("imports only the key helpers: core's import-free matcher and no editor module", () => {
     expect(importGraph("keys.ts")).toEqual({
-      files: [
-        "keys.ts",
-        "player/components/studioCombo.ts",
-        "player/components/studioKeyDefaults.ts",
-      ],
-      packages: [],
+      files: ["keys.ts", "player/components/studioKeyDefaults.ts"],
+      packages: ["@hyperframes/core/key-combo"],
     });
+    const matcher = readFileSync(join(src, "../../core/src/keyCombo.ts"), "utf8");
+    expect(ts.preProcessFile(matcher).importedFiles).toEqual([]);
   });
 
   it("is a published subpath sharing the defaults the root entry exports", async () => {

@@ -29,6 +29,7 @@ vi.mock("../../player", async () => {
         onReadyToShowChange?: (ready: boolean) => void;
         suppressLoadingOverlay?: boolean;
         style?: React.CSSProperties;
+        sandboxOrigin?: "opaque";
       },
       ref: React.ForwardedRef<HTMLIFrameElement>,
     ) {
@@ -41,6 +42,7 @@ vi.mock("../../player", async () => {
       return React.createElement("div", {
         ref: ref as React.ForwardedRef<HTMLDivElement>,
         "data-testid": "mock-player",
+        "data-sandbox-origin": props.sandboxOrigin,
         style: props.style,
       });
     }),
@@ -54,10 +56,9 @@ class MockResizeObserver {
   constructor(cb: ResizeObserverCallback) {
     this.cb = cb;
   }
+  // A browser calls back at its next frame, never inside observe(); renderPreview fires them.
   observe() {
-    const fire = () => this.cb([], this as unknown as ResizeObserver);
-    resizeCallbacks.push(fire);
-    fire();
+    resizeCallbacks.push(() => this.cb([], this as unknown as ResizeObserver));
   }
   disconnect() {}
 }
@@ -65,6 +66,8 @@ class MockResizeObserver {
 const originalResizeObserver = globalThis.ResizeObserver;
 
 function setRect(node: Element, rect: { width: number; height: number }) {
+  Object.defineProperty(node, "clientWidth", { configurable: true, value: rect.width });
+  Object.defineProperty(node, "clientHeight", { configurable: true, value: rect.height });
   Object.defineProperty(node, "getBoundingClientRect", {
     configurable: true,
     value: () => ({
@@ -89,10 +92,12 @@ function renderPreview(
     box = { width: 800, height: 600 },
     fillBox,
     compositionSizeHint,
+    sandboxOrigin,
   }: {
     box?: { width: number; height: number };
     fillBox?: boolean;
     compositionSizeHint?: { width: number; height: number };
+    sandboxOrigin?: "opaque";
   } = {},
 ) {
   resizeCallbacks = [];
@@ -116,6 +121,7 @@ function renderPreview(
           resetPreviewSlots: () => {},
           fillBox,
           compositionSizeHint,
+          sandboxOrigin,
         }),
       );
     });
@@ -488,6 +494,37 @@ describe("NLEPreview", () => {
     filled.cleanup();
   });
 
+  it("sizes the stage within the resize callback, so the frame painted after a resize is never at the old size", () => {
+    const view = renderPreview(undefined, { box: { width: 640, height: 360 }, fillBox: true });
+    setRect(view.viewport, { width: 1920, height: 1080 });
+    // Outside act: the browser paints right after this callback returns.
+    for (const fire of resizeCallbacks) fire();
+    expect([view.stage.style.width, view.stage.style.height]).toEqual(["1920px", "1080px"]);
+    view.cleanup();
+  });
+
+  it("sizes the stage from the box's own size while a host scales the box on screen", () => {
+    const view = renderPreview(undefined, { box: { width: 640, height: 360 }, fillBox: true });
+    setRect(view.viewport, { width: 1920, height: 1080 });
+    // A host growing the preview from a quarter of its size: on screen the box is 480 x 270 for now.
+    Object.defineProperty(view.viewport, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 480,
+        bottom: 270,
+        width: 480,
+        height: 270,
+      }),
+    });
+    for (const fire of resizeCallbacks) fire();
+    expect([view.stage.style.width, view.stage.style.height]).toEqual(["1920px", "1080px"]);
+    view.cleanup();
+  });
+
   it("takes the host's composition size as the stage's shape until the preview measures its own", () => {
     const box = { width: 800, height: 600 };
     const plain = renderPreview(undefined, { box });
@@ -532,6 +569,26 @@ describe("NLEPreview", () => {
     expect(players[1].style.pointerEvents).toBe("none");
     view.cleanup();
   });
+
+  it.each([["opaque" as const], [undefined]])(
+    "gives every player it draws the host's sandbox origin (%s)",
+    (sandboxOrigin) => {
+      const view = renderPreview(
+        [
+          { gen: 0, role: "live" },
+          { gen: 1, role: "shadow", url: "/api/projects/p/preview?_t=1" },
+        ],
+        { sandboxOrigin },
+      );
+      view.render("/api/projects/p/preview/components/card.html", "p");
+      const players = [...view.stage.querySelectorAll('[data-testid="mock-player"]')];
+      expect(players).toHaveLength(3);
+      for (const player of players) {
+        expect(player.getAttribute("data-sandbox-origin")).toBe(sandboxOrigin ?? null);
+      }
+      view.cleanup();
+    },
+  );
 
   it("covers the live preview with the cached frame-0 poster until it is ready to show", () => {
     const view = renderPreview();

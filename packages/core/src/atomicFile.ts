@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { realpath } from "./safePath.js";
 import { renameWithRetry } from "./renameWithRetry.js";
+import { terminalText } from "./terminalText.js";
 
 type SiblingFileSystem = Pick<typeof fs, "writeFileSync" | "chmodSync" | "unlinkSync">;
 type DirectFileSystem = SiblingFileSystem & Pick<typeof fs, "openSync" | "closeSync">;
@@ -91,7 +92,11 @@ export function createFileAtomically(
     try {
       operations.unlinkSync(tempPath);
     } catch (error) {
-      console.warn(`[hyperframes] created ${filePath} but could not remove ${tempPath}: ${error}`);
+      console.warn(
+        terminalText(
+          `[hyperframes] created ${filePath} but could not remove ${tempPath}: ${error}`,
+        ),
+      );
     }
   });
 }

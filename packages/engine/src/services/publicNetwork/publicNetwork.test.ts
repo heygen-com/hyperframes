@@ -193,6 +193,11 @@ describe("refusal class", () => {
     ["metadata.google.internal", "internal-name"],
     ["localhost", "internal-name"],
     ["[::1]", "ipv6"],
+    ["[::ffff:a9fe:a9fe]", "link-local"],
+    ["[::ffff:169.254.169.254]", "link-local"],
+    ["[64:ff9b::a00:1]", "private"],
+    ["[::ffff:808:808]", "ipv6"],
+    ["[2001:db8::1]", "ipv6"],
   ])("names %s as %s", (host, hostClass) =>
     expect(refusedClass(() => assertPublicHostname(host))).toBe(hostClass),
   );

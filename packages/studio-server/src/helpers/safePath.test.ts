@@ -52,6 +52,15 @@ describe("walkDir", () => {
     expect(files).not.toContain(".hyperframes/backup/snapshot.html");
   });
 
+  it("hides a nested project's backup files too", () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, "sub", ".HyperFrames", "Backup"), { recursive: true });
+    writeFileSync(join(projectDir, "sub", ".HyperFrames", "Backup", "snapshot.html"), "backup");
+    writeFileSync(join(projectDir, "sub", "index.html"), "sub");
+
+    expect(walkDir(projectDir)).toEqual(["sub/index.html"]);
+  });
+
   it("leaves a render's scratch dir out, so its compiled index.html is not listed as a composition", () => {
     const projectDir = createProjectDir();
     const work = join(projectDir, "work-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d-Ab12Cd");
@@ -112,5 +121,13 @@ describe("isPrivateProjectFile", () => {
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/requests/1/before.png")).toBe(false);
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/requests-old/x")).toBe(true);
     expect(isPrivateProjectFile("/p", "/p/agent-handoff.json")).toBe(false);
+  });
+
+  it("names a nested project's .hyperframes/ records, Studio's file names included", () => {
+    expect(isPrivateProjectFile("/p", "/p/sub/.hyperframes/app-history.jsonl")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/a/b/.hyperframes/agent-handoff.json")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/sub/.hyperframes/studio-motion.json")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/sub/.hyperframes/prepared-assets/gif/a.mp4")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/sub/index.html")).toBe(false);
   });
 });

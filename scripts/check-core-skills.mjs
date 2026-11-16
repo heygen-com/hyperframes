@@ -11,19 +11,21 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Every installed skill's description is listed on every turn; an entry is read in full when it opens.
 export const DESCRIPTION_MAX = 320;
-// Each budget carries +192 B for the usage beacon line (`beaconProblems`).
+// Each budget carries +192 B for the usage beacon line (`beaconProblems`) and +160 B for the line
+// that has every CLI command run through the launcher (`launcherProblems`).
 export const CORE_SKILLS = {
   // +128 B for the routing rows to the video rebuilds and to a reference's style, which only trigger when the entry hands them on.
-  hyperframes: 7488,
+  // +64 B for the lane pointer to format.md.
+  hyperframes: 7712,
   // +256 B for the `_meta.updateNotice` line: the agent relays it, the person updates.
-  "hyperframes-cli": 7616,
-  "hyperframes-registry": 5312,
-  "media-use": 5312,
-  figma: 7360,
-  slideshow: 5312,
-  "remotion-to-hyperframes": 5312,
-  "reverse-any-video": 5312,
-  "style-sampling": 5312,
+  "hyperframes-cli": 7776,
+  "hyperframes-registry": 5472,
+  "media-use": 5472,
+  figma: 7520,
+  slideshow: 5472,
+  "remotion-to-hyperframes": 5472,
+  "reverse-any-video": 5472,
+  "style-sampling": 5472,
 };
 
 /** @param {string} skill */
@@ -95,6 +97,18 @@ export function beaconProblems(skill, content) {
     : [`${skill}/SKILL.md does not run \`npx hyperframes events --skill=${skill}\` as it starts`];
 }
 
+/** The line that has the skill run every CLI command through the launcher, never a project's npx. */
+export const LAUNCHER_LINE = "means `node <SKILLS>/hyperframes/scripts/plugin-cli.mjs <command>`";
+
+/** @param {string} skill @param {string} content */
+export function launcherProblems(skill, content) {
+  const beacon = content.indexOf(beaconCommand(skill));
+  const launcher = content.indexOf(LAUNCHER_LINE);
+  return launcher !== -1 && (beacon === -1 || launcher < beacon)
+    ? []
+    : [`${skill}/SKILL.md does not run the CLI through the launcher before its beacon`];
+}
+
 /** @param {string} root */
 export function checkCoreSkills(root = REPO_ROOT) {
   const commands = registeredCommands(readFileSync(join(root, "packages/cli/src/cli.ts"), "utf8"));
@@ -102,7 +116,12 @@ export function checkCoreSkills(root = REPO_ROOT) {
     const file = skillFile(skill, root);
     const content = readFileSync(file, "utf8");
     const names = maxBytes === null ? [] : nameProblems(skill, content, dirname(file), commands);
-    return [...sizeProblems(skill, content, maxBytes), ...names, ...beaconProblems(skill, content)];
+    return [
+      ...sizeProblems(skill, content, maxBytes),
+      ...names,
+      ...beaconProblems(skill, content),
+      ...launcherProblems(skill, content),
+    ];
   });
 }
 

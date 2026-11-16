@@ -1,16 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
@@ -23,7 +26,9 @@ import {
   gcExtractionCache,
   lookupCacheEntry,
   markCacheEntryComplete,
-  partialCacheEntryDir,
+  createPartialCacheEntryDir,
+  createPartialDir,
+  privateCacheRoot,
   publishCacheEntry,
   readContentSha256,
   readKeyStat,
@@ -31,6 +36,7 @@ import {
   touchCacheDir,
   type CacheKeyInput,
 } from "./extractionCache.js";
+import { defaultExtractCacheDir } from "../config.js";
 
 const keyFor = (videoPath: string, overrides: Partial<CacheKeyInput> = {}): CacheKeyInput => {
   const stat = readKeyStat(videoPath);
@@ -60,8 +66,7 @@ function removeCacheRoot(tmpRoot: string): void {
 
 /** Create and populate a partial dir for `entry` with one frame file. */
 function seedPartialDir(entry: { dir: string; keyHash: string }, frameContent: string): string {
-  const partialDir = partialCacheEntryDir(entry);
-  mkdirSync(partialDir, { recursive: true });
+  const partialDir = createPartialCacheEntryDir(entry);
   writeFileSync(join(partialDir, "frame_00001.jpg"), frameContent, "utf-8");
   return partialDir;
 }
@@ -383,7 +388,7 @@ describe("publishCacheEntry", () => {
     const cacheEntry = entry();
     const partialDir = seedPartialDir(cacheEntry, "frame");
 
-    const result = publishCacheEntry(cacheEntry, partialDir);
+    const result = publishCacheEntry(cacheEntry, partialDir, 1);
 
     expect(result).toEqual({ dir: cacheEntry.dir, published: true });
     expect(existsSync(partialDir)).toBe(false);
@@ -399,7 +404,7 @@ describe("publishCacheEntry", () => {
 
     const partialDir = seedPartialDir(cacheEntry, "loser");
 
-    const result = publishCacheEntry(cacheEntry, partialDir);
+    const result = publishCacheEntry(cacheEntry, partialDir, 1);
 
     expect(result).toEqual({ dir: cacheEntry.dir, published: true });
     expect(existsSync(partialDir)).toBe(false);
@@ -414,7 +419,7 @@ describe("publishCacheEntry", () => {
 
     const partialDir = seedPartialDir(cacheEntry, "fresh");
 
-    const result = publishCacheEntry(cacheEntry, partialDir);
+    const result = publishCacheEntry(cacheEntry, partialDir, 1);
 
     expect(result).toEqual({ dir: cacheEntry.dir, published: true });
     expect(existsSync(partialDir)).toBe(false);
@@ -429,12 +434,60 @@ describe("publishCacheEntry", () => {
     expect(lookupCacheEntry(tmpRoot, keyFor(sourceFile)).hit).toBe(false);
     const partialDir = seedPartialDir(cacheEntry, "fresh");
 
-    const result = publishCacheEntry(cacheEntry, partialDir);
+    const result = publishCacheEntry(cacheEntry, partialDir, 1);
 
     expect(result).toEqual({ dir: cacheEntry.dir, published: true });
     expect(existsSync(partialDir)).toBe(false);
     expect(lookupCacheEntry(tmpRoot, keyFor(sourceFile)).hit).toBe(true);
     expect(statSync(join(cacheEntry.dir, "frame_00001.jpg")).size).toBe("fresh".length);
+  });
+
+  it.each([
+    ["fewer", 2],
+    ["more", 0],
+  ])("does not publish a partial directory holding %s frames than its writer made", (_, made) => {
+    const cacheEntry = entry();
+    const partialDir = seedPartialDir(cacheEntry, "frame");
+
+    const result = publishCacheEntry(cacheEntry, partialDir, made);
+
+    expect(result).toEqual({ dir: partialDir, published: false });
+    expect(existsSync(cacheEntry.dir)).toBe(false);
+    expect(existsSync(join(partialDir, COMPLETE_SENTINEL))).toBe(false);
+  });
+});
+
+describe("createPartialDir", () => {
+  let tmpRoot: string;
+
+  beforeEach(() => {
+    ({ tmpRoot } = makeCacheRoot());
+  });
+
+  afterEach(() => {
+    removeCacheRoot(tmpRoot);
+  });
+
+  it("creates a new empty directory per call under a name the aged-partial sweep matches", () => {
+    const first = createPartialDir(tmpRoot, "__superset-0");
+    const second = createPartialDir(tmpRoot, "__superset-0");
+
+    expect(first).not.toBe(second);
+    for (const dir of [first, second]) {
+      expect(readdirSync(dir)).toEqual([]);
+      expect(basename(dir)).toMatch(
+        new RegExp(`^__superset-0\\.partial-${process.pid}-[A-Za-z0-9]{6}$`),
+      );
+    }
+  });
+
+  it("leaves another writer's directory of the same group in place", () => {
+    const other = createPartialDir(tmpRoot, "__superset-0");
+    writeFileSync(join(other, "frame_00001.jpg"), "other", "utf-8");
+
+    createPartialDir(tmpRoot, "__superset-0");
+
+    expect(readFileSync(join(other, "frame_00001.jpg"), "utf-8")).toBe("other");
   });
 });
 
@@ -559,5 +612,55 @@ describe("gcExtractionCache", () => {
     gcExtractionCache(tmpRoot, { maxBytes: 1, minAgeMs: 60_000 });
 
     expect(existsSync(dependedOnDir)).toBe(true);
+  });
+});
+
+describe.skipIf(process.getuid === undefined)("privateCacheRoot", () => {
+  const savedTmpdir = process.env.TMPDIR;
+  let sharedTmp: string;
+  beforeEach(() => {
+    sharedTmp = mkdtempSync(join(tmpdir(), "hf-shared-tmp-"));
+    process.env.TMPDIR = sharedTmp;
+  });
+  afterEach(() => {
+    if (savedTmpdir === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = savedTmpdir;
+    rmSync(sharedTmp, { recursive: true, force: true });
+  });
+  const uid = () => process.getuid!();
+
+  it("creates the default root closed to other users", () => {
+    const root = defaultExtractCacheDir();
+    expect(privateCacheRoot(root)).toBe(root);
+    expect(statSync(root).mode & 0o777).toBe(0o700);
+  });
+
+  it("closes an existing default root of this user and keeps its entries", () => {
+    const root = defaultExtractCacheDir();
+    mkdirSync(join(root, "hfcache-entry"), { recursive: true, mode: 0o755 });
+    chmodSync(root, 0o755);
+    expect(privateCacheRoot(root)).toBe(root);
+    expect(statSync(root).mode & 0o777).toBe(0o700);
+    expect(existsSync(join(root, "hfcache-entry"))).toBe(true);
+  });
+
+  it("refuses a default root owned by another user", () => {
+    const root = defaultExtractCacheDir();
+    mkdirSync(root, { mode: 0o777 });
+    expect(privateCacheRoot(root, uid() + 1)).toBeUndefined();
+  });
+
+  it("refuses a default root that is a link to another directory", () => {
+    const elsewhere = mkdtempSync(join(sharedTmp, "elsewhere-"));
+    symlinkSync(elsewhere, defaultExtractCacheDir());
+    expect(privateCacheRoot(defaultExtractCacheDir())).toBeUndefined();
+  });
+
+  it("leaves a configured root as it is", () => {
+    const configured = join(sharedTmp, "team-cache");
+    mkdirSync(configured, { mode: 0o775 });
+    chmodSync(configured, 0o775);
+    expect(privateCacheRoot(configured, uid() + 1)).toBe(configured);
+    expect(statSync(configured).mode & 0o777).toBe(0o775);
   });
 });

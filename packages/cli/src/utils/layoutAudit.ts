@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { formatFindingTimes } from "./checkFindings.js";
 export interface LayoutRect {
   left: number;
@@ -158,14 +159,14 @@ export function formatLayoutIssue(issue: LayoutIssue): string {
   const parts = [
     timeLabel,
     issue.code,
-    issue.selector,
-    issue.containerSelector ? `inside ${issue.containerSelector}` : "",
+    terminalText(issue.selector),
+    issue.containerSelector ? `inside ${terminalText(issue.containerSelector)}` : "",
     issue.overflow ? `overflowed ${formatOverflow(issue.overflow)}` : "",
-    issue.text ? quoteText(issue.text) : "",
+    issue.text ? terminalText(quoteText(issue.text)) : "",
   ].filter(Boolean);
 
-  const line = `${parts.join(" ")} — ${issue.message}`;
-  return issue.fixHint ? `${line}\n    Fix: ${issue.fixHint}` : line;
+  const line = `${parts.join(" ")} — ${terminalText(issue.message)}`;
+  return issue.fixHint ? `${line}\n    Fix: ${terminalText(issue.fixHint)}` : line;
 }
 
 export function dedupeLayoutIssues(issues: LayoutIssue[]): LayoutIssue[] {

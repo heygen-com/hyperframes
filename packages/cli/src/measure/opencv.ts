@@ -4,13 +4,18 @@
 import { mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 import { downloadToFile } from "../cloud/download.js";
 import { verifies, type ModelFile } from "../whisper/modelFile.js";
 import { Fix } from "./media.js";
 
 const VERSION = "4.10.0";
-export const OPENCV_DIR = hyperframesCacheDir("opencv", VERSION);
+const CODE_ROOT = trustedCacheRoot();
+export const OPENCV_DIR = join(CODE_ROOT, "opencv", VERSION);
 
 interface Pinned extends ModelFile {
   url: string;
@@ -120,9 +125,12 @@ const isCv = (v: unknown): v is Cv =>
 // fallow-ignore-next-line complexity
 async function ensureOpenCv(onStatus?: (message: string) => void): Promise<void> {
   const missing: Pinned[] = [];
-  for (const f of FILES) if (!(await verifies(join(OPENCV_DIR, f.name), f))) missing.push(f);
+  for (const f of FILES) {
+    const file = join(OPENCV_DIR, f.name);
+    if (foreignWritablePath(file, CODE_ROOT) || !(await verifies(file, f))) missing.push(f);
+  }
   if (!missing.length) return;
-  mkdirSync(OPENCV_DIR, { recursive: true });
+  mkdirSync(OPENCV_DIR, { recursive: true, mode: 0o700 });
   for (const f of missing) {
     onStatus?.(`Downloading ${f.name} (${Math.round(f.bytes / 1e5) / 10} MB, once)...`);
     const temp = join(OPENCV_DIR, `${f.name}.part-${process.pid}`);
@@ -144,6 +152,7 @@ async function ensureOpenCv(onStatus?: (message: string) => void): Promise<void>
       rmSync(temp, { force: true });
     }
   }
+  sealCacheInstall(OPENCV_DIR, CODE_ROOT);
 }
 
 let loaded: Promise<Cv> | null = null;

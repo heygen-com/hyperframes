@@ -54,3 +54,30 @@ function asElement(target: EventTarget | null): HTMLElement | null {
   const candidate = target as { closest?: unknown; isContentEditable?: unknown };
   return typeof candidate.closest === "function" ? (target as HTMLElement) : null;
 }
+
+const PLAYBACK_SHORTCUT_IGNORED_SELECTOR = [
+  "button",
+  "a[href]",
+  "[role='button']",
+  "[role='checkbox']",
+  "[role='menuitem']",
+  // Base UI's menu radio item is a `<div>`, so `button` above no longer catches it.
+  "[role='menuitemradio']",
+  "[role='radio']",
+  "[role='spinbutton']",
+].join(",");
+
+export function shouldIgnorePlaybackShortcutTarget(target: EventTarget | null): boolean {
+  // Anything the user is typing into owns its keys outright, editable elements
+  // included: a letter claimed here never reaches the text. So does a native player.
+  if (ownsPlainKeys(target)) return true;
+  if (!target || typeof target !== "object") return false;
+  const candidate = target as { closest?: unknown };
+  if (typeof candidate.closest !== "function") return false;
+  return (
+    (candidate.closest as (selector: string) => Element | null).call(
+      target,
+      PLAYBACK_SHORTCUT_IGNORED_SELECTOR,
+    ) !== null
+  );
+}

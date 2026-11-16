@@ -3,33 +3,9 @@
  */
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { classifyPropertyGroup, type PropertyGroupName } from "@hyperframes/core/gsap-parser";
-import {
-  COLOR_GRADING_SOURCE_HIDDEN_ATTR,
-  HF_COLOR_GRADING_CANVAS_ID_PREFIX,
-} from "@hyperframes/core/color-grading";
-import { getIframeGsap, queryIframeElement, type IframeGsap } from "./gsapShared";
+import { getIframeGsap, queryIframeElement } from "./gsapShared";
 import { gsapWritesChannels } from "./gsapRuntimeKeyframes";
 import { roundTo3 } from "../utils/rounding";
-
-/**
- * The element's live value for `prop` as GSAP drives it. Opacity on a
- * color-grading-hidden source needs a detour: the runtime hides the source
- * with inline `opacity: 0 !important`, so computed opacity is the hide, not
- * the animated value. The grading canvas mirrors the source's effective
- * opacity every frame, so it is the truth for that one property — reading the
- * raw 0 here is what bakes `opacity: 0` into committed keyframes.
- */
-function readLiveGsapValue(gsap: IframeGsap, el: Element, prop: string): number {
-  if (prop === "opacity" && el.getAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR) != null && el.id) {
-    const canvas = el.ownerDocument.getElementById(HF_COLOR_GRADING_CANVAS_ID_PREFIX + el.id);
-    const win = el.ownerDocument.defaultView;
-    if (canvas && win) {
-      const val = Number(win.getComputedStyle(canvas).opacity);
-      if (Number.isFinite(val)) return val;
-    }
-  }
-  return Number(gsap.getProperty(el, prop));
-}
 
 export function readGsapProperty(
   iframe: HTMLIFrameElement | null,
@@ -42,7 +18,7 @@ export function readGsapProperty(
   const el = queryIframeElement(iframe, selector);
   if (!el) return null;
   try {
-    const val = readLiveGsapValue(gsap, el, prop);
+    const val = Number(gsap.getProperty(el, prop));
     if (!Number.isFinite(val)) return null;
     return POSITION_PROPS.has(prop) ? Math.round(val) : roundTo3(val);
   } catch {
@@ -89,7 +65,7 @@ export function readAllAnimatedProperties(
   const groupedPropKeys = new Set([...propKeys].filter(inGroup));
 
   for (const prop of groupedPropKeys) {
-    const val = readLiveGsapValue(gsap, el, prop);
+    const val = Number(gsap.getProperty(el, prop));
     if (Number.isFinite(val)) {
       result[prop] = POSITION_PROPS.has(prop) ? Math.round(val) : roundTo3(val);
     }

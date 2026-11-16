@@ -1,11 +1,12 @@
 import { strict as assert } from "node:assert";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
   BUNDLED_SFX_RECOVERY_COMMAND,
   BundledSfxAssetsError,
+  bundledSfxAssetPath,
   bundledSfxProvider,
   extensionForBundledSfxFile,
   inspectBundledSfxAssets,
@@ -136,4 +137,42 @@ test("literal ids outrank distinct ids with the same stem", () => {
     rankMediaRows("cats", rows).map((row) => row.id),
     ["cats", "cat"],
   );
+});
+
+test("media index files map only to regular audio files inside the bundled SFX folder", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "media-use-sfx-paths-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const libraryDir = join(root, "sfx");
+  mkdirSync(join(libraryDir, "folder.mp3"), { recursive: true });
+  writeFileSync(join(libraryDir, "chime.mp3"), "chime");
+  writeFileSync(join(libraryDir, "notes.txt"), "notes");
+  writeFileSync(join(root, "outside.mp3"), "outside");
+  symlinkSync(join(root, "outside.mp3"), join(libraryDir, "escape.mp3"));
+  const prefix = "skills/media-use/audio/assets/sfx/";
+
+  assert.equal(
+    bundledSfxAssetPath(`${prefix}chime.mp3`, libraryDir),
+    realpathSync(join(libraryDir, "chime.mp3")),
+  );
+  for (const file of [
+    "/etc/hosts",
+    "../../.ssh/id_ed25519",
+    "chime.mp3",
+    "./chime.mp3",
+    "skills/media-use/audio/assets/sfx",
+    `${prefix}../../../../.ssh/id_ed25519`,
+    `${prefix}../outside.mp3`,
+    `${prefix}/chime.mp3`,
+    `${prefix}.\\chime.mp3`,
+    `${prefix}sub/chime.mp3`,
+    `${prefix}notes.txt`,
+    `${prefix}missing.mp3`,
+    `${prefix}folder.mp3`,
+    `${prefix}escape.mp3`,
+    `${prefix}${join(libraryDir, "chime.mp3")}`,
+    "skills\\media-use\\audio\\assets\\sfx\\chime.mp3",
+    7,
+  ]) {
+    assert.equal(bundledSfxAssetPath(file, libraryDir), null, String(file));
+  }
 });

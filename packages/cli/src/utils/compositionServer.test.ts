@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { hostname, networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildRangeResponse } from "./compositionServer.js";
+import { Hono } from "hono";
+import { buildRangeResponse, refuseUnknownHosts } from "./compositionServer.js";
 
 const TAGGED_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAABGNJQ1ABAQABlXPCVgAAAAxJREFUeJxj0NfXBwABHgCOTp25kgAAAABJRU5ErkJggg==",
@@ -28,5 +29,63 @@ describe("buildRangeResponse colour-tagged PNGs", () => {
     expect(body.includes("cICP")).toBe(false);
     expect(body.includes("IDAT")).toBe(true);
     expect(res.headers.get("content-length")).toBe(String(body.length));
+  });
+});
+
+describe("refuseUnknownHosts", () => {
+  const ENV = "HYPERFRAMES_PREVIEW_ALLOWED_HOSTS";
+
+  afterEach(() => {
+    delete process.env[ENV];
+  });
+
+  function guardedApp(): Hono {
+    const app = new Hono();
+    refuseUnknownHosts(app);
+    app.get("/composition/*", (c) => c.text("project file"));
+    return app;
+  }
+
+  function get(app: Hono, host: string): Promise<Response> {
+    return Promise.resolve(app.request("/composition/package.json", { headers: { host } }));
+  }
+
+  function lanAddress(): string | undefined {
+    for (const entries of Object.values(networkInterfaces())) {
+      for (const entry of entries ?? []) {
+        if (entry.family === "IPv4" && !entry.internal) return entry.address;
+      }
+    }
+    return undefined;
+  }
+
+  it("answers localhost and loopback addresses", async () => {
+    const app = guardedApp();
+    for (const host of ["localhost:3003", "127.0.0.1:3003", "[::1]:3003"]) {
+      expect((await get(app, host)).status, host).toBe(200);
+    }
+  });
+
+  it("answers this machine's LAN address and .local name, so another device can open it", async () => {
+    const app = guardedApp();
+    const lan = lanAddress();
+    if (lan) expect((await get(app, `${lan}:3003`)).status).toBe(200);
+    const short = hostname().toLowerCase().split(".")[0];
+    if (short) expect((await get(app, `${short}.local:3003`)).status).toBe(200);
+  });
+
+  it("refuses any other host name and names the setting that allows it", async () => {
+    const res = await get(guardedApp(), "rebound.example:3003");
+    expect(res.status).toBe(403);
+    const text = await res.text();
+    expect(text).not.toContain("project file");
+    expect(text).toContain(`${ENV}=rebound.example:3003`);
+  });
+
+  it("answers a host named in HYPERFRAMES_PREVIEW_ALLOWED_HOSTS", async () => {
+    process.env[ENV] = "other.example, demo.tunnels.example";
+    const res = await get(guardedApp(), "demo.tunnels.example");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("project file");
   });
 });

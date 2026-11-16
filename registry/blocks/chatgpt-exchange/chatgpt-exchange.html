@@ -843,11 +843,17 @@
 
       /* ============================================================== build */
       const screen = document.getElementById("cge-screen");
+      // `html` is this file's own markup (icons, layout), never a variable: editable
+      // strings go through `text`, which sets textContent and so cannot become markup.
       const el = (cls, html, tag) => {
         const n = document.createElement(tag || "div");
         if (cls) n.className = cls;
-        // Editable strings reach innerHTML; the template delivery gate rejects angle brackets.
         if (html != null) n.innerHTML = html;
+        return n;
+      };
+      const text = (cls, value, tag) => {
+        const n = el(cls, null, tag);
+        n.textContent = value;
         return n;
       };
 
@@ -919,10 +925,9 @@
       const tbl = el("tbl");
       tbl.id = "cge-tbl";
       const headRow = el("tr");
-      headRow.innerHTML =
-        `<div class="td th c1">${CONFIG.table.head[0]}</div>` +
-        `<div class="td th c2">${CONFIG.table.head[1]}</div>` +
-        `<div class="td th c3">${CONFIG.table.head[2]}</div>`;
+      CONFIG.table.head.forEach((label, col) => {
+        headRow.appendChild(text(`td th c${col + 1}`, label));
+      });
       const headRule = el("rule-head");
       headRule.id = "cge-head-rule";
       tbl.appendChild(headRow);
@@ -933,16 +938,21 @@
       CONFIG.table.rows.forEach((r, i) => {
         const row = el("tr");
         row.id = "cge-row" + i;
-        const whyWords = r.why
-          .split(" ")
-          .map((w) => `<span class="w">${w}</span>`)
-          .join(" ");
-        row.innerHTML =
-          `<div class="td c1"><div class="use"><span class="emo">${r.emoji}</span>` +
-          `<span class="w">${r.use}</span></div></div>` +
-          `<div class="td c2"><span class="w">${r.tool}</span></div>` +
-          `<div class="td c3">${whyWords}` +
-          `<div class="chip"><span class="chip-dot">AI</span>${r.chip}</div></div>`;
+        const use = el("use");
+        use.append(text("emo", r.emoji, "span"), text("w", r.use, "span"));
+        const c1 = el("td c1");
+        c1.appendChild(use);
+        const c2 = el("td c2");
+        c2.appendChild(text("w", r.tool, "span"));
+        const c3 = el("td c3");
+        r.why.split(" ").forEach((w, k) => {
+          if (k > 0) c3.appendChild(document.createTextNode(" "));
+          c3.appendChild(text("w", w, "span"));
+        });
+        const chip = el("chip");
+        chip.append(text("chip-dot", "AI", "span"), r.chip);
+        c3.appendChild(chip);
+        row.append(c1, c2, c3);
         const rule = el("rule-row");
         rule.id = "cge-rule" + i;
         tbl.appendChild(row);
@@ -998,7 +1008,7 @@
       };
       mkCursor();
       CONFIG.prompt.split("").forEach((c) => {
-        const sp = el("ch", c === " " ? "&nbsp;" : c, "span");
+        const sp = text("ch", c === " " ? "\u00a0" : c, "span");
         typedEl.appendChild(sp);
         chEls.push(sp);
         mkCursor();

@@ -168,6 +168,7 @@ describe("auth status — persisted user block surface", () => {
     const text = stdout.join("\n");
     expect(text).toContain("pro plan, 25,000 credits");
     expect(text).not.toContain("balance unavailable");
+    expect(text).toMatch(/^Manage or cancel your plan: https:\/\/hyperframes\.studio\/billing\?/m);
   });
 
   it("surfaces the persisted user block (with resolved display_name) for a file credential", async () => {

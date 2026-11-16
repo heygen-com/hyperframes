@@ -19,6 +19,7 @@ import {
   type EditingElementMatch,
   type EditingElementSource,
 } from "./editingElement";
+import { buildElementLabel, NO_TEXT, renderedTextOf } from "./elementLabel";
 
 // Drawn on first use, not at load: a render seeds getRandomValues, and a draw here would shift the
 // composition's own random values.
@@ -83,8 +84,6 @@ function matchesBefore(element: Element, selector: string | undefined) {
   return null;
 }
 
-const NO_TEXT = new Set(["script", "style"]);
-
 type Cut = { truncated: boolean };
 
 /** A value over `limit` is cut: a `dataUrl` one starting `data:` to its header, any other by length. */
@@ -96,24 +95,7 @@ function cut(value: string, limit: number, state: Cut, dataUrl = false): string 
 }
 
 function renderedText(element: Element, state: Cut): string {
-  if (NO_TEXT.has(element.localName)) return "";
-  let text = "";
-  const walker = document.createTreeWalker(
-    element,
-    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
-    {
-      acceptNode: (node) =>
-        node.nodeType === Node.ELEMENT_NODE && NO_TEXT.has((node as Element).localName)
-          ? NodeFilter.FILTER_REJECT
-          : NodeFilter.FILTER_ACCEPT,
-    },
-  );
-  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (node.nodeType !== Node.TEXT_NODE) continue;
-    text += node.nodeValue;
-    if (text.length > MAX_ELEMENT_TEXT) break;
-  }
-  return cut(text, MAX_ELEMENT_TEXT, state);
+  return cut(renderedTextOf(element, MAX_ELEMENT_TEXT), MAX_ELEMENT_TEXT, state);
 }
 
 function inlineStyles(element: Element, state: Cut): Record<string, string> {
@@ -165,6 +147,7 @@ function describeElement(element: Element): EditingElementDescription {
   const state: Cut = { truncated: false };
   return {
     ...elementHit(element),
+    label: buildElementLabel(element),
     parent: element.parentElement ? handleFor(element.parentElement) : null,
     id: element.id || null,
     selector: selector ?? null,

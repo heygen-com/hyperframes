@@ -8,6 +8,7 @@ import { useNLEContext } from "./NLEContext";
 import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
 import { PreviewGuides } from "../editor/PreviewGuides";
 import { PreviewOverlayProvider } from "../editor/PreviewOverlayProvider";
+import { STUDIO_OPAQUE_PREVIEW_ENABLED } from "../editor/manualEditingAvailability";
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
@@ -150,6 +151,7 @@ export function PreviewPane({
             suppressLoadingOverlay={hasLoadedOnceRef.current}
             onStageRef={handleStageRef}
             onCompositionSizeChange={setPreviewCompositionSize}
+            sandboxOrigin={STUDIO_OPAQUE_PREVIEW_ENABLED ? "opaque" : undefined}
           />
           {previewDragOver && (
             <div className="absolute inset-2 z-40 rounded-lg border-2 border-dashed border-studio-accent/50 bg-studio-accent/4 pointer-events-none" />

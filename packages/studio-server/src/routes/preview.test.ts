@@ -1674,6 +1674,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       absoluteSourcePath: string,
       at: number,
       box?: { width: number; height: number },
+      startUncachedStill?: (make: () => Promise<string>) => Promise<string>,
     ) => Promise<string>;
     scanMapImpl?: ScanMapImpl;
     probeAssetCodecImpl?: () => Promise<{
@@ -1939,6 +1940,8 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
         join(projectDir, "clip.mp4"),
         12.34,
         undefined,
+        expect.any(Function),
+        expect.any(AbortSignal),
       );
 
       expect((await app.request(`${url}&hf-proxy-still=-1`)).status).toBe(404);
@@ -1948,6 +1951,108 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
           .status,
       ).toBe(404);
       expect(resolveStillMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("makes at most four new stills at once, and serves a finished still without waiting", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const stillPath = join(projectDir, "still.jpg");
+      writeFileSync(stillPath, "jpegbytes");
+      const finishers: Array<() => void> = [];
+      let running = 0;
+      let mostRunning = 0;
+      const resolveStillMock = vi.fn(
+        async (
+          _dir: string,
+          _file: string,
+          at: number,
+          _box?: { width: number; height: number },
+          startUncachedStill?: (make: () => Promise<string>) => Promise<string>,
+        ) => {
+          if (at === 99) return stillPath;
+          return startUncachedStill!(async () => {
+            mostRunning = Math.max(mostRunning, ++running);
+            await new Promise<void>((resolve) => finishers.push(resolve));
+            running--;
+            return stillPath;
+          });
+        },
+      );
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveStillImpl: resolveStillMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=";
+
+      const made = Array.from({ length: 40 }, (_, i) => app.request(`${url}${i}`));
+      await vi.waitFor(() => expect(finishers).toHaveLength(4));
+      const finished = await app.request(`${url}99`);
+      expect(finished.status).toBe(200);
+      expect(finishers).toHaveLength(4);
+
+      let ended = 0;
+      while (ended < 40) {
+        await vi.waitFor(() => expect(finishers.length).toBeGreaterThan(0));
+        finishers.shift()?.();
+        ended++;
+      }
+      for (const res of await Promise.all(made)) expect(res.status).toBe(200);
+      expect(mostRunning).toBe(4);
+    });
+
+    it("makes a still again for a request that shared a waiter whose client left", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const stillPath = join(projectDir, "still.jpg");
+      writeFileSync(stillPath, "jpegbytes");
+      const finishers: Array<() => void> = [];
+      const inFlight = new Map<number, Promise<string>>();
+      const made: number[] = [];
+      const resolveStillMock = vi.fn(
+        (
+          _dir: string,
+          _file: string,
+          at: number,
+          _box?: { width: number; height: number },
+          startUncachedStill?: (make: () => Promise<string>) => Promise<string>,
+        ) => {
+          const shared = inFlight.get(at);
+          if (shared) return shared;
+          const making = startUncachedStill!(async () => {
+            made.push(at);
+            await new Promise<void>((resolve) => finishers.push(resolve));
+            return stillPath;
+          }).finally(() => inFlight.delete(at));
+          inFlight.set(at, making);
+          return making;
+        },
+      );
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveStillImpl: resolveStillMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=";
+
+      const busy = [1, 2, 3, 4].map((at) => app.request(`${url}${at}`));
+      await vi.waitFor(() => expect(finishers).toHaveLength(4));
+      const leaving = new AbortController();
+      const first = app.request(`${url}10`, { signal: leaving.signal }).catch(() => null);
+      await vi.waitFor(() => expect(resolveStillMock).toHaveBeenCalledTimes(5));
+      const second = app.request(`${url}10`);
+      await vi.waitFor(() => expect(resolveStillMock).toHaveBeenCalledTimes(6));
+      leaving.abort();
+      await first;
+      await vi.waitFor(() => expect(resolveStillMock).toHaveBeenCalledTimes(7));
+
+      for (let ended = 0; ended < 5; ended++) {
+        await vi.waitFor(() => expect(finishers.length).toBeGreaterThan(0));
+        finishers.shift()?.();
+      }
+      expect((await second).status).toBe(200);
+      for (const res of await Promise.all(busy)) expect(res.status).toBe(200);
+      expect(made).toEqual([1, 2, 3, 4, 10]);
     });
 
     it("honors If-None-Match on a repeat request with a 304, without re-invoking resolveProxy", async () => {
@@ -3035,6 +3140,49 @@ describe("the desktop app's private folder", () => {
       );
       expect(res.status).toBe(404);
       expect(await res.text()).not.toContain("secret");
+    }
+  });
+  it("is not served from a nested project's folder either", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, "sub", ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "sub", ".hyperframes", "app-history.jsonl"),
+      '{"text":"secret"}',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    for (const route of ["preview", "preview/comp"]) {
+      for (const path of [
+        "sub/.hyperframes/app-history.jsonl",
+        "SUB/.HyperFrames./App-History.JSONL",
+      ]) {
+        const res = await app.request(`http://localhost/projects/demo/${route}/${path}`);
+        expect(res.status).toBe(404);
+        expect(await res.text()).not.toContain("secret");
+      }
+    }
+  });
+  it("is joined by credentials and tool state, which neither preview route serves", async () => {
+    const projectDir = createProjectDir();
+    const credentials = [
+      ".npmrc",
+      ".mcp.json",
+      ".claude/x.json",
+      ".aws/credentials",
+      "id_ed25519",
+      "cert.pem",
+    ];
+    for (const folder of [".claude", ".aws"])
+      mkdirSync(join(projectDir, folder), { recursive: true });
+    for (const file of credentials) writeFileSync(join(projectDir, file), "secret");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    for (const route of ["preview", "preview/comp"]) {
+      for (const file of credentials) {
+        const res = await app.request(`http://localhost/projects/demo/${route}/${file}`);
+        expect(res.status).toBe(404);
+        expect(await res.text()).not.toContain("secret");
+      }
     }
   });
   it("still serves the app's request pictures", async () => {

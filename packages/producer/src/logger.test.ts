@@ -185,6 +185,22 @@ describe("createConsoleLogger", () => {
       expect(errorSpy.mock.calls[0]?.[0]).toBe('[INFO] hello {"a":1,"b":"two"}');
     });
 
+    it("writes control characters in the message out as visible escapes", () => {
+      const log = createConsoleLogger("info");
+      log.warn("clip \u001b]0;title\u0007.mp4", { src: "\u001b" });
+
+      expect(warnSpy.mock.calls[0]?.[0]).toBe(
+        '[WARN] clip \\x1b]0;title\\x07.mp4 {"src":"\\u001b"}',
+      );
+    });
+
+    it("writes DEL and C1 controls in meta out as visible escapes, which JSON leaves raw", () => {
+      const log = createConsoleLogger("info");
+      log.warn("clip", { src: "a\u009b31mb\u007fc" });
+
+      expect(warnSpy.mock.calls[0]?.[0]).toBe('[WARN] clip {"src":"a\\x9b31mb\\x7fc"}');
+    });
+
     it("emits message only when meta is omitted", () => {
       const log = createConsoleLogger("info");
       log.info("plain");

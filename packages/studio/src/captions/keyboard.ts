@@ -1,5 +1,5 @@
 import { isEditableTarget } from "../utils/timelineDiscovery";
-import { ownsPlainKeys } from "../utils/typingTarget";
+import { ownsPlainKeys } from "@hyperframes/core/typing-target";
 import { resolveCanvasNudgeDelta } from "../components/editor/domEditNudge";
 
 type CaptionNudgeKeyEvent = Parameters<typeof resolveCanvasNudgeDelta>[0];

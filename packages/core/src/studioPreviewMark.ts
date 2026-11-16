@@ -1,11 +1,14 @@
-import { isWebKit } from "./runtime/mediaClock.js";
-
 export const STUDIO_PREVIEW_MARK_META = "hyperframes-studio-preview";
 export const PREVIEW_SEEK_HOLD_ATTR = "data-hf-preview-seek-hold";
 export const PREVIEW_VIDEO_FRAME_ATTR = "data-hf-preview-video-frame";
 export const PREVIEW_VIDEO_SOURCE_ATTR = "data-hf-preview-video-source";
 export const PREVIEW_VIDEO_CANVAS_ATTR = "data-hf-preview-video-canvas";
 export const STUDIO_PREVIEW_CAPTURE_MODE = "capture";
+export const PREVIEW_FOR_ANOTHER_SITE_META = "hyperframes-preview-for-another-site";
+
+export function servedToAnotherSite(doc: Document): boolean {
+  return doc.querySelector(`meta[name="${PREVIEW_FOR_ANOTHER_SITE_META}"]`) !== null;
+}
 
 export function getLogicalOpacity(el: Element, computed: CSSStyleDeclaration): string {
   const overlay = el.previousElementSibling;
@@ -18,9 +21,14 @@ export function getLogicalOpacity(el: Element, computed: CSSStyleDeclaration): s
   return computed.opacity;
 }
 export const PLAYER_FRAME_ATTR = "data-hf-player-frame";
+export const PLAYER_FRAME_NAME = "hyperframes-player";
 
 export function inPlayerFrame(doc: Document): boolean {
-  return isWebKit() && doc.defaultView?.frameElement?.hasAttribute(PLAYER_FRAME_ATTR) === true;
+  const frame = doc.defaultView;
+  return (
+    frame?.name === PLAYER_FRAME_NAME ||
+    frame?.frameElement?.hasAttribute(PLAYER_FRAME_ATTR) === true
+  );
 }
 
 export function defersMediaIn(doc: Document): boolean {
@@ -38,6 +46,10 @@ export const STUDIO_PREVIEW_UPCOMING_ATTR = "data-hf-upcoming";
 export const STUDIO_PREVIEW_LAZY_ATTR = "data-hf-preview-lazy";
 export const STUDIO_PREVIEW_ERRORS = "__hfPreviewErrors";
 export const STUDIO_PREVIEW_ERROR_KINDS = "__hfPreviewErrorKinds";
+export function previewConsoleErrorText(args: readonly unknown[]): string | null {
+  const text = args.map((a) => (a instanceof Error ? a.message : String(a))).join(" ");
+  return text.includes("favicon") ? null : text;
+}
 
 export const refusedPreviewMessage = (status: number) =>
   `The preview page could not be loaded (HTTP ${status}).`;

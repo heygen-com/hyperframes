@@ -1,0 +1,17 @@
+{
+  "name": "page-side-shader-compositor-unavailable",
+  "description": "A browser whose html-in-canvas form the composition's shader-transitions build does not know (Chrome 157 replaced canvas layoutsubtree with content=\"drawable\"): the page deletes layoutSubtree before the build loads, so its page-side compositor declines to install. The shader transition must still render, blended on the Node-side layered path, instead of the bare opacity flip.",
+  "tags": [
+    "regression",
+    "render-compat",
+    "shader"
+  ],
+  "minPsnr": 30,
+  "maxFrameFailures": 0,
+  "minAudioCorrelation": 0,
+  "maxAudioLagWindows": 1,
+  "renderConfig": {
+    "fps": 30,
+    "workers": 1
+  }
+}
