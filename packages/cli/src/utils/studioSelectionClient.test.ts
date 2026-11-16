@@ -39,7 +39,11 @@ function proofResponse(url: string): Response | null {
   const { hostname, port, pathname, searchParams } = new URL(url);
   if (pathname !== "/__hyperframes_config") return null;
   const config = { isHyperframes: true };
-  const proof = previewProof(searchParams.get("nonce"), { address: hostname, port: Number(port) }, config);
+  const proof = previewProof(
+    searchParams.get("nonce"),
+    { address: hostname, port: Number(port) },
+    config,
+  );
   return new Response(JSON.stringify({ ...config, proof }), { status: 200 });
 }
 

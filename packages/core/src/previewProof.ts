@@ -15,7 +15,10 @@ export interface PreviewEndpoint {
 /** The token's folder: always in the user's own home, never a cache folder another user may share. */
 export function previewTokenDir(): string {
   if (process.platform === "win32")
-    return join(process.env["LOCALAPPDATA"]?.trim() || join(homedir(), "AppData", "Local"), "hyperframes");
+    return join(
+      process.env["LOCALAPPDATA"]?.trim() || join(homedir(), "AppData", "Local"),
+      "hyperframes",
+    );
   return join(homedir(), ".local", "state", "hyperframes", "auth");
 }
 
@@ -53,7 +56,8 @@ export function previewToken(dir = previewTokenDir()): string | null {
   if (existing) return existing;
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    const flags = constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0);
+    const flags =
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | (constants.O_NOFOLLOW ?? 0);
     const fd = openSync(path, flags, 0o600);
     const token = randomBytes(32).toString("hex");
     try {

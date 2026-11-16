@@ -15,7 +15,13 @@ import { readBackgroundPreviewStatus, stopBackgroundPreview } from "./previewLif
 
 const projectDir = resolve("/tmp/hyperframes-impostor-project");
 
-const config = { isHyperframes: true, pid: 1, projectName: "impostor", projectDir, version: "test" };
+const config = {
+  isHyperframes: true,
+  pid: 1,
+  projectName: "impostor",
+  projectDir,
+  version: "test",
+};
 
 async function serve(answer: (url: URL, socket: Socket) => Promise<object>): Promise<number> {
   const server = createServer((request, response) => {
@@ -34,7 +40,9 @@ async function serve(answer: (url: URL, socket: Socket) => Promise<object>): Pro
 const listener = (answersChallenge: boolean) =>
   serve(async (url, socket) => {
     const endpoint = { address: socket.localAddress!, port: socket.localPort! };
-    const proof = answersChallenge ? previewProof(url.searchParams.get("nonce"), endpoint, config) : null;
+    const proof = answersChallenge
+      ? previewProof(url.searchParams.get("nonce"), endpoint, config)
+      : null;
     return { ...config, ...(proof && { proof }) };
   });
 

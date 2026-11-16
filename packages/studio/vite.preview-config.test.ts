@@ -34,7 +34,10 @@ describe("previewConfigPayload", () => {
     vi.stubEnv("HOME", home);
     vi.stubEnv("LOCALAPPDATA", home);
     onTestFinished(() => vi.unstubAllEnvs());
-    const env = { HYPERFRAMES_PREVIEW_PROJECT_DIR: "/tmp/video", HYPERFRAMES_PREVIEW_PROJECT_NAME: "video" };
+    const env = {
+      HYPERFRAMES_PREVIEW_PROJECT_DIR: "/tmp/video",
+      HYPERFRAMES_PREVIEW_PROJECT_NAME: "video",
+    };
     const nonce = newPreviewNonce();
     const endpoint = { address: "::1", port: 5190 };
     const answer = previewConfigPayload(env, 1, "dev", { nonce, endpoint })!;
@@ -43,7 +46,6 @@ describe("previewConfigPayload", () => {
     expect(provesPreviewOwner(nonce, { ...endpoint, address: "127.0.0.1" }, answer)).toBe(false);
     expect(previewConfigPayload(env, 1, "dev")).not.toHaveProperty("proof");
   });
-
 
   it("does not claim unrelated direct Vite sessions", () => {
     expect(previewConfigPayload({})).toBeNull();

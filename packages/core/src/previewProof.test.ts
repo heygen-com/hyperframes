@@ -1,4 +1,12 @@
-import { chmodSync, linkSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  linkSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
@@ -41,22 +49,25 @@ describe("preview token", () => {
     expect(previewTokenDir().startsWith(cache)).toBe(false);
   });
 
-  it.runIf(posix)("is refused, never adopted, when the file is a link or others can read it", () => {
-    const known = join(tempDir(), "known");
-    writeFileSync(known, KNOWN, { mode: 0o644 });
-    chmodSync(known, 0o644);
-    const linked = tempDir();
-    symlinkSync(known, previewTokenPath(linked));
-    const readable = tempDir();
-    writeFileSync(previewTokenPath(readable), KNOWN, { mode: 0o644 });
-    chmodSync(previewTokenPath(readable), 0o644);
-    const hardLinked = tempDir();
-    const privateKnown = join(tempDir(), "private");
-    writeFileSync(privateKnown, KNOWN, { mode: 0o600 });
-    linkSync(privateKnown, previewTokenPath(hardLinked));
+  it.runIf(posix)(
+    "is refused, never adopted, when the file is a link or others can read it",
+    () => {
+      const known = join(tempDir(), "known");
+      writeFileSync(known, KNOWN, { mode: 0o644 });
+      chmodSync(known, 0o644);
+      const linked = tempDir();
+      symlinkSync(known, previewTokenPath(linked));
+      const readable = tempDir();
+      writeFileSync(previewTokenPath(readable), KNOWN, { mode: 0o644 });
+      chmodSync(previewTokenPath(readable), 0o644);
+      const hardLinked = tempDir();
+      const privateKnown = join(tempDir(), "private");
+      writeFileSync(privateKnown, KNOWN, { mode: 0o600 });
+      linkSync(privateKnown, previewTokenPath(hardLinked));
 
-    for (const dir of [linked, readable, hardLinked]) expect(previewToken(dir)).toBeNull();
-  });
+      for (const dir of [linked, readable, hardLinked]) expect(previewToken(dir)).toBeNull();
+    },
+  );
 });
 
 describe("preview proof", () => {
@@ -66,9 +77,9 @@ describe("preview proof", () => {
     const answered = { ...config, proof: previewProof(nonce, endpoint, config, token) };
 
     expect(provesPreviewOwner(nonce, endpoint, answered, token)).toBe(true);
-    expect(provesPreviewOwner(nonce, { address: "::ffff:127.0.0.1", port: 3002 }, answered, token)).toBe(
-      true,
-    );
+    expect(
+      provesPreviewOwner(nonce, { address: "::ffff:127.0.0.1", port: 3002 }, answered, token),
+    ).toBe(true);
     expect(provesPreviewOwner(newPreviewNonce(), endpoint, answered, token)).toBe(false);
     expect(provesPreviewOwner(nonce, { ...endpoint, port: 3003 }, answered, token)).toBe(false);
     expect(provesPreviewOwner(nonce, { ...endpoint, address: "::1" }, answered, token)).toBe(false);
