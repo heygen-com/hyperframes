@@ -92,14 +92,19 @@ function whoOf(value: unknown): HistoryWho | null {
   return { kind: value.kind as HistoryWho["kind"], name: value.name };
 }
 
+const isTurnHead = (value: Record<string, unknown>) => isVia(value.via) && isId(value.id);
+const hasTurnFields = (value: Record<string, unknown>) =>
+  typeof value.label === "string" &&
+  typeof value.startedAt === "number" &&
+  typeof value.lastWriteAt === "number";
+
 function parseTurn(value: unknown): Turn | null {
-  if (!isRecord(value) || !isVia(value.via) || !isId(value.id)) return null;
+  if (!isRecord(value) || !isTurnHead(value) || !hasTurnFields(value)) return null;
   const who = whoOf(value.who);
   const parts = value.parts ?? [];
-  const { label, startedAt, lastWriteAt } = value;
-  if (!who || typeof label !== "string" || !isIds(parts)) return null;
-  if (typeof startedAt !== "number" || typeof lastWriteAt !== "number") return null;
-  return { via: value.via, id: value.id, who, label, startedAt, lastWriteAt, parts };
+  if (!who || !isIds(parts)) return null;
+  const { via, id, label, startedAt, lastWriteAt } = value as Omit<Turn, "who" | "parts">;
+  return { via, id, who, label, startedAt, lastWriteAt, parts };
 }
 
 /** The open turn, or null; a marker with no last write time cannot say when the turn ended, so it has. */
