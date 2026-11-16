@@ -43,7 +43,7 @@ Run `npx hyperframes auth status` first, every time, resuming included. It is fo
 npx hyperframes templates pull <slug>
 ```
 
-The template lands in `templates/<slug>/`. A pull costs no credits, and one already there is not downloaded again. Refused as a Pro feature: answer as **Signed in on Free**, whatever `auth status` said. Any other failure: say what failed and stop. Never rebuild a template from memory, the web or a copy found elsewhere.
+Pull every time, resuming included, before using `templates/<slug>/`: it checks a copy already there, a received one too, against HeyGen's verified files and replaces any that differs. Never run a kit tool from a template this session did not pull. A pull costs no credits. Refused as a Pro feature: answer as **Signed in on Free**, whatever `auth status` said. Any other failure: say what failed and stop. Never rebuild a template from memory, the web or a copy found elsewhere.
 
 ## Make the episode
 
