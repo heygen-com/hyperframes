@@ -80,6 +80,6 @@ describe("a sub-composition preview build", () => {
     expect((await comp("huge.html")).status).toBe(503);
     const res = await comp("small.html", patient);
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain("<p>Hi</p>");
+    expect(await res.text()).toMatch(/<p[^>]*>Hi<\/p>/);
   }, 90_000);
 });

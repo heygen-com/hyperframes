@@ -1,5 +1,4 @@
-// Builds sub-composition preview pages off the server's request thread (subCompositionBuild.ts starts it). Every pass
-// that parses the page runs here; the route keeps only the host's own transform and the media probes.
+// Builds sub-composition preview pages off the request thread; the route keeps the host's transform and media probes.
 import { readFileSync } from "node:fs";
 import { parentPort } from "node:worker_threads";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
@@ -10,8 +9,7 @@ import { withRootImportMap } from "./rootImportMap.js";
 import { buildSubCompositionHtml } from "./subComposition.js";
 import type { BuildJob, FinishJob, SubCompositionJob } from "./subCompositionBuild.js";
 
-/** The page with its runtime, and the project files it names; null once the file is gone. Its raw file's hf-ids are
- * pinned first, so they match the source's. */
+/** The page with its runtime and the files it names, hf-ids pinned to the source's; null once the file is gone. */
 function build(job: BuildJob): { html: string; references: string[] } | null {
   const { projectDir, compPath, compFile, runtimeUrl, baseHref, gsapBaseUrl } = job;
   let pinned: string | undefined;
