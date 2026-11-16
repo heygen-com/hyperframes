@@ -1,6 +1,6 @@
 import type { Context, Hono } from "hono";
 import { createHash } from "node:crypto";
-import { closeSync, constants, openSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { requestSubPath } from "../helpers/requestSubPath.js";
@@ -24,14 +24,20 @@ function draftFields(body: unknown): Record<string, unknown> | null {
   return valid ? { kind, studioContent, externalVersion, externalContent, failureMessage } : null;
 }
 
+/** A draft holds two copies of a file the files route reads up to 32 MB of. */
+const MAX_DRAFT_BYTES = 96 * 1024 * 1024;
+
 function readDraft(file: string): unknown {
   let fd: number;
   try {
-    fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    // Nonblocking: a FIFO in a received project would otherwise hold the open, and the server, for a writer.
+    fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   } catch {
     return null;
   }
   try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.size > MAX_DRAFT_BYTES) return null;
     return JSON.parse(readFileSync(fd, "utf-8"));
   } catch {
     return null;

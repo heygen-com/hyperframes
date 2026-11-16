@@ -1,7 +1,18 @@
 import { Hono } from "hono";
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  truncateSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import type { StudioApiAdapter } from "../types";
 import { registerRecoveryDraftRoutes } from "./recoveryDrafts";
@@ -64,6 +75,36 @@ describe("recovery drafts", () => {
 
       expect((await put(draftsApi(project), "index.html", DRAFT)).status).toBe(409);
       expect(readdirSync(outside)).toEqual([]);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "reads a draft without waiting on a pipe and without loading an oversized record",
+    () => {
+      const project = temp("hf-drafts-");
+      const drafts = join(project, ".hyperframes", "recovery");
+      mkdirSync(drafts, { recursive: true });
+      const record = (file: string) =>
+        join(drafts, `${createHash("sha256").update(file).digest("hex")}.json`);
+      writeFileSync(record("kept.html"), JSON.stringify({ ...DRAFT, createdAt: 1 }));
+      execFileSync("mkfifo", [record("pipe.html")]);
+      writeFileSync(record("huge.html"), "");
+      truncateSync(record("huge.html"), 200 * 1024 * 1024);
+
+      const fixture = join(dirname(fileURLToPath(import.meta.url)), "recoveryDrafts.fixture.ts");
+      const child = spawnSync(
+        process.execPath,
+        ["--import", "tsx", fixture, project, "kept.html", "pipe.html", "huge.html"],
+        { encoding: "utf8", timeout: 20_000, killSignal: "SIGKILL" },
+      );
+
+      expect(child.signal, child.stderr).toBeNull();
+      const answers = child.stdout.trim().split("\n").map((line) => JSON.parse(line));
+      expect(answers).toMatchObject([
+        { file: "kept.html", status: 200, draft: { ...DRAFT, filePath: "kept.html" } },
+        { file: "pipe.html", status: 200, draft: null },
+        { file: "huge.html", status: 200, draft: null },
+      ]);
     },
   );
 });
