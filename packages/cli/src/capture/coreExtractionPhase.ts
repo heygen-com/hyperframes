@@ -28,6 +28,7 @@ import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
 import { waitForPageReady } from "./navigateForCapture.js";
 import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 import { filterExtractedScripts } from "./filterExtractedScripts.js";
+import { terminalText } from "../utils/terminalText.js";
 
 export interface CoreExtractionInput {
   page1: Page;
@@ -278,7 +279,7 @@ export async function runCoreExtraction(input: CoreExtractionInput): Promise<Cor
     } catch (err) {
       const errMsg =
         err instanceof Error ? `${err.message}\n${err.stack}` : normalizeErrorMessage(err);
-      console.error(`  ⚠ Design style extraction failed: ${errMsg}`);
+      console.error(`  ⚠ Design style extraction failed: ${terminalText(errMsg)}`);
       warnings.push(`Design style extraction failed: ${errMsg}`);
     }
   };

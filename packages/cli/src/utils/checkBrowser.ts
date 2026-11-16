@@ -29,7 +29,7 @@ import {
   shouldIgnoreHttpError,
   shouldIgnoreRequestFailure,
 } from "../commands/validate.js";
-import { loadBrowserScript } from "../commands/layout.js";
+import { loadBrowserScript } from "../commands/browserScript.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import { ambiguousIssue, type MotionFrame } from "./motionAudit.js";
 import type { LayoutIssue, LayoutIssueCode, LayoutRect } from "./layoutAudit.js";
@@ -2092,7 +2092,7 @@ function joinContrastEntries(
   });
 }
 
-function parseLayoutIssue(value: unknown): LayoutIssue[] {
+export function parseLayoutIssue(value: unknown): LayoutIssue[] {
   if (!isRecord(value)) return [];
   const code = layoutCodeValue(Reflect.get(value, "code"));
   const severity = severityValue(Reflect.get(value, "severity"));

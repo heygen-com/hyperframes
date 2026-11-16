@@ -317,6 +317,18 @@ describe("catalog when the registry cannot be read", () => {
   });
 });
 
+describe("catalog on a terminal", () => {
+  it("prints registry tags with control characters escaped", async () => {
+    const esc = String.fromCharCode(27);
+    state.registry = [block("count-up", [`odd${esc}]52;c;cA==${String.fromCharCode(7)}`])];
+
+    const output = await runCatalog({});
+
+    expect(output).not.toContain(esc);
+    expect(output).toContain("odd\\x1b]52;c;cA==\\x07");
+  });
+});
+
 describe("catalog --json meaning search", () => {
   it("reports the registry moves meaning search cannot see", async () => {
     // Published after the user's artifact was fetched: in the registry, absent

@@ -92,6 +92,7 @@ import { resolveCommandUsage, type ResolvedCommandUsage } from "./utils/commandU
 import { closestMatch, closestNames, commandRedirect, fileHint } from "./utils/didYouMean.js";
 import { jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
 import { isDevMode } from "./utils/env.js";
+import { terminalText } from "./utils/terminalText.js";
 import {
   CliResultSignal,
   CliRuntimeError,
@@ -390,7 +391,7 @@ function printNotices(): void {
     _printStalePinNotice?.();
   }
   _printSkillsUpdateNotice?.();
-  if (_appHistoryNotice) process.stderr.write(`◇  ${_appHistoryNotice}\n`);
+  if (_appHistoryNotice) process.stderr.write(`◇  ${terminalText(_appHistoryNotice)}\n`);
 }
 
 registerRootExitRequester((exitCode) => {

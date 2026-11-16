@@ -60,4 +60,45 @@ describe("catch-up", () => {
     expect(human).not.toContain("shipped");
     expect(JSON.parse(await run(true)).turns).toEqual([]);
   });
+
+  it("prints history, file names and the folder name with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const bel = String.fromCharCode(7);
+    const osc = `${esc}]52;c;cHduZWQ=${bel}`;
+    const parent = mkdtempSync(join(tmpdir(), "hf-catch-up-"));
+    const dir = join(parent, `video${esc}[2J`);
+    mkdirSync(join(dir, ".hyperframes"), { recursive: true });
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    const seenAt = Date.parse("2026-01-01T09:00:00Z");
+    markSeen(dir, { at: seenAt, checked: seenAt });
+    writeFileSync(join(dir, `scene${esc}[1A.html`), "<html></html>");
+    writeFileSync(
+      join(dir, ".hyperframes", APP_HISTORY),
+      `${JSON.stringify({
+        at: "2026-01-01T10:00:00.000Z",
+        engine: "claude",
+        asked: `make it red${osc}`,
+        did: `done\r${esc}[2Kfaked`,
+        files: [`a${bel}.html`],
+      })}\n`,
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    await catchUp.run?.({ args: { _: [], dir, json: false }, rawArgs: [], cmd: catchUp });
+    const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
+    log.mockRestore();
+    const colors = new RegExp(`${esc}\\[[0-9;]*m`, "g");
+    const shown = printed.replace(colors, "");
+
+    const controls = [...shown].filter((ch) => {
+      const code = ch.charCodeAt(0);
+      return (code < 0x20 && code !== 0x09 && code !== 0x0a) || (code >= 0x7f && code <= 0x9f);
+    });
+    expect(controls).toEqual([]);
+    expect(shown).toContain("make it red\\x1b]52;c;cHduZWQ=\\x07");
+    expect(shown).toContain("done\\x0d\\x1b[2Kfaked");
+    expect(shown).toContain("a\\x07.html");
+    expect(shown).toContain("scene\\x1b[1A.html");
+    expect(shown).toContain("video\\x1b[2J");
+  });
 });

@@ -60,6 +60,41 @@ describe("keyframes JSON output", () => {
   });
 });
 
+describe("keyframes human output", () => {
+  it("prints selectors, values and keyframe text from the project with control characters escaped", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const bel = String.fromCharCode(7);
+    const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-human-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const source = join(dir, "index.html");
+    writeFileSync(
+      source,
+      wrap(
+        `const tl = gsap.timeline({ paused: true }); tl.to("#dot${esc}[2J", { x: "40px${esc}]52;c;cA==${bel}", duration: 1 }, 0); window.__timelines = { main: tl };`,
+      ).replace(
+        "</body>",
+        `<style>@keyframes pulse { from { content: "a${esc}[1A"; } to { opacity: 1; } } #dot { animation: pulse 1s; }</style></body>`,
+      ),
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    onTestFinished(() => log.mockRestore());
+
+    await runCommand(keyframesCommand, { rawArgs: [source, "--runtime", "all"] });
+
+    const colors = new RegExp(`${esc}\\[[0-9;]*m`, "g");
+    const output = log.mock.calls
+      .map((args) => args.join(" "))
+      .join("\n")
+      .replace(colors, "");
+    expect(output).not.toContain(esc);
+    expect(output).not.toContain(bel);
+    expect(output).toContain("#dot\\x1b[2J");
+    expect(output).toContain("40px\\x1b]52;c;cA==\\x07");
+    expect(output).toContain("a\\x1b[1A");
+  });
+});
+
 describe("keyframes direct composition scope", () => {
   it("keeps the project root and passes the nested HTML entry to --shot", () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-target-"));

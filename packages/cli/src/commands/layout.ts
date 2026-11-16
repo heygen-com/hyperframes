@@ -1,9 +1,6 @@
 import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
@@ -38,9 +35,9 @@ import {
   type SeekCompositionTimelineOptions,
 } from "../capture/captureCompositionFrame.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
+import { parseLayoutIssue } from "../utils/checkBrowser.js";
+import { loadBrowserScript } from "./browserScript.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 const LAYOUT_SEEK_OPTIONS: SeekCompositionTimelineOptions = AUDIT_SEEK_OPTIONS;
 // All new envelope fields are optional (?); additive changes don't bump this.
 const INSPECT_SCHEMA_VERSION = 1;
@@ -281,14 +278,6 @@ async function runLayoutAudit(
   }
 }
 
-export function loadBrowserScript(name: string): string {
-  const candidates = [join(__dirname, name), join(__dirname, "commands", name)];
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return readFileSync(candidate, "utf-8");
-  }
-  throw new Error(`Missing browser script ${name}`);
-}
-
 function loadLayoutAuditScript(): string {
   return loadBrowserScript("layout-audit.browser.js");
 }
@@ -313,7 +302,7 @@ async function collectLayoutIssues(
       },
       { time, tolerance },
     );
-    issues.push(...(sampleIssues as LayoutIssue[]));
+    if (Array.isArray(sampleIssues)) issues.push(...sampleIssues.flatMap(parseLayoutIssue));
   }
   return issues;
 }
