@@ -66,6 +66,7 @@
     "packages/cli/src/browser/chromeOrphans.fixture.ts",
     "packages/cli/src/capture/publicNetwork.fixture.ts",
     "packages/cli/src/utils/commandResult.fixture.ts",
+    "packages/studio-server/src/routes/recoveryDrafts.fixture.ts",
     // Test fixture worker, spawned by path via the pools' workerEntryPath
     // option from the crash-recovery tests; has no import-graph referrer.
     "packages/producer/src/services/__fixtures__/crashOnMessageWorker.mjs",
