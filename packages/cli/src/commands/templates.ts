@@ -231,7 +231,6 @@ async function unpack(
   }
 }
 
-/** Puts the verified copy at `dest` unless `dest` already matches it. Returns where a differing folder was moved. */
 function install(out: string, dest: string, verified: KitManifest): string | null {
   if (sameKit(listKit(dest), verified)) return null;
   const aside = moveAside(dest);
@@ -244,7 +243,6 @@ function install(out: string, dest: string, verified: KitManifest): string | nul
   return aside;
 }
 
-/** Moves whatever is at `dest` to a dated sibling and returns its path; an empty folder is removed instead. */
 function moveAside(dest: string): string | null {
   const found = lstatSync(dest, { throwIfNoEntry: false });
   if (!found) return null;
@@ -283,7 +281,6 @@ export async function pullTemplate(slug: string, dir: string): Promise<string> {
   return dest;
 }
 
-/** Each path in a template folder: a file's size and SHA-256, or "folder". */
 type KitEntry = { size: number; sha256: string } | "folder";
 type KitManifest = Map<string, KitEntry>;
 
@@ -316,14 +313,11 @@ function saveManifest(pack: TemplatePack, verified: KitManifest): void {
   try {
     mkdirSync(dirname(manifestFile(pack)), { recursive: true });
     replaceFileAtomically(manifestFile(pack), JSON.stringify([...verified]));
-  } catch {
-    // expected: a read-only cache; the next pull downloads again to check the folder
-  }
+  } catch {}
 }
 
 const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
 
-/** A plain file's size and SHA-256; null for a link, a hard-linked file or anything else. */
 function hashFile(path: string): KitEntry | null {
   let fd: number | undefined;
   try {
@@ -345,7 +339,6 @@ function hashFile(path: string): KitEntry | null {
   }
 }
 
-/** Every path under `root`; null when `root` is not a real folder or holds a link or special file. */
 function listKit(root: string): KitManifest | null {
   if (lstatSync(root, { throwIfNoEntry: false })?.isDirectory() !== true) return null;
   const kit: KitManifest = new Map();
