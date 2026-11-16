@@ -73,8 +73,10 @@ const outPath = resolve(
 // just PATH) is what keeps a user who followed the install docs verbatim from
 // silently falling through to whisper. Returns the runner path, or null.
 function resolveParakeet() {
+  // An override with a folder in it means the caller's folder; the runner itself starts elsewhere.
+  const override = process.env.HYPERFRAMES_PARAKEET;
   for (const p of [
-    process.env.HYPERFRAMES_PARAKEET,
+    override && /[\\/]/.test(override) ? resolve(override) : override,
     join(homedir(), ".venvs", "parakeet", "bin", "parakeet-mlx"),
   ]) {
     if (p && existsSync(p)) return p;

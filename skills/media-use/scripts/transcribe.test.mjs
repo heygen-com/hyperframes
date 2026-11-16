@@ -40,7 +40,7 @@ test(
       chmodSync(runner, 0o755);
       writeFileSync(join(project, "in.wav"), "");
       const script = fileURLToPath(new URL("./transcribe.mjs", import.meta.url));
-      const run = (...extra) => {
+      const run = (extra = [], parakeet = runner) => {
         execFileSync(
           process.execPath,
           [script, "--input", "in.wav", "--engine", "parakeet", ...extra],
@@ -50,7 +50,7 @@ test(
             env: {
               ...process.env,
               HOME: home,
-              HYPERFRAMES_PARAKEET: runner,
+              HYPERFRAMES_PARAKEET: parakeet,
               HYPERFRAMES_MEDIA_HOME: join(root, "media"),
               HYPERFRAMES_NO_TELEMETRY: "1",
             },
@@ -59,9 +59,17 @@ test(
         return readFileSync(record, "utf8").trimEnd().split("\n");
       };
       assert.deepEqual(run(), [realpathSync(home), "mlx-community/parakeet-tdt-0.6b-v3"]);
-      assert.deepEqual(run("--model", "./models/mine"), [
+      assert.deepEqual(run(["--model", "./models/mine"]), [
         realpathSync(home),
         join(realpathSync(project), "models", "mine"),
+      ]);
+      // A runner override written relative to the project still names the project's copy.
+      writeFileSync(join(project, "parakeet-mlx"), readFileSync(runner));
+      chmodSync(join(project, "parakeet-mlx"), 0o755);
+      rmSync(runner);
+      assert.deepEqual(run([], "./parakeet-mlx"), [
+        realpathSync(home),
+        "mlx-community/parakeet-tdt-0.6b-v3",
       ]);
     } finally {
       rmSync(root, { recursive: true, force: true });
