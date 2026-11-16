@@ -272,6 +272,36 @@ describe.skipIf(!HAS_FFMPEG)("render servers keep markup inside the project", ()
     ]);
   });
 
+  it("plans copy nothing through top-level links whose names start with two dots", async () => {
+    const { root, projectDir, outsideDir } = outsideProject(false);
+    symlinkSync(join(outsideDir, "secret.png"), join(projectDir, "..x"));
+    symlinkSync(join(outsideDir, "scene.html"), join(projectDir, "..."));
+    symlinkSync(outsideDir, join(projectDir, "..dir"), "dir");
+    const outsideBytes = readdirSync(outsideDir).map((name) =>
+      sha256(readFileSync(join(outsideDir, name))),
+    );
+
+    const planDir = join(root, "plan");
+    await plan(projectDir, config, planDir);
+    const planned = filesUnder(join(planDir, "compiled"));
+    expect(planned.filter((file) => file.startsWith(".."))).toEqual([]);
+    for (const file of planned) {
+      expect(outsideBytes).not.toContain(sha256(readFileSync(join(planDir, "compiled", file))));
+    }
+
+    await planV2(projectDir, config, join(root, "v2"));
+    const artifacts = readPlanV2Manifest(join(root, "v2")).artifacts;
+    expect(artifacts.filter((artifact) => outsideBytes.includes(artifact.sha256))).toEqual([]);
+  });
+
+  it("plans still copy an ordinary project file whose name starts with two dots", async () => {
+    const { root, projectDir } = outsideProject(false);
+    writeFileSync(join(projectDir, "..x"), "IN-PROJECT");
+    const planDir = join(root, "plan");
+    await plan(projectDir, config, planDir);
+    expect(readFileSync(join(planDir, "compiled", "..x"), "utf-8")).toBe("IN-PROJECT");
+  });
+
   it.each(["scene", "entry"] as const)(
     "refuses a symlinked %s that leads outside",
     async (link) => {
