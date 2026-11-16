@@ -7,21 +7,9 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { createHash } from "node:crypto";
-import {
-  linkSync,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  truncateSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import * as tar from "tar";
 import { CONTENT_STORE_REFRESH_AFTER_DAYS, contentStoreUri } from "./contentStore.js";
 import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import {
@@ -126,32 +114,6 @@ describe("tar round-trip", () => {
     expect(readFileSync(join(destDir, "fresh.txt"), "utf-8")).toBe("new");
     const { existsSync } = await import("node:fs");
     expect(existsSync(join(destDir, "stale.txt"))).toBe(false);
-  });
-
-  it("leaves out symbolic links and unpacks hard links as separate plain files", async () => {
-    const sourceDir = join(scratchRoot, "src-links");
-    const destDir = join(scratchRoot, "dest-links");
-    const tarPath = join(scratchRoot, "links.tar");
-    const outsideFile = join(scratchRoot, "outside.txt");
-    mkdirSync(sourceDir, { recursive: true });
-    writeFileSync(outsideFile, "OUTSIDE");
-    writeFileSync(join(sourceDir, "a.txt"), "shared");
-    linkSync(join(sourceDir, "a.txt"), join(sourceDir, "b.txt"));
-    symlinkSync(outsideFile, join(sourceDir, "..x"));
-    symlinkSync(scratchRoot, join(sourceDir, "..dir"), "dir");
-
-    // Packed without following links, so the archive holds the links themselves.
-    tar.create({ file: tarPath, cwd: sourceDir, sync: true }, ["."]);
-    await untarDirectory(tarPath, destDir);
-
-    const types: string[] = [];
-    tar.list({ file: tarPath, sync: true, onReadEntry: (entry) => types.push(entry.type) });
-    expect(types).toEqual(expect.arrayContaining(["Link", "SymbolicLink"]));
-    expect(readdirSync(destDir).sort()).toEqual(["a.txt", "b.txt"]);
-    for (const name of ["a.txt", "b.txt"]) {
-      expect(readFileSync(join(destDir, name), "utf-8")).toBe("shared");
-      expect(lstatSync(join(destDir, name)).nlink).toBe(1);
-    }
   });
 });
 

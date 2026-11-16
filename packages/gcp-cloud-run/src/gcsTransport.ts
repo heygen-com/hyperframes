@@ -26,14 +26,14 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   renameSync,
   rmSync,
   statSync,
+  constants as fsConstants,
 } from "node:fs";
-import { createHash } from "node:crypto";
-import { basename, dirname, join } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import type { Storage } from "@google-cloud/storage";
 import * as tar from "tar";
@@ -281,18 +281,16 @@ function hardLinkedFiles(dir: string, found: string[] = []): string[] {
 }
 
 function copyHardLinkedFiles(destDir: string): void {
-  const linked = hardLinkedFiles(destDir);
-  if (linked.length === 0) return;
-  const scratch = mkdtempSync(join(destDir, ".unlink-"));
-  try {
-    for (const path of linked) {
-      if (lstatSync(path).nlink === 1) continue;
-      const copy = join(scratch, basename(path));
-      copyFileSync(path, copy);
+  for (const path of hardLinkedFiles(destDir)) {
+    if (lstatSync(path).nlink === 1) continue;
+    const copy = `${path}.unlink-${randomUUID()}`;
+    try {
+      copyFileSync(path, copy, fsConstants.COPYFILE_EXCL);
       renameSync(copy, path);
+    } catch (err) {
+      rmSync(copy, { force: true });
+      throw err;
     }
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
   }
 }
 
