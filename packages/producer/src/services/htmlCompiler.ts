@@ -1989,17 +1989,13 @@ async function embedLocalFontFaces(
         const localPath = parts[1];
         if (!localPath || embeddedPaths.has(localPath)) continue;
         const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
-        if (
-          !isPathInside(absPath, projectDir) ||
-          escapesAssetRoot(absPath, assetRoot) ||
-          isPrivateCompositionFile(projectDir, absPath)
-        )
-          continue;
+        if (!isPathInside(absPath, projectDir) || escapesAssetRoot(absPath, assetRoot)) continue;
         // A project font that is a link leading outside obeys the same policy as the file server.
         if (refusesOutsideLink(projectDir, absPath, (line) => log.warn(`[Compiler] ${line}`))) {
           embeddedPaths.add(localPath);
           continue;
         }
+        if (isPrivateCompositionFile(projectDir, absPath)) continue;
         const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
         try {
           if (fileBackedAbsolutePaths.has(absPath)) {
