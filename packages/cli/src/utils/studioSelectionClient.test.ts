@@ -36,11 +36,11 @@ const servers: ActiveServer[] = [
 
 // A Studio's answer to the CLI's challenge, made with this test home's own preview token.
 function proofResponse(url: string): Response | null {
-  const nonce = /\/__hyperframes_config\?nonce=([0-9a-f]+)$/.exec(url)?.[1];
-  if (!nonce) return null;
-  return new Response(JSON.stringify({ isHyperframes: true, proof: previewProof(nonce) }), {
-    status: 200,
-  });
+  const { hostname, port, pathname, searchParams } = new URL(url);
+  if (pathname !== "/__hyperframes_config") return null;
+  const config = { isHyperframes: true };
+  const proof = previewProof(searchParams.get("nonce"), { address: hostname, port: Number(port) }, config);
+  return new Response(JSON.stringify({ ...config, proof }), { status: 200 });
 }
 
 function mockProjectsFetch(port = 5190): typeof fetch {

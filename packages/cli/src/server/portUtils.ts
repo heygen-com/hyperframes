@@ -174,7 +174,7 @@ export function detectHyperframesServer(
               ) {
                 return resolveResult({ type: "mismatch", projectName: json.projectName });
               }
-              if (!provesPreviewOwner(nonce, json.proof))
+              if (!provesPreviewOwner(nonce, { address: "127.0.0.1", port }, { ...json }))
                 return resolveResult({ type: "unproven" });
               return resolveResult({ type: "match" });
             }
@@ -303,7 +303,8 @@ function probePort(port: number): Promise<HyperframesConfigResponse | null> {
           try {
             const json = JSON.parse(data) as HyperframesConfigResponse;
             if (json.isHyperframes !== true) return resolveResult(null);
-            resolveResult({ ...json, proven: provesPreviewOwner(nonce, json.proof) });
+            const proven = provesPreviewOwner(nonce, { address: "127.0.0.1", port }, { ...json });
+            resolveResult({ ...json, proven });
           } catch {
             resolveResult(null);
           }

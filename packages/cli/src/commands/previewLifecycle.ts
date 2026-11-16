@@ -11,7 +11,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { devNull } from "node:os";
+import { devNull, homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { stripVTControlCharacters } from "node:util";
 import {
@@ -20,8 +20,9 @@ import {
   scanActiveServers,
   type ActiveServer,
 } from "../server/portUtils.js";
-import { previewStateHome } from "@hyperframes/core/preview-proof";
+import { namedCacheDir } from "@hyperframes/core/cache-dir";
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
+import { windowsLocalAppData } from "../utils/windowsAppData.js";
 import { isProcessDescendant, processIdentity } from "../utils/orphanCleanup.js";
 import { terminateProcessTree } from "../utils/processTree.js";
 import { PreviewServerPortMismatchError } from "../utils/studioSelectionClient.js";
@@ -87,7 +88,14 @@ interface LifecycleDependencies {
   preferredPort?: number;
 }
 
-const defaultStateHome = previewStateHome;
+function defaultStateHome(): string {
+  return (
+    namedCacheDir("state") ||
+    process.env.XDG_STATE_HOME ||
+    windowsLocalAppData() ||
+    join(homedir(), ".local", "state")
+  );
+}
 
 function normalized(path: string): string {
   const resolved = resolve(path).replace(/\\/g, "/");

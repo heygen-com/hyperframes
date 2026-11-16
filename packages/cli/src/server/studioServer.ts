@@ -6,6 +6,7 @@
  */
 
 import { previewProof } from "@hyperframes/core/preview-proof";
+import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { realpath } from "@hyperframes/core";
@@ -952,17 +953,25 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   app.get("/__hyperframes_config", (c) => {
     const serve = async () => {
       const serverBuildSignature = await loadPreviewServerBuildSignature();
-      const proof = previewProof(c.req.query("nonce"));
-      return c.json({
+      const config = {
         isHyperframes: true,
-        ...(proof && { proof }),
         pid: process.pid,
         projectName: projectId,
         projectDir: projectDir,
         serverBuildSignature,
         browserGpuMode,
         version,
-      });
+      };
+      const socket = (c.env as Partial<HttpBindings> | undefined)?.incoming?.socket;
+      const proof =
+        socket?.localAddress && socket.localPort
+          ? previewProof(
+              c.req.query("nonce"),
+              { address: socket.localAddress, port: socket.localPort },
+              config,
+            )
+          : null;
+      return c.json({ ...config, ...(proof && { proof }) });
     };
     return serve();
   });

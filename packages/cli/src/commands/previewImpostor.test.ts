@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
+import type { AddressInfo, Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { previewProof } from "@hyperframes/core/preview-proof";
@@ -15,27 +15,35 @@ import { readBackgroundPreviewStatus, stopBackgroundPreview } from "./previewLif
 
 const projectDir = resolve("/tmp/hyperframes-impostor-project");
 
-// A listener that answers the config probe for this project. Without the user's token it cannot answer the challenge.
-async function listener(answersChallenge: boolean): Promise<number> {
+const config = { isHyperframes: true, pid: 1, projectName: "impostor", projectDir, version: "test" };
+
+async function serve(answer: (url: URL, socket: Socket) => Promise<object>): Promise<number> {
   const server = createServer((request, response) => {
     const url = new URL(request.url ?? "/", "http://x");
-    const proof = answersChallenge ? previewProof(url.searchParams.get("nonce")) : null;
-    response.setHeader("content-type", "application/json");
-    response.end(
-      JSON.stringify({
-        isHyperframes: true,
-        pid: 1,
-        projectName: "impostor",
-        projectDir,
-        version: "test",
-        ...(proof && { proof }),
-      }),
-    );
+    void answer(url, request.socket).then((body) => {
+      response.setHeader("content-type", "application/json");
+      response.end(JSON.stringify(body));
+    });
   });
   await new Promise<void>((listening) => server.listen(0, "127.0.0.1", () => listening()));
   onTestFinished(() => new Promise<void>((done) => server.close(() => done())));
   return (server.address() as AddressInfo).port;
 }
+
+// A listener that answers the config probe for this project. Without the user's token it cannot answer the challenge.
+const listener = (answersChallenge: boolean) =>
+  serve(async (url, socket) => {
+    const endpoint = { address: socket.localAddress!, port: socket.localPort! };
+    const proof = answersChallenge ? previewProof(url.searchParams.get("nonce"), endpoint, config) : null;
+    return { ...config, ...(proof && { proof }) };
+  });
+
+// Forwards the CLI's challenge to a genuine preview and passes its answer back, with the project changed or not.
+const relay = (genuinePort: number, projectDir?: string) =>
+  serve(async (url) => {
+    const answer = await fetch(`http://127.0.0.1:${genuinePort}${url.pathname}${url.search}`);
+    return { ...((await answer.json()) as object), ...(projectDir && { projectDir }) };
+  });
 
 const ownPid = async () => String(process.pid);
 const claimed = (port: number): ActiveServer => ({
@@ -58,6 +66,14 @@ describe("a listener that claims this user's project without proving it", () => 
   it("is marked unproven by the probe, while one that answers the challenge is proven", async () => {
     expect((await activeServerOnPort(await listener(false), ownPid))?.proven).toBe(false);
     expect((await activeServerOnPort(await listener(true), ownPid))?.proven).toBe(true);
+  });
+
+  it("is not proven by relaying the challenge to a genuine preview", async () => {
+    const genuine = await listener(true);
+
+    expect((await activeServerOnPort(await relay(genuine, "/forged"), ownPid))?.proven).toBe(false);
+    expect((await activeServerOnPort(await relay(genuine), ownPid))?.proven).toBe(false);
+    expect((await activeServerOnPort(genuine, ownPid))?.proven).toBe(true);
   });
 
   it("is not reused by a foreground preview", async () => {

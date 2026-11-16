@@ -28,20 +28,22 @@ describe("previewConfigPayload", () => {
     });
   });
 
-  it("answers the CLI's challenge with this user's preview token", () => {
-    const cache = mkdtempSync(join(tmpdir(), "hf-vite-proof-"));
-    onTestFinished(() => rmSync(cache, { recursive: true, force: true }));
-    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+  it("answers the CLI's challenge with this user's preview token, for its own endpoint", () => {
+    const home = mkdtempSync(join(tmpdir(), "hf-vite-proof-"));
+    onTestFinished(() => rmSync(home, { recursive: true, force: true }));
+    vi.stubEnv("HOME", home);
+    vi.stubEnv("LOCALAPPDATA", home);
     onTestFinished(() => vi.unstubAllEnvs());
-    const env = {
-      HYPERFRAMES_PREVIEW_PROJECT_DIR: "/tmp/video",
-      HYPERFRAMES_PREVIEW_PROJECT_NAME: "video",
-    };
+    const env = { HYPERFRAMES_PREVIEW_PROJECT_DIR: "/tmp/video", HYPERFRAMES_PREVIEW_PROJECT_NAME: "video" };
     const nonce = newPreviewNonce();
+    const endpoint = { address: "::1", port: 5190 };
+    const answer = previewConfigPayload(env, 1, "dev", { nonce, endpoint })!;
 
-    expect(provesPreviewOwner(nonce, previewConfigPayload(env, 1, "dev", nonce)?.proof)).toBe(true);
+    expect(provesPreviewOwner(nonce, endpoint, answer)).toBe(true);
+    expect(provesPreviewOwner(nonce, { ...endpoint, address: "127.0.0.1" }, answer)).toBe(false);
     expect(previewConfigPayload(env, 1, "dev")).not.toHaveProperty("proof");
   });
+
 
   it("does not claim unrelated direct Vite sessions", () => {
     expect(previewConfigPayload({})).toBeNull();

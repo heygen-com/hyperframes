@@ -52,7 +52,9 @@ function boundAddress(server: ServerType): string {
 
 async function startConfigProbeServer(payload: Record<string, unknown>): Promise<number> {
   const server = createHttpServer((req, res) => {
-    const proof = previewProof(new URL(req.url ?? "/", "http://x").searchParams.get("nonce"));
+    const nonce = new URL(req.url ?? "/", "http://x").searchParams.get("nonce");
+    const endpoint = { address: req.socket.localAddress!, port: req.socket.localPort! };
+    const proof = previewProof(nonce, endpoint, payload);
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ ...payload, ...(proof && { proof }) }));
   });

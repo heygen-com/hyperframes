@@ -240,8 +240,18 @@ function devProjectApi(): Plugin {
       server.middlewares.use((req, res, next) => {
         const url = new URL(req.url ?? "/", "http://preview");
         if (url.pathname !== "/__hyperframes_config") return next();
-        const nonce = url.searchParams.get("nonce");
-        const payload = previewConfigPayload(process.env, process.pid, studioPkg.version, nonce);
+        const { localAddress, localPort } = req.socket;
+        const payload = previewConfigPayload(
+          process.env,
+          process.pid,
+          studioPkg.version,
+          localAddress && localPort
+            ? {
+                nonce: url.searchParams.get("nonce"),
+                endpoint: { address: localAddress, port: localPort },
+              }
+            : undefined,
+        );
         if (!payload) return next();
         res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
         res.end(JSON.stringify(payload));

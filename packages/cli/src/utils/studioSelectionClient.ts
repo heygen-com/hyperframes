@@ -134,14 +134,15 @@ export function studioApiUrl(server: ActiveServer, route: string): string {
 const LOOPBACK_HOSTS = ["127.0.0.1", "[::1]"] as const;
 
 async function provesOwnerAt(
-  origin: string,
+  host: string,
+  port: number,
   fetchImpl: (url: string) => Promise<Response>,
 ): Promise<boolean> {
   const nonce = newPreviewNonce();
-  const response = await fetchImpl(`${origin}/__hyperframes_config?nonce=${nonce}`);
+  const response = await fetchImpl(`http://${host}:${port}/__hyperframes_config?nonce=${nonce}`);
   if (!response.ok) return false;
-  const config = (await response.json()) as { proof?: unknown };
-  return provesPreviewOwner(nonce, config.proof);
+  const config = (await response.json()) as Record<string, unknown>;
+  return provesPreviewOwner(nonce, { address: host, port }, config);
 }
 
 async function findViteStudioServerForProject(
@@ -158,7 +159,7 @@ async function findViteStudioServerForProject(
         const project = payload.projects?.find(
           (candidate) => normalizePath(candidate.dir) === normalizedProjectDir,
         );
-        if (!project || !(await provesOwnerAt(`http://${host}:${port}`, fetchImpl))) continue;
+        if (!project || !(await provesOwnerAt(host, port, fetchImpl))) continue;
         return {
           port,
           host,
