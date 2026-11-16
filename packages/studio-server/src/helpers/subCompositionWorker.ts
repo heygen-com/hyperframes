@@ -33,7 +33,6 @@ function build(job: BuildJob): { html: string; references: string[] } | null {
   return { html, references: [...previewReferences(html)] };
 }
 
-/** The page the host transformed, with hf-ids on what the host added and Studio's own scripts. */
 function finish({
   html,
   runtimeUrl,
