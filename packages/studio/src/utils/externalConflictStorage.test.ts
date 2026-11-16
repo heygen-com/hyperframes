@@ -9,6 +9,49 @@ import {
 } from "./externalConflictStorage";
 import { StudioFileConflictError } from "./studioSaveDiagnostics";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function rawStore<T>(
+  mode: IDBTransactionMode,
+  callback: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("hyperframes-studio-external-conflicts", 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("file-conflicts");
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction("file-conflicts", mode);
+      const result = callback(transaction.objectStore("file-conflicts"));
+      transaction.oncomplete = () => {
+        db.close();
+        resolve(result.result);
+      };
+      transaction.onerror = () => reject(transaction.error);
+    };
+  });
+}
+
+/** Writes a record straight into Studio's store, as any script on the origin could. */
+const plantRecord = (projectId: string, filePath: string, record: unknown) =>
+  rawStore("readwrite", (store) => store.put(record, `${projectId}\0${filePath}`));
+
+const readRawRecord = (projectId: string, filePath: string) =>
+  rawStore<unknown>("readonly", (store) => store.get(`${projectId}\0${filePath}`));
+
+function genuineRecord(overrides: Partial<ExternalConflictSnapshot> = {}) {
+  return {
+    kind: "conflict",
+    projectId: "project-b",
+    filePath: "index.html",
+    externalVersion: "v2",
+    externalContent: "external",
+    studioContent: "studio",
+    createdAt: Date.now(),
+    ...overrides,
+  };
+}
+
 describe("external conflict snapshots", () => {
   beforeEach(() => {
     vi.stubGlobal("indexedDB", new IDBFactory());
@@ -77,6 +120,28 @@ describe("external conflict snapshots", () => {
     await expect(
       loadExternalConflictSnapshot("indexeddb-project", "index.html"),
     ).resolves.toBeNull();
+  });
+
+  it.each([
+    ["another project's id", { projectId: "project-a" }],
+    ["another file's path", { filePath: "other.html" }],
+    ["a creation time over 30 days old", { createdAt: Date.now() - 31 * DAY_MS }],
+    ["a creation time over 30 days ahead", { createdAt: Date.now() + 31 * DAY_MS }],
+    ["no creation time", { createdAt: undefined }],
+    ["non-string Studio content", { studioContent: 42 }],
+    ["an unknown kind", { kind: "other" }],
+    ["a failed kind but no failure message", { kind: "failed" }],
+  ])("refuses and deletes a stored record with %s", async (_label, overrides) => {
+    await plantRecord("project-b", "index.html", { ...genuineRecord(), ...overrides });
+
+    await expect(loadExternalConflictSnapshot("project-b", "index.html")).resolves.toBeNull();
+    await expect(readRawRecord("project-b", "index.html")).resolves.toBeUndefined();
+  });
+
+  it("recovers a genuine draft up to 30 days old", async () => {
+    const record = genuineRecord({ createdAt: Date.now() - 29 * DAY_MS });
+    await plantRecord("project-b", "index.html", record);
+    await expect(loadExternalConflictSnapshot("project-b", "index.html")).resolves.toEqual(record);
   });
 
   it("rejects persistence when IndexedDB is unavailable", async () => {

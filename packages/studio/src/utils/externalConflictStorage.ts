@@ -22,6 +22,8 @@ export interface ExternalConflictStorage {
 const DB_NAME = "hyperframes-studio-external-conflicts";
 const DB_VERSION = 1;
 const STORE_NAME = "file-conflicts";
+/** Unresolved drafts are offered for recovery for 30 days, then discarded. */
+const SNAPSHOT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 function key(projectId: string, filePath: string): string {
   return `${projectId}\0${filePath}`;
@@ -157,11 +159,46 @@ export async function persistExternalFailureSnapshot(
   });
 }
 
+function isStringOrNull(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+/**
+ * The IndexedDB store is shared by every project served from this origin, so a record is
+ * only recovered when it names the exact key it was stored under, has the shape Studio
+ * writes, and is younger than {@link SNAPSHOT_MAX_AGE_MS}.
+ */
+function isRecoverableSnapshot(
+  record: unknown,
+  projectId: string,
+  filePath: string,
+  now: number,
+): record is ExternalConflictSnapshot {
+  if (typeof record !== "object" || record === null) return false;
+  const snapshot = record as Record<string, unknown>;
+  if (snapshot.projectId !== projectId || snapshot.filePath !== filePath) return false;
+  if (typeof snapshot.studioContent !== "string") return false;
+  if (!isStringOrNull(snapshot.externalVersion) || !isStringOrNull(snapshot.externalContent)) {
+    return false;
+  }
+  const createdAt = snapshot.createdAt;
+  if (typeof createdAt !== "number" || !(Math.abs(now - createdAt) <= SNAPSHOT_MAX_AGE_MS)) {
+    return false;
+  }
+  if (snapshot.kind === "conflict") return true;
+  return snapshot.kind === "failed" && typeof snapshot.failureMessage === "string";
+}
+
+/** Returns the draft stored for this project and file, deleting any record that fails validation. */
 export async function loadExternalConflictSnapshot(
   projectId: string,
   filePath: string,
 ): Promise<ExternalConflictSnapshot | null> {
-  return indexedDbStorage.get(projectId, filePath);
+  const record: unknown = await indexedDbStorage.get(projectId, filePath);
+  if (record == null) return null;
+  if (isRecoverableSnapshot(record, projectId, filePath, Date.now())) return record;
+  await indexedDbStorage.delete(projectId, filePath).catch(() => undefined);
+  return null;
 }
 
 export async function deleteExternalConflictSnapshot(

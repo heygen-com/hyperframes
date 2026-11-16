@@ -1,9 +1,15 @@
 // fallow-ignore-file code-duplication
 // @vitest-environment happy-dom
+import { IDBFactory } from "fake-indexeddb";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StudioFileConflictError } from "../utils/studioSaveDiagnostics";
+import {
+  deleteExternalConflictSnapshot,
+  loadExternalConflictSnapshot,
+  persistExternalConflictSnapshot,
+} from "../utils/externalConflictStorage";
 import { markStudioWriteToken, resetStudioWriteTokens } from "../utils/studioFileVersion";
 import { markSelfWrite, resetSelfWriteRegistry } from "./sdkSelfWriteRegistry";
 import {
@@ -834,6 +840,104 @@ describe("external file change coordinator", () => {
     await vi.waitFor(() => expect(captured.handle?.blocked?.status).toBe("conflict"));
     expect(captured.handle?.blocked).toMatchObject({
       error: { currentContent: "external", attemptedContent: "studio" },
+    });
+  });
+
+  describe("recovery drafts in the shared origin store", () => {
+    beforeEach(() => {
+      vi.stubGlobal("indexedDB", new IDBFactory());
+    });
+
+    /** Writes a record straight into Studio's store, as any script on the origin could. */
+    const plantRecord = (projectId: string, filePath: string, record: object) =>
+      new Promise<void>((resolve, reject) => {
+        const request = indexedDB.open("hyperframes-studio-external-conflicts", 1);
+        request.onupgradeneeded = () => request.result.createObjectStore("file-conflicts");
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          const db = request.result;
+          const transaction = db.transaction("file-conflicts", "readwrite");
+          transaction.objectStore("file-conflicts").put(record, `${projectId}\0${filePath}`);
+          transaction.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          transaction.onerror = () => reject(transaction.error);
+        };
+      });
+
+    const mountWithStore = (overrides: Partial<CoordinatorOptions> = {}) =>
+      mountCoordinator({
+        projectId: "project-b",
+        recoveryFilePath: "index.html",
+        loadConflictSnapshot: loadExternalConflictSnapshot,
+        deleteConflictSnapshot: deleteExternalConflictSnapshot,
+        ...overrides,
+      });
+
+    it.each([
+      ["another project", { projectId: "project-a", filePath: "index.html" }],
+      ["another file", { projectId: "project-b", filePath: "secrets.html" }],
+    ])("ignores a planted record naming %s", async (_label, target) => {
+      await plantRecord("project-b", "index.html", {
+        kind: "failed",
+        ...target,
+        externalVersion: null,
+        externalContent: null,
+        studioContent: "<script>planted()</script>",
+        failureMessage: "planted",
+        createdAt: Date.now(),
+      });
+      const overwriteConflict = vi.fn(async () => undefined);
+      const { captured, options } = await mountWithStore({ overwriteConflict });
+
+      await act(async () => handler?.({ path: "index.html", version: "v2", content: "external" }));
+      await act(async () => captured.handle?.keepStudioFile());
+
+      expect(captured.handle?.blocked).toBeNull();
+      expect(options.reloadPreview).toHaveBeenCalledOnce();
+      expect(overwriteConflict).not.toHaveBeenCalled();
+      await expect(loadExternalConflictSnapshot("project-b", "index.html")).resolves.toBeNull();
+    });
+
+    it("ignores a loaded record whose key differs from the lookup", async () => {
+      const { captured } = await mountCoordinator({
+        projectId: "project-b",
+        recoveryFilePath: "index.html",
+        loadConflictSnapshot: vi.fn(async () => ({
+          kind: "conflict" as const,
+          projectId: "project-a",
+          filePath: "secrets.html",
+          externalVersion: "v2",
+          externalContent: "external",
+          studioContent: "planted",
+          createdAt: Date.now(),
+        })),
+      });
+      await act(async () => undefined);
+      expect(captured.handle?.blocked).toBeNull();
+    });
+
+    it("still recovers a draft Studio saved for this project and file", async () => {
+      await persistExternalConflictSnapshot(
+        "project-b",
+        new StudioFileConflictError({
+          filePath: "index.html",
+          currentVersion: "v2",
+          currentContent: "external",
+          attemptedContent: "studio draft",
+        }),
+      );
+      const { captured } = await mountWithStore();
+
+      await vi.waitFor(() => expect(captured.handle?.blocked?.status).toBe("conflict"));
+      expect(captured.handle?.blocked).toMatchObject({
+        error: {
+          filePath: "index.html",
+          currentContent: "external",
+          attemptedContent: "studio draft",
+        },
+      });
     });
   });
 

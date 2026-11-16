@@ -215,8 +215,9 @@ export function useExternalFileChangeCoordinator({
         if (cancelled || !snapshot || !mountedRef.current || generation !== generationRef.current) {
           return;
         }
+        if (snapshot.projectId !== projectId || snapshot.filePath !== recoveryFilePath) return;
         const payload = {
-          path: snapshot.filePath,
+          path: recoveryFilePath,
           version: snapshot.externalVersion,
           content: snapshot.externalContent,
         };
@@ -224,7 +225,7 @@ export function useExternalFileChangeCoordinator({
           setBlocked({
             status: "failed",
             generation,
-            path: snapshot.filePath,
+            path: recoveryFilePath,
             error: new Error(snapshot.failureMessage),
             payload,
             studioContent: snapshot.studioContent,
@@ -232,7 +233,7 @@ export function useExternalFileChangeCoordinator({
           });
         } else {
           const error = new StudioFileConflictError({
-            filePath: snapshot.filePath,
+            filePath: recoveryFilePath,
             currentVersion: snapshot.externalVersion,
             currentContent: snapshot.externalContent,
             attemptedContent: snapshot.studioContent,
