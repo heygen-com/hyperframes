@@ -239,8 +239,6 @@ export async function assertMediaPayload(filePath: string, elementId: string): P
 }
 
 const IMAGE_SNIFF_BYTES = 64 * 1024;
-const MARKUP_PROLOG = /^(?:<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!doctype\b(?:[^>[]|\[[\s\S]*?\])*>)/i;
-
 function withoutLeadingBlanks(text: string): string {
   let at = 0;
   while (at < text.length && (text[at] === "\0" || /\s/.test(text[at]!))) at++;
@@ -259,11 +257,33 @@ function headText(head: Buffer): string {
   return head.toString("latin1", byteOrderMarkLength(head));
 }
 
+function afterMarker(text: string, from: number, end: string): string | null {
+  const at = text.indexOf(end, from);
+  return at < 0 ? null : text.slice(at + end.length);
+}
+
+/** The text after a doctype, whose internal subset in brackets may itself hold `>`. */
+function afterDoctype(text: string): string | null {
+  for (let at = 9; at < text.length; at++) {
+    if (text[at] === ">") return text.slice(at + 1);
+    if (text[at] === "[") at = text.indexOf("]", at);
+    if (at < 0) return null;
+  }
+  return null;
+}
+
+/** The text after one leading prolog, comment or doctype; null when none opens it or it never ends. */
+function afterProlog(text: string): string | null {
+  if (text.startsWith("<?")) return afterMarker(text, 2, "?>");
+  if (text.startsWith("<!--")) return afterMarker(text, 4, "-->");
+  return /^<!doctype\b/i.test(text) ? afterDoctype(text) : null;
+}
+
 /** Whether markup opens as an SVG; a prolog that runs past the window of a longer file is given the benefit of the doubt. */
 function opensWithSvgRoot(markup: string, complete: boolean): boolean {
   let rest = withoutLeadingBlanks(markup);
-  for (let prolog = MARKUP_PROLOG.exec(rest); prolog; prolog = MARKUP_PROLOG.exec(rest)) {
-    rest = withoutLeadingBlanks(rest.slice(prolog[0].length));
+  for (let next = afterProlog(rest); next !== null; next = afterProlog(rest)) {
+    rest = withoutLeadingBlanks(next);
   }
   return /^<svg[\s/>]/i.test(rest) || (!complete && /^<[?!]/.test(rest));
 }

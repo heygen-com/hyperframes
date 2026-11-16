@@ -223,6 +223,7 @@ describe("isNotImagePayload", () => {
       Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("<svg/>", "utf16le")]),
       false,
     ],
+    ["an svg with a long doctype subset", `<!DOCTYPE svg [${"][".repeat(30_000)}]><svg/>`, false],
     ["a png", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), false],
   ])("for %s", async (_label, contents, refused) => {
     expect(await isNotImagePayload(writeFixture("image", contents))).toBe(refused);
