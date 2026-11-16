@@ -50,6 +50,6 @@ export async function acquireRenderSlot(
       "Rerun without --no-wait to start when it finishes, or set HYPERFRAMES_RENDER_LOCK=off to render side by side. " +
         "Set HYPERFRAMES_RENDER_LOCK_DIR to one folder in every account to share the slot across user accounts.",
     );
-    return failCommand(1, error);
+    return failCommand(1, error, "render_locked");
   }
 }
