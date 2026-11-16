@@ -660,7 +660,7 @@ Examples:
     timeout: {
       type: "string",
       description:
-        "Ms to wait for scripts to settle and media to load (default: 3000). Also raises the " +
+        "Ms to wait for scripts to settle and media to load. Also raises the " +
         "page-navigation budget above its 10s floor when a slow external <script> needs longer.",
       default: "3000",
     },
