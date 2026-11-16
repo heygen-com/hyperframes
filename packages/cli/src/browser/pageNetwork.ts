@@ -1,18 +1,12 @@
 import type { Browser } from "puppeteer-core";
 
 export interface PageNetworkLaunch {
-  /** Chrome args to add to the launch. Empty when the page network isn't restricted. */
   args: string[];
   userDataDir?: string;
 }
 
-/**
- * `PRODUCER_RESTRICT_PAGE_NETWORK` holds for every CLI browser that opens a composition, as it does for a render.
- * The page reaches its own server (`pageUrl`'s host) directly. Everything else goes through the engine's
- * public-only proxy, which refuses loopback, private, link-local and other non-public addresses. The proxy and
- * profile live as long as the browser. If the proxy can't start, the launch fails rather than running the page
- * unrestricted.
- */
+// With PRODUCER_RESTRICT_PAGE_NETWORK on, a composition page reaches its own server directly and everything else
+// only through the engine's public-only proxy, as in a render. If the proxy can't start, the launch fails.
 export async function launchWithPageNetwork(
   pageUrl: string | undefined,
   launch: (network: PageNetworkLaunch) => Promise<Browser>,

@@ -162,8 +162,8 @@ export function prelaunchCompositionBrowser(
   const abort = new AbortController();
   const options = { browserGpuMode, signal: abort.signal };
   const key = launchKey(html, false, options);
-  // A restricted page network needs the page server's address, which doesn't exist yet, so nothing prelaunches.
-  const launched = resolveRestrictPageNetwork()
+  const launchNeedsPageUrl = resolveRestrictPageNetwork();
+  const launched = launchNeedsPageUrl
     ? Promise.resolve(undefined)
     : launchCompositionBrowser(html, false, options).catch(() => undefined);
   let taken = false;
