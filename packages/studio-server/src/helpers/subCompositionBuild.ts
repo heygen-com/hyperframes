@@ -24,8 +24,25 @@ export interface FinishJob {
   variables?: Record<string, unknown>;
 }
 
-export type SubCompositionJob = BuildJob | FinishJob;
-type Result<J> = J extends BuildJob ? { html: string; references: string[] } | null : string;
+export interface BaseJob {
+  kind: "base";
+  html: string;
+  projectId: string;
+  runtimeUrl: string;
+}
+
+export interface PartsJob {
+  kind: "parts";
+  html: string;
+  ignore: string[];
+}
+
+export type SubCompositionJob = BuildJob | BaseJob | FinishJob | PartsJob;
+type Result<J> = J extends BuildJob
+  ? { html: string; references: string[] } | null
+  : J extends BaseJob
+    ? { html: string; references: string[] }
+    : string;
 
 export class SubCompositionDeadlineError extends Error {
   constructor(compPath: string) {
@@ -40,7 +57,7 @@ interface Pending {
   job: SubCompositionJob;
   resolve: (result: unknown) => void;
   reject: (error: Error) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer: ReturnType<typeof setTimeout> | undefined;
 }
 
 /** The worker beside this module: the built .js in dist (studio-server's and the CLI's). From source, Bun runs the
@@ -110,8 +127,8 @@ function replace(from: Worker, failed?: Error): void {
   for (const [id, job] of pending) next.postMessage({ id, job: job.job });
 }
 
-/** `job` on the build worker, refused past `deadline` (performance.now() time). Only the running job's deadline ends
- * the worker; a queued job past its own is dropped. @param compPath names the page in the refusal */
+/** `job` on the build worker, refused past `deadline` (performance.now() time; Infinity: never). Only the running job's
+ * deadline ends the worker; a queued job past its own is dropped. @param compPath names the page in the refusal */
 export function runOffThread<J extends SubCompositionJob>(
   job: J,
   deadline: number,
