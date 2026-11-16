@@ -17,7 +17,7 @@ export function creditLimit(projectDir) {
 }
 
 /** Credits already committed by jobs in this project, and what each job key holds. A logged amount that is not a
- *  positive finite number holds nothing, so no row can lower the total. */
+ *  positive finite number holds nothing, so no row counts below zero. */
 export function creditsSpent(projectDir) {
   const charged = new Map();
   for (const row of read(join(projectDir, ".hyperframes", "heygen-jobs.jsonl")).split("\n")) {
