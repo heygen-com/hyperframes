@@ -20,7 +20,7 @@ export function terminalTextDeep<T>(value: T): T {
   if (Array.isArray(value)) return value.map(terminalTextDeep) as T;
   if (value !== null && typeof value === "object" && isPlainObject(value)) {
     return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, terminalTextDeep(item)]),
+      Object.entries(value).map(([key, item]) => [terminalText(key), terminalTextDeep(item)]),
     ) as T;
   }
   return value;

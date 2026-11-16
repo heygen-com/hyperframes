@@ -14,6 +14,7 @@ import {
   auditClipDurations,
   extractCompositionErrorsFromLint,
   navigationTimeoutHint,
+  emitFailureReport,
   printValidationResult,
   projectPathOfUrl,
   raceMediaReady,
@@ -407,7 +408,7 @@ describe("projectPathOfUrl", () => {
 });
 
 describe("validate text report", () => {
-  // fails without the fix: console messages and contrast findings from the page reached the terminal with their control bytes.
+  // fails without the fix: page console messages and contrast findings reached the terminal with raw control bytes.
   it("prints page messages and contrast findings with control characters as visible escapes", () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     try {
@@ -433,9 +434,23 @@ describe("validate text report", () => {
       );
       const output = log.mock.calls.map((args) => args.join(" ")).join("\n");
       expect(output.split("\\x1b]52;c;cGF5\\x07").length - 1).toBe(4);
-      expect(output).not.toMatch(/[\u0007\u001b]/);
+      expect(output).not.toContain("\u001b");
+      expect(output).not.toContain("\u0007");
     } finally {
       log.mockRestore();
+    }
+  });
+
+  it("prints a failure message with control characters as visible escapes", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      emitFailureReport("page crashed\u001b]52;c;cGF5\u0007", false);
+      const output = error.mock.calls.map((args) => args.join(" ")).join("\n");
+      expect(output).toContain("page crashed\\x1b]52;c;cGF5\\x07");
+      expect(output).not.toContain("\u001b");
+      expect(output).not.toContain("\u0007");
+    } finally {
+      error.mockRestore();
     }
   });
 });

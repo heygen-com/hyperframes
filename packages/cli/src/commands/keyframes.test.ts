@@ -503,10 +503,10 @@ describe("keyframes project compositions", () => {
 });
 
 describe("keyframes text output", () => {
-  const printed = async (html: string, extra: string[]) => {
+  const printed = async (html: string, extra: string[], file = "index.html") => {
     const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-text-"));
     onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
-    const source = join(dir, "index.html");
+    const source = join(dir, file);
     writeFileSync(source, html);
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     onTestFinished(() => log.mockRestore());
@@ -527,6 +527,16 @@ describe("keyframes text output", () => {
       "\\x1b]52;c;cGF5\\x07",
     ],
     [
+      "a GSAP tween property name",
+      wrap(`
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#dot", { "\u001b]52;c;cGF5\u0007": 1, duration: 1 });
+        window.__timelines = [tl];
+      `),
+      [],
+      "\\x1b]52;c;cGF5\\x07",
+    ],
+    [
       "a CSS keyframes rule",
       `<!doctype html><html><head><style>
         .dot { animation: rise 1s both; }
@@ -535,9 +545,28 @@ describe("keyframes text output", () => {
       ["--runtime", "css"],
       "\\x1b[2J\\x07",
     ],
-  ])("prints %s with its control characters as visible escapes", async (_what, html, extra, escaped) => {
-    const output = await printed(html, extra);
-    expect(output).toContain(escaped);
-    expect(output).not.toMatch(/[\u0007\u001b]/);
-  });
+  ])(
+    "prints %s with its control characters as visible escapes",
+    async (_what, html, extra, escaped) => {
+      const output = await printed(html, extra);
+      expect(output).toContain(escaped);
+      expect(output).not.toContain("\u001b");
+      expect(output).not.toContain("\u0007");
+    },
+  );
+
+  // Windows file names cannot hold control characters.
+  it.skipIf(process.platform === "win32")(
+    "prints a file name with control characters as visible escapes",
+    async () => {
+      const output = await printed(
+        `<!doctype html><html><body></body></html>`,
+        [],
+        "a\u001b]0;x\u0007.html",
+      );
+      expect(output).toContain("a\\x1b]0;x\\x07.html");
+      expect(output).not.toContain("\u001b");
+      expect(output).not.toContain("\u0007");
+    },
+  );
 });

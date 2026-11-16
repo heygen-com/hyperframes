@@ -15,7 +15,11 @@ import { resolveProject, type ProjectDir } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
-import { resolveNaturalMediaTimelineDuration, terminalText, terminalTextDeep } from "@hyperframes/core";
+import {
+  resolveNaturalMediaTimelineDuration,
+  terminalText,
+  terminalTextDeep,
+} from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { decodeWellFormedEscapes } from "@hyperframes/studio-server";
 import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
@@ -621,7 +625,7 @@ function emitTextReport(
   console.log(`${c.accent("◇")}  ${formatTotals(errors, warnings, contrastFailures)}`);
 }
 
-function emitFailureReport(message: string, asJson: boolean): void {
+export function emitFailureReport(message: string, asJson: boolean): void {
   if (asJson) {
     console.log(
       JSON.stringify(
@@ -673,7 +677,9 @@ Examples:
     const asJson = Boolean(args.json);
 
     if (!asJson) {
-      console.log(`${c.accent("◆")}  Validating ${c.accent(terminalText(project.name))} in headless Chrome`);
+      console.log(
+        `${c.accent("◆")}  Validating ${c.accent(terminalText(project.name))} in headless Chrome`,
+      );
     }
 
     try {

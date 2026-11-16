@@ -26,4 +26,10 @@ describe("terminalTextDeep", () => {
       ok: true,
     });
   });
+
+  it("escapes object keys too", () => {
+    expect(terminalTextDeep({ "x\u001b]52;c;cGF5\u0007": 1 })).toEqual({
+      "x\\x1b]52;c;cGF5\\x07": 1,
+    });
+  });
 });

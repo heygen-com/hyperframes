@@ -1135,7 +1135,9 @@ function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) 
         0,
       );
       if (total === 0) {
-        console.log(`${c.success("◇")}  ${c.accent(projectShown)} ${c.dim("— no keyframes found")}`);
+        console.log(
+          `${c.success("◇")}  ${c.accent(projectShown)} ${c.dim("— no keyframes found")}`,
+        );
         return;
       }
       console.log(
