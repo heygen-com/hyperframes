@@ -7,7 +7,17 @@ import { createRenderJob, executeRenderJob } from "./renderOrchestrator.js";
 
 // Entry: executeRenderJob. Capture setup fails on a frame whose cache entry another hand removed; the failure must
 // say what was gone, read before the render removes its own folders.
-const trace = vi.hoisted(() => ({ missing: "" }));
+const trace = vi.hoisted(() => ({ missing: "", probeThrows: false }));
+
+vi.mock("@hyperframes/core/missing-path", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@hyperframes/core/missing-path")>();
+  return {
+    missingPathOf: (error: unknown) => {
+      if (trace.probeThrows) throw new RangeError("Maximum call stack size exceeded");
+      return real.missingPathOf(error);
+    },
+  };
+});
 
 vi.mock("./render/shared.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./render/shared.js")>()),
@@ -88,10 +98,11 @@ vi.mock("./render/captureCost.js", async (importOriginal) => ({
 
 const dirs: string[] = [];
 afterEach(() => {
+  trace.probeThrows = false;
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-it("a render that fails on a missing frame says the cache entry holding it was gone", async () => {
+function failingRender() {
   const root = mkdtempSync(join(tmpdir(), "hf-missing-render-"));
   dirs.push(root);
   writeFileSync(join(root, "index.html"), "<div></div>");
@@ -106,11 +117,24 @@ it("a render that fails on a missing frame says the cache entry holding it was g
     producerConfig: resolveConfig({ enablePageSideCompositing: false }),
     logger: { info() {}, warn() {}, error() {}, debug() {} },
   });
+  return { job, run: () => executeRenderJob(job, root, join(root, "out.mp4")) };
+}
 
-  await expect(executeRenderJob(job, root, join(root, "out.mp4"))).rejects.toThrow(/ENOENT/);
+it("a render that fails on a missing frame says the cache entry holding it was gone", async () => {
+  const { job, run } = failingRender();
+  await expect(run()).rejects.toThrow(/ENOENT/);
   expect(job.errorDetails?.missingPath).toEqual({
     scope: "cache_entry",
     synced: false,
     root: "system_temp",
   });
+});
+
+it("a missing-path look that throws leaves the render's own failure as it was", async () => {
+  trace.probeThrows = true;
+  const { job, run } = failingRender();
+  await expect(run()).rejects.toThrow(/ENOENT/);
+  expect(job.status).toBe("failed");
+  expect(job.error).toMatch(/ENOENT/);
+  expect(job.errorDetails?.missingPath).toBeUndefined();
 });

@@ -83,7 +83,46 @@ describe("describeMissingPath", () => {
     ).toBe("cache_dir");
   });
 
-  it("says nothing when nothing was missing", () => {
+  it("names a removed folder by its own name and the custom cache folder as the cache", () => {
+    const { temp, entry } = layout();
+    rmSync(entry, { recursive: true, force: true });
+    expect(describeMissingPath(enoent(entry), { tempRoot: temp })?.scope).toBe("cache_entry");
+    const cacheDir = join(temp, "my-cache");
+    expect(
+      describeMissingPath(enoent(join(cacheDir, "x.jpg")), { tempRoot: temp, cacheDir })?.scope,
+    ).toBe("cache_root");
+    expect(
+      describeMissingPath(enoent(join(temp, "gone", "x.jpg")), { tempRoot: temp })?.scope,
+    ).toBe("other");
+  });
+
+  it("does not read through a link that points outside the temp root and cache folder", () => {
+    const { temp, work } = layout();
+    const outside = mkdtempSync(join(tmpdir(), "hf-outside-"));
+    roots.push(outside);
+    const link = join(work, "out");
+    symlinkSync(
+      join(outside, "hfcache-v10-x", "dir"),
+      link,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+    expect(describeMissingPath(enoent(join(link, "x.jpg")), { tempRoot: temp })?.scope).toBe(
+      "link_target",
+    );
+  });
+
+  it("stops on a link that points into itself", () => {
+    const { temp, work } = layout();
+    const loop = join(work, "loop");
+    symlinkSync(join(loop, "x"), loop, process.platform === "win32" ? "junction" : "dir");
+    expect(
+      describeMissingPath(enoent(join(loop, "x", "frame.jpg")), { tempRoot: temp })?.scope,
+    ).toBe("link_target");
+  });
+
+  it("says nothing when nothing was missing or a program could not start", () => {
     expect(describeMissingPath(new Error("Target closed"))).toBeUndefined();
+    const spawn = Object.assign(enoent("ffmpeg"), { syscall: "spawn ffmpeg" });
+    expect(describeMissingPath(spawn)).toBeUndefined();
   });
 });

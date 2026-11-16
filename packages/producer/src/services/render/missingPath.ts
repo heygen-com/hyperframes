@@ -22,6 +22,11 @@ export interface MissingPathFacts {
 
 const SYNCED = /onedrive|dropbox|icloud|mobile documents|clouddocs|google ?drive|cloudstorage/i;
 
+interface Where {
+  tempRoot: string;
+  cacheDir?: string;
+}
+
 const inside = (path: string, folder: string) => {
   const rel = relative(resolve(folder), resolve(path));
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
@@ -36,12 +41,9 @@ function isLink(path: string): boolean {
   }
 }
 
-function scopeOfGone(
-  path: string,
-  tempRoot: string,
-  throughLink: boolean,
-): MissingPathFacts["scope"] {
-  if (resolve(path) === resolve(tempRoot)) return "temp_root";
+function scopeOfGone(path: string, where: Where, throughLink: boolean): MissingPathFacts["scope"] {
+  if (resolve(path) === resolve(where.tempRoot)) return "temp_root";
+  if (where.cacheDir && resolve(path) === resolve(where.cacheDir)) return "cache_root";
   const name = basename(path);
   if (/\.partial/.test(name)) return "cache_partial";
   if (/^hfcache-/.test(name)) return "cache_entry";
@@ -50,21 +52,22 @@ function scopeOfGone(
   return throughLink ? "link_target" : "other";
 }
 
+const MAX_LINK_HOPS = 4;
+
 /** The highest thing gone on `path`: the first folder up whose parent is there; a dangling link on the way is read
- * through to where it pointed. */
-function highestGone(
-  path: string,
-  tempRoot: string,
-  throughLink = false,
-): MissingPathFacts["scope"] {
+ * through to its target only when that target is in the temp root or the cache folder. */
+function highestGone(path: string, where: Where, hops = 0): MissingPathFacts["scope"] {
   for (let at = path; dirname(at) !== at; at = dirname(at)) {
     const parent = dirname(at);
     if (isLink(parent) && !existsSync(parent)) {
-      const target = readlinkSync(parent).replace(/^\\\\\?\\/, "");
-      return highestGone(resolve(dirname(parent), target), tempRoot, true);
+      const target = resolve(dirname(parent), readlinkSync(parent).replace(/^\\\\\?\\/, ""));
+      const ours =
+        inside(target, where.tempRoot) || (!!where.cacheDir && inside(target, where.cacheDir));
+      return ours && hops < MAX_LINK_HOPS ? highestGone(target, where, hops + 1) : "link_target";
     }
     if (!existsSync(parent)) continue;
-    return at === path && !throughLink ? "file" : scopeOfGone(at, tempRoot, throughLink);
+    const scope = scopeOfGone(at, where, hops > 0);
+    return at === path && scope === "other" ? "file" : scope;
   }
   return "other";
 }
@@ -79,17 +82,25 @@ function rootOf(
   return "other";
 }
 
-/** What was gone around the path a failed render's ENOENT names; undefined when it names none.
+const isSpawnFailure = (error: unknown) =>
+  !!(error as NodeJS.ErrnoException | undefined)?.syscall?.startsWith("spawn");
+
+/** What was gone around the path a failed render's ENOENT names; undefined when it names none or the look fails.
  * Call it before the render's own cleanup runs. */
 export function describeMissingPath(
   error: unknown,
   { cacheDir, tempRoot = tmpdir() }: { cacheDir?: string; tempRoot?: string } = {},
 ): MissingPathFacts | undefined {
-  const path = missingPathOf(error);
-  if (!path) return undefined;
-  return {
-    scope: highestGone(path, tempRoot),
-    synced: SYNCED.test(path),
-    root: rootOf(path, tempRoot, cacheDir),
-  };
+  try {
+    const path = missingPathOf(error);
+    if (!path || isSpawnFailure(error)) return undefined;
+    return {
+      scope: highestGone(path, { tempRoot, cacheDir }),
+      synced: SYNCED.test(path),
+      root: rootOf(path, tempRoot, cacheDir),
+    };
+  } catch {
+    // expected: the folders can change under the look; the render's own error must still be what is reported
+    return undefined;
+  }
 }
