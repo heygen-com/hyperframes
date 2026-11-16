@@ -553,7 +553,7 @@ describe("findBrowser — cache resolution", () => {
     expect(paths.has(redownloadedBinary)).toBe(true);
   });
 
-  it.each([
+  it.skipIf(!process.getuid).each([
     ["the binary", HF_BINARY],
     ["a folder above it", HF_CACHE],
   ])(
