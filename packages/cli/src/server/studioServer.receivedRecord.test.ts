@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { receivedFiles } from "../utils/privateProjectFile.js";
 import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
@@ -77,5 +77,69 @@ describe("a received folder with its own record, in a project with none", () => 
     expect((await move(app, "sub/notes", "renders/notes")).status).toBe(403);
     expect(receivedFiles(projectDir)("sub/scene.html")).toBe(true);
     expect(allowed(projectDir)).toBe(false);
+  });
+});
+
+describe("a Studio rename, move or delete in a project with a received-files record", () => {
+  const record = (folder: string) => join(folder, ".hyperframes", "received-files.json");
+  const listed = (folder: string) => JSON.parse(readFileSync(record(folder), "utf-8")).files;
+  function withRecord(projectDir: string): void {
+    write(join(projectDir, "index.html"), `<div data-composition-src="scenes/intro.html"></div>`);
+    write(join(projectDir, "scenes", "intro.html"), `<img src="../../outside/pic.png">`);
+    write(join(projectDir, "scenes", "logo.png"), "x");
+    write(record(projectDir), JSON.stringify({ files: ["scenes/intro.html", "scenes/logo.png"] }));
+  }
+
+  it("keeps a renamed received file received under its new name", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    expect((await move(app, "scenes/intro.html", "scenes/opening.html")).status).toBe(200);
+    expect(listed(projectDir)).toEqual(["scenes/logo.png", "scenes/opening.html"]);
+    const received = receivedFiles(projectDir);
+    expect(received("scenes/opening.html")).toBe(true);
+    expect(received("index.html")).toBe(false);
+  });
+
+  it("keeps every received file in a moved folder received under the new folder", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    expect((await move(app, "scenes", "parts/scenes")).status).toBe(200);
+    expect(listed(projectDir)).toEqual(["parts/scenes/intro.html", "parts/scenes/logo.png"]);
+    expect(receivedFiles(projectDir)("parts/scenes/intro.html")).toBe(true);
+    expect(receivedFiles(projectDir)("index.html")).toBe(false);
+  });
+
+  it("takes a deleted received file off the record, so the person's own files stay theirs", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    const deleted = await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" });
+    expect(deleted.status).toBe(200);
+    expect(listed(projectDir)).toEqual(["scenes/logo.png"]);
+    expect(receivedFiles(projectDir)("index.html")).toBe(false);
+  });
+
+  it("keeps a file moved out of a received folder received in the project's own record", async () => {
+    const { projectDir, app } = studio();
+    write(join(projectDir, "sub", "page.html"), "<div></div>");
+    write(join(projectDir, "sub", "scene.html"), "<div></div>");
+    write(record(join(projectDir, "sub")), JSON.stringify({ files: ["page.html", "scene.html"] }));
+    expect((await move(app, "sub/page.html", "page.html")).status).toBe(200);
+    expect((await move(app, "sub/scene.html", "sub/opening.html")).status).toBe(200);
+    expect(listed(projectDir)).toEqual(["page.html"]);
+    expect(listed(join(projectDir, "sub"))).toEqual(["opening.html"]);
+    const received = receivedFiles(projectDir);
+    expect(received("page.html")).toBe(true);
+    expect(received("sub/opening.html")).toBe(true);
+  });
+
+  it("leaves the readers answering received when the record cannot be changed", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    writeFileSync(`${record(projectDir)}.lock`, "");
+    expect((await move(app, "scenes/intro.html", "scenes/opening.html")).status).toBe(200);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("received-files record"));
+    expect(receivedFiles(projectDir)("scenes/opening.html")).toBe(true);
+    warn.mockRestore();
   });
 });

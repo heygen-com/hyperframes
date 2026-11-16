@@ -135,6 +135,48 @@ export function forgetReceivedFiles(root: string, paths: string[]): void {
   changeReceivedRecord(root, (files) => paths.map((path) => files.delete(path)).some(Boolean));
 }
 
+const atOrUnder = (path: string) => (entry: string) =>
+  entry === path || entry.startsWith(`${path}/`);
+const keyIn = (folder: string, path: string) =>
+  relative(folder, path).split(sep).join("/").normalize("NFC");
+const recordFoldersHolding = (path: string) =>
+  receivedRecordsAtOrAbove(dirname(path)).map((record) => record.root);
+
+function carryListed(root: string, folder: string, from: string, to: string): void {
+  const fromKey = keyIn(folder, from);
+  const toKey = keyIn(folder, to);
+  const staysInFolder = toKey !== ".." && !toKey.startsWith("../");
+  changeReceivedRecord(folder, (files) => {
+    const moved = [...files].filter(atOrUnder(fromKey));
+    const rest = (entry: string) => entry.slice(fromKey.length);
+    if (!staysInFolder)
+      recordReceivedFiles(
+        root,
+        moved.map((entry) => keyIn(root, to) + rest(entry)),
+      );
+    moved.forEach((entry) => files.delete(entry));
+    if (staysInFolder) moved.forEach((entry) => files.add(toKey + rest(entry)));
+    return moved.length > 0;
+  });
+}
+
+export function followReceivedChange(
+  projectDir: string,
+  change: { from?: string; to: string },
+): void {
+  const root = registryRoot(projectDir);
+  const to = resolve(root, change.to);
+  for (const folder of recordFoldersHolding(to))
+    changeReceivedRecord(folder, (files) => {
+      const stale = [...files].filter(atOrUnder(keyIn(folder, to)));
+      stale.forEach((entry) => files.delete(entry));
+      return stale.length > 0;
+    });
+  if (change.from === undefined) return;
+  const from = resolve(root, change.from);
+  for (const folder of recordFoldersHolding(from)) carryListed(root, folder, from, to);
+}
+
 function receivedRecordsAtOrAbove(start: string): ReceivedRecord[] {
   const records: ReceivedRecord[] = [];
   for (let dir = start; ; ) {
@@ -228,10 +270,21 @@ function listedIn(record: ReceivedRecord, projectDir: string): (path: string) =>
   return (path) => files.has(keyOf(path)) || sameFileAsListed(path);
 }
 
+function onDisk(path: string): boolean {
+  try {
+    return lstatSync(path, { throwIfNoEntry: false }) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+const listsEveryFileOnDisk = (record: ReceivedRecord): boolean =>
+  Array.isArray(record.listed) &&
+  record.listed.every((entry) => onDisk(join(record.root, String(entry))));
+
 export function receivedFiles(projectDir: string): (path: string) => boolean {
   const records = receivedRecords(projectDir);
-  if (records === null || records.some((record) => !Array.isArray(record.listed)))
-    return () => true;
+  if (records === null || !records.every(listsEveryFileOnDisk)) return () => true;
   const listedInAnyRecord = records.map((record) => listedIn(record, projectDir));
   return (path) => listedInAnyRecord.some((listed) => listed(path));
 }

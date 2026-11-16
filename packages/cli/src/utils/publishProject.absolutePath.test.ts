@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -385,6 +386,22 @@ describe("outside references in files that came in with an imported project", ()
         "style.css references ../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload.",
       ].sort(),
     );
+  });
+
+  it("leaves out the outside reference of a listed file renamed outside Studio", () => {
+    const { root, ext, warnings } = stageReceived(
+      { "index.html": "<html></html>", "scene.html": `<img src="../shared/logo.png">` },
+      { files: ["index.html", "scene.html"] },
+    );
+    expect(ext).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    renameSync(join(root, "p", "scene.html"), join(root, "p", "opening.html"));
+    const after: string[] = [];
+    const staged = stagePublishFiles(join(root, "p"), Infinity, (w) => after.push(w));
+    expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([]);
+    expect(after).toEqual([
+      "opening.html references ../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload.",
+    ]);
   });
 
   it("still copies the same reference from a file the person wrote", () => {

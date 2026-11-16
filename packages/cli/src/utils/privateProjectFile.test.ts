@@ -137,6 +137,42 @@ describe("receivedFiles", () => {
   });
 });
 
+describe("receivedFiles when a listed file is gone", () => {
+  function project(listed: string[]): string {
+    dir = mkdtempSync(join(tmpdir(), "hf-received-gone-"));
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(join(dir, "mine.html"), "");
+    writeFileSync(
+      join(dir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: listed }),
+    );
+    return dir;
+  }
+
+  it("counts every file as received, since the listed file may be on disk under another name", () => {
+    const root = project(["theirs.html"]);
+    expect(receivedFiles(root)("mine.html")).toBe(true);
+    expect(receivedFiles(root)("renamed.html")).toBe(true);
+  });
+
+  it("counts every file as received for a gone file listed by a received folder's own record", () => {
+    const root = project([]);
+    mkdirSync(join(root, "sub", ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(root, "sub", ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["gone.html"] }),
+    );
+    expect(receivedFiles(root)("mine.html")).toBe(true);
+  });
+
+  it("still tells the person's own files apart when every listed file is there", () => {
+    const root = project(["theirs.html"]);
+    writeFileSync(join(root, "theirs.html"), "");
+    expect(receivedFiles(root)("theirs.html")).toBe(true);
+    expect(receivedFiles(root)("mine.html")).toBe(false);
+  });
+});
+
 describe("receivedFiles for a received project copied into a folder", () => {
   function withNested(record?: string): string {
     dir = mkdtempSync(join(tmpdir(), "hf-received-nested-"));
