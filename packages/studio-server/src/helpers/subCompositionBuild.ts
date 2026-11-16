@@ -52,7 +52,6 @@ export class SubCompositionDeadlineError extends Error {
 }
 
 export const SUB_COMPOSITION_DEADLINE_MS = 30_000;
-/** Long past any real root page: only a stuck worker reaches it, and the route then builds the page from disk. */
 export const ROOT_PREVIEW_DEADLINE_MS = 120_000;
 
 interface Pending {
