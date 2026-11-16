@@ -99,4 +99,30 @@ describe("audio the page never loaded", () => {
       expect.stringContaining('Audio "voice" is 3.00s'),
     ]);
   });
+
+  it("says a source that failed to load is not a timeout", async () => {
+    class MissingProbe extends EventTarget {
+      preload = "";
+      duration = Number.NaN;
+      error: { code: number } | null = null;
+      set src(_url: string) {
+        queueMicrotask(() => {
+          this.error = { code: 4 };
+          this.dispatchEvent(new Event("error"));
+        });
+      }
+    }
+    vi.stubGlobal("Audio", MissingProbe);
+    document.body.innerHTML = '<audio id="voice" src="missing.wav" data-duration="5"></audio>';
+    const evaluate: Page["evaluate"] = async (fn, ...args) => {
+      if (typeof fn !== "function") throw new Error("Expected a browser function");
+      return window.eval(`(${fn.toString()})`)(...args);
+    };
+
+    const warnings = await auditClipDurations({ evaluate }, analyzeClipMediaFit, 1000);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.text).toContain("failed to load (voice)");
+    expect(warnings[0]?.text).not.toContain("Re-run with a longer --timeout");
+  });
 });

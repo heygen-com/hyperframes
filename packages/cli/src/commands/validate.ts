@@ -140,6 +140,29 @@ export function raceMediaReady(
   });
 }
 
+function unmeasuredClipWarnings(unreadable: string[], unloadable: string[]): ConsoleEntry[] {
+  const warnings: ConsoleEntry[] = [];
+  if (unreadable.length > 0) {
+    warnings.push({
+      level: "warning",
+      text:
+        `Could not read the duration of ${unreadable.length} media element(s) within the ` +
+        `validate timeout (${unreadable.join(", ")}); their slot vs. source fit was not checked. ` +
+        `Re-run with a longer --timeout if the source is slow to load.`,
+    });
+  }
+  if (unloadable.length > 0) {
+    warnings.push({
+      level: "warning",
+      text:
+        `${unloadable.length} media element(s) failed to load (${unloadable.join(", ")}), so ` +
+        `their slot vs. source fit was not checked. A longer --timeout will not help: check ` +
+        `that the source exists and plays in Chrome.`,
+    });
+  }
+  return warnings;
+}
+
 /**
  * Flag `<audio>` clips whose source is meaningfully shorter than their
  * `data-duration` slot (the slot gets silently shortened in renders). Videos
@@ -205,6 +228,7 @@ export async function auditClipDurations(
       attributes: Record<string, string | null>;
       duration: number;
       loop: boolean;
+      failed: boolean;
     }> = [];
     for (const el of nodes) {
       const slot = parseFloat(el.getAttribute("data-duration") ?? "");
@@ -223,6 +247,7 @@ export async function auditClipDurations(
           ? el.duration
           : (reads.get(el)?.duration ?? Number.NaN),
         loop: el.loop || el.getAttribute("data-loop") === "true",
+        failed: Boolean(el.error ?? reads.get(el)?.error),
       });
     }
     return rows;
@@ -230,11 +255,12 @@ export async function auditClipDurations(
 
   const warnings: ConsoleEntry[] = [];
   const unreadable: string[] = [];
+  const unloadable: string[] = [];
   for (const clip of clips) {
     if (!Number.isFinite(clip.duration) || clip.duration <= 0) {
       // Metadata never loaded (e.g. slow remote source) — record so the gap in
       // coverage isn't silent, rather than dropping it.
-      unreadable.push(clip.id);
+      (clip.failed ? unloadable : unreadable).push(clip.id);
       continue;
     }
     const mediaSeconds = resolveNaturalMediaTimelineDuration(
@@ -252,15 +278,7 @@ export async function auditClipDurations(
         `Set data-duration to ~${mediaSeconds.toFixed(2)}s if that isn't intended.`,
     });
   }
-  if (unreadable.length > 0) {
-    warnings.push({
-      level: "warning",
-      text:
-        `Could not read the duration of ${unreadable.length} media element(s) within the ` +
-        `validate timeout (${unreadable.join(", ")}); their slot vs. source fit was not checked. ` +
-        `Re-run with a longer --timeout if the source is slow to load.`,
-    });
-  }
+  warnings.push(...unmeasuredClipWarnings(unreadable, unloadable));
   return warnings;
 }
 
