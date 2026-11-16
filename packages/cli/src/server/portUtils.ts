@@ -174,7 +174,8 @@ export function detectHyperframesServer(
               ) {
                 return resolveResult({ type: "mismatch", projectName: json.projectName });
               }
-              if (!provesPreviewOwner(nonce, json.proof)) return resolveResult({ type: "unproven" });
+              if (!provesPreviewOwner(nonce, json.proof))
+                return resolveResult({ type: "unproven" });
               return resolveResult({ type: "match" });
             }
 

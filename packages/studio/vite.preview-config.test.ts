@@ -33,7 +33,10 @@ describe("previewConfigPayload", () => {
     onTestFinished(() => rmSync(cache, { recursive: true, force: true }));
     vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
     onTestFinished(() => vi.unstubAllEnvs());
-    const env = { HYPERFRAMES_PREVIEW_PROJECT_DIR: "/tmp/video", HYPERFRAMES_PREVIEW_PROJECT_NAME: "video" };
+    const env = {
+      HYPERFRAMES_PREVIEW_PROJECT_DIR: "/tmp/video",
+      HYPERFRAMES_PREVIEW_PROJECT_NAME: "video",
+    };
     const nonce = newPreviewNonce();
 
     expect(provesPreviewOwner(nonce, previewConfigPayload(env, 1, "dev", nonce)?.proof)).toBe(true);
