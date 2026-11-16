@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { writeStackOutputs } from "../commands/lambda/state.js";
-import { outDir } from "../measure/media.js";
+import { outDir, writeImage } from "../measure/media.js";
 import { writeParakeetTranscript } from "../whisper/parakeet.js";
 import { writeTurn, type Turn } from "./historyOwner.js";
 import { recordProjectRegistryItems, seedProjectAuthoringSkill } from "./projectConfig.js";
@@ -129,5 +129,20 @@ describe("fixed-name outputs", () => {
     expect(readdirSync(outside)).toEqual(["victim.txt"]);
 
     expect(outDir(join(project, "mine"), "measure/events")).toBe(join(project, "mine"));
+  });
+
+  it("replace a link at an ffmpeg output name in a real default folder", () => {
+    const { project, victim } = setup();
+    mkdirSync(join(records(project), "measure", "events"), { recursive: true });
+    const clip = join(records(project), "measure", "events", "clip.png");
+    symlinkSync("../../../../outside/victim.txt", clip);
+    expect(readFileSync(clip, "utf8")).toBe("keep me");
+    vi.spyOn(process, "cwd").mockReturnValue(project);
+
+    writeImage(join(outDir(undefined, "measure/events"), "clip.png"), new Uint8Array(48), 4, 4);
+
+    expect(readFileSync(victim, "utf8")).toBe("keep me");
+    expect(isLink(clip)).toBe(false);
+    expect(readFileSync(clip).subarray(1, 4).toString()).toBe("PNG");
   });
 });

@@ -1,8 +1,10 @@
 // Decode with ffmpeg into raw arrays, so measuring and comparing need nothing but node and ffmpeg.
 // Ported from the Studio's viral-clone media.mjs and tool.mjs.
 import { execFileSync } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { findFFmpeg, findFFprobe, getFFmpegInstallHint } from "../browser/ffmpeg.js";
 import { recordFolder } from "../utils/projectRecords.js";
 
@@ -52,6 +54,18 @@ export function runFfmpeg(args: string[], input?: Buffer, cwd?: string): Buffer 
     ...(input ? { input } : {}),
     ...(cwd ? { cwd } : {}),
   });
+}
+
+export function ffmpegToFile(args: string[], out: string, input?: Buffer): string {
+  const work = createStagingDir(dirname(out), ".ffmpeg-");
+  try {
+    const made = join(work, basename(out));
+    runFfmpeg([...args, made], input);
+    renameWithRetry(made, out);
+    return out;
+  } finally {
+    rmSync(work, { recursive: true, force: true });
+  }
 }
 
 export interface VideoInfo {
@@ -362,11 +376,11 @@ export function meanAbsDiff(a: Uint8Array, b: Uint8Array): number {
 /** Writes raw RGB (or grey) bytes as an image; the extension picks the format. */
 export function writeImage(path: string, px: Uint8Array, w: number, h: number, gray = false) {
   const header = Buffer.from(`${gray ? "P5" : "P6"}\n${w} ${h}\n255\n`);
-  runFfmpeg(
-    ["-y", "-f", gray ? "pgm_pipe" : "ppm_pipe", "-i", "-", "-frames:v", "1", path],
+  return ffmpegToFile(
+    ["-y", "-f", gray ? "pgm_pipe" : "ppm_pipe", "-i", "-", "-frames:v", "1"],
+    path,
     Buffer.concat([header, Buffer.from(px.buffer, px.byteOffset, px.byteLength)]),
   );
-  return path;
 }
 
 export const round = (n: number, d = 3) => Math.round(n * 10 ** d) / 10 ** d;
