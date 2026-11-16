@@ -326,6 +326,11 @@ describe("isStudioPrivatePath", () => {
     "AuthKey_ABC.p8",
     "vault.kdbx",
     "putty.ppk",
+    ".next/server/app/page.js",
+    "web/.svelte-kit/output/client/app.css",
+    ".vercel/output/static/logo.png",
+    "credentials.json",
+    "config/serviceAccountKey.json",
   ])("refuses %s", (path) => {
     expect(isStudioPrivatePath(path)).toBe(true);
   });
