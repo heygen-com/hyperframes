@@ -540,7 +540,6 @@ describe("extractVideoFrameToBuffer", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-probe-text-"));
     try {
       const clip = join(dir, "clip\u0007\b\u009b.mp4");
-      writeFileSync(clip, "not a video");
       const probe = probeContainingSourceFrameSeek(clip, 0.5, false);
       await expect(probe).rejects.toThrow("clip\\x07\\x08\\x9b.mp4");
       const message = await probe.catch((error: Error) => error.message);
