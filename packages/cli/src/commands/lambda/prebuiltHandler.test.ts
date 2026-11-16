@@ -77,6 +77,13 @@ describe("stagePrebuiltHandler", () => {
     expect(downloads).toEqual([URL]);
   });
 
+  it("lets concurrent installers publish their independently verified downloads", async () => {
+    const { deps } = setup();
+    const results = await Promise.all([stagePrebuiltHandler(deps), stagePrebuiltHandler(deps)]);
+    expect(results[0]).toBe(results[1]);
+    expect(readFileSync(join(results[0], "handler.zip"))).toEqual(ZIP);
+  });
+
   it.skipIf(!process.getuid)(
     "downloads nothing into a handler folder another account owns",
     async () => {

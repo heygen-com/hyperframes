@@ -1,14 +1,14 @@
 // `lambda deploy` without a repo checkout: fetch the pinned handler ZIP, verify its sha256 and
 // stage it beside the packaged SAM template.
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   copyFileSync,
   createReadStream,
   existsSync,
   readdirSync,
   renameSync,
-  unlinkSync,
+  rmSync,
 } from "node:fs";
 import { dirname, join } from "node:path";
 import { downloadFile } from "../../utils/download.js";
@@ -88,21 +88,25 @@ export async function fetchPinned(
   const url = asset.urlOverride ?? pinned.url;
   deps.log(`→ Downloading ${asset.label} ${pinned.version} (${pinned.bytes} bytes)`);
   ensurePrivateCacheDir(dir, deps.cacheDir);
-  const partial = `${file}.download`;
-  await deps.download(url, partial, { maxBytes: pinned.bytes });
-  const actual = await sha256File(partial);
-  if (actual !== pinned.sha256) {
-    unlinkSync(partial);
-    const urlWithoutCredentials = url.split("?")[0];
-    throw new Error(
-      `[lambda deploy] Refusing the ${asset.label} from ${urlWithoutCredentials}: sha256 ${actual} does not match ` +
-        `the ${pinned.sha256} pinned by @hyperframes/aws-lambda@${pinned.version}.`,
-    );
+  const partial = `${file}.download-${randomUUID()}`;
+  try {
+    await deps.download(url, partial, { maxBytes: pinned.bytes });
+    assertPrivateCachePath(dir, deps.cacheDir);
+    const actual = await sha256File(partial);
+    if (actual !== pinned.sha256) {
+      const urlWithoutCredentials = url.split("?")[0];
+      throw new Error(
+        `[lambda deploy] Refusing the ${asset.label} from ${urlWithoutCredentials}: sha256 ${actual} does not match ` +
+          `the ${pinned.sha256} pinned by @hyperframes/aws-lambda@${pinned.version}.`,
+      );
+    }
+    renameSync(partial, file);
+    sealCacheInstall(file, deps.cacheDir);
+    deps.log(`→ Verified sha256 ${pinned.sha256}`);
+    return assertPrivateCachePath(file, deps.cacheDir);
+  } finally {
+    rmSync(partial, { force: true });
   }
-  renameSync(partial, file);
-  sealCacheInstall(file, deps.cacheDir);
-  deps.log(`→ Verified sha256 ${pinned.sha256}`);
-  return assertPrivateCachePath(file, deps.cacheDir);
 }
 
 /** Returns the directory holding the verified `handler.zip` and its `template.yaml`. */

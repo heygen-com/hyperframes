@@ -230,8 +230,9 @@ describe("transcribe command", () => {
 
   describe("engine selection", () => {
     beforeEach(() => {
-      runtimeDir = mkdtempSync(join(tmpdir(), "hf-transcribe-runtime-"));
-      dirs.push(runtimeDir);
+      const runtimeRoot = mkdtempSync(join(tmpdir(), "hf-transcribe-runtime-"));
+      dirs.push(runtimeRoot);
+      runtimeDir = join(runtimeRoot, "runtime");
       const pkg = join(runtimeDir, "node_modules", "sherpa-onnx-node");
       mkdirSync(pkg, { recursive: true });
       writeFileSync(join(pkg, "package.json"), JSON.stringify({ main: "index.js" }));

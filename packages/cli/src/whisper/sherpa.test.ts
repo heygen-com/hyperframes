@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   truncateSync,
   writeFileSync,
@@ -60,6 +61,18 @@ function fakeRuntime(root: string, body: string, version = "1.13.8") {
   writeFileSync(join(pkg, "index.js"), body);
 }
 
+const runtimeRoots: string[] = [];
+function runtimeDirectory(): string {
+  const root = mkdtempSync(join(tmpdir(), "hf-sherpa-runtime-"));
+  runtimeRoots.push(root);
+  const dir = join(root, "runtime");
+  mkdirSync(dir);
+  return dir;
+}
+afterEach(() => {
+  for (const root of runtimeRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
 describe("installSherpaRuntime", () => {
   it.each([
     ["darwin", "arm64", "sherpa-onnx-darwin-arm64@1.13.8"],
@@ -76,7 +89,7 @@ describe("installSherpaRuntime", () => {
       throw new Error("stop before touching the cache");
     });
     const cancel = new AbortController();
-    const dir = mkdtempSync(join(tmpdir(), "hf-sherpa-runtime-"));
+    const dir = runtimeDirectory();
     await installSherpaRuntime({ run, signal: cancel.signal, dir }).catch(() => undefined);
     rmSync(dir, { recursive: true, force: true });
     expect((run.mock.calls[0] as unknown[] | undefined)?.[1]).toBe(cancel.signal);
@@ -86,7 +99,7 @@ describe("installSherpaRuntime", () => {
   });
 
   it("reinstalls a runtime that is present but does not load", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-sherpa-runtime-"));
+    const dir = runtimeDirectory();
     try {
       fakeRuntime(dir, BROKEN);
       expect(await sherpaRuntimeLoadError(dir)).toBe(
@@ -98,7 +111,7 @@ describe("installSherpaRuntime", () => {
 
       expect(await installSherpaRuntime({ run, dir })).toEqual({
         installed: true,
-        runtimePath: join(dir, "node_modules", "sherpa-onnx-node", "index.js"),
+        runtimePath: realpathSync(join(dir, "node_modules", "sherpa-onnx-node", "index.js")),
       });
       expect(run).toHaveBeenCalledTimes(1);
       expect(await sherpaRuntimeLoadError(dir)).toBeNull();
@@ -108,13 +121,13 @@ describe("installSherpaRuntime", () => {
   });
 
   it("leaves a runtime that loads alone", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-sherpa-runtime-"));
+    const dir = runtimeDirectory();
     try {
       fakeRuntime(dir, LOADS);
       const run = vi.fn();
       expect(await installSherpaRuntime({ run, dir })).toEqual({
         installed: false,
-        runtimePath: join(dir, "node_modules", "sherpa-onnx-node", "index.js"),
+        runtimePath: realpathSync(join(dir, "node_modules", "sherpa-onnx-node", "index.js")),
       });
       expect(run).not.toHaveBeenCalled();
     } finally {
@@ -123,7 +136,7 @@ describe("installSherpaRuntime", () => {
   });
 
   it("fails with the loader's error when the reinstalled runtime still does not load", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-sherpa-runtime-"));
+    const dir = runtimeDirectory();
     try {
       const run = vi.fn(async (_args: string[], _signal?: AbortSignal, cwd?: string) =>
         fakeRuntime(cwd!, BROKEN),
@@ -139,7 +152,7 @@ describe("installSherpaRuntime", () => {
   it.skipIf(process.platform === "win32").each(["SIGINT", "SIGHUP"])(
     "treats a probe stopped by %s as a cancel and keeps the runtime",
     async (signal) => {
-      const dir = mkdtempSync(join(tmpdir(), "hf-sherpa-runtime-"));
+      const dir = runtimeDirectory();
       try {
         fakeRuntime(dir, `process.kill(process.pid, "${signal}");`);
         const run = vi.fn();
@@ -153,7 +166,7 @@ describe("installSherpaRuntime", () => {
   );
 
   it("reads its own probe timeout as a broken runtime, not a cancel, and says so", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-sherpa-runtime-"));
+    const dir = runtimeDirectory();
     try {
       fakeRuntime(dir, "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5000);");
       expect(await sherpaRuntimeLoadError(dir, 300)).toBe("loading it timed out after 0.3 s");
@@ -163,7 +176,7 @@ describe("installSherpaRuntime", () => {
   });
 
   it("reports timeout even when the runtime handles SIGTERM and exits zero", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-sherpa-runtime-"));
+    const dir = runtimeDirectory();
     try {
       fakeRuntime(
         dir,
@@ -246,7 +259,7 @@ module.exports = {
     expect(await sherpaRuntimeLoadError(cache, 60_000, cliUrl)).toBeNull();
     expect(await installSherpaRuntime({ dir: cache, cliUrl, run })).toEqual({
       installed: false,
-      runtimePath: pinnedPath,
+      runtimePath: realpathSync(pinnedPath),
     });
     expect(run).not.toHaveBeenCalled();
     expect(existsSync(cache)).toBe(false);

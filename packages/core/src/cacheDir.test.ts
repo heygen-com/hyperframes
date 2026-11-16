@@ -128,6 +128,34 @@ describe.skipIf(process.platform === "win32")("foreignWritablePath", () => {
     }
   });
 
+  it("rejects a foreign-owned link even when its target belongs to this user", () => {
+    const link = join(root, "linked");
+    symlinkSync(join(root, "chrome"), link);
+    ownedByAnotherAccount.add(link);
+    expect(foreignWritablePath(join(link, "v1", "chrome-headless-shell"), root)).toBe(link);
+  });
+
+  it("checks intermediate links in a chain", () => {
+    const intermediate = join(root, "middle");
+    symlinkSync(join(root, "chrome"), intermediate);
+    symlinkSync(intermediate, join(root, "linked"));
+    ownedByAnotherAccount.add(intermediate);
+    expect(foreignWritablePath(join(root, "linked", "v1"), root)).toBe(intermediate);
+  });
+
+  it("checks writable ancestors above a private immediate parent", () => {
+    const cache = join(root, "private", "cache");
+    mkdirSync(cache, { recursive: true, mode: 0o700 });
+    chmodSync(root, 0o777);
+    expect(foreignWritablePath(cache, cache)).toBe(root);
+  });
+
+  it("checks a symlink target even when the requested child does not exist", () => {
+    symlinkSync(join(root, "chrome"), join(root, "linked"));
+    chmodSync(join(root, "chrome"), 0o777);
+    expect(foreignWritablePath(join(root, "linked", "missing"), root)).toBeDefined();
+  });
+
   it("checks the nearest folder above a cache root that does not exist yet", () => {
     chmodSync(root, 0o777);
     expect(foreignWritablePath(join(root, "cache", "x"), join(root, "cache"))).toBe(root);
@@ -158,6 +186,32 @@ describe.skipIf(process.platform === "win32")("foreignWritablePath", () => {
     expect(foreignWritablePath(entry, root)).toBe(entry);
     sealCacheInstall(join(root, "optional", "pkg@1"), root);
     expect(foreignWritablePath(entry, root)).toBeUndefined();
+  });
+
+  it("does not seal through a linked ancestor outside the cache", () => {
+    const outside = mkdtempSync(join(tmpdir(), "hf-seal-outside-"));
+    try {
+      const file = join(outside, "file");
+      writeFileSync(file, "", { mode: 0o666 });
+      chmodSync(file, 0o666);
+      symlinkSync(outside, join(root, "linked"));
+      expect(() => sealCacheInstall(join(root, "linked", "file"), root)).toThrow();
+      expect(lstatSync(file).mode & 0o022).toBe(0o022);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("seals an internal link's target before checking the link", () => {
+    chmodSync(binary, 0o777);
+    symlinkSync(binary, join(root, "chrome", "a-link"));
+    sealCacheInstall(join(root, "chrome"), root);
+    expect(foreignWritablePath(join(root, "chrome", "a-link"), root)).toBeUndefined();
+  });
+
+  it("rejects foreign-owned descendants while sealing an install", () => {
+    ownedByAnotherAccount.add(binary);
+    expect(() => sealCacheInstall(join(root, "chrome"), root)).toThrow();
   });
 
   it("keeps code out of a HYPERFRAMES_CACHE_DIR another account can write, in this user's own cache", () => {
@@ -208,6 +262,22 @@ describe.skipIf(process.platform === "win32")("ensurePrivateCacheDir", () => {
     expect(() => ensurePrivateCacheDir(join(root, "whisper", "whisper.cpp"), root)).toThrow(
       CacheFolderNotPrivate,
     );
+  });
+
+  it("does not create children through an escaping link", () => {
+    const outside = join(dirname(root), "outside");
+    mkdirSync(outside);
+    mkdirSync(root);
+    symlinkSync(outside, join(root, "linked"));
+    expect(() => ensurePrivateCacheDir(join(root, "linked", "new"), root)).toThrow();
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  it("does not create children under a foreign-owned parent", () => {
+    mkdirSync(root);
+    ownedByAnotherAccount.add(root);
+    expect(() => ensurePrivateCacheDir(join(root, "new"), root)).toThrow();
+    expect(readdirSync(root)).toEqual([]);
   });
 
   it("names the folder another account can change when a finished install is checked", () => {

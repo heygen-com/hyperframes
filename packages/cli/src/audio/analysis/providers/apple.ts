@@ -1,7 +1,7 @@
 import { runsWithoutInstallPrompt } from "../../../utils/appleStubs.js";
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { rename, writeFile } from "node:fs/promises";
+import { existsSync, mkdtempSync } from "node:fs";
+import { rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AudioAnalysisProvider, AudioSignal } from "@hyperframes/core/audio-analysis";
 import { AVAILABLE, runFile, unavailable, withWavFile } from "./shared.js";
@@ -117,16 +117,23 @@ function compiled(name: string, source: string): Promise<string> {
   let build = builds.get(binary);
   if (!build) {
     build = (async () => {
-      ensurePrivateCacheDir(helperDir(), trustedCacheRoot());
-      const file = `${binary}.swift`;
-      await writeFile(file, source);
-      const args = swiftcArgs(file, `${binary}.tmp`);
-      await runFile("xcrun", args, { timeout: 5 * 60_000 }).catch((error: unknown) => {
-        throw new Error(`could not build the ${name} helper: ${firstLine(error)}`);
-      });
-      await rename(`${binary}.tmp`, binary);
-      sealCacheInstall(binary, trustedCacheRoot());
-      return assertPrivateCachePath(binary, trustedCacheRoot());
+      const root = trustedCacheRoot();
+      ensurePrivateCacheDir(join(helperDir(), "module-cache"), root);
+      const staging = mkdtempSync(join(helperDir(), ".build-"));
+      try {
+        const file = join(staging, "helper.swift");
+        const output = join(staging, "helper");
+        await writeFile(file, source, { flag: "wx" });
+        const args = swiftcArgs(file, output);
+        await runFile("xcrun", args, { timeout: 5 * 60_000 }).catch((error: unknown) => {
+          throw new Error(`could not build the ${name} helper: ${firstLine(error)}`);
+        });
+        sealCacheInstall(output, root);
+        await rename(output, binary);
+        return assertPrivateCachePath(binary, root);
+      } finally {
+        await rm(staging, { recursive: true, force: true });
+      }
     })();
     builds.set(binary, build);
   }

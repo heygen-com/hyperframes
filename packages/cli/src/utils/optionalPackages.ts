@@ -350,6 +350,7 @@ export async function install(
   version: string,
   run: (args: string[], cwd: string) => Promise<void> = (args, cwd) => runNpm(args, undefined, cwd),
 ): Promise<void> {
+  ensurePrivateCacheDir(dirname(dir), dirname(dir));
   sweepStaleStaging(dir);
   const staging = `${dir}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
   ensurePrivateCacheDir(staging, dirname(dir));

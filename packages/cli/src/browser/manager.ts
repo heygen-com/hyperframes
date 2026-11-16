@@ -158,7 +158,7 @@ export async function withInstallLock<T>(
   // recursive:false below needs the parent to already exist (unlike `mkdir -p`).
   // Keep lock dirs outside CACHE_DIR so force-clearing the Chrome cache cannot
   // delete another installer's in-flight lock.
-  if (!existsSync(CACHE_ROOT_DIR)) mkdirSync(CACHE_ROOT_DIR, { recursive: true });
+  ensurePrivateCacheDir(CACHE_ROOT_DIR, CACHE_ROOT_DIR);
   let deadline = Date.now() + timings.staleMs;
   const waitStart = Date.now();
   let lastNoticeMs = 0;

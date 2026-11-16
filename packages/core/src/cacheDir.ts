@@ -3,12 +3,12 @@ import {
   lstatSync,
   mkdirSync,
   readdirSync,
+  readlinkSync,
   realpathSync,
-  statSync,
   type Stats,
 } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const userCacheRoot = () => join(homedir(), ".cache", "hyperframes");
 
@@ -25,33 +25,41 @@ const anotherAccountCanWrite = (stat: Stats, uid: number, insideRoot: boolean) =
     (stat.mode & GROUP_OR_WORLD_WRITE) !== 0 &&
     (insideRoot || !stickyFolder(stat)));
 
-function statIfPresent(path: string): Stats | undefined {
-  try {
-    return statSync(path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  }
-}
-
 const lstatIfPresent = (path: string) => lstatSync(path, { throwIfNoEntry: false });
 
-function realpathIfPresent(path: string): string | undefined {
+function resolvedPath(path: string): string {
   try {
     return realpathSync(path);
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    const parent = dirname(path);
+    return parent === path ? path : join(resolvedPath(parent), relative(parent, path));
   }
 }
 
-const within = (path: string, top: string) => path === top || path.startsWith(top + sep);
+function within(path: string, top: string): boolean {
+  const suffix = relative(top, path);
+  return suffix !== ".." && !suffix.startsWith(".." + sep) && !isAbsolute(suffix);
+}
 
-function firstWritableByAnother(path: string, top: string, uid: number): string | undefined {
+function firstWritableByAnother(
+  path: string,
+  top: string,
+  uid: number,
+  links = new Set<string>(),
+): string | undefined {
   for (let at = path; ; at = dirname(at)) {
     const stat = lstatIfPresent(at);
-    const insideRoot = within(at, top);
-    if (stat && anotherAccountCanWrite(stat, uid, insideRoot)) return at;
-    if ((stat && !insideRoot) || at === dirname(at)) return undefined;
+    if (stat && anotherAccountCanWrite(stat, uid, within(at, top))) return at;
+    if (stat?.isSymbolicLink()) {
+      if (links.has(at)) return at;
+      links.add(at);
+      const target = resolve(dirname(at), readlinkSync(at));
+      const foreign = firstWritableByAnother(target, top, uid, links);
+      if (foreign) return foreign;
+      links.delete(at);
+    }
+    if (at === dirname(at)) return undefined;
   }
 }
 
@@ -71,9 +79,8 @@ export function foreignWritablePath(path: string, root: string): string | undefi
   const at = resolve(path);
   const lexical = firstWritableByAnother(at, top, uid);
   if (lexical || !within(at, top)) return lexical;
-  const realTop = realpathIfPresent(top);
-  const real = realpathIfPresent(at);
-  if (!realTop || !real) return undefined;
+  const realTop = resolvedPath(top);
+  const real = resolvedPath(at);
   return within(real, realTop) ? firstWritableByAnother(real, realTop, uid) : at;
 }
 
@@ -102,6 +109,7 @@ export function ensurePrivateCacheDir(path: string, root: string, mode = 0o700):
     mkdirSync(target, { recursive: true, mode });
     return target;
   }
+  assertPrivateCachePath(dirname(top), top);
   mkdirSync(dirname(top), { recursive: true });
   let at = top;
   for (const name of ["", ...relative(top, target).split(sep).filter(Boolean)]) {
@@ -109,11 +117,13 @@ export function ensurePrivateCacheDir(path: string, root: string, mode = 0o700):
     try {
       mkdirSync(at, { mode });
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
     }
     const stat = lstatSync(at);
+    if (!stat.isDirectory() && !stat.isSymbolicLink()) throw new CacheFolderNotPrivate(at);
     if (stat.isDirectory() && stat.uid === uid && (stat.mode & GROUP_OR_WORLD_WRITE) !== 0)
       chmodSync(at, stat.mode & WITHOUT_GROUP_OR_WORLD_WRITE);
+    assertPrivateCachePath(at, top);
   }
   return assertPrivateCachePath(target, top);
 }
@@ -126,19 +136,41 @@ export function trustedCacheRoot(): string {
 export function sealCacheInstall(path: string, root: string): void {
   const uid = process.getuid?.();
   if (uid === undefined) return;
+  const top = resolve(root);
+  const target = resolve(path);
+  if (!within(target, top) || !within(resolvedPath(target), resolvedPath(top)))
+    throw new CacheFolderNotPrivate(target);
+  assertPrivateCachePath(dirname(top), top);
+  const sealPermissions = (at: string, stat: Stats): void => {
+    if (ownedByAnotherAccount(stat, uid)) throw new CacheFolderNotPrivate(at);
+    if ((stat.mode & GROUP_OR_WORLD_WRITE) === 0) return;
+    if (stat.uid !== uid) throw new CacheFolderNotPrivate(at);
+    chmodSync(at, stat.mode & WITHOUT_GROUP_OR_WORLD_WRITE);
+  };
+  const links: string[] = [];
   const seal = (at: string) => {
-    const stat = lstatSync(at, { throwIfNoEntry: false });
-    if (!stat || stat.isSymbolicLink() || stat.uid !== uid) return;
-    if ((stat.mode & GROUP_OR_WORLD_WRITE) !== 0)
-      chmodSync(at, stat.mode & WITHOUT_GROUP_OR_WORLD_WRITE);
+    const stat = lstatIfPresent(at);
+    if (!stat) return;
+    if (stat.isSymbolicLink()) {
+      links.push(at);
+      return;
+    }
+    sealPermissions(at, stat);
     if (stat.isDirectory()) for (const name of readdirSync(at)) seal(join(at, name));
   };
-  seal(resolve(path));
-  const top = resolve(root);
-  for (let at = dirname(resolve(path)); at === top || at.startsWith(top + sep); at = dirname(at)) {
-    const stat = statIfPresent(at);
-    if (stat?.uid === uid && (stat.mode & GROUP_OR_WORLD_WRITE) !== 0) {
-      chmodSync(at, stat.mode & WITHOUT_GROUP_OR_WORLD_WRITE);
-    }
+  for (let at = top; ; ) {
+    if (at === target) break;
+    sealDirectory(at);
+    const next = relative(at, target).split(sep)[0];
+    if (!next) break;
+    at = join(at, next);
+  }
+  seal(target);
+  for (const link of links) assertPrivateCachePath(link, top);
+
+  function sealDirectory(at: string): void {
+    const stat = lstatIfPresent(at);
+    if (stat?.isDirectory()) sealPermissions(at, stat);
+    assertPrivateCachePath(at, top);
   }
 }

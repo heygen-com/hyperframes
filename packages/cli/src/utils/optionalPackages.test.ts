@@ -704,6 +704,26 @@ describe("install", () => {
     },
   );
 
+  it.skipIf(process.platform === "win32")(
+    "does not sweep staging under a writable ancestor",
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), "hf-unsafe-staging-"));
+      const dir = join(root, "cache", "pkg");
+      const deadPid = spawnSync(process.execPath, ["-e", ""]).pid;
+      const stale = `${dir}.tmp-${deadPid}-old`;
+      mkdirSync(stale, { recursive: true });
+      chmodSync(root, 0o777);
+      const run = vi.fn();
+      try {
+        await expect(install(dir, name, version, run)).rejects.toThrow();
+        expect(existsSync(stale)).toBe(true);
+        expect(run).not.toHaveBeenCalled();
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("runs npm inside the staging dir, with no path on its command line", async () => {
     const { cache, dir } = setup();
     const seen: { args: string[]; cwd: string }[] = [];

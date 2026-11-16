@@ -5,6 +5,16 @@ import { afterEach, expect, it, vi } from "vitest";
 import { ensureWhisper, findWhisper, WhisperUnavailableError } from "./manager.js";
 const calls = vi.hoisted(() => ({ exec: vi.fn() }));
 vi.mock("node:child_process", () => ({ execFileSync: calls.exec }));
+vi.mock("node:fs", async (original) => {
+  const fs = await original<typeof import("node:fs")>();
+  return {
+    ...fs,
+    existsSync: (path: string) =>
+      ["/opt/homebrew/bin/whisper-cli", "/usr/local/bin/whisper-cli"].includes(path)
+        ? false
+        : fs.existsSync(path),
+  };
+});
 vi.mock("node:os", async (original) => ({
   ...(await original<typeof import("node:os")>()),
   platform: () => "darwin",

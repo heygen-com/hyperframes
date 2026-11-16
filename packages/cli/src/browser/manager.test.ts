@@ -145,10 +145,19 @@ function installFsMocks({
   mockedPaths = paths;
   const mtimes = new Map([...existing].map((p) => [p, initialMtimeMs]));
   const contents = new Map<string, string>();
+  const directories = new Set([CACHE_ROOT, HF_CACHE]);
+  for (const path of paths) {
+    for (let parent = dirname(path); parent !== dirname(parent); parent = dirname(parent))
+      directories.add(parent);
+  }
   vi.doMock("node:fs", () => ({
     existsSync: (p: string) => paths.has(p),
     readdirSync: (p: string) => {
-      const entries = dirs?.[p];
+      const entries =
+        dirs?.[p] ??
+        (directories.has(p)
+          ? [...paths].filter((path) => dirname(path) === p).map((path) => basename(path))
+          : undefined);
       if (!entries) {
         const err = new Error(`ENOENT: readdirSync mock had no entry for ${p}`);
         (err as NodeJS.ErrnoException).code = "ENOENT";
@@ -163,6 +172,7 @@ function installFsMocks({
         throw err;
       }
       paths.add(p);
+      directories.add(p);
       mtimes.set(p, Date.now());
     },
     rmSync: (p: string) => {
@@ -210,9 +220,10 @@ function installFsMocks({
             uid: otherAccounts?.has(p) ? 4242 : (process.getuid?.() ?? 0),
             mode: 0o755,
             isSymbolicLink: () => false,
-            isDirectory: () => false,
+            isDirectory: () => directories.has(p),
           }
         : undefined,
+    realpathSync: (p: string) => p,
     chmodSync: () => {},
     utimesSync: (p: string, _atime: Date, mtime: Date) => {
       if (touchError) throw touchError;
