@@ -338,7 +338,6 @@ async function findFromHyperframesCache(): Promise<CacheLookupResult> {
       b.buildId === managedChromeVersion() &&
       b.platform === hostPlatform,
   );
-  // A build another account could have written is re-downloaded rather than launched as this user.
   if (
     match &&
     isPinnedHeadlessShell(match.executablePath) &&

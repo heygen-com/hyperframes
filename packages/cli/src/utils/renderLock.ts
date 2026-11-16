@@ -44,7 +44,6 @@ export interface RenderLockOptions {
 
 const POLL_MS = 1_000;
 
-/** `HYPERFRAMES_RENDER_LOCK_DIR` names a folder of lock records only, where several accounts share one slot. */
 const sharedLockDir = (env: NodeJS.ProcessEnv) =>
   env.HYPERFRAMES_RENDER_LOCK_DIR?.trim() || undefined;
 
@@ -87,9 +86,8 @@ const sameWaitTarget = (a: RenderLockHolder | null, b: RenderLockHolder | null) 
   a?.pid === b?.pid && a?.startedAt === b?.startedAt;
 
 /**
- * Takes the one render slot of this user account (its HyperFrames cache folder, or the folder
- * `HYPERFRAMES_RENDER_LOCK_DIR` shares across accounts), waiting while a live process holds it; a holder
- * whose process is gone is taken over. Returns the release.
+ * Takes the one render slot of this user account (its HyperFrames cache folder), waiting while a live
+ * process holds it; a holder whose process is gone is taken over. Returns the release.
  */
 export async function acquireRenderLock(options: RenderLockOptions): Promise<() => void> {
   if (renderLockDisabled(options.env)) return () => {};

@@ -125,7 +125,6 @@ const isCv = (v: unknown): v is Cv =>
 // fallow-ignore-next-line complexity
 async function ensureOpenCv(onStatus?: (message: string) => void): Promise<void> {
   const missing: Pinned[] = [];
-  // A file another account could have written is fetched again: it could change after the check.
   for (const f of FILES) {
     const file = join(OPENCV_DIR, f.name);
     if (foreignWritablePath(file, CODE_ROOT) || !(await verifies(file, f))) missing.push(f);

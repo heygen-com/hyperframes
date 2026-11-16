@@ -125,7 +125,6 @@ const SCRIPT_DIR = join(CODE_ROOT, "tts");
 const SCRIPT_PATH = join(SCRIPT_DIR, "synth-v4.py");
 
 function ensureSynthScript(): string {
-  // A script another account could have written is replaced rather than run.
   if (existsSync(SCRIPT_PATH) && foreignWritablePath(SCRIPT_PATH, CODE_ROOT))
     unlinkSync(SCRIPT_PATH);
   if (!existsSync(SCRIPT_PATH)) {

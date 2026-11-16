@@ -109,7 +109,6 @@ const builds = new Map<string, Promise<string>>();
 /** The helper compiled from `source`, built once per source into the cache; Swift is never fetched. */
 function compiled(name: string, source: string): Promise<string> {
   const binary = helperPath(name, source);
-  // A helper another account could have written is rebuilt rather than run; the rename replaces it.
   if (existsSync(binary) && !foreignWritablePath(binary, trustedCacheRoot())) {
     return Promise.resolve(binary);
   }

@@ -163,7 +163,6 @@ function findBuiltBinary(): WhisperResult | undefined {
     join(BUILD_DIR, "build", "bin", `whisper-cli${exe}`),
     join(BUILD_DIR, "build", `whisper-cli${exe}`),
   ]) {
-    // A build another account could have written is rebuilt rather than run.
     if (existsSync(p) && !foreignWritablePath(p, CODE_ROOT))
       return { executablePath: p, source: "build" };
   }

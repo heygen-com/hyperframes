@@ -238,7 +238,6 @@ function manifestPath(dir: string, name: string): string {
   return join(dir, "node_modules", name, "package.json");
 }
 
-/** A copy another account could have written counts as absent, so it is reinstalled rather than loaded. */
 const writableByOthers = (dir: string, file: string) => !!foreignWritablePath(file, dirname(dir));
 
 export function isInstalled(dir: string, name: string): boolean {

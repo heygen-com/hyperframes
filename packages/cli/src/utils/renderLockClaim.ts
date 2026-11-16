@@ -39,11 +39,6 @@ export class RenderLockUnwritable extends Error {
   }
 }
 
-/**
- * A folder this account alone uses is private to it. A folder shared on purpose is writable by every
- * account but sticky, so none of them can delete or replace another's lock records. chmod after
- * mkdir, since the umask would strip those bits.
- */
 export function ensureLockDir(dir: string, shared: boolean): void {
   const created = mkdirSync(dir, { recursive: true }) !== undefined;
   if (process.platform === "win32") return;
@@ -52,7 +47,6 @@ export function ensureLockDir(dir: string, shared: boolean): void {
   else makePrivate(dir);
 }
 
-/** Older releases made this account's own lock folder writable by every account. */
 function makePrivate(dir: string): void {
   const stat = statSync(dir);
   if (stat.uid === process.getuid?.() && (stat.mode & 0o077) !== 0) chmodSync(dir, 0o700);
@@ -92,10 +86,6 @@ function createExclusive(path: string, holder: Holder): boolean {
 const writerAbsent = (file: string, lockPath: string, marker: string) =>
   existsSync(file) && !readHolder(file) && liveOtherOwners(lockPath, marker) === 0;
 
-/**
- * Removes a stale lock and creates this one. The sticky bit of a shared lock folder keeps a stale lock of
- * another account where it is, which no render of this account can then replace.
- */
 function replaceStale(
   path: string,
   holder: RenderLockHolder,
