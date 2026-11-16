@@ -9,6 +9,7 @@ import {
   isPrivateUnderAssetRoots,
   runFfmpeg,
   renameWithRetry,
+  urlInputArgs,
 } from "@hyperframes/engine";
 import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 import { isHttpUrl } from "../utils/urlDownloader.js";
@@ -225,6 +226,7 @@ export function buildAnimatedGifTranscodeArgs(input: {
   args.push(
     "-ignore_loop",
     "1",
+    ...urlInputArgs(input.inputPath),
     "-i",
     input.inputPath,
     "-an",

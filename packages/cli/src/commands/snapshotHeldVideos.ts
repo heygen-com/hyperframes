@@ -3,6 +3,7 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { parseHTML } from "linkedom";
 import { MEDIA_RENDER_ID_ATTR } from "@hyperframes/core";
 import { isNotMediaPayload, type CaptureVideoMetadataHint } from "@hyperframes/engine";
+import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { findFFprobe } from "../browser/ffmpeg.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 
@@ -112,6 +113,7 @@ export function probeHeldVideo(
         [
           "-v",
           "error",
+          ...mediaInputFormatArgs(ffprobe),
           "-select_streams",
           "v:0",
           "-show_entries",

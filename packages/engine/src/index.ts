@@ -414,6 +414,8 @@ export {
   type KeyframeAnalysis,
 } from "./utils/ffprobe.js";
 
+export { urlInputArgs } from "./utils/urlInput.js";
+
 export { mediaIdPathSegment } from "./utils/mediaPathSegment.js";
 
 export {
@@ -422,6 +424,7 @@ export {
   assertMediaPayload,
   playlistLeavesItsFolder,
   fingerprintElementId,
+  isNotImagePayload,
   isNotMediaPayload,
 } from "./utils/notMediaPayload.js";
 

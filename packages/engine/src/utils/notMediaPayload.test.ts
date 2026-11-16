@@ -7,6 +7,7 @@ import { getFfprobeBinary } from "./ffmpegBinaries.js";
 import {
   assertMediaPayload,
   fingerprintElementId,
+  isNotImagePayload,
   isNotMediaPayload,
   NotMediaPayloadError,
   playlistLeavesItsFolder,
@@ -190,6 +191,45 @@ describe("isNotMediaPayload", () => {
   });
 });
 
+const MPD = '<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011"><Period/></MPD>';
+// One ID3v2.4 tag with a 4-byte body, as ffmpeg skips it before it probes.
+const id3 = Buffer.from([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 4, 1, 2, 3, 4]);
+
+describe("a file behind an ID3 tag", () => {
+  it("is refused as media when markup follows the tag", async () => {
+    const file = writeFixture("tagged.mp3", Buffer.concat([id3, Buffer.from(MPD)]));
+    expect(await isNotMediaPayload(file)).toBe(true);
+    expect(await isNotImagePayload(file)).toBe(true);
+  });
+
+  it("is kept as media when an MPEG frame follows the tag", async () => {
+    const file = writeFixture("song.mp3", Buffer.concat([id3, Buffer.from([0xff, 0xfb, 0x90, 0])]));
+    expect(await isNotMediaPayload(file)).toBe(false);
+  });
+});
+
+describe("isNotImagePayload", () => {
+  it.each([
+    ["a manifest", MPD, true],
+    ["json", '{"error": "gone"}', true],
+    [
+      "an svg behind a prolog, comment and doctype",
+      `<?xml version="1.0"?>\n<!-- made by hand -->\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x.dtd" [<!ENTITY a "b">]>\n<SVG viewBox="0 0 1 1"/>`,
+      false,
+    ],
+    ["an svg whose comment outruns the sniff window", `<!--${"x".repeat(70_000)}--><svg/>`, false],
+    [
+      "a utf-16 svg",
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("<svg/>", "utf16le")]),
+      false,
+    ],
+    ["an svg with a long doctype subset", `<!DOCTYPE svg [${"][".repeat(30_000)}]><svg/>`, false],
+    ["a png", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), false],
+  ])("for %s", async (_label, contents, refused) => {
+    expect(await isNotImagePayload(writeFixture("image", contents))).toBe(refused);
+  });
+});
+
 describe("assertMediaPayload", () => {
   it("throws NotMediaPayloadError carrying routing metadata and a hashed element key", async () => {
     const filePath = writeFixture("nested.html", "<!DOCTYPE html><html></html>");
@@ -282,6 +322,20 @@ describe("playlistLeavesItsFolder", () => {
     const file = writeFixture("clip.m3u8", contents);
     expect(await playlistLeavesItsFolder(file)).toBe(true);
     expect(await isNotMediaPayload(file)).toBe(true);
+  });
+
+  it("refuses a list whose nested entry is a manifest, and keeps one that is not there", async () => {
+    const list = "ffconcat version 1.0\nfile manifest.mpd\n";
+    expect(
+      await playlistLeavesItsFolder(writeTree({ "clip.mp4": list, "manifest.mpd": MPD })),
+    ).toBe(true);
+    expect(await playlistLeavesItsFolder(writeTree({ "clip.mp4": list }))).toBe(false);
+    const encrypted = hls('#EXT-X-KEY:METHOD=AES-128,URI="key.bin"', "#EXTINF:1,", "seg.ts");
+    expect(
+      await playlistLeavesItsFolder(
+        writeTree({ "clip.m3u8": encrypted, "key.bin": "<\x01\x02", "seg.ts": "{\x00" }),
+      ),
+    ).toBe(false);
   });
 
   it("refuses a nested list naming a private file from its own folder", async () => {

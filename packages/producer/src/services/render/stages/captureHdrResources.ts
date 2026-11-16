@@ -31,6 +31,7 @@ import {
   resolveVideoExtractionWindow,
   runFfmpeg,
   type TimelineExtractionWindow,
+  urlInputArgs,
   type VideoMetadata,
   videoStartOnMediaTimeline,
 } from "@hyperframes/engine";
@@ -383,7 +384,15 @@ async function probeFirstTick(
   runFfmpegImpl: typeof runFfmpeg,
   abortSignal: AbortSignal | undefined,
 ): Promise<number> {
-  const args = ["-ss", String(mediaStart), "-i", srcPath, "-frames:v", "1"];
+  const args = [
+    ...urlInputArgs(srcPath),
+    "-ss",
+    String(mediaStart),
+    "-i",
+    srcPath,
+    "-frames:v",
+    "1",
+  ];
   const result = await runFfmpegImpl([...args, ...["-vf", "showinfo", "-f", "null", "-"]], {
     signal: abortSignal,
   });
@@ -490,6 +499,7 @@ export async function extractHdrVideoFrames(args: {
             ? // Decode before seeking for the one-frame path. Input-side seeking can
               // return zero frames for valid unindexed/negative-base transports.
               [
+                ...urlInputArgs(srcPath),
                 "-i",
                 srcPath,
                 "-ss",
@@ -591,6 +601,7 @@ function hdrWindowFfmpegArgs(a: {
   const filters = [`fps=${a.fpsArg}:start_time=${(a.firstTick / a.fps).toFixed(6)}`, a.scale];
   if (trim > 0) filters.push(`trim=start_frame=${trim}`);
   return [
+    ...urlInputArgs(a.srcPath),
     ...["-ss", (a.ffmpegSeek + seekFrame / a.fps).toFixed(6), "-i", a.srcPath],
     ...["-vf", filters.join(","), "-frames:v", String(a.frames), "-fps_mode", "passthrough"],
   ];
