@@ -63,11 +63,8 @@ function startWorker(): Worker {
   started.on(
     "message",
     ({ id, result, error }: { id: number; result?: unknown; error?: string }) => {
-      const job = pending.get(id);
+      const job = untrack(id);
       if (!job) return;
-      pending.delete(id);
-      clearTimeout(job.timer);
-      holdHostWhileBusy();
       if (error !== undefined) job.reject(new Error(error));
       else job.resolve(result);
     },
@@ -84,6 +81,20 @@ function holdHostWhileBusy(): void {
   else worker?.ref();
 }
 
+function track(id: number, job: Pending): void {
+  pending.set(id, job);
+  holdHostWhileBusy();
+}
+
+function untrack(id: number): Pending | undefined {
+  const job = pending.get(id);
+  if (!job) return undefined;
+  pending.delete(id);
+  clearTimeout(job.timer);
+  holdHostWhileBusy();
+  return job;
+}
+
 /** Ends `from` if it is still the worker. A crash (`failed`) fails every job it held, since any of them may be what
  * crashed it; after the running job's deadline, the rest go to a fresh worker. */
 function replace(from: Worker, failed?: Error): void {
@@ -91,16 +102,11 @@ function replace(from: Worker, failed?: Error): void {
   worker = null;
   void from.terminate();
   if (failed) {
-    for (const [id, job] of pending) {
-      pending.delete(id);
-      clearTimeout(job.timer);
-      job.reject(failed);
-    }
+    for (const id of [...pending.keys()]) untrack(id)?.reject(failed);
     return;
   }
   if (pending.size === 0) return;
   const next = (worker = startWorker());
-  holdHostWhileBusy();
   for (const [id, job] of pending) next.postMessage({ id, job: job.job });
 }
 
@@ -116,17 +122,15 @@ export function runOffThread<J extends SubCompositionJob>(
     const timer = setTimeout(
       () => {
         const running = pending.keys().next().value === id;
-        pending.delete(id);
+        untrack(id);
         reject(new SubCompositionDeadlineError(compPath));
         if (running && worker) replace(worker);
-        else holdHostWhileBusy();
       },
       Math.max(0, deadline - performance.now()),
     );
     timer.unref?.();
-    pending.set(id, { job, resolve: resolve as (result: unknown) => void, reject, timer });
     worker ??= startWorker();
-    holdHostWhileBusy();
+    track(id, { job, resolve: resolve as (result: unknown) => void, reject, timer });
     worker.postMessage({ id, job });
   });
 }

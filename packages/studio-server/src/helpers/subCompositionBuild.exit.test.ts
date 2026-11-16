@@ -73,7 +73,7 @@ console.log(late.status, next.status);
 it("a host exits after its build worker dies mid-job", () => {
   const child = host(`
 const job = slow(60_000);
-setTimeout(() => made[0].terminate(), 50);
+made[0].once("online", () => made[0].terminate());
 console.log(await job.then(() => "built", (error) => error.message));
 `);
   // Its exit code is the platform's (0 on some runners, 1 on others).
