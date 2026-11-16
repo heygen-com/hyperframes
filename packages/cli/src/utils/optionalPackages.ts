@@ -352,7 +352,7 @@ export async function install(
 ): Promise<void> {
   sweepStaleStaging(dir);
   const staging = `${dir}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
-  mkdirSync(staging, { recursive: true });
+  mkdirSync(staging, { recursive: true, mode: 0o700 });
   writeFileSync(join(staging, "package.json"), "{}");
   try {
     await run(

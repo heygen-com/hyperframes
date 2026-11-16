@@ -130,7 +130,7 @@ async function ensureOpenCv(onStatus?: (message: string) => void): Promise<void>
     if (foreignWritablePath(file, CODE_ROOT) || !(await verifies(file, f))) missing.push(f);
   }
   if (!missing.length) return;
-  mkdirSync(OPENCV_DIR, { recursive: true });
+  mkdirSync(OPENCV_DIR, { recursive: true, mode: 0o700 });
   for (const f of missing) {
     onStatus?.(`Downloading ${f.name} (${Math.round(f.bytes / 1e5) / 10} MB, once)...`);
     const temp = join(OPENCV_DIR, `${f.name}.part-${process.pid}`);

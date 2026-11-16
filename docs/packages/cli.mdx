@@ -1937,8 +1937,11 @@ different user accounts do not queue behind each other; set
 `HYPERFRAMES_RENDER_LOCK_DIR` to the same folder in each account to give them
 one slot. That folder holds lock records only: the first render creates it
 writable by every account but sticky, so no account can delete or replace
-another's records. Do not share `HYPERFRAMES_CACHE_DIR` between accounts: it
-holds the browser, packages and helpers each account runs. HyperFrames never
+another's records. A record that names a live process of another account
+counts as a running render, so an account in the group can hold the slot by
+naming a process that never ends; `HYPERFRAMES_RENDER_LOCK=off` renders without
+the slot. Do not share `HYPERFRAMES_CACHE_DIR` between accounts: it holds the
+browser, packages and helpers each account runs. HyperFrames never
 runs a cached one that another account can write: it installs its own copy,
 under `~/.cache/hyperframes` when another account can write the cache folder
 itself. A render whose process died frees its slot on its own. `--workers` is

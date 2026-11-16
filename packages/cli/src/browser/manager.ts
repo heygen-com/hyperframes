@@ -853,7 +853,11 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
     rmSync(stagingDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   // install() only debug-logs each failed unzip tool before trying the next one; keep those lines.
   const unzipLog = { lines: [] as string[] };
-  const runInstall = stagedInstaller(browsers, platform, stagingDir, options, unzipLog);
+  const install = stagedInstaller(browsers, platform, stagingDir, options, unzipLog);
+  const runInstall = () => {
+    mkdirSync(stagingDir, { recursive: true, mode: 0o700 });
+    return install();
+  };
 
   try {
     const staged = await retryWhileLocked(
@@ -912,7 +916,8 @@ function moveStagedInstallIntoCache(
 ): string {
   const target = join(CACHE_DIR, relative(stagingDir, staged.path));
   const aside = join(CACHE_ROOT_DIR, `${REPLACED_PREFIX}${randomUUID()}`);
-  mkdirSync(dirname(target), { recursive: true });
+  sealCacheInstall(staged.path, stagingDir);
+  mkdirSync(dirname(target), { recursive: true, mode: 0o755 });
   let replaced = false;
   try {
     renameSync(target, aside);

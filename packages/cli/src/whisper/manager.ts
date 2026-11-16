@@ -181,7 +181,7 @@ async function buildFromSource(
 
   if (!existsSync(BUILD_DIR)) {
     onProgress?.("Downloading whisper.cpp...");
-    mkdirSync(BUILD_DIR, { recursive: true });
+    mkdirSync(BUILD_DIR, { recursive: true, mode: 0o700 });
     await stoppableExecFile(
       git,
       ["clone", "--depth", "1", "--branch", WHISPER_TAG, WHISPER_REPO, "."],

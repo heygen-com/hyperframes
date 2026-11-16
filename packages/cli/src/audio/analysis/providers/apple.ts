@@ -115,7 +115,7 @@ function compiled(name: string, source: string): Promise<string> {
   let build = builds.get(binary);
   if (!build) {
     build = (async () => {
-      await mkdir(helperDir(), { recursive: true });
+      await mkdir(helperDir(), { recursive: true, mode: 0o700 });
       const file = `${binary}.swift`;
       await writeFile(file, source);
       const args = swiftcArgs(file, `${binary}.tmp`);

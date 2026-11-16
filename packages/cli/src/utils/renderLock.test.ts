@@ -10,7 +10,9 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   unlinkSync,
+  fchmodSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,9 +27,9 @@ import { acquireRenderSlot } from "../commands/render/renderSlot.js";
 
 vi.mock("node:fs", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs")>();
-  return { ...fs, unlinkSync: vi.fn(fs.unlinkSync), chmodSync: vi.fn(fs.chmodSync) };
+  return { ...fs, unlinkSync: vi.fn(fs.unlinkSync), fchmodSync: vi.fn(fs.fchmodSync) };
 });
-const { unlinkSync: realUnlinkSync, chmodSync: realChmodSync } =
+const { unlinkSync: realUnlinkSync, fchmodSync: realFchmodSync } =
   await vi.importActual<typeof import("node:fs")>("node:fs");
 
 let dir: string;
@@ -244,25 +246,41 @@ describe("acquireRenderLock", () => {
       release();
     });
 
-    it("warns once, naming the folder, when a shared lock folder it cannot change has no sticky bit", async () => {
-      const shared = join(dir, "not-ours");
+    it("named by HYPERFRAMES_RENDER_LOCK_DIR is refused when it is a link, and the folder it names is left as it was", async () => {
+      const victim = join(dir, "private");
+      mkdirSync(victim, { mode: 0o700 });
+      const shared = join(dir, "planted");
+      symlinkSync(victim, shared);
+      const env = { HYPERFRAMES_RENDER_LOCK_DIR: shared };
+
+      await expect(acquireRenderLock({ project: "/work/a", wait: false, env })).rejects.toThrow(
+        `${shared} is not a folder that this account or root owns`,
+      );
+      expect(statSync(victim).mode & 0o7777).toBe(0o700);
+      expect(readdirSync(victim)).toEqual([]);
+    });
+
+    it("named by HYPERFRAMES_RENDER_LOCK_DIR is refused when another account owns it", async () => {
+      const shared = join(dir, "theirs");
       mkdirSync(shared);
       chmodSync(shared, 0o777);
+      vi.spyOn(process, "getuid").mockReturnValue(process.getuid!() + 1);
       const env = { HYPERFRAMES_RENDER_LOCK_DIR: shared };
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      vi.mocked(chmodSync).mockImplementation((file, mode) => {
-        if (file === shared) throw Object.assign(new Error("EPERM"), { code: "EPERM" });
-        realChmodSync(file, mode);
-      });
-      try {
-        for (let i = 0; i < 2; i++) {
-          (await acquireRenderLock({ project: "/work/a", wait: false, env }))();
-        }
-      } finally {
-        vi.mocked(chmodSync).mockImplementation(realChmodSync);
-      }
-      expect(warn).toHaveBeenCalledTimes(1);
-      expect(warn.mock.calls[0]![0]).toContain(`chmod 1777 ${shared}`);
+
+      await expect(acquireRenderLock({ project: "/work/a", wait: false, env })).rejects.toThrow(
+        `${shared} is not a folder that this account or root owns`,
+      );
+      expect(statSync(shared).mode & 0o7777).toBe(0o777);
+      expect(readdirSync(shared)).toEqual([]);
+    });
+
+    it("is refused when another account owns this account's own lock folder", async () => {
+      mkdirSync(join(dir, "locks"));
+      vi.spyOn(process, "getuid").mockReturnValue(process.getuid!() + 1);
+
+      await expect(
+        acquireRenderLock({ project: "/work/a", wait: false, path, env: {} }),
+      ).rejects.toThrow(`${join(dir, "locks")} is not a folder this account owns`);
     });
 
     it("says so when another account's stale lock cannot be removed from a sticky shared folder", async () => {
@@ -293,18 +311,23 @@ describe("acquireRenderLock", () => {
     });
 
     it.skipIf(process.getuid?.() === 0)(
-      "says how to fix a locks folder this account cannot write in",
+      "says how to fix a sticky shared lock folder this account cannot write in",
       async () => {
-        mkdirSync(join(dir, "locks"), { mode: 0o755 });
-        chmodSync(join(dir, "locks"), 0o555);
-        // Another account's folder, which this render leaves as it is.
-        vi.spyOn(process, "getuid").mockReturnValue(process.getuid!() + 1);
+        const shared = join(dir, "read-only");
+        mkdirSync(shared);
+        chmodSync(shared, 0o1555);
+        vi.mocked(fchmodSync).mockImplementation(() => {});
         try {
           await expect(
-            acquireRenderLock({ project: "/work/b", wait: false, path, env: {} }),
+            acquireRenderLock({
+              project: "/work/b",
+              wait: false,
+              env: { HYPERFRAMES_RENDER_LOCK_DIR: shared },
+            }),
           ).rejects.toThrow("point HYPERFRAMES_RENDER_LOCK_DIR in each of them at one folder");
         } finally {
-          chmodSync(join(dir, "locks"), 0o755);
+          vi.mocked(fchmodSync).mockImplementation(realFchmodSync);
+          chmodSync(shared, 0o755);
         }
       },
     );

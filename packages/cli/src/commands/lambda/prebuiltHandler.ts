@@ -86,7 +86,7 @@ export async function fetchPinned(
   // Override for mirrors and pre-release testing; the pinned sha256 still decides.
   const url = asset.urlOverride ?? pinned.url;
   deps.log(`→ Downloading ${asset.label} ${pinned.version} (${pinned.bytes} bytes)`);
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
   const partial = `${file}.download`;
   await deps.download(url, partial, { maxBytes: pinned.bytes });
   const actual = await sha256File(partial);

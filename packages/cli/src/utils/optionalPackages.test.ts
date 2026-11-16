@@ -9,6 +9,7 @@ import {
   realpathSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -633,6 +634,22 @@ describe("install", () => {
         writeFileSync(join(prefix, "node_modules", name, "index.js"), body);
       };
 
+      it("is installed in a folder no other account can reach, even under umask 002", async () => {
+        const { cache, dir } = setup();
+        const previous = process.umask(0o002);
+        const modes: number[] = [];
+        try {
+          await install(dir, name, version, async (_args, prefix) => {
+            modes.push(statSync(prefix).mode & 0o777);
+            writePackage(prefix, "1");
+          });
+        } finally {
+          process.umask(previous);
+          rmSync(cache, { recursive: true, force: true });
+        }
+        expect(modes).toEqual([0o700]);
+      });
+
       it("is loaded on the next run when this account installed it under umask 002", async () => {
         const { cache, dir } = setup();
         const previous = process.umask(0o002);
@@ -652,6 +669,7 @@ describe("install", () => {
 
       it("is never loaded when another account owns it", () => {
         const { cache, dir } = setup();
+        const previous = process.umask(0o022);
         try {
           writePackage(dir, "module.exports = 'planted'");
           expect(installedPackagePath(dir, name)).toBe(
@@ -660,6 +678,7 @@ describe("install", () => {
           vi.spyOn(process, "getuid").mockReturnValue(process.getuid!() + 1);
           expect(installedPackagePath(dir, name)).toBeNull();
         } finally {
+          process.umask(previous);
           vi.restoreAllMocks();
           rmSync(cache, { recursive: true, force: true });
         }

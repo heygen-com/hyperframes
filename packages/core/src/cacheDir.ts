@@ -6,9 +6,23 @@ const userCacheRoot = () => join(homedir(), ".cache", "hyperframes");
 
 const GROUP_OR_WORLD_WRITE = 0o022;
 const WITHOUT_GROUP_OR_WORLD_WRITE = 0o7755;
+const STICKY = 0o1000;
+
+const ownedByAnotherAccount = (stat: Stats, uid: number) => stat.uid !== uid && stat.uid !== 0;
+const stickyFolder = (stat: Stats) => stat.isDirectory() && (stat.mode & STICKY) !== 0;
 
 const anotherAccountCanWrite = (stat: Stats, uid: number) =>
-  (stat.uid !== uid && stat.uid !== 0) || (stat.mode & GROUP_OR_WORLD_WRITE) !== 0;
+  ownedByAnotherAccount(stat, uid) ||
+  ((stat.mode & GROUP_OR_WORLD_WRITE) !== 0 && !stickyFolder(stat));
+
+function statIfPresent(path: string): Stats | undefined {
+  try {
+    return statSync(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
 
 export function hyperframesCacheDir(...parts: string[]): string {
   const named = process.env["HYPERFRAMES_CACHE_DIR"];
@@ -24,7 +38,7 @@ export function foreignWritablePath(path: string, root: string): string | undefi
   if (uid === undefined) return undefined;
   const top = resolve(root);
   for (let at = resolve(path); ; at = dirname(at)) {
-    const stat = statSync(at, { throwIfNoEntry: false });
+    const stat = statIfPresent(at);
     if (stat && anotherAccountCanWrite(stat, uid)) return at;
     const pastRoot = at === top || !at.startsWith(top + sep);
     if ((stat && pastRoot) || at === dirname(at)) return undefined;
@@ -49,7 +63,7 @@ export function sealCacheInstall(path: string, root: string): void {
   seal(resolve(path));
   const top = resolve(root);
   for (let at = dirname(resolve(path)); at === top || at.startsWith(top + sep); at = dirname(at)) {
-    const stat = statSync(at, { throwIfNoEntry: false });
+    const stat = statIfPresent(at);
     if (stat?.uid === uid && (stat.mode & GROUP_OR_WORLD_WRITE) !== 0) {
       chmodSync(at, stat.mode & WITHOUT_GROUP_OR_WORLD_WRITE);
     }

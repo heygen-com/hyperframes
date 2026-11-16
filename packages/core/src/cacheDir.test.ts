@@ -81,6 +81,14 @@ describe.skipIf(process.platform === "win32")("foreignWritablePath", () => {
     expect(foreignWritablePath(binary, root)).toBe(root);
   });
 
+  it("accepts a sticky folder, like /tmp, where others cannot replace this account's entries", () => {
+    chmodSync(root, 0o1777);
+    expect(foreignWritablePath(binary, root)).toBeUndefined();
+    chmodSync(join(root, "chrome"), 0o1777);
+    asAnotherAccount();
+    expect(foreignWritablePath(join(root, "chrome"), root)).toBe(join(root, "chrome"));
+  });
+
   it("checks the nearest folder above a cache root that does not exist yet", () => {
     chmodSync(root, 0o777);
     expect(foreignWritablePath(join(root, "cache", "x"), join(root, "cache"))).toBe(root);
