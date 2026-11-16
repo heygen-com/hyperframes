@@ -17,6 +17,7 @@ import {
   isStudioPrivatePath,
   mkdirWithinProject,
   resolveWithinProject,
+  toolTrustedFileKind,
 } from "./safePath.js";
 
 const recased = (path: string) => join(dirname(path), basename(path).toUpperCase());
@@ -349,5 +350,68 @@ describe("isStudioPrivatePath", () => {
     "..\\.cache\\frames\\frame_0001.png",
   ])("allows %s", (path) => {
     expect(isStudioPrivatePath(path)).toBe(false);
+  });
+});
+
+describe("toolTrustedFileKind", () => {
+  it.each([
+    ["package.json", "project-config"],
+    ["sub/Package.JSON", "project-config"],
+    ["hyperframes.json.", "project-config"],
+    ["hyperframes.lock.json", "project-config"],
+    ["package.json::$DATA", "project-config"],
+    ["pnpm-lock.yaml", "lock-file"],
+    ["nested/yarn.lock", "lock-file"],
+    ["bun.lockb ", "lock-file"],
+    ["tsconfig.json", "tool-config"],
+    ["Makefile", "tool-config"],
+    ["vite.config.ts", "tool-config"],
+    ["lib/eslint.config.mjs", "tool-config"],
+    ["AGENTS.md", "agent-instructions"],
+    ["deep/sub\\CLAUDE.local.md", "agent-instructions"],
+    ["compositions/gemini.md", "agent-instructions"],
+    ["scripts/postinstall.sh", "program"],
+    ["tools/run.PY", "program"],
+    ["assets/app.exe", "program"],
+    ["PACKAG~1.JSO", "short-name"],
+    ["CLAUDE~1/notes.md", "short-name"],
+    ["COPILO~1.MD", "short-name"],
+    ["AGENT\u017f.md", "agent-instructions"],
+    ["package.j\u017fon", "project-config"],
+    ["Make\ufb01le", "tool-config"],
+    ["run.\u017fh", "program"],
+    ["\uff50ackage.json", "project-config"],
+    ["pack\u200bage.json", "project-config"],
+    ["jest.config.json", "tool-config"],
+    ["docker-compose.yml", "tool-config"],
+    ["gulpfile.mjs", "tool-config"],
+    ["turbo.json", "tool-config"],
+    ["pyproject.toml", "tool-config"],
+  ] as const)("names %s %s", (path, kind) => {
+    expect(toolTrustedFileKind(path)).toBe(kind);
+  });
+
+  it("finds an agent file below a folder with a decomposed name", () => {
+    expect(toolTrustedFileKind("caf\u0065\u0301/AGENTS.md")).toBe("agent-instructions");
+  });
+
+  it.each([
+    "index.html",
+    "compositions/scene.html",
+    "assets/style.css",
+    "assets/gsap.min.js",
+    "lib/scene.mjs",
+    "assets/data.json",
+    "assets/logo.svg",
+    "notes.md",
+    "README.md",
+    "compositions/lockup.html",
+    "assets/package-art.png",
+    ".hyperframes/studio-motion.json",
+    "media/take~2.mp4",
+    "assets/scene~10.png",
+    "assets/config.json",
+  ])("leaves %s to the other rules", (path) => {
+    expect(toolTrustedFileKind(path)).toBeNull();
   });
 });

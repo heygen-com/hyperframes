@@ -11,10 +11,17 @@ export function realpath(path: string): string {
   }
 }
 
-/** Segments as Windows opens them: any case, no trailing dots or spaces, no `:stream` suffix. */
+/**
+ * Segments as a case-insensitive file system or Windows opens them: any case or Unicode form (a long s, a ligature or a
+ * full-width letter reads as its plain letters, an invisible character is dropped), no trailing dots or spaces, no
+ * `:stream` suffix.
+ */
 export function projectPathSegments(relPath: string): string[] {
   return relPath
+    .normalize("NFKC")
+    .toUpperCase()
     .toLowerCase()
+    .replace(/\p{Default_Ignorable_Code_Point}/gu, "")
     .split(/[\\/]/)
     .map((segment) => withoutTrailingDotsOrSpaces(segment.split(":", 1)[0] ?? ""));
 }
