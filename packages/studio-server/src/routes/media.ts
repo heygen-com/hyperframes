@@ -137,7 +137,6 @@ export function registerMediaRoutes(
   const mediaJobs = new Map<string, MediaProcessingJobState>();
   const TTL_MS = 300_000;
   const readMediaMetadata = options.probeMediaMetadata ?? probeMediaMetadata;
-  // Probes of the same unchanged file share one run, and at most a few run at once.
   const probes = new ThumbnailGenerationCoordinator<MediaMetadata>(MAX_CONCURRENT_METADATA_PROBES);
 
   function cleanupFinishedJobs(): void {
@@ -165,9 +164,7 @@ export function registerMediaRoutes(
     if (!stat) return c.json({ error: "media not found" }, 404);
 
     const key = JSON.stringify([filePath, stat.dev, stat.ino, stat.size, stat.mtimeMs]);
-    const metadata = await probes.acquire(key, c.req.raw.signal, () =>
-      readMediaMetadata(filePath),
-    );
+    const metadata = await probes.acquire(key, c.req.raw.signal, () => readMediaMetadata(filePath));
     return c.json({ path: assetPath, metadata });
   });
 

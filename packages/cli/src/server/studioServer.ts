@@ -106,7 +106,6 @@ const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 // before that watchdog can fire and skip this file's browser cleanup.
 const RENDER_SHUTDOWN_WAIT_MS = 2_000;
 
-// A project lint takes seconds; this only stops a worker that hangs.
 const LINT_WORKER_TIMEOUT_MS = 120_000;
 
 // Vite emits only content-hashed files under dist/assets; hand-authored

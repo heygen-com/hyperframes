@@ -12,10 +12,7 @@ interface GenerationEntry<T> {
   reject: (reason: unknown) => void;
 }
 
-/**
- * Sole server owner for same-key dedupe, concurrency, cancellation, and queue order. A run's
- * signal aborts once no request waits on it, and its slot stays taken until the work settles.
- */
+/** Sole server owner for same-key dedupe, concurrency, cancellation, and queue order. */
 export class ThumbnailGenerationCoordinator<T = ThumbnailGenerationValue> {
   private readonly entries = new Map<string, GenerationEntry<T>>();
   private readonly queue: GenerationEntry<T>[] = [];

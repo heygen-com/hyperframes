@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { LintResult, StudioApiAdapter } from "../types.js";
 import { isInHiddenOrVendorDir, walkDir } from "../helpers/safePath.js";
+import { resolveProjectSignature } from "../helpers/projectSignature.js";
 import { ThumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
 
 type LintFinding = LintResult["findings"][number];
@@ -69,13 +70,14 @@ async function lintProjectDir(
 const MAX_CONCURRENT_LINT_RUNS = 2;
 
 export function registerLintRoutes(api: Hono, adapter: StudioApiAdapter): void {
-  // Requests for the same project share one run; a run nobody waits on any more is aborted.
   const runs = new ThumbnailGenerationCoordinator<LintFinding[]>(MAX_CONCURRENT_LINT_RUNS);
   api.get("/projects/:id/lint", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     try {
-      const findings = await runs.acquire(project.dir, c.req.raw.signal, (signal) =>
+      const signature = await resolveProjectSignature(adapter, project.dir);
+      const key = JSON.stringify([project.dir, signature]);
+      const findings = await runs.acquire(key, c.req.raw.signal, (signal) =>
         lintProjectDir(adapter, project.dir, signal),
       );
       return c.json({ findings });

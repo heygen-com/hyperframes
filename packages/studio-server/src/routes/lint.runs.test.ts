@@ -1,6 +1,6 @@
 // @vitest-environment node
 // Node environment: the abort tests need a request's AbortSignal to reach the route.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -76,12 +76,27 @@ describe("project lint runs", () => {
     const requests = Array.from({ length: 5 }, () =>
       app.request("http://localhost/projects/demo/lint"),
     );
+    await vi.waitFor(() => expect(pool.stats().started).toBe(1));
     await tick();
     expect(pool.stats().started).toBe(1);
     pool.finishAll();
 
     for (const res of await Promise.all(requests)) expect(res.status).toBe(200);
     expect(pool.stats().started).toBe(1);
+  });
+
+  it("starts a fresh run when the project changed after a run began", async () => {
+    const pool = workerPool();
+    const dir = projectDir();
+    const app = appFor({ demo: dir }, pool.lintProject);
+
+    const before = app.request("http://localhost/projects/demo/lint");
+    await vi.waitFor(() => expect(pool.stats().started).toBe(1));
+    writeFileSync(join(dir, "scene.html"), "<html><body>new scene</body></html>");
+    const after = app.request("http://localhost/projects/demo/lint");
+    await vi.waitFor(() => expect(pool.stats().started).toBe(2));
+    pool.finishAll();
+    for (const res of await Promise.all([before, after])) expect(res.status).toBe(200);
   });
 
   it("aborts a run once no request waits on it", async () => {
@@ -93,7 +108,7 @@ describe("project lint runs", () => {
     const requests = [first, second].map((controller) =>
       app.request("http://localhost/projects/demo/lint", { signal: controller.signal }),
     );
-    await tick();
+    await vi.waitFor(() => expect(pool.stats().live).toBe(1));
     first.abort();
     await tick();
     expect(pool.stats().live).toBe(1);
@@ -119,10 +134,9 @@ describe("project lint runs", () => {
         );
         return controller;
       });
-      await tick();
-      expect(pool.stats().live).toBeLessThanOrEqual(2);
+      await vi.waitFor(() => expect(pool.stats().live).toBe(2));
       for (const controller of controllers) controller.abort();
-      await tick();
+      await vi.waitFor(() => expect(pool.stats().live).toBe(0));
     }
 
     expect(pool.stats().peak).toBe(2);
