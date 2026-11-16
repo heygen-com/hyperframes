@@ -228,6 +228,23 @@ describe("ensureHfIds", () => {
     expect(b).toMatch(/^hf-[a-z0-9]{4}$/);
   });
 
+  it("mints a run of identical elements with a few set lookups each, not one per earlier twin", () => {
+    const { document } = parseHTML(`<p class="x">same</p>`);
+    const el = document.querySelector("p") as Element;
+    let lookups = 0;
+    class Counted extends Set<string> {
+      override has(id: string) {
+        lookups += 1;
+        return super.has(id);
+      }
+    }
+    const assigned = new Counted();
+    const twins = 2000;
+    for (let i = 0; i < twins; i += 1) mintHfId(el, assigned);
+    expect(assigned.size).toBe(twins);
+    expect(lookups).toBeLessThan(3 * twins);
+  });
+
   // Post-persist stability: once data-hf-id is written back to source, edits
   // don't drift the id because the attribute is already present and pinned.
   it("pinned id survives text edit after first persist", () => {
