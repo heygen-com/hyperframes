@@ -155,6 +155,12 @@ async function main() {
     join(mediaEngine, "resolve.mjs"),
     join(DIST, "skills", "media-use", "scripts", "resolve.mjs"),
   );
+  // The SFX media index ships with the release whose bundled SFX files it names.
+  mkdirSync(join(DIST, "catalog-artifact"), { recursive: true });
+  cpSync(
+    join(REPO_ROOT, "registry", "catalog-artifact", "media-vectors.json"),
+    join(DIST, "catalog-artifact", "media-vectors.json"),
+  );
 
   const dockerfile = join(CLI_ROOT, "src", "docker", "Dockerfile.render");
   if (existsSync(dockerfile)) {
