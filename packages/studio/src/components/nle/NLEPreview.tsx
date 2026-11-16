@@ -11,6 +11,7 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { flushSync } from "react-dom";
 import { Player } from "../../player";
 import { postFrameDisplayScale } from "../../player/lib/runtimeProtocol";
 import type { NLEContextValue } from "./NLEContext";
@@ -163,7 +164,9 @@ export const NLEPreview = memo(function NLEPreview({
     };
 
     updateStageSize();
-    const observer = new ResizeObserver(updateStageSize);
+    // Rendered before the browser paints: a window going full screen otherwise shows (and macOS animates) a frame with
+    // the old, small stage.
+    const observer = new ResizeObserver(() => flushSync(updateStageSize));
     observer.observe(viewport);
     return () => observer.disconnect();
   }, [compositionSize, hintWidth, hintHeight, portrait, gutterPx, insetPx]);
