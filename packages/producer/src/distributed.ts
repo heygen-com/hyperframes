@@ -136,6 +136,7 @@ export {
 } from "./services/distributed/renderConfigValidation.js";
 export {
   hashProjectDir,
+  isPrivateSitePath,
   listSiteFiles,
   listSiteFilesForUpload,
 } from "./services/distributed/projectHash.js";

@@ -20,6 +20,7 @@ import {
   buildAudioSidecar,
   buildProbeFacts,
   hashProjectDir,
+  isPrivateSitePath,
   listSiteFilesForUpload,
   wantsAudioSidecar,
   wantsProbeFacts,
@@ -116,7 +117,9 @@ export async function ensureSiteStored(
       } catch (error) {
         if ((error as Error).name !== "PLAN_ARTIFACT_MISSING") throw error;
         const localPath = projectDir && join(projectDir, path);
-        if (!localPath || !(await hasContent(localPath, sha256))) return void missing.push(path);
+        const reupload =
+          localPath && !isPrivateSitePath(path) && (await hasContent(localPath, sha256));
+        if (!reupload) return void missing.push(path);
         await putContentStoreFile(s3, localPath, bucket, sha256);
       }
     });

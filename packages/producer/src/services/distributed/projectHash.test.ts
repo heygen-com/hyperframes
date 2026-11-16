@@ -103,6 +103,18 @@ describe("listSiteFiles / hashProjectDir", () => {
     expect(notices[0]).toContain(".mcp.json, .npmrc, .ssh, a.pem, b.pem and 2 more");
   });
 
+  it("shows control characters in a left-out path as escapes, never raw", () => {
+    const dir = project();
+    const folder = "evil\u001b[2J\u009b";
+    mkdirSync(join(dir, folder));
+    writeFileSync(join(dir, folder, ".npmrc"), "secret");
+    const notices: string[] = [];
+    expect(listSiteFilesForUpload(dir, (line) => notices.push(line))).toEqual(["index.html"]);
+    expect(notices[0]).toContain("evil\\x1b[2J\\x9b/.npmrc");
+    expect(notices[0]).not.toContain("\u001b");
+    expect(notices[0]).not.toContain("\u009b");
+  });
+
   it("leaves out a file whose link points at a credential", () => {
     const dir = project();
     const home = tempDir();

@@ -19,6 +19,9 @@ import { PLAN_PROJECT_DIR_SKIP_SEGMENTS } from "./plan.js";
 const SITE_ID_SCHEME = "site-v2\0";
 const READ_CHUNK_BYTES = 256 * 1024;
 
+/** Whether a site's `/`-separated project path is one no upload ships: env, Git, credentials, tool state, app records. */
+export const isPrivateSitePath = (relPath: string): boolean => isStudioPrivatePath(relPath);
+
 function statEntry(full: string, relPath: string) {
   try {
     return statSync(full);
@@ -59,6 +62,15 @@ export function listSiteFiles(projectDir: string, onPrivate?: (relPath: string) 
   return files;
 }
 
+const printablePath = (path: string): string =>
+  [...path]
+    .map((ch) => {
+      const code = ch.charCodeAt(0);
+      const control = (code < 0x20 && code !== 0x09) || (code >= 0x7f && code <= 0x9f);
+      return control ? `\\x${code.toString(16).padStart(2, "0")}` : ch;
+    })
+    .join("");
+
 /** {@link listSiteFiles} for an upload: one line to `onNotice` names the private files left out. */
 export function listSiteFilesForUpload(
   projectDir: string,
@@ -69,7 +81,7 @@ export function listSiteFilesForUpload(
   if (leftOut.length > 0) {
     const more = leftOut.length > 5 ? ` and ${leftOut.length - 5} more` : "";
     onNotice?.(
-      `[deploySite] left out private files no composition loads (env, Git, credentials, tool state): ${leftOut.slice(0, 5).join(", ")}${more}`,
+      `[deploySite] left out private files no composition loads (env, Git, credentials, tool state): ${leftOut.slice(0, 5).map(printablePath).join(", ")}${more}`,
     );
   }
   return files;
