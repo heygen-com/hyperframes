@@ -152,10 +152,11 @@ export default defineCommand({
         : undefined;
     const committedTeam = readTeamProject(dir);
     const priorLink = readProjectLink(dir);
-    const existingTarget =
+    const existingTarget = (
       updateTarget ??
       committedTeam?.projectId ??
-      (priorLink?.url ? priorLink.projectId : undefined);
+      (priorLink?.url ? priorLink.projectId : undefined)
+    )?.replace(/[^!-~]/g, "?");
 
     if (args.yes !== true) {
       console.log();
@@ -164,19 +165,20 @@ export default defineCommand({
           `  ${c.bold("hyperframes publish uploads this project and requests public visibility at a stable URL.")}`,
         );
         console.log(`  ${c.dim("Anyone with the URL can open a claimed public project.")}`);
-      } else if (existingTarget) {
-        console.log(
-          `  ${c.bold(`hyperframes publish uploads this project to update the existing project ${existingTarget.replace(/[^!-~]/g, "?")} in place.`)}`,
-        );
-        console.log(
-          `  ${c.dim("That project keeps its current visibility, which may be public. If your space can't access it, a new private project is created instead.")}`,
-        );
-      } else {
+      } else if (!existingTarget) {
         console.log(
           `  ${c.bold("hyperframes publish uploads this project privately to a stable URL.")}`,
         );
         console.log(
           `  ${c.dim("Viewing requires authentication and access. Pass --public to allow anyone with the URL.")}`,
+        );
+      }
+      if (existingTarget) {
+        const keeps =
+          args.public === true ? "" : " and keeps its current visibility, which may be public";
+        const created = args.public === true ? "public" : "private";
+        console.log(
+          `  ${c.bold(`If you are signed in and can access project ${existingTarget}, this updates it in place${keeps}. Otherwise it creates a new ${created} project.`)}`,
         );
       }
       console.log();

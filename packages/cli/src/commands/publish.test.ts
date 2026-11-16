@@ -215,9 +215,17 @@ describe("publish visibility messaging", () => {
       const output = await captureLog(() =>
         publishCommand.run?.({ args: { dir: project, public: false, proxy: false } } as never),
       );
-      expect(output).toContain("update the existing project existing-?[2Kproject in place");
-      expect(output).toContain("keeps its current visibility, which may be public");
+      expect(output).toContain(
+        "If you are signed in and can access project existing-?[2Kproject, this updates it in place and keeps its current visibility, which may be public. Otherwise it creates a new private project.",
+      );
       expect(output).not.toContain("privately");
+      const publicOutput = await captureLog(() =>
+        publishCommand.run?.({ args: { dir: project, public: true, proxy: false } } as never),
+      );
+      expect(publicOutput).toContain("requests public visibility");
+      expect(publicOutput).toContain(
+        "If you are signed in and can access project existing-?[2Kproject, this updates it in place. Otherwise it creates a new public project.",
+      );
       expect(output).toContain("Aborted.");
       expect(publishState.publish).not.toHaveBeenCalled();
     } finally {
