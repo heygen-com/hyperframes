@@ -16,6 +16,7 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { recordInManifest } from "./lib/media-record.mjs";
+import { engineBgmLog } from "./lib/project-path.mjs";
 
 const argv = process.argv.slice(2);
 const flag = (name, def) => {
@@ -89,7 +90,8 @@ if (!existsSync(audioMetaPath)) die(`audio_meta.json missing at ${audioMetaPath}
 const audioMeta = JSON.parse(readFileSync(audioMetaPath, "utf8"));
 const bgmPath = audioMeta.bgm?.path || "";
 const bgmAbsPath = bgmPath ? join(hyperframesDir, bgmPath) : "";
-const logPath = audioMeta.bgm_log || "";
+// Only the engine's own log in assets/bgm is read; any other bgm_log counts as no log.
+const logPath = engineBgmLog(hyperframesDir, audioMeta.bgm_log) || "";
 const pid = audioMeta.bgm_pid || null;
 
 const base = {
@@ -153,7 +155,7 @@ while (Date.now() - started <= timeoutMs) {
       waited_ms: Date.now() - started,
       process_alive: alive,
       message,
-      error_tail: lastFailure || lastTail.slice(-2000),
+      error_tail: (lastFailure || lastTail).slice(-2000),
     });
     console.log(`! bgm: failed (${status.message})`);
     process.exit(0);

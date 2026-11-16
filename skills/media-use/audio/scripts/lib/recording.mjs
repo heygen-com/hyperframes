@@ -2,8 +2,9 @@
 // time-stretched by `speed` with the pitch kept, with word timings scaled to match.
 import "../../../scripts/lib/windows-exe-search.mjs";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
+import { projectPath } from "./project-path.mjs";
 
 // ffmpeg's atempo takes 0.5..2 per stage; chain stages for the rest of the 0.1..3 speed range.
 export function atempoChain(speed) {
@@ -21,9 +22,20 @@ export function atempoChain(speed) {
   return stages.map((s) => `atempo=${Number(s.toFixed(6))}`).join(",");
 }
 
+/** The recording a request line names, as a path inside the project. Throws when it is absolute or leads outside. */
+export function recordingSource(hyperframesDir, audio) {
+  const src = projectPath(hyperframesDir, String(audio));
+  if (src) return src;
+  throw new Error(
+    `recording ${JSON.stringify(String(audio))} is outside the project folder; copy it into the project and give its path there`,
+  );
+}
+
 /** src -> 44.1k mono wav at wavAbs, played `speed` times faster. Returns { ok, error? }. */
 export function stretchToWav(src, wavAbs, speed = 1) {
-  if (!existsSync(src)) return { ok: false, error: `recording not found: ${src}` };
+  const stat = statSync(src, { throwIfNoEntry: false });
+  if (!stat) return { ok: false, error: `recording not found: ${src}` };
+  if (!stat.isFile()) return { ok: false, error: `recording is not a file: ${src}` };
   mkdirSync(dirname(wavAbs), { recursive: true });
   const filter = speed === 1 ? [] : ["-af", atempoChain(speed)];
   const r = spawnSync(

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -105,4 +105,73 @@ test("records locally made music as generated once it is ready", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// A finished-but-missing track with no live renderer, so wait-bgm reports on the log at once.
+function waitWithLog(bgmLog, files = {}) {
+  const base = mkdtempSync(join(tmpdir(), "mu-wait-bgm-"));
+  const dir = join(base, "project");
+  mkdirSync(join(dir, "assets/bgm"), { recursive: true });
+  writeFileSync(join(base, "secret.txt"), "Traceback: SECRET-TOKEN-123");
+  for (const [rel, make] of Object.entries(files)) make(join(dir, rel), base);
+  writeFileSync(
+    join(dir, "audio_meta.json"),
+    JSON.stringify({
+      bgm: { path: "assets/bgm/track.wav" },
+      bgm_pending: true,
+      bgm_pid: null,
+      bgm_log: bgmLog(dir, base),
+    }),
+  );
+  const script = new URL("./wait-bgm.mjs", import.meta.url).pathname;
+  const run = spawnSync(
+    process.execPath,
+    [
+      script,
+      "--audio-meta",
+      join(dir, "audio_meta.json"),
+      "--hyperframes",
+      dir,
+      "--timeout-ms",
+      "0",
+    ],
+    { encoding: "utf8", env: { ...process.env, HOME: base } },
+  );
+  try {
+    assert.equal(run.status, 0, run.stderr);
+    return readFileSync(join(dir, "bgm_status.json"), "utf8");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+}
+
+for (const [label, bgmLog, files] of [
+  ["an absolute path outside the project", (_dir, base) => join(base, "secret.txt")],
+  ["a path that climbs out of the project", () => "../secret.txt"],
+  [
+    "a link in assets/bgm under the engine's log name",
+    () => "assets/bgm/bgm-1.log",
+    { "assets/bgm/bgm-1.log": (at, base) => symlinkSync(join(base, "secret.txt"), at) },
+  ],
+]) {
+  test(`a bgm_log at ${label} is never read into bgm_status.json`, () => {
+    const status = waitWithLog(bgmLog, files);
+    assert.doesNotMatch(status, /SECRET-TOKEN/);
+    const parsed = JSON.parse(status);
+    assert.equal(parsed.log, null);
+    assert.equal(parsed.error_tail, undefined);
+    assert.equal(parsed.status, "timeout");
+    assert.equal(parsed.log_tail, "");
+  });
+}
+
+test("the engine's own crashed renderer log still reports the failure", () => {
+  const status = JSON.parse(
+    waitWithLog((dir) => join(dir, "assets/bgm/bgm-1700000000000.log"), {
+      "assets/bgm/bgm-1700000000000.log": (at) =>
+        writeFileSync(at, "loading model\nRuntimeError: CUDA out of memory\n"),
+    }),
+  );
+  assert.equal(status.status, "failed");
+  assert.match(status.error_tail, /^RuntimeError: CUDA out of memory/);
 });

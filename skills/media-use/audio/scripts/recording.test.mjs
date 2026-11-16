@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -137,3 +137,50 @@ test("a recording at speed 2: the file is stretched and the words still land on 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// A request whose recording or line id leads outside the project stops before anything is read or written.
+for (const [label, line] of [
+  ["a recording above the project", { id: "01", audio: "../outside/take.wav" }],
+  ["a recording by absolute path", { id: "01", audio: "<outside>/take.wav" }],
+  ["a line id that climbs out", { id: "../../x", audio: "take.wav" }],
+]) {
+  test(`${label} fails with an error and copies nothing`, () => {
+    const base = mkdtempSync(join(tmpdir(), "hf-rec-"));
+    const dir = join(base, "project");
+    const outside = join(base, "outside");
+    try {
+      mkdirSync(dir);
+      mkdirSync(outside);
+      for (const at of [dir, outside]) {
+        const make = spawnSync(
+          "ffmpeg",
+          [
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=duration=1",
+            join(at, "take.wav"),
+          ],
+          { encoding: "utf8" },
+        );
+        assert.equal(make.status, 0, make.stderr);
+      }
+      const request = { lines: [{ ...line, audio: line.audio.replace("<outside>", outside) }] };
+      writeFileSync(join(dir, "audio_request.json"), JSON.stringify(request));
+      const run = spawnSync(process.execPath, [AUDIO, "--hyperframes", dir, "--only", "tts"], {
+        encoding: "utf8",
+        env: { ...process.env, HOME: dir },
+      });
+      assert.equal(run.status, 1, run.stdout);
+      assert.match(run.stderr, /outside the project folder|must be a plain name/);
+      assert.equal(existsSync(join(dir, "assets")), false);
+      assert.equal(existsSync(join(base, "x.wav")), false);
+      assert.equal(existsSync(join(dir, "audio_meta.json")), false);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+}

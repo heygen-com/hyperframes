@@ -53,10 +53,11 @@ import {
 import { generateBgmDetached, inferBgmPrompt, retrieveBgm } from "./lib/bgm.mjs";
 import { BUNDLED_SFX_DIR, resolveSfx } from "./lib/sfx.mjs";
 import { voiceCredit } from "./lib/voice-credit.mjs";
-import { parseWords, scaleWords, stretchToWav } from "./lib/recording.mjs";
+import { parseWords, recordingSource, scaleWords, stretchToWav } from "./lib/recording.mjs";
 import { mapWithConcurrency } from "./lib/concurrency.mjs";
 import { openAudioMeta } from "./lib/audio-meta.mjs";
 import { recordInManifest, voicePaths, writtenAssets } from "./lib/media-record.mjs";
+import { engineBgmLog } from "./lib/project-path.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -129,6 +130,16 @@ let voices = prev.voices ?? [];
 let ttsProvider = prev.tts_provider ?? null;
 let voiceId = prev.voice_id ?? null;
 if (only.has("tts") && lines.length) {
+  // Every voice file and recording path is checked before any TTS runs.
+  let paths;
+  const recordings = new Map();
+  try {
+    paths = voicePaths(hyperframesDir, lines, anomalies);
+    for (const line of lines.filter((l) => l.audio))
+      recordings.set(String(line.id), recordingSource(hyperframesDir, line.audio));
+  } catch (e) {
+    die(e.message);
+  }
   if (lines.some((l) => !l.audio)) {
     try {
       ttsProvider = pickProvider(
@@ -147,11 +158,10 @@ if (only.has("tts") && lines.length) {
     voiceId = null;
   }
   console.error(`· tts: ${ttsProvider} · voice ${voiceId} · ${lines.length} line(s)`);
-  const paths = voicePaths(hyperframesDir, lines, anomalies);
-  // A line with `audio` is the person's own recording (path relative to the project), with optional
+  // A line with `audio` is the person's own recording (path inside the project), with optional
   // `words`; `speed` applies to it like to a generated voice. Returns synthesizeOne's shape.
   const useRecording = (line, abs) => {
-    const made = stretchToWav(resolve(hyperframesDir, String(line.audio)), abs, speed);
+    const made = stretchToWav(recordings.get(String(line.id)), abs, speed);
     if (!made.ok) return made;
     try {
       const given = parseWords(line.words);
@@ -213,11 +223,13 @@ const totalDuration = r3(voices.reduce((a, v) => a + (v.duration_s || 0), 0));
 
 // ── BGM ─────────────────────────────────────────────────────────────────────
 let bgm = prev.bgm ?? null;
+// A running job's pid and log carry over only with the engine's own log in assets/bgm.
+const ownJob = engineBgmLog(hyperframesDir, prev.bgm_log) !== null;
 const bgmFields = {
   bgm_pending: prev.bgm_pending ?? false,
   bgm_provider: prev.bgm_provider ?? null,
-  bgm_pid: prev.bgm_pid ?? null,
-  bgm_log: prev.bgm_log ?? null,
+  bgm_pid: ownJob ? (prev.bgm_pid ?? null) : null,
+  bgm_log: ownJob ? prev.bgm_log : null,
   bgm_mode: prev.bgm_mode ?? null,
   bgm_target_duration_s: prev.bgm_target_duration_s ?? null,
   bgm_seed_duration_s: prev.bgm_seed_duration_s ?? null,

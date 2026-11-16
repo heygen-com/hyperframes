@@ -1,7 +1,16 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { AGENT_SOURCES, findByPrompt, readManifest } from "../../../scripts/lib/manifest.mjs";
 import { agentWritePath, recordInManifest, voicePaths, writtenAssets } from "./media-record.mjs";
@@ -208,6 +217,55 @@ test("two spoken lines never share a file when one's name is taken by the person
     "hook-2": "assets/voice/hook-2-2.wav",
   });
   assert.equal(anomalies.length, 2);
+});
+
+test("a line id that is not a plain file name stops the run before any file is picked", (t) => {
+  const dir = project(t);
+  for (const id of ["../../x", "a/b", "a\\b", "C:x", "..", "."]) {
+    assert.throws(() => voicePaths(dir, [{ id, text: "Hello" }], []), /must be a plain name/, id);
+  }
+  assert.equal(existsSync(join(dirname(dir), "x.wav")), false);
+  assert.equal(existsSync(join(dir, "assets")), false);
+});
+
+test("the ids the skill writes keep their voice file names", (t) => {
+  const dir = project(t);
+  const ids = ["01", "intro", "s1-hook", "scene_2", "3.1"];
+  const paths = voicePaths(
+    dir,
+    ids.map((id) => ({ id, text: "Hello" })),
+    [],
+  );
+  assert.deepEqual(
+    [...paths.values()],
+    ids.map((id) => `assets/voice/${id}.wav`),
+  );
+});
+
+test("a voice folder that links out of the project is never written", (t) => {
+  const dir = project(t);
+  const outside = mkdtempSync(join(tmpdir(), "mu-record-outside-"));
+  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  mkdirSync(join(dir, "assets"));
+  symlinkSync(outside, join(dir, "assets/voice"));
+  assert.throws(
+    () => voicePaths(dir, [{ id: "01", text: "Hello" }], []),
+    /assets\/voice leads outside the project folder/,
+  );
+});
+
+test("a link where a voice file goes is not written through, whatever the manifest says", (t) => {
+  const dir = project(t);
+  const outside = mkdtempSync(join(tmpdir(), "mu-record-outside-"));
+  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  writeFileSync(join(outside, "theirs.wav"), "another project's voice");
+  mkdirSync(join(dir, "assets/voice"), { recursive: true });
+  symlinkSync(join(outside, "theirs.wav"), join(dir, "assets/voice/01.wav"));
+  recordInManifest(dir, [{ path: "assets/voice/01.wav", type: "voice", source: "generated" }]);
+  const anomalies = [];
+  const paths = voicePaths(dir, [{ id: "01", text: "Hello" }], anomalies);
+  assert.equal(paths.get("01"), "assets/voice/01-2.wav");
+  assert.equal(anomalies.length, 1);
 });
 
 test("a record never takes the id of a download still in flight", (t) => {
