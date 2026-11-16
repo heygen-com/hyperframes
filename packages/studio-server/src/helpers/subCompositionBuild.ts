@@ -60,7 +60,6 @@ let nextId = 0;
 
 function startWorker(): Worker {
   const started = new Worker(workerEntry());
-  started.unref();
   started.on(
     "message",
     ({ id, result, error }: { id: number; result?: unknown; error?: string }) => {
@@ -68,6 +67,7 @@ function startWorker(): Worker {
       if (!job) return;
       pending.delete(id);
       clearTimeout(job.timer);
+      holdWhileBusy();
       if (error !== undefined) job.reject(new Error(error));
       else job.resolve(result);
     },
@@ -77,6 +77,13 @@ function startWorker(): Worker {
   );
   started.on("exit", (code) => replace(started, new Error(`the build worker exited (${code})`)));
   return started;
+}
+
+/** The worker keeps its host alive only while it holds a job, so a host whose last build is done can exit. Adding the
+ * "message" listener refs the worker, so this runs after every change to `pending`, never once at start. */
+function holdWhileBusy(): void {
+  if (pending.size === 0) worker?.unref();
+  else worker?.ref();
 }
 
 /** Ends `from` if it is still the worker. A crash (`failed`) fails every job it held, since any of them may be what
@@ -95,6 +102,7 @@ function replace(from: Worker, failed?: Error): void {
   }
   if (pending.size === 0) return;
   const next = (worker = startWorker());
+  holdWhileBusy();
   for (const [id, job] of pending) next.postMessage({ id, job: job.job });
 }
 
@@ -113,12 +121,15 @@ export function runOffThread<J extends SubCompositionJob>(
         pending.delete(id);
         reject(new SubCompositionDeadlineError(compPath));
         if (running && worker) replace(worker);
+        else holdWhileBusy();
       },
       Math.max(0, deadline - performance.now()),
     );
     timer.unref?.();
     pending.set(id, { job, resolve: resolve as (result: unknown) => void, reject, timer });
-    (worker ??= startWorker()).postMessage({ id, job });
+    worker ??= startWorker();
+    holdWhileBusy();
+    worker.postMessage({ id, job });
   });
 }
 
