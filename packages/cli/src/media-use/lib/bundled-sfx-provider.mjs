@@ -1,5 +1,5 @@
-import { existsSync, readFileSync } from "node:fs";
-import { extname, join } from "node:path";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { extname, isAbsolute, join, relative } from "node:path";
 import { rankMediaRows } from "./media-search.mjs";
 
 const LIB_DIR =
@@ -22,7 +22,8 @@ const LIB_DIR =
   ].find((candidate) => existsSync(candidate)) ||
   join(import.meta.dirname, "..", "..", "audio", "assets", "sfx");
 
-export const BUNDLED_SFX_RECOVERY_COMMAND = "npx hyperframes skills update media-use";
+export const BUNDLED_SFX_RECOVERY_COMMAND =
+  "npx hyperframes skills update media-use";
 
 export class BundledSfxAssetsError extends Error {
   constructor(health) {
@@ -46,7 +47,8 @@ function unhealthy(detail) {
 
 export function inspectBundledSfxAssets(libraryDir = LIB_DIR) {
   const manifestPath = join(libraryDir, "manifest.json");
-  if (!existsSync(manifestPath)) return unhealthy(`manifest not found: ${manifestPath}`);
+  if (!existsSync(manifestPath))
+    return unhealthy(`manifest not found: ${manifestPath}`);
 
   let manifest;
   try {
@@ -59,13 +61,15 @@ export function inspectBundledSfxAssets(libraryDir = LIB_DIR) {
   }
 
   const entries = Object.entries(manifest);
-  if (entries.length === 0) return unhealthy(`manifest contains no SFX entries: ${manifestPath}`);
+  if (entries.length === 0)
+    return unhealthy(`manifest contains no SFX entries: ${manifestPath}`);
   for (const [key, entry] of entries) {
     if (!entry?.file || typeof entry.file !== "string") {
       return unhealthy(`manifest entry "${key}" has no file`);
     }
     const assetPath = join(libraryDir, entry.file);
-    if (!existsSync(assetPath)) return unhealthy(`asset not found: ${assetPath}`);
+    if (!existsSync(assetPath))
+      return unhealthy(`asset not found: ${assetPath}`);
   }
 
   return {
@@ -80,12 +84,40 @@ export function extensionForBundledSfxFile(filename) {
   return extname(filename) || ".mp3";
 }
 
+const INDEX_FILE_PREFIX = "skills/media-use/audio/assets/sfx/";
+const AUDIO_FILE_NAME =
+  /^[A-Za-z0-9][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*\.(?:mp3|wav|ogg|m4a|aac|flac)$/i;
+
+/**
+ * Map a media index row's `file` to an audio file inside the bundled SFX folder, or null.
+ * The only accepted form is `skills/media-use/audio/assets/sfx/<name>` with a plain audio
+ * file name; the result must still be a regular file inside the folder after realpath.
+ */
+export function bundledSfxAssetPath(file, libraryDir = LIB_DIR) {
+  if (typeof file !== "string" || !file.startsWith(INDEX_FILE_PREFIX))
+    return null;
+  const name = file.slice(INDEX_FILE_PREFIX.length);
+  if (!AUDIO_FILE_NAME.test(name)) return null;
+  try {
+    const root = realpathSync(libraryDir);
+    const asset = realpathSync(join(root, name));
+    const inside = relative(root, asset);
+    if (!inside || inside.startsWith("..") || isAbsolute(inside)) return null;
+    if (!AUDIO_FILE_NAME.test(inside) || !statSync(asset).isFile()) return null;
+    return asset;
+  } catch {
+    return null;
+  }
+}
+
 export const bundledSfxProvider = {
   async search(intent, ctx = {}) {
     const libraryDir = ctx.libraryDir || LIB_DIR;
     const health = inspectBundledSfxAssets(libraryDir);
     if (!health.ok) throw new BundledSfxAssetsError(health);
-    const manifest = JSON.parse(readFileSync(join(libraryDir, "manifest.json"), "utf8"));
+    const manifest = JSON.parse(
+      readFileSync(join(libraryDir, "manifest.json"), "utf8"),
+    );
 
     const rows = Object.entries(manifest).map(([key, entry]) => ({
       id: key,

@@ -71,12 +71,20 @@ function copyMdFiles(srcDir, destDir) {
 // (studioServer.ts serves dist/vendor/npm). They come from the workspace's
 // installed gsap, which must match the version core asks for, or Studio would
 // quietly fall back to the CDN for every preview.
-const GSAP_VENDOR_FILES = ["gsap.min.js", "CustomEase.min.js", "MotionPathPlugin.min.js"];
+const GSAP_VENDOR_FILES = [
+  "gsap.min.js",
+  "CustomEase.min.js",
+  "MotionPathPlugin.min.js",
+];
 
 function copyGsapVendorFiles() {
-  const coreRequire = createRequire(join(REPO_ROOT, "packages", "core", "package.json"));
+  const coreRequire = createRequire(
+    join(REPO_ROOT, "packages", "core", "package.json"),
+  );
   const gsapRoot = dirname(coreRequire.resolve("gsap/package.json"));
-  const { version } = JSON.parse(readFileSync(join(gsapRoot, "package.json"), "utf-8"));
+  const { version } = JSON.parse(
+    readFileSync(join(gsapRoot, "package.json"), "utf-8"),
+  );
   const coreSource = readFileSync(
     join(REPO_ROOT, "packages", "core", "src", "gsapCdn.ts"),
     "utf-8",
@@ -120,7 +128,10 @@ async function main() {
   }
 
   for (const tmpl of ["blank", "from-file", "_shared"]) {
-    copyDir(join(CLI_ROOT, "src", "templates", tmpl), join(DIST, "templates", tmpl));
+    copyDir(
+      join(CLI_ROOT, "src", "templates", tmpl),
+      join(DIST, "templates", tmpl),
+    );
   }
 
   // Bundle warm-grain from the repo registry so the built CLI can scaffold it
@@ -155,30 +166,68 @@ async function main() {
     join(mediaEngine, "resolve.mjs"),
     join(DIST, "skills", "media-use", "scripts", "resolve.mjs"),
   );
+  // The SFX media index ships with the release whose bundled SFX files it names.
+  mkdirSync(join(DIST, "catalog-artifact"), { recursive: true });
+  cpSync(
+    join(REPO_ROOT, "registry", "catalog-artifact", "media-vectors.json"),
+    join(DIST, "catalog-artifact", "media-vectors.json"),
+  );
 
   const dockerfile = join(CLI_ROOT, "src", "docker", "Dockerfile.render");
   if (existsSync(dockerfile)) {
     cpSync(dockerfile, join(DIST, "docker", "Dockerfile.render"));
   }
 
-  const layoutAuditScript = join(CLI_ROOT, "src", "commands", "layout-audit.browser.js");
+  const layoutAuditScript = join(
+    CLI_ROOT,
+    "src",
+    "commands",
+    "layout-audit.browser.js",
+  );
   if (existsSync(layoutAuditScript)) {
-    cpSync(layoutAuditScript, join(DIST, "commands", "layout-audit.browser.js"));
+    cpSync(
+      layoutAuditScript,
+      join(DIST, "commands", "layout-audit.browser.js"),
+    );
   }
 
-  const contrastAuditScript = join(CLI_ROOT, "src", "commands", "contrast-audit.browser.js");
+  const contrastAuditScript = join(
+    CLI_ROOT,
+    "src",
+    "commands",
+    "contrast-audit.browser.js",
+  );
   if (existsSync(contrastAuditScript)) {
-    cpSync(contrastAuditScript, join(DIST, "commands", "contrast-audit.browser.js"));
+    cpSync(
+      contrastAuditScript,
+      join(DIST, "commands", "contrast-audit.browser.js"),
+    );
   }
 
-  const motionSignatureScript = join(CLI_ROOT, "src", "commands", "motion-signature.browser.js");
+  const motionSignatureScript = join(
+    CLI_ROOT,
+    "src",
+    "commands",
+    "motion-signature.browser.js",
+  );
   if (existsSync(motionSignatureScript)) {
-    cpSync(motionSignatureScript, join(DIST, "commands", "motion-signature.browser.js"));
+    cpSync(
+      motionSignatureScript,
+      join(DIST, "commands", "motion-signature.browser.js"),
+    );
   }
 
-  const motionSampleScript = join(CLI_ROOT, "src", "commands", "motion-sample.browser.js");
+  const motionSampleScript = join(
+    CLI_ROOT,
+    "src",
+    "commands",
+    "motion-sample.browser.js",
+  );
   if (existsSync(motionSampleScript)) {
-    cpSync(motionSampleScript, join(DIST, "commands", "motion-sample.browser.js"));
+    cpSync(
+      motionSampleScript,
+      join(DIST, "commands", "motion-sample.browser.js"),
+    );
   }
 
   // Player bundles for the standalone browser player used by `present` and
@@ -188,7 +237,10 @@ async function main() {
   // this, `npx hyperframes present` fails with "@hyperframes/player not found".
   const playerDist = join(REPO_ROOT, "packages", "player", "dist");
   const playerGlobals = [
-    [join(playerDist, "hyperframes-player.global.js"), join(DIST, "hyperframes-player.global.js")],
+    [
+      join(playerDist, "hyperframes-player.global.js"),
+      join(DIST, "hyperframes-player.global.js"),
+    ],
     [
       join(playerDist, "slideshow", "hyperframes-slideshow.global.js"),
       join(DIST, "hyperframes-slideshow.global.js"),
@@ -203,7 +255,13 @@ async function main() {
   }
 
   // The bundled inspector reads its page runtime from beside its own chunk.
-  const inspectorRuntime = join(REPO_ROOT, "packages", "inspector", "dist", "inspection.js");
+  const inspectorRuntime = join(
+    REPO_ROOT,
+    "packages",
+    "inspector",
+    "dist",
+    "inspection.js",
+  );
   cpSync(inspectorRuntime, join(DIST, "inspection.js"));
 
   copyGsapVendorFiles();

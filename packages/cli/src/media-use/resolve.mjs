@@ -1,8 +1,23 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync, writeFileSync, renameSync, rmSync, realpathSync } from "node:fs";
-import { resolve, join, extname, basename, relative, isAbsolute, sep } from "node:path";
+import {
+  existsSync,
+  statSync,
+  writeFileSync,
+  renameSync,
+  rmSync,
+  realpathSync,
+} from "node:fs";
+import {
+  resolve,
+  join,
+  extname,
+  basename,
+  relative,
+  isAbsolute,
+  sep,
+} from "node:path";
 import { parseArgs } from "node:util";
 import {
   AGENT_SOURCES,
@@ -18,7 +33,12 @@ import {
   withReservedFileSync,
 } from "./lib/manifest.mjs";
 import { regenerateIndex } from "./lib/index-gen.mjs";
-import { cacheGet, cacheGetByEntity, importFromCache, cachePut } from "./lib/cache.mjs";
+import {
+  cacheGet,
+  cacheGetByEntity,
+  importFromCache,
+  cachePut,
+} from "./lib/cache.mjs";
 import {
   runCapability,
   listTypes,
@@ -33,13 +53,24 @@ import { track } from "./lib/telemetry.mjs";
 import { recordMiss } from "./lib/misses.mjs";
 import { buildStats } from "./lib/stats.mjs";
 import { nameMatch, typesMatch } from "./lib/match.mjs";
-import { listCandidates, formatCandidates, CANDIDATE_CAP } from "./lib/candidates.mjs";
+import {
+  listCandidates,
+  formatCandidates,
+  CANDIDATE_CAP,
+} from "./lib/candidates.mjs";
 import { findGlobalBySha } from "./lib/cache.mjs";
 import { heygenAuthMethod } from "../audio/scripts/lib/heygen.mjs";
 import { buildCube, paramsFromIntent } from "./lib/cube-build.mjs";
 import { validateCubeFile } from "./lib/cube-validate.mjs";
-import { analyzeMediaGrade, formatMeasuredNote } from "./lib/grade-analyzer.mjs";
-import { FfBinarySettingError, ffmpegBinary, ffprobeBinary } from "./lib/ff-binaries.mjs";
+import {
+  analyzeMediaGrade,
+  formatMeasuredNote,
+} from "./lib/grade-analyzer.mjs";
+import {
+  FfBinarySettingError,
+  ffmpegBinary,
+  ffprobeBinary,
+} from "./lib/ff-binaries.mjs";
 import {
   freezeLibraryLut,
   isLibraryLutOfflineMiss,
@@ -59,6 +90,7 @@ import {
 import {
   BUNDLED_SFX_RECOVERY_COMMAND,
   BundledSfxAssetsError,
+  bundledSfxAssetPath,
   inspectBundledSfxAssets,
 } from "./lib/bundled-sfx-provider.mjs";
 import {
@@ -69,7 +101,6 @@ import {
 } from "./lib/sfx-provider.mjs";
 import { writeSfxCredit } from "./lib/openverse.mjs";
 import {
-  fetchMediaVectors,
   mediaVectorRows,
   rankMediaRowsWithVectors,
 } from "./lib/local-media-search.mjs";
@@ -177,11 +208,15 @@ if (args.adopt) {
     exitError(err.message);
   }
   if (args.json) {
-    console.log(JSON.stringify({ ok: true, adopted: adopted.length, assets: adopted }));
+    console.log(
+      JSON.stringify({ ok: true, adopted: adopted.length, assets: adopted }),
+    );
   } else if (adopted.length === 0) {
     console.log("no new assets to adopt (assets/ empty or already registered)");
   } else {
-    console.log(`adopted ${adopted.length} asset${adopted.length === 1 ? "" : "s"} from assets/`);
+    console.log(
+      `adopted ${adopted.length} asset${adopted.length === 1 ? "" : "s"} from assets/`,
+    );
     for (const r of adopted) console.log(`  ${r.id} → ${r.path} (${r.type})`);
   }
   process.exit(0);
@@ -264,7 +299,9 @@ if (args.analyze) {
     exitError(err.message);
   }
   if (args.json) {
-    console.log(JSON.stringify({ ok: true, type: "grade-analysis", ...analysis }));
+    console.log(
+      JSON.stringify({ ok: true, type: "grade-analysis", ...analysis }),
+    );
   } else {
     console.log(formatMeasuredNote(mediaPath, analysis.measured));
     console.log(`suggested adjust: ${JSON.stringify(analysis.adjust)}`);
@@ -276,7 +313,8 @@ if (args.analyze) {
 if (type === "recipe") {
   const { useRecipe } = await import("./lib/recipe-store.mjs");
   const name = (entity || intent || "").trim();
-  if (!name) exitError("--type recipe needs --entity <name> (or --intent <name>)", 2);
+  if (!name)
+    exitError("--type recipe needs --entity <name> (or --intent <name>)", 2);
   try {
     const used = useRecipe({ projectDir, name });
     if (args.json) {
@@ -287,7 +325,8 @@ if (type === "recipe") {
       );
       console.log(`  frame spec → ${used.frameSpecPath} (copied over)`);
       console.log(`  storyboard skeleton → ${used.skeletonPath}`);
-      if (used.briefSkeletonPath) console.log(`  brief skeleton → ${used.briefSkeletonPath}`);
+      if (used.briefSkeletonPath)
+        console.log(`  brief skeleton → ${used.briefSkeletonPath}`);
     }
     process.exit(0);
   } catch (err) {
@@ -318,7 +357,9 @@ if (!args.type || !args.intent || !args.intent.trim()) {
 }
 
 if (!listTypes().includes(args.type)) {
-  console.error(`error: unknown media type: ${args.type} (known: ${listTypes().join(", ")})`);
+  console.error(
+    `error: unknown media type: ${args.type} (known: ${listTypes().join(", ")})`,
+  );
   process.exit(2);
 }
 
@@ -373,7 +414,11 @@ async function run() {
   // always recorded as type image while agents ask for logos as type icon.
   if (!forced && entity) {
     const entityHit = findByEntity(projectDir, entity);
-    if (entityHit && typesMatch(entityHit.type, type) && recordAvailable(projectDir, entityHit)) {
+    if (
+      entityHit &&
+      typesMatch(entityHit.type, type) &&
+      recordAvailable(projectDir, entityHit)
+    ) {
       return result(entityHit, "cached");
     }
   }
@@ -385,7 +430,11 @@ async function run() {
       : findExistingAsset(projectDir, intent, type);
   if (existingAsset) {
     const recorded = latestRecordFor(projectDir, existingAsset.relativePath);
-    const match = nameMatch(intent, existingAsset.name, recorded?.provenance?.prompt);
+    const match = nameMatch(
+      intent,
+      existingAsset.name,
+      recorded?.provenance?.prompt,
+    );
     if (recorded) return result(recorded, "cached", match);
     const id = nextId(projectDir, type);
     const record = {
@@ -405,8 +454,15 @@ async function run() {
   const cacheHit = forced ? null : cacheGet(intent, type);
   if (cacheHit) {
     const ext = extname(cacheHit.cached_path);
-    const imported = withReservedFileSync(projectDir, type, ext, ({ id, localPath }) =>
-      localizeImportedRecord(importFromCache(cacheHit, projectDir, id, localPath), localPath),
+    const imported = withReservedFileSync(
+      projectDir,
+      type,
+      ext,
+      ({ id, localPath }) =>
+        localizeImportedRecord(
+          importFromCache(cacheHit, projectDir, id, localPath),
+          localPath,
+        ),
     );
     if (imported) {
       appendRecord(projectDir, imported);
@@ -419,11 +475,15 @@ async function run() {
     const entityCacheHit = cacheGetByEntity(entity);
     if (entityCacheHit && typesMatch(entityCacheHit.type, type)) {
       const ext = extname(entityCacheHit.cached_path);
-      const imported = withReservedFileSync(projectDir, type, ext, ({ id, localPath }) =>
-        localizeImportedRecord(
-          importFromCache(entityCacheHit, projectDir, id, localPath),
-          localPath,
-        ),
+      const imported = withReservedFileSync(
+        projectDir,
+        type,
+        ext,
+        ({ id, localPath }) =>
+          localizeImportedRecord(
+            importFromCache(entityCacheHit, projectDir, id, localPath),
+            localPath,
+          ),
       );
       if (imported) {
         appendRecord(projectDir, imported);
@@ -447,7 +507,12 @@ async function run() {
 
   // Suggest candidates before a new fetch.
   try {
-    const { similar } = listCandidates({ projectDir, type, intent, cap: CANDIDATE_CAP });
+    const { similar } = listCandidates({
+      projectDir,
+      type,
+      intent,
+      cap: CANDIDATE_CAP,
+    });
     if (similar > 0) {
       console.error(
         `media-use: ${similar} similar cached asset${similar === 1 ? "" : "s"} already ${similar === 1 ? "exists" : "exist"} — run \`resolve --candidates --type ${type} --intent "${intent}"\` to review and reuse instead of fetching.`,
@@ -468,21 +533,14 @@ async function run() {
   try {
     searchResult = await runCapability(type, "search", intent, ctx);
     if (!searchResult && type === "sfx" && !args.provider && !localOnly) {
-      const registry =
-        process.env.HYPERFRAMES_REGISTRY ||
-        "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
       try {
-        await fetchMediaVectors(registry);
         const ranked = await rankMediaRowsWithVectors(
           intent,
           mediaVectorRows().filter((row) => row.kind === "sfx"),
         );
         const row = ranked.rows[0];
-        const candidates = row
-          ? [resolve(row.file), join(import.meta.dirname, "..", "..", "..", row.file)]
-          : [];
-        const localPath = candidates.find((candidate) => existsSync(candidate));
-        if (row && localPath) {
+        const localPath = row ? bundledSfxAssetPath(row.file) : null;
+        if (localPath) {
           searchResult = {
             localPath,
             ext: extname(localPath),
@@ -505,9 +563,12 @@ async function run() {
   }
 
   if (localIndexFailure) {
-    throw new Error(`local SFX index unavailable: ${localIndexFailure.message}`, {
-      cause: localIndexFailure,
-    });
+    throw new Error(
+      `local SFX index unavailable: ${localIndexFailure.message}`,
+      {
+        cause: localIndexFailure,
+      },
+    );
   }
 
   // 4. generate fallback — same ordered cascade for the generate capability
@@ -542,7 +603,8 @@ async function run() {
       providerFailure instanceof FfBinarySettingError;
     const heygen = consumeHeygenRemediation();
     const miss = heygen && !ownFailure ? heygenMiss(type, heygen) : null;
-    const typed = providerFailure instanceof BundledSfxAssetsError ? providerFailure : miss;
+    const typed =
+      providerFailure instanceof BundledSfxAssetsError ? providerFailure : miss;
     const msg = ownFailure
       ? providerFailure.message
       : miss
@@ -569,7 +631,8 @@ async function run() {
   }
 
   // 5. freeze and register atomically.
-  const ext = searchResult.ext || extFromUrl(searchResult.url || "") || defaultExt(type);
+  const ext =
+    searchResult.ext || extFromUrl(searchResult.url || "") || defaultExt(type);
   const { id, localPath, fullPath } = await withReservedFile(
     projectDir,
     type,
@@ -595,8 +658,12 @@ async function run() {
     ...(searchResult.metadata?.duration != null && {
       duration: Math.round(searchResult.metadata.duration * 10) / 10,
     }),
-    ...(searchResult.metadata?.width != null && { width: searchResult.metadata.width }),
-    ...(searchResult.metadata?.height != null && { height: searchResult.metadata.height }),
+    ...(searchResult.metadata?.width != null && {
+      width: searchResult.metadata.width,
+    }),
+    ...(searchResult.metadata?.height != null && {
+      height: searchResult.metadata.height,
+    }),
     ...(searchResult.metadata?.transparent != null && {
       transparent: searchResult.metadata.transparent,
     }),
@@ -625,7 +692,8 @@ function mergeSmartAdjust(block) {
   if (!args.for) return block;
   const mediaPath = resolve(args.for);
   // Clear upfront error beats an ffmpeg "No such file" stack on a typo'd path.
-  if (!existsSync(mediaPath)) throw new Error(`--for file not found: ${mediaPath}`);
+  if (!existsSync(mediaPath))
+    throw new Error(`--for file not found: ${mediaPath}`);
   const analysis = analyzeMediaGrade(mediaPath, {
     ffmpegPath: ffmpegBinary(),
     ffprobePath: ffprobeBinary(),
@@ -649,32 +717,37 @@ function freezeGeneratedLut(
     validationErrorPrefix = "generated LUT failed validation",
   },
 ) {
-  return withReservedFileSync(projectDir, type, ".cube", ({ id, localPath, fullPath }) => {
-    const tmpPath = `${fullPath}.tmp`;
-    try {
-      // Write + validate at .tmp, then atomic rename, so a crash between write and
-      // validate can't leave an invalid .cube at the final path.
-      writeFileSync(tmpPath, buildCube(params));
-      const check = validateCubeFile(tmpPath);
-      if (!check.ok) throw new Error(check.error);
-      renameSync(tmpPath, fullPath);
-    } catch (err) {
-      rmSync(tmpPath, { force: true });
-      throw new Error(`${validationErrorPrefix}: ${err.message}`);
-    }
-    return {
-      id,
-      localPath,
-      fullPath,
-      lut: { src: localPath, intensity: 1 },
-      source: "generated",
-      description,
-      metadata: {
-        provider: "cube_lut.builder",
-        provenance: { params },
-      },
-    };
-  });
+  return withReservedFileSync(
+    projectDir,
+    type,
+    ".cube",
+    ({ id, localPath, fullPath }) => {
+      const tmpPath = `${fullPath}.tmp`;
+      try {
+        // Write + validate at .tmp, then atomic rename, so a crash between write and
+        // validate can't leave an invalid .cube at the final path.
+        writeFileSync(tmpPath, buildCube(params));
+        const check = validateCubeFile(tmpPath);
+        if (!check.ok) throw new Error(check.error);
+        renameSync(tmpPath, fullPath);
+      } catch (err) {
+        rmSync(tmpPath, { force: true });
+        throw new Error(`${validationErrorPrefix}: ${err.message}`);
+      }
+      return {
+        id,
+        localPath,
+        fullPath,
+        lut: { src: localPath, intensity: 1 },
+        source: "generated",
+        description,
+        metadata: {
+          provider: "cube_lut.builder",
+          provenance: { params },
+        },
+      };
+    },
+  );
 }
 
 function exitError(message, status = 1) {
@@ -715,7 +788,9 @@ async function runParams() {
     path: frozen.localPath,
     source: frozen.source,
     description: frozen.description,
-    ...(type === "grade" && { grading: mergeSmartAdjust({ intensity: 1, lut: frozen.lut }) }),
+    ...(type === "grade" && {
+      grading: mergeSmartAdjust({ intensity: 1, lut: frozen.lut }),
+    }),
     provenance: {
       provider: frozen.metadata.provider,
       ...frozen.metadata.provenance,
@@ -820,7 +895,11 @@ async function resolveGrade(intent, { projectDir }) {
         source: "measured",
         description: intent,
         grading,
-        provenance: { provider: "color_grade.local", prompt: intent, measured: true },
+        provenance: {
+          provider: "color_grade.local",
+          prompt: intent,
+          measured: true,
+        },
       };
       return finalizeColorRecord(record, "measured");
     }
@@ -901,7 +980,9 @@ async function resolveColor(type, intent, options) {
 
 async function ingest(src) {
   if (!type || !INGEST_TYPES.includes(type)) {
-    console.error(`error: --from requires --type (one of: ${INGEST_TYPES.join(", ")})`);
+    console.error(
+      `error: --from requires --type (one of: ${INGEST_TYPES.join(", ")})`,
+    );
     process.exit(2);
   }
   const isUrl = /^https?:\/\//i.test(src);
@@ -926,11 +1007,16 @@ async function ingest(src) {
     process.exit(2);
   }
   if (args.source && (type === "lut" || type === "grade")) {
-    console.error("error: --source records media files; a LUT or grade is ingested without it");
+    console.error(
+      "error: --source records media files; a LUT or grade is ingested without it",
+    );
     process.exit(2);
   }
   const real = (path) => (existsSync(path) ? realpathSync(path) : path);
-  const inProject = args.source && !isUrl ? relative(real(projectDir), real(resolve(src))) : null;
+  const inProject =
+    args.source && !isUrl
+      ? relative(real(projectDir), real(resolve(src)))
+      : null;
   if (
     inProject &&
     inProject !== ".." &&
@@ -1005,7 +1091,9 @@ async function showCandidates() {
   const projectDir = resolve(args.project);
   const type = args.type;
   if (!type || !listTypes().includes(type)) {
-    console.error(`error: --candidates requires --type (one of: ${listTypes().join(", ")})`);
+    console.error(
+      `error: --candidates requires --type (one of: ${listTypes().join(", ")})`,
+    );
     process.exit(2);
   }
   const intent = args.intent || "";
@@ -1022,7 +1110,9 @@ async function showCandidates() {
     local_only: !!args["local-only"],
   });
   if (args.json) {
-    console.log(JSON.stringify({ ok: true, candidates, truncated, total, similar }));
+    console.log(
+      JSON.stringify({ ok: true, candidates, truncated, total, similar }),
+    );
   } else {
     console.log(formatCandidates(candidates, { truncated, total }));
   }
@@ -1046,8 +1136,10 @@ function heygenAuthCheck() {
   // spawnSync sets .error/.signal on a timeout or spawn failure (status then
   // null). A stalled auth endpoint (transient network/DNS) must not be reported
   // as an authoritative "not authenticated" with a re-login fix.
-  const timedOut = authProbe.error?.code === "ETIMEDOUT" || authProbe.signal != null;
-  const email = authProbe.status === 0 ? emailFromAuthStatus(commandText(authProbe)) : null;
+  const timedOut =
+    authProbe.error?.code === "ETIMEDOUT" || authProbe.signal != null;
+  const email =
+    authProbe.status === 0 ? emailFromAuthStatus(commandText(authProbe)) : null;
   return {
     name: "heygen authenticated",
     ok: !!email,
@@ -1056,7 +1148,11 @@ function heygenAuthCheck() {
       : timedOut
         ? "heygen auth status timed out — possible network issue, not proof of sign-out"
         : "heygen not authenticated",
-    fix: email ? "" : timedOut ? "check network, then re-run --doctor" : HEYGEN_AUTH_COMMAND,
+    fix: email
+      ? ""
+      : timedOut
+        ? "check network, then re-run --doctor"
+        : HEYGEN_AUTH_COMMAND,
   };
 }
 
@@ -1109,7 +1205,11 @@ function runDoctor() {
       detail: versionOk
         ? `heygen v${heygenVersion}${behind ? ` (latest v${latest} available)` : ""}`
         : `heygen v${heygenVersion} (need >= v${HEYGEN_MIN_VERSION})`,
-      fix: versionOk ? (behind ? HEYGEN_UPDATE_COMMAND : "") : HEYGEN_UPDATE_COMMAND,
+      fix: versionOk
+        ? behind
+          ? HEYGEN_UPDATE_COMMAND
+          : ""
+        : HEYGEN_UPDATE_COMMAND,
     });
 
     // Older CLI versions cannot provide the auth status used here.
@@ -1130,14 +1230,18 @@ function runDoctor() {
     checks.push({
       name: "heygen version",
       ok: true,
-      detail: "heygen present; version unverifiable (no semver in --version output)",
+      detail:
+        "heygen present; version unverifiable (no semver in --version output)",
       fix: "",
     });
 
     checks.push(heygenAuthCheck());
   }
 
-  checks.push(ffDoctorCheck("ffmpeg", ffmpegBinary), ffDoctorCheck("ffprobe", ffprobeBinary));
+  checks.push(
+    ffDoctorCheck("ffmpeg", ffmpegBinary),
+    ffDoctorCheck("ffprobe", ffprobeBinary),
+  );
 
   const nodeOk = !versionLessThan(process.versions.node, MIN_NODE_VERSION);
   checks.push({
@@ -1156,7 +1260,11 @@ function runDoctor() {
 }
 
 function printDoctor(checks) {
-  const heygenChecks = new Set(["heygen on PATH", "heygen version", "heygen authenticated"]);
+  const heygenChecks = new Set([
+    "heygen on PATH",
+    "heygen version",
+    "heygen authenticated",
+  ]);
   for (const check of checks) {
     const prefix = check.ok ? "✓" : "✗";
     const freePath = heygenChecks.has(check.name)
@@ -1268,11 +1376,15 @@ async function reuseGlobal(shaArg) {
   const projectDir = resolve(args.project);
   const type = args.type;
   if (!type || !listTypes().includes(type)) {
-    console.error(`error: --reuse requires --type (one of: ${listTypes().join(", ")})`);
+    console.error(
+      `error: --reuse requires --type (one of: ${listTypes().join(", ")})`,
+    );
     process.exit(2);
   }
   if (!shaArg || !shaArg.trim()) {
-    console.error("error: --reuse needs a content sha/prefix (from `resolve --candidates`)");
+    console.error(
+      "error: --reuse needs a content sha/prefix (from `resolve --candidates`)",
+    );
     process.exit(2);
   }
   const rec = findGlobalBySha(shaArg);
@@ -1294,11 +1406,20 @@ async function reuseGlobal(shaArg) {
     process.exit(2);
   }
   const ext = extname(rec.cached_path || "") || defaultExt(type);
-  const imported = withReservedFileSync(projectDir, type, ext, ({ id, localPath }) =>
-    localizeImportedRecord(importFromCache(rec, projectDir, id, localPath), localPath),
+  const imported = withReservedFileSync(
+    projectDir,
+    type,
+    ext,
+    ({ id, localPath }) =>
+      localizeImportedRecord(
+        importFromCache(rec, projectDir, id, localPath),
+        localPath,
+      ),
   );
   if (!imported) {
-    console.error(`error: cache entry for "${shaArg}" is incomplete or missing on disk`);
+    console.error(
+      `error: cache entry for "${shaArg}" is incomplete or missing on disk`,
+    );
     process.exit(1);
   }
   // Distinguish an explicit agent reuse from an automatic normalize-exact hit.
@@ -1328,21 +1449,34 @@ function recordedMatch(record) {
   if (record.type === "sfx" && kept.provider === "heygen.audio.sounds")
     return scoreMatch(kept.score);
   if (kept.adopted && record.path)
-    return nameMatch(intent, basename(record.path, extname(record.path)), kept.prompt);
+    return nameMatch(
+      intent,
+      basename(record.path, extname(record.path)),
+      kept.prompt,
+    );
   return undefined;
 }
 
 async function result(record, source, match = recordedMatch(record)) {
   warnLowConfidence(record, match);
-  const { provider, license, credit, source_url: sourceUrl } = record.provenance ?? {};
+  const {
+    provider,
+    license,
+    credit,
+    source_url: sourceUrl,
+  } = record.provenance ?? {};
   // Under the media lock: two resolves at once each read, then rewrite, the whole credits file.
   if (provider === OPENVERSE_SFX_PROVIDER)
     withMediaLock(projectDir, () =>
-      writeSfxCredit(join(typeDirPath(projectDir, "sfx"), "CREDITS.md"), record.path, {
-        license,
-        credit,
-        sourceUrl,
-      }),
+      writeSfxCredit(
+        join(typeDirPath(projectDir, "sfx"), "CREDITS.md"),
+        record.path,
+        {
+          license,
+          credit,
+          sourceUrl,
+        },
+      ),
     );
   // Non-PII usage event: which media type, how it resolved, which provider won.
   // Never the intent text or paths. Awaited so a short-lived run flushes it.
@@ -1364,7 +1498,8 @@ async function result(record, source, match = recordedMatch(record)) {
     provider_override: !!args.provider,
   });
   if (args.json) {
-    const grading = record.type === "grade" && record.grading ? record.grading : null;
+    const grading =
+      record.type === "grade" && record.grading ? record.grading : null;
     console.log(
       JSON.stringify({
         ok: true,
@@ -1386,7 +1521,8 @@ function formatMeta(record, source) {
   if (record.grading?.preset) parts.push(`preset ${record.grading.preset}`);
   if (record.grading?.lut) parts.push("lut");
   if (record.duration != null) parts.push(`${record.duration}s`);
-  if (record.width && record.height) parts.push(`${record.width}×${record.height}`);
+  if (record.width && record.height)
+    parts.push(`${record.width}×${record.height}`);
   if (record.transparent) parts.push("transparent");
   if (source === "reused" || source === "reused-explicit") parts.push("reused");
   if (source === "generated") parts.push("generated");
