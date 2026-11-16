@@ -263,7 +263,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
   try {
     ensureCaptureDirSync(projectDir, outDir);
   } catch (e) {
-    console.error(`${c.error("✗")} ${(e as Error).message}`);
+    console.error(`${c.error("✗")} ${terminalText((e as Error).message)}`);
     setCommandExitCode(1);
     return;
   }

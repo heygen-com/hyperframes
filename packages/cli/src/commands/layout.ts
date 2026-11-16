@@ -418,7 +418,7 @@ function resolveMotionSpec(specPath: string, json: boolean): MotionSpec {
       ),
     );
   } else {
-    console.error(`${c.error("✗")} ${message}`);
+    console.error(`${c.error("✗")} ${terminalLines(message)}`);
   }
   failCommand();
 }

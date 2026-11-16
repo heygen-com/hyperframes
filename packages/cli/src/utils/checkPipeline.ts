@@ -1,3 +1,4 @@
+import { terminalLines } from "@hyperframes/core";
 import { DEFAULT_CONFIG } from "@hyperframes/engine";
 import { BrowserCleanupError, onStopSignal } from "../browser/launch.js";
 import type { CheckProgress } from "./checkProgress.js";
@@ -1904,7 +1905,7 @@ async function withFindingCrops(
     }
     // Still non-gating, but observable: rollouts need the crop-failure rate
     // (a second Chrome launch failing/timing out) without failing the run.
-    console.error("   finding crops skipped: " + normalizeErrorMessage(error));
+    console.error("   finding crops skipped: " + terminalLines(normalizeErrorMessage(error)));
     trackCommandFailure("check-finding-crops", error);
     return report;
   }
@@ -1936,7 +1937,7 @@ async function withOptionalFindingFrames(
       const finding = runtimeFailure(error);
       return { ...report, ok: false, runtime: section([...report.runtime.findings, finding]) };
     }
-    console.error("   finding frames skipped: " + normalizeErrorMessage(error));
+    console.error("   finding frames skipped: " + terminalLines(normalizeErrorMessage(error)));
     trackCommandFailure("check-finding-frames", error);
     return report;
   }
