@@ -14,14 +14,13 @@ registerRootExitRequester((exitCode) => process.exit(exitCode));
 // A command's own Chrome launch installs the CLI's signal handling; this stands in for it.
 onStopSignal(() => {});
 
-// A browser that stays connected until the process stops, like Chrome under a long command.
 const events = new EventEmitter();
-const browser = {
+const connectedUntilStopped = {
   connected: true,
   once: (event: string, listener: () => void) => events.once(event, listener),
 } as unknown as Browser;
 
 await launchWithPageNetwork("http://127.0.0.1:4000/", async (network) => {
   writeFileSync(readyPath, JSON.stringify({ userDataDir: network.userDataDir }));
-  return browser;
+  return connectedUntilStopped;
 });

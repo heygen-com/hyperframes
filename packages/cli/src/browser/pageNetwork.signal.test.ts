@@ -8,8 +8,8 @@ import { waitForTestCondition } from "../utils/processTestUtils.js";
 
 const fixturePath = join(dirname(fileURLToPath(import.meta.url)), "pageNetwork.signal.fixture.ts");
 
-// fails without the fix: the profile was removed only after Chrome's disconnect, which the CLI's Ctrl-C handler
-// didn't wait for, so the process exited and left its hf-cli-profile- folder in the temp folder.
+// fails without the fix: the CLI's Ctrl-C handler exits without waiting for the profile's removal, so its
+// hf-cli-profile- folder stays in the temp folder.
 it.skipIf(process.platform === "win32")(
   "removes a restricted browser's temp profile when the CLI stops on Ctrl-C",
   async () => {

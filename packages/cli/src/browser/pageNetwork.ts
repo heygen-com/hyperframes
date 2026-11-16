@@ -23,8 +23,6 @@ export async function launchWithPageNetwork(
   let userDataDir: string | undefined;
   let released: Promise<void> | undefined;
   let stopWatching = () => {};
-  // Runs once, whichever comes first: the browser disconnecting, a failed launch, or a stop signal. The CLI's
-  // signal handler waits for it before exiting, so Ctrl-C doesn't leave the profile behind.
   const release = () =>
     (released ??= (async () => {
       stopWatching();
