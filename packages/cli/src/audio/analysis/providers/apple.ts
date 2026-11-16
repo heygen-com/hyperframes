@@ -1,6 +1,7 @@
 import { runsWithoutInstallPrompt } from "../../../utils/appleStubs.js";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync } from "node:fs";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 import { rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AudioAnalysisProvider, AudioSignal } from "@hyperframes/core/audio-analysis";
@@ -119,7 +120,7 @@ function compiled(name: string, source: string): Promise<string> {
     build = (async () => {
       const root = trustedCacheRoot();
       ensurePrivateCacheDir(join(helperDir(), "module-cache"), root);
-      const staging = mkdtempSync(join(helperDir(), ".build-"));
+      const staging = createStagingDir(helperDir(), ".build-");
       try {
         const file = join(staging, "helper.swift");
         const output = join(staging, "helper");
