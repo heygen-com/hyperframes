@@ -524,18 +524,20 @@ describe("keyframes text output", () => {
         window.__timelines = [tl];
       `),
       [],
+      "\\x1b]52;c;cGF5\\x07",
     ],
     [
       "a CSS keyframes rule",
       `<!doctype html><html><head><style>
         .dot { animation: rise 1s both; }
-        @keyframes rise { 0% { content: "\u001b]52;c;cGF5\u0007"; } 100% { opacity: 1; } }
+        @keyframes rise { 0% { content: "\u001b[2J\u0007"; } 100% { opacity: 1; } }
       </style></head><body><div class="dot"></div></body></html>`,
       ["--runtime", "css"],
+      "\\x1b[2J\\x07",
     ],
-  ])("prints %s with its control characters as visible escapes", async (_what, html, extra) => {
+  ])("prints %s with its control characters as visible escapes", async (_what, html, extra, escaped) => {
     const output = await printed(html, extra);
-    expect(output).toContain("\\x1b]52;c;cGF5\\x07");
+    expect(output).toContain(escaped);
     expect(output).not.toMatch(/[\u0007\u001b]/);
   });
 });
