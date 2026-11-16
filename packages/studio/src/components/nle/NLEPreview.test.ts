@@ -66,6 +66,8 @@ class MockResizeObserver {
 const originalResizeObserver = globalThis.ResizeObserver;
 
 function setRect(node: Element, rect: { width: number; height: number }) {
+  Object.defineProperty(node, "clientWidth", { configurable: true, value: rect.width });
+  Object.defineProperty(node, "clientHeight", { configurable: true, value: rect.height });
   Object.defineProperty(node, "getBoundingClientRect", {
     configurable: true,
     value: () => ({
@@ -496,6 +498,19 @@ describe("NLEPreview", () => {
     const view = renderPreview(undefined, { box: { width: 640, height: 360 }, fillBox: true });
     setRect(view.viewport, { width: 1920, height: 1080 });
     // Outside act: the browser paints right after this callback returns.
+    for (const fire of resizeCallbacks) fire();
+    expect([view.stage.style.width, view.stage.style.height]).toEqual(["1920px", "1080px"]);
+    view.cleanup();
+  });
+
+  it("sizes the stage from the box's own size while a host scales the box on screen", () => {
+    const view = renderPreview(undefined, { box: { width: 640, height: 360 }, fillBox: true });
+    setRect(view.viewport, { width: 1920, height: 1080 });
+    // A host growing the preview from a quarter of its size: on screen the box is 480 x 270 for now.
+    Object.defineProperty(view.viewport, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ x: 0, y: 0, left: 0, top: 0, right: 480, bottom: 270, width: 480, height: 270 }),
+    });
     for (const fire of resizeCallbacks) fire();
     expect([view.stage.style.width, view.stage.style.height]).toEqual(["1920px", "1080px"]);
     view.cleanup();

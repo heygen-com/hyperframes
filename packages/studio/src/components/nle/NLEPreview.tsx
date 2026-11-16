@@ -149,11 +149,10 @@ export const NLEPreview = memo(function NLEPreview({
     if (!viewport) return;
 
     const updateStageSize = () => {
-      const rect = viewport.getBoundingClientRect();
       setStageSize(
         resolvePreviewStageSize(
-          rect.width,
-          rect.height,
+          viewport.clientWidth,
+          viewport.clientHeight,
           compositionSize ??
             (hintWidth && hintHeight ? { width: hintWidth, height: hintHeight } : null),
           portrait,
