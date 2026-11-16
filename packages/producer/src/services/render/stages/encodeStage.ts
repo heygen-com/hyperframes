@@ -141,6 +141,9 @@ export interface EncodeStageInput {
   gopSize?: number;
 }
 
+/** The encode input before the audio mix is known: everything capture-time encoding reads. */
+export type VideoEncodeInput = Omit<EncodeStageInput, "hasAudio" | "audioOutputPath">;
+
 export interface EncodeStageResult {
   /** Wall-clock ms for the encode (or png-copy) phase. */
   encodeMs: number;
@@ -264,7 +267,7 @@ function startEncodeProgress(
   return (frames = total) => reportEncodeProgress(job, frames, total, onProgress, 75);
 }
 
-function resolveEngineConfig(input: EncodeStageInput) {
+function resolveEngineConfig(input: VideoEncodeInput) {
   return input.engineConfig ?? input.job.config.producerConfig ?? resolveConfig();
 }
 
@@ -273,7 +276,7 @@ export function overlapEncoderThreads(workerCount: number, cpuCount: number): nu
 }
 
 export function videoEncoderOptions(
-  input: EncodeStageInput,
+  input: VideoEncodeInput,
   engineCfg: Pick<EngineConfig, "vp9CpuUsed">,
   softwareEncoderThreads?: number,
 ) {
@@ -306,7 +309,7 @@ export function videoEncoderOptions(
  * arguments. Needs a core the capture workers leave free.
  */
 export function canEncodeWhileCapturing(
-  input: EncodeStageInput,
+  input: VideoEncodeInput,
   workerCount: number,
   cpuCount: number,
 ): boolean {
@@ -350,7 +353,7 @@ async function readLandedFrame(workerPath: string | undefined, mergedPath: strin
  * On failure `finish` re-runs `runEncodeStage` on the same frames.
  */
 export function encodeWhileCapturing(
-  input: EncodeStageInput,
+  input: VideoEncodeInput,
   totalFrames: number,
   captureBudget?: { workerCount: number; cpuCount: number },
 ): EncodeWhileCapturing {
@@ -432,7 +435,8 @@ export function encodeWhileCapturing(
           error: String(failure ?? result?.error),
         },
       );
-      return runEncodeStage(input);
+      // Never a PNG sequence (canEncodeWhileCapturing), so there is no audio sidecar to write.
+      return runEncodeStage({ ...input, hasAudio: false });
     },
     abort: async () => {
       stop.abort();
