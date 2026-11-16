@@ -144,7 +144,8 @@ Save this as `audio_request.json` in the project:
   "lang": "en",
   "style": "Warm, clear, conversational. Leave a short pause between sentences.",
   "lines": [
-    { "id": "intro", "text": "Every word has a moment. Let the picture follow the voice." }
+    { "id": "intro-01", "text": "Every word has a moment." },
+    { "id": "intro-02", "text": "Let the picture follow the voice." }
   ],
   "bgm": { "mode": "none" }
 }
@@ -155,7 +156,7 @@ node <SKILL_DIR>/audio/scripts/audio.mjs \
   --request ./audio_request.json --hyperframes . --out ./audio_meta.json --only tts
 ```
 
-The engine saves `assets/voice/intro.wav` (or `intro-2.wav` when a file of yours already has that name; `voices[].path` says which), measures its duration, and transcribes
+The engine saves each line separately, such as `assets/voice/intro-01.wav` (or a numbered alternative when a file of yours already has that name; `voices[].path` says which), measures its duration, and transcribes
 it into `voices[].words` in `audio_meta.json`. Check that every requested line
 has audio and nonempty word timings before building a captioned video. Review
 the timings against the actual audio; transcription is estimated alignment,
@@ -184,6 +185,45 @@ never silently falls back to another provider. Check the engine's anomalies
 and output metadata, not only its exit code.
 
 API contract: [Google's speech generation guide](https://ai.google.dev/gemini-api/docs/speech-generation).
+
+### Long narration and recovery
+
+Each `lines[]` entry is one synthesis request; the engine does not split long
+`text` automatically. Split narration at sentence boundaries into short,
+self-contained passages, as in the example above. Give every passage a unique
+`id` and keep the entries in narration order. Keep `provider`, `tts_model`,
+`voice`, `lang`, and delivery `style` consistent across the passages.
+
+There is no verified universal safe word count. In [issue #5564](https://github.com/heygen-com/hyperframes/issues/5564),
+a reporter using CLI 0.8.145 saw a roughly 430-word line fail after 60 seconds
+with `UND_ERR_SOCKET`, while splitting it into two roughly 210-word lines
+worked. These are observations from that setup, not a limit or guarantee for
+the models listed above. Start with a few sentences per line, check the result,
+and split further if a long request fails or its audio is incomplete.
+
+After generation, and again after any retry:
+
+1. Match every requested `id` to an entry in `audio_meta.json`'s `voices`.
+   Open its actual `path`, confirm a positive `duration_s`, and listen through
+   the ending for missing, repeated, or truncated speech. A successful exit
+   alone does not mean every line succeeded; inspect the printed anomalies too.
+2. Check that each spoken line has nonempty `words` and review their text and
+   start/end times against that line's audio before placing captions. Empty
+   timings can mean transcription failed even when synthesis succeeded. Run
+   `npx hyperframes transcribe <voices[].path>` from the project directory to
+   see the transcription error or setup hint; fix that prerequisite and
+   transcribe the existing audio instead of paying to synthesize it again.
+3. For a failed or incomplete long line, split its text at sentence boundaries
+   and give the replacement passages distinct IDs, such as `intro-01a` and
+   `intro-01b`. Retry those passages with the same provider and voice. Use a
+   separate request and `--out ./audio_retry_meta.json`: a TTS run replaces the
+   output's `voices` list with that run's successful lines, so reusing the main
+   output for a subset can discard metadata for earlier successes.
+4. Reconcile the successful original lines and replacement passages in narration
+   order before assembling the video. Use their measured durations to place
+   each clip and offset its local word times to the composition timeline.
+   Update references to the replaced IDs and paths; do not guess timings from
+   word count or assume that split passages are automatically concatenated.
 
 ## ffmpeg requirement
 
