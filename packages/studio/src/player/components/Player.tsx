@@ -341,7 +341,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.addEventListener("painted", handlePainted);
         player.addEventListener("error", handleError);
 
-        // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
+        // Sealed before the ref (useTimelinePlayer's bridge) sees the frame, never unsealed: a host may seal it too.
+        if (opaque) player.toggleAttribute("sandbox-origin", true);
         if (typeof ref === "function") {
           ref(iframe);
         } else if (ref) {
@@ -352,7 +353,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.setAttribute("shader-loading", "player");
         player.setAttribute("low-power-idle", "");
         player.toggleAttribute("no-load-timeout", noLoadTimeout === true);
-        player.toggleAttribute("sandbox-origin", opaque);
         player.setAttribute("width", String(portrait ? 1080 : 1920));
         player.setAttribute("height", String(portrait ? 1920 : 1080));
         player.style.width = "100%";
