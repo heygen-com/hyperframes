@@ -44,9 +44,7 @@ const machineOpenCv = join(
 );
 const sharedOpenCv = () => join(tmpdir(), `hf-test-opencv-${basename(OPENCV_DIR)}`);
 
-/** Copies opencv.js into this test file's home from this machine's cache, else a temp copy kept between runs (each
- *  file has its own home). The folders are made private first: opencv.ts refuses a group-writable one and downloads
- *  again, which a umask of 002 would cause. True when opencv.js is in place. */
+/** A cached opencv.js copied into this file's home, in private folders: opencv.ts refuses group-writable ones. */
 export function seedOpenCvFromCache(): boolean {
   for (const from of [machineOpenCv, sharedOpenCv()])
     if (!existsSync(join(OPENCV_DIR, "opencv.js")) && existsSync(join(from, "opencv.js"))) {
