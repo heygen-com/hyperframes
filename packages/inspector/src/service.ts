@@ -25,7 +25,7 @@ import {
 } from "node:fs";
 import { join, extname } from "node:path";
 import { getHyperframeRuntimeScript } from "../../core/src/generated/runtime-inline";
-import puppeteer, { type Browser, type Page } from "puppeteer-core";
+import puppeteer, { type Browser, type BrowserContext, type Page } from "puppeteer-core";
 import {
   bundleToSingleHtml,
   type BundleScriptProvenance,
@@ -46,6 +46,7 @@ const pageRunner = (page: Page): PageRunner => ({
 });
 
 interface Session {
+  context: BrowserContext;
   page: Page;
   generation: string;
   fingerprint: string;
@@ -127,7 +128,7 @@ export class Inspector {
     this.session = undefined;
     this.catalog.clear();
     this.serve = undefined;
-    if (session) await session.page.close().catch(() => {});
+    if (session) await session.context.close().catch(() => {});
   }
   private async openHost(): Promise<PublicOnlyHost> {
     if (this.host) return this.host;
@@ -247,11 +248,13 @@ export class Inspector {
         res.writeHead(404).end();
       }
     };
+    let context: BrowserContext | undefined;
     let page: Page | undefined;
     try {
       const host = await this.openHost();
       this.serve = serve;
-      page = await host.browser.newPage();
+      context = await host.browser.createBrowserContext();
+      page = await context.newPage();
       await page.setViewport({ width: 1920, height: 1080, deviceScaleFactor: 1 });
       if (this.options.instrument !== false) {
         await page.evaluateOnNewDocument(
@@ -267,6 +270,7 @@ export class Inspector {
       let sourceContext: SourceContext | undefined;
       const project = this.project;
       this.session = {
+        context,
         page,
         generation,
         fingerprint: digest,
@@ -283,7 +287,7 @@ export class Inspector {
       this.stats.pageLoads++;
       return { session: this.session, reused: false };
     } catch (error) {
-      await page?.close().catch(() => {});
+      await context?.close().catch(() => {});
       this.serve = undefined;
       throw error;
     }
