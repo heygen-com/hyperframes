@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import {
   accessSync,
   closeSync,
@@ -244,4 +245,80 @@ export function clearFfBinaryLookupCache(): void {
   pathLookupCache.clear();
   lastMissAt.clear();
   skippedX86Binaries.clear();
+}
+
+/** What a render service lets a media input open: containers that name no other file. */
+export const SELF_CONTAINED_FORMATS =
+  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
+
+/**
+ * Demuxers that open other files or URLs on their own, named by the bytes they are handed. Everything else
+ * ffmpeg reads is allowed for composition media. hls and concat stay allowed: ffmpeg copies the format
+ * whitelist into every nested open, so a list cannot reach one of these, and the playlist folder walk
+ * confines the paths a list names.
+ */
+const PATH_OPENING_DEMUXERS = new Set([
+  "dash",
+  "imf",
+  "mlv",
+  "vobsub",
+  "dvdvideo",
+  "sdp",
+  "rtsp",
+  "rtp",
+  "sap",
+  "avisynth",
+  "vapoursynth",
+  "lavfi",
+]);
+
+/** The `-demuxers` listing minus input devices and {@link PATH_OPENING_DEMUXERS}, as a `-format_whitelist` value; undefined when no row parses. */
+function demuxersFromListing(listing: string): string | undefined {
+  // ffmpeg 4.x prints two flag columns, newer builds three, the last one marking a device.
+  const row = /Is a device/.test(listing) ? /^ D[E ]([d ]) (\S+)/ : /^ D[E ]() (\S+)/;
+  const names = new Set<string>();
+  for (const line of listing.split("\n")) {
+    const match = row.exec(line);
+    if (!match || match[1] === "d") continue;
+    const aliases = match[2]!.split(",");
+    if (aliases.some((alias) => PATH_OPENING_DEMUXERS.has(alias))) continue;
+    for (const alias of aliases) names.add(alias);
+  }
+  return names.size > 0 ? [...names].join(",") : undefined;
+}
+
+const demuxerLists = new Map<string, string>();
+let listingOverride: string | undefined;
+
+/** Tests feed a `-demuxers` listing so none spawns a binary; no argument forgets it. */
+export function _setDemuxerListingForTests(listing?: string): void {
+  listingOverride = listing;
+  demuxerLists.clear();
+}
+
+/**
+ * `-format_whitelist` for an input of composition media: every demuxer `listingBinary` reports that opens
+ * nothing by itself. List from the binary that enforces the flag. A binary that cannot be asked gets the
+ * self-contained list, and is asked again next time.
+ */
+export function mediaInputFormatArgs(listingBinary: string): string[] {
+  let formats = demuxerLists.get(listingBinary);
+  if (formats === undefined) {
+    try {
+      formats = demuxersFromListing(
+        listingOverride ??
+          execFileSync(listingBinary, ["-hide_banner", "-demuxers"], {
+            encoding: "utf8",
+            timeout: 10_000,
+            windowsHide: true,
+            stdio: ["ignore", "pipe", "ignore"],
+          }),
+      );
+    } catch {
+      formats = undefined;
+    }
+    if (formats === undefined) return ["-format_whitelist", SELF_CONTAINED_FORMATS];
+    demuxerLists.set(listingBinary, formats);
+  }
+  return ["-format_whitelist", formats];
 }

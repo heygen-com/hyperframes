@@ -5,12 +5,14 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { VideoSourceExtractionError } from "../services/videoFrameExtractor.js";
 import { getFfmpegBinary, getFfprobeBinary } from "./ffmpegBinaries.js";
-import { _setDemuxerListingForTests, redactUrlQueriesInError, urlInputArgs } from "./urlInput.js";
+import { _setDemuxerListingForTests } from "@hyperframes/parsers/ff-binaries";
+import { redactUrlQueriesInError, urlInputArgs } from "./urlInput.js";
 
 const signed =
   "https://bucket.s3.us-east-2.amazonaws.com/a/b?X-Amz-Credential=AKID&X-Amz-Signature=deadbeef";
 
 const LISTING = [
+  " ..d = Is a device",
   " D   concat          Virtual concatenation script",
   " D   dash            Dynamic Adaptive Streaming over HTTP",
   " D   hls             Apple HTTP Live Streaming",

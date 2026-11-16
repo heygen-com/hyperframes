@@ -241,12 +241,31 @@ export async function assertMediaPayload(filePath: string, elementId: string): P
 const IMAGE_SNIFF_BYTES = 64 * 1024;
 const MARKUP_PROLOG = /^(?:<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!doctype\b(?:[^>[]|\[[\s\S]*?\])*>)/i;
 
-function opensWithSvgRoot(markup: string): boolean {
-  let rest = markup.trimStart();
-  for (let prolog = MARKUP_PROLOG.exec(rest); prolog; prolog = MARKUP_PROLOG.exec(rest)) {
-    rest = rest.slice(prolog[0].length).trimStart();
+function withoutLeadingBlanks(text: string): string {
+  let at = 0;
+  while (at < text.length && (text[at] === "\0" || /\s/.test(text[at]!))) at++;
+  return text.slice(at);
+}
+
+/** The head as text: UTF-16 behind its byte order mark is decoded, anything else read byte per character. */
+function headText(head: Buffer): string {
+  const [first, second] = head;
+  if (first === 0xff && second === 0xfe) return head.subarray(2).toString("utf16le");
+  if (first === 0xfe && second === 0xff) {
+    return Buffer.from(head.subarray(2, head.length - (head.length % 2)))
+      .swap16()
+      .toString("utf16le");
   }
-  return /^<svg[\s/>]/i.test(rest);
+  return head.toString("latin1", byteOrderMarkLength(head));
+}
+
+/** Whether markup opens as an SVG; a prolog that runs past the window of a longer file is given the benefit of the doubt. */
+function opensWithSvgRoot(markup: string, complete: boolean): boolean {
+  let rest = withoutLeadingBlanks(markup);
+  for (let prolog = MARKUP_PROLOG.exec(rest); prolog; prolog = MARKUP_PROLOG.exec(rest)) {
+    rest = withoutLeadingBlanks(rest.slice(prolog[0].length));
+  }
+  return /^<svg[\s/>]/i.test(rest) || (!complete && /^<[?!]/.test(rest));
 }
 
 /**
@@ -260,12 +279,10 @@ export async function isNotImagePayload(filePath: string): Promise<boolean> {
     try {
       const start = await textStart(fh, await readAt(fh, SNIFF_BYTES, 0));
       if (start < 0) return true;
-      const text = await readAt(fh, IMAGE_SNIFF_BYTES, start);
-      let at = byteOrderMarkLength(text);
-      while (at < text.length && SKIPPABLE_LEADING_BYTES.has(text[at]!)) at++;
-      const byte = text[at];
-      if (byte === 0x7b || byte === 0x5b) return true;
-      return byte === 0x3c && !opensWithSvgRoot(text.toString("latin1", at));
+      const head = await readAt(fh, IMAGE_SNIFF_BYTES, start);
+      const text = withoutLeadingBlanks(headText(head));
+      if (text.startsWith("{") || text.startsWith("[")) return true;
+      return text.startsWith("<") && !opensWithSvgRoot(text, head.length < IMAGE_SNIFF_BYTES);
     } finally {
       await fh.close().catch(() => {});
     }
@@ -420,6 +437,13 @@ async function textStart(fh: FileHandle, first: Buffer): Promise<number> {
   return -1;
 }
 
+// Encrypted segments and keys open with random bytes, so only a real document signature counts.
+const MANIFEST_SIGNATURE = /^<(\?xml|MPD\b|!DOCTYPE|html\b|SmoothStreamingMedia\b)/i;
+
+function opensAsManifest(head: Buffer): boolean {
+  return MANIFEST_SIGNATURE.test(withoutLeadingBlanks(headText(head)));
+}
+
 function startsAsPlaylist(head: Buffer): boolean {
   const text = head
     .toString("utf8")
@@ -437,9 +461,7 @@ async function readList(path: string, nested: boolean): Promise<string | null | 
     const start = await textStart(fh, first);
     if (start < 0) return true;
     const head = start === 0 ? first : await readAt(fh, SNIFF_BYTES, start);
-    if (!startsAsPlaylist(head)) {
-      return nested && startsWithDocumentByte(head, (await fh.stat()).size - start) ? true : null;
-    }
+    if (!startsAsPlaylist(head)) return nested && opensAsManifest(head) ? true : null;
     const body = await readAt(fh, MAX_PLAYLIST_BYTES + 1, start);
     return body.length > MAX_PLAYLIST_BYTES ? true : body.toString("latin1");
   } finally {

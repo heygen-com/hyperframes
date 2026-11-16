@@ -217,6 +217,12 @@ describe("isNotImagePayload", () => {
       `<?xml version="1.0"?>\n<!-- made by hand -->\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x.dtd" [<!ENTITY a "b">]>\n<SVG viewBox="0 0 1 1"/>`,
       false,
     ],
+    ["an svg whose comment outruns the sniff window", `<!--${"x".repeat(70_000)}--><svg/>`, false],
+    [
+      "a utf-16 svg",
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("<svg/>", "utf16le")]),
+      false,
+    ],
     ["a png", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), false],
   ])("for %s", async (_label, contents, refused) => {
     expect(await isNotImagePayload(writeFixture("image", contents))).toBe(refused);
@@ -323,6 +329,12 @@ describe("playlistLeavesItsFolder", () => {
       await playlistLeavesItsFolder(writeTree({ "clip.mp4": list, "manifest.mpd": MPD })),
     ).toBe(true);
     expect(await playlistLeavesItsFolder(writeTree({ "clip.mp4": list }))).toBe(false);
+    const encrypted = hls('#EXT-X-KEY:METHOD=AES-128,URI="key.bin"', "#EXTINF:1,", "seg.ts");
+    expect(
+      await playlistLeavesItsFolder(
+        writeTree({ "clip.m3u8": encrypted, "key.bin": "<\x01\x02", "seg.ts": "{\x00" }),
+      ),
+    ).toBe(false);
   });
 
   it("refuses a nested list naming a private file from its own folder", async () => {

@@ -414,7 +414,7 @@ export {
   type KeyframeAnalysis,
 } from "./utils/ffprobe.js";
 
-export { _setDemuxerListingForTests, urlInputArgs } from "./utils/urlInput.js";
+export { urlInputArgs } from "./utils/urlInput.js";
 
 export { mediaIdPathSegment } from "./utils/mediaPathSegment.js";
 

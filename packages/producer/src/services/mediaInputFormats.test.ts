@@ -15,7 +15,7 @@ vi.mock("@hyperframes/engine", async (importOriginal) => ({
   extractAudioMetadata: vi.fn(async () => ({ audioStreamCount: 1 })),
 }));
 
-const { _setDemuxerListingForTests } = await import("@hyperframes/engine");
+const { _setDemuxerListingForTests } = await import("@hyperframes/parsers/ff-binaries");
 const { buildAnimatedGifTranscodeArgs } = await import("./animatedGifPrep.js");
 const { buildAudioSidecar } = await import("./distributed/audioSidecar.js");
 const { convertHeifToJpeg } = await import("./heifImagePrep.js");
@@ -39,9 +39,7 @@ const sites: Record<string, () => Promise<string[]>> = {
 
 describe("media inputs read by the producer", () => {
   beforeAll(() =>
-    _setDemuxerListingForTests(
-      " D   dash   DASH\n D   imf   IMF\n D   gif   GIF\n D   mov,mp4   MOV",
-    ),
+    _setDemuxerListingForTests(" D  dash   DASH\n D  imf   IMF\n D  gif   GIF\n D  mov,mp4   MOV"),
   );
   afterAll(() => _setDemuxerListingForTests());
 
