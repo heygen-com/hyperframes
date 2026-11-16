@@ -41,6 +41,10 @@ const GSAP_METHODS = new Set(["set", "to", "from", "fromTo"]);
 // Bounds on synthetic expansion (recursion + iteration runaway guards).
 const MAX_DEPTH = 8;
 const MAX_ITERS = 512;
+// Nodes one script's expansions may clone in total; past it the script is left as written.
+const MAX_EXPANDED_NODES = 200_000;
+
+class ExpansionBudgetExceeded extends Error {}
 
 export function isFunctionNode(node: Node): boolean {
   return !!node && FUNCTION_TYPES.has(node.type);
@@ -172,6 +176,8 @@ interface ExpandCtx {
   order: { n: number };
   /** Source offset of the top-level statement being expanded; tweens inherit it as their sort site. */
   rootStart: number;
+  /** Nodes left to clone for the whole script, shared by every nested expansion. */
+  budget: { left: number };
 }
 
 function walkNodes(node: Node, fn: (n: Node) => void): void {
@@ -506,6 +512,8 @@ function expandBody(
   prov: GsapProvenance,
   ctx: ExpandCtx,
 ): Node[] {
+  for (const stmt of bodyStmts) walkNodes(stmt, () => void ctx.budget.left--);
+  if (ctx.budget.left < 0) throw new ExpansionBudgetExceeded();
   const block = substituteParams(cloneNode({ type: "BlockStatement", body: bodyStmts }), bindings);
   tagProvenance(block, prov);
   tagTimelineCalls(block.body, prov, ctx);
@@ -602,10 +610,13 @@ function unrollFor(stmt: Node, ctx: ExpandCtx): Node[] | null {
   if (!h) return null;
   const body = bodyStatements(stmt.body);
   const out: Node[] = [];
+  let count = 0;
+  for (let x = h.start; loopSatisfied(h.op, x, h.end); x += h.step) {
+    if (++count > MAX_ITERS) return null;
+  }
   const site = ++ctx.site.n;
   let iteration = 0;
   for (let x = h.start; loopSatisfied(h.op, x, h.end); x += h.step) {
-    if (iteration >= MAX_ITERS) return null;
     const prov: GsapProvenance = {
       kind: "loop",
       callSite: site,
@@ -634,7 +645,8 @@ function unrollOverArray(
   idxName: string | null,
   range: [number, number] | undefined,
   ctx: ExpandCtx,
-): Node[] {
+): Node[] | null {
+  if (elements.length > MAX_ITERS) return null;
   const out: Node[] = [];
   const site = ++ctx.site.n;
   elements.forEach((el, i) => {
@@ -752,10 +764,15 @@ export function inlineComputedTimelines(
     site: { n: 0 },
     order: { n: 0 },
     rootStart: 0,
+    budget: { left: MAX_EXPANDED_NODES },
   };
   const body = (ast.body ?? []).filter((stmt: Node) => !isHelperDecl(stmt, helpers));
-  ast.body = body.flatMap((stmt: Node) => {
-    ctx.rootStart = stmt.start;
-    return expandStatements([stmt], ctx);
-  });
+  try {
+    ast.body = body.flatMap((stmt: Node) => {
+      ctx.rootStart = stmt.start;
+      return expandStatements([stmt], ctx);
+    });
+  } catch (error) {
+    if (!(error instanceof ExpansionBudgetExceeded)) throw error;
+  }
 }
