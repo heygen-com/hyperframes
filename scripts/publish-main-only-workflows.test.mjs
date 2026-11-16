@@ -54,25 +54,36 @@ test("the publish detector finds every known publishing job", () => {
   }
 });
 
+function branchPushViolations({ id, doc }) {
+  const branches = triggers(doc).push?.branches;
+  if (!branches || (branches.length === 1 && branches[0] === "main")) return [];
+  return [`${id} publishes from a branch push`];
+}
+
+function dispatchGuardViolations({ id, doc, job }) {
+  if (!runsOnChosenRef(doc)) return [];
+  const guard = normalize(job.if);
+  if (guard === MAIN_GUARD || guard.startsWith(`${MAIN_GUARD} && `)) return [];
+  return [`${id} can be dispatched on any branch; its job needs if: ${MAIN_GUARD}`];
+}
+
+const isCheckout = (step) => step.uses?.startsWith("actions/checkout@");
+const checksOutMain = (step) => ["main", "${{ github.sha }}"].includes(step.with?.ref);
+
+function checkoutViolations({ id, doc, job }) {
+  if (!runsOnChosenRef(doc)) return [];
+  return (job.steps ?? [])
+    .filter((step) => isCheckout(step) && !checksOutMain(step))
+    .map((step) => `${id} checks out ${step.with?.ref ?? "the dispatched ref"}`);
+}
+
 test("a publishing job that can be dispatched runs only for main", () => {
-  for (const { id, doc, job } of publishingJobs) {
-    const push = triggers(doc).push;
-    if (push?.branches)
-      assert.deepEqual(push.branches, ["main"], `${id} publishes from a branch push`);
-    if (!runsOnChosenRef(doc)) continue;
-    const guard = normalize(job.if);
-    assert.ok(
-      guard === MAIN_GUARD || guard.startsWith(`${MAIN_GUARD} && `),
-      `${id} can be dispatched on any branch; its job needs if: ${MAIN_GUARD}`,
-    );
-    for (const step of job.steps ?? []) {
-      if (!step.uses?.startsWith("actions/checkout@")) continue;
-      assert.ok(
-        ["main", "${{ github.sha }}"].includes(step.with?.ref),
-        `${id} checks out ${step.with?.ref ?? "the dispatched ref"}`,
-      );
-    }
-  }
+  const violations = publishingJobs.flatMap((entry) => [
+    ...branchPushViolations(entry),
+    ...dispatchGuardViolations(entry),
+    ...checkoutViolations(entry),
+  ]);
+  assert.deepEqual(violations, []);
 });
 
 test("the ClawHub token reaches only the pinned CLI login step", () => {
