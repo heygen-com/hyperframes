@@ -36,6 +36,7 @@ import {
   browserProxyArgs,
   createPublicOnlyProfile,
   logRefusal,
+  pageServerDirectHost,
   startCaptureProxy,
 } from "./publicNetwork/captureProxy.js";
 import { removeTreeBestEffortAsync } from "@hyperframes/core/remove-tree";
@@ -855,7 +856,8 @@ function createBrowserLaunchFingerprint(
     requestedCaptureMode,
     publicOnly: resolveRestrictPageNetwork()
       ? {
-          pageServerHost: launchConfig.pageServerUrl && new URL(launchConfig.pageServerUrl).host,
+          pageServerHost:
+            launchConfig.pageServerUrl && pageServerDirectHost(launchConfig.pageServerUrl),
         }
       : undefined,
   };

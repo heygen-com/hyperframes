@@ -267,7 +267,7 @@ let _thumbnailBrowserModes: {
   requested: BrowserGpuMode;
   resolved: ResolvedBrowserGpuMode;
   softwareWebGpu: boolean;
-  pageServerHost: string;
+  pageServerOrigin: string;
 } | null = null;
 
 interface ThumbnailBrowserSession {
@@ -275,34 +275,37 @@ interface ThumbnailBrowserSession {
   requestedGpuMode: BrowserGpuMode;
   resolvedGpuMode: ResolvedBrowserGpuMode;
   softwareWebGpu: boolean;
-  pageServerHost: string;
+  pageServerOrigin: string;
 }
 
-// The browser gets the preview's server as its page server: with PRODUCER_RESTRICT_PAGE_NETWORK on, that is the
-// one host it reaches directly, so a preview on another host needs a new browser.
+// The page server is the Studio's own origin when known, never a request's Host: with PRODUCER_RESTRICT_PAGE_NETWORK
+// on, it is the one host and port the browser reaches directly, so another page server needs a new browser.
 async function getThumbnailBrowser(
   requestedGpuMode: BrowserGpuMode,
-  previewUrl: string,
+  pageServerUrl: string,
   isShuttingDown: () => boolean,
 ): Promise<ThumbnailBrowserSession | null> {
   if (isShuttingDown()) return null;
-  const pageServerHost = new URL(previewUrl).host;
+  const pageServerOrigin = new URL(pageServerUrl).origin;
   if (
     _thumbnailBrowserLease?.browser.connected &&
     _thumbnailBrowserModes?.requested === requestedGpuMode &&
-    _thumbnailBrowserModes.pageServerHost === pageServerHost
+    _thumbnailBrowserModes.pageServerOrigin === pageServerOrigin
   ) {
     return {
       browser: _thumbnailBrowserLease.browser,
       requestedGpuMode: _thumbnailBrowserModes.requested,
       resolvedGpuMode: _thumbnailBrowserModes.resolved,
       softwareWebGpu: _thumbnailBrowserModes.softwareWebGpu,
-      pageServerHost,
+      pageServerOrigin,
     };
   }
   if (_thumbnailBrowserInitializing) {
     const session = await _thumbnailBrowserInitializing;
-    if (session?.requestedGpuMode === requestedGpuMode && session.pageServerHost === pageServerHost)
+    if (
+      session?.requestedGpuMode === requestedGpuMode &&
+      session.pageServerOrigin === pageServerOrigin
+    )
       return session;
   }
   if (_thumbnailBrowserLease) await closeThumbnailBrowser();
@@ -336,14 +339,14 @@ async function getThumbnailBrowser(
           },
           gpuConfig,
         ),
-        { forceScreenshot: true, pageServerUrl: previewUrl },
+        { forceScreenshot: true, pageServerUrl },
       );
       _thumbnailBrowserLease = acquired;
       _thumbnailBrowserModes = {
         requested: requestedGpuMode,
         resolved: resolvedGpuMode,
         softwareWebGpu,
-        pageServerHost,
+        pageServerOrigin,
       };
       acquired.browser.on("disconnected", () => {
         if (_thumbnailBrowserLease !== acquired) return;
@@ -356,7 +359,7 @@ async function getThumbnailBrowser(
         requestedGpuMode,
         resolvedGpuMode,
         softwareWebGpu,
-        pageServerHost,
+        pageServerOrigin,
       };
     } catch (err) {
       console.warn(
@@ -809,7 +812,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     async generateThumbnail(opts): Promise<Buffer | null> {
       const session = await getThumbnailBrowser(
         browserGpuMode,
-        opts.previewUrl,
+        options.origin?.() ?? opts.previewUrl,
         () => shuttingDown,
       );
       if (!session) {
