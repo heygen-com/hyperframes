@@ -12,7 +12,7 @@
     "unpacked": 4374000
   },
   "@hyperframes/engine": {
-    "packed": 500000,
+    "packed": 510000,
     "unpacked": 1742862
   },
   "@hyperframes/gcp-cloud-run": {

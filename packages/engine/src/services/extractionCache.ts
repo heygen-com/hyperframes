@@ -40,13 +40,13 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   rmSync,
   statSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
 import { basename, dirname, join } from "node:path";
 import { defaultExtractCacheDir } from "../config.js";
@@ -248,7 +248,7 @@ export function createPartialCacheEntryDir(entry: CacheEntry): string {
  */
 export function createPartialDir(parent: string, name: string): string {
   mkdirSync(parent, { recursive: true });
-  return mkdtempSync(join(parent, `${name}.partial-${process.pid}-`));
+  return createStagingDir(parent, `${name}.partial-${process.pid}-`);
 }
 
 function frameFileCount(dir: string): number {
