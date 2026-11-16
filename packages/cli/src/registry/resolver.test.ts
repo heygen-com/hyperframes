@@ -131,6 +131,19 @@ describe("registry resolver", () => {
       expect(warnings.length).toBeGreaterThan(0);
       expect(warnings.some((w) => w.includes("beta"))).toBe(true);
     });
+
+    it("writes a skipped item's name to stderr with control characters escaped", async () => {
+      const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      try {
+        const entries = [{ name: "be\u001b]0;t\u0007ta", type: "hyperframes:example" as const }];
+        await loadAllItems(entries, { baseUrl: uniqueBaseUrl() });
+        const line = write.mock.calls.map(([chunk]) => String(chunk)).join("");
+        expect(line).toContain("be\\x1b]0;t\\x07ta");
+        for (const control of ["\u001b", "\u0007"]) expect(line).not.toContain(control);
+      } finally {
+        write.mockRestore();
+      }
+    });
   });
 
   describe("loadAllItems on a slow registry", () => {

@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import {
   type PathLike,
   chmodSync,
@@ -497,6 +498,38 @@ describe("mediaInputFormatArgs", () => {
       ].join("\n"),
     );
     expect(formatsOf(mediaInputFormatArgs("/ffprobe"))).toEqual(["3dostr", "mov", "mp4", "m4a"]);
+  });
+
+  it("leaves out the demuxers that draw a text file as a picture", async () => {
+    const { _setDemuxerListingForTests, mediaInputFormatArgs } = await importFresh();
+    _setDemuxerListingForTests(
+      [
+        " D  adf             Artworx Data Format",
+        " D  bin             Binary text",
+        " D  idf             iCE Draw File",
+        " D  mov,mp4,m4a     QuickTime / MOV",
+        " D  tty             Tele-typewriter",
+        " D  xbin            eXtended BINary text (XBIN)",
+      ].join("\n"),
+    );
+    expect(formatsOf(mediaInputFormatArgs("/ffmpeg"))).toEqual(["mov", "mp4", "m4a"]);
+  });
+
+  it("keeps the installed ffmpeg from decoding a text file into a frame", async () => {
+    vi.resetModules();
+    vi.doUnmock("node:fs");
+    vi.doUnmock("node:child_process");
+    const { findFfBinary, mediaInputFormatArgs } = await importFresh();
+    const ffmpeg = findFfBinary("ffmpeg");
+    if (!ffmpeg) return;
+    const dir = mkdtempSync(join(tmpdir(), "hf-text-art-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const note = join(dir, "note.asc");
+    writeFileSync(note, "API_KEY=not-a-video\nsecond line\n");
+    const frame = join(dir, "frame.png");
+    const args = ["-v", "error", "-y", ...mediaInputFormatArgs(ffmpeg), "-i", note];
+    spawnSync(ffmpeg, [...args, "-frames:v", "1", frame]);
+    expect(existsSync(frame)).toBe(false);
   });
 
   it.skipIf(process.platform === "win32")("asks a binary that failed once again", async () => {

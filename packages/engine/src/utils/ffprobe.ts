@@ -63,6 +63,8 @@ function sanitizeFfprobeDiagnostic(stderr: string, filePath: string): string {
 }
 
 /** Spawn ffprobe with given args, return stdout. Throws on non-zero exit or missing binary. */
+const REFUSED_TEXT_ART = /^\[(?:tty|bin|xbin|idf|adf) @ [^\]]*\] Format not on whitelist/m;
+
 export async function runFfprobe(
   filePath: string,
   argsWithoutInput: string[],
@@ -173,6 +175,7 @@ async function spawnFfprobe(
     throw outcome.error ?? new Error(outcome.stderr);
   }
   if (outcome.reason !== "exit" || outcome.exitCode !== 0) {
+    if (REFUSED_TEXT_ART.test(outcome.stderr)) throw new TextArtMediaError();
     const diagnostic = sanitizeFfprobeDiagnostic(outcome.stderr, filePath);
     throw new Error(
       `[FFmpeg] ffprobe ${outcome.reason} with code ${outcome.exitCode}: ${diagnostic}`,

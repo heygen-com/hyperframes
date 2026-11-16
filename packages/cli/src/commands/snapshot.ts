@@ -413,7 +413,11 @@ export function containingSourceFrameIndex(timestamps: readonly number[], time: 
   return index;
 }
 
-class FrameExtractError extends Error {}
+class FrameExtractError extends Error {
+  constructor(message: string) {
+    super(terminalText(message));
+  }
+}
 
 const lastLine = (text: string) => text.trim().split("\n").at(-1) ?? "";
 
