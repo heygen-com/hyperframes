@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const run = vi.hoisted(() => vi.fn());
@@ -62,6 +62,29 @@ describe("projectLocalFile", () => {
     ["something that is not a URL", "not a url"],
   ])("gives null for %s", (_label, src) => {
     expect(projectLocalFile(dir, src)).toBeNull();
+  });
+
+  it.each([".hyperframes/handoff.mp4", ".git/clip.mp4", ".env", "keys/id_ed25519"])(
+    "gives null for the private project file %s",
+    (rel) => {
+      mkdirSync(dirname(join(dir, rel)), { recursive: true });
+      writeFileSync(join(dir, rel), "x");
+      expect(projectLocalFile(dir, `http://127.0.0.1:3000/${rel}`)).toBeNull();
+    },
+  );
+
+  it("gives null for a link whose target is a private project file", () => {
+    mkdirSync(join(dir, ".hyperframes"), { recursive: true });
+    writeFileSync(join(dir, ".hyperframes", "record.mp4"), "x");
+    symlinkSync(join(dir, ".hyperframes", "record.mp4"), join(dir, "clips", "link.mp4"));
+    expect(projectLocalFile(dir, "clips/link.mp4")).toBeNull();
+  });
+
+  it("names a file in Studio's own prepared-assets folder", () => {
+    const rel = ".hyperframes/prepared-assets/clip.mp4";
+    mkdirSync(dirname(join(dir, rel)), { recursive: true });
+    writeFileSync(join(dir, rel), "x");
+    expect(projectLocalFile(dir, rel)).toBe(join(dir, rel));
   });
 });
 
@@ -140,6 +163,16 @@ describe("heldVideoHints", () => {
     await expect(heldVideoHints(dir, videos, new Map(), "ffprobe")).resolves.toEqual([
       { id: "wide", width: 1280, height: 720 },
     ]);
+  });
+
+  it("never probes a private project file", async () => {
+    mkdirSync(join(dir, ".hyperframes"), { recursive: true });
+    writeFileSync(join(dir, ".hyperframes", "record.mp4"), "x");
+    run.mockResolvedValue({ stdout: probeJson({ width: 1280, height: 720 }) });
+    const videos = [{ id: "kept", src: ".hyperframes/record.mp4" }];
+
+    await expect(heldVideoHints(dir, videos, new Map(), "ffprobe")).resolves.toEqual([]);
+    expect(run).not.toHaveBeenCalled();
   });
 });
 

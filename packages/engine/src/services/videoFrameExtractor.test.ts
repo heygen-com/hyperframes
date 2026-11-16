@@ -708,6 +708,29 @@ describe("video extraction failure taxonomy and bounded retry", () => {
     }
   });
 
+  it("warns about a missing source with control characters shown as visible escapes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-extract-missing-"));
+    const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const src = "missing\x1b[2J\x07\x9b.mp4";
+      const video = { id: "v1", src, start: 0, end: 1, mediaStart: 0, loop: false };
+      const result = await extractAllVideoFrames([{ ...video, hasAudio: false }], dir, {
+        fps: 30,
+        outputDir: join(dir, "out"),
+        assetRoots: [dir],
+      });
+      expect(result.errors).toEqual([expect.objectContaining({ kind: "source_missing" })]);
+      const warning = write.mock.calls
+        .map(([chunk]) => String(chunk))
+        .find((chunk) => chunk.includes("could not be resolved on disk"));
+      expect(warning).toContain('src="missing\\x1b[2J\\x07\\x9b.mp4"');
+      for (const control of ["\u001b", "\u0007", "\u009b"]) expect(warning).not.toContain(control);
+    } finally {
+      write.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it.each([".git/clip.mp4", ".hyperframes/clip.mp4", ".ssh/clip.mp4"])(
     "treats the private project file %s as a missing source",
     async (src) => {

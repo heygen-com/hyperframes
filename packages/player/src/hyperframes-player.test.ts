@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
+import { PLAYER_FRAME_NAME } from "@hyperframes/core/studio-preview-mark";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
 
 // Install a stubbed contentDocument getter on the given iframe element. The
@@ -3550,6 +3551,67 @@ describe("HyperframesPlayer click-to-play", () => {
   });
 });
 
+describe("HyperframesPlayer fullscreen", () => {
+  type FullscreenPlayer = HTMLElement & {
+    play: () => void;
+    disableFullscreen: boolean;
+  };
+
+  let player: FullscreenPlayer;
+
+  function fullscreenButton(): HTMLButtonElement {
+    const button = player.shadowRoot?.querySelector<HTMLButtonElement>(".hfp-fullscreen-btn");
+    if (!button) throw new Error("no fullscreen button");
+    return button;
+  }
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+    Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
+    player = document.createElement("hyperframes-player") as FullscreenPlayer;
+    player.setAttribute("controls", "");
+    document.body.appendChild(player);
+  });
+
+  afterEach(() => {
+    player.remove();
+    Reflect.deleteProperty(document, "fullscreenEnabled");
+    vi.restoreAllMocks();
+  });
+
+  it("disableFullscreen property toggles the disable-fullscreen attribute", () => {
+    player.disableFullscreen = true;
+    expect(player.hasAttribute("disable-fullscreen")).toBe(true);
+
+    player.disableFullscreen = false;
+    expect(player.hasAttribute("disable-fullscreen")).toBe(false);
+  });
+
+  it("fullscreens the player element, and the click does not play", () => {
+    const requestFullscreen = vi.fn(async () => {});
+    player.requestFullscreen = requestFullscreen;
+    const play = vi.spyOn(player, "play").mockImplementation(() => undefined);
+
+    fullscreenButton().click();
+
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+    expect(requestFullscreen.mock.contexts[0]).toBe(player);
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("disable-fullscreen hides the button", () => {
+    expect(getComputedStyle(fullscreenButton()).display).not.toBe("none");
+
+    player.remove();
+    player = document.createElement("hyperframes-player") as FullscreenPlayer;
+    player.setAttribute("controls", "");
+    player.setAttribute("disable-fullscreen", "");
+    document.body.appendChild(player);
+
+    expect(getComputedStyle(fullscreenButton()).display).toBe("none");
+  });
+});
+
 describe("HyperframesPlayer retained runtime data", () => {
   interface RuntimeDataPlayer extends HTMLElement {
     iframeElement: HTMLIFrameElement;
@@ -3670,6 +3732,11 @@ describe("HyperframesPlayer retained runtime data", () => {
 
     player.removeAttribute("sandbox-origin");
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
+  });
+
+  it("names its frame, the one mark a composition in an opaque sandbox can still read", () => {
+    player.setAttribute("sandbox-origin", "opaque");
+    expect(player.iframeElement.name).toBe(PLAYER_FRAME_NAME);
   });
 
   it("treats every non-null sandbox-origin value as restrictive", () => {

@@ -113,6 +113,18 @@ machine-readable `code` and, when there is a next step, a `hint`:
 Some commands add their own fields next to `error`, such as `findings` from
 `lint` or `reason` and `fix` from a refused `timeline` edit.
 
+A failure with no code of its own is `runtime_error`, or `usage_error` for a bad
+command line. These causes have their own, so a script can branch without reading
+`message`:
+
+| `code` | Cause |
+| --- | --- |
+| `chrome_not_found` | `render` found no Chrome to use, or could not install one |
+| `ffmpeg_not_found` | `render` found no FFmpeg |
+| `ffprobe_not_found` | `render` found no FFprobe |
+| `render_locked` | `render --no-wait` while another render holds this account's slot |
+| `node_version_unsupported` | The CLI was started on a Node.js older than 22 |
+
 **The project `.env`.** The `.env` in the current directory sets only the CLI's own
 settings: `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, `ELEVENLABS_API_KEY`, `FIGMA_TOKEN`, and the
 vision keys, models, Vertex settings and timeout, and the telemetry opt-outs `HYPERFRAMES_NO_TELEMETRY` and `DO_NOT_TRACK`. A variable already in your environment wins. Any
@@ -1712,6 +1724,7 @@ npx hyperframes diff original.mp4 renders/final.mp4 --segments segments.md --sbs
 | `--offset`                                | Compare the original at t with yours at t + offset seconds           |
 | `--segments`                              | A verdict per `## S01 · a–b s` segment of a file                     |
 | `--drawn`                                 | Score one drawn element's box `x,y,w,h[,a-b]` by itself (repeatable) |
+| `--hide`                                  | Score a project's layer (a CSS selector) by what it adds             |
 | `--min-mean` / `--min-p05` / `--min-cell` | The SSIM bars to pass                                                |
 | `--sbs`                                   | Also write an original-beside-yours video                            |
 | `--out`                                   | Folder for the sheet and log (default `.hyperframes/diff/<yours>`)   |
@@ -1725,6 +1738,17 @@ says when frames were left out. `frames.tsv` keeps the original's time in `t`;
 yours' time is t + offset. The sound keeps its own offset measurement, the
 duration is reported as not measured, and the JSON result echoes `offset`. An
 offset that leaves no overlap is refused with a fix.
+
+`--hide ".cap"` captures a project folder a second time with that layer hidden.
+Where the two captures differ is the layer's footprint, and over it each moment
+scores `benefit = 1 − MAE(original, with) / MAE(original, without)`: 1 matches the
+original, 0 is no better than leaving the layer out, and below 0 is worse. Each
+moment also fits where the original's copy of the layer sits and how large it is
+(±40 px, 80–120%) and says it as an instruction, such as `move down 10 px, make it
+15% smaller`. The benefit is relative to how well the backdrop matches, so compare
+moments within one run. Where leaving the layer out already matches the original
+(footage that carries the original's own captions), the moment is not scored. The
+result's `layer` reports the moments; it does not change `pass`.
 
 ## Edit from the command line
 

@@ -161,6 +161,7 @@ import {
   checkOutputResolutionCompatibility,
   suggestMatchingPreset,
   fpsToNumber,
+  terminalText,
   type CanvasResolution,
   type OutputResolutionIssueKind,
   type Fps,
@@ -239,7 +240,7 @@ export default defineCommand({
     "video-frame-format": {
       type: "string",
       description:
-        "Source video frame extraction format: auto, jpg, png (default: auto). " +
+        "Source video frame extraction format: auto, jpg, png. " +
         "Use png for UI recordings, screen captures, and color-sensitive source videos; " +
         "alpha-capable sources always extract as PNG.",
       default: "auto",
@@ -1071,7 +1072,7 @@ async function executeLocalRender(
     for (const check of failedChecks) {
       errorBox(check.title ?? `${check.name} check failed`, check.detail, check.hint);
     }
-    failCommand();
+    failCommand(1, undefined, failedChecks.at(-1)?.code);
   }
   if (!options.quiet) {
     for (const outcome of preflight.outcomes) {
@@ -1965,12 +1966,13 @@ function handleRenderError(
   if (options.throwOnError) {
     throw new Error(message);
   }
+  const shown = message.split(/\r?\n/).map(terminalText).join("\n");
   const launch = chromeLaunchFailure(message);
   if (launch) {
-    errorBox(launch.title, message, launch.remediation);
+    errorBox(launch.title, shown, launch.remediation);
     failCommand();
   }
-  errorBox("Render failed", message, hint);
+  errorBox("Render failed", shown, hint);
   failCommand();
 }
 

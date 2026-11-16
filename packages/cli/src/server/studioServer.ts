@@ -9,7 +9,7 @@ import { PREVIEW_NONCE_HEADER, previewProof } from "@hyperframes/core/preview-pr
 import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { realpath } from "@hyperframes/core";
+import { realpath, terminalText } from "@hyperframes/core";
 import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { createHash } from "node:crypto";
@@ -49,6 +49,7 @@ import { recordFolder } from "../utils/projectRecords.js";
 import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { insideHostApp } from "../utils/desktopApp.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
+import { lintHtmlOutOfProcess } from "../utils/lintHtmlWorker.js";
 import { acquireRenderLock, describeRenderLockHolder } from "../utils/renderLock.js";
 import type { ProjectLintResult } from "@hyperframes/lint";
 import { resolveRenderBrowser } from "../browser/preflight.js";
@@ -110,6 +111,7 @@ const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 const RENDER_SHUTDOWN_WAIT_MS = 2_000;
 
 const LINT_WORKER_TIMEOUT_MS = 120_000;
+const LINT_WORKER_HEAP_MB = 1024;
 
 // Vite emits only content-hashed files under dist/assets; hand-authored
 // public/ files land at the dist root. The route is the signal because the
@@ -618,10 +620,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       if (resolve(dir) === resolve(projectDir)) cachedProjectSignature = null;
     },
 
-    async lint(html, opts) {
-      const { lintHyperframeHtml } = await import("@hyperframes/lint");
-      return await lintHyperframeHtml(html, { ...opts, host: "studio" });
-    },
+    lint: (html, opts) => lintHtmlOutOfProcess(html, { ...opts, host: "studio" }),
 
     // Out of process: linting a large composition is seconds of synchronous parsing, and on
     // this event loop it stalls every other Studio request, the preview included.
@@ -629,7 +628,12 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       runRenderSetupWorker<ProjectLintResult>(
         "lint",
         { projectDir: dir, host: "studio", background: true },
-        { maxBufferBytes: 8 * 1024 * 1024, signal, timeoutMs: LINT_WORKER_TIMEOUT_MS },
+        {
+          execArgv: [`--max-old-space-size=${LINT_WORKER_HEAP_MB}`],
+          maxBufferBytes: 8 * 1024 * 1024,
+          signal,
+          timeoutMs: LINT_WORKER_TIMEOUT_MS,
+        },
       ),
 
     runtimeUrl: "/api/runtime.js",
@@ -925,7 +929,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         source: "studio",
       });
       for (const warning of result.warnings) {
-        process.stderr.write(`hyperframes:registry ${warning}\n`);
+        process.stderr.write(`hyperframes:registry ${terminalText(warning)}\n`);
       }
       const written = result.written;
 
