@@ -24,6 +24,7 @@ import type { SerializableDistributedRenderConfig } from "../events.js";
 import { formatExtension } from "../formatExtension.js";
 import { formatS3Uri } from "../s3Transport.js";
 import { SITE_MANIFEST_INVALID } from "../siteManifest.js";
+import { parseStateMachineArn, pinBucketOwner } from "./bucketOwner.js";
 import { deploySite, ensureSiteStored, type SiteHandle } from "./deploySite.js";
 import {
   validateDistributedRenderConfig,
@@ -101,8 +102,10 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
     throw new Error("[renderToLambda] either siteHandle or projectDir must be supplied");
   }
 
+  const { account } = parseStateMachineArn(opts.stateMachineArn);
   const sfn = opts.sfn ?? new SFNClient({ region: opts.region });
   await assertStackReadsSites({ stateMachineArn: opts.stateMachineArn, sfn });
+  const s3 = pinBucketOwner(opts.s3 ?? new S3Client({ region: opts.region }), account);
 
   const executionName = opts.executionName ?? `hf-render-${randomUUID()}`;
   const ext = formatExtension(opts.config.format);
@@ -114,17 +117,13 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
   const outputS3Uri = formatS3Uri({ bucket: opts.bucketName, key: outputKey });
 
   const site = opts.siteHandle
-    ? await ensureSiteStored(
-        opts.siteHandle,
-        opts.s3 ?? new S3Client({ region: opts.region }),
-        opts.projectDir,
-      )
+    ? await ensureSiteStored(opts.siteHandle, s3, opts.projectDir)
     : await deploySite({
         projectDir: opts.projectDir as string,
         bucketName: opts.bucketName,
         region: opts.region,
         onNotice: opts.onNotice,
-        s3: opts.s3,
+        s3,
       });
 
   const input = {
