@@ -19,6 +19,7 @@ import {
   isProjectRootMissing,
   ITEM_TYPE_DIRS,
   realpath,
+  terminalLines,
   terminalText,
   type RegistryItem,
 } from "@hyperframes/core";
@@ -83,7 +84,7 @@ export function remapTarget(
   return originalTarget;
 }
 
-const registryError = (message: string): string => c.error(terminalText(message));
+const registryError = (message: string): string => c.error(terminalLines(message));
 
 // ── Include-snippet builders ────────────────────────────────────────────────
 // Shown to the user after install so they know how to wire the item into
@@ -670,12 +671,12 @@ export default defineCommand({
       const root = realpath(projectDir);
       for (const file of result.preserved) {
         console.log(
-          `  ${c.warn("kept")} ${relative(root, file) || file} — you have edited this; --force to overwrite`,
+          `  ${c.warn("kept")} ${terminalText(relative(root, file) || file)} — you have edited this; --force to overwrite`,
         );
       }
 
       for (const file of result.written) {
-        console.log(`  ${c.dim(relative(root, file))}`);
+        console.log(`  ${c.dim(terminalText(relative(root, file)))}`);
       }
       if (result.variablesApplied.length > 0) {
         // Say it out loud. A component's values are baked into the file rather

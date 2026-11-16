@@ -497,7 +497,7 @@ export default defineCommand({
       console.log(`${c.success("✓")} Installed ${c.accent(result.name)} (${result.type})`);
       const root = realpath(dir);
       for (const file of result.written) {
-        console.log(`  ${c.dim(relative(root, file))}`);
+        console.log(`  ${c.dim(terminalText(relative(root, file)))}`);
       }
       if (result.snippet) {
         console.log("");

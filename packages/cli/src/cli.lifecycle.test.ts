@@ -454,6 +454,27 @@ describe("CLI lifecycle", () => {
     }
   });
 
+  it("prints a thrown error's control characters as visible escapes and keeps its lines", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      mockInitCommand(() => {
+        throw new Error("Install failed: a\u001b]52;c;eA==\u0007\n  b\u009b");
+      });
+      mockTelemetry();
+
+      process.argv = ["node", "cli.ts", "init"];
+      await import("./cli.js");
+
+      const said = errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+      expect(said).toContain("Install failed: a\\x1b]52;c;eA==\\x07\n  b\\x9b");
+      for (const control of ["\u001b]", "\u0007", "\u009b"]) expect(said).not.toContain(control);
+    } finally {
+      errorSpy.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
+
   it("exits 1 and scores a failure when the pipe closes before the run delivered", async () => {
     const trackCommandResult = vi.fn();
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);

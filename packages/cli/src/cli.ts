@@ -95,7 +95,7 @@ import { closestMatch, closestNames, commandRedirect, fileHint } from "./utils/d
 import { errorBox } from "./ui/format.js";
 import { failureShown, jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
 import { isDevMode } from "./utils/env.js";
-import { terminalText } from "@hyperframes/core";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import {
   CliResultSignal,
   CliRuntimeError,
@@ -705,7 +705,7 @@ async function executeCli(): Promise<void> {
       const usage = error instanceof CliUsageError && !error.result.presented;
       if (usage && !error.hint) await showRequestedUsage(console.error);
       if (!typed || !error.result.presented) {
-        console.error(error instanceof Error ? error.message : String(error));
+        console.error(terminalLines(error instanceof Error ? error.message : String(error)));
       }
       if (usage && error.hint) console.error(error.hint);
     }

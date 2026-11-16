@@ -10,6 +10,10 @@ export function terminalText(text: string): string {
   return shown;
 }
 
+export function terminalLines(text: string): string {
+  return text.split("\n").map(terminalText).join("\n");
+}
+
 const isPlainObject = (value: object) => {
   const proto = Object.getPrototypeOf(value);
   return proto === Object.prototype || proto === null;

@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
 import { launchWithPageNetwork } from "../browser/pageNetwork.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
@@ -520,7 +521,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
           ? ` + motion spec (${motionSpec.assertions.length} assertion(s))`
           : "";
         console.log(
-          `${c.accent("◆")}  Inspecting layout for ${c.accent(project.name)} (${sampleLabel}${motionLabel})`,
+          `${c.accent("◆")}  Inspecting layout for ${c.accent(terminalText(project.name))} (${sampleLabel}${motionLabel})`,
         );
       }
 
@@ -640,7 +641,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
           );
           failCommand();
         }
-        console.error(`${c.error("✗")} Inspect failed: ${message}`);
+        console.error(`${c.error("✗")} Inspect failed: ${terminalLines(message)}`);
         failCommand();
       }
     },
