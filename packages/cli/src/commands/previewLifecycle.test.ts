@@ -30,6 +30,7 @@ const server: ActiveServer = {
   projectDir,
   version: "test",
   pid: "4321",
+  pidSource: "os",
 };
 
 function tempDir(prefix: string): string {
@@ -1375,6 +1376,71 @@ describe("background preview lifecycle", () => {
         stateHome,
       }),
     ).rejects.toThrow(/ownership/i);
+
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it("refuses a PID the listener reported about itself when the system named no owner", async () => {
+    const stateHome = tempDir("hf-preview-state-");
+    const claimed = { ...server, pid: "999", pidSource: "self-reported" as const };
+    const kill = vi.fn();
+
+    await expect(
+      stopBackgroundPreview(projectDir, 3002, {
+        scan: async () => [claimed],
+        probe: async () => claimed,
+        kill,
+        sleep: async () => {},
+        stateHome,
+      }),
+    ).rejects.toThrow(/ownership could not be proven/);
+
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it("stops only its own saved wrapper when the listener's PID is self-reported", async () => {
+    const stateHome = tempDir("hf-preview-state-");
+    writePreviewSession(
+      { pid: 4321, wrapperIdentity: "wrapper-birth", port: 3210, projectDir, logPath: "/tmp/p.log" },
+      stateHome,
+    );
+    let running = true;
+    const claimed = { ...server, pid: "999", pidSource: "self-reported" as const };
+    const kill = vi.fn((pid: number) => {
+      if (pid === 4321) running = false;
+    });
+
+    const result = await stopBackgroundPreview(projectDir, 3002, {
+      probe: async () => (running ? claimed : null),
+      kill,
+      isDescendant: () => false,
+      identity: (pid) => (pid === 4321 ? "wrapper-birth" : null),
+      sleep: async () => {},
+      stateHome,
+    });
+
+    expect(result).toBe(true);
+    expect(kill.mock.calls).toEqual([[4321]]);
+  });
+
+  it("refuses a self-reported PID when the saved wrapper's birth identity has changed", async () => {
+    const stateHome = tempDir("hf-preview-state-");
+    writePreviewSession(
+      { pid: 4321, wrapperIdentity: "wrapper-birth", port: 3210, projectDir, logPath: "/tmp/p.log" },
+      stateHome,
+    );
+    const claimed = { ...server, pid: "999", pidSource: "self-reported" as const };
+    const kill = vi.fn();
+
+    await expect(
+      stopBackgroundPreview(projectDir, 3002, {
+        probe: async () => claimed,
+        kill,
+        identity: () => "reused-pid-birth",
+        sleep: async () => {},
+        stateHome,
+      }),
+    ).rejects.toThrow(/ownership could not be proven/);
 
     expect(kill).not.toHaveBeenCalled();
   });
