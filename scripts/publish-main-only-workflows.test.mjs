@@ -36,7 +36,11 @@ const publishingJobs = workflows.flatMap(({ file, doc }) =>
     .map(([name, job]) => ({ id: `${file} ${name}`, file, doc, job })),
 );
 
-const triggers = (doc) => (typeof doc.on === "string" ? { [doc.on]: null } : (doc.on ?? {}));
+function triggers(doc) {
+  if (typeof doc.on === "string") return { [doc.on]: null };
+  if (Array.isArray(doc.on)) return Object.fromEntries(doc.on.map((event) => [event, null]));
+  return doc.on ?? {};
+}
 const runsOnChosenRef = (doc) =>
   ["workflow_dispatch", "repository_dispatch", "workflow_call"].some((event) =>
     Object.hasOwn(triggers(doc), event),
@@ -55,15 +59,20 @@ test("the publish detector finds every known publishing job", () => {
 });
 
 function branchPushViolations({ id, doc }) {
-  const branches = triggers(doc).push?.branches;
-  if (!branches || (branches.length === 1 && branches[0] === "main")) return [];
+  const events = triggers(doc);
+  if (!Object.hasOwn(events, "push")) return [];
+  const push = events.push ?? {};
+  const branches = push.branches;
+  if (branches?.length === 1 && branches[0] === "main") return [];
+  // A tags-only push filter disables branch pushes; an absent filter does not.
+  if (!branches && !push["branches-ignore"] && (push.tags || push["tags-ignore"])) return [];
   return [`${id} publishes from a branch push`];
 }
 
 function dispatchGuardViolations({ id, doc, job }) {
   if (!runsOnChosenRef(doc)) return [];
   const guard = normalize(job.if);
-  if (guard === MAIN_GUARD || guard.startsWith(`${MAIN_GUARD} && `)) return [];
+  if (guard === MAIN_GUARD) return [];
   return [`${id} can be dispatched on any branch; its job needs if: ${MAIN_GUARD}`];
 }
 
@@ -99,4 +108,42 @@ test("the ClawHub token reaches only the pinned CLI login step", () => {
   const install = sync.steps.find((step) => /npm i -g clawhub@/.test(step.run ?? ""));
   assert.match(install.run, /clawhub@\d+\.\d+\.\d+$/);
   assert.ok(sync.steps.indexOf(install) < sync.steps.indexOf(holders[0]));
+});
+
+test("unrestricted branch pushes cannot evade the publishing policy", () => {
+  for (const on of [
+    "push",
+    ["push"],
+    { push: null },
+    { push: { paths: ["skills/**"] } },
+    { push: { "branches-ignore": ["archive"] } },
+  ]) {
+    assert.equal(
+      branchPushViolations({ id: "fixture", doc: { on } }).length,
+      1,
+      JSON.stringify(on),
+    );
+  }
+  for (const on of [
+    { workflow_dispatch: null },
+    { push: { branches: ["main"] } },
+    { push: { tags: ["v*-*"] } },
+  ]) {
+    assert.deepEqual(branchPushViolations({ id: "fixture", doc: { on } }), []);
+  }
+});
+
+test("dispatch arrays and OR suffixes cannot evade the main guard", () => {
+  for (const on of [{ workflow_dispatch: null }, ["workflow_dispatch"], "workflow_call"]) {
+    for (const guard of [undefined, `${MAIN_GUARD} && false || true`]) {
+      assert.equal(
+        dispatchGuardViolations({ id: "fixture", doc: { on }, job: { if: guard } }).length,
+        1,
+      );
+    }
+    assert.deepEqual(
+      dispatchGuardViolations({ id: "fixture", doc: { on }, job: { if: MAIN_GUARD } }),
+      [],
+    );
+  }
 });
