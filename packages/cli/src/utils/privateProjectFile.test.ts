@@ -137,6 +137,36 @@ describe("receivedFiles", () => {
   });
 });
 
+describe("receivedFiles for a received project copied into a folder", () => {
+  function withNested(record?: string): string {
+    dir = mkdtempSync(join(tmpdir(), "hf-received-nested-"));
+    mkdirSync(join(dir, "compositions", "x"), { recursive: true });
+    writeFileSync(join(dir, "index.html"), "");
+    writeFileSync(join(dir, "compositions", "x", "index.html"), "");
+    if (record !== undefined) {
+      mkdirSync(join(dir, "compositions", "x", ".hyperframes"));
+      writeFileSync(join(dir, "compositions", "x", ".hyperframes", "received-files.json"), record);
+    }
+    return dir;
+  }
+
+  it("names the copy's files from the project folder", () => {
+    const received = receivedFiles(withNested(JSON.stringify({ files: ["index.html"] })));
+    expect(received("compositions/x/index.html")).toBe(true);
+    expect(received("index.html")).toBe(false);
+  });
+
+  it("counts every file as received when the copy's record cannot be read", () => {
+    expect(receivedFiles(withNested("{not json"))("index.html")).toBe(true);
+  });
+
+  it("counts no file as received when the folder has no record", () => {
+    const received = receivedFiles(withNested());
+    expect(received("compositions/x/index.html")).toBe(false);
+    expect(received("index.html")).toBe(false);
+  });
+});
+
 describe("recordReceivedFiles", () => {
   const record = (root: string) => join(root, ".hyperframes", "received-files.json");
   const lock = (root: string) => `${record(root)}.lock`;
