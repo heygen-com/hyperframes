@@ -162,26 +162,29 @@ export function useShadowPreviewReload({
   const holdingUrlRef = useRef<string | null>(null);
   const holdTokenRef = useRef(0);
 
+  const restoringRef = useRef<(() => void) | null>(null);
+  const dropRestoring = useCallback(() => {
+    const release = restoringRef.current;
+    restoringRef.current = null;
+    release?.();
+  }, []);
   const restoreLive = useCallback(
     (held: HeldStill) => {
+      dropRestoring();
       setPreviewSlots([held.liveSlot]);
       pendingSeekRef.current = held.time;
-      const until = Date.now() + SHADOW_READY_TIMEOUT_MS;
-      const watch = () => {
-        const frame = iframeRef.current;
-        if (frame && frame !== held.liveIframe && frame.isConnected) {
-          frame.addEventListener("load", () => releaseAfterPaint(frame, held.release), {
-            once: true,
-          });
-          return;
-        }
-        if (Date.now() > until) held.release();
-        else setTimeout(watch, 100);
-      };
-      watch();
+      restoringRef.current = held.release;
+      setTimeout(() => {
+        if (restoringRef.current === held.release) dropRestoring();
+      }, SHADOW_READY_TIMEOUT_MS);
     },
-    [iframeRef, pendingSeekRef],
+    [pendingSeekRef, dropRestoring],
   );
+  const onLiveLoaded = useCallback(() => {
+    const release = restoringRef.current;
+    restoringRef.current = null;
+    if (release) releaseAfterPaint(iframeRef.current, release);
+  }, [iframeRef]);
 
   const stopPendingShadow = useCallback(() => {
     clearTimeout(readyTimerRef.current);
@@ -485,10 +488,11 @@ export function useShadowPreviewReload({
     heldRef.current = null;
     holdingUrlRef.current = null;
     holdTokenRef.current += 1;
+    dropRestoring();
     setPreviewSlots(held ? [held.liveSlot] : planShadowDiscard);
     held?.release();
     setPreviewReloading(false);
-  }, [retry, stopPendingShadow, isRefreshingRef, pendingSeekRef]);
+  }, [retry, stopPendingShadow, isRefreshingRef, pendingSeekRef, dropRestoring]);
 
   // Hiding the tab pauses the budget; showing it again restarts the full budget for a pending shadow.
   useMountEffect(() => {
@@ -508,6 +512,7 @@ export function useShadowPreviewReload({
       heldRef.current?.release();
       heldRef.current = null;
       holdTokenRef.current += 1;
+      dropRestoring();
       setPreviewReloading(false);
     };
   });
@@ -521,5 +526,6 @@ export function useShadowPreviewReload({
     beginShadowReload,
     resetPreviewSlots,
     previewGeneration,
+    onLiveLoaded,
   };
 }

@@ -422,6 +422,7 @@ export function useTimelinePlayer({
     beginShadowReload,
     resetPreviewSlots,
     previewGeneration,
+    onLiveLoaded,
   } = useShadowPreviewReload({
     iframeRef,
     getAdapter,
@@ -569,13 +570,21 @@ export function useTimelinePlayer({
     });
   }, [applyPlaybackRate, applyPreviewAudioState]);
 
+  const onLiveIframeLoad = useCallback(
+    (context?: number) => {
+      onIframeLoad(context);
+      onLiveLoaded();
+    },
+    [onIframeLoad, onLiveLoaded],
+  );
+
   return {
     iframeRef,
     play,
     pause,
     togglePlay,
     seek,
-    onIframeLoad,
+    onIframeLoad: onLiveIframeLoad,
     refreshPlayer,
     saveSeekPosition,
     resetPlayer,

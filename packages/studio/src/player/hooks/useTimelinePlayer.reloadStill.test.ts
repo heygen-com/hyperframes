@@ -123,16 +123,32 @@ describe("a reload behind the host's still", () => {
     expect(harness.getApi().previewSlots).toEqual([{ gen: 0, role: "live" }]);
     expect(release).not.toHaveBeenCalled();
 
-    // The live slot mounts again: its new frame's load drops the still.
-    const again = makeFakeIframe(makeAdapterWindow().win);
+    // The live slot mounts again and loads at once, as a cached page does: that load drops the still.
     act(() => {
-      harness.getApi().iframeRef.current = again;
-      vi.advanceTimersByTime(100);
-    });
-    act(() => {
-      again.dispatchEvent(new Event("load"));
+      harness.getApi().iframeRef.current = makeFakeIframe(makeAdapterWindow().win);
+      harness.getApi().onIframeLoad();
       vi.advanceTimersByTime(3_000);
     });
+    expect(release).toHaveBeenCalledTimes(1);
+    unmount(harness.root);
+  });
+
+  it("drops a still kept for a give-up even if the live page never loads again", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const release = vi.fn();
+    const harness = renderTimelinePlayerHarness({ holdPreviewStill: async () => release });
+    act(() => {
+      harness.getApi().iframeRef.current = makeFakeIframe(makeAdapterWindow().win);
+      harness.getApi().onIframeLoad();
+    });
+    await act(async () => {
+      harness.getApi().refreshPlayer();
+      await Promise.resolve();
+    });
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS * SHADOW_READY_BUDGETS));
+    expect(release).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS));
     expect(release).toHaveBeenCalledTimes(1);
     unmount(harness.root);
   });
