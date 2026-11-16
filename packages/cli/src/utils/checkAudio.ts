@@ -156,7 +156,7 @@ async function inspectClip(
   dependencies: AudioCheckDependencies,
 ): Promise<CheckFinding[]> {
   const path = mediaPath(clip.src, projectDir);
-  // ponytail: remote sources are not fetched; missing local files are lint's audio_src_not_found.
+  // ponytail: mediaPath is null for a remote source; missing local files are lint's audio_src_not_found.
   if (path === null || path === clip.src || !existsSync(path)) return [];
   const problem = await clipProblem(path, clip, dependencies);
   if (!problem) return [];

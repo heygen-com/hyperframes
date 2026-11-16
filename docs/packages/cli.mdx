@@ -1291,6 +1291,10 @@ a source with no audio track or that cannot be read as audio (error: render
 stops), a clip that starts past the end of its file, a clip whose played part is
 silent (warnings), and a film with no sound at all (info).
 
+`check` opens no remote media. A remote `src` is not probed for audio or HDR: a
+remote `<video>` the render may hear counts as sound, and `hdr.remoteNotInspected`
+lists the remote videos and images whose HDR colour space was not read.
+
 When the browser never ran (no composition to load, a linter crash, or a
 browser launch failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast`
 sections are empty, not clean.
@@ -1420,7 +1424,7 @@ whole-composition `keepsMoving` assertion sets its own limit.
 #### Audio findings
 
 The `audio` section checks the clips the render mixes. It runs even when lint
-stops the browser pass, and remote sources are not fetched.
+stops the browser pass, and remote sources are not probed.
 
 | Code                           | Severity | Triggers when                                                                                                | Fix                                                                                          |
 | ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
@@ -2221,7 +2225,7 @@ duration, element counts by type, track count, and total size.
 ID, duration, resolution, and element count. Both take `--json`.
 `npx hyperframes info --media --json` adds `heard`: every clip the render mixes, scenes included, on the film's clock,
 each with `src`, `start`, `end` (where it stops, or where its media runs out if sooner; `0` runs to the media's end),
-`mediaStart`, `playbackRate`, `volume` and `type`.
+`mediaStart`, `playbackRate`, `volume` and `type`. A remote clip is not probed, so it keeps the end it was given.
 
 ### `update`
 

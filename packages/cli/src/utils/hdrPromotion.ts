@@ -35,5 +35,11 @@ export async function inspectHdrAutoPromotion(
 export function remoteMediaNotInspected(media: Pick<ProjectMedia, "videos" | "images">): string[] {
   if (gradingKeepsSdr("auto", media)) return [];
   const remote = [...media.videos, ...media.images].filter(({ src }) => isRemoteMediaSrc(src));
-  return [...new Set(remote.map(({ src }) => sanitizeHdrAutoPromotionAsset(src)))];
+  return [
+    ...new Set(remote.map(({ src }) => withoutCredentials(sanitizeHdrAutoPromotionAsset(src)))),
+  ];
+}
+
+function withoutCredentials(url: string): string {
+  return url.replace(/^(https?:\/\/)[^/@]*@/i, "$1");
 }

@@ -74,7 +74,7 @@ describe("inspectHdrAutoPromotion", () => {
     const extractMetadata = vi.fn(async () => metadata(HDR));
     const media = bundledMedia(
       ["https://media.example/remote-hdr.mp4?token=secret"],
-      ["http://127.0.0.1:8080/hdr.png"],
+      ["http://user:pass@127.0.0.1:8080/hdr.png"],
     );
 
     await expect(inspectHdrAutoPromotion(PROJECT, media, extractMetadata)).resolves.toBeNull();
