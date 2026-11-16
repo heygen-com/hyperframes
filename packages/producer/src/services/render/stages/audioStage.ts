@@ -61,7 +61,6 @@ export interface AudioStageInput {
   log?: ProducerLogger;
   /** Leave the delivered PCM in `workDir` for the assemble stage; its owner removes the dir. */
   keepDeliverySource?: boolean;
-  /** Called each time an FFmpeg the stage runs writes more. */
   onFfmpegProgress?: () => void;
 }
 
