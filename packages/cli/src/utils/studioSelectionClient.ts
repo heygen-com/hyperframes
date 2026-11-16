@@ -1,3 +1,4 @@
+import { newPreviewNonce, provesPreviewOwner } from "@hyperframes/core/preview-proof";
 import { existsSync, realpathSync } from "node:fs";
 import { connect } from "node:net";
 import { resolve } from "node:path";
@@ -99,7 +100,7 @@ export async function findPreviewServerForProject(
   const normalizedProjectDir = normalizePath(projectDir);
   const servers = await scan(startPort);
   const embeddedServers = servers.filter(
-    (server) => normalizePath(server.projectDir) === normalizedProjectDir,
+    (server) => server.proven && normalizePath(server.projectDir) === normalizedProjectDir,
   );
   if (options.preferredPort !== undefined) {
     const preferred = embeddedServers.find((server) => server.port === options.preferredPort);
@@ -132,6 +133,17 @@ export function studioApiUrl(server: ActiveServer, route: string): string {
 // is exactly why `--selection`/`--context` failed against a local-studio preview.
 const LOOPBACK_HOSTS = ["127.0.0.1", "[::1]"] as const;
 
+async function provesOwnerAt(
+  origin: string,
+  fetchImpl: (url: string) => Promise<Response>,
+): Promise<boolean> {
+  const nonce = newPreviewNonce();
+  const response = await fetchImpl(`${origin}/__hyperframes_config?nonce=${nonce}`);
+  if (!response.ok) return false;
+  const config = (await response.json()) as { proof?: unknown };
+  return provesPreviewOwner(nonce, config.proof);
+}
+
 async function findViteStudioServerForProject(
   normalizedProjectDir: string,
   fetchImpl: (url: string) => Promise<Response>,
@@ -146,7 +158,7 @@ async function findViteStudioServerForProject(
         const project = payload.projects?.find(
           (candidate) => normalizePath(candidate.dir) === normalizedProjectDir,
         );
-        if (!project) continue;
+        if (!project || !(await provesOwnerAt(`http://${host}:${port}`, fetchImpl))) continue;
         return {
           port,
           host,

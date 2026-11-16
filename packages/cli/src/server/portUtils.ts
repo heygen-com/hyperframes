@@ -10,6 +10,7 @@
  * - Smart port selection with instance reuse
  */
 
+import { newPreviewNonce, provesPreviewOwner } from "@hyperframes/core/preview-proof";
 import net from "node:net";
 import http from "node:http";
 import { execFile } from "node:child_process";
@@ -103,10 +104,13 @@ interface HyperframesConfigResponse {
   serverBuildSignature?: string | null;
   browserGpuMode?: BrowserGpuMode;
   version: string;
+  proof?: string;
+  proven?: boolean;
 }
 
 export type DetectionResult =
   | { type: "match" }
+  | { type: "unproven" }
   | { type: "mismatch"; projectName: string }
   | { type: "not-hyperframes" };
 
@@ -120,12 +124,13 @@ export function detectHyperframesServer(
   expectedServerBuildSignature: string | null = null,
   expectedBrowserGpuMode?: BrowserGpuMode,
 ): Promise<DetectionResult> {
+  const nonce = newPreviewNonce();
   return new Promise<DetectionResult>((resolveResult) => {
     const req = http.get(
       {
         hostname: "127.0.0.1",
         port,
-        path: "/__hyperframes_config",
+        path: `/__hyperframes_config?nonce=${nonce}`,
         timeout: PROBE_TIMEOUT_MS,
       },
       (res) => {
@@ -169,6 +174,7 @@ export function detectHyperframesServer(
               ) {
                 return resolveResult({ type: "mismatch", projectName: json.projectName });
               }
+              if (!provesPreviewOwner(nonce, json.proof)) return resolveResult({ type: "unproven" });
               return resolveResult({ type: "match" });
             }
 
@@ -258,6 +264,8 @@ export interface ActiveServer {
    */
   pidSource?: "os" | "self-reported";
   browserGpuMode?: BrowserGpuMode;
+  /** The server answered this user's preview-token challenge, so it is a preview this user started. */
+  proven?: boolean;
 }
 
 /**
@@ -265,9 +273,15 @@ export interface ActiveServer {
  * Returns the full config or null if not a HyperFrames server.
  */
 function probePort(port: number): Promise<HyperframesConfigResponse | null> {
+  const nonce = newPreviewNonce();
   return new Promise<HyperframesConfigResponse | null>((resolveResult) => {
     const req = http.get(
-      { hostname: "127.0.0.1", port, path: "/__hyperframes_config", timeout: PROBE_TIMEOUT_MS },
+      {
+        hostname: "127.0.0.1",
+        port,
+        path: `/__hyperframes_config?nonce=${nonce}`,
+        timeout: PROBE_TIMEOUT_MS,
+      },
       (res) => {
         if (res.statusCode !== 200) {
           res.resume();
@@ -287,7 +301,8 @@ function probePort(port: number): Promise<HyperframesConfigResponse | null> {
         res.on("end", () => {
           try {
             const json = JSON.parse(data) as HyperframesConfigResponse;
-            resolveResult(json.isHyperframes === true ? json : null);
+            if (json.isHyperframes !== true) return resolveResult(null);
+            resolveResult({ ...json, proven: provesPreviewOwner(nonce, json.proof) });
           } catch {
             resolveResult(null);
           }
@@ -369,6 +384,7 @@ function identityFrom(
     projectDir: config.projectDir,
     version: config.version,
     browserGpuMode: config.browserGpuMode,
+    proven: config.proven === true,
   };
 }
 

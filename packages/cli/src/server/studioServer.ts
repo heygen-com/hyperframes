@@ -5,6 +5,7 @@
  * providing a CLI-specific adapter for single-project, in-process rendering.
  */
 
+import { previewProof } from "@hyperframes/core/preview-proof";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { realpath } from "@hyperframes/core";
@@ -951,8 +952,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   app.get("/__hyperframes_config", (c) => {
     const serve = async () => {
       const serverBuildSignature = await loadPreviewServerBuildSignature();
+      const proof = previewProof(c.req.query("nonce"));
       return c.json({
         isHyperframes: true,
+        ...(proof && { proof }),
         pid: process.pid,
         projectName: projectId,
         projectDir: projectDir,

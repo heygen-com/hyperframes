@@ -221,7 +221,7 @@ function devProjectApi(): Plugin {
       if (typeof server.config.server.host === "string")
         allowedHosts.push(server.config.server.host);
       server.middlewares.use((req, res, next) => {
-        const url = req.url ?? "";
+        const url = new URL(req.url ?? "/", "http://preview").pathname;
         if (url !== "/__hyperframes_config" && !url.startsWith("/api/")) return next();
         const host = req.headers.host ?? "";
         if (hostHeaderAllowed(host, allowedHosts) || viteAllowsHost(host, allowedHosts))
@@ -238,8 +238,10 @@ function devProjectApi(): Plugin {
       });
 
       server.middlewares.use((req, res, next) => {
-        if (req.url !== "/__hyperframes_config") return next();
-        const payload = previewConfigPayload(process.env, process.pid, studioPkg.version);
+        const url = new URL(req.url ?? "/", "http://preview");
+        if (url.pathname !== "/__hyperframes_config") return next();
+        const nonce = url.searchParams.get("nonce");
+        const payload = previewConfigPayload(process.env, process.pid, studioPkg.version, nonce);
         if (!payload) return next();
         res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
         res.end(JSON.stringify(payload));

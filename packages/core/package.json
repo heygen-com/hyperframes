@@ -92,6 +92,12 @@
       "import": "./src/atomicFile.ts",
       "types": "./src/atomicFile.ts"
     },
+    "./preview-proof": {
+      "bun": "./src/previewProof.ts",
+      "node": "./dist/previewProof.js",
+      "import": "./src/previewProof.ts",
+      "types": "./src/previewProof.ts"
+    },
     "./cache-dir": {
       "bun": "./src/cacheDir.ts",
       "node": "./dist/cacheDir.js",
@@ -711,6 +717,10 @@
       "./atomic-file": {
         "import": "./dist/atomicFile.js",
         "types": "./dist/atomicFile.d.ts"
+      },
+      "./preview-proof": {
+        "import": "./dist/previewProof.js",
+        "types": "./dist/previewProof.d.ts"
       },
       "./cache-dir": {
         "import": "./dist/cacheDir.js",
