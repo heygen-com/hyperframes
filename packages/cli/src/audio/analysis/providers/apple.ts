@@ -5,7 +5,11 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AudioAnalysisProvider, AudioSignal } from "@hyperframes/core/audio-analysis";
 import { AVAILABLE, runFile, unavailable, withWavFile } from "./shared.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 
 const SOUND_ANALYSIS = "/System/Library/Frameworks/SoundAnalysis.framework";
 const MUSIC_UNDERSTANDING_MACOS = 27;
@@ -63,7 +67,7 @@ function atLeastOneWindow(signal: AudioSignal): AudioSignal {
   };
 }
 
-const helperDir = () => hyperframesCacheDir("audio-helpers");
+const helperDir = () => join(trustedCacheRoot(), "audio-helpers");
 
 function helperPath(name: string, source: string): string {
   const hash = createHash("sha256").update(source).digest("hex").slice(0, 12);
@@ -105,11 +109,13 @@ const builds = new Map<string, Promise<string>>();
 /** The helper compiled from `source`, built once per source into the cache; Swift is never fetched. */
 function compiled(name: string, source: string): Promise<string> {
   const binary = helperPath(name, source);
-  if (existsSync(binary)) return Promise.resolve(binary);
+  if (existsSync(binary) && !foreignWritablePath(binary, trustedCacheRoot())) {
+    return Promise.resolve(binary);
+  }
   let build = builds.get(binary);
   if (!build) {
     build = (async () => {
-      await mkdir(helperDir(), { recursive: true });
+      await mkdir(helperDir(), { recursive: true, mode: 0o700 });
       const file = `${binary}.swift`;
       await writeFile(file, source);
       const args = swiftcArgs(file, `${binary}.tmp`);
@@ -117,6 +123,7 @@ function compiled(name: string, source: string): Promise<string> {
         throw new Error(`could not build the ${name} helper: ${firstLine(error)}`);
       });
       await rename(`${binary}.tmp`, binary);
+      sealCacheInstall(binary, trustedCacheRoot());
       return binary;
     })();
     builds.set(binary, build);

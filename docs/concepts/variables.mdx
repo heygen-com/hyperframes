@@ -248,9 +248,10 @@ npx hyperframes render \
 Every output stays inside the folder written before the first placeholder
 (`renders/` here). A row value may name a subfolder of it, but a value that
 leads outside it, such as `../other`, stops the batch before anything renders.
-A template that starts with a placeholder, such as `--output "{path}"`, names
-no folder, so each row's value is used as the whole output path, absolute
-paths included.
+A template that starts with a placeholder, such as `{name}.mp4`, keeps every
+output inside the folder you run the command from. Only `--output "{path}"`,
+the placeholder alone, uses each row's value as the whole output path,
+absolute paths included.
 
 Start with the default single-row concurrency. Increase `--batch-concurrency`
 only after one real render is stable and the machine has enough memory for

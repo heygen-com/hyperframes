@@ -11,6 +11,7 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { flushSync } from "react-dom";
 import { Player } from "../../player";
 import { postFrameDisplayScale } from "../../player/lib/runtimeProtocol";
 import type { NLEContextValue } from "./NLEContext";
@@ -148,11 +149,10 @@ export const NLEPreview = memo(function NLEPreview({
     if (!viewport) return;
 
     const updateStageSize = () => {
-      const rect = viewport.getBoundingClientRect();
       setStageSize(
         resolvePreviewStageSize(
-          rect.width,
-          rect.height,
+          viewport.clientWidth,
+          viewport.clientHeight,
           compositionSize ??
             (hintWidth && hintHeight ? { width: hintWidth, height: hintHeight } : null),
           portrait,
@@ -163,7 +163,8 @@ export const NLEPreview = memo(function NLEPreview({
     };
 
     updateStageSize();
-    const observer = new ResizeObserver(updateStageSize);
+    const resizeBeforePaint = () => flushSync(updateStageSize);
+    const observer = new ResizeObserver(resizeBeforePaint);
     observer.observe(viewport);
     return () => observer.disconnect();
   }, [compositionSize, hintWidth, hintHeight, portrait, gutterPx, insetPx]);

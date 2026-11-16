@@ -40,6 +40,7 @@ describe("SwiftShader launch environment", () => {
   const saved = Object.fromEntries(Object.keys(PINS).map((name) => [name, process.env[name]]));
 
   beforeEach(() => {
+    vi.stubEnv("PRODUCER_HEADLESS_SHELL_PATH", process.execPath);
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
 
@@ -51,6 +52,7 @@ describe("SwiftShader launch environment", () => {
       if (value === undefined) delete process.env[name];
       else process.env[name] = value;
     }
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 

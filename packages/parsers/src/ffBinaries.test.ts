@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import {
   type PathLike,
   chmodSync,
@@ -475,5 +476,73 @@ describe("isX86OnlyMachO", () => {
     expect(isX86OnlyMachO(fixture([0xca, 0xfe, 0xba, 0xbe, 0x00, 0x00, 0x00, 0x02]))).toBe(false);
     expect(isX86OnlyMachO(fixture([0x23, 0x21, 0x2f, 0x62, 0x69, 0x6e, 0x2f, 0x73]))).toBe(false);
     expect(isX86OnlyMachO("/nonexistent/ffprobe")).toBe(false);
+  });
+});
+
+describe("mediaInputFormatArgs", () => {
+  const formatsOf = (args: string[]) => args[args.indexOf("-format_whitelist") + 1]!.split(",");
+
+  afterEach(async () => (await importFresh())._setDemuxerListingForTests());
+
+  it("reads an ffmpeg 4 listing, which has no device column", async () => {
+    const { _setDemuxerListingForTests, mediaInputFormatArgs } = await importFresh();
+    _setDemuxerListingForTests(
+      [
+        "File formats:",
+        " D. = Demuxing supported",
+        " .E = Muxing supported",
+        " --",
+        " D  3dostr          3DO STR",
+        " D  dash            Dynamic Adaptive Streaming over HTTP",
+        " D  mov,mp4,m4a     QuickTime / MOV",
+      ].join("\n"),
+    );
+    expect(formatsOf(mediaInputFormatArgs("/ffprobe"))).toEqual(["3dostr", "mov", "mp4", "m4a"]);
+  });
+
+  it("leaves out the demuxers that draw a text file as a picture", async () => {
+    const { _setDemuxerListingForTests, mediaInputFormatArgs } = await importFresh();
+    _setDemuxerListingForTests(
+      [
+        " D  adf             Artworx Data Format",
+        " D  bin             Binary text",
+        " D  idf             iCE Draw File",
+        " D  mov,mp4,m4a     QuickTime / MOV",
+        " D  tty             Tele-typewriter",
+        " D  xbin            eXtended BINary text (XBIN)",
+      ].join("\n"),
+    );
+    expect(formatsOf(mediaInputFormatArgs("/ffmpeg"))).toEqual(["mov", "mp4", "m4a"]);
+  });
+
+  it("keeps the installed ffmpeg from decoding a text file into a frame", async () => {
+    vi.resetModules();
+    vi.doUnmock("node:fs");
+    vi.doUnmock("node:child_process");
+    const { findFfBinary, mediaInputFormatArgs } = await importFresh();
+    const ffmpeg = findFfBinary("ffmpeg");
+    if (!ffmpeg) return;
+    const dir = mkdtempSync(join(tmpdir(), "hf-text-art-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const note = join(dir, "note.asc");
+    writeFileSync(note, "API_KEY=not-a-video\nsecond line\n");
+    const frame = join(dir, "frame.png");
+    const args = ["-v", "error", "-y", ...mediaInputFormatArgs(ffmpeg), "-i", note];
+    spawnSync(ffmpeg, [...args, "-frames:v", "1", frame]);
+    expect(existsSync(frame)).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")("asks a binary that failed once again", async () => {
+    const { mediaInputFormatArgs, SELF_CONTAINED_FORMATS } = await importFresh();
+    const dir = mkdtempSync(join(tmpdir(), "hf-demuxers-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const binary = join(dir, "ffprobe");
+    writeFileSync(
+      binary,
+      `#!/bin/sh\nif [ -e "${dir}/ran" ]; then echo ' D  wav  WAV'; else touch "${dir}/ran"; exit 1; fi\n`,
+    );
+    chmodSync(binary, 0o755);
+    expect(mediaInputFormatArgs(binary)).toEqual(["-format_whitelist", SELF_CONTAINED_FORMATS]);
+    expect(mediaInputFormatArgs(binary)).toEqual(["-format_whitelist", "wav"]);
   });
 });

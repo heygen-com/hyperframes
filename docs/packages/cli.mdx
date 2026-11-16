@@ -113,6 +113,18 @@ machine-readable `code` and, when there is a next step, a `hint`:
 Some commands add their own fields next to `error`, such as `findings` from
 `lint` or `reason` and `fix` from a refused `timeline` edit.
 
+A failure with no code of its own is `runtime_error`, or `usage_error` for a bad
+command line. These causes have their own, so a script can branch without reading
+`message`:
+
+| `code` | Cause |
+| --- | --- |
+| `chrome_not_found` | `render` found no Chrome to use, or could not install one |
+| `ffmpeg_not_found` | `render` found no FFmpeg |
+| `ffprobe_not_found` | `render` found no FFprobe |
+| `render_locked` | `render --no-wait` while another render holds this account's slot |
+| `node_version_unsupported` | The CLI was started on a Node.js older than 22 |
+
 **The project `.env`.** The `.env` in the current directory sets only the CLI's own
 settings: `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, `ELEVENLABS_API_KEY`, `FIGMA_TOKEN`, and the
 vision keys, models, Vertex settings and timeout, and the telemetry opt-outs `HYPERFRAMES_NO_TELEMETRY` and `DO_NOT_TRACK`. A variable already in your environment wins. Any
@@ -1291,6 +1303,10 @@ a source with no audio track or that cannot be read as audio (error: render
 stops), a clip that starts past the end of its file, a clip whose played part is
 silent (warnings), and a film with no sound at all (info).
 
+`check` opens no remote media. A remote `src` is not probed for audio or HDR: a
+remote `<video>` the render may hear counts as sound, and `hdr.remoteNotInspected`
+lists the remote videos and images whose HDR colour space was not read.
+
 When the browser never ran (no composition to load, a linter crash, or a
 browser launch failure), `browserSkipped` is `true` and the `layout`, `motion` and `contrast`
 sections are empty, not clean.
@@ -1420,7 +1436,7 @@ whole-composition `keepsMoving` assertion sets its own limit.
 #### Audio findings
 
 The `audio` section checks the clips the render mixes. It runs even when lint
-stops the browser pass, and remote sources are not fetched.
+stops the browser pass, and remote sources are not probed.
 
 | Code                           | Severity | Triggers when                                                                                                | Fix                                                                                          |
 | ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
@@ -1708,6 +1724,7 @@ npx hyperframes diff original.mp4 renders/final.mp4 --segments segments.md --sbs
 | `--offset`                                | Compare the original at t with yours at t + offset seconds           |
 | `--segments`                              | A verdict per `## S01 · a–b s` segment of a file                     |
 | `--drawn`                                 | Score one drawn element's box `x,y,w,h[,a-b]` by itself (repeatable) |
+| `--hide`                                  | Score a project's layer (a CSS selector) by what it adds             |
 | `--min-mean` / `--min-p05` / `--min-cell` | The SSIM bars to pass                                                |
 | `--sbs`                                   | Also write an original-beside-yours video                            |
 | `--out`                                   | Folder for the sheet and log (default `.hyperframes/diff/<yours>`)   |
@@ -1721,6 +1738,17 @@ says when frames were left out. `frames.tsv` keeps the original's time in `t`;
 yours' time is t + offset. The sound keeps its own offset measurement, the
 duration is reported as not measured, and the JSON result echoes `offset`. An
 offset that leaves no overlap is refused with a fix.
+
+`--hide ".cap"` captures a project folder a second time with that layer hidden.
+Where the two captures differ is the layer's footprint, and over it each moment
+scores `benefit = 1 − MAE(original, with) / MAE(original, without)`: 1 matches the
+original, 0 is no better than leaving the layer out, and below 0 is worse. Each
+moment also fits where the original's copy of the layer sits and how large it is
+(±40 px, 80–120%) and says it as an instruction, such as `move down 10 px, make it
+15% smaller`. The benefit is relative to how well the backdrop matches, so compare
+moments within one run. Where leaving the layer out already matches the original
+(footage that carries the original's own captions), the moment is not scored. The
+result's `layer` reports the moments; it does not change `pass`.
 
 ## Edit from the command line
 
@@ -1930,9 +1958,18 @@ landing, so a second local or `--docker` render from the same user account waits
 for the first and says which render it is waiting for (pid and project). The
 slot is a lock file in that account's HyperFrames cache folder, so renders by
 different user accounts do not queue behind each other; set
-`HYPERFRAMES_CACHE_DIR` to a folder they share to give them one slot. A render
-whose process died frees its slot on its own. `--workers` is unaffected: it sets
-the parallelism inside the one render that runs.
+`HYPERFRAMES_RENDER_LOCK_DIR` to the same folder in each account to give them
+one slot. That folder holds lock records only: the first render creates it
+writable by every account but sticky, so no account can delete or replace
+another's records. A record that names a live process of another account
+counts as a running render, so an account in the group can hold the slot by
+naming a process that never ends; `HYPERFRAMES_RENDER_LOCK=off` renders without
+the slot. Do not share `HYPERFRAMES_CACHE_DIR` between accounts: it holds the
+browser, packages and helpers each account runs. HyperFrames never
+runs a cached one that another account can write: it installs its own copy,
+under `~/.cache/hyperframes` when another account can write the cache folder
+itself. A render whose process died frees its slot on its own. `--workers` is
+unaffected: it sets the parallelism inside the one render that runs.
 
 Low-memory detection reads **host** RAM, not cgroup or container limits, so
 containerised callers — including `--docker` — should set
@@ -2221,7 +2258,7 @@ duration, element counts by type, track count, and total size.
 ID, duration, resolution, and element count. Both take `--json`.
 `npx hyperframes info --media --json` adds `heard`: every clip the render mixes, scenes included, on the film's clock,
 each with `src`, `start`, `end` (where it stops, or where its media runs out if sooner; `0` runs to the media's end),
-`mediaStart`, `playbackRate`, `volume` and `type`.
+`mediaStart`, `playbackRate`, `volume` and `type`. A remote clip is not probed, so it keeps the end it was given.
 
 ### `update`
 
@@ -2547,13 +2584,20 @@ account shows the change, so an agent's run carries on by itself. The page is on
 the web app at hyperframes.studio. `HYPERFRAMES_PLANS_URL` and
 `HYPERFRAMES_CREDITS_URL` point it at another page.
 
+With no action it shows your plan and, on a paid plan, the page where you manage or cancel it
+(hyperframes.studio/billing, `HYPERFRAMES_BILLING_URL` points it elsewhere). `--manage` opens that page;
+when no one is at the terminal it prints the link instead.
+
 ```bash
+npx hyperframes billing
+npx hyperframes billing --manage
 npx hyperframes billing subscribe
 npx hyperframes billing add-credits --needed 180
 ```
 
 | Flag        | Description                                                                |
 | ----------- | -------------------------------------------------------------------------- |
+| `--manage`  | Open the page to manage or cancel your plan                                |
 | `--needed`  | Credits the waiting step needs; `add-credits` waits until the balance covers it |
 | `--feature` | The feature that sent the person here, so a purchase is credited to it |
 | `--session` | The run to credit the purchase to, with `--feature` |
@@ -2707,7 +2751,11 @@ Keep them narrow — a dynamically selected asset may have no static reference t
 protect it.
 Env files (`.env`, `.env.*`, `.envrc`, at any depth) and Studio's private records
 under `.hyperframes/` are always left out, even when a rule re-includes them, and
-each one is reported as left out with the reason `private`.
+each one is reported as left out with the reason `private`. A `.hyperframes/`
+folder in a subfolder, such as a project copied into `compositions/`, is private
+as a whole: everything in it is left out, assets stored there included, and
+Studio, preview and render do not serve it either. Keep media a composition
+loads outside `.hyperframes/`.
 
 When the zip would be over the upload limit, media no page, script or variable
 names is left out first, then the largest media files the project names by path

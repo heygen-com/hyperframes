@@ -108,6 +108,7 @@ describe("endPreviewBeforeOpening", () => {
       projectName: "hyperframes-open-project",
       projectDir,
       version: "test",
+      proven: true,
       pid: String(background.pid),
       pidSource: "os",
     };

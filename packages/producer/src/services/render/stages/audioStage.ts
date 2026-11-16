@@ -26,6 +26,7 @@ import {
   processCompositionAudio,
   removeScratch,
   collectScratchLeftovers,
+  withFfmpegProgress,
   type AudioProcessingFailure,
   type MixResult,
 } from "@hyperframes/engine";
@@ -60,6 +61,7 @@ export interface AudioStageInput {
   log?: ProducerLogger;
   /** Leave the delivered PCM in `workDir` for the assemble stage; its owner removes the dir. */
   keepDeliverySource?: boolean;
+  onFfmpegProgress?: () => void;
 }
 
 export interface AudioStageResult {
@@ -100,7 +102,8 @@ function assertAudioNotInterrupted(failures: readonly AudioProcessingFailure[] |
 
 export function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {
   return collectScratchLeftovers(
-    () => runAudioStageScoped(input),
+    () =>
+      withFfmpegProgress(input.onFfmpegProgress ?? (() => {}), () => runAudioStageScoped(input)),
     (left) => {
       if (left.length > 0) input.log?.warn("[audio] scratch left behind", { count: left.length });
     },

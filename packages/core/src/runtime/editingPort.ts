@@ -22,6 +22,7 @@ import type { EditingGestureStart } from "./editingGestureStart";
 import type { EditingLayer } from "./editingLayers";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
+import { parseCombo } from "../keyCombo";
 
 export {
   buildStableSelector,
@@ -107,6 +108,7 @@ export const EDITING_REQUEST_KINDS = [
   "draft",
   "gesture-start",
   "console-errors",
+  "watch-keys",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -122,6 +124,24 @@ export interface EditingRuntimeSnapshot {
 }
 
 export const MAX_DRAFT_PX = 100_000;
+export const MAX_WATCHED_KEYS = 32;
+
+/** A keystroke the frame forwards for `watch-keys`, as an unasked port message with no id. */
+export interface EditingKeyEvent {
+  type: "keydown" | "keyup";
+  key: string;
+  code: string;
+  altKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  shiftKey: boolean;
+  repeat: boolean;
+}
+export type EditingKeyMessage = {
+  v: typeof EDITING_PROTOCOL_VERSION;
+  event: "key";
+  key: EditingKeyEvent;
+};
 
 /** A gesture's draft on one element: null puts that part back; `end` keeps what is drawn or restores. */
 export type EditingDraft =
@@ -194,6 +214,9 @@ export interface EditingRequests {
     result: { elements: Array<EditingGestureStart | null>; snap: EditingElementBox[] };
   };
   "console-errors": { params: { from: number }; result: { errors: string[]; truncated: boolean } };
+  /** The frame cancels these combos outside the elements that own keys, and forwards them and their
+   * keyups to this port; an empty list stops. */
+  "watch-keys": { params: { combos: string[] }; result: { watching: number } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -313,6 +336,32 @@ function draftList(params: unknown): EditingParams<"draft"> | null {
   return parsed.includes(null) ? null : { drafts: parsed as EditingDraft[] };
 }
 
+const MAX_COMBO_LENGTH = 64;
+
+function comboList(params: unknown): EditingParams<"watch-keys"> | null {
+  if (!hasKeys(params, "combos") || !Array.isArray(params.combos)) return null;
+  const { combos } = params;
+  if (combos.length > MAX_WATCHED_KEYS) return null;
+  const valid = combos.every(
+    (combo) => typeof combo === "string" && combo.length <= MAX_COMBO_LENGTH && parseCombo(combo),
+  );
+  return valid ? { combos } : null;
+}
+
+const KEY_EVENT_FIELDS = "altKey,code,ctrlKey,key,metaKey,repeat,shiftKey,type";
+const KEY_FLAGS = ["altKey", "ctrlKey", "metaKey", "shiftKey", "repeat"] as const;
+
+function keyEvent(value: unknown): EditingKeyEvent | null {
+  if (!hasKeys(value, KEY_EVENT_FIELDS)) return null;
+  const { type, key, code } = value;
+  if (type !== "keydown" && type !== "keyup") return null;
+  const short = (text: unknown) => typeof text === "string" && text.length <= MAX_COMBO_LENGTH;
+  if (!short(key) || !short(code)) return null;
+  return KEY_FLAGS.every((flag) => typeof value[flag] === "boolean")
+    ? (value as unknown as EditingKeyEvent)
+    : null;
+}
+
 const PARAM_PARSERS: {
   [K in EditingRequestKind]: (params: unknown) => EditingParams<K> | null;
 } = {
@@ -353,6 +402,7 @@ const PARAM_PARSERS: {
   "gesture-start": handleList,
   "console-errors": (params) =>
     hasKeys(params, "from") && isOffset(params.from) ? { from: params.from } : null,
+  "watch-keys": comboList,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
@@ -390,6 +440,8 @@ export interface EditingPortClient {
     params: EditingParams<K>,
     options?: { timeoutMs?: number },
   ): Promise<EditingResult<K>>;
+  /** Calls `listener` with each key the frame forwards for `watch-keys`; returns the unsubscribe. */
+  onKey(listener: (key: EditingKeyEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
   dispose(): void;
 }
@@ -446,6 +498,7 @@ export function createEditingPortClient(options: {
 }): EditingPortClient {
   const { iframe, timeoutMs = 5_000, host = window } = options;
   const pending = new Map<number, Pending>();
+  const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   let port: MessagePort | null = null;
   let disposed = false;
   let lastId = 0;
@@ -467,7 +520,10 @@ export function createEditingPortClient(options: {
   };
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
-    if (isPlainRecord(data) && typeof data.id === "number") settle(data.id, replyOutcome(data));
+    if (!isPlainRecord(data)) return;
+    if (typeof data.id === "number") return settle(data.id, replyOutcome(data));
+    const key = data.v === EDITING_PROTOCOL_VERSION && data.event === "key" && keyEvent(data.key);
+    if (key) for (const listener of keyListeners) listener(key);
   };
   const connect = () => {
     try {
@@ -516,9 +572,14 @@ export function createEditingPortClient(options: {
       ready.then(send, () => {});
       return result as Promise<EditingResult<typeof kind>>;
     },
+    onKey(listener) {
+      keyListeners.add(listener);
+      return () => keyListeners.delete(listener);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
+      keyListeners.clear();
       host.removeEventListener("message", onWindowMessage);
       port?.close();
       rejectReady(new EditingPortError("disposed", "client disposed"));

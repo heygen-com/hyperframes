@@ -15,11 +15,15 @@ import { dirname, join } from "node:path";
 import { downloadFile } from "../../utils/download.js";
 import { isMissingPackageError } from "../../utils/missingPackage.js";
 import { VERSION } from "../../version.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 import { cliSourced } from "../../utils/sourceTag.js";
 
 const DOCS_URL = cliSourced("https://hyperframes.heygen.com/deploy/aws-lambda");
-const HANDLER_CACHE_DIR = hyperframesCacheDir("lambda-handler");
+const HANDLER_CACHE_DIR = join(trustedCacheRoot(), "lambda-handler");
 
 type AdapterSdk = typeof import("@hyperframes/aws-lambda/sdk");
 
@@ -71,14 +75,18 @@ export async function fetchPinned(
 ): Promise<string> {
   const dir = join(deps.cacheDir, `${pinned.version}-${pinned.sha256}`);
   const file = join(dir, asset.fileName);
-  if (existsSync(file) && (await sha256File(file)) === pinned.sha256) {
+  if (
+    existsSync(file) &&
+    !foreignWritablePath(file, deps.cacheDir) &&
+    (await sha256File(file)) === pinned.sha256
+  ) {
     deps.log(`→ Using verified ${asset.label} ${pinned.version} from ${dir}`);
     return file;
   }
   // Override for mirrors and pre-release testing; the pinned sha256 still decides.
   const url = asset.urlOverride ?? pinned.url;
   deps.log(`→ Downloading ${asset.label} ${pinned.version} (${pinned.bytes} bytes)`);
-  mkdirSync(dir, { recursive: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
   const partial = `${file}.download`;
   await deps.download(url, partial, { maxBytes: pinned.bytes });
   const actual = await sha256File(partial);
@@ -91,6 +99,7 @@ export async function fetchPinned(
     );
   }
   renameSync(partial, file);
+  sealCacheInstall(file, deps.cacheDir);
   deps.log(`→ Verified sha256 ${pinned.sha256}`);
   return file;
 }

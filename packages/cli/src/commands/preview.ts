@@ -199,7 +199,7 @@ export default defineCommand({
     },
     "lint-verbose": {
       type: "boolean",
-      description: "Show full lint findings on startup (default: a one-line summary)",
+      description: "Show full lint findings on startup instead of a one-line summary",
       default: false,
     },
     open: {

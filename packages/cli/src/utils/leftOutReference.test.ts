@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { stagePublishFiles } from "./publishProject.js";
 import type { LeftOutReference } from "./leftOutReference.js";
-import { terminalText } from "./terminalText.js";
+import { terminalText } from "@hyperframes/core";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));

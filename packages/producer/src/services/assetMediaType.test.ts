@@ -1,7 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { NOT_MEDIA_PAYLOAD, NotMediaPayloadError } from "@hyperframes/engine";
 import {
   ASSET_MEDIA_TYPE_MISMATCH,
@@ -262,6 +270,14 @@ describe("preflightCompositionAssetMediaTypes", () => {
       },
     );
 
+    it("refuses a manifest as an image source", async () => {
+      writeFileSync(
+        join(projectDir, "manifest.png"),
+        '<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011"><Period/></MPD>',
+      );
+      await expect(run({ imageSrc: "manifest.png" })).rejects.toBeInstanceOf(NotMediaPayloadError);
+    });
+
     it("leaves an SVG image source alone", async () => {
       // ffprobe reads SVG through its svg_pipe demuxer, so an XML body is a
       // legitimate <img> payload and must not be swept up by the sniff.
@@ -289,7 +305,7 @@ describe("dropMediaOutsideProject", () => {
   const workDir = join(root, "work");
   afterAll(() => rmSync(root, { recursive: true, force: true }));
 
-  const keptVideos = (srcs: Record<string, string>) => {
+  const keptVideos = (srcs: Record<string, string>, allowOutsideProjectAssets = false) => {
     mkdirSync(projectDir, { recursive: true });
     mkdirSync(join(root, "outside"), { recursive: true });
     writeFileSync(join(root, "outside", "secret.txt"), "secret");
@@ -299,9 +315,31 @@ describe("dropMediaOutsideProject", () => {
     });
     const composition = { videos: Object.entries(srcs).map(video), audios: [], images: [] };
     const log = { error() {}, info() {}, debug() {}, warn() {} };
-    dropMediaOutsideProject({ projectDir, workDir, composition, log });
+    dropMediaOutsideProject({ projectDir, workDir, composition, log, allowOutsideProjectAssets });
     return composition.videos.map((v) => v.id);
   };
+
+  it.each([false, true])(
+    "drops media that names a private project file (outside assets allowed: %s)",
+    (allowOutside) => {
+      const srcs = {
+        git: ".git/clip.mp4",
+        app: ".hyperframes/clip.mp4",
+        agent: ".claude/clip.mp4",
+        ssh: "media/.ssh/clip.mp4",
+        key: "media/id_rsa",
+        link: "linked.mp4",
+        local: "media/clip.mp4",
+      };
+      for (const src of Object.values(srcs).filter((src) => src !== "linked.mp4")) {
+        mkdirSync(dirname(join(projectDir, src)), { recursive: true });
+        writeFileSync(join(projectDir, src), "x");
+      }
+      rmSync(join(projectDir, "linked.mp4"), { force: true });
+      symlinkSync(join(projectDir, ".git", "clip.mp4"), join(projectDir, "linked.mp4"));
+      expect(keptVideos(srcs, allowOutside)).toEqual(["local"]);
+    },
+  );
 
   it("drops a URL scheme followed by parent folders, in any letter case", () => {
     const schemes = ["data:", "DATA:", "blob:", "Blob:", "about:", "https:", "HTTP:"];

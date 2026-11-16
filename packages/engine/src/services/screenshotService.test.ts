@@ -727,9 +727,9 @@ describe("video-frame injection respects ancestor visibility", () => {
     expect(sibling?.style.visibility).toBe("visible");
   });
 
-  it("does not copy color-grading source suppression opacity to the injected frame", async () => {
+  it("copies a color-graded video's animated opacity to the injected frame", async () => {
     const { teardown, setup } = withGlobals(
-      setupHostHiddenScenario({}, { videoStyle: { opacity: "0" } }),
+      setupHostHiddenScenario({}, { videoStyle: { opacity: "0.4" } }),
     );
     setup.video.setAttribute("data-hf-color-grading-source-hidden", "true");
 
@@ -747,15 +747,15 @@ describe("video-frame injection respects ancestor visibility", () => {
 
     const sibling = setup.video.nextElementSibling as HTMLElement | null;
     expect(sibling?.classList.contains("__render_frame__")).toBe(true);
-    expect(sibling?.style.opacity).toBe("1");
+    expect(sibling?.style.opacity).toBe("0.4");
   });
 
-  it("repairs stale injected-frame opacity while syncing color-graded active videos", async () => {
+  it("leaves the injected frame's opacity alone while syncing color-graded active videos", async () => {
     const { teardown, setup } = withGlobals(setupHostHiddenScenario({}));
     setup.video.setAttribute("data-hf-color-grading-source-hidden", "true");
     const seededImg = setup.document.createElement("img");
     seededImg.classList.add("__render_frame__");
-    seededImg.style.opacity = "0";
+    seededImg.style.opacity = "0.4";
     setup.video.parentNode?.insertBefore(seededImg, setup.video.nextSibling);
     const setSourceVisibility = vi.fn();
     (setup.window as unknown as { __hf: unknown }).__hf = {
@@ -768,7 +768,7 @@ describe("video-frame injection respects ancestor visibility", () => {
       teardown();
     }
 
-    expect(seededImg.style.opacity).toBe("1");
+    expect(seededImg.style.opacity).toBe("0.4");
     expect(seededImg.style.visibility).toBe("visible");
     expect(setSourceVisibility).toHaveBeenCalledWith(setup.video, true);
   });

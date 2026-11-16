@@ -331,7 +331,7 @@ function statusServer(
   saved: PreviewSession | null,
   preferredPort: number | undefined,
 ): ActiveServer | null {
-  const candidates = sameProjectServers(servers, projectDir);
+  const candidates = sameProjectServers(servers, projectDir).filter((server) => server.proven);
   return (
     candidates.find((server) => server.port === preferredPort) ??
     candidates.find((server) => server.port === saved?.port) ??
@@ -518,11 +518,12 @@ function provenStopTargetPid(
   liveServerPid: number,
   dependencies: LifecycleDependencies,
 ): number {
-  if (server.pidSource === "os") return ownedStopTargetPid(saved, liveServerPid, dependencies);
+  if (server.pidSource === "os" && server.proven)
+    return ownedStopTargetPid(saved, liveServerPid, dependencies);
   if (saved && isCurrentPreviewWrapper(saved, dependencies)) return saved.pid;
   throw new Error(
-    `preview ownership could not be proven for ${resolve(projectDir)}: the system did not say which process listens on port ${server.port}. ` +
-      "Stop that preview from the terminal it runs in.",
+    `preview ownership could not be proven for ${resolve(projectDir)}: the server on port ${server.port} is not a preview this user started, ` +
+      "or the system did not say which process it is. Stop that preview from the terminal it runs in.",
   );
 }
 
@@ -595,7 +596,7 @@ function reuseExistingPreview(
   candidates: ActiveServer[],
   dependencies: LifecycleDependencies,
 ): Extract<BackgroundPreviewResult, { type: "reused" }> | null {
-  if (!reusableExisting || dependencies.forceNew) return null;
+  if (!reusableExisting?.proven || dependencies.forceNew) return null;
   const unmet = unmetPreferredPort(reusableExisting.port, dependencies.preferredPort);
   if (unmet !== undefined) {
     throw new PreviewServerPortMismatchError(

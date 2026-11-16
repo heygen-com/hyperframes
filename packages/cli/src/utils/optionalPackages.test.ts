@@ -1,12 +1,15 @@
 // fallow-ignore-file code-duplication
 import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
@@ -21,6 +24,8 @@ import {
   OPTIONAL_PACKAGES,
   install,
   installedOptionalPackageVersion,
+  installedPackagePath,
+  isInstalled,
   loadBesideCli,
   loadInstalledOptionalPackage,
   loadOptionalPackage,
@@ -619,6 +624,85 @@ describe("install", () => {
     };
     return { cache, dir, stubNpm };
   }
+
+  describe.skipIf(process.platform === "win32")(
+    "a cached copy another account could have written",
+    () => {
+      const writePackage = (prefix: string, body: string) => {
+        mkdirSync(join(prefix, "node_modules", name), { recursive: true, mode: 0o755 });
+        writeFileSync(join(prefix, "node_modules", name, "package.json"), "{}");
+        writeFileSync(join(prefix, "node_modules", name, "index.js"), body);
+      };
+
+      it("is installed in a folder no other account can reach, even under umask 002", async () => {
+        const { cache, dir } = setup();
+        const previous = process.umask(0o002);
+        const modes: number[] = [];
+        try {
+          await install(dir, name, version, async (_args, prefix) => {
+            modes.push(statSync(prefix).mode & 0o777);
+            writePackage(prefix, "1");
+          });
+        } finally {
+          process.umask(previous);
+          rmSync(cache, { recursive: true, force: true });
+        }
+        expect(modes).toEqual([0o700]);
+      });
+
+      it("is loaded on the next run when this account installed it under umask 002", async () => {
+        const { cache, dir } = setup();
+        const previous = process.umask(0o002);
+        try {
+          await install(dir, name, version, async (_args, prefix) => writePackage(prefix, "1"));
+        } finally {
+          process.umask(previous);
+        }
+        try {
+          expect(installedPackagePath(dir, name)).toBe(
+            realpathSync(join(dir, "node_modules", name, "index.js")),
+          );
+        } finally {
+          rmSync(cache, { recursive: true, force: true });
+        }
+      });
+
+      it("is never loaded when another account owns it", () => {
+        const { cache, dir } = setup();
+        const previous = process.umask(0o022);
+        try {
+          writePackage(dir, "module.exports = 'planted'");
+          expect(installedPackagePath(dir, name)).toBe(
+            realpathSync(join(dir, "node_modules", name, "index.js")),
+          );
+          vi.spyOn(process, "getuid").mockReturnValue(process.getuid!() + 1);
+          expect(installedPackagePath(dir, name)).toBeNull();
+        } finally {
+          process.umask(previous);
+          vi.restoreAllMocks();
+          rmSync(cache, { recursive: true, force: true });
+        }
+      });
+
+      it("is replaced by a fresh install when a folder of it is group- or world-writable", async () => {
+        const { cache, dir } = setup();
+        try {
+          writePackage(dir, "module.exports = 'planted'");
+          chmodSync(join(dir, "node_modules"), 0o777);
+          expect(isInstalled(dir, name)).toBe(false);
+          expect(installedPackagePath(dir, name)).toBeNull();
+
+          await install(dir, name, version, async (_args, prefix) => writePackage(prefix, "1"));
+
+          const entry = installedPackagePath(dir, name);
+          expect(entry).toBe(realpathSync(join(dir, "node_modules", name, "index.js")));
+          expect(readFileSync(entry!, "utf8")).toBe("1");
+        } finally {
+          rmSync(cache, { recursive: true, force: true });
+        }
+      });
+    },
+  );
 
   it("runs npm inside the staging dir, with no path on its command line", async () => {
     const { cache, dir } = setup();

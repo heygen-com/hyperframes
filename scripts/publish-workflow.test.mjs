@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import test from "node:test";
 import { parse } from "yaml";
 
@@ -186,90 +195,21 @@ test("the Lambda handler zip is pinned before packing and attached before npm pu
   };
   assert.ok(indexIn(pack, "Pin Lambda handler zip") < indexIn(pack, "Pack packages"));
   assert.ok(
-    indexIn(publish, "Create GitHub Release") <
-      indexIn(publish, "Attach Lambda handler zip to release"),
+    indexIn(publish, "Create GitHub Release") < indexIn(publish, "Attach Lambda assets to release"),
   );
   assert.ok(
-    indexIn(publish, "Attach Lambda handler zip to release") < indexIn(publish, "Publish packages"),
+    indexIn(publish, "Attach Lambda assets to release") < indexIn(publish, "Publish packages"),
   );
-  const attach = publish.steps[indexIn(publish, "Attach Lambda handler zip to release")];
+  const attach = publish.steps[indexIn(publish, "Attach Lambda assets to release")];
   assert.doesNotMatch(attach.run, /--clobber/);
 });
 
-test("the pin step reuses an attached zip and otherwise takes only the built zip's hash", () => {
+test("packing pins only the freshly built zip and never downloads release assets", () => {
   const step = pack.steps.find((s) => s.name === "Pin Lambda handler zip");
-  const builtZip = "built handler zip";
-  const builtSha256 = createHash("sha256").update(builtZip).digest("hex");
-  const run = ({ ghExit, expectedSha256 }) => {
-    const root = mkdtempSync(join(tmpdir(), "hyperframes-lambda-zip-step-"));
-    try {
-      const bin = join(root, "bin");
-      mkdirSync(bin);
-      mkdirSync(join(root, "dist", "lambda-handler-build"), { recursive: true });
-      writeFileSync(join(root, "dist", "lambda-handler-build", "handler.zip"), builtZip);
-      const log = join(root, "calls.log");
-      writeFileSync(log, "");
-      for (const [name, exit] of [
-        ["gh", ghExit],
-        ["bun", 0],
-      ]) {
-        writeFileSync(join(bin, name), `#!/bin/sh\necho "${name} $*" >> "${log}"\nexit ${exit}\n`);
-        chmodSync(join(bin, name), 0o755);
-      }
-      const output = join(root, "github-output");
-      writeFileSync(output, "");
-      const result = spawnSync("bash", ["-euo", "pipefail", "-c", step.run], {
-        cwd: root,
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          PATH: `${bin}:${process.env.PATH}`,
-          GITHUB_OUTPUT: output,
-          VERSION: "9.8.7",
-          REPO: "o/r",
-          EXPECTED_SHA256: expectedSha256,
-        },
-        timeout: 5_000,
-      });
-      let pinned = null;
-      try {
-        pinned = readFileSync(join(root, "dist", "hyperframes-lambda-handler.zip"), "utf8");
-      } catch {}
-      return {
-        status: result.status,
-        stdout: result.stdout,
-        calls: readFileSync(log, "utf8"),
-        output: readFileSync(output, "utf8"),
-        pinned,
-      };
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  };
-
-  const retried = run({ ghExit: 0, expectedSha256: builtSha256 });
-  assert.equal(retried.status, 0, retried.stdout);
-  assert.match(
-    retried.calls,
-    /^gh release download v9\.8\.7 --repo o\/r --pattern hyperframes-lambda-handler\.zip --dir dist$/m,
-  );
-  assert.match(retried.calls, /^bun packages\/aws-lambda\/scripts\/pin-handler-zip\.ts$/m);
-  assert.equal(retried.output, "attached=true\n");
-
-  const fresh = run({ ghExit: 1, expectedSha256: builtSha256 });
-  assert.equal(fresh.status, 0, fresh.stdout);
-  assert.doesNotMatch(fresh.calls, /build:zip/);
-  assert.match(fresh.calls, /^bun packages\/aws-lambda\/scripts\/pin-handler-zip\.ts$/m);
-  assert.equal(fresh.output, "");
-  assert.equal(fresh.pinned, builtZip);
-
-  for (const expectedSha256 of ["0".repeat(64), ""]) {
-    const rejected = run({ ghExit: 1, expectedSha256 });
-    assert.equal(rejected.status, 1, rejected.stdout);
-    assert.match(rejected.stdout, /::error::Lambda handler zip sha256/);
-    assert.doesNotMatch(rejected.calls, /pin-handler-zip/);
-    assert.equal(rejected.pinned, null);
-  }
+  assert.match(step.run, /ACTUAL_SHA256.*sha256sum/);
+  assert.match(step.run, /ACTUAL_SHA256.*!=.*EXPECTED_SHA256/);
+  assert.doesNotMatch(workflow, /gh release download/);
+  assert.equal(step.env.EXPECTED_SHA256, "${{ needs.lambda-handler-zip.outputs.sha256 }}");
 });
 
 const stepOf = (job, name) => {
@@ -313,7 +253,7 @@ test("the workflow publishes exactly the public workspace packages", () => {
 });
 
 test("release-commit code runs only in a job without secrets", () => {
-  assert.deepEqual(pack.permissions, { contents: "read" });
+  assert.deepEqual(pack.permissions, { contents: "read", actions: "read" });
   assert.equal(pack.environment, undefined);
   const packCheckout = pack.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
   assert.equal(packCheckout.with["persist-credentials"], false);
@@ -347,13 +287,97 @@ test("the publish job runs no code from the release commit", () => {
 
 test("the publish job checks the release channel without repo scripts", () => {
   const step = stepOf(publish, "Check release channel");
-  const check = (EVENT_NAME, VERSION, PRERELEASE) =>
-    runStep(step, { cwd: tmpdir(), env: { EVENT_NAME, VERSION, PRERELEASE } }).status;
+  const check = (EVENT_NAME, VERSION, PRERELEASE, DIST_TAG = "alpha") =>
+    runStep(step, { cwd: tmpdir(), env: { EVENT_NAME, VERSION, PRERELEASE, DIST_TAG } }).status;
   assert.equal(check("push", "0.9.55-alpha.1", "true"), 0);
   assert.equal(check("pull_request", "0.9.55", "false"), 0);
   assert.equal(check("push", "0.9.55", "false"), 1);
   assert.equal(check("pull_request", "0.9.55-alpha.1", "true"), 1);
   assert.equal(check("push", "0.9.55-alpha.1;id", "true"), 1);
+  assert.equal(check("push", "0.9.55-latest.1", "true", "latest"), 1);
+  assert.equal(check("push", "0.9.55-hdr.1", "true", "hdr"), 0);
+});
+
+test("the publish job takes only tarballs that npm reads the way the check does", () => {
+  const step = stepOf(publish, "Check packed tarballs");
+  const names = config.env.NPM_PACKAGES.split(/\s+/);
+  const version = "1.2.3-alpha.1";
+  // `build(staging)` lays out the first package's files and returns tar's arguments for them.
+  const run = (build) => {
+    const temp = mkdtempSync(join(tmpdir(), "hyperframes-publish-layout-"));
+    try {
+      const dir = join(temp, "release-bundle", "npm");
+      mkdirSync(dir, { recursive: true });
+      for (const name of names.slice(1)) {
+        packTarball(dir, `${name.replace(/^@/, "").replace("/", "-")}.tgz`, { name, version });
+      }
+      const staging = mkdtempSync(join(tmpdir(), "hyperframes-publish-staging-"));
+      try {
+        const args = build(staging, { name: names[0], version });
+        execFileSync("tar", ["-czf", join(dir, "first.tgz"), "-C", staging, ...args], {
+          stdio: "pipe",
+        });
+      } finally {
+        rmSync(staging, { recursive: true, force: true });
+      }
+      return runStep(step, { cwd: temp, env: { RUNNER_TEMP: temp, VERSION: version } });
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  };
+  const write = (staging, path, manifest) => {
+    mkdirSync(join(staging, path, ".."), { recursive: true });
+    writeFileSync(join(staging, path), JSON.stringify(manifest));
+  };
+  const plain = (publishConfig) => (staging, manifest) => {
+    write(staging, "package/package.json", { ...manifest, publishConfig });
+    return ["package"];
+  };
+
+  const ours = run(
+    plain({
+      access: "public",
+      registry: "https://registry.npmjs.org/",
+      exports: {},
+      main: "x",
+      types: "x",
+    }),
+  );
+  assert.equal(ours.status, 0, ours.stdout + ours.stderr);
+
+  const refused = {
+    "a second top-level folder": (staging, manifest) => {
+      write(staging, "package/package.json", manifest);
+      write(staging, "other/package.json", { ...manifest, scripts: { x: "y" } });
+      return ["package", "other"];
+    },
+    "a ./ prefix": (staging, manifest) => {
+      write(staging, "package/package.json", manifest);
+      return ["./package"];
+    },
+    "package.json twice": (staging, manifest) => {
+      write(staging, "package/package.json", manifest);
+      return ["package", "package/package.json"];
+    },
+    "a link": (staging, manifest) => {
+      write(staging, "package/package.json", manifest);
+      symlinkSync("/etc/hostname", join(staging, "package", "link"));
+      return ["package"];
+    },
+    "a publishConfig tag": plain({ tag: "latest" }),
+    "a publishConfig registry elsewhere": plain({ registry: "https://registry.example.com/" }),
+    "restricted access": plain({ access: "restricted" }),
+    "a publishConfig that is not an object": plain("latest"),
+  };
+  for (const [what, build] of Object.entries(refused)) {
+    const result = run(build);
+    assert.equal(result.status, 1, what);
+    assert.match(
+      result.stdout,
+      /first\.tgz (must hold one package\/package\.json|has a publishConfig)/,
+      what,
+    );
+  }
 });
 
 test("the publish job takes only tarballs whose name and version match the release", () => {
@@ -466,7 +490,10 @@ test("publishing skips only identical uploads and fails on a version it did not 
   const publishes = fresh.calls.split("\n").filter((line) => line.startsWith("npm publish"));
   assert.equal(publishes.length, 2);
   for (const line of publishes) {
-    assert.match(line, /core\.tgz --access public --tag alpha --ignore-scripts$/);
+    assert.match(
+      line,
+      /core\.tgz --access public --tag alpha --registry https:\/\/registry\.npmjs\.org\/ --ignore-scripts$/,
+    );
   }
 
   const identical = run({ viewResult: "same", attempt: 1 });
@@ -479,12 +506,12 @@ test("publishing skips only identical uploads and fails on a version it did not 
   assert.doesNotMatch(squatted.calls, /npm publish/);
 
   const rerun = run({ viewResult: "sha512-other", attempt: 2 });
-  assert.equal(rerun.status, 0, rerun.stdout);
-  assert.match(rerun.stdout, /::warning::/);
+  assert.equal(rerun.status, 1, rerun.stdout);
+  assert.match(rerun.stdout, /this run did not publish it/);
   assert.doesNotMatch(rerun.calls, /npm publish/);
 });
 
-test("every publish runs in the approval-gated npm-publish environment", () => {
+test("every publish runs in npm-publish, the environment npm trusted publishing names", () => {
   assert.equal(publish.environment, "npm-publish");
   const jobsWithEnvironment = Object.entries(config.jobs).filter(([, job]) => job.environment);
   assert.deepEqual(
@@ -536,4 +563,189 @@ test("the release installs no tool restored from the shared cache", () => {
     steps.filter((step) => step.uses?.startsWith("actions/setup-node@") && step.with?.cache).length,
     0,
   );
+});
+
+/** Runs a "Find previous ..." step against a stand-in gh that lists `artifacts`; returns its exit and GITHUB_OUTPUT. */
+function runFindPrevious(step, artifacts) {
+  const dir = mkdtempSync(join(tmpdir(), "previous-artifact-"));
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  writeFileSync(
+    join(dir, "pages.json"),
+    JSON.stringify({ total_count: artifacts.length, artifacts }),
+  );
+  writeFileSync(join(bin, "gh"), `#!/bin/sh\ncat "${join(dir, "pages.json")}"\n`);
+  chmodSync(join(bin, "gh"), 0o755);
+  const output = join(dir, "output");
+  writeFileSync(output, "");
+  const result = spawnSync("bash", ["-euo", "pipefail", "-c", step.run], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      RUNNER_TEMP: dir,
+      GITHUB_OUTPUT: output,
+      REPO: "o/r",
+      RUN_ID: "1",
+    },
+    timeout: 5_000,
+  });
+  const text = readFileSync(output, "utf8");
+  rmSync(dir, { recursive: true, force: true });
+  return { status: result.status, text };
+}
+
+for (const [job, name, artifact] of [
+  ["pack", "Find previous release bundle", "release-bundle"],
+  ["publish", "Find previous release receipt", "lambda-release-receipt"],
+]) {
+  test(`"${name}" hands the download step a bare artifact id, or nothing on a first attempt`, () => {
+    const step = config.jobs[job].steps.find((one) => one.name === name);
+    assert.deepEqual(runFindPrevious(step, []), { status: 0, text: "artifact=\n" });
+    const found = [
+      { id: 123, name: artifact, expired: false },
+      { id: 9, name: "lambda-handler", expired: false },
+    ];
+    assert.deepEqual(runFindPrevious(step, found), { status: 0, text: "artifact=123\n" });
+    assert.notEqual(runFindPrevious(step, [{ id: 1, name: artifact, expired: true }]).status, 0);
+  });
+}
+
+// A tarball whose second entry GNU tar reads as package/d/package/package.json and npm's node-tar reads as
+// package/package.json: ustar magic, version bytes other than "00", a non-empty prefix.
+function packSplitReading(dir, file, checked, published) {
+  const staging = mkdtempSync(join(tmpdir(), "hyperframes-split-fixture-"));
+  try {
+    mkdirSync(join(staging, "package"));
+    writeFileSync(join(staging, "package", "package.json"), JSON.stringify(checked));
+    writeFileSync(join(staging, "package", "x.json"), JSON.stringify(published));
+    const tar = execFileSync("tar", [
+      "--format=ustar",
+      "-cf",
+      "-",
+      "-C",
+      staging,
+      "package/package.json",
+      "package/x.json",
+    ]);
+    const header = 1024;
+    tar.fill(0, header, header + 100);
+    tar.write("package/package.json", header, "latin1");
+    tar.fill(0, header + 345, header + 500);
+    tar.write("package/d", header + 345, "latin1");
+    tar.write("ustar\0", header + 257, "latin1");
+    tar.fill(0, header + 263, header + 265);
+    tar.fill(0x20, header + 148, header + 156);
+    let sum = 0;
+    for (let i = header; i < header + 512; i += 1) sum += tar[i];
+    tar.write(`${sum.toString(8).padStart(6, "0")}\0 `, header + 148, "latin1");
+    writeFileSync(join(dir, file), gzipSync(tar));
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
+}
+
+test("npm publishes only what the check read: name, version and every file", () => {
+  const step = stepOf(publish, "Check what npm will publish");
+  const name = "@hyperframes/core";
+  const version = "1.2.3-alpha.1";
+  const run = (make, expected = name) => {
+    const temp = mkdtempSync(join(tmpdir(), "hyperframes-npm-reads-"));
+    try {
+      make(temp, "core.tgz");
+      writeFileSync(join(temp, "publish-order.tsv"), `${expected}\t${join(temp, "core.tgz")}\n`);
+      return runStep(step, { cwd: temp, env: { VERSION: version, DIST_TAG: "alpha" } });
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  };
+  const clean = run((dir, file) => packTarball(dir, file, { name, version }));
+  assert.equal(clean.status, 0, clean.stderr + clean.stdout);
+  // fails without the fix: the layout check passed this tarball and npm would publish swapped-package@9.9.9.
+  const split = run((dir, file) =>
+    packSplitReading(dir, file, { name, version }, { name: "swapped-package", version: "9.9.9" }),
+  );
+  assert.equal(split.status, 1);
+  assert.match(
+    split.stdout,
+    /npm (would publish core\.tgz as swapped-package@9\.9\.9|and tar read different files)/,
+  );
+  // Same name and version, other contents: only the file lists differ.
+  const swapped = run((dir, file) =>
+    packSplitReading(
+      dir,
+      file,
+      { name, version },
+      { name, version, scripts: { postinstall: "x" } },
+    ),
+  );
+  assert.equal(swapped.status, 1);
+  assert.match(swapped.stdout, /npm and tar read different files in core\.tgz/);
+  const renamed = run((dir, file) =>
+    packTarball(dir, file, { name: "@hyperframes/other", version }),
+  );
+  assert.equal(renamed.status, 1);
+  assert.match(
+    renamed.stdout,
+    /would publish core\.tgz as @hyperframes\/other@1\.2\.3-alpha\.1, not @hyperframes\/core@1\.2\.3-alpha\.1/,
+  );
+});
+
+const stepIndex = (job, name) => {
+  const index = job.steps.findIndex((step) => step.name === name);
+  assert.ok(index >= 0, `missing step ${name}`);
+  return index;
+};
+
+test("both tarball checks pass before the release tag or anything else is written", () => {
+  const tag = stepIndex(publish, "Create release tag");
+  assert.ok(stepIndex(publish, "Check packed tarballs") < tag);
+  assert.ok(stepIndex(publish, "Check what npm will publish") < tag);
+  assert.ok(
+    stepIndex(publish, "Check packed tarballs") < stepIndex(publish, "Check what npm will publish"),
+  );
+});
+
+test("a tag publishes only a commit already on main, next or alpha, before any job builds it", () => {
+  const source = config.jobs["release-source"];
+  assert.ok(source, "missing the release-source job");
+  for (const name of ["lambda-arm64-ffmpeg", "lambda-handler-zip"]) {
+    assert.deepEqual(config.jobs[name].needs, ["release-source"], name);
+  }
+  assert.deepEqual(pack.needs.sort(), ["lambda-arm64-ffmpeg", "lambda-handler-zip"]);
+  const step = stepOf(source, "Check the tagged commit is on main, next or alpha");
+  assert.equal(step.if, "github.event_name == 'push'");
+  const bin = mkdtempSync(join(tmpdir(), "hyperframes-fake-gh-"));
+  try {
+    // The fake answers compare/<branch>...<sha> from FAKE_<branch>; an unset branch answers like a 404.
+    writeFileSync(
+      join(bin, "gh"),
+      '#!/bin/sh\nb="${2#*compare/}"; b="${b%%...*}"\neval "v=\\${FAKE_$b-}"\n[ -n "$v" ] || exit 1\necho "$v"\n',
+    );
+    chmodSync(join(bin, "gh"), 0o755);
+    const status = (branches) =>
+      runStep(step, {
+        cwd: bin,
+        env: {
+          REPO: "heygen-com/hyperframes",
+          TAGGED: "abc",
+          ...Object.fromEntries(Object.entries(branches).map(([b, v]) => [`FAKE_${b}`, v])),
+        },
+        path: `${bin}:${process.env.PATH}`,
+      }).status;
+    assert.equal(status({ main: "identical" }), 0);
+    assert.equal(status({ main: "behind" }), 0);
+    assert.equal(
+      status({ main: "diverged", next: "behind" }),
+      0,
+      "a commit on next publishes an alpha",
+    );
+    assert.equal(status({ main: "ahead", next: "diverged", alpha: "identical" }), 0);
+    // fails without the fix: a v*-* tag on any other commit went on to build and publish.
+    assert.equal(status({ main: "ahead", next: "diverged" }), 1, "a commit on no allowed branch");
+    assert.equal(status({ main: "diverged", next: "ahead", alpha: "ahead" }), 1);
+    assert.equal(status({}), 1, "no branch answers");
+  } finally {
+    rmSync(bin, { recursive: true, force: true });
+  }
 });

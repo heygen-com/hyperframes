@@ -1,14 +1,6 @@
 import { randomUUID } from "node:crypto";
-import {
-  accessSync,
-  constants,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { accessSync, constants } from "node:fs";
+import { join, resolve } from "node:path";
 import {
   DEFAULT_HISTORY_ROOT,
   HistoryBusyError,
@@ -24,6 +16,7 @@ import {
 } from "@hyperframes/studio-server/history";
 
 import { resolveProject } from "./project.js";
+import { readRecord, removeRecord, writeRecord } from "./projectRecords.js";
 import { findPreviewServerForProject, studioApiUrl } from "./studioSelectionClient.js";
 
 export type { UndoMode };
@@ -77,7 +70,9 @@ export const historyDeps = {
 /** A refusal is the caller's to fix: commands print its message, never a stack. */
 export class Refusal extends Error {}
 
-const turnFile = (dir: string) => join(dir, ".hyperframes", "history-turn.json");
+const TURN_FILE = "history-turn.json";
+const LAST_TURNS_FILE = "history-turns.json";
+const MAX_RECORD_BYTES = 1024 * 1024;
 
 const WHO_KINDS: readonly unknown[] = ["person", "agent", "outside"] satisfies HistoryWho["kind"][];
 const isId = (value: unknown): value is string => typeof value === "string" && isHistoryId(value);
@@ -110,24 +105,26 @@ function parseTurn(value: unknown): Turn | null {
 /** The open turn, or null; a marker with no last write time cannot say when the turn ended, so it has. */
 function readTurn(dir: string): Turn | null {
   try {
-    return parseTurn(JSON.parse(readFileSync(turnFile(dir), "utf-8")));
+    return parseTurn(JSON.parse(readRecord(dir, TURN_FILE, MAX_RECORD_BYTES)));
   } catch {
     return null;
   }
 }
 
+function writeRecordOrRefuse(dir: string, name: string, data: string): void {
+  if (!writeRecord(dir, name, data))
+    throw new Refusal(`Could not write ${join(dir, ".hyperframes", name)}.`);
+}
+
 export function writeTurn(dir: string, turn: Turn | null): void {
-  if (!turn) return rmSync(turnFile(dir), { force: true });
-  mkdirSync(dirname(turnFile(dir)), { recursive: true });
-  writeFileSync(turnFile(dir), JSON.stringify(turn));
+  if (!turn) return void removeRecord(dir, TURN_FILE);
+  writeRecordOrRefuse(dir, TURN_FILE, JSON.stringify(turn));
 }
 
 /** Each agent's last ended turn, as the entries it filed; kept beside the marker, outside the history. */
-const lastTurnsFile = (dir: string) => join(dir, ".hyperframes", "history-turns.json");
-
 function readLastTurns(dir: string): Record<string, string[]> {
   try {
-    const turns: unknown = JSON.parse(readFileSync(lastTurnsFile(dir), "utf-8"));
+    const turns: unknown = JSON.parse(readRecord(dir, LAST_TURNS_FILE, MAX_RECORD_BYTES));
     if (!turns || typeof turns !== "object") return {};
     return Object.fromEntries(Object.entries(turns).filter(([, parts]) => isIds(parts)));
   } catch {
@@ -159,10 +156,11 @@ export async function endTurn(
   const own = entry ? [entry.id] : [];
   const parts = [...new Set([...turn.parts, ...cut.map((part) => part.id), ...own])];
   // Recorded before the marker goes, so a crash between the two never leaves the older turn as the last one.
-  const draft = `${lastTurnsFile(dir)}.${process.pid}.tmp`;
-  mkdirSync(dirname(draft), { recursive: true });
-  writeFileSync(draft, JSON.stringify({ ...readLastTurns(dir), [turn.who.name]: parts }));
-  renameSync(draft, lastTurnsFile(dir));
+  writeRecordOrRefuse(
+    dir,
+    LAST_TURNS_FILE,
+    JSON.stringify({ ...readLastTurns(dir), [turn.who.name]: parts }),
+  );
   writeTurn(dir, null);
   return { entry, parts };
 }

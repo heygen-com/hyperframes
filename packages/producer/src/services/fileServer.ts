@@ -30,7 +30,7 @@ import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
-import { fpsToNumber, type Fps } from "@hyperframes/core";
+import { fpsToNumber, type Fps, terminalText } from "@hyperframes/core";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { openRangeEnd } from "@hyperframes/studio-server/media-range";
@@ -820,7 +820,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const bodyScripts = options.bodyScripts ?? [buildRenderModeScript(options.fps), HF_BRIDGE_SCRIPT];
 
   const app = new Hono();
-  const warnLeftOut = (line: string) => console.warn(`[FileServer] ${line}`);
+  const warnLeftOut = (line: string) => console.warn(`[FileServer] ${terminalText(line)}`);
   let listeningPort = -1;
 
   app.use(async function loadEachFileOnlyAsItsNamedType(c, next) {
@@ -852,7 +852,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
 
     if (!file) {
       if (!/favicon\.ico$/i.test(requestPath)) {
-        console.warn(`[FileServer] 404 Not Found: ${requestPath}`);
+        console.warn(`[FileServer] 404 Not Found: ${terminalText(requestPath)}`);
       }
       return c.text("Not found", 404);
     }

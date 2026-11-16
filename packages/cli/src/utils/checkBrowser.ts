@@ -5,7 +5,7 @@ import { logCheckProgress } from "./checkProgress.js";
 import { BrowserCleanupError, closeManagedBrowser, onStopSignal } from "../browser/launch.js";
 import { collectMotionBlurDrafts, dropMotionBlurConsoleEcho } from "./checkMotionBlur.js";
 import { checkSnapshotDirectory } from "./checkSnapshotDirectory.js";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join, resolve } from "node:path";
 import type { Browser, Page } from "puppeteer-core";
@@ -789,7 +789,6 @@ async function withFindingCapturePage<T>(
     chromeBrowser = session.browser;
     await waitForPreferredSeekTarget(session.page);
     const snapshotDir = checkSnapshotDirectory(project.dir);
-    mkdirSync(snapshotDir, { recursive: true });
     return await capture(session.page, snapshotDir, server);
   } catch (error) {
     failure = { kind: "failed", error };

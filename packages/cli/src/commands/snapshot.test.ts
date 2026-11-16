@@ -536,6 +536,20 @@ describe("extractVideoFrameToBuffer", () => {
     !noProbe &&
     execFileSync(ffmpeg!, ["-hide_banner", "-encoders"], { encoding: "utf-8" }).includes("libx265");
 
+  it.skipIf(noProbe)("shows control characters in a failed probe's path as escapes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-probe-text-"));
+    try {
+      const clip = join(dir, "clip\u0007\b\u009b.mp4");
+      const probe = probeContainingSourceFrameSeek(clip, 0.5, false);
+      await expect(probe).rejects.toThrow("clip\\x07\\x08\\x9b.mp4");
+      const message = await probe.catch((error: Error) => error.message);
+      for (const control of ["\u0007", "\b", "\u009b", "\r"])
+        expect(message).not.toContain(control);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it.skipIf(noProbe)("selects containing frames for snapshots and reference pairs", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-containing-"));
     try {

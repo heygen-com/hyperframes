@@ -1,3 +1,4 @@
+import { terminalText, terminalTextDeep } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, readFileSync } from "node:fs";
 import { isWithinProjectRoot, readProjectFile } from "@hyperframes/parsers/asset-resolution";
@@ -9,7 +10,6 @@ import {
 } from "@hyperframes/core/gsap-parser";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
-import { terminalText } from "../utils/terminalText.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";
@@ -1139,19 +1139,23 @@ function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) 
         console.log();
       }
 
-      const total = comps.reduce(
+      const shown = terminalTextDeep(comps);
+      const projectShown = terminalText(projectName);
+      const total = shown.reduce(
         (n, cmp) => n + cmp.tweens.length + cmp.cssKeyframes.length + cmp.anime.length,
         0,
       );
       if (total === 0) {
-        console.log(`${c.success("◇")}  ${c.accent(projectName)} ${c.dim("— no keyframes found")}`);
+        console.log(
+          `${c.success("◇")}  ${c.accent(projectShown)} ${c.dim("— no keyframes found")}`,
+        );
         return;
       }
       console.log(
-        `${c.success("◇")}  ${c.accent(projectName)} ${c.dim("—")} ${c.dim(`${total} item${total === 1 ? "" : "s"}`)}`,
+        `${c.success("◇")}  ${c.accent(projectShown)} ${c.dim("—")} ${c.dim(`${total} item${total === 1 ? "" : "s"}`)}`,
       );
       console.log();
-      for (const cmp of comps) printComposition(cmp);
+      for (const cmp of shown) printComposition(cmp);
       console.log(
         c.dim(
           `Tip: edit the keyframes in source, then \`${commandOptions.invocation} --shot out.png\` to see the rendered motion.`,

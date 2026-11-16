@@ -222,6 +222,7 @@ export async function runCaptureHdrStage(
   let hdrEncoderClosed = false;
   let domSessionClosed = false;
   let releaseHdrExtractionReservation: (() => void) | null = null;
+  let releaseHdrImageReservation: (() => void) | null = null;
   const hdrVideoFrameSources = new Map<string, HdrVideoFrameSource>();
   try {
     await initializeSession(domSession);
@@ -308,12 +309,16 @@ export async function runCaptureHdrStage(
     });
     releaseHdrExtractionReservation = extracted.releaseReservation;
     for (const [id, source] of extracted.sources) hdrVideoFrameSources.set(id, source);
-    const hdrImageBuffers = decodeHdrImageBuffers({
+    const decodedImages = decodeHdrImageBuffers({
       log,
       hdrImageSrcPaths,
       prep,
       hdrDiagnostics,
+      width,
+      height,
     });
+    releaseHdrImageReservation = decodedImages.releaseReservation;
+    const hdrImageBuffers = decodedImages.buffers;
 
     assertNotAborted();
 
@@ -475,6 +480,8 @@ export async function runCaptureHdrStage(
     hdrVideoFrameSources.clear();
     releaseHdrExtractionReservation?.();
     releaseHdrExtractionReservation = null;
+    releaseHdrImageReservation?.();
+    releaseHdrImageReservation = null;
   }
 
   return {

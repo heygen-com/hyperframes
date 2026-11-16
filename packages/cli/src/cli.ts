@@ -13,6 +13,8 @@
 // arrives after the render artifact was validated is the normal agent-pipe
 // teardown and must stay success:true (see handleStreamEpipe).
 let commandFailed = false;
+// A cli_error went out for this run: its failure is already named.
+let errorReported = false;
 
 for (const stream of [process.stdout, process.stderr]) {
   stream.on("error", (err) => {
@@ -90,7 +92,8 @@ import {
 } from "./utils/render-success-state.js";
 import { resolveCommandUsage, type ResolvedCommandUsage } from "./utils/commandUsageResolution.js";
 import { closestMatch, closestNames, commandRedirect, fileHint } from "./utils/didYouMean.js";
-import { jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
+import { errorBox } from "./ui/format.js";
+import { failureShown, jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
 import { isDevMode } from "./utils/env.js";
 import { terminalText } from "./utils/terminalText.js";
 import {
@@ -100,6 +103,7 @@ import {
   USAGE_EXIT_CODE,
   consumeCommandResult,
   endProcess,
+  failureOrigin,
   outputWritten,
   registerRootExitCodeSanitizer,
   registerRootExitRequester,
@@ -255,7 +259,7 @@ let _trackCliError:
       error_message: string;
       stack_trace?: string;
       command?: string;
-      kind: "uncaught_exception" | "unhandled_rejection" | "command_error";
+      kind: "uncaught_exception" | "unhandled_rejection" | "command_error" | "silent_exit";
     }) => void)
   | undefined;
 let _trackCommandResult:
@@ -373,6 +377,9 @@ async function finalizeCli(result: CommandResult): Promise<void> {
   if (exitCode === 0) markCommandDelivered();
   commandFailed ||= exitCode !== 0;
   await telemetryReady.catch(() => {});
+  // Render shows every failure it knows (errorBox); lint, diff and the like end non-zero as their answer.
+  if (command === "render" && exitCode !== 0 && !errorReported && !failureShown())
+    sayNoMessage(exitCode);
   _trackCommandResult?.({
     command,
     success: exitCode === 0 && commandSucceededForTelemetry(),
@@ -442,7 +449,11 @@ process.on(
 // Report a CLI error event to telemetry. Extracted from the process-error
 // handlers so their bodies stay simple linear branches (see fallow CRAP
 // scoring — arrow handlers with inline telemetry calls tip past threshold).
-function emitCliErrorEvent(kind: "uncaught_exception" | "unhandled_rejection", error: Error): void {
+function emitCliErrorEvent(
+  kind: "uncaught_exception" | "unhandled_rejection" | "silent_exit",
+  error: Error,
+): void {
+  errorReported = true;
   _trackCliError?.({
     error_name: error.name,
     error_message: error.message,
@@ -504,6 +515,31 @@ function commandSucceededForTelemetry(): boolean {
   return !commandFailed || isRenderSucceeded();
 }
 
+// A crash before the command delivered says what it was: a program driving the CLI otherwise gets
+// an exit 1 with no words at all.
+function sayCrash(error: Error): void {
+  const words = [`${error.name}: ${error.message}`, firstFrameOf(error.stack)];
+  errorBox("The command stopped on an unexpected error", words.filter(Boolean).join("\n"));
+}
+
+/** The first caller line of a stack, past the Error's own line and the result bookkeeping that recorded it. */
+const firstFrameOf = (stack: string | undefined) =>
+  stack
+    ?.split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.startsWith("at ") && !line.includes("commandResult"));
+
+// A run ending non-zero that showed and reported no failure (errorBox records what it shows): say so, and send the
+// stack that first set the failing result (commandResult.ts failureOrigin), since the exit code alone names nothing.
+function sayNoMessage(exitCode: number): void {
+  const origin = failureOrigin();
+  errorBox(`The command ended with code ${exitCode} without saying why`, firstFrameOf(origin));
+  emitCliErrorEvent(
+    "silent_exit",
+    Object.assign(new Error(`exit ${exitCode} with no failure shown`), { stack: origin }),
+  );
+}
+
 // Terminate the process after a genuine CLI failure — mark commandFailed,
 // emit telemetry, flush, exit(1). Same rationale as above: keeps the arrow
 // handler linear so fallow CRAP stays under threshold.
@@ -512,6 +548,7 @@ function exitAfterCliFailure(
   error: Error,
 ): never {
   commandFailed = true;
+  sayCrash(error);
   emitCliErrorEvent(kind, error);
   _flushSync?.();
   process.exit(1);
@@ -546,6 +583,7 @@ process.on("unhandledRejection", (reason) => {
   }
   commandFailed = true;
   process.exitCode = 1;
+  sayCrash(error);
   emitCliErrorEvent("unhandled_rejection", error);
 });
 
@@ -661,6 +699,7 @@ async function executeCli(): Promise<void> {
     result = commandResultForError(error);
     if (!(error instanceof CliResultSignal)) {
       commandFailed = true;
+      errorReported = true;
       await reportCommandFailure(command, error);
       const typed = error instanceof CliUsageError || error instanceof CliRuntimeError;
       const usage = error instanceof CliUsageError && !error.result.presented;

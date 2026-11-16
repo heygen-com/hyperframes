@@ -21,7 +21,7 @@ import {
   isCompositionVariable,
   isSafeMediaUrl,
 } from "@hyperframes/parsers/composition";
-import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { readClipTiming } from "@hyperframes/parsers/composition-contract";
 import { rawCssUrlMatches } from "@hyperframes/parsers/css-url-scans";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import {
@@ -38,7 +38,7 @@ import {
 const INSPECTION_VIEWPORT_CAP = 4096;
 
 const MAX_COMPOSITION_LINES = 300;
-const MAX_TIMED_ELEMENTS_PER_TRACK = 3;
+const MAX_TIMED_ELEMENTS_PER_FILE = 3;
 const TRACK_DENSITY_EXEMPT_TAGS = new Set(["audio", "script", "style", "video"]);
 const CAPTION_CUE_TOKEN =
   /^(?:caption(?:[-_](?:group|word|line|block|cue|text))?|subtitle(?:[-_](?:group|line|cue|text))?|cg-.+)$/i;
@@ -1027,35 +1027,28 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   },
 
   // timeline_track_too_dense
-  // fallow-ignore-next-line complexity
+  // Counted per file, so moving clips to other lanes never silences it.
   ({ tags, options }) => {
-    const trackCounts = new Map<string, number>();
-    for (const tag of tags) {
-      if (TRACK_DENSITY_EXEMPT_TAGS.has(tag.name)) continue;
-      if (isCaptionCue(tag)) continue;
-      if (isCompositionRootOrMount(tag.raw)) continue;
-      if (!readAttr(tag.raw, "data-start")) continue;
+    const count = tags.filter(
+      (tag) =>
+        !TRACK_DENSITY_EXEMPT_TAGS.has(tag.name) &&
+        !isCaptionCue(tag) &&
+        !isCompositionRootOrMount(tag.raw) &&
+        readAttr(tag.raw, "data-start"),
+    ).length;
+    if (count <= MAX_TIMED_ELEMENTS_PER_FILE) return [];
 
-      const track = readAttr(tag.raw, COMPOSITION_ATTRIBUTES.trackIndex);
-      if (!track) continue;
-      trackCounts.set(track, (trackCounts.get(track) ?? 0) + 1);
-    }
-
-    const findings: HyperframeLintFinding[] = [];
-    for (const [track, count] of trackCounts) {
-      if (count <= MAX_TIMED_ELEMENTS_PER_TRACK) continue;
-      const splitTarget = options.isSubComposition
-        ? "Move coherent scene groups into smaller .html files"
-        : "Move coherent scene groups into separate .html files under compositions/";
-      findings.push({
+    const splitTarget = options.isSubComposition
+      ? "Move coherent scene groups into smaller .html files"
+      : "Move coherent scene groups into separate .html files under compositions/";
+    return [
+      {
         code: "timeline_track_too_dense",
         severity: "warning",
-        message: `Track ${track} has ${count} timed elements in this HTML file. Smaller sub-compositions keep timelines easier to read, iterate on, and diff.`,
+        message: `This HTML file has ${count} timed elements. Smaller sub-compositions keep timelines easier to read, iterate on, and diff.`,
         fixHint: `${splitTarget} and mount them from the parent with data-composition-src so the timeline stays easier to inspect, revise, and validate.`,
-      });
-    }
-
-    return findings;
+      },
+    ];
   },
 
   // deprecated_data_layer + deprecated_data_end

@@ -536,3 +536,72 @@ describe("keyframes project compositions", () => {
     },
   );
 });
+
+describe("keyframes text output", () => {
+  const printed = async (html: string, extra: string[], file = "index.html") => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-text-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const source = join(dir, file);
+    writeFileSync(source, html);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    onTestFinished(() => log.mockRestore());
+    await runCommand(keyframesCommand, { rawArgs: [source, ...extra] });
+    return log.mock.calls.map((args) => args.join(" ")).join("\n");
+  };
+
+  // fails without the fix: a tween target or CSS rule from the project reached the terminal with its control bytes.
+  it.each([
+    [
+      "a GSAP tween target",
+      wrap(`
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#dot\u001b]52;c;cGF5\u0007", { x: 10, duration: 1 });
+        window.__timelines = [tl];
+      `),
+      [],
+      "\\x1b]52;c;cGF5\\x07",
+    ],
+    [
+      "a GSAP tween property name",
+      wrap(`
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#dot", { "\u001b]52;c;cGF5\u0007": 1, duration: 1 });
+        window.__timelines = [tl];
+      `),
+      [],
+      "\\x1b]52;c;cGF5\\x07",
+    ],
+    [
+      "a CSS keyframes rule",
+      `<!doctype html><html><head><style>
+        .dot { animation: rise 1s both; }
+        @keyframes rise { 0% { content: "\u001b[2J\u0007"; } 100% { opacity: 1; } }
+      </style></head><body><div class="dot"></div></body></html>`,
+      ["--runtime", "css"],
+      "\\x1b[2J\\x07",
+    ],
+  ])(
+    "prints %s with its control characters as visible escapes",
+    async (_what, html, extra, escaped) => {
+      const output = await printed(html, extra);
+      expect(output).toContain(escaped);
+      expect(output).not.toContain("\u001b");
+      expect(output).not.toContain("\u0007");
+    },
+  );
+
+  // Windows file names cannot hold control characters.
+  it.skipIf(process.platform === "win32")(
+    "prints a file name with control characters as visible escapes",
+    async () => {
+      const output = await printed(
+        `<!doctype html><html><body></body></html>`,
+        [],
+        "a\u001b]0;x\u0007.html",
+      );
+      expect(output).toContain("a\\x1b]0;x\\x07.html");
+      expect(output).not.toContain("\u001b");
+      expect(output).not.toContain("\u0007");
+    },
+  );
+});
