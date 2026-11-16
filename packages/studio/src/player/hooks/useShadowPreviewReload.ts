@@ -452,7 +452,7 @@ export function useShadowPreviewReload({
       getAdapter()?.pause();
       const time = getAdapter()?.getTime() ?? null;
       const liveSlot = slotsRef.current.find((slot) => slot.role === "live");
-      void take(live)
+      void new Promise<(() => void) | null>((resolve) => resolve(take(live)))
         // expected: a still that cannot be taken keeps both pages for this reload, as before
         .catch(() => null)
         .then((release) => {

@@ -193,6 +193,29 @@ describe("a reload behind the host's still", () => {
     unmount(harness.root);
   });
 
+  it("a host that throws while taking the still keeps both pages and a playing preview plays on", async () => {
+    const harness = renderTimelinePlayerHarness({
+      holdPreviewStill: () => {
+        throw new Error("capture unavailable");
+      },
+    });
+    const { adapter, win } = makeAdapterWindow();
+    adapter.play = vi.fn(adapter.play);
+    act(() => {
+      harness.getApi().iframeRef.current = makeFakeIframe(win);
+      harness.getApi().onIframeLoad();
+    });
+    act(() => usePlayerStore.getState().setIsPlaying(true));
+    await act(async () => {
+      expect(() => harness.getApi().refreshPlayer()).not.toThrow();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(harness.getApi().previewSlots.map((slot) => slot.role)).toEqual(["live", "shadow"]);
+    expect(adapter.play).toHaveBeenCalled();
+    unmount(harness.root);
+  });
+
   it("pauses a playing preview before the still is taken, so the reload resumes from the frame it shows", async () => {
     const order: string[] = [];
     const harness = renderTimelinePlayerHarness({
