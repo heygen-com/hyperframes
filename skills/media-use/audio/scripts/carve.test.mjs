@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -239,6 +247,17 @@ test("carve never loads @hyperframes/core from the composition's project", () =>
       "carve stopped before it read the composition",
     );
   });
+});
+
+test("the bundled core exports every function carve.mjs calls", async () => {
+  const source = readFileSync(join(SCRIPTS_DIR, "carve.mjs"), "utf-8");
+  const called = new Set([...source.matchAll(/carveApi\s*\.\s*(\w+)/g)].map((m) => m[1]));
+  const bundle = await import("./lib/audio-carve.mjs");
+  assert.ok(called.size > 0);
+  assert.deepEqual(
+    [...called].filter((name) => typeof bundle[name] !== "function"),
+    [],
+  );
 });
 
 test("members is required, so dropping it cannot silently restore the group form", () => {

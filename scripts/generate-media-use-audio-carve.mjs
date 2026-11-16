@@ -16,6 +16,7 @@ const { build } = await import(resolve(here, "../packages/core/node_modules/esbu
 const ENTRY = `export {
   analyseCarveBands,
   analyseCarveDuck,
+  analyseCarveDynamics,
   carveBandsToChain,
   carveProfile,
   classifyAudioName,
