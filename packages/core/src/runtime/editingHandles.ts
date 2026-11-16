@@ -19,6 +19,7 @@ import {
   type EditingElementMatch,
   type EditingElementSource,
 } from "./editingElement";
+import { buildElementLabel } from "./elementLabel";
 
 // Drawn on first use, not at load: a render seeds getRandomValues, and a draw here would shift the
 // composition's own random values.
@@ -165,6 +166,7 @@ function describeElement(element: Element): EditingElementDescription {
   const state: Cut = { truncated: false };
   return {
     ...elementHit(element),
+    label: buildElementLabel(element),
     parent: element.parentElement ? handleFor(element.parentElement) : null,
     id: element.id || null,
     selector: selector ?? null,

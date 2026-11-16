@@ -77,6 +77,7 @@ describe("element handles over the editing port", () => {
       handle: top!.handle,
       parent: below!.handle,
       tag: "p",
+      label: "Hi there",
       id: null,
       selector: ".title",
       matchesBefore: [],
