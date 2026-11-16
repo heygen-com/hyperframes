@@ -150,11 +150,17 @@ describe("urlInputArgs", () => {
           "list.m3u8": "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nseg.ts\n#EXT-X-ENDLIST\n",
         };
         for (const [name, body] of Object.entries(lists)) {
-          writeFileSync(join(dir, name), body);
+          const file = join(dir, name);
+          writeFileSync(file, body);
           const probe = (allowed: string[]) =>
             spawnSync(getFfprobeBinary(), [
-              ...["-v", "error", "-format_whitelist", allowed.join(","), "-show_format", "--"],
-              join(dir, name),
+              "-v",
+              "error",
+              "-format_whitelist",
+              allowed.join(","),
+              "-show_format",
+              "--",
+              file,
             ]).status;
           expect(probe(formats)).toBe(0);
           expect(probe(formats.filter((format) => format !== "mpegts"))).not.toBe(0);
