@@ -11,7 +11,7 @@ import { verifies, type ModelFile } from "./modelFile.js";
 import {
   assertPrivateCachePath,
   ensurePrivateCacheDir,
-  foreignWritablePath,
+  foreignWritableTree,
   hyperframesCacheDir,
   sealCacheInstall,
   trustedCacheRoot,
@@ -165,7 +165,7 @@ function findBuiltBinary(): WhisperResult | undefined {
     join(BUILD_DIR, "build", "bin", `whisper-cli${exe}`),
     join(BUILD_DIR, "build", `whisper-cli${exe}`),
   ]) {
-    if (existsSync(p) && !foreignWritablePath(p, CODE_ROOT))
+    if (existsSync(p) && !foreignWritableTree(BUILD_DIR, CODE_ROOT))
       return { executablePath: p, source: "build" };
   }
   return undefined;

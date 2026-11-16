@@ -18,6 +18,7 @@ import {
   CacheFolderNotPrivate,
   ensurePrivateCacheDir,
   foreignWritablePath,
+  foreignWritableTree,
   hyperframesCacheDir,
   namedCacheDir,
   sealCacheInstall,
@@ -83,6 +84,29 @@ describe.skipIf(process.platform === "win32")("foreignWritablePath", () => {
 
   it("accepts a file that it and every folder up to the cache root are this account's alone", () => {
     expect(foreignWritablePath(binary, root)).toBeUndefined();
+  });
+
+  it("rejects writable sibling libraries without changing their permissions", () => {
+    const library = join(dirname(binary), "libEGL.so");
+    writeFileSync(library, "library");
+    chmodSync(library, 0o666);
+    expect(foreignWritableTree(join(root, "chrome"), root)).toBeDefined();
+    expect(lstatSync(library).mode & 0o022).toBe(0o022);
+  });
+
+  it("checks trees through canonical root paths and refuses escaping descendant links", () => {
+    const outside = mkdtempSync(join(tmpdir(), "hf-tree-outside-"));
+    try {
+      symlinkSync(outside, join(root, "chrome", "external"));
+      expect(foreignWritableTree(join(root, "chrome"), root)).toBeDefined();
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("finishes checking a private tree with an internal directory-link cycle", () => {
+    symlinkSync(join(root, "chrome"), join(root, "chrome", "v1", "parent"));
+    expect(foreignWritableTree(join(root, "chrome"), root)).toBeUndefined();
   });
 
   it("names a file or folder another account owns", () => {
@@ -211,6 +235,15 @@ describe.skipIf(process.platform === "win32")("foreignWritablePath", () => {
     }
   });
 
+  it("does not chmod an external file linked below a sealed install", () => {
+    const outside = join(root, "outside");
+    writeFileSync(outside, "", { mode: 0o666 });
+    chmodSync(outside, 0o666);
+    symlinkSync(outside, join(root, "chrome", "external"));
+    expect(() => sealCacheInstall(join(root, "chrome"), join(root, "chrome"))).toThrow();
+    expect(lstatSync(outside).mode & 0o022).toBe(0o022);
+  });
+
   it("seals an internal link's target before checking the link", () => {
     chmodSync(binary, 0o777);
     symlinkSync(binary, join(root, "chrome", "a-link"));
@@ -239,6 +272,25 @@ describe.skipIf(process.platform === "win32")("ensurePrivateCacheDir", () => {
     root = join(mkdtempSync(join(tmpdir(), "hf-private-")), "cache");
   });
   afterEach(() => rmSync(dirname(root), { recursive: true, force: true }));
+
+  it("creates missing cache ancestors privately under umask 002", () => {
+    const previous = process.umask(0o002);
+    const top = join(root, ".cache", "hyperframes");
+    try {
+      expect(ensurePrivateCacheDir(join(top, "tts"), top)).toBe(join(top, "tts"));
+      expect(lstatSync(dirname(top)).mode & 0o022).toBe(0);
+    } finally {
+      process.umask(previous);
+    }
+  });
+
+  it("explains how to repair an existing group-writable cache ancestor without changing it", () => {
+    mkdirSync(root);
+    chmodSync(root, 0o775);
+    const top = join(root, "hyperframes");
+    expect(() => ensurePrivateCacheDir(join(top, "tts"), top)).toThrow(/group.*write permissions/);
+    expect(lstatSync(root).mode & 0o022).toBe(0o020);
+  });
 
   it("creates the root and every folder below it owner-write only", () => {
     const made = ensurePrivateCacheDir(join(root, "opencv", "4.10.0"), root);

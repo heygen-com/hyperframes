@@ -22,6 +22,7 @@
  * `HOME` cache.
  */
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -149,6 +150,9 @@ function installFsMocks({
   for (const path of paths) {
     for (let parent = dirname(path); parent !== dirname(parent); parent = dirname(parent))
       directories.add(parent);
+  }
+  for (const directory of directories) {
+    if ([...paths].some((path) => path.startsWith(directory + sep))) paths.add(directory);
   }
   vi.doMock("node:fs", () => ({
     existsSync: (p: string) => paths.has(p),
@@ -732,6 +736,37 @@ describe("findBrowser — cache resolution", () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(process.platform === "win32")(
+    "replaces a cached browser with a writable sibling library",
+    async () => {
+      const home = useRealCacheHome();
+      installPuppeteerBrowsersMock({
+        installImpl: async ({ cacheDir, buildId }) =>
+          writeStagedInstall(cacheDir, buildId, "fresh"),
+      });
+      try {
+        const { ensureBrowser } = await import("./manager.js");
+        const cached = await ensureBrowser({ force: true });
+        const library = join(dirname(cached.executablePath), "libEGL.so");
+        writeFileSync(library, "library");
+        chmodSync(library, 0o666);
+        const { getInstalledBrowsers } = await import("@puppeteer/browsers");
+        vi.mocked(getInstalledBrowsers).mockResolvedValue([
+          {
+            browser: "chrome-headless-shell",
+            buildId: CHROME_VERSION,
+            platform: "linux",
+            executablePath: cached.executablePath,
+          } as never,
+        ]);
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        expect((await ensureBrowser({ preferManagedChrome: true })).source).toBe("download");
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("restores the previous version when the staged install cannot be moved in", async () => {
     const home = useRealCacheHome();

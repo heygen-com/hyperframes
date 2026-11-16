@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -83,6 +84,21 @@ describe("installSherpaRuntime", () => {
       spec,
     );
   });
+
+  it.skipIf(process.platform === "win32")(
+    "does not remove a broken runtime under a writable ancestor",
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), "hf-sherpa-unsafe-"));
+      runtimeRoots.push(root);
+      const dir = join(root, "cache", "runtime");
+      fakeRuntime(dir, BROKEN);
+      chmodSync(root, 0o777);
+      const run = vi.fn();
+      await expect(installSherpaRuntime({ dir, run })).rejects.toThrow();
+      expect(existsSync(join(dir, "node_modules", "sherpa-onnx-node", "index.js"))).toBe(true);
+      expect(run).not.toHaveBeenCalled();
+    },
+  );
 
   it("asks npm for the runtime and its native package at the same exact version", async () => {
     const run = vi.fn(async (_args: string[]) => {

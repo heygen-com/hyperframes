@@ -16,6 +16,7 @@ import { buildNpmCommand } from "./npxCommand.js";
 import {
   ensurePrivateCacheDir,
   foreignWritablePath,
+  foreignWritableTree,
   sealCacheInstall,
   trustedCacheRoot,
 } from "@hyperframes/core/cache-dir";
@@ -242,7 +243,7 @@ const writableByOthers = (dir: string, file: string) => !!foreignWritablePath(fi
 
 export function isInstalled(dir: string, name: string): boolean {
   const manifest = manifestPath(dir, name);
-  return existsSync(manifest) && !writableByOthers(dir, manifest);
+  return existsSync(manifest) && !foreignWritableTree(dir, dirname(dir));
 }
 
 export function installedPackagePath(dir: string, name: string): string | null {

@@ -29,7 +29,7 @@ import { unzipArchive } from "./unzipArchive.js";
 import {
   assertPrivateCachePath,
   ensurePrivateCacheDir,
-  foreignWritablePath,
+  foreignWritableTree,
   sealCacheInstall,
   trustedCacheRoot,
 } from "@hyperframes/core/cache-dir";
@@ -343,7 +343,7 @@ async function findFromHyperframesCache(): Promise<CacheLookupResult> {
   if (
     match &&
     isPinnedHeadlessShell(match.executablePath) &&
-    !foreignWritablePath(match.executablePath, CACHE_ROOT_DIR)
+    !foreignWritableTree(dirname(match.executablePath), CACHE_ROOT_DIR)
   ) {
     return { result: { executablePath: match.executablePath, source: "cache" } };
   }

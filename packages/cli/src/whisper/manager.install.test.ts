@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -85,6 +85,25 @@ it("clones whisper.cpp inside its build dir, with no cache path on the command l
     rmSync(cache, { recursive: true, force: true });
   }
 });
+
+it.skipIf(process.platform === "win32")(
+  "rejects a cached whisper binary with a writable sibling library",
+  async () => {
+    const cache = mkdtempSync(join(tmpdir(), "hf-whisper-library-"));
+    temps.push(cache);
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    vi.resetModules();
+    const { findWhisper: find } = await import("./manager.js");
+    pathWith();
+    const bin = join(cache, "whisper", "whisper.cpp", "build", "bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "whisper-cli"), "binary");
+    const library = join(bin, "libwhisper.so");
+    writeFileSync(library, "library");
+    chmodSync(library, 0o666);
+    expect(find()).toBeUndefined();
+  },
+);
 
 it("builds only the reviewed whisper.cpp commit", async () => {
   const cache = mkdtempSync(join(tmpdir(), "hf-whisper-cache-"));

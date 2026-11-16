@@ -667,6 +667,19 @@ describe("install", () => {
         }
       });
 
+      it("rejects a writable dependency beside a private package entry", () => {
+        const { cache, dir } = setup();
+        try {
+          writePackage(dir, "module.exports = 'entry'");
+          const sibling = join(dir, "node_modules", name, "dependency.js");
+          writeFileSync(sibling, "module.exports = 'dependency'");
+          chmodSync(sibling, 0o666);
+          expect(installedPackagePath(dir, name)).toBeNull();
+        } finally {
+          rmSync(cache, { recursive: true, force: true });
+        }
+      });
+
       it("is never loaded when another account owns it", () => {
         const { cache, dir } = setup();
         const previous = process.umask(0o022);

@@ -88,11 +88,33 @@ export function foreignWritablePath(path: string, root: string): string | undefi
   return within(real, realTop) ? firstWritableByAnother(real, realTop, uid) : at;
 }
 
+export function foreignWritableTree(path: string, root: string): string | undefined {
+  if (process.getuid?.() === undefined) return undefined;
+  const initial = foreignWritablePath(path, root);
+  if (initial) return initial;
+  const top = resolvedPath(root);
+  const pending = [resolvedPath(path)];
+  const visited = new Set<string>();
+  for (const at of pending) {
+    const foreign = foreignWritablePath(at, top);
+    if (foreign) return foreign;
+    const real = resolvedPath(at);
+    if (visited.has(real)) continue;
+    visited.add(real);
+    const stat = lstatIfPresent(real);
+    if (!stat) return at;
+    if (stat.isDirectory()) for (const name of readdirSync(real)) pending.push(join(real, name));
+  }
+  return undefined;
+}
+
 export class CacheFolderNotPrivate extends Error {
   constructor(readonly path: string) {
     super(
       `${path} can be changed by another user account, so HyperFrames will not install or run code from it. ` +
-        "Remove it, or set HYPERFRAMES_CACHE_DIR to a folder only you can write.",
+        "If you own this directory, remove its group/other write permissions (chmod go-w). " +
+        "Otherwise set HYPERFRAMES_CACHE_DIR to a private directory whose parents are also private. " +
+        "An existing group-writable ~/.cache is refused; its permissions are never changed automatically.",
     );
     this.name = "CacheFolderNotPrivate";
   }
@@ -114,7 +136,7 @@ export function ensurePrivateCacheDir(path: string, root: string, mode = 0o700):
     return target;
   }
   assertPrivateCachePath(dirname(top), top);
-  mkdirSync(dirname(top), { recursive: true });
+  mkdirSync(dirname(top), { recursive: true, mode: 0o700 });
   let at = top;
   for (const name of ["", ...relative(top, target).split(sep).filter(Boolean)]) {
     at = join(at, name);
