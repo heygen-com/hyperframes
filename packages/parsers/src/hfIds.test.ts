@@ -245,6 +245,14 @@ describe("ensureHfIds", () => {
     expect(lookups).toBeLessThan(3 * twins);
   });
 
+  it("past 10,000 identical elements, every id is still unique", () => {
+    const { document } = parseHTML(`<p class="x">same</p>`);
+    const el = document.querySelector("p") as Element;
+    const assigned = new Set<string>();
+    for (let i = 0; i < 10050; i += 1) mintHfId(el, assigned);
+    expect(assigned.size).toBe(10050);
+  });
+
   // Post-persist stability: once data-hf-id is written back to source, edits
   // don't drift the id because the attribute is already present and pinned.
   it("pinned id survives text edit after first persist", () => {
