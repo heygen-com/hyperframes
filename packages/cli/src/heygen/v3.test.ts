@@ -222,6 +222,34 @@ describe("runJob", () => {
       expect(calls).toHaveLength(3);
     });
 
+    it("checks a key this account sent for another project as a new call here", async () => {
+      const calls = sent();
+      await runJob(X, {}, "k1", { log: project(100), credits: 10 });
+      const log = project(100);
+      writeFileSync(
+        join(log.projectDir, ".hyperframes/heygen-jobs.jsonl"),
+        '{"key":"k1","status":"completed","credits":1}\n',
+      );
+      await expect(runJob(X, {}, "k1", { log, credits: 150 })).rejects.toThrow(/leaves 100/);
+      expect(calls).toHaveLength(1);
+    });
+
+    it("keeps the sent-key record private and only its newest keys", async () => {
+      sent();
+      const file = join(process.env["HYPERFRAMES_CONFIG_DIR"]!, "heygen-sent-keys");
+      writeFileSync(file, Array.from({ length: 10_000 }, (_, n) => `old k${n}\n`).join(""));
+      await runJob(X, {}, "k1", { log: project(100), credits: 10 });
+      const lines = readFileSync(file, "utf8").trim().split("\n");
+      expect(lines).toHaveLength(10_000);
+      expect(lines[0]).toBe("old k1");
+      expect(lines.at(-1)).toMatch(/ k1$/);
+      const fresh = mkdtempSync(join(tmpdir(), "hf-v3-config-"));
+      vi.stubEnv("HYPERFRAMES_CONFIG_DIR", join(fresh, "nested"));
+      await runJob(X, {}, "k1", { log: project(100), credits: 10 });
+      expect(lstatSync(join(fresh, "nested")).mode & 0o777).toBe(0o700);
+      expect(lstatSync(join(fresh, "nested", "heygen-sent-keys")).mode & 0o777).toBe(0o600);
+    });
+
     it("lets the same job resume, and gives back a refused call's credits", async () => {
       const log = project(100);
       const calls = sent();

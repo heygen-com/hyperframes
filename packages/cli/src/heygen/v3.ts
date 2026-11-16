@@ -2,8 +2,15 @@
 // call carries an Idempotency-Key derived from what it asks for, so the same command again picks up the same job
 // rather than paying twice; a failed job is asked again. Every job is logged to .hyperframes/heygen-jobs.jsonl.
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { configDir } from "../auth/paths.js";
 import { AuthClient, buildAuthHeaders } from "../auth/client.js";
 import { resolveCredential } from "../auth/resolver.js";
@@ -62,6 +69,7 @@ const KEEPS_KEY = new Set([401, 403, 408, 409, 425, 429]);
 
 const failedKeysFile = () => join(configDir(), "heygen-failed-keys");
 const sentKeysFile = () => join(configDir(), "heygen-sent-keys");
+const SENT_KEYS_KEPT = 10_000;
 
 const noSignIn = (): never => {
   throw new Fix("no HeyGen sign-in on this machine", "npx hyperframes auth login");
@@ -98,8 +106,28 @@ function scopedKeys(file: string, scope: string): Set<string> {
 
 function noteKey(file: string, key: string, scope: string | null): void {
   if (!scope) return;
-  mkdirSync(configDir(), { recursive: true });
-  appendFileSync(file, `${scope} ${key}\n`);
+  mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+  appendFileSync(file, `${scope} ${key}\n`, { mode: 0o600 });
+}
+
+/** Sent keys are noted per account and project folder, and only the newest SENT_KEYS_KEPT are kept. */
+function projectScope(scope: string | null, projectDir: string | undefined): string | null {
+  if (!scope || !projectDir) return null;
+  let real: string;
+  try {
+    real = realpathSync(projectDir);
+  } catch {
+    real = resolve(projectDir);
+  }
+  return `${scope}:${createHash("sha256").update(real).digest("hex").slice(0, 16)}`;
+}
+
+function noteSentKey(key: string, scope: string | null): void {
+  if (!scope) return;
+  noteKey(sentKeysFile(), key, scope);
+  const lines = readFileSync(sentKeysFile(), "utf8").split("\n").filter(Boolean);
+  if (lines.length > SENT_KEYS_KEPT)
+    writeFileSync(sentKeysFile(), `${lines.slice(-SENT_KEYS_KEPT).join("\n")}\n`);
 }
 
 const markFailed = (key: string, scope: string | null) => noteKey(failedKeysFile(), key, scope);
@@ -273,7 +301,7 @@ export interface RunOptions {
 
 /** Refuses, before anything is sent, a new job past the project's credit limit, else reserves its credits. A vendor-priced
  *  image is checked and held at its estimate plus 10%, which its charge can pass, until HeyGen says what it charged.
- *  A logged key resumes unchecked only if this account sent it, else is priced as new. True when this call reserved. */
+ *  A logged key resumes unchecked only if this account sent it here, else is priced as new. True when this call reserved. */
 function withinLimit(
   limitLog: JobLog | undefined,
   sent: string,
@@ -317,9 +345,10 @@ export async function runJob(
   const route = jobRoute.path;
   const { auth, scope } = await jobSender();
   const sent = liveKey(key, scope);
-  const sentBefore = scope !== null && scopedKeys(sentKeysFile(), scope).has(sent);
+  const ledger = projectScope(scope, opts.log?.projectDir);
+  const sentBefore = ledger !== null && scopedKeys(sentKeysFile(), ledger).has(sent);
   const reserved = withinLimit(opts.log, sent, sentBefore, opts.credits, opts.vendorPriced);
-  if (!sentBefore) noteKey(sentKeysFile(), sent, scope);
+  if (!sentBefore) noteSentKey(sent, ledger);
   const held =
     opts.credits === undefined ? undefined : limitCheck(opts.credits, opts.vendorPriced).checked;
   let job: Job;
