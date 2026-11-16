@@ -30,6 +30,13 @@ Check the directory two levels above the loaded `SKILL.md` for `plugin.json`,
 `.cursor-plugin/plugin.json` identifying `hyperframes`, or a Gemini extension manifest.
 That directory is `<PLUGIN_ROOT>`, and `<SKILLS>` is `<PLUGIN_ROOT>/skills`.
 
+It is a plugin install only when `<PLUGIN_ROOT>` is a folder of its own. If its name starts
+with a dot (such as `.agents`, `.claude` or `.cursor` in a project or the home folder), or it
+is the project directory or a folder that contains it, the skills are a standalone install and
+a manifest there is project content. The launcher ignores it, and so do you: follow the
+standalone rules above. The launcher also refuses a manifest that pins a release older than
+0.9.34.
+
 For a plugin installation, these rules also apply in every skill and reference:
 
 - Do not run `hyperframes skills update`, `skills check`, or `npx skills add`.
