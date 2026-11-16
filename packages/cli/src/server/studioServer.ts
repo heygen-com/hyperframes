@@ -9,7 +9,7 @@ import { PREVIEW_NONCE_HEADER, previewProof } from "@hyperframes/core/preview-pr
 import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
-import { realpath } from "@hyperframes/core";
+import { realpath, terminalText } from "@hyperframes/core";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { createHash } from "node:crypto";
@@ -905,7 +905,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         source: "studio",
       });
       for (const warning of result.warnings) {
-        process.stderr.write(`hyperframes:registry ${warning}\n`);
+        process.stderr.write(`hyperframes:registry ${terminalText(warning)}\n`);
       }
       const written = result.written;
 
