@@ -2752,6 +2752,7 @@ export function initSandboxRuntimeModular(): void {
     const el = event.currentTarget;
     if (!freesBufferedVideo(el) || mediaNearPlayhead.get(el) !== false || el.readyState === 0)
       return;
+    el.preload = "none";
     withoutOwnTimingRecords(el, () => releaseMedia(el, true));
   };
   const onMediaErrorForProxy = (event: Event) => {
@@ -3311,6 +3312,19 @@ export function initSandboxRuntimeModular(): void {
       else startPrefetch(el);
     }
   };
+  const moveMediaWindow = (time: number, clips: RuntimeMediaClip[]) =>
+    withTimingResolver(() => {
+      const visibleAt = timedVisibilityAt();
+      for (const el of metadataBoundMedia) armedFrom.delete(el);
+      for (const el of metadataBoundMedia) {
+        if (mediaNearPlayhead.get(el) !== true || clips.some((clip) => clip.el === el)) continue;
+        if (visibleAt(el, time) || dueSoon(el, visibleAt, time, RELEASE_LOOKAHEAD_SECONDS))
+          continue;
+        preloadNearPlayhead(el, false, false, time, false);
+      }
+      for (const { el } of clips)
+        if (mediaNearPlayhead.get(el) === false) mediaNearPlayhead.set(el, true);
+    });
   // Held past the look-ahead so a scrub across its edge does not refetch, and while playing when
   // due at the loop start.
   const dueAtLoopStart = (el: HTMLMediaElement, visibleAt: ReturnType<typeof timedVisibilityAt>) =>
@@ -3430,6 +3444,7 @@ export function initSandboxRuntimeModular(): void {
     if (timingRevision !== undefined) refreshWaitingForSlotOrder(timingRevision);
     // While the scene the playhead landed in mounts, the page keeps what it last drew.
     if (moveSceneWindow(currentTime)) return;
+    const seekOwnsMedia = previewSeek?.targetTime !== undefined && !previewSeek.committing;
     const rootComp = resolveRootCompositionElement();
     let decidedTimedClip = false;
     const visibleAt = timedVisibilityAt(timingRevision);
@@ -3503,7 +3518,12 @@ export function initSandboxRuntimeModular(): void {
       if (upcoming && !rawNode.hasAttribute(STUDIO_PREVIEW_UPCOMING_ATTR))
         loadPreviewImagesIn(rawNode);
       rawNode.toggleAttribute(STUDIO_PREVIEW_UPCOMING_ATTR, upcoming);
-      if (isMediaElement(rawNode) && metadataBoundMedia.has(rawNode) && inPreloadWindow(rawNode))
+      if (
+        !seekOwnsMedia &&
+        isMediaElement(rawNode) &&
+        metadataBoundMedia.has(rawNode) &&
+        inPreloadWindow(rawNode)
+      )
         preloadNearPlayhead(
           rawNode,
           isVisibleNow,
@@ -5089,6 +5109,7 @@ export function initSandboxRuntimeModular(): void {
       },
       prepare: (clips, time, signal, settled) => {
         moveSceneWindow(time);
+        moveMediaWindow(time, clips);
         for (const { el } of clips) {
           if (!isVideoElement(el) || el.videoWidth > 0) continue;
           if (el.preload === "none") el.preload = "metadata";
@@ -5143,6 +5164,7 @@ export function initSandboxRuntimeModular(): void {
     clipsAt: previewVideoClipsAt,
     prepare: (clips, time) => {
       moveSceneWindow(time);
+      moveMediaWindow(time, clips);
       for (const clip of clips) {
         const { el } = clip;
         if (el.preload !== "auto") el.preload = "auto";
