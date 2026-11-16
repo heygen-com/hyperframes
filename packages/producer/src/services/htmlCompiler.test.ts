@@ -1104,7 +1104,29 @@ describe("detectRenderModeHints", () => {
     try {
       await expect(
         compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
-      ).rejects.toThrow(/compositions\/\.env\.html[\s\S]*git metadata or an env file/);
+      ).rejects.toThrow(
+        /compositions\/\.env\.html[\s\S]*git metadata, an env file or a private tool record/,
+      );
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("compileForRender refuses to inline the app's records under .hyperframes as a data-composition-src", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-record-subcomp-",
+      [{ id: "intro", src: ".hyperframes/agent-handoff.html" }],
+      {},
+    );
+    try {
+      mkdirSync(join(projectDir, ".hyperframes"));
+      writeFileSync(
+        join(projectDir, ".hyperframes", "agent-handoff.html"),
+        validSubCompHtml("intro", "HANDOFF_SECRET_VALUE"),
+      );
+      await expect(
+        compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+      ).rejects.toThrow(/\.hyperframes\/agent-handoff\.html[\s\S]*a private tool record/);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }

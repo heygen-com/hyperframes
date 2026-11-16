@@ -18,9 +18,11 @@ import { isTrustedExecutablePath, trustedPathDirs } from "./trustedExecutable.js
  */
 
 export {
+  executableIn,
   findTrustedExecutable,
   isTrustedDirectory,
   isTrustedExecutablePath,
+  pathEntries,
   trustedPathDirs,
 } from "./trustedExecutable.js";
 

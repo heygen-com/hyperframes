@@ -86,4 +86,11 @@ export const STUDIO_API_SAME_ORIGIN_CREDENTIALS = resolveStudioBooleanEnvFlag(
   false,
 );
 
+// Off until every Studio reader of the preview frame has its editing-port path.
+export const STUDIO_OPAQUE_PREVIEW_ENABLED = resolveStudioBooleanEnvFlag(
+  env,
+  ["VITE_STUDIO_OPAQUE_PREVIEW_ENABLED"],
+  false,
+);
+
 import { resolveEnabledSdkFamilies } from "../../utils/sdkCutoverPolicy";

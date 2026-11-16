@@ -48,9 +48,9 @@ vi.mock("./blobStore", async (importOriginal) => {
           hooks.beforePut?.();
           return store.put(path);
         },
-        writeTo: async (hash: string, path: string, beforeReplace?: () => void) => {
+        writeTo: async (hash: string, root: string, path: string, beforeReplace?: () => void) => {
           hooks.beforeWrite?.();
-          await store.writeTo(hash, path, beforeReplace);
+          await store.writeTo(hash, root, path, beforeReplace);
           hooks.afterWrite?.();
         },
       };

@@ -32,7 +32,13 @@ import { pointerTargetsAt } from "./editingTargets";
 import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
 import { gestureStart } from "./editingGestureStart";
-import { getLogicalOpacity, servedToAnotherSite } from "../studioPreviewMark";
+import {
+  getLogicalOpacity,
+  previewConsoleErrorText,
+  servedToAnotherSite,
+  STUDIO_PREVIEW_ERRORS,
+} from "../studioPreviewMark";
+import { MAX_QUERY_MATCHES } from "./editingElement";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -46,6 +52,28 @@ function clipParents(nodes: readonly ClipNode[], out: Array<[string, string]> = 
     clipParents(node.children, out);
   }
   return out;
+}
+
+let consoleWatch: { seen: string[]; stop: () => void } | null = null;
+
+function watchConsoleErrors(): string[] {
+  if (consoleWatch) return consoleWatch.seen;
+  const raised: unknown = Reflect.get(window, STUDIO_PREVIEW_ERRORS);
+  const seen = Array.isArray(raised) ? raised.map(String) : [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    original.apply(console, args);
+    const text = previewConsoleErrorText(args);
+    if (text !== null) seen.push(text);
+  };
+  const onError = (e: ErrorEvent) => seen.push(e.message || String(e));
+  window.addEventListener("error", onError);
+  const stop = () => {
+    console.error = original;
+    window.removeEventListener("error", onError);
+  };
+  consoleWatch = { seen, stop };
+  return seen;
 }
 
 const HANDLERS: Handlers = {
@@ -93,6 +121,11 @@ const HANDLERS: Handlers = {
   layers: ({ group, offset }) => layersOf(group, offset),
   draft: ({ drafts }) => drawDrafts(drafts),
   "gesture-start": ({ handles }) => gestureStart(handles),
+  "console-errors": ({ from }) => {
+    const seen = watchConsoleErrors();
+    const errors = seen.slice(from, from + MAX_QUERY_MATCHES);
+    return { errors, truncated: from + errors.length < seen.length };
+  },
 };
 
 function serve(port: MessagePort): void {
@@ -168,6 +201,8 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       window.removeEventListener("message", onMessage);
       for (const port of ports) port.close();
       ports.clear();
+      consoleWatch?.stop();
+      consoleWatch = null;
     },
   };
 }

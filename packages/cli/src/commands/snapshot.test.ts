@@ -989,6 +989,24 @@ describe("extractVideoFrameToBuffer", () => {
   );
 
   it.skipIf(noProbe)(
+    "prints a video's name in its warning with control characters shown as escapes",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-escape-"));
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      try {
+        const named = join(dir, "clip\u001b]0;x\u0007.mp4");
+        expect(await extractVideoFrameOrWarn([], named, 1)).toBeNull();
+        const out = warn.mock.calls.map((call) => String(call[0])).join("\n");
+        expect(out).toContain("clip\\x1b]0;x\\x07.mp4");
+        expect(out).not.toContain("\u0007");
+      } finally {
+        warn.mockRestore();
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(noProbe)(
     "selects exact frame times in a fragmented MP4 whose start rounds down",
     async () => {
       const dir = mkdtempSync(join(tmpdir(), "hf-snapshot-start-"));

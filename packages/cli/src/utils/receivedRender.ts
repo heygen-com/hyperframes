@@ -11,8 +11,13 @@ import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path
 import { fileURLToPath } from "node:url";
 import { parseHTML } from "linkedom";
 import { isNonRelativeUrl, isPathInside } from "@hyperframes/core";
-import { resolveCompositionSrc } from "@hyperframes/parsers/asset-resolution";
+import {
+  namesAnotherNetworkRoot,
+  resolveCompositionSrc,
+} from "@hyperframes/parsers/asset-resolution";
 import { linksOutside, receivedRecordStatus } from "./privateProjectFile.js";
+import { terminalText } from "./terminalText.js";
+import { walkBudget } from "./walkBudget.js";
 
 const REFERENCE_ATTRS = ["src", "href", "poster"];
 const MAX_SCANNED_BYTES = 2 * 1024 * 1024;
@@ -70,6 +75,13 @@ function htmlReferences(html: string): Reference[] {
   return refs;
 }
 
+const WINDOWS_DEVICE_PREFIX = /^[\\/]{2}[?.][\\/]/;
+
+function withoutQuery(raw: string): string {
+  const device = WINDOWS_DEVICE_PREFIX.exec(raw)?.[0] ?? "";
+  return device + raw.slice(device.length).replace(/[?#].*$/, "");
+}
+
 function localPath(raw: string, fromDir: string): string | null {
   if (raw.startsWith("file:")) {
     try {
@@ -78,7 +90,7 @@ function localPath(raw: string, fromDir: string): string | null {
       return null;
     }
   }
-  const path = raw.replace(/[?#].*$/, "");
+  const path = withoutQuery(raw);
   if (isAbsolute(path) && !path.startsWith("//")) return path;
   if (path === "" || isNonRelativeUrl(path)) return null;
   try {
@@ -147,6 +159,9 @@ function referencesIn(found: OutsideReferences, file: string): Reference[] {
   return /\.css$/i.test(file) ? cssReferences(read.text) : htmlReferences(read.text);
 }
 
+const noteOutside = (found: OutsideReferences, ref: Reference) =>
+  (ref.composition ? found.compositions : found.assets).add(ref.raw);
+
 function noteReference(
   found: OutsideReferences,
   ref: Reference,
@@ -155,7 +170,7 @@ function noteReference(
 ): string | null {
   try {
     if (linksOutside(projectDir, path)) {
-      (ref.composition ? found.compositions : found.assets).add(ref.raw);
+      noteOutside(found, ref);
       return null;
     }
   } catch {
@@ -169,7 +184,12 @@ function scanFile(found: OutsideReferences, file: string, projectDir: string): s
   const next: string[] = [];
   for (const ref of referencesIn(found, file)) {
     const path = referencePath(ref, file, projectDir);
-    if (path === null || !isFile(path)) continue;
+    if (path === null) continue;
+    if (namesAnotherNetworkRoot(projectDir, path)) {
+      noteOutside(found, ref);
+      continue;
+    }
+    if (!isFile(path)) continue;
     const follow = noteReference(found, ref, path, projectDir);
     if (follow !== null) next.push(follow);
   }
@@ -186,8 +206,9 @@ function outsideReferences(projectDir: string, entryFile: string): OutsideRefere
   const visited = new Set<string>();
   const pending = [resolve(projectDir, entryFile)];
   for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
+    if (!isPathInside(file, projectDir)) continue;
     const real = realOrNull(file);
-    if (real === null || visited.has(real) || !isPathInside(file, projectDir)) continue;
+    if (real === null || visited.has(real)) continue;
     if (visited.size >= MAX_SCANNED_FILES) {
       found.complete = false;
       break;
@@ -271,9 +292,6 @@ function isMediaFontOrImage(path: string): boolean {
   return bytes !== null && matches !== undefined && matches(bytes);
 }
 
-const ALIAS_WALK_MAX_ENTRIES = 20_000;
-const ALIAS_WALK_MAX_MS = 2_000;
-
 interface Target {
   identity: string;
   isDirectory: boolean;
@@ -334,15 +352,6 @@ function receivedAlias(
   return !isMediaName(path) && received.has(target.identity) ? path : null;
 }
 
-function walkBudget(): (entries: number) => boolean {
-  const deadline = Date.now() + ALIAS_WALK_MAX_MS;
-  let seen = 0;
-  return (entries) => {
-    seen += entries;
-    return seen <= ALIAS_WALK_MAX_ENTRIES && Date.now() <= deadline;
-  };
-}
-
 interface AliasWalk {
   received: ReadonlySet<string>;
   realProjectDir: string;
@@ -386,9 +395,13 @@ const READS_NOTHING_OUTSIDE = "so the render reads nothing outside the project."
 
 function receivedRefusal(
   projectDir: string,
-  record: { path: string; listed: string[] | null },
+  record: { path: string; listed: string[] | null } | "unchecked",
 ): Refusal | null {
   const shown = (path: string) => relative(realOrNull(projectDir) ?? projectDir, path);
+  if (record === "unchecked") {
+    const reason = `Could not check every project folder for a received-files record, ${READS_NOTHING_OUTSIDE}`;
+    return { reason, alwaysWarn: true };
+  }
   if (record.listed === null) {
     return { reason: `Could not read ${record.path}, ${READS_NOTHING_OUTSIDE}`, alwaysWarn: true };
   }
@@ -410,7 +423,7 @@ function receivedRefusal(
   return { reason, alwaysWarn: false };
 }
 
-/** False when the received-files record cannot be read, lists a received file that is not positively media, a font or an image by extension and leading bytes, or a project file reaches a received file under another kind of name; `warn` then says why and names the references outside the project it refuses. */
+/** False when a received-files record of the project, an ancestor or a folder under the project cannot be read or found, lists a received file that is not positively media, a font or an image by extension and leading bytes, or a project file reaches a received file under another kind of name; `warn` then says why and names the references outside the project it refuses. */
 export function outsideAssetsAllowed(
   projectDir: string,
   entryFile: string | undefined,
@@ -421,6 +434,6 @@ export function outsideAssetsAllowed(
   const refusal = record === null ? null : receivedRefusal(absProjectDir, record);
   if (refusal === null) return true;
   const refused = refusedReferences(outsideReferences(absProjectDir, entryFile ?? "index.html"));
-  if (refusal.alwaysWarn || refused !== "") warn(`${refusal.reason}${refused}`);
+  if (refusal.alwaysWarn || refused !== "") warn(terminalText(`${refusal.reason}${refused}`));
   return false;
 }

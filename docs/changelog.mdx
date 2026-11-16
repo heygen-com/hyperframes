@@ -9,6 +9,60 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.55"
+  description="Released - 2026-11-15"
+  tags={["Release", "Studio", "CLI", "Studio Server"]}
+>
+A sealed Studio preview now plays a video's proxy copy and reloads under one current frame token. Cloud render sends one zip when it fits and uploads only the largest media. The file servers check the Host they are asked under, and publish and cloud render staging skip other computers' network shares.
+
+## Fixes
+
+- **Studio Server:** Sub-composition head and root tag scans take linear time ([ceb969dba](https://github.com/heygen-com/hyperframes/commit/ceb969dbacff281ec1fdddf9fe22c0fcd34fb663), [#7866](https://github.com/heygen-com/hyperframes/pull/7866)).
+- **CLI:** The engine and CLI share one trusted PATH rule, and a skipped project copy says why ([e2430edec](https://github.com/heygen-com/hyperframes/commit/e2430edecf5492a02a363eaa5c30ad2708af5aee), [#7801](https://github.com/heygen-com/hyperframes/pull/7801)).
+- **CLI:** Cloud render sends one zip when it fits and uploads only the largest media ([9bc2b231d](https://github.com/heygen-com/hyperframes/commit/9bc2b231d339609a3f2f48b63f80b162a3d97a4d), [#7859](https://github.com/heygen-com/hyperframes/pull/7859)).
+- **Docs:** The engine docs say download limits apply per attempt and per process ([4c09c8b79](https://github.com/heygen-com/hyperframes/commit/4c09c8b7937eb8972b947df06dd187608ff02345), [#7867](https://github.com/heygen-com/hyperframes/pull/7867)).
+- **CLI:** Upload archives never include credential or agent-state files ([52d43f33a](https://github.com/heygen-com/hyperframes/commit/52d43f33a3102e3fadfbe3d6d24f18c9f2ea689e), [#7830](https://github.com/heygen-com/hyperframes/pull/7830)).
+- Static, producer and engine file servers check Host and mark runtime pages ([490199cef](https://github.com/heygen-com/hyperframes/commit/490199cef8475e65eaa166b23bbf1f3034d272a9), [#7852](https://github.com/heygen-com/hyperframes/pull/7852)).
+- **Studio:** A sealed preview's reload asks under one current frame token ([1f17b3dfe](https://github.com/heygen-com/hyperframes/commit/1f17b3dfebf9cc1bfd20107c089151e0e8b07910), [#7862](https://github.com/heygen-com/hyperframes/pull/7862)).
+- **CLI:** Publish and cloud render staging skip other computers' network shares ([c030e3193](https://github.com/heygen-com/hyperframes/commit/c030e3193d0d5e910d0d03d0a881848b35cdc44d), [#7858](https://github.com/heygen-com/hyperframes/pull/7858)).
+- **Studio Server:** A sealed preview's wait for a video's proxy copy passes its preflight ([ae5829db7](https://github.com/heygen-com/hyperframes/commit/ae5829db7e96675060eb810ac03139d60156b10e), [#7856](https://github.com/heygen-com/hyperframes/pull/7856)).
+- **CLI:** Subfolder renders read an ancestor's record however it is stored or spelled ([fe21bee3c](https://github.com/heygen-com/hyperframes/commit/fe21bee3cf40007c23e7a3ad7dc7a2cf08f5df20), [#7847](https://github.com/heygen-com/hyperframes/pull/7847)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.54...v0.9.55).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.54"
+  description="Released - 2026-11-15"
+  tags={["Release", "Studio", "Studio Server"]}
+>
+Studio hosts can now run the preview on its own sealed origin with the sandboxOrigin option or VITE_STUDIO_OPAQUE_PREVIEW_ENABLED, off by default. When sealed, the preview's images, media, fetched files, console errors panel and GSAP keyframe and 3D previews keep working. Render, capture and bundling also leave out the app's own .hyperframes records.
+
+## Features
+
+- **Studio:** Hosts can share the preview's editing-port client ([3a4f57252](https://github.com/heygen-com/hyperframes/commit/3a4f57252377051f6602bd0149e84f8ead0845b2), [#7811](https://github.com/heygen-com/hyperframes/pull/7811)).
+- **Studio:** Hosts can seal the preview frames NLEPreview draws ([a73ecff2b](https://github.com/heygen-com/hyperframes/commit/a73ecff2bef2168c47625e781bc1de13c7ca23ce), [#7817](https://github.com/heygen-com/hyperframes/pull/7817)).
+- **Studio:** The console errors panel reads a sealed preview over its editing port ([5341d7255](https://github.com/heygen-com/hyperframes/commit/5341d7255c4795a9dda676cb21409a4655b2e429), [#7824](https://github.com/heygen-com/hyperframes/pull/7824)).
+- **Studio Server:** An opaque preview loads its images, media and fetched files ([88ffe087c](https://github.com/heygen-com/hyperframes/commit/88ffe087cae5d005fdc3d7b9567283c72a9ba5d7), [#7806](https://github.com/heygen-com/hyperframes/pull/7806)).
+
+## Fixes
+
+- **Producer:** Check scheme-prefixed media sources against the project folder ([d8e36aa9d](https://github.com/heygen-com/hyperframes/commit/d8e36aa9dc7b4c007cbcb6bc0be0dcb21c1205bc), [#7851](https://github.com/heygen-com/hyperframes/pull/7851)).
+- **Docs:** The v0.9.53 notes list the key rules moving into core ([c46143dd7](https://github.com/heygen-com/hyperframes/commit/c46143dd7904204c6dc0a2e574607d8dab238496), [#7855](https://github.com/heygen-com/hyperframes/pull/7855)).
+- Answer only the loopback Host on the render and capture file servers ([f891a3058](https://github.com/heygen-com/hyperframes/commit/f891a305812e9046777e32ff49eef83afe9bf7f5), [#7853](https://github.com/heygen-com/hyperframes/pull/7853)).
+- **Engine:** Remote downloads get an absolute deadline and stop before the disk fills ([e1043659d](https://github.com/heygen-com/hyperframes/commit/e1043659d4490fde8458063a9585c30478464c8d), [#7827](https://github.com/heygen-com/hyperframes/pull/7827)).
+- **CLI:** The audio caches never write or read through links in .hyperframes ([9701f0639](https://github.com/heygen-com/hyperframes/commit/9701f0639c3614f4fb33f2a83973adafd179ef08), [#7825](https://github.com/heygen-com/hyperframes/pull/7825)).
+- **Parsers:** Helper programs never come from the project a subfolder sits in ([96cc8cb85](https://github.com/heygen-com/hyperframes/commit/96cc8cb85242fc72bb2e1371048d733cb4993c68), [#7845](https://github.com/heygen-com/hyperframes/pull/7845)).
+- **CLI:** A project .env key is used only when nothing is saved ([de1ce6898](https://github.com/heygen-com/hyperframes/commit/de1ce68988a6cce48a73a67a8d2c2b7fb4603bad), [#7848](https://github.com/heygen-com/hyperframes/pull/7848)).
+- **CLI:** Keep project text and other computers' shares out of render and upload notices ([70d60ce03](https://github.com/heygen-com/hyperframes/commit/70d60ce03719030bda362d6c7107a9fa350c6090), [#7849](https://github.com/heygen-com/hyperframes/pull/7849)).
+- **Studio:** GSAP keyframe and 3D previews stop throwing on a sealed preview ([39dc1e232](https://github.com/heygen-com/hyperframes/commit/39dc1e232d242cdecf9ad782483587b288cc1392), [#7833](https://github.com/heygen-com/hyperframes/pull/7833)).
+- Snapshot escapes composition text in its output; stills sweep the transcode cache ([a2f926708](https://github.com/heygen-com/hyperframes/commit/a2f926708901f1fc52c18888db103cd768537824), [#7832](https://github.com/heygen-com/hyperframes/pull/7832)).
+- Render, capture and bundling refuse the app's .hyperframes records ([962ddb7c5](https://github.com/heygen-com/hyperframes/commit/962ddb7c543519be17f6085a9c105d29d5886ecc), [#7828](https://github.com/heygen-com/hyperframes/pull/7828)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.53...v0.9.54).
+</Update>
+
+<Update
   label="HyperFrames v0.9.53"
   description="Released - 2026-11-15"
   tags={["Release", "CLI", "Core", "Lint"]}
@@ -21,6 +75,7 @@ Pages with many Chinese, Japanese or Korean characters now load their fonts in a
 
 ## Fixes
 
+- **Core:** Studio's key combo and typing-target rules live in core ([ef42bef9c](https://github.com/heygen-com/hyperframes/commit/ef42bef9c303af3bdca108c6c4f4ed01b23626ca), [#7835](https://github.com/heygen-com/hyperframes/pull/7835)).
 - **Producer:** Shader transitions blend in Node when the page cannot composite them ([fb1a383bd](https://github.com/heygen-com/hyperframes/commit/fb1a383bde6a0716fdc6041bf68b9bc1da9726b5), [#7840](https://github.com/heygen-com/hyperframes/pull/7840)).
 - **CLI:** The upload cut test stops failing on busy Windows runners ([2ea78c0ab](https://github.com/heygen-com/hyperframes/commit/2ea78c0ab462e506cec44d3c969513d8aa244749), [#7843](https://github.com/heygen-com/hyperframes/pull/7843)).
 - **Engine:** Restricted downloads apply the capture proxy's address rule ([125a9446b](https://github.com/heygen-com/hyperframes/commit/125a9446be3c0736a190c16cef9003108b0a981c), [#7839](https://github.com/heygen-com/hyperframes/pull/7839)).

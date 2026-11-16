@@ -30,6 +30,8 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 const HEAVY = Buffer.alloc(OFFLOAD_MIN_BYTES, 1);
+// A zip budget only HEAVY stand-ins are over: the tiny files beside them stay in the zip.
+const ONE_MIB = 1024 * 1024;
 const dirs: string[] = [];
 
 beforeEach(() => {
@@ -122,6 +124,7 @@ describe("offloadHeavyMedia", () => {
 
     const report = await offloadHeavyMedia(dir, fileMap, {
       apiBaseUrl: "https://api.example",
+      zipBudgetBytes: ONE_MIB,
       upload,
       cachePath: cachePath(),
     });
@@ -132,7 +135,8 @@ describe("offloadHeavyMedia", () => {
       ["media/clip.mp4", "upload"],
       ["media/voice.mp3", "upload"],
     ]);
-    expect(report.map((item) => item.asset_id)).toEqual(["asset_1", "asset_2", "asset_3"]);
+    // Uploads run together, so which file got which asset number is a race; each got its own.
+    expect(report.map((item) => item.asset_id).sort()).toEqual(["asset_1", "asset_2", "asset_3"]);
     const index = fileMap.get("index.html")!.toString();
     expect(index).toContain(`url("${url("media/bg.png")}")`);
     expect(index).toContain(`src="${url("media/clip.mp4")}" poster="${url("media/bg.png")}"`);
@@ -179,6 +183,175 @@ describe("offloadHeavyMedia", () => {
       }),
     ]);
     expect(second.get("index.html")!.toString()).toContain("https://assets.example/1/clip.mp4");
+  });
+
+  it("with no zip budget, uploads every media file a page uses whatever its size, and leaves unused media out", async () => {
+    // A film cut from many short clips: each clip is far under the old 5 MB floor, together over the upload limit.
+    const small = (name: string) => honest(name).subarray(0, 64 * 1024);
+    const clips = Array.from({ length: 6 }, (_, i) => `assets/clip-${i}.mp4`);
+    const dir = project({
+      "index.html": html(
+        clips.map((clip) => `<video src="${clip}"></video>`).join("") +
+          `<img src="assets/still.png" /><audio src="assets/bed.mp3"></audio>`,
+      ),
+      ...Object.fromEntries(clips.map((clip) => [clip, small(clip)])),
+      "assets/still.png": small("still.png"),
+      "assets/bed.mp3": small("bed.mp3"),
+      "assets/unused-take.mp4": small("unused-take.mp4"),
+      "assets/notes.txt": "notes",
+    });
+    const fileMap = stagePublishFiles(dir, OFFLOAD_MIN_BYTES);
+
+    const report = await offloadHeavyMedia(dir, fileMap, {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      cachePath: cachePath(),
+    });
+
+    expect(report.map((item) => item.path).sort()).toEqual(
+      [...clips, "assets/still.png", "assets/bed.mp3"].sort(),
+    );
+    expect([...fileMap.keys()].sort()).toEqual(["assets/notes.txt", "index.html"]);
+  });
+
+  it("uploads up to eight files at once", async () => {
+    const clips = Array.from(
+      { length: 12 },
+      (_, i) => `assets/clip-${String(i).padStart(2, "0")}.mp4`,
+    );
+    const dir = project({
+      "index.html": html(clips.map((clip) => `<video src="${clip}"></video>`).join("")),
+      // Each clip's bytes differ by its index, so none is another's cached copy.
+      ...Object.fromEntries(
+        clips.map((clip, i) => [
+          clip,
+          Buffer.concat([honest(clip).subarray(0, 4096), Buffer.from([i])]),
+        ]),
+      ),
+    });
+    let inFlight = 0;
+    let peak = 0;
+    let started = 0;
+    let parked: (() => void)[] = [];
+    // Uploads wait until eight are in flight or every file has started, so reaching eight never depends on timing.
+    const upload = vi.fn(async (file: UploadableFile) => {
+      inFlight += 1;
+      started += 1;
+      peak = Math.max(peak, inFlight);
+      const turn = new Promise<void>((resolve) => parked.push(resolve));
+      if (inFlight === 8 || started === clips.length) {
+        const release = parked;
+        parked = [];
+        // Held a moment first: an upload past the eighth would start now and raise the peak.
+        setTimeout(() => release.forEach((go) => go()), 50);
+      }
+      await turn;
+      inFlight -= 1;
+      return { asset_id: file.filename, url: `https://assets.example/${file.filename}` };
+    });
+
+    const report = await offloadHeavyMedia(dir, stagePublishFiles(dir, OFFLOAD_MIN_BYTES), {
+      apiBaseUrl: "https://api.example",
+      upload,
+      cachePath: cachePath(),
+    });
+
+    expect(peak).toBe(8);
+    expect(upload).toHaveBeenCalledTimes(12);
+    expect(report.map((item) => item.path)).toEqual(clips);
+  });
+
+  it("uploads two files with the same bytes once when both start together", async () => {
+    const same = honest("a.mp4").subarray(0, 4096);
+    const dir = project({
+      "index.html": html(`<video src="a.mp4"></video><video src="b.mp4"></video>`),
+      "a.mp4": same,
+      "b.mp4": same,
+    });
+    const upload = fakeUpload();
+
+    const report = await offloadHeavyMedia(dir, stagePublishFiles(dir, OFFLOAD_MIN_BYTES), {
+      apiBaseUrl: "https://api.example",
+      upload,
+      cachePath: cachePath(),
+    });
+
+    expect(upload).toHaveBeenCalledOnce();
+    expect(report.map((item) => item.url)).toEqual([report[0]!.url, report[0]!.url]);
+  });
+
+  describe("with a zip budget", () => {
+    // Clips of 1, 2, 3 and 4 KiB a page plays, a 3 KiB take no page plays, and the page itself.
+    const sized = (name: string, kib: number) => honest(name).subarray(0, kib * 1024);
+    const files = () => ({
+      "index.html": html(
+        [1, 2, 3, 4].map((kib) => `<video src="assets/clip-${kib}.mp4"></video>`).join(""),
+      ),
+      ...Object.fromEntries(
+        [1, 2, 3, 4].map((kib) => [`assets/clip-${kib}.mp4`, sized("a.mp4", kib)]),
+      ),
+      "assets/unused-take.mp4": sized("a.mp4", 3),
+    });
+    const offload = async (zipBudgetBytes: number) => {
+      const dir = project(files());
+      const fileMap = stagePublishFiles(dir, OFFLOAD_MIN_BYTES);
+      const upload = fakeUpload();
+      const report = await offloadHeavyMedia(dir, fileMap, {
+        apiBaseUrl: "https://api.example",
+        upload,
+        cachePath: cachePath(),
+        zipBudgetBytes,
+      });
+      return {
+        uploaded: report.map((item) => item.path),
+        zipped: [...fileMap.keys()].sort(),
+        upload,
+      };
+    };
+
+    it("uploads nothing and keeps every file when the zip fits", async () => {
+      const { upload, zipped } = await offload(14 * 1024);
+      expect(upload).not.toHaveBeenCalled();
+      expect(zipped).toEqual(
+        ["assets/unused-take.mp4", "index.html"]
+          .concat([1, 2, 3, 4].map((kib) => `assets/clip-${kib}.mp4`))
+          .sort(),
+      );
+    });
+
+    it("leaves unused media out before uploading anything", async () => {
+      const { upload, zipped } = await offload(11 * 1024);
+      expect(upload).not.toHaveBeenCalled();
+      expect(zipped).not.toContain("assets/unused-take.mp4");
+    });
+
+    it("keeps frames a script loads by a built path when the zip fits", async () => {
+      const dir = project({
+        "index.html": html(
+          `<script>for (let i = 1; i <= 3; i++) new Image().src = "frames/frame_" + i + ".png";</script>`,
+        ),
+        ...Object.fromEntries([1, 2, 3].map((i) => [`frames/frame_${i}.png`, sized("f.png", 1)])),
+      });
+      const fileMap = stagePublishFiles(dir, OFFLOAD_MIN_BYTES);
+      await offloadHeavyMedia(dir, fileMap, {
+        apiBaseUrl: "https://api.example",
+        upload: fakeUpload(),
+        cachePath: cachePath(),
+        zipBudgetBytes: 190 * 1024 * 1024,
+      });
+      expect([...fileMap.keys()].sort()).toEqual([
+        "frames/frame_1.png",
+        "frames/frame_2.png",
+        "frames/frame_3.png",
+        "index.html",
+      ]);
+    });
+
+    it("uploads the largest files first, only until the rest fits", async () => {
+      const { uploaded, zipped } = await offload(5 * 1024);
+      expect(uploaded).toEqual(["assets/clip-3.mp4", "assets/clip-4.mp4"]);
+      expect(zipped).toEqual(["assets/clip-1.mp4", "assets/clip-2.mp4", "index.html"]);
+    });
   });
 
   it("leaves heavy files nothing references out of the archive, but keeps one a variable names", async () => {
@@ -1092,6 +1265,7 @@ describe("offloadHeavyMedia", () => {
 
     await offloadHeavyMedia(dir, fileMap, {
       apiBaseUrl: "https://api.example",
+      zipBudgetBytes: ONE_MIB,
       upload: fakeUpload(),
       cachePath: cachePath(),
     });
@@ -1138,7 +1312,12 @@ describe("offloadHeavyMedia", () => {
         preparedGifs: [{ sourceSrc: "media/loop.gif", outputPath }],
       };
     });
-    const opts = { apiBaseUrl: "https://api.example", upload: fakeUpload(), gifPrep };
+    const opts = {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      gifPrep,
+      zipBudgetBytes: ONE_MIB,
+    };
 
     const dir = project(files);
     await offloadHeavyMedia(dir, stagePublishFiles(dir, OFFLOAD_MIN_BYTES), {
@@ -1190,6 +1369,7 @@ describe("offloadHeavyMedia", () => {
 
     const report = await offloadHeavyMedia(dir, fileMap, {
       apiBaseUrl: "https://api.example",
+      zipBudgetBytes: ONE_MIB,
       upload,
       gifPrep,
       cachePath: cachePath(),

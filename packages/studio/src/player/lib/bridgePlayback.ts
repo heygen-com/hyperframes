@@ -3,6 +3,7 @@
 // because a runtime posts its first `timeline` while it boots.
 import type { PlaybackAdapter } from "./playbackTypes";
 import { inspectStudioRuntimeMessage, postRuntimeControlMessage } from "./runtimeProtocol";
+import { previewFrameOpaque } from "./previewChannel";
 
 interface PlaybackMirror {
   iframe: HTMLIFrameElement;
@@ -56,10 +57,15 @@ export function previewStageSize(
   return (frame && mirrors.get(frame)?.stageSize) ?? null;
 }
 
-/** The origins a post from this frame can carry, given its sandbox and what it loads. */
+/** The origins a post from this frame can carry; a page its server sandboxed posts as `null` without the attribute. */
 export function frameOrigins(iframe: HTMLIFrameElement): string[] {
   const sandbox = iframe.getAttribute("sandbox")?.toLowerCase().split(/\s+/);
   if (sandbox && !sandbox.includes("allow-same-origin")) return ["null"];
+  const loaded = loadedOrigins(iframe);
+  return previewFrameOpaque(iframe) && !loaded.includes("null") ? [...loaded, "null"] : loaded;
+}
+
+function loadedOrigins(iframe: HTMLIFrameElement): string[] {
   const src = iframe.getAttribute("src");
   if (iframe.hasAttribute("srcdoc") || !src) return [window.location.origin];
   try {

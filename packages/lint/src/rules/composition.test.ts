@@ -195,7 +195,7 @@ describe("composition rules", () => {
       expect(finding?.fixHint).toContain("Split this sub-composition further");
     });
 
-    it("warns when more than 3 timed elements share the same track", async () => {
+    it("warns when a file has more than 3 timed elements", async () => {
       const html = `<!DOCTYPE html>
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0">
@@ -212,10 +212,10 @@ describe("composition rules", () => {
       const finding = result.findings.find((f) => f.code === "timeline_track_too_dense");
       expect(finding).toBeDefined();
       expect(finding?.severity).toBe("warning");
-      expect(finding?.message).toContain("Track 0 has 4 timed elements");
+      expect(finding?.message).toContain("4 timed elements");
     });
 
-    it("does not warn when 3 timed elements share the same track", async () => {
+    it("does not warn on 3 timed elements", async () => {
       const html = `<!DOCTYPE html>
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0">
@@ -230,20 +230,29 @@ describe("composition rules", () => {
       expect(finding).toBeUndefined();
     });
 
-    it("does not warn when timed elements are split across tracks", async () => {
-      const html = `<!DOCTYPE html>
+    const tenScenes = (track: (i: number) => string) => `<!DOCTYPE html>
 <html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0">
-    <div class="clip" data-start="0" data-duration="1" data-track-index="0">A</div>
-    <div class="clip" data-start="1" data-duration="1" data-track-index="0">B</div>
-    <div class="clip" data-start="2" data-duration="1" data-track-index="1">C</div>
-    <div class="clip" data-start="3" data-duration="1" data-track-index="1">D</div>
+${Array.from({ length: 10 }, (_, i) => `    <div class="clip" data-start="${i}" data-duration="1"${track(i)}>S${i}</div>`).join("\n")}
   </div>
 </body></html>`;
+    const denseFinding = async (html: string) =>
+      (await lintHyperframeHtml(html, { filePath: "/project/index.html" })).findings.find(
+        (f) => f.code === "timeline_track_too_dense",
+      );
 
-      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
-      const finding = result.findings.find((f) => f.code === "timeline_track_too_dense");
-      expect(finding).toBeUndefined();
+    it("never advises another lane for scenes that share one", async () => {
+      const finding = await denseFinding(tenScenes(() => ` data-track-index="0"`));
+      expect(finding?.message).toContain("10 timed elements");
+      expect(`${finding?.message} ${finding?.fixHint}`).not.toMatch(/track|lane/i);
+    });
+
+    it("still warns the same when the scenes are spread over lanes or have none", async () => {
+      const oneLane = await denseFinding(tenScenes(() => ` data-track-index="0"`));
+      const tenLanes = await denseFinding(tenScenes((i) => ` data-track-index="${i}"`));
+      const noLane = await denseFinding(tenScenes(() => ""));
+      expect(tenLanes).toEqual(oneLane);
+      expect(noLane).toEqual(oneLane);
     });
 
     it("does not count timed media or script/style tags as dense track elements", async () => {

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   chmodSync,
+  existsSync,
   linkSync,
   mkdirSync,
   mkdtempSync,
@@ -13,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compileForRender } from "../../../producer/src/services/htmlCompiler.js";
 import { outsideAssetsAllowed } from "./receivedRender.js";
+import { terminalText } from "./terminalText.js";
 
 const SIGNATURES = {
   png: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]),
@@ -57,6 +59,15 @@ function project(record?: string): string {
 }
 
 const received = (...files: string[]) => JSON.stringify({ files });
+
+function caseInsensitiveDisk(): boolean {
+  const probe = mkdtempSync(join(tmpdir(), "hf-case-probe-"));
+  try {
+    return existsSync(probe.toUpperCase()) && existsSync(probe.toLowerCase());
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+}
 
 const SOMEONE_ELSE = "came from someone else and is not a media, font or image file";
 
@@ -195,6 +206,34 @@ describe("outsideAssetsAllowed", () => {
     expect(line).toContain(`index.html ${SOMEONE_ELSE}`);
   });
 
+  it.each([
+    ["a folder", (path: string) => mkdirSync(path, { recursive: true })],
+    ["a dangling link", (path: string) => symlinkSync(join(path, "..", "gone.json"), path)],
+  ])("refuses outside files when an ancestor's record path holds %s", (_kind, place) => {
+    root = mkdtempSync(join(tmpdir(), "hf-received-render-"));
+    write(join(root, "outside", "pic.png"), SIGNATURES.png);
+    const dir = join(root, "sub");
+    write(join(dir, "index.html"), `<img src="../outside/pic.png">`);
+    mkdirSync(join(root, ".hyperframes"));
+    place(join(root, ".hyperframes", "received-files.json"));
+    const { allowed, line } = decide(dir);
+    expect(allowed).toBe(false);
+    expect(line).toContain("Could not read");
+  });
+
+  it.skipIf(!caseInsensitiveDisk())(
+    "refuses outside files for a received subfolder named in another letter case",
+    () => {
+      root = mkdtempSync(join(tmpdir(), "hf-received-render-"));
+      write(join(root, "outside", "pic.png"), SIGNATURES.png);
+      write(join(root, "Scenes", "Intro", "index.html"), `<img src="../../outside/pic.png">`);
+      write(join(root, ".hyperframes", "received-files.json"), received("Scenes/Intro/index.html"));
+      const { allowed, line } = decide(join(root, "scenes", "intro"));
+      expect(allowed).toBe(false);
+      expect(line).toContain(`index.html ${SOMEONE_ELSE}`);
+    },
+  );
+
   it("keeps outside files when the record lists no files", () => {
     expect(decide(project(received())).allowed).toBe(true);
   });
@@ -207,6 +246,80 @@ describe("outsideAssetsAllowed", () => {
     const { allowed, warn } = decide(dir);
     expect(allowed).toBe(true);
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  describe("a received project copied into a folder of the project", () => {
+    const NESTED = join("compositions", "x");
+    function withNested(record?: string, files: Record<string, string | Buffer> = {}): string {
+      const dir = project();
+      write(
+        join(dir, "index.html"),
+        `<div data-composition-src="compositions/x/index.html"></div>`,
+      );
+      write(join(dir, NESTED, "index.html"), `<img src="../../../outside/pic.png">`);
+      for (const [name, content] of Object.entries(files)) write(join(dir, NESTED, name), content);
+      if (record !== undefined)
+        write(join(dir, NESTED, ".hyperframes", "received-files.json"), record);
+      return dir;
+    }
+
+    it("refuses outside files and names what it leaves out", () => {
+      const { allowed, warn, line } = decide(withNested(received("index.html")));
+      expect(allowed).toBe(false);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(line).toContain(`${join(NESTED, "index.html")} ${SOMEONE_ELSE}`);
+      expect(line).toContain("../../../outside/pic.png");
+    });
+
+    it("refuses outside files when the copy's entry is the rendered composition", () => {
+      const entry = "compositions/x/index.html";
+      const { allowed, line } = decide(withNested(received("index.html")), entry);
+      expect(allowed).toBe(false);
+      expect(line).toContain(SOMEONE_ELSE);
+      expect(line).toContain("../../../outside/pic.png");
+    });
+
+    it("keeps outside files when the copy's record lists only media", () => {
+      const dir = withNested(received("clip.mp4"), { "clip.mp4": SIGNATURES.mp4 });
+      const { allowed, warn } = decide(dir);
+      expect(allowed).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("refuses outside files and names the copy's record when it cannot be read", () => {
+      const dir = withNested("{not json");
+      const { allowed, line } = decide(dir);
+      expect(allowed).toBe(false);
+      const path = join(realpathSync(dir), NESTED, ".hyperframes", "received-files.json");
+      expect(line).toContain(`Could not read ${path}`);
+    });
+
+    it("keeps outside files for a folder with no record of its own", () => {
+      const { allowed, warn } = decide(withNested());
+      expect(allowed).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("keeps outside files for a project whose tool folders hold very many folders", () => {
+      const dir = withNested();
+      for (const tool of ["node_modules", "renders", ".git"]) {
+        mkdirSync(join(dir, tool));
+        for (let i = 0; i <= 7_000; i++) mkdirSync(join(dir, tool, `d${i}`));
+      }
+      const { allowed, warn } = decide(dir);
+      expect(allowed).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("refuses outside files when the project has too many folders to search", () => {
+      const dir = withNested();
+      const many = join(dir, "folders");
+      mkdirSync(many);
+      for (let i = 0; i <= 20_000; i++) mkdirSync(join(many, `d${i}`));
+      const { allowed, line } = decide(dir);
+      expect(allowed).toBe(false);
+      expect(line).toContain("Could not check every project folder");
+    });
   });
 
   it("keeps outside files for a project with no received-files record", () => {
@@ -251,6 +364,24 @@ describe("outsideAssetsAllowed", () => {
     const { allowed, line } = decide(dir);
     expect(allowed).toBe(false);
     expect(line).toContain("stops on the compositions ../outside/shared.html");
+  });
+
+  it("prints references and file names from the project without their control characters", () => {
+    const dir = project(received("notes\u001b[31m\u009b2J.txt"));
+    write(join(dir, "..", "outside", "café.png"), SIGNATURES.png);
+    write(
+      join(dir, "index.html"),
+      `<img src="../outside/pic.png?\u001b[2K\u001b[1Aspoof\u0007">
+<img src="../outside/café.png">
+<div style="background: url('../outside/bg.png#\u009b31m\u007f')"></div>`,
+    );
+    const { allowed, line } = decide(dir);
+    expect(allowed).toBe(false);
+    expect(line).toBe(terminalText(line));
+    expect(line).toContain("notes\\x1b[31m\\x9b2J.txt");
+    expect(line).toContain("../outside/pic.png?\\x1b[2K\\x1b[1Aspoof\\x07");
+    expect(line).toContain("../outside/bg.png#\\x9b31m\\x7f");
+    expect(line).toContain("../outside/café.png");
   });
 
   it.runIf(process.platform !== "win32")(
@@ -530,7 +661,7 @@ describe("outsideAssetsAllowed", () => {
         try {
           const { allowed, line } = decide(dir);
           expect(allowed).toBe(false);
-          expect(line).toContain("Could not check every project file");
+          expect(line).toMatch(/Could not check every project (file|folder)/);
         } finally {
           chmodSync(join(dir, "locked"), 0o755);
         }

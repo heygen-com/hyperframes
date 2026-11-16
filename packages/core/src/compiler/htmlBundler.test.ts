@@ -235,7 +235,7 @@ describe("bundleToSingleHtml", () => {
     }
   });
 
-  it("refuses the app's records only under the studio private-file policy", async () => {
+  it("refuses the app's records by default, and inlines them only when asked for git and env files alone", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head>
         <link rel="stylesheet" href=".hyperframes/handoff.css">
@@ -250,7 +250,10 @@ describe("bundleToSingleHtml", () => {
       expect(studio).toContain('href=".hyperframes/handoff.css"');
       expect(studio).toContain(".prepared { color: blue; }");
       const plain = await bundleToSingleHtml(dir);
-      expect(plain).toContain(".app-record { color: red; }");
+      expect(plain).not.toContain(".app-record");
+      expect(plain).toContain(".prepared { color: blue; }");
+      const narrow = await bundleToSingleHtml(dir, { privateFiles: "vcs-and-secrets" });
+      expect(narrow).toContain(".app-record { color: red; }");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

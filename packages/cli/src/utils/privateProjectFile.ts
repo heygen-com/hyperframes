@@ -2,12 +2,13 @@ import {
   closeSync,
   lstatSync,
   openSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
   statSync,
 } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   isEnvOrGitPath,
   isPrivateOutsideFile,
@@ -15,7 +16,9 @@ import {
 } from "@hyperframes/studio-server/outside-file";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
 import { mkdirWithinProject } from "@hyperframes/core";
+import { isCredentialOrToolStatePath } from "@hyperframes/core/safe-path";
 import { publishRegistryFile, registryRoot, registryTargetPath } from "../registry/publication.js";
+import { walkBudget } from "./walkBudget.js";
 
 export { isEnvOrGitPath, isPrivateOutsideFile, linksOutside };
 
@@ -29,26 +32,38 @@ const LOCK_WAIT_MS = 2_000;
 const LOCK_STALE_MS = 10_000;
 
 interface ReceivedRecord {
+  file: string;
   root: string;
   projectDirFromRoot: string;
   listed: unknown;
 }
 
-function recordFileAt(dir: string): boolean {
+type RecordKind = "absent" | "file" | "other" | "unknown";
+
+function recordKind(dir: string): RecordKind {
+  const path = join(dir, RECEIVED_RECORD);
+  let found;
   try {
-    return statSync(join(dir, RECEIVED_RECORD)).isFile();
+    found = lstatSync(path, { throwIfNoEntry: false });
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOTDIR" ? "absent" : "unknown";
+  }
+  if (!found) return "absent";
+  try {
+    return statSync(path).isFile() ? "file" : "other";
   } catch {
-    return false;
+    return "other";
   }
 }
 
 function readRecord(dir: string, ownFolder: boolean): { listed: unknown } | null {
-  if (!ownFolder && !recordFileAt(dir)) return null;
+  const kind = recordKind(dir);
+  if (kind === "absent" || (kind === "unknown" && !ownFolder)) return null;
+  if (kind !== "file") return { listed: undefined };
   try {
     return { listed: JSON.parse(readFileSync(join(dir, RECEIVED_RECORD), "utf-8")).files };
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    return ownFolder && (code === "ENOENT" || code === "ENOTDIR") ? null : { listed: undefined };
+  } catch {
+    return { listed: undefined };
   }
 }
 
@@ -106,18 +121,13 @@ export function forgetReceivedFiles(root: string, paths: string[]): void {
   changeReceivedRecord(root, (files) => paths.map((path) => files.delete(path)).some(Boolean));
 }
 
-function receivedRecordsAtOrAbove(projectDir: string): ReceivedRecord[] {
-  let start: string;
-  try {
-    start = realpathSync(projectDir);
-  } catch {
-    start = resolve(projectDir);
-  }
+function receivedRecordsAtOrAbove(start: string): ReceivedRecord[] {
   const records: ReceivedRecord[] = [];
   for (let dir = start; ; ) {
     const record = readRecord(dir, dir === start);
     if (record)
       records.push({
+        file: join(dir, RECEIVED_RECORD),
         root: dir,
         projectDirFromRoot: relative(dir, start).split(sep).join("/"),
         ...record,
@@ -126,6 +136,56 @@ function receivedRecordsAtOrAbove(projectDir: string): ReceivedRecord[] {
     if (parent === dir) return records;
     dir = parent;
   }
+}
+
+function nestedRecord(start: string, dir: string, record: { listed: unknown }): ReceivedRecord {
+  const folder = relative(start, dir).split(sep).join("/");
+  const listed = Array.isArray(record.listed)
+    ? record.listed.map((entry) => `${folder}/${String(entry)}`)
+    : undefined;
+  return { file: join(dir, RECEIVED_RECORD), root: start, projectDirFromRoot: "", listed };
+}
+
+const NOT_WALKED = new Set([
+  ".git",
+  ".hyperframes",
+  "node_modules",
+  "renders",
+  "dist",
+  ".next",
+  "coverage",
+]);
+
+function receivedRecordsBelow(start: string): ReceivedRecord[] | null {
+  const withinBudget = walkBudget();
+  const records: ReceivedRecord[] = [];
+  const pending = [start];
+  for (let dir = pending.pop(); dir !== undefined; dir = pending.pop()) {
+    let folders: string[];
+    try {
+      folders = readdirSync(dir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !NOT_WALKED.has(entry.name.toLowerCase()))
+        .map((entry) => join(dir, entry.name));
+    } catch {
+      return null;
+    }
+    if (!withinBudget(folders.length)) return null;
+    const record = dir === start ? null : readRecord(dir, true);
+    if (record) records.push(nestedRecord(start, dir, record));
+    pending.push(...folders);
+  }
+  return records;
+}
+
+function receivedRecords(projectDir: string): ReceivedRecord[] | null {
+  let start: string;
+  try {
+    start = realpathSync(projectDir);
+  } catch {
+    start = resolve(projectDir);
+  }
+  const below = receivedRecordsBelow(start);
+  return below && [...receivedRecordsAtOrAbove(start), ...below];
 }
 
 function fileIdentity(path: string): string | null {
@@ -154,36 +214,65 @@ function listedIn(record: ReceivedRecord, projectDir: string): (path: string) =>
 }
 
 export function receivedFiles(projectDir: string): (path: string) => boolean {
-  const records = receivedRecordsAtOrAbove(projectDir);
-  if (records.some((record) => !Array.isArray(record.listed))) return () => true;
+  const records = receivedRecords(projectDir);
+  if (records === null || records.some((record) => !Array.isArray(record.listed)))
+    return () => true;
   const listedInAnyRecord = records.map((record) => listedIn(record, projectDir));
   return (path) => listedInAnyRecord.some((listed) => listed(path));
 }
 
 function listedUnder(record: ReceivedRecord): string[] {
+  const entries = (record.listed as unknown[]).map(String);
   const prefix = record.projectDirFromRoot ? `${record.projectDirFromRoot}/`.normalize("NFC") : "";
-  return (record.listed as unknown[])
-    .map(String)
-    .filter((entry) => entry.normalize("NFC").startsWith(prefix))
+  const folder = prefix ? fileIdentity(join(record.root, record.projectDirFromRoot)) : null;
+  const identities = new Map<string, string | null>();
+  const inFolderOnDisk = (path: string) => {
+    for (let dir = dirname(path); folder && dir.length > record.root.length; dir = dirname(dir)) {
+      if (!identities.has(dir)) identities.set(dir, fileIdentity(dir));
+      if (identities.get(dir) === folder) return true;
+    }
+    return false;
+  };
+  return entries
+    .filter(
+      (entry) =>
+        entry.normalize("NFC").startsWith(prefix) || inFolderOnDisk(join(record.root, entry)),
+    )
     .map((entry) => join(record.root, entry));
 }
 
 export function receivedRecordStatus(
   projectDir: string,
-): { path: string; listed: string[] | null } | null {
-  const records = receivedRecordsAtOrAbove(projectDir);
+): { path: string; listed: string[] | null } | "unchecked" | null {
+  const records = receivedRecords(projectDir);
+  if (records === null) return "unchecked";
   const [nearest] = records;
   if (!nearest) return null;
   const unreadable = records.find((record) => !Array.isArray(record.listed));
-  if (unreadable) return { path: join(unreadable.root, RECEIVED_RECORD), listed: null };
-  return { path: join(nearest.root, RECEIVED_RECORD), listed: records.flatMap(listedUnder) };
+  if (unreadable) return { path: unreadable.file, listed: null };
+  return { path: nearest.file, listed: records.flatMap(listedUnder) };
 }
 
-/** Project files no composition loads, so none is served or uploaded for one: env files, Git data, tool records. */
+const leavesProject = (path: string): boolean =>
+  isAbsolute(path) || path.split(/[\\/]/)[0] === "..";
+
+const projectRelatives = (projectDir: string, filePath: string): string[] => [
+  relative(projectDir, filePath),
+  relative(realFilePath(projectDir), realFilePath(filePath)),
+];
+
+/** Project files no composition loads, so none is served or uploaded: env, Git, credentials, tool and agent state. */
 export function isPrivateCompositionFile(projectDir: string, filePath: string): boolean {
+  const paths = projectRelatives(projectDir, filePath);
   return (
-    isEnvOrGitPath(relative(projectDir, filePath)) ||
-    isEnvOrGitPath(relative(realFilePath(projectDir), realFilePath(filePath))) ||
+    paths.some(isEnvOrGitPath) ||
+    paths.some((path) => !leavesProject(path) && isCredentialOrToolStatePath(path)) ||
     isPrivateProjectFile(projectDir, filePath)
+  );
+}
+
+export function isHiddenProjectFile(projectDir: string, filePath: string): boolean {
+  return projectRelatives(projectDir, filePath).some((path) =>
+    path.split(/[\\/]/).some((segment) => segment.startsWith(".") && segment !== ".."),
   );
 }

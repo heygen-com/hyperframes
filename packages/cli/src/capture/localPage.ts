@@ -14,6 +14,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } 
 import { Readable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { listenOnBrowserSafePort } from "@hyperframes/engine";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 
 export interface LocalCaptureTarget {
   /** Real path of the directory the page may read from. */
@@ -127,6 +128,7 @@ async function servedFile(root: string, pathname: string): Promise<string | null
   if (decoded.includes("\0")) return null;
   const candidate = resolve(root, `.${decoded}`);
   if (!isInside(root, candidate)) return null;
+  if (isPrivateFileUnder(root, candidate, isStudioPrivatePath)) return null;
   try {
     // Symlinks are followed, so the containment check must run on the real path.
     const real = await realpath(candidate);
@@ -146,7 +148,7 @@ function end(response: ServerResponse, status: number): void {
   response.end();
 }
 
-/** Serves only regular files whose real path lies inside `target.root`, on a loopback port. */
+/** Serves only regular, non-private files whose real path lies inside `target.root`, on a loopback port. */
 export async function startLocalPageServer(target: LocalCaptureTarget): Promise<LocalPageServer> {
   const sockets = new Set<Socket>();
   const server = createServer((request, response) => {

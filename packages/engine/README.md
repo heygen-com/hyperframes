@@ -10,7 +10,7 @@ Framework-agnostic: works with GSAP, Lottie, Three.js, CSS animations, or any we
 npm install @hyperframes/engine
 ```
 
-**Requirements:** Node.js >= 22, Chrome/Chromium (auto-downloaded by Puppeteer), FFmpeg
+**Requirements:** Node.js >= 22, FFmpeg, and the pinned `chrome-headless-shell`: run `npx hyperframes browser ensure` once, or name a browser in `PRODUCER_HEADLESS_SHELL_PATH`. A cached browser is used only when its files match the pinned build. HDR capture needs a full Chrome named in `HYPERFRAMES_BROWSER_PATH`.
 
 ## What it does
 

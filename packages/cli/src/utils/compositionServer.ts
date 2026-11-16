@@ -16,6 +16,7 @@ import {
   requestFromAnotherSite,
   wildcardBindHostAllowed,
 } from "@hyperframes/studio-server/request-identity";
+import { SAME_ORIGIN_FRAMING_HEADERS } from "@hyperframes/engine";
 import type { Context, Hono } from "hono";
 
 /**
@@ -240,6 +241,16 @@ export function sandboxForAnotherSite(app: Hono, path: string): void {
     if (!anotherSite) return;
     c.header("Content-Security-Policy", "sandbox allow-scripts");
     await markDocumentForAnotherSite(c);
+  });
+}
+
+/** The runtime hands an editing port to its parent frame, so only this server's own pages may frame what it serves. */
+export function refuseFramingByOtherSites(app: Hono): void {
+  app.use(async function sameOriginFramingOnly(c, next) {
+    await next();
+    for (const [name, value] of Object.entries(SAME_ORIGIN_FRAMING_HEADERS)) {
+      c.res.headers.append(name, value);
+    }
   });
 }
 

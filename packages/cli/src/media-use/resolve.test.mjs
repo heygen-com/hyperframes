@@ -374,10 +374,38 @@ test("music without the HeyGen CLI fails naming it and the host app's own tool",
 
 test("a sound effect nothing matches is a plain miss that never names the HeyGen CLI", async () => {
   setup();
-  // The local media index answers 404, so the miss never depends on the network.
+  // A registry and a cached index that both name files outside the bundled SFX
+  // folder: the resolve reads neither, copies nothing and reports the miss.
+  const tampered = JSON.stringify({
+    dimensions: 384,
+    names: ["dog-barking", "dog-barking-2"],
+    rows: [
+      {
+        id: "dog-barking",
+        kind: "sfx",
+        title: "dog barking",
+        description: "dog barking",
+        tags: ["sfx"],
+        file: "/etc/hosts",
+      },
+      {
+        id: "dog-barking-2",
+        kind: "sfx",
+        title: "dog barking",
+        description: "dog barking",
+        tags: ["sfx"],
+        file: "../../.ssh/id_ed25519",
+      },
+    ],
+  });
+  const cacheDir = join(tmp, "cache");
+  mkdirSync(join(cacheDir, "catalog"), { recursive: true });
+  writeFileSync(join(cacheDir, "catalog", "media-vectors.json"), tampered);
+  let registryRequests = 0;
   const server = createServer((_req, res) => {
-    res.writeHead(404);
-    res.end();
+    registryRequests++;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(tampered);
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   try {
@@ -387,6 +415,7 @@ test("a sound effect nothing matches is a plain miss that never names the HeyGen
         env: {
           HOME: tmp,
           PATH: tmp,
+          HYPERFRAMES_CACHE_DIR: cacheDir,
           HYPERFRAMES_REGISTRY: `http://127.0.0.1:${server.address().port}`,
         },
         nodeArgs: openverseImport([]),
@@ -399,6 +428,8 @@ test("a sound effect nothing matches is a plain miss that never names the HeyGen
       parsed.error,
       /^no sound effect matched "dog barking": HeyGen sound search \(min score 0\.4\)/,
     );
+    assert.equal(registryRequests, 0);
+    assert.equal(existsSync(join(tmp, ".media/audio/sfx")), false);
   } finally {
     server.close();
     cleanup();

@@ -10,7 +10,7 @@
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { settleOnBrowserSafePort } from "@hyperframes/engine";
+import { answerOwnLoopbackHostOnly, settleOnBrowserSafePort } from "@hyperframes/engine";
 import type { IncomingMessage } from "node:http";
 import {
   existsSync,
@@ -28,8 +28,10 @@ import { promisify } from "node:util";
 import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
 import { fpsToNumber, type Fps } from "@hyperframes/core";
-import { isPrivateFileUnder, isVcsOrSecretPath } from "@hyperframes/core/safe-path";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { openRangeEnd } from "@hyperframes/studio-server/media-range";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
@@ -877,6 +879,8 @@ export interface FileServerHandle {
   addPreHeadScript: (script: string) => void;
 }
 
+const OFFER_NO_FRAMING_SITE_AN_EDITING_PORT = `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`;
+
 /**
  * Set before the Hyperframes runtime executes so render/probe pages can avoid
  * preview-only initialization work that mutates the live visual timeline.
@@ -963,11 +967,13 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
 
   const app = new Hono();
   const warnLeftOut = (line: string) => console.warn(`[FileServer] ${line}`);
+  let listeningPort = -1;
 
   app.use(async function loadEachFileOnlyAsItsNamedType(c, next) {
     await next();
     c.res.headers.set("X-Content-Type-Options", "nosniff");
   });
+  answerOwnLoopbackHostOnly(app, () => listeningPort);
 
   app.get("/*", async (c) => {
     let requestPath = c.req.path;
@@ -983,7 +989,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       const candidate = join(root, relativePath);
       const resolveSymlinks = !allowOutsideProjectAssets && root !== compiledDir;
       if (!isPathInside(candidate, root, { resolveSymlinks })) continue;
-      if (isPrivateFileUnder(root, candidate, isVcsOrSecretPath)) continue;
+      if (isPrivateFileUnder(root, candidate, isStudioPrivatePath)) continue;
       const checksLinks = allowOutsideProjectAssets && root !== compiledDir;
       if (checksLinks && refusesOutsideLink(root, candidate, warnLeftOut)) continue;
       file = openRegularFile(candidate);
@@ -1018,6 +1024,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
         html = isIndex
           ? injectScriptsIntoHtml(html, headScripts, bodyScripts, stripEmbeddedRuntime)
           : html;
+        html = injectTagsAtHeadStart(html, OFFER_NO_FRAMING_SITE_AN_EDITING_PORT);
         return c.text(html, 200, { "Content-Type": contentType });
       }
 
@@ -1117,6 +1124,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       const bound =
         port === 0 ? settleOnBrowserSafePort(server, "127.0.0.1") : Promise.resolve(info.port);
       bound.then((boundPort) => {
+        listeningPort = boundPort;
         resolve({
           url: `http://localhost:${boundPort}`,
           port: boundPort,
