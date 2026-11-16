@@ -61,3 +61,4 @@ skills/reverse-any-video/SKILL.md
 skills/style-sampling/SKILL.md
 # scripts/generate-media-use-audio-carve.mjs — never hand-edit or reformat.
 skills/media-use/audio/scripts/lib/audio-carve.mjs
+packages/cli/src/audio/scripts/lib/audio-carve.mjs
