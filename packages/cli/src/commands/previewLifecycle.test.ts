@@ -29,6 +29,7 @@ const server: ActiveServer = {
   projectName: "preview-lifecycle-project",
   projectDir,
   version: "test",
+  proven: true,
   pid: "4321",
   pidSource: "os",
 };
@@ -477,6 +478,7 @@ describe("background preview lifecycle", () => {
                 projectName: "managed-custom-port",
                 projectDir: otherProjectDir,
                 version: "test",
+                proven: true,
                 pid: "8765",
                 pidSource: "os",
               },
