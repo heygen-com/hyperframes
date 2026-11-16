@@ -1,4 +1,5 @@
 import {
+  linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -628,4 +629,20 @@ describe("a project's job log in place of which a link was planted", () => {
       ).toBe(true);
     });
   }
+
+  it("never appends to a job log hard-linked to a file outside the project", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-v3-planted-"));
+    mkdirSync(join(projectDir, ".hyperframes"));
+    const victim = join(mkdtempSync(join(tmpdir(), "hf-v3-outside-")), "victim");
+    writeFileSync(victim, VICTIM);
+    linkSync(victim, join(projectDir, ".hyperframes/heygen-jobs.jsonl"));
+    vi.stubGlobal("fetch", async () => reply(200, { data: { id: "j1", status: "completed" } }));
+    await expect(runJob(X, {}, "k1", { log: { projectDir, what: "a line" } })).rejects.toThrow(
+      /never written through/,
+    );
+    expect(() => keepVoice(projectDir, "en", { voice_id: "v1", name: "Ann" })).toThrow(
+      /never written through/,
+    );
+    expect(readFileSync(victim, "utf8")).toBe(VICTIM);
+  });
 });

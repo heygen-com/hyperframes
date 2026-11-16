@@ -128,7 +128,7 @@ export function appendRecord(projectDir: string, name: string, data: string): bo
     return false;
   }
   try {
-    if (!plainFileAt(fd, path)) return false;
+    if ((plainFileAt(fd, path)?.nlink ?? 2) > 1) return false;
     writeSync(fd, data);
     return true;
   } catch {
