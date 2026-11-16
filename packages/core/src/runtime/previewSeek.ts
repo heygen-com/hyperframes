@@ -32,7 +32,6 @@ function holdVideoFrame(video: HTMLVideoElement): (() => void) | undefined {
   return () => {
     video.removeAttribute(HELD_VIDEO_ATTR);
     canvas.remove();
-    // A removed canvas keeps its frame until a GC; a capture page seeking a 1080p film held gigabytes.
     canvas.width = canvas.height = 0;
   };
 }
