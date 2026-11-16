@@ -32,7 +32,6 @@ export interface DeploySiteOptions {
    * the hash of the project tree picks it.
    */
   siteId?: string;
-  /** Called with a line a user should see, such as the private files left out of the upload. */
   onNotice?: (message: string) => void;
   /** Injection seam for tests. Production callers leave unset. */
   storage?: Storage;

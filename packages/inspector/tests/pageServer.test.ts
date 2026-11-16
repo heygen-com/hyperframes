@@ -4,7 +4,7 @@ import { connect, type AddressInfo, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { closeServer, projectFileFor } from "../src/pageServer";
+import { closeServer, servableProjectFile } from "../src/pageServer";
 
 it("closes while a client holds a connection it never sent a request on, as Chrome's preconnects do", async () => {
   const server = createServer((_req, res) => res.end("ok"));
@@ -22,7 +22,7 @@ it("closes while a client holds a connection it never sent a request on, as Chro
   expect(outcome).toBe("closed");
 });
 
-describe("projectFileFor", () => {
+describe("servableProjectFile", () => {
   const project = realpathSync(mkdtempSync(join(tmpdir(), "hf-inspector-files-")));
   for (const folder of [".git", ".hyperframes", ".claude", "assets"])
     mkdirSync(join(project, folder));
@@ -57,16 +57,18 @@ describe("projectFileFor", () => {
     "/id_ed25519",
     "/../outside.txt",
   ])("refuses %s", (path) => {
-    expect(projectFileFor(project, path)).toBeNull();
+    expect(servableProjectFile(project, path)).toBeNull();
   });
 
   it.skipIf(process.platform === "win32")("refuses a link to a private file", () => {
-    expect(projectFileFor(project, "/assets/env.txt")).toBeNull();
+    expect(servableProjectFile(project, "/assets/env.txt")).toBeNull();
   });
 
   it("serves project assets and Studio's own records", () => {
-    expect(projectFileFor(project, "/assets/logo.png")).toBe(join(project, "assets", "logo.png"));
-    expect(projectFileFor(project, "/.hyperframes/studio-motion.json")).toBe(
+    expect(servableProjectFile(project, "/assets/logo.png")).toBe(
+      join(project, "assets", "logo.png"),
+    );
+    expect(servableProjectFile(project, "/.hyperframes/studio-motion.json")).toBe(
       join(project, ".hyperframes", "studio-motion.json"),
     );
   });

@@ -19,11 +19,7 @@ export function isLoopbackHost(host: string | undefined): boolean {
   return name === "127.0.0.1" || name === "localhost" || name === "::1";
 }
 
-/**
- * The file a request path names inside `project` (a real path), or null: outside the project, or private (env, Git,
- * credentials, tool state, app records) as spelled or where its links point, as on every composition file server.
- */
-export function projectFileFor(project: string, urlPath: string): string | null {
+export function servableProjectFile(project: string, urlPath: string): string | null {
   const requested = resolve(project, `.${urlPath}`);
   if (isPrivateFileUnder(project, requested, isStudioPrivatePath)) return null;
   try {

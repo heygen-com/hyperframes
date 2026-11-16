@@ -128,7 +128,6 @@ async function servedFile(root: string, pathname: string): Promise<string | null
   if (decoded.includes("\0")) return null;
   const candidate = resolve(root, `.${decoded}`);
   if (!isInside(root, candidate)) return null;
-  // Env, Git, credentials and app records are neither served to the page nor inlined into the capture.
   if (isPrivateFileUnder(root, candidate, isStudioPrivatePath)) return null;
   try {
     // Symlinks are followed, so the containment check must run on the real path.

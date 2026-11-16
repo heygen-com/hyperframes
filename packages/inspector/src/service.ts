@@ -29,7 +29,7 @@ import {
   bundleToSingleHtml,
   type BundleScriptProvenance,
 } from "../../core/src/compiler/htmlBundler";
-import { closeServer, isLoopbackHost, projectFileFor } from "./pageServer";
+import { closeServer, isLoopbackHost, servableProjectFile } from "./pageServer";
 import { Sources, fingerprint } from "./sources";
 import type { InspectRequest, Snippet } from "./types";
 import { hyperframesCacheDir } from "../../core/src/cacheDir";
@@ -140,7 +140,7 @@ export class Inspector {
           res.end(getHyperframeRuntimeScript());
           return;
         }
-        const file = projectFileFor(this.project, path);
+        const file = servableProjectFile(this.project, path);
         if (!file) {
           res.writeHead(404).end();
           return;
