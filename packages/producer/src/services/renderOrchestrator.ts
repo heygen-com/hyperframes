@@ -58,7 +58,7 @@ import {
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import type { CompileForRenderOptions } from "./htmlCompiler.js";
-import { HTML_BODY_CSS_HEIGHT_FIRST_RE, HTML_BODY_CSS_WIDTH_FIRST_RE } from "@hyperframes/parsers";
+import { matchHtmlBodyCssHeightFirst, matchHtmlBodyCssWidthFirst } from "@hyperframes/parsers";
 import {
   type EngineConfig,
   extractMediaMetadata,
@@ -1766,8 +1766,8 @@ function detectRootBodySizeMismatch(
 
   // Groups 1 and 3 are prefix text for applyResolutionPreset's in-place
   // replace; this read-only comparison only needs the digit groups (2 and 4).
-  const widthFirst = html.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
-  const heightFirst = widthFirst ? undefined : html.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
+  const widthFirst = matchHtmlBodyCssWidthFirst(html);
+  const heightFirst = widthFirst ? undefined : matchHtmlBodyCssHeightFirst(html);
   const [cssWidth, cssHeight] = widthFirst
     ? [Number(widthFirst[2]), Number(widthFirst[4])]
     : heightFirst
