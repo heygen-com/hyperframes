@@ -11,8 +11,9 @@ import { failCommand } from "../../utils/commandResult.js";
  * can symlink the directory.
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 
 export interface StackOutputs {
   /** Project-name prefix passed to `deploy`. Used as CloudFormation stack-name suffix. */
@@ -52,7 +53,7 @@ export function stateFilePath(
 export function writeStackOutputs(outputs: StackOutputs, cwd: string = process.cwd()): string {
   const path = stateFilePath(outputs.stackName, cwd);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(outputs, null, 2) + "\n");
+  replaceFileAtomically(path, JSON.stringify(outputs, null, 2) + "\n");
   return path;
 }
 

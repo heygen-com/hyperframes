@@ -519,6 +519,38 @@ jobs:
           fi
           cat "$ORDER"
 
+      - name: Check published Lambda pins
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          META="$RUNNER_TEMP/aws-lambda-version.json"
+          PUBLISHED="$RUNNER_TEMP/aws-lambda-published.tgz"
+          STATUS="$(curl -sS -o "$META" -w '%{http_code}' "https://registry.npmjs.org/@hyperframes%2faws-lambda/${VERSION}")"
+          if [ "$STATUS" = "404" ]; then
+            exit 0
+          fi
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::The npm registry answered $STATUS for @hyperframes/aws-lambda@${VERSION}"
+            exit 1
+          fi
+          curl -fsSL -o "$PUBLISHED" "$(jq -r '.dist.tarball' "$META")"
+          INTEGRITY="sha512-$(openssl dgst -sha512 -binary "$PUBLISHED" | base64 -w0)"
+          if [ "$INTEGRITY" != "$(jq -r '.dist.integrity' "$META")" ]; then
+            echo "::error::The @hyperframes/aws-lambda@${VERSION} tarball does not match its npm integrity"
+            exit 1
+          fi
+          check_pin() {
+            local asset="$1" manifest="$2" pinned built
+            pinned="$(tar -xzOf "$PUBLISHED" "package/prebuilt/$manifest" | jq -r '.sha256')"
+            built="$(sha256sum "$RUNNER_TEMP/release-bundle/assets/$asset" | cut -d' ' -f1)"
+            if [ "$pinned" != "$built" ]; then
+              echo "::error::@hyperframes/aws-lambda@${VERSION} on npm pins $asset at $pinned, but this run's original bundle has $built"
+              exit 1
+            fi
+          }
+          check_pin hyperframes-lambda-handler.zip handler-zip.json
+          check_pin hyperframes-lambda-video-arm64.oci.tar video-image.json
+
       - name: Find previous release receipt
         id: previous_receipt
         env:

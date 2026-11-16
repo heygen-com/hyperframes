@@ -81,7 +81,8 @@ function request(middlewares: Middleware[], url: string, host: string): Promise<
         resolve(reply);
       },
     });
-    const req = { url, method: "GET", headers: { host } } as IncomingMessage;
+    const socket = { localAddress: "127.0.0.1", localPort: 5190 };
+    const req = { url, method: "GET", headers: { host }, socket } as unknown as IncomingMessage;
     const run = (index: number): void => {
       const middleware = middlewares[index];
       if (!middleware) return resolve(reply);

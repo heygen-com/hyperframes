@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -73,6 +73,50 @@ process.exit(status);
     "#!/bin/sh\ncp dist/hyperframes-lambda-handler.zip pinned.zip\n",
     { mode: 0o755 },
   );
+  // Registry responses and package bytes are local fixtures; curl never accesses the network.
+  writeFileSync(
+    join(root, "bin/curl"),
+    `#!${process.execPath}
+const fs = require('node:fs'); const path = require('node:path');
+const args = process.argv.slice(2); const root = process.env.RUNNER_TEMP;
+if (process.env.NPM_STATUS === 'network-error') process.exit(7);
+const out = args[args.indexOf('-o') + 1];
+if (args.includes('-w')) {
+  fs.copyFileSync(path.join(root, 'npm-meta.json'), out);
+  process.stdout.write(process.env.NPM_STATUS || '404');
+} else fs.copyFileSync(path.join(root, 'npm-package.tgz'), out);
+`,
+    { mode: 0o755 },
+  );
+  const published = (pins = {}) => {
+    const dir = join(root, "npm-fixture/package/prebuilt");
+    mkdirSync(dir, { recursive: true });
+    for (const [manifest, asset] of [
+      ["handler-zip.json", names[0]],
+      ["video-image.json", names[2]],
+    ])
+      writeFileSync(
+        join(dir, manifest),
+        JSON.stringify({ sha256: pins[manifest] ?? hash(`built ${asset}`) }),
+      );
+    execFileSync("tar", [
+      "-czf",
+      join(root, "npm-package.tgz"),
+      "-C",
+      join(root, "npm-fixture"),
+      "package",
+    ]);
+    const integrity =
+      "sha512-" +
+      createHash("sha512")
+        .update(readFileSync(join(root, "npm-package.tgz")))
+        .digest("base64");
+    writeFileSync(
+      join(root, "npm-meta.json"),
+      JSON.stringify({ dist: { tarball: "https://fixture.invalid/package.tgz", integrity } }),
+    );
+  };
+  published();
   const state = () => JSON.parse(readFileSync(statePath, "utf8"));
   const update = (changes) => writeFileSync(statePath, JSON.stringify({ ...state(), ...changes }));
   const receiptPath = join(root, "release-receipt/receipt.json");
@@ -109,7 +153,7 @@ process.exit(status);
       },
     );
   };
-  return { root, run, state, update, receipt, receiptPath };
+  return { root, run, state, update, receipt, receiptPath, published };
 }
 const succeeds = (result) => assert.equal(result.status, 0, result.stdout + result.stderr);
 const fails = (result) => assert.notEqual(result.status, 0, result.stdout + result.stderr);
@@ -271,4 +315,28 @@ test("an incomplete bundle fails before creating a release or receipt", (t) => {
   rmSync(join(f.root, "release-bundle/assets", names[0]));
   fails(f.run("Create GitHub Release"));
   assert.equal(f.state().release, null);
+});
+
+test("published npm pins accept only the original bundle and an integrity-verified package", (t) => {
+  const f = fixture(t);
+  succeeds(f.run("Check published Lambda pins"));
+  succeeds(f.run("Check published Lambda pins", { NPM_STATUS: "200" }));
+  for (const manifest of ["handler-zip.json", "video-image.json"]) {
+    f.published({ [manifest]: hash("different published bytes") });
+    fails(f.run("Check published Lambda pins", { NPM_STATUS: "200" }));
+  }
+  f.published();
+  writeFileSync(join(f.root, "npm-package.tgz"), "corrupt package");
+  fails(f.run("Check published Lambda pins", { NPM_STATUS: "200" }));
+  assert.equal(f.state().calls.length, 0);
+});
+
+test("npm registry uncertainty fails before release mutation", (t) => {
+  const f = fixture(t);
+  for (const status of ["500", "403", "network-error"])
+    fails(f.run("Check published Lambda pins", { NPM_STATUS: status }));
+  const steps = workflow.jobs.publish.steps;
+  const check = steps.findIndex((s) => s.name === "Check published Lambda pins");
+  assert.ok(check >= 0 && check < steps.findIndex((s) => s.name === "Create GitHub Release"));
+  assert.equal(f.state().calls.length, 0);
 });

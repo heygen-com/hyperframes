@@ -1,10 +1,10 @@
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { readFileSync } from "node:fs";
-import { readProjectFile } from "@hyperframes/parsers/asset-resolution";
+import { readProjectFile, resolveCompositionSrc } from "@hyperframes/parsers/asset-resolution";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import { readDataDurationSeconds } from "@hyperframes/parsers/media-duration";
-import { resolve, dirname } from "node:path";
+import { dirname } from "node:path";
 
 export const examples: Example[] = [
   ["List compositions in the current project", "hyperframes compositions"],
@@ -67,9 +67,9 @@ export function parseCompositions(html: string, baseDir: string): CompositionInf
 
     // If this references an external sub-composition, parse that file
     if (compositionSrc) {
-      const subPath = resolve(baseDir, compositionSrc);
-      const sub = readProjectFile(subPath);
-      if (sub.kind === "file") {
+      const subPath = resolveCompositionSrc(baseDir, compositionSrc);
+      const sub = subPath ? readProjectFile(subPath) : null;
+      if (sub?.kind === "file") {
         const subInfo = parseSubComposition(sub.text, id, width, height);
         compositions.push({ ...subInfo, source: compositionSrc });
         return;

@@ -14,8 +14,9 @@
  */
 
 import { execFileSync } from "node:child_process";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, extname, join } from "node:path";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
@@ -325,7 +326,7 @@ export async function transcribeWithParakeet(
 export function writeParakeetTranscript(dir: string, words: Word[]): RunnerResult {
   mkdirSync(dir, { recursive: true });
   const transcriptPath = join(dir, TRANSCRIPT_FILE);
-  writeFileSync(transcriptPath, JSON.stringify(words, null, 2));
+  replaceFileAtomically(transcriptPath, JSON.stringify(words, null, 2));
   const durationSeconds = words.length > 0 ? words[words.length - 1]!.end : 0;
   return {
     model: PARAKEET_MODEL_LABEL,
