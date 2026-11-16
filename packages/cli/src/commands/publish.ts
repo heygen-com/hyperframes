@@ -146,6 +146,17 @@ export default defineCommand({
       }
     }
 
+    const updateTarget =
+      typeof args.update === "string" && args.update.trim()
+        ? parseUpdateTarget(args.update)
+        : undefined;
+    const committedTeam = readTeamProject(dir);
+    const priorLink = readProjectLink(dir);
+    const existingTarget =
+      updateTarget ??
+      committedTeam?.projectId ??
+      (priorLink?.url ? priorLink.projectId : undefined);
+
     if (args.yes !== true) {
       console.log();
       if (args.public === true) {
@@ -153,6 +164,13 @@ export default defineCommand({
           `  ${c.bold("hyperframes publish uploads this project and requests public visibility at a stable URL.")}`,
         );
         console.log(`  ${c.dim("Anyone with the URL can open a claimed public project.")}`);
+      } else if (existingTarget) {
+        console.log(
+          `  ${c.bold(`hyperframes publish uploads this project to update the existing project ${existingTarget.replace(/[^!-~]/g, "?")} in place.`)}`,
+        );
+        console.log(
+          `  ${c.dim("That project keeps its current visibility, which may be public. If your space can't access it, a new private project is created instead.")}`,
+        );
       } else {
         console.log(
           `  ${c.bold("hyperframes publish uploads this project privately to a stable URL.")}`,
@@ -171,10 +189,6 @@ export default defineCommand({
       }
     }
 
-    const updateTarget =
-      typeof args.update === "string" && args.update.trim()
-        ? parseUpdateTarget(args.update)
-        : undefined;
     const spaceOverride =
       typeof args.space === "string" && args.space.trim() ? args.space.trim() : undefined;
 
@@ -215,7 +229,6 @@ export default defineCommand({
       }
     }
 
-    const committedTeam = readTeamProject(dir);
     // Stable id: explicit --update wins, else the committed team id, else this machine's stored/minted id.
     const requestedProjectId = updateTarget ?? committedTeam?.projectId ?? ensureProjectId(dir);
     // Team space: explicit --space wins, else the committed space id, else the personal space.
@@ -223,7 +236,6 @@ export default defineCommand({
 
     // Continuity cue: if this directory was published before, show where it lives so the
     // user knows a re-publish updates that same link (when logged in).
-    const priorLink = readProjectLink(dir);
     if (priorLink?.url) {
       console.log();
       console.log(`  ${c.dim(`Previously published at ${priorLink.url}`)}`);

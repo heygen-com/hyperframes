@@ -3,7 +3,21 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
-const publishState = vi.hoisted(() => ({ publish: vi.fn(), noticeRelease: null as string | null }));
+const publishState = vi.hoisted(() => ({
+  publish: vi.fn(),
+  noticeRelease: null as string | null,
+  confirm: vi.fn(),
+}));
+
+vi.mock("../ui/prompts.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../ui/prompts.js")>()),
+  confirm: publishState.confirm,
+}));
+
+vi.mock("../utils/attendedTerminal.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/attendedTerminal.js")>()),
+  isUnattended: () => false,
+}));
 
 vi.mock("../utils/publishProject.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/publishProject.js")>()),
@@ -188,6 +202,27 @@ describe("publish visibility messaging", () => {
     expect(output).toContain("Unchanged — keeps this project's current setting");
     expect(output).toContain("Updated existing project");
     expect(output).not.toContain("Private — authentication and access required");
+  });
+
+  it("asks before updating an existing project named by the folder, without promising a private upload", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-publish-existing-"));
+    writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
+    writeTeamProject(project, { projectId: "existing-\u001b[2Kproject" });
+    publishState.publish.mockReset();
+    publishState.confirm.mockReset();
+    publishState.confirm.mockResolvedValue(false);
+    try {
+      const output = await captureLog(() =>
+        publishCommand.run?.({ args: { dir: project, public: false, proxy: false } } as never),
+      );
+      expect(output).toContain("update the existing project existing-?[2Kproject in place");
+      expect(output).toContain("keeps its current visibility, which may be public");
+      expect(output).not.toContain("privately");
+      expect(output).toContain("Aborted.");
+      expect(publishState.publish).not.toHaveBeenCalled();
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 
   it("labels an authentication-required anonymous URL as a claim URL", async () => {
