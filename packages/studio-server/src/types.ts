@@ -136,9 +136,13 @@ export interface StudioApiAdapter {
   /**
    * Lint the complete project, including relationships between files. Official
    * adapters provide this; the single-file method remains as a compatibility
-   * fallback for third-party adapters compiled against older releases.
+   * fallback for third-party adapters compiled against older releases. `signal`
+   * aborts once no request waits on the run.
    */
-  lintProject?: (projectDir: string) => Promise<ProjectLintResult> | ProjectLintResult;
+  lintProject?: (
+    projectDir: string,
+    signal?: AbortSignal,
+  ) => Promise<ProjectLintResult> | ProjectLintResult;
 
   /** URL to the hyperframe runtime JS (injected into preview HTML). */
   runtimeUrl: string;
