@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 
 export const NOT_MEDIA_PAYLOAD = "NOT_MEDIA_PAYLOAD" as const;
 
@@ -338,7 +339,7 @@ interface Walk {
 }
 
 /**
- * True for an HLS or ffconcat list naming a file outside its folder; ffmpeg would open it. Never throws.
+ * True for an HLS or ffconcat list naming a file outside its folder or private in it; ffmpeg would open it.
  * `placedAt` is where the file will live when it is read from elsewhere first (a download not yet published).
  */
 export async function playlistLeavesItsFolder(
@@ -438,6 +439,7 @@ async function entryLeaves(
   if (HTTP_URL.test(entry)) return false;
   for (const local of new Set([entry, percentDecoded(entry)])) {
     const nested = resolve(base, local);
+    if (isPrivateFileUnder(walk.folder, nested, isStudioPrivatePath)) return true;
     let verdict = walk.verdicts.get(nested);
     if (verdict === undefined) {
       verdict = await listLeaves(nested, nested, walk, depth + 1);

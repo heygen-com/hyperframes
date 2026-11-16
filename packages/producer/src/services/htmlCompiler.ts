@@ -118,6 +118,7 @@ import {
   type MediaProbeProfile,
   analyzeKeyframeIntervals,
   assertMediaPayload,
+  isPrivateUnderAssetRoots,
   NotMediaPayloadError,
   parseMasterFxChain,
   probeMediaProfile,
@@ -595,7 +596,10 @@ async function resolveMediaDuration(
   } else {
     filePath = decodedUrlPath(src);
     if (!filePath.startsWith("/")) filePath = join(baseDir, filePath);
-    if (escapesAssetRoot(filePath, assetRoot) || isPrivateCompositionFile(projectDir, filePath)) {
+    if (
+      escapesAssetRoot(filePath, assetRoot) ||
+      isPrivateUnderAssetRoots(filePath, [projectDir, downloadDir])
+    ) {
       return { duration: null, resolvedPath: filePath };
     }
     // ffprobe reads only the header of a remote source, so it is probed in place.
@@ -2443,7 +2447,7 @@ export async function compileForRender(
       namesAnotherNetworkRoot(projectDir, videoPath) ||
       !existsSync(videoPath) ||
       escapesAssetRoot(videoPath, assetRoot) ||
-      isPrivateCompositionFile(projectDir, videoPath)
+      isPrivateUnderAssetRoots(videoPath, [projectDir, downloadDir])
     )
       continue;
     advised.add(videoPath);
