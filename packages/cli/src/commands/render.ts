@@ -149,6 +149,7 @@ import {
   runPostRenderStepAsync,
 } from "../utils/render-success-state.js";
 import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/producer";
+import { recordFailure } from "../utils/jsonError.js";
 import {
   EXTRACT_CACHE_DIR_DISABLED_ALIASES,
   sandboxDeniedRemediation,
@@ -510,6 +511,7 @@ export default defineCommand({
         const reason = cancellation.signal.reason;
         const message = reason instanceof Error ? reason.message : String(reason);
         process.stderr.write(`Render cancelled: ${message}\n`);
+        recordFailure(`Render cancelled: ${message}`);
         requestCliExit(1);
       }
       throw error;
