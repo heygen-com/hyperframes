@@ -873,8 +873,12 @@ describe("the desktop app's private files", () => {
       ".aws/credentials",
       "id_ed25519",
       "cert.pem",
+      ".dev.vars",
+      ".vault-token",
+      ".cargo/credentials.toml",
+      "infra/terraform.tfstate",
     ];
-    for (const folder of [".claude", ".aws"]) mkdirSync(join(project, folder));
+    for (const folder of [".claude", ".aws", ".cargo", "infra"]) mkdirSync(join(project, folder));
     for (const file of credentials) writeFileSync(join(project, file), "secret");
     for (const path of credentials) {
       const res = await app.request(`/projects/p/files/${path}`);

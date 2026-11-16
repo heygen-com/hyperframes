@@ -3171,8 +3171,12 @@ describe("the desktop app's private folder", () => {
       ".aws/credentials",
       "id_ed25519",
       "cert.pem",
+      ".dev.vars",
+      ".vault-token",
+      ".cargo/credentials.toml",
+      "infra/terraform.tfstate",
     ];
-    for (const folder of [".claude", ".aws"])
+    for (const folder of [".claude", ".aws", ".cargo", "infra"])
       mkdirSync(join(projectDir, folder), { recursive: true });
     for (const file of credentials) writeFileSync(join(projectDir, file), "secret");
     const app = new Hono();

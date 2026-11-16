@@ -1,5 +1,14 @@
 import { resolve, sep, join, dirname, basename, relative, isAbsolute, parse } from "node:path";
 import { lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
+import { projectPathSegments } from "@hyperframes/parsers/private-path";
+
+export {
+  isCredentialOrToolStatePath,
+  isPrivateFileUnder,
+  isStudioPrivatePath,
+  isVcsOrSecretPath,
+  projectPathSegments,
+} from "@hyperframes/parsers/private-path";
 
 export function realpath(path: string): string {
   try {
@@ -49,11 +58,6 @@ function namesAnotherNetworkRoot(base: string, target: string): boolean {
  * can't redirect the path outside `base` right now. (A symlink swapped in between
  * this check and the subsequent fs call is an inherent TOCTOU race this helper
  * does not, and cannot by itself, defend against.)
- *
- * Lives at the package root rather than under `studio-api/` because callers span
- * layers — `studio-api` routes, the `compiler`, the CLI, and the engine — and
- * `compiler` sits below `studio-api` in the dependency graph, so it cannot import
- * from there without a backwards edge.
  */
 export function isSafePath(base: string, resolved: string): boolean {
   const target = resolve(resolved);
@@ -103,110 +107,6 @@ export function isSafePath(base: string, resolved: string): boolean {
 export function resolveWithinProject(base: string, relativePath: string): string | null {
   const resolved = resolve(base, relativePath);
   return isSafePath(base, resolved) ? resolved : null;
-}
-
-/**
- * Segments as a case-insensitive file system or Windows opens them: any case or Unicode form (a long s, a ligature or a
- * full-width letter reads as its plain letters, an invisible character is dropped), no trailing dots or spaces, no
- * `:stream` suffix.
- */
-export function projectPathSegments(relPath: string): string[] {
-  return relPath
-    .normalize("NFKC")
-    .toUpperCase()
-    .toLowerCase()
-    .replace(/\p{Default_Ignorable_Code_Point}/gu, "")
-    .split(/[\\/]/)
-    .map((segment) => withoutTrailingDotsOrSpaces(segment.split(":", 1)[0] ?? ""));
-}
-
-function withoutTrailingDotsOrSpaces(segment: string): string {
-  let end = segment.length;
-  while (end > 0 && (segment[end - 1] === "." || segment[end - 1] === " ")) end--;
-  return segment.slice(0, end);
-}
-
-// Git metadata and env files hold commands other tools run and secrets: nothing serves or inlines them.
-export function isVcsOrSecretPath(relPath: string): boolean {
-  return projectPathSegments(relPath).some(
-    (segment) => segment === ".git" || segment.startsWith(".env"),
-  );
-}
-
-// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): no file
-// server serves any of it, the folder itself included, but Studio's own files and the assets compositions load. Studio
-// reads and writes those only in the project's own `.hyperframes/`, so one in a subfolder holds records only.
-const STUDIO_FILES = new Set([
-  ".hyperframes/studio-motion.json",
-  ".hyperframes/studio-manual-edits.json",
-]);
-const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
-
-// Credentials and coding-tool state that projects often sit next to: registry tokens, MCP and agent settings, cloud and
-// SSH keys. No composition loads one, so no file server serves one and no upload ships one.
-const CREDENTIAL_FILES = new Set([
-  ".npmrc",
-  ".yarnrc",
-  ".yarnrc.yml",
-  ".pypirc",
-  "pip.conf",
-  "pip.ini",
-  ".netrc",
-  "_netrc",
-  ".git-credentials",
-  ".gitconfig",
-  ".mcp.json",
-]);
-const CREDENTIAL_FOLDERS = new Set([
-  ".ssh",
-  ".aws",
-  ".gnupg",
-  ".docker",
-  ".kube",
-  ".azure",
-  ".claude",
-  ".codex",
-  ".cursor",
-  ".agents",
-  ".gemini",
-  ".vscode",
-  ".idea",
-]);
-const CREDENTIAL_CONFIG_FOLDERS = new Set(["gcloud", "gh"]);
-const KEY_FILE = /^(?:id_(?:rsa|dsa|ecdsa|ed25519).*|.*\.(?:pem|key|p12|pfx))$/;
-
-/** Credential files and tool or agent state, for a project-relative path in any spelling Windows opens. */
-export function isCredentialOrToolStatePath(relPath: string): boolean {
-  const segments = projectPathSegments(relPath);
-  const name = segments.at(-1) ?? "";
-  return (
-    CREDENTIAL_FILES.has(name) ||
-    KEY_FILE.test(name) ||
-    segments.some(
-      (segment, at) =>
-        CREDENTIAL_FOLDERS.has(segment) ||
-        (segment === ".config" && CREDENTIAL_CONFIG_FOLDERS.has(segments[at + 1] ?? "")),
-    )
-  );
-}
-
-/** Files no composition loads, for a project-relative path in any spelling Windows opens: git, env, credentials, tool
- * state, app records. */
-export function isStudioPrivatePath(relPath: string): boolean {
-  if (isVcsOrSecretPath(relPath) || isCredentialOrToolStatePath(relPath)) return true;
-  const segments = projectPathSegments(relPath);
-  return segments.some((segment, at) => {
-    if (segment !== ".hyperframes") return false;
-    const atRoot = segments.slice(0, at).every((before) => before === "");
-    return !atRoot || !isStudioOwnFile(segments.slice(at).join("/"));
-  });
-}
-
-function isStudioOwnFile(path: string): boolean {
-  return (
-    STUDIO_FILES.has(path) ||
-    STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
-  );
 }
 
 // Files another program runs or trusts with the developer's rights: a package manager, a shell, a build or IDE tool, or
@@ -299,21 +199,6 @@ export function toolTrustedFileKind(relPath: string): ToolTrustedKind | null {
   if (AGENT_INSTRUCTIONS.test(name)) return "agent-instructions";
   if (PROGRAM.test(name)) return "program";
   return null;
-}
-
-/** Whether `isPrivate` holds for a file under `projectDir`, spelled as given or with its links resolved. */
-export function isPrivateFileUnder(
-  projectDir: string,
-  filePath: string,
-  isPrivate: (relPath: string) => boolean,
-): boolean {
-  const rel = (from: string, to: string) => relative(from, to).split(sep).join("/");
-  if (isPrivate(rel(resolve(projectDir), resolve(filePath)))) return true;
-  try {
-    return isPrivate(rel(realpath(resolve(projectDir)), realpath(filePath)));
-  } catch {
-    return false;
-  }
 }
 
 /** The project folder is gone, renamed or deleted while open; a write must not bring it back. */
