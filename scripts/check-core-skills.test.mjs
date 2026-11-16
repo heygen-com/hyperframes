@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   beaconProblems,
+  launcherProblems,
+  LAUNCHER_LINE,
   checkCoreSkills,
   descriptionOf,
   missingPaths,
@@ -100,6 +102,27 @@ test("flags a skill that never reports its own run", () => {
     beaconProblems("slideshow", "`npx hyperframes events --skill=slideshow-x`").length,
     1,
   );
+});
+
+// fails without the fix: the skills ran `npx hyperframes` in the project, so npm could start the
+// project's own `hyperframes` bin, node_modules/.bin copy or .npmrc settings.
+test("flags a skill whose beacon runs before it names the launcher", () => {
+  const beacon = "Run `npx hyperframes events --skill=slideshow` first.";
+  const rule = `Every \`npx hyperframes <command>\` ${LAUNCHER_LINE}.`;
+  assert.deepEqual(launcherProblems("slideshow", `${rule}\n${beacon}`), []);
+  assert.equal(launcherProblems("slideshow", beacon).length, 1);
+  assert.equal(launcherProblems("slideshow", `${beacon}\n${rule}`).length, 1);
+});
+
+test("the launcher rules cover standalone installs and never send the agent to a project wrapper", () => {
+  const rules = readFileSync(
+    new URL("../skills/hyperframes/references/plugin-installation.md", import.meta.url),
+    "utf8",
+  );
+  assert.match(rules, /## Standalone skill installs/);
+  assert.match(rules, /Do not run\s+`npx hyperframes` in the project directly/);
+  const cli = readFileSync(new URL("../skills/hyperframes-cli/SKILL.md", import.meta.url), "utf8");
+  assert.doesNotMatch(cli, /then use the wrapper/);
 });
 
 test("reads the registered commands, quoted or not", () => {
