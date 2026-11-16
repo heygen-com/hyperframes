@@ -274,3 +274,32 @@ describe("inlineComputedTimelines — loops", () => {
     expect(kinds(tweens)).toEqual(["loop", "loop"]);
   });
 });
+
+describe("inlineComputedTimelines — expansion budget", () => {
+  const fresh = (code: string): any => parse(code, { ecmaVersion: "latest" });
+  const helper = (calls: number): string =>
+    `function f(n) { tl.to("#x", { x: n }, n); ${"f(n + 1); ".repeat(calls)}}`;
+
+  it.each([
+    [
+      "nested literal loops",
+      `for (let a = 0; a < 60; a++) { for (let b = 0; b < 60; b++) { for (let c = 0; c < 60; c++) { tl.to("#x", { x: a + b + c }, a); } } }`,
+    ],
+    [
+      "nested forEach over literal arrays",
+      `const xs = 0; [${"1,".repeat(70)}].forEach((a) => [${"1,".repeat(70)}].forEach((b) => [${"1,".repeat(70)}].forEach((c) => tl.to("#x", { x: a + b + c }, a))));`,
+    ],
+    ["a helper that calls itself", `${helper(4)} f(0);`],
+  ])("leaves a script whose %s would expand past the budget as written", (_label, body) => {
+    const code = `const tl = gsap.timeline();\n${body}`;
+    const ast = fresh(code);
+    inlineComputedTimelines(ast, "tl", litResolve);
+    expect(ast).toEqual(fresh(code));
+  });
+
+  it("does not unroll a for-of or forEach over more elements than a for loop may run", () => {
+    const code = `const tl = gsap.timeline();\nfor (const el of [${'"#x",'.repeat(513)}]) tl.to(el, {}, 0);`;
+    const { tweens } = run(code);
+    expect(tweens).toHaveLength(1);
+  });
+});
