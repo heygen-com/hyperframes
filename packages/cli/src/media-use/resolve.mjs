@@ -444,12 +444,7 @@ async function run() {
 
   // Suggest candidates before a new fetch.
   try {
-    const { similar } = listCandidates({
-      projectDir,
-      type,
-      intent,
-      cap: CANDIDATE_CAP,
-    });
+    const { similar } = listCandidates({ projectDir, type, intent, cap: CANDIDATE_CAP });
     if (similar > 0) {
       console.error(
         `media-use: ${similar} similar cached asset${similar === 1 ? "" : "s"} already ${similar === 1 ? "exists" : "exist"} — run \`resolve --candidates --type ${type} --intent "${intent}"\` to review and reuse instead of fetching.`,
@@ -590,12 +585,8 @@ async function run() {
     ...(searchResult.metadata?.duration != null && {
       duration: Math.round(searchResult.metadata.duration * 10) / 10,
     }),
-    ...(searchResult.metadata?.width != null && {
-      width: searchResult.metadata.width,
-    }),
-    ...(searchResult.metadata?.height != null && {
-      height: searchResult.metadata.height,
-    }),
+    ...(searchResult.metadata?.width != null && { width: searchResult.metadata.width }),
+    ...(searchResult.metadata?.height != null && { height: searchResult.metadata.height }),
     ...(searchResult.metadata?.transparent != null && {
       transparent: searchResult.metadata.transparent,
     }),
@@ -714,9 +705,7 @@ async function runParams() {
     path: frozen.localPath,
     source: frozen.source,
     description: frozen.description,
-    ...(type === "grade" && {
-      grading: mergeSmartAdjust({ intensity: 1, lut: frozen.lut }),
-    }),
+    ...(type === "grade" && { grading: mergeSmartAdjust({ intensity: 1, lut: frozen.lut }) }),
     provenance: {
       provider: frozen.metadata.provider,
       ...frozen.metadata.provenance,
@@ -821,11 +810,7 @@ async function resolveGrade(intent, { projectDir }) {
         source: "measured",
         description: intent,
         grading,
-        provenance: {
-          provider: "color_grade.local",
-          prompt: intent,
-          measured: true,
-        },
+        provenance: { provider: "color_grade.local", prompt: intent, measured: true },
       };
       return finalizeColorRecord(record, "measured");
     }

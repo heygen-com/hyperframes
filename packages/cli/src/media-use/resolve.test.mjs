@@ -344,10 +344,7 @@ test("explicit local bundled SFX resolution never asks Openverse", () => {
     setup();
     const result = spawnResolve(
       ["--type", "sfx", "--intent", "whoosh", "--project", tmp, "--json", ...extraArgs],
-      {
-        env: { HOME: tmp, PATH: tmp },
-        nodeArgs: openverseImport([OPENVERSE_BY_WHOOSH]),
-      },
+      { env: { HOME: tmp, PATH: tmp }, nodeArgs: openverseImport([OPENVERSE_BY_WHOOSH]) },
     );
     assert.equal(result.status, 0, result.stderr);
     const parsed = JSON.parse(result.stdout);
@@ -441,11 +438,7 @@ test("a sound effect nothing matches is a plain miss that never names the HeyGen
 
 test("a HeyGen sound effect under the confident score is flagged with its score, not returned silently", () => {
   setup();
-  const sound = {
-    id: "s1",
-    audio_url: "https://cdn.openverse.test/crumple.mp3",
-    score: 0.43,
-  };
+  const sound = { id: "s1", audio_url: "https://cdn.openverse.test/crumple.mp3", score: 0.43 };
   const binDir = writeFakeHeygen(`echo '${JSON.stringify({ data: [sound] })}'`);
   const result = spawnResolve(
     ["--type", "sfx", "--intent", "rubber stamp", "--project", tmp, "--json"],
@@ -454,11 +447,7 @@ test("a HeyGen sound effect under the confident score is flagged with its score,
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout);
   assert.equal(parsed.provenance.provider, "heygen.audio.sounds");
-  assert.deepEqual(parsed.match, {
-    score: 0.43,
-    min_score: 0.4,
-    low_confidence: true,
-  });
+  assert.deepEqual(parsed.match, { score: 0.43, min_score: 0.4, low_confidence: true });
   assert.match(result.stderr, /low-confidence match for "rubber stamp".*search score 0\.43/);
 
   const again = spawnResolve(
@@ -468,11 +457,7 @@ test("a HeyGen sound effect under the confident score is flagged with its score,
   assert.equal(again.status, 0, again.stderr);
   const reused = JSON.parse(again.stdout);
   assert.equal(reused._source, "cached", "a second identical resolve reuses the first sound");
-  assert.deepEqual(reused.match, {
-    score: 0.43,
-    min_score: 0.4,
-    low_confidence: true,
-  });
+  assert.deepEqual(reused.match, { score: 0.43, min_score: 0.4, low_confidence: true });
   assert.match(again.stderr, /low-confidence match for "rubber stamp"/);
   cleanup();
 });
@@ -525,9 +510,7 @@ test("music with an outdated HeyGen CLI fails naming the update", () => {
 
 test("project manifest hit skips providers", () => {
   setup();
-  const record = makeRecord({
-    provenance: { prompt: "cached query", provider: "test" },
-  });
+  const record = makeRecord({ provenance: { prompt: "cached query", provider: "test" } });
   appendRecord(tmp, record);
   const filePath = join(tmp, record.path);
   mkdirSync(join(filePath, ".."), { recursive: true });
@@ -549,13 +532,7 @@ test("entity hit matches across icon/image (figma-imported brand marks)", () => 
     path: ".media/images/image_001.svg",
     description: "Acme logo",
     entity: "Acme logo",
-    provenance: {
-      source: "figma",
-      fileKey: "KEY",
-      nodeId: "1:2",
-      version: "1",
-      format: "svg",
-    },
+    provenance: { source: "figma", fileKey: "KEY", nodeId: "1:2", version: "1", format: "svg" },
   });
   delete record.duration;
   appendRecord(tmp, record);
@@ -589,11 +566,7 @@ test("manifest hit for an OAuth-credentialed heygen resolve surfaces authMethod:
     id: "voice_001",
     type: "voice",
     path: ".media/audio/voice/voice_001.wav",
-    provenance: {
-      provider: "heygen.tts",
-      authMethod: "oauth",
-      prompt: "oauth voice",
-    },
+    provenance: { provider: "heygen.tts", authMethod: "oauth", prompt: "oauth voice" },
   });
   appendRecord(tmp, record);
   const filePath = join(tmp, record.path);
@@ -621,11 +594,7 @@ test("manifest hit for an API-key-credentialed heygen resolve surfaces authMetho
     id: "voice_001",
     type: "voice",
     path: ".media/audio/voice/voice_001.wav",
-    provenance: {
-      provider: "heygen.tts",
-      authMethod: "api_key",
-      prompt: "api key voice",
-    },
+    provenance: { provider: "heygen.tts", authMethod: "api_key", prompt: "api key voice" },
   });
   appendRecord(tmp, record);
   const filePath = join(tmp, record.path);
@@ -1241,9 +1210,7 @@ test("a broken HYPERFRAMES_FFPROBE_PATH is named when local voice cannot run, no
 
 test("one-line output format matches contract", () => {
   setup();
-  const record = makeRecord({
-    provenance: { prompt: "format test", provider: "test" },
-  });
+  const record = makeRecord({ provenance: { prompt: "format test", provider: "test" } });
   appendRecord(tmp, record);
   const filePath = join(tmp, record.path);
   mkdirSync(join(filePath, ".."), { recursive: true });
@@ -1597,10 +1564,7 @@ async function captureResolveEvent({ provider, type = "bgm", intent }) {
 test("track() posts to MEDIA_USE_TELEMETRY_HOST when set, proving real interception", async () => {
   setup();
   try {
-    const event = await captureResolveEvent({
-      provider: "test",
-      intent: "telemetry seam test",
-    });
+    const event = await captureResolveEvent({ provider: "test", intent: "telemetry seam test" });
     assert.equal(event.properties.provider, "test");
     assert.equal(event.properties.type, "bgm");
     // "test" is not a declared registry provider, so the tier is absent rather
@@ -1687,10 +1651,7 @@ test("a logo variant is not reused for the default logo, in the project or the g
       aliases: [],
       collection: "brands",
       license: "MIT",
-      variants: {
-        default: "/icons/slack/default.svg",
-        wordmark: "/icons/slack/wordmark.svg",
-      },
+      variants: { default: "/icons/slack/default.svg", wordmark: "/icons/slack/wordmark.svg" },
     },
   ];
   const stub = `const real = globalThis.fetch;
@@ -1703,9 +1664,7 @@ globalThis.fetch = async (url, init) => {
   const nodeArgs = [`--import=data:text/javascript,${encodeURIComponent(stub)}`];
   const base = ["--type", "logo", "--intent", "Slack logo", "--entity", "Slack", "--json"];
   const variant = JSON.parse(
-    spawnResolve([...base, "--variant", "wordmark", "--project", tmp], {
-      nodeArgs,
-    }).stdout.trim(),
+    spawnResolve([...base, "--variant", "wordmark", "--project", tmp], { nodeArgs }).stdout.trim(),
   );
   assert.equal(variant.provenance.variant, "wordmark");
   const otherProject = mkdtempSync(join(tmpdir(), "mu-resolve-other-"));

@@ -38,9 +38,7 @@ test("reports the exact missing file from an incomplete bundled SFX install", ()
   try {
     writeFileSync(
       join(libraryDir, "manifest.json"),
-      JSON.stringify({
-        whoosh: { file: "whoosh.mp3", description: "transition" },
-      }),
+      JSON.stringify({ whoosh: { file: "whoosh.mp3", description: "transition" } }),
     );
     const health = inspectBundledSfxAssets(libraryDir);
     assert.equal(health.ok, false);
@@ -74,9 +72,7 @@ test("accepts a complete bundled SFX library", () => {
     mkdirSync(libraryDir, { recursive: true });
     writeFileSync(
       join(libraryDir, "manifest.json"),
-      JSON.stringify({
-        whoosh: { file: "whoosh.mp3", description: "transition" },
-      }),
+      JSON.stringify({ whoosh: { file: "whoosh.mp3", description: "transition" } }),
     );
     writeFileSync(join(libraryDir, "whoosh.mp3"), "audio");
     assert.deepEqual(inspectBundledSfxAssets(libraryDir), {
@@ -96,10 +92,7 @@ test("prefers an exact key over a longer key with the same words", async () => {
     writeFileSync(
       join(libraryDir, "manifest.json"),
       JSON.stringify({
-        "whoosh-cinematic": {
-          file: "whoosh-cinematic.mp3",
-          description: "long whoosh",
-        },
+        "whoosh-cinematic": { file: "whoosh-cinematic.mp3", description: "long whoosh" },
         whoosh: { file: "whoosh.mp3", description: "short whoosh" },
       }),
     );
