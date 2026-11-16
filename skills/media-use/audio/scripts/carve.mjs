@@ -18,18 +18,16 @@
  * voice is analysed together, so a bed running under a narrator and an answer makes
  * room for both.
  *
- * Needs `ffmpeg` on PATH (to decode the audio) and `@hyperframes/core` resolvable
- * from the composition's project (`npm i -D @hyperframes/core`) — the CLI bundles
- * core inline rather than shipping it as a package, so it cannot be borrowed from
- * there.
+ * Needs `ffmpeg` on PATH (to decode the audio). The analysis ships beside this
+ * script (`lib/audio-carve.mjs`, generated from core), so nothing in the
+ * composition's project is loaded.
  */
 
 import "../../scripts/lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
-import { createRequire } from "node:module";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import * as carveApi from "./lib/audio-carve.mjs";
 import { isMainModule } from "./lib/main-module.mjs";
 
 /** Sample rate the analysis runs at. Matches Studio's own decode rate, so the
@@ -40,13 +38,12 @@ const SAMPLE_RATE = 48000;
 export const DEFAULT_STRENGTH = 0.8;
 
 const usage = `carve.mjs --comp <file.html> [--bed <elementId>] [--voice <elementId> ...]
-              [--strength 0..1] [--dry-run] [--core <dir>]
+              [--strength 0..1] [--dry-run]
 
   --bed       id of the music track that gets carved   (detected if omitted)
   --voice     id of a voice to make room for; repeatable (detected if omitted)
   --strength  how hard to carve, 0..1 (default ${DEFAULT_STRENGTH})
-  --dry-run   report what it would write, touch nothing
-  --core      directory to resolve @hyperframes/core from (default: the comp's)`;
+  --dry-run   report what it would write, touch nothing`;
 
 export function parseArgs(argv) {
   const args = { strength: DEFAULT_STRENGTH, dryRun: false, voices: [] };
@@ -62,7 +59,6 @@ export function parseArgs(argv) {
     else if (flag === "--bed") args.bed = next();
     else if (flag === "--voice") args.voices.push(next());
     else if (flag === "--strength") args.strength = Number(next());
-    else if (flag === "--core") args.core = next();
     else if (flag === "--dry-run") args.dryRun = true;
     else if (flag === "-h" || flag === "--help") fail(usage, 0);
     else fail(`unknown flag: ${flag}\n\n${usage}`);
@@ -77,73 +73,6 @@ export function parseArgs(argv) {
 function fail(message, code = 1) {
   process.stderr.write(`${message}\n`);
   process.exit(code);
-}
-
-/**
- * Load the carve analysis out of `@hyperframes/core`.
- *
- * Resolved from the project rather than from this script, which lives wherever
- * the skill was installed — a sibling of the composition is what has the
- * dependency.
- */
-export async function loadCore(fromDir) {
-  const require = createRequire(pathToFileURL(resolve(fromDir, "package.json")));
-
-  /*
-   * Two constraints at once, and satisfying either alone is broken:
-   *
-   *   1. Anchored at the PROJECT, not at this script. This file lives wherever
-   *      the skill was installed, which has no @hyperframes/core; the
-   *      composition's project is what holds the dependency. So a bare
-   *      `import("@hyperframes/core/audio-carve")` from here cannot work — bare
-   *      specifiers resolve relative to the importing module.
-   *   2. Honouring the package's export CONDITIONS. `require.resolve` asks for
-   *      "require"/"node". The workspace manifest declares `node`, so this
-   *      resolved fine inside the monorepo — but the PUBLISHED manifest carries
-   *      only `import` + `types`, so every consumer of the released package got
-   *      ERR_PACKAGE_PATH_NOT_EXPORTED for a package that ships the file. That
-   *      is the audience this skill is shipped to, so the script was broken
-   *      everywhere except where it was developed.
-   *
-   * Keep the project anchor; fall back to the package's declared `import`
-   * target when no require-resolvable condition exists.
-   */
-  const load = async (subpath) => {
-    const spec = `@hyperframes/core/${subpath}`;
-    try {
-      return await import(pathToFileURL(require.resolve(spec)).href);
-    } catch (error) {
-      if (error?.code !== "ERR_PACKAGE_PATH_NOT_EXPORTED") throw error;
-      // `./package.json` is exported by every manifest, so this always resolves
-      // and gives us the package root without guessing at node_modules layout.
-      const pkgPath = require.resolve("@hyperframes/core/package.json");
-      const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-      const entry = pkg.exports?.[`./${subpath}`];
-      const target = typeof entry === "string" ? entry : (entry?.import ?? entry?.default ?? null);
-      if (!target) {
-        fail(
-          `@hyperframes/core does not export ./${subpath}\n` +
-            `  found at: ${pkgPath} (version ${pkg.version})\n` +
-            `  update it:  npm i -D @hyperframes/core`,
-        );
-      }
-      return import(pathToFileURL(resolve(dirname(pkgPath), target)).href);
-    }
-  };
-
-  try {
-    return {
-      carve: await load("audio-carve"),
-      fx: await load("audio-fx"),
-    };
-  } catch (error) {
-    fail(
-      `cannot load @hyperframes/core from ${fromDir}\n` +
-        `  is it installed there?  npm i -D @hyperframes/core\n` +
-        `  or point at one:   --core <dir containing node_modules/@hyperframes/core>\n` +
-        `  (${error.code ?? "error"}: ${error.message.split("\n")[0]})`,
-    );
-  }
 }
 
 /**
@@ -383,7 +312,6 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const compPath = resolve(args.comp);
   const compDir = dirname(compPath);
-  const { carve: carveApi, fx: fxApi } = await loadCore(args.core ? resolve(args.core) : compDir);
 
   const html = readFileSync(compPath, "utf-8");
   const {
@@ -433,7 +361,7 @@ async function main() {
   // carve's own nodes are replaced. That is what `fromCarve` is for.
   const existingChain = attrOf(bedTag, "data-fx-chain");
   const existingNodes = existingChain
-    ? fxApi.parseAudioFxChain(unescapeAttr(existingChain)).nodes
+    ? carveApi.parseAudioFxChain(unescapeAttr(existingChain)).nodes
     : [];
   const kept = existingNodes.filter((n) => !n.fromCarve);
   // Lanes belonging to the carve being replaced, addressed by the ids the OLD
@@ -444,7 +372,7 @@ async function main() {
 
   let claimed = { version: 1, nodes: kept };
   const mint = (node) => {
-    const withId = { ...node, id: fxApi.mintAudioFxNodeId(claimed), fromCarve: true };
+    const withId = { ...node, id: carveApi.mintAudioFxNodeId(claimed), fromCarve: true };
     claimed = { version: 1, nodes: [...claimed.nodes, withId] };
     return withId;
   };
@@ -456,7 +384,7 @@ async function main() {
           type: "gain",
           enabled: true,
           params: {
-            ...fxApi.defaultAudioFxParams("gain"),
+            ...carveApi.defaultAudioFxParams("gain"),
             gain: 0,
           },
         })
@@ -522,7 +450,7 @@ async function main() {
   }
   const written =
     ` data-fx-carve="${escapeAttr(JSON.stringify(settings))}"` +
-    ` data-fx-chain="${escapeAttr(fxApi.serializeAudioFxChain(chain))}"` +
+    ` data-fx-chain="${escapeAttr(carveApi.serializeAudioFxChain(chain))}"` +
     (lanes.length > 0
       ? ` data-automation="${escapeAttr(JSON.stringify({ version: 1, lanes }))}"`
       : "");
