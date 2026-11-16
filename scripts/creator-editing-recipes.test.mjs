@@ -126,7 +126,7 @@ test("agents keep clips that never overlap on one lane, and no doc teaches a lan
   const lanes = await formatSection("Lanes");
   assert.match(lanes, /Clips that never overlap in time share a lane/);
   assert.match(lanes, /Scenes and full-frame sections, back to back: one lane/);
-  assert.match(lanes, /Every sound effect: one lane/);
+  assert.match(lanes, /Every sound effect: one lane; a second only where two of them overlap/);
   assert.match(lanes, /never on a new lane of its own/);
   assert.match(
     await read(ENTRY_SKILL),

@@ -91,7 +91,7 @@ The detail behind the contract in `SKILL.md`. Full references: `npx hyperframes 
 
 - Scenes and full-frame sections, back to back: one lane.
 - Overlays, cards and captions over a scene: the next lane; another only where two of them overlap.
-- Every sound effect: one lane. Music: its own lane. Voice: its own lane.
+- Every sound effect: one lane; a second only where two of them overlap. Music: its own lane. Voice: its own lane.
 - A new clip goes on the lowest lane of its kind where it overlaps nothing, never on a new lane of its own.
 
 ## Variables
