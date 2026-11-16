@@ -15,7 +15,7 @@ import { parseHTML } from "linkedom";
 import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
-import { isInsideAssetRoots } from "../utils/assetRoots.js";
+import { assetRootsRefusal } from "../utils/assetRoots.js";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import {
   MEDIA_RENDER_ID_ATTR,
@@ -319,7 +319,7 @@ export interface ExtractionOptions {
   /** Directories the caller rewrites on every render (downloaded media); their sources are cached by content. */
   contentKeyedDirs?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
-  /** Folders a local source must be in; one outside them is never opened. Unset allows any folder. */
+  /** Folders a local source must be in; one outside them, or private there, is never opened. Unset allows any folder. */
   assetRoots?: readonly string[];
   shownBox?: { width: number; height: number };
   shownBoxes?: ReadonlyMap<string, { width: number; height: number }>;
@@ -2275,12 +2275,13 @@ export async function extractAllVideoFrames(
         continue;
       }
       const roots = options.assetRoots;
-      if (!isHttpUrl(videoPath) && roots && !isInsideAssetRoots(videoPath, roots)) {
+      const refusal = !isHttpUrl(videoPath) && roots ? assetRootsRefusal(videoPath, roots) : null;
+      if (refusal) {
         errors.push({
           videoId: video.id,
           kind: "source_missing",
           retryable: false,
-          error: `Video source is outside the project folder: ${video.src}`,
+          error: `Video source is ${refusal}: ${video.src}`,
         });
         continue;
       }

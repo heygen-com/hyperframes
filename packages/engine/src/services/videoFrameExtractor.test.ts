@@ -691,6 +691,33 @@ describe("video extraction failure taxonomy and bounded retry", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it.each([".git/clip.mp4", ".hyperframes/clip.mp4", ".ssh/clip.mp4"])(
+    "treats the private project file %s as a missing source",
+    async (src) => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-extract-private-"));
+      try {
+        mkdirSync(join(dir, src, ".."), { recursive: true });
+        writeFileSync(join(dir, src), "not for the render");
+        const video = { id: "v1", src, start: 0, end: 1, mediaStart: 0, loop: false };
+        const result = await extractAllVideoFrames([{ ...video, hasAudio: false }], dir, {
+          fps: 30,
+          outputDir: join(dir, "out"),
+          assetRoots: [dir],
+        });
+        expect(result.extracted).toEqual([]);
+        expect(result.errors).toEqual([
+          expect.objectContaining({
+            videoId: "v1",
+            kind: "source_missing",
+            error: `Video source is a private project file: ${src}`,
+          }),
+        ]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 // Codec-based alpha defaulting replaces tag-based detection (the
