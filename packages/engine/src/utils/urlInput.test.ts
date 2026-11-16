@@ -59,16 +59,18 @@ describe("urlInputArgs", () => {
   });
 
   it.each(["true", "1", " TRUE\n"])(
-    "limits what an https input may open to HTTPS on a render service (%j)",
+    "on a render service, reads an https input the render did not declare only through the public-only proxy (%j)",
     (flag) => {
       vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", flag);
       try {
         expect(urlInputArgs(signed, { tool: "ffprobe", caBundles })).toEqual([
           ...verifyAndReconnect,
           "-protocol_whitelist",
-          "https,tls,tcp",
+          "http,https,tls,tcp,httpproxy",
           "-format_whitelist",
           expect.any(String),
+          "-http_proxy",
+          "http://127.0.0.1:9",
         ]);
       } finally {
         vi.unstubAllEnvs();
