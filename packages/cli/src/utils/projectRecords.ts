@@ -16,21 +16,26 @@ import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 const NO_FOLLOW = constants.O_NOFOLLOW ?? 0;
 const NON_BLOCK = constants.O_NONBLOCK ?? 0;
 
-/** The folder, made when missing and asked for; null when something other than a real folder holds its name. */
-function recordsDir(projectDir: string, create = false): string | null {
-  const dir = join(projectDir, ".hyperframes");
-  try {
-    return lstatSync(dir).isDirectory() ? dir : null;
-  } catch {
-    if (!create) return null;
+/** A record's folder, each level made if asked; null when anything but a real folder holds a level's name. */
+function recordsDir(projectDir: string, name: string, create = false): string | null {
+  let dir = projectDir;
+  for (const part of [".hyperframes", ...name.split("/").slice(0, -1)]) {
+    dir = join(dir, part);
     try {
-      mkdirSync(dir);
-      return dir;
+      if (!lstatSync(dir).isDirectory()) return null;
     } catch {
-      return null;
+      if (!create) return null;
+      try {
+        mkdirSync(dir);
+      } catch {
+        return null;
+      }
     }
   }
+  return dir;
 }
+
+const recordFile = (name: string) => name.split("/").at(-1) ?? name;
 
 /** The last `maxBytes` of a plain file, and whether that is all of it; null for a link, a device, or a missing file.
  * The file is opened first and read only when `lstat` then finds the same plain file at the path, so this holds
@@ -67,8 +72,8 @@ export function readRecordTail(
   name: string,
   maxBytes: number,
 ): { text: string; whole: boolean } | null {
-  const dir = recordsDir(projectDir);
-  return dir ? readPlainTail(join(dir, name), maxBytes) : null;
+  const dir = recordsDir(projectDir, name);
+  return dir ? readPlainTail(join(dir, recordFile(name)), maxBytes) : null;
 }
 
 export function readRecord(projectDir: string, name: string, maxBytes: number): string {
@@ -77,9 +82,9 @@ export function readRecord(projectDir: string, name: string, maxBytes: number): 
 
 /** When a record last changed; 0 when it is missing or not a plain file. */
 export function recordChangedAt(projectDir: string, name: string): number {
-  const dir = recordsDir(projectDir);
+  const dir = recordsDir(projectDir, name);
   try {
-    const stats = dir ? lstatSync(join(dir, name)) : null;
+    const stats = dir ? lstatSync(join(dir, recordFile(name))) : null;
     return stats?.isFile() ? stats.mtimeMs : 0;
   } catch {
     return 0;
@@ -97,18 +102,18 @@ export function replaceFile(path: string, data: string, mode: number): boolean {
   }
 }
 
-/** A record written whole and owner-only, in a real .hyperframes folder. */
+/** A record written whole and owner-only, in real folders all the way from .hyperframes. */
 export function writeRecord(projectDir: string, name: string, data: string): boolean {
-  const dir = recordsDir(projectDir, true);
-  return dir !== null && replaceFile(join(dir, name), data, 0o600);
+  const dir = recordsDir(projectDir, name, true);
+  return dir !== null && replaceFile(join(dir, recordFile(name)), data, 0o600);
 }
 
 /** Deletes a record that is a plain file; false when there is none to delete. */
 export function removeRecord(projectDir: string, name: string): boolean {
-  const dir = recordsDir(projectDir);
+  const dir = recordsDir(projectDir, name);
   try {
-    if (!dir || !lstatSync(join(dir, name)).isFile()) return false;
-    unlinkSync(join(dir, name));
+    if (!dir || !lstatSync(join(dir, recordFile(name))).isFile()) return false;
+    unlinkSync(join(dir, recordFile(name)));
     return true;
   } catch {
     return false;
