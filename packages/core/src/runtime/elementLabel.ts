@@ -1,7 +1,31 @@
+/** Elements whose text is code, not content: left out of every text an editor reads. */
+export const NO_TEXT = new Set(["script", "style"]);
+
+/** The element's rendered text, script and style left out, read until it passes `limit` chars. */
+export function renderedTextOf(element: Element, limit: number): string {
+  if (NO_TEXT.has(element.localName)) return "";
+  let text = "";
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) =>
+      node.nodeType === Node.ELEMENT_NODE && NO_TEXT.has((node as Element).localName)
+        ? NodeFilter.FILTER_REJECT
+        : NodeFilter.FILTER_ACCEPT,
+  });
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.nodeType !== Node.TEXT_NODE) continue;
+    text += node.nodeValue;
+    if (text.length > limit) break;
+  }
+  return text;
+}
+
+// Enough source text for a 56-character label once whitespace runs collapse.
+const LABEL_SOURCE_CHARS = 1000;
+
 /** The short name an editor shows for an element: its text for text tags, otherwise its role. */
 export function buildElementLabel(el: Element): string {
   const tag = el.tagName.toLowerCase();
-  const text = (el.textContent ?? "").trim().replace(/\s+/g, " ");
+  const text = renderedTextOf(el, LABEL_SOURCE_CHARS).trim().replace(/\s+/g, " ");
   const trimLabel = (value: string, maxChars: number) => {
     const chars = Array.from(value);
     return chars.length > maxChars ? `${chars.slice(0, maxChars - 1).join("")}…` : value;

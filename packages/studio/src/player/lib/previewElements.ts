@@ -70,7 +70,8 @@ function readHit(value: unknown): PreviewElementHit | null {
 export function readPreviewElement(value: unknown): PreviewElement | null {
   if (!readHit(value) || !isFields(value)) return null;
   if (value.parent !== null && !isHandle(value.parent)) return null;
-  if (!isText(value.label) || !isTextOrNull(value.id) || !isTextOrNull(value.selector)) return null;
+  if (value.label !== undefined && !isText(value.label)) return null;
+  if (!isTextOrNull(value.id) || !isTextOrNull(value.selector)) return null;
   if (!isSource(value.source) || typeof value.locked !== "boolean") return null;
   if (!isTextRecord(value.inlineStyles) || !isText(value.text)) return null;
   return hasPlainFields(value) ? (value as unknown as PreviewElement) : null;
