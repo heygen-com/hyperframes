@@ -20,6 +20,7 @@ import {
   buildAudioSidecar,
   buildProbeFacts,
   hashProjectDir,
+  leftOutPrivateFilesNotice,
   listSiteFiles,
   wantsAudioSidecar,
   wantsProbeFacts,
@@ -156,7 +157,10 @@ export async function deploySite(opts: DeploySiteOptions): Promise<SiteHandle> {
   if (!statSync(opts.projectDir).isDirectory()) {
     throw new Error(`[deploySite] projectDir is not a directory: ${opts.projectDir}`);
   }
-  const files = listSiteFiles(opts.projectDir);
+  const leftOut: string[] = [];
+  const files = listSiteFiles(opts.projectDir, (path) => leftOut.push(path));
+  const notice = leftOutPrivateFilesNotice(leftOut);
+  if (notice) opts.onNotice?.(notice);
   const siteId = opts.siteId ?? hashProjectDir(opts.projectDir, files);
   const projectS3Uri = siteManifestUri(opts.bucketName, siteId);
 

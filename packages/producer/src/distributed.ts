@@ -134,7 +134,11 @@ export {
   validateDistributedRenderConfig,
   validateVariablesPayload,
 } from "./services/distributed/renderConfigValidation.js";
-export { hashProjectDir, listSiteFiles } from "./services/distributed/projectHash.js";
+export {
+  hashProjectDir,
+  leftOutPrivateFilesNotice,
+  listSiteFiles,
+} from "./services/distributed/projectHash.js";
 export {
   AUDIO_SIDECAR_MIN_BYTES,
   buildAudioSidecar,

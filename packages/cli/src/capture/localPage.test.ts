@@ -24,6 +24,11 @@ beforeAll(() => {
   writeFileSync(join(site, "index.html"), "<h1>home</h1>");
   writeFileSync(join(site, "pages", "about page.html"), "<h1>about</h1>");
   writeFileSync(join(site, "logo.png"), "png-bytes");
+  for (const folder of [".git", ".hyperframes", ".aws"]) mkdirSync(join(site, folder));
+  for (const file of [".env", ".env.local", ".git/config", ".hyperframes/x.json", ".npmrc"]) {
+    writeFileSync(join(site, file), "SECRET=1");
+  }
+  writeFileSync(join(site, ".aws", "credentials"), "SECRET=1");
   writeFileSync(join(base, "secret.txt"), "outside the root");
   writeFileSync(join(base, "outside.html"), "<h1>outside</h1>");
   if (process.platform !== "win32") {
@@ -96,6 +101,24 @@ describe("startLocalPageServer", () => {
     const response = await fetch(`${server.origin}${path}`);
     expect(response.status).toBe(404);
     expect(await response.text()).toBe("");
+  });
+
+  it.each([
+    "/.env",
+    "/.ENV",
+    "/.env.local",
+    "/.git/config",
+    "/%2egit/config",
+    "/.hyperframes/x.json",
+    "/.npmrc",
+    "/.aws/credentials",
+  ])("keeps the private file %s from the page and the capture fetchers", async (path) => {
+    const response = await fetch(`${server.origin}${path}`);
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("");
+    const local = await safeFetch(`${server.origin}${path}`);
+    expect(local?.status).toBe(404);
+    expect(await local?.text()).not.toContain("SECRET");
   });
 
   it.skipIf(process.platform === "win32")("refuses a symlink that leaves the root", async () => {

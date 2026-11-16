@@ -15,7 +15,7 @@ import {
 } from "@hyperframes/studio-server/outside-file";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
 import { mkdirWithinProject } from "@hyperframes/core";
-import { projectPathSegments } from "@hyperframes/core/safe-path";
+import { isCredentialOrToolStatePath } from "@hyperframes/core/safe-path";
 import { publishRegistryFile, registryRoot, registryTargetPath } from "../registry/publication.js";
 
 export { isEnvOrGitPath, isPrivateOutsideFile, linksOutside };
@@ -201,51 +201,6 @@ export function receivedRecordStatus(
   const unreadable = records.find((record) => !Array.isArray(record.listed));
   if (unreadable) return { path: join(unreadable.root, RECEIVED_RECORD), listed: null };
   return { path: join(nearest.root, RECEIVED_RECORD), listed: records.flatMap(listedUnder) };
-}
-
-const CREDENTIAL_FILES = new Set([
-  ".npmrc",
-  ".yarnrc",
-  ".yarnrc.yml",
-  ".pypirc",
-  "pip.conf",
-  "pip.ini",
-  ".netrc",
-  "_netrc",
-  ".git-credentials",
-  ".gitconfig",
-  ".mcp.json",
-]);
-const CREDENTIAL_FOLDERS = new Set([
-  ".ssh",
-  ".aws",
-  ".gnupg",
-  ".docker",
-  ".kube",
-  ".azure",
-  ".claude",
-  ".codex",
-  ".cursor",
-  ".agents",
-  ".gemini",
-  ".vscode",
-  ".idea",
-]);
-const CREDENTIAL_CONFIG_FOLDERS = new Set(["gcloud", "gh"]);
-const KEY_FILE = /^(?:id_(?:rsa|dsa|ecdsa|ed25519).*|.*\.(?:pem|key|p12|pfx))$/;
-
-export function isCredentialOrToolStatePath(relPath: string): boolean {
-  const segments = projectPathSegments(relPath);
-  const name = segments.at(-1) ?? "";
-  return (
-    CREDENTIAL_FILES.has(name) ||
-    KEY_FILE.test(name) ||
-    segments.some(
-      (segment, at) =>
-        CREDENTIAL_FOLDERS.has(segment) ||
-        (segment === ".config" && CREDENTIAL_CONFIG_FOLDERS.has(segments[at + 1] ?? "")),
-    )
-  );
 }
 
 const leavesProject = (path: string): boolean =>

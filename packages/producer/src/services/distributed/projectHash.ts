@@ -12,30 +12,35 @@
 import { closeSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { PLAN_PROJECT_DIR_SKIP_SEGMENTS } from "./plan.js";
 
 // Bump when the hashed set changes so uploads cached under an older scheme are never reused.
 const SITE_ID_SCHEME = "site-v2\0";
 const READ_CHUNK_BYTES = 256 * 1024;
-// Env files hold the author's keys; no composition loads one, so none is uploaded.
-const ENV_FILE = /^\.env([._-].*|rc)?$/i;
-
-const leftOut = (rel: string, name: string): boolean =>
-  (rel === "" && PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(name)) || ENV_FILE.test(name);
 
 /**
  * The files a site upload ships, as `/`-separated paths under `projectDir`. Symlinks are followed
  * (root included), top-level {@link PLAN_PROJECT_DIR_SKIP_SEGMENTS} are left out as the plan stage
- * does, env files are left out at every depth, and a dangling symlink throws.
+ * does, and a dangling symlink throws. Private files (env, Git, credentials, tool and agent state,
+ * app records) are left out at every depth, by name or by where a link points; `onPrivate` hears
+ * each one left out, a folder once.
  */
-export function listSiteFiles(projectDir: string): string[] {
+export function listSiteFiles(
+  projectDir: string,
+  onPrivate?: (relPath: string) => void,
+): string[] {
   const files: string[] = [];
   const ancestors = new Set([realpathSync(projectDir)]);
   function walk(dir: string, rel: string): void {
     for (const name of readdirSync(dir).sort()) {
-      if (leftOut(rel, name)) continue;
+      if (rel === "" && PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(name)) continue;
       const full = join(dir, name);
       const relPath = rel === "" ? name : `${rel}/${name}`;
+      if (isPrivateFileUnder(projectDir, full, isStudioPrivatePath)) {
+        onPrivate?.(relPath);
+        continue;
+      }
       let stat;
       try {
         stat = statSync(full);
@@ -58,6 +63,14 @@ export function listSiteFiles(projectDir: string): string[] {
   }
   walk(projectDir, "");
   return files;
+}
+
+/** The line a site upload shows for the private files {@link listSiteFiles} left out; null when none was. */
+export function leftOutPrivateFilesNotice(paths: readonly string[]): string | null {
+  if (paths.length === 0) return null;
+  const named = paths.slice(0, 5).join(", ");
+  const more = paths.length > 5 ? ` and ${paths.length - 5} more` : "";
+  return `[deploySite] left out private files no composition loads (env, Git, credentials, tool state): ${named}${more}`;
 }
 
 /**

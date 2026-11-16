@@ -63,6 +63,41 @@ describe("listSiteFiles / hashProjectDir", () => {
     expect(listSiteFiles(dir)).toEqual(["index.html", "sub/environment.css"]);
   });
 
+  it("leaves credentials and tool state out at every depth, and names each one", () => {
+    const dir = project();
+    for (const folder of [".claude", ".aws", "sub"]) mkdirSync(join(dir, folder));
+    writeFileSync(join(dir, ".npmrc"), "//registry.npmjs.org/:_authToken=x");
+    writeFileSync(join(dir, ".mcp.json"), "{}");
+    writeFileSync(join(dir, ".claude", "settings.local.json"), "{}");
+    writeFileSync(join(dir, ".aws", "credentials"), "[default]");
+    writeFileSync(join(dir, "sub", "id_ed25519"), "key");
+    writeFileSync(join(dir, "sub", "cert.PEM"), "key");
+    writeFileSync(join(dir, "sub", "logo.png"), "png");
+    const leftOut: string[] = [];
+    expect(listSiteFiles(dir, (path) => leftOut.push(path))).toEqual([
+      "index.html",
+      "sub/logo.png",
+    ]);
+    expect(leftOut.sort()).toEqual([
+      ".aws",
+      ".claude",
+      ".mcp.json",
+      ".npmrc",
+      "sub/cert.PEM",
+      "sub/id_ed25519",
+    ]);
+  });
+
+  it("leaves out a file whose link points at a credential", () => {
+    const dir = project();
+    const home = tempDir();
+    mkdirSync(join(dir, "assets"));
+    mkdirSync(join(home, ".ssh"));
+    writeFileSync(join(home, ".ssh", "config"), "Host x");
+    symlinkSync(join(home, ".ssh"), join(dir, "assets", "keys"));
+    expect(listSiteFiles(dir)).toEqual(["index.html"]);
+  });
+
   it("does not loop on a folder that links back to an ancestor", () => {
     const dir = project();
     symlinkSync(dir, join(dir, "self"));

@@ -277,6 +277,20 @@ describe("isStudioPrivatePath", () => {
     ".hyperframes:stream/comments.jsonl",
     ".git/config",
     ".env.local",
+    ".npmrc",
+    ".NPMRC",
+    ".mcp.json",
+    ".mcp.json::$DATA",
+    ".claude/x.json",
+    ".Claude./settings.local.json",
+    ".aws/credentials",
+    "keys\\.ssh\\config",
+    "id_ed25519",
+    "deploy/id_rsa.pub",
+    "certs/cert.pem",
+    "certs/CERT.PEM.",
+    ".config/gh/hosts.yml",
+    "../.aws/credentials",
   ])("refuses %s", (path) => {
     expect(isStudioPrivatePath(path)).toBe(true);
   });
@@ -290,6 +304,9 @@ describe("isStudioPrivatePath", () => {
     ".hyperframes-pull.json",
     "assets/.hyperframes/logo.png",
     "assets/logo.png",
+    "assets/keynote-cover.png",
+    ".config/fonts/brand.woff2",
+    "fonts/aws-logo.svg",
   ])("allows %s", (path) => {
     expect(isStudioPrivatePath(path)).toBe(false);
   });
