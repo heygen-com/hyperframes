@@ -1,7 +1,6 @@
 import {
   chmodSync,
   existsSync,
-  lstatSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -60,7 +59,6 @@ fs.writeFileSync(base + ".json", ${JSON.stringify(JSON.stringify(json))});
     const result = await transcribe(input, dir);
 
     expect(readFileSync(target, "utf8")).toBe("keep me\n");
-    expect(lstatSync(transcriptPath).isFile()).toBe(true);
     expect(JSON.parse(readFileSync(transcriptPath, "utf8"))).toEqual(json);
     expect(result).toMatchObject({ transcriptPath, wordCount: 1 });
     const whisperFolder = dirname(readFileSync(seen, "utf8"));

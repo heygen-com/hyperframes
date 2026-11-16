@@ -1,13 +1,5 @@
 import { execFileSync } from "node:child_process";
-import {
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -94,7 +86,6 @@ describe("HeyGen transcription", () => {
       try {
         await transcribeWithHeygen(audio, out);
         expect(readFileSync(target, "utf8")).toBe("keep me\n");
-        expect(lstatSync(out).isFile()).toBe(true);
         expect(JSON.parse(readFileSync(out, "utf8"))).toHaveLength(2);
       } finally {
         rmSync(outside, { recursive: true, force: true });

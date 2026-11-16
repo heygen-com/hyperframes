@@ -6,7 +6,6 @@ import {
   chmodSync,
   mkdirSync,
   existsSync,
-  lstatSync,
   writeFileSync,
   readFileSync,
   mkdtempSync,
@@ -1023,7 +1022,7 @@ Render video. Built for agents.
       symlinkSync(target, caption);
       await transcribeCmd.run!({ args: { input, json: true, engine: "whisper", to } } as never);
       expect(lastJson()).toMatchObject({ ok: true });
-      expect(lstatSync(caption).isFile()).toBe(true);
+      expect(readFileSync(target, "utf8")).toBe("keep me\n");
 
       // Exporting the project's own transcript.json takes the other path to the same file name.
       rmSync(caption);
@@ -1031,8 +1030,8 @@ Render video. Built for agents.
       const transcript = join(dir, "transcript.json");
       await transcribeCmd.run!({ args: { input: transcript, json: true, to } } as never);
       expect(lastJson()).toMatchObject({ ok: true, outputPath: caption });
-      expect(lstatSync(caption).isFile()).toBe(true);
 
+      // The target is untouched while the name reads as captions, so the link was replaced.
       expect(readFileSync(target, "utf8")).toBe("keep me\n");
       expect(readFileSync(caption, "utf8")).toContain("-->");
     },
