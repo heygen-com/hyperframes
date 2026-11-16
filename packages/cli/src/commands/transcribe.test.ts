@@ -6,6 +6,7 @@ import {
   chmodSync,
   mkdirSync,
   existsSync,
+  lstatSync,
   writeFileSync,
   readFileSync,
   mkdtempSync,
@@ -1005,6 +1006,37 @@ Render video. Built for agents.
     expect(errorMessage(lastJson())).toMatch(reason);
     expect(JSON.parse(readFileSync(transcript, "utf8"))).toMatchObject([{ text: "whisper" }]);
   });
+
+  it.each(["srt", "vtt"] as const)(
+    "replaces a link planted at transcript.%s instead of writing through it",
+    async (to) => {
+      const { dir, input } = dummyAudio();
+      const outside = mkdtempSync(join(tmpdir(), "hf-transcribe-outside-"));
+      dirs.push(dir, outside);
+      const target = join(outside, "profile");
+      writeFileSync(target, "keep me\n");
+      const caption = join(dir, `transcript.${to}`);
+      transcribeMock.mockImplementation(async (_input, outputDir) =>
+        fakeTranscript(outputDir, "whisper"),
+      );
+
+      symlinkSync(target, caption);
+      await transcribeCmd.run!({ args: { input, json: true, engine: "whisper", to } } as never);
+      expect(lastJson()).toMatchObject({ ok: true });
+      expect(lstatSync(caption).isFile()).toBe(true);
+
+      // Exporting the project's own transcript.json takes the other path to the same file name.
+      rmSync(caption);
+      symlinkSync(target, caption);
+      const transcript = join(dir, "transcript.json");
+      await transcribeCmd.run!({ args: { input: transcript, json: true, to } } as never);
+      expect(lastJson()).toMatchObject({ ok: true, outputPath: caption });
+      expect(lstatSync(caption).isFile()).toBe(true);
+
+      expect(readFileSync(target, "utf8")).toBe("keep me\n");
+      expect(readFileSync(caption, "utf8")).toContain("-->");
+    },
+  );
 
   it("says the transcript was saved when the caption file cannot be written", async () => {
     const { dir, input } = dummyAudio();

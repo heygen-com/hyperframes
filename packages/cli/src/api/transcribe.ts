@@ -1,4 +1,4 @@
-import { existsSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync, rmSync, statSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { transcribeWithHeygen } from "../heygen/transcribe.js";
@@ -319,7 +319,7 @@ function writeCaptionSidecar(
   const preGrouped = preserveCues || phraseLevelSource;
   const content =
     to === "srt" ? formatSrt(words, { preGrouped }) : formatVtt(words, { preGrouped });
-  writeFileSync(outPath, content);
+  replaceFileAtomically(outPath, content);
 }
 
 // ---------------------------------------------------------------------------
