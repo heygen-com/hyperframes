@@ -6,6 +6,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { tmpdir } from "node:os";
@@ -674,7 +675,7 @@ export default defineCommand({
         parsed.timeoutMs,
       );
       makeOutputFolder(dirname(parsed.outPath));
-      copyFileSync(tempSheet, parsed.outPath);
+      replaceFileAtomically(parsed.outPath, readFileSync(tempSheet));
       trackCompareSheet({
         command: "grade-compare",
         cells: prepared.cells.length,

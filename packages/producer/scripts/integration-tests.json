@@ -26,6 +26,7 @@
   "src/services/distributed/renderSpan.integration.test.ts",
   "src/services/fileServer.test.ts",
   "src/services/fileServer.file-race.test.ts",
+  "src/services/fileServer.host.test.ts",
   "src/services/fileServer.listenError.test.ts",
   "src/services/outsideProjectAssets.test.ts",
   "src/services/healthWorker.test.ts",

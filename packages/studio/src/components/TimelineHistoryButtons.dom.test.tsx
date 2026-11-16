@@ -3,7 +3,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanupMounted, mountHost } from "./ui/mountHost.testHelpers";
-import { isTypingTarget } from "../utils/typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 import { shouldIgnorePlaybackShortcutTarget } from "../player/lib/playbackShortcuts";
 
 const editHistory = {

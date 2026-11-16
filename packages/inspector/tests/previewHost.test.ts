@@ -11,16 +11,19 @@ vi.mock("puppeteer-core", () => ({
   default: {
     launch: async () => ({
       close: async () => {},
-      newPage: async () => ({
-        setViewport: async () => {},
-        goto: async (url: string) => {
-          pages.push(url);
-          await fetch(url);
-        },
-        waitForFunction: async () => {},
-        evaluate: async () => {},
-        content: async () => "",
+      createBrowserContext: async () => ({
         close: async () => {},
+        newPage: async () => ({
+          setViewport: async () => {},
+          goto: async (url: string) => {
+            pages.push(url);
+            await fetch(url);
+          },
+          waitForFunction: async () => {},
+          evaluate: async () => {},
+          content: async () => "",
+          close: async () => {},
+        }),
       }),
     }),
   },

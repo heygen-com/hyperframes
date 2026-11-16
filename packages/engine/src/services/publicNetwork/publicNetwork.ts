@@ -6,6 +6,7 @@ import { request as httpRequest, type IncomingMessage, type ClientRequest } from
 import { request as httpsRequest, type RequestOptions } from "node:https";
 import { connect as tlsConnect } from "node:tls";
 import {
+  carriedIPv4,
   ipv4HostClass,
   isBlockedNetworkHost,
   type NonPublicIPv4Class,
@@ -45,13 +46,21 @@ function refusedIPv4Class(address: string): RefusedHostClass {
   return hostClass === "public" ? "reserved" : hostClass;
 }
 
+function refusedIPv6Class(address: string): RefusedHostClass {
+  const ipv4 = carriedIPv4(address);
+  const hostClass = ipv4 === undefined ? "public" : ipv4HostClass(ipv4);
+  return hostClass === "public" ? "ipv6" : hostClass;
+}
+
 export function assertPublicHostname(hostname: string): string {
   const host = hostname.toLowerCase().replace(/\.$/, "");
   if (isIP(host) === 4) {
     if (!isPublicIPv4(host)) throw new NonPublicHostError(PUBLIC_IPV4, refusedIPv4Class(host));
     return host;
   }
-  if (host.startsWith("[")) throw new NonPublicHostError(PUBLIC_HOSTNAME, "ipv6");
+  if (host.startsWith("[")) {
+    throw new NonPublicHostError(PUBLIC_HOSTNAME, refusedIPv6Class(host.slice(1, -1)));
+  }
   if (
     !host.includes(".") ||
     !/^[a-z0-9.-]+$/.test(host) ||

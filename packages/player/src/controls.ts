@@ -4,6 +4,8 @@ import {
   VOLUME_HIGH_ICON,
   VOLUME_LOW_ICON,
   VOLUME_MUTED_ICON,
+  FULLSCREEN_ENTER_ICON,
+  FULLSCREEN_EXIT_ICON,
 } from "./styles.js";
 
 export interface ControlsCallbacks {
@@ -55,6 +57,31 @@ function iconSlot(name: string, fallbackSvg: string): HTMLSlotElement {
   slot.name = name;
   slot.innerHTML = fallbackSvg;
   return slot;
+}
+
+function createFullscreenButton(
+  host: HTMLElement,
+): { button: HTMLButtonElement; destroy: () => void } | null {
+  if (!document.fullscreenEnabled) return null;
+  const button = document.createElement("button");
+  button.className = "hfp-fullscreen-btn";
+  button.type = "button";
+  const render = () => {
+    const active = host.matches(":fullscreen");
+    button.innerHTML = active ? FULLSCREEN_EXIT_ICON : FULLSCREEN_ENTER_ICON;
+    button.setAttribute("aria-label", active ? "Exit full screen" : "Full screen");
+  };
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const change = host.matches(":fullscreen")
+      ? document.exitFullscreen()
+      : host.requestFullscreen();
+    // A refusal also fires fullscreenerror at the player, where the page can observe it.
+    change.catch(() => {});
+  });
+  document.addEventListener("fullscreenchange", render);
+  render();
+  return { button, destroy: () => document.removeEventListener("fullscreenchange", render) };
 }
 
 export function createControls(
@@ -359,6 +386,8 @@ export function createControls(
   };
 
   const host = parent instanceof ShadowRoot ? (parent.host as HTMLElement) : parent;
+  const fullscreen = createFullscreenButton(host);
+  if (fullscreen) controls.appendChild(fullscreen.button);
   const onHostActivity = () => reveal();
   const onHostMouseLeave = () => {
     if (canHide()) controls.classList.add("hfp-hidden");
@@ -428,6 +457,7 @@ export function createControls(
       host.removeEventListener("focusin", onHostActivity);
       host.removeEventListener("mouseleave", onHostMouseLeave);
       if (hideTimeout) clearTimeout(hideTimeout);
+      fullscreen?.destroy();
       controls.remove();
     },
   };

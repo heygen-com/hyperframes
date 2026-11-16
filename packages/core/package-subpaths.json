@@ -80,6 +80,12 @@
       "types": "./dist/atomicFile.d.ts",
       "environments": ["bun", "node"]
     },
+    "./preview-proof": {
+      "source": "./src/previewProof.ts",
+      "runtime": "./dist/previewProof.js",
+      "types": "./dist/previewProof.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./cache-dir": {
       "source": "./src/cacheDir.ts",
       "runtime": "./dist/cacheDir.js",
@@ -138,6 +144,18 @@
       "source": "./src/compositionContract.ts",
       "runtime": "./dist/compositionContract.js",
       "types": "./dist/compositionContract.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./key-combo": {
+      "source": "./src/keyCombo.ts",
+      "runtime": "./dist/keyCombo.js",
+      "types": "./dist/keyCombo.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./typing-target": {
+      "source": "./src/typingTarget.ts",
+      "runtime": "./dist/typingTarget.js",
+      "types": "./dist/typingTarget.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./studio-preview-mark": {

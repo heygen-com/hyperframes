@@ -157,12 +157,14 @@ export async function paintShadow(getApi: () => TimelinePlayerApi, shadow: HTMLI
 export function serveEditingRequests(
   frame: Record<string, unknown>,
   answer: (kind: string, params: unknown) => unknown,
+  onPort?: (port: MessagePort) => void,
 ): () => void {
   const ports: MessagePort[] = [];
   frame.postMessage = (message: { type?: string } | null) => {
     if (message?.type !== "editing-connect") return;
     const { port1, port2 } = new MessageChannel();
     ports.push(port1);
+    onPort?.(port1);
     port1.onmessage = (event: MessageEvent<{ id: number; kind: string; params: unknown }>) => {
       const { id, kind, params } = event.data;
       port1.postMessage({ v: 1, id, ok: true, result: answer(kind, params) });

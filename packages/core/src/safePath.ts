@@ -126,22 +126,79 @@ export function isVcsOrSecretPath(relPath: string): boolean {
   );
 }
 
-// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): Studio
-// reaches none of it, the folder itself included, but its own files and the app's request pictures.
+// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): no file
+// server serves any of it, the folder itself included, but Studio's own files and the assets compositions load. Studio
+// reads and writes those only in the project's own `.hyperframes/`, so one in a subfolder holds records only.
 const STUDIO_FILES = new Set([
   ".hyperframes/studio-motion.json",
   ".hyperframes/studio-manual-edits.json",
 ]);
 const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
 
-/** Studio's private files, for a project-relative path with `/` separators: git, env, and the app's records. */
-export function isStudioPrivatePath(relPath: string): boolean {
-  const path = relPath.toLowerCase();
-  if (isVcsOrSecretPath(path)) return true;
+// Credentials and coding-tool state that projects often sit next to: registry tokens, MCP and agent settings, cloud and
+// SSH keys. No composition loads one, so no file server serves one and no upload ships one.
+const CREDENTIAL_FILES = new Set([
+  ".npmrc",
+  ".yarnrc",
+  ".yarnrc.yml",
+  ".pypirc",
+  "pip.conf",
+  "pip.ini",
+  ".netrc",
+  "_netrc",
+  ".git-credentials",
+  ".gitconfig",
+  ".mcp.json",
+]);
+const CREDENTIAL_FOLDERS = new Set([
+  ".ssh",
+  ".aws",
+  ".gnupg",
+  ".docker",
+  ".kube",
+  ".azure",
+  ".claude",
+  ".codex",
+  ".cursor",
+  ".agents",
+  ".gemini",
+  ".vscode",
+  ".idea",
+]);
+const CREDENTIAL_CONFIG_FOLDERS = new Set(["gcloud", "gh"]);
+const KEY_FILE = /^(?:id_(?:rsa|dsa|ecdsa|ed25519).*|.*\.(?:pem|key|p12|pfx))$/;
+
+/** Credential files and tool or agent state, for a project-relative path in any spelling Windows opens. */
+export function isCredentialOrToolStatePath(relPath: string): boolean {
+  const segments = projectPathSegments(relPath);
+  const name = segments.at(-1) ?? "";
   return (
-    (path === ".hyperframes" || path.startsWith(".hyperframes/")) &&
-    !STUDIO_FILES.has(path) &&
-    !STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
+    CREDENTIAL_FILES.has(name) ||
+    KEY_FILE.test(name) ||
+    segments.some(
+      (segment, at) =>
+        CREDENTIAL_FOLDERS.has(segment) ||
+        (segment === ".config" && CREDENTIAL_CONFIG_FOLDERS.has(segments[at + 1] ?? "")),
+    )
+  );
+}
+
+/** Files no composition loads, for a project-relative path in any spelling Windows opens: git, env, credentials, tool
+ * state, app records. */
+export function isStudioPrivatePath(relPath: string): boolean {
+  if (isVcsOrSecretPath(relPath) || isCredentialOrToolStatePath(relPath)) return true;
+  const segments = projectPathSegments(relPath);
+  return segments.some((segment, at) => {
+    if (segment !== ".hyperframes") return false;
+    const atRoot = segments.slice(0, at).every((before) => before === "");
+    return !atRoot || !isStudioOwnFile(segments.slice(at).join("/"));
+  });
+}
+
+function isStudioOwnFile(path: string): boolean {
+  return (
+    STUDIO_FILES.has(path) ||
+    STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
   );
 }
 

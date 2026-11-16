@@ -50,6 +50,7 @@ function described(n: number, extra: Partial<EditingElementDescription> = {}) {
     handle: h(n),
     parent: null,
     tag: "div",
+    label: "Text",
     id: null,
     selector: null,
     matchesBefore: null,
@@ -68,6 +69,8 @@ function described(n: number, extra: Partial<EditingElementDescription> = {}) {
 describe("readPreviewElement", () => {
   it("takes a description with the wire shape and refuses anything off it", () => {
     expect(readPreviewElement(described(1))).toEqual(described(1));
+    const { label: _label, ...fromAnOlderRuntime } = described(1);
+    expect(readPreviewElement(fromAnOlderRuntime)).toEqual(fromAnOlderRuntime);
     for (const bad of [
       null,
       [],
@@ -77,6 +80,7 @@ describe("readPreviewElement", () => {
       described(1, { handle: `${LOAD.toUpperCase()}:1` }),
       described(1, { parent: "x" }),
       described(1, { tag: 1 as never }),
+      described(1, { label: 1 as never }),
       described(1, { source: { file: 1 } as never }),
       described(1, { locked: "yes" as never }),
       described(1, { attributes: [["a"]] as never }),

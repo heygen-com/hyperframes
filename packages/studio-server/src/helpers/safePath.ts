@@ -130,7 +130,8 @@ const IGNORE_DIRS = new Set([
 ]);
 
 function shouldIgnoreDir(rel: string): boolean {
-  return rel === ".hyperframes/backup";
+  const segments = projectPathSegments(rel);
+  return segments.at(-1) === "backup" && segments.at(-2) === ".hyperframes";
 }
 
 /**

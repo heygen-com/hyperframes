@@ -1,9 +1,11 @@
+import { closeSync, constants, fstatSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, extname, isAbsolute, join, relative, sep } from "node:path";
 import { MIME_TYPES } from "./mime.js";
 import {
   AUDIO_EXTS,
   CONVERTIBLE_IMAGE_EXTS,
+  isControlByte,
   MEDIA_INPUT_ARGS,
   startsAsMediaPlaylist,
   VIDEO_EXTS,
@@ -14,21 +16,76 @@ export { AUDIO_EXTS, CONVERTIBLE_IMAGE_EXTS, MEDIA_INPUT_ARGS, startsAsMediaPlay
 
 const COPIED_TYPE = /^(?:image|video|audio|font)\/|^text\/(?:css|javascript);/;
 
-/** What an upload copies from outside the project: the preview server's image, video, audio, font, CSS and JS types,
- * and the media cloud render re-encodes or converts. */
-export const OUTSIDE_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
-  ...Object.entries(MIME_TYPES)
-    .filter(([, type]) => COPIED_TYPE.test(type))
-    .map(([extension]) => extension),
+const extensionsOf = (type: RegExp) =>
+  Object.entries(MIME_TYPES)
+    .filter(([, mime]) => type.test(mime))
+    .map(([extension]) => extension);
+
+/** What a local render brings in from outside the project: the preview server's image, video, audio, font, CSS and
+ * JS types, and the media cloud render re-encodes or converts. */
+const OUTSIDE_FILE_EXTENSIONS: ReadonlySet<string> = new Set([
+  ...extensionsOf(COPIED_TYPE),
   ...VIDEO_EXTS,
   ...AUDIO_EXTS,
   ...CONVERTIBLE_IMAGE_EXTS,
 ]);
 
-const hasCopiedType = (path: string) => OUTSIDE_FILE_EXTENSIONS.has(extname(path).toLowerCase());
+const SCRIPT_EXTENSIONS: ReadonlySet<string> = new Set(extensionsOf(/^text\/javascript;/));
+
+/** What an upload copies from outside the project: the same types without scripts. */
+export const UPLOADED_OUTSIDE_FILE_EXTENSIONS: ReadonlySet<string> = new Set(
+  [...OUTSIDE_FILE_EXTENSIONS].filter((extension) => !SCRIPT_EXTENSIONS.has(extension)),
+);
+
+const TYPESCRIPT_OR_TRANSPORT_STREAM = new Set([".ts", ".mts"]);
+const TS_SYNC_BYTE = 0x47;
+
+const TS_PACKETS = [
+  { size: 188, offset: 0 },
+  { size: 192, offset: 4 },
+];
+
+function readRegularFileHead(path: string, length: number): Buffer | null {
+  let fd: number;
+  try {
+    // A FIFO would wait for a writer on a blocking open; fstat refuses it first.
+    fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK);
+  } catch {
+    return null;
+  }
+  try {
+    if (!fstatSync(fd).isFile()) return null;
+    const head = Buffer.alloc(length);
+    return head.subarray(0, readSync(fd, head, 0, length, 0));
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function startsAsTransportStream(path: string): boolean {
+  const head = readRegularFileHead(path, 4 * 192);
+  if (!head?.some(isControlByte)) return false;
+  return TS_PACKETS.some(({ size, offset }) => {
+    const starts = [];
+    for (let at = offset; at < head.length; at += size) starts.push(at);
+    return starts.length >= 2 && starts.every((at) => head[at] === TS_SYNC_BYTE);
+  });
+}
+
+function isCopiedType(absPath: string, extensions: ReadonlySet<string>): boolean {
+  const names = [absPath, realFilePath(absPath)].map((path) => extname(path).toLowerCase());
+  if (!names.every((extension) => extensions.has(extension))) return false;
+  const ambiguous = names.some((extension) => TYPESCRIPT_OR_TRANSPORT_STREAM.has(extension));
+  return !ambiguous || startsAsTransportStream(absPath);
+}
 
 export const isCopiedOutsideFileType = (absPath: string): boolean =>
-  hasCopiedType(absPath) && hasCopiedType(realFilePath(absPath));
+  isCopiedType(absPath, OUTSIDE_FILE_EXTENSIONS);
+
+export const isUploadedOutsideFileType = (absPath: string): boolean =>
+  isCopiedType(absPath, UPLOADED_OUTSIDE_FILE_EXTENSIONS);
 
 const ENV_FILE = /^\.env([._-].*|rc)?$/;
 
@@ -89,13 +146,19 @@ export function isPrivateOutsideFile(projectDir: string, absPath: string): boole
 export const linksOutside = (projectDir: string, filePath: string): boolean =>
   isOutside(relative(realFilePath(projectDir), realFilePath(filePath)));
 
-/** `blocklisted`: a private location; `received`: reached from an imported file; `file_type`: not a type uploads copy. */
-export type LeftOutReason = "blocklisted" | "received" | "file_type";
+/** `blocklisted`: a private location; `received`: reached from an imported file; `file_type`: not a type uploads copy; `network_share`: on another computer. */
+export type LeftOutReason = "blocklisted" | "received" | "file_type" | "private" | "network_share";
 
-const WHY: Record<LeftOutReason, string> = {
+const WHY: Record<Exclude<LeftOutReason, "file_type">, string> = {
+  private: "which holds secrets or tool data",
   blocklisted: "which is outside the project in a private location",
   received: "which leads outside the project and came in with an imported project",
-  file_type: "which is outside the project and is not an image, video, audio, font, CSS or JS file",
+  network_share: "which is on another computer's network share or is a Windows device path",
+};
+
+const COPIED_TYPES = {
+  upload: "an image, video, audio, font or CSS file",
+  render: "an image, video, audio, font, CSS or JS file",
 };
 
 export function leftOutWarning(
@@ -104,6 +167,10 @@ export function leftOutWarning(
   reason: LeftOutReason,
   from: "upload" | "render" = "upload",
 ): string {
-  const warning = `${file} references ${reference}, ${WHY[reason]}; it was left out of the ${from}.`;
+  const why =
+    reason === "file_type"
+      ? `which is outside the project and is not ${COPIED_TYPES[from]}`
+      : WHY[reason];
+  const warning = `${file} references ${reference}, ${why}; it was left out of the ${from}.`;
   return reason === "file_type" ? `${warning} Move it into the project to include it.` : warning;
 }

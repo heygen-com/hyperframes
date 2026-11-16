@@ -22,7 +22,11 @@ import { isUnattended } from "../utils/attendedTerminal.js";
 import { parseFeedbackRating } from "../utils/feedbackRating.js";
 import { feedbackEmail, parseFeedbackSource } from "../utils/feedbackSource.js";
 import { lintFeedbackComment, type FeedbackLintInput } from "../utils/feedbackLint.js";
-import type { LeftOutReference } from "../utils/leftOutReference.js";
+import {
+  type LeftOutReference,
+  type OutsideFileReference,
+  outsideFilesNotice,
+} from "../utils/leftOutReference.js";
 import { trackUploadLeftOut } from "../telemetry/uploadLeftOut.js";
 
 export const examples: Example[] = [
@@ -124,11 +128,21 @@ async function publishRepro(dir: string): Promise<string | undefined> {
   try {
     const leftOut: string[] = [];
     const references: LeftOutReference[] = [];
-    const archive = createPublishArchive(dir, (warning, reference) => {
-      leftOut.push(warning);
-      references.push(reference);
-    });
+    const outsideFiles: OutsideFileReference[] = [];
+    const archive = createPublishArchive(
+      dir,
+      (warning, reference) => {
+        leftOut.push(warning);
+        references.push(reference);
+      },
+      (reference) => outsideFiles.push(reference),
+    );
     trackUploadLeftOut("feedback", references);
+    if (outsideFiles.length > 0) {
+      spinner.stop("Repro prepared");
+      clack.log.info(outsideFilesNotice(outsideFiles));
+      spinner.start("Publishing minimal repro...");
+    }
     const published = await publishProjectArchive(dir, { archive });
     spinner.stop(c.success("Repro published"));
     for (const warning of leftOut) clack.log.warn(c.warn(warning));

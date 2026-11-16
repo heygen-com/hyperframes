@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -25,7 +26,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
-import { onRestoredInPlace, openBlobStore } from "./blobStore.js";
+import { onRestoredInPlace, openBlobStore, readBlob } from "./blobStore.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
 
 const {
@@ -69,7 +70,7 @@ describe("the history store on Windows, while another process briefly holds a fi
   it("writes a file a holder keeps open in place, once the rename is still refused, and checks it", async () => {
     const { target, store, hash, heard, stop } = await heldRestore();
     try {
-      await store.writeTo(hash, target);
+      await store.writeTo(hash, root, "index.html");
     } finally {
       stop();
     }
@@ -81,11 +82,11 @@ describe("the history store on Windows, while another process briefly holds a fi
   it("fails a write in place that does not match the kept copy, and keeps the copy", async () => {
     const { target, store, hash, heard, stop } = await heldRestore();
     vi.mocked(fsp.copyFile).mockImplementation(async (from, to, mode) => {
-      if (to === target) return writeFileSync(target, "<p>torn</p>");
+      if (to === realpathSync(target)) return writeFileSync(target, "<p>torn</p>");
       return realCopyFile(from, to, mode);
     });
     try {
-      await expect(store.writeTo(hash, target)).rejects.toThrow(/does not match/);
+      await expect(store.writeTo(hash, root, "index.html")).rejects.toThrow(/does not match/);
     } finally {
       stop();
     }
@@ -103,7 +104,7 @@ describe("the history store on Windows, while another process briefly holds a fi
     writeFileSync(target, "<p>after</p>");
     fs.chmodSync(target, 0o444);
     try {
-      await expect(store.writeTo(hash, target)).rejects.toMatchObject({
+      await expect(store.writeTo(hash, root, "index.html")).rejects.toMatchObject({
         code: expect.stringMatching(/^(EACCES|EPERM)$/),
       });
       expect(readFileSync(target, "utf8")).toBe("<p>after</p>");
@@ -126,7 +127,7 @@ describe("the history store on Windows, while another process briefly holds a fi
       return realRename(from, to);
     });
 
-    await store.writeTo(hash, target);
+    await store.writeTo(hash, root, "index.html");
 
     expect(readFileSync(target, "utf8")).toBe("<p>before</p>");
     expect(refused).toBe(3);
@@ -176,7 +177,7 @@ describe("a restore of a file the preview is serving", () => {
       return realRename(from, to);
     });
 
-    await store.writeTo(hash, target);
+    await store.writeTo(hash, root, "clip.mp4");
 
     expect(openAtReplace).toBe(false);
   });
@@ -194,7 +195,9 @@ describe("a restore of a file the preview is serving", () => {
     const stop = onRestoredInPlace((_path, outcome) => heard.push(outcome));
     Object.defineProperty(process, "platform", { value: "linux", configurable: true });
     try {
-      await expect(store.writeTo(hash, target)).rejects.toMatchObject({ code: "EPERM" });
+      await expect(store.writeTo(hash, root, "index.html")).rejects.toMatchObject({
+        code: "EPERM",
+      });
     } finally {
       Object.defineProperty(process, "platform", { value: platform, configurable: true });
       stop();
@@ -292,5 +295,40 @@ describe("a file written to while the history reads it", () => {
     expect(await store.put(path)).toBeNull();
     expect(saves).toBe(3);
     expect(stored()).toEqual([]);
+  });
+});
+
+describe("a kept copy whose bytes no longer match its name", () => {
+  let root: string;
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "hf-blob-damaged-"));
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  /** A filed copy of index.html, then changed in the store behind the history's back. */
+  async function damaged(size: number) {
+    const target = join(root, "index.html");
+    writeFileSync(target, "a".repeat(size));
+    const blobs = join(root, "history", "blobs");
+    const store = await openBlobStore(blobs);
+    const hash = (await store.put(target))!;
+    writeFileSync(join(blobs, hash.slice(0, 2), hash), "b".repeat(size));
+    writeFileSync(target, "current");
+    return { target, blobs, store, hash };
+  }
+
+  it.each([16, 256 * 1024])("is not written back into the project (%i bytes)", async (size) => {
+    const { target, store, hash } = await damaged(size);
+
+    await expect(store.writeTo(hash, root, "index.html")).rejects.toThrow(/damaged/);
+    expect(readFileSync(target, "utf8")).toBe("current");
+    expect(readdirSync(root).sort()).toEqual(["history", "index.html"]);
+  });
+
+  it("is not read back, through the store or the read-only view", async () => {
+    const { blobs, store, hash } = await damaged(16);
+
+    await expect(store.read(hash)).rejects.toThrow(/damaged/);
+    await expect(readBlob(blobs, hash)).rejects.toThrow(/damaged/);
   });
 });

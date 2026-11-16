@@ -17,6 +17,7 @@ import { basename, dirname, join, relative } from "node:path";
 import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 import {
   browserPathFromEnv,
+  isPinnedHeadlessShell,
   managedChromeVersion,
   pickSharedShell,
 } from "@hyperframes/engine/chrome-host-ceiling";
@@ -25,7 +26,11 @@ import { BrowserDownloadStalledError, installInChild } from "./installInChild.js
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
 import { unzipArchive } from "./unzipArchive.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import {
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 
 type PuppeteerBrowsers = typeof import("@puppeteer/browsers");
 
@@ -41,8 +46,8 @@ async function loadPuppeteerBrowsers(): Promise<PuppeteerBrowsers> {
   }
 }
 
-const CACHE_ROOT_DIR = hyperframesCacheDir();
-const CACHE_DIR = hyperframesCacheDir("chrome");
+const CACHE_ROOT_DIR = trustedCacheRoot();
+const CACHE_DIR = join(CACHE_ROOT_DIR, "chrome");
 const ARCHIVE_PLUS_UNPACKED_SHELL_MB = 512;
 // Puppeteer's managed cache — where `@puppeteer/browsers install
 // chrome-headless-shell` (and `puppeteer install`) drop binaries. The engine's
@@ -333,7 +338,11 @@ async function findFromHyperframesCache(): Promise<CacheLookupResult> {
       b.buildId === managedChromeVersion() &&
       b.platform === hostPlatform,
   );
-  if (match && isUsableExecutable(match.executablePath)) {
+  if (
+    match &&
+    isPinnedHeadlessShell(match.executablePath) &&
+    !foreignWritablePath(match.executablePath, CACHE_ROOT_DIR)
+  ) {
     return { result: { executablePath: match.executablePath, source: "cache" } };
   }
   if (match) {
@@ -385,7 +394,7 @@ function findFromPuppeteerCache(): BrowserResult | undefined {
   }
   const binary = pickSharedShell(versions, (version) => {
     const candidate = join(PUPPETEER_CACHE_DIR, version, ...executable);
-    return isUsableExecutable(candidate) ? candidate : undefined;
+    return isPinnedHeadlessShell(candidate) ? candidate : undefined;
   });
   return binary ? { executablePath: binary, source: "cache" } : undefined;
 }
@@ -452,7 +461,7 @@ export async function findBrowser(): Promise<BrowserResult | undefined> {
   if (fromCache.result) return fromCache.result;
   if (fromCache.staleHyperframesCachePath) {
     console.warn(
-      `[browser] Cached binary unusable (missing, empty or not a file) at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+      `[browser] Cached binary missing, not the pinned build, or writable by another account at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
     );
     try {
       return await withInstallLock(() => downloadBrowser());
@@ -583,7 +592,7 @@ async function ensureBrowserInCurrentProcess(
     if (fromCache.result) return fromCache.result;
     if (fromCache.staleHyperframesCachePath) {
       console.warn(
-        `[browser] Cached binary unusable (missing, empty or not a file) at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
+        `[browser] Cached binary missing, not the pinned build, or writable by another account at ${fromCache.staleHyperframesCachePath} — re-downloading...`,
       );
       return withInstallLock(() => downloadBrowser(options));
     }
@@ -844,7 +853,11 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
     rmSync(stagingDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   // install() only debug-logs each failed unzip tool before trying the next one; keep those lines.
   const unzipLog = { lines: [] as string[] };
-  const runInstall = stagedInstaller(browsers, platform, stagingDir, options, unzipLog);
+  const install = stagedInstaller(browsers, platform, stagingDir, options, unzipLog);
+  const runInstall = () => {
+    mkdirSync(stagingDir, { recursive: true, mode: 0o700 });
+    return install();
+  };
 
   try {
     const staged = await retryWhileLocked(
@@ -862,6 +875,11 @@ async function downloadBrowser(options?: EnsureBrowserOptions): Promise<BrowserR
       clearStaging,
     );
     assertExecutableUnpacked(stagingDir, staged.executablePath);
+    if (!isPinnedHeadlessShell(staged.executablePath)) {
+      throw new Error(
+        `the downloaded browser is not the build this version pins (${managedChromeVersion()}).`,
+      );
+    }
     unzipLog.lines = [];
     const executablePath = await retryWhileLocked(() =>
       moveStagedInstallIntoCache(stagingDir, staged),
@@ -881,14 +899,6 @@ function executableState(path: string): "usable" | "is missing" | "is empty" | "
   return stat.size > 0 ? "usable" : "is empty";
 }
 
-function isUsableExecutable(path: string): boolean {
-  try {
-    return executableState(path) === "usable";
-  } catch {
-    return false;
-  }
-}
-
 // install() returns without checking that the unzip produced the executable.
 function assertExecutableUnpacked(stagingDir: string, executablePath: string): void {
   const state = executableState(executablePath);
@@ -906,7 +916,8 @@ function moveStagedInstallIntoCache(
 ): string {
   const target = join(CACHE_DIR, relative(stagingDir, staged.path));
   const aside = join(CACHE_ROOT_DIR, `${REPLACED_PREFIX}${randomUUID()}`);
-  mkdirSync(dirname(target), { recursive: true });
+  sealCacheInstall(staged.path, stagingDir);
+  mkdirSync(dirname(target), { recursive: true, mode: 0o755 });
   let replaced = false;
   try {
     renameSync(target, aside);
@@ -921,6 +932,7 @@ function moveStagedInstallIntoCache(
     throw err;
   }
   if (replaced) removeLeftover(aside);
+  sealCacheInstall(target, CACHE_ROOT_DIR);
   return join(target, relative(staged.path, staged.executablePath));
 }
 

@@ -147,6 +147,7 @@ import {
 } from "./timeline";
 import { findRootCompositionElement, parseLayoutDimension } from "./compositionDimension";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
+import { sceneCssUrlMatches } from "@hyperframes/parsers/css-url-scans";
 import {
   LOOP_INFLATED_TIMELINE_SECONDS,
   MIN_VALID_TIMELINE_DURATION_SECONDS,
@@ -3110,10 +3111,12 @@ export function initSandboxRuntimeModular(): void {
   };
   // Where Studio's loop wraps to (window.__hf.setLoopStart); null when it does not loop.
   let loopStartSeconds: number | null = null;
-  // A clip with no authored length loads as in a render: a reload would drop the duration it is
-  // timed by.
+  // An unauthored length stays loaded (a reload drops it); on a capture page an unloaded one waits
+  // until due, or a thousand such clips run the renderer out of memory.
   const inPreloadWindow = (el: HTMLMediaElement) =>
-    mediaDeferred && el.hasAttribute("data-start") && lengthIsAuthored(el);
+    mediaDeferred &&
+    el.hasAttribute("data-start") &&
+    (lengthIsAuthored(el) || (!loadsAhead && el.readyState === HTMLMediaElement.HAVE_NOTHING));
 
   // Media on screen or due within the look-ahead loads; the rest stops holding a connection to
   // the origin that also serves Studio's thumbnails.
@@ -4286,8 +4289,7 @@ export function initSandboxRuntimeModular(): void {
   const sceneUrls = (parts: Element[]): Set<string> => {
     const urls = new Set<string>();
     const addCssUrls = (css: string | null) => {
-      for (const m of (css ?? "").matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)|@import\s+(['"])(.*?)\3/gi))
-        urls.add(m[2] ?? m[4]!);
+      for (const { parts: m } of sceneCssUrlMatches(css ?? "")) urls.add(m[2] ?? m[4]!);
       for (const set of (css ?? "").matchAll(/image-set\((?:[^()]|\([^()]*\))*\)/gi))
         for (const m of set[0].matchAll(/(['"])(.*?)\1/g)) urls.add(m[2]!);
     };
@@ -5171,7 +5173,7 @@ export function initSandboxRuntimeModular(): void {
     nativePlayTime = undefined;
     wallClearTimeout(nativeWarmTimer);
     if (
-      !mediaDeferred ||
+      !(studioPreview || (playerFrame && isWebKit())) ||
       state.nativeMediaSyncDisabled ||
       isExportRenderDrivingFrames() ||
       window.__HF_EXPORT_RENDER_SEEK_CONFIG ||

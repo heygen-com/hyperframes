@@ -211,6 +211,9 @@ RUN bun run --cwd packages/parsers build \
 
 # Cloud Run injects PORT (default 8080). The server reads it.
 ENV PORT=8080
+# Render pages reach only their own project server and public addresses: not this
+# service's port, the metadata server or other loopback and private hosts.
+ENV PRODUCER_RESTRICT_PAGE_NETWORK=true
 EXPOSE 8080
 
 WORKDIR /app/packages/gcp-cloud-run

@@ -1,16 +1,9 @@
 import { createHash } from "node:crypto";
-import {
-  closeSync,
-  fstatSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from "node:fs";
+import { closeSync, fstatSync, openSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { CACHE_DIR_NAME as PROXY_CACHE_DIR_NAME } from "@hyperframes/studio-server/proxy-transcoder";
 import type { CheckOptions, CheckReport } from "./checkTypes.js";
+import { readRecordTail, writeRecord } from "./projectRecords.js";
 
 const PROJECT_STATE_DIR = ".hyperframes";
 // What the CLI itself writes under .hyperframes; anything else there (a script the page loads) is project input.
@@ -29,9 +22,8 @@ const VERDICT_ENV = /^(HYPERFRAMES?|PRODUCER|HF)_/;
 
 class Uncacheable extends Error {}
 
-function cachePath(projectDir: string): string {
-  return join(projectDir, ".hyperframes", "cache", "check.json");
-}
+const CACHE_RECORD = "cache/check.json";
+const CACHE_RECORD_MAX_BYTES = 16 * 1024 * 1024;
 
 /** The browser binary a check would launch, by path and file identity; undefined when none is installed. */
 export async function browserIdentity(): Promise<string | undefined> {
@@ -115,7 +107,9 @@ export function checkCacheable(options: CheckOptions): boolean {
 
 export function readCachedPass(projectDir: string, key: string): CheckReport | undefined {
   try {
-    const stored = JSON.parse(readFileSync(cachePath(projectDir), "utf8"));
+    const record = readRecordTail(projectDir, CACHE_RECORD, CACHE_RECORD_MAX_BYTES);
+    if (!record?.whole) return undefined;
+    const stored = JSON.parse(record.text);
     if (stored.key !== key || !stored.report?.ok) return undefined;
     return { ...stored.report, cached: { at: stored.at } };
   } catch {
@@ -123,17 +117,13 @@ export function readCachedPass(projectDir: string, key: string): CheckReport | u
   }
 }
 
-/** Only a clean pass that ran the browser is stored; a failure is always re-run. */
+/** Only a clean pass that ran the browser is stored when it can be (else the next run re-checks); a failure re-runs. */
 export function storePass(projectDir: string, key: string, report: CheckReport): void {
   if (!report.ok || report.browserSkipped) return;
-  try {
-    mkdirSync(join(projectDir, ".hyperframes", "cache"), { recursive: true });
-    const { saved: _saved, ...clean } = report as CheckReport & { saved?: unknown };
-    writeFileSync(
-      cachePath(projectDir),
-      JSON.stringify({ key, at: new Date().toISOString(), report: clean }),
-    );
-  } catch {
-    // A cache that cannot be written only costs the next run its speed-up.
-  }
+  const { saved: _saved, ...clean } = report as CheckReport & { saved?: unknown };
+  writeRecord(
+    projectDir,
+    CACHE_RECORD,
+    JSON.stringify({ key, at: new Date().toISOString(), report: clean }),
+  );
 }

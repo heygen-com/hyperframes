@@ -9,6 +9,260 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.58"
+  description="Released - 2026-11-16"
+  tags={["Release", "Skills", "CLI", "Studio Server"]}
+>
+Studio exports a sealed preview's checked element reads and stand-ins, and renders, carve and the audio engine keep to the project's own files. This release also carries everything prepared as v0.9.57, which never reached npm.
+
+## Features
+
+- **Studio:** A sealed preview frame forwards Studio's playback keys ([b741ecf13](https://github.com/heygen-com/hyperframes/commit/b741ecf1320ebad92f3a74b1e87a50a326c84db4), [#7844](https://github.com/heygen-com/hyperframes/pull/7844)).
+- **CLI:** Show and open the page to manage or cancel a paid plan ([b2e6076b7](https://github.com/heygen-com/hyperframes/commit/b2e6076b7e7f73debadd1ac91a5b64ea2c4d3ae0), [#7784](https://github.com/heygen-com/hyperframes/pull/7784)).
+- **Studio:** Export a sealed preview's checked element reads and stand-ins ([a0848ad35](https://github.com/heygen-com/hyperframes/commit/a0848ad3533cce3ebeb68f3870d5f065c721a1d1), [#7918](https://github.com/heygen-com/hyperframes/pull/7918)).
+
+## Fixes
+
+- **CLI:** Check and info never probe a composition's remote media URLs ([78648113d](https://github.com/heygen-com/hyperframes/commit/78648113dbdac0f5daae75fed820509860267b41), [#7942](https://github.com/heygen-com/hyperframes/pull/7942)).
+- **CLI:** Open starts the desktop app in the home folder, not the folder it runs in ([a2e7306b2](https://github.com/heygen-com/hyperframes/commit/a2e7306b2fa1ca55a360d7d22b8dbb1ef2bc1f8d), [#7937](https://github.com/heygen-com/hyperframes/pull/7937)).
+- **CLI:** Studio thumbnails and Ctrl-C cleanup under a restricted page network ([707e20f18](https://github.com/heygen-com/hyperframes/commit/707e20f185f3c7fa67b8aa527ea0f0aecbfec0b6), [#7941](https://github.com/heygen-com/hyperframes/pull/7941)).
+- **Studio Server:** A host that built a page on the build worker can exit ([e8f1fff5f](https://github.com/heygen-com/hyperframes/commit/e8f1fff5fdf330d2fd634f7abe117ee6ba17f63e), [#7939](https://github.com/heygen-com/hyperframes/pull/7939)).
+- **CLI:** Commands that open a composition honor PRODUCER_RESTRICT_PAGE_NETWORK ([49e9424ba](https://github.com/heygen-com/hyperframes/commit/49e9424baa74cf27aa91981ed0da3349e6371ab4), [#7935](https://github.com/heygen-com/hyperframes/pull/7935)).
+- **Engine,producer,cli:** Media inputs refuse formats that open other files ([ead110aab](https://github.com/heygen-com/hyperframes/commit/ead110aab9e4b43befdbe21001deac168c09e04b), [#7931](https://github.com/heygen-com/hyperframes/pull/7931)).
+- **Engine:** Check the resolved address of a restricted download under Bun too ([04b690361](https://github.com/heygen-com/hyperframes/commit/04b690361a294678cd9f7514432702031e6a854f), [#7860](https://github.com/heygen-com/hyperframes/pull/7860)).
+- **Parsers:** Bound total expansion in the GSAP timeline inliner ([aed28486f](https://github.com/heygen-com/hyperframes/commit/aed28486f36eb555acc2cd0f7e6eec8bb5bbda41), [#7930](https://github.com/heygen-com/hyperframes/pull/7930)).
+- Nested .hyperframes stays private, capture page server checks Host, project manifests pin no CLI ([d5f0b1a5b](https://github.com/heygen-com/hyperframes/commit/d5f0b1a5bfd498256c1642f32451e670616e831b), [#7927](https://github.com/heygen-com/hyperframes/pull/7927)).
+- **Studio Server:** Sub-composition previews build off the request thread within a deadline ([d159ec51c](https://github.com/heygen-com/hyperframes/commit/d159ec51c0fd48d803ff2dabf1ece6a335a11b4e), [#7857](https://github.com/heygen-com/hyperframes/pull/7857)).
+- **Publish:** A first release attempt no longer fails looking for an artifact a retry would reuse ([9f85cf0a2](https://github.com/heygen-com/hyperframes/commit/9f85cf0a252b25dcf70b08c3c0bbbaebb4cbff92), [#7929](https://github.com/heygen-com/hyperframes/pull/7929)).
+- **Player:** The Safari audio check no longer flakes on a clean ten-take play ([916bcc83a](https://github.com/heygen-com/hyperframes/commit/916bcc83a61089d75a6566470e984946edfb1023), [#7685](https://github.com/heygen-com/hyperframes/pull/7685)).
+- **Core:** A color-graded video's dissolve and wipe play in preview and export ([889143eac](https://github.com/heygen-com/hyperframes/commit/889143eac9b545c796cb74d44e3ba36807018a4e), [#7756](https://github.com/heygen-com/hyperframes/pull/7756)).
+- **Media Use:** The carve bundle exports analyseCarveDynamics, so carve runs again ([94e499d8c](https://github.com/heygen-com/hyperframes/commit/94e499d8cff2561582971f0c133bf723b36fe53b), [#7893](https://github.com/heygen-com/hyperframes/pull/7893)).
+- **Parsers:** Past 10,000 identical elements every id is still unique ([472909914](https://github.com/heygen-com/hyperframes/commit/472909914821f64c653c6ccf1466ff6e261ed85c), [#7919](https://github.com/heygen-com/hyperframes/pull/7919)).
+- **Producer:** The plan copy checks every project entry, whatever its name ([7aaeb9371](https://github.com/heygen-com/hyperframes/commit/7aaeb9371664a3fb6e7764ac086951066b99316f), [#7906](https://github.com/heygen-com/hyperframes/pull/7906)).
+- **Producer:** Render compile never inlines private project files named by @font-face ([209477b65](https://github.com/heygen-com/hyperframes/commit/209477b65810bb441f2e6a5ac12a79efdb5e7ed5), [#7925](https://github.com/heygen-com/hyperframes/pull/7925)).
+- **Studio:** The preview picture takes its box's size in the same frame, scaled or not ([1e040f6fe](https://github.com/heygen-com/hyperframes/commit/1e040f6fef08c9589fec5f48c4bb67b5acdd5eda), [#7907](https://github.com/heygen-com/hyperframes/pull/7907)).
+- **Engine,producer:** Render media readers skip private project files and text-art input ([6411df4e3](https://github.com/heygen-com/hyperframes/commit/6411df4e35cad6e294f129b4e71fb1d49567cd6e), [#7928](https://github.com/heygen-com/hyperframes/pull/7928)).
+- **Media Use:** Carve runs its own copy of core's analysis, never the project's ([25c603521](https://github.com/heygen-com/hyperframes/commit/25c60352128c9bd882eec3e770b933ca6046646c), [#7926](https://github.com/heygen-com/hyperframes/pull/7926)).
+- **Studio:** A host that shows a still gets a preview reload with one page at a time ([dab8dc807](https://github.com/heygen-com/hyperframes/commit/dab8dc80701f7c50aa5eba3ec77f3091f1bfd754), [#7905](https://github.com/heygen-com/hyperframes/pull/7905)).
+- Warnings that name project files print control characters as visible escapes ([d42bbd67f](https://github.com/heygen-com/hyperframes/commit/d42bbd67f4e7b90a2eda85fcd7f717b21b4f50e5), [#7863](https://github.com/heygen-com/hyperframes/pull/7863)).
+- **Studio:** Recovery drafts are kept by each project's own server, never the browser ([2be03408d](https://github.com/heygen-com/hyperframes/commit/2be03408dbc7800a2b45b02de044e1f2efe8b874), [#7904](https://github.com/heygen-com/hyperframes/pull/7904)).
+- **Media Use:** Audio engine reads and writes only inside the project folder ([c2c6d8c59](https://github.com/heygen-com/hyperframes/commit/c2c6d8c59951bf5ec81b4d1c29fd51fa7f02d425), [#7897](https://github.com/heygen-com/hyperframes/pull/7897)).
+- **CLI:** Batch outputs from a template that starts with a placeholder stay in the working folder ([cf44c60cd](https://github.com/heygen-com/hyperframes/commit/cf44c60cdaf1f94c72eb322310e6b21ab150c69e), [#7868](https://github.com/heygen-com/hyperframes/pull/7868)).
+
+## Docs & Examples
+
+- **Skills:** Style-sampling pulls the template every time, so a received copy is checked first ([d796fd59e](https://github.com/heygen-com/hyperframes/commit/d796fd59ec0b4517b351433fa2f2eb0600cdf322), [#7924](https://github.com/heygen-com/hyperframes/pull/7924)).
+
+## Internal
+
+- **Skills:** Read the ClawHub token from the main-only clawhub environment ([5d5e2c062](https://github.com/heygen-com/hyperframes/commit/5d5e2c062a4876e590f8d5a9fe59833d7b1e3684), [#7923](https://github.com/heygen-com/hyperframes/pull/7923)).
+- **Studio Server:** Give tests the CLI's 20 s ceiling so a busy CI runner stops timing them out ([8ec98be29](https://github.com/heygen-com/hyperframes/commit/8ec98be29a64e88239a0c05f7e5d09f36e181493), [#7933](https://github.com/heygen-com/hyperframes/pull/7933)).
+- **Engine:** Browser pool tests never start the host's cached Chrome ([cadcdb955](https://github.com/heygen-com/hyperframes/commit/cadcdb955574ac7a11212413e9cbabda7044393c), [#7759](https://github.com/heygen-com/hyperframes/pull/7759)).
+- **Publish:** Publish only tarballs npm reads the way the check does ([dac0468f7](https://github.com/heygen-com/hyperframes/commit/dac0468f7034146512725db4970c987186e58357), [#7922](https://github.com/heygen-com/hyperframes/pull/7922)).
+- **Publish:** Bind Lambda release retries to immutable run artifacts ([8e8eeb205](https://github.com/heygen-com/hyperframes/commit/8e8eeb20593dbd8123966848654604f20137b17f), [#7920](https://github.com/heygen-com/hyperframes/pull/7920)).
+- **Publish:** The release keeps only Lambda assets npm pins or this run built ([11a7d2749](https://github.com/heygen-com/hyperframes/commit/11a7d2749d6a350d96a17d2e98064bd0f4f3f1f4), [#7880](https://github.com/heygen-com/hyperframes/pull/7880)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.56...v0.9.58).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.56"
+  description="Released - 2026-11-16"
+  tags={["Release", "CLI", "Engine", "Producer"]}
+>
+Studio's preview and the local servers now act only for their own pages. The CLI keeps its cache, history and restores inside the project. The arm64 Lambda image ships only the reviewed ffmpeg build, and large previews build faster.
+
+## Fixes
+
+- **Studio Server:** The composition file servers no longer serve credential or tool-state files ([014326b40](https://github.com/heygen-com/hyperframes/commit/014326b40bf22bebb77a5cf08a50d5b0968c112e), [#7889](https://github.com/heygen-com/hyperframes/pull/7889)).
+- **Studio Server:** Lint and probe run only for requests from Studio's own pages ([bbac8900e](https://github.com/heygen-com/hyperframes/commit/bbac8900ea9201dca8aacdd17387e3275a9e6d84), [#7894](https://github.com/heygen-com/hyperframes/pull/7894)).
+- **Studio Server:** A history restore stays inside the project and uses only intact copies ([478313ba0](https://github.com/heygen-com/hyperframes/commit/478313ba0e674d51c3b307afa862de8dd87afcf9), [#7902](https://github.com/heygen-com/hyperframes/pull/7902)).
+- **Studio:** Take playback works for a preview its server made opaque ([1e542956d](https://github.com/heygen-com/hyperframes/commit/1e542956d978ceb6be9e50c8396ffdcf2c0fc433), [#7815](https://github.com/heygen-com/hyperframes/pull/7815)).
+- **Studio:** The preview frame keeps the sandbox origin its host set ([b650d0d19](https://github.com/heygen-com/hyperframes/commit/b650d0d198bae4dfd440ba2bad32b4a2351862aa), [#7886](https://github.com/heygen-com/hyperframes/pull/7886)).
+- **Studio:** Present decks open only in their own site, and the preview reads only its own frame's messages ([4067efc45](https://github.com/heygen-com/hyperframes/commit/4067efc454382463979f0625e8e031a73ff05b9d), [#7877](https://github.com/heygen-com/hyperframes/pull/7877)).
+- **Core:** The runtime bridge checks each control message before acting on it ([97d8f26e7](https://github.com/heygen-com/hyperframes/commit/97d8f26e713987cbb9f2ba6cb7d45eb3481a9093), [#7892](https://github.com/heygen-com/hyperframes/pull/7892)).
+- **CLI:** `render --docker` keeps the host's page-network restriction inside the container ([5d8605eb8](https://github.com/heygen-com/hyperframes/commit/5d8605eb8e56fa6de714482e99c9f63cd258581a), [#7890](https://github.com/heygen-com/hyperframes/pull/7890)).
+- **CLI:** `preview --stop` stops only the process the system reports holding the port ([ace8a78dc](https://github.com/heygen-com/hyperframes/commit/ace8a78dcc14499b82b077301bcc4633c99e66c6), [#7882](https://github.com/heygen-com/hyperframes/pull/7882)).
+- **CLI:** The check cache is saved only as a project record, never through a linked file ([7801e3ff3](https://github.com/heygen-com/hyperframes/commit/7801e3ff346f65d994ef64d9c5d067f3dcd52b87), [#7884](https://github.com/heygen-com/hyperframes/pull/7884)).
+- **CLI:** History turn ids read from the project folder are checked and sent encoded ([6efa6b635](https://github.com/heygen-com/hyperframes/commit/6efa6b63536970758b56c210d12ec581c4e82261), [#7883](https://github.com/heygen-com/hyperframes/pull/7883)).
+- **CLI:** Catch-up lists only the turns the app added after the hand-off ([0f23f40f8](https://github.com/heygen-com/hyperframes/commit/0f23f40f8b06761a57922c85721209d6c4943f25), [#7874](https://github.com/heygen-com/hyperframes/pull/7874)).
+- **CLI:** A received-files record in a folder under the project counts for a render ([1c159c550](https://github.com/heygen-com/hyperframes/commit/1c159c550d27d267a9ee8d0d6759691147cd8a1d), [#7900](https://github.com/heygen-com/hyperframes/pull/7900)).
+- **CLI:** Media-use copies only the sound effects its bundled index names ([ed93a1312](https://github.com/heygen-com/hyperframes/commit/ed93a131251a1ae6c21fd3908c86f9972765d5c6), [#7895](https://github.com/heygen-com/hyperframes/pull/7895)).
+- **Media Use:** Local models start from a folder outside the project ([756c2c6c1](https://github.com/heygen-com/hyperframes/commit/756c2c6c1b3446873e0e5547f1f5c02697293acf), [#7888](https://github.com/heygen-com/hyperframes/pull/7888)).
+- **Engine:** A cached browser is used only when its files match the pinned build ([56a2d0c53](https://github.com/heygen-com/hyperframes/commit/56a2d0c53ff8d3353ad0e0c56d518e8862484ac4), [#7865](https://github.com/heygen-com/hyperframes/pull/7865)).
+- **Engine:** Timeline frame predictions stay within the render's frames ([f5a74a567](https://github.com/heygen-com/hyperframes/commit/f5a74a567884443e136762a39b2c0bac1a9f43d9), [#7885](https://github.com/heygen-com/hyperframes/pull/7885)).
+- **Engine:** Each superset extraction works in a folder of its own ([a4139e9ea](https://github.com/heygen-com/hyperframes/commit/a4139e9ead02bea455feb3409c0076d2de050896), [#7901](https://github.com/heygen-com/hyperframes/pull/7901)).
+- **Parsers:** Reading a canvas scaffold's width and height takes the same short time on any input ([b856a1d63](https://github.com/heygen-com/hyperframes/commit/b856a1d63fed7443bcdad5b2246983e33f7e3aac), [#7873](https://github.com/heygen-com/hyperframes/pull/7873)).
+- **Lint:** Agent-made scenes and sound effects stay on one timeline lane ([98208241e](https://github.com/heygen-com/hyperframes/commit/98208241e7800122607db651d961bcc26a724077), [#7775](https://github.com/heygen-com/hyperframes/pull/7775)).
+- **Skills:** Standalone installs run the CLI through its launcher too ([3fc3050bc](https://github.com/heygen-com/hyperframes/commit/3fc3050bc38a41f76a39ab50e075bdbf13120418), [#7879](https://github.com/heygen-com/hyperframes/pull/7879)).
+- **AWS Lambda:** A release ships the arm64 ffmpeg only when it matches the digest committed beside its build ([d9488119b](https://github.com/heygen-com/hyperframes/commit/d9488119beb6470015fcfb9e21f90a384baf822c), [#7872](https://github.com/heygen-com/hyperframes/pull/7872)).
+
+## Performance
+
+- **Core:** A preview build reads a large page without copying it on every pass ([082d63683](https://github.com/heygen-com/hyperframes/commit/082d63683f8b599c35fda3567ca1ed0659a30cac), [#7878](https://github.com/heygen-com/hyperframes/pull/7878)).
+- **Producer:** Compile and render-telemetry tag scans take time in step with the page's size ([82fdf406c](https://github.com/heygen-com/hyperframes/commit/82fdf406c43851ac75a82a0d49aa944cdc955254), [#7896](https://github.com/heygen-com/hyperframes/pull/7896)).
+
+## Internal
+
+- **Publish:** Every npm publish waits on the npm-publish approval ([a54de748e](https://github.com/heygen-com/hyperframes/commit/a54de748ee3d89d05ff8c0b0bedcf65c8714b661), [#7870](https://github.com/heygen-com/hyperframes/pull/7870)).
+- **Publish:** Prebuilt tarballs publish from a job that runs no code from the release commit ([af0560c85](https://github.com/heygen-com/hyperframes/commit/af0560c8598a5196f51bb45baf406ae50a213c6b), [#7869](https://github.com/heygen-com/hyperframes/pull/7869)).
+- **CI:** Publishing workflows run only for main ([7bd6b9daf](https://github.com/heygen-com/hyperframes/commit/7bd6b9daf89faf95b6ed46dbd6b84ec8c5de1c00), [#7875](https://github.com/heygen-com/hyperframes/pull/7875)).
+- **CI:** Test fixtures no longer look like real HeyGen keys, and CI rejects one that does ([5dc3b336a](https://github.com/heygen-com/hyperframes/commit/5dc3b336aa186f7e2e019ee8039f195befe8383a), [#7876](https://github.com/heygen-com/hyperframes/pull/7876)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.55...v0.9.56).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.55"
+  description="Released - 2026-11-15"
+  tags={["Release", "Studio", "CLI", "Studio Server"]}
+>
+A sealed Studio preview now plays a video's proxy copy and reloads under one current frame token. Cloud render sends one zip when it fits and uploads only the largest media. The file servers check the Host they are asked under, and publish and cloud render staging skip other computers' network shares.
+
+## Fixes
+
+- **Studio Server:** Sub-composition head and root tag scans take linear time ([ceb969dba](https://github.com/heygen-com/hyperframes/commit/ceb969dbacff281ec1fdddf9fe22c0fcd34fb663), [#7866](https://github.com/heygen-com/hyperframes/pull/7866)).
+- **CLI:** The engine and CLI share one trusted PATH rule, and a skipped project copy says why ([e2430edec](https://github.com/heygen-com/hyperframes/commit/e2430edecf5492a02a363eaa5c30ad2708af5aee), [#7801](https://github.com/heygen-com/hyperframes/pull/7801)).
+- **CLI:** Cloud render sends one zip when it fits and uploads only the largest media ([9bc2b231d](https://github.com/heygen-com/hyperframes/commit/9bc2b231d339609a3f2f48b63f80b162a3d97a4d), [#7859](https://github.com/heygen-com/hyperframes/pull/7859)).
+- **Docs:** The engine docs say download limits apply per attempt and per process ([4c09c8b79](https://github.com/heygen-com/hyperframes/commit/4c09c8b7937eb8972b947df06dd187608ff02345), [#7867](https://github.com/heygen-com/hyperframes/pull/7867)).
+- **CLI:** Upload archives never include credential or agent-state files ([52d43f33a](https://github.com/heygen-com/hyperframes/commit/52d43f33a3102e3fadfbe3d6d24f18c9f2ea689e), [#7830](https://github.com/heygen-com/hyperframes/pull/7830)).
+- Static, producer and engine file servers check Host and mark runtime pages ([490199cef](https://github.com/heygen-com/hyperframes/commit/490199cef8475e65eaa166b23bbf1f3034d272a9), [#7852](https://github.com/heygen-com/hyperframes/pull/7852)).
+- **Studio:** A sealed preview's reload asks under one current frame token ([1f17b3dfe](https://github.com/heygen-com/hyperframes/commit/1f17b3dfebf9cc1bfd20107c089151e0e8b07910), [#7862](https://github.com/heygen-com/hyperframes/pull/7862)).
+- **CLI:** Publish and cloud render staging skip other computers' network shares ([c030e3193](https://github.com/heygen-com/hyperframes/commit/c030e3193d0d5e910d0d03d0a881848b35cdc44d), [#7858](https://github.com/heygen-com/hyperframes/pull/7858)).
+- **Studio Server:** A sealed preview's wait for a video's proxy copy passes its preflight ([ae5829db7](https://github.com/heygen-com/hyperframes/commit/ae5829db7e96675060eb810ac03139d60156b10e), [#7856](https://github.com/heygen-com/hyperframes/pull/7856)).
+- **CLI:** Subfolder renders read an ancestor's record however it is stored or spelled ([fe21bee3c](https://github.com/heygen-com/hyperframes/commit/fe21bee3cf40007c23e7a3ad7dc7a2cf08f5df20), [#7847](https://github.com/heygen-com/hyperframes/pull/7847)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.54...v0.9.55).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.54"
+  description="Released - 2026-11-15"
+  tags={["Release", "Studio", "Studio Server"]}
+>
+Studio hosts can now run the preview on its own sealed origin with the sandboxOrigin option or VITE_STUDIO_OPAQUE_PREVIEW_ENABLED, off by default. When sealed, the preview's images, media, fetched files, console errors panel and GSAP keyframe and 3D previews keep working. Render, capture and bundling also leave out the app's own .hyperframes records.
+
+## Features
+
+- **Studio:** Hosts can share the preview's editing-port client ([3a4f57252](https://github.com/heygen-com/hyperframes/commit/3a4f57252377051f6602bd0149e84f8ead0845b2), [#7811](https://github.com/heygen-com/hyperframes/pull/7811)).
+- **Studio:** Hosts can seal the preview frames NLEPreview draws ([a73ecff2b](https://github.com/heygen-com/hyperframes/commit/a73ecff2bef2168c47625e781bc1de13c7ca23ce), [#7817](https://github.com/heygen-com/hyperframes/pull/7817)).
+- **Studio:** The console errors panel reads a sealed preview over its editing port ([5341d7255](https://github.com/heygen-com/hyperframes/commit/5341d7255c4795a9dda676cb21409a4655b2e429), [#7824](https://github.com/heygen-com/hyperframes/pull/7824)).
+- **Studio Server:** An opaque preview loads its images, media and fetched files ([88ffe087c](https://github.com/heygen-com/hyperframes/commit/88ffe087cae5d005fdc3d7b9567283c72a9ba5d7), [#7806](https://github.com/heygen-com/hyperframes/pull/7806)).
+
+## Fixes
+
+- **Producer:** Check scheme-prefixed media sources against the project folder ([d8e36aa9d](https://github.com/heygen-com/hyperframes/commit/d8e36aa9dc7b4c007cbcb6bc0be0dcb21c1205bc), [#7851](https://github.com/heygen-com/hyperframes/pull/7851)).
+- **Docs:** The v0.9.53 notes list the key rules moving into core ([c46143dd7](https://github.com/heygen-com/hyperframes/commit/c46143dd7904204c6dc0a2e574607d8dab238496), [#7855](https://github.com/heygen-com/hyperframes/pull/7855)).
+- Answer only the loopback Host on the render and capture file servers ([f891a3058](https://github.com/heygen-com/hyperframes/commit/f891a305812e9046777e32ff49eef83afe9bf7f5), [#7853](https://github.com/heygen-com/hyperframes/pull/7853)).
+- **Engine:** Remote downloads get an absolute deadline and stop before the disk fills ([e1043659d](https://github.com/heygen-com/hyperframes/commit/e1043659d4490fde8458063a9585c30478464c8d), [#7827](https://github.com/heygen-com/hyperframes/pull/7827)).
+- **CLI:** The audio caches never write or read through links in .hyperframes ([9701f0639](https://github.com/heygen-com/hyperframes/commit/9701f0639c3614f4fb33f2a83973adafd179ef08), [#7825](https://github.com/heygen-com/hyperframes/pull/7825)).
+- **Parsers:** Helper programs never come from the project a subfolder sits in ([96cc8cb85](https://github.com/heygen-com/hyperframes/commit/96cc8cb85242fc72bb2e1371048d733cb4993c68), [#7845](https://github.com/heygen-com/hyperframes/pull/7845)).
+- **CLI:** A project .env key is used only when nothing is saved ([de1ce6898](https://github.com/heygen-com/hyperframes/commit/de1ce68988a6cce48a73a67a8d2c2b7fb4603bad), [#7848](https://github.com/heygen-com/hyperframes/pull/7848)).
+- **CLI:** Keep project text and other computers' shares out of render and upload notices ([70d60ce03](https://github.com/heygen-com/hyperframes/commit/70d60ce03719030bda362d6c7107a9fa350c6090), [#7849](https://github.com/heygen-com/hyperframes/pull/7849)).
+- **Studio:** GSAP keyframe and 3D previews stop throwing on a sealed preview ([39dc1e232](https://github.com/heygen-com/hyperframes/commit/39dc1e232d242cdecf9ad782483587b288cc1392), [#7833](https://github.com/heygen-com/hyperframes/pull/7833)).
+- Snapshot escapes composition text in its output; stills sweep the transcode cache ([a2f926708](https://github.com/heygen-com/hyperframes/commit/a2f926708901f1fc52c18888db103cd768537824), [#7832](https://github.com/heygen-com/hyperframes/pull/7832)).
+- Render, capture and bundling refuse the app's .hyperframes records ([962ddb7c5](https://github.com/heygen-com/hyperframes/commit/962ddb7c543519be17f6085a9c105d29d5886ecc), [#7828](https://github.com/heygen-com/hyperframes/pull/7828)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.53...v0.9.54).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.53"
+  description="Released - 2026-11-15"
+  tags={["Release", "CLI", "Core", "Lint"]}
+>
+Pages with many Chinese, Japanese or Korean characters now load their fonts in a few small requests, so they render instead of timing out. Cloud render no longer refuses a file that only an unused page names, and uploads now list every file they carry from outside the project.
+
+## Features
+
+- **CLI:** Uploads list every file they carry from outside the project ([e426ce4eb](https://github.com/heygen-com/hyperframes/commit/e426ce4eb44517db3f65105f1e05cb7b762cd950), [#7831](https://github.com/heygen-com/hyperframes/pull/7831)).
+
+## Fixes
+
+- **Core:** Studio's key combo and typing-target rules live in core ([ef42bef9c](https://github.com/heygen-com/hyperframes/commit/ef42bef9c303af3bdca108c6c4f4ed01b23626ca), [#7835](https://github.com/heygen-com/hyperframes/pull/7835)).
+- **Producer:** Shader transitions blend in Node when the page cannot composite them ([fb1a383bd](https://github.com/heygen-com/hyperframes/commit/fb1a383bde6a0716fdc6041bf68b9bc1da9726b5), [#7840](https://github.com/heygen-com/hyperframes/pull/7840)).
+- **CLI:** The upload cut test stops failing on busy Windows runners ([2ea78c0ab](https://github.com/heygen-com/hyperframes/commit/2ea78c0ab462e506cec44d3c969513d8aa244749), [#7843](https://github.com/heygen-com/hyperframes/pull/7843)).
+- **Engine:** Restricted downloads apply the capture proxy's address rule ([125a9446b](https://github.com/heygen-com/hyperframes/commit/125a9446be3c0736a190c16cef9003108b0a981c), [#7839](https://github.com/heygen-com/hyperframes/pull/7839)).
+- LAN-host previews and play pages refuse other sites without fetch metadata ([2ceb682f9](https://github.com/heygen-com/hyperframes/commit/2ceb682f925c867faf16fc68ce7872333286e66c), [#7836](https://github.com/heygen-com/hyperframes/pull/7836)).
+- **CLI:** Benchmark keeps received files' rule; a received .env key never replaces a login ([a7266e4c8](https://github.com/heygen-com/hyperframes/commit/a7266e4c8385dfbf9d7b7a81813fe984c46f9dad), [#7837](https://github.com/heygen-com/hyperframes/pull/7837)).
+- **CLI:** Cloud render no longer refuses a file only an unused page names ([45cc331e5](https://github.com/heygen-com/hyperframes/commit/45cc331e54b28040694a47e540ddc2d100cacdf3), [#7812](https://github.com/heygen-com/hyperframes/pull/7812)).
+- **Core:** Pages with many CJK characters fetch fonts in several requests ([6a8f4b5b4](https://github.com/heygen-com/hyperframes/commit/6a8f4b5b46762e6b1631e02d6d77b29b950c88ee), [#7823](https://github.com/heygen-com/hyperframes/pull/7823)).
+- **CLI:** Hyperframes audio never looks up media on another computer's share ([eaf33bc65](https://github.com/heygen-com/hyperframes/commit/eaf33bc658fbd2612753a48574fed6f9e376a511), [#7826](https://github.com/heygen-com/hyperframes/pull/7826)).
+- **CLI:** Uploads leave out outside scripts; .ts counts as video only when it is one ([04202e8a4](https://github.com/heygen-com/hyperframes/commit/04202e8a4c2e7f334636bf1e3b07dd38c77e5b43), [#7818](https://github.com/heygen-com/hyperframes/pull/7818)).
+- **CLI:** Play and present check the Host like preview; local render leaves out outside files for a received composition ([ac0247410](https://github.com/heygen-com/hyperframes/commit/ac02474105bc6d2893a0ef1a79526f2952645aca), [#7792](https://github.com/heygen-com/hyperframes/pull/7792)).
+- Studio media routes refuse cross-site load, CLI escapes terminal text, batch outputs stay in their folder ([c4d60c347](https://github.com/heygen-com/hyperframes/commit/c4d60c347f324eb58dacfccee866a0b9bba7fe61), [#7779](https://github.com/heygen-com/hyperframes/pull/7779)).
+- **CLI:** Discover mounted scenes inside templates ([a75e61f31](https://github.com/heygen-com/hyperframes/commit/a75e61f31c76d79016894e849799bdc456ac0b54), [#7822](https://github.com/heygen-com/hyperframes/pull/7822)).
+- **Studio Server:** History lock records are replaced, never written through links ([0248ea033](https://github.com/heygen-com/hyperframes/commit/0248ea033c74c31527f5657419abf83ec3602091), [#7821](https://github.com/heygen-com/hyperframes/pull/7821)).
+- **Producer:** Keep the render server local unless a token guards it ([f667111d1](https://github.com/heygen-com/hyperframes/commit/f667111d179ec93edb8e8e9b29d846c20d15ed0f), [#7814](https://github.com/heygen-com/hyperframes/pull/7814)).
+- **Engine,cli:** The playlist folder check reads HLS as ffmpeg does; snapshot runs it too ([797a622be](https://github.com/heygen-com/hyperframes/commit/797a622be96143439d3fce94da169b9665106293), [#7810](https://github.com/heygen-com/hyperframes/pull/7810)).
+- **Engine,producer:** Render-network setting reads like a switch; render-service probes stay on checked inputs ([be740d021](https://github.com/heygen-com/hyperframes/commit/be740d0215f027f6987d69dfa75602279ab5af25), [#7807](https://github.com/heygen-com/hyperframes/pull/7807)).
+- **CLI:** Printed Windows commands read folder names literally in every shell ([a07d4cf73](https://github.com/heygen-com/hyperframes/commit/a07d4cf738c83eb113b4b2a640ca293ba4b0ce92), [#7769](https://github.com/heygen-com/hyperframes/pull/7769)).
+- **CLI:** Nested received records only add; a received .env never picks the account; font names stay out of agent files ([80b09cc94](https://github.com/heygen-com/hyperframes/commit/80b09cc94aad9b85484adbc8617cdc648206d6b3), [#7808](https://github.com/heygen-com/hyperframes/pull/7808)).
+- Cloud Run renders reach only public addresses; frame cache folder is private to its user ([55b514709](https://github.com/heygen-com/hyperframes/commit/55b51470980ce8ef0c5533b26de01c116d4c4987), [#7777](https://github.com/heygen-com/hyperframes/pull/7777)).
+- **Deps:** Refresh zod, smol-toml, aws-cdk-lib and related resolutions in bun.lock ([28d4ba50f](https://github.com/heygen-com/hyperframes/commit/28d4ba50f1263b97bbb3d9ca1655833e0f3dad53), [#7741](https://github.com/heygen-com/hyperframes/pull/7741)).
+- **Deps:** Bump @mcp-b/global to 6.1.0 to clear @modelcontextprotocol/server advisories ([beeb17e85](https://github.com/heygen-com/hyperframes/commit/beeb17e85af0dfa696d9621c634f50250c539b8d), [#7742](https://github.com/heygen-com/hyperframes/pull/7742)).
+- **Engine:** A failed parallel capture names the worker that failed, not the peers it stopped ([db6b7478a](https://github.com/heygen-com/hyperframes/commit/db6b7478a7e66415b8c35da4126dcaee687026de), [#7803](https://github.com/heygen-com/hyperframes/pull/7803)).
+- **Engine:** Render refusals name the address an IPv6-mapped or NAT64 host carries ([04ee926d9](https://github.com/heygen-com/hyperframes/commit/04ee926d9740e4112a458c8f7946e7be069caee2), [#7802](https://github.com/heygen-com/hyperframes/pull/7802)).
+- **Producer:** Accept browser requests only under loopback, IP or listed host names ([03e6a1a18](https://github.com/heygen-com/hyperframes/commit/03e6a1a1807d2a98d83b86cc364fcc2fd69d4c40), [#7798](https://github.com/heygen-com/hyperframes/pull/7798)).
+- **Parsers:** Never look up media on another computer's share ([2de5c027f](https://github.com/heygen-com/hyperframes/commit/2de5c027fa02baed483a7ffc6cc5d9c18f92a79e), [#7797](https://github.com/heygen-com/hyperframes/pull/7797)).
+- **CLI:** Upload archives always leave out env files and private records ([477a3aea1](https://github.com/heygen-com/hyperframes/commit/477a3aea139a3fca372562cd0681f297843f0a1b), [#7796](https://github.com/heygen-com/hyperframes/pull/7796)).
+- **Engine:** Bound remote media downloads by size, encoding and throughput ([5111cf384](https://github.com/heygen-com/hyperframes/commit/5111cf3840c37267f954f4e7a4f64a99b1bc0fdc), [#7786](https://github.com/heygen-com/hyperframes/pull/7786)).
+- **CLI:** Start helper programs only from trusted PATH folders on every platform ([83eae240f](https://github.com/heygen-com/hyperframes/commit/83eae240fb5f5747c94b6aabdc5448e59f119a5e), [#7787](https://github.com/heygen-com/hyperframes/pull/7787)).
+
+## Performance
+
+- **Lint:** Scan CSS url references in linear time ([bcf3d177d](https://github.com/heygen-com/hyperframes/commit/bcf3d177d3476a1696b034544f5cfcf68404663b), [#7829](https://github.com/heygen-com/hyperframes/pull/7829)).
+- CSS url, @import, @font-face, style and comment scans run in linear time ([ded5e3eec](https://github.com/heygen-com/hyperframes/commit/ded5e3eec25cd2da405fb30c2751d6406726607d), [#7809](https://github.com/heygen-com/hyperframes/pull/7809)).
+
+## Catalog
+
+- **CLI:** Add lists files from a received config's registry as received ([6a7b4df7c](https://github.com/heygen-com/hyperframes/commit/6a7b4df7c8bb04944b14820570b2dd7a32e76dc7), [#7820](https://github.com/heygen-com/hyperframes/pull/7820)).
+- **Catalog:** Payload check treats the optional caption-overrides.json as absent, not failed ([b7c26ff84](https://github.com/heygen-com/hyperframes/commit/b7c26ff844ed1d0eea616be3536da1bb0dd404bc), [#7813](https://github.com/heygen-com/hyperframes/pull/7813)).
+- **Registry:** Caption keywords, emoji and aftershock work for words outside a-z ([8dbbc1d37](https://github.com/heygen-com/hyperframes/commit/8dbbc1d371ca73341d18eff5aba86737f6355309), [#7804](https://github.com/heygen-com/hyperframes/pull/7804)).
+- **Docs:** Check catalog link values and keep them out of copied commands ([7c7ff6d89](https://github.com/heygen-com/hyperframes/commit/7c7ff6d89e99e81002dc919ae6d7b34193d6d202), [#7783](https://github.com/heygen-com/hyperframes/pull/7783)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.52...v0.9.53).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.52"
+  description="Released - 2026-11-15"
+  tags={["Release", "Studio"]}
+>
+In Studio menus, the highlighted row now follows the menu's rounded corner. The shared menu row style is exported so other apps can match it.
+
+## Fixes
+
+- **Studio:** Menu row highlight follows the menu's corner ([b5f5ab36a](https://github.com/heygen-com/hyperframes/commit/b5f5ab36a1f4b626da9de40adf7e40257967997c), [#7791](https://github.com/heygen-com/hyperframes/pull/7791)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.51...v0.9.52).
+</Update>
+
+<Update
+  label="HyperFrames v0.9.51"
+  description="Released - 2026-11-15"
+  tags={["Release", "Engine", "Cli,studio Server", "CLI"]}
+>
+Render services can name extra networks their renders must treat as non-public, and mapped or NAT64 addresses are judged by the IPv4 address they carry. Website capture keeps Chrome's sandbox where the host supports it, and helper programs start only from trusted folders.
+
+## Features
+
+- **Engine:** Operators can add networks the render must treat as non-public ([b54f2079e](https://github.com/heygen-com/hyperframes/commit/b54f2079ed715e69b10c6be54909030f64827a7a), [#7790](https://github.com/heygen-com/hyperframes/pull/7790)).
+
+## Fixes
+
+- **Engine:** Judge mapped and NAT64 addresses by the IPv4 they carry; producer exports the rule ([54e4a2be3](https://github.com/heygen-com/hyperframes/commit/54e4a2be3e7a9fcf69b8b215ce0563f3900d2dd0), [#7789](https://github.com/heygen-com/hyperframes/pull/7789)).
+- Docs image upload publishes only regular files, and CI rejects new symlinks ([9320c44e1](https://github.com/heygen-com/hyperframes/commit/9320c44e130ab2fbd073599f576d0f42aa7e346d), [#7776](https://github.com/heygen-com/hyperframes/pull/7776)).
+- **CLI and Studio server:** Received-file guard covers subfolders and spellings; playlists named as media never reach ffmpeg ([870b1fa4d](https://github.com/heygen-com/hyperframes/commit/870b1fa4dc35436df9a3c1a3c902549e66565add), [#7771](https://github.com/heygen-com/hyperframes/pull/7771)).
+- **CLI:** Keep Chrome's sandbox on for website capture where the host supports it ([27b195feb](https://github.com/heygen-com/hyperframes/commit/27b195febcdfebe742b8eaaba51dcfadc27c5c45), [#7774](https://github.com/heygen-com/hyperframes/pull/7774)).
+- **CLI:** Keep captured page text out of generated agent instruction files ([e4e93d6ed](https://github.com/heygen-com/hyperframes/commit/e4e93d6ed9dfcd7e0e8a36fdd06ade64e196b729), [#7772](https://github.com/heygen-com/hyperframes/pull/7772)).
+- **Engine:** Start nvidia-smi, vm_stat, ps and tasklist from trusted folders only ([e3ff9c803](https://github.com/heygen-com/hyperframes/commit/e3ff9c803cd3bccdf39cf84f5bc36e52a61e1345), [#7788](https://github.com/heygen-com/hyperframes/pull/7788)).
+- **Producer:** Every video's size samples share one grid ([1d83e2520](https://github.com/heygen-com/hyperframes/commit/1d83e2520a27a445c8278237417cd90f0e002aea), [#7782](https://github.com/heygen-com/hyperframes/pull/7782)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.50...v0.9.51).
+</Update>
+
+<Update
   label="HyperFrames v0.9.50"
   description="Released - 2026-11-15"
   tags={["Release", "AWS Lambda", "Engine", "Lint"]}

@@ -416,7 +416,10 @@ export async function prepareItem(
 }
 
 /** Write a prepared item and record what landed. */
-export function publishItem({ root, outcomes: prepared, force }: PreparedItem): InstallResult {
+export function publishItem(
+  { root, outcomes: prepared, force }: PreparedItem,
+  guardWrite: (destPath: string, write: () => void) => void = (_, write) => write(),
+): InstallResult {
   // Read now, not at prepare time: another item published in between has recorded its own files.
   const record = readInstallRecord(root);
   // Asked again at write time: a save made while the rest of the plan downloaded is still an edit.
@@ -425,8 +428,8 @@ export function publishItem({ root, outcomes: prepared, force }: PreparedItem): 
       ? { ...o, preserved: true, hash: null, vars: null, bytes: null }
       : o,
   );
-  for (const outcome of outcomes) {
-    if (outcome.bytes) publishRegistryFile(root, outcome.target, outcome.bytes);
+  for (const { bytes, destPath, target } of outcomes) {
+    if (bytes) guardWrite(destPath, () => publishRegistryFile(root, target, bytes));
   }
 
   const written = outcomes.filter((o) => !o.preserved).map((o) => o.destPath);

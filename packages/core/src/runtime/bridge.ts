@@ -1,5 +1,6 @@
 import { wallSetTimeout } from "./wallClock";
 import { swallow } from "./diagnostics";
+import { isStylableElement } from "./domRealm";
 import type { HfColorGradingTarget } from "../colorGrading";
 import type { RuntimeBridgeControlMessage, RuntimeOutboundMessage } from "./types";
 import {
@@ -59,42 +60,105 @@ export function postRuntimeMessage(payload: RuntimeOutboundMessage): void {
 type BridgeControlData = Partial<RuntimeBridgeControlMessage & RuntimeProtocolV1>;
 type ControlHandler = (data: BridgeControlData, deps: BridgeDeps) => void;
 
+const FLASH_DEFAULT_DURATION_MS = 800;
+const FLASH_MAX_DURATION_MS = 5000;
+const MAX_FLASH_SELECTORS = 100;
+const MAX_SELECTOR_LENGTH = 1000;
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+// Absent (null or undefined) yields the fallback, a finite number yields itself,
+// and any other value yields null so the caller drops the message.
+function readNumber(value: unknown, fallback: number): number | null {
+  if (value == null) return fallback;
+  return isFiniteNumber(value) ? value : null;
+}
+
+function isBoundedString(value: unknown): value is string {
+  return typeof value === "string" && value.length <= MAX_SELECTOR_LENGTH;
+}
+
+function isOptionalBoundedString(value: unknown): boolean {
+  return value == null || isBoundedString(value);
+}
+
+function isGradingTarget(value: unknown): value is HfColorGradingTarget | string | null {
+  if (value === null || isBoundedString(value)) return true;
+  if (typeof value !== "object" || Array.isArray(value)) return false;
+  const target = value as Record<string, unknown>;
+  return (
+    isOptionalBoundedString(target.id) &&
+    isOptionalBoundedString(target.hfId) &&
+    isOptionalBoundedString(target.selector) &&
+    (target.selectorIndex == null || isFiniteNumber(target.selectorIndex))
+  );
+}
+
+function dispatchColorGrading(
+  target: unknown,
+  value: unknown,
+  apply: (target: HfColorGradingTarget | string | null, value: unknown) => void,
+): void {
+  const resolvedTarget = target ?? null;
+  if (isGradingTarget(resolvedTarget)) apply(resolvedTarget, value ?? null);
+}
+
 // Per-action dispatchers. Splitting the handler into a lookup table keeps the
 // top-level message listener trivial (one map lookup), and each action's logic
 // becomes individually testable / inheritable for fallow's CRAP analysis.
+// Each dispatcher checks its payload fields for type and range and drops the
+// message when a field is invalid.
 const CONTROL_HANDLERS = new Map<string, ControlHandler>(
   Object.entries({
     play: (_d, deps) => deps.onPlay(),
     pause: (_d, deps) => deps.onPause(),
     "stop-media": (_d, deps) => deps.onStopMedia(),
-    seek: (data, deps) =>
-      deps.onSeek(resolveSeekTimeSeconds(data, deps), data.seekMode ?? "commit"),
+    seek: (data, deps) => {
+      const timeSeconds = resolveSeekTimeSeconds(data, deps);
+      if (timeSeconds !== null)
+        deps.onSeek(timeSeconds, data.seekMode === "drag" ? "drag" : "commit");
+    },
     tick: (_d, deps) => deps.onTick(),
-    "set-muted": (data, deps) => deps.onSetMuted(Boolean(data.muted)),
-    "set-volume": (data, deps) =>
-      deps.onSetVolume(Math.max(0, Math.min(1, Number(data.volume ?? 1)))),
-    "set-media-output-muted": (data, deps) => deps.onSetMediaOutputMuted(Boolean(data.muted)),
+    "set-muted": (data, deps) => deps.onSetMuted(data.muted === true),
+    "set-volume": (data, deps) => {
+      const volume = readNumber(data.volume, 1);
+      if (volume !== null) deps.onSetVolume(Math.max(0, Math.min(1, volume)));
+    },
+    "set-media-output-muted": (data, deps) => deps.onSetMediaOutputMuted(data.muted === true),
     "set-native-media-sync-disabled": (data, deps) =>
-      deps.onSetNativeMediaSyncDisabled(Boolean(data.disabled)),
+      deps.onSetNativeMediaSyncDisabled(data.disabled === true),
     "set-web-audio-media-disabled": (data, deps) =>
-      deps.onSetWebAudioMediaDisabled(Boolean(data.disabled)),
-    "set-playback-rate": (data, deps) => deps.onSetPlaybackRate(Number(data.playbackRate ?? 1)),
-    "set-idle-heartbeat": (data, deps) => deps.onSetIdleHeartbeat(Boolean(data.slow)),
-    "set-display-scale": (data, deps) => deps.onSetDisplayScale?.(Number(data.scale)),
-    "set-preview-quality": (data, deps) => deps.onSetPreviewQuality?.(Number(data.level)),
-    "set-copies-ahead": (data, deps) => deps.onSetCopiesAhead?.(Boolean(data.on)),
+      deps.onSetWebAudioMediaDisabled(data.disabled === true),
+    "set-playback-rate": (data, deps) => {
+      const rate = readNumber(data.playbackRate, 1);
+      if (rate !== null) deps.onSetPlaybackRate(rate);
+    },
+    "set-idle-heartbeat": (data, deps) => deps.onSetIdleHeartbeat(data.slow === true),
+    "set-display-scale": (data, deps) => {
+      if (isFiniteNumber(data.scale) && data.scale > 0) deps.onSetDisplayScale?.(data.scale);
+    },
+    "set-preview-quality": (data, deps) => {
+      if (isFiniteNumber(data.level)) deps.onSetPreviewQuality?.(data.level);
+    },
+    "set-copies-ahead": (data, deps) => deps.onSetCopiesAhead?.(data.on === true),
     "retry-preview-copies": (_d, deps) => deps.onRetryPreviewCopies?.(),
     "request-preview-facts": (_d, deps) => deps.onRequestPreviewFacts?.(),
-    "set-root-duration": (data, deps) => deps.onSetRootDuration(Number(data.durationSeconds ?? 0)),
-    "set-play-range": (data, deps) =>
-      deps.onSetPlayRange(
-        Number(data.startSeconds ?? 0),
-        data.endSeconds == null ? null : Number(data.endSeconds),
-      ),
+    "set-root-duration": (data, deps) => {
+      const durationSeconds = readNumber(data.durationSeconds, 0);
+      if (durationSeconds !== null) deps.onSetRootDuration(durationSeconds);
+    },
+    "set-play-range": (data, deps) => {
+      const startSeconds = readNumber(data.startSeconds, 0);
+      const endSeconds = data.endSeconds ?? null;
+      if (startSeconds === null || (endSeconds !== null && !isFiniteNumber(endSeconds))) return;
+      deps.onSetPlayRange(startSeconds, endSeconds);
+    },
     "set-color-grading": (data, deps) =>
-      deps.onSetColorGrading(data.target ?? null, data.grading ?? null),
+      dispatchColorGrading(data.target, data.grading, deps.onSetColorGrading),
     "set-color-grading-compare": (data, deps) =>
-      deps.onSetColorGradingCompare(data.target ?? null, data.compare ?? null),
+      dispatchColorGrading(data.target, data.compare, deps.onSetColorGradingCompare),
     "enable-pick-mode": (_d, deps) => deps.onEnablePickMode(),
     "disable-pick-mode": (_d, deps) => deps.onDisablePickMode(),
     "flash-elements": (data) => handleFlashElements(data),
@@ -108,12 +172,15 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
   } satisfies Record<string, ControlHandler>),
 );
 
-function resolveSeekTimeSeconds(data: BridgeControlData, deps: BridgeDeps): number {
-  const explicitSeconds = Number(data.timeSeconds);
-  if (Number.isFinite(explicitSeconds)) return Math.max(0, explicitSeconds);
+function resolveSeekTimeSeconds(data: BridgeControlData, deps: BridgeDeps): number | null {
+  if (data.timeSeconds != null) {
+    return isFiniteNumber(data.timeSeconds) ? Math.max(0, data.timeSeconds) : null;
+  }
+  const frame = readNumber(data.frame, 0);
+  if (frame === null) return null;
   const messageFps = runtimeProtocolFpsToNumber(data.fps);
   const fps = messageFps ?? deps.getCanonicalFps();
-  return Math.max(0, Number(data.frame ?? 0)) / fps;
+  return Math.max(0, frame) / fps;
 }
 
 function rejectUnsupportedProtocol(data: BridgeControlData): boolean {
@@ -133,14 +200,19 @@ function rejectUnsupportedProtocol(data: BridgeControlData): boolean {
   return true;
 }
 
+function readFlashSelectors(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length > MAX_FLASH_SELECTORS) return null;
+  return value.every(isBoundedString) ? value : null;
+}
+
 function handleFlashElements(data: BridgeControlData): void {
   // Briefly highlight elements — used by the chat-canvas bridge
   // to show what changed after an agent edit
-  const selectors = (data as Record<string, unknown>).selectors as string[] | undefined;
-  const duration = ((data as Record<string, unknown>).duration as number) || 800;
-  if (selectors) {
-    flashElements(selectors, duration);
-  }
+  const fields = data as Record<string, unknown>;
+  const selectors = readFlashSelectors(fields.selectors);
+  const duration = readNumber(fields.duration, FLASH_DEFAULT_DURATION_MS);
+  if (!selectors || duration === null || duration <= 0 || duration > FLASH_MAX_DURATION_MS) return;
+  flashElements(selectors, duration);
 }
 
 export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEvent) => void {
@@ -164,6 +236,18 @@ export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEv
   return handler;
 }
 
+const FLASH_STYLE_RULES = `
+  .__hf-flash {
+    outline: 2px solid rgba(59, 130, 246, 0.6) !important;
+    outline-offset: 2px !important;
+    animation: __hf-flash-pulse var(--hf-flash-duration, 800ms) ease-out forwards !important;
+  }
+  @keyframes __hf-flash-pulse {
+    0% { outline-color: rgba(59, 130, 246, 0.8); }
+    100% { outline-color: transparent; }
+  }
+`;
+
 /**
  * Flash elements — briefly highlight them with a blue outline.
  * Used by the chat-canvas bridge to show what changed after an agent edit.
@@ -172,17 +256,7 @@ function flashElements(selectors: string[], duration: number): void {
   if (!document.getElementById("__hf-flash-styles")) {
     const style = document.createElement("style");
     style.id = "__hf-flash-styles";
-    style.textContent = `
-      .__hf-flash {
-        outline: 2px solid rgba(59, 130, 246, 0.6) !important;
-        outline-offset: 2px !important;
-        animation: __hf-flash-pulse ${duration}ms ease-out forwards !important;
-      }
-      @keyframes __hf-flash-pulse {
-        0% { outline-color: rgba(59, 130, 246, 0.8); }
-        100% { outline-color: transparent; }
-      }
-    `;
+    style.textContent = FLASH_STYLE_RULES;
     document.head.appendChild(style);
   }
 
@@ -190,6 +264,7 @@ function flashElements(selectors: string[], duration: number): void {
     try {
       const els = document.querySelectorAll(selector);
       els.forEach((el) => {
+        if (isStylableElement(el)) el.style.setProperty("--hf-flash-duration", `${duration}ms`);
         el.classList.add("__hf-flash");
         wallSetTimeout(() => el.classList.remove("__hf-flash"), duration);
       });

@@ -250,9 +250,8 @@ function changeTouchesOpacity(change: RuntimeTweenChange): boolean {
 
 /**
  * A tween re-initialization (invalidate, or kill+recreate for keyframe-rebuild)
- * captures opacity from the element's CURRENT inline style — for a color-graded
- * source (hidden with `opacity: 0 !important`) or a mid-flight tween that's a
- * runtime transient, not the authored value, and the capture makes it permanent.
+ * captures opacity from the element's CURRENT inline style — for a mid-flight
+ * tween that's a runtime transient, not the authored value, and the capture makes it permanent.
  * Restore the runtime's parse-time authored capture (data-hf-authored-opacity)
  * first; the re-seek after the patch re-renders the animated value anyway.
  * Duck-typed (no instanceof): the targets live in the preview iframe's realm.

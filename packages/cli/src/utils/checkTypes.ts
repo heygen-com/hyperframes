@@ -424,7 +424,11 @@ export interface CheckReport {
   };
   craft: CheckSection<CraftFinding> & { enabled: boolean; step: number; samples: number };
   audio: CheckSection;
-  hdr: { autoPromotion: HdrAutoPromotion | null; inspection: "available" | "unavailable" };
+  hdr: {
+    autoPromotion: HdrAutoPromotion | null;
+    inspection: "available" | "unavailable";
+    remoteNotInspected?: string[];
+  };
   snapshots: { enabled: boolean; files: string[]; times: number[]; findingFiles: string[] };
 }
 

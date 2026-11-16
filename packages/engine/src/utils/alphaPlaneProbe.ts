@@ -1,7 +1,9 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { terminalText } from "@hyperframes/core";
 import { runFfmpeg } from "./runFfmpeg.js";
+import { urlInputArgs } from "./urlInput.js";
 
 // Up to 3 frames at 8x8 rgba; a 1- or 2-frame clip is still a whole sample.
 const BYTES_PER_SAMPLE_FRAME = 8 * 8 * 4;
@@ -39,6 +41,7 @@ export async function probeInputAlphaPlane(
       [
         "-v",
         "error",
+        ...urlInputArgs(videoPath),
         "-c:v",
         decoder,
         "-i",
@@ -66,7 +69,7 @@ export async function probeInputAlphaPlane(
 
 export function inputAlphaOpaqueWarning(src: string): string {
   return (
-    `[hyperframes:render] WARNING: video src="${src}" declares an alpha channel ` +
+    `[hyperframes:render] WARNING: video src="${terminalText(src)}" declares an alpha channel ` +
     "but its first frames decode fully opaque. If it should be transparent, re-export " +
     "it with an alpha pixel format and avoid remuxing afterward, which can drop the " +
     "alpha while keeping the tag.\n"

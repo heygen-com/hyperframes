@@ -27,6 +27,9 @@ import {
   resolvePlayerPath,
   resolveSlideshowPath,
   listenOnFreePort,
+  refuseUnknownHosts,
+  refuseFramingByOtherSites,
+  sandboxForAnotherSite,
   assetContentType,
 } from "../utils/compositionServer.js";
 import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
@@ -119,32 +122,8 @@ export default defineCommand({
       return;
     }
 
-    const { Hono } = await import("hono");
     const { createAdaptorServer } = await import("@hono/node-server");
-
-    const app = new Hono();
-
-    app.get("/player.js", (ctx) =>
-      ctx.body(readFileSync(playerPath, "utf-8"), 200, {
-        "Content-Type": "application/javascript",
-        "Cache-Control": "no-cache",
-      }),
-    );
-    app.get("/slideshow.js", (ctx) =>
-      ctx.body(readFileSync(slideshowPath, "utf-8"), 200, {
-        "Content-Type": "application/javascript",
-        "Cache-Control": "no-cache",
-      }),
-    );
-    // Serve composition files raw. Slideshow compositions self-drive their own
-    // timelines (no engine runtime injected) — the same model demo.html / the
-    // standalone harness use; injecting a runtime would leave the composition
-    // engine-paused and blank.
-    await registerPresentCompositionRoute(app, project);
-
-    // Both the presenter window and the audience window (opened by present() with
-    // ?mode=audience) load this same page; the component reads the mode from the URL.
-    app.get("/", (ctx) => ctx.html(buildPresentPage(project.name, islandJson)));
+    const app = await buildPresentApp(project, islandJson, { playerPath, slideshowPath });
 
     clack.intro(c.bold("hyperframes present"));
     const s = clack.spinner();
@@ -185,6 +164,40 @@ export default defineCommand({
     return new Promise<void>(() => {});
   },
 });
+
+export async function buildPresentApp(
+  project: ProjectDir,
+  islandJson: string,
+  bundles: { playerPath: string; slideshowPath: string },
+): Promise<Hono> {
+  const { Hono } = await import("hono");
+  const app = new Hono();
+  refuseUnknownHosts(app);
+  refuseFramingByOtherSites(app);
+
+  app.get("/player.js", (ctx) =>
+    ctx.body(readFileSync(bundles.playerPath, "utf-8"), 200, {
+      "Content-Type": "application/javascript",
+      "Cache-Control": "no-cache",
+    }),
+  );
+  app.get("/slideshow.js", (ctx) =>
+    ctx.body(readFileSync(bundles.slideshowPath, "utf-8"), 200, {
+      "Content-Type": "application/javascript",
+      "Cache-Control": "no-cache",
+    }),
+  );
+  // Serve composition files raw. Slideshow compositions self-drive their own
+  // timelines (no engine runtime injected) — the same model demo.html / the
+  // standalone harness use; injecting a runtime would leave the composition
+  // engine-paused and blank.
+  await registerPresentCompositionRoute(app, project);
+
+  // Both the presenter window and the audience window (opened by present() with
+  // ?mode=audience) load this same page; the component reads the mode from the URL.
+  app.get("/", (ctx) => ctx.html(buildPresentPage(project.name, islandJson)));
+  return app;
+}
 
 function buildPresentPage(projectName: string, islandJson: string): string {
   return `<!doctype html>
@@ -313,6 +326,7 @@ export async function registerPresentCompositionRoute(
   project: ProjectDir,
 ): Promise<void> {
   const { isSafePath } = await import("@hyperframes/core/studio-api");
+  sandboxForAnotherSite(app, "/composition/*");
   app.get("/composition/*", (ctx) => {
     const reqPath = requestSubPath(ctx.req.url, "composition");
     const filePath = resolve(project.dir, reqPath);

@@ -2,7 +2,12 @@ import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { parseHTML } from "linkedom";
 import { MEDIA_RENDER_ID_ATTR } from "@hyperframes/core";
-import type { CaptureVideoMetadataHint } from "@hyperframes/engine";
+import {
+  isNotMediaPayload,
+  isPrivateUnderAssetRoots,
+  type CaptureVideoMetadataHint,
+} from "@hyperframes/engine";
+import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { findFFprobe } from "../browser/ffmpeg.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 
@@ -21,7 +26,7 @@ export function localVideos(html: string): { id: string; src: string }[] {
 
 export const localVideoRenderIds = (html: string): string[] => localVideos(html).map((v) => v.id);
 
-/** The project file a page URL names, or null when it is remote or outside the project. */
+/** The project file a page URL names, or null when it is remote, outside the project or private. */
 export function projectLocalFile(projectDir: string, src: string): string | null {
   try {
     const path = decodeURIComponent(new URL(src, "http://project.invalid/").pathname).replace(
@@ -30,13 +35,35 @@ export function projectLocalFile(projectDir: string, src: string): string | null
     );
     const file = resolve(projectDir, path);
     const rel = relative(projectDir, file);
-    return !rel.startsWith("..") && !isAbsolute(rel) && existsSync(file) ? file : null;
+    const inside = !rel.startsWith("..") && !isAbsolute(rel) && existsSync(file);
+    return inside && !isPrivateUnderAssetRoots(file, [projectDir]) ? file : null;
   } catch {
     return null;
   }
 }
 
+export async function projectVideoFile(
+  projectDir: string,
+  src: string,
+): Promise<{ file: string; refused: boolean } | null> {
+  const file = projectLocalFile(projectDir, src);
+  return file ? { file, refused: !(await readableAsMediaWithinProbeLimit(file)) } : null;
+}
+
 const PROBE_TIMEOUT_MS = 30_000;
+
+async function readableAsMediaWithinProbeLimit(path: string): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<boolean>((done) => {
+    timer = setTimeout(() => done(false), PROBE_TIMEOUT_MS);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([isNotMediaPayload(path).then((notMedia) => !notMedia), deadline]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export interface HeldVideoProbe {
   duration: number;
@@ -84,13 +111,14 @@ export function probeHeldVideo(
   const known = cache.get(path);
   if (known) return known;
   const read = (async () => {
-    if (!ffprobe) return UNKNOWN_VIDEO;
+    if (!ffprobe || !(await readableAsMediaWithinProbeLimit(path))) return UNKNOWN_VIDEO;
     try {
       const { stdout } = await runCancellableProcess(
         ffprobe,
         [
           "-v",
           "error",
+          ...mediaInputFormatArgs(ffprobe),
           "-select_streams",
           "v:0",
           "-show_entries",

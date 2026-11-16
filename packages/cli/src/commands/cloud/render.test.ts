@@ -180,7 +180,7 @@ describe("cloud render --dry-run of an imported project", () => {
 });
 
 describe("cloud render --dry-run with heavy media", () => {
-  it("plans the media as HeyGen asset uploads and leaves it out of the archive", () => {
+  it("sends every file in the zip when the project fits, with no uploads", () => {
     const dir = writeComposition(1920, 1080);
     writeFileSync(
       join(dir, "index.html"),
@@ -192,6 +192,7 @@ describe("cloud render --dry-run with heavy media", () => {
       join(dir, "clip.mp4"),
       Buffer.concat([mp4Header, Buffer.alloc(6 * 1024 * 1024 - mp4Header.length, 1)]),
     );
+    writeFileSync(join(dir, "unused-take.mp4"), Buffer.concat([mp4Header, Buffer.alloc(1024, 2)]));
     const result = spawnSync(
       "bun",
       ["run", cliEntry, "cloud", "render", dir, "--dry-run", "--json"],
@@ -214,13 +215,16 @@ describe("cloud render --dry-run with heavy media", () => {
         file_count: number;
         size_bytes: number;
         offloaded_media: Array<{ path: string; action: string; size_bytes: number }>;
+        largest_files: Array<{ path: string; size_bytes: number }>;
       };
     };
-    expect(archive.offloaded_media).toEqual([
-      { path: "clip.mp4", action: "upload", size_bytes: 6 * 1024 * 1024 },
+    // One zip is faster than any per-file upload, so media leaves it only when the zip would not fit.
+    expect(archive.offloaded_media).toEqual([]);
+    expect(archive.largest_files.map((file) => file.path)).toEqual([
+      "clip.mp4",
+      "unused-take.mp4",
+      "index.html",
     ]);
-    expect(archive.file_count).toBe(1);
-    expect(archive.size_bytes).toBeLessThan(64 * 1024);
   });
 });
 

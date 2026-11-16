@@ -1,12 +1,48 @@
-# Running from an installed plugin
+# Running the HyperFrames CLI
+
+`<SKILLS>` is the folder that holds the loaded skill's folder. Every skill and reference writes
+the CLI as `npx hyperframes` (or bare `hyperframes`). Run each of those commands as:
+
+```bash
+node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" <command> <args...>
+```
+
+Run it in the user's project directory, never in the skills directory. npm starts in the home
+folder, so the project's `package.json`, `node_modules` and `.npmrc` cannot choose the CLI or the
+registry; the CLI then moves into the project and works there. This holds for every command,
+including the usage beacon, and for a project the person received from someone else. Do not run
+`npx hyperframes` in the project directly, and do not run a project's own scripts or wrappers in
+its place unless the person asks for that command by name.
+
+For bundled Node helpers, use the same launcher with
+`--script <absolute-script-path> <args...>`. Helpers that call the CLI then run it through the
+launcher.
+
+## Standalone skill installs
+
+Without a plugin manifest, the launcher runs the newest published CLI. The person installs and
+updates standalone skills with `npx hyperframes skills update`.
+
+## Plugin installs
 
 Check the directory two levels above the loaded `SKILL.md` for `plugin.json`,
 `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`, or
 `.cursor-plugin/plugin.json` identifying `hyperframes`, or a Gemini extension manifest.
-That directory is `<PLUGIN_ROOT>`. If none exists, this is a standalone skill
-install; run `npx hyperframes` directly.
+That directory is `<PLUGIN_ROOT>`, and `<SKILLS>` is `<PLUGIN_ROOT>/skills`.
 
-For a plugin installation, these rules apply in every skill and reference:
+Call the directory you run the launcher in the working directory. It is a plugin install only
+when all three of these hold:
+
+- The name of `<PLUGIN_ROOT>` does not start with a dot, so it is not `.agents` or `.claude`.
+- `<PLUGIN_ROOT>` is not the working directory, and it does not contain it.
+- If `<PLUGIN_ROOT>` is inside the working directory, a folder whose name starts with a dot
+  lies between them, as `.claude` does in `~/.claude/plugins/...` when you work in `~`.
+
+Otherwise the skills are a standalone install, and the launcher ignores any manifest there.
+Ignore it too, and follow the standalone rules above. The launcher refuses a manifest that
+pins a release older than 0.9.34.
+
+For a plugin installation, these rules also apply in every skill and reference:
 
 - Do not run `hyperframes skills update`, `skills check`, or `npx skills add`.
   The agent's plugin manager owns installation and updates. Read the skill at
@@ -14,27 +50,14 @@ For a plugin installation, these rules apply in every skill and reference:
   of downloading a different release. Resolve all skill references inside this
   bundle, even if a standalone copy is also installed. Claude exposes the router
   as `/hyperframes:hyperframes`; other clients may expose `/hyperframes`.
-- Replace `npx hyperframes` (or bare `hyperframes`) in command examples with:
-
-  ```bash
-  node "<PLUGIN_ROOT>/skills/hyperframes/scripts/plugin-cli.mjs" <command> <args...>
-  ```
-
-  Run in the user's project directory, never in the plugin directory. The launcher
-  selects the manifest's CLI version and disables automatic standalone skill
+- The launcher selects the manifest's CLI version and disables automatic standalone skill
   installation, including during `init`. The first call may download that exact
-  CLI version through npm. npm runs from the home folder, so the project's
-  `node_modules`, `package.json` and `.npmrc` cannot choose the CLI; the CLI then
-  works in the project. A download failure is an error, not permission to use
+  CLI version through npm. A download failure is an error, not permission to use
   latest. Existing project dependency files and lockfiles must not be overwritten
   to match the plugin; surface a runtime incompatibility before changing them.
-
-- For bundled Node helpers, use the same
-  launcher with `--script <absolute-script-path> <args...>`. This passes the
-  release version to their dependency loader, and helpers that call the CLI run
-  it through the launcher. External providers, registry
-  downloads, and existing project dependencies have their own versions; a plugin
-  version alone does not freeze those inputs.
+- For bundled Node helpers, the launcher also passes the release version to their
+  dependency loader. External providers, registry downloads, and existing project
+  dependencies have their own versions; a plugin version alone does not freeze those inputs.
 - Treat the plugin directory as read-only. Put outputs and temporary work in the
   project or a temporary directory. Pass this plugin root and launcher convention
   to any delegated agent so it does not fall back to global skills.
