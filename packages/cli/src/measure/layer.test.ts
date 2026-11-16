@@ -81,6 +81,26 @@ describe("scoreLayerFrame", () => {
   });
 });
 
+describe("a layer over most of the frame", () => {
+  it("scores a 200k-pixel footprint, and fits it, without running out of stack", () => {
+    const [w, h] = [520, 400];
+    const plain = (shift: number) => {
+      const px = new Uint8Array(w * h * 3);
+      for (let y = 0; y < h; y++)
+        for (let x = 0; x < w; x++) {
+          const card = ((x >> 4) + ((y + shift) >> 4)) % 2 ? 230 : 120;
+          px.set([card, card, card], (y * w + x) * 3);
+        }
+      return px;
+    };
+    const f = scoreLayerFrame(1, plain(6), plain(0), new Uint8Array(w * h * 3), w, h);
+    expect(f.footprint_px).toBeGreaterThan(200_000);
+    expect(f.bbox).toEqual([0, 0, w, h]);
+    expect(f.benefit).toBeGreaterThan(0);
+    expect(f.fit?.offset).toEqual([0, -6]);
+  });
+});
+
 describe("instruction", () => {
   it("names each axis and the size", () => {
     expect(instruction([-4, -10], 1.1)).toBe("move up 10 px, move left 4 px, make it 10% larger");

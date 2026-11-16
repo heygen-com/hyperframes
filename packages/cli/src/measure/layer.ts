@@ -17,6 +17,8 @@ const SCALES = [0.8, 0.85, 0.9, 0.95, 1.05, 1.1, 1.15, 1.2];
 const SCALE_SHIFT = 6;
 /** A resize is reported only when it fits this much better than the best move alone; a 5% step otherwise fits noise. */
 const SCALE_GAIN = 0.9;
+/** The fit reads at most this many footprint pixels, evenly strided: a full-frame layer would cost minutes a moment. */
+const FIT_SAMPLE = 20000;
 
 export interface LayerFrame {
   t: number;
@@ -143,9 +145,11 @@ export function scoreLayerFrame(
 ): LayerFrame {
   const idx = footprintOf(withLayer, without, w * h);
   if (idx.length < MIN_FOOTPRINT) return { t, footprint_px: idx.length };
-  const xs = idx.map((i) => i % w);
-  const ys = idx.map((i) => Math.floor(i / w));
-  const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  let [x0, x1, y0, y1] = [w, -1, h, -1];
+  for (const i of idx) {
+    const [x, y] = [i % w, Math.floor(i / w)];
+    [x0, x1, y0, y1] = [Math.min(x0, x), Math.max(x1, x), Math.min(y0, y), Math.max(y1, y)];
+  }
   const centre: [number, number] = [(x0 + x1) / 2, (y0 + y1) / 2];
   const head = {
     t,
@@ -160,8 +164,12 @@ export function scoreLayerFrame(
       benefit: null,
       note: "leaving the layer out already matches the original here: the original has nothing more there, or the footage carries its copy of the layer",
     };
+  const step = Math.ceil(idx.length / FIT_SAMPLE);
+  const sample = idx.filter((_, n) => n % step === 0);
+  const xs = sample.map((i) => i % w);
+  const ys = sample.map((i) => Math.floor(i / w));
   const fit = fitLayer((scale, dx, dy) =>
-    mae(ref, withLayer, moved(xs, ys, w, h, centre, scale, dx, dy), idx),
+    mae(ref, withLayer, moved(xs, ys, w, h, centre, scale, dx, dy), sample),
   );
   return {
     ...head,
