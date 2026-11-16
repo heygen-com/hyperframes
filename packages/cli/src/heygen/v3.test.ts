@@ -235,22 +235,60 @@ describe("runJob", () => {
       expect(calls).toHaveLength(1);
     });
 
-    it("keeps the account's ledger private and only its newest lines", async () => {
+    it("keeps the account's ledger private, its newest lines, and every key this project holds", async () => {
       sent();
       const file = join(process.env["HYPERFRAMES_CONFIG_DIR"]!, "heygen-job-ledger");
+      const log = project(100);
+      await runJob(X, {}, "k0", { log, credits: 10 });
       const old = (n: number) =>
         `${JSON.stringify({ at: "old", kind: "own", key: `k${n}`, credits: 1 })}\n`;
-      writeFileSync(file, Array.from({ length: 10_000 }, (_, n) => old(n)).join(""));
-      await runJob(X, {}, "k1", { log: project(100), credits: 10 });
-      const lines = readFileSync(file, "utf8").trim().split("\n");
-      expect(lines).toHaveLength(10_000);
-      expect(lines[0]).toBe(old(2).trim());
-      expect(JSON.parse(lines.at(-1)!)).toMatchObject({ kind: "own", key: "k1", credits: 10 });
+      appendFileSync(file, Array.from({ length: 10_000 }, (_, n) => old(n)).join(""));
+      await runJob(X, {}, "k1", { log, credits: 10 });
+      const rows = readFileSync(file, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(rows).toHaveLength(10_000);
+      expect(rows.filter((row) => row.at !== "old").map((row) => row.key)).toEqual(["k0", "k1"]);
+      expect(rows.at(-1)).toMatchObject({ kind: "own", key: "k1", credits: 10 });
+      await expect(runJob(X, {}, "k2", { log, credits: 81 })).rejects.toThrow(/leaves 80/);
+      if (process.platform === "win32") return;
       const fresh = mkdtempSync(join(tmpdir(), "hf-v3-config-"));
       vi.stubEnv("HYPERFRAMES_CONFIG_DIR", join(fresh, "nested"));
       await runJob(X, {}, "k1", { log: project(100), credits: 10 });
       expect(lstatSync(join(fresh, "nested")).mode & 0o777).toBe(0o700);
       expect(lstatSync(join(fresh, "nested", "heygen-job-ledger")).mode & 0o777).toBe(0o600);
+    });
+
+    it("names the ledger when rows gone from the job log still count", async () => {
+      sent();
+      const log = project(100);
+      const file = join(log.projectDir, ".hyperframes/heygen-jobs.jsonl");
+      writeFileSync(file, '{"key":"other","credits":60}\n');
+      await runJob(X, {}, "k1", { log, credits: 10 });
+      writeFileSync(file, "");
+      await expect(runJob(X, {}, "k2", { log, credits: 40 })).rejects.toThrow(
+        /leaves 30.*60 of the credits counted are from job log rows no longer in the project, noted in .*heygen-job-ledger/,
+      );
+    });
+
+    it("refuses a call under a limit when the signed-in account can't be named", async () => {
+      vi.stubEnv("HEYGEN_API_KEY", "");
+      vi.stubEnv("HYPERFRAMES_API_KEY", "");
+      vi.stubEnv("HEYGEN_ACCESS_TOKEN", "token");
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", async (url: string) => {
+        if (String(url).includes("/users/me")) return reply(500, { error: "down" });
+        calls.push(url);
+        return reply(200, { data: { id: "j", status: "completed" } });
+      });
+      await expect(runJob(X, {}, "k1", { log: project(100), credits: 10 })).rejects.toThrow(
+        "can't tell which account is signed in, so the limit can't be checked; nothing was made",
+      );
+      expect(calls).toHaveLength(0);
+      const unlimited = mkdtempSync(join(tmpdir(), "hf-v3-unlimited-"));
+      await runJob(X, {}, "k1", { log: { projectDir: unlimited, what: "a line" }, credits: 10 });
+      expect(calls).toHaveLength(1);
     });
 
     it("keeps what this account spent, and the most another key held, when rows are added to the log", async () => {

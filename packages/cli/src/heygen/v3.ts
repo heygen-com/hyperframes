@@ -12,7 +12,7 @@ import { HyperframesApiError, HyperframesCloudClient } from "../cloud/_gen/clien
 import { Fix } from "../measure/media.js";
 import { appendRecord } from "../utils/projectRecords.js";
 import { creditLimit } from "../media-use/lib/credit-limit.mjs";
-import { ledgerScope, noteOwn, spentIn } from "./jobLedger.js";
+import { goneNote, ledgerScope, noteOwn, spentIn } from "./jobLedger.js";
 import { cliCheckoutLink, pageUrl } from "./plan.js";
 
 const MEDIA_USE_SKILL = "media-use";
@@ -300,7 +300,7 @@ function withinLimit(
   const { checked, about } = limitCheck(credits, vendorPriced);
   if (checked > left)
     throw new Fix(
-      `this call is ${about} and the run's credit limit of ${limit} leaves ${Math.max(0, left)}; nothing was made or charged`,
+      `this call is ${about} and the run's credit limit of ${limit} leaves ${Math.max(0, left)}; nothing was made or charged${goneNote(spent)}`,
       fix,
     );
   log(limitLog, { key: sent, status: "reserved", credits: checked }, at);
