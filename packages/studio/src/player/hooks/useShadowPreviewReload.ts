@@ -34,10 +34,8 @@ import { READY_TIMEOUT_CAUSE, useShadowReloadRetry } from "./useShadowReloadRetr
 export const SHADOW_READY_TIMEOUT_MS = 15_000;
 // A busy machine can need more than one budget; the shadow keeps loading for this many before it is dropped.
 export const SHADOW_READY_BUDGETS = 3;
-// A still is dropped by this time even if the new page never reports its painted seek.
 const STILL_RELEASE_MAX_MS = 3_000;
 
-/** The live frame shown as a still while its page is gone: what to drop it with, and where the live film was. */
 type HeldStill = {
   release: () => void;
   time: number | null;
@@ -46,7 +44,6 @@ type HeldStill = {
   liveIframe: HTMLIFrameElement;
 };
 
-/** Drops the still once `iframe` reports its seek painted and two frames are drawn, or after STILL_RELEASE_MAX_MS. */
 function releaseAfterPaint(iframe: HTMLIFrameElement | null, release: () => void) {
   let done = false;
   const go = () => {
@@ -109,9 +106,7 @@ type UseShadowPreviewReloadParams = Omit<
   onReloadFailed?: (message: string) => void;
   /** Puts the promoted document at the live frame's time, playing if the live frame was. */
   handOverPlayback: (time: number, playing: boolean) => void;
-  /** A host that can show the live frame as a still (Desktop: a sealed page's pixels are its window's) gets a reload
-   * with one page at a time: the still covers the stage, the live page goes, the reload's page loads alone. Returns
-   * what drops the still, or null to keep both pages for this reload. */
+  /** Covers the stage with the live frame so a reload holds one page; returns what drops it, null keeps two pages. */
   holdStill?: (live: HTMLIFrameElement) => Promise<(() => void) | null>;
 };
 
@@ -165,10 +160,8 @@ export function useShadowPreviewReload({
   const heldRef = useRef<HeldStill | null>(null);
   // The newest reload asked for while a still is being taken; it starts once the still is up.
   const holdingUrlRef = useRef<string | null>(null);
-  // A composition switch or unmount while the still is taken makes its answer stale.
   const holdTokenRef = useRef(0);
 
-  /** The live slot back, at its time, and the still dropped once its page has loaded. */
   const restoreLive = useCallback(
     (held: HeldStill) => {
       setPreviewSlots([held.liveSlot]);
@@ -287,8 +280,7 @@ export function useShadowPreviewReload({
       if (!promotable || heldOrStale(gen)) return;
       const { shadow, pending } = promotable;
       stopPendingShadow();
-      // The live frame kept playing, stopped at the end or was seeked while the shadow loaded; behind a still it was
-      // stopped where the still was taken.
+      // The live frame kept playing, stopped at the end or was seeked while the shadow loaded.
       const held = heldRef.current;
       heldRef.current = null;
       const live = getAdapter();

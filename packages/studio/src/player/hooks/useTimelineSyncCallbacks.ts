@@ -111,7 +111,6 @@ export function planShadowReload(
   return live ? [live, { gen: nextGen, role: "shadow", url }] : [{ gen: nextGen, role: "live" }];
 }
 
-/** The reload's page alone, its live page gone behind a host's still: one page at a time. */
 export function planShadowAlone(nextGen: number, url: string): PreviewIframeSlot[] {
   return [{ gen: nextGen, role: "shadow", url }];
 }

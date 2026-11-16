@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 // fails without the fix: a reload kept the live page beside its own until promotion, so a heavy project held two whole
-// pages (1.7x the app's resident memory on a 990-clip film) and ran out of memory. A host that can show the live
+// pages (1.7x the app's resident memory) and ran out of memory. A host that can show the live
 // frame as a still now gets one page at a time.
 
 import { act } from "react";
