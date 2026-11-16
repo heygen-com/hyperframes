@@ -106,6 +106,8 @@ const STUDIO_MANUAL_EDITS_PATH = ".hyperframes/studio-manual-edits.json";
 // before that watchdog can fire and skip this file's browser cleanup.
 const RENDER_SHUTDOWN_WAIT_MS = 2_000;
 
+const LINT_WORKER_TIMEOUT_MS = 120_000;
+
 // Vite emits only content-hashed files under dist/assets; hand-authored
 // public/ files land at the dist root. The route is the signal because the
 // filename is not: rollup's base64url hash may itself contain a hyphen.
@@ -605,11 +607,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     // Out of process: linting a large composition is seconds of synchronous parsing, and on
     // this event loop it stalls every other Studio request, the preview included.
-    lintProject: (dir: string) =>
+    lintProject: (dir: string, signal?: AbortSignal) =>
       runRenderSetupWorker<ProjectLintResult>(
         "lint",
         { projectDir: dir, host: "studio", background: true },
-        { maxBufferBytes: 8 * 1024 * 1024 },
+        { maxBufferBytes: 8 * 1024 * 1024, signal, timeoutMs: LINT_WORKER_TIMEOUT_MS },
       ),
 
     runtimeUrl: "/api/runtime.js",
