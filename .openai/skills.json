@@ -9,13 +9,13 @@
     {
       "name": "remotion",
       "description": "Kết xuất video đồ họa chuyển động bằng Remotion dựa trên kịch bản.",
-      "command": "cd .agents/remotion-main && bun install && bun run build -- --props \"{\\\"text\\\": \\\"{{prompt}}\\\"}\" --output ../../shared-data/remotion-layer.mp4",
+      "command": "cd .agents/remotion-app && bun install --frozen-lockfile && bun run build --text \"{{prompt}}\" --output ../../shared-data/remotion-layer.mp4",
       "output_path": "shared-data/remotion-layer.mp4"
     },
     {
       "name": "combine-video",
       "description": "Kết hợp video chữ của HyperFrames làm lớp nền/lớp phủ bên trong khung đồ họa của Remotion.",
-      "command": "cd .agents/remotion-main && bun run build -- --props \"{\\\"bgVideo\\\": \\\"../../shared-data/hyperframes-layer.mp4\\\"}\" --output ../../shared-data/final-combined-video.mp4",
+      "command": "cd .agents/remotion-app && bun install --frozen-lockfile && bun run build --bg-video ../../shared-data/hyperframes-layer.mp4 --output ../../shared-data/final-combined-video.mp4",
       "output_path": "shared-data/final-combined-video.mp4"
     }
   ]

@@ -1,0 +1,23 @@
+{
+  "name": "hyperframes-remotion-app",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "studio": "remotion studio src/index.tsx",
+    "build": "node scripts/render.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/bundler": "4.0.544",
+    "@remotion/cli": "4.0.544",
+    "@remotion/renderer": "4.0.544",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "remotion": "4.0.544"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "typescript": "5.9.3"
+  }
+}
