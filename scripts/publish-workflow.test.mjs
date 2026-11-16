@@ -196,11 +196,11 @@ test("the Lambda handler zip is pinned before packing and attached before npm pu
   assert.doesNotMatch(attach.run, /--clobber/);
 });
 
-test("the pin step reuses an attached zip and otherwise takes only the built zip's hash", () => {
+test("the pin step reuses the zip only when the release check allows it and otherwise takes only the built zip's hash", () => {
   const step = pack.steps.find((s) => s.name === "Pin Lambda handler zip");
   const builtZip = "built handler zip";
   const builtSha256 = createHash("sha256").update(builtZip).digest("hex");
-  const run = ({ ghExit, expectedSha256 }) => {
+  const run = ({ reuse, ghExit = 0, expectedSha256 }) => {
     const root = mkdtempSync(join(tmpdir(), "hyperframes-lambda-zip-step-"));
     try {
       const bin = join(root, "bin");
@@ -228,6 +228,7 @@ test("the pin step reuses an attached zip and otherwise takes only the built zip
           VERSION: "9.8.7",
           REPO: "o/r",
           EXPECTED_SHA256: expectedSha256,
+          REUSE: reuse,
         },
         timeout: 5_000,
       });
@@ -247,7 +248,7 @@ test("the pin step reuses an attached zip and otherwise takes only the built zip
     }
   };
 
-  const retried = run({ ghExit: 0, expectedSha256: builtSha256 });
+  const retried = run({ reuse: "true", expectedSha256: builtSha256 });
   assert.equal(retried.status, 0, retried.stdout);
   assert.match(
     retried.calls,
@@ -256,19 +257,40 @@ test("the pin step reuses an attached zip and otherwise takes only the built zip
   assert.match(retried.calls, /^bun packages\/aws-lambda\/scripts\/pin-handler-zip\.ts$/m);
   assert.equal(retried.output, "attached=true\n");
 
-  const fresh = run({ ghExit: 1, expectedSha256: builtSha256 });
+  const fresh = run({ reuse: "false", expectedSha256: builtSha256 });
   assert.equal(fresh.status, 0, fresh.stdout);
+  assert.doesNotMatch(fresh.calls, /^gh /m);
   assert.doesNotMatch(fresh.calls, /build:zip/);
   assert.match(fresh.calls, /^bun packages\/aws-lambda\/scripts\/pin-handler-zip\.ts$/m);
   assert.equal(fresh.output, "");
   assert.equal(fresh.pinned, builtZip);
 
   for (const expectedSha256 of ["0".repeat(64), ""]) {
-    const rejected = run({ ghExit: 1, expectedSha256 });
+    const rejected = run({ reuse: "false", expectedSha256 });
     assert.equal(rejected.status, 1, rejected.stdout);
     assert.match(rejected.stdout, /::error::Lambda handler zip sha256/);
     assert.doesNotMatch(rejected.calls, /pin-handler-zip/);
     assert.equal(rejected.pinned, null);
+  }
+
+  const lost = run({ reuse: "true", ghExit: 1, expectedSha256: builtSha256 });
+  assert.equal(lost.status, 1, lost.stdout);
+  assert.doesNotMatch(lost.calls, /pin-handler-zip/);
+});
+
+test("the pack job checks the release before either Lambda pin step can reuse an asset", () => {
+  const names = pack.steps.map((step) => step.name);
+  const check = names.indexOf("Check Lambda assets already on the release");
+  assert.ok(check >= 0);
+  assert.ok(check < names.indexOf("Pin Lambda handler zip"));
+  assert.ok(check < names.indexOf("Build Lambda video image"));
+  for (const [name, output] of [
+    ["Pin Lambda handler zip", "zip"],
+    ["Build Lambda video image", "image"],
+  ]) {
+    const step = pack.steps.find((s) => s.name === name);
+    assert.equal(step.env.REUSE, `\${{ steps.release_assets.outputs.${output} }}`);
+    assert.match(step.run, /if \[ "\$REUSE" = "true" \]; then/);
   }
 });
 
@@ -313,7 +335,7 @@ test("the workflow publishes exactly the public workspace packages", () => {
 });
 
 test("release-commit code runs only in a job without secrets", () => {
-  assert.deepEqual(pack.permissions, { contents: "read" });
+  assert.deepEqual(pack.permissions, { contents: "read", actions: "read" });
   assert.equal(pack.environment, undefined);
   const packCheckout = pack.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
   assert.equal(packCheckout.with["persist-credentials"], false);

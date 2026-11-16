@@ -122,6 +122,7 @@ jobs:
     # read-only token and no secrets. The publish job gets only what this job packs.
     permissions:
       contents: read
+      actions: read
     env:
       EXPECTED_RELEASE_SHA: >-
         ${{ github.event_name == 'pull_request'
@@ -200,6 +201,17 @@ jobs:
           name: hyperframes-lambda-handler-zip
           path: dist/lambda-handler-build
 
+      # Only an earlier attempt of this run may have created the release; anything else fails here.
+      - name: Check Lambda assets already on the release
+        id: release_assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: node scripts/release-lambda-assets.mjs
+
       # Before packing, so @hyperframes/aws-lambda pins this exact zip.
       - name: Pin Lambda handler zip
         id: lambda_zip
@@ -208,9 +220,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           REPO: ${{ github.repository }}
           EXPECTED_SHA256: ${{ needs.lambda-handler-zip.outputs.sha256 }}
+          REUSE: ${{ steps.release_assets.outputs.zip }}
         run: |
-          # A retried run reuses the zip already on the release, so the pin still matches it.
-          if gh release download "v${VERSION}" --repo "$REPO" --pattern hyperframes-lambda-handler.zip --dir dist; then
+          # A retried run reuses the zip its earlier attempt attached, so the pin still matches it.
+          if [ "$REUSE" = "true" ]; then
+            gh release download "v${VERSION}" --repo "$REPO" --pattern hyperframes-lambda-handler.zip --dir dist
             echo "attached=true" >> "$GITHUB_OUTPUT"
           else
             ACTUAL_SHA256="$(sha256sum dist/lambda-handler-build/handler.zip | cut -d' ' -f1)"
@@ -235,9 +249,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           REPO: ${{ github.repository }}
+          REUSE: ${{ steps.release_assets.outputs.image }}
         run: |
-          # A retried run reuses the image already on the release, so the pin still matches it.
-          if gh release download "v${VERSION}" --repo "$REPO" --pattern hyperframes-lambda-video-arm64.oci.tar --dir dist; then
+          # A retried run reuses the image its earlier attempt attached, so the pin still matches it.
+          if [ "$REUSE" = "true" ]; then
+            gh release download "v${VERSION}" --repo "$REPO" --pattern hyperframes-lambda-video-arm64.oci.tar --dir dist
             echo "attached=true" >> "$GITHUB_OUTPUT"
           else
             bun packages/aws-lambda/scripts/stage-arm64-image.ts --zip=dist/hyperframes-lambda-handler.zip \
