@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -18,7 +19,6 @@ import { isUnderCompositions, resolveLintTarget } from "../utils/project.js";
 import { trackLintRun } from "../telemetry/lintRun.js";
 import { getRunId } from "../telemetry/runId.js";
 import { withMeta } from "../utils/updateCheck.js";
-import { terminalText } from "../utils/terminalText.js";
 
 export default defineCommand({
   meta: {

@@ -28,6 +28,7 @@ import {
   type FontDiagPath,
 } from "./fontDiagnostics.js";
 import { hyperframesCacheDir } from "../cacheDir.js";
+import { terminalText } from "../terminalText.js";
 
 export type { FontDiagnostics };
 
@@ -1879,8 +1880,8 @@ export interface FontLogger {
 }
 
 const STDERR_LOGGER: FontLogger = {
-  warn: (message) => console.warn(`[WARN] ${message}`),
-  info: (message) => console.error(`[INFO] ${message}`),
+  warn: (message) => console.warn(terminalText(`[WARN] ${message}`)),
+  info: (message) => console.error(terminalText(`[INFO] ${message}`)),
 };
 
 export interface InjectDeterministicFontFacesOptions {

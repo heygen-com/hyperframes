@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
-import { terminalText } from "../utils/terminalText.js";
+import { terminalText } from "@hyperframes/core";
 
 const mocks = vi.hoisted(() => ({
   resolveRenderBrowser: vi.fn(),

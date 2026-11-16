@@ -56,6 +56,7 @@ import {
   type RateSpec,
   type ResolvedDuration,
   type UnresolvedElement,
+  terminalText,
 } from "@hyperframes/core";
 import { MAX_AUDIO_GAIN } from "@hyperframes/core/audio-gain";
 import { CAPTURE_CANVAS_SELECTOR } from "@hyperframes/core/html-in-canvas";
@@ -1185,7 +1186,9 @@ function inlineSubCompositions(
         // hit here means the file changed on disk between that pre-flight
         // check and this later inline step (e.g. a concurrent scene-writer).
         console.warn(
-          `[Compiler] Skipping sub-composition "${srcPath}": ${reason ?? "the file is missing or empty"}.`,
+          terminalText(
+            `[Compiler] Skipping sub-composition "${srcPath}": ${reason ?? "the file is missing or empty"}.`,
+          ),
         );
       },
     },

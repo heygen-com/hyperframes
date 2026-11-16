@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, readFileSync } from "node:fs";
 import { isWithinProjectRoot, readProjectFile } from "@hyperframes/parsers/asset-resolution";
@@ -9,7 +10,6 @@ import {
 } from "@hyperframes/core/gsap-parser";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
-import { terminalText } from "../utils/terminalText.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
 import { withMeta } from "../utils/updateCheck.js";

@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { randomUUID } from "node:crypto";
@@ -18,7 +19,6 @@ import type { ArgsDef } from "citty";
 import type { Example } from "./_examples.js";
 import { parseAt } from "./layout.js";
 import { c } from "../ui/colors.js";
-import { terminalText } from "../utils/terminalText.js";
 import { registerBrowserSessionCleanup } from "../browser/launch.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { CliUsageError, failUsage, setCommandExitCode } from "../utils/commandResult.js";

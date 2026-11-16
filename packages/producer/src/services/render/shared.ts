@@ -24,6 +24,7 @@ import {
   CANVAS_DIMENSIONS,
   checkOutputResolutionCompatibility,
   type CanvasResolution,
+  terminalText,
 } from "@hyperframes/core";
 import {
   mediaIdPathSegment,
@@ -168,7 +169,7 @@ export function writeCompiledArtifacts(
   for (const [srcPath, html] of compiled.subCompositions) {
     const outPath = join(compileDir, srcPath);
     if (!isPathInside(outPath, compileDir)) {
-      console.warn(`[Render] Skipping sub-composition with unsafe path: ${srcPath}`);
+      console.warn(`[Render] Skipping sub-composition with unsafe path: ${terminalText(srcPath)}`);
       continue;
     }
     mkdirSync(dirname(outPath), { recursive: true });
@@ -183,7 +184,9 @@ export function writeCompiledArtifacts(
   for (const [relativePath, absolutePath] of compiled.externalAssets) {
     const outPath = resolve(join(compileDir, relativePath));
     if (!isPathInside(outPath, compileDir)) {
-      console.warn(`[Render] Skipping external asset with unsafe path: ${relativePath}`);
+      console.warn(
+        `[Render] Skipping external asset with unsafe path: ${terminalText(relativePath)}`,
+      );
       continue;
     }
     mkdirSync(dirname(outPath), { recursive: true });

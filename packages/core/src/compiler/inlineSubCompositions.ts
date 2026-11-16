@@ -49,6 +49,7 @@ import {
   extractedCompositionAssets,
 } from "./compositionAssembly";
 import { SCENE_NO_SWAP_ATTR, SCENE_PART_ATTR } from "../sceneParts";
+import { terminalText } from "../terminalText";
 
 // Anything a scene script can leave running, pending or registered outside its timeline, or that
 // throws when run again: only the timeline is torn down when a scene is swapped, so when unsure, refuse.
@@ -625,7 +626,10 @@ export function inlineSubCompositions(
           return authored.endsWith("/") && !urlLike.endsWith("/") ? `${urlLike}/` : urlLike;
         });
         if (map) importMaps.push(map);
-        else console.warn(`[HyperFrames] ${src}: import map is not valid JSON, so it is skipped.`);
+        else
+          console.warn(
+            terminalText(`[HyperFrames] ${src}: import map is not valid JSON, so it is skipped.`),
+          );
       } else if (type === "module" && !externalSrc) {
         const prelude = scriptCompositionId
           ? scopedModulePrelude(runtimeCompId || scopeCompId || scriptCompositionId, src)
