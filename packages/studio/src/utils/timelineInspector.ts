@@ -83,12 +83,11 @@ export function isMusicTrack(
 /** Past a song's length a track is speech or a mix, and beat analysis decodes its whole file (62 min: 1.4 GB). */
 export const MAX_BEAT_SOURCE_SECONDS = 15 * 60;
 
-/** A source is beat-analysed only once its file's length is known (a clip can show minutes of an hour) and fits. */
+/** The decode reads the whole file, so a source fits once its file's length is known and within the cap. */
 export function fitsBeatAnalysis({
-  duration,
   sourceDuration,
-}: Pick<TimelineElement, "duration" | "sourceDuration">): boolean {
-  return sourceDuration != null && Math.max(duration, sourceDuration) <= MAX_BEAT_SOURCE_SECONDS;
+}: Pick<TimelineElement, "sourceDuration">): boolean {
+  return sourceDuration != null && sourceDuration <= MAX_BEAT_SOURCE_SECONDS;
 }
 
 /**
@@ -125,7 +124,7 @@ export function resolveBeatSourceTrack(
   for (const el of elements) {
     if (!isMusicSourceElement(el)) continue;
     if (el.timelineRole && el.timelineRole !== "music") continue;
-    if (Math.max(el.duration, el.sourceDuration ?? 0) > MAX_BEAT_SOURCE_SECONDS) continue;
+    if (!fitsBeatAnalysis(el)) continue;
     if (!best || el.duration > best.duration) best = el;
   }
   return best ? { element: best, isFallback: true } : null;

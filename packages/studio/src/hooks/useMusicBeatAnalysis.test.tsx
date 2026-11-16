@@ -41,10 +41,10 @@ function Probe() {
   return null;
 }
 
-/** Studio's timeline opened on `elements`: which files beat analysis decoded. The hook caches an analysis per file,
- * so each case names its own. */
+/** Studio's timeline opened on `elements`: which files beat analysis decoded, and the beat times it shows. The hook
+ * caches an analysis per file, so each case names its own. */
 async function opened(elements: TimelineElement[]) {
-  usePlayerStore.setState({ elements });
+  usePlayerStore.setState({ elements, beatAnalysis: null });
   const root = mountReactHarness(
     <FileManagerProvider value={files}>
       <Probe />
@@ -53,8 +53,9 @@ async function opened(elements: TimelineElement[]) {
   await act(async () => {
     for (let i = 0; i < 5; i += 1) await Promise.resolve();
   });
+  const beats = usePlayerStore.getState().beatAnalysis?.beatTimes ?? null;
   act(() => root.unmount());
-  return analyze.mock.calls.map(([src]) => src);
+  return { decoded: analyze.mock.calls.map(([src]) => src), beats };
 }
 
 beforeEach(() => {
@@ -66,33 +67,34 @@ afterEach(() => usePlayerStore.setState({ elements: [] }));
 
 // fails without the fix: a 62-minute recording with no role was picked as the music and decoded whole (1.4 GB on
 // a Mac, which ran a person's page out of memory while their talk was still being transcribed).
-describe("beat analysis decodes only a source no longer than a song", () => {
+describe("beat analysis decodes only a file no longer than a song", () => {
   it("leaves a 62-minute unlabelled recording alone", async () => {
-    expect(
-      await opened([clip({ src: "assets/talk.m4a", duration: 3720, sourceDuration: 3720 })]),
-    ).toEqual([]);
+    const talk = clip({ src: "assets/talk.m4a", duration: 3720, sourceDuration: 3720 });
+    expect((await opened([talk])).decoded).toEqual([]);
   });
 
   it("leaves a 3-minute clip of a 62-minute file alone, since the decode reads the whole file", async () => {
-    expect(
-      await opened([clip({ src: "assets/cut.m4a", duration: 180, sourceDuration: 3720 })]),
-    ).toEqual([]);
+    const cut = clip({ src: "assets/cut.m4a", duration: 180, sourceDuration: 3720 });
+    expect((await opened([cut])).decoded).toEqual([]);
   });
 
-  it("leaves a 62-minute track marked as music alone, even with saved beats", async () => {
+  it("leaves a recording alone while its file's length is unknown", async () => {
+    expect((await opened([clip({ src: "assets/unread.m4a", duration: 180 })])).decoded).toEqual([]);
+  });
+
+  it("shows a 62-minute music track's saved beats without decoding it", async () => {
     savedBeats = serializeBeats([1, 2], [1, 1], "assets/mix.m4a");
-    const music = clip({
+    const mix = clip({
       src: "assets/mix.m4a",
       timelineRole: "music",
       duration: 3720,
       sourceDuration: 3720,
     });
-    expect(await opened([music])).toEqual([]);
+    expect(await opened([mix])).toEqual({ decoded: [], beats: [1, 2] });
   });
 
   it("still finds the beats of a 3-minute song", async () => {
-    expect(await opened([clip({ src: "assets/song.mp3", sourceDuration: 180 })])).toEqual([
-      "assets/song.mp3",
-    ]);
+    const song = clip({ src: "assets/song.mp3", sourceDuration: 180 });
+    expect(await opened([song])).toEqual({ decoded: ["assets/song.mp3"], beats: [1, 2] });
   });
 });

@@ -47,6 +47,7 @@ function el(
     domId: "el-1",
     timelineRole: undefined,
     duration: 10,
+    sourceDuration: 120,
     ...overrides,
   };
 }
@@ -145,6 +146,14 @@ describe("resolveBeatSourceTrack", () => {
     expect(resolveBeatSourceTrack([sfx, vo])).toBeNull();
   });
 
+  it("falls back to a song over a longer clip whose file's length is not known yet", () => {
+    const unread = el({ id: "unread", domId: "unread", duration: 300, sourceDuration: undefined });
+    const song = el({ id: "song", domId: "song", duration: 180, sourceDuration: 180 });
+    expect(resolveBeatSourceTrack([unread, song])!.element).toBe(song);
+    const looped = el({ id: "loop", domId: "loop", duration: 1200, sourceDuration: 180 });
+    expect(resolveBeatSourceTrack([looped])!.element).toBe(looped);
+  });
+
   it("never falls back to a clip, or a clip's file, longer than a song", () => {
     const talk = el({ id: "talk", domId: "talk", duration: 3720, sourceDuration: 3720 });
     const excerpt = el({ id: "cut", domId: "cut", duration: 180, sourceDuration: 3720 });
@@ -212,15 +221,13 @@ describe("beat source from a video with sound", () => {
 });
 
 describe("fitsBeatAnalysis", () => {
-  it("fits a source whose file is known and no longer than a song", () => {
-    expect(fitsBeatAnalysis({ duration: 180, sourceDuration: 180 })).toBe(true);
-    const cap = MAX_BEAT_SOURCE_SECONDS;
-    expect(fitsBeatAnalysis({ duration: cap, sourceDuration: cap })).toBe(true);
+  it("fits a file whose length is known and no longer than a song, however long its clip runs", () => {
+    expect(fitsBeatAnalysis({ sourceDuration: 180 })).toBe(true);
+    expect(fitsBeatAnalysis({ sourceDuration: MAX_BEAT_SOURCE_SECONDS })).toBe(true);
   });
 
-  it("refuses a source past the cap, a short clip of a long file, and an unknown file length", () => {
-    expect(fitsBeatAnalysis({ duration: 3720, sourceDuration: 3720 })).toBe(false);
-    expect(fitsBeatAnalysis({ duration: 180, sourceDuration: 3720 })).toBe(false);
-    expect(fitsBeatAnalysis({ duration: 180 })).toBe(false);
+  it("refuses a file past the cap and a file whose length is unknown", () => {
+    expect(fitsBeatAnalysis({ sourceDuration: 3720 })).toBe(false);
+    expect(fitsBeatAnalysis({})).toBe(false);
   });
 });

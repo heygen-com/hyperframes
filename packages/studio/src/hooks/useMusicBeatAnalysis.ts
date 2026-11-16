@@ -93,6 +93,29 @@ async function loadBeatAnalysis(
   }
 }
 
+/** A marked music track too long to decode keeps its saved beats, with no strengths measured from the audio. */
+async function loadSavedBeats(
+  beatPath: string,
+  io: ProjectIo,
+): Promise<{ analysis: MusicAnalysis; times: number[]; strengths: number[] } | null> {
+  const { times, strengths, hasFile } = await resolveBeats(
+    beatPath,
+    { times: [], strengths: [] },
+    io,
+  );
+  if (!hasFile) return null;
+  const analysis: MusicAnalysis = {
+    beatTimes: times,
+    beatStrengths: strengths,
+    bpm: null,
+    bpmConfidence: "uncertain",
+    channelData: null,
+    sampleRate: 0,
+    peak: 0,
+  };
+  return { analysis, times, strengths };
+}
+
 /** The current beat analysis, remapped onto the composition's edited beat grid. */
 export function useAdjustedBeatAnalysis() {
   const beatAnalysis = usePlayerStore((s) => s.beatAnalysis);
@@ -123,12 +146,12 @@ export function useMusicBeatAnalysis(): void {
       ? { readOptionalProjectFile, writeProjectFile }
       : null;
 
-  const { musicSrc, isFallbackTrack } = useMemo(() => {
-    const found = resolveBeatSourceTrack(elements);
-    const resolved = found && fitsBeatAnalysis(found.element) ? found : null;
+  const { musicSrc, isFallbackTrack, decodable } = useMemo(() => {
+    const resolved = resolveBeatSourceTrack(elements);
     return {
       musicSrc: resolved?.element.src ?? null,
       isFallbackTrack: resolved?.isFallback ?? false,
+      decodable: resolved ? fitsBeatAnalysis(resolved.element) : false,
     };
   }, [elements]);
 
@@ -170,7 +193,9 @@ export function useMusicBeatAnalysis(): void {
       }
       if (cancelled) return;
 
-      const result = await loadBeatAnalysis(musicSrc, beatPath, io);
+      const result = decodable
+        ? await loadBeatAnalysis(musicSrc, beatPath, io)
+        : await loadSavedBeats(beatPath, io);
       if (cancelled) return;
       if (!result) {
         setBeatAnalysis(null);
@@ -189,7 +214,7 @@ export function useMusicBeatAnalysis(): void {
     return () => {
       cancelled = true;
     };
-  }, [musicSrc, isFallbackTrack, setBeatAnalysis, setBeatEdits, resetBeatHistory]);
+  }, [musicSrc, isFallbackTrack, decodable, setBeatAnalysis, setBeatEdits, resetBeatHistory]);
 
   // ── Persist: register a debounced writer fired by every beat edit/undo/redo.
   //    Flushes any pending write on cleanup so the last edit is never lost. ──
