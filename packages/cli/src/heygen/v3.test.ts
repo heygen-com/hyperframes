@@ -1,4 +1,5 @@
 import {
+  appendFileSync,
   linkSync,
   lstatSync,
   mkdirSync,
@@ -234,20 +235,34 @@ describe("runJob", () => {
       expect(calls).toHaveLength(1);
     });
 
-    it("keeps the sent-key record private and only its newest keys", async () => {
+    it("keeps the account's ledger private and only its newest lines", async () => {
       sent();
-      const file = join(process.env["HYPERFRAMES_CONFIG_DIR"]!, "heygen-sent-keys");
-      writeFileSync(file, Array.from({ length: 10_000 }, (_, n) => `old k${n}\n`).join(""));
+      const file = join(process.env["HYPERFRAMES_CONFIG_DIR"]!, "heygen-job-ledger");
+      const old = (n: number) =>
+        `${JSON.stringify({ at: "old", kind: "own", key: `k${n}`, credits: 1 })}\n`;
+      writeFileSync(file, Array.from({ length: 10_000 }, (_, n) => old(n)).join(""));
       await runJob(X, {}, "k1", { log: project(100), credits: 10 });
       const lines = readFileSync(file, "utf8").trim().split("\n");
       expect(lines).toHaveLength(10_000);
-      expect(lines[0]).toBe("old k1");
-      expect(lines.at(-1)).toMatch(/ k1$/);
+      expect(lines[0]).toBe(old(2).trim());
+      expect(JSON.parse(lines.at(-1)!)).toMatchObject({ kind: "own", key: "k1", credits: 10 });
       const fresh = mkdtempSync(join(tmpdir(), "hf-v3-config-"));
       vi.stubEnv("HYPERFRAMES_CONFIG_DIR", join(fresh, "nested"));
       await runJob(X, {}, "k1", { log: project(100), credits: 10 });
       expect(lstatSync(join(fresh, "nested")).mode & 0o777).toBe(0o700);
-      expect(lstatSync(join(fresh, "nested", "heygen-sent-keys")).mode & 0o777).toBe(0o600);
+      expect(lstatSync(join(fresh, "nested", "heygen-job-ledger")).mode & 0o777).toBe(0o600);
+    });
+
+    it("keeps what this account spent, and the most another key held, when rows are added to the log", async () => {
+      const calls = sent();
+      const log = project(100);
+      await runJob(X, {}, "k1", { log, credits: 30 });
+      const file = join(log.projectDir, ".hyperframes/heygen-jobs.jsonl");
+      appendFileSync(file, '{"key":"other","credits":40}\n');
+      await expect(runJob(X, {}, "k2", { log, credits: 31 })).rejects.toThrow(/leaves 30/);
+      appendFileSync(file, '{"key":"k1","credits":0}\n{"key":"other","credits":0}\n');
+      await expect(runJob(X, {}, "k2", { log, credits: 31 })).rejects.toThrow(/leaves 30/);
+      expect(calls).toHaveLength(1);
     });
 
     it("lets the same job resume, and gives back a refused call's credits", async () => {

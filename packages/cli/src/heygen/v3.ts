@@ -2,15 +2,8 @@
 // call carries an Idempotency-Key derived from what it asks for, so the same command again picks up the same job
 // rather than paying twice; a failed job is asked again. Every job is logged to .hyperframes/heygen-jobs.jsonl.
 import { createHash } from "node:crypto";
-import {
-  appendFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { configDir } from "../auth/paths.js";
 import { AuthClient, buildAuthHeaders } from "../auth/client.js";
 import { resolveCredential } from "../auth/resolver.js";
@@ -18,7 +11,8 @@ import { refreshIfNeeded, resolveCloudAuthHeaders, resolveCloudBaseUrl } from ".
 import { HyperframesApiError, HyperframesCloudClient } from "../cloud/_gen/client.js";
 import { Fix } from "../measure/media.js";
 import { appendRecord } from "../utils/projectRecords.js";
-import { creditLimit, creditsSpent } from "../media-use/lib/credit-limit.mjs";
+import { creditLimit } from "../media-use/lib/credit-limit.mjs";
+import { ledgerScope, noteOwn, spentIn } from "./jobLedger.js";
 import { cliCheckoutLink, pageUrl } from "./plan.js";
 
 const MEDIA_USE_SKILL = "media-use";
@@ -68,8 +62,6 @@ class Refused extends Fix {
 const KEEPS_KEY = new Set([401, 403, 408, 409, 425, 429]);
 
 const failedKeysFile = () => join(configDir(), "heygen-failed-keys");
-const sentKeysFile = () => join(configDir(), "heygen-sent-keys");
-const SENT_KEYS_KEPT = 10_000;
 
 const noSignIn = (): never => {
   throw new Fix("no HeyGen sign-in on this machine", "npx hyperframes auth login");
@@ -108,26 +100,6 @@ function noteKey(file: string, key: string, scope: string | null): void {
   if (!scope) return;
   mkdirSync(configDir(), { recursive: true, mode: 0o700 });
   appendFileSync(file, `${scope} ${key}\n`, { mode: 0o600 });
-}
-
-/** Sent keys are noted per account and project folder, and only the newest SENT_KEYS_KEPT are kept. */
-function projectScope(scope: string | null, projectDir: string | undefined): string | null {
-  if (!scope || !projectDir) return null;
-  let real: string;
-  try {
-    real = realpathSync(projectDir);
-  } catch {
-    real = resolve(projectDir);
-  }
-  return `${scope}:${createHash("sha256").update(real).digest("hex").slice(0, 16)}`;
-}
-
-function noteSentKey(key: string, scope: string | null): void {
-  if (!scope) return;
-  noteKey(sentKeysFile(), key, scope);
-  const lines = readFileSync(sentKeysFile(), "utf8").split("\n").filter(Boolean);
-  if (lines.length > SENT_KEYS_KEPT)
-    writeFileSync(sentKeysFile(), `${lines.slice(-SENT_KEYS_KEPT).join("\n")}\n`);
 }
 
 const markFailed = (key: string, scope: string | null) => noteKey(failedKeysFile(), key, scope);
@@ -284,8 +256,11 @@ function appendJobLog(projectDir: string, line: Record<string, unknown>): void {
     );
 }
 
-function log(entry: JobLog, record: Record<string, unknown>) {
-  if (entry.projectDir) appendJobLog(entry.projectDir, { what: entry.what, ...record });
+function log(entry: JobLog, record: Record<string, unknown>, at: string | null) {
+  if (!entry.projectDir) return;
+  appendJobLog(entry.projectDir, { what: entry.what, ...record });
+  if (typeof record.key === "string" && typeof record.credits === "number")
+    noteOwn(at, record.key, record.credits);
 }
 
 export interface RunOptions {
@@ -301,21 +276,20 @@ export interface RunOptions {
 
 /** Refuses, before anything is sent, a new job past the project's credit limit, else reserves its credits. A vendor-priced
  *  image is checked and held at its estimate plus 10%, which its charge can pass, until HeyGen says what it charged.
- *  A logged key resumes unchecked only if this account sent it here, else is priced as new. True when this call reserved. */
+ *  A key resumes unchecked only if this account's ledger holds credits for it, else is priced as new. True when reserved. */
 function withinLimit(
   limitLog: JobLog | undefined,
   sent: string,
-  sentBefore: boolean,
+  at: string | null,
   credits: number | undefined,
   vendorPriced?: boolean,
 ): boolean {
   if (!limitLog?.projectDir) return false;
   const limit = creditLimit(limitLog.projectDir);
   if (limit === undefined) return false;
-  const spent = creditsSpent(limitLog.projectDir);
-  const logged = spent.keys.get(sent) ?? 0;
-  if (logged > 0 && sentBefore) return false;
-  const left = limit - spent.total + logged;
+  const spent = spentIn(limitLog.projectDir, at);
+  if ((spent.own.get(sent) ?? 0) > 0) return false;
+  const left = limit - spent.total + (spent.others.get(sent) ?? 0);
   const fix =
     "tell the person what their limit leaves out, then ask whether to raise it or make the video without this piece";
   if (credits === undefined)
@@ -329,7 +303,7 @@ function withinLimit(
       `this call is ${about} and the run's credit limit of ${limit} leaves ${Math.max(0, left)}; nothing was made or charged`,
       fix,
     );
-  log(limitLog, { key: sent, status: "reserved", credits: checked });
+  log(limitLog, { key: sent, status: "reserved", credits: checked }, at);
   return true;
 }
 
@@ -345,10 +319,8 @@ export async function runJob(
   const route = jobRoute.path;
   const { auth, scope } = await jobSender();
   const sent = liveKey(key, scope);
-  const ledger = projectScope(scope, opts.log?.projectDir);
-  const sentBefore = ledger !== null && scopedKeys(sentKeysFile(), ledger).has(sent);
-  const reserved = withinLimit(opts.log, sent, sentBefore, opts.credits, opts.vendorPriced);
-  if (!sentBefore) noteSentKey(sent, ledger);
+  const at = ledgerScope(scope, opts.log?.projectDir);
+  const reserved = withinLimit(opts.log, sent, at, opts.credits, opts.vendorPriced);
   const held =
     opts.credits === undefined ? undefined : limitCheck(opts.credits, opts.vendorPriced).checked;
   let job: Job;
@@ -363,13 +335,13 @@ export async function runJob(
   } catch (err) {
     if (err instanceof Refused && !KEEPS_KEY.has(err.status)) {
       markFailed(sent, scope);
-      if (reserved && opts.log) log(opts.log, { key: sent, status: "refused", credits: 0 });
+      if (reserved && opts.log) log(opts.log, { key: sent, status: "refused", credits: 0 }, at);
     }
     throw err;
   }
   const waits = RUNNING.has(job.status.toLowerCase());
   if (opts.log && waits)
-    log(opts.log, { route, id: job.id, key: sent, status: job.status, credits: held });
+    log(opts.log, { route, id: job.id, key: sent, status: job.status, credits: held }, at);
   const status = jobRoute.status;
   while (status && RUNNING.has(job.status.toLowerCase())) {
     if (Date.now() - started > (opts.timeoutMs ?? 15 * 60_000))
@@ -387,13 +359,17 @@ export async function runJob(
     );
   }
   if (opts.log)
-    log(opts.log, {
-      route,
-      id: job.id,
-      key: sent,
-      status: job.status,
-      credits: chargedCredits(job) ?? opts.credits,
-    });
+    log(
+      opts.log,
+      {
+        route,
+        id: job.id,
+        key: sent,
+        status: job.status,
+        credits: chargedCredits(job) ?? opts.credits,
+      },
+      at,
+    );
   if (!/^(completed|succeeded|success|done)$/i.test(job.status)) {
     markFailed(sent, scope);
     throw await refusal(422, {
