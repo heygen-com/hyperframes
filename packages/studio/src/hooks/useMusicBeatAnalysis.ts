@@ -32,89 +32,65 @@ function cacheAnalysis(url: string, promise: ReturnType<typeof analyzeMusicFromU
 
 type ProjectIo = { readOptionalProjectFile: (p: string) => Promise<string> };
 
-/**
- * Resolve the effective beat list for a track: a saved file with real beats
- * wins; otherwise the detected beats are used (and `hasFile` is false so the
- * caller seeds a new file). An empty saved file is ignored so detection retries.
- */
-async function resolveBeats(
-  beatPath: string | null,
-  detected: { times: number[]; strengths: number[] },
-  io: ProjectIo,
-): Promise<{ times: number[]; strengths: number[]; hasFile: boolean }> {
-  if (!beatPath) return { ...detected, hasFile: false };
+type Beats = { times: number[]; strengths: number[] };
+
+/** The track's saved beats file, or null when it is missing, unreadable or holds no beat (detection then retries). */
+async function readSavedBeats(io: ProjectIo, beatPath: string): Promise<Beats | null> {
   try {
     const content = await io.readOptionalProjectFile(beatPath);
     const parsed = content ? parseBeats(content) : null;
-    if (parsed && parsed.times.length > 0) {
-      return { times: parsed.times, strengths: parsed.strengths, hasFile: true };
-    }
-  } catch {
-    /* fall back to detected beats */
-  }
-  return { ...detected, hasFile: false };
-}
-
-/** True when the beats file for a track exists and holds at least one beat. */
-async function readHasSavedBeats(io: ProjectIo, beatPath: string): Promise<boolean> {
-  try {
-    const content = await io.readOptionalProjectFile(beatPath);
-    const parsed = content ? parseBeats(content) : null;
-    return !!(parsed && parsed.times.length > 0);
-  } catch {
-    return false;
-  }
-}
-
-type MusicAnalysis = Awaited<ReturnType<typeof analyzeMusicFromUrl>>;
-
-/**
- * Analyze a track (memoized per URL) and fold in any saved beat edits. Null on
- * decode/analysis failure — the caller then clears state and drops the cache
- * entry (only when the effect is still live).
- */
-async function loadBeatAnalysis(
-  musicSrc: string,
-  beatPath: string,
-  io: ProjectIo,
-): Promise<{ analysis: MusicAnalysis; times: number[]; strengths: number[] } | null> {
-  let promise = analysisCache.get(musicSrc);
-  if (!promise) {
-    promise = analyzeMusicFromUrl(musicSrc, { pause: whenTimelineIdle });
-    cacheAnalysis(musicSrc, promise);
-  }
-  try {
-    const analysis = await promise;
-    const detected = { times: analysis.beatTimes, strengths: analysis.beatStrengths };
-    const { times, strengths } = await resolveBeats(beatPath, detected, io);
-    return { analysis, times, strengths };
+    return parsed && parsed.times.length > 0
+      ? { times: parsed.times, strengths: parsed.strengths }
+      : null;
   } catch {
     return null;
   }
 }
 
-/** A marked music track too long to decode keeps its saved beats, with no strengths measured from the audio. */
-async function loadSavedBeats(
+type MusicAnalysis = Awaited<ReturnType<typeof analyzeMusicFromUrl>>;
+
+type Loaded = { analysis: MusicAnalysis } & Beats;
+
+/** A track's analysis (memoized per URL), or null when decode or analysis fails. */
+async function decodeTrack(musicSrc: string): Promise<MusicAnalysis | null> {
+  let promise = analysisCache.get(musicSrc);
+  if (!promise) {
+    promise = analyzeMusicFromUrl(musicSrc, { pause: whenTimelineIdle });
+    cacheAnalysis(musicSrc, promise);
+  }
+  return promise.catch(() => null);
+}
+
+/** What a track shows. A fallback track (audio dropped in with no role) is analysed so the Beat tool works at once; a
+ * marked music track only once the person saved beats for it, so unrelated assets add no beat lines. A file that does
+ * not fit the decode keeps its saved beats, with no strengths measured from the audio. */
+async function loadTrack(
+  musicSrc: string,
   beatPath: string,
   io: ProjectIo,
-): Promise<{ analysis: MusicAnalysis; times: number[]; strengths: number[] } | null> {
-  const { times, strengths, hasFile } = await resolveBeats(
-    beatPath,
-    { times: [], strengths: [] },
-    io,
-  );
-  if (!hasFile) return null;
-  const analysis: MusicAnalysis = {
-    beatTimes: times,
-    beatStrengths: strengths,
-    bpm: null,
-    bpmConfidence: "uncertain",
-    channelData: null,
-    sampleRate: 0,
-    peak: 0,
+  isFallbackTrack: boolean,
+  decodable: boolean,
+): Promise<Loaded | null> {
+  const saved = await readSavedBeats(io, beatPath);
+  if (!isFallbackTrack && !saved) return null;
+  if (!decodable) return saved && { analysis: savedOnly(saved), ...saved };
+  const analysis = await decodeTrack(musicSrc);
+  if (!analysis) return null;
+  return {
+    analysis,
+    ...(saved ?? { times: analysis.beatTimes, strengths: analysis.beatStrengths }),
   };
-  return { analysis, times, strengths };
 }
+
+const savedOnly = ({ times, strengths }: Beats): MusicAnalysis => ({
+  beatTimes: times,
+  beatStrengths: strengths,
+  bpm: null,
+  bpmConfidence: "uncertain",
+  channelData: null,
+  sampleRate: 0,
+  peak: 0,
+});
 
 /** The current beat analysis, remapped onto the composition's edited beat grid. */
 export function useAdjustedBeatAnalysis() {
@@ -154,9 +130,11 @@ export function useMusicBeatAnalysis(): void {
       decodable: resolved ? fitsBeatAnalysis(resolved.element) : false,
     };
   }, [elements]);
+  // Read at load, never a reason to load again: a file length arriving for the same track must keep its edits.
+  const decodableRef = useRef(decodable);
+  decodableRef.current = decodable;
 
-  // ── Load: decode for strength data, then use the saved beat file if present,
-  //    otherwise seed it from detection. Resets edits + history on track change. ──
+  // ── Load: the track's beats (loadTrack). Resets edits + history on track change. ──
   useEffect(() => {
     if (!musicSrc) {
       setBeatAnalysis(null);
@@ -174,28 +152,9 @@ export function useMusicBeatAnalysis(): void {
     const beatPath = beatFilePathForSrc(musicSrc);
     const io = ioRef.current;
 
-    // For explicitly tagged/named music tracks: only run expensive audio decode
-    // + beat analysis when the user has an explicit beats file saved. Without
-    // one, skip entirely — no surprise green lines on the timeline after
-    // dragging unrelated assets.
-    //
-    // For fallback tracks (audio dropped from Finder with no role/music-id):
-    // always run analysis so the Beat tool becomes usable immediately.
     (async () => {
       if (!beatPath || !io) return;
-      if (!isFallbackTrack) {
-        const hasSavedBeats = await readHasSavedBeats(io, beatPath);
-        if (cancelled) return;
-        if (!hasSavedBeats) {
-          setBeatAnalysis(null);
-          return;
-        }
-      }
-      if (cancelled) return;
-
-      const result = decodable
-        ? await loadBeatAnalysis(musicSrc, beatPath, io)
-        : await loadSavedBeats(beatPath, io);
+      const result = await loadTrack(musicSrc, beatPath, io, isFallbackTrack, decodableRef.current);
       if (cancelled) return;
       if (!result) {
         setBeatAnalysis(null);
@@ -214,7 +173,7 @@ export function useMusicBeatAnalysis(): void {
     return () => {
       cancelled = true;
     };
-  }, [musicSrc, isFallbackTrack, decodable, setBeatAnalysis, setBeatEdits, resetBeatHistory]);
+  }, [musicSrc, isFallbackTrack, setBeatAnalysis, setBeatEdits, resetBeatHistory]);
 
   // ── Persist: register a debounced writer fired by every beat edit/undo/redo.
   //    Flushes any pending write on cleanup so the last edit is never lost. ──

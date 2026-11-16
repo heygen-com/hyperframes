@@ -63,7 +63,9 @@ beforeEach(() => {
   analyze.mockReset();
   analyze.mockResolvedValue({ beatTimes: [1, 2], beatStrengths: [1, 1], bpm: 120 });
 });
-afterEach(() => usePlayerStore.setState({ elements: [] }));
+afterEach(() =>
+  usePlayerStore.setState({ elements: [], beatEdits: null, beatUndo: [], beatRedo: [] }),
+);
 
 // fails without the fix: a 62-minute recording with no role was picked as the music and decoded whole (1.4 GB on
 // a Mac, which ran a person's page out of memory while their talk was still being transcribed).
@@ -96,5 +98,34 @@ describe("beat analysis decodes only a file no longer than a song", () => {
   it("still finds the beats of a 3-minute song", async () => {
     const song = clip({ src: "assets/song.mp3", sourceDuration: 180 });
     expect(await opened([song])).toEqual({ decoded: ["assets/song.mp3"], beats: [1, 2] });
+  });
+});
+
+// fails without the fix: the length arriving after the saved beats showed loaded the track again, which dropped the
+// person's beat edit and its undo.
+it("keeps a music track's beat edits and undo when its file's length arrives", async () => {
+  savedBeats = serializeBeats([1, 2], [1, 1], "assets/edited.m4a");
+  const music = { src: "assets/edited.m4a", timelineRole: "music" as const, duration: 180 };
+  const settle = () =>
+    act(async () => {
+      for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    });
+  usePlayerStore.setState({ elements: [clip(music)], beatAnalysis: null, beatEdits: null });
+  const root = mountReactHarness(
+    <FileManagerProvider value={files}>
+      <Probe />
+    </FileManagerProvider>,
+  );
+  await settle();
+  const edit = { src: "assets/edited.m4a", added: [{ time: 1.5, strength: 1 }], removed: [] };
+  act(() => usePlayerStore.getState().commitBeatEdits(edit, "add beat"));
+  act(() => usePlayerStore.setState({ elements: [clip({ ...music, sourceDuration: 180 })] }));
+  await settle();
+  const { beatEdits, beatUndo, beatAnalysis } = usePlayerStore.getState();
+  act(() => root.unmount());
+  expect({ beatEdits, undo: beatUndo.length, beats: beatAnalysis?.beatTimes }).toEqual({
+    beatEdits: edit,
+    undo: 1,
+    beats: [1, 2],
   });
 });
