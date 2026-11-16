@@ -50,6 +50,7 @@ import { openRangeEnd } from "../helpers/mediaRange.js";
 import { hasBaseElement } from "../helpers/subComposition.js";
 import {
   runOffThread,
+  ROOT_PREVIEW_DEADLINE_MS,
   SUB_COMPOSITION_DEADLINE_MS,
   SubCompositionDeadlineError,
   withinDeadline,
@@ -546,9 +547,10 @@ export function registerPreviewRoutes(
         mainCompositionPath = diskMain.compositionPath;
       }
       // <base> and root paths under it, before the runtime adds the server's own root path
+      const rootDeadline = performance.now() + ROOT_PREVIEW_DEADLINE_MS;
       const based = await runOffThread(
         { kind: "base", html: bundled, projectId: project.id, runtimeUrl: adapter.runtimeUrl },
-        Infinity,
+        rootDeadline,
         mainCompositionPath,
       );
       bundled = based.html;
@@ -556,7 +558,7 @@ export function registerPreviewRoutes(
       recordPreviewBuilt(project.dir);
 
       // The passes that parse the page run on the build worker (a capture page builds while a film plays); the
-      // host's transform and the media probes stay here. The main film is never refused for taking long.
+      // host's transform and the media probes stay here.
       const transformed = await transformPreviewHtml(
         bundled,
         adapter,
@@ -578,7 +580,7 @@ export function registerPreviewRoutes(
           options,
           ...(previewVariables && { variables: previewVariables }),
         },
-        Infinity,
+        rootDeadline,
         mainCompositionPath,
       );
       bundled = await injectMediaCodecMap(
@@ -591,7 +593,7 @@ export function registerPreviewRoutes(
       const ignore = [`meta[name="${PROJECT_SIGNATURE_META}"]`];
       bundled = await runOffThread(
         { kind: "parts", html: bundled, ignore },
-        Infinity,
+        rootDeadline,
         mainCompositionPath,
       );
       if ((await createProjectSignatureAsync(project.dir)) === signature) {
@@ -599,7 +601,8 @@ export function registerPreviewRoutes(
         if (!capture) adapter.previewDocuments?.write(builtKey, bundled);
       }
       return bundled;
-    } catch {
+    } catch (error) {
+      console.warn("[Studio] preview build failed, building from the saved file:", error);
       // Re-read disk on bundle failure so we serve the latest file content,
       // not the pre-request snapshot that may have been saved over.
       const fallback = resolveProjectMainHtml(project.dir, project.id);
