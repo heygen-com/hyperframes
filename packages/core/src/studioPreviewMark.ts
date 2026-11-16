@@ -1,3 +1,5 @@
+import { isWebKit } from "./runtime/mediaClock.js";
+
 export const STUDIO_PREVIEW_MARK_META = "hyperframes-studio-preview";
 export const PREVIEW_SEEK_HOLD_ATTR = "data-hf-preview-seek-hold";
 export const PREVIEW_VIDEO_FRAME_ATTR = "data-hf-preview-video-frame";
@@ -21,14 +23,9 @@ export function getLogicalOpacity(el: Element, computed: CSSStyleDeclaration): s
   return computed.opacity;
 }
 export const PLAYER_FRAME_ATTR = "data-hf-player-frame";
-export const PLAYER_FRAME_NAME = "hyperframes-player";
 
 export function inPlayerFrame(doc: Document): boolean {
-  const frame = doc.defaultView;
-  return (
-    frame?.name === PLAYER_FRAME_NAME ||
-    frame?.frameElement?.hasAttribute(PLAYER_FRAME_ATTR) === true
-  );
+  return isWebKit() && doc.defaultView?.frameElement?.hasAttribute(PLAYER_FRAME_ATTR) === true;
 }
 
 export function defersMediaIn(doc: Document): boolean {
