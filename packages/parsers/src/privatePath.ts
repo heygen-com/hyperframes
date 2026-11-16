@@ -108,7 +108,8 @@ export function isStudioPrivatePath(relPath: string): boolean {
   if (isVcsOrSecretPath(relPath) || isCredentialOrToolStatePath(relPath)) return true;
   const segments = projectPathSegments(relPath);
   const inside = !isAbsolute(relPath) && !/^\.\.[. ]*$/.test(relPath.split(/[\\/]/, 1)[0] ?? "");
-  const loadedType = LOADED_ASSET_TYPE.test(segments.at(-1) ?? "");
+  const name = segments.at(-1) ?? "";
+  const loadedType = !name.startsWith(".") && LOADED_ASSET_TYPE.test(name);
   return segments.some((segment, at) => {
     const atRoot = segments.slice(0, at).every((before) => before === "");
     if (segment === ".hyperframes")
@@ -119,8 +120,8 @@ export function isStudioPrivatePath(relPath: string): boolean {
   });
 }
 
-// A new tool keeps its token under a new hidden name, so a hidden file is private unless it is in the media folder or
-// is an asset a page loads. A path leaving the project (a linked frame cache) is judged elsewhere.
+// A new tool keeps its token under a new hidden name, so a hidden file is private, and a file in a hidden folder is
+// private unless it is in the media folder or is an asset a page loads. A path leaving the project is judged elsewhere.
 const MEDIA_FOLDER = ".media";
 // Framework build output: its scripts can carry server environment values inlined at build time.
 const BUILD_OUTPUT_FOLDERS = new Set([

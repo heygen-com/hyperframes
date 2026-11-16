@@ -331,6 +331,10 @@ describe("isStudioPrivatePath", () => {
     ".vercel/output/static/logo.png",
     "credentials.json",
     "config/serviceAccountKey.json",
+    ".secrets.js",
+    ".eslintrc.cjs",
+    "sub/.tokens.css",
+    ".cache/.session.webp",
   ])("refuses %s", (path) => {
     expect(isStudioPrivatePath(path)).toBe(true);
   });
