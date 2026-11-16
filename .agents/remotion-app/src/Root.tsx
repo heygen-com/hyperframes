@@ -17,14 +17,20 @@ const FinanceFrame = ({ text, bgVideo }: VideoProps) => {
       style={{ backgroundColor: "#08131e", color: "#e8f4f2", fontFamily: "Arial, sans-serif" }}
     >
       {bgVideo ? (
-        <AbsoluteFill
-          style={{ inset: 64, border: "2px solid #32d6aa", borderRadius: 24, overflow: "hidden" }}
+        <div
+          style={{
+            position: "absolute",
+            inset: 64,
+            border: "2px solid #32d6aa",
+            borderRadius: 24,
+            overflow: "hidden",
+          }}
         >
           <OffthreadVideo
             src={staticFile(bgVideo)}
             style={{ width: "100%", height: "100%", objectFit: "contain" }}
           />
-        </AbsoluteFill>
+        </div>
       ) : null}
       <div
         style={{
