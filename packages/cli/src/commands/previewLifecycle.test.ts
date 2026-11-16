@@ -1401,7 +1401,13 @@ describe("background preview lifecycle", () => {
   it("stops only its own saved wrapper when the listener's PID is self-reported", async () => {
     const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
-      { pid: 4321, wrapperIdentity: "wrapper-birth", port: 3210, projectDir, logPath: "/tmp/p.log" },
+      {
+        pid: 4321,
+        wrapperIdentity: "wrapper-birth",
+        port: 3210,
+        projectDir,
+        logPath: "/tmp/p.log",
+      },
       stateHome,
     );
     let running = true;
@@ -1426,7 +1432,13 @@ describe("background preview lifecycle", () => {
   it("refuses a self-reported PID when the saved wrapper's birth identity has changed", async () => {
     const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
-      { pid: 4321, wrapperIdentity: "wrapper-birth", port: 3210, projectDir, logPath: "/tmp/p.log" },
+      {
+        pid: 4321,
+        wrapperIdentity: "wrapper-birth",
+        port: 3210,
+        projectDir,
+        logPath: "/tmp/p.log",
+      },
       stateHome,
     );
     const claimed = { ...server, pid: "999", pidSource: "self-reported" as const };
