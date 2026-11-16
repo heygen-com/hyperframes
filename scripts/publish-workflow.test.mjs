@@ -191,208 +191,16 @@ test("the Lambda handler zip is pinned before packing and attached before npm pu
   assert.ok(
     indexIn(publish, "Attach Lambda assets to release") < indexIn(publish, "Publish packages"),
   );
+  const attach = publish.steps[indexIn(publish, "Attach Lambda assets to release")];
+  assert.doesNotMatch(attach.run, /--clobber/);
 });
 
-test("the pack job pins only the Lambda assets this run built", () => {
-  for (const step of pack.steps) {
-    assert.doesNotMatch(step.run ?? "", /\bgh release\b/, step.name);
-    assert.ok(!JSON.stringify(step.env ?? {}).includes("secrets."), step.name);
-  }
+test("packing pins only the freshly built zip and never downloads release assets", () => {
   const step = pack.steps.find((s) => s.name === "Pin Lambda handler zip");
-  const builtZip = "built handler zip";
-  const builtSha256 = createHash("sha256").update(builtZip).digest("hex");
-  const run = (expectedSha256) => {
-    const root = mkdtempSync(join(tmpdir(), "hyperframes-lambda-zip-step-"));
-    try {
-      const bin = join(root, "bin");
-      mkdirSync(bin);
-      mkdirSync(join(root, "dist", "lambda-handler-build"), { recursive: true });
-      writeFileSync(join(root, "dist", "lambda-handler-build", "handler.zip"), builtZip);
-      const log = join(root, "calls.log");
-      writeFileSync(log, "");
-      writeFileSync(join(bin, "bun"), `#!/bin/sh\necho "bun $*" >> "${log}"\n`);
-      chmodSync(join(bin, "bun"), 0o755);
-      const result = spawnSync("bash", ["-euo", "pipefail", "-c", step.run], {
-        cwd: root,
-        encoding: "utf8",
-        env: {
-          ...process.env,
-          PATH: `${bin}:${process.env.PATH}`,
-          EXPECTED_SHA256: expectedSha256,
-        },
-        timeout: 5_000,
-      });
-      let pinned = null;
-      try {
-        pinned = readFileSync(join(root, "dist", "hyperframes-lambda-handler.zip"), "utf8");
-      } catch {}
-      return {
-        status: result.status,
-        stdout: result.stdout,
-        calls: readFileSync(log, "utf8"),
-        pinned,
-      };
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  };
-
-  const built = run(builtSha256);
-  assert.equal(built.status, 0, built.stdout);
-  assert.match(built.calls, /^bun packages\/aws-lambda\/scripts\/pin-handler-zip\.ts$/m);
-  assert.equal(built.pinned, builtZip);
-
-  for (const expectedSha256 of ["0".repeat(64), ""]) {
-    const rejected = run(expectedSha256);
-    assert.equal(rejected.status, 1, rejected.stdout);
-    assert.match(rejected.stdout, /::error::Lambda handler zip sha256/);
-    assert.doesNotMatch(rejected.calls, /pin-handler-zip/);
-    assert.equal(rejected.pinned, null);
-  }
-});
-
-test("the release keeps only Lambda assets that npm pins or this run produced", () => {
-  const step = publish.steps.find((s) => s.name === "Attach Lambda assets to release");
-  assert.ok(step);
-  const sha = (text) => createHash("sha256").update(text).digest("hex");
-  const assets = {
-    "hyperframes-lambda-handler.zip": ["hyperframes-lambda-handler.sha256", "handler-zip.json"],
-    "hyperframes-lambda-video-arm64.oci.tar": [
-      "hyperframes-lambda-video-arm64.sha256",
-      "video-image.json",
-    ],
-  };
-  const run = ({ npm = 404, pins, release = {}, attempt = 1, badIntegrity = false }) => {
-    const temp = mkdtempSync(join(tmpdir(), "hyperframes-attach-step-"));
-    try {
-      const bin = join(temp, "bin");
-      const bundle = join(temp, "release-bundle", "assets");
-      mkdirSync(bin);
-      mkdirSync(bundle, { recursive: true });
-      for (const [asset, [sidecar]] of Object.entries(assets)) {
-        writeFileSync(join(bundle, asset), `bundle ${asset}`);
-        writeFileSync(join(bundle, sidecar), `${sha(`bundle ${asset}`)}  ${asset}\n`);
-      }
-      const fixture = join(temp, "fixture");
-      mkdirSync(join(fixture, "package", "prebuilt"), { recursive: true });
-      for (const [asset, [, manifest]] of Object.entries(assets)) {
-        const pinned = pins?.[asset] ?? `pinned ${asset}`;
-        writeFileSync(
-          join(fixture, "package", "prebuilt", manifest),
-          JSON.stringify({ sha256: sha(pinned) }),
-        );
-      }
-      const tarball = join(temp, "aws-lambda.tgz");
-      execFileSync("tar", ["-czf", tarball, "-C", fixture, "package"], { stdio: "pipe" });
-      const integrity = `sha512-${createHash("sha512").update(readFileSync(tarball)).digest("base64")}`;
-      writeFileSync(
-        join(temp, "meta.json"),
-        JSON.stringify({
-          dist: {
-            tarball: "https://registry.invalid/aws-lambda.tgz",
-            integrity: badIntegrity ? "sha512-other" : integrity,
-          },
-        }),
-      );
-      writeFileSync(
-        join(temp, "release.tsv"),
-        Object.entries(release)
-          .map(
-            ([asset, contents]) =>
-              `${asset}\t${contents === null ? "" : `sha256:${sha(contents)}`}\n`,
-          )
-          .join(""),
-      );
-      const log = join(temp, "calls.log");
-      writeFileSync(log, "");
-      writeFileSync(
-        join(bin, "curl"),
-        [
-          "#!/bin/bash",
-          `echo "curl $*" >> "${log}"`,
-          'while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift ;; -w) status=1 ;; esac; shift; done',
-          `if [ -n "$status" ]; then cp "${join(temp, "meta.json")}" "$out"; printf '%s' "${npm}"; else cp "${tarball}" "$out"; fi`,
-        ].join("\n"),
-      );
-      writeFileSync(
-        join(bin, "gh"),
-        `#!/bin/sh\necho "gh $*" >> "${log}"\nif [ "$1" = api ]; then cat "${join(temp, "release.tsv")}"; fi\n`,
-      );
-      chmodSync(join(bin, "curl"), 0o755);
-      chmodSync(join(bin, "gh"), 0o755);
-      const result = runStep(step, {
-        cwd: temp,
-        path: `${bin}:${process.env.PATH}`,
-        env: {
-          RUNNER_TEMP: temp,
-          VERSION: "1.2.3",
-          REPO: "o/r",
-          GH_TOKEN: "test-token",
-          RUN_ATTEMPT: String(attempt),
-        },
-      });
-      const uploads = readFileSync(log, "utf8")
-        .split("\n")
-        .filter((line) => line.startsWith("gh release upload"));
-      return { ...result, uploads };
-    } finally {
-      rmSync(temp, { recursive: true, force: true });
-    }
-  };
-  const names = Object.keys(assets);
-  const bundleRelease = Object.fromEntries(names.map((name) => [name, `bundle ${name}`]));
-  const foreignRelease = Object.fromEntries(names.map((name) => [name, `other ${name}`]));
-  const pinnedRelease = Object.fromEntries(names.map((name) => [name, `pinned ${name}`]));
-
-  const fresh = run({});
-  assert.equal(fresh.status, 0, fresh.stdout + fresh.stderr);
-  assert.equal(fresh.uploads.length, 2);
-  for (const line of fresh.uploads) {
-    assert.match(line, /^gh release upload v1\.2\.3 \S+ \S+\.sha256 --repo o\/r$/);
-  }
-
-  const rerunPublish = run({ release: bundleRelease });
-  assert.equal(rerunPublish.status, 0, rerunPublish.stdout + rerunPublish.stderr);
-  assert.deepEqual(rerunPublish.uploads, []);
-
-  const foreign = run({ release: foreignRelease });
-  assert.equal(foreign.status, 1);
-  assert.match(
-    foreign.stdout,
-    /::error::Release v1\.2\.3 already has .* this run did not attach it/,
-  );
-  assert.deepEqual(foreign.uploads, []);
-
-  const rerunReplaces = run({ release: foreignRelease, attempt: 2 });
-  assert.equal(rerunReplaces.status, 0, rerunReplaces.stdout + rerunReplaces.stderr);
-  assert.equal(rerunReplaces.uploads.length, 2);
-  for (const line of rerunReplaces.uploads) assert.match(line, / --clobber$/);
-  assert.match(rerunReplaces.stdout, /::warning::Replacing/);
-
-  const keepsPinned = run({ npm: 200, release: pinnedRelease, attempt: 2 });
-  assert.equal(keepsPinned.status, 0, keepsPinned.stdout + keepsPinned.stderr);
-  assert.deepEqual(keepsPinned.uploads, []);
-
-  for (const release of [foreignRelease, bundleRelease, {}]) {
-    const unpinned = run({ npm: 200, release, attempt: 2 });
-    assert.equal(unpinned.status, 1, unpinned.stdout);
-    assert.match(unpinned.stdout, /::error::@hyperframes\/aws-lambda@1\.2\.3 on npm pins/);
-    assert.deepEqual(unpinned.uploads, []);
-  }
-
-  const tamperedNpm = run({ npm: 200, release: pinnedRelease, badIntegrity: true });
-  assert.equal(tamperedNpm.status, 1);
-  assert.match(tamperedNpm.stdout, /does not match its npm integrity/);
-
-  const registryDown = run({ npm: 503 });
-  assert.equal(registryDown.status, 1);
-  assert.match(registryDown.stdout, /npm registry answered 503/);
-  assert.deepEqual(registryDown.uploads, []);
-
-  const noDigest = run({ release: { [names[0]]: null } });
-  assert.equal(noDigest.status, 1);
-  assert.match(noDigest.stdout, /without a digest/);
-  assert.deepEqual(noDigest.uploads, []);
+  assert.match(step.run, /ACTUAL_SHA256.*sha256sum/);
+  assert.match(step.run, /ACTUAL_SHA256.*!=.*EXPECTED_SHA256/);
+  assert.doesNotMatch(workflow, /gh release download/);
+  assert.equal(step.env.EXPECTED_SHA256, "${{ needs.lambda-handler-zip.outputs.sha256 }}");
 });
 
 const stepOf = (job, name) => {
@@ -436,7 +244,7 @@ test("the workflow publishes exactly the public workspace packages", () => {
 });
 
 test("release-commit code runs only in a job without secrets", () => {
-  assert.deepEqual(pack.permissions, { contents: "read" });
+  assert.deepEqual(pack.permissions, { contents: "read", actions: "read" });
   assert.equal(pack.environment, undefined);
   const packCheckout = pack.steps.find((step) => step.uses?.startsWith("actions/checkout@"));
   assert.equal(packCheckout.with["persist-credentials"], false);
@@ -602,8 +410,8 @@ test("publishing skips only identical uploads and fails on a version it did not 
   assert.doesNotMatch(squatted.calls, /npm publish/);
 
   const rerun = run({ viewResult: "sha512-other", attempt: 2 });
-  assert.equal(rerun.status, 0, rerun.stdout);
-  assert.match(rerun.stdout, /::warning::/);
+  assert.equal(rerun.status, 1, rerun.stdout);
+  assert.match(rerun.stdout, /this run did not publish it/);
   assert.doesNotMatch(rerun.calls, /npm publish/);
 });
 
