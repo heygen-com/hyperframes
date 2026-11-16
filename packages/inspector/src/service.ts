@@ -22,14 +22,14 @@ import {
   realpathSync,
   readdirSync,
 } from "node:fs";
-import { resolve, join, extname, sep } from "node:path";
+import { join, extname } from "node:path";
 import { getHyperframeRuntimeScript } from "../../core/src/generated/runtime-inline";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import {
   bundleToSingleHtml,
   type BundleScriptProvenance,
 } from "../../core/src/compiler/htmlBundler";
-import { closeServer, isLoopbackHost } from "./pageServer";
+import { closeServer, isLoopbackHost, servableProjectFile } from "./pageServer";
 import { Sources, fingerprint } from "./sources";
 import type { InspectRequest, Snippet } from "./types";
 import { hyperframesCacheDir } from "../../core/src/cacheDir";
@@ -140,8 +140,8 @@ export class Inspector {
           res.end(getHyperframeRuntimeScript());
           return;
         }
-        const file = realpathSync(resolve(this.project, `.${path}`));
-        if (!file.startsWith(this.project + sep)) {
+        const file = servableProjectFile(this.project, path);
+        if (!file) {
           res.writeHead(404).end();
           return;
         }

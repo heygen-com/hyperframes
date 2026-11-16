@@ -12,8 +12,8 @@ import {
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { isCredentialOrToolStatePath } from "@hyperframes/core/safe-path";
 import {
-  isCredentialOrToolStatePath,
   isEnvOrGitPath,
   isPrivateCompositionFile,
   receivedFiles,

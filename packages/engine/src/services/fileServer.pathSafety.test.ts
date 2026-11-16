@@ -86,6 +86,33 @@ describe("fileServer private project files", () => {
   );
 });
 
+describe("fileServer credential files", () => {
+  const credentials = [
+    ".npmrc",
+    ".mcp.json",
+    ".claude/x.json",
+    ".aws/credentials",
+    "id_ed25519",
+    "cert.pem",
+  ];
+  it.each(credentials.map((file) => `/${file}`))("answers %s with 404", async (requestPath) => {
+    const projectDir = fs.mkdtempSync(path.join(tmpdir(), "hf-fileserver-credentials-"));
+    for (const folder of [".claude", ".aws"]) fs.mkdirSync(path.join(projectDir, folder));
+    for (const file of credentials) fs.writeFileSync(path.join(projectDir, file), "SECRET=1");
+    fs.writeFileSync(path.join(projectDir, "asset.txt"), "ok");
+    const server = await createFileServer({ headScripts: [], bodyScripts: [], projectDir });
+    try {
+      const response = await fetch(`${server.url}${requestPath}`);
+      expect(response.status).toBe(404);
+      expect(await response.text()).not.toContain("SECRET");
+      expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+    } finally {
+      server.close();
+      fs.rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("fileServer tool records", () => {
   it.each([
     ".hyperframes/app-history.jsonl",

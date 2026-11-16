@@ -1192,6 +1192,37 @@ describe("createFileServer private project files", () => {
   );
 });
 
+describe("createFileServer credential files", () => {
+  const credentials = [
+    ".npmrc",
+    ".mcp.json",
+    ".claude/x.json",
+    ".aws/credentials",
+    "id_ed25519",
+    "cert.pem",
+  ];
+  it.each(credentials.map((file) => `/${file}`))(
+    "answers %s with 404 and keeps ordinary assets",
+    async (requestPath) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-credentials-"));
+      try {
+        writeEmptyIndex(projectDir);
+        for (const folder of [".claude", ".aws"]) mkdirSync(join(projectDir, folder));
+        for (const file of credentials) writeFileSync(join(projectDir, file), "SECRET=1");
+        writeFileSync(join(projectDir, "asset.txt"), "ok");
+        await withFileServer(projectDir, async (server) => {
+          const response = await fetch(`${server.url}${requestPath}`);
+          expect(response.status).toBe(404);
+          expect(await response.text()).not.toContain("SECRET");
+          expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
 function getWithHost(url: string, host: string): Promise<{ status: number; body: string }> {
   return new Promise((resolveGet, rejectGet) => {
     httpGet(url, { headers: { host } }, (res) => {

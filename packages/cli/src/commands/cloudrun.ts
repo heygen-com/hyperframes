@@ -512,6 +512,7 @@ async function runSites(args: Record<string, unknown>): Promise<void> {
     projectDir: resolve(projectDir),
     bucketName: state.bucketName,
     siteId: args["site-id"] as string | undefined,
+    onNotice: (message) => console.error(message),
   });
   if (args.json) {
     console.log(JSON.stringify(handle, null, 2));
@@ -693,6 +694,7 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     projectDir: resolve(projectDir),
     bucketName: state.bucketName,
     siteId: args["site-id"] as string | undefined,
+    onNotice: (message) => console.error(message),
   });
 
   const results: Array<{ outputKey: string; executionName?: string; error?: string }> = [];
