@@ -78,10 +78,16 @@ export type DesktopOpenResult =
 const openWithBundle = (bundleId: string, dir: string): boolean =>
   spawnSync("open", ["-b", bundleId, dir], { stdio: "ignore" }).status === 0;
 
-/** Single-instance app: a running copy is forwarded the folder. Only a refused spawn counts as failed. */
+/** Single-instance app: a running copy is forwarded the folder. Only a refused spawn counts as failed. The app starts
+ * in home: it keeps the folder it starts in as its own, and must not take the project's. */
 function launchApp(executable: string, dir: string): boolean {
   try {
-    const child = spawn(executable, [dir], { detached: true, stdio: "ignore", windowsHide: false });
+    const child = spawn(executable, [dir], {
+      cwd: homedir(),
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false,
+    });
     child.on("error", () => {});
     child.unref();
     return true;

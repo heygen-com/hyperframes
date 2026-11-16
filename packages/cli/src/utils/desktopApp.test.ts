@@ -1,9 +1,11 @@
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -298,6 +300,31 @@ describe("openInDesktop on Linux", () => {
       app: "the HyperFrames desktop app",
     });
   });
+
+  it.skipIf(process.platform === "win32")(
+    "starts the app in the home folder, not the folder the command runs in",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "open-from-home-"));
+      const realHome = join(dir, "home");
+      mkdirSync(realHome);
+      const startedIn = join(dir, "started-in");
+      const app = join(dir, "HyperFrames.AppImage");
+      writeFileSync(app, `#!/bin/sh\npwd -P > ${JSON.stringify(startedIn)}\n`);
+      chmodSync(app, 0o755);
+      vi.stubEnv("HOME", realHome);
+      const files = { [launcher("HyperFrames")]: JSON.stringify({ appImage: app }) };
+      try {
+        expect(openInDesktop(FILM, { ...LINUX, read: (p) => files[p] ?? null })).toMatchObject({
+          opened: true,
+        });
+        await vi.waitFor(() =>
+          expect(readFileSync(startedIn, "utf8").trim()).toBe(realpathSync(realHome)),
+        );
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("ignores a relative, moved, or unreadable AppImage path", () => {
     const relativeFile = { [launcher("HyperFrames")]: JSON.stringify({ appImage: "HF.AppImage" }) };
