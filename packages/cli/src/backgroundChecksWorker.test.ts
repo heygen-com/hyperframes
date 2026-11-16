@@ -2,7 +2,7 @@ import { expect, it, vi } from "vitest";
 
 const checks = vi.hoisted(() => ({
   checkForUpdate: vi.fn(async () => ({})),
-  refreshSkillsCache: vi.fn(async () => {
+  refreshSkillsCache: vi.fn(async (_projectDir?: string) => {
     throw new Error("offline");
   }),
 }));
@@ -10,18 +10,19 @@ vi.mock("./utils/updateCheck.js", () => ({ checkForUpdate: checks.checkForUpdate
 vi.mock("./utils/skillsUpdateCheck.js", () => ({ refreshSkillsCache: checks.refreshSkillsCache }));
 
 it("runs each check it was handed, and one failing does not stop the other", async () => {
-  process.argv = [process.execPath, "backgroundChecksWorker.js", "skills", "update"];
+  process.argv = [process.execPath, "backgroundChecksWorker.js", "/work/film", "skills", "update"];
 
   await import("./backgroundChecksWorker.js");
 
   expect(checks.refreshSkillsCache).toHaveBeenCalledTimes(1);
+  expect(checks.refreshSkillsCache).toHaveBeenCalledWith("/work/film");
   expect(checks.checkForUpdate).toHaveBeenCalledTimes(1);
 });
 
 it("skips a check the parent did not find due", async () => {
   vi.resetModules();
   checks.checkForUpdate.mockClear();
-  process.argv = [process.execPath, "backgroundChecksWorker.js", "skills"];
+  process.argv = [process.execPath, "backgroundChecksWorker.js", "/work/film", "skills"];
 
   await import("./backgroundChecksWorker.js");
 
