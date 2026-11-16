@@ -91,6 +91,7 @@ describe("recovery drafts", () => {
       writeFileSync(record("huge.html"), "");
       truncateSync(record("huge.html"), 200 * 1024 * 1024);
 
+      // In a child: a read that blocks stalls only that process, which the deadline then kills.
       const fixture = join(dirname(fileURLToPath(import.meta.url)), "recoveryDrafts.fixture.ts");
       const child = spawnSync(
         process.execPath,
@@ -99,7 +100,10 @@ describe("recovery drafts", () => {
       );
 
       expect(child.signal, child.stderr).toBeNull();
-      const answers = child.stdout.trim().split("\n").map((line) => JSON.parse(line));
+      const answers = child.stdout
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
       expect(answers).toMatchObject([
         { file: "kept.html", status: 200, draft: { ...DRAFT, filePath: "kept.html" } },
         { file: "pipe.html", status: 200, draft: null },

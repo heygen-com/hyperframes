@@ -1,4 +1,3 @@
-// Run in a child by recoveryDrafts.test.ts: a read that blocks can only stall this process, never the suite.
 import { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
 import { registerRecoveryDraftRoutes } from "./recoveryDrafts.js";

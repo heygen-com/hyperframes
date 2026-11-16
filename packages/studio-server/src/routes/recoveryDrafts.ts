@@ -31,7 +31,10 @@ function readDraft(file: string): unknown {
   let fd: number;
   try {
     // Nonblocking: a FIFO in a received project would otherwise hold the open, and the server, for a writer.
-    fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    fd = openSync(
+      file,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+    );
   } catch {
     return null;
   }
