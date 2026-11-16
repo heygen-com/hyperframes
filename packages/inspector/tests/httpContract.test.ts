@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
 import { Agent, request as httpRequest } from "node:http";
+import type { AddressInfo } from "node:net";
 import { mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createInspectorServer } from "../src/server";
 
 const project = mkdtempSync(join(tmpdir(), "hf-inspector-"));
@@ -150,20 +151,26 @@ it("a project with no browser answers 503 browser_unavailable", async () => {
   const home = mkdtempSync(join(tmpdir(), "hf-home-"));
   writeFileSync(join(project, "index.html"), "<!doctype html><html><body></body></html>");
   for (const env of [
-    { ...process.env, HOME: home, HF_INSPECT_CHROME: "" },
-    { ...process.env, HF_INSPECT_CHROME: join(home, "missing-chrome") },
+    { HOME: home, HYPERFRAMES_CACHE_DIR: "", HF_INSPECT_CHROME: "" },
+    { HF_INSPECT_CHROME: join(home, "missing-chrome") },
   ]) {
-    const server = start(env);
+    for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+    const { server } = createInspectorServer(project);
     try {
-      const url = await server.url;
-      const map = await fetch(url + "/element-map", { method: "POST", body: "{}" });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      const { port } = server.address() as AddressInfo;
+      const map = await fetch(`http://127.0.0.1:${port}/element-map`, {
+        method: "POST",
+        body: "{}",
+      });
       expect(map.status).toBe(503);
       expect(await map.json()).toEqual({
         error: "browser_unavailable",
         code: "browser_unavailable",
       });
     } finally {
-      await server.stop();
+      server.close();
+      vi.unstubAllEnvs();
     }
   }
 });
