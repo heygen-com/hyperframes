@@ -6,7 +6,7 @@ description: How HyperFrames keeps alpha-only work out of stable releases.
 HyperFrames publishes two release channels:
 
 - Stable releases use versions like `0.4.24` and publish to the npm `latest` dist-tag.
-- Prereleases use versions like `0.4.24-alpha.1` and publish to the npm dist-tag named by the prerelease suffix, such as `alpha`.
+- Prereleases use versions like `0.4.24-alpha.1` and publish to the npm dist-tag named by the prerelease suffix, such as `alpha`. The suffix must be one of `alpha`, `beta`, `rc`, `next`, `canary`, `hdr`, `native` or `desktop`, in lower case. The publish workflow refuses any other suffix before it publishes.
 
 ## Branch policy
 

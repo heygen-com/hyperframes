@@ -428,6 +428,16 @@ jobs:
             echo "::error::v$VERSION is a prerelease and cannot publish to the latest dist-tag."
             exit 1
           fi
+          # An allow-list, matched exactly, so no letter case or new suffix of a pushed tag names another dist-tag.
+          if [ "$PRERELEASE" = "true" ]; then
+            case "$DIST_TAG" in
+              alpha | beta | rc | next | canary | hdr | native | desktop) ;;
+              *)
+                echo "::error::v$VERSION names the dist-tag \"$DIST_TAG\". Prereleases publish only to alpha, beta, rc, next, canary, hdr, native or desktop."
+                exit 1
+                ;;
+            esac
+          fi
 
       - name: Create release tag
         if: github.event_name == 'pull_request'
