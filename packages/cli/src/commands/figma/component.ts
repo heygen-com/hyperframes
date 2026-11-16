@@ -31,7 +31,7 @@ function escapeAttr(value: string): string {
 import { runAssetImport, type AssetImportResult } from "./asset.js";
 import { downloadRender } from "./download.js";
 import { withFigmaErrors } from "./cliError.js";
-import { terminalText } from "../../utils/terminalText.js";
+import { terminalText } from "@hyperframes/core";
 
 export interface ComponentImportDeps {
   projectDir: string;

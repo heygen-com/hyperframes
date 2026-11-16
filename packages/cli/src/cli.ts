@@ -95,7 +95,7 @@ import { closestMatch, closestNames, commandRedirect, fileHint } from "./utils/d
 import { errorBox } from "./ui/format.js";
 import { failureShown, jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
 import { isDevMode } from "./utils/env.js";
-import { terminalText } from "./utils/terminalText.js";
+import { terminalText } from "@hyperframes/core";
 import {
   CliResultSignal,
   CliRuntimeError,

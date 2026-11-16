@@ -9,7 +9,7 @@ import {
   type AppTurn,
 } from "../utils/appHistory.js";
 import { resolveProject } from "../utils/project.js";
-import { terminalText } from "../utils/terminalText.js";
+import { terminalText } from "@hyperframes/core";
 
 export const examples: Example[] = [
   ["See what was done in the desktop app since you last looked", "hyperframes catch-up"],

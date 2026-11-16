@@ -8,7 +8,7 @@ import { diag } from "../ui/diagnostics.js";
 import type { CapturePhaseProgress } from "../capture/types.js";
 import { parseCaptureDeadline } from "../capture/captureWatchdog.js";
 import { jsonFailure } from "../utils/jsonError.js";
-import { terminalText } from "../utils/terminalText.js";
+import { terminalText } from "@hyperframes/core";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 
 const CAPTURE_PHASE_PREFIX = "HYPERFRAMES_CAPTURE_PHASE ";

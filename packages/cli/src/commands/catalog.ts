@@ -11,9 +11,8 @@ export const examples: Example[] = [
 ];
 
 import * as clack from "../ui/prompts.js";
-import { realpath, type ItemType, type RegistryItem } from "@hyperframes/core";
+import { realpath, terminalText, type ItemType, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
-import { terminalText } from "../utils/terminalText.js";
 import { loadAllItems } from "../registry/resolver.js";
 import { readRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";

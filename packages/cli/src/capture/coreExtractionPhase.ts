@@ -28,7 +28,7 @@ import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
 import { waitForPageReady } from "./navigateForCapture.js";
 import { lazyScrollForCapture } from "./lazyScrollForCapture.js";
 import { filterExtractedScripts } from "./filterExtractedScripts.js";
-import { terminalText } from "../utils/terminalText.js";
+import { terminalText } from "@hyperframes/core";
 
 export interface CoreExtractionInput {
   page1: Page;

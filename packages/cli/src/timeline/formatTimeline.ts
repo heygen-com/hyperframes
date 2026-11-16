@@ -4,7 +4,7 @@ import {
   type TimelineRow,
   type TimelineTrack,
 } from "./describeProject.js";
-import { terminalText } from "../utils/terminalText.js";
+import { terminalText } from "@hyperframes/core";
 
 const BAR_WIDTH = 40;
 const n = (v: number) => String(Math.round(v * 1000) / 1000);

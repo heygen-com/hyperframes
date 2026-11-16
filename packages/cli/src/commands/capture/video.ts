@@ -5,7 +5,7 @@ import { c } from "../../ui/colors.js";
 import { safeFetch } from "../../capture/assetDownloader.js";
 import { ensureCaptureDirSync } from "../../capture/captureFile.js";
 import { CAPTURE_USER_AGENT } from "../../capture/userAgent.js";
-import { terminalText } from "../../utils/terminalText.js";
+import { terminalText } from "@hyperframes/core";
 
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_CONTENT_TYPE_RE = /^(video\/|application\/(mp4|octet-stream|x-mpegurl))/i;

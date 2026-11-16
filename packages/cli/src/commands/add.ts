@@ -19,6 +19,7 @@ import {
   isProjectRootMissing,
   ITEM_TYPE_DIRS,
   realpath,
+  terminalText,
   type RegistryItem,
 } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
@@ -54,7 +55,6 @@ import {
 } from "../utils/privateProjectFile.js";
 import { readJsonFlag } from "../utils/jsonFlag.js";
 import { trackRegistryItemAdded } from "../telemetry/events.js";
-import { terminalText } from "../utils/terminalText.js";
 
 // ── Target-path resolution ──────────────────────────────────────────────────
 // `registry-item.json` files specify `target` paths relative to the project
