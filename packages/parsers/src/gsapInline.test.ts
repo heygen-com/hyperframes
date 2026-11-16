@@ -293,6 +293,13 @@ describe("inlineComputedTimelines — expansion budget", () => {
       "nested forEach over literal arrays",
       `${nestedForEach.join("")} tl.to("#x", { x: e0 }, 0); ${"});".repeat(4)}`,
     ],
+    // Empty bodies still allocate a block per iteration: 512 x 512 of them.
+    ["empty loop bodies", "for (let i = 0; i < 512; i++) { for (let j = 0; j < 512; j++) {} }"],
+    // A default is cloned on every call that omits its argument, so it is charged like a body.
+    [
+      "a helper whose large default is cloned on every call",
+      `function f(p = [${"{ x: 1 },".repeat(300)}]) { tl.to("#x", {}, 0); }\n${"f();".repeat(300)}`,
+    ],
     // 10 self-calls: 10^8 copies at MAX_DEPTH. A handful of calls stays small enough to finish unbudgeted.
     [
       "a helper that calls itself",
