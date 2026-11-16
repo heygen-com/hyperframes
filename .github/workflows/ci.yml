@@ -611,6 +611,7 @@ jobs:
         with:
           lfs: true
       - uses: ./.github/actions/setup-test-workspace
+      - uses: ./.github/actions/opencv-test-cache
       - run: bun run --filter '@hyperframes/cli' test --shard=${{ matrix.shard }}/2
 
   test-support:

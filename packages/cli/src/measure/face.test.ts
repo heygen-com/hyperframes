@@ -1,19 +1,16 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir, userInfo } from "node:os";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
 import { againstStart, faceBoxes, faceFit, minWindow, readSamples, sampleFrames } from "./face.js";
 import { probeVideo, runFfmpeg } from "./media.js";
-import { OPENCV_DIR } from "./opencv.js";
+import { seedOpenCvFromCache } from "./diff.test-helpers.js";
 
-// As in opencv.test.ts: borrow this machine's verified opencv.js cache, skip without one.
-const cached = join(userInfo().homedir, ".cache", "hyperframes", "opencv", "4.10.0");
-if (existsSync(join(cached, "opencv.js")) && !existsSync(join(OPENCV_DIR, "opencv.js")))
-  cpSync(cached, OPENCV_DIR, { recursive: true });
 const media = !!findFFmpeg() && !!findFFprobe();
-const opencv = media && existsSync(join(OPENCV_DIR, "opencv.js"));
+// Borrows a cached opencv.js and skips without one.
+const opencv = media && seedOpenCvFromCache();
 const dir = mkdtempSync(join(tmpdir(), "hf-face-test-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
