@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { hashProjectDir, listSiteFiles } from "./projectHash.js";
+import { hashProjectDir, listSiteFiles, listSiteFilesForUpload } from "./projectHash.js";
 
 const dirs: string[] = [];
 function tempDir(): string {
@@ -86,6 +86,21 @@ describe("listSiteFiles / hashProjectDir", () => {
       "sub/cert.PEM",
       "sub/id_ed25519",
     ]);
+  });
+
+  it("names the private files an upload left out in one line, and says nothing when none was", () => {
+    const notices: string[] = [];
+    const clean = project();
+    expect(listSiteFilesForUpload(clean, (line) => notices.push(line))).toEqual(["index.html"]);
+    expect(notices).toEqual([]);
+    const dir = project();
+    mkdirSync(join(dir, ".ssh"));
+    for (const name of [".npmrc", ".mcp.json", "a.pem", "b.pem", "c.pem", "d.pem"]) {
+      writeFileSync(join(dir, name), "secret");
+    }
+    expect(listSiteFilesForUpload(dir, (line) => notices.push(line))).toEqual(["index.html"]);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain(".mcp.json, .npmrc, .ssh, a.pem, b.pem and 2 more");
   });
 
   it("leaves out a file whose link points at a credential", () => {

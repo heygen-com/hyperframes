@@ -87,7 +87,14 @@ describe("fileServer private project files", () => {
 });
 
 describe("fileServer credential files", () => {
-  const credentials = [".npmrc", ".mcp.json", ".claude/x.json", ".aws/credentials", "id_ed25519", "cert.pem"];
+  const credentials = [
+    ".npmrc",
+    ".mcp.json",
+    ".claude/x.json",
+    ".aws/credentials",
+    "id_ed25519",
+    "cert.pem",
+  ];
   it.each(credentials.map((file) => `/${file}`))("answers %s with 404", async (requestPath) => {
     const projectDir = fs.mkdtempSync(path.join(tmpdir(), "hf-fileserver-credentials-"));
     for (const folder of [".claude", ".aws"]) fs.mkdirSync(path.join(projectDir, folder));

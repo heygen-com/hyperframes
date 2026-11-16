@@ -1193,7 +1193,14 @@ describe("createFileServer private project files", () => {
 });
 
 describe("createFileServer credential files", () => {
-  const credentials = [".npmrc", ".mcp.json", ".claude/x.json", ".aws/credentials", "id_ed25519", "cert.pem"];
+  const credentials = [
+    ".npmrc",
+    ".mcp.json",
+    ".claude/x.json",
+    ".aws/credentials",
+    "id_ed25519",
+    "cert.pem",
+  ];
   it.each(credentials.map((file) => `/${file}`))(
     "answers %s with 404 and keeps ordinary assets",
     async (requestPath) => {

@@ -24,7 +24,8 @@ it("closes while a client holds a connection it never sent a request on, as Chro
 
 describe("projectFileFor", () => {
   const project = realpathSync(mkdtempSync(join(tmpdir(), "hf-inspector-files-")));
-  for (const folder of [".git", ".hyperframes", ".claude", "assets"]) mkdirSync(join(project, folder));
+  for (const folder of [".git", ".hyperframes", ".claude", "assets"])
+    mkdirSync(join(project, folder));
   for (const file of [
     ".env",
     ".env.local",
@@ -39,7 +40,8 @@ describe("projectFileFor", () => {
   }
   writeFileSync(join(project, "assets", "logo.png"), "png");
   writeFileSync(join(project, ".hyperframes", "studio-motion.json"), "{}");
-  if (process.platform !== "win32") symlinkSync(join(project, ".env"), join(project, "assets", "env.txt"));
+  if (process.platform !== "win32")
+    symlinkSync(join(project, ".env"), join(project, "assets", "env.txt"));
   afterAll(() => rmSync(project, { recursive: true, force: true }));
 
   it.each([

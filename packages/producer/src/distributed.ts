@@ -136,8 +136,8 @@ export {
 } from "./services/distributed/renderConfigValidation.js";
 export {
   hashProjectDir,
-  leftOutPrivateFilesNotice,
   listSiteFiles,
+  listSiteFilesForUpload,
 } from "./services/distributed/projectHash.js";
 export {
   AUDIO_SIDECAR_MIN_BYTES,
