@@ -468,3 +468,49 @@ test("the release installs no tool restored from the shared cache", () => {
     0,
   );
 });
+
+/** Runs a "Find previous ..." step against a stand-in gh that lists `artifacts`; returns its exit and GITHUB_OUTPUT. */
+function runFindPrevious(step, artifacts) {
+  const dir = mkdtempSync(join(tmpdir(), "previous-artifact-"));
+  const bin = join(dir, "bin");
+  mkdirSync(bin);
+  writeFileSync(
+    join(dir, "pages.json"),
+    JSON.stringify({ total_count: artifacts.length, artifacts }),
+  );
+  writeFileSync(join(bin, "gh"), `#!/bin/sh\ncat "${join(dir, "pages.json")}"\n`);
+  chmodSync(join(bin, "gh"), 0o755);
+  const output = join(dir, "output");
+  writeFileSync(output, "");
+  const result = spawnSync("bash", ["-euo", "pipefail", "-c", step.run], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      RUNNER_TEMP: dir,
+      GITHUB_OUTPUT: output,
+      REPO: "o/r",
+      RUN_ID: "1",
+    },
+    timeout: 5_000,
+  });
+  const text = readFileSync(output, "utf8");
+  rmSync(dir, { recursive: true, force: true });
+  return { status: result.status, text };
+}
+
+for (const [job, name, artifact] of [
+  ["pack", "Find previous release bundle", "release-bundle"],
+  ["publish", "Find previous release receipt", "lambda-release-receipt"],
+]) {
+  test(`"${name}" hands the download step a bare artifact id, or nothing on a first attempt`, () => {
+    const step = config.jobs[job].steps.find((one) => one.name === name);
+    assert.deepEqual(runFindPrevious(step, []), { status: 0, text: "artifact=\n" });
+    const found = [
+      { id: 123, name: artifact, expired: false },
+      { id: 9, name: "lambda-handler", expired: false },
+    ];
+    assert.deepEqual(runFindPrevious(step, found), { status: 0, text: "artifact=123\n" });
+    assert.notEqual(runFindPrevious(step, [{ id: 1, name: artifact, expired: true }]).status, 0);
+  });
+}
