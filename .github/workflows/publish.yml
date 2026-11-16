@@ -172,7 +172,7 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100" > "$RUNNER_TEMP/previous_bundle-pages.json"
-          FOUND="$(jq -sce '[.[].artifacts[] | select(.name == "release-bundle")] | if length == 0 then "" elif length == 1 and .[0].expired == false then .[0].id | tostring else error("Missing valid unique release-bundle") end' "$RUNNER_TEMP/previous_bundle-pages.json")"
+          FOUND="$(jq -sre '[.[].artifacts[] | select(.name == "release-bundle")] | if length == 0 then "" elif length == 1 and .[0].expired == false then .[0].id | tostring else error("Missing valid unique release-bundle") end' "$RUNNER_TEMP/previous_bundle-pages.json")"
           echo "artifact=${FOUND}" >> "$GITHUB_OUTPUT"
 
       - name: Restore previous release bundle
@@ -584,7 +584,7 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           gh api --paginate "repos/$REPO/actions/runs/$RUN_ID/artifacts?per_page=100" > "$RUNNER_TEMP/previous_receipt-pages.json"
-          FOUND="$(jq -sce '[.[].artifacts[] | select(.name == "lambda-release-receipt")] | if length == 0 then "" elif length == 1 and .[0].expired == false then .[0].id | tostring else error("Missing valid unique lambda-release-receipt") end' "$RUNNER_TEMP/previous_receipt-pages.json")"
+          FOUND="$(jq -sre '[.[].artifacts[] | select(.name == "lambda-release-receipt")] | if length == 0 then "" elif length == 1 and .[0].expired == false then .[0].id | tostring else error("Missing valid unique lambda-release-receipt") end' "$RUNNER_TEMP/previous_receipt-pages.json")"
           echo "artifact=${FOUND}" >> "$GITHUB_OUTPUT"
 
       - name: Restore previous release receipt
