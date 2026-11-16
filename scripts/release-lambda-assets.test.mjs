@@ -80,25 +80,34 @@ process.exit(status);
   const run = (name, env = {}, job = "publish") => {
     const command = step(name, job);
     assert.ok(command, `Missing workflow step: ${name}`);
-    return spawnSync("bash", ["-euo", "pipefail", "-c", command.run], {
-      cwd: root,
-      encoding: "utf8",
-      timeout: 5000,
-      env: {
-        PATH: `${join(root, "bin")}:${process.env.PATH}`,
-        STATE_FILE: statePath,
-        RUNNER_TEMP: root,
-        GITHUB_OUTPUT: join(root, "outputs"),
-        REPO: "test/repo",
-        VERSION: "9.8.7",
-        RUN_ID: "55",
-        RUN_NUMBER: "55",
-        EXPECTED_RELEASE_SHA: "a".repeat(40),
-        PRERELEASE: "false",
-        RELEASE_ID: "123",
-        ...env,
+    return spawnSync(
+      "bash",
+      [
+        "-e",
+        ...(workflow.defaults?.run?.shell === "bash" ? ["-o", "pipefail"] : []),
+        "-c",
+        command.run,
+      ],
+      {
+        cwd: root,
+        encoding: "utf8",
+        timeout: 5000,
+        env: {
+          PATH: `${join(root, "bin")}:${process.env.PATH}`,
+          STATE_FILE: statePath,
+          RUNNER_TEMP: root,
+          GITHUB_OUTPUT: join(root, "outputs"),
+          REPO: "test/repo",
+          VERSION: "9.8.7",
+          RUN_ID: "55",
+          RUN_NUMBER: "55",
+          EXPECTED_RELEASE_SHA: "a".repeat(40),
+          PRERELEASE: "false",
+          RELEASE_ID: "123",
+          ...env,
+        },
       },
-    });
+    );
   };
   return { root, run, state, update, receipt, receiptPath };
 }
@@ -254,4 +263,12 @@ test("receipt and bundle persistence precede side effects and do not overwrite p
   );
   assert.equal(download.with["artifact-ids"], "${{ needs.pack.outputs.bundle_id }}");
   assert.equal(workflow.concurrency["cancel-in-progress"], false);
+});
+
+// GitHub's implicit bash shell does not enable pipefail; explicit shell: bash does.
+test("an incomplete bundle fails before creating a release or receipt", (t) => {
+  const f = fixture(t);
+  rmSync(join(f.root, "release-bundle/assets", names[0]));
+  fails(f.run("Create GitHub Release"));
+  assert.equal(f.state().release, null);
 });

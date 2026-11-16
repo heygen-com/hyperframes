@@ -2,6 +2,11 @@ name: Publish to npm
 
 permissions: {}
 
+# Explicit bash enables pipefail, including digest-generation pipelines.
+defaults:
+  run:
+    shell: bash
+
 on:
   push:
     tags:
