@@ -15,7 +15,11 @@ import { resolveProject, type ProjectDir } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import type { ProjectLintResult } from "../utils/lintProject.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
-import { resolveNaturalMediaTimelineDuration } from "@hyperframes/core";
+import {
+  resolveNaturalMediaTimelineDuration,
+  terminalText,
+  terminalTextDeep,
+} from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { decodeWellFormedEscapes } from "@hyperframes/studio-server";
 import { printDeprecationNotice, withMeta } from "../utils/updateCheck.js";
@@ -639,7 +643,7 @@ function emitTextReport(
   console.log(`${c.accent("◇")}  ${formatTotals(errors, warnings, contrastFailures)}`);
 }
 
-function emitFailureReport(message: string, asJson: boolean): void {
+export function emitFailureReport(message: string, asJson: boolean): void {
   if (asJson) {
     console.log(
       JSON.stringify(
@@ -653,7 +657,7 @@ function emitFailureReport(message: string, asJson: boolean): void {
     );
     return;
   }
-  console.error(`${c.error("✗")} ${message}`);
+  console.error(`${c.error("✗")} ${terminalText(message)}`);
 }
 
 export default defineCommand({
@@ -691,7 +695,9 @@ Examples:
     const asJson = Boolean(args.json);
 
     if (!asJson) {
-      console.log(`${c.accent("◆")}  Validating ${c.accent(project.name)} in headless Chrome`);
+      console.log(
+        `${c.accent("◆")}  Validating ${c.accent(terminalText(project.name))} in headless Chrome`,
+      );
     }
 
     try {
@@ -707,7 +713,7 @@ Examples:
   },
 });
 
-function printValidationResult(
+export function printValidationResult(
   result: { errors: ConsoleEntry[]; warnings: ConsoleEntry[]; contrast?: ContrastEntry[] },
   asJson: boolean,
 ): number {
@@ -718,7 +724,8 @@ function printValidationResult(
   if (asJson) {
     emitJsonReport(errors, warnings, contrast, contrastFailures);
   } else {
-    emitTextReport(errors, warnings, contrastFailures, contrastPassed);
+    const shown = terminalTextDeep({ errors, warnings, contrastFailures, contrastPassed });
+    emitTextReport(shown.errors, shown.warnings, shown.contrastFailures, shown.contrastPassed);
   }
   return errors.length > 0 ? 1 : 0;
 }
