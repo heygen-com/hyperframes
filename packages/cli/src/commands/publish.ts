@@ -152,45 +152,6 @@ export default defineCommand({
         : undefined;
     const committedTeam = readTeamProject(dir);
     const priorLink = readProjectLink(dir);
-    const existingTarget = (
-      updateTarget ??
-      committedTeam?.projectId ??
-      (priorLink?.url ? priorLink.projectId : undefined)
-    )?.replace(/[^!-~]/g, "?");
-
-    if (args.yes !== true) {
-      console.log();
-      if (args.public === true) {
-        console.log(
-          `  ${c.bold("hyperframes publish uploads this project and requests public visibility at a stable URL.")}`,
-        );
-        console.log(`  ${c.dim("Anyone with the URL can open a claimed public project.")}`);
-      } else if (!existingTarget) {
-        console.log(
-          `  ${c.bold("hyperframes publish uploads this project privately to a stable URL.")}`,
-        );
-        console.log(
-          `  ${c.dim("Viewing requires authentication and access. Pass --public to allow anyone with the URL.")}`,
-        );
-      }
-      if (existingTarget) {
-        const keeps =
-          args.public === true ? "" : " and keeps its current visibility, which may be public";
-        const created = args.public === true ? "public" : "private";
-        console.log(
-          `  ${c.bold(`If you are signed in and can access project ${existingTarget}, this updates it in place${keeps}. Otherwise it creates a new ${created} project.`)}`,
-        );
-      }
-      console.log();
-      const approved = await clack.confirm({ message: "Publish this project?" });
-      if (clack.isCancel(approved) || approved !== true) {
-        console.log();
-        console.log(`  ${c.dim("Aborted.")}`);
-        console.log();
-        return;
-      }
-    }
-
     const spaceOverride =
       typeof args.space === "string" && args.space.trim() ? args.space.trim() : undefined;
 
@@ -227,6 +188,48 @@ export default defineCommand({
         );
         console.log();
         setCommandExitCode(1);
+        return;
+      }
+    }
+
+    const existingTarget =
+      credential?.type === "oauth"
+        ? (
+            updateTarget ??
+            committedTeam?.projectId ??
+            (priorLink?.url ? priorLink.projectId : undefined)
+          )?.replace(/[^!-~]/g, "?")
+        : undefined;
+
+    if (args.yes !== true) {
+      console.log();
+      if (args.public === true) {
+        console.log(
+          `  ${c.bold("hyperframes publish uploads this project and requests public visibility at a stable URL.")}`,
+        );
+        console.log(`  ${c.dim("Anyone with the URL can open a claimed public project.")}`);
+      } else if (!existingTarget) {
+        console.log(
+          `  ${c.bold("hyperframes publish uploads this project privately to a stable URL.")}`,
+        );
+        console.log(
+          `  ${c.dim("Viewing requires authentication and access. Pass --public to allow anyone with the URL.")}`,
+        );
+      }
+      if (existingTarget) {
+        const keeps =
+          args.public === true ? "" : " and keeps its current visibility, which may be public";
+        const created = args.public === true ? "public" : "private";
+        console.log(
+          `  ${c.bold(`If you can access project ${existingTarget}, this updates it in place${keeps}. Otherwise it creates a new ${created} project.`)}`,
+        );
+      }
+      console.log();
+      const approved = await clack.confirm({ message: "Publish this project?" });
+      if (clack.isCancel(approved) || approved !== true) {
+        console.log();
+        console.log(`  ${c.dim("Aborted.")}`);
+        console.log();
         return;
       }
     }

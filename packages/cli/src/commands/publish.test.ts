@@ -206,30 +206,66 @@ describe("publish visibility messaging", () => {
 
   it("asks before updating an existing project named by the folder, without promising a private upload", async () => {
     const project = mkdtempSync(join(tmpdir(), "hf-publish-existing-"));
+    const config = mkdtempSync(join(tmpdir(), "hf-publish-existing-config-"));
     writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
     writeTeamProject(project, { projectId: "existing-\u001b[2Kproject" });
+    vi.stubEnv("HYPERFRAMES_CONFIG_DIR", config);
+    vi.stubEnv("HEYGEN_API_KEY", "");
+    vi.stubEnv("HYPERFRAMES_API_KEY", "");
     publishState.publish.mockReset();
     publishState.confirm.mockReset();
     publishState.confirm.mockResolvedValue(false);
-    try {
-      const output = await captureLog(() =>
-        publishCommand.run?.({ args: { dir: project, public: false, proxy: false } } as never),
+    const prompt = (isPublic: boolean) =>
+      captureLog(() =>
+        publishCommand.run?.({ args: { dir: project, public: isPublic, proxy: false } } as never),
       );
+    try {
+      await writeStore({ oauth: { access_token: "token" } }, join(config, "credentials"));
+      const output = await prompt(false);
       expect(output).toContain(
-        "If you are signed in and can access project existing-?[2Kproject, this updates it in place and keeps its current visibility, which may be public. Otherwise it creates a new private project.",
+        "If you can access project existing-?[2Kproject, this updates it in place and keeps its current visibility, which may be public. Otherwise it creates a new private project.",
       );
       expect(output).not.toContain("privately");
-      const publicOutput = await captureLog(() =>
-        publishCommand.run?.({ args: { dir: project, public: true, proxy: false } } as never),
-      );
+      expect(output).toContain("Aborted.");
+      const publicOutput = await prompt(true);
       expect(publicOutput).toContain("requests public visibility");
       expect(publicOutput).toContain(
-        "If you are signed in and can access project existing-?[2Kproject, this updates it in place. Otherwise it creates a new public project.",
+        "If you can access project existing-?[2Kproject, this updates it in place. Otherwise it creates a new public project.",
       );
-      expect(output).toContain("Aborted.");
+      await writeStore({ api_key: "valid-key" }, join(config, "credentials"));
+      const signedOut = await prompt(false);
+      expect(signedOut).toContain("uploads this project privately");
+      expect(signedOut).not.toContain("existing-");
       expect(publishState.publish).not.toHaveBeenCalled();
     } finally {
+      vi.unstubAllEnvs();
       rmSync(project, { recursive: true, force: true });
+      rmSync(config, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses --update without a login before asking", async () => {
+    const project = mkdtempSync(join(tmpdir(), "hf-publish-update-signed-out-"));
+    const config = mkdtempSync(join(tmpdir(), "hf-publish-update-signed-out-config-"));
+    writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
+    vi.stubEnv("HYPERFRAMES_CONFIG_DIR", config);
+    vi.stubEnv("HEYGEN_API_KEY", "");
+    vi.stubEnv("HYPERFRAMES_API_KEY", "");
+    publishState.confirm.mockReset();
+    try {
+      consumeCommandResult();
+      const output = await captureLog(() =>
+        publishCommand.run?.({
+          args: { dir: project, public: false, proxy: false, update: "target" },
+        } as never),
+      );
+      expect(output).toContain("--update requires authentication");
+      expect(publishState.confirm).not.toHaveBeenCalled();
+      expect(consumeCommandResult().exitCode).toBe(1);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(project, { recursive: true, force: true });
+      rmSync(config, { recursive: true, force: true });
     }
   });
 
