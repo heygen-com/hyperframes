@@ -510,6 +510,7 @@ export const NLEPreview = memo(function NLEPreview({
                   onReadyToShowChange={poster.onLiveReadyToShowChange}
                   onPreviewError={poster.onPreviewError}
                   onPainted={(details) => reportPreviewFirstFrame(slot, details)}
+                  onCompositionSize={updateCompositionSizeFromPreview}
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
                   loadingUi={loadingUi}

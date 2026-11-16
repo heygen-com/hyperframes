@@ -39,6 +39,9 @@ interface PlayerProps {
   onPreviewError?: (message: string) => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
   onPainted?: (details: { iframe: HTMLIFrameElement; startedAt: number; loadId: number }) => void;
+  /** Fires when the player learns the composition's size or it changes (its ready and resize events): a sealed
+   * frame's size is known only to its player. */
+  onCompositionSize?: () => void;
   portrait?: boolean;
   style?: React.CSSProperties;
   suppressLoadingOverlay?: boolean;
@@ -169,6 +172,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       onPreviewError,
       onCompositionLoadingChange,
       onPainted,
+      onCompositionSize,
       portrait,
       style,
       suppressLoadingOverlay,
@@ -193,6 +197,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     onReadyToShowChangeRef.current = onReadyToShowChange;
     const onPreviewErrorRef = useRef(onPreviewError);
     onPreviewErrorRef.current = onPreviewError;
+    const onCompositionSizeRef = useRef(onCompositionSize);
+    onCompositionSizeRef.current = onCompositionSize;
     const [loaded, setLoaded] = useState(false);
     const [assetsLoading, setAssetsLoading] = useState(false);
     const [assetOverlayVisible, setAssetOverlayVisible] = useState(false);
@@ -254,10 +260,12 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           if (loading !== null) setShaderTransitionLoading(loading);
         };
         let loadedDocument: Document | null = null;
+        const handleSize = () => onCompositionSizeRef.current?.();
         const handleReady = () => {
           setPreviewError(null);
           setCompositionLoading(false);
           if (iframe.contentDocument && runtimeBootedIn(iframe)) handleLoad();
+          handleSize();
         };
         const handlePainted = () => {
           setPainted(true);
@@ -338,6 +346,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.addEventListener("click", preventToggle, { capture: true });
         player.addEventListener("shadertransitionstate", handleShaderTransitionState);
         player.addEventListener("ready", handleReady);
+        player.addEventListener("resize", handleSize);
         player.addEventListener("painted", handlePainted);
         player.addEventListener("error", handleError);
 
@@ -372,6 +381,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           player.removeEventListener("click", preventToggle, { capture: true });
           player.removeEventListener("shadertransitionstate", handleShaderTransitionState);
           player.removeEventListener("ready", handleReady);
+          player.removeEventListener("resize", handleSize);
           player.removeEventListener("painted", handlePainted);
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
