@@ -347,6 +347,18 @@ describe("toolTrustedFileKind", () => {
     ["assets/app.exe", "program"],
     ["PACKAG~1.JSO", "short-name"],
     ["CLAUDE~1/notes.md", "short-name"],
+    ["COPILO~1.MD", "short-name"],
+    ["AGENT\u017f.md", "agent-instructions"],
+    ["package.j\u017fon", "project-config"],
+    ["Make\ufb01le", "tool-config"],
+    ["run.\u017fh", "program"],
+    ["\uff50ackage.json", "project-config"],
+    ["pack\u200bage.json", "project-config"],
+    ["jest.config.json", "tool-config"],
+    ["docker-compose.yml", "tool-config"],
+    ["gulpfile.mjs", "tool-config"],
+    ["turbo.json", "tool-config"],
+    ["pyproject.toml", "tool-config"],
   ] as const)("names %s %s", (path, kind) => {
     expect(toolTrustedFileKind(path)).toBe(kind);
   });
@@ -368,6 +380,9 @@ describe("toolTrustedFileKind", () => {
     "compositions/lockup.html",
     "assets/package-art.png",
     ".hyperframes/studio-motion.json",
+    "media/take~2.mp4",
+    "assets/scene~10.png",
+    "assets/config.json",
   ])("leaves %s to the other rules", (path) => {
     expect(toolTrustedFileKind(path)).toBeNull();
   });

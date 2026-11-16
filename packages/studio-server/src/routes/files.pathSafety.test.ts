@@ -274,6 +274,11 @@ describe("files other programs run or trust", () => {
     "tools/run.py",
     "PACKAG~1.JSO",
     "package.json.",
+    "AGENT\u017f.md",
+    "package.j\u017fon",
+    "run.\u017fh",
+    "Make\ufb01le",
+    "jest.config.json",
   ];
   const put = (app: Hono, path: string, headers: Record<string, string> = {}) =>
     app.request(fileUrl(path), { method: "PUT", headers, body: "planted" });
@@ -292,8 +297,12 @@ describe("files other programs run or trust", () => {
     expect(rename.status).toBe(403);
     expect(existsSync(join(project, path))).toBe(false);
     expect(readFileSync(join(project, "inside.txt"), "utf8")).toBe("inside");
-    expect((await upload(app, "", path.split("/").at(-1))).status).toBe(201);
-    expect(existsSync(join(project, path.split("/").at(-1)!))).toBe(false);
+    const name = path.split("/").at(-1)!;
+    const uploaded = await upload(app, "", name);
+    expect(uploaded.status).toBe(201);
+    // The route reads a multipart file name as Latin-1, so only an ASCII name arrives as written.
+    if (/^[\x20-\x7e]+$/.test(name)) expect((await uploaded.json()).skipped).toContain(name);
+    expect(existsSync(join(project, name))).toBe(false);
   });
 
   it("never overwrites, deletes or renames the project's own package.json or AGENTS.md", async () => {
@@ -332,6 +341,12 @@ describe("files other programs run or trust", () => {
     expect(move.status).toBe(403);
     expect(readFileSync(join(project, "tools", "bin", "setup.sh"), "utf8")).toBe("echo mine");
 
+    for (const kept of ["vendor/lib/node_modules", "vendor/.git"]) {
+      mkdirSync(join(project, kept), { recursive: true });
+      expect((await app.request(fileUrl("vendor"), { method: "DELETE" })).status).toBe(403);
+      rmSync(join(project, kept), { recursive: true });
+    }
+
     mkdirSync(join(project, "scenes"));
     writeFileSync(join(project, "scenes", "a.html"), "<div></div>");
     const moved = await app.request(fileUrl("scenes"), {
@@ -360,6 +375,8 @@ describe("files other programs run or trust", () => {
     }
     expect((await upload(app, "assets")).status).toBe(201);
     expect(readFileSync(join(project, "assets", "upload.txt"), "utf8")).toBe("upload bytes");
+    expect((await upload(app, "assets", "take~2.txt")).status).toBe(201);
+    expect(readFileSync(join(project, "assets", "take~2.txt"), "utf8")).toBe("upload bytes");
   });
 });
 

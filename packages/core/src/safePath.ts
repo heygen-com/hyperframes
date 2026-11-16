@@ -105,10 +105,17 @@ export function resolveWithinProject(base: string, relativePath: string): string
   return isSafePath(base, resolved) ? resolved : null;
 }
 
-/** Segments as Windows opens them: any case, no trailing dots or spaces, no `:stream` suffix. */
+/**
+ * Segments as a case-insensitive file system or Windows opens them: any case or Unicode form (a long s, a ligature or a
+ * full-width letter reads as its plain letters, an invisible character is dropped), no trailing dots or spaces, no
+ * `:stream` suffix.
+ */
 export function projectPathSegments(relPath: string): string[] {
   return relPath
+    .normalize("NFKC")
+    .toUpperCase()
     .toLowerCase()
+    .replace(/\p{Default_Ignorable_Code_Point}/gu, "")
     .split(/[\\/]/)
     .map((segment) => withoutTrailingDotsOrSpaces(segment.split(":", 1)[0] ?? ""));
 }
@@ -229,17 +236,43 @@ const TOOL_CONFIG_FILES = new Set([
   "procfile",
   "lefthook.yml",
   "lefthook.yaml",
+  "turbo.json",
+  "nx.json",
+  "docker-compose.yml",
+  "docker-compose.yaml",
+  "compose.yml",
+  "compose.yaml",
+  "taskfile.yml",
+  "taskfile.yaml",
+  "pyproject.toml",
 ]);
-// Node loads these on its own: vite.config.ts, eslint.config.mjs, tailwind.config.js and the like.
-const TOOL_CONFIG = /\.config\.[cm]?[jt]sx?$/;
+// Tools load these on their own: vite.config.ts, jest.config.json, docker-compose.yml, gulpfile.js and the like.
+const TOOL_CONFIG =
+  /\.config\.(?:[cm]?[jt]sx?|json5?|ya?ml|toml)$|^(?:gulp|grunt)file\.[cm]?[jt]s$/;
 // Coding agents load these on their own, wherever they sit.
 const AGENT_INSTRUCTIONS =
   /^(agents?|claude|gemini|qwen|crush|warp|conventions|copilot-instructions)(\.[a-z]+)?\.md$/;
 // Programs and scripts a shell, an OS or another tool runs; a browser composition never needs them.
-const PROGRAM =
-  /\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|wsf|hta|msi|scr|pif|cpl|lnk|dll|so|dylib|node|sh|bash|zsh|command|jar|appimage|py|rb|pl|php)$/;
-// A Windows short name such as `CLAUDE~1` or `PACKAG~1.JSO` can open any long name on NTFS.
-const SHORT_NAME = /~\d+(\.|$)/;
+const PROGRAM_EXTENSIONS =
+  "exe com bat cmd ps1 psm1 vbs vbe wsf hta msi scr pif cpl lnk dll so dylib node sh bash zsh command jar appimage py rb pl php".split(
+    " ",
+  );
+const PROGRAM = new RegExp(`\\.(?:${PROGRAM_EXTENSIONS.join("|")})$`);
+// A Windows short name such as `CLAUDE~1` or `PACKAG~1.JSO` opens a long name on NTFS. Its extension is the first three
+// letters of the long one, so `take~2.mp4` cannot stand for any of the files above; a name with none may be a folder.
+const SHORT_NAME = /^([^.]{1,6}~\d{1,6})(?:\.([^.]{1,3}))?$/;
+const TRUSTED_EXTENSIONS = [
+  ...PROGRAM_EXTENSIONS,
+  ...["json", "jsonc", "json5", "yaml", "yml", "toml", "lock", "lockb", "md"],
+  ...["js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx"],
+];
+
+function isShortName(segment: string): boolean {
+  const match = SHORT_NAME.exec(segment);
+  if (!match || match[1]!.length > 8) return false;
+  const extension = match[2];
+  return !extension || TRUSTED_EXTENSIONS.some((trusted) => trusted.startsWith(extension));
+}
 
 /** What makes a file one another program runs or trusts; see `toolTrustedFileKind`. */
 export type ToolTrustedKind =
@@ -256,10 +289,10 @@ export type ToolTrustedKind =
  * separator, trailing dots or spaces, a `:stream` suffix, or a short name for any of these.
  */
 export function toolTrustedFileKind(relPath: string): ToolTrustedKind | null {
-  const segments = projectPathSegments(relPath.normalize("NFC"));
+  const segments = projectPathSegments(relPath);
   while (segments.length > 1 && segments.at(-1) === "") segments.pop();
   const name = segments.at(-1) ?? "";
-  if (segments.some((segment) => SHORT_NAME.test(segment))) return "short-name";
+  if (segments.some(isShortName)) return "short-name";
   if (PROJECT_CONFIG_FILES.has(name)) return "project-config";
   if (LOCK_FILES.has(name)) return "lock-file";
   if (TOOL_CONFIG_FILES.has(name) || TOOL_CONFIG.test(name)) return "tool-config";

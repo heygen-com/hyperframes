@@ -73,14 +73,40 @@ export function isWritableProjectFile(projectDir: string, filePath: string): boo
   return projectRelatives(projectDir, filePath).every(isWritableProjectPath);
 }
 
-/** The first `toolTrustedFileKind` file below `dir`, which a delete or move of the folder would take along. */
+/**
+ * The first `toolTrustedFileKind` file, `node_modules` or `.git` below `dir`, which a delete or move of the folder
+ * would take along. Links are not followed.
+ */
 export function toolTrustedFileWithin(projectDir: string, dir: string): string | null {
-  const base = projectRelativePath(projectDir, dir);
-  for (const file of walkDir(dir)) {
-    const rel = base ? `${base}/${file}` : file;
-    if (toolTrustedFileKind(rel)) return rel;
+  return protectedEntryWithin(dir, projectRelativePath(projectDir, dir));
+}
+
+const PROTECTED_FOLDERS = new Set(["node_modules", ".git"]);
+
+function protectedEntryWithin(dir: string, rel: string): string | null {
+  const entries = folderEntries(dir);
+  if (!entries) return rel || ".";
+  for (const entry of entries) {
+    const found = protectedEntry(dir, entry, rel ? `${rel}/${entry.name}` : entry.name);
+    if (found) return found;
   }
   return null;
+}
+
+function protectedEntry(dir: string, entry: Dirent, at: string): string | null {
+  if (!entry.isDirectory()) return toolTrustedFileKind(at) ? at : null;
+  if (toolTrustedFileKind(at) || PROTECTED_FOLDERS.has(projectPathSegments(entry.name)[0] ?? ""))
+    return at;
+  return protectedEntryWithin(join(dir, entry.name), at);
+}
+
+function folderEntries(dir: string): Dirent[] | null {
+  try {
+    return readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if (UNREADABLE_DIR_CODES.has((err as NodeJS.ErrnoException).code ?? "")) return null;
+    throw err;
+  }
 }
 
 export function resolveWritableWithinProject(base: string, relativePath: string): string | null {

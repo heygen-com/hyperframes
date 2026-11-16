@@ -2750,8 +2750,10 @@ async function processUploadedFiles(
 
     // The collision suffix chooses a different path; validate that destination
     // too, including dangling symlinks that existsSync treats as absent.
-    if (!isSafePath(projectDir, finalPath) || !isWritableProjectFile(projectDir, finalPath))
+    if (!isSafePath(projectDir, finalPath) || !isWritableProjectFile(projectDir, finalPath)) {
+      skipped.push(name);
       continue;
+    }
 
     const buffer = Buffer.from(await value.arrayBuffer());
     const validation = validateUploadedMediaBuffer(finalName, buffer);
