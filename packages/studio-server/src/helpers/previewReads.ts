@@ -75,6 +75,10 @@ export function recordPreviewRead(projectDir: string, filePath: string): void {
 }
 
 export function recordPreviewReferences(projectDir: string, html: string): void {
+  for (const path of previewReferences(html)) recordPreviewRead(projectDir, path);
+}
+
+export function previewReferences(html: string): Set<string> {
   const named = new Set<string>();
   const add = (reference: string) => {
     const url = reference.trim();
@@ -112,7 +116,7 @@ export function recordPreviewReferences(projectDir: string, html: string): void 
       if (isElement(node)) scanElement(node);
     }
   }
-  for (const path of named) recordPreviewRead(projectDir, path);
+  return named;
 }
 
 export function recordPreviewBuilt(projectDir: string): void {

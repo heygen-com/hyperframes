@@ -26,10 +26,12 @@ import {
   processCompositionAudio,
   removeScratch,
   collectScratchLeftovers,
+  withFfmpegProgress,
   type AudioProcessingFailure,
   type MixResult,
 } from "@hyperframes/engine";
 import { audioWorkDir, type CompositionMetadata } from "../shared.js";
+import { mediaAssetRoots } from "../../assetMediaType.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import { limitDeliveryPeaks } from "../audioDeliveryLimit.js";
@@ -52,12 +54,14 @@ export interface AudioStageInput {
   masterFxChain?: string;
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
   audioSidecarUrlByLocalPath?: ReadonlyMap<string, string>;
+  allowOutsideProjectAssets?: boolean;
   abortSignal: AbortSignal | undefined;
   assertNotAborted: () => void;
   /** Where a per-track failure's detail goes. Optional so tests need not pass one. */
   log?: ProducerLogger;
   /** Leave the delivered PCM in `workDir` for the assemble stage; its owner removes the dir. */
   keepDeliverySource?: boolean;
+  onFfmpegProgress?: () => void;
 }
 
 export interface AudioStageResult {
@@ -98,7 +102,8 @@ function assertAudioNotInterrupted(failures: readonly AudioProcessingFailure[] |
 
 export function runAudioStage(input: AudioStageInput): Promise<AudioStageResult> {
   return collectScratchLeftovers(
-    () => runAudioStageScoped(input),
+    () =>
+      withFfmpegProgress(input.onFfmpegProgress ?? (() => {}), () => runAudioStageScoped(input)),
     (left) => {
       if (left.length > 0) input.log?.warn("[audio] scratch left behind", { count: left.length });
     },
@@ -213,6 +218,9 @@ async function mixAudioForDelivery(
           urlByAbsentLocalPath,
           audioSidecarUrlByLocalPath,
           keepEncoderInputAt: pcmSourcePath,
+          assetRoots: input.allowOutsideProjectAssets
+            ? undefined
+            : mediaAssetRoots(projectDir, compiledDir),
         },
         compiledDir,
       );

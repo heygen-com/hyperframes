@@ -387,6 +387,12 @@ export {
   settleOnBrowserSafePort,
 } from "./utils/browserSafePort.js";
 
+export {
+  answerOwnLoopbackHostOnly,
+  isOwnLoopbackHost,
+  SAME_ORIGIN_FRAMING_HEADERS,
+} from "./utils/loopbackOnly.js";
+
 export { readWebGlVendorInfoFromCanvas } from "./utils/readWebGlVendorInfoFromCanvas.js";
 
 export {
@@ -408,6 +414,8 @@ export {
   type KeyframeAnalysis,
 } from "./utils/ffprobe.js";
 
+export { urlInputArgs, withPublicOnlyProxy } from "./utils/urlInput.js";
+
 export { mediaIdPathSegment } from "./utils/mediaPathSegment.js";
 
 export {
@@ -416,6 +424,7 @@ export {
   assertMediaPayload,
   playlistLeavesItsFolder,
   fingerprintElementId,
+  isNotImagePayload,
   isNotMediaPayload,
 } from "./utils/notMediaPayload.js";
 
@@ -435,10 +444,16 @@ export {
   type PublicHttpsTextOptions,
 } from "./utils/urlDownloader.js";
 export { isBlockedNetworkHost } from "./utils/networkPolicy.js";
+export {
+  assetRootsRefusal,
+  isInsideAssetRoots,
+  isPrivateUnderAssetRoots,
+} from "./utils/assetRoots.js";
 export { onRenderRefusal } from "./services/publicNetwork/captureProxy.js";
 export type { RefusedHostClass } from "./services/publicNetwork/publicNetwork.js";
 export {
   runFfmpeg,
+  withFfmpegProgress,
   formatFfmpegError,
   describeFfmpegFailure,
   isExternalFfmpegInterruption,

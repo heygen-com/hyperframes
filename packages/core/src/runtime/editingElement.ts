@@ -32,6 +32,7 @@ export interface EditingElementHit {
  * `truncated` says something was cut, so the description is not safe to write back to source.
  */
 export interface EditingElementDescription extends EditingElementHit {
+  label?: string;
   parent: EditingElementHandle | null;
   id: string | null;
   selector: string | null;

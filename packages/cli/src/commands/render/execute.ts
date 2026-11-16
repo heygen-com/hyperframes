@@ -277,7 +277,7 @@ async function ensureRenderBrowser(plan: RenderPlan, signal?: AbortSignal): Prom
       normalizeErrorMessage(error),
       "Run: npx hyperframes browser ensure",
     );
-    failCommand();
+    failCommand(1, undefined, "chrome_not_found");
   }
 }
 

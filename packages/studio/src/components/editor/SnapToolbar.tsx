@@ -3,7 +3,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { MagnetStraight, GridFour, Path, Ruler, FrameCorners } from "@phosphor-icons/react";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { usePreviewOverlayContext } from "./PreviewOverlayProvider";
-import { ownsPlainKeys } from "../../utils/typingTarget";
+import { ownsPlainKeys } from "@hyperframes/core/typing-target";
 import { keyHint, matchesKey, useStudioKeys } from "../../player/components/studioShortcuts";
 
 // fallow-ignore-next-line complexity

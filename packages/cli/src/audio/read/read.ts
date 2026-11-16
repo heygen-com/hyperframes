@@ -1,17 +1,13 @@
 import { createHash } from "node:crypto";
-import {
-  createReadStream,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from "node:fs";
+import { createReadStream, existsSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { basename, dirname, extname, join, relative } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { createStagingDir, replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { loudness, type AnalysisQuality, type Span } from "@hyperframes/core/audio-analysis";
 import { loadTranscript } from "../../whisper/normalize.js";
+import { readPlainFile } from "../../utils/projectRecords.js";
 import { runFile } from "../analysis/providers/shared.js";
+import { isPlainFile, makeRealFolder } from "../cacheFolder.js";
 import { describeAccess, describeStems } from "./describe.js";
 import { findEffects, type EffectSource } from "./effects.js";
 import { formatRead } from "./format.js";
@@ -74,18 +70,22 @@ function wordsOf(transcript: string): TimedWord[] {
 const fingerprint = (path: string | null) =>
   path ? createHash("sha256").update(readFileSync(path)).digest("hex").slice(0, 16) : "none";
 
-function writeAtomic(path: string, content: string) {
-  const temporary = `${path}.${process.pid}.tmp`;
-  writeFileSync(temporary, content);
-  renameSync(temporary, path);
-}
-
 const CACHE_REVISION = 1;
+const MAX_ENTRY_BYTES = 256 * 1024 * 1024;
 
 interface CacheEntry {
   revision: number;
   analysis: ReadAudio;
   transcriptKey: string;
+}
+
+function cachedEntry(jsonPath: string, textPath: string): CacheEntry | null {
+  if (!isPlainFile(jsonPath) || !isPlainFile(textPath)) return null;
+  try {
+    return JSON.parse(readPlainFile(jsonPath, MAX_ENTRY_BYTES)) as CacheEntry;
+  } catch {
+    return null;
+  }
 }
 
 async function stemsFor(
@@ -130,14 +130,16 @@ const VOICE_FREE = "no-vocals.wav";
 
 /** Stems summed at full quality into one file next to them, made once. */
 async function mixedFile(paths: string[], out: string, warnings: string[]) {
-  if (existsSync(out)) return out;
+  if (isPlainFile(out)) return out;
   const ffmpeg = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpeg) {
     warnings.push(`no ${basename(out)}: ffmpeg is required; run: npx hyperframes doctor`);
     return null;
   }
-  const temporary = `${out}.${process.pid}.tmp.wav`;
+  let stage: string | undefined;
   try {
+    stage = createStagingDir(dirname(out), ".hf-mix-");
+    const temporary = join(stage, VOICE_FREE);
     await runFile(
       ffmpeg,
       [
@@ -153,6 +155,8 @@ async function mixedFile(paths: string[], out: string, warnings: string[]) {
   } catch (error) {
     warnings.push(`no ${basename(out)}: ${error instanceof Error ? error.message : error}`);
     return null;
+  } finally {
+    if (stage) rmSync(stage, { recursive: true, force: true });
   }
 }
 
@@ -461,12 +465,12 @@ export async function readAudio(
   const transcript = transcriptFor(path, options.transcript);
   const transcriptKey = fingerprint(transcript);
   const stem = `${basename(file, extname(file)).replace(/[^\w.-]/g, "_")}-${sha.slice(0, 12)}`;
-  mkdirSync(options.cacheDir, { recursive: true });
-  const jsonPath = join(options.cacheDir, `${stem}.json`);
-  const textPath = join(options.cacheDir, `${stem}.txt`);
-  const stemDir = join(options.cacheDir, "stems", sha.slice(0, 12));
-  if (existsSync(jsonPath) && existsSync(textPath)) {
-    const entry = JSON.parse(readFileSync(jsonPath, "utf8")) as CacheEntry;
+  const cacheDir = makeRealFolder(options.cacheDir, 2);
+  const jsonPath = join(cacheDir, `${stem}.json`);
+  const textPath = join(cacheDir, `${stem}.txt`);
+  const stemDir = join(cacheDir, "stems", sha.slice(0, 12));
+  const entry = cachedEntry(jsonPath, textPath);
+  if (entry) {
     const stemsNowPossible =
       !layer &&
       entry.analysis.separation === "mix" &&
@@ -490,11 +494,11 @@ export async function readAudio(
   }
   const analysis = layer
     ? await analyzeLayer(path, file, sha, transcript, layer)
-    : await analyze(path, file, sha, transcript, stemDir, quality, options.cacheDir);
-  writeAtomic(
+    : await analyze(path, file, sha, transcript, stemDir, quality, cacheDir);
+  replaceFileAtomically(
     jsonPath,
     JSON.stringify({ revision: CACHE_REVISION, analysis, transcriptKey } satisfies CacheEntry),
   );
-  writeAtomic(textPath, formatRead(analysis));
+  replaceFileAtomically(textPath, formatRead(analysis));
   return { analysis, textPath, jsonPath, cached: false };
 }

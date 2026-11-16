@@ -16,6 +16,7 @@ import { registerPeakRoutes } from "./routes/peaks.js";
 import { registerFontRoutes } from "./routes/fonts.js";
 import { registerRegistryRoutes } from "./routes/registry.js";
 import { registerSelectionRoutes } from "./routes/selection.js";
+import { registerRecoveryDraftRoutes } from "./routes/recoveryDrafts.js";
 import { registerMediaRoutes } from "./routes/media.js";
 import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
@@ -23,6 +24,7 @@ import { replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
 import { folderGone, isProjectRootMissing } from "./helpers/safePath.js";
 import {
   PREVIEW_ALLOWED_HOSTS_ENV,
+  requestFromAnotherSite,
   requestHost,
   sameOriginPost,
 } from "./helpers/requestIdentity.js";
@@ -42,10 +44,12 @@ async function answerRefusedFrameWithPage(c: Context, next: Next) {
   });
 }
 
-const fromAnotherSite = (c: Context) => {
-  const site = c.req.header("sec-fetch-site");
-  return site === "cross-site" || site === "same-site";
-};
+const fromAnotherSite = (c: Context) =>
+  requestFromAnotherSite({
+    fetchSite: c.req.header("sec-fetch-site"),
+    host: c.req.header("host") ?? urlHost(c.req.url),
+    referer: c.req.header("referer"),
+  });
 
 const isThumbnailCapture = (c: Context) => c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
 
@@ -63,8 +67,11 @@ async function markPreviewForAnotherSite(c: Context) {
 }
 
 const FRAMED_DESTS = new Set(["document", "iframe", "frame", "embed", "object", "fencedframe"]);
-const framedByAnotherSite = (c: Context) =>
-  fromAnotherSite(c) && FRAMED_DESTS.has(c.req.header("sec-fetch-dest") ?? "");
+const framedByAnotherSite = (c: Context) => {
+  if (!fromAnotherSite(c)) return false;
+  const dest = c.req.header("sec-fetch-dest");
+  return dest === undefined || FRAMED_DESTS.has(dest);
+};
 
 function withoutValidators(request: Request): Request {
   const headers = new Headers(request.headers);
@@ -108,6 +115,7 @@ function urlScheme(url: string): string | undefined {
 
 export interface StudioApiOptions extends CaptureSandboxOption {
   allowedHosts?: readonly string[];
+  subCompositionDeadlineMs?: number;
 }
 
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
@@ -135,6 +143,9 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
   api.use("/projects/:id/thumbnail/*", refuseForAnotherSite("thumbnail"));
   api.use("/projects/:id/waveform/*", refuseForAnotherSite("waveform"));
   api.use("/projects/:id/peaks/*", refuseForAnotherSite("peaks"));
+  api.use("/projects/:id/image-thumbnail/*", refuseForAnotherSite("image thumbnail"));
+  api.use("/projects/:id/media/metadata", refuseForAnotherSite("media metadata"));
+  api.use("/projects/:id/lint", refuseForAnotherSite("lint"));
   // This API is unauthenticated and simple cross-origin POSTs need no
   // preflight, so the guard rejects writes the shared predicate refuses.
   api.use(async function rejectCrossOriginWrites(c, next) {
@@ -207,12 +218,16 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
 
   registerProjectRoutes(api, adapter);
   registerFileRoutes(api, adapter);
-  registerPreviewRoutes(api, adapter, { sandboxThumbnailCaptures });
+  registerPreviewRoutes(api, adapter, {
+    sandboxThumbnailCaptures,
+    subCompositionDeadlineMs: options.subCompositionDeadlineMs,
+  });
   registerLintRoutes(api, adapter);
   registerRenderRoutes(api, adapter);
   registerThumbnailRoutes(api, adapter);
   registerImageThumbnailRoutes(api, adapter);
   registerSelectionRoutes(api, adapter);
+  registerRecoveryDraftRoutes(api, adapter);
   registerMediaRoutes(api, adapter);
   registerWaveformRoutes(api, adapter);
   registerFreezeFrameRoutes(api, adapter);

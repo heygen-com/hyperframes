@@ -37,6 +37,10 @@ export const examples: Example[] = [
     "hyperframes diff original.mp4 . --at 1,1.5,2 --drawn 120,670,485,115",
   ],
   [
+    "Score a project's captions by what they add: captured with and without them, with where to move each",
+    'hyperframes diff original.mp4 . --at 1,2.5,4 --hide ".cap"',
+  ],
+  [
     "Judge each segment of the final render and write a side-by-side",
     "hyperframes diff original.mp4 renders/final.mp4 --segments segments.md --sbs",
   ],
@@ -144,6 +148,25 @@ function printHuman(r: DiffResult) {
       `   ${state} ${d.id} ${d.box.join(",")} ${d.window[0]}–${d.window[1]} s: ${detail}`,
     );
   }
+  if (r.layer)
+    console.log(
+      `   layer ${r.layer.selector}: benefit median ${r.layer.benefit_median ?? "—"} (1 matches the original, 0 is no better than without it)`,
+    );
+  for (const f of r.layer?.frames ?? []) {
+    const state =
+      f.benefit === undefined || f.benefit === null
+        ? c.dim("—")
+        : f.benefit >= 0
+          ? c.success("✓")
+          : c.error("✗");
+    const detail =
+      f.benefit === undefined
+        ? "the layer draws nothing here"
+        : f.benefit === null
+          ? f.note
+          : `benefit ${f.benefit}, ${f.instruction} (box ${f.bbox!.join(",")})`;
+    console.log(`   ${state} ${f.t} s: ${detail}`);
+  }
   for (const w of r.warnings) console.log(`   ${c.warn("⚠")} ${w}`);
   if (r.sheet) console.log(`   sheet ${r.sheet}`);
   if (r.sbs) console.log(`   side by side ${r.sbs}`);
@@ -212,6 +235,11 @@ export default defineCommand({
       description:
         "A drawn element's box x,y,w,h in the original's pixels, optionally its seconds a-b (repeatable): scored by itself whatever is behind it, with its offset and ink (yours over the original's: under 1 is lighter, thinner or smaller)",
     },
+    hide: {
+      type: "string",
+      description:
+        'A CSS selector for one layer of a project (".cap"): captured with and without it, each moment scores what the layer adds (benefit, 1 matches the original, under 0 is worse than without it) and where to move or resize it',
+    },
     json: { type: "boolean", description: "Print one JSON result", default: false },
   },
   // fallow-ignore-next-line complexity
@@ -242,6 +270,7 @@ export default defineCommand({
         project: args.project === undefined ? undefined : resolve(String(args.project)),
         drawn: repeated(rawArgs, "--drawn").map(parseDrawn),
         offset: args.offset === undefined ? undefined : parseOffset(args.offset),
+        hide: args.hide === undefined ? undefined : String(args.hide),
         thresholds: {
           mean: number(args["min-mean"], "--min-mean"),
           p05: number(args["min-p05"], "--min-p05"),

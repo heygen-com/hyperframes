@@ -1,10 +1,12 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer as createHttpServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { MAX_PORT_SCAN } from "../server/portUtils.js";
-import { historyDeps, withOwner } from "./historyOwner.js";
+import { endTurn, historyDeps, withOwner, type Turn } from "./historyOwner.js";
 
 function tempDir(prefix: string): string {
   const dir = mkdtempSync(join(tmpdir(), prefix));
@@ -58,5 +60,68 @@ describe("preview discovery for history", () => {
 
     expect(await openHistory()).toBe("direct");
     expect(listener.connections()).toBeGreaterThan(0);
+  });
+});
+
+async function recordingPreview(): Promise<{ port: number; paths: string[] }> {
+  const paths: string[] = [];
+  const server = createHttpServer((request, response) => {
+    paths.push(request.url ?? "");
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify({ entries: [], entry: null }));
+  });
+  await new Promise<void>((listening) => server.listen(0, "127.0.0.1", () => listening()));
+  onTestFinished(() => new Promise<void>((done) => server.close(() => done())));
+  return { port: (server.address() as AddressInfo).port, paths };
+}
+
+function projectWithMarker(id: string): string {
+  const dir = tempDir("hf-history-marker-");
+  writeFileSync(join(dir, "index.html"), "A");
+  mkdirSync(join(dir, ".hyperframes"), { recursive: true });
+  const marker = { via: "preview", id, who: { kind: "agent", name: "Agent" }, label: "Edit" };
+  writeFileSync(
+    join(dir, ".hyperframes", "history-turn.json"),
+    JSON.stringify({ ...marker, startedAt: 1, lastWriteAt: 2, parts: [] }),
+  );
+  return dir;
+}
+
+describe("history turn markers from the project folder", () => {
+  const original = historyDeps.findServer;
+  afterEach(() => {
+    historyDeps.findServer = original;
+  });
+
+  it.each(["../../files/index.html", "%2e%2e/%2e%2e/files", "x?y", "x#y"])(
+    "refuses a marker whose id is %s",
+    async (id) => {
+      const preview = await recordingPreview();
+      historyDeps.findServer = async () => ({ port: preview.port, projectName: "p" }) as never;
+
+      expect(await withOwner(projectWithMarker(id), async (_owner, turn) => turn)).toBeNull();
+    },
+  );
+
+  it("sends a turn id only as one encoded path segment of its own close route", async () => {
+    const preview = await recordingPreview();
+    historyDeps.findServer = async () => ({ port: preview.port, projectName: "p" }) as never;
+    const dir = projectWithMarker("not-read");
+    const turn: Turn = {
+      via: "preview",
+      id: "../../files/x?y#z",
+      who: { kind: "agent", name: "Agent" },
+      label: "Edit",
+      startedAt: 1,
+      lastWriteAt: 2,
+      parts: [],
+    };
+
+    await withOwner(dir, (owner) => endTurn(owner, turn, dir));
+
+    expect(preview.paths).toContain(
+      "/api/projects/p/history/window/..%2F..%2Ffiles%2Fx%3Fy%23z/close",
+    );
+    expect(preview.paths.every((path) => path.startsWith("/api/projects/p/history"))).toBe(true);
   });
 });

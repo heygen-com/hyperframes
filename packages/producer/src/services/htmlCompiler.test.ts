@@ -1104,7 +1104,29 @@ describe("detectRenderModeHints", () => {
     try {
       await expect(
         compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
-      ).rejects.toThrow(/compositions\/\.env\.html[\s\S]*git metadata or an env file/);
+      ).rejects.toThrow(
+        /compositions\/\.env\.html[\s\S]*git metadata, an env file or a private tool record/,
+      );
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("compileForRender refuses to inline the app's records under .hyperframes as a data-composition-src", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-record-subcomp-",
+      [{ id: "intro", src: ".hyperframes/agent-handoff.html" }],
+      {},
+    );
+    try {
+      mkdirSync(join(projectDir, ".hyperframes"));
+      writeFileSync(
+        join(projectDir, ".hyperframes", "agent-handoff.html"),
+        validSubCompHtml("intro", "HANDOFF_SECRET_VALUE"),
+      );
+      await expect(
+        compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+      ).rejects.toThrow(/\.hyperframes\/agent-handoff\.html[\s\S]*a private tool record/);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
@@ -1534,6 +1556,35 @@ describe("system-primary font normalization", () => {
 });
 
 describe("local font embedding", () => {
+  it.each([".env", ".git/config", ".hyperframes/agent-handoff.json"])(
+    "never inlines the private project file %s that an @font-face url names",
+    async (file) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-private-font-"));
+      const secret = "HEYGEN_API_KEY=not-for-the-page";
+      mkdirSync(dirname(join(projectDir, file)), { recursive: true });
+      writeFileSync(join(projectDir, file), secret);
+      writeFileSync(
+        join(projectDir, "index.html"),
+        `<!DOCTYPE html>
+<html><head><style>
+  @font-face { font-family: "P"; src: url("${file}"); }
+</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Text</div>
+</body></html>`,
+      );
+
+      const { html } = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        projectDir,
+      );
+
+      expect(html).not.toContain(Buffer.from(secret).toString("base64"));
+      expect(html).not.toContain("data:font/");
+      rmSync(projectDir, { recursive: true, force: true });
+    },
+  );
+
   it("deduplicates assembled scene fonts before embedding and keeps the last descriptor order", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-repeated-scene-fonts-"));
     mkdirSync(join(projectDir, "fonts"));
@@ -3376,6 +3427,25 @@ describe("compileForRender non-media payload sniff (STUDIO-5433)", () => {
     expect(warnings.join("\n")).toContain("text document");
     expect(warnings.join("\n")).toContain("a1");
   });
+
+  it.each([".git/clip.mp4", ".hyperframes/clip.mp4", ".claude/clip.mp4", "keys/id_rsa"])(
+    "never probes the private project file %s that a <video> or <audio> names",
+    async (src) => {
+      const projectDir = writeProject(
+        `<video id="v1" src="${src}" data-start="0" muted></video>` +
+          `<audio id="a1" src="${src}" data-start="0"></audio>`,
+      );
+      mkdirSync(dirname(join(projectDir, src)), { recursive: true });
+      writeFileSync(join(projectDir, src), readFileSync(join(projectDir, "assets", "nested.html")));
+      const warnings: string[] = [];
+      const log = { ...defaultLogger, warn: (message: string) => warnings.push(message) };
+
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir, { log });
+
+      expect(warnings.join("\n")).not.toContain("text document");
+      rmSync(projectDir, { recursive: true, force: true });
+    },
+  );
 });
 
 describe("duplicate media ids across nested compositions", () => {

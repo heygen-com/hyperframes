@@ -14,6 +14,7 @@ import {
   folderGone,
   isProjectRootMissing,
   isSafePath,
+  isStudioPrivatePath,
   mkdirWithinProject,
   resolveWithinProject,
 } from "./safePath.js";
@@ -262,4 +263,63 @@ describe("folderGone", () => {
       }
     },
   );
+});
+
+describe("isStudioPrivatePath", () => {
+  it.each([
+    ".hyperframes",
+    ".hyperframes/app-history.jsonl",
+    ".hyperframes/agent-handoff.json",
+    ".HYPERFRAMES/comments.jsonl",
+    ".hyperframes./heygen-jobs.jsonl",
+    ".hyperframes /agent-handoff.json",
+    ".hyperframes\\comments.jsonl",
+    ".hyperframes:stream/comments.jsonl",
+    ".git/config",
+    ".env.local",
+    ".npmrc",
+    ".NPMRC",
+    ".mcp.json",
+    ".mcp.json::$DATA",
+    ".claude/x.json",
+    ".Claude./settings.local.json",
+    ".aws/credentials",
+    "keys\\.ssh\\config",
+    "id_ed25519",
+    "deploy/id_rsa.pub",
+    "certs/cert.pem",
+    "certs/CERT.PEM.",
+    ".config/gh/hosts.yml",
+    "../.aws/credentials",
+    "sub/.hyperframes",
+    "sub/.hyperframes/app-history.jsonl",
+    "sub/.HyperFrames./App-History.JSONL",
+    "sub\\.hyperframes \\agent-handoff.json",
+    "a/b/.hyperframes:stream/comments.jsonl",
+    "sub/.hyperframes/backup/index.html",
+    "sub/.hyperframes/studio-motion.json",
+    "sub/.hyperframes/prepared-assets/gif/clip.gif",
+    "sub/.hyperframes/requests/1/before.png",
+    ".hyperframes/prepared-assets/.hyperframes/app-history.jsonl",
+    "assets/.hyperframes/logo.png",
+  ])("refuses %s", (path) => {
+    expect(isStudioPrivatePath(path)).toBe(true);
+  });
+
+  it.each([
+    ".hyperframes/prepared-assets/gif/clip.gif",
+    ".HYPERFRAMES/Prepared-Assets./heif/photo.png",
+    ".hyperframes/requests/sketch.png",
+    ".hyperframes/studio-motion.json",
+    ".hyperframes/studio-manual-edits.json",
+    ".hyperframes-pull.json",
+    "sub/.hyperframes-pull.json",
+    "sub/hyperframes/app-history.jsonl",
+    "assets/logo.png",
+    "assets/keynote-cover.png",
+    ".config/fonts/brand.woff2",
+    "fonts/aws-logo.svg",
+  ])("allows %s", (path) => {
+    expect(isStudioPrivatePath(path)).toBe(false);
+  });
 });

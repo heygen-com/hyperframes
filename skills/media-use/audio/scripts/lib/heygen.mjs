@@ -4,16 +4,16 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // usable source wins — a host gateway ($HEYGEN_API_BASE with its own
 // $HEYGEN_API_KEY) → a host-injected OAuth $HEYGEN_ACCESS_TOKEN (Bearer) →
 // the live login in ~/.hyperframes/credentials → $HEYGEN_API_KEY /
-// $HYPERFRAMES_API_KEY → the API key saved in ~/.hyperframes/credentials →
-// a key from a nearby .env that came in with a received project. An expired login gives way to an env key but
-// never to the saved API key ($HYPERFRAMES_CONFIG_DIR overrides the dir).
+// $HYPERFRAMES_API_KEY from the shell → the API key saved in ~/.hyperframes/credentials →
+// a key from a nearby project .env, only when nothing is saved. An expired login gives way to the shell's
+// env key, never to the saved API key or a project .env key ($HYPERFRAMES_CONFIG_DIR overrides the dir).
 // $HEYGEN_API_BASE moves every request to that host, as it does for the
 // heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
 // Vendored so the skill ships standalone. Pure node.
 
-import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 export const HEYGEN_BASE = "https://api.heygen.com/v3";
 
@@ -82,65 +82,11 @@ const PROJECT_ENV_KEYS = new Set([
 const projectEnvValues = new Map();
 let projectKeyNoted = false;
 
-function isFile(path) {
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
-
-// The CLI's received-files rule: a received-files record at or above `dir` that lists the file
-// (by path or as the same file on disk), or that cannot be read, makes it received.
-function recordFiles(root, ownFolder) {
-  const record = join(root, ".hyperframes", "received-files.json");
-  if (!ownFolder && !isFile(record)) return null;
-  try {
-    return { files: JSON.parse(readFileSync(record, "utf8")).files };
-  } catch (error) {
-    return ownFolder && ["ENOENT", "ENOTDIR"].includes(error.code) ? null : { files: undefined };
-  }
-}
-
-function fileIdentity(path) {
-  try {
-    const stat = lstatSync(path, { bigint: true });
-    return stat.ino === 0n ? null : `${stat.dev}:${stat.ino}`;
-  } catch {
-    return null;
-  }
-}
-
-function listsEnvFile(files, root, start, envIdentity) {
-  if (!Array.isArray(files)) return true;
-  const key = relative(root, join(start, ".env")).split(sep).join("/").normalize("NFC");
-  return files.some((file) => {
-    const entry = String(file).normalize("NFC");
-    return (
-      entry === key || (envIdentity !== null && fileIdentity(join(root, entry)) === envIdentity)
-    );
-  });
-}
-
-function receivedEnvFile(dir) {
-  let start;
-  try {
-    start = realpathSync(dir);
-  } catch {
-    start = resolve(dir);
-  }
-  const envIdentity = fileIdentity(join(dir, ".env"));
-  for (let root = start; ; root = dirname(root)) {
-    const record = recordFiles(root, root === start);
-    if (record && listsEnvFile(record.files, root, start, envIdentity)) return true;
-    if (dirname(root) === root) return false;
-  }
-}
-
-const receivedProjectKey = (name, key) => {
+// The folder whose .env set `name`, while the environment still holds the value it set.
+function projectKeyDir(name) {
   const set = projectEnvValues.get(name);
-  return set?.val === key && receivedEnvFile(set.dir);
-};
+  return set !== undefined && set.val === process.env[name] ? set.dir : undefined;
+}
 
 // Walk up ≤5 dirs from startDir; load the first .env (shell env always wins).
 export function loadEnvFromDir(startDir) {
@@ -174,7 +120,7 @@ export function loadEnvFromDir(startDir) {
   }
 }
 
-// → { headers } | { expired: true } | null. Never throws.
+// → { headers } | { expired: true, foreign? } | null. Never throws.
 export function heygenCredential() {
   const cred = resolveCredential();
   return cred?.unreadable ? null : cred;
@@ -191,24 +137,24 @@ function resolveCredential() {
   const accessToken = process.env.HEYGEN_ACCESS_TOKEN;
   if (accessToken) return { headers: { Authorization: `Bearer ${accessToken}` } };
   const envNames = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"].filter((name) => process.env[name]);
-  const envName =
-    envNames.find((name) => !receivedProjectKey(name, process.env[name])) ?? envNames[0];
-  const envKey = envName && process.env[envName];
-  const fromProject = envName !== undefined && receivedProjectKey(envName, envKey);
+  const shellName = envNames.find((name) => projectKeyDir(name) === undefined);
   const stored = storedCredential();
-  // A live login wins over an env key; an expired, foreign or unreadable store gives way to one.
+  // A live login wins over a shell key; an expired, foreign or unreadable store gives way only to a shell key.
   if (stored?.headers && "Authorization" in stored.headers) return stored;
-  if (!envKey || (fromProject && stored?.headers)) return stored;
-  if (fromProject && !projectKeyNoted) {
+  if (shellName) return { headers: { "X-Api-Key": process.env[shellName] } };
+  // A project .env key is used only when nothing is saved.
+  const projectName = envNames[0];
+  if (stored || !projectName) return stored;
+  if (!projectKeyNoted) {
     projectKeyNoted = true;
     process.stderr.write(
-      `[hyperframes] Using ${envName} from this folder's .env: generated media goes to that key's HeyGen account.\n`,
+      `[hyperframes] Using ${projectName} from the project .env (${join(projectKeyDir(projectName), ".env")}): generated media goes to that key's HeyGen account.\n`,
     );
   }
-  return { headers: { "X-Api-Key": envKey } };
+  return { headers: { "X-Api-Key": process.env[projectName] } };
 }
 
-// The credential saved in ~/.hyperframes/credentials: { headers } | { expired: true } | { unreadable } | null.
+// The credential saved in ~/.hyperframes/credentials: { headers } | { expired: true, foreign? } | { unreadable } | null.
 function storedCredential() {
   const root = process.env.HYPERFRAMES_CONFIG_DIR || join(homedir(), ".hyperframes");
   const file = join(root, ...(process.env.HYPERFRAMES_ENV === "dev" ? ["dev"] : []), "credentials");
@@ -221,13 +167,12 @@ function storedCredential() {
   if (!raw) return null;
   if (!raw.startsWith("{")) return { headers: { "X-Api-Key": raw } };
 
-  // A malformed credentials file (partial write / wrong shape) must degrade to
-  // "no credential", not crash the engine at startup.
+  // A malformed credentials file (partial write) is unreadable, not a crash at startup.
   let cred;
   try {
     cred = JSON.parse(raw);
   } catch {
-    return null;
+    return { unreadable: { file, code: "not valid JSON" } };
   }
   const oauth = cred.oauth;
   if (oauth?.access_token) {
@@ -239,7 +184,7 @@ function storedCredential() {
       oauth.client_id !== expectedClient ||
       oauth.token_endpoint !== expectedTokenEndpoint
     )
-      return { expired: true };
+      return { expired: true, foreign: true };
     const expired = oauth.expires_at && new Date(oauth.expires_at).getTime() - 60_000 < Date.now();
     if (!expired) return { headers: { Authorization: `Bearer ${oauth.access_token}` } };
     return { expired: true };
@@ -274,6 +219,10 @@ export function heygenAuthHeaders() {
   if (cred?.unreadable)
     throw new Error(
       `HeyGen credentials at ${cred.unreadable.file} can't be read (${cred.unreadable.code}) — fix or remove that path, then run \`npx hyperframes auth login\``,
+    );
+  if (cred?.foreign)
+    throw new Error(
+      "The saved HeyGen login belongs to another OAuth client or environment — run `npx hyperframes auth login`",
     );
   if (cred?.expired)
     throw new Error(

@@ -72,18 +72,58 @@ describe("media-use authentication", () => {
     });
   });
 
-  it("passes the saved API key, not a HEYGEN_API_KEY from a received project .env", async () => {
-    await writeStore({ api_key: "saved-key" });
-    const project = join(fixture.dir, "project");
-    await fs.mkdir(join(project, ".hyperframes"), { recursive: true });
-    await fs.writeFile(join(project, ".env"), "HEYGEN_API_KEY=received-key-3\n");
-    await fs.writeFile(
-      join(project, ".hyperframes", "received-files.json"),
-      JSON.stringify({ files: [".env"] }),
-    );
+  /** Loads `name=key` from a project `.env`; `record` writes its received-files record. */
+  async function projectEnvKey(key: string, record?: string, name = "HEYGEN_API_KEY") {
+    const project = await fs.mkdtemp(join(fixture.dir, "project-"));
+    await fs.writeFile(join(project, ".env"), `${name}=${key}\n`);
+    if (record !== undefined) {
+      await fs.mkdir(join(project, ".hyperframes"));
+      await fs.writeFile(join(project, ".hyperframes", "received-files.json"), record);
+    }
     loadProjectDotEnv(project, process.env, () => {});
-    await withMediaAuthEnvironment(async (env) => {
-      expect(env.HEYGEN_API_KEY).toBe("saved-key");
+  }
+
+  describe.each([
+    ["a folder with no received-files record", undefined],
+    ["a received folder", JSON.stringify({ files: [".env"] })],
+  ])("with a project .env key from %s", (_, record) => {
+    it("passes the saved API key, and neither project key", async () => {
+      await writeStore({ api_key: "saved-key" });
+      await projectEnvKey(`media-saved-${String(record)}`, record);
+      await projectEnvKey(`media-alias-${String(record)}`, record, "HYPERFRAMES_API_KEY");
+      await withMediaAuthEnvironment(async (env) => {
+        expect(env.HEYGEN_API_KEY).toBe("saved-key");
+        expect(env.HYPERFRAMES_API_KEY).toBeUndefined();
+      });
+    });
+
+    it("leaves the key out when the saved login expired", async () => {
+      await persistFreshOAuth({
+        access_token: "expired",
+        expires_at: new Date(Date.now() - 60 * 1000).toISOString(),
+      });
+      await projectEnvKey(`media-expired-${String(record)}`, record);
+      await withMediaAuthEnvironment(async (env) => {
+        expect(env.HEYGEN_API_KEY).toBeUndefined();
+        expect(env.HEYGEN_ACCESS_TOKEN).toBeUndefined();
+      });
+    });
+
+    it("fails without a request on that key when HeyGen refuses to refresh the login", async () => {
+      await persistFreshOAuth({
+        access_token: "expired",
+        refresh_token: "hf-refresh",
+        expires_at: new Date(Date.now() - 60 * 1000).toISOString(),
+      });
+      await projectEnvKey(`media-refused-${String(record)}`, record);
+      const fetchMock = vi.fn(async () => new Response("invalid_grant", { status: 400 }));
+      vi.stubGlobal("fetch", fetchMock);
+      const run = vi.fn();
+      await expect(withMediaAuthEnvironment(run)).rejects.toMatchObject({
+        code: "REFRESH_FAILED",
+      });
+      expect(run).not.toHaveBeenCalled();
+      expect(fetchMock).toHaveBeenCalledOnce();
     });
   });
 

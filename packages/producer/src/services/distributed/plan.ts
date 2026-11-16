@@ -1113,9 +1113,14 @@ export function resolveDistributedEngineConfig(config: DistributedRenderConfig):
   };
 }
 
+/** True when `rel`, a path relative to some root, is the root's parent, above it, or on another drive. */
+function leavesRoot(rel: string): boolean {
+  return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+}
+
 function pathInside(root: string, path: string): string | null {
   const rel = relative(root, path);
-  return rel === "" || rel.startsWith("..") || isAbsolute(rel) ? null : rel;
+  return rel === "" || leavesRoot(rel) ? null : rel;
 }
 
 /**
@@ -1278,7 +1283,8 @@ async function compilePlanComposition(
       // so a parent directory of projectDir matching a skip name doesn't
       // false-positive every descendant.
       const rel = relative(projectDir, src);
-      if (rel === "" || rel.startsWith("..")) return true;
+      if (rel === "") return true;
+      if (leavesRoot(rel)) return false;
       if (job.config.allowOutsideProjectAssets) {
         if (refusesOutsideLink(projectDir, src, (line) => log.warn(`[Plan] ${line}`))) return false;
       } else if (!isSafePath(projectDir, src)) return false;
@@ -1469,6 +1475,7 @@ function mixPlanAudio(c: PlanComposition, compiledDir: string) {
     compiledDir,
     urlByAbsentLocalPath: c.urlByAbsentLocalPath,
     audioSidecarUrlByLocalPath: c.audioSidecarUrlByLocalPath,
+    allowOutsideProjectAssets: c.job.config.allowOutsideProjectAssets,
     totalFrames: c.totalFrames,
     fps: c.job.config.fps,
     ffmpegProcessTimeout: c.cfg.ffmpegProcessTimeout,
@@ -1878,6 +1885,7 @@ export async function buildPlanAudio(
     await appendVideoAudioFromProbe({
       ...c,
       downloadDir: audioWorkDir(c.workDir),
+      allowOutsideProjectAssets: c.job.config.allowOutsideProjectAssets,
       signal: c.abortSignal,
     });
     logPlanStage(c.log, "extract", stageStarted);

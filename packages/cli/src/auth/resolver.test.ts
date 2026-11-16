@@ -137,7 +137,7 @@ describe("auth/resolver", () => {
     key: string,
     received?: string,
     name = "HEYGEN_API_KEY",
-  ): Promise<void> {
+  ): Promise<string> {
     const project = await fs.mkdtemp(join(dir, "project-"));
     await fs.writeFile(join(project, ".env"), `${name}=${key}\n`);
     if (received !== undefined) {
@@ -145,21 +145,20 @@ describe("auth/resolver", () => {
       await fs.writeFile(join(project, ".hyperframes", "received-files.json"), received);
     }
     loadProjectDotEnv(project, process.env, () => {});
+    return project;
   }
 
-  it("keeps a person's own project .env key ahead of the saved API key", async () => {
-    await projectEnvKey("own-key-1");
-    await writeStore({ api_key: "file-key" });
-    expect(await resolveCredential()).toEqual({ type: "api_key", key: "own-key-1", source: "env" });
-  });
+  const RECEIVED = JSON.stringify({ files: [".env"] });
+  /** A cloned or copied folder has no received-files record; a received one lists its `.env`. */
+  const PROJECT_KINDS = [
+    ["a folder with no received-files record", undefined],
+    ["a received folder", RECEIVED],
+  ] as const;
 
-  it.each([
-    ["lists it", JSON.stringify({ files: [".env"] })],
-    ["cannot be read", "{oops"],
-  ])(
-    "puts the saved API key ahead of a project .env key when the received record %s",
+  it.each([...PROJECT_KINDS, ["an unreadable received-files record", "{oops"]] as const)(
+    "puts the saved API key ahead of a project .env key from %s",
     async (_, record) => {
-      await projectEnvKey(`received-key-${record.length}`, record);
+      await projectEnvKey(`saved-first-${String(record)}`, record);
       await writeStore({ api_key: "file-key" });
       expect(await resolveCredential()).toEqual({
         type: "api_key",
@@ -173,32 +172,87 @@ describe("auth/resolver", () => {
     ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY", "env_alias"],
     ["HYPERFRAMES_API_KEY", "HEYGEN_API_KEY", "env"],
   ] as const)(
-    "uses the shell's key over a received .env's %s, with or without a saved key",
-    async (receivedName, shellName, source) => {
+    "uses the shell's key over a project .env's %s, with or without a saved key",
+    async (projectName, shellName, source) => {
       process.env[shellName] = "shell-key";
-      await projectEnvKey("received-key-5", JSON.stringify({ files: [".env"] }), receivedName);
+      await projectEnvKey(`project-key-${projectName}`, undefined, projectName);
       expect(await resolveCredential()).toEqual({ type: "api_key", key: "shell-key", source });
       await writeStore({ api_key: "file-key" });
       expect(await resolveCredential()).toEqual({ type: "api_key", key: "shell-key", source });
     },
   );
 
-  it("uses a received project .env key when no credential is saved, and says so once", async () => {
+  it.each(PROJECT_KINDS)(
+    "uses a project .env key from %s when nothing is saved, and names the file once",
+    async (_, record) => {
+      const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+      try {
+        const project = await projectEnvKey(`only-key-${String(record)}`, record);
+        expect(await resolveCredential()).toEqual({
+          type: "api_key",
+          key: `only-key-${String(record)}`,
+          source: "env",
+        });
+        await resolveCredential();
+        expect(stderr.mock.calls.map(([line]) => String(line))).toEqual([
+          `[hyperframes] Using HEYGEN_API_KEY from this folder's .env (${join(project, ".env")}): uploads and renders go to that key's HeyGen account.\n`,
+        ]);
+      } finally {
+        stderr.mockRestore();
+      }
+    },
+  );
+
+  describe.each(PROJECT_KINDS)("a project .env key from %s", (_, record) => {
+    it.each([
+      ["expired without a refresh token", { access_token: "stale", expires_at: "2020-01-01Z" }],
+      ["from another OAuth client", { access_token: "foreign", client_id: "shared-heygen-cli" }],
+    ])("never replaces a saved login that is %s", async (_why, oauth) => {
+      await projectEnvKey(`login-key-${String(record)}`, record);
+      await writeStore({ oauth });
+      await expect(resolveCredential()).rejects.toMatchObject({ code: "LOGIN_EXPIRED" });
+    });
+
+    it("never replaces a credentials file that cannot be read", async () => {
+      await projectEnvKey(`broken-key-${String(record)}`, record);
+      await fs.writeFile(join(dir, "credentials"), "{not valid", { mode: 0o600 });
+      await expect(resolveCredential()).rejects.toMatchObject({ code: "INVALID_STORE" });
+    });
+
+    it("never replaces a login HeyGen refused to refresh", async () => {
+      await projectEnvKey(`refused-key-${String(record)}`, record);
+      await writeStore({
+        oauth: { access_token: "at", refresh_token: "rt", expires_at: anHourAgo() },
+      });
+      const refused = ErrRefreshFailed("invalid_grant", { refused: true });
+      await expect(afterRefreshFailure(refused, "rt")).rejects.toBe(refused);
+      expect(await resolveCredential()).toMatchObject({ type: "oauth", refreshable: true });
+    });
+  });
+
+  it("keeps a key the launching app set over a project .env, as a shell key", async () => {
     const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     try {
-      await projectEnvKey("received-key-2", JSON.stringify({ files: [".env"] }));
+      process.env["HEYGEN_API_KEY"] = "host-key";
+      await projectEnvKey("project-key-under-host");
+      await writeStore({ api_key: "file-key" });
+      expect(process.env["HEYGEN_API_KEY"]).toBe("host-key");
       expect(await resolveCredential()).toEqual({
         type: "api_key",
-        key: "received-key-2",
+        key: "host-key",
         source: "env",
       });
-      await resolveCredential();
-      expect(stderr.mock.calls.map(([line]) => String(line))).toEqual([
-        "[hyperframes] Using HEYGEN_API_KEY from this folder's .env: uploads and renders go to that key's HeyGen account.\n",
-      ]);
+      expect(stderr).not.toHaveBeenCalled();
     } finally {
       stderr.mockRestore();
     }
+  });
+
+  it("gives a host app's gateway the project .env key when the host set none", async () => {
+    process.env["HEYGEN_API_URL"] = "http://127.0.0.1:4100";
+    await projectEnvKey("gateway-project-key");
+    await writeStore({ oauth: { access_token: "fresh-at", expires_at: inOneHour() } });
+    expect(await resolveCredential()).toMatchObject({ key: "gateway-project-key" });
   });
 
   it("falls through to HYPERFRAMES_API_KEY", async () => {

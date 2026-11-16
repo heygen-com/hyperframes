@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -15,6 +15,9 @@ vi.mock("node:child_process", () => ({
   execFileSync: vi.fn(),
   spawnSync: vi.fn(() => ({ status: 0 })),
 }));
+
+const startPath = vi.hoisted(() => ({ value: "" }));
+vi.mock("../../utils/windowsExeSearch.js", () => ({ originalPath: () => startPath.value }));
 
 let dir: string | undefined;
 
@@ -119,5 +122,29 @@ describe("parseReservedConcurrency", () => {
     }
     samDeploy({ samDir: "/repo", stackName: "s", region: "r", reservedConcurrency: -1 });
     expect(vi.mocked(spawnSync).mock.lastCall?.[1]).toContain("ReservedConcurrency=-1");
+  });
+});
+
+describe("missing sam", () => {
+  it("says why a sam installed in the project's virtualenv was not used", () => {
+    dir = realpathSync(mkdtempSync(join(tmpdir(), "hf-lambda-sam-venv-")));
+    const venv = join(dir, ".venv", "bin");
+    mkdirSync(venv, { recursive: true });
+    writeFileSync(join(venv, process.platform === "win32" ? "sam.exe" : "sam"), "", {
+      mode: 0o755,
+    });
+    startPath.value = venv;
+    const cwd = vi.spyOn(process, "cwd").mockReturnValue(dir);
+    vi.mocked(execFileSync).mockImplementationOnce(() => {
+      throw Object.assign(new Error("spawnSync sam ENOENT"), { code: "ENOENT" });
+    });
+    try {
+      expect(() => samDeploy({ samDir: "/repo", stackName: "s", region: "us-east-2" })).toThrow(
+        /not found on PATH\..*A copy at \.[\\/]\.venv[\\/]bin[\\/]sam.* was not used/,
+      );
+    } finally {
+      cwd.mockRestore();
+      startPath.value = "";
+    }
   });
 });

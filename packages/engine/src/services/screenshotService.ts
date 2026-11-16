@@ -9,7 +9,6 @@
 import { type Page } from "puppeteer-core";
 import { withVideoFrameSources, type VideoFrameUpdate } from "./videoFrameTransport.js";
 import { type CaptureOptions } from "../types.js";
-import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
 import {
   HF_COLOR_GRADING_CANVAS_ID_PREFIX,
   MEDIA_RENDER_ID_ATTR,
@@ -699,7 +698,6 @@ async function injectResolvedVideoFramesBatch(
     async (
       items: Array<Partial<VideoFrameUpdate> & { videoId: string; frameId: string }>,
       visualProperties: string[],
-      colorGradingSourceHiddenAttr: string,
     ) => {
       const injectedIds: string[] = [];
       const pendingDecodes: Array<Promise<void>> = [];
@@ -783,11 +781,7 @@ async function injectResolvedVideoFramesBatch(
         // `opacity: 0`), so its computed opacity is preserved across seeks
         // and accurately reflects the user's intent on every frame.
         const opacityParsed = parseFloat(computedStyle.opacity);
-        const computedOpacity = video.hasAttribute(colorGradingSourceHiddenAttr)
-          ? 1
-          : Number.isNaN(opacityParsed)
-            ? 1
-            : opacityParsed;
+        const computedOpacity = Number.isNaN(opacityParsed) ? 1 : opacityParsed;
 
         // Measure first: an in-flow bordered <img> sibling would shrink the video's flex box.
         const videoRect = video.getBoundingClientRect();
@@ -888,7 +882,6 @@ async function injectResolvedVideoFramesBatch(
     },
     items,
     [...MEDIA_VISUAL_STYLE_PROPERTIES],
-    COLOR_GRADING_SOURCE_HIDDEN_ATTR,
   );
 }
 
@@ -898,7 +891,7 @@ export async function syncVideoFrameVisibility(
 ): Promise<void> {
   await page.evaluate(
     // fallow-ignore-next-line complexity
-    (ids: string[], colorGradingSourceHiddenAttr: string) => {
+    (ids: string[]) => {
       // Mirror the ancestor-visibility guard from `injectVideoFramesBatch`.
       // See that copy for the full rationale on why `visibility: hidden` is
       // narrowed to sub-composition hosts only — keep these two functions in
@@ -943,10 +936,7 @@ export async function syncVideoFrameVisibility(
           // its computed opacity.
           video.style.setProperty("visibility", "hidden", "important");
           video.style.setProperty("pointer-events", "none", "important");
-          if (hasImg) {
-            if (video.hasAttribute(colorGradingSourceHiddenAttr)) img.style.opacity = "1";
-            img.style.visibility = "visible";
-          }
+          if (hasImg) img.style.visibility = "visible";
         } else {
           // Inactive (or ancestor-hidden) video: hide both. Use visibility only
           // (never opacity) so we never clobber GSAP-controlled inline opacity.
@@ -965,6 +955,5 @@ export async function syncVideoFrameVisibility(
       }
     },
     activeVideoIds,
-    COLOR_GRADING_SOURCE_HIDDEN_ATTR,
   );
 }

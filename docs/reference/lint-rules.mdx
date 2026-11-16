@@ -232,7 +232,7 @@ stylesheet links in `<head>`, so those styles never apply in preview, snapshot o
 
 ### `timeline_track_too_dense`
 
-**Warning.** One track in this file carries more than 3 timed elements (audio, video, caption cues and sub-composition mounts are not counted), which makes the timeline harder to read, iterate on, and diff.
+**Warning.** This file has more than 3 timed elements, whatever tracks they sit on (audio, video, caption cues and sub-composition mounts are not counted), which makes the timeline harder to read, iterate on, and diff.
 
 **Fix:** Split the elements into sub-compositions and mount them from the parent with `data-composition-src`.
 

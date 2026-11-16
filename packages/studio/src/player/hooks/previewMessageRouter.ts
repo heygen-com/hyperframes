@@ -24,6 +24,7 @@ import {
 } from "../store/previewQualitySlice";
 import { parseTimelineFromDOM } from "../lib/timelineDOM";
 import { previewClipManifest, previewFrameOpaque } from "../lib/previewChannel";
+import { frameOrigins } from "../lib/bridgePlayback";
 
 /** What `processTimelineMessage` accepts — the clip-manifest postMessage. */
 export interface ClipManifestMessage {
@@ -57,9 +58,10 @@ export interface PreviewMessageRouterDeps {
   syncTimelineElements: (elements: TimelineElement[]) => void;
 }
 
-/** True when the message did not come from OUR preview iframe. */
-function isForeignSource(e: MessageEvent, iframe: HTMLIFrameElement | null): boolean {
-  return Boolean(e.source && iframe && e.source !== iframe.contentWindow);
+/** True only for a post by our preview iframe's window, from an origin that frame can have. */
+function fromOurPreview(e: MessageEvent, iframe: HTMLIFrameElement | null): boolean {
+  if (!iframe || !e.source || e.source !== iframe.contentWindow) return false;
+  return frameOrigins(iframe).includes(e.origin);
 }
 
 /** A preview message worth acting on, or null: the fixture lease, the sender
@@ -70,7 +72,7 @@ function acceptedPreviewMessage(
   iframe: HTMLIFrameElement | null,
 ): PreviewMessage | null {
   if (hasTimelinePerformanceFixtureLease()) return null;
-  if (isForeignSource(e, iframe)) return null;
+  if (!fromOurPreview(e, iframe)) return null;
   const data = e.data as PreviewMessage | null;
   if (data?.source !== "hf-preview") return null;
   return acceptStudioRuntimeMessage(data) ? data : null;

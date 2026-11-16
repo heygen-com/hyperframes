@@ -240,6 +240,11 @@ export async function startCaptureProxy(
   };
 }
 
+export function pageServerDirectHost(pageServerUrl: string): string {
+  const url = new URL(pageServerUrl);
+  return `${url.hostname}:${url.port || (url.protocol === "https:" ? "443" : "80")}`;
+}
+
 export function browserProxyArgs(proxyUrl: string, directHost?: string): string[] {
   return [
     `--proxy-server=${proxyUrl}`,

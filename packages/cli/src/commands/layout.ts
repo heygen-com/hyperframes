@@ -1,4 +1,5 @@
 import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
+import { launchWithPageNetwork } from "../browser/pageNetwork.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, readFileSync } from "node:fs";
@@ -223,14 +224,20 @@ async function runLayoutAudit(
     const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, browser.executablePath);
     const requiresWebGpu = compositionRequiresWebGpu(html);
     const { gpuConfig, softwareWebGpu } = resolveLocalWebGpu(resolvedGpuMode, requiresWebGpu);
-    chromeBrowser = await launchManagedBrowser(puppeteer.default, {
-      headless: true,
-      executablePath: browser.executablePath,
-      args: buildChromeArgs(
-        { width: 1920, height: 1080, captureMode: "screenshot", requiresWebGpu },
-        gpuConfig,
-      ),
-    });
+    chromeBrowser = await launchWithPageNetwork(server.url, (network) =>
+      launchManagedBrowser(puppeteer.default, {
+        headless: true,
+        executablePath: browser.executablePath,
+        userDataDir: network.userDataDir,
+        args: [
+          ...buildChromeArgs(
+            { width: 1920, height: 1080, captureMode: "screenshot", requiresWebGpu },
+            gpuConfig,
+          ),
+          ...network.args,
+        ],
+      }),
+    );
 
     const page = await chromeBrowser.newPage();
     await installPageFunctionGuard(page);
@@ -447,7 +454,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
       json: { type: "boolean", description: "Output agent-readable JSON", default: false },
       samples: {
         type: "string",
-        description: "Number of midpoint samples across the duration (default: 9)",
+        description: "Number of midpoint samples across the duration",
         default: "9",
       },
       at: {
@@ -467,22 +474,22 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
       },
       tolerance: {
         type: "string",
-        description: "Allowed pixel overflow before reporting an issue (default: 2)",
+        description: "Allowed pixel overflow before reporting an issue",
         default: "2",
       },
       timeout: {
         type: "string",
-        description: "Ms to wait for runtime to initialize (default: 5000)",
+        description: "Ms to wait for runtime to initialize",
         default: "5000",
       },
       "max-issues": {
         type: "string",
-        description: "Maximum issues to print or return after static collapse (default: 80)",
+        description: "Maximum issues to print or return after static collapse",
         default: "80",
       },
       "collapse-static": {
         type: "boolean",
-        description: "Collapse repeated static issues across samples (default: true)",
+        description: "Collapse repeated static issues across samples",
         default: true,
       },
       strict: {

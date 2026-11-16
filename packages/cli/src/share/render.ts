@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { mkdir, writeFile, rename, rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { projectFingerprint, shareSourceFingerprint } from "@hyperframes/share";
+import { writeRecord } from "../utils/projectRecords.js";
 
 export const shareContentFingerprint = shareSourceFingerprint;
 
@@ -76,8 +77,6 @@ export async function prepareShareRender(dir: string): Promise<void> {
     import("../commands/render/execute.js"),
     import("../commands/render.js"),
   ]);
-  const target = join(stateFolder, "share-render.json");
-  const temporary = `${target}.${id}.tmp`;
   try {
     const plan = createRenderPlan({ dir, output, format: "mp4", quiet: true, strict: true });
     await executeRenderPlan(plan, {
@@ -103,13 +102,11 @@ export async function prepareShareRender(dir: string): Promise<void> {
       throw new Error(
         "The project changed while rendering. Share again to capture the current project.",
       );
-    await writeFile(
-      temporary,
-      JSON.stringify({ id, path: output, fingerprint: before, contentFingerprint: content }),
-    );
-    await rename(temporary, target);
+    const record = { id, path: output, fingerprint: before, contentFingerprint: content };
+    if (!writeRecord(dir, "share-render.json", JSON.stringify(record)))
+      throw new Error("Sharing state must stay inside this project, without symlinks.");
   } catch (error) {
-    await Promise.allSettled([rm(output, { force: true }), rm(temporary, { force: true })]);
+    await rm(output, { force: true });
     throw error;
   }
 }

@@ -1,4 +1,3 @@
-import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
 import { parseGsapScript } from "@hyperframes/parsers/gsap-parser";
 import { GSAP_BASE_URL_META, motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
 import { findAuthoredElement } from "./authoredSource";
@@ -464,24 +463,13 @@ export function applySoftReload(
         s.cssText = css;
         restoreAuthoredStyle(s, findAuthoredStyle(el), targets.get(el)!);
         // The restored cssText carries RUNTIME opacity, not authored opacity:
-        // a mid-flight tween's interpolated value, or the color-grading hide
-        // (`opacity: 0 !important`). The re-run script's tweens re-initialize
+        // a mid-flight tween's interpolated value. The re-run script's tweens re-initialize
         // against it — a from() captures it as its END, a to() as its START —
         // turning the transient into the tween's permanent bound (dimmed or
         // invisible elements). Put the AUTHORED inline opacity back; the seek
         // below re-renders the correct animated value either way.
         const authored = readAuthoredOpacity(el);
-        if (authored !== null) {
-          applyAuthoredInlineOpacity(s, authored);
-        } else if (
-          el.hasAttribute(COLOR_GRADING_SOURCE_HIDDEN_ATTR) &&
-          s.getPropertyValue("opacity") === "0" &&
-          s.getPropertyPriority("opacity") === "important"
-        ) {
-          // Authored value unknown, but this is definitely the grading hide —
-          // never let a from() capture 0; fall back to the CSS cascade.
-          s.removeProperty("opacity");
-        }
+        if (authored !== null) applyAuthoredInlineOpacity(s, authored);
       }
     }
     forgetLiveSets(targets);

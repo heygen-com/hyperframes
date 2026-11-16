@@ -31,11 +31,33 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, delimiter, dirname, join, relative, sep } from "node:path";
+import { basename, dirname, join, relative, sep, win32 } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { managedChromeVersion } from "./manager.js";
 
 const CHROME_VERSION = managedChromeVersion();
+
+// The browsers here are stand-in files: a non-empty one counts as the pinned build unless a case refuses it. Mocked
+// before each case so it reads the case's own (possibly mocked) node:fs.
+const pinCheck = { refuse: false };
+beforeEach(() => {
+  vi.doMock("@hyperframes/engine/chrome-host-ceiling", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("@hyperframes/engine/chrome-host-ceiling")>();
+    const { statSync } = await import("node:fs");
+    const standIn = (path: string) => {
+      try {
+        const stat = statSync(path, { throwIfNoEntry: false });
+        return stat?.isFile() === true && stat.size > 0;
+      } catch {
+        return false;
+      }
+    };
+    return {
+      ...actual,
+      isPinnedHeadlessShell: (path: string) => !pinCheck.refuse && standIn(path),
+    };
+  });
+});
 
 // Use `path.join` so the fake paths line up with whatever separator Node's
 // real `path.join` produces in `manager.ts` on the host running the test
@@ -104,6 +126,8 @@ interface FsMockOptions {
   osHost?: { platform: string; release: string };
   /** paths whose stat reports 0 bytes */
   emptyFiles?: ReadonlySet<string>;
+  /** paths whose stat reports another account as owner */
+  otherAccounts?: ReadonlySet<string>;
 }
 
 function installFsMocks({
@@ -113,6 +137,7 @@ function installFsMocks({
   initialMtimeMs = 0,
   osHost = { platform: "linux", release: "24.0.0" },
   emptyFiles,
+  otherAccounts,
 }: FsMockOptions) {
   // Mutable, and returned, so tests can pre-seed a "lock already held" path or
   // assert the lock dir doesn't leak after ensureBrowser resolves.
@@ -171,8 +196,24 @@ function installFsMocks({
         (err as NodeJS.ErrnoException).code = "ENOENT";
         throw err;
       }
-      return { mtimeMs: mtimes.get(p) ?? 0, size: emptyFiles?.has(p) ? 0 : 1, isFile: () => true };
+      return {
+        mtimeMs: mtimes.get(p) ?? 0,
+        size: emptyFiles?.has(p) ? 0 : 1,
+        isFile: () => true,
+        uid: otherAccounts?.has(p) ? 4242 : (process.getuid?.() ?? 0),
+        mode: 0o755,
+      };
     },
+    lstatSync: (p: string) =>
+      paths.has(p)
+        ? {
+            uid: otherAccounts?.has(p) ? 4242 : (process.getuid?.() ?? 0),
+            mode: 0o755,
+            isSymbolicLink: () => false,
+            isDirectory: () => false,
+          }
+        : undefined,
+    chmodSync: () => {},
     utimesSync: (p: string, _atime: Date, mtime: Date) => {
       if (touchError) throw touchError;
       if (!paths.has(p)) {
@@ -314,6 +355,7 @@ describe("findBrowser — cache resolution", () => {
     });
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    delete process.env["PUPPETEER_EXECUTABLE_PATH"];
     installChildProcessMocks();
   });
 
@@ -364,7 +406,7 @@ describe("findBrowser — cache resolution", () => {
     const project = join("/", "projects", "shared");
     const tools = join("/", "tools", "chrome");
     vi.spyOn(process, "cwd").mockReturnValue(project);
-    vi.stubEnv("PATH", [project, tools].join(delimiter));
+    vi.stubEnv("PATH", [project, tools].join(win32.delimiter));
     const existing = installFsMocks({ existing: new Set([join(project, "google-chrome.exe")]) });
     installPuppeteerBrowsersMock();
     const { findSystemBrowser } = await import("./manager.js");
@@ -502,12 +544,49 @@ describe("findBrowser — cache resolution", () => {
       executablePath: redownloadedBinary,
       source: "download",
     });
-    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Cached binary unusable"));
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Cached binary missing, not the pinned build"),
+    );
     // The partial extract is replaced wholesale, not merged into (install() would
     // otherwise throw "folder exists but exe missing", the bug both feedback reports hit).
     expect(paths.has(staleLeftover)).toBe(false);
     expect(paths.has(redownloadedBinary)).toBe(true);
   });
+
+  it.skipIf(!process.getuid).each([
+    ["the binary", HF_BINARY],
+    ["a folder above it", HF_CACHE],
+  ])(
+    "re-downloads instead of launching a cached build when another account owns %s",
+    async (_what, foreign) => {
+      const redownloadedBinary = join(HF_CACHE, "chrome-headless-shell", "redownloaded");
+      installFsMocks({
+        existing: new Set([HF_CACHE, HF_BINARY]),
+        otherAccounts: new Set([foreign]),
+      });
+      installPuppeteerBrowsersMock({
+        installedInHfCache: [
+          {
+            browser: "chrome-headless-shell",
+            executablePath: HF_BINARY,
+            buildId: CHROME_VERSION,
+          },
+        ],
+        installResult: { executablePath: redownloadedBinary },
+      });
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { findBrowser } = await import("./manager.js");
+
+      expect(await findBrowser()).toEqual({
+        executablePath: redownloadedBinary,
+        source: "download",
+      });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining(`writable by another account at ${HF_BINARY}`),
+      );
+    },
+  );
 
   it("ensureBrowser({force: true}) re-downloads without purging the cache, bypassing any cache/system shortcut", async () => {
     const staleInstallDir = stagedVersionDir(HF_CACHE, "131.0.6778.85");
@@ -568,6 +647,24 @@ describe("findBrowser — cache resolution", () => {
       expect(readFileSync(liveBinary, "utf8")).toBe("new");
       expect(readFileSync(otherVersion, "utf8")).toBe("other");
     } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a download that is not the pinned build", async () => {
+    const home = useRealCacheHome();
+    installPuppeteerBrowsersMock({
+      installImpl: async ({ cacheDir, buildId }) =>
+        writeStagedInstall(cacheDir, buildId, "other build"),
+    });
+    pinCheck.refuse = true;
+    try {
+      const { ensureBrowser } = await import("./manager.js");
+      await expect(ensureBrowser({ force: true })).rejects.toThrow(
+        /not the build this version pins/,
+      );
+    } finally {
+      pinCheck.refuse = false;
       rmSync(home, { recursive: true, force: true });
     }
   });
@@ -1531,6 +1628,7 @@ describe("downloadBrowser — install failure surfaces HYPERFRAMES_BROWSER_PATH 
     vi.resetModules();
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    delete process.env["PUPPETEER_EXECUTABLE_PATH"];
     installChildProcessMocks();
   });
 
@@ -1632,6 +1730,7 @@ describe("downloadBrowser — too little disk for the browser", () => {
     vi.resetModules();
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    delete process.env["PUPPETEER_EXECUTABLE_PATH"];
     installChildProcessMocks();
   });
 
@@ -1808,6 +1907,7 @@ describe("browser resolution on macOS 12 (Darwin < 22)", () => {
     vi.resetModules();
     delete process.env["HYPERFRAMES_BROWSER_PATH"];
     delete process.env["PRODUCER_HEADLESS_SHELL_PATH"];
+    delete process.env["PUPPETEER_EXECUTABLE_PATH"];
     installChildProcessMocks();
     Object.defineProperty(process, "platform", {
       value: "darwin",

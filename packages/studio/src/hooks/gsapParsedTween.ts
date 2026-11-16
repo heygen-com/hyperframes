@@ -2,6 +2,7 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { elementTargets } from "../utils/elementGsap";
 import { resolveTweenStart } from "../utils/globalTimeCompiler";
 import { KEYFRAME_PCT_MATCH } from "./gsapShared";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
 import type { ImplicitEndValue } from "./gsapValueAtPlayhead";
 import type { ReadTween } from "./gsapRuntimeKeyframes";
 
@@ -81,7 +82,8 @@ export function findParsedTween(
   element: Element,
   anim: GsapAnimation,
 ): ParsedTween | null {
-  const win = iframe?.contentWindow as GsapWindow | null;
+  if (!iframe || previewFrameOpaque(iframe)) return null;
+  const win = iframe.contentWindow as GsapWindow | null;
   const start = resolveTweenStart(anim);
   if (!win?.__timelines || start == null) return null;
   const steps = anim.keyframes?.keyframes.map((kf) => kf.properties) ?? [anim.properties];

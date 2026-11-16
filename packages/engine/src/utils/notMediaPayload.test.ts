@@ -7,6 +7,7 @@ import { getFfprobeBinary } from "./ffmpegBinaries.js";
 import {
   assertMediaPayload,
   fingerprintElementId,
+  isNotImagePayload,
   isNotMediaPayload,
   NotMediaPayloadError,
   playlistLeavesItsFolder,
@@ -104,6 +105,65 @@ describe("isNotMediaPayload", () => {
     expect(await isNotMediaPayload(writeFixture("clip.bin", Buffer.from(bytes)))).toBe(false);
   });
 
+  function box(type: string, size: number, body = Buffer.alloc(Math.max(size - 8, 0))): Buffer {
+    const header = Buffer.alloc(8);
+    header.writeUInt32BE(size, 0);
+    header.write(type, 4, "latin1");
+    return Buffer.concat([header, body]);
+  }
+
+  function largeBox(type: string, size: bigint, body: Buffer): Buffer {
+    const header = Buffer.alloc(16);
+    header.writeUInt32BE(1, 0);
+    header.write(type, 4, "latin1");
+    header.writeBigUInt64BE(size, 8);
+    return Buffer.concat([header, body]);
+  }
+
+  it.each([
+    ["<", 0x3c, "ftyp"],
+    ["#", 0x23, "ftyp"],
+    ["{", 0x7b, "styp"],
+    ["[", 0x5b, "ftyp"],
+    ["space", 0x20, "ftyp"],
+    ["newline", 0x0a, "styp"],
+  ])("does not flag an mp4 whose box size reads as %s", async (_label, size, type) => {
+    const mp4 = Buffer.concat([box(type, size), box("moov", 16)]);
+    expect(await isNotMediaPayload(writeFixture("clip.mp4", mp4))).toBe(false);
+  });
+
+  it.each([
+    ["leading padding", [box("free", 0x3c), box("ftyp", 0x3c), box("moov", 16)]],
+    ["an extension box after ftyp", [box("ftyp", 0x3c), box("uuid", 24), box("moov", 16)]],
+    ["a QuickTime movie opening with wide", [box("wide", 8), box("mdat", 0x3c), box("moov", 16)]],
+    ["a QuickTime metadata box", [box("ftyp", 0x3c), box("\xa9nam", 12), box("moov", 16)]],
+  ])("does not flag an mp4 with %s", async (_label, boxes) => {
+    expect(await isNotMediaPayload(writeFixture("clip.mp4", Buffer.concat(boxes)))).toBe(false);
+  });
+
+  it("does not flag an mp4 whose second box runs to the end or has a 64-bit size", async () => {
+    const toEnd = Buffer.concat([box("ftyp", 0x3c), box("mdat", 0), Buffer.from("<html>")]);
+    const large = Buffer.concat([box("ftyp", 0x3c), largeBox("mdat", 24n, Buffer.alloc(8))]);
+    expect(await isNotMediaPayload(writeFixture("to-end.mp4", toEnd))).toBe(false);
+    expect(await isNotMediaPayload(writeFixture("large.mp4", large))).toBe(false);
+  });
+
+  it.each([
+    ["a box larger than the file", box("ftyp", 0x3c, Buffer.from("<html><body>hi</body></html>"))],
+    [
+      "a box followed by text",
+      Buffer.concat([box("ftyp", 0x3c), Buffer.from("<!doctype html><html></html>")]),
+    ],
+    [
+      "a second box whose 64-bit size runs past the file",
+      Buffer.concat([box("ftyp", 0x3c), largeBox("mdat", 1n << 40n, Buffer.from("<html>"))]),
+    ],
+    ["a box type no mp4 opens with", box("html", 0x3c, Buffer.from("<?xml?>".padEnd(52)))],
+    ["an XML manifest behind NULs", Buffer.from('\0\0\0<?xml version="1.0"?><MPD/>', "latin1")],
+  ])("still detects a document shaped like %s", async (_label, bytes) => {
+    expect(await isNotMediaPayload(writeFixture("fake.mp4", bytes))).toBe(true);
+  });
+
   it("does not flag a container that merely contains a document byte further in", async () => {
     const filePath = writeFixture(
       "not-html.bin",
@@ -128,6 +188,45 @@ describe("isNotMediaPayload", () => {
   it("reports not-a-document instead of throwing when the file is missing", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-markup-sniff-gone-"));
     expect(await isNotMediaPayload(join(dir, "evicted.mp4"))).toBe(false);
+  });
+});
+
+const MPD = '<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011"><Period/></MPD>';
+// One ID3v2.4 tag with a 4-byte body, as ffmpeg skips it before it probes.
+const id3 = Buffer.from([0x49, 0x44, 0x33, 4, 0, 0, 0, 0, 0, 4, 1, 2, 3, 4]);
+
+describe("a file behind an ID3 tag", () => {
+  it("is refused as media when markup follows the tag", async () => {
+    const file = writeFixture("tagged.mp3", Buffer.concat([id3, Buffer.from(MPD)]));
+    expect(await isNotMediaPayload(file)).toBe(true);
+    expect(await isNotImagePayload(file)).toBe(true);
+  });
+
+  it("is kept as media when an MPEG frame follows the tag", async () => {
+    const file = writeFixture("song.mp3", Buffer.concat([id3, Buffer.from([0xff, 0xfb, 0x90, 0])]));
+    expect(await isNotMediaPayload(file)).toBe(false);
+  });
+});
+
+describe("isNotImagePayload", () => {
+  it.each([
+    ["a manifest", MPD, true],
+    ["json", '{"error": "gone"}', true],
+    [
+      "an svg behind a prolog, comment and doctype",
+      `<?xml version="1.0"?>\n<!-- made by hand -->\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x.dtd" [<!ENTITY a "b">]>\n<SVG viewBox="0 0 1 1"/>`,
+      false,
+    ],
+    ["an svg whose comment outruns the sniff window", `<!--${"x".repeat(70_000)}--><svg/>`, false],
+    [
+      "a utf-16 svg",
+      Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from("<svg/>", "utf16le")]),
+      false,
+    ],
+    ["an svg with a long doctype subset", `<!DOCTYPE svg [${"][".repeat(30_000)}]><svg/>`, false],
+    ["a png", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), false],
+  ])("for %s", async (_label, contents, refused) => {
+    expect(await isNotImagePayload(writeFixture("image", contents))).toBe(refused);
   });
 });
 
@@ -210,6 +309,41 @@ describe("playlistLeavesItsFolder", () => {
     const file = writeFixture("clip.m3u8", contents);
     expect(await playlistLeavesItsFolder(file)).toBe(true);
     expect(await isNotMediaPayload(file)).toBe(true);
+  });
+
+  it.each([
+    ["a git segment", hls("#EXTINF:1,", ".git/objects/seg.ts")],
+    ["an encoded app record", hls("#EXTINF:1,", "%2ehyperframes/agent-handoff.ts")],
+    ["a key file", hls('#EXT-X-KEY:METHOD=AES-128,URI="keys/id_rsa"', "#EXTINF:1,", "seg.ts")],
+    ["a credential folder in a map", hls('#EXT-X-MAP:URI=".ssh/init.mp4"', "#EXTINF:1,", "seg.ts")],
+    ["a concat entry in agent state", concat("'.claude/part.mp4'")],
+    ["an env file", concat(".env")],
+  ])("refuses %s that stays in its folder", async (_name, contents) => {
+    const file = writeFixture("clip.m3u8", contents);
+    expect(await playlistLeavesItsFolder(file)).toBe(true);
+    expect(await isNotMediaPayload(file)).toBe(true);
+  });
+
+  it("refuses a list whose nested entry is a manifest, and keeps one that is not there", async () => {
+    const list = "ffconcat version 1.0\nfile manifest.mpd\n";
+    expect(
+      await playlistLeavesItsFolder(writeTree({ "clip.mp4": list, "manifest.mpd": MPD })),
+    ).toBe(true);
+    expect(await playlistLeavesItsFolder(writeTree({ "clip.mp4": list }))).toBe(false);
+    const encrypted = hls('#EXT-X-KEY:METHOD=AES-128,URI="key.bin"', "#EXTINF:1,", "seg.ts");
+    expect(
+      await playlistLeavesItsFolder(
+        writeTree({ "clip.m3u8": encrypted, "key.bin": "<\x01\x02", "seg.ts": "{\x00" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("refuses a nested list naming a private file from its own folder", async () => {
+    const master = writeTree({
+      "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",
+      "sub/inner.m3u8": hls("#EXTINF:1,", ".git/seg.ts"),
+    });
+    expect(await playlistLeavesItsFolder(master)).toBe(true);
   });
 
   it("refuses a list whose nested list names a file outside the top folder", async () => {

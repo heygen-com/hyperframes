@@ -1,5 +1,5 @@
 import { buildProjectApiPath } from "./projectRouting";
-import { isTypingTarget } from "./typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 import type { TimelineElement } from "../player/store/playerStore";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { TimelineAssetKind } from "./timelineAssetDrop";

@@ -91,6 +91,7 @@ it("publishes resolved metadata only for clips that still need it", async () => 
     window.dispatchEvent(
       new MessageEvent("message", {
         source: frame,
+        origin: window.location.origin,
         data: { source: "hf-preview", type: "timeline", clips, durationInFrames: 18000, fps: 30 },
       }),
     );

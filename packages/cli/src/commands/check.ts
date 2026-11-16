@@ -1,7 +1,8 @@
+import { terminalText } from "@hyperframes/core";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
   recordArtifacts,
@@ -18,7 +19,6 @@ import type { ArgsDef } from "citty";
 import type { Example } from "./_examples.js";
 import { parseAt } from "./layout.js";
 import { c } from "../ui/colors.js";
-import { terminalText } from "../utils/terminalText.js";
 import { registerBrowserSessionCleanup } from "../browser/launch.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { CliUsageError, failUsage, setCommandExitCode } from "../utils/commandResult.js";
@@ -54,6 +54,7 @@ import {
   readCachedPass,
   storePass,
 } from "../utils/checkCache.js";
+import { recordFolder } from "../utils/projectRecords.js";
 import { VERSION } from "../version.js";
 
 export const examples: Example[] = [
@@ -113,6 +114,13 @@ export function checkReportFile(projectDir: string, id: string): string {
   return join(projectDir, ".hyperframes", "artifacts", "checks", `${id}.json`);
 }
 
+function makeReportFolder(path: string, projectDir: string): void {
+  if (!recordFolder(projectDir, "artifacts/checks"))
+    throw new Error(
+      `${dirname(path)} is reached through a link or a file; remove it and run again`,
+    );
+}
+
 async function saveCheckReport(
   project: ProjectDir,
   options: CheckOptions,
@@ -121,7 +129,7 @@ async function saveCheckReport(
   id: string,
 ): Promise<SavedCheck> {
   const path = checkReportFile(project.dir, id);
-  mkdirSync(dirname(path), { recursive: true });
+  makeReportFolder(path, project.dir);
   writeFileSync(path, JSON.stringify(report, null, 2) + "\n", { flag: "wx" });
   const reportScope =
     "scope" in report && typeof report.scope === "object" && report.scope !== null
@@ -191,7 +199,7 @@ const CHECK_COMMAND_ARGS = {
   },
   samples: {
     type: "string",
-    description: "Number of midpoint samples across the duration (default: 9)",
+    description: "Number of midpoint samples across the duration",
     default: "9",
   },
   range: {
@@ -221,17 +229,17 @@ const CHECK_COMMAND_ARGS = {
   },
   "max-issues": {
     type: "string",
-    description: "Maximum issues to print or return after static collapse (default: 80)",
+    description: "Maximum issues to print or return after static collapse",
     default: "80",
   },
   "collapse-static": {
     type: "boolean",
-    description: "Collapse repeated static issues across samples (default: true)",
+    description: "Collapse repeated static issues across samples",
     default: true,
   },
   tolerance: {
     type: "string",
-    description: "Allowed pixel overflow before reporting an issue (default: 2)",
+    description: "Allowed pixel overflow before reporting an issue",
     default: "2",
   },
   budget: {
@@ -847,8 +855,9 @@ function printContrastSection(report: CheckReport): void {
     return;
   }
   for (const finding of section.findings) {
+    const text = finding.text ? ` ${c.dim(`"${terminalText(finding.text)}"`)}` : "";
     console.log(
-      `  ${c.error("✗")} ${terminalText(finding.selector)} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, ${formatFindingTimes(finding)})`,
+      `  ${findingIcon(finding)} ${terminalText(finding.selector)}${text} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, ${formatFindingTimes(finding)})`,
     );
     const source = `Try ${terminalText(finding.suggestedColor)}; source ${terminalText(finding.sourceFile)}`;
     console.log(`    ${c.dim(source)}`);

@@ -1,7 +1,8 @@
-import { mkdirSync, readFileSync, unlinkSync } from "node:fs";
+import { readFileSync, unlinkSync } from "node:fs";
 import { createFileAtomically } from "@hyperframes/core/atomic-file";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { recordFolder } from "./projectRecords.js";
 import { readToolContext, type ToolContext } from "./toolContext.js";
 
 export class ProjectLockTimeout extends Error {}
@@ -90,7 +91,10 @@ export async function withProjectLock<T>(
 ): Promise<T> {
   if (!context.projectLock) return run();
   const path = projectLockPath(projectDir);
-  mkdirSync(dirname(path), { recursive: true });
+  if (!recordFolder(projectDir, ""))
+    throw new Error(
+      `${join(projectDir, ".hyperframes")} is a link or not a folder; remove it and run again`,
+    );
   const holder: Holder = { pid: process.pid, command, startedAt: Date.now() };
   const deadline = holder.startedAt + context.projectLock.waitMs;
   let nextNoticeAt = holder.startedAt + FIRST_NOTICE_MS;

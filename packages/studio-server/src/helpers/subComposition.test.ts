@@ -6,7 +6,12 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { parseHTML } from "linkedom";
 import { AFTER_FONTS_SCRIPT_TYPE } from "@hyperframes/core/compiler";
-import { buildSubCompositionHtml, hasBaseElement } from "./subComposition";
+import {
+  buildSubCompositionHtml,
+  hasBaseElement,
+  rootHeadContent,
+  tagRootCompositionFile,
+} from "./subComposition";
 
 function makeTempProject(files: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), "hf-subcomp-preview-"));
@@ -594,5 +599,132 @@ describe("hasBaseElement", () => {
     ]) {
       expect(hasBaseElement(html)).toBe(false);
     }
+  });
+});
+
+/** A seeded generator, so a failing page can be reproduced from the test's output. */
+function seededPick(seed: number): (n: number) => number {
+  let state = seed;
+  return (n) => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    state >>>= 0;
+    return state % n;
+  };
+}
+
+function generatedPages(pieces: string[], seed: number, count: number): string[] {
+  const pick = seededPick(seed);
+  return Array.from({ length: count }, () =>
+    Array.from({ length: 1 + pick(14) }, () => pieces[pick(pieces.length)]).join(""),
+  );
+}
+
+function expectFast(run: () => void, budgetMs: number): void {
+  const started = performance.now();
+  run();
+  expect(performance.now() - started).toBeLessThan(budgetMs);
+}
+
+describe("rootHeadContent", () => {
+  const regexHead = (html: string) => html.match(/<head[^>]*>([\s\S]*?)<\/head>/i)?.[1] ?? "";
+
+  it("captures the inner head of ordinary pages", () => {
+    expect(
+      rootHeadContent('<html><head lang="en"><title>x</title></head><body></body></html>'),
+    ).toBe("<title>x</title>");
+    expect(rootHeadContent("<HEAD><meta charset=utf-8></Head>")).toBe("<meta charset=utf-8>");
+    expect(rootHeadContent("<body>no head</body>")).toBe("");
+  });
+
+  it("captures what the regex captured, on generated pages", () => {
+    const pieces = [
+      "<head",
+      "<HEAD",
+      "<header",
+      ">",
+      "</head>",
+      "</HEAD>",
+      "</head",
+      "<",
+      "/",
+      "a",
+      " ",
+      "\n",
+    ];
+    let found = 0;
+    for (const page of generatedPages(pieces, 11, 20_000)) {
+      expect(rootHeadContent(page), page).toBe(regexHead(page));
+      if (/<head[^>]*>[\s\S]*?<\/head>/i.test(page)) found++;
+    }
+    expect(found).toBeGreaterThan(1_000);
+  });
+
+  it("takes time in proportion to the page on openers that never close", () => {
+    // The regex rescanned to the end from every opener: seconds at this size, four times as long per doubling.
+    const shapes = [
+      "<head".repeat(100_000),
+      "<head>".repeat(100_000),
+      `<head>${"<head>".repeat(100_000)}</head`,
+    ];
+    for (const page of shapes) expectFast(() => rootHeadContent(page), 100);
+  });
+});
+
+describe("tagRootCompositionFile", () => {
+  const regexTag = (bodyHtml: string, compPath: string) => {
+    const match = bodyHtml.match(/<[a-zA-Z][^>]*\bdata-composition-id=/);
+    if (match?.index == null) return bodyHtml;
+    const tagEnd = bodyHtml.indexOf(">", match.index);
+    if (tagEnd === -1) return bodyHtml;
+    if (bodyHtml.slice(match.index, tagEnd).includes("data-composition-file")) return bodyHtml;
+    return `${bodyHtml.slice(0, tagEnd)} data-composition-file="${compPath}"${bodyHtml.slice(tagEnd)}`;
+  };
+
+  it("tags the first composition root and leaves a tagged one alone", () => {
+    expect(tagRootCompositionFile('<div data-composition-id="a"><p></p></div>', "c/a.html")).toBe(
+      '<div data-composition-id="a" data-composition-file="c/a.html"><p></p></div>',
+    );
+    const tagged = '<div data-composition-id="a" data-composition-file="x.html"></div>';
+    expect(tagRootCompositionFile(tagged, "c/a.html")).toBe(tagged);
+    expect(tagRootCompositionFile("<div xdata-composition-id=1></div>", "c/a.html")).toBe(
+      "<div xdata-composition-id=1></div>",
+    );
+  });
+
+  it("tags what the regex tagged, on generated pages", () => {
+    const pieces = [
+      "<div",
+      "<a",
+      "<1",
+      "< ",
+      "<",
+      ">",
+      " ",
+      "x",
+      "data-composition-id=",
+      " data-composition-id=",
+      " data-composition-id=1>",
+      "data-composition-file",
+      '"',
+    ];
+    let tagged = 0;
+    for (const page of generatedPages(pieces, 5, 20_000)) {
+      const out = tagRootCompositionFile(page, "a.html");
+      expect(out, page).toBe(regexTag(page, "a.html"));
+      if (out !== page) tagged++;
+    }
+    expect(tagged).toBeGreaterThan(1_000);
+  });
+
+  it("takes time in proportion to the page on openers that never close", () => {
+    // A script's text keeps its `<` through serialization, so the page can be one long run of openers.
+    const shapes = [
+      "<a".repeat(150_000),
+      `<a${" data-composition-id".repeat(15_000)}`,
+      `<a${"<a data-composition-id".repeat(15_000)}`,
+    ];
+    for (const page of shapes) expectFast(() => tagRootCompositionFile(page, "a.html"), 100);
   });
 });

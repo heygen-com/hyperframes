@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolve } from "node:path";
 import { defaultProbe, resolvePythonCommand, pythonInvocation } from "./python.mjs";
 
 // Regression: on Windows a standard python.org install has no `python3.exe`
@@ -179,4 +180,19 @@ test("a module planted in the working directory is never imported", { skip: !has
   } finally {
     rmSync(project, { recursive: true, force: true });
   }
+});
+
+// fails without the fix: a relative HYPERFRAMES_PYTHON was probed in the caller's folder but run
+// from wherever the child started, so MusicGen, which starts in the home folder, could not find it.
+test("a HYPERFRAMES_PYTHON with a folder in it means the caller's folder; a bare name keeps PATH lookup", () => {
+  const probed = [];
+  const probe = (cmd) => (probed.push(cmd), true);
+  assert.deepEqual(
+    resolvePythonCommand("linux", probe, { HYPERFRAMES_PYTHON: "./venv/bin/python" }),
+    [resolve("venv/bin/python")],
+  );
+  assert.deepEqual(probed, [resolve("venv/bin/python")]);
+  assert.deepEqual(resolvePythonCommand("linux", probe, { HYPERFRAMES_PYTHON: "python3.12" }), [
+    "python3.12",
+  ]);
 });

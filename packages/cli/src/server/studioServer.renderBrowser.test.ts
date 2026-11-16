@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
+import { terminalText } from "@hyperframes/core";
 
 const mocks = vi.hoisted(() => ({
   resolveRenderBrowser: vi.fn(),
@@ -43,10 +44,14 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function startStudioRender(extra: Record<string, unknown> = {}, receivedFiles?: string[]) {
+function startStudioRender(
+  extra: Record<string, unknown> = {},
+  receivedFiles?: string[],
+  entry = `<div data-composition-src="scene.html"></div>`,
+) {
   const dir = mkdtempSync(join(tmpdir(), "hf-studio-render-browser-"));
   dirs.push(dir);
-  writeFileSync(join(dir, "index.html"), `<div data-composition-src="scene.html"></div>`);
+  writeFileSync(join(dir, "index.html"), entry);
   writeFileSync(join(dir, "scene.html"), "<div></div>");
   writeFileSync(join(dir, "other.html"), "<div></div>");
   if (receivedFiles) {
@@ -185,5 +190,29 @@ describe("Studio render of a received composition", () => {
     expect(mocks.createRenderJob).toHaveBeenCalledWith(
       expect.objectContaining({ allowOutsideProjectAssets: allowed }),
     );
+  });
+
+  it("logs the references it leaves out without their control characters", async () => {
+    mocks.resolveRenderBrowser.mockResolvedValue({
+      executablePath: "/opt/chrome",
+      source: "cache",
+    });
+    const outside = mkdtempSync(join(tmpdir(), "hf-studio-render-outside-"));
+    dirs.push(outside);
+    writeFileSync(join(outside, "pic.png"), "png");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    startStudioRender({}, ["index.html"], `<img src="${outside}/pic.png?\u001b[2K\u001b[1A">`);
+    await vi.waitFor(() => expect(mocks.createRenderJob).toHaveBeenCalledTimes(1), {
+      timeout: 10_000,
+    });
+
+    const lines = warn.mock.calls
+      .map(([line]) => String(line))
+      .filter((l) => l.startsWith("[studio]"));
+    warn.mockRestore();
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("/pic.png?\\x1b[2K\\x1b[1A");
+    expect(lines[0]).toBe(terminalText(lines[0]!));
   });
 });

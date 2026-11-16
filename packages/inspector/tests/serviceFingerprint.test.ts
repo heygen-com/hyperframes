@@ -11,21 +11,22 @@ vi.mock("puppeteer-core", () => ({
   default: {
     launch: async (options: { args?: string[] }) => {
       launches.push(options);
+      const newPage = async () => {
+        let html = "";
+        return {
+          setViewport: async () => {},
+          goto: async (url: string) => {
+            html = await (await fetch(url)).text();
+          },
+          waitForFunction: async () => {},
+          evaluate: async () => {},
+          content: async () => html,
+          close: async () => {},
+        };
+      };
       return {
         close: async () => {},
-        newPage: async () => {
-          let html = "";
-          return {
-            setViewport: async () => {},
-            goto: async (url: string) => {
-              html = await (await fetch(url)).text();
-            },
-            waitForFunction: async () => {},
-            evaluate: async () => {},
-            content: async () => html,
-            close: async () => {},
-          };
-        },
+        createBrowserContext: async () => ({ newPage, close: async () => {} }),
       };
     },
   },

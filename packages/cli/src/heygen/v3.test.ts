@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +22,7 @@ vi.mock("../cloud/auth.js", () => ({
   resolveCloudBaseUrl: () => "https://api.test",
 }));
 
-const { idempotencyKey, ownVoices, runJob } = await import("./v3.js");
+const { idempotencyKey, keepVoice, ownVoices, runJob } = await import("./v3.js");
 
 /** A job route through the generated client: the create and the status GET it polls. */
 const X: JobRoute = {
@@ -581,5 +589,60 @@ describe("ownVoices", () => {
   it("refuses with the sign-in fix when the HyperFrames account cannot be reached, instead of listing anything", async () => {
     vi.stubGlobal("fetch", async () => reply(401, { message: "no" }));
     await expect(ownVoices(5)).rejects.toMatchObject({ fix: "npx hyperframes auth login" });
+  });
+});
+
+describe("a project's job log in place of which a link was planted", () => {
+  const VICTIM = "victim bytes\n";
+  const planted = (linkJobLog: boolean) => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-v3-planted-"));
+    const outside = mkdtempSync(join(tmpdir(), "hf-v3-outside-"));
+    const victim = join(outside, "heygen-jobs.jsonl");
+    writeFileSync(victim, VICTIM);
+    if (linkJobLog) {
+      mkdirSync(join(projectDir, ".hyperframes"));
+      symlinkSync(victim, join(projectDir, ".hyperframes/heygen-jobs.jsonl"));
+    } else {
+      symlinkSync(outside, join(projectDir, ".hyperframes"));
+    }
+    return { projectDir, victim };
+  };
+
+  for (const [what, linkJobLog] of [
+    ["the job log", true],
+    ["the .hyperframes folder", false],
+  ] as const) {
+    it(`never appends a job or a voice pick through a link in place of ${what}`, async () => {
+      const { projectDir, victim } = planted(linkJobLog);
+      vi.stubGlobal("fetch", async () => reply(200, { data: { id: "j1", status: "completed" } }));
+      await expect(runJob(X, {}, "k1", { log: { projectDir, what: "a line" } })).rejects.toThrow(
+        /never written through/,
+      );
+      expect(() => keepVoice(projectDir, "en", { voice_id: "v1", name: "Ann" })).toThrow(
+        /never written through/,
+      );
+      expect(readFileSync(victim, "utf8")).toBe(VICTIM);
+      expect(
+        lstatSync(
+          join(projectDir, linkJobLog ? ".hyperframes/heygen-jobs.jsonl" : ".hyperframes"),
+        ).isSymbolicLink(),
+      ).toBe(true);
+    });
+  }
+
+  it("never appends to a job log hard-linked to a file outside the project", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-v3-planted-"));
+    mkdirSync(join(projectDir, ".hyperframes"));
+    const victim = join(mkdtempSync(join(tmpdir(), "hf-v3-outside-")), "victim");
+    writeFileSync(victim, VICTIM);
+    linkSync(victim, join(projectDir, ".hyperframes/heygen-jobs.jsonl"));
+    vi.stubGlobal("fetch", async () => reply(200, { data: { id: "j1", status: "completed" } }));
+    await expect(runJob(X, {}, "k1", { log: { projectDir, what: "a line" } })).rejects.toThrow(
+      /never written through/,
+    );
+    expect(() => keepVoice(projectDir, "en", { voice_id: "v1", name: "Ann" })).toThrow(
+      /never written through/,
+    );
+    expect(readFileSync(victim, "utf8")).toBe(VICTIM);
   });
 });

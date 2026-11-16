@@ -55,6 +55,8 @@ export function recordFailure(message: string, hint?: string): void {
   reported = { message, hint };
 }
 
+export const failureShown = (): boolean => reported !== undefined;
+
 /** Writes a notice (telemetry disclosure, deprecation, progress) that is never an error message. */
 export function asNotice(write: () => void): void {
   noticeDepth++;
@@ -130,7 +132,7 @@ function withHint(body: CliErrorBody, hint: string | undefined): CliErrorBody {
 }
 
 function errorCode(error: unknown, result: CommandResult): string {
-  if (error instanceof CliUsageError) return error.code;
+  if (error instanceof CliUsageError || error instanceof CliRuntimeError) return error.code;
   return result.kind === "usage_error" ? "usage_error" : "runtime_error";
 }
 

@@ -3,7 +3,7 @@ import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
-import { isTypingTarget, ownsPlainKeys } from "../utils/typingTarget";
+import { isTypingTarget, ownsPlainKeys } from "@hyperframes/core/typing-target";
 import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";

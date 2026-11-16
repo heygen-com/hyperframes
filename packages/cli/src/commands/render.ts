@@ -149,6 +149,7 @@ import {
   runPostRenderStepAsync,
 } from "../utils/render-success-state.js";
 import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/producer";
+import { recordFailure } from "../utils/jsonError.js";
 import {
   EXTRACT_CACHE_DIR_DISABLED_ALIASES,
   sandboxDeniedRemediation,
@@ -160,6 +161,7 @@ import {
   checkOutputResolutionCompatibility,
   suggestMatchingPreset,
   fpsToNumber,
+  terminalText,
   type CanvasResolution,
   type OutputResolutionIssueKind,
   type Fps,
@@ -238,7 +240,7 @@ export default defineCommand({
     "video-frame-format": {
       type: "string",
       description:
-        "Source video frame extraction format: auto, jpg, png (default: auto). " +
+        "Source video frame extraction format: auto, jpg, png. " +
         "Use png for UI recordings, screen captures, and color-sensitive source videos; " +
         "alpha-capable sources always extract as PNG.",
       default: "auto",
@@ -337,8 +339,8 @@ export default defineCommand({
       description:
         "Wait while another render of this user account runs, then start (default): renders side by " +
         "side starve each other. Use --no-wait to fail at once instead. Env: HYPERFRAMES_RENDER_LOCK=off " +
-        "lets renders run side by side; HYPERFRAMES_CACHE_DIR set to a shared folder shares the slot " +
-        "across user accounts.",
+        "lets renders run side by side; HYPERFRAMES_RENDER_LOCK_DIR set to one folder in every account " +
+        "shares the slot across user accounts.",
       default: true,
     },
     strict: {
@@ -521,6 +523,7 @@ export default defineCommand({
         const reason = cancellation.signal.reason;
         const message = reason instanceof Error ? reason.message : String(reason);
         process.stderr.write(`Render cancelled: ${message}\n`);
+        recordFailure(`Render cancelled: ${message}`);
         requestCliExit(1);
       }
       throw error;
@@ -1083,7 +1086,7 @@ async function executeLocalRender(
     for (const check of failedChecks) {
       errorBox(check.title ?? `${check.name} check failed`, check.detail, check.hint);
     }
-    failCommand();
+    failCommand(1, undefined, failedChecks.at(-1)?.code);
   }
   if (!options.quiet) {
     for (const outcome of preflight.outcomes) {
@@ -1978,12 +1981,13 @@ function handleRenderError(
   if (options.throwOnError) {
     throw new Error(message);
   }
+  const shown = message.split(/\r?\n/).map(terminalText).join("\n");
   const launch = chromeLaunchFailure(message);
   if (launch) {
-    errorBox(launch.title, message, launch.remediation);
+    errorBox(launch.title, shown, launch.remediation);
     failCommand();
   }
-  errorBox("Render failed", message, hint);
+  errorBox("Render failed", shown, hint);
   failCommand();
 }
 

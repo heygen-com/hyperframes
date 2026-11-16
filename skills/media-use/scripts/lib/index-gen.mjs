@@ -1,9 +1,12 @@
-import { writeFileSync, mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { currentRecords, indexPath } from "./manifest.mjs";
+import { currentRecords, indexPath, ownMediaDir, replaceFile } from "./manifest.mjs";
+
+// One table cell: a line break in a record would start a new line of the index, so it becomes a space.
+function cell(value) {
+  return String(value ?? "").replace(/\s*[\r\n]+\s*/g, " ");
+}
 
 function pad(str, len) {
-  return String(str ?? "").padEnd(len);
+  return cell(str).padEnd(len);
 }
 
 function formatDur(record) {
@@ -24,11 +27,11 @@ export function generateIndexContent(records) {
 
   const cols = { id: 4, type: 5, dur: 4, dims: 5, path: 5, desc: 11 };
   for (const r of records) {
-    cols.id = Math.max(cols.id, (r.id ?? "").length);
-    cols.type = Math.max(cols.type, (r.type ?? "").length);
+    cols.id = Math.max(cols.id, cell(r.id).length);
+    cols.type = Math.max(cols.type, cell(r.type).length);
     cols.dur = Math.max(cols.dur, formatDur(r).length);
     cols.dims = Math.max(cols.dims, formatDims(r).length);
-    cols.path = Math.max(cols.path, (r.path ?? "").length);
+    cols.path = Math.max(cols.path, cell(r.path).length);
   }
 
   const heading =
@@ -47,7 +50,7 @@ export function generateIndexContent(records) {
         pad(formatDur(r), cols.dur + 2) +
         pad(formatDims(r), cols.dims + 2) +
         pad(r.path, cols.path + 2) +
-        (r.description ?? ""),
+        cell(r.description),
     );
   }
   return lines.join("\n") + "\n";
@@ -56,8 +59,7 @@ export function generateIndexContent(records) {
 export function regenerateIndex(projectDir) {
   const records = currentRecords(projectDir);
   const content = generateIndexContent(records);
-  const p = indexPath(projectDir);
-  mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, content);
+  ownMediaDir(projectDir);
+  replaceFile(indexPath(projectDir), content);
   return content;
 }

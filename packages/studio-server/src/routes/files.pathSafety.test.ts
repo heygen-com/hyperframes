@@ -743,6 +743,26 @@ describe("the desktop app's private files", () => {
     expect(await viaLink.text()).not.toContain("secret");
   });
 
+  it("include credentials and tool state, which the file routes never serve", async () => {
+    const { app, project } = fixture();
+    const credentials = [
+      ".npmrc",
+      ".mcp.json",
+      ".claude/x.json",
+      ".aws/credentials",
+      "id_ed25519",
+      "cert.pem",
+    ];
+    for (const folder of [".claude", ".aws"]) mkdirSync(join(project, folder));
+    for (const file of credentials) writeFileSync(join(project, file), "secret");
+    for (const path of credentials) {
+      const res = await app.request(`/projects/p/files/${path}`);
+      expect([403, 404]).toContain(res.status);
+      expect(await res.text()).not.toContain("secret");
+    }
+    expect((await app.request("/projects/p/files/inside.txt")).status).toBe(200);
+  });
+
   it("can't be reached by renaming their folder", async () => {
     const { app, project } = fixture();
     mkdirSync(join(project, ".hyperframes"));

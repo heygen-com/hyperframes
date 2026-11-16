@@ -1,7 +1,7 @@
 import { usePlayerStore } from "../player";
 import type { TimelineEditCallbacks } from "../player/components/timelineCallbacks";
 import { resolveLinkMenuItems } from "../player/components/clipMenuLinkItems";
-import { isTypingTarget } from "../utils/typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 import { keyHint, matchesKey } from "../player/components/studioShortcuts";
 
 export interface LinkShortcutCallbacks {

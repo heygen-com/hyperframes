@@ -3142,6 +3142,49 @@ describe("the desktop app's private folder", () => {
       expect(await res.text()).not.toContain("secret");
     }
   });
+  it("is not served from a nested project's folder either", async () => {
+    const projectDir = createProjectDir();
+    mkdirSync(join(projectDir, "sub", ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(projectDir, "sub", ".hyperframes", "app-history.jsonl"),
+      '{"text":"secret"}',
+    );
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    for (const route of ["preview", "preview/comp"]) {
+      for (const path of [
+        "sub/.hyperframes/app-history.jsonl",
+        "SUB/.HyperFrames./App-History.JSONL",
+      ]) {
+        const res = await app.request(`http://localhost/projects/demo/${route}/${path}`);
+        expect(res.status).toBe(404);
+        expect(await res.text()).not.toContain("secret");
+      }
+    }
+  });
+  it("is joined by credentials and tool state, which neither preview route serves", async () => {
+    const projectDir = createProjectDir();
+    const credentials = [
+      ".npmrc",
+      ".mcp.json",
+      ".claude/x.json",
+      ".aws/credentials",
+      "id_ed25519",
+      "cert.pem",
+    ];
+    for (const folder of [".claude", ".aws"])
+      mkdirSync(join(projectDir, folder), { recursive: true });
+    for (const file of credentials) writeFileSync(join(projectDir, file), "secret");
+    const app = new Hono();
+    registerPreviewRoutes(app, createAdapter(projectDir));
+    for (const route of ["preview", "preview/comp"]) {
+      for (const file of credentials) {
+        const res = await app.request(`http://localhost/projects/demo/${route}/${file}`);
+        expect(res.status).toBe(404);
+        expect(await res.text()).not.toContain("secret");
+      }
+    }
+  });
   it("still serves the app's request pictures", async () => {
     const projectDir = createProjectDir();
     mkdirSync(join(projectDir, ".hyperframes", "requests", "1"), { recursive: true });

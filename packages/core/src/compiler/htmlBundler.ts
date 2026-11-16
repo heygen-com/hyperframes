@@ -88,6 +88,7 @@ import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 import { assignMediaRenderIds } from "./mediaRenderIds";
+import { terminalText } from "../terminalText.js";
 
 const DEFAULT_RUNTIME_SCRIPT_URL = "";
 
@@ -382,13 +383,17 @@ function safeStatSize(filePath: string): number | null {
 function warnAssetTooLargeToInline(assetPath: string, byteLength: number): void {
   const mb = (byteLength / (1024 * 1024)).toFixed(1);
   console.warn(
-    `[HyperFrames] Not inlining "${assetPath}" (${mb} MB exceeds the ${MAX_INLINE_ASSET_BYTES / (1024 * 1024)} MB inline limit). The bundle may not be self-contained.`,
+    terminalText(
+      `[HyperFrames] Not inlining "${assetPath}" (${mb} MB exceeds the ${MAX_INLINE_ASSET_BYTES / (1024 * 1024)} MB inline limit). The bundle may not be self-contained.`,
+    ),
   );
 }
 
 function warnInlineBudgetExhausted(assetPath: string): void {
   console.warn(
-    `[HyperFrames] Not inlining "${assetPath}" and later assets: the bundle already inlines ${MAX_INLINED_BUNDLE_CHARS / (1024 * 1024)} MB of data URLs. The bundle may not be self-contained.`,
+    terminalText(
+      `[HyperFrames] Not inlining "${assetPath}" and later assets: the bundle already inlines ${MAX_INLINED_BUNDLE_CHARS / (1024 * 1024)} MB of data URLs. The bundle may not be self-contained.`,
+    ),
   );
 }
 
@@ -461,7 +466,9 @@ function warnColorGradingLutNotInlined(lutSrc: string): void {
   const trimmed = lutSrc.trim();
   if (!isRelativeUrl(trimmed)) return;
   console.warn(
-    `[HyperFrames] Could not inline color grading LUT "${trimmed}". The rendered bundle may not be self-contained.`,
+    terminalText(
+      `[HyperFrames] Could not inline color grading LUT "${trimmed}". The rendered bundle may not be self-contained.`,
+    ),
   );
 }
 
@@ -928,7 +935,7 @@ export interface BundleOptions {
   onRead?: (filePath: string) => void;
   /**
    * Project files the build never reads; a refused file keeps its authored reference. Git metadata and env files
-   * always; `"studio"` also refuses the app's records under `.hyperframes/`, as Studio's file routes do.
+   * always; `"studio"`, the default, also refuses the app's records under `.hyperframes/`, as every file server does.
    */
   privateFiles?: BundlePrivateFiles;
 }
@@ -1024,7 +1031,9 @@ function hoistCompositionScripts(
       if (map) opts.importMaps.push(map);
       else
         console.warn(
-          `[HyperFrames] ${opts.compId}: import map is not valid JSON, so it is skipped.`,
+          terminalText(
+            `[HyperFrames] ${opts.compId}: import map is not valid JSON, so it is skipped.`,
+          ),
         );
     } else if (!externalSrc && type === "module") {
       const prelude = opts.compId ? scopedModulePrelude(opts.runtimeCompId || opts.compId) : "";
@@ -1069,7 +1078,7 @@ export function bundleToSingleHtml(projectDir: string, options?: BundleOptions):
   };
   const scope: BundleReadScope = {
     projectDir,
-    privateFiles: options?.privateFiles ?? "vcs-and-secrets",
+    privateFiles: options?.privateFiles ?? "studio",
     noteRead,
   };
   return bundleReads.run(scope, () => bundleProject(projectDir, options));
@@ -1137,7 +1146,9 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     });
     if (!staticGuard.isValid) {
       console.warn(
-        `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
+        terminalText(
+          `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
+        ),
       );
     }
   }
@@ -1226,7 +1237,9 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     scriptErrorLabel: "[HyperFrames] composition script error:",
     onMissingComposition: (srcPath: string, reason?: string) => {
       console.warn(
-        `[Bundler] Skipping sub-composition "${srcPath}": ${reason ?? "the file could not be found"}.`,
+        terminalText(
+          `[Bundler] Skipping sub-composition "${srcPath}": ${reason ?? "the file could not be found"}.`,
+        ),
       );
     },
   });

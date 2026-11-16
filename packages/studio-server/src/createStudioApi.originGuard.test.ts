@@ -306,6 +306,45 @@ describe("createStudioApi media analysis from another site", () => {
   });
 });
 
+describe("createStudioApi work-starting reads from another site", () => {
+  function appCountingWork() {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-origin-work-"));
+    tempDirs.push(projectDir);
+    const calls = { lint: 0 };
+    const app = createStudioApi({
+      ...stubAdapter(projectDir),
+      lintProject: () => {
+        calls.lint++;
+        return { results: [] };
+      },
+    });
+    return { app, calls };
+  }
+
+  it.each([
+    ["lint", "cross-site"],
+    ["lint", "same-site"],
+    ["media/metadata?path=talk.mp4", "cross-site"],
+    ["image-thumbnail/photo.jpg", "cross-site"],
+  ])("refuses %s marked %s without starting any work", async (route, site) => {
+    const { app, calls } = appCountingWork();
+    const res = await app.request(`http://localhost/projects/demo/${route}`, {
+      headers: { Host: "localhost", "Sec-Fetch-Site": site },
+    });
+    expect(res.status).toBe(403);
+    expect(calls.lint).toBe(0);
+  });
+
+  it("answers Studio's own lint request", async () => {
+    const { app, calls } = appCountingWork();
+    const res = await app.request("http://localhost/projects/demo/lint", {
+      headers: { Host: "localhost", "Sec-Fetch-Site": "same-origin" },
+    });
+    expect(res.status).toBe(200);
+    expect(calls.lint).toBe(1);
+  });
+});
+
 describe("previewAllowedHostsFromEnv", () => {
   it("parses a comma separated list, trimming blanks", () => {
     expect(
