@@ -240,7 +240,6 @@ export interface JobLog {
 
 const JOB_LOG = "heygen-jobs.jsonl";
 
-/** A line on the project's job log; refused, never written through, when a link or other file holds its place. */
 function appendJobLog(projectDir: string, line: Record<string, unknown>): void {
   if (
     !appendRecord(

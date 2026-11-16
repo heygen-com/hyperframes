@@ -26,7 +26,6 @@ function jsonObject(text: string): Record<string, unknown> | null {
   }
 }
 
-/** Read + parse a JSON object file, or null if it's missing, unreadable, or not an object. */
 function readJsonRecord(path: string): Record<string, unknown> | null {
   try {
     return existsSync(path) ? jsonObject(readFileSync(path, "utf-8")) : null;
@@ -104,8 +103,6 @@ function teamProjectPath(projectDir: string): string {
 
 const MAX_TEAM_PROJECT_BYTES = 64 * 1024;
 
-/** The committed descriptor, or null when there is none. A link or anything but a plain file in its place (or in
- * place of .hyperframes) is refused, never read as absent: publish would otherwise write a new one through it. */
 export function readTeamProject(projectDir: string): TeamProject | null {
   const kind = recordKind(resolve(projectDir), TEAM_PROJECT_FILE);
   if (kind === "absent") return null;

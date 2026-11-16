@@ -38,8 +38,6 @@ function recordsDir(projectDir: string, name: string, create = false): string | 
 
 const recordFile = (name: string) => name.split("/").at(-1) ?? name;
 
-/** The open file's stats when `lstat` finds that same plain file at the path; null for a link, a device, or a swap.
- * This is what holds where O_NOFOLLOW doesn't exist (Windows). */
 function plainFileAt(fd: number, path: string) {
   const stats = fstatSync(fd);
   const named = lstatSync(path);
@@ -117,8 +115,6 @@ export function writeRecord(projectDir: string, name: string, data: string): boo
   return dir !== null && replaceFile(join(dir, recordFile(name)), data, 0o600);
 }
 
-/** A line added to the end of a record that is a plain file (made owner-only when missing), in real folders all the
- * way from .hyperframes; a link in its place is never written through. False when it could not be added. */
 export function appendRecord(projectDir: string, name: string, data: string): boolean {
   const dir = recordsDir(projectDir, name, true);
   if (!dir) return false;
@@ -142,8 +138,6 @@ export function appendRecord(projectDir: string, name: string, data: string): bo
   }
 }
 
-/** Whether a record is missing, a plain file, or something else in its place: a link, a folder, or any level from
- * .hyperframes down that is not a real folder. */
 export function recordKind(projectDir: string, name: string): "absent" | "file" | "other" {
   const parts = [".hyperframes", ...name.split("/")];
   let path = projectDir;
@@ -164,8 +158,6 @@ export function recordFolder(projectDir: string, folder: string): string | null 
   return recordsDir(projectDir, `${folder.replaceAll("\\", "/")}/`, true);
 }
 
-/** `folder`, made where missing. Inside the project's .hyperframes every level from there down must be a real folder
- * (null otherwise, as `recordFolder`); a folder anywhere else is made as asked. */
 export function projectFolder(projectDir: string, folder: string): string | null {
   const inside = relative(join(resolve(projectDir), ".hyperframes"), resolve(folder));
   if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
