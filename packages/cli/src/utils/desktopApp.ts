@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, relative, win32 } from "node:path";
 import { isHyperframesProject } from "@hyperframes/core";
-import { addCatchUpNote, markSeen, readSeen, seenPath } from "./appHistory.js";
+import { addCatchUpNote, noteHandoff, seenPath } from "./appHistory.js";
 import { createProjectConfig } from "./projectConfig.js";
 import { isCI } from "./attendedTerminal.js";
 import { isAgentDriven } from "../telemetry/agent_runtime.js";
@@ -149,8 +149,7 @@ function desktopApps({
 /** The app reads the hand-off at its first chat send, so a project it cannot be written to just opens without it. */
 function leaveHandoff(dir: string, session: AgentSession | null): AgentSession | null {
   if (!session || !writeRecord(dir, "agent-handoff.json", JSON.stringify(session))) return null;
-  const now = Date.now();
-  if (!readSeen(dir).at && !markSeen(dir, { at: now, checked: now }))
+  if (!noteHandoff(dir))
     console.warn(
       `◇  Couldn't note the hand-off in ${seenPath(dir)}, so \`catch-up\` won't see it.`,
     );

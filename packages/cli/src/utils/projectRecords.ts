@@ -32,35 +32,47 @@ function recordsDir(projectDir: string, create = false): string | null {
   }
 }
 
-/** The last `maxBytes` of a plain file; "" for a link, a device, or a missing file. The file is opened first and
- * read only when `lstat` then finds the same plain file at the path, so this holds where O_NOFOLLOW doesn't exist
- * (Windows), and nothing path-based follows the check. */
-export function readPlainFile(path: string, maxBytes: number): string {
+/** The last `maxBytes` of a plain file, and whether that is all of it; null for a link, a device, or a missing file.
+ * The file is opened first and read only when `lstat` then finds the same plain file at the path, so this holds
+ * where O_NOFOLLOW doesn't exist (Windows), and nothing path-based follows the check. */
+function readPlainTail(path: string, maxBytes: number): { text: string; whole: boolean } | null {
   let fd: number;
   try {
     fd = openSync(path, constants.O_RDONLY | NO_FOLLOW | NON_BLOCK);
   } catch {
-    return "";
+    return null;
   }
   try {
     const stats = fstatSync(fd);
     const named = lstatSync(path);
     if (!stats.isFile() || !named.isFile() || named.ino !== stats.ino || named.dev !== stats.dev)
-      return "";
+      return null;
     const length = Math.min(stats.size, maxBytes);
     const buffer = Buffer.alloc(length);
     readSync(fd, buffer, 0, length, stats.size - length);
-    return buffer.toString("utf8");
+    return { text: buffer.toString("utf8"), whole: length === stats.size };
   } catch {
-    return "";
+    return null;
   } finally {
     closeSync(fd);
   }
 }
 
-export function readRecord(projectDir: string, name: string, maxBytes: number): string {
+export function readPlainFile(path: string, maxBytes: number): string {
+  return readPlainTail(path, maxBytes)?.text ?? "";
+}
+
+export function readRecordTail(
+  projectDir: string,
+  name: string,
+  maxBytes: number,
+): { text: string; whole: boolean } | null {
   const dir = recordsDir(projectDir);
-  return dir ? readPlainFile(join(dir, name), maxBytes) : "";
+  return dir ? readPlainTail(join(dir, name), maxBytes) : null;
+}
+
+export function readRecord(projectDir: string, name: string, maxBytes: number): string {
+  return readRecordTail(projectDir, name, maxBytes)?.text ?? "";
 }
 
 /** When a record last changed; 0 when it is missing or not a plain file. */
