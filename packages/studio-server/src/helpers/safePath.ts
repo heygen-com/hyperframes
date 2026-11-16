@@ -1,5 +1,5 @@
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { lstatSync, readdirSync, type Dirent } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, type Dirent } from "node:fs";
 import {
   isStudioPrivatePath,
   mkdirWithinProject,
@@ -75,17 +75,41 @@ export function isWritableProjectFile(projectDir: string, filePath: string): boo
 
 /**
  * The first `toolTrustedFileKind` file, `node_modules` or `.git` below `dir`, which a delete or move of the folder
- * would take along. Links are not followed.
+ * would take along, or a received-files record there that lists a file outside its own folder, which would stay
+ * behind unlisted. Links are not followed.
  */
 export function toolTrustedFileWithin(projectDir: string, dir: string): string | null {
   return protectedEntryWithin(dir, projectRelativePath(projectDir, dir));
 }
 
 const PROTECTED_FOLDERS = new Set(["node_modules", ".git"]);
+const RECEIVED_RECORD = join(".hyperframes", "received-files.json");
+
+const isInside = (path: string, folder: string): boolean => {
+  const inside = relative(folder, path);
+  return inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside);
+};
+
+// A record that cannot be read lists nothing that could stay behind; the readers count every file as received while it is there.
+function receivedRecordListsOutside(dir: string): boolean {
+  let listed: unknown;
+  try {
+    listed = JSON.parse(readFileSync(join(dir, RECEIVED_RECORD), "utf-8")).files;
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(listed)) return false;
+  const realDir = realFilePath(dir);
+  return listed.some((entry) => {
+    const path = resolve(dir, String(entry));
+    return !isInside(path, dir) || !isInside(realFilePath(path), realDir);
+  });
+}
 
 function protectedEntryWithin(dir: string, rel: string): string | null {
   const entries = folderEntries(dir);
   if (!entries) return rel || ".";
+  if (receivedRecordListsOutside(dir)) return rel ? `${rel}/${RECEIVED_RECORD}` : RECEIVED_RECORD;
   for (const entry of entries) {
     const found = protectedEntry(dir, entry, rel ? `${rel}/${entry.name}` : entry.name);
     if (found) return found;

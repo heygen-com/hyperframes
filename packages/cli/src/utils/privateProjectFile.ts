@@ -15,7 +15,11 @@ import {
   linksOutside,
 } from "@hyperframes/studio-server/outside-file";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
-import { isCredentialOrToolStatePath } from "@hyperframes/core/safe-path";
+import {
+  isCredentialOrToolStatePath,
+  isStudioPrivatePath,
+  projectPathSegments,
+} from "@hyperframes/core/safe-path";
 import { registryRoot } from "../registry/publication.js";
 import { recordFolder, writeRecord } from "./projectRecords.js";
 import { walkBudget } from "./walkBudget.js";
@@ -156,15 +160,15 @@ function nestedRecord(start: string, dir: string, record: { listed: unknown }): 
   return { file: join(dir, RECEIVED_RECORD), root: start, projectDirFromRoot: "", listed };
 }
 
-const NOT_WALKED = new Set([
-  ".git",
-  ".hyperframes",
-  "node_modules",
-  "renders",
-  "dist",
-  ".next",
-  "coverage",
-]);
+const GIT_AND_PACKAGE_FOLDERS = new Set([".git", "node_modules"]);
+
+function mayHoldLoadedFiles(start: string, folder: string): boolean {
+  const rel = relative(start, folder).split(sep).join("/");
+  const segments = projectPathSegments(rel);
+  if (GIT_AND_PACKAGE_FOLDERS.has(segments.at(-1) ?? "")) return false;
+  if (!segments.includes(".hyperframes")) return true;
+  return segments.length === 1 || !isStudioPrivatePath(rel);
+}
 
 function receivedRecordsBelow(start: string): ReceivedRecord[] | null {
   const withinBudget = walkBudget();
@@ -174,8 +178,9 @@ function receivedRecordsBelow(start: string): ReceivedRecord[] | null {
     let folders: string[];
     try {
       folders = readdirSync(dir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && !NOT_WALKED.has(entry.name.toLowerCase()))
-        .map((entry) => join(dir, entry.name));
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => join(dir, entry.name))
+        .filter((folder) => mayHoldLoadedFiles(start, folder));
     } catch {
       return null;
     }

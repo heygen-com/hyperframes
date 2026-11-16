@@ -294,6 +294,21 @@ describe("outsideAssetsAllowed", () => {
       expect(line).toContain(`Could not read ${path}`);
     });
 
+    it.each(["renders/x", "dist", ".next/x", "coverage/x", ".hyperframes/requests/x"])(
+      "refuses outside files when the copy sits in %s",
+      (folder) => {
+        const dir = project();
+        write(join(dir, "index.html"), `<div data-composition-src="${folder}/index.html"></div>`);
+        const up = "../".repeat(folder.split("/").length + 1);
+        write(join(dir, folder, "index.html"), `<img src="${up}outside/pic.png">`);
+        write(join(dir, folder, ".hyperframes", "received-files.json"), received("index.html"));
+        const { allowed, line } = decide(dir);
+        expect(allowed).toBe(false);
+        expect(line).toContain(`${join(folder, "index.html")} ${SOMEONE_ELSE}`);
+        expect(line).toContain(`${up}outside/pic.png`);
+      },
+    );
+
     it("keeps outside files for a folder with no record of its own", () => {
       const { allowed, warn } = decide(withNested());
       expect(allowed).toBe(true);

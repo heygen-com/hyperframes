@@ -359,6 +359,64 @@ describe("files other programs run or trust", () => {
     expect(existsSync(join(project, "compositions"))).toBe(false);
   });
 
+  describe("a folder holding a received-files record", () => {
+    const record = (project: string, folder: string, files: string[]) => {
+      mkdirSync(join(project, folder, ".hyperframes"), { recursive: true });
+      writeFileSync(
+        join(project, folder, ".hyperframes", "received-files.json"),
+        JSON.stringify({ files }),
+      );
+    };
+    const move = (app: Hono, from: string, newPath: string) =>
+      app.request(fileUrl(from), {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ newPath }),
+      });
+
+    it("refuses a delete or move that would leave a file it lists behind", async () => {
+      const { app, project } = fixture();
+      mkdirSync(join(project, "sub"));
+      writeFileSync(join(project, "sub", "page.html"), "<div></div>");
+      record(project, "sub/notes", ["../page.html"]);
+      expect((await app.request(fileUrl("sub/notes"), { method: "DELETE" })).status).toBe(403);
+      expect((await move(app, "sub/notes", "dist")).status).toBe(403);
+      expect(existsSync(join(project, "sub", "notes", ".hyperframes", "received-files.json"))).toBe(
+        true,
+      );
+    });
+
+    it("refuses a delete when a file it lists is reached through a link that leads out of its folder", async (context) => {
+      const { app, project } = fixture();
+      mkdirSync(join(project, "pages"));
+      writeFileSync(join(project, "pages", "page.html"), "<div></div>");
+      record(project, "sub", ["pages/page.html"]);
+      linkOrSkip(context, join(project, "pages"), join(project, "sub", "pages"), "dir");
+      expect((await app.request(fileUrl("sub"), { method: "DELETE" })).status).toBe(403);
+    });
+
+    it("deletes or moves a received folder whose record lists only its own files", async () => {
+      const { app, project } = fixture();
+      mkdirSync(join(project, "sub"));
+      writeFileSync(join(project, "sub", "page.html"), "<div></div>");
+      record(project, "sub", ["page.html", "gone.html"]);
+      expect((await move(app, "sub", "dist")).status).toBe(200);
+      expect(existsSync(join(project, "dist", ".hyperframes", "received-files.json"))).toBe(true);
+      expect((await app.request(fileUrl("dist"), { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(join(project, "dist"))).toBe(false);
+    });
+
+    it("refuses a delete or move whose target is a records folder", async () => {
+      const { app, project } = fixture();
+      writeFileSync(join(project, "page.html"), "<div></div>");
+      record(project, "sub", ["page.html"]);
+      expect((await app.request(fileUrl("sub/.hyperframes"), { method: "DELETE" })).status).toBe(
+        403,
+      );
+      expect((await move(app, "sub/.hyperframes", "dist")).status).toBe(403);
+    });
+  });
+
   it("still writes compositions, stylesheets, script assets and uploads", async () => {
     const { app, project } = fixture();
     for (const path of [

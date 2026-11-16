@@ -26,7 +26,7 @@ vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   const lstatSync = ((path: string, options?: { bigint?: boolean }) => {
     const stat = actual.lstatSync(path, options as never);
-    return zeroFileIds.on ? Object.assign(stat, { dev: 0n, ino: 0n }) : stat;
+    return zeroFileIds.on && stat ? Object.assign(stat, { dev: 0n, ino: 0n }) : stat;
   }) as typeof actual.lstatSync;
   return { ...actual, default: { ...actual, lstatSync }, lstatSync };
 });
@@ -164,6 +164,25 @@ describe("receivedFiles for a received project copied into a folder", () => {
     const received = receivedFiles(withNested());
     expect(received("compositions/x/index.html")).toBe(false);
     expect(received("index.html")).toBe(false);
+  });
+
+  it.each([
+    "renders",
+    "dist",
+    ".next",
+    "coverage",
+    "renders/x",
+    ".hyperframes/requests/x",
+    ".hyperframes/prepared-assets/x",
+  ])("names the copy's files when it sits in %s", (folder) => {
+    dir = mkdtempSync(join(tmpdir(), "hf-received-nested-"));
+    mkdirSync(join(dir, folder, ".hyperframes"), { recursive: true });
+    writeFileSync(join(dir, folder, "index.html"), "");
+    writeFileSync(
+      join(dir, folder, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["index.html"] }),
+    );
+    expect(receivedFiles(dir)(`${folder}/index.html`)).toBe(true);
   });
 });
 
