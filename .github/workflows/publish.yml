@@ -366,9 +366,8 @@ jobs:
     needs: [pack]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # npm-publish requires a maintainer's approval. That approval is the only
-    # review a prerelease tag gets, because prerelease branches have no PR review.
-    # npm's trusted publishers name this environment, so every trigger uses it.
+    # npm's trusted publishers name this environment, so every trigger uses it. It has no approval step:
+    # stable releases come from reviewed release PRs, and only repository admins may push v*-* tags.
     environment: npm-publish
     # This job holds the release credentials, so it runs no code from the
     # release commit: no install, no build, no repo scripts. It checks the
