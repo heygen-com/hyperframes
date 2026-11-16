@@ -51,17 +51,22 @@ function compile(document) {
       limits.canonical_spelling_roots.map((root) => [comparisonKey(root), root]),
     ),
     rules: document.rules.map((rule) => ({ rule, pattern: whole(rule.regex) })),
-    storedRules: document.rules.map((rule) => ({
-      rule,
-      pattern: whole(
-        rule.id === "agent-client-state"
-          ? document.stored_manifest.legacy_agent_state_regex
-          : rule.regex,
-      ),
-    })),
+    storedRules: storedRules(document),
     prefilter: new Set(document.client_prefilter.names),
     symlinkPrefixes: document.client_symlinks.skip_prefixes,
   };
+}
+
+/** Each rule the stored manifest section lists matches by its legacy regex in a stored snapshot read.
+ * @param {PolicyDocument} document */
+function storedRules(document) {
+  const legacy = new Map(Object.entries(document.stored_manifest.legacy_rule_regexes));
+  const unknown = [...legacy.keys()].filter((id) => !document.rules.some((rule) => rule.id === id));
+  if (unknown.length) throw new Error(`path policy's stored_manifest names no rule ${unknown}`);
+  return document.rules.map((rule) => ({
+    rule,
+    pattern: whole(legacy.get(rule.id) ?? rule.regex),
+  }));
 }
 
 /** @type {ReturnType<typeof compile> | null} */

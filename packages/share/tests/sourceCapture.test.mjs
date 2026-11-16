@@ -58,6 +58,24 @@ test("a capture lists portable files with their hashes and leaves out what the p
   assert.deepEqual([waiting, skippedLinks], [[], []]);
 });
 
+// fails without the fix: the .hyperframes rules matched only at the project root, so a copied project's records travelled.
+test("a .hyperframes folder below the root stays out, while the root's Studio files still travel", async () => {
+  const root = await project({
+    "index.html": "<html></html>",
+    ".hyperframes/studio-motion.json": "{}",
+    ".hyperframes/agent-runs.jsonl": "{}",
+    "sub/index.html": "<html></html>",
+    "sub/.hyperframes/agent-runs.jsonl": "{}",
+    "sub/.hyperframes/studio-motion.json": "{}",
+    "compositions/x/.HyperFrames/app-history.jsonl": "{}",
+  });
+  const { manifest } = captured(await captureProject(root));
+  assert.deepEqual(
+    manifest.document.files.map((file) => file.path),
+    [".hyperframes/studio-motion.json", "index.html", "sub/index.html"],
+  );
+});
+
 test("a render output the CLI recorded outside renders/ stays out", async () => {
   const root = await project({
     "index.html": "x",

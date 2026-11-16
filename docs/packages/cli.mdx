@@ -2714,7 +2714,11 @@ Keep them narrow — a dynamically selected asset may have no static reference t
 protect it.
 Env files (`.env`, `.env.*`, `.envrc`, at any depth) and Studio's private records
 under `.hyperframes/` are always left out, even when a rule re-includes them, and
-each one is reported as left out with the reason `private`.
+each one is reported as left out with the reason `private`. A `.hyperframes/`
+folder in a subfolder, such as a project copied into `compositions/`, is private
+as a whole: everything in it is left out, assets stored there included, and
+Studio, preview and render do not serve it either. Keep media a composition
+loads outside `.hyperframes/`.
 
 When the zip would be over the upload limit, media no page, script or variable
 names is left out first, then the largest media files the project names by path

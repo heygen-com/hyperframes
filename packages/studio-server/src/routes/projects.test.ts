@@ -188,6 +188,25 @@ describe("registerProjectRoutes — composition discovery (#1384)", () => {
       expect(payload.files).not.toContain(`.hyperframes/${hidden}`);
   });
 
+  it("lists nothing under a nested project's .hyperframes/", async () => {
+    const projectDir = createProjectDir();
+    const nested = join(projectDir, "compositions", "x");
+    mkdirSync(join(nested, ".hyperframes", "backup"), { recursive: true });
+    writeFileSync(join(nested, "index.html"), COMPOSITION_HTML);
+    writeFileSync(join(nested, ".hyperframes", "app-history.jsonl"), "{}");
+    writeFileSync(join(nested, ".hyperframes", "studio-motion.json"), "{}");
+    writeFileSync(join(nested, ".hyperframes", "backup", "snapshot.html"), COMPOSITION_HTML);
+    const app = new Hono();
+    registerProjectRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo");
+    const payload = (await response.json()) as { files: string[]; compositions: string[] };
+
+    expect(payload.files).toContain("compositions/x/index.html");
+    expect(payload.compositions).toContain("compositions/x/index.html");
+    expect(payload.files.filter((file) => file.includes("/.hyperframes"))).toEqual([]);
+  });
+
   it("omits generated cache files from the project file tree", async () => {
     const projectDir = createProjectDir();
     mkdirSync(join(projectDir, ".transcode-cache"));

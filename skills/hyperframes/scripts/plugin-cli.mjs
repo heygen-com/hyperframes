@@ -3,9 +3,9 @@
 // release in its manifest; a standalone skill install takes the newest release from npm.
 import "./lib/windows-exe-search.mjs";
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { join, win32 } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isMainModule } from "./lib/main-module.mjs";
 
@@ -18,7 +18,45 @@ const manifests = [
   "gemini-extension.json",
 ];
 
-export function pluginVersion(pluginRoot = root) {
+// The first release whose bin moves into HYPERFRAMES_PLUGIN_CWD. An older one would run the
+// command in the home folder.
+const CLI_FLOOR = "0.9.34";
+export const STANDALONE_CLI = `hyperframes@>=${CLI_FLOOR}`;
+
+const realOrResolved = (path) => {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return resolve(path);
+  }
+};
+
+const isOutside = (from, to) => {
+  const path = relative(from, to);
+  return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
+};
+
+// Plugin managers keep bundles in their own folders, such as ~/.claude/plugins or ~/.gemini/extensions.
+// Skills in a dot folder (.agents, .claude) or in the working folder's own tree are project content.
+function isPluginBundle(pluginRoot, workDir) {
+  const bundle = realOrResolved(pluginRoot);
+  const work = realOrResolved(workDir);
+  if (basename(bundle).startsWith(".") || !isOutside(bundle, work)) return false;
+  if (isOutside(work, bundle)) return true;
+  return relative(work, bundle)
+    .split(sep)
+    .some((segment) => segment.startsWith("."));
+}
+
+function isBelowFloor(version) {
+  const parts = (text) => text.split("-")[0].split(".").map(Number);
+  const [have, floor] = [parts(version), parts(CLI_FLOOR)];
+  const at = have.findIndex((part, index) => part !== floor[index]);
+  return at === -1 ? version.includes("-") : have[at] < floor[at];
+}
+
+export function pluginVersion(pluginRoot = root, workDir = process.cwd()) {
+  if (!isPluginBundle(pluginRoot, workDir)) return undefined;
   for (const path of manifests) {
     const file = join(pluginRoot, path);
     if (!existsSync(file)) continue;
@@ -29,14 +67,14 @@ export function pluginVersion(pluginRoot = root) {
     ) {
       throw new Error(`Invalid HyperFrames plugin release: ${file}`);
     }
+    if (isBelowFloor(manifest.version))
+      throw new Error(
+        `${file} pins HyperFrames ${manifest.version}; this launcher runs ${CLI_FLOOR} or newer.`,
+      );
     return manifest.version;
   }
   return undefined;
 }
-
-// The first release whose bin moves into HYPERFRAMES_PLUGIN_CWD. An older one would run the
-// command in the home folder.
-export const STANDALONE_CLI = "hyperframes@>=0.9.34";
 
 // npm takes the package, bin links and .npmrc from the folder it starts in, so npx starts
 // in the home folder and the CLI moves into the project before it runs a command. A shared
@@ -49,12 +87,12 @@ export function npmFolder(home = homedir(), pathExists = existsSync) {
 export function invocation(
   args,
   {
-    version = pluginVersion(),
+    cwd = process.cwd(),
+    version = pluginVersion(root, cwd),
     env = process.env,
     platform = process.platform,
     node = process.execPath,
     pathExists = existsSync,
-    cwd = process.cwd(),
     npmCwd,
     launcher = fileURLToPath(import.meta.url),
   } = {},
