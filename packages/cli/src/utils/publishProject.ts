@@ -467,8 +467,8 @@ function referencedFileLeftOut(
   entryPath: string,
   absPath: string,
 ): LeftOutReason | null {
-  if (isPrivateCompositionFile(ctx.absProjectDir, absPath)) return "private";
   if (linksToPrivateOutsideFile(ctx.absProjectDir, absPath)) return "blocklisted";
+  if (isPrivateCompositionFile(ctx.absProjectDir, absPath)) return "private";
   if (ctx.received(entryPath) && linksOutside(ctx.absProjectDir, absPath)) return "received";
   if (!loadableReference(ctx.absProjectDir, absPath)) return "private";
   return null;
@@ -875,8 +875,8 @@ function walkedFileLeftOut(
   absPath: string,
   received: (path: string) => boolean,
 ): WalkedLeftOutReason | null {
-  if (isPrivateCompositionFile(absProjectDir, absPath)) return "private";
   if (linksToPrivateOutsideFile(absProjectDir, absPath)) return "blocklisted";
+  if (isPrivateCompositionFile(absProjectDir, absPath)) return "private";
   if (received(filePath) && linksOutside(absProjectDir, absPath)) return "received";
   return null;
 }
