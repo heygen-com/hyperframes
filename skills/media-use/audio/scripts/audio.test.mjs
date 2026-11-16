@@ -1,6 +1,14 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  existsSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -163,4 +171,64 @@ for (const [label, request, args, shown] of [
 
 test("a numeric string speed, as the adapters forward it, passes the check", () => {
   assert.doesNotMatch(runEngineWith({ speed: "0.8" }, "--only", "tts").stderr, /speed must/);
+});
+
+// A BGM job carried over from audio_meta.json keeps its pid and log only when the log is the
+// engine's own in assets/bgm; any other log is dropped so wait-bgm never reads it.
+for (const [label, bgmLog, kept] of [
+  ["an outside log is dropped", () => "/etc/hosts", false],
+  ["a climbing log is dropped", () => "../../.hyperframes/credentials", false],
+  ["the engine's own log is kept", (dir) => join(dir, "assets/bgm/bgm-1700000000000.log"), true],
+]) {
+  test(`a run without bgm: ${label}`, () => {
+    const dir = mkdtempSync(join(tmpdir(), "audio-bgm-carry-"));
+    try {
+      mkdirSync(join(dir, "assets/bgm"), { recursive: true });
+      writeFileSync(join(dir, "assets/bgm/bgm-1700000000000.log"), "rendering");
+      writeFileSync(join(dir, "audio_request.json"), JSON.stringify({ lines: [] }));
+      const log = bgmLog(dir);
+      writeFileSync(
+        join(dir, "audio_meta.json"),
+        JSON.stringify({
+          bgm: { path: "assets/bgm/track.wav" },
+          bgm_pending: true,
+          bgm_pid: 4242,
+          bgm_log: log,
+        }),
+      );
+      const run = spawnSync(
+        process.execPath,
+        [join(HERE, "audio.mjs"), "--hyperframes", dir, "--only", "sfx"],
+        { encoding: "utf8", env: { ...process.env, HOME: dir } },
+      );
+      assert.equal(run.status, 0, run.stderr);
+      const meta = JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8"));
+      assert.equal(meta.bgm_pending, true);
+      assert.equal(meta.bgm_log, kept ? log : null);
+      assert.equal(meta.bgm_pid, kept ? 4242 : null);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+}
+
+test("an audio_meta.json in the project that links outside it is refused and left alone", () => {
+  const base = mkdtempSync(join(tmpdir(), "audio-meta-link-"));
+  const dir = join(base, "project");
+  try {
+    mkdirSync(dir);
+    writeFileSync(join(base, "theirs.json"), "{}");
+    symlinkSync(join(base, "theirs.json"), join(dir, "audio_meta.json"));
+    writeFileSync(join(dir, "audio_request.json"), JSON.stringify({ lines: [] }));
+    const run = spawnSync(
+      process.execPath,
+      [join(HERE, "audio.mjs"), "--hyperframes", dir, "--only", "sfx"],
+      { encoding: "utf8", env: { ...process.env, HOME: dir } },
+    );
+    assert.equal(run.status, 1, run.stdout);
+    assert.match(run.stderr, /audio_meta\.json leads outside the project folder/);
+    assert.equal(readFileSync(join(base, "theirs.json"), "utf8"), "{}");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
 });

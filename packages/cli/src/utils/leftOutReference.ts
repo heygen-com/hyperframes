@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { isAbsolute, relative } from "node:path";
 import {
   type LeftOutReason,
@@ -5,7 +6,6 @@ import {
 } from "@hyperframes/studio-server/outside-file";
 import { realFilePath } from "@hyperframes/studio-server/safe-path";
 import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
-import { terminalText } from "./terminalText.js";
 
 export type { LeftOutReason };
 

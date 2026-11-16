@@ -10,6 +10,7 @@ import {
   roundedRectAlpha,
   resampleRgb48leObjectFit,
   normalizeObjectFit,
+  MAX_RGB48LE_PIXELS,
 } from "./alphaBlit.js";
 
 // ── PNG construction helpers ─────────────────────────────────────────────────
@@ -395,6 +396,46 @@ function makePng16(width: number, height: number, pixels: number[]): Buffer {
     makeChunk("IEND", Buffer.alloc(0)),
   ]);
 }
+
+function makePngWithIdat(width: number, height: number, bitDepth: number, idat: Buffer): Buffer {
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = bitDepth;
+  ihdr[9] = 2;
+  return Buffer.concat([
+    PNG_SIG,
+    makeChunk("IHDR", ihdr),
+    makeChunk("IDAT", idat),
+    makeChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+describe("PNG decode size limits", () => {
+  it("rejects a 16000x16000 header over a 2 MB zero IDAT before inflating", () => {
+    const png = makePngWithIdat(16000, 16000, 16, Buffer.alloc(2 * 1024 * 1024));
+    expect(() => decodePngToRgb48le(png)).toThrow("outside the supported size");
+  });
+
+  it("rejects zero dimensions and sub-byte bit depths", () => {
+    const idat = deflateSync(Buffer.alloc(13));
+    expect(() => decodePngToRgb48le(makePngWithIdat(0, 1, 16, idat))).toThrow(
+      "outside the supported size",
+    );
+    expect(() => decodePng(makePngWithIdat(2, 2, 4, idat))).toThrow("unsupported bit depth 4");
+  });
+
+  it("rejects image data that inflates past the size its header declares", () => {
+    // 2x2 rgb48: 2 rows of (1 filter byte + 12 sample bytes) = 26 bytes.
+    const png = makePngWithIdat(2, 2, 16, deflateSync(Buffer.alloc(1024)));
+    expect(() => decodePngToRgb48le(png)).toThrow("does not inflate to 26 bytes");
+  });
+
+  it("rejects image data shorter than its header declares", () => {
+    const png = makePngWithIdat(2, 2, 16, deflateSync(Buffer.alloc(13)));
+    expect(() => decodePngToRgb48le(png)).toThrow("inflates to 13 bytes, expected 26");
+  });
+});
 
 describe("decodePngToRgb48le", () => {
   it("swaps PNG big-endian samples to little-endian rgb48le", () => {
@@ -1249,6 +1290,14 @@ function readRgb16(buf: Buffer, width: number, x: number, y: number): [number, n
 }
 
 describe("resampleRgb48leObjectFit", () => {
+  it("refuses a 30000x30000 target instead of allocating it", () => {
+    const src = makeHdrFrame(2, 2, 40000, 30000, 20000);
+    expect(30000 * 30000).toBeGreaterThan(MAX_RGB48LE_PIXELS);
+    expect(() => resampleRgb48leObjectFit(src, 2, 2, 30000, 30000)).toThrow(
+      "exceeds the 67108864-pixel limit",
+    );
+  });
+
   it.each(["-50% 50%", "150% 50%", "50% -50%", "50% 150%"])(
     "allows %s to position none-fit content outside the box",
     (position) => {

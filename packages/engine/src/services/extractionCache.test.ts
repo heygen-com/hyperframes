@@ -6,13 +6,14 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
@@ -25,7 +26,8 @@ import {
   gcExtractionCache,
   lookupCacheEntry,
   markCacheEntryComplete,
-  partialCacheEntryDir,
+  createPartialCacheEntryDir,
+  createPartialDir,
   privateCacheRoot,
   publishCacheEntry,
   readContentSha256,
@@ -64,8 +66,7 @@ function removeCacheRoot(tmpRoot: string): void {
 
 /** Create and populate a partial dir for `entry` with one frame file. */
 function seedPartialDir(entry: { dir: string; keyHash: string }, frameContent: string): string {
-  const partialDir = partialCacheEntryDir(entry);
-  mkdirSync(partialDir, { recursive: true });
+  const partialDir = createPartialCacheEntryDir(entry);
   writeFileSync(join(partialDir, "frame_00001.jpg"), frameContent, "utf-8");
   return partialDir;
 }
@@ -387,7 +388,7 @@ describe("publishCacheEntry", () => {
     const cacheEntry = entry();
     const partialDir = seedPartialDir(cacheEntry, "frame");
 
-    const result = publishCacheEntry(cacheEntry, partialDir);
+    const result = publishCacheEntry(cacheEntry, partialDir, 1);
 
     expect(result).toEqual({ dir: cacheEntry.dir, published: true });
     expect(existsSync(partialDir)).toBe(false);
@@ -403,7 +404,7 @@ describe("publishCacheEntry", () => {
 
     const partialDir = seedPartialDir(cacheEntry, "loser");
 
-    const result = publishCacheEntry(cacheEntry, partialDir);
+    const result = publishCacheEntry(cacheEntry, partialDir, 1);
 
     expect(result).toEqual({ dir: cacheEntry.dir, published: true });
     expect(existsSync(partialDir)).toBe(false);
@@ -418,7 +419,7 @@ describe("publishCacheEntry", () => {
 
     const partialDir = seedPartialDir(cacheEntry, "fresh");
 
-    const result = publishCacheEntry(cacheEntry, partialDir);
+    const result = publishCacheEntry(cacheEntry, partialDir, 1);
 
     expect(result).toEqual({ dir: cacheEntry.dir, published: true });
     expect(existsSync(partialDir)).toBe(false);
@@ -433,12 +434,60 @@ describe("publishCacheEntry", () => {
     expect(lookupCacheEntry(tmpRoot, keyFor(sourceFile)).hit).toBe(false);
     const partialDir = seedPartialDir(cacheEntry, "fresh");
 
-    const result = publishCacheEntry(cacheEntry, partialDir);
+    const result = publishCacheEntry(cacheEntry, partialDir, 1);
 
     expect(result).toEqual({ dir: cacheEntry.dir, published: true });
     expect(existsSync(partialDir)).toBe(false);
     expect(lookupCacheEntry(tmpRoot, keyFor(sourceFile)).hit).toBe(true);
     expect(statSync(join(cacheEntry.dir, "frame_00001.jpg")).size).toBe("fresh".length);
+  });
+
+  it.each([
+    ["fewer", 2],
+    ["more", 0],
+  ])("does not publish a partial directory holding %s frames than its writer made", (_, made) => {
+    const cacheEntry = entry();
+    const partialDir = seedPartialDir(cacheEntry, "frame");
+
+    const result = publishCacheEntry(cacheEntry, partialDir, made);
+
+    expect(result).toEqual({ dir: partialDir, published: false });
+    expect(existsSync(cacheEntry.dir)).toBe(false);
+    expect(existsSync(join(partialDir, COMPLETE_SENTINEL))).toBe(false);
+  });
+});
+
+describe("createPartialDir", () => {
+  let tmpRoot: string;
+
+  beforeEach(() => {
+    ({ tmpRoot } = makeCacheRoot());
+  });
+
+  afterEach(() => {
+    removeCacheRoot(tmpRoot);
+  });
+
+  it("creates a new empty directory per call under a name the aged-partial sweep matches", () => {
+    const first = createPartialDir(tmpRoot, "__superset-0");
+    const second = createPartialDir(tmpRoot, "__superset-0");
+
+    expect(first).not.toBe(second);
+    for (const dir of [first, second]) {
+      expect(readdirSync(dir)).toEqual([]);
+      expect(basename(dir)).toMatch(
+        new RegExp(`^__superset-0\\.partial-${process.pid}-[A-Za-z0-9]{6}$`),
+      );
+    }
+  });
+
+  it("leaves another writer's directory of the same group in place", () => {
+    const other = createPartialDir(tmpRoot, "__superset-0");
+    writeFileSync(join(other, "frame_00001.jpg"), "other", "utf-8");
+
+    createPartialDir(tmpRoot, "__superset-0");
+
+    expect(readFileSync(join(other, "frame_00001.jpg"), "utf-8")).toBe("other");
   });
 });
 

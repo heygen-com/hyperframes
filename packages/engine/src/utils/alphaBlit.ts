@@ -10,6 +10,11 @@ import { chunkCrc32 } from "./crc32.js";
 
 // ── PNG decoder ───────────────────────────────────────────────────────────────
 
+/** Ceiling for user-supplied rgb48le images and their resampled layout buffers. */
+export const MAX_RGB48LE_PIXELS = 8192 * 8192;
+/** Chrome caps screenshots at 16384 px per side, so `decodePng` never needs more. */
+const MAX_SCREENSHOT_PIXELS = 16384 * 16384;
+
 function paeth(a: number, b: number, c: number): number {
   const p = a + b - c;
   const pa = Math.abs(p - a);
@@ -18,6 +23,46 @@ function paeth(a: number, b: number, c: number): number {
   if (pa <= pb && pa <= pc) return a;
   if (pb <= pc) return b;
   return c;
+}
+
+/** Checks the IHDR size before any allocation and inflates exactly the bytes it declares. */
+function inflateScanlines(
+  idatChunks: Buffer[],
+  header: { width: number; height: number; bitDepth: number; colorType: number },
+  caller: string,
+  maxPixels: number,
+): { decompressed: Buffer; bpp: number; stride: number } {
+  const { width, height, bitDepth, colorType } = header;
+  if (bitDepth !== 8 && bitDepth !== 16) {
+    throw new Error(`${caller}: unsupported bit depth ${bitDepth} (expected 8 or 16)`);
+  }
+  if (width === 0 || height === 0 || width * height > maxPixels) {
+    throw new Error(
+      `${caller}: ${width}x${height} PNG is outside the supported size (max ${maxPixels} pixels)`,
+    );
+  }
+
+  // Bytes per pixel: channels x bytes-per-channel
+  const channels = colorType === 6 ? 4 : 3;
+  const bpp = channels * (bitDepth / 8);
+  const stride = width * bpp;
+  const expectedLength = height * (stride + 1);
+
+  let decompressed: Buffer;
+  try {
+    decompressed = inflateSync(Buffer.concat(idatChunks), { maxOutputLength: expectedLength });
+  } catch (err) {
+    throw new Error(
+      `${caller}: image data does not inflate to ${expectedLength} bytes for ${width}x${height}`,
+      { cause: err },
+    );
+  }
+  if (decompressed.length !== expectedLength) {
+    throw new Error(
+      `${caller}: image data inflates to ${decompressed.length} bytes, expected ${expectedLength}`,
+    );
+  }
+  return { decompressed, bpp, stride };
 }
 
 /**
@@ -32,6 +77,7 @@ function paeth(a: number, b: number, c: number): number {
 function decodePngRaw(
   buf: Buffer,
   caller: string,
+  maxPixels: number,
 ): { width: number; height: number; bitDepth: number; colorType: number; rawPixels: Buffer } {
   // Verify PNG signature
   if (
@@ -89,13 +135,12 @@ function decodePngRaw(
     );
   }
 
-  // Bytes per pixel: channels x bytes-per-channel
-  const channels = colorType === 6 ? 4 : 3;
-  const bpp = channels * (bitDepth / 8);
-  const stride = width * bpp;
-
-  const compressed = Buffer.concat(idatChunks);
-  const decompressed = inflateSync(compressed);
+  const { decompressed, bpp, stride } = inflateScanlines(
+    idatChunks,
+    { width, height, bitDepth, colorType },
+    caller,
+    maxPixels,
+  );
 
   // Reconstruct filtered rows into a flat pixel buffer (no filter bytes)
   const rawPixels = Buffer.allocUnsafe(height * stride);
@@ -158,7 +203,11 @@ function decodePngRaw(
  * Returns a Uint8Array of width*height*4 bytes in RGBA order.
  */
 export function decodePng(buf: Buffer): { width: number; height: number; data: Uint8Array } {
-  const { width, height, bitDepth, colorType, rawPixels } = decodePngRaw(buf, "decodePng");
+  const { width, height, bitDepth, colorType, rawPixels } = decodePngRaw(
+    buf,
+    "decodePng",
+    MAX_SCREENSHOT_PIXELS,
+  );
 
   if (bitDepth !== 8) {
     throw new Error(`decodePng: unsupported bit depth ${bitDepth} (expected 8)`);
@@ -244,7 +293,11 @@ export function encodePng(width: number, height: number, rgba: Uint8Array): Buff
  * Supports colorType 2 (RGB) and 6 (RGBA) at 16-bit depth, non-interlaced.
  */
 export function decodePngToRgb48le(buf: Buffer): { width: number; height: number; data: Buffer } {
-  const { width, height, bitDepth, colorType, rawPixels } = decodePngRaw(buf, "decodePngToRgb48le");
+  const { width, height, bitDepth, colorType, rawPixels } = decodePngRaw(
+    buf,
+    "decodePngToRgb48le",
+    MAX_RGB48LE_PIXELS,
+  );
 
   if (bitDepth !== 16) {
     throw new Error(`decodePngToRgb48le: unsupported bit depth ${bitDepth} (expected 16)`);
@@ -839,6 +892,11 @@ export function resampleRgb48leObjectFit(
   }
   if (fit === "fill" && srcW === dstW && srcH === dstH) {
     return source;
+  }
+  if (dstW * dstH > MAX_RGB48LE_PIXELS) {
+    throw new Error(
+      `resampleRgb48leObjectFit: ${dstW}x${dstH} target exceeds the ${MAX_RGB48LE_PIXELS}-pixel limit`,
+    );
   }
 
   const pos = parseObjectPosition(objectPosition);

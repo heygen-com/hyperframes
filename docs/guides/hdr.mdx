@@ -64,6 +64,7 @@ This is why a lower third or animated interface can remain visually consistent o
 
 - HDR output is MP4 only. MOV, WebM, GIF, PNG sequence, and alpha output fall back to SDR.
 - HDR and `--resolution` supersampling cannot be combined in one render. Author at the target dimensions or resize in a separate step.
+- Native HDR still images can be up to 8192×8192 pixels. An HDR image whose box is larger than the video frame is drawn shrunk to fit inside it, keeping its aspect ratio.
 - Distributed AWS Lambda and Cloud Run renders are currently SDR.
 - Hardware H.265 encoding carries the color tags but does not include the same static mastering metadata as the software `libx265` path. Use software encoding for HDR10 delivery.
 - Browser playback depends on the host browser, display, and operating system; `<hyperframes-player>` does not add its own HDR playback pipeline.

@@ -70,6 +70,7 @@ import {
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
+  terminalText,
 } from "@hyperframes/core";
 import { readMasterFxChain, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
@@ -1564,7 +1565,9 @@ export async function processCompositionAudio(
           // Fallback: if no duration was specified, probe the actual file
           if (element.end - element.start <= 0) {
             console.warn(
-              `[audioMixer] ${element.id} has no data-duration or data-end; its length is unknown, so it plays to the end of its source`,
+              terminalText(
+                `[audioMixer] ${element.id} has no data-duration or data-end; its length is unknown, so it plays to the end of its source`,
+              ),
             );
             let metadata;
             try {

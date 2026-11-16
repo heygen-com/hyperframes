@@ -56,6 +56,7 @@ import {
   shiftRateLane,
   sourceTimeAt,
   timeAtSourceTime,
+  terminalText,
 } from "@hyperframes/core";
 import { parseHostVariableValues, readDeclaredDefaults } from "@hyperframes/core/compiler";
 import { extractMediaSrcMutations } from "@hyperframes/parsers";
@@ -942,7 +943,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         failures: failedRequests.slice(0, 10),
       });
       for (const line of failedRequests.slice(0, 5)) {
-        console.warn(`[Render] Asset load failure: ${line}`);
+        console.warn(`[Render] Asset load failure: ${terminalText(line)}`);
       }
     }
   }

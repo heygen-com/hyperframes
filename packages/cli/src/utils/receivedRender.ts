@@ -10,13 +10,13 @@ import {
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseHTML } from "linkedom";
-import { isNonRelativeUrl, isPathInside } from "@hyperframes/core";
+import { isNonRelativeUrl, isPathInside, terminalText } from "@hyperframes/core";
 import {
   namesAnotherNetworkRoot,
   resolveCompositionSrc,
 } from "@hyperframes/parsers/asset-resolution";
 import { linksOutside, receivedRecordStatus } from "./privateProjectFile.js";
-import { terminalText } from "./terminalText.js";
+import { walkBudget } from "./walkBudget.js";
 
 const REFERENCE_ATTRS = ["src", "href", "poster"];
 const MAX_SCANNED_BYTES = 2 * 1024 * 1024;
@@ -291,9 +291,6 @@ function isMediaFontOrImage(path: string): boolean {
   return bytes !== null && matches !== undefined && matches(bytes);
 }
 
-const ALIAS_WALK_MAX_ENTRIES = 20_000;
-const ALIAS_WALK_MAX_MS = 2_000;
-
 interface Target {
   identity: string;
   isDirectory: boolean;
@@ -354,15 +351,6 @@ function receivedAlias(
   return !isMediaName(path) && received.has(target.identity) ? path : null;
 }
 
-function walkBudget(): (entries: number) => boolean {
-  const deadline = Date.now() + ALIAS_WALK_MAX_MS;
-  let seen = 0;
-  return (entries) => {
-    seen += entries;
-    return seen <= ALIAS_WALK_MAX_ENTRIES && Date.now() <= deadline;
-  };
-}
-
 interface AliasWalk {
   received: ReadonlySet<string>;
   realProjectDir: string;
@@ -406,9 +394,13 @@ const READS_NOTHING_OUTSIDE = "so the render reads nothing outside the project."
 
 function receivedRefusal(
   projectDir: string,
-  record: { path: string; listed: string[] | null },
+  record: { path: string; listed: string[] | null } | "unchecked",
 ): Refusal | null {
   const shown = (path: string) => relative(realOrNull(projectDir) ?? projectDir, path);
+  if (record === "unchecked") {
+    const reason = `Could not check every project folder for a received-files record, ${READS_NOTHING_OUTSIDE}`;
+    return { reason, alwaysWarn: true };
+  }
   if (record.listed === null) {
     return { reason: `Could not read ${record.path}, ${READS_NOTHING_OUTSIDE}`, alwaysWarn: true };
   }
@@ -430,7 +422,7 @@ function receivedRefusal(
   return { reason, alwaysWarn: false };
 }
 
-/** False when the received-files record cannot be read, lists a received file that is not positively media, a font or an image by extension and leading bytes, or a project file reaches a received file under another kind of name; `warn` then says why and names the references outside the project it refuses. */
+/** False when a received-files record of the project, an ancestor or a folder under the project cannot be read or found, lists a received file that is not positively media, a font or an image by extension and leading bytes, or a project file reaches a received file under another kind of name; `warn` then says why and names the references outside the project it refuses. */
 export function outsideAssetsAllowed(
   projectDir: string,
   entryFile: string | undefined,

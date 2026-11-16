@@ -10,7 +10,10 @@ import { HF_AUDIO_GROUP_ATTR } from "@hyperframes/core/audio-groups";
 import { byStart, type ClipFact, type ClipLane } from "@hyperframes/core/clip-facts";
 import { fpsToNumber, parseFpsWithDefault, parseNumeric } from "@hyperframes/core";
 import { findSyncPartner, readLinkTiming, syncOffsetFrames } from "@hyperframes/core/media-link";
-import { resolveAuthoredAssetFile } from "@hyperframes/parsers/asset-resolution";
+import {
+  namesAnotherNetworkRoot,
+  resolveAuthoredAssetFile,
+} from "@hyperframes/parsers/asset-resolution";
 import { readCompositionFps } from "../utils/compositionFps.js";
 import {
   readMediaOffsetSeconds,
@@ -394,6 +397,7 @@ function cutRow(row: ClipDraft, slots: readonly HostSlot[]): ClipDraft[] {
 
 /** The file's real path when it is a regular file inside the project (symlinks resolved), else null. */
 function realFileInside(projectDir: string, path: string): string | null {
+  if (namesAnotherNetworkRoot(projectDir, path)) return null;
   try {
     const real = realpathSync(path);
     const inside = relative(realpathSync(projectDir), real);

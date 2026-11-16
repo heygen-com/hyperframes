@@ -30,6 +30,14 @@ import { join, dirname, resolve, basename, relative, sep } from "path";
 import { parseHTML } from "linkedom";
 import { bundledScript } from "./bundledScripts.js";
 import {
+  inlineScriptBlocks,
+  remoteSrcUrls,
+  removeDelimitedRuns,
+  replaceGsapDistScripts,
+  stripCrossoriginAttr,
+  stripPreloadNone,
+} from "./htmlTagScans.js";
+import {
   COMPOSITION_SOURCE_URL,
   compileTimingAttrs,
   injectDurations,
@@ -48,6 +56,7 @@ import {
   type RateSpec,
   type ResolvedDuration,
   type UnresolvedElement,
+  terminalText,
 } from "@hyperframes/core";
 import { MAX_AUDIO_GAIN } from "@hyperframes/core/audio-gain";
 import { CAPTURE_CANVAS_SELECTOR } from "@hyperframes/core/html-in-canvas";
@@ -393,22 +402,15 @@ export interface RenderModeHints {
   reasons: RenderModeHint[];
 }
 
-const INLINE_SCRIPT_PATTERN = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
 const COMPILER_MOUNT_BLOCK_START = "/* __HF_COMPILER_MOUNT_START__ */";
 const COMPILER_MOUNT_BLOCK_END = "/* __HF_COMPILER_MOUNT_END__ */";
 
 function stripJsComments(source: string): string {
-  return source.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  return removeDelimitedRuns(source.replace(/\/\/.*$/gm, ""), "/*", "*/");
 }
 
 function stripCompilerMountBootstrap(source: string): string {
-  return source.replace(
-    new RegExp(
-      `${COMPILER_MOUNT_BLOCK_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?${COMPILER_MOUNT_BLOCK_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
-      "g",
-    ),
-    "",
-  );
+  return removeDelimitedRuns(source, COMPILER_MOUNT_BLOCK_START, COMPILER_MOUNT_BLOCK_END);
 }
 
 /** The composition the runtime reads data-motion-blur from: `data-root="true"`, else the first. */
@@ -449,12 +451,9 @@ export function detectRenderModeHints(html: string, pageMotionBlur?: "off"): Ren
     });
   }
 
-  let scriptMatch: RegExpExecArray | null;
-  const scriptPattern = new RegExp(INLINE_SCRIPT_PATTERN.source, INLINE_SCRIPT_PATTERN.flags);
-  while ((scriptMatch = scriptPattern.exec(html)) !== null) {
-    const attrs = scriptMatch[1] || "";
+  for (const { attrs, body } of inlineScriptBlocks(html)) {
     if (/\bsrc\s*=/i.test(attrs)) continue;
-    const content = stripJsComments(stripCompilerMountBootstrap(scriptMatch[2] || ""));
+    const content = stripJsComments(stripCompilerMountBootstrap(body));
     if (!/requestAnimationFrame\s*\(/.test(content)) continue;
     reasons.push({
       code: "requestAnimationFrame",
@@ -551,12 +550,9 @@ const SHADER_TRANSITION_USAGE_PATTERN =
   /\b(?:(?:window|globalThis)\s*\.\s*)?HyperShader\s*\.\s*init\s*\(|\b__hf\s*\.\s*transitions\s*=/;
 
 export function detectShaderTransitionUsage(html: string): boolean {
-  let scriptMatch: RegExpExecArray | null;
-  const scriptPattern = new RegExp(INLINE_SCRIPT_PATTERN.source, INLINE_SCRIPT_PATTERN.flags);
-  while ((scriptMatch = scriptPattern.exec(html)) !== null) {
-    const attrs = scriptMatch[1] || "";
+  for (const { attrs, body } of inlineScriptBlocks(html)) {
     if (/\bsrc\s*=/i.test(attrs)) continue;
-    const content = stripJsComments(stripCompilerMountBootstrap(scriptMatch[2] || ""));
+    const content = stripJsComments(stripCompilerMountBootstrap(body));
     if (SHADER_TRANSITION_USAGE_PATTERN.test(content)) return true;
   }
 
@@ -809,13 +805,13 @@ async function compileHtmlFile(
   // injected frame images, so the browser never needs to load the source.
   // Without this, videos with crossorigin="anonymous" targeting CORS-restricted
   // origins (e.g. S3 without CORS headers) keep readyState=0, blocking page setup.
-  compiledHtml = compiledHtml.replace(/(<video\b[^>]*)\s+crossorigin(?:=["'][^"']*["'])?/gi, "$1");
+  compiledHtml = stripCrossoriginAttr(compiledHtml, "video");
 
   // Strip crossorigin from img elements. The renderer captures DOM frames visually —
   // no canvas readback — so CORS compliance is unnecessary. External images from
   // CORS-restricted origins (e.g. S3) render blank when crossorigin forces a failed
   // CORS request against the renderer's localhost file server.
-  compiledHtml = compiledHtml.replace(/(<img\b[^>]*)\s+crossorigin(?:=["'][^"']*["'])?/gi, "$1");
+  compiledHtml = stripCrossoriginAttr(compiledHtml, "img");
 
   // Strip crossorigin from audio elements. Audio is processed out-of-band via
   // FFmpeg; the browser's CORS policy for audio elements is irrelevant to
@@ -824,7 +820,7 @@ async function compileHtmlFile(
   // headers reject — leaving audio elements in a failed network state. The
   // FFmpeg audio path reads the src URL directly and is unaffected by browser
   // CORS, so stripping the attribute has no side effects.
-  compiledHtml = compiledHtml.replace(/(<audio\b[^>]*)\s+crossorigin(?:=["'][^"']*["'])?/gi, "$1");
+  compiledHtml = stripCrossoriginAttr(compiledHtml, "audio");
 
   return { html: compiledHtml, unresolvedCompositions };
 }
@@ -1190,7 +1186,9 @@ function inlineSubCompositions(
         // hit here means the file changed on disk between that pre-flight
         // check and this later inline step (e.g. a concurrent scene-writer).
         console.warn(
-          `[Compiler] Skipping sub-composition "${srcPath}": ${reason ?? "the file is missing or empty"}.`,
+          terminalText(
+            `[Compiler] Skipping sub-composition "${srcPath}": ${reason ?? "the file is missing or empty"}.`,
+          ),
         );
       },
     },
@@ -1476,8 +1474,9 @@ export function collectExternalAssets(
     if (isPathInside(absPath, absProjectDir)) {
       return null; // inside projectDir, file server handles this
     }
-    if (!existsSync(absPath)) return null;
-    const refusal = outsideAssetRefusal(absProjectDir, absPath);
+    const onShare = namesAnotherNetworkRoot(absProjectDir, absPath);
+    if (!onShare && !existsSync(absPath)) return null;
+    const refusal = onShare ? "network_share" : outsideAssetRefusal(absProjectDir, absPath);
     if (refusal) {
       if (!leftOut.has(trimmed)) log.warn(`[Compiler] ${leftOutOfRender(file, trimmed, refusal)}`);
       leftOut.add(trimmed);
@@ -1540,22 +1539,6 @@ export function collectExternalAssets(
 }
 
 export const REMOTE_MEDIA_SUBDIR = "_remote_media";
-// Match opening tags of <video> or <audio> elements that carry an HTTP(S) src.
-// Uses [^>]* to span attributes — safe for composition elements that won't
-// have `>` inside quoted attribute values (data-title etc.).
-const REMOTE_MEDIA_TAG_RE =
-  /<(?:video|audio)\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>/gi;
-// <source src> on media elements (picture uses srcset, not src).
-const REMOTE_SOURCE_TAG_RE = /<source\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>/gi;
-// Match <img> tags (including agent-pipeline-emitted variants where `src` is
-// not the first attribute). Producer-side localisation is the primary fix for
-// the remote-<img> flicker; frameCapture's `pollImagesReady`/`decodeAllImages`
-// are the defense-in-depth layer for any remote URL that bypasses this step.
-// The `(?<![\w-])` lookbehind pins the match to a real `src` attribute so we
-// don't rewrite `data-src` / `data-*-src` (lazy-loader placeholders whose URL
-// is not what Chrome actually paints). `srcset` is excluded by the `\s*=`.
-const REMOTE_IMG_TAG_RE = /<img\b[^>]*?(?<![\w-])src\s*=\s*["'](https?:\/\/[^"']+)["'][^>]*>/gi;
-
 /**
  * Download a set of remote URLs in parallel into `remoteDir`, build the
  * `{ relPath → absPath }` asset map, and rewrite every occurrence of each
@@ -1637,14 +1620,7 @@ export async function localizeRemoteMediaSources(
   html: string,
   downloadDir: string,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
-  const urlSet = new Set<string>();
-  for (const tagRe of [REMOTE_MEDIA_TAG_RE, REMOTE_SOURCE_TAG_RE]) {
-    const re = new RegExp(tagRe.source, tagRe.flags);
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(html)) !== null) {
-      if (m[1]) urlSet.add(m[1]);
-    }
-  }
+  const urlSet = new Set([...remoteSrcUrls(html, "media"), ...remoteSrcUrls(html, "source")]);
   const localized = await downloadAndRewriteUrls(
     urlSet,
     html,
@@ -1700,12 +1676,8 @@ export async function localizeRemoteImageSources(
   html: string,
   downloadDir: string,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
-  const urlSet = new Set<string>();
-  const re = new RegExp(REMOTE_IMG_TAG_RE.source, REMOTE_IMG_TAG_RE.flags);
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html)) !== null) {
-    if (m[1]) urlSet.add(m[1]);
-  }
+  // frameCapture's `pollImagesReady`/`decodeAllImages` cover any remote URL this misses.
+  const urlSet = new Set(remoteSrcUrls(html, "img"));
   return downloadAndRewriteUrls(
     urlSet,
     html,
@@ -2145,16 +2117,13 @@ function rewriteUnresolvableGsapToCdn(
     const file = resolve(projectDir, path);
     return !namesAnotherNetworkRoot(projectDir, file) && existsSync(file);
   };
-  return html.replace(
-    /(<script\b[^>]*\bsrc=["'])([^"']*gsap[^"']*\/dist\/([^"']+))(["'][^>]*>)/gi,
-    (full, prefix, src, file, suffix) => {
-      if (/^https?:\/\//i.test(src)) return full;
-      if (exists(compSrcPath ? rewriteAssetPath(compSrcPath, src, exists) : src)) return full;
-      gsapDist ??= renderGsapDist();
-      defaultLogger.debug(`[Compiler] Rewriting missing gsap script: ${src} → ${gsapDist}${file}`);
-      return `${prefix}${gsapDist}${file}${suffix}`;
-    },
-  );
+  return replaceGsapDistScripts(html, (full, prefix, src, file, suffix) => {
+    if (/^https?:\/\//i.test(src)) return full;
+    if (exists(compSrcPath ? rewriteAssetPath(compSrcPath, src, exists) : src)) return full;
+    gsapDist ??= renderGsapDist();
+    defaultLogger.debug(`[Compiler] Rewriting missing gsap script: ${src} → ${gsapDist}${file}`);
+    return `${prefix}${gsapDist}${file}${suffix}`;
+  });
 }
 
 /**
@@ -2292,10 +2261,7 @@ export async function compileForRender(
   // media upfront for frame capture. Users add this to reduce browser memory in
   // preview, but it causes the headless renderer to never load the media, leading
   // to 45s timeout failures.
-  const sanitizedHtml = inlinedHtml.replace(
-    /(<(?:video|audio)\b[^>]*?)\s+preload\s*=\s*["']none["']/gi,
-    "$1",
-  );
+  const sanitizedHtml = stripPreloadNone(inlinedHtml);
   const renderModeHints = detectRenderModeHints(sanitizedHtml, options.pageMotionBlur);
   const hasShaderTransitions = detectShaderTransitionUsage(sanitizedHtml);
   // Detected BEFORE inlineExternalScripts: GSAP's own source contains

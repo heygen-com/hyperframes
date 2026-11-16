@@ -2467,6 +2467,34 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
   });
 
   describe("scanElementTags", () => {
+    it("takes linear time on 1 MB of tags that never close or nest re-formed scripts", () => {
+      const root = '<div data-composition-id="r" data-width="100" data-height="100">';
+      const megabyte = (piece: string) => piece.repeat(Math.ceil(1_000_000 / piece.length));
+      const nested = (depth: number) =>
+        `${"<scr".repeat(depth)}<script></script>${"ipt></script>".repeat(depth)}`;
+      const inputs = [
+        megabyte("<a "),
+        megabyte("<script "),
+        megabyte("<style>"),
+        megabyte('<video data-aroll="true" '),
+        megabyte('<a data-composition-src="'),
+        megabyte('<a data-composition-id="x" '),
+        megabyte('<a data-color-grading="'),
+        root + megabyte("html,body{width:"),
+        `<video${" ".repeat(1_000_000)}x>`,
+        nested(70_000),
+      ];
+      for (const html of inputs) {
+        const start = performance.now();
+        scanElementTags(html);
+        expect(performance.now() - start).toBeLessThan(1000);
+      }
+    });
+
+    it("strips script blocks re-formed by an earlier pass", () => {
+      expect(scanElementTags("<scr<script></script>ipt><b></b></script><i></i>").total).toBe(1);
+    });
+
     it("counts closing tags", () => {
       expect(scanElementTags("<div><span>a</span></div>").total).toBe(2);
     });

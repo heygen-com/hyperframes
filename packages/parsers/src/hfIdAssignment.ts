@@ -30,6 +30,9 @@ function toHfId(hash: number): string {
   return `hf-${four}`;
 }
 
+// Per set, each key's last dup: ids only join a set, so every slot below it is still taken.
+const lastDup = new WeakMap<Set<string>, Map<string, number>>();
+
 // Element's own direct text (TEXT_NODE children), not descendants'.
 function ownText(el: Element): string {
   let text = "";
@@ -78,9 +81,14 @@ function contentKey(el: Element): string {
 // drag-to-edit targeting.
 export function mintHfId(el: Element, assigned: Set<string>): string {
   const key = contentKey(el);
-  let id = toHfId(fnv1a(key));
-  let dup = 0;
-  while (assigned.has(id)) {
+  const twins = lastDup.get(assigned) ?? new Map<string, number>();
+  lastDup.set(assigned, twins);
+  let dup = twins.get(key) ?? 0;
+  let id =
+    dup > 10000
+      ? `hf-${(fnv1a(key) >>> 0).toString(36)}-${dup}`
+      : toHfId(fnv1a(dup ? `${key}#${dup}` : key));
+  while (dup <= 10000 && assigned.has(id)) {
     dup += 1;
     // Graceful fallback instead of a hard throw: rehashing only fails to find a
     // free 4-char slot in a pathological document (~1.6M identical elements).
@@ -92,6 +100,7 @@ export function mintHfId(el: Element, assigned: Set<string>): string {
     }
     id = toHfId(fnv1a(`${key}#${dup}`));
   }
+  twins.set(key, dup);
   assigned.add(id);
   return id;
 }
