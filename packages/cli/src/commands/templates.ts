@@ -17,6 +17,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { makeOutputFolder } from "../utils/outputFolder.js";
+import { recordFolder } from "../utils/projectRecords.js";
 import { processIsAlive } from "../utils/processTree.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { resolveCloudAuthHeaders } from "../cloud/auth.js";
@@ -209,7 +210,6 @@ async function unpack(
   pack: TemplatePack,
 ): Promise<string | null> {
   makeOutputFolder(dirname(dest));
-  makeOutputFolder(stage);
   removeAbandonedParts(stage, dest);
   const work = createStagingDir(stage, `${partPrefix(dest)}${process.pid}-`);
   const stopWatching = removeOnStop(work);
@@ -269,7 +269,11 @@ export async function pullTemplate(slug: string, dir: string): Promise<string> {
     );
   const dest = resolve(dir, "templates", slug);
   if (alreadyPulled(dest, pack)) return dest;
-  const stage = resolve(dir, ".hyperframes", "template-pulls");
+  const stage = recordFolder(resolve(dir), "template-pulls");
+  if (!stage)
+    throw new PullRefused(
+      `${resolve(dir, ".hyperframes")} is a link or not a folder; remove it and pull again.`,
+    );
   const aside = await unpack(await download(await bundleUrl(pack), pack), dest, stage, pack);
   if (aside)
     console.log(

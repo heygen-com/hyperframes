@@ -10,7 +10,7 @@ import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { realpath } from "@hyperframes/core";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -45,6 +45,7 @@ import {
 } from "@hyperframes/studio-server/request-identity";
 import { mountShareRoutes } from "./shareRoutes.js";
 import { isDevMode } from "../utils/env.js";
+import { recordFolder } from "../utils/projectRecords.js";
 import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { insideHostApp } from "../utils/desktopApp.js";
 import { runRenderSetupWorker } from "../utils/cancellableProcess.js";
@@ -467,11 +468,7 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
 }
 
 function createStateFolderBeforeWatching(projectDir: string): void {
-  try {
-    mkdirSync(join(projectDir, ".hyperframes"), { recursive: true });
-  } catch {
-    return;
-  }
+  recordFolder(projectDir, "");
 }
 
 export function createStudioServer(options: StudioServerOptions): StudioServer {

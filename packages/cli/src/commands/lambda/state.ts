@@ -11,9 +11,9 @@ import { failCommand } from "../../utils/commandResult.js";
  * can symlink the directory.
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { writeRecord } from "../../utils/projectRecords.js";
 
 export interface StackOutputs {
   /** Project-name prefix passed to `deploy`. Used as CloudFormation stack-name suffix. */
@@ -52,8 +52,9 @@ export function stateFilePath(
 
 export function writeStackOutputs(outputs: StackOutputs, cwd: string = process.cwd()): string {
   const path = stateFilePath(outputs.stackName, cwd);
-  mkdirSync(dirname(path), { recursive: true });
-  replaceFileAtomically(path, JSON.stringify(outputs, null, 2) + "\n");
+  const name = `${STATE_FILE_PREFIX}${outputs.stackName}.json`;
+  if (!writeRecord(cwd, name, JSON.stringify(outputs, null, 2) + "\n"))
+    throw new Error(`Could not write ${path}: it, or .hyperframes, is a link or not a plain file`);
   return path;
 }
 
