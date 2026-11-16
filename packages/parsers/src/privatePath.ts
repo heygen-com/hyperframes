@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
-export function realpath(path: string): string {
+function realpath(path: string): string {
   try {
     return realpathSync.native(path);
   } catch (error) {

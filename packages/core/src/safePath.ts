@@ -1,6 +1,6 @@
 import { resolve, sep, join, dirname, basename, relative, isAbsolute, parse } from "node:path";
-import { lstatSync, mkdirSync, statSync } from "node:fs";
-import { projectPathSegments, realpath } from "@hyperframes/parsers/private-path";
+import { lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
+import { projectPathSegments } from "@hyperframes/parsers/private-path";
 
 export {
   isCredentialOrToolStatePath,
@@ -8,8 +8,17 @@ export {
   isStudioPrivatePath,
   isVcsOrSecretPath,
   projectPathSegments,
-  realpath,
 } from "@hyperframes/parsers/private-path";
+
+export function realpath(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch (error) {
+    // Some Windows volumes (RAM disks) refuse the native call with EISDIR.
+    if ((error as NodeJS.ErrnoException).code === "EISDIR") return realpathSync(path);
+    throw error;
+  }
+}
 
 // realpath also fails for dangling/cyclic symlinks. Existing entries must not
 // become missing segments: writes could follow them outside the project.
