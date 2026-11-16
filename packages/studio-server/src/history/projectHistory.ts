@@ -12,7 +12,7 @@ import {
   realpathSync,
   rmSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import {
   DELETED_VERSION,
@@ -31,6 +31,12 @@ import {
 } from "../helpers/projectSignature.js";
 import { isSettling, openBlobStore, readBlob, SETTLE_MS, type BlobStore } from "./blobStore.js";
 import { isUncopied, uncopiedOnlyHashes } from "./uncopied.js";
+import {
+  assertStillWithin,
+  folderWithin,
+  isRelativeProjectPath,
+  removeWithin,
+} from "./containedPath.js";
 import { pruneGoneProjectHistoriesDaily } from "./pruneHistories.js";
 import {
   ID_PATH,
@@ -242,8 +248,9 @@ async function inFirstCopySlot<T>(copy: () => Promise<T>): Promise<T> {
 const MEDIA_LEDGER = ".media/manifest.jsonl";
 const KEPT_HIDDEN_PATHS = new Set<string>([...STUDIO_SIGNATURE_MANIFEST_PATHS, MEDIA_LEDGER]);
 
-/** A hidden name anywhere in a path (a tool's own record, .DS_Store) is nobody's work, except the kept ones above. */
+/** A hidden name (a tool's own record, .DS_Store) is nobody's work, except the kept ones above; nor is a path out. */
 function isHistoryPath(path: string): boolean {
+  if (!isRelativeProjectPath(path)) return false;
   if (KEPT_HIDDEN_PATHS.has(path)) return true;
   return !path.split("/").some((segment) => segment.startsWith("."));
 }
@@ -306,6 +313,7 @@ async function removeEmptyFolders(dir: string): Promise<void> {
   }
   for (const entry of entries)
     if (entry.isDirectory()) await removeEmptyFolders(join(dir, entry.name));
+  assertStillWithin(dirname(dir));
   await rmdir(dir);
 }
 
@@ -1264,16 +1272,23 @@ class Engine {
       const version = hash === null ? DELETED_VERSION : hashVersion(hash);
       recordFileWriteReceipt(absPath, { path, version, writeToken });
     }
-    const standing = lstatSync(absPath, { throwIfNoEntry: false });
-    if (standing?.isFile() && isUncopied(path, standing.size))
-      await this.blobs.keep(path, absPath, hash === null);
+    const folder = folderWithin(this.dir, path, hash !== null);
+    if (!folder) return;
+    const at = join(folder, basename(path));
+    const standing = lstatSync(at, { throwIfNoEntry: false });
+    const uncopied = standing?.isFile() === true && isUncopied(path, standing.size);
     if (hash === null) {
       this.assertWritable();
-      rmSync(absPath, { force: true });
-    } else {
-      await removeEmptyFolders(absPath);
-      await this.blobs.writeTo(hash, absPath, () => this.assertWritable());
+      await removeWithin(
+        folder,
+        path,
+        uncopied ? (aside) => this.blobs.keep(path, aside, true) : undefined,
+      );
+      return;
     }
+    if (uncopied) await this.blobs.keep(path, at, false);
+    await removeEmptyFolders(at);
+    await this.blobs.writeTo(hash, this.dir, path, () => this.assertWritable());
   }
 
   entry(id: string): HistoryEntry {
@@ -1449,7 +1464,8 @@ class Engine {
             if (!this.blobs.has(hash))
               throw new Error(`The version of ${path} from then is not kept.`);
           try {
-            for (const [path, hash] of files) await this.blobs.writeTo(hash, join(dest, path));
+            await mkdir(dest, { recursive: true });
+            for (const [path, hash] of files) await this.blobs.writeTo(hash, dest, path);
           } catch (error) {
             for (const name of await readdir(dest).catch(() => []))
               await rm(join(dest, name), { recursive: true, force: true });
