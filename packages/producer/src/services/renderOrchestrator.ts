@@ -162,6 +162,8 @@ import {
   type MemorySampler,
   reportExtractProgress,
   updateJobStatus,
+  audioWaitReporter,
+  AUDIO_STAGE,
   audioWorkDir,
 } from "./render/shared.js";
 import { frameCacheOptions } from "./render/frameCacheBudget.js";
@@ -3739,10 +3741,11 @@ async function executeRenderPipeline(input: {
     });
 
     // ── Stage 3: Audio processing ───────────────────────────────────────
-    updateJobStatus(job, "preprocessing", "Processing audio tracks", 20, onProgress, {
+    updateJobStatus(job, "preprocessing", AUDIO_STAGE, 20, onProgress, {
       code: "process_audio",
     });
 
+    const audioWait = audioWaitReporter(job, onProgress);
     const audioStage = observeRenderStage(
       observability,
       "audio_process",
@@ -3763,6 +3766,7 @@ async function executeRenderPipeline(input: {
           assertNotAborted,
           log,
           keepDeliverySource: true,
+          onFfmpegProgress: audioWait.progressed,
         }),
     );
     pendingAudio = audioStage.catch(() => undefined);
@@ -4930,7 +4934,7 @@ async function executeRenderPipeline(input: {
     const effectiveQuality = job.config.crf ?? preset.quality;
     const effectiveBitrate = job.config.crf != null ? undefined : job.config.videoBitrate;
 
-    const audioResult = await audioStage;
+    const audioResult = await audioWait.wait(audioStage);
     const { audioOutputPath, deliverySourcePath, hasAudio } = audioResult;
     perfStages.audioProcessMs = audioResult.audioProcessMs;
     recordLimiterAttenuation(job, audioResult.audioLoweredDb);
