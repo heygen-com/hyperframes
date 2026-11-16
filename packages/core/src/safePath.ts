@@ -127,7 +127,8 @@ export function isVcsOrSecretPath(relPath: string): boolean {
 }
 
 // `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): no file
-// server serves any of it, the folder itself included, but Studio's own files and the assets compositions load.
+// server serves any of it, the folder itself included, but Studio's own files and the assets compositions load. Studio
+// reads and writes those only in the project's own `.hyperframes/`, so one in a subfolder holds records only.
 const STUDIO_FILES = new Set([
   ".hyperframes/studio-motion.json",
   ".hyperframes/studio-manual-edits.json",
@@ -186,11 +187,18 @@ export function isCredentialOrToolStatePath(relPath: string): boolean {
  * state, app records. */
 export function isStudioPrivatePath(relPath: string): boolean {
   if (isVcsOrSecretPath(relPath) || isCredentialOrToolStatePath(relPath)) return true;
-  const path = projectPathSegments(relPath).join("/");
+  const segments = projectPathSegments(relPath);
+  return segments.some((segment, at) => {
+    if (segment !== ".hyperframes") return false;
+    const atRoot = segments.slice(0, at).every((before) => before === "");
+    return !atRoot || !isStudioOwnFile(segments.slice(at).join("/"));
+  });
+}
+
+function isStudioOwnFile(path: string): boolean {
   return (
-    (path === ".hyperframes" || path.startsWith(".hyperframes/")) &&
-    !STUDIO_FILES.has(path) &&
-    !STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
+    STUDIO_FILES.has(path) ||
+    STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
   );
 }
 

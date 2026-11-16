@@ -291,6 +291,17 @@ describe("isStudioPrivatePath", () => {
     "certs/CERT.PEM.",
     ".config/gh/hosts.yml",
     "../.aws/credentials",
+    "sub/.hyperframes",
+    "sub/.hyperframes/app-history.jsonl",
+    "sub/.HyperFrames./App-History.JSONL",
+    "sub\\.hyperframes \\agent-handoff.json",
+    "a/b/.hyperframes:stream/comments.jsonl",
+    "sub/.hyperframes/backup/index.html",
+    "sub/.hyperframes/studio-motion.json",
+    "sub/.hyperframes/prepared-assets/gif/clip.gif",
+    "sub/.hyperframes/requests/1/before.png",
+    ".hyperframes/prepared-assets/.hyperframes/app-history.jsonl",
+    "assets/.hyperframes/logo.png",
   ])("refuses %s", (path) => {
     expect(isStudioPrivatePath(path)).toBe(true);
   });
@@ -302,7 +313,8 @@ describe("isStudioPrivatePath", () => {
     ".hyperframes/studio-motion.json",
     ".hyperframes/studio-manual-edits.json",
     ".hyperframes-pull.json",
-    "assets/.hyperframes/logo.png",
+    "sub/.hyperframes-pull.json",
+    "sub/hyperframes/app-history.jsonl",
     "assets/logo.png",
     "assets/keynote-cover.png",
     ".config/fonts/brand.woff2",
