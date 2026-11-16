@@ -132,8 +132,7 @@ export function dropMediaOutsideProject(input: {
 }
 
 // STUDIO-5433: the one place every local src is seen whatever its timing. Documents are refused under <video> only
-// (a bad audio track is per-element in audioMixer); under <img> only JSON and markup that is not an SVG; a playlist
-// leaving its folder, under any.
+// (a bad audio track is per-element in audioMixer), and non-SVG markup or JSON under <img>; a leaving playlist, under any.
 async function notMediaReferences(
   path: string,
   references: MediaReference[],

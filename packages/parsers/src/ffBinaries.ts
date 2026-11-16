@@ -251,12 +251,8 @@ export function clearFfBinaryLookupCache(): void {
 export const SELF_CONTAINED_FORMATS =
   "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
 
-/**
- * Demuxers that open other files or URLs on their own, named by the bytes they are handed. Everything else
- * ffmpeg reads is allowed for composition media. hls and concat stay allowed: ffmpeg copies the format
- * whitelist into every nested open, so a list cannot reach one of these, and the playlist folder walk
- * confines the paths a list names.
- */
+// Demuxers that open other files or URLs on their own. hls and concat stay allowed: ffmpeg copies the
+// format whitelist into every nested open, so a list cannot reach these, and the folder walk confines its paths.
 const PATH_OPENING_DEMUXERS = new Set([
   "dash",
   "imf",
@@ -272,9 +268,8 @@ const PATH_OPENING_DEMUXERS = new Set([
   "lavfi",
 ]);
 
-/** The `-demuxers` listing minus input devices and {@link PATH_OPENING_DEMUXERS}, as a `-format_whitelist` value; undefined when no row parses. */
+/** A `-format_whitelist` value from a `-demuxers` listing; undefined when no row parses. */
 function demuxersFromListing(listing: string): string | undefined {
-  // ffmpeg 4.x prints two flag columns, newer builds three, the last one marking a device.
   const row = /Is a device/.test(listing) ? /^ D[E ]([d ]) (\S+)/ : /^ D[E ]() (\S+)/;
   const names = new Set<string>();
   for (const line of listing.split("\n")) {
@@ -296,11 +291,7 @@ export function _setDemuxerListingForTests(listing?: string): void {
   demuxerLists.clear();
 }
 
-/**
- * `-format_whitelist` for an input of composition media: every demuxer `listingBinary` reports that opens
- * nothing by itself. List from the binary that enforces the flag. A binary that cannot be asked gets the
- * self-contained list, and is asked again next time.
- */
+/** Every demuxer `listingBinary` reports that opens nothing by itself; one that cannot be asked gets the self-contained list, and is asked again. */
 export function mediaInputFormatArgs(listingBinary: string): string[] {
   let formats = demuxerLists.get(listingBinary);
   if (formats === undefined) {
