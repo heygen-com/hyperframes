@@ -119,7 +119,9 @@ describe("history turn markers from the project folder", () => {
 
     await withOwner(dir, (owner) => endTurn(owner, turn, dir));
 
-    expect(preview.paths).toContain("/api/projects/p/history/window/..%2F..%2Ffiles%2Fx%3Fy%23z/close");
+    expect(preview.paths).toContain(
+      "/api/projects/p/history/window/..%2F..%2Ffiles%2Fx%3Fy%23z/close",
+    );
     expect(preview.paths.every((path) => path.startsWith("/api/projects/p/history"))).toBe(true);
   });
 });

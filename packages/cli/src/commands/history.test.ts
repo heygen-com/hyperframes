@@ -358,7 +358,7 @@ describe("hyperframes history, one owner", () => {
     await hf();
     const turn = {
       via: "preview",
-      id: "turn-1",
+      id: "7f3c2a1e-0b4d-4c8e-9a6f-2d1b3c4e5f60",
       who: { kind: "agent", name: "claude" },
       label: "Retitle",
       startedAt: 1,
@@ -368,7 +368,7 @@ describe("hyperframes history, one owner", () => {
     write("index.html", "A2");
 
     expect((await json("end")).entry).toMatchObject({
-      id: "turn-1",
+      id: "7f3c2a1e-0b4d-4c8e-9a6f-2d1b3c4e5f60",
       who: turn.who,
       files: ["index.html"],
     });
@@ -475,7 +475,8 @@ describe("hyperframes history, one owner", () => {
     const { dir, write, json, hf } = project();
     await hf();
     const who = { kind: "agent", name: "claude" };
-    const marker = { via: "direct", id: "turn-1", who, label: "Retitle", startedAt: 1 };
+    const id = "7f3c2a1e-0b4d-4c8e-9a6f-2d1b3c4e5f61";
+    const marker = { via: "direct", id, who, label: "Retitle", startedAt: 1 };
     writeFileSync(join(dir, ".hyperframes", "history-turn.json"), JSON.stringify(marker));
     write("index.html", "A2");
 
