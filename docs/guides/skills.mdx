@@ -145,10 +145,11 @@ The skills have your agent start the CLI through a launcher that ships with them
 `hyperframes/scripts/plugin-cli.mjs`, from your project folder. The launcher starts npm in
 your home folder, so a project's `package.json`, `node_modules` or `.npmrc` cannot swap in a
 different program. This matters most for a project someone sent you. With standalone skills it
-runs the newest published CLI; in a plugin it runs the version the plugin pins. A plugin
-manifest in your project, or beside skills installed into a folder such as `.agents` or
-`.claude`, pins nothing. The agent runs
-a project's own npm scripts only when you ask for one by name.
+runs the newest published CLI; in a plugin it runs the version the plugin pins. The pin counts
+only when the plugin folder's name does not start with a dot, the folder is not the one the
+agent works in and does not contain it, and, if it lies inside that folder, a folder whose name
+starts with a dot (such as `.claude`) sits between them. A pin older than 0.9.34 is refused.
+The agent runs a project's own npm scripts only when you ask for one by name.
 
 ## Install more only when you need it
 

@@ -30,12 +30,17 @@ Check the directory two levels above the loaded `SKILL.md` for `plugin.json`,
 `.cursor-plugin/plugin.json` identifying `hyperframes`, or a Gemini extension manifest.
 That directory is `<PLUGIN_ROOT>`, and `<SKILLS>` is `<PLUGIN_ROOT>/skills`.
 
-It is a plugin install only when `<PLUGIN_ROOT>` is a folder of its own. If its name starts
-with a dot (such as `.agents`, `.claude` or `.cursor` in a project or the home folder), or it
-is the project directory or a folder that contains it, the skills are a standalone install and
-a manifest there is project content. The launcher ignores it, and so do you: follow the
-standalone rules above. The launcher also refuses a manifest that pins a release older than
-0.9.34.
+Call the directory you run the launcher in the working directory. It is a plugin install only
+when all three of these hold:
+
+- The name of `<PLUGIN_ROOT>` does not start with a dot, so it is not `.agents` or `.claude`.
+- `<PLUGIN_ROOT>` is not the working directory, and it does not contain it.
+- If `<PLUGIN_ROOT>` is inside the working directory, a folder whose name starts with a dot
+  lies between them, as `.claude` does in `~/.claude/plugins/...` when you work in `~`.
+
+Otherwise the skills are a standalone install, and the launcher ignores any manifest there.
+Ignore it too, and follow the standalone rules above. The launcher refuses a manifest that
+pins a release older than 0.9.34.
 
 For a plugin installation, these rules also apply in every skill and reference:
 

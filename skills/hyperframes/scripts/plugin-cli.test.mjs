@@ -228,11 +228,24 @@ test("rejects a plugin release older than the first one this launcher runs", (t)
   }
 });
 
-test("a bundle keeps its pin when the CLI works in its home folder or a project beside it", (t) => {
+test("a bundle keeps its pin when the CLI works in a project beside it", (t) => {
   const { base, root } = fixture(t);
-  assert.equal(pluginVersion(root, base), "1.2.3");
   assert.equal(pluginVersion(root, join(base, "user project")), "1.2.3");
 });
+
+for (const bundle of [
+  "home/.claude/plugins/cache/hyperframes/hyperframes/1.2.3",
+  "home/.cursor/plugins/local/hyperframes",
+  "home/.gemini/extensions/hyperframes",
+]) {
+  test(`a plugin manager's bundle at ${bundle} keeps its pin from home or a project`, (t) => {
+    const { base, root } = fixture(t, "plugin.json", "1.2.3", bundle);
+    for (const workDir of ["home", "home/work/project", "elsewhere"]) {
+      mkdirSync(join(base, workDir), { recursive: true });
+      assert.equal(pluginVersion(root, join(base, workDir)), "1.2.3", workDir);
+    }
+  });
+}
 
 // fails without the fix: a manifest beside a project-level skills install pinned an old CLI and
 // turned off update checks and standalone skill refreshes.
@@ -242,6 +255,7 @@ for (const [layout, bundle, workDir] of [
   [".claude, run from a subfolder", "user project/.claude", "user project/sub"],
   ["the project's skills folder", "user project", "user project"],
   ["the project's skills folder, run from a subfolder", "user project", "user project/sub"],
+  ["a monorepo package, run from the monorepo", "user project/packages/video", "user project"],
 ]) {
   for (const manifest of ["plugin.json", ".claude-plugin/plugin.json", "gemini-extension.json"]) {
     test(

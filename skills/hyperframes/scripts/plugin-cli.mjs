@@ -31,13 +31,21 @@ const realOrResolved = (path) => {
   }
 };
 
-// Skills installed into a dot folder (a project's or the home folder's .agents, .claude, .cursor) or into
-// the project itself sit beside files that are not the plugin's, so a manifest there is not a release.
+const isOutside = (from, to) => {
+  const path = relative(from, to);
+  return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path);
+};
+
+// Plugin managers keep bundles in their own folders, such as ~/.claude/plugins or ~/.gemini/extensions.
+// Skills in a dot folder (.agents, .claude) or in the working folder's own tree are project content.
 function isPluginBundle(pluginRoot, workDir) {
   const bundle = realOrResolved(pluginRoot);
-  if (basename(bundle).startsWith(".")) return false;
-  const inside = relative(bundle, realOrResolved(workDir));
-  return inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside);
+  const work = realOrResolved(workDir);
+  if (basename(bundle).startsWith(".") || !isOutside(bundle, work)) return false;
+  if (isOutside(work, bundle)) return true;
+  return relative(work, bundle)
+    .split(sep)
+    .some((segment) => segment.startsWith("."));
 }
 
 function isBelowFloor(version) {
