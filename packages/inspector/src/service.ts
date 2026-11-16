@@ -61,6 +61,16 @@ interface PublicOnlyHost {
 }
 type PageHandler = (req: IncomingMessage, res: ServerResponse) => void;
 
+async function releaseEach(steps: ReadonlyArray<() => unknown>): Promise<void> {
+  for (const step of steps) {
+    try {
+      await step();
+    } catch {
+      continue;
+    }
+  }
+}
+
 export interface InspectorOptions {
   executablePath?: string;
   idleMs?: number;
@@ -124,12 +134,17 @@ export class Inspector {
     const server = createServer((req, res) =>
       this.serve ? this.serve(req, res) : void res.writeHead(404).end(),
     );
-    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
-    const address = server.address();
-    const proxy = await startCaptureProxy();
+    let proxy: PublicOnlyHost["proxy"] | undefined;
     let profile: string | undefined;
     try {
+      await new Promise<void>((done, fail) => {
+        server.once("error", fail);
+        server.listen(0, "127.0.0.1", done);
+      });
+      const address = server.address();
       if (!address || typeof address === "string") throw new Error("preview address unavailable");
+      const started = await startCaptureProxy();
+      proxy = started;
       profile = await createPublicOnlyProfile("hf-inspect-profile-");
       const browser = await puppeteer.launch({
         executablePath: this.options.executablePath ?? chromePath(),
@@ -141,16 +156,19 @@ export class Inspector {
           "--enable-webgl",
           "--use-gl=angle",
           "--use-angle=swiftshader",
-          ...browserProxyArgs(proxy.url, `127.0.0.1:${address.port}`),
+          ...browserProxyArgs(started.url, `127.0.0.1:${address.port}`),
         ]),
       });
       this.stats.browserStarts++;
-      this.host = { browser, server, port: address.port, proxy, profile };
+      this.host = { browser, server, port: address.port, proxy: started, profile };
       return this.host;
     } catch (error) {
-      await proxy.close();
-      await closeServer(server);
-      if (profile) rmSync(profile, { recursive: true, force: true });
+      const leftover = profile;
+      await releaseEach([
+        () => proxy?.close(),
+        () => closeServer(server),
+        () => leftover && rmSync(leftover, { recursive: true, force: true }),
+      ]);
       throw error;
     }
   }
@@ -158,10 +176,12 @@ export class Inspector {
     const host = this.host;
     this.host = undefined;
     if (!host) return;
-    await host.browser.close().catch(() => {});
-    await closeServer(host.server);
-    await host.proxy.close();
-    rmSync(host.profile, { recursive: true, force: true });
+    await releaseEach([
+      () => host.browser.close(),
+      () => closeServer(host.server),
+      () => host.proxy.close(),
+      () => rmSync(host.profile, { recursive: true, force: true }),
+    ]);
   }
   private async ensure(): Promise<{ session: Session; reused: boolean }> {
     const digest = fingerprint(this.project);
