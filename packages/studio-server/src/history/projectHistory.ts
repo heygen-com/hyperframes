@@ -1486,7 +1486,7 @@ class Engine {
       },
       readBlob: async (hash) => {
         this.assertOpen();
-        if (!namesBlob(this.log, hash)) throw new Error("That file is not kept in this history.");
+        if (!namesBlob(this.log, hash)) throw new Error("That is not a history blob.");
         return this.blobs.read(hash);
       },
       pin: (id, pinned) => {
