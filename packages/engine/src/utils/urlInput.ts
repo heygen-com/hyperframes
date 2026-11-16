@@ -15,6 +15,10 @@ const RECONNECT_ARGS = ["-rw_timeout", "30000000", "-reconnect", "1", "-reconnec
 const SELF_CONTAINED_FORMATS =
   "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
 
+export function selfContainedFormatArgs(): string[] {
+  return resolveRestrictPageNetwork() ? ["-format_whitelist", SELF_CONTAINED_FORMATS] : [];
+}
+
 /** ffmpeg and ffprobe skip TLS certificate checks unless told to; an https input must be verified, and on a render service be a self-contained container that names only HTTPS. */
 export function urlInputArgs(
   input: string,
@@ -32,7 +36,7 @@ export function urlInputArgs(
   }
   const networkRetry = tool === "ffmpeg" ? ["-reconnect_on_network_error", "1"] : [];
   const renderServiceLimits = resolveRestrictPageNetwork()
-    ? ["-protocol_whitelist", "https,tls,tcp", "-format_whitelist", SELF_CONTAINED_FORMATS]
+    ? ["-protocol_whitelist", "https,tls,tcp", ...selfContainedFormatArgs()]
     : [];
   return [
     "-tls_verify",

@@ -729,6 +729,68 @@ describe("serveStaticProjectHtml private project files", () => {
   );
 });
 
+describe("serveStaticProjectHtml credential files", () => {
+  it.each([".npmrc", ".mcp.json", ".claude/x.json", ".aws/credentials", "id_ed25519", "cert.pem"])(
+    "answers %s with 404",
+    async (requestPath) => {
+      dir = mkdtempSync(join(tmpdir(), "hf-static-credentials-"));
+      for (const folder of [".claude", ".aws"]) mkdirSync(join(dir, folder));
+      for (const file of [".npmrc", ".mcp.json", ".claude/x.json", ".aws/credentials"]) {
+        writeFileSync(join(dir, file), "SECRET=1");
+      }
+      writeFileSync(join(dir, "id_ed25519"), "SECRET=1");
+      writeFileSync(join(dir, "cert.pem"), "SECRET=1");
+      writeFileSync(join(dir, "asset.txt"), "ok");
+      server = await serveStaticProjectHtml(dir, "<html></html>");
+
+      const res = await fetch(`${server.url}${requestPath}`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain("SECRET");
+      expect((await fetch(`${server.url}asset.txt`)).status).toBe(200);
+    },
+  );
+});
+
+describe("serveStaticProjectHtml page another site loads", () => {
+  const MARK = '<meta name="hyperframes-preview-for-another-site">';
+  const SANDBOX = "sandbox allow-scripts";
+
+  async function serveProject(): Promise<string> {
+    dir = mkdtempSync(join(tmpdir(), "hf-static-site-"));
+    writeFileSync(join(dir, "scene.html"), "<html><head></head><body>scene</body></html>");
+    server = await serveStaticProjectHtml(
+      dir,
+      "<html><head></head><body>composition</body></html>",
+    );
+    return server.url;
+  }
+
+  it.each(["", "scene.html"])(
+    "marks and sandboxes /%s when another site frames it",
+    async (path) => {
+      const url = await serveProject();
+      const res = await fetch(`${url}${path}`, {
+        headers: { "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Dest": "iframe" },
+      });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain(MARK);
+      expect(res.headers.get("content-security-policy")).toContain(SANDBOX);
+    },
+  );
+
+  it.each(["none", "same-origin"])(
+    "leaves the capture page unmarked for Sec-Fetch-Site %s",
+    async (site) => {
+      const url = await serveProject();
+      for (const path of ["", "scene.html"]) {
+        const res = await fetch(`${url}${path}`, { headers: { "Sec-Fetch-Site": site } });
+        expect(await res.text(), path).not.toContain(MARK);
+        expect(res.headers.get("content-security-policy"), path).not.toContain(SANDBOX);
+      }
+    },
+  );
+});
+
 function writeToolRecords(projectDir: string): void {
   mkdirSync(join(projectDir, ".hyperframes", "prepared-assets"), { recursive: true });
   for (const name of ["app-history.jsonl", "agent-handoff.json", "comments.jsonl"]) {

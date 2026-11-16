@@ -1,6 +1,11 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Context, Hono, Next } from "hono";
 import { getMimeType } from "./mime.js";
+import {
+  isProxyWait,
+  PREVIEW_EXPOSED_HEADERS,
+  PROXY_WAIT_ALLOWED_HEADERS,
+} from "./captureLoads.js";
 
 const ANY_FILE_THE_PREVIEW_SERVES = /./;
 const GRANTED_TYPES = new Map([
@@ -55,10 +60,24 @@ function tokenPathHeaders(c: Context, res: Response, pathname: string): Headers 
   if (granted) {
     headers.set("Access-Control-Allow-Origin", "null");
     headers.set("X-Content-Type-Options", "nosniff");
+    headers.set("Access-Control-Expose-Headers", PREVIEW_EXPOSED_HEADERS);
     headers.append("Vary", "Origin");
   }
   return headers;
 }
+
+const answersProxyPreflight = (c: Context, url: URL) =>
+  c.req.method === "OPTIONS" &&
+  c.req.header("origin") === "null" &&
+  c.req.header("access-control-request-method") === "GET" &&
+  isProxyWait(url);
+
+const PROXY_PREFLIGHT_ANSWER = {
+  "Access-Control-Allow-Origin": "null",
+  "Access-Control-Allow-Methods": "GET",
+  "Access-Control-Allow-Headers": PROXY_WAIT_ALLOWED_HEADERS,
+  Vary: "Origin",
+};
 
 async function underToken(res: Response, headers: Headers, projectId: string, token: string) {
   if (res.status !== 200 || !headers.get("content-type")?.startsWith("text/html"))
@@ -85,6 +104,8 @@ export function serveTokenPreviewPaths(
     if (!projectId || !tokens.matches(projectId, token)) return c.text("not found", 404);
     segments.splice(4, 1);
     url.pathname = segments.join("/");
+    if (answersProxyPreflight(c, url))
+      return new Response(null, { status: 204, headers: PROXY_PREFLIGHT_ANSWER });
     const req = new Request(url, { method: c.req.method, headers: c.req.raw.headers });
     const res = await api.fetch(req);
     return underToken(res, tokenPathHeaders(c, res, url.pathname), projectId, token);

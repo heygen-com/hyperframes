@@ -12,6 +12,11 @@ const GRANTED_TYPES = new Set(["Font", "Script", "Stylesheet", "Image", "Media",
 const PROXY_PARAM = "hf-proxy";
 const VIDEO_FILE = /\.(mp4|webm|mov|mkv|avi|m4v|mxf|mts|m2ts)$/i;
 
+export const isProxyWait = (url: URL) =>
+  url.searchParams.has(PROXY_PARAM) && VIDEO_FILE.test(url.pathname);
+export const PROXY_WAIT_ALLOWED_HEADERS = `Range, ${PREVIEW_PROXY_PRIORITY_HEADER}`;
+export const PREVIEW_EXPOSED_HEADERS = `Retry-After, ${PREVIEW_PROXY_PROGRESS_HEADER}, Content-Range`;
+
 function capturePreviewPrefix(captureUrl: string): string | null {
   let url: URL;
   try {
@@ -63,9 +68,7 @@ export function captureLoadGrant(
   const url = new URL(load.url);
   if (isDotPath(url, prefix) || !GRANTED_TYPES.has(load.resourceType)) return null;
   const proxyWait =
-    (load.resourceType === "XHR" || load.resourceType === "Fetch") &&
-    url.searchParams.has(PROXY_PARAM) &&
-    VIDEO_FILE.test(url.pathname);
+    (load.resourceType === "XHR" || load.resourceType === "Fetch") && isProxyWait(url);
   if (load.method === "OPTIONS") return proxyWait ? "preflight" : null;
   return load.method === "GET" ? "read" : null;
 }
@@ -91,13 +94,13 @@ const OPAQUE_CALLER: Header[] = [
   { name: "X-Content-Type-Options", value: "nosniff" },
   {
     name: "Access-Control-Expose-Headers",
-    value: `Retry-After, ${PREVIEW_PROXY_PROGRESS_HEADER}, Content-Range`,
+    value: PREVIEW_EXPOSED_HEADERS,
   },
 ];
 const PREFLIGHT_ANSWER: Header[] = [
   { name: "Access-Control-Allow-Origin", value: "null" },
   { name: "Access-Control-Allow-Methods", value: "GET" },
-  { name: "Access-Control-Allow-Headers", value: `Range, ${PREVIEW_PROXY_PRIORITY_HEADER}` },
+  { name: "Access-Control-Allow-Headers", value: PROXY_WAIT_ALLOWED_HEADERS },
 ];
 
 /** Call on the capture page's own session before it navigates; keep the session for the page's life. */

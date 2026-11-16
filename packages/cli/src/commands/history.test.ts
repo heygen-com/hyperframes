@@ -215,6 +215,18 @@ describe.each(["direct", "preview"])("hyperframes history (%s)", (mode) => {
     expect(files()).toEqual(["A", "N2"]);
   });
 
+  it("a turn with a long label and agent name still ends and undoes as that agent's", async () => {
+    const { write, json, hf, files } = await setup();
+    const name = "agent-".repeat(40);
+    await hf("begin", "--who", name, "--label", "x".repeat(201));
+    write("index.html", "A2");
+
+    const ended = await json("end");
+    expect(ended.entry).toMatchObject({ who: { kind: "agent", name }, files: ["index.html"] });
+    expect((await hf("undo", "--who", name)).code).toBe(0);
+    expect(files()[0]).toBe("A");
+  });
+
   it("undo by one agent leaves another agent's open turn open", async () => {
     const { write, read, json, hf, turn } = await setup();
     await turn("gemini", "Notes", "notes.html", "N2");
@@ -358,7 +370,7 @@ describe("hyperframes history, one owner", () => {
     await hf();
     const turn = {
       via: "preview",
-      id: "turn-1",
+      id: "7f3c2a1e-0b4d-4c8e-9a6f-2d1b3c4e5f60",
       who: { kind: "agent", name: "claude" },
       label: "Retitle",
       startedAt: 1,
@@ -368,7 +380,7 @@ describe("hyperframes history, one owner", () => {
     write("index.html", "A2");
 
     expect((await json("end")).entry).toMatchObject({
-      id: "turn-1",
+      id: "7f3c2a1e-0b4d-4c8e-9a6f-2d1b3c4e5f60",
       who: turn.who,
       files: ["index.html"],
     });
@@ -475,7 +487,8 @@ describe("hyperframes history, one owner", () => {
     const { dir, write, json, hf } = project();
     await hf();
     const who = { kind: "agent", name: "claude" };
-    const marker = { via: "direct", id: "turn-1", who, label: "Retitle", startedAt: 1 };
+    const id = "7f3c2a1e-0b4d-4c8e-9a6f-2d1b3c4e5f61";
+    const marker = { via: "direct", id, who, label: "Retitle", startedAt: 1 };
     writeFileSync(join(dir, ".hyperframes", "history-turn.json"), JSON.stringify(marker));
     write("index.html", "A2");
 

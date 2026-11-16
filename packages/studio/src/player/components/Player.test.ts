@@ -18,12 +18,14 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 let root: Root | null = null;
 let lifecycleLog: string[] = [];
+const playersMade: HTMLElement[] = [];
 
 class TestHyperframesPlayer extends HTMLElement {
   readonly iframeElement = document.createElement("iframe");
 
   constructor() {
     super();
+    playersMade.push(this);
     this.attachShadow({ mode: "open" });
 
     const addIframeListener = this.iframeElement.addEventListener.bind(this.iframeElement);
@@ -218,6 +220,12 @@ describe("a host's sandbox origin", () => {
       `/api/projects/demo/preview/~${token}/comp/scene.html`,
     ],
     ["/api/projects/demo/preview?_t=1", `/api/projects/demo/preview/~${token}?_t=1`],
+    // A reload starts from the frame's own src, which already carries a token, maybe a stale one.
+    [`/api/projects/demo/preview/~${token}?_t=2`, `/api/projects/demo/preview/~${token}?_t=2`],
+    [
+      `/api/projects/demo/preview/~${"S".repeat(43)}/comp/scene.html`,
+      `/api/projects/demo/preview/~${token}/comp/scene.html`,
+    ],
   ])(
     "seals an opaque preview of %s and loads it under its project's frame token",
     async (directUrl, sealed) => {
@@ -235,6 +243,14 @@ describe("a host's sandbox origin", () => {
     await settle();
     expect(player.hasAttribute("sandbox-origin")).toBe(true);
     expect(player.getAttribute("src")).toBe("/api/projects/demo/preview");
+  });
+
+  it("keeps the seal a host puts on the player from its ref", async () => {
+    const seal = (iframe: HTMLIFrameElement | null) =>
+      iframe && playersMade.at(-1)?.setAttribute("sandbox-origin", "opaque");
+    const { player } = await mountPlayer({ ref: seal });
+    await settle();
+    expect(player.getAttribute("sandbox-origin")).toBe("opaque");
   });
 
   it("leaves a same-origin preview on its plain path without asking for a token", async () => {

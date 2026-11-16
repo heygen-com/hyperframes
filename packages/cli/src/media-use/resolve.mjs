@@ -59,6 +59,7 @@ import {
 import {
   BUNDLED_SFX_RECOVERY_COMMAND,
   BundledSfxAssetsError,
+  bundledSfxAssetPath,
   inspectBundledSfxAssets,
 } from "./lib/bundled-sfx-provider.mjs";
 import {
@@ -68,11 +69,7 @@ import {
   scoreMatch,
 } from "./lib/sfx-provider.mjs";
 import { writeSfxCredit } from "./lib/openverse.mjs";
-import {
-  fetchMediaVectors,
-  mediaVectorRows,
-  rankMediaRowsWithVectors,
-} from "./lib/local-media-search.mjs";
+import { mediaVectorRows, rankMediaRowsWithVectors } from "./lib/local-media-search.mjs";
 
 const INGEST_TYPES = listTypes();
 const DEFAULT_EXT = {
@@ -468,21 +465,14 @@ async function run() {
   try {
     searchResult = await runCapability(type, "search", intent, ctx);
     if (!searchResult && type === "sfx" && !args.provider && !localOnly) {
-      const registry =
-        process.env.HYPERFRAMES_REGISTRY ||
-        "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
       try {
-        await fetchMediaVectors(registry);
         const ranked = await rankMediaRowsWithVectors(
           intent,
           mediaVectorRows().filter((row) => row.kind === "sfx"),
         );
         const row = ranked.rows[0];
-        const candidates = row
-          ? [resolve(row.file), join(import.meta.dirname, "..", "..", "..", row.file)]
-          : [];
-        const localPath = candidates.find((candidate) => existsSync(candidate));
-        if (row && localPath) {
+        const localPath = row ? bundledSfxAssetPath(row.file) : null;
+        if (localPath) {
           searchResult = {
             localPath,
             ext: extname(localPath),

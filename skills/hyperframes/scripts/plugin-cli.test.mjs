@@ -13,14 +13,16 @@ import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 import { pathToFileURL } from "node:url";
-import { invocation, npmFolder, pluginVersion } from "./plugin-cli.mjs";
+import { invocation, npmFolder, pluginVersion, STANDALONE_CLI } from "./plugin-cli.mjs";
 
 function fixture(t, manifest = "plugin.json", version = "1.2.3") {
   const root = mkdtempSync(join(tmpdir(), "hf-plugin-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, "skills/hyperframes/scripts/lib"), { recursive: true });
-  mkdirSync(join(root, manifest, ".."), { recursive: true });
-  writeFileSync(join(root, manifest), JSON.stringify({ name: "hyperframes", version }));
+  if (manifest) {
+    mkdirSync(join(root, manifest, ".."), { recursive: true });
+    writeFileSync(join(root, manifest), JSON.stringify({ name: "hyperframes", version }));
+  }
   const launcher = join(root, "skills/hyperframes/scripts/plugin-cli.mjs");
   copyFileSync(new URL("./plugin-cli.mjs", import.meta.url), launcher);
   for (const lib of ["main-module.mjs", "windows-exe-search.mjs"]) {
@@ -45,11 +47,26 @@ for (const manifest of [
   });
 }
 
-test("rejects missing and floating plugin versions", (t) => {
+test("rejects a floating plugin version and reads no manifest as a standalone install", (t) => {
   const { root } = fixture(t, "plugin.json", "latest");
   assert.throws(() => pluginVersion(root), /Invalid HyperFrames plugin release/);
   rmSync(join(root, "plugin.json"));
-  assert.throws(() => pluginVersion(root), /No HyperFrames plugin manifest/);
+  assert.equal(pluginVersion(root), undefined);
+});
+
+test("a standalone install runs the newest CLI that moves into the project, and manages its own skills", () => {
+  const result = invocation(["skills", "update"], {
+    version: null,
+    platform: "darwin",
+    env: { PATH: "/bin" },
+    cwd: "/work/project",
+    npmCwd: "/home/person",
+  });
+  assert.equal(STANDALONE_CLI, "hyperframes@>=0.9.34");
+  assert.equal(result.command, "npx");
+  assert.equal(result.cwd, "/home/person");
+  assert.deepEqual(result.args, ["--yes", STANDALONE_CLI, "skills", "update"]);
+  assert.deepEqual(result.env, { PATH: "/bin", HYPERFRAMES_PLUGIN_CWD: "/work/project" });
 });
 
 test("pins CLI, suppresses standalone refresh, preserves unrelated environment", () => {
@@ -155,41 +172,48 @@ test("on Windows, a helper and the programs it starts skip the working-directory
   assert.equal(stdoutOf(run({ ...env, NoDefaultCurrentDirectoryInExePath: "yes" })), "yes");
 });
 
-test(
-  "npx starts outside the project, so its packages, bin links and .npmrc cannot pick the CLI",
-  { skip: process.platform === "win32" },
-  (t) => {
-    const { root, launcher } = fixture(t);
-    const home = join(root, "home");
-    const bin = join(root, "bin");
-    const project = join(root, "user project");
-    mkdirSync(home);
-    mkdirSync(bin);
-    mkdirSync(join(project, "node_modules/.bin"), { recursive: true });
-    writeFileSync(
-      join(project, ".npmrc"),
-      "registry=http://127.0.0.1:9/\nscript-shell=/bin/false\n",
-    );
-    writeFileSync(join(project, "package.json"), '{"name":"hyperframes","bin":"x.js"}');
-    writeFileSync(join(project, "node_modules/.bin/hyperframes"), "#!/bin/sh\n", { mode: 0o755 });
-    writeFileSync(
-      join(bin, "npx"),
-      `#!${process.execPath}\nconsole.log(JSON.stringify({cwd:process.cwd(),args:process.argv.slice(2),project:process.env.HYPERFRAMES_PLUGIN_CWD}));`,
-      { mode: 0o755 },
-    );
-    const result = spawnSync(process.execPath, [launcher, "--version"], {
-      cwd: project,
-      encoding: "utf8",
-      env: { ...process.env, HOME: home, PATH: `${bin}${delimiter}${process.env.PATH}` },
-    });
-    assert.equal(result.status, 0, result.stderr);
-    assert.deepEqual(JSON.parse(result.stdout), {
-      cwd: realpathSync(home),
-      args: ["--yes", "hyperframes@1.2.3", "--version"],
-      project: realpathSync(project),
-    });
-  },
-);
+// fails without the fix: a standalone install had no launcher, so the skills ran `npx hyperframes`
+// in the project and npm took the project's bin, node_modules/.bin or .npmrc.
+for (const [install, manifest, spec] of [
+  ["plugin", "plugin.json", "hyperframes@1.2.3"],
+  ["standalone", null, STANDALONE_CLI],
+]) {
+  test(
+    `${install} install: npx starts outside the project, so its packages, bin links and .npmrc cannot pick the CLI`,
+    { skip: process.platform === "win32" },
+    (t) => {
+      const { root, launcher } = fixture(t, manifest);
+      const home = join(root, "home");
+      const bin = join(root, "bin");
+      const project = join(root, "user project");
+      mkdirSync(home);
+      mkdirSync(bin);
+      mkdirSync(join(project, "node_modules/.bin"), { recursive: true });
+      writeFileSync(
+        join(project, ".npmrc"),
+        "registry=http://127.0.0.1:9/\nscript-shell=/bin/false\n",
+      );
+      writeFileSync(join(project, "package.json"), '{"name":"hyperframes","bin":"x.js"}');
+      writeFileSync(join(project, "node_modules/.bin/hyperframes"), "#!/bin/sh\n", { mode: 0o755 });
+      writeFileSync(
+        join(bin, "npx"),
+        `#!${process.execPath}\nconsole.log(JSON.stringify({cwd:process.cwd(),args:process.argv.slice(2),project:process.env.HYPERFRAMES_PLUGIN_CWD}));`,
+        { mode: 0o755 },
+      );
+      const result = spawnSync(process.execPath, [launcher, "--version"], {
+        cwd: project,
+        encoding: "utf8",
+        env: { ...process.env, HOME: home, PATH: `${bin}${delimiter}${process.env.PATH}` },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.deepEqual(JSON.parse(result.stdout), {
+        cwd: realpathSync(home),
+        args: ["--yes", spec, "--version"],
+        project: realpathSync(project),
+      });
+    },
+  );
+}
 
 test("starts npx in the home folder and never falls back to a shared folder", () => {
   assert.equal(

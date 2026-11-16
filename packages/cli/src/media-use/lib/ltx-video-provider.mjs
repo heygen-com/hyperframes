@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describeDownload, probeSpecs } from "./specs.mjs";
 import { buildArgv, selectModel, selectModelLadder } from "./local-models.mjs";
@@ -61,7 +61,9 @@ export async function ltxVideoGenerate(
     argv.shift();
 
     try {
+      // The runner reads a model id as a folder when one exists in its working directory.
       execFn(bin, argv, {
+        cwd: homedir(),
         encoding: "utf8",
         timeout: 1_800_000,
         stdio: ["ignore", "pipe", "pipe"],

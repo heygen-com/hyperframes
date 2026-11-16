@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path, { join } from "node:path";
 import { tmpdir } from "node:os";
+import { get as httpGet } from "node:http";
 import { MAX_OPEN_MEDIA_RANGE_BYTES } from "@hyperframes/studio-server/media-range";
 import {
   closeFileServerSafely,
@@ -1183,6 +1184,105 @@ describe("createFileServer private project files", () => {
           const linked = await fetch(`${server.url}/linked.txt`);
           expect(linked.status).toBe(404);
           expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("createFileServer credential files", () => {
+  const credentials = [
+    ".npmrc",
+    ".mcp.json",
+    ".claude/x.json",
+    ".aws/credentials",
+    "id_ed25519",
+    "cert.pem",
+  ];
+  it.each(credentials.map((file) => `/${file}`))(
+    "answers %s with 404 and keeps ordinary assets",
+    async (requestPath) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-fs-credentials-"));
+      try {
+        writeEmptyIndex(projectDir);
+        for (const folder of [".claude", ".aws"]) mkdirSync(join(projectDir, folder));
+        for (const file of credentials) writeFileSync(join(projectDir, file), "SECRET=1");
+        writeFileSync(join(projectDir, "asset.txt"), "ok");
+        await withFileServer(projectDir, async (server) => {
+          const response = await fetch(`${server.url}${requestPath}`);
+          expect(response.status).toBe(404);
+          expect(await response.text()).not.toContain("SECRET");
+          expect((await fetch(`${server.url}/asset.txt`)).status).toBe(200);
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+function getWithHost(url: string, host: string): Promise<{ status: number; body: string }> {
+  return new Promise((resolveGet, rejectGet) => {
+    httpGet(url, { headers: { host } }, (res) => {
+      let body = "";
+      res.setEncoding("utf-8");
+      res.on("data", (chunk: string) => (body += chunk));
+      res.on("end", () => resolveGet({ status: res.statusCode ?? 0, body }));
+    }).on("error", rejectGet);
+  });
+}
+
+describe("createFileServer request Host", () => {
+  it.each(["/", "/index.html", "/asset.txt"])(
+    "refuses %s to a page name that is not loopback",
+    async (path) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-host-"));
+      try {
+        writeFileSync(join(projectDir, "index.html"), "<html><body>composition</body></html>");
+        writeFileSync(join(projectDir, "asset.txt"), "project-file");
+        await withFileServer(projectDir, async (server) => {
+          const res = await getWithHost(`${server.url}${path}`, `rebound.example:${server.port}`);
+          expect(res.status).toBe(403);
+          expect(res.body).not.toContain("composition");
+          expect(res.body).not.toContain("project-file");
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each(["localhost", "127.0.0.1", "[::1]"])(
+    "answers the capture browser on %s",
+    async (name) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-host-"));
+      try {
+        writeFileSync(join(projectDir, "asset.txt"), "project-file");
+        await withFileServer(projectDir, async (server) => {
+          const res = await getWithHost(`${server.url}/asset.txt`, `${name}:${server.port}`);
+          expect(res.status).toBe(200);
+          expect(res.body).toBe("project-file");
+        });
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("createFileServer page editing agent", () => {
+  it.each(["index.html", "scene.html"])(
+    "marks %s so its runtime offers a framing site no editing port",
+    async (name) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-file-server-mark-"));
+      try {
+        writeFileSync(join(projectDir, name), "<html><head></head><body></body></html>");
+        await withFileServer(projectDir, async (server) => {
+          const res = await fetch(`${server.url}/${name}`);
+          expect(res.status).toBe(200);
+          expect(await res.text()).toContain('<meta name="hyperframes-preview-for-another-site">');
         });
       } finally {
         rmSync(projectDir, { recursive: true, force: true });

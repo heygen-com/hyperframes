@@ -24,6 +24,7 @@ import { envCredentialVar, isTokenExpired, type ResolvedCredential } from "../au
 import { refreshIfNeeded } from "../cloud/auth.js";
 import { writeProjectLink } from "./projectLink.js";
 import {
+  isHiddenProjectFile,
   isPrivateCompositionFile,
   isPrivateOutsideFile,
   linksOutside,
@@ -38,12 +39,13 @@ import {
   type OnOutsideFile,
   outsideFileReference,
 } from "./leftOutReference.js";
-import { isUploadedOutsideFileType } from "./outsideFileType.js";
+import { isCopiedOutsideFileType, isUploadedOutsideFileType } from "./outsideFileType.js";
 import {
   collectSubCompositionSrcs,
   decodeTextHonoringBom,
   resolveCompositionSrc,
 } from "@hyperframes/parsers/asset-resolution";
+import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", "dist", ".next", "coverage"]);
 const IGNORED_FILES = new Set([".DS_Store", "Thumbs.db"]);
@@ -416,6 +418,7 @@ interface ExternalAssetContext {
   onLeftOut?: OnLeftOut;
   onOutsideFile?: OnOutsideFile;
   received: (path: string) => boolean;
+  walkedLeftOut: ReadonlySet<string>;
   filmPages: Set<string> | null;
 }
 
@@ -447,12 +450,28 @@ function addExternalAsset(
   return archivePath;
 }
 
-function staysOut(ctx: ExternalAssetContext, rel: string, absPath: string): boolean {
-  if (!rel || ctx.fileContents.has(rel) || rel.split("/").some(shouldIgnoreSegment)) return true;
+function staysOut(ctx: ExternalAssetContext, rel: string): boolean {
   return (
-    isPrivateCompositionFile(ctx.absProjectDir, absPath) ||
-    (existsSync(absPath) && linksToPrivateOutsideFile(ctx.absProjectDir, absPath))
+    !rel ||
+    ctx.fileContents.has(rel) ||
+    ctx.walkedLeftOut.has(rel) ||
+    rel.split("/").some(shouldIgnoreSegment)
   );
+}
+
+const loadableReference = (absProjectDir: string, absPath: string): boolean =>
+  isCopiedOutsideFileType(absPath) || !isHiddenProjectFile(absProjectDir, absPath);
+
+function referencedFileLeftOut(
+  ctx: ExternalAssetContext,
+  entryPath: string,
+  absPath: string,
+): LeftOutReason | null {
+  if (linksToPrivateOutsideFile(ctx.absProjectDir, absPath)) return "blocklisted";
+  if (isPrivateCompositionFile(ctx.absProjectDir, absPath)) return "private";
+  if (ctx.received(entryPath) && linksOutside(ctx.absProjectDir, absPath)) return "received";
+  if (!loadableReference(ctx.absProjectDir, absPath)) return "private";
+  return null;
 }
 
 function reportProjectLinkOutside(
@@ -479,15 +498,16 @@ function includeReferencedProjectFile(
     const absPath = candidate.replace(/[?#].*$/, "");
     if (!isPathInside(absPath, ctx.absProjectDir)) continue;
     const rel = archiveKey(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
-    if (staysOut(ctx, rel, absPath)) return;
-    if (!existsSync(absPath)) continue;
-    if (ctx.received(entryPath) && linksOutside(ctx.absProjectDir, absPath)) {
-      return leaveOut(ctx, entryPath, rawPath, absPath, "received");
+    if (staysOut(ctx, rel)) return;
+    if (!existsSync(absPath)) {
+      if (isPrivateCompositionFile(ctx.absProjectDir, absPath)) return;
+      continue;
     }
-    if (statSync(absPath).isFile()) {
-      reportProjectLinkOutside(ctx.absProjectDir, rel, absPath, ctx.onOutsideFile);
-      ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
-    }
+    if (!statSync(absPath).isFile()) return;
+    const reason = referencedFileLeftOut(ctx, entryPath, absPath);
+    if (reason) return leaveOut(ctx, entryPath, rawPath, absPath, reason);
+    reportProjectLinkOutside(ctx.absProjectDir, rel, absPath, ctx.onOutsideFile);
+    ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
     return;
   }
   if (!requireOnDisk) return;
@@ -516,34 +536,57 @@ function leaveOut(
   );
 }
 
+function leftOnAnotherNetworkRoot(
+  ctx: ExternalAssetContext,
+  entryPath: string,
+  rawPath: string,
+  absPath: string,
+): boolean {
+  if (!namesAnotherNetworkRoot(ctx.absProjectDir, absPath)) return false;
+  leaveOut(ctx, entryPath, rawPath, absPath, "network_share");
+  return true;
+}
+
+function outsideFileLeftOutReason(
+  ctx: ExternalAssetContext,
+  absPath: string,
+): LeftOutReason | null {
+  if (isPrivateOutsideFile(ctx.absProjectDir, absPath)) return "blocklisted";
+  return isUploadedOutsideFileType(absPath) ? null : "file_type";
+}
+
 function archiveTargetOf(
   ctx: ExternalAssetContext,
   absPath: string,
   rawPath: string,
   options: { entryPath: string; requireOnDisk: boolean; filesystemPath: boolean },
 ): string | null | undefined {
+  if (leftOnAnotherNetworkRoot(ctx, options.entryPath, rawPath, absPath)) return null;
   if (isPathInside(absPath, ctx.absProjectDir)) {
     includeReferencedProjectFile(ctx, absPath, rawPath, options.requireOnDisk, options.entryPath);
     return options.filesystemPath ? relativeToProject(ctx, absPath) : null;
   }
+  if (ctx.received(options.entryPath)) {
+    leaveOut(ctx, options.entryPath, rawPath, absPath, "received");
+    return undefined;
+  }
   try {
     if (!existsSync(absPath) || !statSync(absPath).isFile()) return undefined;
-    if (ctx.received(options.entryPath)) {
-      leaveOut(ctx, options.entryPath, rawPath, absPath, "received");
-      return undefined;
-    }
-    if (isPrivateOutsideFile(ctx.absProjectDir, absPath)) {
-      leaveOut(ctx, options.entryPath, rawPath, absPath);
-      return undefined;
-    }
-    if (!isUploadedOutsideFileType(absPath)) {
-      leaveOut(ctx, options.entryPath, rawPath, absPath, "file_type");
+    const reason = outsideFileLeftOutReason(ctx, absPath);
+    if (reason) {
+      leaveOut(ctx, options.entryPath, rawPath, absPath, reason);
       return undefined;
     }
   } catch {
     return undefined;
   }
   return encodeUrlPath(addExternalAsset(ctx, absPath, options.entryPath, rawPath));
+}
+
+// The ? of a \\?\ device path is part of the path, not a query.
+function splitPathSuffix(rawPath: string): [string, string] {
+  const cut = rawPath.search(/(?<!^[\\/]{2})[?#]/);
+  return cut < 0 ? [rawPath, ""] : [rawPath.slice(0, cut), rawPath.slice(cut)];
 }
 
 function tryResolveExternal(
@@ -555,8 +598,7 @@ function tryResolveExternal(
 ): string | null {
   const filesystemPath = isAbsolute(rawPath) && !rawPath.startsWith("//");
   if (isNonRelativeUrl(rawPath) && !filesystemPath) return null;
-  const cut = filesystemPath ? rawPath.search(/[?#]/) : -1;
-  const [path, suffix] = cut < 0 ? [rawPath, ""] : [rawPath.slice(0, cut), rawPath.slice(cut)];
+  const [path, suffix] = filesystemPath ? splitPathSuffix(rawPath) : [rawPath, ""];
   for (const variant of decodeUrlPathVariants(path)) {
     const target = archiveTargetOf(ctx, resolve(referrerAbsDir, variant), rawPath, {
       entryPath,
@@ -755,6 +797,7 @@ export function localizeExternalAssets(
   onLeftOut?: OnLeftOut,
   onOutsideFile?: OnOutsideFile,
   entry = "index.html",
+  walkedLeftOut: ReadonlySet<string> = new Set(),
 ): number {
   const ctx: ExternalAssetContext = {
     absProjectDir,
@@ -766,6 +809,7 @@ export function localizeExternalAssets(
     onLeftOut,
     onOutsideFile,
     received: receivedFiles(absProjectDir),
+    walkedLeftOut,
     filmPages: filmPagesOf(absProjectDir, fileContents, entry),
   };
 
@@ -816,10 +860,11 @@ function composeNamesInText(fileContents: Map<string, StagedFile>, filePaths: st
   }
 }
 
-type WalkedLeftOutReason = Exclude<LeftOutReason, "file_type">;
+type WalkedLeftOutReason = Exclude<LeftOutReason, "file_type" | "network_share">;
 
 const WALKED_LEFT_OUT: Record<WalkedLeftOutReason, string> = {
-  private: "holds secrets or tool data (an env file, Git data or Studio records)",
+  private:
+    "holds secrets or tool data (an env file, Git data, credentials, agent or editor state, or Studio records)",
   blocklisted: "links to a file outside the project in a private location",
   received: "links to a file outside the project and came in with an imported project",
 };
@@ -830,8 +875,8 @@ function walkedFileLeftOut(
   absPath: string,
   received: (path: string) => boolean,
 ): WalkedLeftOutReason | null {
-  if (isPrivateCompositionFile(absProjectDir, absPath)) return "private";
   if (linksToPrivateOutsideFile(absProjectDir, absPath)) return "blocklisted";
+  if (isPrivateCompositionFile(absProjectDir, absPath)) return "private";
   if (received(filePath) && linksOutside(absProjectDir, absPath)) return "received";
   return null;
 }
@@ -859,6 +904,7 @@ export function stagePublishFiles(
   const fileContents = new Map<string, StagedFile>();
   const diskPathOf = new Map<string, string>();
   const received = receivedFiles(absProjectDir);
+  const walkedLeftOut = new Set<string>();
   for (const filePath of filePaths) {
     const absPath = join(absProjectDir, filePath);
     const reason = walkedFileLeftOut(absProjectDir, filePath, absPath, received);
@@ -867,6 +913,7 @@ export function stagePublishFiles(
         `${filePath} ${WALKED_LEFT_OUT[reason]}; it was left out of the upload.`,
         leftOutReference(absProjectDir, filePath, filePath, absPath, reason),
       );
+      walkedLeftOut.add(archiveKey(filePath));
       continue;
     }
     const key = archiveKey(filePath);
@@ -889,6 +936,7 @@ export function stagePublishFiles(
     onLeftOut,
     onOutsideFile,
     entry,
+    walkedLeftOut,
   );
   return fileContents;
 }

@@ -12,6 +12,15 @@ on:
     types: [closed]
     branches: [main]
 
+env:
+  # Every package a release publishes, in publish order. The CLI is packed from
+  # @hyperframes/cli and published as the unscoped "hyperframes" package.
+  NPM_PACKAGES: >-
+    @hyperframes/share @hyperframes/parsers @hyperframes/lint @hyperframes/studio-server
+    @hyperframes/core @hyperframes/inspector @hyperframes/sdk @hyperframes/engine
+    @hyperframes/player @hyperframes/producer @hyperframes/shader-transitions
+    @hyperframes/studio @hyperframes/aws-lambda @hyperframes/gcp-cloud-run hyperframes
+
 jobs:
   lambda-arm64-ffmpeg:
     name: Lambda arm64 ffmpeg
@@ -43,6 +52,10 @@ jobs:
         run: >-
           docker buildx build --progress=plain --platform linux/arm64 --target artifact
           --output type=local,dest=out packages/aws-lambda/image
+      # The reviewed digest of the build; a tarball from the cache or this run that differs fails here.
+      - name: Check the tarball against its committed digest
+        working-directory: out
+        run: sha256sum hf-media-linux-aarch64.tar.gz && sha256sum --strict -c ../packages/aws-lambda/hf-media-linux-aarch64.sha256
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: hf-media-linux-aarch64
@@ -80,7 +93,10 @@ jobs:
             echo "::error::Expected release commit $EXPECTED_COMMIT_SHA, checked out $ACTUAL_SHA"
             exit 1
           fi
+      # The release installs the bun it downloads, never one restored from the shared cache.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          no-cache: true
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
@@ -97,22 +113,20 @@ jobs:
           path: packages/aws-lambda/dist/handler.zip
           if-no-files-found: error
 
-  publish:
-    name: Publish
+  pack:
+    name: Build and pack
     needs: [lambda-arm64-ffmpeg, lambda-handler-zip]
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: npm-publish
+    # Every build and lifecycle script of the release commit runs here, with a
+    # read-only token and no secrets. The publish job gets only what this job packs.
     permissions:
-      contents: write
-      id-token: write
+      contents: read
     env:
       EXPECTED_RELEASE_SHA: >-
         ${{ github.event_name == 'pull_request'
             && github.event.pull_request.merge_commit_sha
             || github.sha }}
-    # Stable releases come only from reviewed release PRs. Tag pushes are
-    # prerelease-only because the trigger pattern requires a hyphenated version.
     if: >-
       github.event_name == 'push' ||
       (github.event.pull_request.merged == true &&
@@ -125,8 +139,6 @@ jobs:
           # release PR event exposes main as github.ref, which may advance
           # before this job starts; use the event's exact merge commit instead.
           ref: ${{ env.EXPECTED_RELEASE_SHA }}
-          # Keep the write token out of .git/config. Only "Create release tag"
-          # pushes, and it authenticates its own git calls.
           persist-credentials: false
 
       - name: Verify immutable release checkout
@@ -171,47 +183,13 @@ jobs:
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
         run: node scripts/validate-release-channel.mjs
 
-      - name: Create release tag
-        if: github.event_name == 'pull_request'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          : "${GITHUB_TOKEN:?}"
-          BASIC_AUTH="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
-          echo "::add-mask::$BASIC_AUTH"
-          export GIT_CONFIG_COUNT=1
-          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
-          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $BASIC_AUTH"
-
-          TAG="v$VERSION"
-          EXPECTED_TAG_SHA="$(git rev-parse HEAD)"
-
-          verify_remote_tag() {
-            git fetch --force --no-tags origin "+refs/tags/$TAG:refs/tags/$TAG"
-            ACTUAL_TAG_SHA="$(git rev-parse "refs/tags/$TAG^{commit}")"
-            if [ "$ACTUAL_TAG_SHA" != "$EXPECTED_TAG_SHA" ]; then
-              echo "::error::Release tag $TAG points to $ACTUAL_TAG_SHA, expected $EXPECTED_TAG_SHA"
-              exit 1
-            fi
-            echo "Release tag $TAG already exists at the expected commit — skipping"
-          }
-
-          if [ -n "$(git ls-remote --refs origin "refs/tags/$TAG")" ]; then
-            verify_remote_tag
-          else
-            git tag --no-sign "$TAG" "$EXPECTED_TAG_SHA"
-            if ! git push origin "refs/tags/$TAG"; then
-              # A concurrent retry may have created the tag after ls-remote.
-              git tag -d "$TAG"
-              verify_remote_tag
-            fi
-          fi
+      # The release installs the bun it downloads, never one restored from the shared cache.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          no-cache: true
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
-          registry-url: "https://registry.npmjs.org"
       - run: corepack enable
       - run: corepack prepare pnpm@10.17.1 --activate
       - run: bun install --frozen-lockfile
@@ -222,7 +200,7 @@ jobs:
           name: hyperframes-lambda-handler-zip
           path: dist/lambda-handler-build
 
-      # Before `npm publish`, so @hyperframes/aws-lambda pins this exact zip.
+      # Before packing, so @hyperframes/aws-lambda pins this exact zip.
       - name: Pin Lambda handler zip
         id: lambda_zip
         env:
@@ -274,6 +252,244 @@ jobs:
 
       - run: bun run verify:packed-manifests
 
+      # pnpm pack writes the same tarball pnpm publish uploads: publishConfig
+      # applied and workspace: ranges replaced with versions.
+      - name: Pack packages
+        run: |
+          OUT="$PWD/release-bundle/npm"
+          mkdir -p "$OUT"
+          for name in $NPM_PACKAGES; do
+            [ "$name" = "hyperframes" ] && continue
+            pnpm --filter "$name" pack --pack-destination "$OUT"
+          done
+          # pnpm --filter cannot match the rewritten name, so npm packs the CLI.
+          node -e "
+            const fs = require('fs');
+            const p = 'packages/cli/package.json';
+            const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
+            pkg.name = 'hyperframes';
+            fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
+          "
+          (cd packages/cli && npm pack --pack-destination "$OUT")
+
+      - name: Build portable agent plugin
+        run: node scripts/package-agent-plugin.mjs
+
+      # A Lambda asset the release already has stays out of the bundle; the
+      # publish job attaches only what the bundle holds.
+      - name: Collect release bundle
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ZIP_ATTACHED: ${{ steps.lambda_zip.outputs.attached }}
+          IMAGE_ATTACHED: ${{ steps.lambda_video_image.outputs.attached }}
+        run: |
+          mkdir -p release-bundle/assets release-bundle/plugin
+          if [ "$ZIP_ATTACHED" != "true" ]; then
+            mv dist/hyperframes-lambda-handler.zip dist/hyperframes-lambda-handler.sha256 release-bundle/assets/
+          fi
+          if [ "$IMAGE_ATTACHED" != "true" ]; then
+            mv dist/hyperframes-lambda-video-arm64.oci.tar dist/hyperframes-lambda-video-arm64.sha256 release-bundle/assets/
+          fi
+          mv dist/hyperframes-agent-plugin.zip dist/hyperframes-agent-plugin.sha256 dist/hyperframes-agent-plugin.json release-bundle/plugin/
+          if [ -f "releases/v${VERSION}.md" ]; then
+            cp "releases/v${VERSION}.md" release-bundle/notes.md
+          fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-bundle
+          path: release-bundle/
+          if-no-files-found: error
+          compression-level: 1
+          overwrite: true
+          retention-days: 7
+
+  publish:
+    name: Publish
+    needs: [pack]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # npm-publish requires a maintainer's approval. That approval is the only
+    # review a prerelease tag gets, because prerelease branches have no PR review.
+    # npm's trusted publishers name this environment, so every trigger uses it.
+    environment: npm-publish
+    # This job holds the release credentials, so it runs no code from the
+    # release commit: no install, no build, no repo scripts. It checks the
+    # pack job's tarballs and uploads them.
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      EXPECTED_RELEASE_SHA: >-
+        ${{ github.event_name == 'pull_request'
+            && github.event.pull_request.merge_commit_sha
+            || github.sha }}
+    # Stable releases come only from reviewed release PRs. Tag pushes are
+    # prerelease-only because the trigger pattern requires a hyphenated version.
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'release/v'))
+    steps:
+      # Only git reads this checkout, for the release tag.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ env.EXPECTED_RELEASE_SHA }}
+          # Keep the write token out of .git/config. Only "Create release tag"
+          # pushes, and it authenticates its own git calls.
+          persist-credentials: false
+
+      - name: Verify immutable release checkout
+        run: |
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          EXPECTED_COMMIT_SHA="$(git rev-parse "${EXPECTED_RELEASE_SHA}^{commit}")"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_COMMIT_SHA" ]; then
+            echo "::error::Expected release commit $EXPECTED_COMMIT_SHA, checked out $ACTUAL_SHA"
+            exit 1
+          fi
+
+      # Resolved again from the event: the pack job ran release-commit code, so its outputs are not trusted here.
+      - name: Resolve version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            BRANCH="${PR_HEAD_REF}"
+            VERSION="${BRANCH#release/v}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          # Detect pre-release tag (e.g. 0.1.16-alpha.1 → alpha, 0.1.16-beta.2 → beta)
+          if [[ "$VERSION" =~ -([a-zA-Z]+) ]]; then
+            DIST_TAG="${BASH_REMATCH[1]}"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            DIST_TAG="latest"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "dist_tag=${DIST_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Resolved version=${VERSION} dist_tag=${DIST_TAG}"
+
+      # The event rules of scripts/validate-release-channel.mjs, inline so they
+      # hold even when the release commit changes that script.
+      - name: Check release channel
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z][0-9A-Za-z-]*(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "::error::Invalid release version \"$VERSION\". Expected x.y.z or x.y.z-channel.N."
+            exit 1
+          fi
+          if [ "$EVENT_NAME" = "push" ] && [ "$PRERELEASE" != "true" ]; then
+            echo "::error::Tag pushes publish prereleases only; v$VERSION is a stable version."
+            exit 1
+          fi
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$PRERELEASE" != "false" ]; then
+            echo "::error::Merged release PRs publish stable releases only; v$VERSION is a prerelease."
+            exit 1
+          fi
+
+      - name: Create release tag
+        if: github.event_name == 'pull_request'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          : "${GITHUB_TOKEN:?}"
+          BASIC_AUTH="$(printf 'x-access-token:%s' "$GITHUB_TOKEN" | base64 -w0)"
+          echo "::add-mask::$BASIC_AUTH"
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
+          export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $BASIC_AUTH"
+
+          TAG="v$VERSION"
+          EXPECTED_TAG_SHA="$(git rev-parse HEAD)"
+
+          verify_remote_tag() {
+            git fetch --force --no-tags origin "+refs/tags/$TAG:refs/tags/$TAG"
+            ACTUAL_TAG_SHA="$(git rev-parse "refs/tags/$TAG^{commit}")"
+            if [ "$ACTUAL_TAG_SHA" != "$EXPECTED_TAG_SHA" ]; then
+              echo "::error::Release tag $TAG points to $ACTUAL_TAG_SHA, expected $EXPECTED_TAG_SHA"
+              exit 1
+            fi
+            echo "Release tag $TAG already exists at the expected commit — skipping"
+          }
+
+          if [ -n "$(git ls-remote --refs origin "refs/tags/$TAG")" ]; then
+            verify_remote_tag
+          else
+            git tag --no-sign "$TAG" "$EXPECTED_TAG_SHA"
+            if ! git push origin "refs/tags/$TAG"; then
+              # A concurrent retry may have created the tag after ls-remote.
+              git tag -d "$TAG"
+              verify_remote_tag
+            fi
+          fi
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-bundle
+          path: ${{ runner.temp }}/release-bundle
+
+      - name: Check packed tarballs
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          FOUND="$RUNNER_TEMP/packed.tsv"
+          ORDER="$RUNNER_TEMP/publish-order.tsv"
+          : > "$FOUND"
+          : > "$ORDER"
+          for tarball in "$RUNNER_TEMP"/release-bundle/npm/*; do
+            file="$(basename "$tarball")"
+            if ! [[ "$file" =~ ^[A-Za-z0-9._-]+\.tgz$ ]]; then
+              echo "::error::Unexpected file in the packed tarballs: $file"
+              exit 1
+            fi
+            manifest="$(tar -xzOf "$tarball" package/package.json)"
+            name="$(jq -r '.name' <<<"$manifest")"
+            version="$(jq -r '.version' <<<"$manifest")"
+            if ! [[ "$name" =~ ^(@[a-z0-9-]+/)?[a-z0-9._-]+$ ]]; then
+              echo "::error::$file has an invalid package name"
+              exit 1
+            fi
+            if [ "$version" != "$VERSION" ]; then
+              echo "::error::$file packs $name@$version, but this release is $VERSION"
+              exit 1
+            fi
+            printf '%s\t%s\n' "$name" "$tarball" >> "$FOUND"
+          done
+          DUPLICATES="$(cut -f1 "$FOUND" | sort | uniq -d)"
+          if [ -n "$DUPLICATES" ]; then
+            echo "::error::Packed more than once: $DUPLICATES"
+            exit 1
+          fi
+          for name in $NPM_PACKAGES; do
+            line="$(awk -F'\t' -v name="$name" '$1 == name' "$FOUND")"
+            if [ -z "$line" ]; then
+              echo "::error::No packed tarball for $name"
+              exit 1
+            fi
+            printf '%s\n' "$line" >> "$ORDER"
+          done
+          if [ "$(wc -l < "$FOUND")" -ne "$(wc -l < "$ORDER")" ]; then
+            EXTRA="$(cut -f1 "$FOUND" | grep -vxF -f <(cut -f1 "$ORDER") | tr '\n' ' ')"
+            echo "::error::Packed tarballs for packages this workflow does not publish: $EXTRA"
+            exit 1
+          fi
+          cat "$ORDER"
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -281,7 +497,7 @@ jobs:
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
           REPO: ${{ github.repository }}
         run: |
-          NOTES_FILE="releases/v${VERSION}.md"
+          NOTES_FILE="$RUNNER_TEMP/release-bundle/notes.md"
 
           # Skip if release already exists (idempotent re-runs)
           if gh release view "v${VERSION}" --repo "$REPO" >/dev/null 2>&1; then
@@ -291,7 +507,7 @@ jobs:
             if [ -f "$NOTES_FILE" ]; then
               FLAGS+=(--notes-file "$NOTES_FILE")
             else
-              echo "No reviewed release notes found at $NOTES_FILE — using GitHub generated notes"
+              echo "No reviewed release notes found at releases/v${VERSION}.md — using GitHub generated notes"
               FLAGS+=(--generate-notes)
             fi
             if [ "$PRERELEASE" = "true" ]; then
@@ -301,41 +517,59 @@ jobs:
           fi
 
       - name: Attach Lambda handler zip to release
-        if: steps.lambda_zip.outputs.attached != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           REPO: ${{ github.repository }}
-        run: gh release upload "v${VERSION}" dist/hyperframes-lambda-handler.zip dist/hyperframes-lambda-handler.sha256 --repo "$REPO"
+        run: |
+          ASSETS="$RUNNER_TEMP/release-bundle/assets"
+          if [ -f "$ASSETS/hyperframes-lambda-handler.zip" ]; then
+            gh release upload "v${VERSION}" "$ASSETS/hyperframes-lambda-handler.zip" "$ASSETS/hyperframes-lambda-handler.sha256" --repo "$REPO"
+          fi
 
       - name: Attach Lambda video image to release
-        if: steps.lambda_video_image.outputs.attached != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           REPO: ${{ github.repository }}
-        run: gh release upload "v${VERSION}" dist/hyperframes-lambda-video-arm64.oci.tar dist/hyperframes-lambda-video-arm64.sha256 --repo "$REPO"
+        run: |
+          ASSETS="$RUNNER_TEMP/release-bundle/assets"
+          if [ -f "$ASSETS/hyperframes-lambda-video-arm64.oci.tar" ]; then
+            gh release upload "v${VERSION}" "$ASSETS/hyperframes-lambda-video-arm64.oci.tar" "$ASSETS/hyperframes-lambda-video-arm64.sha256" --repo "$REPO"
+          fi
 
+      # Runs outside the checkout so no project .npmrc applies, and with
+      # --ignore-scripts so no lifecycle script runs next to the npm token.
       - name: Publish packages
+        working-directory: ${{ runner.temp }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           DIST_TAG: ${{ steps.version.outputs.dist_tag }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           FAILED=0
 
-          publish_pkg() {
-            local filter="$1"
-            local name="$2"
+          publish_tarball() {
+            local name="$1"
+            local tarball="$2"
+            local integrity published
+            integrity="sha512-$(openssl dgst -sha512 -binary "$tarball" | base64 -w0)"
 
-            # Check if this version is already published
-            if npm view "${name}@${VERSION}" version >/dev/null 2>&1; then
-              echo "⏭️  ${name}@${VERSION} already published — skipping"
+            if published="$(npm view "${name}@${VERSION}" dist.integrity 2>/dev/null)" && [ -n "$published" ]; then
+              if [ "$published" = "$integrity" ]; then
+                echo "⏭️  ${name}@${VERSION} already published with these contents — skipping"
+              elif [ "$RUN_ATTEMPT" -gt 1 ]; then
+                echo "::warning::${name}@${VERSION} is already on npm with other contents; this re-run keeps the earlier attempt's upload."
+              else
+                echo "::error::${name}@${VERSION} is already on npm, and this run did not publish it. Find out who did before releasing this version."
+                FAILED=1
+              fi
               return 0
             fi
 
             echo "📦 Publishing ${name}@${VERSION}..."
-            if pnpm --filter "$filter" publish --access public --no-git-checks --tag "$DIST_TAG"; then
+            if npm publish "$tarball" --access public --tag "$DIST_TAG" --ignore-scripts; then
               echo "✅ ${name}@${VERSION} published"
             else
               echo "❌ ${name}@${VERSION} failed to publish"
@@ -343,54 +577,19 @@ jobs:
             fi
           }
 
-          publish_pkg "@hyperframes/share" "@hyperframes/share"
-          publish_pkg "@hyperframes/parsers" "@hyperframes/parsers"
-          publish_pkg "@hyperframes/lint" "@hyperframes/lint"
-          publish_pkg "@hyperframes/studio-server" "@hyperframes/studio-server"
-          publish_pkg "@hyperframes/core" "@hyperframes/core"
-          publish_pkg "@hyperframes/inspector" "@hyperframes/inspector"
-          publish_pkg "@hyperframes/sdk" "@hyperframes/sdk"
-          publish_pkg "@hyperframes/engine" "@hyperframes/engine"
-          publish_pkg "@hyperframes/player" "@hyperframes/player"
-          publish_pkg "@hyperframes/producer" "@hyperframes/producer"
-          publish_pkg "@hyperframes/shader-transitions" "@hyperframes/shader-transitions"
-          publish_pkg "@hyperframes/studio" "@hyperframes/studio"
-          publish_pkg "@hyperframes/aws-lambda" "@hyperframes/aws-lambda"
-          publish_pkg "@hyperframes/gcp-cloud-run" "@hyperframes/gcp-cloud-run"
-
-          # CLI is @hyperframes/cli in the monorepo but published as unscoped "hyperframes" on npm.
-          # Rewrite the name in package.json before publishing, then use npm publish directly
-          # since pnpm --filter won't match the rewritten name.
-          if npm view "hyperframes@${VERSION}" version >/dev/null 2>&1; then
-            echo "⏭️  hyperframes@${VERSION} already published — skipping"
-          else
-            node -e "
-              const fs = require('fs');
-              const p = 'packages/cli/package.json';
-              const pkg = JSON.parse(fs.readFileSync(p, 'utf8'));
-              pkg.name = 'hyperframes';
-              fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
-            "
-            echo "📦 Publishing hyperframes@${VERSION}..."
-            if (cd packages/cli && npm publish --access public --tag "$DIST_TAG"); then
-              echo "✅ hyperframes@${VERSION} published"
-            else
-              echo "❌ hyperframes@${VERSION} failed to publish"
-              FAILED=1
-            fi
-          fi
+          while IFS=$'\t' read -r name tarball; do
+            publish_tarball "$name" "$tarball"
+          done < publish-order.tsv
 
           if [ "$FAILED" -ne 0 ]; then
             echo "::error::One or more packages failed to publish"
             exit 1
           fi
 
-      - name: Build portable agent plugin
-        run: node scripts/package-agent-plugin.mjs
-
       - name: Attach portable plugin to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
           REPO: ${{ github.repository }}
-        run: gh release upload "v${VERSION}" dist/hyperframes-agent-plugin.zip dist/hyperframes-agent-plugin.sha256 dist/hyperframes-agent-plugin.json --repo "$REPO" --clobber
+        working-directory: ${{ runner.temp }}/release-bundle/plugin
+        run: gh release upload "v${VERSION}" hyperframes-agent-plugin.zip hyperframes-agent-plugin.sha256 hyperframes-agent-plugin.json --repo "$REPO" --clobber

@@ -1938,6 +1938,14 @@ Low-memory detection reads **host** RAM, not cgroup or container limits, so
 containerised callers — including `--docker` — should set
 `PRODUCER_LOW_MEMORY_MODE` explicitly.
 
+`--docker` runs the render container on Docker's default network, which can
+reach your machine, your local network and the internet. It does not restrict
+what the rendered page loads unless you ask it to. When you set
+`PRODUCER_RESTRICT_PAGE_NETWORK` or `PRODUCER_NON_PUBLIC_CIDRS` in the shell
+that runs `hyperframes render --docker`, the CLI passes them into the container,
+so the render there refuses the same addresses a local render would. See
+[the producer docs](/packages/producer) for what the restriction allows.
+
 Render Chrome keeps its sandbox on macOS, on Windows, and on Linux for a
 non-root user outside a container. It runs without one as root, in Docker,
 Podman or Kubernetes, on AWS Lambda and Cloud Run, and where Linux restricts
@@ -2701,9 +2709,10 @@ Env files (`.env`, `.env.*`, `.envrc`, at any depth) and Studio's private record
 under `.hyperframes/` are always left out, even when a rule re-includes them, and
 each one is reported as left out with the reason `private`.
 
-Media files of 5 MB or more that the project names by path go up as HeyGen
-assets before zipping, and the zip's copy of each HTML, CSS, script and JSON
-file points at the asset URL instead; your project files are not changed.
+When the zip would be over the upload limit, media no page, script or variable
+names is left out first, then the largest media files the project names by path
+go up as HeyGen assets, just enough for the rest to fit, and the zip's copy of each HTML, CSS,
+script and JSON file points at the asset URL instead; your project files are not changed.
 Asset URLs are public and unsigned: anyone who has one can fetch the
 media. Uploads are cached by content, so a re-render uploads only what changed.
 Media the asset API does not take as is is converted on your machine first,
@@ -2731,11 +2740,15 @@ an MPEG transport stream, so TypeScript source is not copied. Any other outside
 file (a script, a Lottie `.json`, a `.pdf`, a file with no extension), one in a
 private location (env files, Git data, hidden, system
 and app-data folders), and one reached from a file that came in with an
-imported project are left out, with a warning naming each. To include such a
+imported project are left out, with a warning naming each. A reference to another
+computer's network share or to a Windows device path (`\\server\share\clip.mp4`,
+`\\?\…`, `\\.\…`) is left out the same way, and the command never opens it, because on
+Windows even checking such a path sends that computer your sign-in. A file on the
+same share as the project is copied like any other. To include such a
 file, move it into the project folder. Under `--json`, the result lists those
 as `left_out`, each with the `file` that points at it, the `reference` as
 written, its `path` from the project folder, the `reason` (`blocklisted`,
-`received`, `file_type` or `private`) and `levels_up`, how many folders above the project
+`received`, `file_type`, `private` or `network_share`) and `levels_up`, how many folders above the project
 it is. A full run also prints each as a `{"event":"left_out",…}`
 line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
 and still hear about each one during the run.

@@ -28,6 +28,8 @@ import { promisify } from "node:util";
 import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
 import { fpsToNumber, type Fps } from "@hyperframes/core";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
@@ -731,6 +733,8 @@ export interface FileServerHandle {
   addPreHeadScript: (script: string) => void;
 }
 
+const OFFER_NO_FRAMING_SITE_AN_EDITING_PORT = `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`;
+
 /**
  * Set before the Hyperframes runtime executes so render/probe pages can avoid
  * preview-only initialization work that mutates the live visual timeline.
@@ -874,6 +878,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
         html = isIndex
           ? injectScriptsIntoHtml(html, headScripts, bodyScripts, stripEmbeddedRuntime)
           : html;
+        html = injectTagsAtHeadStart(html, OFFER_NO_FRAMING_SITE_AN_EDITING_PORT);
         return c.text(html, 200, { "Content-Type": contentType });
       }
 
