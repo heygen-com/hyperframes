@@ -24,16 +24,16 @@ export class RenderLockUnwritable extends Error {
     cause: unknown,
   ) {
     super(
-      `This account cannot write to ${dir}, where renders take their turn. If accounts share ` +
-        `HYPERFRAMES_CACHE_DIR, make the folder writable for all of them (chmod 777 ${dir}); ` +
-        "otherwise unset HYPERFRAMES_CACHE_DIR.",
+      `This account cannot write to ${dir}, where renders take their turn. To share one render ` +
+        "slot between accounts, give each account its own HYPERFRAMES_CACHE_DIR and point " +
+        "HYPERFRAMES_RENDER_LOCK_DIR at one folder they can all write to, which holds only lock files.",
       { cause },
     );
     this.name = "RenderLockUnwritable";
   }
 }
 
-/** Accounts sharing a cache folder take turns in one `locks` folder, so each of them must write in it. */
+/** Accounts sharing a render slot take turns in one lock folder, so each of them must write in it. */
 export function ensureLockDir(dir: string): void {
   if (mkdirSync(dir, { recursive: true }) !== undefined && process.platform !== "win32") {
     chmodSync(dir, 0o777);

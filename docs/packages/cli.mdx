@@ -1929,8 +1929,11 @@ Renders started side by side starve each other of CPU and GPU until frames stop
 landing, so a second local or `--docker` render from the same user account waits
 for the first and says which render it is waiting for (pid and project). The
 slot is a lock file in that account's HyperFrames cache folder, so renders by
-different user accounts do not queue behind each other; set
-`HYPERFRAMES_CACHE_DIR` to a folder they share to give them one slot. A render
+different user accounts do not queue behind each other. To give several accounts
+one slot, set `HYPERFRAMES_RENDER_LOCK_DIR` to one folder they can all write to.
+That folder holds only lock files. Keep each account's own cache folder: a shared
+`HYPERFRAMES_CACHE_DIR` holds the browser and packages renders run, so an account
+that can write there can change what another account runs. A render
 whose process died frees its slot on its own. `--workers` is unaffected: it sets
 the parallelism inside the one render that runs.
 

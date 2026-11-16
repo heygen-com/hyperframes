@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 import { readHolder, release } from "./projectLock.js";
 import {
@@ -44,7 +44,10 @@ export interface RenderLockOptions {
 
 const POLL_MS = 1_000;
 
-const renderLockPath = () => hyperframesCacheDir("locks", "render.lock");
+function renderLockPath(env: NodeJS.ProcessEnv = process.env): string {
+  const dir = env.HYPERFRAMES_RENDER_LOCK_DIR?.trim();
+  return dir ? join(resolve(dir), "render.lock") : hyperframesCacheDir("locks", "render.lock");
+}
 
 /** `HYPERFRAMES_RENDER_LOCK=off` lets this account's renders run side by side. */
 function renderLockDisabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -111,7 +114,7 @@ interface Contender {
 }
 
 function prepareContender(options: RenderLockOptions): Contender {
-  const path = options.path ?? renderLockPath();
+  const path = options.path ?? renderLockPath(options.env);
   ensureLockDir(dirname(path));
   liveOtherOwners(path);
   const pid = options.pid ?? process.pid;

@@ -337,8 +337,8 @@ export default defineCommand({
       description:
         "Wait while another render of this user account runs, then start (default): renders side by " +
         "side starve each other. Use --no-wait to fail at once instead. Env: HYPERFRAMES_RENDER_LOCK=off " +
-        "lets renders run side by side; HYPERFRAMES_CACHE_DIR set to a shared folder shares the slot " +
-        "across user accounts.",
+        "lets renders run side by side; HYPERFRAMES_RENDER_LOCK_DIR set to a folder every account can " +
+        "write shares the slot across user accounts.",
       default: true,
     },
     strict: {

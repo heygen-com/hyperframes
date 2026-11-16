@@ -211,12 +211,23 @@ describe("acquireRenderLock", () => {
         try {
           await expect(
             acquireRenderLock({ project: "/work/b", wait: false, path, env: {} }),
-          ).rejects.toThrow(`chmod 777 ${join(dir, "locks")}`);
+          ).rejects.toThrow("HYPERFRAMES_RENDER_LOCK_DIR");
         } finally {
           chmodSync(join(dir, "locks"), 0o755);
         }
       },
     );
+  });
+
+  it("keeps the slot in HYPERFRAMES_RENDER_LOCK_DIR when it is set, apart from the cache folder", async () => {
+    const lockDir = join(dir, "slot");
+    const release = await acquireRenderLock({
+      project: "/work/brand",
+      wait: false,
+      env: { HYPERFRAMES_RENDER_LOCK_DIR: lockDir },
+    });
+    expect(existsSync(join(lockDir, "render.lock"))).toBe(true);
+    release();
   });
 
   it("keeps the slot in this user's HyperFrames cache folder, which HYPERFRAMES_CACHE_DIR can share", async () => {
@@ -389,7 +400,8 @@ describe("acquireRenderSlot", () => {
 
     const said = vi.mocked(console.error).mock.calls.flat().join("\n");
     expect(said).toContain("Another render is running for this user account");
-    expect(said).toContain("HYPERFRAMES_CACHE_DIR to a shared folder");
+    expect(said).toContain("HYPERFRAMES_RENDER_LOCK_DIR");
+    expect(said).not.toContain("HYPERFRAMES_CACHE_DIR");
     expect(said).toContain(`pid ${process.pid}, project /work/brand`);
     release();
   });
