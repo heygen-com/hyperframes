@@ -5,12 +5,16 @@ export const NO_TEXT = new Set(["script", "style"]);
 export function renderedTextOf(element: Element, limit: number): string {
   if (NO_TEXT.has(element.localName)) return "";
   let text = "";
-  const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
-    acceptNode: (node) =>
-      node.nodeType === Node.ELEMENT_NODE && NO_TEXT.has((node as Element).localName)
-        ? NodeFilter.FILTER_REJECT
-        : NodeFilter.FILTER_ACCEPT,
-  });
+  const walker = document.createTreeWalker(
+    element,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+    {
+      acceptNode: (node) =>
+        node.nodeType === Node.ELEMENT_NODE && NO_TEXT.has((node as Element).localName)
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT,
+    },
+  );
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
     if (node.nodeType !== Node.TEXT_NODE) continue;
     text += node.nodeValue;
