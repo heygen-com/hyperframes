@@ -138,7 +138,6 @@ function receivedRecordsAtOrAbove(start: string): ReceivedRecord[] {
   }
 }
 
-// A record in a folder under the project, its entries named from the project folder.
 function nestedRecord(start: string, dir: string, record: { listed: unknown }): ReceivedRecord {
   const folder = relative(start, dir).split(sep).join("/");
   const listed = Array.isArray(record.listed)
@@ -147,7 +146,16 @@ function nestedRecord(start: string, dir: string, record: { listed: unknown }): 
   return { file: join(dir, RECEIVED_RECORD), root: start, projectDirFromRoot: "", listed };
 }
 
-// Records in folders under the project, links not followed and Git folders skipped; null when the walk could not list every folder.
+const NOT_WALKED = new Set([
+  ".git",
+  ".hyperframes",
+  "node_modules",
+  "renders",
+  "dist",
+  ".next",
+  "coverage",
+]);
+
 function receivedRecordsBelow(start: string): ReceivedRecord[] | null {
   const withinBudget = walkBudget();
   const records: ReceivedRecord[] = [];
@@ -156,7 +164,7 @@ function receivedRecordsBelow(start: string): ReceivedRecord[] | null {
     let folders: string[];
     try {
       folders = readdirSync(dir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && entry.name.toLowerCase() !== ".git")
+        .filter((entry) => entry.isDirectory() && !NOT_WALKED.has(entry.name.toLowerCase()))
         .map((entry) => join(dir, entry.name));
     } catch {
       return null;
@@ -169,7 +177,6 @@ function receivedRecordsBelow(start: string): ReceivedRecord[] | null {
   return records;
 }
 
-// Every record that covers the project: its own, its ancestors' and those in its folders; null when its folders could not all be checked.
 function receivedRecords(projectDir: string): ReceivedRecord[] | null {
   let start: string;
   try {
@@ -234,7 +241,6 @@ function listedUnder(record: ReceivedRecord): string[] {
     .map((entry) => join(record.root, entry));
 }
 
-/** "unchecked" when the project's folders could not all be searched for a record. */
 export function receivedRecordStatus(
   projectDir: string,
 ): { path: string; listed: string[] | null } | "unchecked" | null {

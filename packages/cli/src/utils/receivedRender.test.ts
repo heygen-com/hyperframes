@@ -300,6 +300,17 @@ describe("outsideAssetsAllowed", () => {
       expect(warn).not.toHaveBeenCalled();
     });
 
+    it("keeps outside files for a project whose tool folders hold very many folders", () => {
+      const dir = withNested();
+      for (const tool of ["node_modules", "renders", ".git"]) {
+        mkdirSync(join(dir, tool));
+        for (let i = 0; i <= 7_000; i++) mkdirSync(join(dir, tool, `d${i}`));
+      }
+      const { allowed, warn } = decide(dir);
+      expect(allowed).toBe(true);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
     it("refuses outside files when the project has too many folders to search", () => {
       const dir = withNested();
       const many = join(dir, "folders");
@@ -650,7 +661,7 @@ describe("outsideAssetsAllowed", () => {
         try {
           const { allowed, line } = decide(dir);
           expect(allowed).toBe(false);
-          expect(line).toContain("Could not check every project file");
+          expect(line).toMatch(/Could not check every project (file|folder)/);
         } finally {
           chmodSync(join(dir, "locked"), 0o755);
         }
