@@ -5,7 +5,9 @@ import {
   isAudioDomElement,
   isAudioTimelineElement,
   isMusicSourceElement,
+  fitsBeatAnalysis,
   isMusicTrack,
+  MAX_BEAT_SOURCE_SECONDS,
   resolveBeatSourceTrack,
 } from "./timelineInspector";
 import type { TimelineElement } from "../player";
@@ -15,12 +17,28 @@ function el(
   overrides: Partial<
     Pick<
       TimelineElement,
-      "tag" | "src" | "id" | "domId" | "timelineRole" | "duration" | "hasAudio" | "muted"
+      | "tag"
+      | "src"
+      | "id"
+      | "domId"
+      | "timelineRole"
+      | "duration"
+      | "sourceDuration"
+      | "hasAudio"
+      | "muted"
     >
   >,
 ): Pick<
   TimelineElement,
-  "tag" | "src" | "id" | "domId" | "timelineRole" | "duration" | "hasAudio" | "muted"
+  | "tag"
+  | "src"
+  | "id"
+  | "domId"
+  | "timelineRole"
+  | "duration"
+  | "sourceDuration"
+  | "hasAudio"
+  | "muted"
 > {
   return {
     tag: "audio",
@@ -127,6 +145,14 @@ describe("resolveBeatSourceTrack", () => {
     expect(resolveBeatSourceTrack([sfx, vo])).toBeNull();
   });
 
+  it("never falls back to a clip, or a clip's file, longer than a song", () => {
+    const talk = el({ id: "talk", domId: "talk", duration: 3720, sourceDuration: 3720 });
+    const excerpt = el({ id: "cut", domId: "cut", duration: 180, sourceDuration: 3720 });
+    expect(resolveBeatSourceTrack([talk, excerpt])).toBeNull();
+    const song = el({ id: "song", domId: "song", duration: 200, sourceDuration: 200 });
+    expect(resolveBeatSourceTrack([talk, song])!.element).toBe(song);
+  });
+
   it("returns isFallback=true for an untagged clip with a non-music id", () => {
     const clip = el({ id: "my_audio_file", domId: "my_audio_file", timelineRole: undefined });
     const result = resolveBeatSourceTrack([clip]);
@@ -182,5 +208,19 @@ describe("beat source from a video with sound", () => {
     const long = el({ ...talk, id: "b", duration: 9 });
     const muted = el({ ...talk, id: "c", duration: 20, muted: true });
     expect(resolveBeatSourceTrack([short, long, muted])?.element).toBe(long);
+  });
+});
+
+describe("fitsBeatAnalysis", () => {
+  it("fits a source whose file is known and no longer than a song", () => {
+    expect(fitsBeatAnalysis({ duration: 180, sourceDuration: 180 })).toBe(true);
+    const cap = MAX_BEAT_SOURCE_SECONDS;
+    expect(fitsBeatAnalysis({ duration: cap, sourceDuration: cap })).toBe(true);
+  });
+
+  it("refuses a source past the cap, a short clip of a long file, and an unknown file length", () => {
+    expect(fitsBeatAnalysis({ duration: 3720, sourceDuration: 3720 })).toBe(false);
+    expect(fitsBeatAnalysis({ duration: 180, sourceDuration: 3720 })).toBe(false);
+    expect(fitsBeatAnalysis({ duration: 180 })).toBe(false);
   });
 });

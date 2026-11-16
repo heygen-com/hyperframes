@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { usePlayerStore } from "../player/store/playerStore";
-import { resolveBeatSourceTrack } from "../utils/timelineInspector";
+import { fitsBeatAnalysis, resolveBeatSourceTrack } from "../utils/timelineInspector";
 import { analyzeMusicFromUrl } from "@hyperframes/core/beats";
 import { whenTimelineIdle } from "../player/components/timelineMotion";
 import { useFileManagerContextOptional } from "../contexts/FileManagerContext";
@@ -124,7 +124,8 @@ export function useMusicBeatAnalysis(): void {
       : null;
 
   const { musicSrc, isFallbackTrack } = useMemo(() => {
-    const resolved = resolveBeatSourceTrack(elements);
+    const found = resolveBeatSourceTrack(elements);
+    const resolved = found && fitsBeatAnalysis(found.element) ? found : null;
     return {
       musicSrc: resolved?.element.src ?? null,
       isFallbackTrack: resolved?.isFallback ?? false,
