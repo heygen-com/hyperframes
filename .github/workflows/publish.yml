@@ -537,8 +537,8 @@ jobs:
           fi
           cat "$ORDER"
 
-      # npm publish reads each tarball with its own node-tar, and a header GNU tar reads another way gives it a different
-      # package.json than the one checked above. This asks that same npm, without uploading, what it would publish.
+      # npm publish reads each tarball with its own node-tar; a header GNU tar reads another way can give it
+      # a different package.json than the one checked above. This asks that npm, without uploading, what it publishes.
       - name: Check what npm will publish
         working-directory: ${{ runner.temp }}
         env:
