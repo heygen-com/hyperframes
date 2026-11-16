@@ -1240,7 +1240,11 @@ async function initDrawElementOrTransparentBackground(
       // HF_FAST_CAPTURE_INTERVAL_SS=false.
       if (!forceDE && process.env.HF_FAST_CAPTURE_INTERVAL_SS !== "false") {
         const fps = fpsToNumber(session.options.fps);
-        const { frames: atRisk, totalFrames } = await computeTimelineAtRiskFrames(page, fps);
+        const { frames: atRisk, totalFrames } = await computeTimelineAtRiskFrames(
+          page,
+          fps,
+          session.options.compositionDurationSeconds,
+        );
         const atRiskFraction = atRisk.size / totalFrames;
         const fractionFloor = Number(process.env.HF_FAST_CAPTURE_INTERVAL_FRACTION ?? "0");
         logInitPhase(
@@ -3716,6 +3720,47 @@ export function isStaticDedupFrameAnalysisSafe(totalFrames: number): boolean {
   );
 }
 
+// Both timeline predictors turn every collected tween into a frame range. The page decides how
+// many tweens there are, so the interval list is capped, and overlapping ranges are merged
+// before any frame index is written: the frame loop then costs the frames covered, not the
+// frames covered times the number of tweens stacked on them.
+export const MAX_TIMELINE_FRAME_INTERVALS = 100_000;
+
+/**
+ * Inclusive frame range for one tween, clamped to `[0, maxFrame]`. `margin` widens both ends.
+ * Returns null when the tween's times are not numbers or it falls outside the clamp.
+ */
+function tweenFrameRange(
+  start: number,
+  end: number,
+  fps: number,
+  margin: number,
+  maxFrame: number,
+): [number, number] | null {
+  const lo = Math.max(0, Math.floor(start * fps) - margin);
+  const hi = Math.min(maxFrame, Math.ceil(end * fps) + margin);
+  if (Number.isNaN(lo) || Number.isNaN(hi) || lo > hi) return null;
+  return [lo, hi];
+}
+
+/** Union of inclusive frame ranges as a sorted list of disjoint ranges. */
+function mergeFrameRanges(ranges: Array<[number, number]>): Array<[number, number]> {
+  const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+  for (const [lo, hi] of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && lo <= last[1] + 1) last[1] = Math.max(last[1], hi);
+    else merged.push([lo, hi]);
+  }
+  return merged;
+}
+
+function addFrameRanges(target: Set<number>, ranges: Array<[number, number]>): void {
+  for (const [lo, hi] of mergeFrameRanges(ranges)) {
+    for (let f = lo; f <= hi; f++) target.add(f);
+  }
+}
+
 /**
  * Predict the dedupable (static) frame set from window.__timelines. A frame f (f>0) is
  * static iff NEITHER f NOR f-1 falls inside any GSAP tween interval — content didn't
@@ -3896,16 +3941,31 @@ export async function computeStaticFrameSet(
       reason: `static-dedup frame analysis limit (${MAX_STATIC_DEDUP_ANALYSIS_FRAMES})`,
     };
   }
+  if (intervals.length > MAX_TIMELINE_FRAME_INTERVALS) {
+    return {
+      totalFrames,
+      staticFrameSet: new Set<number>(),
+      nonSpatialOnlyFrameSet: new Set<number>(),
+      hasVideo,
+      hasCanvas,
+      hasNonGsapAnim,
+      tweenCount,
+      eligible: false,
+      reason: `static-dedup tween interval limit (${MAX_TIMELINE_FRAME_INTERVALS})`,
+    };
+  }
+  const animatedRanges: Array<[number, number]> = [];
+  const spatialRanges: Array<[number, number]> = [];
+  for (const { start, end, spatial } of intervals) {
+    const range = tweenFrameRange(start, end, fps, 0, totalFrames - 1);
+    if (!range) continue;
+    animatedRanges.push(range);
+    if (spatial) spatialRanges.push(range);
+  }
   const animated = new Set<number>();
   const spatialFrameSet = new Set<number>();
-  for (const { start, end, spatial } of intervals) {
-    const lo = Math.max(0, Math.floor(start * fps));
-    const hi = Math.min(totalFrames - 1, Math.ceil(end * fps));
-    for (let f = lo; f <= hi; f++) {
-      animated.add(f);
-      if (spatial) spatialFrameSet.add(f);
-    }
-  }
+  addFrameRanges(animated, animatedRanges);
+  addFrameRanges(spatialFrameSet, spatialRanges);
   for (const f of await computeClipBoundaryFrames(page, fps)) animated.add(f);
   const reasons: string[] = [];
   if (!(duration > 0)) reasons.push("unknown/zero duration");
@@ -4685,9 +4745,10 @@ async function verifyAndArmStaticDedup(
  * Returns the union of at-risk frame indices (±1 margin around each tween interval)
  * and totalFrames (for fraction computation by the caller).
  */
-async function computeTimelineAtRiskFrames(
+export async function computeTimelineAtRiskFrames(
   page: Page,
   fps: number,
+  renderDurationSeconds?: number,
 ): Promise<{ frames: Set<number>; totalFrames: number }> {
   const result = await page.evaluate(() => {
     // opacity/autoAlpha/filter fades were removed from this set once Chrome 151
@@ -4760,15 +4821,24 @@ async function computeTimelineAtRiskFrames(
     intervals: Array<{ start: number; end: number }>;
     duration: number;
   };
-  const frames = new Set<number>();
-  for (const { start, end } of intervals) {
-    const lo = Math.floor(start * fps) - 1;
-    const hi = Math.ceil(end * fps) + 1;
-    for (let f = Math.max(0, lo); f <= hi; f++) {
-      frames.add(f);
-    }
-  }
   const totalFrames = Math.max(1, Math.ceil(duration * fps));
+  // Frames past the last one the render captures are never drawn, so they are not at risk.
+  // The producer passes its validated render duration; without one, the timeline's own
+  // duration is the range.
+  const lastFrame = Math.max(1, Math.ceil((renderDurationSeconds ?? duration) * fps)) - 1;
+  const frames = new Set<number>();
+  if (intervals.length > MAX_TIMELINE_FRAME_INTERVALS) {
+    // Too many tweens to place one by one: treat every frame as at risk, which routes the
+    // render to screenshot capture (slower, never wrong).
+    addFrameRanges(frames, [[0, lastFrame]]);
+    return { frames, totalFrames };
+  }
+  const ranges: Array<[number, number]> = [];
+  for (const { start, end } of intervals) {
+    const range = tweenFrameRange(start, end, fps, 1, lastFrame);
+    if (range) ranges.push(range);
+  }
+  addFrameRanges(frames, ranges);
   return { frames, totalFrames };
 }
 /**
