@@ -49,4 +49,24 @@ describe("untarDirectory", () => {
       expect(lstatSync(join(destDir, name)).nlink).toBe(1);
     }
   });
+
+  it("unpacks hard links whose names are near the filesystem limit", async () => {
+    const sourceDir = join(scratchRoot, "src-long");
+    const destDir = join(scratchRoot, "dest-long");
+    const tarPath = join(scratchRoot, "long.tar");
+    const first = `${"a".repeat(236)}.txt`;
+    const second = `${"b".repeat(236)}.txt`;
+    mkdirSync(sourceDir, { recursive: true });
+    writeFileSync(join(sourceDir, first), "shared");
+    linkSync(join(sourceDir, first), join(sourceDir, second));
+
+    tar.create({ file: tarPath, cwd: sourceDir, sync: true }, ["."]);
+    await untarDirectory(tarPath, destDir);
+
+    expect(readdirSync(destDir).sort()).toEqual([first, second]);
+    for (const name of [first, second]) {
+      expect(readFileSync(join(destDir, name), "utf-8")).toBe("shared");
+      expect(lstatSync(join(destDir, name)).nlink).toBe(1);
+    }
+  });
 });

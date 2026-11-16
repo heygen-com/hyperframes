@@ -126,6 +126,25 @@ describe("tarDirectory / untarDirectory", () => {
       expect(lstatSync(join(dest, name)).nlink).toBe(1);
     }
   });
+
+  it("untar unpacks hard links whose names are near the filesystem limit", async () => {
+    const src = mkTmp("hf-tar-long-");
+    const first = `${"a".repeat(236)}.txt`;
+    const second = `${"b".repeat(236)}.txt`;
+    writeFileSync(join(src, first), "shared");
+    linkSync(join(src, first), join(src, second));
+    const work = mkTmp("hf-tar-work4-");
+    const tarball = join(work, "long.tar");
+    tar.create({ file: tarball, cwd: src, sync: true }, ["."]);
+
+    const dest = join(work, "extracted");
+    await untarDirectory(tarball, dest);
+    expect(readdirSync(dest).sort()).toEqual([first, second]);
+    for (const name of [first, second]) {
+      expect(readFileSync(join(dest, name), "utf8")).toBe("shared");
+      expect(lstatSync(join(dest, name)).nlink).toBe(1);
+    }
+  });
 });
 
 describe("download/upload bridge", () => {

@@ -718,12 +718,16 @@ function hardLinkedFiles(dir: string, found: string[] = []): string[] {
 function copyHardLinkedFiles(destDir: string): void {
   for (const path of hardLinkedFiles(destDir)) {
     if (lstatSync(path).nlink === 1) continue;
-    const copy = `${path}.unlink-${randomUUID()}`;
+    const copy = join(dirname(path), `.unlink-${randomUUID()}`);
     try {
       copyFileSync(path, copy, fsConstants.COPYFILE_EXCL);
       renameSync(copy, path);
     } catch (err) {
-      rmSync(copy, { force: true });
+      try {
+        rmSync(copy, { force: true });
+      } catch {
+        // Report the copy failure, not a failed cleanup.
+      }
       throw err;
     }
   }
