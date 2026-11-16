@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -174,4 +183,73 @@ test("the engine's own crashed renderer log still reports the failure", () => {
   );
   assert.equal(status.status, "failed");
   assert.match(status.error_tail, /^RuntimeError: CUDA out of memory/);
+});
+
+function runWait(dir, meta) {
+  writeFileSync(join(dir, "audio_meta.json"), JSON.stringify(meta));
+  const script = new URL("./wait-bgm.mjs", import.meta.url).pathname;
+  const run = spawnSync(
+    process.execPath,
+    [
+      script,
+      "--audio-meta",
+      join(dir, "audio_meta.json"),
+      "--hyperframes",
+      dir,
+      "--timeout-ms",
+      "0",
+    ],
+    { encoding: "utf8" },
+  );
+  assert.equal(run.status, 0, run.stderr);
+}
+
+test("a link planted at bgm_status.json is replaced, and the file it named is untouched", () => {
+  const base = mkdtempSync(join(tmpdir(), "mu-wait-bgm-"));
+  const dir = join(base, "project");
+  try {
+    mkdirSync(dir);
+    writeFileSync(join(base, "theirs.txt"), "theirs");
+    symlinkSync(join(base, "theirs.txt"), join(dir, "bgm_status.json"));
+    runWait(dir, { bgm: null });
+    assert.equal(readFileSync(join(base, "theirs.txt"), "utf8"), "theirs");
+    assert.equal(lstatSync(join(dir, "bgm_status.json")).isSymbolicLink(), false);
+    assert.equal(JSON.parse(readFileSync(join(dir, "bgm_status.json"), "utf8")).status, "disabled");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("a track path outside the project is never reported ready or recorded", () => {
+  const base = mkdtempSync(join(tmpdir(), "mu-wait-bgm-"));
+  const dir = join(base, "project");
+  try {
+    mkdirSync(dir);
+    writeFileSync(join(base, "theirs.wav"), "not ours");
+    runWait(dir, { bgm: { path: "../theirs.wav" }, bgm_pending: true, bgm_provider: "musicgen" });
+    const status = JSON.parse(readFileSync(join(dir, "bgm_status.json"), "utf8"));
+    assert.equal(status.ready, false);
+    assert.equal(status.path, null);
+    assert.equal(existsSync(join(dir, ".media/manifest.jsonl")), false);
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});
+
+test("a pid whose log is not the engine's own is dropped with the log", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-wait-bgm-"));
+  try {
+    mkdirSync(join(dir, "assets/bgm"), { recursive: true });
+    runWait(dir, {
+      bgm: { path: "assets/bgm/track.wav" },
+      bgm_pending: true,
+      bgm_pid: process.pid,
+      bgm_log: "/etc/hosts",
+    });
+    const status = JSON.parse(readFileSync(join(dir, "bgm_status.json"), "utf8"));
+    assert.equal(status.pid, null);
+    assert.equal(status.process_alive, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

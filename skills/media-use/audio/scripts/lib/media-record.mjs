@@ -51,7 +51,7 @@ export function voicePaths(hyperframesDir, lines, anomalies) {
     const id = String(line.id);
     if (!isPlainFileName(id)) {
       throw new Error(
-        `line id ${JSON.stringify(id)} names its voice file, so it must be a plain name without "/", "\\", ":" or ".."`,
+        `line id ${JSON.stringify(id)} names its voice file, so it must be a plain name: no "/", "\\" or ":", and not empty, "." or ".."`,
       );
     }
     const rel = agentWritePath(hyperframesDir, `assets/voice/${id}.wav`, { anomalies, taken });

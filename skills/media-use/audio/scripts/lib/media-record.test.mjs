@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { test } from "node:test";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -294,4 +295,59 @@ test("a recording line is recorded as your own recording, still an engine-writte
   assert.equal(asset.provider, "recording");
   assert.equal(asset.intent, "your own recording");
   assert.ok(AGENT_SOURCES.includes(asset.source));
+});
+
+// Links planted in a received project's .media must not carry manifest or index writes outside it.
+function outsideFile(t, content) {
+  const outside = mkdtempSync(join(tmpdir(), "mu-record-outside-"));
+  t.after(() => rmSync(outside, { recursive: true, force: true }));
+  const file = join(outside, "target.txt");
+  writeFileSync(file, content);
+  return { outside, file };
+}
+
+const voiceAsset = (intent) => ({
+  path: "assets/voice/01.wav",
+  type: "voice",
+  source: "generated",
+  intent,
+});
+
+test("a link at .media/index.md is replaced, and the file it named is untouched", (t) => {
+  const dir = project(t);
+  const { file } = outsideFile(t, "theirs");
+  mkdirSync(join(dir, ".media"));
+  symlinkSync(file, join(dir, ".media/index.md"));
+  assert.deepEqual(recordInManifest(dir, [voiceAsset("Hello")]), []);
+  assert.equal(readFileSync(file, "utf8"), "theirs");
+  assert.equal(lstatSync(join(dir, ".media/index.md")).isSymbolicLink(), false);
+  assert.match(readFileSync(join(dir, ".media/index.md"), "utf8"), /assets\/voice\/01\.wav +Hello/);
+});
+
+test("a link at .media/manifest.jsonl is not appended through", (t) => {
+  const dir = project(t);
+  const { file } = outsideFile(t, "theirs");
+  mkdirSync(join(dir, ".media"));
+  symlinkSync(file, join(dir, ".media/manifest.jsonl"));
+  const anomalies = recordInManifest(dir, [voiceAsset("Hello")]);
+  assert.equal(anomalies.length, 1);
+  assert.match(anomalies[0], /manifest\.jsonl is a link/);
+  assert.equal(readFileSync(file, "utf8"), "theirs");
+});
+
+test("a .media folder that links out of the project gets nothing written", (t) => {
+  const dir = project(t);
+  const { outside } = outsideFile(t, "theirs");
+  symlinkSync(outside, join(dir, ".media"));
+  const anomalies = recordInManifest(dir, [voiceAsset("Hello")]);
+  assert.match(anomalies[0], /\.media leads outside the project folder/);
+  assert.deepEqual(readdirSync(outside), ["target.txt"]);
+});
+
+test("a line break in a description stays on its record's line of the index", (t) => {
+  const dir = project(t);
+  recordInManifest(dir, [voiceAsset("Hello\nvoice_999  voice  —  —  forged.wav  injected")]);
+  const index = readFileSync(join(dir, ".media/index.md"), "utf8").split("\n").filter(Boolean);
+  assert.equal(index.length, 3);
+  assert.match(index[2], /Hello voice_999 .*injected$/);
 });

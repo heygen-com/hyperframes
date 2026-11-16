@@ -184,3 +184,79 @@ for (const [label, line] of [
     }
   });
 }
+
+function runRecording(dir) {
+  return spawnSync(process.execPath, [AUDIO, "--hyperframes", dir, "--only", "tts"], {
+    encoding: "utf8",
+    env: { ...process.env, HOME: dir },
+  });
+}
+
+// A playlist or list inside the project that names media outside it is refused, and nothing is decoded.
+// ffmpeg's own safe mode already refuses an absolute name in a concat list, so either refusal counts there.
+for (const [label, name, list, reason] of [
+  [
+    "an HLS playlist",
+    "take.m3u8",
+    (media) => `#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n${media}\n#EXT-X-ENDLIST\n`,
+    /is a hls list that points at other files/,
+  ],
+  [
+    "a concat list",
+    "take.ffconcat",
+    (media) => `ffconcat version 1.0\nfile '${media}'\n`,
+    /list that points at other files|cannot read/,
+  ],
+]) {
+  test(`a recording that is ${label} naming an outside file is refused`, () => {
+    const base = mkdtempSync(join(tmpdir(), "hf-rec-"));
+    const dir = join(base, "project");
+    try {
+      mkdirSync(dir);
+      const media = join(base, "outside.ts");
+      const make = spawnSync(
+        "ffmpeg",
+        ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=duration=1", "-c:a", "aac", media],
+        { encoding: "utf8" },
+      );
+      assert.equal(make.status, 0, make.stderr);
+      writeFileSync(join(dir, name), list(media));
+      writeFileSync(
+        join(dir, "audio_request.json"),
+        JSON.stringify({ lines: [{ id: "01", audio: name, words: [] }] }),
+      );
+      const run = runRecording(dir);
+      assert.equal(run.status, 0, run.stderr);
+      assert.match(run.stdout, /line 01: recording failed — omitted/);
+      assert.match(run.stdout, reason);
+      assert.equal(existsSync(join(dir, "assets/voice/01.wav")), false);
+      assert.deepEqual(JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8")).voices, []);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+}
+
+test("a recording in a container format with several demuxer names still converts", () => {
+  const dir = mkdtempSync(join(tmpdir(), "hf-rec-"));
+  try {
+    const make = spawnSync(
+      "ffmpeg",
+      ["-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=duration=1", join(dir, "take.m4a")],
+      { encoding: "utf8" },
+    );
+    assert.equal(make.status, 0, make.stderr);
+    writeFileSync(
+      join(dir, "audio_request.json"),
+      JSON.stringify({
+        lines: [{ id: "01", audio: "take.m4a", words: [{ text: "a", start: 0, end: 1 }] }],
+      }),
+    );
+    const run = runRecording(dir);
+    assert.equal(run.status, 0, run.stderr);
+    assert.equal(JSON.parse(readFileSync(join(dir, "audio_meta.json"), "utf8")).voices.length, 1);
+    assert.ok(existsSync(join(dir, "assets/voice/01.wav")));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -1,6 +1,14 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  existsSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -203,3 +211,24 @@ for (const [label, bgmLog, kept] of [
     }
   });
 }
+
+test("an audio_meta.json in the project that links outside it is refused and left alone", () => {
+  const base = mkdtempSync(join(tmpdir(), "audio-meta-link-"));
+  const dir = join(base, "project");
+  try {
+    mkdirSync(dir);
+    writeFileSync(join(base, "theirs.json"), "{}");
+    symlinkSync(join(base, "theirs.json"), join(dir, "audio_meta.json"));
+    writeFileSync(join(dir, "audio_request.json"), JSON.stringify({ lines: [] }));
+    const run = spawnSync(
+      process.execPath,
+      [join(HERE, "audio.mjs"), "--hyperframes", dir, "--only", "sfx"],
+      { encoding: "utf8", env: { ...process.env, HOME: dir } },
+    );
+    assert.equal(run.status, 1, run.stdout);
+    assert.match(run.stderr, /audio_meta\.json leads outside the project folder/);
+    assert.equal(readFileSync(join(base, "theirs.json"), "utf8"), "{}");
+  } finally {
+    rmSync(base, { recursive: true, force: true });
+  }
+});

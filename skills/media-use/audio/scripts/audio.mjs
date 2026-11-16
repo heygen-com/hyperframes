@@ -39,7 +39,7 @@
 // before assembling.
 
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { heygenAuthHeaders, heygenCredential, loadEnvFromDir } from "./lib/heygen.mjs";
 import {
@@ -57,7 +57,7 @@ import { parseWords, recordingSource, scaleWords, stretchToWav } from "./lib/rec
 import { mapWithConcurrency } from "./lib/concurrency.mjs";
 import { openAudioMeta } from "./lib/audio-meta.mjs";
 import { recordInManifest, voicePaths, writtenAssets } from "./lib/media-record.mjs";
-import { engineBgmLog } from "./lib/project-path.mjs";
+import { engineBgmLog, projectPath } from "./lib/project-path.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -121,6 +121,11 @@ loadEnvFromDir(hyperframesDir);
 const heygenOK = heygenCredential() !== null;
 
 // ── merge base: preserve sections not selected by --only ──────────────────────
+// An output inside the project must stay there: a link planted at audio_meta.json must not lead outside.
+const outRel = relative(hyperframesDir, outPath);
+const outInProject = outRel !== ".." && !outRel.startsWith(`..${sep}`) && !isAbsolute(outRel);
+if (outInProject && !projectPath(hyperframesDir, outRel))
+  die(`${outPath} leads outside the project folder; replace it with a regular file`);
 const audioMeta = openAudioMeta(outPath);
 const prev = audioMeta.value;
 const anomalies = [];
