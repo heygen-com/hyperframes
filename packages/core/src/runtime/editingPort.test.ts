@@ -83,6 +83,7 @@ describe("createEditingPortClient", () => {
           "color-grading-status",
           "color-grading-previews",
           "color-grading-playback",
+          "watch-geometry",
         ],
       });
     } finally {
@@ -244,6 +245,27 @@ describe("createEditingPortClient", () => {
     const late = client.request("runtime-snapshot", {}, { timeoutMs: 5 });
     await expect(late).rejects.toBeInstanceOf(EditingPortError);
     await expect(late).rejects.toMatchObject({ code: "timeout" });
+  });
+
+  it("hands each geometry push to its listeners, drops off-shape ones, and stops the watch on dispose", async () => {
+    const { iframe, frame } = previewFrame();
+    const { host, deliver } = fakeHost();
+    const client = createEditingPortClient({ iframe, host });
+    const { port1, port2 } = channel();
+    deliver({ source: frame, data: PORT_MESSAGE, ports: [port1] });
+    await client.ready;
+    const asked: Array<Record<string, unknown>> = [];
+    port2.onmessage = (event) => asked.push(event.data);
+    const heard = vi.fn();
+    client.onGeometry(heard);
+    void client.request("watch-geometry", { handles: ["0123456789abcdef:1"] }).catch(() => {});
+    port2.postMessage({ v: 1, event: "geometry", at: 1, elements: [null], extra: 1 });
+    port2.postMessage({ v: 1, event: "geometry", at: 2, elements: [null] });
+    await vi.waitFor(() => expect(heard).toHaveBeenCalledOnce());
+    expect(heard).toHaveBeenCalledWith({ at: 2, elements: [null] });
+    client.dispose();
+    await vi.waitFor(() => expect(asked).toHaveLength(2));
+    expect(asked[1]).toMatchObject({ kind: "watch-geometry", params: { handles: [] } });
   });
 
   it("dispose rejects pending and later requests and closes the port", async () => {

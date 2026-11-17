@@ -33,6 +33,7 @@ import { pointerTargetsAt } from "./editingTargets";
 import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
 import { restoreAttributes } from "./editing/restoreAttributes";
+import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
 import { gestureStart } from "./editingGestureStart";
 import {
   getLogicalOpacity,
@@ -200,6 +201,7 @@ const HANDLERS: Handlers = {
   "color-grading-status": colorGradingStatus,
   "color-grading-previews": colorGradingPreviews,
   "color-grading-playback": colorGradingPlayback,
+  "watch-geometry": (params, port) => watchGeometry(port, params, EDITING_PROTOCOL_VERSION),
 };
 
 function serve(port: MessagePort): void {
@@ -279,6 +281,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       consoleWatch = null;
       keyWatches.clear();
       listenForKeys(false);
+      stopWatchingGeometry();
     },
   };
 }
