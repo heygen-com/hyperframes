@@ -12,6 +12,7 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { usePreviewIframeStore } from "../player/store/previewIframeStore";
 import { previewStandInHandle } from "../components/editor/previewDrafts";
 import type { RuntimeTimeline } from "./gsapRuntimeKeyframes";
+import { readGsapSnapshot } from "./gsapSnapshotReply";
 
 type Snapshot = EditingResult<"gsap-snapshot">;
 type SnapshotTween = Snapshot["timelines"][number]["tweens"][number];
@@ -94,7 +95,7 @@ async function read(iframe: HTMLIFrameElement, client: EditingPortClient): Promi
   }
   const readAt = pausedPlayhead();
   try {
-    const snapshot = await previewRequest(iframe, "gsap-snapshot", {});
+    const snapshot = readGsapSnapshot(await previewRequest(iframe, "gsap-snapshot", {}));
     const before = held.get(client);
     if (!snapshot) {
       if (before) held.delete(client);
@@ -193,7 +194,8 @@ function hold(snapshot: Snapshot, json: string, readAt: number | null): HeldSnap
   const held: HeldSnapshot = {
     readAt,
     json,
-    timelines: {},
+    // Ids are the frame's: a timeline named __proto__ must stay a timeline.
+    timelines: Object.create(null) as Record<string, RuntimeTimeline>,
     document,
     byHandle,
     values,

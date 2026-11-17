@@ -3,14 +3,14 @@ import type { EditingElementHandle } from "../editingElement";
 import { handleFor } from "../editingHandles";
 import { isPlainRecord } from "../editingPort";
 import { isElementNode } from "../domRealm";
-
-export const MAX_SNAPSHOT_TWEENS = 2_048;
-const MAX_SNAPSHOT_TARGETS = 512;
-/** Channels read per target, and fields across every tween's vars. */
-const MAX_SNAPSHOT_CHANNELS = 64;
-const MAX_SNAPSHOT_FIELDS = 100_000;
-export const MAX_SNAPSHOT_TEXT = 4_096;
-const MAX_VARS_DEPTH = 6;
+import {
+  MAX_SNAPSHOT_CHANNELS,
+  MAX_SNAPSHOT_FIELDS,
+  MAX_SNAPSHOT_TARGETS,
+  MAX_SNAPSHOT_TEXT,
+  MAX_SNAPSHOT_TWEENS,
+  MAX_VARS_DEPTH,
+} from "./gsapSnapshotLimits";
 
 export type SnapshotValue =
   | number
@@ -108,7 +108,12 @@ class SnapshotBound extends Error {
   }
 }
 
-const text = (value: unknown) => (typeof value === "string" ? value : null);
+/** Every text the snapshot carries, keys and ids included, is held to the text bound. */
+function capped(value: string): string {
+  if (value.length > MAX_SNAPSHOT_TEXT) throw new SnapshotBound("text length");
+  return value;
+}
+const text = (value: unknown) => (typeof value === "string" ? capped(value) : null);
 const finite = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : 0;
 
@@ -122,8 +127,9 @@ export async function gsapSnapshot(): Promise<GsapSnapshot> {
   for (const [id, live] of Object.entries(frame.__timelines ?? {})) {
     if (typeof live?.getChildren !== "function") continue;
     const tweens = live.getChildren(true).filter((child) => typeof child.targets === "function");
+    if (timelines.length >= MAX_SNAPSHOT_TWEENS) throw new SnapshotBound("timelines");
     timelines.push({
-      id,
+      id: capped(id),
       time: typeof live.time === "function" ? finite(live.time()) : null,
       defaultEase: text(live.vars?.defaults?.ease),
       tweens: tweens.map((tween) => reader.tween(tween)),
@@ -165,7 +171,7 @@ class SnapshotReader {
       }
       const className = element.getAttribute("class") ?? "";
       if (className.length > MAX_SNAPSHOT_TEXT) throw new SnapshotBound("class names");
-      return { handle: handleFor(element), id: element.id, className, values };
+      return { handle: handleFor(element), id: capped(element.id), className, values };
     });
   }
 
@@ -201,7 +207,7 @@ class SnapshotReader {
     const out: Record<string, SnapshotValue> = {};
     for (const [key, item] of Object.entries(value)) {
       const kept = this.plain(item, depth + 1);
-      if (kept !== undefined) out[key] = kept;
+      if (kept !== undefined) out[capped(key)] = kept;
     }
     return out;
   }
@@ -225,8 +231,7 @@ function scalar(value: unknown): SnapshotValue | undefined {
   if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
   if (typeof value !== "string")
     return typeof value === "boolean" || value === null ? value : undefined;
-  if (value.length > MAX_SNAPSHOT_TEXT) throw new SnapshotBound("text length");
-  return value;
+  return capped(value);
 }
 
 /** A step's value, or an object-of-arrays keyframe's list of them. */
@@ -240,13 +245,17 @@ function stepsOf(keyframes: SnapshotValue | undefined): Record<string, SnapshotV
   return [keyframes, ...Object.values(keyframes).filter(isPlainRecord)] as never;
 }
 
-/** The tween's property tweens, CSSPlugin's nested ones included, in chain order. */
-function parsedChannels(first: LivePropTween | undefined): GsapSnapshotTween["parsed"] {
+/** The tween's property tweens, CSSPlugin's nested ones included, in chain order; a node seen before ends a chain. */
+function parsedChannels(
+  first: LivePropTween | undefined,
+  seen = new Set<LivePropTween>(),
+): GsapSnapshotTween["parsed"] {
   const out: GsapSnapshotTween["parsed"] = [];
-  for (let node = first; node; node = node._next) {
+  for (let node = first; node && !seen.has(node); node = node._next) {
+    seen.add(node);
     if (typeof node.p === "string" && typeof node.s === "number" && typeof node.c === "number")
-      out.push({ p: node.p, s: node.s, c: node.c });
-    out.push(...parsedChannels(node.d?._pt));
+      out.push({ p: capped(node.p), s: node.s, c: node.c });
+    out.push(...parsedChannels(node.d?._pt, seen));
     if (out.length > MAX_SNAPSHOT_CHANNELS) throw new SnapshotBound("parsed channels");
   }
   return out;
