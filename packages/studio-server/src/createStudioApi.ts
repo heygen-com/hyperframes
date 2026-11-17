@@ -149,8 +149,9 @@ const ENDPOINT_ASKED_FOR = -1;
 
 const reportRefusals =
   (onRefusal: (refusal: StudioRefusal) => void) => async (c: Context, next: Next) => {
+    const fetchedAgain = isFetchedAgain(c.req.raw);
     await next();
-    if (c.res.status !== 403 || isFetchedAgain(c.req.raw)) return;
+    if (c.res.status !== 403 || fetchedAgain) return;
     const body: unknown = await c.res
       .clone()
       .json()
