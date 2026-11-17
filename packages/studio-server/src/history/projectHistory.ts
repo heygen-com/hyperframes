@@ -793,14 +793,18 @@ class Engine {
     replaceFileAtomically(join(this.home, "stat.json"), files, 0o644);
   }
 
+  copiesNothing(file: ListedFile, now: number): boolean {
+    if (this.adopting.has(file.path) || isUncopied(file.path, file.size)) return true;
+    const stat = statKey(file, now);
+    return stat !== "" && this.tracked.get(file.path)?.stat === stat;
+  }
+
   async unsavedBlobBytes(): Promise<number> {
     if (this.whereFolder() !== "here") return 0;
     const now = this.now();
     const missing = new Map<string, number>();
     for (const file of await historyFiles(this.dir)) {
-      if (this.adopting.has(file.path) || isUncopied(file.path, file.size)) continue;
-      const stat = statKey(file, now);
-      if (stat && this.tracked.get(file.path)?.stat === stat) continue;
+      if (this.copiesNothing(file, now)) continue;
       const hash = await hashIfPresent(join(this.dir, file.path));
       if (hash && !this.blobs.has(hash)) missing.set(hash, file.size);
     }
