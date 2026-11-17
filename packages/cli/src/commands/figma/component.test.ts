@@ -1,6 +1,15 @@
 // @vitest-environment node
 import { describe, expect, it, afterEach, beforeEach, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runComponentImport } from "./component.js";
@@ -208,4 +217,43 @@ describe("runComponentImport", () => {
     const html = readFileSync(join(dir, out.htmlPath), "utf8");
     expect(html).toMatch(/^<div id="hero-actions"/);
   });
+});
+
+describe("runComponentImport with links in the project", () => {
+  const posixOnly = it.skipIf(process.platform === "win32");
+  const outsideDirs: string[] = [];
+  afterEach(() => {
+    for (const d of outsideDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+  function outsideDir(): string {
+    const d = mkdtempSync(join(tmpdir(), "hf-figma-outside-"));
+    outsideDirs.push(d);
+    return d;
+  }
+
+  posixOnly.each([
+    ["compositions"],
+    ["compositions/components"],
+    ["compositions/components/hero-card"],
+  ])("refuses when %s is a link out of the project", async (linked) => {
+    const outside = outsideDir();
+    mkdirSync(join(dir, linked, ".."), { recursive: true });
+    symlinkSync(outside, join(dir, linked));
+    await expect(importHero()).rejects.toThrow(/outside the project/);
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  posixOnly.each([["hero-card.html"], ["registry-item.json"]])(
+    "replaces a linked %s instead of writing through it",
+    async (file) => {
+      const outside = join(outsideDir(), "outside.txt");
+      writeFileSync(outside, "keep me\n");
+      const componentDir = join(dir, "compositions", "components", "hero-card");
+      mkdirSync(componentDir, { recursive: true });
+      symlinkSync(outside, join(componentDir, file));
+      await importHero();
+      expect(readFileSync(outside, "utf8")).toBe("keep me\n");
+      expect(lstatSync(join(componentDir, file)).isFile()).toBe(true);
+    },
+  );
 });
