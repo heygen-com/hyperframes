@@ -560,6 +560,12 @@ test("recipe and stats output print control characters as visible escapes", () =
     const used = runResolve(["--type", "recipe", "--entity", "promo", "--project", tmp]);
     assert.ok(used.includes("resolved recipe promo\\x1b[2K (v1, w\\x07)"), used);
 
+    const missing = spawnResolve(["--type", "recipe", "--entity", "nope", "--project", tmp]);
+    assert.notEqual(missing.status, 0);
+    assert.ok(missing.stderr.includes("known: promo\\x1b[2K"), missing.stderr);
+    for (const raw of ["\x07", "\x1b"])
+      assert.ok(!missing.stderr.includes(raw), "no raw control character reaches the terminal");
+
     const home = join(process.env.HYPERFRAMES_MEDIA_HOME, ".media");
     mkdirSync(home, { recursive: true });
     const miss = {

@@ -557,7 +557,7 @@ async function run() {
         }),
       );
     } else {
-      console.error(`error: ${msg}`);
+      console.error(terminalText(`error: ${msg}`));
     }
     process.exit(1);
   }
@@ -675,7 +675,7 @@ function exitError(message, status = 1) {
   if (args.json) {
     console.log(JSON.stringify({ ok: false, error: message }));
   } else {
-    console.error(`error: ${message}`);
+    console.error(terminalText(`error: ${message}`));
   }
   process.exit(status);
 }
@@ -747,7 +747,7 @@ async function colorMiss(type, intent) {
   if (args.json) {
     console.log(JSON.stringify({ ok: false, error: msg }));
   } else {
-    console.error(`error: ${msg}`);
+    console.error(terminalText(`error: ${msg}`));
   }
   process.exit(1);
 }
@@ -1284,7 +1284,7 @@ async function reuseGlobal(shaArg) {
   }
   // Do not import an asset under the wrong type.
   if (!typesMatch(rec.type, type)) {
-    console.error(`error: sha "${shaArg}" is a ${rec.type} asset, not ${type}`);
+    console.error(terminalText(`error: sha "${shaArg}" is a ${rec.type} asset, not ${type}`));
     process.exit(2);
   }
   const ext = extname(rec.cached_path || "") || defaultExt(type);
@@ -1405,7 +1405,7 @@ run().catch((err) => {
   if (args.json) {
     console.log(JSON.stringify({ ok: false, error: err.message }));
   } else {
-    console.error(`error: ${err.message}`);
+    console.error(terminalText(`error: ${err.message}`));
   }
   process.exit(1);
 });
