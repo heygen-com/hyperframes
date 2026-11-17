@@ -1,0 +1,65 @@
+import { createJobSlots, JobAbandonedError } from "./jobSlots.js";
+
+export type DecodeAudio = (mediaPath: string, signal: AbortSignal) => Promise<number[]>;
+
+/** The most full-file audio decodes (waveform and peaks together) that run at once. */
+export const AUDIO_DECODE_LIMIT = 4;
+
+const runDecode = createJobSlots(AUDIO_DECODE_LIMIT);
+
+interface SharedDecode {
+  result: Promise<number[]>;
+  waiting: number;
+  stop: AbortController;
+}
+
+const inFlight = new Map<string, SharedDecode>();
+
+function startDecode(key: string, mediaPath: string, decode: DecodeAudio): SharedDecode {
+  const stop = new AbortController();
+  const result = runDecode(() => decode(mediaPath, stop.signal), stop.signal).finally(() => {
+    if (inFlight.get(key) === shared) inFlight.delete(key);
+  });
+  // Each request attaches its own handlers; this only keeps a decode nobody waits for from an unhandled rejection.
+  result.catch(() => undefined);
+  const shared: SharedDecode = { result, waiting: 0, stop };
+  inFlight.set(key, shared);
+  return shared;
+}
+
+/**
+ * One decode per cache entry, shared by every request that asks for it while it runs, in a slot shared by the
+ * waveform and peaks routes. When the last request waiting on a decode goes away, the decode stops (its ffmpeg is
+ * killed, or it leaves the queue) and the next request for that entry starts a new one.
+ */
+export function decodeShared(
+  key: string,
+  mediaPath: string,
+  decode: DecodeAudio,
+  signal?: AbortSignal,
+): Promise<number[]> {
+  const shared = inFlight.get(key) ?? startDecode(key, mediaPath, decode);
+  shared.waiting++;
+  return new Promise((resolve, reject) => {
+    const leave = () => {
+      shared.waiting--;
+      if (shared.waiting === 0) {
+        if (inFlight.get(key) === shared) inFlight.delete(key);
+        shared.stop.abort();
+      }
+      reject(new JobAbandonedError());
+    };
+    if (signal?.aborted) return leave();
+    signal?.addEventListener("abort", leave, { once: true });
+    shared.result.then(
+      (peaks) => {
+        signal?.removeEventListener("abort", leave);
+        resolve(peaks);
+      },
+      (error: unknown) => {
+        signal?.removeEventListener("abort", leave);
+        reject(error);
+      },
+    );
+  });
+}

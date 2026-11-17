@@ -10,6 +10,7 @@ import {
   isWaveformCacheDirectory,
 } from "../helpers/waveform.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
+import { decodeShared } from "../helpers/audioDecodes.js";
 
 export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/waveform/*", async (c) => {
@@ -43,7 +44,7 @@ export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): vo
 
     let peaks: number[];
     try {
-      peaks = await decodeAudioPeaks(audioPath);
+      peaks = await decodeShared(cachePath, audioPath, decodeAudioPeaks, c.req.raw.signal);
     } catch {
       return c.json({ error: "failed to decode audio" }, 500);
     }

@@ -4,6 +4,7 @@ import {
   writeFileSync,
   mkdirSync,
   lstatSync,
+  readdirSync,
   renameSync,
   rmSync,
   statSync,
@@ -17,6 +18,8 @@ import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
 const SAMPLE_RATE = 4000;
 const PEAK_COUNT = 4000;
 const WAVEFORM_CACHE_VERSION = "v2";
+/** The most entries `.waveform-cache` keeps (waveform and peaks together); a write past it drops the oldest. */
+export const WAVEFORM_CACHE_LIMIT = 500;
 
 /**
  * Cache filename for one asset's peaks, keyed on its content as well as its name.
@@ -60,9 +63,10 @@ function computePeaks(floats: Float32Array, count: number): number[] {
   return peaks.map((p) => p / maxPeak);
 }
 
-export async function decodeAudioPeaks(audioPath: string): Promise<number[]> {
+export async function decodeAudioPeaks(audioPath: string, signal?: AbortSignal): Promise<number[]> {
   const track = await probeAudioTrack(audioPath);
   if (!track) throw new Error("no audio stream");
+  signal?.throwIfAborted();
   const ffmpeg = requireFfBinary("ffmpeg");
   return new Promise((resolvePromise, reject) => {
     const proc = spawn(
@@ -84,7 +88,7 @@ export async function decodeAudioPeaks(audioPath: string): Promise<number[]> {
         "-vn",
         "pipe:1",
       ],
-      { stdio: ["ignore", "pipe", "ignore"], windowsHide: true },
+      { stdio: ["ignore", "pipe", "ignore"], windowsHide: true, signal },
     );
 
     const chunks: Buffer[] = [];
@@ -147,4 +151,22 @@ export function writeWaveformCache(cachePath: string, peaks: number[]): void {
       // Cleanup must not mask a write error or fail an already published cache.
     }
   }
+  try {
+    evictOldest(cacheDir);
+  } catch {
+    // The entry is published; a folder that cannot be listed or pruned now is pruned by a later write.
+  }
+}
+
+/** Drops the oldest cache entries past `WAVEFORM_CACHE_LIMIT`, so the folder cannot grow without bound. */
+function evictOldest(cacheDir: string): void {
+  const entries = readdirSync(cacheDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .map((entry) => join(cacheDir, entry.name));
+  if (entries.length <= WAVEFORM_CACHE_LIMIT) return;
+  const byAge = entries
+    .map((path) => ({ path, mtimeMs: lstatSync(path, { throwIfNoEntry: false })?.mtimeMs ?? 0 }))
+    .sort((a, b) => a.mtimeMs - b.mtimeMs);
+  for (const { path } of byAge.slice(0, entries.length - WAVEFORM_CACHE_LIMIT))
+    rmSync(path, { force: true });
 }
