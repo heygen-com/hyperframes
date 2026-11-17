@@ -13,6 +13,7 @@ import {
   type DomEditSelection,
 } from "./domEditing";
 import { setCompositionSourceMap } from "./domEditingDom";
+import { dropElementCropLift, liftElementCrop, readElementCropInsets } from "./domEditOverlayCrop";
 import { domEditSelectionToFacts } from "./domEditingLayers";
 import {
   findPreviewElementForSelection,
@@ -477,5 +478,36 @@ describe("useDomSelection on an opaque frame", () => {
     }
     expect(hook().domEditSelection!.id).toBe("scene");
     expect(hook().domEditGroupSelections.map((s) => s.id)).toEqual(["scene"]);
+  });
+});
+
+describe("an opaque frame selection's crop", () => {
+  it("reads the clip-path the frame renders, as a scriptable frame's does", async () => {
+    document.body.innerHTML = FIXTURE;
+    const plain = document.querySelector<HTMLElement>("#plain")!;
+    plain.style.clipPath = "inset(10px 20px 30px 40px)";
+    const { live, remote } = await bothPaths(plain);
+
+    expect(readElementCropInsets(remote!.element)).toEqual(readElementCropInsets(live!.element));
+    expect(readElementCropInsets(remote!.element)).toMatchObject({
+      top: 10,
+      right: 20,
+      bottom: 30,
+      left: 40,
+    });
+  });
+
+  it("shows the element uncropped in the frame while selected, and crops it again after", async () => {
+    document.body.innerHTML = FIXTURE;
+    const plain = document.querySelector<HTMLElement>("#plain")!;
+    plain.style.clipPath = "inset(10px 20px 30px 40px)";
+    const { remote } = await bothPaths(plain);
+    const shown = () => window.getComputedStyle(plain).clipPath;
+
+    liftElementCrop(remote!.element);
+    await vi.waitFor(() => expect(shown()).toBe("none"));
+    expect(readElementCropInsets(remote!.element)).toMatchObject({ top: 10, left: 40 });
+    dropElementCropLift(remote!.element);
+    await vi.waitFor(() => expect(shown()).toBe("inset(10px 20px 30px 40px)"));
   });
 });
