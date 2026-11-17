@@ -301,6 +301,7 @@ function loadedByAnotherSite(req: IncomingMessage, res: ServerResponse): boolean
     host: req.headers.host,
     referer: req.headers.referer,
   });
+  res.setHeader("Vary", "Sec-Fetch-Site, Referer");
   if (anotherSite) {
     const policies = [res.getHeader("Content-Security-Policy"), "sandbox allow-scripts"];
     res.setHeader("Content-Security-Policy", policies.filter((p) => p !== undefined).map(String));

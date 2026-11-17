@@ -86,7 +86,7 @@ const sandboxPreviewForAnotherSiteOrCapture =
   (sandboxCaptures: boolean) => async (c: Context, next: Next) => {
     if (framedByAnotherSite(c)) c.req.raw = withoutValidators(c.req.raw);
     await next();
-    c.header("Vary", "Sec-Fetch-Site", { append: true });
+    c.header("Vary", "Sec-Fetch-Site, Referer", { append: true });
     const anotherSite = documentForAnotherSite(c);
     if (anotherSite || (sandboxCaptures && isThumbnailCapture(c)))
       c.header("Content-Security-Policy", "sandbox allow-scripts");

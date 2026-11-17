@@ -237,7 +237,7 @@ export function sandboxForAnotherSite(app: Hono, path: string): void {
     });
     if (anotherSite) c.req.raw = withoutValidators(c.req.raw);
     await next();
-    c.header("Vary", "Sec-Fetch-Site", { append: true });
+    c.header("Vary", "Sec-Fetch-Site, Referer", { append: true });
     if (!anotherSite) return;
     c.header("Content-Security-Policy", "sandbox allow-scripts");
     await markDocumentForAnotherSite(c);
