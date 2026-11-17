@@ -114,3 +114,62 @@ describe.skipIf(!HAS_FFMPEG)("concat input paths", () => {
     30_000,
   );
 });
+
+describe.skipIf(!HAS_FFMPEG)("concat input formats", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "hf-concat-formats-"));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  function makeClip(path: string, frames: number): void {
+    const codec = path.endsWith(".webm") ? ["libvpx-vp9"] : ["libx264", "-bf", "0"];
+    const made = spawnSync(getFfmpegBinary(), [
+      ...["-v", "error", "-f", "lavfi", "-i", "color=red:size=32x32:rate=30"],
+      ...["-frames:v", String(frames), "-c:v", ...codec, "-y", path],
+    ]);
+    expect(made.status, made.stderr.toString()).toBe(0);
+  }
+
+  function frameCount(path: string): string {
+    const probe = spawnSync(
+      getFfprobeBinary(),
+      [
+        ...["-v", "error", "-count_frames", "-select_streams", "v:0"],
+        ...["-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", "--", path],
+      ],
+      { encoding: "utf8" },
+    );
+    expect(probe.status, probe.stderr).toBe(0);
+    return probe.stdout.trim();
+  }
+
+  it.each(["mp4", "mov", "webm"])(
+    "joins %s files the encoders write",
+    async (ext) => {
+      const inputs = [join(root, `a.${ext}`), join(root, `b.${ext}`)];
+      makeClip(inputs[0]!, 2);
+      makeClip(inputs[1]!, 3);
+      const outputPath = join(root, `joined.${ext}`);
+      expect(await concatVideoFiles(inputs, outputPath)).toEqual({ success: true });
+      expect(frameCount(outputPath)).toBe("5");
+    },
+    30_000,
+  );
+
+  it("refuses a listed file that is a playlist of other files", async () => {
+    const elsewhere = join(root, "elsewhere.mp4");
+    makeClip(elsewhere, 4);
+    const playlist = join(root, "segment.m3u8");
+    writeFileSync(
+      playlist,
+      "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nelsewhere.mp4\n#EXT-X-ENDLIST\n",
+    );
+    const result = await concatVideoFiles([playlist], join(root, "joined.mp4"));
+    expect(result.success).toBe(false);
+  }, 30_000);
+});

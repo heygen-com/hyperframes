@@ -673,8 +673,24 @@ export async function encodeFramesFromDir(
   };
 }
 
+/** The list itself plus what the chunk and segment encoders write; ffmpeg applies it to nested opens too. */
+const CONCAT_LIST_FORMATS = "concat,mov,matroska";
+
+export function concatListInputArgs(concatListPath: string): string[] {
+  return [
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-format_whitelist",
+    CONCAT_LIST_FORMATS,
+    "-i",
+    concatListPath,
+  ];
+}
+
 export function buildConcatArgs(concatListPath: string, outputPath: string): string[] {
-  const args = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
+  const args = [...concatListInputArgs(concatListPath), "-c", "copy"];
   // The concat demuxer does not carry per-input container metadata into the
   // output, so provenance is re-asserted on the concatenated file.
   appendRenderProvenanceArgs(args, outputPath);
