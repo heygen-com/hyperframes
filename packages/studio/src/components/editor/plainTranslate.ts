@@ -120,7 +120,10 @@ export function readTranslatePx(el: HTMLElement): Point {
 }
 
 export function readTranslatePxLeavingPercent(el: HTMLElement): Point {
-  const value = el.ownerDocument.defaultView?.getComputedStyle(el).translate || "none";
+  const value =
+    el.ownerDocument.defaultView?.getComputedStyle(el).translate ||
+    el.style.getPropertyValue("translate") ||
+    "none";
   const [x = "0px", y = "0px"] = value === "none" ? [] : splitTopLevelWhitespace(value);
   const px = (part: string) => roundTo3(evaluateLength(part, 0)) || 0;
   return { x: px(x), y: px(y) };
