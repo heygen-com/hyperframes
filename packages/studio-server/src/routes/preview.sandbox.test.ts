@@ -53,7 +53,7 @@ describe.each(routes)("%s", (_name, path, type) => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain(type);
     expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
-    expect(res.headers.get("vary")).toBe("Sec-Fetch-Site");
+    expect(res.headers.get("vary")).toBe("Sec-Fetch-Site, Referer");
   });
 
   it.each([["same-origin"], ["none"]])(
@@ -62,7 +62,7 @@ describe.each(routes)("%s", (_name, path, type) => {
       const res = await get(path, site);
       expect(res.status).toBe(200);
       expect(res.headers.get("content-security-policy")).toBeNull();
-      expect(res.headers.get("vary")).toBe("Sec-Fetch-Site");
+      expect(res.headers.get("vary")).toBe("Sec-Fetch-Site, Referer");
     },
   );
 });
@@ -99,7 +99,7 @@ describe("a revalidated preview", () => {
       headers: { "sec-fetch-site": "same-origin", "if-none-match": etag! },
     });
     expect(res.status).toBe(304);
-    expect(res.headers.get("vary")).toBe("Sec-Fetch-Site");
+    expect(res.headers.get("vary")).toBe("Sec-Fetch-Site, Referer");
   });
 
   it.each(["cross-site", "same-site"])(
@@ -118,7 +118,7 @@ describe("a revalidated preview", () => {
       });
       expect(res.status).toBe(200);
       expect(await res.text()).toContain('<meta name="hyperframes-preview-for-another-site">');
-      expect(res.headers.get("vary")).toBe("Sec-Fetch-Site");
+      expect(res.headers.get("vary")).toBe("Sec-Fetch-Site, Referer");
       expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
     },
   );

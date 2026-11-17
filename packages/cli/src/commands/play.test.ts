@@ -508,5 +508,6 @@ describe("a composition document another site loads", () => {
       headers: { Referer: `${local}/` },
     });
     expect(await own.text()).not.toContain(MARK);
+    for (const res of [bare, own]) expect(res.headers.get("Vary")).toBe("Sec-Fetch-Site, Referer");
   });
 });

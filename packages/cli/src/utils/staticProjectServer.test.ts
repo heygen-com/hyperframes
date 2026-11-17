@@ -798,6 +798,7 @@ describe("serveStaticProjectHtml page another site loads", () => {
     expect(bare.headers.get("content-security-policy")).toContain(SANDBOX);
     const own = await fetch(`${url}scene.html`, { headers: { Referer: url } });
     expect(await own.text()).not.toContain(MARK);
+    for (const res of [bare, own]) expect(res.headers.get("vary")).toBe("Sec-Fetch-Site, Referer");
   });
 });
 
