@@ -1,5 +1,5 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
-import { forwardRef, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readiness";
 import { installAcceleratedCanvasTracker } from "@hyperframes/core/page-motion-blur";
 import { useMountEffect } from "../../hooks/useMountEffect";
@@ -160,6 +160,12 @@ const runtimeBootedIn = (iframe: HTMLIFrameElement) =>
  * forwarded ref so useTimelinePlayer can access it for clip manifest parsing,
  * timeline probing, and DOM inspection.
  */
+function useLatestCall(call: (() => void) | undefined): () => void {
+  const latest = useRef(call);
+  latest.current = call;
+  return useCallback(() => latest.current?.(), []);
+}
+
 export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
   (
     {
@@ -195,8 +201,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     onReadyToShowChangeRef.current = onReadyToShowChange;
     const onPreviewErrorRef = useRef(onPreviewError);
     onPreviewErrorRef.current = onPreviewError;
-    const onCompositionSizeRef = useRef(onCompositionSize);
-    onCompositionSizeRef.current = onCompositionSize;
+    const handleSize = useLatestCall(onCompositionSize);
     const [loaded, setLoaded] = useState(false);
     const [assetsLoading, setAssetsLoading] = useState(false);
     const [assetOverlayVisible, setAssetOverlayVisible] = useState(false);
@@ -258,7 +263,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           if (loading !== null) setShaderTransitionLoading(loading);
         };
         let loadedDocument: Document | null = null;
-        const handleSize = () => onCompositionSizeRef.current?.();
         const handleReady = () => {
           setPreviewError(null);
           setCompositionLoading(false);
