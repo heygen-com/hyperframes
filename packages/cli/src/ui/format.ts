@@ -133,7 +133,6 @@ export function label(name: string, value: string): string {
 
 export function errorBox(title: string, hint?: string, suggestion?: string): void {
   recordFailure(title, hint ?? suggestion);
-  // Error text can come from a project or its page: control bytes print as visible escapes.
   console.error(`\n${c.error("\u2717")}  ${c.bold(terminalText(title))}`);
   if (hint) {
     // Indent EVERY hint line, not just the first \u2014 a multi-line hint (e.g. the

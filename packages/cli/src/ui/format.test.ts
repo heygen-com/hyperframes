@@ -206,7 +206,11 @@ describe("errorBox", () => {
       said.push(args.map(String).join(" "));
     });
     try {
-      errorBox("Load \u001b]0;t\u0007", "page threw \u001b[2J\u009b\nsecond line", "run \u001b[9;9H");
+      errorBox(
+        "Load \u001b]0;t\u0007",
+        "page threw \u001b[2J\u009b\nsecond line",
+        "run \u001b[9;9H",
+      );
     } finally {
       spy.mockRestore();
     }

@@ -295,7 +295,10 @@ export default defineCommand({
       const message = normalizeErrorMessage(err);
       if (json)
         console.log(formatJson(withMeta({ ok: false, error: message, ...(fix ? { fix } : {}) })));
-      else console.error(`${c.error("✗")} ${terminalLines(message)}${fix ? `\n  Fix: ${terminalLines(fix)}` : ""}`);
+      else
+        console.error(
+          `${c.error("✗")} ${terminalLines(message)}${fix ? `\n  Fix: ${terminalLines(fix)}` : ""}`,
+        );
       failCommand(1, err);
     } finally {
       scheduleCliExit(exitCode);
