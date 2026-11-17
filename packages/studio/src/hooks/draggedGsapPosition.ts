@@ -49,7 +49,6 @@ export interface DragStamp {
   moving?: true;
 }
 
-/** The drag-start attributes as they are now; NaN for an absent base. */
 /** Writes the gesture-start stamp `readDragStamp` reads. The member's JS values are re-stamped before the commit
  *  because a mid-gesture re-render can wipe these attributes, and without the base the drop re-adds the drag. */
 export function stampGestureBase(
@@ -66,6 +65,7 @@ export function stampGestureBase(
   el.setAttribute("data-hf-drag-initial-offset-y", String(initialOffset.y));
 }
 
+/** The drag-start attributes as they are now; NaN for an absent base. */
 export function readDragStamp(element: HTMLElement): DragStamp {
   const read = (name: string) => Number.parseFloat(element.getAttribute(name) ?? "");
   return {
