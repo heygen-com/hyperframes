@@ -3,6 +3,7 @@
 
 import puppeteer, { type Browser } from "puppeteer";
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
+import { chromeSandboxArgs } from "@hyperframes/core/chrome-sandbox";
 import { injectScriptsAtHeadStart } from "@hyperframes/core/compiler";
 import { getVerifiedHyperframeRuntimeSource } from "./services/hyperframeRuntimeLoader.js";
 
@@ -14,7 +15,7 @@ export async function launchVerifyBrowser(): Promise<Browser> {
   return puppeteer.launch({
     headless: true,
     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    args: withHyperframesBrowserMarker(["--no-sandbox", "--disable-setuid-sandbox"]),
+    args: withHyperframesBrowserMarker(chromeSandboxArgs()),
   });
 }
 

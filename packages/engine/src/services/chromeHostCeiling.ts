@@ -9,7 +9,7 @@ import {
   chromeSandboxArgs,
   chromeSandboxEnabled,
   startsWithChromeSandboxFallback,
-} from "./chromeSandbox.js";
+} from "@hyperframes/core/chrome-sandbox";
 
 /** Chrome 151 dropped macOS 12 and older (Darwin < 22); 150 is the last major that launches there. */
 const MACOS_12_LAST_CHROME_MAJOR = 150;

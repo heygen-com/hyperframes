@@ -2,6 +2,11 @@ import type { TimelineRequest } from "../../core/src/runtime/timelineInspection"
 import { withHyperframesBrowserMarker } from "../../core/src/browserMarker";
 import { buildChromeLaunchEnv } from "../../core/src/chromeEnv";
 import {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  launchWithChromeSandboxFallback,
+} from "../../core/src/chromeSandbox";
+import {
   inspectComponents,
   inspectElementMap,
   inspectTimeline,
@@ -70,6 +75,20 @@ async function releaseEach(steps: ReadonlyArray<() => unknown>): Promise<void> {
       continue;
     }
   }
+}
+
+export function inspectorChromeArgs(
+  proxyArgs: readonly string[],
+  sandbox = chromeSandboxEnabled(),
+): string[] {
+  return [
+    ...chromeSandboxArgs(sandbox),
+    "--disable-dev-shm-usage",
+    "--enable-webgl",
+    "--use-gl=angle",
+    "--use-angle=swiftshader",
+    ...proxyArgs,
+  ];
 }
 
 export interface InspectorOptions {
@@ -148,19 +167,18 @@ export class Inspector {
       const started = await startCaptureProxy();
       proxy = started;
       profile = await createPublicOnlyProfile("hf-inspect-profile-");
-      const browser = await puppeteer.launch({
-        executablePath: this.options.executablePath ?? chromePath(),
-        env: buildChromeLaunchEnv(),
-        headless: true,
-        userDataDir: profile,
-        args: withHyperframesBrowserMarker([
-          "--disable-dev-shm-usage",
-          "--enable-webgl",
-          "--use-gl=angle",
-          "--use-angle=swiftshader",
-          ...browserProxyArgs(started.url, `127.0.0.1:${address.port}`),
-        ]),
-      });
+      const proxyArgs = browserProxyArgs(started.url, `127.0.0.1:${address.port}`);
+      const browser = await launchWithChromeSandboxFallback(
+        inspectorChromeArgs(proxyArgs),
+        (args) =>
+          puppeteer.launch({
+            executablePath: this.options.executablePath ?? chromePath(),
+            env: buildChromeLaunchEnv(),
+            headless: true,
+            userDataDir: profile,
+            args: withHyperframesBrowserMarker(args),
+          }),
+      );
       this.stats.browserStarts++;
       this.host = { browser, server, port: address.port, proxy: started, profile };
       return this.host;
