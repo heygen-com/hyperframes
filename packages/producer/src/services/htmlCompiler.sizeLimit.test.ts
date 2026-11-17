@@ -156,6 +156,64 @@ describe("composition expansion budget", () => {
     expect(compiled.html.split("<h1>Scene</h1>").length - 1).toBe(6);
   });
 
+  it("refuses a mount whose tiny scripts would each be wrapped in kilobytes of scoping code", async () => {
+    const scripts = `<script>window.n = (window.n || 0) + 1;</script>`.repeat(3_000);
+    const dir = project({
+      "index.html": rootMounting("scene.html", 1),
+      "scene.html": SCENE.replace("<h1>Scene</h1>", `<h1>Scene</h1>${scripts}`),
+    });
+    const error = await compileError(dir);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(error).toMatchObject({ publicMetadata: { exceeded: "generated" } });
+    // Charged as each wrapper is built, so building stops one wrapper past the limit.
+    const { bytes } = (error as { publicMetadata: { bytes: number } }).publicMetadata;
+    expect(bytes - MAX_EXPANDED_COMPOSITION_BYTES).toBeLessThan(64 * 1024);
+  });
+
+  it("refuses a long host id over many style rules before building the scoped sheet", async () => {
+    const id = `s${"x".repeat(20_000)}`;
+    const rules = Array.from({ length: 2_000 }, (_, i) => `.r${i}{color:red}`).join("");
+    const dir = project({
+      "index.html": ROOT.replace("<html>", "<html><head></head>").replace(
+        'data-composition-id="scene"',
+        `data-composition-id="${id}"`,
+      ),
+      "scene.html": SCENE.replace("<h1>Scene</h1>", `<style>${rules}</style><h1>Scene</h1>`),
+    });
+    const error = await compileError(dir);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(error).toMatchObject({ publicMetadata: { exceeded: "generated" } });
+    // Each rule reserves its upper bound first, so no rule is scoped past the limit.
+    const { bytes } = (error as { publicMetadata: { bytes: number } }).publicMetadata;
+    expect(bytes - MAX_EXPANDED_COMPOSITION_BYTES).toBeLessThan(10 * id.length);
+  });
+
+  it("reserves the separator a scoped selector list is re-joined with", async () => {
+    const selectors = Array.from({ length: 2_000 }, (_, i) => `.r${i}`).join(",");
+    const sheet = `.first,${" ".repeat(20_000)}${selectors}{color:red}`;
+    const dir = project({
+      "index.html": ROOT.replace("<html>", "<html><head></head>"),
+      "scene.html": SCENE.replace("<h1>Scene</h1>", `<style>${sheet}</style><h1>Scene</h1>`),
+    });
+    const error = await compileError(dir);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(error).toMatchObject({ publicMetadata: { exceeded: "generated" } });
+  });
+
+  it("compiles scenes with ordinary scripts and styles", async () => {
+    const scene = SCENE.replace(
+      "<h1>Scene</h1>",
+      `<style>h1{color:red}.a,.b{margin:0}</style><h1>Scene</h1><script>window.ready = true;</script>`,
+    );
+    const dir = project({
+      "index.html": rootMounting("wrapper.html", 3),
+      "wrapper.html": sceneMounting("wrapper", "scene.html", 20),
+      "scene.html": scene,
+    });
+    const compiled = await compileForRender(dir, join(dir, "index.html"), dir);
+    expect(compiled.html.split("<h1>Scene</h1>").length - 1).toBe(60);
+  });
+
   /** The fan-out project with `depth` nested templates in `file`, the innermost one mounting the fan-out. */
   function nestedFanOut(file: string, depth: number): Record<string, string> {
     const nested = `${"<template>".repeat(depth)}<div data-composition-src="level-0.html"></div>${"</template>".repeat(depth)}`;
