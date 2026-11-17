@@ -324,24 +324,70 @@ function reconcileBrowserMediaEnd(
   return existingEnd <= 0 ? projectedEnd : Math.min(existingEnd, projectedEnd);
 }
 
-/** Selector characters times media elements matched statically before the browser probe decides. */
+/** Characters a static selector check may examine before the browser probe decides instead. */
 const MAX_MEDIA_SELECTOR_WORK = 1_000_000;
-// Sibling combinators can make one match walk the page; the browser probe answers those.
-const SIBLING_COMBINATOR = /[~+]/;
+const ATTRIBUTE_SELECTOR =
+  /\[\s*[\w-]+\s*(?:[~|^$*]?=\s*(?:"[^"\\]*"|'[^'\\]*'|[\w-]+)\s*(?:[is]\s*)?)?\]/g;
+const COMPOUND_SELECTORS = /^[\w\s#.*>,-]+$/;
 
-function managedMediaElements(document: Document): Element[] {
-  const managed: Element[] = [];
-  const pending: Array<{ element: Element; inMedia: boolean }> = [];
-  for (const element of Array.from(document.children)) pending.push({ element, inMedia: false });
+/**
+ * The parts of a selector list whose match costs at most one check per ancestor: tags, ids,
+ * classes and attributes, joined by `>` and at most one descendant combinator. Null for anything
+ * else, such as pseudo-classes, sibling combinators or escapes.
+ */
+function cheapSelectorParts(selector: string): string[] | null {
+  const shape = selector.replace(ATTRIBUTE_SELECTOR, "_").trim();
+  if (!COMPOUND_SELECTORS.test(shape)) return null;
+  const parts = shape
+    .replace(/\s+/g, " ")
+    .replace(/ ?([>,]) ?/g, "$1")
+    .split(",");
+  return parts.every((part) => part !== "" && part.split(" ").length <= 2) ? parts : null;
+}
+
+type ManagedMedia = { element: Element; depth: number; chainAttributeChars: number };
+
+const attributeChars = (element: Element): number =>
+  Array.from(element.attributes).reduce((sum, a) => sum + a.name.length + a.value.length + 1, 0);
+
+function managedMediaElements(document: Document): ManagedMedia[] {
+  const managed: ManagedMedia[] = [];
+  type Pending = { element: Element; inMedia: boolean; depth: number; above: number };
+  const pending: Pending[] = Array.from(document.children, (element) => ({
+    element,
+    inMedia: false,
+    depth: 0,
+    above: 0,
+  }));
   for (let next = pending.pop(); next; next = pending.pop()) {
-    const name = next.element.tagName.toLowerCase();
+    const { element, depth } = next;
+    const chainAttributeChars = next.above + attributeChars(element);
+    const name = element.tagName.toLowerCase();
     const isMedia = name === "video" || name === "audio";
-    if (isMedia || (next.inMedia && name === "source")) managed.push(next.element);
-    for (const child of Array.from(next.element.children)) {
-      pending.push({ element: child, inMedia: next.inMedia || isMedia });
+    if (isMedia || (next.inMedia && name === "source")) {
+      managed.push({ element, depth, chainAttributeChars });
+    }
+    for (const child of Array.from(element.children)) {
+      const inMedia = next.inMedia || isMedia;
+      pending.push({ element: child, inMedia, depth: depth + 1, above: chainAttributeChars });
     }
   }
   return managed;
+}
+
+/** A match visits each ancestor once per selector character and reads each one's attributes once per compound. */
+function selectorCheckCost(selector: string, managed: readonly ManagedMedia[]): number {
+  const parts = cheapSelectorParts(selector);
+  if (!parts) return Infinity;
+  let cost = 0;
+  for (const part of parts) {
+    const compounds = part.split(/[ >]/).length;
+    for (const media of managed) {
+      cost += part.length * (media.depth + 1) + compounds * media.chainAttributeChars;
+      if (cost > MAX_MEDIA_SELECTOR_WORK) return cost;
+    }
+  }
+  return cost;
 }
 
 /**
@@ -365,9 +411,9 @@ export function hasRuntimeMediaChanges(html: string): boolean {
 
   const managed = managedMediaElements(document);
   if (managed.length === 0) return false;
-  const managedIds = new Set(managed.map((element) => element.getAttribute("id")).filter(Boolean));
+  const managedIds = new Set(managed.map((m) => m.element.getAttribute("id")).filter(Boolean));
   const selectors = new Set<string>();
-  let selectorChars = 0;
+  let work = 0;
   for (const script of scriptBodies) {
     for (const mutation of extractMediaSrcMutations(script)) {
       const id = /^#[A-Za-z_][\w-]*$/.test(mutation.selector) ? mutation.selector.slice(1) : null;
@@ -376,15 +422,14 @@ export function hasRuntimeMediaChanges(html: string): boolean {
         continue;
       }
       if (selectors.has(mutation.selector)) continue;
-      if (SIBLING_COMBINATOR.test(mutation.selector)) return true;
       selectors.add(mutation.selector);
-      selectorChars += mutation.selector.length;
-      if (selectorChars * managed.length > MAX_MEDIA_SELECTOR_WORK) return true;
+      work += selectorCheckCost(mutation.selector, managed);
+      if (work > MAX_MEDIA_SELECTOR_WORK) return true;
     }
   }
   for (const selector of selectors) {
     try {
-      if (managed.some((element) => element.matches(selector))) return true;
+      if (managed.some((media) => media.element.matches(selector))) return true;
     } catch {
       // Invalid selectors are diagnosed by lint and cannot prove a media target here.
     }
