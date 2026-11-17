@@ -3,7 +3,8 @@ import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 const REGISTRY = "https://registry.modelcontextprotocol.io/v0.1/servers";
-const OURS = ["com.heygen/", "io.github.heygen-com/"];
+// heygen.com and every subdomain (the registry's DNS and HTTP logins grant both), and the GitHub org.
+const OURS = ["com.heygen/", "com.heygen.", "io.github.heygen-com/"];
 
 /** Every name@version among server.json's texts. @param {string[]} texts */
 export function publishedListings(texts) {
