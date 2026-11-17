@@ -114,9 +114,12 @@ function frameSampler() {
     down: false,
     samples: [],
     marks: [],
-    ups: 0,
+    since: -Infinity,
+    history: [],
   };
   window.__editBenchFrames = rec;
+  // The clock each preview stamps its geometry pushes on: the same instant reads the same in every document.
+  const clock = () => performance.timeOrigin + performance.now();
   for (const type of ["pointerdown", "pointermove", "pointerup"])
     window.addEventListener(
       type,
@@ -126,11 +129,10 @@ function frameSampler() {
         rec.pointer = [e.clientX, e.clientY];
         // From the buttons, not the event type: a move after release is not a drag.
         rec.down = (e.buttons & 1) === 1;
+        rec.history.push({ at: clock(), pointer: rec.pointer, down: rec.down });
         // Kept as it happens, so a release that no frame painted still ends the drag at its own point.
-        if (type === "pointerup" && rec.on) {
-          rec.ups += 1;
+        if (type === "pointerup" && rec.on)
           rec.samples.push({ t: performance.now(), up: rec.pointer });
-        }
       },
       true,
     );
@@ -155,24 +157,30 @@ function frameSampler() {
         asked: -1e9,
         pending: new Map(),
         handles: {},
+        watched: null,
+        pushes: [],
+        styles: null,
+        styling: false,
       });
     return links.get(f);
   };
   const takePort = (l, port) => {
     l.port = port;
-    port.addEventListener("message", ({ data }) => l.pending.get(data?.id)?.(data));
+    port.addEventListener("message", ({ data }) =>
+      data?.event === "geometry" ? l.pushes.push(data) : l.pending.get(data?.id)?.(data),
+    );
     port.start();
   };
+  const isHandoff = (e) => e.data.type === "editing-port" && e.data.v === 1 && e.ports.length === 1;
+  const heard = (l, e) => {
+    // A new page in the frame: the old port and its handles went with the old one.
+    if (e.data.type === "ready")
+      Object.assign(l, { port: null, handles: {}, watched: null, pushes: [] });
+    else if (isHandoff(e) && !l.port) takePort(l, e.ports[0]);
+  };
   window.addEventListener("message", (e) => {
-    const d = e.data;
-    if (d?.source !== "hf-preview") return;
-    const handoff = d.type === "editing-port" && d.v === 1 && e.ports.length === 1;
-    for (const l of links.values()) {
-      if (l.win !== e.source) continue;
-      // A new page in the frame: the old port and its handles went with the old one.
-      if (d.type === "ready") Object.assign(l, { port: null, handles: {} });
-      if (handoff && !l.port) takePort(l, e.ports[0]);
-    }
+    if (e.data?.source !== "hf-preview") return;
+    for (const l of links.values()) if (l.win === e.source) heard(l, e);
   });
   const ask = (l, kind, params) =>
     new Promise((resolve) => {
@@ -195,19 +203,25 @@ function frameSampler() {
     });
   const handleOf = async (l, selector) =>
     (l.handles[selector] ??= (await ask(l, "query", { selector }))?.matches?.[0]?.handle ?? null);
-  // fallow-ignore-next-line complexity
-  const measureIn = async (f, selector) => {
+  const forget = (l) => Object.assign(l, { handles: {}, watched: null, styles: null });
+  // Each preview pushes the element's and the root's geometry as it paints; the size is asked beside it.
+  const watchIn = async (f, selector) => {
     const l = linkOf(f);
     const [el, root] = [await handleOf(l, selector), await handleOf(l, ROOT)];
-    if (!el || !root) return null;
-    const [geometry, computed] = await Promise.all([
-      ask(l, "geometry", { handles: [el, root] }),
-      ask(l, "computed-styles", { handle: el, properties: SIZE }),
-    ]);
-    const [box, rootBox] = geometry?.elements ?? [];
-    // A replaced element: look it up again next frame.
-    if (!box || !rootBox || !computed?.styles) return void (l.handles = {});
-    return { f, box, rootBox, styles: computed.styles };
+    if (!l.port || !el || !root) return;
+    if (l.watched !== `${el} ${root}`) {
+      Object.assign(l, { watched: `${el} ${root}`, pushes: [], styles: null });
+      void ask(l, "watch-geometry", { handles: [el, root] });
+    }
+    if (l.styling) return;
+    l.styling = true;
+    const reply = await ask(l, "computed-styles", { handle: el, properties: SIZE });
+    l.styling = false;
+    if (reply?.styles) l.styles = reply.styles;
+  };
+  rec.unwatch = () => {
+    for (const l of links.values())
+      if (l.watched) void ask(forget(l), "watch-geometry", { handles: [] });
   };
   const cornersOf = ({ rect: r, corners: c }) =>
     c
@@ -222,48 +236,76 @@ function frameSampler() {
     Object.fromEntries(
       Object.entries(styles).map(([k, v]) => [k.replace(/-(.)/g, (_, c) => c.toUpperCase()), v]),
     );
-  // The largest visible preview holding the element; Studio loads edits in a hidden shadow frame.
-  const findInPreviews = async (selector) => {
-    const shown = previewFrames().filter((f) =>
+  const shownPreview = (frames) => {
+    const shown = frames.filter((f) =>
       f.checkVisibility({ visibilityProperty: true, opacityProperty: true }),
     );
-    const area = ({ f }) => f.getBoundingClientRect().width * f.getBoundingClientRect().height;
-    const found = (await Promise.all(shown.map((f) => measureIn(f, selector)))).filter(Boolean);
-    return found.sort((a, b) => area(b) - area(a))[0] ?? null;
+    const area = (f) => f.getBoundingClientRect().width * f.getBoundingClientRect().height;
+    // The largest shown preview holding the element; Studio loads edits in a hidden shadow frame. One shown and
+    // larger with no port yet holds it somewhere no push says, so nothing is sampled until it answers.
+    const [first] = shown
+      .filter((f) => !linkOf(f).port || linkOf(f).watched)
+      .sort((a, b) => area(b) - area(a));
+    return first && linkOf(first).port ? first : null;
   };
-  // fallow-ignore-next-line complexity
-  const read = async () => {
-    const { samples, selector } = rec;
-    const [drags, ups] = [rec.marks.length, rec.ups];
-    const hit = await findInPreviews(selector);
-    // A reply asked before a release or the next drag shows a box no frame after it painted.
-    if (!rec.on || rec.samples !== samples || rec.marks.length !== drags || rec.ups !== ups) return;
-    // Everything else is read as the reply lands, so the box is never ahead of the pointer it is scored against.
-    // A page with no preview (the blank-page control) holds its element itself.
-    const el = hit ? null : document.querySelector(selector);
-    const root = el?.ownerDocument.querySelector(ROOT);
+  const historyAt = (at) =>
+    rec.history.findLast((h) => h.at <= at) ?? { pointer: null, down: false };
+  const overlays = () => {
     const outline = document.querySelector("[data-dom-edit-crop-frame] > div.border-dashed");
     const waiting = document.querySelector("[data-dom-edit-press-waiting]");
-    const lift = (box) => cornersOf(box).map((p) => throughFrame(hit.f, p));
-    samples.push({
+    return {
+      ...(outline && { outline: quadOf(outline) }),
+      ...(waiting && { waitingQuad: quadOf(waiting) }),
+    };
+  };
+  // Each push becomes a sample paired with the pointer at the push's own stamp, so a late push is never scored
+  // against a later pointer, and one from before this drag started is not this drag's.
+  const sampleFrom = (f) => {
+    const l = linkOf(f);
+    for (const { at, elements } of l.pushes.splice(0)) {
+      const [box, rootBox] = elements;
+      if (!box || !rootBox) return void forget(l);
+      if (at < rec.since) continue;
+      const lift = (b) => cornersOf(b).map((p) => throughFrame(f, p));
+      const { pointer, down } = historyAt(at);
+      rec.samples.push({
+        t: at - performance.timeOrigin,
+        pointer,
+        down,
+        root: lift(rootBox),
+        ...(l.styles && {
+          quad: lift(box),
+          size: styleBoxSize(camel(l.styles)),
+          clip: box.clipPath || "none",
+        }),
+        ...overlays(),
+      });
+    }
+  };
+  // A page with no preview (the blank-page control) holds its element itself, read as it paints.
+  const sampleHere = (selector) => {
+    const el = document.querySelector(selector);
+    const root = el?.ownerDocument.querySelector(ROOT);
+    rec.samples.push({
       t: performance.now(),
       pointer: rec.pointer,
       down: rec.down,
-      ...(hit && {
-        root: lift(hit.rootBox),
-        quad: lift(hit.box),
-        size: styleBoxSize(camel(hit.styles)),
-        clip: hit.styles["clip-path"] ?? "none",
-      }),
       ...(root && { root: quadOf(root) }),
       ...(el && {
         quad: quadOf(el),
         size: boxSize(el),
         clip: el.ownerDocument.defaultView.getComputedStyle(el).clipPath,
       }),
-      ...(outline && { outline: quadOf(outline) }),
-      ...(waiting && { waitingQuad: quadOf(waiting) }),
+      ...overlays(),
     });
+  };
+  const sample = () => {
+    const frames = previewFrames();
+    if (!frames.length) return sampleHere(rec.selector);
+    for (const f of frames) void watchIn(f, rec.selector);
+    const f = shownPreview(frames);
+    for (const other of frames) if (other !== f) linkOf(other).pushes.length = 0;
+    if (f) sampleFrom(f);
   };
   // True when a preview holds a match, false when every preview answered without one, null while one cannot answer.
   rec.matchesInPreviews = async (selector) => {
@@ -277,13 +319,13 @@ function frameSampler() {
   // frame it fires on, and one ask at a time keeps the replies in order.
   const tick = document.createElement("div");
   tick.style.cssText = "position: fixed; height: 1px; opacity: 0; pointer-events: none";
-  let reading = false;
   new ResizeObserver(() => {
-    if (!rec.on || reading) return;
-    reading = true;
-    read()
-      .catch((error) => rec.samples.push({ t: performance.now(), error: String(error) }))
-      .finally(() => (reading = false));
+    if (!rec.on) return;
+    try {
+      sample();
+    } catch (error) {
+      rec.samples.push({ t: performance.now(), error: String(error) });
+    }
   }).observe(tick);
   const loop = () => {
     if (rec.on) {
@@ -305,9 +347,10 @@ ${[mul, apply, rotation, ownLinear, parentOf, linear, boxSize, styleBoxSize, thr
 export const startFrames = (page, selector) =>
   page.evaluate((sel) => {
     const rec = window.__editBenchFrames;
-    if (!rec.on) Object.assign(rec, { on: true, samples: [], marks: [] });
+    if (!rec.on) Object.assign(rec, { on: true, samples: [], marks: [], history: [] });
     rec.selector = sel;
     rec.marks.push(rec.samples.length);
+    rec.since = performance.timeOrigin + performance.now();
   }, selector);
 
 /** Stops recording: one window of frames per drag, each running until the next drag's mark. */
@@ -315,6 +358,7 @@ export async function stopFrames(page) {
   const { samples, marks } = await page.evaluate(() => {
     const rec = window.__editBenchFrames;
     rec.on = false;
+    rec.unwatch();
     return { samples: rec.samples, marks: rec.marks ?? [] };
   });
   return marks.map((m, i) => samples.slice(m, marks[i + 1] ?? samples.length));

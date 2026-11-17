@@ -278,30 +278,40 @@ describe("frameSamplerScript in a sealed preview", () => {
   const topWindow = { getComputedStyle: () => style };
   topDocument.defaultView = topWindow;
 
-  // The frame's document and location throw, as a cross-origin frame's do; only postMessage reaches it.
-  function sealedFrame(studioReplies, geometryHeld = null) {
-    const channel = new MessageChannel();
-    const boxes = {
-      "#target": { rect: { x: 100, y: 200, width: 100, height: 50 }, angle: 0, corners: null },
-      '[data-composition-id="main"]': {
-        rect: { x: 0, y: 0, width: 1920, height: 1080 },
-        angle: 0,
-        corners: null,
-      },
+  const BOXES = {
+    "#target": { rect: { x: 100, y: 200, width: 100, height: 50 }, angle: 0, corners: null },
+    '[data-composition-id="main"]': {
+      rect: { x: 0, y: 0, width: 1920, height: 1080 },
+      angle: 0,
+      corners: null,
+    },
+  };
+  const geometry = (handle, x = 0) => {
+    const { rect, ...rest } = BOXES[handle];
+    return {
+      ...rest,
+      rect: { ...rect, x: rect.x + x },
+      source: null,
+      clipPath: null,
+      visible: true,
+      members: null,
     };
-    channel.port1.onmessage = async ({ data: { id, kind, params } }) => {
-      if (kind === "geometry" && geometryHeld) await geometryHeld.wait();
+  };
+
+  // The frame's document and location throw, as a cross-origin frame's do; only postMessage reaches it.
+  function sealedFrame(studioReplies) {
+    const channel = new MessageChannel();
+    const asked = [];
+    channel.port1.onmessage = ({ data: { id, kind, params } }) => {
+      asked.push({ kind, params });
       const result =
         kind === "query"
           ? {
-              matches: boxes[params.selector] ? [{ handle: params.selector }] : [],
+              matches: BOXES[params.selector] ? [{ handle: params.selector }] : [],
               truncated: false,
             }
-          : kind === "geometry"
-            ? {
-                elements: params.handles.map((h) => ({ ...boxes[h], visible: true })),
-                children: null,
-              }
+          : kind === "watch-geometry"
+            ? { watching: params.handles.length }
             : kind === "computed-styles"
               ? { styles: { width: "100px", height: "50px", "box-sizing": "border-box" } }
               : null;
@@ -339,18 +349,28 @@ describe("frameSamplerScript in a sealed preview", () => {
       checkVisibility: () => true,
       getBoundingClientRect: () => ({ left: 0, top: 0, width: 1920, height: 1080 }),
     };
-    return { iframe, on, channel };
+    // A push as the frame sends one each time it paints, stamped `at` on the shared clock.
+    const push = (at, x = 0) =>
+      channel.port1.postMessage({
+        v: 1,
+        event: "geometry",
+        at,
+        elements: [geometry("#target", x), geometry('[data-composition-id="main"]')],
+      });
+    const close = () => (channel.port1.close(), channel.port2.close());
+    return { iframe, on, asked, push, close, channel };
   }
 
-  // Runs the page script in a top page whose one preview is `iframe`; ticks stand in for painted frames.
+  // Runs the page script in a top page whose previews are `iframe`; ticks stand in for painted frames.
   function samplerFor(iframe, on) {
     let tick = () => {};
+    const clock = { now: 0 };
     const window = { addEventListener: (type, f) => (on[type] = f) };
     window.top = window;
     const page = {
       window,
       document: {
-        querySelectorAll: () => [iframe],
+        querySelectorAll: () => [].concat(iframe),
         querySelector: () => null,
         createElement: () => ({ style: {}, isConnected: true }),
         documentElement: { append() {} },
@@ -362,30 +382,47 @@ describe("frameSamplerScript in a sealed preview", () => {
         observe() {}
       },
       requestAnimationFrame: () => 0,
-      performance: { now: () => 0 },
+      performance: { timeOrigin: 1_000, now: () => clock.now },
       setTimeout,
       clearTimeout,
       URL,
       DOMMatrix: class {},
     };
     runInNewContext(frameSamplerScript, page);
-    return { rec: window.__editBenchFrames, tick: () => tick() };
+    const rec = window.__editBenchFrames;
+    Object.assign(rec, { on: true, selector: "#target", samples: [], marks: [0], history: [] });
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
+    // Ticks until the frame is asked to watch, so its pushes have somewhere to land.
+    const watching = async (asked) => {
+      for (let i = 0; i < 50 && !asked.some((a) => a.kind === "watch-geometry"); i++) {
+        tick();
+        await settle();
+      }
+      for (let i = 0; i < 5; i++) {
+        tick();
+        await settle();
+      }
+    };
+    const move = (x, buttons = 1) =>
+      on.pointermove({ isTrusted: true, clientX: x, clientY: 225, buttons });
+    return { rec, tick, clock, settle, watching, move };
   }
 
-  it("measures the element through the preview's editing port, in top-frame px", async () => {
+  it("measures the element from the preview's pushes, in top-frame px, and Studio keeps the shared port", async () => {
     const studioReplies = [];
-    const { iframe, on, channel } = sealedFrame(studioReplies);
-    const { rec, tick } = samplerFor(iframe, on);
-    Object.assign(rec, { on: true, selector: "#target", pointer: [150, 225], samples: [] });
-    const measured = async () => {
-      for (let i = 0; i < 50 && !rec.samples.some((s) => s.quad); i++) {
-        tick();
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      }
-      return rec.samples.find((s) => s.quad);
-    };
+    const { iframe, on, asked, push, close, channel } = sealedFrame(studioReplies);
+    const { rec, tick, settle, watching, move } = samplerFor(iframe, on);
     try {
-      const sample = await measured();
+      move(150);
+      await watching(asked);
+      expect(asked.find((a) => a.kind === "watch-geometry").params.handles).toEqual([
+        "#target",
+        '[data-composition-id="main"]',
+      ]);
+      push(1_000);
+      await settle();
+      tick();
+      const sample = rec.samples.find((s) => s.quad);
       expect(sample, JSON.stringify(rec.samples.slice(-2))).toBeDefined();
       expect(sample.quad).toEqual([
         [100, 200],
@@ -396,77 +433,88 @@ describe("frameSamplerScript in a sealed preview", () => {
       expect(sample.size).toEqual([100, 50]);
       expect(sample.root[2]).toEqual([1920, 1080]);
       expect(sample.pointer).toEqual([150, 225]);
-      // Studio's own request on the shared port still reaches Studio.
       channel.port2.postMessage({ v: 1, id: 1, kind: "query", params: { selector: "#target" } });
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(studioReplies.map((r) => r.id)).toContain(1);
     } finally {
-      channel.port1.close();
-      channel.port2.close();
+      close();
     }
   });
 
-  it("drops a reply for the previous drag's element once the next drag has started", async () => {
-    let release = () => {};
-    let held = 0;
-    const gate = new Promise((resolve) => (release = resolve));
-    const geometryHeld = { wait: () => (held++, gate) };
-    const { iframe, on, channel } = sealedFrame([], geometryHeld);
-    const { rec, tick } = samplerFor(iframe, on);
-    Object.assign(rec, {
-      on: true,
-      selector: "#target",
-      pointer: [150, 225],
-      samples: [],
-      marks: [0],
-    });
+  it("pairs each push with the pointer at its own stamp, not where the pointer is when it lands", async () => {
+    const { iframe, on, asked, push, close } = sealedFrame([]);
+    const { rec, tick, clock, settle, watching, move } = samplerFor(iframe, on);
     try {
-      for (let i = 0; i < 50 && held === 0; i++) {
-        tick();
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      }
-      expect(held).toBe(1);
-      // The next drag starts while the first one's geometry is still on its way.
-      rec.selector = "#other";
-      rec.marks.push(rec.samples.length);
-      release();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(rec.samples.slice(rec.marks[1]).filter((s) => s.quad)).toEqual([]);
+      await watching(asked);
+      clock.now = 10;
+      move(150);
+      clock.now = 20;
+      move(160);
+      clock.now = 30;
+      move(170);
+      // Painted at 15 and 25, both landing after the pointer reached 170.
+      push(1_015);
+      push(1_025, 10);
+      await settle();
+      tick();
+      const measured = rec.samples.filter((s) => s.quad);
+      expect(measured.map((s) => [s.t, s.pointer[0], s.quad[0][0]])).toEqual([
+        [15, 150, 100],
+        [25, 160, 110],
+      ]);
     } finally {
-      channel.port1.close();
-      channel.port2.close();
+      close();
     }
   });
 
-  it("drops a reply asked before the release once the release is recorded", async () => {
-    let release = () => {};
-    let held = 0;
-    const gate = new Promise((resolve) => (release = resolve));
-    const { iframe, on, channel } = sealedFrame([], { wait: () => (held++, gate) });
-    const { rec, tick } = samplerFor(iframe, on);
-    Object.assign(rec, {
-      on: true,
-      selector: "#target",
-      pointer: [150, 225],
-      samples: [],
-      marks: [0],
-    });
+  it("leaves out a push painted before this drag started", async () => {
+    const { iframe, on, asked, push, close } = sealedFrame([]);
+    const { rec, tick, settle, watching, move } = samplerFor(iframe, on);
     try {
-      for (let i = 0; i < 50 && held === 0; i++) {
-        tick();
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      }
-      expect(held).toBe(1);
-      // The release lands while the frame's geometry is still on its way.
-      on.pointerup({ isTrusted: true, clientX: 150, clientY: 225, buttons: 0 });
-      const upAt = rec.samples.findIndex((s) => s.up);
-      release();
-      await new Promise((resolve) => setTimeout(resolve, 20));
-      expect(upAt).toBeGreaterThanOrEqual(0);
-      expect(rec.samples.slice(upAt + 1).filter((s) => s.quad)).toEqual([]);
+      move(150);
+      await watching(asked);
+      rec.since = 1_050;
+      push(1_040);
+      push(1_060);
+      await settle();
+      tick();
+      expect(rec.samples.filter((s) => s.quad).map((s) => s.t)).toEqual([60]);
     } finally {
-      channel.port1.close();
-      channel.port2.close();
+      close();
+    }
+  });
+
+  it("stops every watch when recording stops", async () => {
+    const { iframe, on, asked, close } = sealedFrame([]);
+    const { rec, settle, watching } = samplerFor(iframe, on);
+    try {
+      await watching(asked);
+      rec.unwatch();
+      await settle();
+      expect(asked.at(-1)).toEqual({ kind: "watch-geometry", params: { handles: [] } });
+    } finally {
+      close();
+    }
+  });
+
+  it("leaves a frame unmeasured while a larger shown preview cannot answer yet", async () => {
+    const { iframe, on, asked, push, close } = sealedFrame([]);
+    // Studio's next preview, shown and larger, before its page has handed out a port.
+    const next = {
+      ...iframe,
+      contentWindow: { postMessage() {} },
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 2400, height: 1350 }),
+    };
+    const { rec, tick, settle, watching, move } = samplerFor([iframe, next], on);
+    try {
+      move(150);
+      await watching(asked);
+      push(1_000);
+      await settle();
+      tick();
+      expect(rec.samples.filter((s) => s.quad)).toEqual([]);
+    } finally {
+      close();
     }
   });
 });
