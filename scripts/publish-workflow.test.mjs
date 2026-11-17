@@ -296,6 +296,11 @@ test("the publish job checks the release channel without repo scripts", () => {
   assert.equal(check("push", "0.9.55-alpha.1;id", "true"), 1);
   assert.equal(check("push", "0.9.55-latest.1", "true", "latest"), 1);
   assert.equal(check("push", "0.9.55-hdr.1", "true", "hdr"), 0);
+  assert.equal(check("push", "0.9.55-beta.1", "true", "beta"), 0);
+  assert.equal(check("push", "0.9.55-LATEST.1", "true", "LATEST"), 1);
+  assert.equal(check("push", "0.9.55-Latest.1", "true", "Latest"), 1);
+  assert.equal(check("push", "0.9.55-Alpha.1", "true", "Alpha"), 1);
+  assert.equal(check("push", "0.9.55-stable.1", "true", "stable"), 1);
 });
 
 test("the publish job takes only tarballs that npm reads the way the check does", () => {
