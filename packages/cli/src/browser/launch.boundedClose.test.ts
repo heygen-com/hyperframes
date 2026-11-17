@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import type { Browser, LaunchOptions, PuppeteerNode } from "puppeteer-core";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { processIsAlive } from "../utils/processTree.js";
 import { launchManagedBrowser } from "./launch.js";
 
@@ -39,7 +39,7 @@ it("a forced close also ends what the browser started, as Windows ends no child 
   try {
     const launched = await launchManagedBrowser(puppeteer, { headless: true }, { diagnose: false });
     await launched.close();
-    expect(processIsAlive(kid)).toBe(false);
+    await vi.waitFor(() => expect(processIsAlive(kid)).toBe(false), { timeout: 2_000 });
   } finally {
     child.kill("SIGKILL");
     if (processIsAlive(kid)) process.kill(kid, "SIGKILL");

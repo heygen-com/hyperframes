@@ -32,6 +32,19 @@ describe("the PowerShell the CLI starts on Windows", () => {
     expect(copy).toContain("processes.ps1");
   });
 
+  it("is started only with processReadArgs, so no flag or plain argument can carry command text", () => {
+    let starts = 0;
+    for (const file of SHIPPED) {
+      const text = code(file);
+      for (const start of text.matchAll(/["'`]powershell(?:\.exe)?["'`]\s*,\s*/gi)) {
+        starts++;
+        const args = text.slice(start.index + start[0].length);
+        expect(args.startsWith("processReadArgs("), `${file}: ${args.slice(0, 60)}`).toBe(true);
+      }
+    }
+    expect(starts).toBeGreaterThanOrEqual(5);
+  });
+
   it("is never given command text, and nothing outside processes.ps1 reads or ends processes through it", () => {
     expect(SHIPPED.length).toBeGreaterThan(100);
     for (const file of SHIPPED) {
