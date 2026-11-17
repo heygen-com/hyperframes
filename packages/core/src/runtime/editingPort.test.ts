@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installEditingAgent } from "./editingAgent";
+import { installMarkedEditingAgent } from "./editingAgent.test-helpers";
 import { createEditingPortClient, EditingPortError, type EditingPortClient } from "./editingPort";
 
 type Listener = (event: Partial<MessageEvent>) => void;
@@ -53,7 +53,7 @@ describe("createEditingPortClient", () => {
       window.dispatchEvent(
         new MessageEvent("message", { source: parent, data }),
       )) as Window["postMessage"];
-    const agent = installEditingAgent(parent);
+    const agent = installMarkedEditingAgent(parent);
     try {
       const client = createEditingPortClient({ iframe, host });
       clients.push(client);
@@ -142,7 +142,7 @@ describe("createEditingPortClient", () => {
       window.dispatchEvent(
         new MessageEvent("message", { source: parent, data }),
       )) as Window["postMessage"];
-    const agent = installEditingAgent(parent);
+    const agent = installMarkedEditingAgent(parent);
     try {
       const first = createEditingPortClient({ iframe, host });
       await first.ready;
@@ -173,7 +173,7 @@ describe("createEditingPortClient", () => {
       toHost.push({ source: frame, data, ports: transfer });
     }) as Window["postMessage"];
     frame.postMessage = ((data: unknown) => toAgent.push(data)) as Window["postMessage"];
-    const agent = installEditingAgent(parent);
+    const agent = installMarkedEditingAgent(parent);
     try {
       const client = createEditingPortClient({ iframe, host, timeoutMs: 300 });
       clients.push(client);
