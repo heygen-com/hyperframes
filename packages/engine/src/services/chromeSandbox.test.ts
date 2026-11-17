@@ -78,10 +78,20 @@ describe("launches that always ran without the sandbox", () => {
     expect(noSandboxUnlessRequired({})).toEqual(["--no-sandbox", "--disable-setuid-sandbox"]);
   });
 
-  it("HDR capture keeps the sandbox when it is required", () => {
+  it("HDR capture keeps the sandbox when it is required, and drops --no-zygote with it", () => {
     vi.stubEnv("HYPERFRAMES_CHROME_SANDBOX", "1");
     try {
-      expect(buildHdrChromeArgs(640, 360)).not.toContain("--no-sandbox");
+      const args = buildHdrChromeArgs(640, 360);
+      expect(args).not.toContain("--no-sandbox");
+      expect(args).not.toContain("--no-zygote");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    vi.stubEnv("HYPERFRAMES_CHROME_SANDBOX", "");
+    try {
+      expect(buildHdrChromeArgs(640, 360)).toEqual(
+        expect.arrayContaining(["--no-sandbox", "--disable-setuid-sandbox", "--no-zygote"]),
+      );
     } finally {
       vi.unstubAllEnvs();
     }
