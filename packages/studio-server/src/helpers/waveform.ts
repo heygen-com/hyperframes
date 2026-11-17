@@ -14,7 +14,7 @@ import { dirname, join } from "node:path";
 import { requireFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeAudioTrack } from "./mediaMetadata.js";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
-import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
+import { mediaInputArgs } from "./mediaExtensions.js";
 
 const SAMPLE_RATE = 4000;
 const PEAK_COUNT = 4000;
@@ -117,7 +117,7 @@ export async function decodeAudioPeaks(audioPath: string, signal?: AbortSignal):
     const proc = spawn(
       ffmpeg,
       [
-        ...MEDIA_INPUT_ARGS,
+        ...mediaInputArgs(audioPath),
         "-i",
         audioPath,
         "-map",

@@ -15,7 +15,7 @@ import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import { ffmpegHasHdrFilters } from "./hdrFilters.js";
-import { MEDIA_INPUT_ARGS, NOT_MEDIA } from "./mediaExtensions.js";
+import { mediaInputArgs, NOT_MEDIA } from "./mediaExtensions.js";
 import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
 import {
@@ -771,7 +771,7 @@ async function runFfmpeg(
         "-nostats",
         ...(range ? ["-ss", String(range.startSeconds)] : []),
         ...decoderArgs,
-        ...MEDIA_INPUT_ARGS,
+        ...mediaInputArgs(sourcePath),
         "-i",
         sourcePath,
         ...streamArgs,
@@ -1239,7 +1239,7 @@ async function makeStill(
       "-y",
       "-ss",
       String(at),
-      ...MEDIA_INPUT_ARGS,
+      ...mediaInputArgs(source.sourcePath),
       "-i",
       source.sourcePath,
       "-map",

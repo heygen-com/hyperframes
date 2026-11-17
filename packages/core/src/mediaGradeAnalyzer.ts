@@ -116,7 +116,7 @@ function probeMedia(mediaPath: string, ffprobePath: string): GradeMediaProbe {
       [
         "-v",
         "error",
-        ...mediaInputFormatArgs(ffprobePath),
+        ...mediaInputFormatArgs(ffprobePath, mediaPath),
         "-select_streams",
         "v:0",
         "-show_entries",
@@ -322,7 +322,7 @@ function readSignalStats(
         "-nostdin",
         "-v",
         "error",
-        ...mediaInputFormatArgs(ffmpegPath),
+        ...mediaInputFormatArgs(ffmpegPath, mediaPath),
         ...keyframeSeek,
         "-i",
         mediaPath,

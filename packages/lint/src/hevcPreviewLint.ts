@@ -88,7 +88,7 @@ async function probeIsHevc(ffprobePath: string, filePath: string): Promise<boole
     const stdout = await execFileAsync(ffprobePath, [
       "-v",
       "error",
-      ...mediaInputFormatArgs(ffprobePath),
+      ...mediaInputFormatArgs(ffprobePath, filePath),
       "-select_streams",
       "v:0",
       "-show_entries",
@@ -245,7 +245,7 @@ async function probePlayableVideoDuration(
       await execFileAsync(ffprobePath, [
         "-v",
         "error",
-        ...mediaInputFormatArgs(ffprobePath),
+        ...mediaInputFormatArgs(ffprobePath, filePath),
         "-select_streams",
         "v:0",
         "-show_entries",
