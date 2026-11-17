@@ -6016,7 +6016,7 @@ async function executeRenderPipeline(input: {
       );
     }
 
-    const failedStage = job.currentStage || "pipeline";
+    const failedStage = audioFailure === undefined ? job.currentStage || "pipeline" : AUDIO_STAGE;
     const observabilitySummary = observability.summary({
       lastBrowserConsole,
       capture: withCapturedBeyondViewport(captureObservability, dedupPerfs),
