@@ -1,6 +1,8 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { replaceFileAtomically } from "../atomicFile";
 import { readJsonlValues } from "./jsonl";
+import { appendWithoutFollowing, ownProjectDir } from "./projectFiles";
 import type { FigmaManifestRecord } from "./types";
 
 const MANIFEST_FILE = "manifest.jsonl";
@@ -21,6 +23,16 @@ export function manifestPath(projectDir: string): string {
 
 export function typeDirPath(projectDir: string, type: FigmaManifestRecord["type"]): string {
   return join(mediaDir(projectDir), TYPE_DIRS[type]);
+}
+
+/** The project's own `.media`, made if missing; throws when it is a link or leads outside the project. */
+export function ownMediaDir(projectDir: string): string {
+  return ownProjectDir(projectDir, mediaDir(projectDir));
+}
+
+/** `typeDirPath`, made if missing, with the same check as `ownMediaDir` on each folder. */
+export function ownTypeDir(projectDir: string, type: FigmaManifestRecord["type"]): string {
+  return ownProjectDir(projectDir, typeDirPath(projectDir, type));
 }
 
 /**
@@ -59,8 +71,8 @@ export function readManifest(projectDir: string): FigmaManifestRecord[] {
 }
 
 export function appendRecord(projectDir: string, record: FigmaManifestRecord): void {
-  mkdirSync(typeDirPath(projectDir, record.type), { recursive: true });
-  appendFileSync(manifestPath(projectDir), JSON.stringify(record) + "\n");
+  ownTypeDir(projectDir, record.type);
+  appendWithoutFollowing(manifestPath(projectDir), JSON.stringify(record) + "\n");
 }
 
 export function findByFigmaNode(
@@ -102,7 +114,8 @@ export function updateRecord(projectDir: string, record: FigmaManifestRecord): v
     }
     return line;
   });
-  writeFileSync(p, out.join("\n"));
+  ownMediaDir(projectDir);
+  replaceFileAtomically(p, out.join("\n"));
 }
 
 export function nextId(projectDir: string, type: FigmaManifestRecord["type"]): string {

@@ -1,6 +1,15 @@
 // @vitest-environment node
 import { describe, expect, it, afterEach } from "vitest";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -332,5 +341,70 @@ describe("runAssetImport", () => {
       deps(dir),
     );
     expect(out.record.description).toBe("line one line two");
+  });
+});
+
+describe("runAssetImport with links in the project", () => {
+  const posixOnly = it.skipIf(process.platform === "win32");
+
+  function outsideFile(): string {
+    const file = join(scratch(), "outside.txt");
+    writeFileSync(file, "keep me\n");
+    return file;
+  }
+
+  posixOnly("replaces a linked index.md instead of writing through it", async () => {
+    const dir = scratch();
+    const outside = outsideFile();
+    mkdirSync(join(dir, ".media"));
+    symlinkSync(outside, join(dir, ".media", "index.md"));
+    await runAssetImport("FILEKEY:1-2", { format: "png" }, deps(dir));
+    expect(readFileSync(outside, "utf8")).toBe("keep me\n");
+    expect(lstatSync(join(dir, ".media", "index.md")).isFile()).toBe(true);
+  });
+
+  posixOnly("refuses to append to a linked manifest.jsonl", async () => {
+    const dir = scratch();
+    const outside = outsideFile();
+    mkdirSync(join(dir, ".media"));
+    symlinkSync(outside, join(dir, ".media", "manifest.jsonl"));
+    await expect(runAssetImport("FILEKEY:1-2", { format: "png" }, deps(dir))).rejects.toThrow(
+      /link/,
+    );
+    expect(readFileSync(outside, "utf8")).toBe("keep me\n");
+  });
+
+  posixOnly("does not rewrite a linked manifest.jsonl when a reuse updates a row", async () => {
+    const dir = scratch();
+    await runAssetImport("FILEKEY:1-2", { format: "png" }, deps(dir));
+    const outside = join(scratch(), "manifest.jsonl");
+    const manifest = join(dir, ".media", "manifest.jsonl");
+    const rows = readFileSync(manifest, "utf8");
+    writeFileSync(outside, rows);
+    rmSync(manifest);
+    symlinkSync(outside, manifest);
+    await runAssetImport("FILEKEY:1-2", { format: "png", description: "new" }, deps(dir));
+    expect(readFileSync(outside, "utf8")).toBe(rows);
+  });
+
+  posixOnly("refuses a .media folder that is a link", async () => {
+    const dir = scratch();
+    const outsideDir = scratch();
+    symlinkSync(outsideDir, join(dir, ".media"));
+    await expect(runAssetImport("FILEKEY:1-2", { format: "png" }, deps(dir))).rejects.toThrow(
+      /outside the project/,
+    );
+    expect(readdirSync(outsideDir)).toEqual([]);
+  });
+
+  posixOnly("refuses a linked images folder inside .media", async () => {
+    const dir = scratch();
+    const outsideDir = scratch();
+    mkdirSync(join(dir, ".media"));
+    symlinkSync(outsideDir, join(dir, ".media", "images"));
+    await expect(runAssetImport("FILEKEY:1-2", { format: "png" }, deps(dir))).rejects.toThrow(
+      /outside the project/,
+    );
+    expect(readdirSync(outsideDir)).toEqual([]);
   });
 });
