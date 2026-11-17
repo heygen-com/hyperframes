@@ -15,10 +15,12 @@ const SHADOW_IFRAME_STYLE: CSSProperties = {
 };
 
 // A sealed frame is cross-origin, and Chrome stops rendering one that is hidden or clipped away, so its
-// runtime waits out its readiness timeout. Transparent, it keeps rendering out of sight.
+// runtime waits out its readiness timeout. Transparent and under the live frame, it keeps rendering out of
+// sight, and the live frame keeps every click (the player's interactive frame turns pointer events back on).
 const SEALED_SHADOW_IFRAME_STYLE: CSSProperties = {
   position: "absolute",
   inset: 0,
+  zIndex: -1,
   opacity: 0,
   pointerEvents: "none",
 };

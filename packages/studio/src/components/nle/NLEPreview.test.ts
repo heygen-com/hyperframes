@@ -592,7 +592,7 @@ describe("NLEPreview", () => {
 
   // Chrome stops rendering a hidden or clipped cross-origin frame, and a sealed one is cross-origin.
   it.each([
-    ["opaque" as const, ["opacity: 0"], ["visibility", "clip-path"]],
+    ["opaque" as const, ["opacity: 0", "z-index: -1"], ["visibility", "clip-path"]],
     [undefined, ["visibility: hidden", "clip-path: inset(100%)"], ["opacity"]],
   ])(
     "keeps a reload's preview out of sight, and a sealed one rendering (%s)",
