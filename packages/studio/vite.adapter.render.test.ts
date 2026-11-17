@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createServer, type ViteDevServer } from "vite";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
 
@@ -28,6 +29,10 @@ afterEach(async () => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
+const RECEIVED_RENDER = fileURLToPath(
+  new URL("../cli/src/utils/receivedRender.ts", import.meta.url),
+);
+
 type RenderOptions = Parameters<ReturnType<typeof createViteAdapter>["startRender"]>[0];
 
 async function fixture(extra: Partial<RenderOptions> = {}, setup?: (dir: string) => void) {
@@ -38,6 +43,8 @@ async function fixture(extra: Partial<RenderOptions> = {}, setup?: (dir: string)
     configFile: false,
     server: { middlewareMode: true, watch: null, ws: false },
   });
+  // Loads the received-project rule before the render starts, so a cold load on CI isn't timed by the waits below.
+  await server.ssrLoadModule(RECEIVED_RENDER);
   const adapter = createViteAdapter(
     dir,
     server,
@@ -57,7 +64,7 @@ async function fixture(extra: Partial<RenderOptions> = {}, setup?: (dir: string)
   return { dir, state, outputPath, metaPath: join(dir, "out.meta.json") };
 }
 
-describe("Vite GIF rendering", () => {
+describe("Vite GIF rendering", { timeout: 30_000 }, () => {
   it("forwards loop count and writes a sidecar without overwriting the GIF", async () => {
     producer.executeRenderJob.mockImplementation(async (_job, _dir, outputPath: string) => {
       writeFileSync(outputPath, "GIF89a");
