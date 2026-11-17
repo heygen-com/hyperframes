@@ -606,7 +606,10 @@ export interface RenderOptions {
   bestEffort?: boolean;
   /** --include-outside-files: run scripts the project references from outside its folder. */
   includeOutsideScripts?: boolean;
-  /** --refuse-outside-files: bring in no file from outside the project folder. */
+  /**
+   * True brings in no file from outside the project folder (--refuse-outside-files). False means
+   * the caller already applied the received-files rule and it allows them. Absent, the render applies it.
+   */
   refuseOutsideFiles?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
@@ -925,13 +928,12 @@ export function dockerRenderOptions(
     protocolTimeoutMs: options.protocolTimeout,
     playerReadyTimeoutMs: options.playerReadyTimeout,
     refuseOutsideFiles:
-      options.refuseOutsideFiles === true ||
-      !outsideAssetsAllowedOrWarn(projectDir, options.entryFile),
+      options.refuseOutsideFiles ?? !outsideAssetsAllowedOrWarn(projectDir, options.entryFile),
   };
 }
 
 // fallow-ignore-next-line complexity
-async function renderDocker(
+export async function renderDocker(
   projectDir: string,
   outputPath: string,
   options: RenderOptions,
@@ -1194,8 +1196,9 @@ async function executeLocalRender(
   }
   const producer = await loadProducer();
   const allowOutsideProjectAssets =
-    options.refuseOutsideFiles !== true &&
-    outsideAssetsAllowedOrWarn(projectDir, options.entryFile);
+    options.refuseOutsideFiles === undefined
+      ? outsideAssetsAllowedOrWarn(projectDir, options.entryFile)
+      : !options.refuseOutsideFiles;
   const includeOutsideScripts = options.includeOutsideScripts === true;
   const deParallelRouterActive =
     options.manageDeParallelRouterBreaker === true
