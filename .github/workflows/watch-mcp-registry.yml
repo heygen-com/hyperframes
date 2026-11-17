@@ -1,0 +1,25 @@
+name: Watch the MCP registry listing
+
+# Fails, naming the version, when a HeyGen listing in the official MCP registry gains a version we did not publish
+# or points anywhere but the hosted HyperFrames MCP. See scripts/ci/check-mcp-registry-listings.mjs.
+
+permissions: {}
+
+on:
+  schedule:
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check the listings
+        run: node scripts/ci/check-mcp-registry-listings.mjs

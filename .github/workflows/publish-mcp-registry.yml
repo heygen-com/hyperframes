@@ -1,9 +1,11 @@
 name: Publish to MCP Registry
 
-# Lists the hosted HyperFrames MCP (server.json) in the official MCP registry. The registry gives the
-# io.github.heygen-com/* name to a run that GitHub vouches for as this repo (OIDC), so no secret is stored.
+# Lists the hosted HyperFrames MCP (server.json) in the official MCP registry as com.heygen/hyperframes.
+# The registry grants com.heygen/* only to a request signed with the key whose public half is in the TXT
+# record on heygen.com, and that key is a secret of the main-only mcp-registry environment. The older
+# io.github.heygen-com/* name was granted to a GitHub token from any workflow in any heygen-com repository.
 # The registry rejects a version it already has: to change the listing, edit server.json and raise "version".
-# Steps follow https://modelcontextprotocol.io/registry/github-actions
+# Steps follow https://modelcontextprotocol.io/registry/authentication
 
 permissions: {}
 
@@ -21,36 +23,22 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      id-token: write
       contents: read
-    env:
-      MCP_PUBLISHER_VERSION: v1.8.9
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
 
-      - name: Install cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: ./.github/actions/install-mcp-publisher
+        with:
+          version: v1.8.9
 
-      - name: Download and verify mcp-publisher
-        run: |
-          set -euo pipefail
-          archive="mcp-publisher_linux_amd64.tar.gz"
-          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
-          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
-          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
-          cosign verify-blob \
-            --bundle "$archive.sigstore.json" \
-            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            "$archive"
-          tar xzf "$archive" mcp-publisher
-          rm -f "$archive" "$archive.sigstore.json"
-
-      - name: Log in to the MCP registry
-        run: ./mcp-publisher login github-oidc
+      # v1.8.9 reads the key only from --private-key; the value comes from the environment, which Actions masks.
+      - name: Log in to the MCP registry as heygen.com
+        env:
+          MCP_PRIVATE_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
+        run: ./mcp-publisher login dns --domain heygen.com --private-key "$MCP_PRIVATE_KEY"
 
       - name: Publish server.json
         run: ./mcp-publisher publish

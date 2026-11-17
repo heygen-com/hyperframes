@@ -1,0 +1,38 @@
+name: Deprecate the io.github MCP registry listing
+
+# One run, after com.heygen/hyperframes is live: marks every version of the old io.github.heygen-com/hyperframes
+# listing deprecated, pointing registry clients at the new name. Changing that listing's status takes the same
+# GitHub token login the name was published with. Delete this file once the run has succeeded.
+
+permissions: {}
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deprecate:
+    # The environment admits only main.
+    if: github.ref == 'refs/heads/main'
+    environment: mcp-registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/install-mcp-publisher
+        with:
+          version: v1.8.9
+
+      - name: Log in to the MCP registry with this run's GitHub token
+        run: ./mcp-publisher login github-oidc
+
+      - name: Deprecate every version of io.github.heygen-com/hyperframes
+        run: >-
+          ./mcp-publisher status --status deprecated --all-versions --yes
+          --message "Moved to com.heygen/hyperframes" io.github.heygen-com/hyperframes
