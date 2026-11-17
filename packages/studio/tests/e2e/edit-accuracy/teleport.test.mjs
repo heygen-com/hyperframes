@@ -276,6 +276,7 @@ describe("frameSamplerScript in a sealed preview", () => {
   };
   const topDocument = { querySelector: () => null };
   const topWindow = { getComputedStyle: () => style };
+  topWindow.top = topWindow;
   topDocument.defaultView = topWindow;
 
   const BOXES = {
@@ -299,11 +300,12 @@ describe("frameSamplerScript in a sealed preview", () => {
   };
 
   // The frame's document and location throw, as a cross-origin frame's do; only postMessage reaches it.
-  function sealedFrame(studioReplies) {
+  function sealedFrame(studioReplies, watchHeld = null) {
     const channel = new MessageChannel();
     const asked = [];
-    channel.port1.onmessage = ({ data: { id, kind, params } }) => {
+    channel.port1.onmessage = async ({ data: { id, kind, params } }) => {
       asked.push({ kind, params });
+      if (kind === "watch-geometry" && watchHeld) await watchHeld;
       const result =
         kind === "query"
           ? {
@@ -365,13 +367,14 @@ describe("frameSamplerScript in a sealed preview", () => {
   function samplerFor(iframe, on) {
     let tick = () => {};
     const clock = { now: 0 };
+    const studio = { waiting: null };
     const window = { addEventListener: (type, f) => (on[type] = f) };
     window.top = window;
     const page = {
       window,
       document: {
         querySelectorAll: () => [].concat(iframe),
-        querySelector: () => null,
+        querySelector: (selector) => (selector.includes("press-waiting") ? studio.waiting : null),
         createElement: () => ({ style: {}, isConnected: true }),
         documentElement: { append() {} },
       },
@@ -405,7 +408,7 @@ describe("frameSamplerScript in a sealed preview", () => {
     };
     const move = (x, buttons = 1) =>
       on.pointermove({ isTrusted: true, clientX: x, clientY: 225, buttons });
-    return { rec, tick, clock, settle, watching, move };
+    return { rec, tick, clock, settle, watching, move, studio };
   }
 
   it("measures the element from the preview's pushes, in top-frame px, and Studio keeps the shared port", async () => {
@@ -479,6 +482,98 @@ describe("frameSamplerScript in a sealed preview", () => {
       await settle();
       tick();
       expect(rec.samples.filter((s) => s.quad).map((s) => s.t)).toEqual([60]);
+    } finally {
+      close();
+    }
+  });
+
+  it("drops pushes that land before the frame confirms the new watch, and pushes with a box that is not finite", async () => {
+    let confirm = () => {};
+    const held = new Promise((resolve) => (confirm = resolve));
+    const { iframe, on, asked, push, close } = sealedFrame([], held);
+    const { rec, tick, settle, move } = samplerFor(iframe, on);
+    try {
+      move(150);
+      for (let i = 0; i < 50 && !asked.some((a) => a.kind === "watch-geometry"); i++) {
+        tick();
+        await settle();
+      }
+      push(1_010);
+      await settle();
+      confirm();
+      await settle();
+      push(1_020, Number.NaN);
+      push(1_030);
+      await settle();
+      tick();
+      expect(rec.samples.filter((s) => s.quad).map((s) => s.t)).toEqual([30]);
+    } finally {
+      close();
+    }
+  });
+
+  it("takes a newly shown preview's pushes only from the moment it is the one on screen", async () => {
+    const first = sealedFrame([]);
+    const second = sealedFrame([]);
+    let shownFrame = first.iframe;
+    for (const x of [first, second]) x.iframe.checkVisibility = () => x.iframe === shownFrame;
+    const { rec, tick, clock, settle, move } = samplerFor([first.iframe, second.iframe], first.on);
+    Object.assign(second.on, first.on);
+    try {
+      move(150);
+      for (
+        let i = 0;
+        i < 50 && ![first, second].every((x) => x.asked.some((a) => a.kind === "watch-geometry"));
+        i++
+      ) {
+        tick();
+        await settle();
+      }
+      clock.now = 100;
+      // Studio swaps previews: the second, hidden until now, painted at 90 while the first was on screen.
+      second.push(1_090, 50);
+      shownFrame = second.iframe;
+      await settle();
+      tick();
+      second.push(1_110);
+      await settle();
+      tick();
+      expect(rec.samples.filter((s) => s.quad).map((s) => s.t)).toEqual([110]);
+    } finally {
+      first.close();
+      second.close();
+    }
+  });
+
+  it("pairs each push with the outline Studio showed at its stamp, not when the push lands", async () => {
+    const { iframe, on, asked, push, close } = sealedFrame([]);
+    const { rec, tick, clock, settle, watching, move, studio } = samplerFor(iframe, on);
+    const outline = {
+      ownerDocument: topDocument,
+      parentElement: null,
+      getRootNode: () => ({}),
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 1920, height: 1080 }),
+    };
+    try {
+      move(150);
+      await watching(asked);
+      clock.now = 10;
+      tick();
+      // Painted at 15, before Studio showed its waiting outline at 20; it lands after.
+      push(1_015);
+      clock.now = 20;
+      studio.waiting = outline;
+      await settle();
+      tick();
+      push(1_025);
+      clock.now = 30;
+      await settle();
+      tick();
+      const measured = rec.samples.filter((s) => s.quad);
+      expect(measured.map((s) => [s.t, Boolean(s.waitingQuad)])).toEqual([
+        [15, false],
+        [25, true],
+      ]);
     } finally {
       close();
     }

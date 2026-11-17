@@ -116,6 +116,7 @@ function frameSampler() {
     marks: [],
     since: -Infinity,
     history: [],
+    overlayHistory: [],
   };
   window.__editBenchFrames = rec;
   // The clock each preview stamps its geometry pushes on: the same instant reads the same in every document.
@@ -158,6 +159,8 @@ function frameSampler() {
         pending: new Map(),
         handles: {},
         watched: null,
+        for: null,
+        confirmed: false,
         pushes: [],
         styles: null,
         styling: false,
@@ -167,7 +170,9 @@ function frameSampler() {
   const takePort = (l, port) => {
     l.port = port;
     port.addEventListener("message", ({ data }) =>
-      data?.event === "geometry" ? l.pushes.push(data) : l.pending.get(data?.id)?.(data),
+      data?.event === "geometry"
+        ? l.confirmed && l.pushes.push(data)
+        : l.pending.get(data?.id)?.(data),
     );
     port.start();
   };
@@ -207,11 +212,16 @@ function frameSampler() {
   // Each preview pushes the element's and the root's geometry as it paints; the size is asked beside it.
   const watchIn = async (f, selector) => {
     const l = linkOf(f);
+    // Before any await: a push for the previous element must not land in this one's frames.
+    if (l.for !== selector) Object.assign(l, { for: selector, confirmed: false, pushes: [] });
     const [el, root] = [await handleOf(l, selector), await handleOf(l, ROOT)];
     if (!l.port || !el || !root) return;
     if (l.watched !== `${el} ${root}`) {
-      Object.assign(l, { watched: `${el} ${root}`, pushes: [], styles: null });
-      void ask(l, "watch-geometry", { handles: [el, root] });
+      // Port messages keep their order: every push before this request's reply is the previous watch's.
+      Object.assign(l, { watched: `${el} ${root}`, pushes: [], styles: null, confirmed: false });
+      void ask(l, "watch-geometry", { handles: [el, root] }).then(
+        (reply) => (l.confirmed = !!reply),
+      );
     }
     if (l.styling) return;
     l.styling = true;
@@ -250,6 +260,8 @@ function frameSampler() {
   };
   const historyAt = (at) =>
     rec.history.findLast((h) => h.at <= at) ?? { pointer: null, down: false };
+  // Studio's outlines as this page painted them at a push's stamp, read like the pointer: by time.
+  const overlaysAt = (at) => rec.overlayHistory.findLast((o) => o.at <= at)?.shown ?? {};
   const overlays = () => {
     const outline = document.querySelector("[data-dom-edit-crop-frame] > div.border-dashed");
     const waiting = document.querySelector("[data-dom-edit-press-waiting]");
@@ -265,7 +277,11 @@ function frameSampler() {
     for (const { at, elements } of l.pushes.splice(0)) {
       const [box, rootBox] = elements;
       if (!box || !rootBox) return void forget(l);
-      if (at < rec.since) continue;
+      if (
+        ![box, rootBox].every(({ rect: r }) => [r.x, r.y, r.width, r.height].every(Number.isFinite))
+      )
+        continue;
+      if (at < rec.since || at < shown.since) continue;
       const lift = (b) => cornersOf(b).map((p) => throughFrame(f, p));
       const { pointer, down } = historyAt(at);
       rec.samples.push({
@@ -278,7 +294,7 @@ function frameSampler() {
           size: styleBoxSize(camel(l.styles)),
           clip: box.clipPath || "none",
         }),
-        ...overlays(),
+        ...overlaysAt(at),
       });
     }
   };
@@ -299,12 +315,16 @@ function frameSampler() {
       ...overlays(),
     });
   };
+  const shown = { frame: null, since: -Infinity };
   const sample = () => {
     const frames = previewFrames();
     if (!frames.length) return sampleHere(rec.selector);
     for (const f of frames) void watchIn(f, rec.selector);
+    rec.overlayHistory.push({ at: clock(), shown: overlays() });
     const f = shownPreview(frames);
     for (const other of frames) if (other !== f) linkOf(other).pushes.length = 0;
+    // A preview only just shown painted its queued pushes while another one was the one on screen.
+    if (f !== shown.frame) Object.assign(shown, { frame: f, since: clock() });
     if (f) sampleFrom(f);
   };
   // True when a preview holds a match, false when every preview answered without one, null while one cannot answer.
@@ -347,7 +367,8 @@ ${[mul, apply, rotation, ownLinear, parentOf, linear, boxSize, styleBoxSize, thr
 export const startFrames = (page, selector) =>
   page.evaluate((sel) => {
     const rec = window.__editBenchFrames;
-    if (!rec.on) Object.assign(rec, { on: true, samples: [], marks: [], history: [] });
+    if (!rec.on)
+      Object.assign(rec, { on: true, samples: [], marks: [], history: [], overlayHistory: [] });
     rec.selector = sel;
     rec.marks.push(rec.samples.length);
     rec.since = performance.timeOrigin + performance.now();
