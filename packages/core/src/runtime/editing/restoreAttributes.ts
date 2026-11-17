@@ -1,0 +1,153 @@
+// `restore-attributes`: an undo or redo that only changes identified elements' attributes, applied in place.
+// The parent diffs the saved files and sends each changed element's full restored attribute set.
+
+/** `hf:<data-hf-id>` or `id:<id>`, the key the parent's restore diff uses. */
+export type RestoreElementKey = string;
+export type RestoreAttribute = [name: string, value: string];
+export type RestoreScope = {
+  /** null: the active document, which is the whole preview; else a sub-composition file the preview inlines. */
+  file: string | null;
+  elements: { key: RestoreElementKey; attributes: RestoreAttribute[] }[];
+};
+/** `scripted`: the files keep an unchanged GSAP script, so an element GSAP has parsed needs a re-run instead. */
+export type RestoreAttributesParams = { scopes: RestoreScope[]; scripted: boolean; time: number };
+
+const MAX_SCOPES = 64;
+const MAX_ELEMENTS = 2_000;
+const MAX_ATTRIBUTES = 256;
+const MAX_KEY_LENGTH = 512;
+const MAX_VALUE_LENGTH = 200_000;
+const ATTRIBUTE_NAME = /^[^\s"'>/=\0]{1,256}$/;
+const IDENTITY_SELECTOR = "[id], [data-hf-id]";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Object.prototype.toString.call(value) === "[object Object]";
+const keysAre = (value: Record<string, unknown>, keys: string) =>
+  Object.keys(value).sort().join() === keys;
+
+function attribute(value: unknown): RestoreAttribute | null {
+  if (!Array.isArray(value) || value.length !== 2) return null;
+  const [name, text] = value;
+  return typeof name === "string" &&
+    ATTRIBUTE_NAME.test(name) &&
+    typeof text === "string" &&
+    text.length <= MAX_VALUE_LENGTH
+    ? [name, text]
+    : null;
+}
+
+function element(value: unknown): RestoreScope["elements"][number] | null {
+  if (!isRecord(value) || !keysAre(value, "attributes,key")) return null;
+  const { key, attributes } = value;
+  if (typeof key !== "string" || key.length > MAX_KEY_LENGTH || !/^(hf|id):./.test(key)) return null;
+  if (!Array.isArray(attributes) || attributes.length > MAX_ATTRIBUTES) return null;
+  const parsed = attributes.map(attribute);
+  return parsed.every(Boolean) ? { key, attributes: parsed as RestoreAttribute[] } : null;
+}
+
+function scope(value: unknown): RestoreScope | null {
+  if (!isRecord(value) || !keysAre(value, "elements,file")) return null;
+  const { file, elements } = value;
+  if (file !== null && (typeof file !== "string" || !file || file.length > MAX_KEY_LENGTH)) return null;
+  if (!Array.isArray(elements) || !elements.length) return null;
+  const parsed = elements.map(element);
+  return parsed.every(Boolean) ? { file, elements: parsed as RestoreScope["elements"] } : null;
+}
+
+export function parseRestoreAttributes(params: unknown): RestoreAttributesParams | null {
+  if (!isRecord(params) || !keysAre(params, "scopes,scripted,time")) return null;
+  const { scopes, scripted, time } = params;
+  if (typeof scripted !== "boolean") return null;
+  if (typeof time !== "number" || !Number.isFinite(time) || time < 0) return null;
+  if (!Array.isArray(scopes) || !scopes.length || scopes.length > MAX_SCOPES) return null;
+  const parsed = scopes.map(scope);
+  if (!parsed.every(Boolean)) return null;
+  const count = (parsed as RestoreScope[]).reduce((n, s) => n + s.elements.length, 0);
+  return count <= MAX_ELEMENTS ? { scopes: parsed as RestoreScope[], scripted, time } : null;
+}
+
+function identityKey(el: Element): RestoreElementKey | null {
+  const hfId = el.getAttribute("data-hf-id");
+  if (hfId) return `hf:${hfId}`;
+  const id = el.getAttribute("id");
+  return id ? `id:${id}` : null;
+}
+
+/** Every identified element under `root` by key, or null when two share one. */
+function identityMap(root: ParentNode): Map<RestoreElementKey, Element> | null {
+  const map = new Map<RestoreElementKey, Element>();
+  for (const el of root.querySelectorAll(IDENTITY_SELECTOR)) {
+    const key = identityKey(el);
+    if (!key) continue;
+    if (map.has(key)) return null;
+    map.set(key, el);
+  }
+  return map;
+}
+
+// The active document is the whole preview; a sub-composition lives in each host that inlines it.
+function scopeRoots(file: string | null): ParentNode[] {
+  if (file === null) return [document];
+  return Array.from(document.querySelectorAll("[data-composition-file]")).filter(
+    (host) => host.getAttribute("data-composition-file") === file,
+  );
+}
+
+/** Each live element with the attributes it takes, or null when any is missing or not the file's own. */
+function planRestore(scopes: RestoreScope[]): [Element, RestoreAttribute[]][] | null {
+  const plan: [Element, RestoreAttribute[]][] = [];
+  for (const { file, elements } of scopes) {
+    const roots = scopeRoots(file);
+    if (!roots.length) return null;
+    for (const root of roots) {
+      const live = identityMap(root);
+      if (!live) return null;
+      for (const { key, attributes } of elements) {
+        const el = live.get(key);
+        // The preview rewrites a sub-composition's own root, so its attributes are not the file's.
+        if (!el || el.hasAttribute("data-hf-inner-root")) return null;
+        plan.push([el, attributes]);
+      }
+    }
+  }
+  return plan;
+}
+
+type RestoreWindow = Window & {
+  __player?: { seek?: (t: number) => void; isPlaying?: () => boolean; play?: () => void };
+  __hfForceTimelineRebind?: () => void;
+  __hfStudioManualEditsApply?: () => void;
+  __hfSuppressSceneMutations?: <T>(fn: () => T) => T;
+};
+
+/** Rebinds the timeline to the live attributes at `time`, as an in-place soft reload does, without running scripts. */
+function rebindAt(win: RestoreWindow, time: number): void {
+  const finalize = () => {
+    const wasPlaying = win.__player?.isPlaying?.() === true;
+    win.__player?.seek?.(time);
+    win.__hfForceTimelineRebind?.();
+    win.__hfStudioManualEditsApply?.();
+    if (wasPlaying) win.__player?.play?.();
+  };
+  if (win.__hfSuppressSceneMutations) win.__hfSuppressSceneMutations(finalize);
+  else finalize();
+}
+
+/** Applies the restore in place; `applied: false` changes nothing, and the parent reloads instead. */
+export function restoreAttributes({
+  scopes,
+  scripted,
+  time,
+}: RestoreAttributesParams): { applied: boolean } {
+  const win = window as RestoreWindow;
+  const plan = planRestore(scopes);
+  if (!plan || typeof win.__player?.seek !== "function") return { applied: false };
+  if (scripted && plan.some(([el]) => "_gsap" in el)) return { applied: false };
+  for (const [el, attributes] of plan) {
+    const keep = new Set(attributes.map(([name]) => name));
+    for (const name of el.getAttributeNames()) if (!keep.has(name)) el.removeAttribute(name);
+    for (const [name, value] of attributes) el.setAttribute(name, value);
+  }
+  rebindAt(win, time);
+  return { applied: true };
+}

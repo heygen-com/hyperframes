@@ -15,6 +15,8 @@ import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids"
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
 import { STUDIO_EDIT_ATTRS } from "../components/editor/manualEditsSeekReapply";
 import { markScenesStale } from "../player/sceneSwap";
+import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
+import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
 import { STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR } from "../components/editor/manualEditsTypes";
 import { countStudioPreviewChange, studioGestureDraws } from "../components/editor/manualEditsDom";
 
@@ -356,6 +358,58 @@ function repaintWhileReloading(win: PreviewWindow, doc: Document, restored?: str
   );
 }
 
+type SealedRestore = Omit<EditingParams<"restore-attributes">, "time">;
+
+const restoredAttributes = (el: Element): [string, string][] =>
+  el.getAttributeNames().map((name) => [name, el.getAttribute(name) ?? ""]);
+
+/** A sealed preview's in-place restore from the files alone, or null when it needs a reload. */
+function sealedRestore(activeDocPath: string, files: RestoreFiles): SealedRestore | null {
+  const restore: SealedRestore = { scopes: [], scripted: false };
+  // The preview server stamps data-hf-id on every page it serves.
+  const stamped = (html: string) => (html.includes("data-hf-id") ? html : ensureHfIds(html));
+  for (const [path, file] of Object.entries(files)) {
+    const isActive = path === activeDocPath;
+    const prevDoc = parseRestoreSource(stamped(file.previous));
+    const nextDoc = parseRestoreSource(stamped(file.restored));
+    const scripted = restoreScripted(prevDoc, nextDoc, isActive);
+    const keys = diffRestoreDocs(prevDoc, nextDoc);
+    const restoredByKey = identityElementMap(nextDoc);
+    if (scripted === null || !keys || !restoredByKey) return null;
+    // A changed script is re-run in the frame, which a sealed preview cannot be asked to do yet.
+    if (extractGsapScriptText(file.restored) !== extractGsapScriptText(file.previous)) return null;
+    restore.scripted ||= scripted;
+    if (!keys.length) continue;
+    const elements = keys.map((key) => ({
+      key,
+      attributes: restoredAttributes(restoredByKey.get(key)!),
+    }));
+    restore.scopes.push({ file: isActive ? null : path, elements });
+  }
+  return restore.scopes.length ? restore : null;
+}
+
+/** Sends the restore to a sealed preview; a refusal, or no answer, reloads it. */
+function applySealedRestore(
+  iframe: HTMLIFrameElement,
+  activeDocPath: string,
+  files: RestoreFiles,
+  currentTime: number,
+  reloadPreview: () => void,
+): "soft" | "full" {
+  const restore = sealedRestore(activeDocPath, files);
+  if (!restore) {
+    reloadPreview();
+    return "full";
+  }
+  void previewRequest(iframe, "restore-attributes", { ...restore, time: currentTime }).then(
+    (reply) => {
+      if (!reply?.applied) reloadPreview();
+    },
+  );
+  return "soft";
+}
+
 /**
  * Soft-apply an undo/redo restore to the live preview WITHOUT a full iframe
  * remount (which blanks the frame black and re-flashes the WebGL context). Eligible
@@ -402,6 +456,8 @@ export function applyUndoRestoreToPreview(
     markScenesStale(iframe, paths);
     reload();
   };
+  if (iframe && files && previewFrameOpaque(iframe))
+    return applySealedRestore(iframe, activeDocPath, files, currentTime, reloadPreview);
   const doc = iframe?.contentDocument;
   const win = iframe?.contentWindow as PreviewWindow | null;
   const plan = doc && files && win ? planRestoreTargets(doc, activeDocPath, files) : null;

@@ -32,6 +32,7 @@ import { elementGeometry } from "./editingGeometry";
 import { pointerTargetsAt } from "./editingTargets";
 import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
+import { restoreAttributes } from "./editing/restoreAttributes";
 import { gestureStart } from "./editingGestureStart";
 import {
   getLogicalOpacity,
@@ -188,6 +189,7 @@ const HANDLERS: Handlers = {
     return { errors, truncated: from + errors.length < seen.length };
   },
   "watch-keys": ({ combos }, port) => watchKeys(port, combos),
+  "restore-attributes": (params) => restoreAttributes(params),
 };
 
 function serve(port: MessagePort): void {
