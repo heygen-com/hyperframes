@@ -223,12 +223,12 @@ function isPlainFileOfSize(path: string, bytes: number): boolean {
 
 /**
  * Indices safe to skip on resume. A segment counts only if this install
- * signed the manifest, the hash matches,
- * the entry matches a slice of this plan, and the file the join will read
- * (the slice's own path in `segmentDir`, never the manifest's `path`) is a
- * plain file at the recorded size whose frame count equals the slice length.
- * Anything else re-captures — the cost of re-capturing a good segment is
- * minutes; the cost of reusing a bad one is a silently wrong video.
+ * signed the manifest, the plan hash matches, the entry matches a slice of
+ * this plan, and the file the join will read (the slice's own path in
+ * `segmentDir`, never the manifest's `path`) is a plain file at the recorded
+ * size whose frame count equals the slice length. Anything else re-captures:
+ * re-capturing a good segment costs minutes, reusing a bad one silently
+ * produces a wrong video.
  */
 export async function validateCompletedSegments(
   manifest: SegmentManifest,
