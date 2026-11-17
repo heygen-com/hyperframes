@@ -6,13 +6,23 @@ export const PREVIEW_STAGE_INSET_PX = 8;
 
 // clip-path as well as visibility: the player's loading overlay sets its own
 // visibility:visible and would otherwise paint over the live frame.
-export const SHADOW_IFRAME_STYLE: CSSProperties = {
+const SHADOW_IFRAME_STYLE: CSSProperties = {
   position: "absolute",
   inset: 0,
   visibility: "hidden",
   clipPath: "inset(100%)",
   pointerEvents: "none",
 };
+
+const RENDERING_SHADOW_IFRAME_STYLE: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  opacity: 0,
+  pointerEvents: "none",
+};
+
+export const shadowIframeStyle = (sandboxOrigin: "opaque" | undefined): CSSProperties =>
+  sandboxOrigin === "opaque" ? RENDERING_SHADOW_IFRAME_STYLE : SHADOW_IFRAME_STYLE;
 
 export function resolvePreviewStageSize(
   viewportWidth: number,
