@@ -72,7 +72,7 @@ describe("geometryEvent", () => {
   });
 });
 
-// jsdom has no ResizeObserver: this one reports every observed target after the frame's rAF callbacks, as a browser does.
+// jsdom has no ResizeObserver: this one reports each observed target after the frame's rAF callbacks, as browsers do.
 const observed: Array<{ report: ResizeObserverCallback; targets: Set<Element> }> = [];
 vi.stubGlobal(
   "ResizeObserver",
