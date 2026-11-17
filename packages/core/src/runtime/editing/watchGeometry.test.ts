@@ -72,6 +72,25 @@ describe("geometryEvent", () => {
   });
 });
 
+// jsdom has no ResizeObserver: this one reports every observed target after the frame's rAF callbacks, as a browser does.
+const observed: Array<{ report: ResizeObserverCallback; targets: Set<Element> }> = [];
+vi.stubGlobal(
+  "ResizeObserver",
+  class {
+    entry = { report: (() => {}) as ResizeObserverCallback, targets: new Set<Element>() };
+    constructor(report: ResizeObserverCallback) {
+      this.entry.report = report;
+      observed.push(this.entry);
+    }
+    observe(target: Element) {
+      this.entry.targets.add(target);
+    }
+    unobserve(target: Element) {
+      this.entry.targets.delete(target);
+    }
+  },
+);
+
 describe("watchGeometry", () => {
   const frames = new Map<number, FrameRequestCallback>();
   let lastFrame = 0;
@@ -81,6 +100,7 @@ describe("watchGeometry", () => {
     const due = [...frames.values()];
     frames.clear();
     for (const run of due) run(now);
+    for (const { report, targets } of observed) if (targets.size) report([], {} as ResizeObserver);
   };
   const pushes = (port: MessagePort) => {
     const seen: unknown[] = [];
@@ -193,11 +213,19 @@ describe("watchGeometry", () => {
       () => window.dispatchEvent(new Event("pagehide")),
       () => stopWatchingGeometry(frame),
     ];
+    const observing = () => observed.some(({ targets }) => targets.size > 0);
     for (const stop of stops) {
       watchGeometry(frame, { handles: [handle] }, 1);
       expect(frames.size).toBe(1);
       stop();
       expect(frames.size).toBe(0);
+      // Stopped again between a frame's re-arm and its observer step: the observer lets go too.
+      watchGeometry(frame, { handles: [handle] }, 1);
+      for (const arm of [...frames.values()]) arm(now);
+      frames.clear();
+      expect(observing()).toBe(true);
+      stop();
+      expect(observing()).toBe(false);
     }
     parent.close();
   });

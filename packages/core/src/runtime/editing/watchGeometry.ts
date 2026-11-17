@@ -76,7 +76,6 @@ export function geometryEvent(data: unknown, version: number): EditingGeometryEv
 }
 
 const watches = new Map<MessagePort, EditingElementHandle[]>();
-let nextFrame = 0;
 let wireVersion = 0;
 
 function pushTo(port: MessagePort, handles: EditingElementHandle[], at: number): void {
@@ -89,7 +88,8 @@ function pushTo(port: MessagePort, handles: EditingElementHandle[], at: number):
 }
 
 function push(): void {
-  nextFrame = 0;
+  observer?.unobserve(document.documentElement);
+  observing = false;
   const at = performance.timeOrigin + performance.now();
   try {
     for (const [port, handles] of watches) pushTo(port, handles, at);
@@ -100,23 +100,26 @@ function push(): void {
   }
 }
 
-// Measured in the task after the frame renders: inside rAF, a later callback may still change what paints.
-let afterRender: MessagePort | null = null;
-function measureAfterRender(): void {
-  if (!afterRender) {
-    const channel = new MessageChannel();
-    channel.port1.onmessage = push;
-    afterRender = channel.port2;
-  }
-  afterRender.postMessage(null);
+// The measure runs in the frame's ResizeObserver step: after every rAF callback and layout, just before paint.
+// observe() resets the last reported size, so the root reports once each frame it is observed, resized or not.
+let observer: ResizeObserver | null = null;
+let observing = false;
+let nextFrame = 0;
+function observeThisFrame(): void {
+  nextFrame = 0;
+  if (!watches.size) return;
+  observer ??= new ResizeObserver(push);
+  observer.observe(document.documentElement);
+  observing = true;
 }
 
 function schedule(): void {
-  if (watches.size && !nextFrame) nextFrame = requestAnimationFrame(measureAfterRender);
-  if (!watches.size && nextFrame) {
-    cancelAnimationFrame(nextFrame);
-    nextFrame = 0;
-  }
+  if (watches.size && !nextFrame && !observing) nextFrame = requestAnimationFrame(observeThisFrame);
+  if (watches.size) return;
+  if (nextFrame) cancelAnimationFrame(nextFrame);
+  if (observing) observer?.unobserve(document.documentElement);
+  nextFrame = 0;
+  observing = false;
 }
 
 /** Stops `port`'s watch, or every watch when no port is named. */
