@@ -54,7 +54,9 @@ function parseSession(body: unknown): ReverseSession | undefined {
   return { sessionId, plan, gate, ...upgradeUrl };
 }
 
-function isHeygenBody(body: unknown): boolean {
+async function refusedByHeygen(res: Response): Promise<boolean> {
+  if (!res.headers.get("content-type")?.includes("json")) return false;
+  const body: unknown = await res.json().catch(() => null);
   if (!isRecord(body)) return false;
   return (
     typeof body.code === "number" || (isRecord(body.error) && typeof body.error.code === "string")
@@ -112,17 +114,12 @@ export async function startReverseSession(
     } else {
       status = res.status;
       cause = res.status >= 500 ? "http_5xx" : res.status >= 400 ? "http_4xx" : "http_other";
-      const json = res.headers.get("content-type")?.includes("json") === true;
-      heygenBody = json && isHeygenBody(await res.json().catch(() => null));
+      heygenBody = await refusedByHeygen(res);
     }
   } catch {
     cause = "network";
   }
-  trackReverseStartUnrecorded({
-    cause,
-    status,
-    ...(heygenBody === undefined ? {} : { heygenBody }),
-  });
+  trackReverseStartUnrecorded({ cause, status, heygenBody });
   const plan = await fallbackPlan().catch(() => undefined);
   return { recorded: false, reason: "unavailable", cause, ...(plan ? { plan } : {}) };
 }
