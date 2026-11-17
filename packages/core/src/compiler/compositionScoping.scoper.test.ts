@@ -66,6 +66,31 @@ const scopesFor = (id: string) => [
 ];
 
 describe("createCompositionCssScoper", () => {
+  it("reserves an upper bound for each rule before scoping it and settles to the sheet's size", () => {
+    const scope = createCompositionCssScoper();
+    for (const id of ["card", "c.a:rd", 'ca"rd', "hf-scope-placeholder"]) {
+      for (const css of randomSheets(id, 200)) {
+        for (const authoredRootId of [undefined, "card-root"]) {
+          for (const selector of [...scopesFor(id), scopeOf("x".repeat(500))]) {
+            for (const scoper of [scope, scopeCssToComposition]) {
+              const charges: number[] = [];
+              const options = { compoundAuthoredRoot: true, scopeRootSelectors: true };
+              const out = scoper(css, id, selector, authoredRootId, {
+                ...options,
+                charge: (bytes: number) => charges.push(bytes),
+              });
+              // Every settlement after a reservation is a refund: the bound held.
+              expect(Math.max(0, ...charges.slice(1).filter((_, i) => i % 2 === 1))).toBe(0);
+              expect(charges.reduce((sum, bytes) => sum + bytes, 0)).toBeGreaterThanOrEqual(
+                out.length,
+              );
+            }
+          }
+        }
+      }
+    }
+  });
+
   it("scopes every sheet exactly as scopeCssToComposition does, whatever the mount's scope", () => {
     const scope = createCompositionCssScoper();
     for (const id of ["card", "c.a:rd", 'ca"rd', "ca]rd", "hf-scope-placeholder"]) {

@@ -198,7 +198,12 @@ function isNestedInsideAnotherRule(rule: Rule): boolean {
   return false;
 }
 
-type ScopeOptions = { compoundAuthoredRoot?: boolean; scopeRootSelectors?: boolean };
+type ScopeOptions = {
+  compoundAuthoredRoot?: boolean;
+  scopeRootSelectors?: boolean;
+  /** Told the sheet's size, an upper bound for each rule before it is scoped, then the correction. */
+  charge?: (bytes: number) => void;
+};
 
 export function scopeCssToComposition(
   css: string,
@@ -213,7 +218,29 @@ export function scopeCssToComposition(
     scopeSelectorOverride ||
     `[data-composition-id="${escapeCssAttributeValue(trimmedCompositionId)}"]`;
   const root = parseCss(css);
-  return root ? scopeParsedCss(root, scope, trimmedCompositionId, authoredRootId, options) : "";
+  return root
+    ? scopeParsedCss(root, css.length, scope, trimmedCompositionId, authoredRootId, options)
+    : "";
+}
+
+/**
+ * Scoping writes at most two forms of a selector. Each holds the scope once per composition-id
+ * mention plus twice, and turns each `#` into an authored-id attribute.
+ */
+function scopedSelectorsBound(
+  selectors: readonly string[],
+  scope: string,
+  authoredRootId: string | null | undefined,
+): number {
+  const authoredAttribute = 26 + 2 * (authoredRootId?.trim().length ?? 0);
+  let bound = 0;
+  for (const selector of selectors) {
+    const mentions = selector.split("data-composition-id").length - 1;
+    const hashes = selector.split("#").length - 1;
+    const form = selector.length + hashes * authoredAttribute + (mentions + 2) * scope.length + 64;
+    bound += 2 * form + 2;
+  }
+  return bound;
 }
 
 function parseCss(css: string): postcss.Root | null {
@@ -234,12 +261,18 @@ function forEachScopedRule(root: postcss.Root, visit: (rule: Rule) => void): voi
 
 function scopeParsedCss(
   root: postcss.Root,
+  cssLength: number,
   scope: string,
   compositionId: string,
   authoredRootId: string | null | undefined,
   options: ScopeOptions | undefined,
 ): string {
+  const charge = options?.charge;
+  charge?.(cssLength);
   forEachScopedRule(root, (rule) => {
+    const authored = rule.selector.length;
+    const reserved = charge ? scopedSelectorsBound(rule.selectors, scope, authoredRootId) : 0;
+    charge?.(reserved);
     rule.selectors = rule.selectors.map((selector) =>
       scopeSelector(
         selector,
@@ -250,6 +283,7 @@ function scopeParsedCss(
         options?.scopeRootSelectors,
       ),
     );
+    charge?.(rule.selector.length - authored - reserved);
   });
   return root.toResult({ map: false }).css;
 }
@@ -295,9 +329,20 @@ export function createCompositionCssScoper(): typeof scopeCssToComposition {
       template = scopeTemplate(css, trimmedId, authoredRootId, options);
       templates.set(key, template);
     }
-    return template === null
-      ? scopeCssToComposition(css, compositionId, scopeSelectorOverride, authoredRootId, options)
-      : template.split(PLACEHOLDER_SCOPE).join(scope);
+    if (template === null) {
+      return scopeCssToComposition(
+        css,
+        compositionId,
+        scopeSelectorOverride,
+        authoredRootId,
+        options,
+      );
+    }
+    const pieces = template.split(PLACEHOLDER_SCOPE);
+    options?.charge?.(
+      template.length + (pieces.length - 1) * (scope.length - PLACEHOLDER_SCOPE.length),
+    );
+    return pieces.join(scope);
   };
 }
 
@@ -318,7 +363,7 @@ function scopeTemplate(
   });
   return rawSelector
     ? null
-    : scopeParsedCss(root, PLACEHOLDER_SCOPE, compositionId, authoredRootId, options);
+    : scopeParsedCss(root, css.length, PLACEHOLDER_SCOPE, compositionId, authoredRootId, options);
 }
 
 function isFontFaceAtRule(node: { type: string; name?: string }): node is AtRule {
