@@ -1,0 +1,25 @@
+name: MCP registry watch
+
+# Hourly: a red run means the MCP registry lists a HeyGen-named server or version server.json never held. The
+# registry's GitHub login lets a job in any heygen-com repo publish io.github.heygen-com/*.
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: "41 * * * *"
+  workflow_dispatch:
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compare the registry with server.json's history
+        run: node scripts/mcp-registry-watch.mjs
