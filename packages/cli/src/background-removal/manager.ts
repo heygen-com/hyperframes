@@ -15,8 +15,7 @@ const MODEL_URLS: Record<ModelId, string> = {
     "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_human_seg.onnx",
 };
 
-/** Size and sha256 of each release asset, so a cut or replaced file is never loaded. */
-const MODEL_FILES: Record<ModelId, ModelFile> = {
+const PINNED_MODEL_FILES: Record<ModelId, ModelFile> = {
   u2net_human_seg: {
     name: "u2net_human_seg.onnx",
     bytes: 175_997_641,
@@ -94,8 +93,7 @@ export async function ensureModel(
   options?: { onProgress?: (message: string) => void },
 ): Promise<string> {
   const dest = modelPath(model);
-  const pin = MODEL_FILES[model];
-  // Hashed on every load, not only on download: a cached file replaced since then is caught too.
+  const pin = PINNED_MODEL_FILES[model];
   if (await verifies(dest, pin)) return dest;
 
   mkdirSync(MODELS_DIR, { recursive: true });
