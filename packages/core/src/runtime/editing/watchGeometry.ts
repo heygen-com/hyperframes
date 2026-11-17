@@ -10,6 +10,7 @@ import {
 import { elementGeometry, type EditingElementGeometry } from "../editingGeometry";
 
 export const MAX_WATCHED_GEOMETRY = 32;
+export const MAX_GEOMETRY_WATCHERS = 8;
 
 export type WatchGeometryParams = { handles: EditingElementHandle[] };
 /** `at` is `performance.timeOrigin + performance.now()` in the frame when it measured. */
@@ -77,14 +78,23 @@ const watches = new Map<MessagePort, EditingElementHandle[]>();
 let nextFrame = 0;
 let wireVersion = 0;
 
+function pushTo(port: MessagePort, handles: EditingElementHandle[], at: number): void {
+  const { elements } = elementGeometry(handles, undefined);
+  try {
+    port.postMessage({ v: wireVersion, event: "geometry", at, elements });
+  } catch {
+    watches.delete(port);
+  }
+}
+
 function push(): void {
   nextFrame = 0;
   const at = performance.timeOrigin + performance.now();
-  for (const [port, handles] of watches) {
-    const { elements } = elementGeometry(handles, undefined);
-    port.postMessage({ v: wireVersion, event: "geometry", at, elements });
+  try {
+    for (const [port, handles] of watches) pushTo(port, handles, at);
+  } finally {
+    schedule();
   }
-  schedule();
 }
 
 function schedule(): void {
@@ -109,8 +119,9 @@ export function watchGeometry(
   { handles }: WatchGeometryParams,
   version: number,
 ): { watching: number } {
-  if (handles.length) watches.set(port, handles);
-  else watches.delete(port);
+  if (!handles.length) watches.delete(port);
+  else if (watches.has(port) || watches.size < MAX_GEOMETRY_WATCHERS) watches.set(port, handles);
+  else throw new Error(`at most ${MAX_GEOMETRY_WATCHERS} ports may watch geometry`);
   wireVersion = version;
   window.addEventListener("pagehide", stopAll);
   schedule();

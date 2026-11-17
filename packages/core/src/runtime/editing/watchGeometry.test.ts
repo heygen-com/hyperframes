@@ -3,6 +3,7 @@ import { elementGeometry } from "../editingGeometry";
 import { handleFor } from "../editingHandles";
 import {
   geometryEvent,
+  MAX_GEOMETRY_WATCHERS,
   MAX_WATCHED_GEOMETRY,
   parseWatchGeometry,
   stopWatchingGeometry,
@@ -121,6 +122,50 @@ describe("watchGeometry", () => {
       elements: [expected, null],
     });
     expect(geometryEvent(seen[1], 1)).not.toBeNull();
+    parent.close();
+  });
+
+  it("refuses a port past the watcher cap, and still lets a watching port change its list", () => {
+    const { handle, frame, parent } = setUp();
+    const others = Array.from({ length: MAX_GEOMETRY_WATCHERS - 1 }, () => new MessageChannel());
+    watchGeometry(frame, { handles: [handle] }, 1);
+    for (const { port1 } of others) watchGeometry(port1, { handles: [handle] }, 1);
+    const extra = new MessageChannel();
+    expect(() => watchGeometry(extra.port1, { handles: [handle] }, 1)).toThrow(/at most/);
+    expect(watchGeometry(frame, { handles: [handle, H] }, 1)).toEqual({ watching: 2 });
+    for (const { port1, port2 } of [...others, extra]) {
+      port1.close();
+      port2.close();
+    }
+    parent.close();
+  });
+
+  it("drops a watch whose port throws, and keeps pushing to the rest", async () => {
+    const { handle, frame, parent } = setUp();
+    const seen = pushes(parent);
+    const lost = {
+      postMessage: () => {
+        throw new Error("gone");
+      },
+    } as unknown as MessagePort;
+    watchGeometry(lost, { handles: [handle] }, 1);
+    watchGeometry(frame, { handles: [handle] }, 1);
+    step();
+    step();
+    await vi.waitFor(() => expect(seen).toHaveLength(2));
+    stopWatchingGeometry(frame);
+    expect(frames.size).toBe(0);
+    parent.close();
+  });
+
+  it("keeps the loop running when a frame's measure throws", () => {
+    const { handle, frame, parent } = setUp();
+    watchGeometry(frame, { handles: [handle] }, 1);
+    vi.spyOn(window, "getComputedStyle").mockImplementationOnce(() => {
+      throw new Error("detached");
+    });
+    expect(step).toThrow("detached");
+    expect(frames.size).toBe(1);
     parent.close();
   });
 
