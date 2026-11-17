@@ -42,12 +42,6 @@ function isPathWithin(parentDir: string, childPath: string): boolean {
   );
 }
 
-type OutsideAssetsAllowed = (
-  projectDir: string,
-  entryFile: string | undefined,
-  warn: (line: string) => void,
-) => boolean;
-
 export function resolveViteAutoProxy(value: string | undefined): boolean {
   return value !== "false";
 }
@@ -176,8 +170,12 @@ export function createViteAdapter(
     const mod = await server.ssrLoadModule(
       resolve(__dirname, "../cli/src/utils/receivedRender.ts"),
     );
-    const decide = mod.outsideAssetsAllowed as OutsideAssetsAllowed;
-    return decide(projectDir, entryFile, (line) => console.warn(`[studio] ${line}`));
+    const decide: unknown = mod.outsideAssetsAllowed;
+    if (typeof decide !== "function")
+      throw new Error("receivedRender.ts has no outsideAssetsAllowed");
+    return (
+      decide(projectDir, entryFile, (line: string) => console.warn(`[studio] ${line}`)) === true
+    );
   };
 
   const getProducerModule = async () => {
