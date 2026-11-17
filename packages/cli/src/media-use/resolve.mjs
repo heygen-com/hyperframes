@@ -70,6 +70,7 @@ import {
 } from "./lib/sfx-provider.mjs";
 import { writeSfxCredit } from "./lib/openverse.mjs";
 import { terminalText } from "./lib/terminal-text.mjs";
+import { discardPrivateOutput } from "./lib/private-output.mjs";
 import { mediaVectorRows, rankMediaRowsWithVectors } from "./lib/local-media-search.mjs";
 
 const INGEST_TYPES = listTypes();
@@ -564,11 +565,9 @@ async function run() {
 
   // 5. freeze and register atomically.
   const ext = searchResult.ext || extFromUrl(searchResult.url || "") || defaultExt(type);
-  const { id, localPath, fullPath } = await withReservedFile(
-    projectDir,
-    type,
-    ext,
-    async (reservation) => {
+  let reserved;
+  try {
+    reserved = await withReservedFile(projectDir, type, ext, async (reservation) => {
       if (searchResult.localPath) {
         freezeLocalFile(searchResult.localPath, reservation.fullPath);
       } else if (searchResult.url) {
@@ -577,8 +576,12 @@ async function run() {
         throw new Error("provider returned no url or localPath");
       }
       return reservation;
-    },
-  );
+    });
+  } finally {
+    // A local generator's private output folder is not needed once the file is in the project.
+    if (searchResult.localPath) discardPrivateOutput(searchResult.localPath);
+  }
+  const { id, localPath, fullPath } = reserved;
 
   const record = {
     id,

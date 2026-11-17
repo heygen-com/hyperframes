@@ -80,6 +80,7 @@ const move = (app: StudioServer["app"], from: string, newPath: string) =>
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ newPath }),
   });
+const PNG = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
 const allowed = (projectDir: string) => outsideAssetsAllowed(projectDir, "index.html", () => {});
 
 describe("a received folder with its own record, in a project with none", () => {
@@ -104,19 +105,20 @@ describe("a received folder with its own record, in a project with none", () => 
     },
   );
 
-  it("takes its received files along when Studio deletes it, keeping their content", async () => {
+  it("keeps its received pages listed when Studio deletes it, keeping their content", async () => {
     const { projectDir, app } = studio();
     withReceivedFolder(projectDir);
     const scene = contentHash(join(projectDir, "sub", "scene.html"));
     expect((await app.request(fileUrl("sub"), { method: "DELETE" })).status).toBe(200);
     expect(existsSync(join(projectDir, "sub"))).toBe(false);
     const own = join(projectDir, ".hyperframes");
-    expect(JSON.parse(readFileSync(join(own, "received-files.json"), "utf-8")).files).toEqual([]);
+    expect(JSON.parse(readFileSync(join(own, "received-files.json"), "utf-8")).files).toEqual([
+      "sub/scene.html",
+    ]);
     const content = JSON.parse(readFileSync(join(own, "received-content.json"), "utf-8"));
     expect(content.hashes).toEqual([scene]);
-    const received = receivedFiles(projectDir);
-    expect(received.gone).toBeUndefined();
-    expect(received("index.html")).toBe(false);
+    expect(receivedFiles(projectDir).gone).toBe("sub/scene.html");
+    expect(allowed(projectDir)).toBe(false);
   });
 
   it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
@@ -191,8 +193,16 @@ describe("a Studio rename, move or delete in a project with a received-files rec
   function withRecord(projectDir: string): void {
     write(join(projectDir, "index.html"), `<div data-composition-src="scenes/intro.html"></div>`);
     write(join(projectDir, "scenes", "intro.html"), `<img src="../../outside/pic.png">`);
-    write(join(projectDir, "scenes", "logo.png"), "x");
+    write(join(projectDir, "scenes", "logo.png"), PNG);
     write(record(projectDir), JSON.stringify({ files: ["scenes/intro.html", "scenes/logo.png"] }));
+  }
+
+  /** Deletes the received page in Studio, then takes its line out by hand; its content stays kept as received. */
+  async function deleteAndForget(app: StudioServer["app"], projectDir: string): Promise<void> {
+    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+      200,
+    );
+    write(record(projectDir), JSON.stringify({ files: ["scenes/logo.png"] }));
   }
 
   it("keeps a renamed received file received under its new name", async () => {
@@ -214,13 +224,100 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     expect(receivedFiles(projectDir)("index.html")).toBe(false);
   });
 
-  it("takes a deleted received file off the record, so the person's own files stay theirs", async () => {
+  it("keeps a deleted received page listed, and takes a deleted received image off the record", async () => {
     const { projectDir, app } = studio();
     withRecord(projectDir);
-    const deleted = await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" });
-    expect(deleted.status).toBe(200);
-    expect(listed(projectDir)).toEqual(["scenes/logo.png"]);
-    expect(receivedFiles(projectDir)("index.html")).toBe(false);
+    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+      200,
+    );
+    expect((await app.request(fileUrl("scenes/logo.png"), { method: "DELETE" })).status).toBe(200);
+    expect(listed(projectDir)).toEqual(["scenes/intro.html"]);
+    expect(receivedFiles(projectDir).gone).toBe("scenes/intro.html");
+  });
+
+  it("lets a project whose record lists only media keep reading outside files after Studio deletes one", async () => {
+    const { projectDir, app } = studio();
+    write(join(projectDir, "index.html"), `<img src="../outside/pic.png">`);
+    write(join(projectDir, "logo.png"), PNG);
+    write(join(projectDir, "intro.png"), PNG);
+    write(record(projectDir), JSON.stringify({ files: ["intro.png", "logo.png"] }));
+    expect(allowed(projectDir)).toBe(true);
+    expect((await app.request(fileUrl("logo.png"), { method: "DELETE" })).status).toBe(200);
+    expect(listed(projectDir)).toEqual(["intro.png"]);
+    expect(allowed(projectDir)).toBe(true);
+  });
+
+  const create = (app: StudioServer["app"], path: string, body: string) =>
+    app.request(fileUrl(path), { method: "POST", body });
+
+  it.each([["scenes/intro.html"], ["scenes/other.html"], ["index2.html"]])(
+    "still refuses outside files after every received page is deleted and new bytes are created at %s",
+    async (path) => {
+      const { projectDir, app } = studio();
+      withRecord(projectDir);
+      for (const file of ["scenes/intro.html", "index.html"])
+        expect((await app.request(fileUrl(file), { method: "DELETE" })).status).toBe(200);
+      expect((await create(app, path, `<img src="../../outside/pic.png"><!-- 2 -->`)).status).toBe(
+        201,
+      );
+      expect(
+        (await create(app, "index.html", `<div data-composition-src="${path}"></div>`)).status,
+      ).toBe(201);
+      expect(listed(projectDir)).toContain("scenes/intro.html");
+      expect(receivedFiles(projectDir)(path)).toBe(true);
+      expect(allowed(projectDir)).toBe(false);
+    },
+  );
+
+  it("still refuses outside files after a received page is renamed to an image name and saved as one", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    write(record(projectDir), JSON.stringify({ files: ["scenes/intro.html"] }));
+    expect((await move(app, "scenes/intro.html", "scenes/intro.png")).status).toBe(200);
+    expect(listed(projectDir)).toEqual(["scenes/intro.html", "scenes/intro.png"]);
+    const before = readFileSync(join(projectDir, "scenes", "intro.png"));
+    const saved = await app.request(fileUrl("scenes/intro.png"), {
+      method: "PUT",
+      headers: { "If-Match": fileContentVersion(before) },
+      body: PNG,
+    });
+    expect(saved.status).toBe(200);
+    expect(allowed(projectDir)).toBe(false);
+  });
+
+  it("keeps refusing outside files when content comes back after a plain Studio delete, and says the file was gone", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    const intro = join(projectDir, "scenes", "intro.html");
+    const before = readFileSync(intro);
+    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+      200,
+    );
+    write(join(projectDir, "index.html"), `<img src="../outside/pic.png">`);
+    const warnings: string[] = [];
+    expect(outsideAssetsAllowed(projectDir, "index.html", (line) => warnings.push(line))).toBe(
+      false,
+    );
+    expect(warnings.join("\n")).toMatch(/intro\.html came from someone else and is gone/);
+    writeFileSync(intro, before);
+    expect(listed(projectDir)).toContain("scenes/intro.html");
+    expect(receivedFiles(projectDir)("scenes/intro.html")).toBe(true);
+    expect(allowed(projectDir)).toBe(false);
+  });
+
+  it("drops the old line when a received file with a media name but other bytes is renamed to another media name", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    write(join(projectDir, "scenes", "logo.png"), "not a picture");
+    expect((await move(app, "scenes/logo.png", "scenes/logo.webp")).status).toBe(200);
+    expect(listed(projectDir)).toEqual(["scenes/intro.html", "scenes/logo.webp"]);
+  });
+
+  it("drops the old line when a received image is renamed to another image name", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    expect((await move(app, "scenes/logo.png", "scenes/mark.png")).status).toBe(200);
+    expect(listed(projectDir)).toEqual(["scenes/intro.html", "scenes/mark.png"]);
   });
 
   it("counts a deleted received file as received again when its content comes back", async () => {
@@ -239,7 +336,6 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     const received = receivedFiles(projectDir);
     expect(received("scenes/intro.html")).toBe(true);
     expect(received("restored.html")).toBe(true);
-    expect(received("index.html")).toBe(false);
     expect(allowed(projectDir)).toBe(false);
   });
 
@@ -326,7 +422,7 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
       200,
     );
-    expect(listed(projectDir)).toEqual(["scenes/logo.png"]);
+    expect(listed(projectDir)).toEqual(["scenes/intro.html", "scenes/logo.png"]);
     const restored = await app.request("/api/projects/film/history/restore", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -344,9 +440,7 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     withRecord(projectDir);
     const intro = join(projectDir, "scenes", "intro.html");
     const before = readFileSync(intro);
-    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
-      200,
-    );
+    await deleteAndForget(app, projectDir);
     writeFileSync(intro, before);
     const saved = await app.request(fileUrl("scenes/intro.html"), {
       method: "PUT",
@@ -377,9 +471,7 @@ describe("a Studio rename, move or delete in a project with a received-files rec
       withRecord(projectDir);
       const intro = join(projectDir, "scenes", "intro.html");
       const before = readFileSync(intro);
-      expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
-        200,
-      );
+      await deleteAndForget(app, projectDir);
       writeFileSync(intro, before);
       await app.request(`/api/projects/film/file-mutations/${operation}`, {
         method: "POST",
@@ -395,9 +487,7 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     withRecord(projectDir);
     const intro = join(projectDir, "scenes", "intro.html");
     const before = readFileSync(intro);
-    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
-      200,
-    );
+    await deleteAndForget(app, projectDir);
     writeFileSync(intro, before);
     writeFileSync(`${record(projectDir)}.lock`, "");
     const saved = await app.request(fileUrl("scenes/intro.html"), {
@@ -437,7 +527,7 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
       200,
     );
-    expect(listed(projectDir)).toEqual(["scenes/logo.png"]);
+    expect(listed(projectDir)).toEqual(["scenes/intro.html", "scenes/logo.png"]);
     await server?.shutdown();
     const saved = { ...historyDeps };
     Object.assign(historyDeps, {
@@ -465,11 +555,12 @@ describe("a Studio rename, move or delete in a project with a received-files rec
       JSON.stringify({ files: ["scenes/intro.html", "scenes/old.html", "parts/gone.html"] }),
     );
     expect((await app.request(fileUrl("scenes"), { method: "DELETE" })).status).toBe(200);
-    expect(listed(projectDir)).toEqual(["parts/gone.html", "scenes/old.html"]);
+    const kept = ["parts/gone.html", "scenes/intro.html", "scenes/old.html"];
+    expect(listed(projectDir).sort()).toEqual(kept);
     write(join(projectDir, "draft.html"), "<p></p>");
     expect((await move(app, "draft.html", "parts/gone.html")).status).toBe(200);
-    expect(listed(projectDir)).toEqual(["parts/gone.html", "scenes/old.html"]);
-    expect(receivedFiles(projectDir).gone).toBe("scenes/old.html");
+    expect(listed(projectDir).sort()).toEqual(kept);
+    expect(receivedFiles(projectDir).gone).toBe("scenes/intro.html");
   });
 
   it("moves a line its record spells in decomposed Unicode", async () => {

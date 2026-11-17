@@ -1738,3 +1738,39 @@ globalThis.fetch = async (url, init) => {
   rmSync(otherProject, { recursive: true, force: true });
   cleanup();
 });
+
+test("a local generator's private output folder is gone once the file is in the project", () => {
+  setup();
+  const privateTmp = join(tmp, "tmp");
+  mkdirSync(privateTmp);
+  // A stand-in for `hyperframes tts`: write a few bytes to the --output path it is given.
+  const entry = join(tmp, "fake-cli.mjs");
+  writeFileSync(
+    entry,
+    'import { writeFileSync } from "node:fs";\n' +
+      'const at = process.argv.indexOf("--output");\n' +
+      'writeFileSync(process.argv[at + 1], "RIFF-voice");\n',
+  );
+  const result = spawnResolve(
+    [
+      "--type",
+      "voice",
+      "--intent",
+      "hello there",
+      "--project",
+      tmp,
+      "--provider",
+      "kokoro.local",
+      "--json",
+    ],
+    { env: { HOME: tmp, TMPDIR: privateTmp, HYPERFRAMES_CLI_ENTRY: entry } },
+  );
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  assert.equal(readFileSync(join(tmp, parsed.path), "utf8"), "RIFF-voice");
+  assert.deepEqual(
+    readdirSync(privateTmp).filter((name) => name.startsWith("media-use-")),
+    [],
+  );
+  cleanup();
+});

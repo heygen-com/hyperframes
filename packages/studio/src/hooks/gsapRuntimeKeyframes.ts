@@ -17,6 +17,8 @@ import { matchesElement, tweensTargeting } from "./gsapRuntimeTweenIndex";
 import { withParsedStart } from "./gsapParsedTween";
 import { BOX_SIZE_STYLE_PROPS } from "../components/editor/manualEditsDomPatches";
 import { gsapRendersTransform } from "../components/editor/gsapAnimatesProperty";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
+import { frameQuery, frameTimelines } from "./gsapFrameSnapshot";
 
 /**
  * A GSAP tween's `vars` object — intentionally open: it mixes channel values
@@ -91,6 +93,20 @@ function timelinesOf(iframe: HTMLIFrameElement | null): Record<string, RuntimeTi
       (iframe.contentWindow as unknown as { __timelines?: Record<string, RuntimeTimeline> })
         .__timelines ?? null
     );
+  } catch {
+    return null;
+  }
+}
+
+/** A sealed frame reads from its snapshot; resolveRuntimeTween patches, so it takes live tweens only. */
+function readableTimelines(iframe: HTMLIFrameElement | null) {
+  return iframe && previewFrameOpaque(iframe) ? frameTimelines(iframe) : timelinesOf(iframe);
+}
+
+function readableTarget(iframe: HTMLIFrameElement | null, selector: string): Element | null {
+  if (iframe && previewFrameOpaque(iframe)) return frameQuery(iframe, selector);
+  try {
+    return iframe?.contentDocument?.querySelector(selector) ?? null;
   } catch {
     return null;
   }
@@ -292,15 +308,10 @@ export function readRuntimeKeyframes(
   requireChannels?: string[],
   // fallow-ignore-next-line code-duplication
 ): ReadTween | null {
-  const timelines = timelinesOf(iframe);
+  const timelines = readableTimelines(iframe);
   if (!timelines) return null;
 
-  let targetEl: Element | null = null;
-  try {
-    targetEl = iframe?.contentDocument?.querySelector(selector) ?? null;
-  } catch {
-    return null;
-  }
+  const targetEl = readableTarget(iframe, selector);
   if (!targetEl) return null;
 
   // Search the element's OWN composition timeline. With inlined subcompositions the
@@ -366,13 +377,10 @@ export function hasNonHoldTweenForElement(
   compositionId?: string,
   channels?: string[],
 ): boolean {
-  let targetEl: Element | null = null;
-  try {
-    targetEl = iframe?.contentDocument?.querySelector(selector) ?? null;
-  } catch {
-    return false;
-  }
-  return !!targetEl && hasNonHoldTween(timelinesOf(iframe), targetEl, channels, compositionId);
+  const targetEl = readableTarget(iframe, selector);
+  return (
+    !!targetEl && hasNonHoldTween(readableTimelines(iframe), targetEl, channels, compositionId)
+  );
 }
 
 // A sibling rotation/scale tween must never push a static position hold into the keyframe branch.
@@ -545,7 +553,7 @@ export function scanAllRuntimeKeyframes(
   clipById?: ClipDims,
 ): Map<string, RuntimeKeyframeEntry> {
   const result = new Map<string, RuntimeKeyframeEntry>();
-  const timelines = timelinesOf(iframe);
+  const timelines = readableTimelines(iframe);
   if (!timelines) return result;
   for (const timeline of Object.values(timelines)) {
     if (!timeline?.getChildren) continue;

@@ -1,4 +1,5 @@
 import { test } from "node:test";
+import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -771,4 +772,143 @@ test("a received .env's ElevenLabs key with no competing credential is used, wit
       assert.match(notes[0], /Using ELEVENLABS_API_KEY from .*\.env, a received project:/);
     },
   );
+});
+
+// fails without the fix: the scripts read only received-files.json, so a folder the host named was the person's own.
+test("a .env in a folder the host names as all received gives way like a listed one", () => {
+  withProviderProject(
+    { shell: { HEYGEN_API_KEY: "own" }, env: "ELEVENLABS_API_KEY=received\n" },
+    (project) => {
+      const state = join(project, "..", `${project.split(/[\\/]/).at(-1)}-state.json`);
+      writeFileSync(state, JSON.stringify({ projects: [{ path: project, received: "all" }] }));
+      process.env.HYPERFRAMES_RECEIVED_STATE_FILE = state;
+      try {
+        loadEnvFromDir(project);
+        assert.equal(process.env.ELEVENLABS_API_KEY, undefined);
+      } finally {
+        delete process.env.HYPERFRAMES_RECEIVED_STATE_FILE;
+        rmSync(state, { force: true });
+      }
+    },
+  );
+});
+
+// fails without the fix: a .env holding received bytes under a new name was the person's own.
+test("a .env with the bytes of received content gives way like a listed one", () => {
+  const text = "GEMINI_API_KEY=received\n";
+  withProviderProject(
+    { shell: { GOOGLE_APPLICATION_CREDENTIALS: "/own/sa.json" }, env: text },
+    (project) => {
+      mkdirSync(join(project, ".hyperframes"));
+      writeFileSync(join(project, ".hyperframes", "received-files.json"), '{"files":[]}');
+      const hash = createHash("sha256").update(text).digest("hex");
+      writeFileSync(
+        join(project, ".hyperframes", "received-content.json"),
+        JSON.stringify({ hashes: [hash] }),
+      );
+      loadEnvFromDir(project);
+      assert.equal(process.env.GEMINI_API_KEY, undefined);
+    },
+  );
+});
+
+// fails without the fix: the script loaded the key the CLI had unset again from the same .env.
+test("a key the CLI unset from a .env stays unset when the script reads that .env", () => {
+  withProviderProject({ env: "GEMINI_API_KEY=received\nGOOGLE_API_KEY=mine\n" }, (project) => {
+    process.env.HYPERFRAMES_PROJECT_ENV_YIELDED = JSON.stringify([["GEMINI_API_KEY", project]]);
+    try {
+      loadEnvFromDir(project);
+      assert.equal(process.env.GEMINI_API_KEY, undefined);
+      assert.equal(process.env.GOOGLE_API_KEY, "mine");
+    } finally {
+      delete process.env.HYPERFRAMES_PROJECT_ENV_YIELDED;
+    }
+  });
+});
+
+// fails without the fix: a linked spelling of the folder loaded the key the CLI had unset.
+test(
+  "a key the CLI unset stays unset when the script reaches the folder through a link",
+  { skip: process.platform === "win32" },
+  () => {
+    withProviderProject({ env: "GEMINI_API_KEY=received\n" }, (project) => {
+      const link = `${project}-link`;
+      symlinkSync(project, link);
+      process.env.HYPERFRAMES_PROJECT_ENV_YIELDED = JSON.stringify([["GEMINI_API_KEY", project]]);
+      try {
+        loadEnvFromDir(link);
+        assert.equal(process.env.GEMINI_API_KEY, undefined);
+      } finally {
+        delete process.env.HYPERFRAMES_PROJECT_ENV_YIELDED;
+        rmSync(link, { force: true });
+      }
+    });
+  },
+);
+
+test("a key the CLI unset from another folder's .env still loads from this one", () => {
+  withProviderProject({ env: "GEMINI_API_KEY=mine\n" }, (project) => {
+    const other = join(project, "elsewhere");
+    process.env.HYPERFRAMES_PROJECT_ENV_YIELDED = JSON.stringify([["GEMINI_API_KEY", other]]);
+    try {
+      loadEnvFromDir(project);
+      assert.equal(process.env.GEMINI_API_KEY, "mine");
+    } finally {
+      delete process.env.HYPERFRAMES_PROJECT_ENV_YIELDED;
+    }
+  });
+});
+
+// fails without the fix: a .env above the working folder was judged by every project under it.
+test("a .env in a parent folder stays the person's own next to a received sibling project", () => {
+  withCleanHeygenEnv(() => {
+    const home = mkdtempSync(join(tmpdir(), "hf-media-home-"));
+    const previous = process.env.ELEVENLABS_API_KEY;
+    try {
+      delete process.env.ELEVENLABS_API_KEY;
+      process.env.HYPERFRAMES_CONFIG_DIR = join(home, "no-config");
+      process.env.HEYGEN_API_KEY = "own";
+      writeFileSync(join(home, ".env"), "ELEVENLABS_API_KEY=mine\n");
+      mkdirSync(join(home, "shared", ".hyperframes"), { recursive: true });
+      writeFileSync(join(home, "shared", ".hyperframes", "received-files.json"), "{oops");
+      mkdirSync(join(home, "work"));
+      const state = join(home, "state.json");
+      writeFileSync(
+        state,
+        JSON.stringify({ projects: [{ path: join(home, "shared"), received: "all" }] }),
+      );
+      process.env.HYPERFRAMES_RECEIVED_STATE_FILE = state;
+      loadEnvFromDir(join(home, "work"));
+      assert.equal(process.env.ELEVENLABS_API_KEY, "mine");
+    } finally {
+      delete process.env.HYPERFRAMES_RECEIVED_STATE_FILE;
+      if (previous === undefined) delete process.env.ELEVENLABS_API_KEY;
+      else process.env.ELEVENLABS_API_KEY = previous;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+test("a .env in a parent folder the host names as received still gives way", () => {
+  withCleanHeygenEnv(() => {
+    const home = mkdtempSync(join(tmpdir(), "hf-media-home-"));
+    const previous = process.env.ELEVENLABS_API_KEY;
+    try {
+      delete process.env.ELEVENLABS_API_KEY;
+      process.env.HYPERFRAMES_CONFIG_DIR = join(home, "no-config");
+      process.env.HEYGEN_API_KEY = "own";
+      writeFileSync(join(home, ".env"), "ELEVENLABS_API_KEY=received\n");
+      mkdirSync(join(home, "work"));
+      const state = join(home, "state.json");
+      writeFileSync(state, JSON.stringify({ projects: [{ path: home, received: "all" }] }));
+      process.env.HYPERFRAMES_RECEIVED_STATE_FILE = state;
+      loadEnvFromDir(join(home, "work"));
+      assert.equal(process.env.ELEVENLABS_API_KEY, undefined);
+    } finally {
+      delete process.env.HYPERFRAMES_RECEIVED_STATE_FILE;
+      if (previous === undefined) delete process.env.ELEVENLABS_API_KEY;
+      else process.env.ELEVENLABS_API_KEY = previous;
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
 });
