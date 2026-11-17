@@ -85,6 +85,7 @@ import {
 } from "../ui/format.js";
 import { warnIfWebmAlphaDropped } from "../utils/webmAlphaCheck.js";
 import { renderFailureDiagnostic } from "../ui/renderDiagnostic.js";
+import { sourceFailureHint } from "./render/sourceFailureHint.js";
 import { missingPathKind } from "../telemetry/missingPathKind.js";
 import { renderProgress, renderMachineProgress } from "../ui/progress.js";
 import {
@@ -2026,7 +2027,7 @@ function handleRenderError(
     errorBox(launch.title, shown, launch.remediation);
     failCommand();
   }
-  errorBox("Render failed", shown, hint);
+  errorBox("Render failed", shown, sourceFailureHint(error) ?? hint);
   failCommand();
 }
 
