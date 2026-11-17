@@ -26,7 +26,12 @@ const hostSays = (root: string, projects: unknown) => {
   vi.stubEnv(RECEIVED_STATE_ENV, file);
 };
 
-const FIXTURES: [string, Arrange, "received" | null][] = [
+const unreadableRecord = (folder: string) => {
+  mkdirSync(join(folder, ".hyperframes"), { recursive: true });
+  writeFileSync(join(folder, ".hyperframes", "received-files.json"), "{oops");
+};
+
+const FIXTURES: [string, Arrange, "received" | "unchecked" | null][] = [
   ["a folder with no record", () => {}, null],
   ["a record listing the .env", (_root, project) => record(project, [".env"]), "received"],
   ["a record listing other files", (_root, project) => record(project, ["index.html"]), null],
@@ -46,6 +51,34 @@ const FIXTURES: [string, Arrange, "received" | null][] = [
       writeFileSync(join(project, "scenes", ".hyperframes", "received-files.json"), "{oops");
     },
     "received",
+  ],
+  [
+    "a nested record that lists the .env",
+    (_root, project) => record(join(project, "scenes"), ["../.env"]),
+    "received",
+  ],
+  [
+    "an unreadable record in a Studio folder whose hidden name looks like an asset",
+    (_root, project) => unreadableRecord(join(project, ".hyperframes", "requests", ".clip.png")),
+    "received",
+  ],
+  [
+    "a record in a Studio folder whose hidden name looks like an asset, listing the .env",
+    (_root, project) =>
+      record(join(project, ".hyperframes", "requests", ".clip.png"), ["../../../.env"]),
+    "received",
+  ],
+  [
+    "an unreadable record in a Studio folder named like a key file, which the walk skips",
+    (_root, project) => unreadableRecord(join(project, ".hyperframes", "requests", "id_rsa")),
+    null,
+  ],
+  [
+    "more folders than the scan allows",
+    (_root, project) => {
+      for (let i = 0; i <= 20_000; i++) mkdirSync(join(project, `d${i}`));
+    },
+    "unchecked",
   ],
   [
     "a .env with the bytes of received content",
@@ -162,6 +195,7 @@ it.each(FIXTURES)(
     expect(cliState(project)).toBe(expected);
     expect(receivedFileState(project, ".env")).toBe(expected);
   },
+  30_000,
 );
 
 it.skipIf(process.platform === "win32")(

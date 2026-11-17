@@ -31,9 +31,9 @@ describe("mediaUseEngineEnv", () => {
 
   // fails without the fix: the engine loaded a key the CLI had unset again from the same .env.
   it("names each key the CLI unset from a project .env, so the engine leaves it unset", () => {
-    const env = mediaUseEngineEnv({}, "", "linux", {}, [["ELEVENLABS_API_KEY", "/work/project"]]);
+    const env = mediaUseEngineEnv({}, "", "linux", {}, [["GEMINI_API_KEY", "/work/project"]]);
     expect(JSON.parse(env.HYPERFRAMES_PROJECT_ENV_YIELDED ?? "[]")).toEqual([
-      ["ELEVENLABS_API_KEY", "/work/project"],
+      ["GEMINI_API_KEY", "/work/project"],
     ]);
   });
 

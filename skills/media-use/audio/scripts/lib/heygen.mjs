@@ -13,7 +13,7 @@ import { terminalText } from "../../../scripts/lib/terminal-text.mjs";
 // heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
 // Vendored so the skill ships standalone. Pure node.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -112,12 +112,23 @@ function inheritProjectKeyOrigins() {
   }
 }
 
-// The keys the CLI unset from a folder's .env, as `<folder>\0<name>`, so loading that .env again leaves them out.
+function realFolder(dir) {
+  try {
+    return realpathSync(dir);
+  } catch {
+    return resolve(dir);
+  }
+}
+
+// The keys the CLI unset from a folder's .env, as `<real folder>\0<name>`, so loading that .env again under any
+// spelling of the folder leaves them out.
 function inheritedYieldedKeys() {
   try {
     const yielded = JSON.parse(process.env.HYPERFRAMES_PROJECT_ENV_YIELDED || "[]");
     if (!Array.isArray(yielded)) return new Set();
-    return new Set(yielded.map((entry) => `${resolve(String(entry?.[1]))}\0${String(entry?.[0])}`));
+    return new Set(
+      yielded.map((entry) => `${realFolder(String(entry?.[1]))}\0${String(entry?.[0])}`),
+    );
   } catch {
     return new Set();
   }
@@ -129,13 +140,17 @@ const RECEIVED_ORIGIN = {
 };
 const envFileStates = new Map();
 
-// How a project key's .env is not the person's own, by the CLI's received-files rule, or null when it is theirs or
-// the key is not from a .env.
+// How a project key's .env is not the person's own by the CLI's received-files rule: received, or unchecked when its
+// folders are too many to scan. Null when it is theirs or the key is not from a .env. A .env found in a folder above
+// the working one is judged only by records and host state at or above that folder.
 function untrustedOrigin(name) {
   const dir = projectKeyDir(name);
   if (dir === undefined) return null;
-  if (!envFileStates.has(dir)) envFileStates.set(dir, receivedFileState(dir, ".env"));
-  const state = envFileStates.get(dir);
+  const atOrAboveOnly = projectEnvValues.get(name)?.parent === true;
+  const id = `${dir}\0${atOrAboveOnly}`;
+  if (!envFileStates.has(id))
+    envFileStates.set(id, receivedFileState(dir, ".env", { atOrAboveOnly }));
+  const state = envFileStates.get(id);
   return state === null ? null : RECEIVED_ORIGIN[state];
 }
 
@@ -202,10 +217,12 @@ export function loadEnvFromDir(startDir) {
 
 function loadFirstEnvFile(startDir) {
   const yielded = inheritedYieldedKeys();
-  let dir = resolve(startDir);
+  const start = resolve(startDir);
+  let dir = start;
   for (let i = 0; i < 5; i++) {
     const text = envFileText(join(dir, ".env"));
     if (text != null) {
+      const real = realFolder(dir);
       for (const raw of text.split("\n")) {
         let line = raw.trim();
         if (!line || line.startsWith("#")) continue;
@@ -219,10 +236,10 @@ function loadFirstEnvFile(startDir) {
           const end = val.indexOf(q, 1);
           val = end > 0 ? val.slice(1, end) : val.slice(1);
         }
-        const skip = key in process.env || yielded.has(`${dir}\0${key}`);
+        const skip = key in process.env || yielded.has(`${real}\0${key}`);
         if (PROJECT_ENV_KEYS.has(key) && !skip) {
           process.env[key] = val;
-          projectEnvValues.set(key, { val, dir });
+          projectEnvValues.set(key, { val, dir, parent: dir !== start });
         }
       }
       return;

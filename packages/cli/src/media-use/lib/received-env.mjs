@@ -133,17 +133,20 @@ function hostState(dir, states) {
   return identity === null ? undefined : states.byIdentity.get(identity);
 }
 
+function allReceivedAtOrAbove(start, states) {
+  for (let dir = start; ; dir = dirname(dir)) {
+    if (hostState(dir, states) === "all") return true;
+    if (dirname(dir) === dir) return false;
+  }
+}
+
 function allReceivedAround(start, states) {
   if (!states) return false;
   if (states.unreadable) return true;
   const overlaps = [...states.byPath].some(
     ([path, state]) => state === "all" && (isAtOrUnder(path, start) || isAtOrUnder(start, path)),
   );
-  if (overlaps) return true;
-  for (let dir = start; ; dir = dirname(dir)) {
-    if (hostState(dir, states) === "all") return true;
-    if (dirname(dir) === dir) return false;
-  }
+  return overlaps || allReceivedAtOrAbove(start, states);
 }
 
 function readRecord(dir, ownFolder, states) {
@@ -193,20 +196,101 @@ const pathSegments = (relPath) =>
     .split(/[\\/]/)
     .map((segment) => (segment.split(":", 1)[0] ?? "").replace(/[. ]+$/, ""));
 
-const GIT_AND_PACKAGE_FOLDERS = new Set([".git", "node_modules"]);
+// The parsers' isStudioPrivatePath (packages/parsers/src/privatePath.ts), which the CLI's walk uses to skip folders.
+const STUDIO_FILES = new Set([
+  ".hyperframes/studio-motion.json",
+  ".hyperframes/studio-manual-edits.json",
+]);
 const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
-const DOWNLOADS = ".hyperframes/prepared-assets/downloads";
+const UNCONVERTED_PREVIEW_DOWNLOADS = ".hyperframes/prepared-assets/downloads";
+const CREDENTIAL_FILES = new Set([
+  ".npmrc",
+  ".yarnrc",
+  ".yarnrc.yml",
+  ".pypirc",
+  "pip.conf",
+  "pip.ini",
+  ".netrc",
+  "_netrc",
+  ".git-credentials",
+  ".gitconfig",
+  ".mcp.json",
+]);
+const CREDENTIAL_FOLDERS = new Set([
+  ".ssh",
+  ".aws",
+  ".gnupg",
+  ".docker",
+  ".kube",
+  ".azure",
+  ".claude",
+  ".codex",
+  ".cursor",
+  ".agents",
+  ".gemini",
+  ".vscode",
+  ".idea",
+]);
+const CREDENTIAL_CONFIG_FOLDERS = new Set(["gcloud", "gh"]);
+const KEY_FILE =
+  /^(?:id_(?:rsa|dsa|ecdsa|ed25519).*|.*\.(?:pem|key|p12|pfx|p8|ppk|jks|keystore|kdbx))$/;
+const SECRET_STORE_FILE = /\.(?:tfstate(?:\.backup)?|tfvars(?:\.json)?)$/;
+const MEDIA_FOLDER = ".media";
+const LOADED_ASSET_TYPE =
+  /.\.(?:png|jpe?g|gif|webp|avif|svg|ico|bmp|tiff?|heic|heif|mp4|m4v|mov|webm|mkv|mxf|avi|mp3|wav|m4a|aac|ogg|oga|opus|flac|woff2?|ttf|otf|css|m?js|cjs)$/;
 
-// The CLI walks a records folder only where Studio keeps loaded assets: its prepared-assets and requests folders.
+const isVcsOrSecretPath = (relPath) =>
+  pathSegments(relPath).some((segment) => segment === ".git" || segment.startsWith(".env"));
+
+function isCredentialOrToolStatePath(relPath) {
+  const segments = pathSegments(relPath);
+  const name = segments.at(-1) ?? "";
+  return (
+    CREDENTIAL_FILES.has(name) ||
+    KEY_FILE.test(name) ||
+    SECRET_STORE_FILE.test(name) ||
+    segments.some(
+      (segment, at) =>
+        CREDENTIAL_FOLDERS.has(segment) ||
+        (segment === ".config" && CREDENTIAL_CONFIG_FOLDERS.has(segments[at + 1] ?? "")),
+    )
+  );
+}
+
+function isStudioOwnFile(path) {
+  if (
+    path === UNCONVERTED_PREVIEW_DOWNLOADS ||
+    path.startsWith(`${UNCONVERTED_PREVIEW_DOWNLOADS}/`)
+  )
+    return false;
+  return (
+    STUDIO_FILES.has(path) ||
+    STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
+  );
+}
+
+function isStudioPrivatePath(relPath) {
+  if (isVcsOrSecretPath(relPath) || isCredentialOrToolStatePath(relPath)) return true;
+  const segments = pathSegments(relPath);
+  const inside = !isAbsolute(relPath) && !/^\.\.[. ]*$/.test(relPath.split(/[\\/]/, 1)[0] ?? "");
+  const loadedType = LOADED_ASSET_TYPE.test(segments.at(-1) ?? "");
+  return segments.some((segment, at) => {
+    const atRoot = segments.slice(0, at).every((before) => before === "");
+    if (segment === ".hyperframes")
+      return !atRoot || !isStudioOwnFile(segments.slice(at).join("/"));
+    const mediaFolder = atRoot && segment === MEDIA_FOLDER;
+    return inside && segment.startsWith(".") && !mediaFolder && !loadedType;
+  });
+}
+
+const GIT_AND_PACKAGE_FOLDERS = new Set([".git", "node_modules"]);
+
 function mayHoldLoadedFiles(start, folder) {
-  const segments = pathSegments(relative(start, folder).split(sep).join("/"));
+  const rel = relative(start, folder).split(sep).join("/");
+  const segments = pathSegments(rel);
   if (GIT_AND_PACKAGE_FOLDERS.has(segments.at(-1) ?? "")) return false;
   if (!segments.includes(".hyperframes")) return true;
-  if (segments.length === 1) return true;
-  const path = `${segments.join("/")}/`;
-  const inStudioFolder = STUDIO_FOLDERS.some((folder) => path.startsWith(`${folder}/`));
-  const hidden = segments.slice(1).some((segment) => segment.startsWith("."));
-  return inStudioFolder && !path.startsWith(`${DOWNLOADS}/`) && !hidden;
+  return segments.length === 1 || !isStudioPrivatePath(rel);
 }
 
 function recordsBelow(start, states) {
@@ -233,12 +317,15 @@ function recordsBelow(start, states) {
   return records;
 }
 
-function receivedRecords(start) {
+function receivedRecords(start, atOrAboveOnly) {
   const states = hostStates();
-  const below = recordsBelow(start, states);
+  const below = atOrAboveOnly ? [] : recordsBelow(start, states);
   if (!below) return null;
   const records = [...recordsAtOrAbove(start, states), ...below];
-  if (allReceivedAround(start, states))
+  const all = atOrAboveOnly
+    ? states !== null && (states.unreadable || allReceivedAtOrAbove(start, states))
+    : allReceivedAround(start, states);
+  if (all)
     records.push({ file: process.env[RECEIVED_STATE_ENV] ?? "", root: start, listed: undefined });
   return records;
 }
@@ -344,26 +431,39 @@ function onDisk(path) {
   }
 }
 
-/** "unchecked" when the project's folders are too many to scan, "received" when the CLI's rule counts
- * `<projectDir>/<path>` as received, else null. */
-export function receivedFileState(projectDir, path) {
-  const start = walkStart(projectDir);
-  const records = receivedRecords(start);
-  if (records === null) return "unchecked";
-  if (records.some((record) => !Array.isArray(record.listed))) return "received";
+// Every received content hash beside the records; null when one of those stores cannot be read.
+function receivedHashes(records) {
   const hashes = new Set();
   for (const folder of new Set(records.map((record) => dirname(dirname(record.file))))) {
     const found = receivedContentHashes(folder);
-    if (found === null) return "received";
+    if (found === null) return null;
     for (const hash of found) hashes.add(hash);
   }
+  return hashes;
+}
+
+/** "unchecked" when the project's folders are too many to scan, "received" when the CLI's rule counts
+ * `<projectDir>/<path>` as received, else null. With `atOrAboveOnly`, for a file in a folder above the one a script
+ * works in, only records and host state at or above that folder count: never a sibling's or a subfolder's. */
+export function receivedFileState(projectDir, path, { atOrAboveOnly = false } = {}) {
+  const start = walkStart(projectDir);
+  const records = receivedRecords(start, atOrAboveOnly);
+  if (records === null) return "unchecked";
+  if (records.some((record) => !Array.isArray(record.listed))) return "received";
+  const hashes = receivedHashes(records);
+  if (hashes === null) return "received";
   if (records.some((record) => listedIn(record, projectDir, start, path))) return "received";
+  const file = join(projectDir, path);
+  if (hashes.size > 0 && hashes.has(contentHash(file) ?? "")) return "received";
+  return !atOrAboveOnly && mayBeGoneFile(records, projectDir, start, path) ? "received" : null;
+}
+
+// The CLI's rule for a listed file that is gone: a page, script or a link out of the project may have taken its place.
+function mayBeGoneFile(records, projectDir, start, path) {
   const listedInProject = records
     .flatMap((record) => record.listed.map((entry) => join(record.root, String(entry))))
     .filter((file) => isAtOrUnder(file, start));
-  const file = join(projectDir, path);
-  const linksOutside = isOutside(relative(realFilePath(projectDir), realFilePath(file)));
-  const goneFile = listedInProject.some((listed) => !onDisk(listed));
-  if (goneFile && (CODE_FILE.has(extname(path).toLowerCase()) || linksOutside)) return "received";
-  return hashes.size > 0 && hashes.has(contentHash(file) ?? "") ? "received" : null;
+  if (!listedInProject.some((listed) => !onDisk(listed))) return false;
+  if (CODE_FILE.has(extname(path).toLowerCase())) return true;
+  return isOutside(relative(realFilePath(projectDir), realFilePath(join(projectDir, path))));
 }
