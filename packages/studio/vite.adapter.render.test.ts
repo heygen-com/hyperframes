@@ -3,7 +3,7 @@ import {
   cancelAndVerifyArtifacts,
 } from "../../test-utils/renderCancellation";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer, type ViteDevServer } from "vite";
@@ -30,9 +30,10 @@ afterEach(async () => {
 
 type RenderOptions = Parameters<ReturnType<typeof createViteAdapter>["startRender"]>[0];
 
-async function fixture(extra: Partial<RenderOptions> = {}) {
+async function fixture(extra: Partial<RenderOptions> = {}, setup?: (dir: string) => void) {
   const dir = mkdtempSync(join(tmpdir(), "hf-vite-gif-"));
   dirs.push(dir);
+  setup?.(dir);
   server = await createServer({
     configFile: false,
     server: { middlewareMode: true, watch: null, ws: false },
@@ -104,5 +105,27 @@ describe("Studio dev server render jobs", { timeout: 30_000 }, () => {
     const { state } = await fixture({ format: "mp4" });
     await vi.waitFor(() => expect(state.status, state.error).toBe("complete"), RENDER_DONE);
     expect(producer.createRenderJob.mock.calls[0]?.[0]).not.toHaveProperty("pageMotionBlur");
+  });
+
+  it.each([
+    ["allows", "a project of your own", [] as string[], true],
+    ["refuses", "a project whose received files include HTML", ["index.html"], false],
+  ])("%s files outside the project for %s", async (_verb, _name, received, allowed) => {
+    producer.executeRenderJob.mockResolvedValue(undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { state } = await fixture({ format: "mp4" }, (dir) => {
+      writeFileSync(join(dir, "index.html"), '<img src="../outside.png">');
+      if (received.length === 0) return;
+      mkdirSync(join(dir, ".hyperframes"));
+      writeFileSync(
+        join(dir, ".hyperframes", "received-files.json"),
+        JSON.stringify({ files: received }),
+      );
+    });
+    await vi.waitFor(() => expect(state.status, state.error).toBe("complete"), RENDER_DONE);
+    expect(producer.createRenderJob).toHaveBeenCalledWith(
+      expect.objectContaining({ allowOutsideProjectAssets: allowed }),
+    );
+    warn.mockRestore();
   });
 });

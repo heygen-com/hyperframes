@@ -42,6 +42,12 @@ function isPathWithin(parentDir: string, childPath: string): boolean {
   );
 }
 
+type OutsideAssetsAllowed = (
+  projectDir: string,
+  entryFile: string | undefined,
+  warn: (line: string) => void,
+) => boolean;
+
 export function resolveViteAutoProxy(value: string | undefined): boolean {
   return value !== "false";
 }
@@ -163,6 +169,15 @@ export function createViteAdapter(
       }
     }
     return _bundler;
+  };
+
+  // The CLI's received-project rule, loaded from source: this adapter only runs in a source checkout.
+  const outsideAssetsAllowed = async (projectDir: string, entryFile: string | undefined) => {
+    const mod = await server.ssrLoadModule(
+      resolve(__dirname, "../cli/src/utils/receivedRender.ts"),
+    );
+    const decide = mod.outsideAssetsAllowed as OutsideAssetsAllowed;
+    return decide(projectDir, entryFile, (line) => console.warn(`[studio] ${line}`));
   };
 
   const getProducerModule = async () => {
@@ -349,6 +364,10 @@ export function createViteAdapter(
             if (systemChrome) process.env.PRODUCER_HEADLESS_SHELL_PATH = systemChrome;
           }
           const { createRenderJob, executeRenderJob } = await getProducerModule();
+          const allowOutsideProjectAssets = await outsideAssetsAllowed(
+            opts.project.dir,
+            opts.composition,
+          );
           const renderBodyScripts = createStudioDevRenderBodyScripts(opts.project.dir);
           const job = createRenderJob({
             fps: opts.fps,
@@ -362,7 +381,7 @@ export function createViteAdapter(
             ...encoderJobOptions(opts),
             ...(opts.useGpu ? { useGpu: true } : {}),
             ...(opts.pageMotionBlur ? { pageMotionBlur: opts.pageMotionBlur } : {}),
-            allowOutsideProjectAssets: true,
+            allowOutsideProjectAssets,
           });
           const onProgress = (j: { progress: number; currentStage?: string }) => {
             state.progress = j.progress;
