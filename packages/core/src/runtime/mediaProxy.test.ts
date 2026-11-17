@@ -27,6 +27,7 @@ vi.mock("./bridge", () => ({
 import { postRuntimeMessage } from "./bridge";
 import { resetSeekDispatchState, waitForSeekCompletion } from "./adapters/seek-dispatch";
 import { resetCopyReporting } from "./previewCopies";
+import { STUDIO_PREVIEW_CAPTURE_MODE, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 
 const postRuntimeMessageMock = vi.mocked(postRuntimeMessage);
 
@@ -1245,6 +1246,21 @@ describe("preview quality: lighter copies of heavy files", () => {
       expect(params(el).get("hf-proxy-box")).toBe("2048x1218");
       expect(params(el).get("hf-proxy-light")).toBe("1");
       expect(proxySrc.unproxiedSrc(el)).toBe("/video.mp4");
+    });
+
+    // A hover or thumbnail capture timed out at 8 s waiting for the copy; a capture page never plays, so it takes the file.
+    it("on a hidden capture page keeps its file and asks for no copy", async () => {
+      const mark = document.head.appendChild(document.createElement("meta"));
+      mark.name = STUDIO_PREVIEW_MARK_META;
+      mark.content = STUDIO_PREVIEW_CAPTURE_MODE;
+      try {
+        const { el, asks } = await waitingForItsCopy(making);
+        await vi.advanceTimersByTimeAsync(10_000);
+
+        expect([el.getAttribute("src"), asks()]).toEqual(["/video.mp4", 0]);
+      } finally {
+        mark.remove();
+      }
     });
 
     it("is not given its file back as its clip comes due", async () => {
