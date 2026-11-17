@@ -194,7 +194,7 @@ import {
   startRenderEtaGuard,
 } from "./render/renderEtaGuard.js";
 import { checkPageNeverReady } from "./render/pageNeverReady.js";
-import { resolveSegmentFrames } from "./render/segmentPlan.js";
+import { planSegments, resolveSegmentFrames } from "./render/segmentPlan.js";
 import { extractAllDeferredFrames } from "./render/deferredVideoFrames.js";
 import { measureLocalShownBoxes, oversizedVideos } from "./render/videoShownBoxes.js";
 import { createSegmentVideoFrames } from "./render/segmentVideoFrames.js";
@@ -5086,9 +5086,12 @@ async function executeRenderPipeline(input: {
         if (job.config.resumeSegments === true) {
           const existing = readSegmentManifest(segmentDir);
           if (existing) {
-            completedSegments = await validateCompletedSegments(existing, segmentPlanHash, (path) =>
-              probeSegmentFrameCount(path, extractMediaMetadata),
-            );
+            completedSegments = await validateCompletedSegments(existing, {
+              expectedHash: segmentPlanHash,
+              segmentDir,
+              plan: planSegments(totalFrames, segmentFrames),
+              probeFrames: (path) => probeSegmentFrameCount(path, extractMediaMetadata),
+            });
             log.info(`[Render] resuming: ${completedSegments.size} segments complete`, {
               segmentDir,
             });

@@ -7,9 +7,10 @@
  * and every reused segment is re-validated on disk before it is skipped.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { renameWithRetry } from "@hyperframes/engine";
+import { segmentOutputPath, type SegmentSlice } from "./segmentPlan.js";
 
 export interface SegmentManifestEntry {
   index: number;
@@ -166,26 +167,52 @@ export async function probeSegmentFrameCount(
   }
 }
 
+export interface SegmentResumeCheck {
+  expectedHash: string;
+  segmentDir: string;
+  /** This render's segments; manifest entries are trusted only where they match one. */
+  plan: readonly SegmentSlice[];
+  probeFrames: (path: string) => Promise<number | null>;
+}
+
+function plannedSlice(
+  entry: SegmentManifestEntry,
+  plan: readonly SegmentSlice[],
+): SegmentSlice | undefined {
+  const slice = Number.isInteger(entry.index) ? plan[entry.index] : undefined;
+  if (!slice || slice.startFrame !== entry.startFrame || slice.endFrame !== entry.endFrame) {
+    return undefined;
+  }
+  return slice;
+}
+
+function isPlainFileOfSize(path: string, bytes: number): boolean {
+  const stat = lstatSync(path, { throwIfNoEntry: false });
+  return stat !== undefined && stat.isFile() && stat.size > 0 && stat.size === bytes;
+}
+
 /**
  * Indices safe to skip on resume. A segment counts only if the hash matches,
- * the file exists at the recorded size, and its frame count equals the slice
- * length. Anything else re-captures — the cost of re-capturing a good segment
- * is minutes; the cost of reusing a bad one is a silently wrong video.
+ * the entry matches a slice of this plan, and the file the join will read
+ * (the slice's own path in `segmentDir`, never the manifest's `path`) is a
+ * plain file at the recorded size whose frame count equals the slice length.
+ * Anything else re-captures — the cost of re-capturing a good segment is
+ * minutes; the cost of reusing a bad one is a silently wrong video.
  */
 export async function validateCompletedSegments(
   manifest: SegmentManifest,
-  expectedHash: string,
-  probeFrames: (path: string) => Promise<number | null>,
+  check: SegmentResumeCheck,
 ): Promise<Set<number>> {
   const ok = new Set<number>();
-  if (manifest.planHash !== expectedHash) return ok;
+  if (manifest.planHash !== check.expectedHash) return ok;
   for (const entry of manifest.completed) {
-    if (!existsSync(entry.path)) continue;
-    const size = statSync(entry.path).size;
-    if (size <= 0 || size !== entry.bytes) continue;
-    const frames = await probeFrames(entry.path);
-    if (frames !== entry.endFrame - entry.startFrame) continue;
-    ok.add(entry.index);
+    const slice = plannedSlice(entry, check.plan);
+    if (!slice) continue;
+    const path = segmentOutputPath(check.segmentDir, slice.index);
+    if (!isPlainFileOfSize(path, entry.bytes)) continue;
+    const frames = await check.probeFrames(path);
+    if (frames !== slice.endFrame - slice.startFrame) continue;
+    ok.add(slice.index);
   }
   return ok;
 }

@@ -3,6 +3,8 @@
  * half-open frame range captured into its own closed-GOP encoder process so
  * a crash costs one segment, not the render, and scratch is encoded video.
  */
+import { join } from "node:path";
+
 export interface SegmentSlice {
   index: number;
   startFrame: number;
@@ -33,6 +35,10 @@ export function planSegments(totalFrames: number, segmentFrames: number): Segmen
     });
   }
   return slices;
+}
+
+export function segmentOutputPath(segmentDir: string, index: number): string {
+  return join(segmentDir, `segment_${String(index).padStart(5, "0")}.mp4`);
 }
 
 export function resolveSegmentFrames(env: NodeJS.ProcessEnv): number {

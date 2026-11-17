@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,8 +10,10 @@ import {
   validateCompletedSegments,
   writeSegmentManifest,
   type SegmentManifest,
+  type SegmentManifestEntry,
   type SegmentPlanHashInput,
 } from "./segmentManifest.js";
+import { planSegments, segmentOutputPath } from "./segmentPlan.js";
 
 const hashInput: SegmentPlanHashInput = {
   compositionHash: "abc",
@@ -143,77 +145,61 @@ describe("validateCompletedSegments", () => {
   let dir = "";
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
+  const entry = (index: number, bytes = 2): SegmentManifestEntry => ({
+    index,
+    startFrame: index * 3,
+    endFrame: index * 3 + 3,
+    path: segmentOutputPath(dir, index),
+    bytes,
+    completedAt: "",
+  });
+  const manifestOf = (
+    completed: SegmentManifestEntry[],
+    totalFrames = completed.length * 3,
+  ): SegmentManifest => ({ version: 1, planHash: "h", totalFrames, segmentFrames: 3, completed });
+  const check = (
+    totalFrames: number,
+    probeFrames: (path: string) => Promise<number | null>,
+    expectedHash = "h",
+  ) => ({ expectedHash, segmentDir: dir, plan: planSegments(totalFrames, 3), probeFrames });
+
   it("keeps only segments whose file exists and whose frame count matches", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    mkdirSync(dir, { recursive: true });
-    const ok = join(dir, "segment_00000.mp4");
-    const short = join(dir, "segment_00001.mp4");
+    const ok = segmentOutputPath(dir, 0);
+    const short = segmentOutputPath(dir, 1);
     writeFileSync(ok, "xx");
     writeFileSync(short, "xx");
-    const manifest: SegmentManifest = {
-      version: 1,
-      planHash: "h",
-      totalFrames: 9,
-      segmentFrames: 3,
-      completed: [
-        { index: 0, startFrame: 0, endFrame: 3, path: ok, bytes: 2, completedAt: "" },
-        { index: 1, startFrame: 3, endFrame: 6, path: short, bytes: 2, completedAt: "" },
-        {
-          index: 2,
-          startFrame: 6,
-          endFrame: 9,
-          path: join(dir, "missing.mp4"),
-          bytes: 2,
-          completedAt: "",
-        },
-      ],
-    };
+    const manifest = manifestOf([entry(0), entry(1), entry(2)]);
     const probe = async (p: string) => (p === ok ? 3 : p === short ? 2 : null);
-    expect([...(await validateCompletedSegments(manifest, "h", probe))]).toEqual([0]);
+    expect([...(await validateCompletedSegments(manifest, check(9, probe)))]).toEqual([0]);
   });
 
   it("rejects a segment whose size no longer matches the manifest", async () => {
     // A half-written file from a kill can still exist and still probe; the
     // recorded size is what proves it is the same file that was finished.
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    const truncated = join(dir, "segment_00000.mp4");
-    writeFileSync(truncated, "x");
-    const manifest: SegmentManifest = {
-      version: 1,
-      planHash: "h",
-      totalFrames: 3,
-      segmentFrames: 3,
-      completed: [
-        { index: 0, startFrame: 0, endFrame: 3, path: truncated, bytes: 999, completedAt: "" },
-      ],
-    };
-    expect((await validateCompletedSegments(manifest, "h", async () => 3)).size).toBe(0);
+    writeFileSync(segmentOutputPath(dir, 0), "x");
+    const manifest = manifestOf([entry(0, 999)]);
+    expect(
+      (
+        await validateCompletedSegments(
+          manifest,
+          check(3, async () => 3),
+        )
+      ).size,
+    ).toBe(0);
   });
 
   it("a resume whose segment files were removed after a join captures them again rather than failing", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    const joined = [0, 1].map((index) => join(dir, `segment_0000${index}.mp4`));
-    const manifest: SegmentManifest = {
-      version: 1,
-      planHash: "h",
-      totalFrames: 6,
-      segmentFrames: 3,
-      completed: joined.map((path, index) => ({
-        index,
-        startFrame: index * 3,
-        endFrame: index * 3 + 3,
-        path,
-        bytes: 2,
-        completedAt: "",
-      })),
-    };
     // The manifest still lists them, but the join deleted the files.
+    const manifest = manifestOf([entry(0), entry(1)]);
     let probed = 0;
     const probe = async () => {
       probed += 1;
       return 3;
     };
-    expect((await validateCompletedSegments(manifest, "h", probe)).size).toBe(0);
+    expect((await validateCompletedSegments(manifest, check(6, probe))).size).toBe(0);
     expect(probed).toBe(0);
   });
 
@@ -222,17 +208,52 @@ describe("validateCompletedSegments", () => {
     // frame count — so only the hash check can reject it. With an empty
     // `completed` list this assertion would pass with the check deleted.
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    const good = join(dir, "segment_00000.mp4");
-    writeFileSync(good, "xx");
-    const manifest: SegmentManifest = {
-      version: 1,
-      planHash: "old",
-      totalFrames: 3,
-      segmentFrames: 3,
-      completed: [{ index: 0, startFrame: 0, endFrame: 3, path: good, bytes: 2, completedAt: "" }],
+    writeFileSync(segmentOutputPath(dir, 0), "xx");
+    const manifest = { ...manifestOf([entry(0)]), planHash: "old" };
+    const probe = async () => 3;
+    expect((await validateCompletedSegments(manifest, check(3, probe, "old"))).size).toBe(1);
+    expect((await validateCompletedSegments(manifest, check(3, probe, "new"))).size).toBe(0);
+  });
+
+  it("never opens the paths a manifest names, only the segment files the join reads", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    // A file that would pass every check if the manifest's own path were trusted.
+    const elsewhere = join(dir, "elsewhere.mp4");
+    writeFileSync(elsewhere, "xx");
+    const named = [elsewhere, "/etc/hosts", "\\\\host\\share\\segment.mp4"];
+    const manifest = manifestOf(named.map((path, index) => ({ ...entry(index), path })));
+    const probed: string[] = [];
+    const probe = async (path: string) => {
+      probed.push(path);
+      return 3;
     };
-    expect((await validateCompletedSegments(manifest, "old", async () => 3)).size).toBe(1);
-    expect((await validateCompletedSegments(manifest, "new", async () => 3)).size).toBe(0);
+    expect((await validateCompletedSegments(manifest, check(9, probe))).size).toBe(0);
+    expect(probed).toEqual([]);
+  });
+
+  it("re-captures a segment file that is a link, even to a finished segment", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    const target = join(dir, "real.mp4");
+    writeFileSync(target, "xx");
+    symlinkSync(target, segmentOutputPath(dir, 0));
+    const manifest = manifestOf([entry(0)]);
+    expect(
+      (
+        await validateCompletedSegments(
+          manifest,
+          check(3, async () => 3),
+        )
+      ).size,
+    ).toBe(0);
+  });
+
+  it("ignores entries for segments this plan does not have", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    for (const index of [0, 1, 5]) writeFileSync(segmentOutputPath(dir, index), "xx");
+    const shifted = { ...entry(1), startFrame: 2, endFrame: 5 };
+    const manifest = manifestOf([entry(0), shifted, entry(5), { ...entry(0), index: 0.5 }], 6);
+    const probe = async () => 3;
+    expect([...(await validateCompletedSegments(manifest, check(6, probe)))]).toEqual([0]);
   });
 });
 
