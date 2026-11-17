@@ -54,7 +54,6 @@ function parseSession(body: unknown): ReverseSession | undefined {
   return { sessionId, plan, gate, ...upgradeUrl };
 }
 
-/** HeyGen's API errors are `{ code: number }` or `{ error: { code } }`; any other body came from in between. */
 function isHeygenBody(body: unknown): boolean {
   if (!isRecord(body)) return false;
   return (
@@ -113,7 +112,6 @@ export async function startReverseSession(
     } else {
       status = res.status;
       cause = res.status >= 500 ? "http_5xx" : res.status >= 400 ? "http_4xx" : "http_other";
-      // A non-JSON body (a proxy's page) is never read, so its size cannot matter.
       const json = res.headers.get("content-type")?.includes("json") === true;
       heygenBody = json && isHeygenBody(await res.json().catch(() => null));
     }
