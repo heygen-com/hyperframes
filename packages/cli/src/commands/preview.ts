@@ -653,7 +653,7 @@ async function printStartupLint(dir: string, verbose: boolean): Promise<void> {
       console.log(line);
     console.log();
   } catch (error) {
-    clack.log.warn(`Lint did not finish: ${errorMessage(error)}`);
+    clack.log.warn(terminalLines(`Lint did not finish: ${errorMessage(error)}`));
   }
 }
 

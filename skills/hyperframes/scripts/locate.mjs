@@ -56,13 +56,21 @@ function probe(img) {
   const [w, h] = out.split(",").map(Number);
   return { w, h };
 }
-// The grid font is copied to a plain path ffmpeg's filter syntax takes as is, inside a
-// folder only this run can open (mkdtemp makes it 0700), removed when the run ends.
+// A value placed in a filter option: escaped once for the option list, then for the filtergraph.
+const filterValue = (value) => value.replace(/[\\':]/g, "\\$&").replace(/[\\'[\],;]/g, "\\$&");
+// The grid font is copied into a folder only this run can open (mkdtemp makes it 0700),
+// removed when the run ends or is stopped.
 let fontPath;
 function font() {
   if (fontPath) return fontPath;
   const dir = mkdtempSync(join(tmpdir(), "locate-font-"));
-  process.on("exit", () => rmSync(dir, { recursive: true, force: true }));
+  const remove = () => rmSync(dir, { recursive: true, force: true });
+  process.on("exit", remove);
+  for (const signal of ["SIGINT", "SIGTERM"])
+    process.once(signal, () => {
+      remove();
+      process.kill(process.pid, signal);
+    });
   fontPath = join(dir, "font.ttf");
   const system = [
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
@@ -73,7 +81,7 @@ function font() {
   return fontPath;
 }
 function gridFilters(w, h, n, axis, fz) {
-  const F = font(),
+  const F = filterValue(font()),
     fs = [];
   if (axis === "v" || axis === "both") {
     for (let i = 1; i < n; i++)

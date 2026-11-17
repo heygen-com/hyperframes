@@ -34,6 +34,7 @@ import {
   assetContentType,
 } from "../utils/compositionServer.js";
 import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
+import { escapeHtml } from "../utils/escapeHtml.js";
 
 export default defineCommand({
   meta: {
@@ -208,7 +209,7 @@ function buildPresentPage(projectName: string, islandJson: string): string {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${escHtml(projectName)} — Presenter</title>
+    <title>${escapeHtml(projectName)} — Presenter</title>
     <script>
       // Retitle the audience tab so the two tabs are distinguishable in the
       // browser tab strip and in Meet's "Share a tab" picker.
@@ -314,14 +315,6 @@ ${islandJson}
     </script>
   </body>
 </html>`;
-}
-
-function escHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 export async function registerPresentCompositionRoute(

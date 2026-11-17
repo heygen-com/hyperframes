@@ -667,6 +667,30 @@ describe("startup lint", () => {
     expect(error).toHaveBeenCalledWith(expect.stringContaining("--user-data-dir"));
     expect(lint.inProcess).not.toHaveBeenCalled();
   }, 5_000);
+
+  it("prints a lint failure with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    lint.worker.mockRejectedValue(new Error(`bad${esc}]0;x${String.fromCharCode(7)}`));
+    vi.spyOn(previewLifecycle, "startBackgroundPreview").mockRejectedValue(
+      new Error("not started"),
+    );
+    vi.spyOn(clack.log, "error").mockImplementation(() => {});
+    const warn = vi.spyOn(clack.log, "warn").mockImplementation(() => {});
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+
+    try {
+      await runCommand(previewCommand, { rawArgs: [dir, "--background"] });
+
+      await vi.waitFor(() =>
+        expect(warn).toHaveBeenCalledWith("Lint did not finish: bad\\x1b]0;x\\x07"),
+      );
+    } finally {
+      lint.worker.mockReset();
+      killOrphanedProcesses.mockClear();
+    }
+  });
 });
 
 describe("foreground preview JSON", () => {

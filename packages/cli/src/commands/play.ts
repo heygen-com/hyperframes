@@ -46,6 +46,7 @@ import {
   assetContentType,
 } from "../utils/compositionServer.js";
 import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
+import { escapeHtml } from "../utils/escapeHtml.js";
 import {
   resolveProxy,
   ProxyCapacityError,
@@ -310,7 +311,7 @@ export async function registerCompositionRoute(
 }
 
 function buildPlayerPage(projectName: string): string {
-  const shownName = escHtml(projectName);
+  const shownName = escapeHtml(projectName);
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -345,12 +346,4 @@ function buildPlayerPage(projectName: string): string {
     <script src="/player.js"></script>
   </body>
 </html>`;
-}
-
-function escHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }

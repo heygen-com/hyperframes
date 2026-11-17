@@ -1,4 +1,4 @@
-import { terminalText } from "@hyperframes/core";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { randomUUID } from "node:crypto";
@@ -82,7 +82,9 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
     const capturing = captureArtifactRevision(project.dir).catch(warnNotRecorded);
     const id = randomUUID();
     console.error(
-      `[hyperframes] check: the report is saved to ${checkReportFile(project.dir, id)} when the check ends, unless a warning says it could not be saved`,
+      terminalText(
+        `[hyperframes] check: the report is saved to ${checkReportFile(project.dir, id)} when the check ends, unless a warning says it could not be saved`,
+      ),
     );
     const report = await runCheckPipeline(project, options);
     const images = (files: readonly string[]) => files.map((file) => resolve(project.dir, file));
@@ -106,7 +108,9 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
 };
 
 function warnNotRecorded(error: unknown): undefined {
-  console.warn(`${c.warn("⚠")}  Check report was not recorded: ${normalizeErrorMessage(error)}`);
+  console.warn(
+    `${c.warn("⚠")}  Check report was not recorded: ${terminalLines(normalizeErrorMessage(error))}`,
+  );
   return undefined;
 }
 
