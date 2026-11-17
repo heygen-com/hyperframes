@@ -32,4 +32,25 @@ describe("GET /projects/:id/waveform/*", () => {
     }
     expect(decodeAudioPeaks).toHaveBeenCalledTimes(1);
   });
+
+  it("decodes a file once when several clips ask at the same time", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-waveform-route-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, "bed.wav"), "audio");
+    const app = new Hono();
+    registerWaveformRoutes(app, stubAdapter(dir));
+    let finish: (peaks: number[]) => void = () => {};
+    const decode = vi.mocked(decodeAudioPeaks);
+    decode.mockClear();
+    decode.mockImplementation(() => new Promise<number[]>((resolve) => (finish = resolve)));
+
+    const both = Promise.all([
+      app.request("http://localhost/projects/p/waveform/bed.wav"),
+      app.request("http://localhost/projects/p/waveform/bed.wav"),
+    ]);
+    await vi.waitFor(() => expect(decode).toHaveBeenCalled());
+    finish([0.6]);
+    for (const res of await both) expect(await res.json()).toEqual({ peaks: [0.6] });
+    expect(decode).toHaveBeenCalledTimes(1);
+  });
 });

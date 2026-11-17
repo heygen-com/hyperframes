@@ -3,27 +3,22 @@ import { join, relative, resolve } from "node:path";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { Hono } from "hono";
 import type { StudioApiAdapter } from "../types.js";
-import { isWaveformCacheDirectory, writeWaveformCache } from "../helpers/waveform.js";
+import {
+  isWaveformCacheDirectory,
+  markWaveformCacheUsed,
+  writeWaveformCache,
+} from "../helpers/waveform.js";
 import { buildPeakMapCacheKey, decodePeakMap, PEAK_BIN_SECONDS } from "../helpers/peakMap.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
-
-type DecodePeaks = (mediaPath: string) => Promise<number[]>;
-
-const decodesInFlight = new Map<string, Promise<number[]>>();
-
-function decodeOnce(cachePath: string, mediaPath: string, decode: DecodePeaks): Promise<number[]> {
-  const pending = decodesInFlight.get(cachePath);
-  if (pending) return pending;
-  const started = decode(mediaPath).finally(() => decodesInFlight.delete(cachePath));
-  decodesInFlight.set(cachePath, started);
-  return started;
-}
+import { decodeShared, type DecodeAudio } from "../helpers/audioDecodes.js";
 
 function readCachedBins(cacheDir: string, cachePath: string): number[] | null {
   try {
     if (!isWaveformCacheDirectory(cacheDir) || !existsSync(cachePath)) return null;
     const parsed: unknown = JSON.parse(readFileSync(cachePath, "utf-8"));
-    return Array.isArray(parsed) && parsed.every((n) => typeof n === "number") ? parsed : null;
+    if (!Array.isArray(parsed) || !parsed.every((n) => typeof n === "number")) return null;
+    markWaveformCacheUsed(cachePath);
+    return parsed;
   } catch {
     return null;
   }
@@ -33,7 +28,7 @@ function readCachedBins(cacheDir: string, cachePath: string): number[] | null {
 export function registerPeakRoutes(
   api: Hono,
   adapter: StudioApiAdapter,
-  decode: DecodePeaks = decodePeakMap,
+  decode: DecodeAudio = decodePeakMap,
 ): void {
   api.get("/projects/:id/peaks/*", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
@@ -52,7 +47,7 @@ export function registerPeakRoutes(
 
     let bins: number[];
     try {
-      bins = await decodeOnce(cachePath, mediaPath, decode);
+      bins = await decodeShared(cachePath, mediaPath, decode, c.req.raw.signal);
     } catch {
       return c.json({ error: "failed to decode audio" }, 500);
     }
