@@ -33,6 +33,8 @@ import { findParsedTween, withLiveTiming } from "./gsapParsedTween";
 import { roundTo3 } from "../utils/rounding";
 import { readTranslatePxLeavingPercent } from "../components/editor/plainTranslate";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
+import { frameGsap, settleGsapSnapshot } from "./gsapFrameSnapshot";
 import {
   buildExtendedKeyframes,
   buildTemporalArcKeyframes,
@@ -133,15 +135,19 @@ function readElementPosition(
   const result: Record<string, number> = {};
   if (!iframe?.contentWindow) return result;
 
+  const sealed = previewFrameOpaque(iframe);
   let gsap: { getProperty?: (el: Element, prop: string) => number } | undefined;
   try {
-    gsap = (iframe.contentWindow as Window & { gsap?: typeof gsap }).gsap;
+    gsap = sealed
+      ? (frameGsap(iframe) ?? undefined)
+      : (iframe.contentWindow as Window & { gsap?: typeof gsap }).gsap;
   } catch {
     return result;
   }
 
+  // A sealed selection is Studio's stand-in, which the snapshot matches by handle.
   const element = sel.element;
-  if (!element?.isConnected || !gsap?.getProperty) return result;
+  if (!element || (!sealed && !element.isConnected) || !gsap?.getProperty) return result;
 
   // ponytail: a brand-new tween captures position only — bundling opacity made it
   // a mixed group that the position-only drag intercept couldn't resolve.
@@ -280,6 +286,7 @@ export async function applyKeyframeAtPlayhead(
   commitOverrides?: Partial<CommitMutationOptions>,
   liveTween?: ReturnType<typeof findParsedTween>,
 ): Promise<void> {
+  await settleGsapSnapshot(iframe);
   const keepAuthoredDuration = kfAnim.durationUnresolved === true;
   if (keepAuthoredDuration) {
     kfAnim = withLiveTiming(kfAnim, liveTween ?? findParsedTween(iframe, sel.element, kfAnim));
