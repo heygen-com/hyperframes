@@ -1,5 +1,6 @@
 import {
   closeSync,
+  fstatSync,
   type Dirent,
   lstatSync,
   openSync,
@@ -85,17 +86,33 @@ let hostStatesCache: { key: string; states: HostStates } | undefined;
 
 const strongest = (a: HostState | undefined, b: HostState): HostState => (a === "all" ? a : b);
 
+interface HostEntry {
+  path: string;
+  received: HostState;
+  dev?: string;
+  ino?: string;
+}
+
+function hostEntry(value: unknown): HostEntry {
+  const { path, received, dev, ino } = (value ?? {}) as Record<string, unknown>;
+  if (typeof path !== "string" || !isAbsolute(path)) throw new Error("path is not absolute");
+  if (received !== "expected" && received !== "all") throw new Error("unknown state");
+  return {
+    path,
+    received,
+    ...(typeof dev === "string" && typeof ino === "string" && ino !== "0" ? { dev, ino } : {}),
+  };
+}
+
 function parseHostStates(text: string): HostStates {
   const projects: unknown = JSON.parse(text)?.projects;
   if (!Array.isArray(projects)) throw new Error("projects is not a list");
   const states: HostStates = { unreadable: false, byPath: new Map(), byIdentity: new Map() };
-  for (const entry of projects as Record<string, unknown>[]) {
-    const { path, received, dev, ino } = entry ?? {};
-    if (typeof path !== "string" || !isAbsolute(path)) throw new Error("path is not absolute");
-    if (received !== "expected" && received !== "all") throw new Error("unknown state");
+  for (const value of projects) {
+    const { path, received, dev, ino } = hostEntry(value);
     const key = walkStart(path);
     states.byPath.set(key, strongest(states.byPath.get(key), received));
-    if (typeof dev === "string" && typeof ino === "string" && ino !== "0") {
+    if (dev !== undefined && ino !== undefined) {
       const identity = `${dev}:${ino}`;
       states.byIdentity.set(identity, strongest(states.byIdentity.get(identity), received));
     }
@@ -107,11 +124,16 @@ function hostStates(): HostStates | null {
   const file = process.env[RECEIVED_STATE_ENV];
   if (!file) return null;
   try {
-    const stat = statSync(file, { bigint: true });
-    const key = `${file}\0${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
-    if (hostStatesCache?.key !== key)
-      hostStatesCache = { key, states: parseHostStates(readFileSync(file, "utf-8")) };
-    return hostStatesCache.states;
+    const handle = openSync(file, "r");
+    try {
+      const stat = fstatSync(handle, { bigint: true });
+      const key = `${file}\0${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+      if (hostStatesCache?.key !== key)
+        hostStatesCache = { key, states: parseHostStates(readFileSync(handle, "utf-8")) };
+      return hostStatesCache.states;
+    } finally {
+      closeSync(handle);
+    }
   } catch {
     return { unreadable: true, byPath: new Map(), byIdentity: new Map() };
   }
@@ -126,16 +148,21 @@ function hostState(dir: string, states = hostStates()): HostState | undefined {
   return identity === null ? undefined : states.byIdentity.get(identity);
 }
 
-function allReceivedAround(start: string): boolean {
-  const states = hostStates();
-  if (!states) return false;
-  if (states.unreadable) return true;
-  for (const [path, state] of states.byPath)
-    if (state === "all" && (isAtOrUnder(path, start) || isAtOrUnder(start, path))) return true;
+function allReceivedAtOrAbove(start: string, states: HostStates): boolean {
   for (let dir = start; ; dir = dirname(dir)) {
     if (hostState(dir, states) === "all") return true;
     if (dirname(dir) === dir) return false;
   }
+}
+
+function allReceivedAround(start: string): boolean {
+  const states = hostStates();
+  if (!states) return false;
+  if (states.unreadable) return true;
+  const overlaps = [...states.byPath].some(
+    ([path, state]) => state === "all" && (isAtOrUnder(path, start) || isAtOrUnder(start, path)),
+  );
+  return overlaps || allReceivedAtOrAbove(start, states);
 }
 
 function readRecord(dir: string, ownFolder: boolean): { listed: unknown } | null {
