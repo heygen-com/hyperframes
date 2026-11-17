@@ -1,7 +1,7 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { lstat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
-import { realFilePath } from "@hyperframes/studio-server/safe-path";
+import { realFilePath, resolveWithinProject } from "@hyperframes/studio-server/safe-path";
 import { registryRoot } from "../registry/publication.js";
 import {
   changeReceivedRecordAsync,
@@ -198,4 +198,15 @@ export async function relistReceivedContent(projectDir: string, paths: string[])
     if (hash !== null && hashes.has(hash) && !leavesFolder(line)) lines.push(line);
   }
   if (lines.length > 0) await addLines(new Map([[root, lines]]));
+}
+
+/** Lists again each file a history undo, redo or restore wrote that holds received content. */
+export function relistHistoryWrites(
+  projectDir: string,
+  entry: { files: readonly { path: string }[] } | null,
+): Promise<void> {
+  const written = (entry?.files ?? [])
+    .flatMap((file) => resolveWithinProject(projectDir, file.path) ?? [])
+    .filter((path) => statSync(path, { throwIfNoEntry: false })?.isFile() === true);
+  return relistReceivedContent(projectDir, written);
 }

@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fileContentVersion } from "@hyperframes/studio-server";
+import { historyDeps, withOwner } from "../utils/historyOwner.js";
 import { receivedFiles } from "../utils/privateProjectFile.js";
 import { contentHash } from "../utils/receivedContent.js";
 import { outsideAssetsAllowed } from "../utils/receivedRender.js";
@@ -355,6 +356,105 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     expect(saved.status).toBe(200);
     expect(listed(projectDir)).toContain("scenes/intro.html");
     expect(receivedFiles(projectDir)("scenes/intro.html")).toBe(true);
+    const own = readFileSync(join(projectDir, "index.html"));
+    const ownSave = await app.request(fileUrl("index.html"), {
+      method: "PUT",
+      headers: { "If-Match": fileContentVersion(own) },
+      body: "<p>mine</p>",
+    });
+    expect(ownSave.status).toBe(200);
+    expect(listed(projectDir)).not.toContain("index.html");
+  });
+
+  it.each([
+    ["freeze-frame", { path: "scenes/intro.html" }],
+    ["split-batch", { files: [{ path: "scenes/intro.html" }] }],
+    ["patch-element-batches", { batches: [{ sourceFile: "scenes/intro.html" }] }],
+  ])(
+    "lists a file holding received content again before a %s edit names it",
+    async (operation, body) => {
+      const { projectDir, app } = studio();
+      withRecord(projectDir);
+      const intro = join(projectDir, "scenes", "intro.html");
+      const before = readFileSync(intro);
+      expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+        200,
+      );
+      writeFileSync(intro, before);
+      await app.request(`/api/projects/film/file-mutations/${operation}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(listed(projectDir)).toContain("scenes/intro.html");
+    },
+  );
+
+  it("refuses a Studio save to a file holding received content when the record is busy", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    const intro = join(projectDir, "scenes", "intro.html");
+    const before = readFileSync(intro);
+    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+      200,
+    );
+    writeFileSync(intro, before);
+    writeFileSync(`${record(projectDir)}.lock`, "");
+    const saved = await app.request(fileUrl("scenes/intro.html"), {
+      method: "PUT",
+      headers: { "If-Match": fileContentVersion(before) },
+      body: "<p>2</p>",
+    });
+    expect(saved.status).toBe(409);
+    expect(readFileSync(intro)).toEqual(before);
+  });
+
+  it("keeps a received file received through an edit after a delete and Cmd+Z", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    expect((await app.request("/api/projects/film/history")).status).toBe(200);
+    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+      200,
+    );
+    const post = (path: string, body: object) =>
+      app.request(`/api/projects/film/history/${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect((await post("checkpoint", {})).status).toBe(200);
+    const stepped = await post("step", { direction: "back" });
+    expect(await stepped.json()).toMatchObject({ ok: true, entry: { files: expect.any(Array) } });
+    expect(existsSync(join(projectDir, "scenes", "intro.html"))).toBe(true);
+    write(join(projectDir, "scenes", "intro.html"), "<p>edited</p>");
+    expect(receivedFiles(projectDir)("scenes/intro.html")).toBe(true);
+  });
+
+  it("keeps a received file received through an edit after a delete and an undo from the CLI with Studio closed", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    expect((await app.request("/api/projects/film/history")).status).toBe(200);
+    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+      200,
+    );
+    expect(listed(projectDir)).toEqual(["scenes/logo.png"]);
+    await server?.shutdown();
+    const saved = { ...historyDeps };
+    Object.assign(historyDeps, {
+      historyRoot: join(root, "history"),
+      findServer: async () => null,
+    });
+    try {
+      const restored = await withOwner(projectDir, (owner) =>
+        owner.restore("start", { kind: "agent", name: "Agent" }),
+      );
+      expect(restored).not.toBeNull();
+    } finally {
+      Object.assign(historyDeps, saved);
+    }
+    write(join(projectDir, "scenes", "intro.html"), `<img src="../../outside/pic.png"><p>2</p>`);
+    expect(receivedFiles(projectDir)("scenes/intro.html")).toBe(true);
+    expect(allowed(projectDir)).toBe(false);
   });
 
   it("keeps a line whose file is already gone when Studio deletes or renames onto its folder", async () => {

@@ -1,10 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import type { Context, Hono } from "hono";
 import { requestSubPath } from "@hyperframes/studio-server";
-import {
-  resolveWithinProject,
-  resolveWritableWithinProject,
-} from "@hyperframes/studio-server/safe-path";
+import { resolveWritableWithinProject } from "@hyperframes/studio-server/safe-path";
 import {
   dropReceivedArrivals,
   dropReceivedLeavers,
@@ -13,6 +10,7 @@ import {
   plannedReceivedChange,
   type ReceivedChange,
   recordReceivedArrivals,
+  relistHistoryWrites,
   relistReceivedContent,
 } from "../utils/receivedRecordFollow.js";
 
@@ -98,11 +96,10 @@ function followHistory(app: Hono, projectDir: string): void {
       .json()
       .catch(() => null);
     const entry = isObject(sent) && isObject(sent.entry) ? sent.entry : sent;
-    const paths = listAt(entry, "files")
-      .flatMap((file) => textAt(file, "path"))
-      .flatMap((path) => resolveWithinProject(projectDir, path) ?? [])
-      .filter(isFile);
-    await relistReceivedContent(projectDir, paths).catch(warn);
+    const files = listAt(entry, "files").flatMap((file) =>
+      textAt(file, "path").map((path) => ({ path })),
+    );
+    await relistHistoryWrites(projectDir, { files }).catch(warn);
   });
 }
 
@@ -118,9 +115,11 @@ async function savedPaths(c: Context): Promise<string[]> {
   const route = SAVES_NAMING_THE_FILE.find((prefix) =>
     c.req.routePath.startsWith(`/api/projects/:id/${prefix}/`),
   );
-  if (route !== undefined) return [requestSubPath(c.req.url, `projects/:id/${route}`)];
+  const named = route === undefined ? "" : requestSubPath(c.req.url, `projects/:id/${route}`);
+  if (named) return [named];
   const body = await jsonBody(c);
   return [
+    ...textAt(body, "path"),
     ...listAt(body, "files").flatMap((file) => textAt(file, "path")),
     ...listAt(body, "batches").flatMap((batch) => textAt(batch, "sourceFile")),
   ];
@@ -143,11 +142,7 @@ function followSaves(app: Hono, projectDir: string): void {
   app.put("/api/projects/:id/files/*", relistBeforeSave);
   app.on(
     "POST",
-    [
-      ...SAVES_NAMING_THE_FILE.slice(1).map((prefix) => `/api/projects/:id/${prefix}/*`),
-      "/api/projects/:id/file-mutations/split-batch",
-      "/api/projects/:id/file-mutations/patch-element-batches",
-    ],
+    SAVES_NAMING_THE_FILE.slice(1).map((prefix) => `/api/projects/:id/${prefix}/*`),
     relistBeforeSave,
   );
 }
