@@ -41,7 +41,6 @@ interface PlayerProps {
   onPainted?: (details: { iframe: HTMLIFrameElement; startedAt: number; loadId: number }) => void;
   portrait?: boolean;
   style?: React.CSSProperties;
-  /** Out of hit testing and focus, frame included: a preview loading behind the live one. */
   inert?: boolean;
   suppressLoadingOverlay?: boolean;
   loadingUi?: "studio" | "host";

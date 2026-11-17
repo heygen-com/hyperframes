@@ -14,19 +14,15 @@ const SHADOW_IFRAME_STYLE: CSSProperties = {
   pointerEvents: "none",
 };
 
-// A sealed frame is cross-origin, and Chrome stops rendering one that is hidden or clipped away, so its runtime
-// waits out its readiness timeout. A transparent one keeps rendering out of sight; NLEPreview makes it inert, so
-// clicks reach the live frame under it.
-const SEALED_SHADOW_IFRAME_STYLE: CSSProperties = {
+const RENDERING_SHADOW_IFRAME_STYLE: CSSProperties = {
   position: "absolute",
   inset: 0,
   opacity: 0,
   pointerEvents: "none",
 };
 
-/** How a reload's preview loads out of sight behind the live one until it is promoted. */
 export const shadowIframeStyle = (sandboxOrigin: "opaque" | undefined): CSSProperties =>
-  sandboxOrigin === "opaque" ? SEALED_SHADOW_IFRAME_STYLE : SHADOW_IFRAME_STYLE;
+  sandboxOrigin === "opaque" ? RENDERING_SHADOW_IFRAME_STYLE : SHADOW_IFRAME_STYLE;
 
 export function resolvePreviewStageSize(
   viewportWidth: number,
