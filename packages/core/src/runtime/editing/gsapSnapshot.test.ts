@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { handleFor } from "../editingHandles";
-import { gsapSnapshot, MAX_SNAPSHOT_TEXT, MAX_SNAPSHOT_TWEENS } from "./gsapSnapshot";
+import { gsapSnapshot } from "./gsapSnapshot";
+import { MAX_SNAPSHOT_TEXT, MAX_SNAPSHOT_TWEENS } from "./gsapSnapshotLimits";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -76,5 +77,57 @@ describe("gsapSnapshot", () => {
     const vars = { text: "a".repeat(MAX_SNAPSHOT_TEXT + 1) };
     frame([{ targets: () => [], vars, startTime: () => 0, duration: () => 1 }]);
     await expect(gsapSnapshot()).rejects.toThrow(/bound on text length/);
+  });
+
+  // fails without the fix: only values were held to the text bound, not keys, ids, eases or channel names.
+  it.each([
+    [
+      "a vars key",
+      () => frame([{ targets: () => [], vars: { ["k".repeat(MAX_SNAPSHOT_TEXT + 1)]: 1 } }]),
+    ],
+    [
+      "an element id",
+      () => {
+        document.body.innerHTML = `<div id="${"b".repeat(MAX_SNAPSHOT_TEXT + 1)}"></div>`;
+        frame([{ targets: () => [document.body.firstElementChild], vars: {} }]);
+      },
+    ],
+    [
+      "a timeline id",
+      () => {
+        frame([]);
+        Object.assign(window, {
+          __timelines: { ["t".repeat(MAX_SNAPSHOT_TEXT + 1)]: { getChildren: () => [] } },
+        });
+      },
+    ],
+    [
+      "the default ease",
+      () => {
+        frame([]);
+        Object.assign(window, {
+          gsap: { defaults: () => ({ ease: "e".repeat(MAX_SNAPSHOT_TEXT + 1) }) },
+        });
+      },
+    ],
+    [
+      "a parsed channel name",
+      () =>
+        frame([{ targets: () => [], _pt: { p: "p".repeat(MAX_SNAPSHOT_TEXT + 1), s: 0, c: 1 } }]),
+    ],
+  ])("refuses %s past the text bound", async (_name, set) => {
+    set();
+    await expect(gsapSnapshot()).rejects.toThrow(/bound on text length/);
+  });
+
+  // fails without the fix: a property-tween chain that loops back on itself was walked forever.
+  it("stops at a property-tween chain that loops back on itself", async () => {
+    const first: Record<string, unknown> = {};
+    first._next = { _next: first };
+    frame([{ targets: () => [], vars: {}, _pt: first }]);
+
+    const snapshot = await gsapSnapshot();
+
+    expect(snapshot.timelines[0]!.tweens[0]!.parsed).toEqual([]);
   });
 });
