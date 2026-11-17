@@ -1,8 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyDotEnv, loadProjectDotEnv } from "./dotEnv.js";
+import { applyDotEnv, loadProjectDotEnv, yieldReceivedProviderKeys } from "./dotEnv.js";
+
+const records = vi.hoisted(() => ({ unchecked: false }));
+vi.mock("./privateProjectFile.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./privateProjectFile.js")>();
+  return {
+    ...actual,
+    receivedRecordStatus: (dir: string) =>
+      records.unchecked ? ("unchecked" as const) : actual.receivedRecordStatus(dir),
+  };
+});
 
 describe("applyDotEnv", () => {
   it("copies a project's keys without overwriting what is already set", () => {
@@ -142,5 +152,90 @@ describe("loadProjectDotEnv", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("yieldReceivedProviderKeys", () => {
+  const PROVIDER_KEYS = [
+    "OPENROUTER_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "HYPERFRAMES_VERTEX_PROJECT_ID",
+    "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "GCS_CREDS",
+  ];
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    records.unchecked = false;
+    vi.unstubAllEnvs();
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Loads `env` from a project `.env` into process.env over `shell`; `received` lists the `.env` as received. */
+  async function load(shell: Record<string, string>, env: string, received: boolean) {
+    for (const key of PROVIDER_KEYS) vi.stubEnv(key, shell[key]);
+    const dir = mkdtempSync(join(tmpdir(), "hf-dotenv-provider-"));
+    dirs.push(dir);
+    writeFileSync(join(dir, ".env"), env);
+    if (received) {
+      mkdirSync(join(dir, ".hyperframes"));
+      writeFileSync(
+        join(dir, ".hyperframes", "received-files.json"),
+        JSON.stringify({ files: [".env"] }),
+      );
+    }
+    const warn = vi.fn();
+    loadProjectDotEnv(dir, process.env, vi.fn());
+    await yieldReceivedProviderKeys(warn);
+    return { dir, warn };
+  }
+
+  it("drops a received .env's OpenRouter key when the shell has a Gemini key", async () => {
+    const { dir, warn } = await load(
+      { GEMINI_API_KEY: "own" },
+      "OPENROUTER_API_KEY=received\n",
+      true,
+    );
+    expect(process.env.OPENROUTER_API_KEY).toBeUndefined();
+    expect(process.env.GEMINI_API_KEY).toBe("own");
+    expect(warn).toHaveBeenCalledWith(
+      `[hyperframes] .env: ignoring OPENROUTER_API_KEY from a received project (${join(dir, ".env")}); using your own GEMINI_API_KEY`,
+    );
+  });
+
+  it("drops received Gemini and Vertex keys when the shell has a Vertex or Google credential", async () => {
+    await load(
+      {
+        HYPERFRAMES_VERTEX_SERVICE_ACCOUNT: "/own/sa.json",
+        GOOGLE_APPLICATION_CREDENTIALS: "/own/sa.json",
+      },
+      "GEMINI_API_KEY=received\nHYPERFRAMES_VERTEX_PROJECT_ID=received\n",
+      true,
+    );
+    expect(process.env.GEMINI_API_KEY).toBeUndefined();
+    expect(process.env.HYPERFRAMES_VERTEX_PROJECT_ID).toBeUndefined();
+  });
+
+  it("keeps a person's own .env OpenRouter key ahead of their shell Gemini key", async () => {
+    const { warn } = await load({ GEMINI_API_KEY: "own" }, "OPENROUTER_API_KEY=mine\n", false);
+    expect(process.env.OPENROUTER_API_KEY).toBe("mine");
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("keeps a received .env key when the person has no credential it competes with", async () => {
+    const { warn } = await load({}, "OPENROUTER_API_KEY=received\n", true);
+    expect(process.env.OPENROUTER_API_KEY).toBe("received");
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("says the project's origin could not be checked when its folders are too many to scan", async () => {
+    records.unchecked = true;
+    const { dir, warn } = await load({ GEMINI_API_KEY: "own" }, "OPENROUTER_API_KEY=mine\n", false);
+    expect(process.env.OPENROUTER_API_KEY).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      `[hyperframes] .env: ignoring OPENROUTER_API_KEY from a project whose origin could not be checked (too many folders to scan) (${join(dir, ".env")}); using your own GEMINI_API_KEY`,
+    );
   });
 });

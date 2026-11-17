@@ -4,9 +4,11 @@ import {
   chromeSandboxEnabled,
   launchWithChromeSandboxFallback,
   NO_SANDBOX_ARGS,
+  noSandboxUnlessRequired,
   type ChromeSandboxHost,
 } from "./chromeSandbox.js";
 import { buildChromeArgs } from "./browserManager.js";
+import { buildHdrChromeArgs } from "./hdrCapture.js";
 
 function host(overrides: Partial<ChromeSandboxHost> = {}): ChromeSandboxHost {
   return {
@@ -67,6 +69,32 @@ describe("chromeSandboxEnabled", () => {
       chromeSandboxEnabled(host({ platform: "darwin", env: { HYPERFRAMES_CHROME_SANDBOX: "0" } })),
     ).toBe(false);
     expect(chromeSandboxEnabled(host({ env: { HYPERFRAMES_CHROME_SANDBOX: "yes" } }))).toBe(true);
+  });
+});
+
+describe("launches that always ran without the sandbox", () => {
+  it("keep it when HYPERFRAMES_CHROME_SANDBOX=1 requires it, and run as before otherwise", () => {
+    expect(noSandboxUnlessRequired({ HYPERFRAMES_CHROME_SANDBOX: "1" })).toEqual([]);
+    expect(noSandboxUnlessRequired({})).toEqual(["--no-sandbox", "--disable-setuid-sandbox"]);
+  });
+
+  it("HDR capture keeps the sandbox when it is required, and drops --no-zygote with it", () => {
+    vi.stubEnv("HYPERFRAMES_CHROME_SANDBOX", "1");
+    try {
+      const args = buildHdrChromeArgs(640, 360);
+      expect(args).not.toContain("--no-sandbox");
+      expect(args).not.toContain("--no-zygote");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    vi.stubEnv("HYPERFRAMES_CHROME_SANDBOX", "");
+    try {
+      expect(buildHdrChromeArgs(640, 360)).toEqual(
+        expect.arrayContaining(["--no-sandbox", "--disable-setuid-sandbox", "--no-zygote"]),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

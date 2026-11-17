@@ -77,6 +77,7 @@ describe("createEditingPortClient", () => {
           "gesture-start",
           "console-errors",
           "watch-keys",
+          "restore-attributes",
         ],
       });
     } finally {

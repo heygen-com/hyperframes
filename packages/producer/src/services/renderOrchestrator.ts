@@ -1,3 +1,4 @@
+import type { ExpectedOutputDimensions } from "./render/outputDimensions.js";
 import { audioFailureDiagnostics } from "@hyperframes/engine";
 // fallow-ignore-file unused-type circular-dependency code-duplication complexity
 /**
@@ -452,6 +453,7 @@ export interface RenderConfig {
   /** Entry HTML file relative to projectDir. Defaults to "index.html". */
   entryFile?: string;
   allowOutsideProjectAssets?: CompileForRenderOptions["allowOutsideProjectAssets"];
+  includeOutsideScripts?: CompileForRenderOptions["includeOutsideScripts"];
   /** Full producer config. When provided, env vars are not read. */
   producerConfig?: EngineConfig;
   /** Custom logger. Defaults to console-based defaultLogger. */
@@ -495,6 +497,7 @@ export interface RenderConfig {
    */
   variables?: Record<string, unknown>;
   strictVariables?: boolean;
+  expectedOutputDimensions?: ExpectedOutputDimensions;
   /**
    * Override the output resolution via Chrome `deviceScaleFactor` (DPR).
    * The composition's authored dimensions are unchanged. See
@@ -806,6 +809,7 @@ export interface RenderStageProgress {
 export interface RenderJob extends Partial<ReferenceBackgroundResult> {
   id: string;
   strictVariablesChecked?: boolean;
+  outputDimensionsChecked?: boolean;
   config: RenderConfig;
   status: RenderStatus;
   progress: number;
@@ -3793,6 +3797,7 @@ async function executeRenderPipeline(input: {
           preHeadScripts: [VIRTUAL_TIME_SHIM],
           fps: job.config.fps,
           allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+          includeOutsideScripts: job.config.includeOutsideScripts,
         });
         assertNotAborted();
         observability.stageEnd("file_server", fileServerStart);

@@ -119,6 +119,13 @@ export class ProxyCapacityError extends ProxyTranscodeError {
   }
 }
 
+export class StillPastEndError extends ProxyTranscodeError {
+  constructor() {
+    super("media still is past the end of the source", null, "");
+    this.name = "StillPastEndError";
+  }
+}
+
 export class ProxySourceOutsideProjectError extends ProxyTranscodeError {
   constructor() {
     super("media proxy source must be addressed through the project", null, "");
@@ -1221,6 +1228,9 @@ async function makeStill(
   if (!ffmpegPath) throw new FfmpegUnavailableError();
   const metadata = await probeMediaMetadata(source.sourcePath);
   if (metadata.probeError === NOT_MEDIA) throw new ProxyTranscodeError(NOT_MEDIA, null, "");
+  if (metadata.durationSeconds !== undefined && at > metadata.durationSeconds) {
+    throw new StillPastEndError();
+  }
   const filter = await buildVideoFilter(ffmpegPath, source.sourcePath, metadata, false, box);
   mkdirWithinProject(source.projectDir, dirname(cachePath));
   const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);

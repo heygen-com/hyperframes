@@ -59,7 +59,7 @@ The docs changelog lives in `docs/changelog.mdx` and uses Mintlify `<Update>` en
   <Step title="Publish">
     Push the `release/v0.6.53` branch without its local tag, open a PR to `main`, and merge it after approval and CI. The publish workflow pins its checkout to the exact merge SHA, verifies that SHA, creates `v0.6.53`, and uses `releases/v0.6.53.md` as the GitHub Release body. If no reviewed release file is present, it falls back to GitHub-generated notes.
 
-    To recover a failed publish, rerun the original merged-PR workflow. Do not push the stable tag or use a manual dispatch; those paths are intentionally disabled so recovery cannot publish a different commit.
+    To recover a failed publish, rerun the failed jobs of the publish run on the release PR's merge into `main`. Do not push the stable tag or use a manual dispatch; those paths are intentionally disabled so recovery cannot publish a different commit.
 
     Retries reuse the original run's immutable `release-bundle` artifact, including the npm tarballs and Lambda assets. The publish job stores the release ID, source commit, run ID, and Lambda digests in a separate `lambda-release-receipt` artifact before uploading assets. It accepts an existing release only when that receipt matches, and skips an existing asset only when its digest matches the original bundle. Partially uploaded asset pairs can resume from those original bytes. An existing npm version with different contents fails even on a retry.
 

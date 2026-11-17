@@ -61,9 +61,10 @@ export function finishPeaks(acc: PeakAccumulator): number[] {
   return acc.bins.map((peak) => Number(peak.toFixed(4)));
 }
 
-export async function decodePeakMap(mediaPath: string): Promise<number[]> {
+export async function decodePeakMap(mediaPath: string, signal?: AbortSignal): Promise<number[]> {
   const track = await probeAudioTrack(mediaPath);
   if (!track || track.channels < 1) throw new Error("no audio stream");
+  signal?.throwIfAborted();
   const { stream, channels } = track;
   const ffmpeg = requireFfBinary("ffmpeg");
   return new Promise((resolvePromise, reject) => {
@@ -84,7 +85,7 @@ export async function decodePeakMap(mediaPath: string): Promise<number[]> {
         "f32le",
         "pipe:1",
       ],
-      { stdio: ["ignore", "pipe", "ignore"], windowsHide: true },
+      { stdio: ["ignore", "pipe", "ignore"], windowsHide: true, signal },
     );
     const acc = createPeakAccumulator(PEAK_SAMPLE_RATE, PEAK_BIN_SECONDS, channels);
     proc.stdout?.on("data", (chunk: Buffer) => accumulatePeaks(acc, chunk));

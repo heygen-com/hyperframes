@@ -1667,7 +1667,9 @@ export async function selfClosedMediaWarning(source: string): Promise<string | n
 }
 
 function warnSnapshotsNotRecorded(error: unknown): undefined {
-  console.warn(`   ${c.warn("⚠")} Snapshots were not recorded: ${normalizeErrorMessage(error)}`);
+  console.warn(
+    `   ${c.warn("⚠")} Snapshots were not recorded: ${terminalText(normalizeErrorMessage(error))}`,
+  );
   return undefined;
 }
 

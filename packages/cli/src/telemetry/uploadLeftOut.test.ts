@@ -38,6 +38,7 @@ describe("cli_upload_left_out", () => {
       received_count: 4,
       blocklisted_count: 1,
       file_type_count: 2,
+      not_approved_count: 0,
       max_levels_up: 5,
       levels_up_1: 3,
       levels_up_2: 2,

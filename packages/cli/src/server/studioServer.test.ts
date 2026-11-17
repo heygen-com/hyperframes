@@ -805,7 +805,9 @@ describe("Studio thumbnail capture", () => {
       "http://localhost/api/projects/demo/preview?hf-capture=1",
     );
     expect(capture.headers.get("content-security-policy")).toBe("sandbox allow-scripts");
-    const preview = await server.app.request("http://localhost/api/projects/demo/preview");
+    const preview = await server.app.request("http://localhost/api/projects/demo/preview", {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+    });
     expect(preview.headers.get("content-security-policy")).toBeNull();
   });
 

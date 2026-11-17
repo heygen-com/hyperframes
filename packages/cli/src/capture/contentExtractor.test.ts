@@ -8,6 +8,8 @@ import {
   type VisionCaptionOutcome,
 } from "./contentExtractor.js";
 import { loadOptionalPackage } from "../utils/optionalPackages.js";
+import { yieldReceivedProviderKeys } from "../utils/dotEnv.js";
+import { loadEnvFile } from "./scaffolding.js";
 
 const { generateContentMock, clientOptions, sharpState } = vi.hoisted(() => ({
   generateContentMock: vi.fn(),
@@ -416,9 +418,40 @@ describe("captionImagesWithGemini — Gemini provider", () => {
 
   afterEach(() => {
     generateContentMock.mockReset();
+    vi.unstubAllGlobals();
     vi.unstubAllEnvs();
     for (const d of dirs) rmSync(d, { recursive: true, force: true });
     dirs.length = 0;
+  });
+
+  it("captions with the shell's Gemini key, never a received project's OpenRouter key", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(
+      join(dir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: [".env"] }),
+    );
+    writeFileSync(join(dir, ".env"), "OPENROUTER_API_KEY=received-key\n");
+    for (const key of [
+      "OPENROUTER_API_KEY",
+      "GOOGLE_API_KEY",
+      "HYPERFRAMES_VERTEX_PROJECT_ID",
+      "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT",
+      "HYPERFRAMES_NO_CAPTURE_DOTENV",
+    ])
+      vi.stubEnv(key, undefined);
+    vi.stubEnv("GEMINI_API_KEY", "own-gemini-key");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    generateContentMock.mockResolvedValue({ text: "A caption." });
+
+    loadEnvFile(join(dir, "out"));
+    await yieldReceivedProviderKeys(() => {});
+    const captions = await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(captions).toEqual({ "hero.png": "A caption." });
   });
 
   it("terminates captioning when Gemini never settles even if the SDK ignores abort", async () => {

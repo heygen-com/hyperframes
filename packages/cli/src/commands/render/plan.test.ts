@@ -127,6 +127,12 @@ describe("createRenderPlan", () => {
     expect(plan.bestEffort).toBe(false);
   });
 
+  it("runs outside scripts only with --include-outside-files", () => {
+    expect(createRenderPlan({ dir: projectDir }).includeOutsideScripts).toBe(false);
+    const included = createRenderPlan({ dir: projectDir, "include-outside-files": true });
+    expect(included.includeOutsideScripts).toBe(true);
+  });
+
   it.each([undefined, "off"])("preserves page motion blur override %s", (value) => {
     expect(createRenderPlan({ dir: projectDir, "page-motion-blur": value }).pageMotionBlur).toBe(
       value,

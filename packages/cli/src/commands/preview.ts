@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { setCommandExitCode, requestCliExit } from "../utils/commandResult.js";
 // fallow-ignore-file code-duplication
 import { defineCommand } from "../utils/defineCommand.js";
@@ -1223,7 +1224,7 @@ async function printCurrentContext(
     if (selection.ok) {
       console.log(`  ${c.dim("Selection")} ${selection.value.label}`);
     } else {
-      console.log(`  ${c.dim("Selection")} ${selection.error.message}`);
+      console.log(`  ${c.dim("Selection")} ${terminalText(selection.error.message)}`);
     }
   }
   if (contextIncludes(fields, "lint")) {
@@ -1232,7 +1233,7 @@ async function printCurrentContext(
         `  ${c.dim("Lint")}      ${lint.summary.errors} error(s), ${lint.summary.warnings} warning(s)`,
       );
     } else {
-      console.log(`  ${c.dim("Lint")}      ${lint.error.message}`);
+      console.log(`  ${c.dim("Lint")}      ${terminalText(lint.error.message)}`);
     }
   }
   console.log();

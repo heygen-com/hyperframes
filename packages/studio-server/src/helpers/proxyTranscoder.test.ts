@@ -2135,6 +2135,24 @@ describe("resolveStill", () => {
     },
   );
 
+  it("starts no ffmpeg for a still past the end of the source", async () => {
+    const spy = createSpawnSpy();
+    const { resolveStill, StillPastEndError } = await loadModule(
+      spy.spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      2,
+    );
+    const projectDir = tmpProject();
+    const clip = join(projectDir, "clip.mp4");
+    writeFileSync(clip, "clip");
+
+    await expect(resolveStill(projectDir, clip, 2.5)).rejects.toBeInstanceOf(StillPastEndError);
+    expect(spy.calls).toHaveLength(0);
+  });
+
   it("starts no ffmpeg for a request that already left", async () => {
     const { calls, ask } = await stillSetup();
     const gone = new AbortController();

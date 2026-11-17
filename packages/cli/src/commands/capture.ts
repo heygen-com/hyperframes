@@ -135,7 +135,7 @@ export default defineCommand({
     try {
       captureUpstreamProxy();
     } catch (error) {
-      console.error(normalizeErrorMessage(error));
+      console.error(terminalLines(normalizeErrorMessage(error)));
       failCommand();
     }
 
@@ -162,7 +162,7 @@ export default defineCommand({
       try {
         url = resolveLocalCaptureTarget(localFile, localRoot).fileUrl;
       } catch (err) {
-        console.error(normalizeErrorMessage(err));
+        console.error(terminalLines(normalizeErrorMessage(err)));
         failCommand();
       }
     } else {

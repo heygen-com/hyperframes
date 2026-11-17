@@ -132,29 +132,51 @@ const TOOL_CONFIG_FILES = new Set([
   "makefile",
   "gnumakefile",
   "justfile",
-  "dockerfile",
   "procfile",
-  "lefthook.yml",
-  "lefthook.yaml",
   "turbo.json",
   "nx.json",
-  "docker-compose.yml",
-  "docker-compose.yaml",
-  "compose.yml",
-  "compose.yaml",
-  "taskfile.yml",
-  "taskfile.yaml",
   "pyproject.toml",
+  // Agents that read their settings, including commands to run, from the project folder.
+  "opencode.json",
+  "opencode.jsonc",
+  "crush.json",
+  // Dev servers, environment managers and deploy CLIs that run a command the file names.
+  "nodemon.json",
+  "devbox.json",
+  "devenv.yaml",
+  "wrangler.toml",
+  "wrangler.json",
+  "wrangler.jsonc",
+  "vercel.json",
+  "netlify.toml",
+  "composer.json",
+  // Ruby and other build files that are code in their own right.
+  "rakefile",
+  "gemfile",
+  "vagrantfile",
+  "tiltfile",
+  "earthfile",
+  "brewfile",
 ]);
+// The same tools' other spellings and the files they load alongside their main config.
+const TOOL_CONFIG_FAMILIES = [
+  /^(?:docker-)?compose(?:\.override)?\.ya?ml$/,
+  /^(?:dockerfile|containerfile)(?:\..+)?$|\.(?:docker|container)file$/,
+  /^lefthook(?:-local)?\.(?:ya?ml|jsonc?|toml)$/,
+  /^taskfile(?:\.dist)?\.ya?ml$/,
+  /^mise(?:\.[^.]+)*\.toml$/,
+  /^simple-git-hooks\.(?:json|[cm]?js)$/,
+  /^[jt]sconfig\..+\.json$/,
+];
 // Tools load these on their own: vite.config.ts, jest.config.json, docker-compose.yml, gulpfile.js and the like.
 const TOOL_CONFIG =
-  /\.config\.(?:[cm]?[jt]sx?|json5?|ya?ml|toml)$|^(?:gulp|grunt)file\.[cm]?[jt]s$/;
+  /\.config\.(?:[cm]?[jt]sx?|json[c5]?|ya?ml|toml)$|^(?:gulp|grunt)file\.[cm]?[jt]s$/;
 // Coding agents load these on their own, wherever they sit.
 const AGENT_INSTRUCTIONS =
   /^(agents?|claude|gemini|qwen|crush|warp|conventions|copilot-instructions)(\.[a-z]+)?\.md$/;
 // Programs and scripts a shell, an OS or another tool runs; a browser composition never needs them.
 const PROGRAM_EXTENSIONS =
-  "exe com bat cmd ps1 psm1 vbs vbe wsf hta msi scr pif cpl lnk dll so dylib node sh bash zsh command jar appimage py rb pl php".split(
+  "exe com bat cmd ps1 psm1 vbs vbe wsf hta msi scr pif cpl lnk dll so dylib node sh bash zsh fish command jar appimage py rb pl php nix".split(
     " ",
   );
 const PROGRAM = new RegExp(`\\.(?:${PROGRAM_EXTENSIONS.join("|")})$`);
@@ -172,6 +194,12 @@ function isShortName(segment: string): boolean {
   if (!match || match[1]!.length > 8) return false;
   const extension = match[2];
   return !extension || TRUSTED_EXTENSIONS.some((trusted) => trusted.startsWith(extension));
+}
+
+function isToolConfig(name: string, segments: readonly string[]): boolean {
+  if (TOOL_CONFIG_FILES.has(name) || TOOL_CONFIG.test(name)) return true;
+  if (TOOL_CONFIG_FAMILIES.some((family) => family.test(name))) return true;
+  return name === "config.toml" && segments.at(-2) === "mise";
 }
 
 /** What makes a file one another program runs or trusts; see `toolTrustedFileKind`. */
@@ -195,7 +223,7 @@ export function toolTrustedFileKind(relPath: string): ToolTrustedKind | null {
   if (segments.some(isShortName)) return "short-name";
   if (PROJECT_CONFIG_FILES.has(name)) return "project-config";
   if (LOCK_FILES.has(name)) return "lock-file";
-  if (TOOL_CONFIG_FILES.has(name) || TOOL_CONFIG.test(name)) return "tool-config";
+  if (isToolConfig(name, segments)) return "tool-config";
   if (AGENT_INSTRUCTIONS.test(name)) return "agent-instructions";
   if (PROGRAM.test(name)) return "program";
   return null;

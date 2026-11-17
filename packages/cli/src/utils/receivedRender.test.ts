@@ -10,6 +10,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compileForRender } from "../../../producer/src/services/htmlCompiler.js";
@@ -294,6 +295,21 @@ describe("outsideAssetsAllowed", () => {
       expect(line).toContain(`Could not read ${path}`);
     });
 
+    it.each(["renders/x", "dist", ".next/x", "coverage/x", ".hyperframes/requests/x"])(
+      "refuses outside files when the copy sits in %s",
+      (folder) => {
+        const dir = project();
+        write(join(dir, "index.html"), `<div data-composition-src="${folder}/index.html"></div>`);
+        const up = "../".repeat(folder.split("/").length + 1);
+        write(join(dir, folder, "index.html"), `<img src="${up}outside/pic.png">`);
+        write(join(dir, folder, ".hyperframes", "received-files.json"), received("index.html"));
+        const { allowed, line } = decide(dir);
+        expect(allowed).toBe(false);
+        expect(line).toContain(`${join(folder, "index.html")} ${SOMEONE_ELSE}`);
+        expect(line).toContain(`${up}outside/pic.png`);
+      },
+    );
+
     it("keeps outside files for a folder with no record of its own", () => {
       const { allowed, warn } = decide(withNested());
       expect(allowed).toBe(true);
@@ -319,6 +335,43 @@ describe("outsideAssetsAllowed", () => {
       const { allowed, line } = decide(dir);
       expect(allowed).toBe(false);
       expect(line).toContain("Could not check every project folder");
+    });
+  });
+
+  describe("content of a received file that left the record", () => {
+    const hashOf = (text: string) => createHash("sha256").update(text).digest("hex");
+    function withLeftContent(text: string): string {
+      const dir = project(received());
+      write(
+        join(dir, ".hyperframes", "received-content.json"),
+        JSON.stringify({ hashes: [hashOf(text)] }),
+      );
+      return dir;
+    }
+
+    it("refuses outside files when a project file holds it, and names that file", () => {
+      const dir = withLeftContent(`<video src="../../outside/clip.mp4"></video>`);
+      const { allowed, line } = decide(dir);
+      expect(allowed).toBe(false);
+      expect(line).toContain(
+        `${join("compositions", "scene.html")} holds the content of a file that came from someone else`,
+      );
+    });
+
+    it("refuses outside files and names the received content when it cannot be read", () => {
+      const dir = project(received());
+      write(join(dir, ".hyperframes", "received-content.json"), "{not json");
+      const { allowed, line } = decide(dir);
+      expect(allowed).toBe(false);
+      expect(line).toContain(
+        `Could not read ${join(realpathSync(dir), ".hyperframes", "received-content.json")}`,
+      );
+    });
+
+    it("keeps outside files when only Studio's backups hold it", () => {
+      const dir = withLeftContent("<p>theirs</p>");
+      write(join(dir, ".hyperframes", "backup", "scene.html"), "<p>theirs</p>");
+      expect(decide(dir).allowed).toBe(true);
     });
   });
 
@@ -583,9 +636,11 @@ describe("outsideAssetsAllowed", () => {
       expect(line).toContain("scene.html is another name for a file that came from someone else");
     });
 
+    // With --include-outside-files, so a scene in a linked folder outside the project is read too.
     async function compiledPage(dir: string) {
       const compiled = await compileForRender(dir, join(dir, "index.html"), join(dir, ".dl"), {
         allowOutsideProjectAssets: true,
+        includeOutsideScripts: true,
       });
       const rendered = [compiled.html, ...compiled.subCompositions.values()].join("\n");
       return { rendered, outside: [...compiled.externalAssets.values()] };
