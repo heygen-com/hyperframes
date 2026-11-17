@@ -1,10 +1,11 @@
 import { existsSync, readdirSync } from "node:fs";
-import { basename, dirname, join, relative, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { realFilePath } from "@hyperframes/studio-server/safe-path";
 import { registryRoot } from "../registry/publication.js";
 import {
   changeReceivedRecordAsync,
   listedFilesLeaving,
+  listedOutsideFolder,
   recordFoldersAtOrAbove,
 } from "./privateProjectFile.js";
 import { contentHashAsync } from "./receivedContent.js";
@@ -47,6 +48,30 @@ export async function receivedContentLeaving(target: string): Promise<string[]> 
   const files = listedFilesLeaving(target).filter((path) => !isMediaFontOrImage(path));
   const hashes = await Promise.all(files.map(contentHashAsync));
   return hashes.filter((hash): hash is string => hash !== null);
+}
+
+/**
+ * Lists in the project's own record, by their paths from the project folder, the files that records inside the
+ * folder `target` list outside it, so a delete or move of the folder leaves them received. False when that cannot be
+ * done, and the folder must then stay as it is.
+ */
+export async function keepListedOutside(projectDir: string, target: string): Promise<boolean> {
+  const root = registryRoot(projectDir);
+  const outside = listedOutsideFolder(target);
+  if (outside === null) return false;
+  const paths = outside
+    .flatMap((path) => [keyIn(root, path), keyIn(root, realFilePath(path))])
+    .filter((key) => key !== ".." && !key.startsWith("../") && !isAbsolute(key));
+  if (paths.length === 0) return true;
+  try {
+    await changeReceivedRecordAsync(root, (files) => {
+      paths.forEach((path) => files.add(path));
+      return true;
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const keyIn = (folder: string, path: string) =>

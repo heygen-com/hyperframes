@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -75,17 +83,42 @@ describe("a received folder with its own record, in a project with none", () => 
     expect(existsSync(join(projectDir, "sub"))).toBe(false);
   });
 
-  it("keeps a file its record lists outside the folder received after the folder is deleted", async () => {
-    const { projectDir, app } = studio();
+  function withOutsideEntry(projectDir: string, entry: string): void {
     withReceivedFolder(projectDir);
+    rmSync(join(projectDir, "sub", ".hyperframes"), { recursive: true });
     write(
       join(projectDir, "sub", "notes", ".hyperframes", "received-files.json"),
-      JSON.stringify({ files: ["../scene.html"] }),
+      JSON.stringify({ files: [entry] }),
     );
-    rmSync(join(projectDir, "sub", ".hyperframes"), { recursive: true });
+  }
+
+  it("keeps a file its record lists outside the folder received after the folder is deleted and the file edited", async () => {
+    const { projectDir, app } = studio();
+    withOutsideEntry(projectDir, "../scene.html");
     expect((await app.request(fileUrl("sub/notes"), { method: "DELETE" })).status).toBe(200);
+    write(join(projectDir, "sub", "scene.html"), `<img src="../../outside/pic.png"><p>edited</p>`);
     expect(receivedFiles(projectDir)("sub/scene.html")).toBe(true);
     expect(allowed(projectDir)).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "keeps a listed link out of the project received after its record's folder is deleted",
+    async () => {
+      const { projectDir, app } = studio();
+      withOutsideEntry(projectDir, "../link.png");
+      symlinkSync(join(root, "outside", "pic.png"), join(projectDir, "sub", "link.png"));
+      expect((await app.request(fileUrl("sub/notes"), { method: "DELETE" })).status).toBe(200);
+      expect(receivedFiles(projectDir)("sub/link.png")).toBe(true);
+    },
+  );
+
+  it("refuses a folder delete when the project's record cannot take the files listed outside it", async () => {
+    const { projectDir, app } = studio();
+    withOutsideEntry(projectDir, "../scene.html");
+    write(join(projectDir, ".hyperframes", "received-files.json.lock"), "");
+    expect((await app.request(fileUrl("sub/notes"), { method: "DELETE" })).status).toBe(409);
+    expect(existsSync(join(projectDir, "sub", "notes", ".hyperframes"))).toBe(true);
+    expect(receivedFiles(projectDir)("sub/scene.html")).toBe(true);
   });
 });
 
@@ -145,6 +178,21 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     expect(received("restored.html")).toBe(true);
     expect(received("index.html")).toBe(false);
     expect(allowed(projectDir)).toBe(false);
+  });
+
+  it("never writes over received content it cannot read, and keeps the deleted file listed", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    write(join(projectDir, ".hyperframes", "received-content.json"), "{not json");
+    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+      200,
+    );
+    expect(readFileSync(join(projectDir, ".hyperframes", "received-content.json"), "utf-8")).toBe(
+      "{not json",
+    );
+    expect(listed(projectDir)).toContain("scenes/intro.html");
+    warn.mockRestore();
   });
 
   it("keeps the desktop app's own keys in the received content", async () => {

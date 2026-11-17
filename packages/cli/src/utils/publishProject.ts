@@ -524,7 +524,7 @@ const relativeToProject = (ctx: ExternalAssetContext, absPath: string) =>
 const goneNote = (received: ReceivedFiles, reason: LeftOutReason): string =>
   reason === "received" && received.gone !== undefined
     ? terminalText(
-        ` ${received.gone} is listed as received but is gone, so every page, stylesheet, script and SVG counts as received.`,
+        ` ${received.gone} is listed as received but is gone, so every page, stylesheet, script and SVG counts as received. To clear this, put the file back, or take its line out of .hyperframes/received-files.json once you know where its content went.`,
       )
     : "";
 

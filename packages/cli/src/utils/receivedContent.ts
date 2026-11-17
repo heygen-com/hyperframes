@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { extname } from "node:path";
-import { readRecordTail, writeRecord } from "./projectRecords.js";
+import { readRecordTail, recordKind, writeRecord } from "./projectRecords.js";
 
 /**
  * The sha256s of received content that left a listed path, in the project's `.hyperframes/received-content.json`,
@@ -19,10 +19,13 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 export interface ReceivedContent {
   hashes: Set<string>;
   saved: Record<string, unknown>;
+  readable: boolean;
 }
 
-/** The received content beside the record in `dir`; empty when it is missing or cannot be read. */
+/** The received content beside the record in `dir`; empty when it is missing. One that cannot be read is never written over. */
 export function readReceivedContent(dir: string): ReceivedContent {
+  const empty = (readable: boolean) => ({ hashes: new Set<string>(), saved: {}, readable });
+  if (recordKind(dir, RECEIVED_CONTENT) === "absent") return empty(true);
   const read = readRecordTail(dir, RECEIVED_CONTENT, MAX_CONTENT_BYTES);
   let saved: unknown;
   try {
@@ -30,16 +33,16 @@ export function readReceivedContent(dir: string): ReceivedContent {
   } catch {
     saved = null;
   }
-  if (!isObject(saved)) return { hashes: new Set(), saved: {} };
-  const record = saved;
-  const listed = Array.isArray(record.hashes) ? record.hashes : [];
+  if (!isObject(saved)) return empty(false);
+  const listed = Array.isArray(saved.hashes) ? saved.hashes : [];
   const hashes = listed.filter(
     (hash): hash is string => typeof hash === "string" && SHA256.test(hash),
   );
-  return { hashes: new Set(hashes), saved: record };
+  return { hashes: new Set(hashes), saved, readable: true };
 }
 
 export function writeReceivedContent(dir: string, content: ReceivedContent): boolean {
+  if (!content.readable) return false;
   const json = { ...content.saved, hashes: [...content.hashes].sort() };
   return writeRecord(dir, RECEIVED_CONTENT, `${JSON.stringify(json)}\n`);
 }

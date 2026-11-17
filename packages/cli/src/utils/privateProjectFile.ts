@@ -189,13 +189,27 @@ const isAtOrUnder = (path: string, folder: string) => {
   );
 };
 
+const recordsWithin = (target: string, below: ReceivedRecord[]): ReceivedRecord[] =>
+  [...receivedRecordsAtOrAbove(target), ...below].filter((record) =>
+    isAtOrUnder(record.file, target),
+  );
+
 export function listedFilesLeaving(target: string): string[] {
   const above = receivedRecordsAtOrAbove(dirname(target)).flatMap(listedPaths);
-  const within = [...receivedRecordsAtOrAbove(target), ...(receivedRecordsBelow(target) ?? [])];
   return [
     ...above.filter((path) => isAtOrUnder(path, target)),
-    ...within.filter((record) => isAtOrUnder(record.file, target)).flatMap(listedPaths),
+    ...recordsWithin(target, receivedRecordsBelow(target) ?? []).flatMap(listedPaths),
   ];
+}
+
+export function listedOutsideFolder(target: string): string[] | null {
+  if (!statSync(target, { throwIfNoEntry: false })?.isDirectory()) return [];
+  const below = receivedRecordsBelow(target);
+  if (below === null) return null;
+  const realTarget = realFilePath(target);
+  return recordsWithin(target, below)
+    .flatMap(listedPaths)
+    .filter((path) => !isAtOrUnder(path, target) || !isAtOrUnder(realFilePath(path), realTarget));
 }
 
 function receivedRecordsAtOrAbove(start: string): ReceivedRecord[] {

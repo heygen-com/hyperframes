@@ -3,6 +3,7 @@ import type { Hono } from "hono";
 import { requestSubPath } from "@hyperframes/studio-server";
 import {
   followReceivedChange,
+  keepListedOutside,
   onDiskPath,
   receivedContentLeaving,
 } from "../utils/receivedRecordFollow.js";
@@ -29,6 +30,11 @@ export function followReceivedRecords(app: Hono, projectDir: string): void {
             .catch(() => null)
         : null;
     const target = onDiskPath(resolve(projectDir, requestSubPath(c.req.url, "projects/:id/files")));
+    if (!(await keepListedOutside(projectDir, target)))
+      return c.json(
+        { error: "Could not update the received-files record; try again.", why: "record_busy" },
+        409,
+      );
     const left = await receivedContentLeaving(target).catch((error: unknown) => {
       warn(error);
       return [];
