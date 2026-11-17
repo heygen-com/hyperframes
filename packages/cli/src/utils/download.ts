@@ -426,10 +426,6 @@ async function downloadToPart(url: string, dest: string, options: DownloadOption
   await publishPart(part, dest, options);
 }
 
-/**
- * Some networks drop every connection at the same byte, so a retry resumes from the partial file.
- * The partial file and its validator survive a stopped run, so the next run resumes it too.
- */
 async function keepsDest(
   dest: string,
   waited: boolean,
@@ -442,6 +438,10 @@ async function keepsDest(
   return false;
 }
 
+/**
+ * Some networks drop every connection at the same byte, so a retry resumes from the partial file.
+ * The partial file and its validator survive a stopped run, so the next run resumes it too.
+ */
 export async function downloadFile(
   url: string,
   dest: string,
