@@ -18,9 +18,10 @@ const manifests = [
   "gemini-extension.json",
 ];
 
-// The first release whose bin moves into HYPERFRAMES_PLUGIN_CWD. An older one would run the
-// command in the home folder.
-const CLI_FLOOR = "0.9.34";
+// The oldest release this launcher starts, for a plugin pin or any standalone selection. It matches
+// the oldest release the HyperFrames Desktop app ships, which has every protection for projects
+// received from someone else, so a pin copied from a project never runs a CLI without them.
+const CLI_FLOOR = "0.9.64";
 export const STANDALONE_CLI = `hyperframes@>=${CLI_FLOOR}`;
 
 const realOrResolved = (path) => {
@@ -74,7 +75,10 @@ function standaloneRelease(value) {
   if (!isExactRelease(value)) {
     throw new Error("--cli-version requires latest or an exact HyperFrames version.");
   }
-  if (isBelowFloor(value)) throw new Error(`This launcher runs HyperFrames ${CLI_FLOOR} or newer.`);
+  if (isBelowFloor(value))
+    throw new Error(
+      `HyperFrames ${value} lacks protections for received projects; this launcher runs ${CLI_FLOOR} or newer. Use --cli-version latest or ${CLI_FLOOR} or newer.`,
+    );
   return value;
 }
 
