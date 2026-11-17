@@ -531,7 +531,6 @@ export const NLEPreview = memo(function NLEPreview({
                   noLoadTimeout
                   sandboxOrigin={sandboxOrigin}
                   style={shadowIframeStyle(sandboxOrigin)}
-                  inert
                 />
               ),
             )}

@@ -44,7 +44,6 @@ vi.mock("../../player", async () => {
         "data-testid": "mock-player",
         "data-sandbox-origin": props.sandboxOrigin,
         style: props.style,
-        inert: props.inert,
       });
     }),
   };
@@ -605,11 +604,10 @@ describe("NLEPreview", () => {
         ],
         { sandboxOrigin },
       );
-      const shadow = [...view.stage.querySelectorAll('[data-testid="mock-player"][inert]')].map(
-        (player) => player.getAttribute("style") ?? "",
-      );
+      const shadow = [...view.stage.querySelectorAll('[data-testid="mock-player"]')]
+        .map((player) => player.getAttribute("style") ?? "")
+        .filter((style) => style.includes("pointer-events: none"));
       expect(shadow).toHaveLength(1);
-      expect(shadow[0]).toContain("pointer-events: none");
       for (const rule of present) expect(shadow[0]).toContain(rule);
       for (const rule of absent) expect(shadow[0]).not.toContain(rule);
       view.cleanup();

@@ -227,6 +227,26 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
+  // The player turns pointer events back on for its own frame, so a reload's frame would take clicks meant for the live one.
+  it("keeps a reload's player out of clicks and focus until it is promoted, then gives them back", () => {
+    const { getApi, gen, root } = beginReload();
+    const shadow = makeShadowWithSpies();
+    const player = document.createElement("hyperframes-player");
+    player.attachShadow({ mode: "open" }).append(shadow.iframe);
+    document.body.append(player);
+
+    act(() => getApi().setShadowIframeNode(shadow.iframe));
+    expect(player.hasAttribute("inert")).toBe(true);
+
+    act(() => {
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+    expect(getApi().iframeRef.current).toBe(shadow.iframe);
+    expect(player.hasAttribute("inert")).toBe(false);
+    unmount(root);
+  });
+
   it("keeps a playing film playing through a reload, from where the live frame had reached", () => {
     const { getApi, root } = renderTimelinePlayerHarness();
     const { adapter: liveAdapter, win } = makeAdapterWindow();
