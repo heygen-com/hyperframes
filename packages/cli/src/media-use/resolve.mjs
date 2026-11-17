@@ -69,6 +69,7 @@ import {
   scoreMatch,
 } from "./lib/sfx-provider.mjs";
 import { writeSfxCredit } from "./lib/openverse.mjs";
+import { terminalText } from "./lib/terminal-text.mjs";
 import { mediaVectorRows, rankMediaRowsWithVectors } from "./lib/local-media-search.mjs";
 
 const INGEST_TYPES = listTypes();
@@ -179,7 +180,7 @@ if (args.adopt) {
     console.log("no new assets to adopt (assets/ empty or already registered)");
   } else {
     console.log(`adopted ${adopted.length} asset${adopted.length === 1 ? "" : "s"} from assets/`);
-    for (const r of adopted) console.log(`  ${r.id} → ${r.path} (${r.type})`);
+    for (const r of adopted) console.log(terminalText(`  ${r.id} → ${r.path} (${r.type})`));
   }
   process.exit(0);
 }
@@ -1308,7 +1309,9 @@ function warnLowConfidence(record, match) {
         ? `found by its file name, resolved earlier for "${match.resolved_for}"`
         : `found by its file name, sharing ${match.matched_words.length} of ${match.intent_words} words`;
   console.error(
-    `media-use: low-confidence match for "${intent}": ${record.description || record.path} (${why}). Listen before placing it, or resolve again with other words.`,
+    terminalText(
+      `media-use: low-confidence match for "${intent}": ${record.description || record.path} (${why}). Listen before placing it, or resolve again with other words.`,
+    ),
   );
 }
 
@@ -1367,7 +1370,7 @@ async function result(record, source, match = recordedMatch(record)) {
     );
   } else {
     const meta = formatMeta(record, source);
-    console.log(`resolved ${record.id} → ${record.path || "inline"} (${meta})`);
+    console.log(terminalText(`resolved ${record.id} → ${record.path || "inline"} (${meta})`));
   }
 }
 

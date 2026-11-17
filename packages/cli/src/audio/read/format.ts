@@ -1,3 +1,4 @@
+import { terminalLines } from "@hyperframes/core";
 import type { Span } from "@hyperframes/core/audio-analysis";
 import { semitones } from "./pitch.js";
 import type {
@@ -272,7 +273,7 @@ export function formatRead(analysis: ReadAudio, range?: [number, number]): strin
   const width = Math.max(0, ...lines.map((l) => when(l).length));
   const body = lines.map((l) => `${when(l).padEnd(width)}  ${l.kind.padEnd(KIND_WIDTH)} ${l.text}`);
   const warnings = analysis.warnings.map((w) => `! ${w}`);
-  return [...header(analysis), "", ...body, ...(warnings.length ? ["", ...warnings] : [])].join(
-    "\n",
+  return terminalLines(
+    [...header(analysis), "", ...body, ...(warnings.length ? ["", ...warnings] : [])].join("\n"),
   );
 }

@@ -1,3 +1,4 @@
+import { terminalLines } from "@hyperframes/core";
 import type {
   Beats,
   Downbeats,
@@ -147,5 +148,5 @@ function formatItem(item: AudioItem): string[] {
 
 export function formatReport(report: AudioReport): string {
   if (report.items.length === 0) return "No audio matched.";
-  return report.items.map((item) => formatItem(item).join("\n")).join("\n\n");
+  return terminalLines(report.items.map((item) => formatItem(item).join("\n")).join("\n\n"));
 }

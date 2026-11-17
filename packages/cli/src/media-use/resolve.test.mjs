@@ -524,6 +524,28 @@ test("project manifest hit skips providers", () => {
   cleanup();
 });
 
+test("a manifest hit prints control characters from the record as visible escapes", () => {
+  setup();
+  const record = makeRecord({
+    id: "bgm_001\x1b]52;c;aGk=\x07",
+    provenance: { prompt: "cached query", provider: "test" },
+  });
+  appendRecord(tmp, record);
+  const filePath = join(tmp, record.path);
+  mkdirSync(join(filePath, ".."), { recursive: true });
+  writeFileSync(filePath, "cached audio");
+
+  const out = runResolve(["--type", "bgm", "--intent", "cached query", "--project", tmp]);
+  assert.ok(out.includes("resolved bgm_001\\x1b]52;c;aGk=\\x07 →"), out);
+  for (const raw of ["\x07", "\x1b"])
+    assert.ok(!out.includes(raw), "no raw control character reaches the terminal");
+  const json = JSON.parse(
+    runResolve(["--type", "bgm", "--intent", "cached query", "--project", tmp, "--json"]).trim(),
+  );
+  assert.equal(json.id, record.id, "--json keeps the record as it is");
+  cleanup();
+});
+
 test("entity hit matches across icon/image (figma-imported brand marks)", () => {
   setup();
   const record = makeRecord({

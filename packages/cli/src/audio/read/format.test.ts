@@ -41,6 +41,25 @@ function read(voiceLufs: number, musicLufs: number): ReadAudio {
 }
 
 describe("formatRead", () => {
+  it("prints control characters from the transcript, descriptions and file name as visible escapes", () => {
+    const base = read(-14, -18);
+    const text = formatRead({
+      ...base,
+      file: "talk\x1b[2K.wav",
+      description: { overall: "calm\x1b]8;;https://x.test\x07", bgmPrompt: null },
+      voice: {
+        ...base.voice!,
+        sentences: [{ ...base.voice!.sentences[0]!, text: "hi\x1b]52;c;aGk=\x07" }],
+      },
+      warnings: ["w\x1b[8m"],
+    });
+    expect(text).toContain("talk\\x1b[2K.wav");
+    expect(text).toContain("overall: calm\\x1b]8;;https://x.test\\x07");
+    expect(text).toContain('"hi\\x1b]52;c;aGk=\\x07"');
+    expect(text).toContain("! w\\x1b[8m");
+    for (const raw of ["\x07", "\x1b"]) expect(text).not.toContain(raw);
+  });
+
   it.each([
     [-24, -20, "voice -24 LUFS, music -20 LUFS: music 4 dB over voice"],
     [-14, -18, "voice -14 LUFS, music -18 LUFS: voice 4 dB over music"],
