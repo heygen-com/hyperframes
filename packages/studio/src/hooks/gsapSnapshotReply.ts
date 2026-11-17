@@ -56,21 +56,32 @@ function isTimeline(value: unknown, budget: Budget): boolean {
 
 function isTween(value: unknown, budget: Budget): boolean {
   if ((budget.tweens -= 1) < 0 || !isFields(value)) return false;
-  const { targets, vars, parsed, parts } = value;
   return (
-    isList(targets, MAX_SNAPSHOT_TARGETS) &&
-    targets.every(isHandle) &&
-    isFields(vars) &&
-    isVars(vars, budget, 0) &&
-    isNumber(value.start) &&
-    isNumber(value.duration) &&
-    typeof value.from === "boolean" &&
-    typeof value.initted === "boolean" &&
-    isList(parsed, MAX_SNAPSHOT_CHANNELS) &&
-    parsed.every((ch) => isFields(ch) && isText(ch.p) && isNumber(ch.s) && isNumber(ch.c)) &&
-    isList(parts, MAX_SNAPSHOT_TWEENS) &&
-    parts.every((part) => isTween(part, budget))
+    isTargetHandles(value.targets) &&
+    isFields(value.vars) &&
+    isVars(value.vars, budget, 0) &&
+    isTiming(value) &&
+    isParsed(value.parsed) &&
+    areParts(value.parts, budget)
   );
+}
+
+const isTargetHandles = (value: unknown) =>
+  isList(value, MAX_SNAPSHOT_TARGETS) && value.every(isHandle);
+
+const isTiming = (tween: Fields) =>
+  isNumber(tween.start) &&
+  isNumber(tween.duration) &&
+  typeof tween.from === "boolean" &&
+  typeof tween.initted === "boolean";
+
+const isChannel = (value: unknown) =>
+  isFields(value) && isText(value.p) && isNumber(value.s) && isNumber(value.c);
+
+const isParsed = (value: unknown) => isList(value, MAX_SNAPSHOT_CHANNELS) && value.every(isChannel);
+
+function areParts(value: unknown, budget: Budget): boolean {
+  return isList(value, MAX_SNAPSHOT_TWEENS) && value.every((part) => isTween(part, budget));
 }
 
 /** A plain vars value: finite numbers, bounded text, booleans, null, and lists and records
