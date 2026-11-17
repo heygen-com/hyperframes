@@ -374,10 +374,7 @@ function managedMediaElements(document: Document, measure: boolean): ManagedMedi
   return managed;
 }
 
-/**
- * Each match compiles the whole selector and tests it against the element and its ancestors, and
- * every simple test reads that element's attributes.
- */
+/** A match compiles the selector, tests each ancestor, and reads attributes once per simple test. */
 function selectorCheckCost(selector: string, measured: readonly ManagedMedia[]): number {
   const shape = cheapSelectorShape(selector);
   if (shape === null) return Infinity;
