@@ -292,6 +292,36 @@ describe("publish visibility messaging", () => {
     }
   });
 
+  // Windows refuses control characters in file names.
+  it.skipIf(process.platform === "win32")(
+    "prints a left-out file name with control characters as visible escapes",
+    async () => {
+      const { log } = await import("@clack/prompts");
+      // Built rather than written: a literal control character in the source is a lint error.
+      const esc = String.fromCharCode(27);
+      const project = mkdtempSync(join(tmpdir(), "hf-publish-left-out-"));
+      writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
+      writeFileSync(join(project, `.env.${esc}[2J`), "KEY=1");
+      // Re-included by the ignore file, so the upload walks it and then leaves it out as private.
+      writeFileSync(join(project, ".hyperframesignore"), "!.env.*\n");
+      mockPublished({ projectId: "project-id", url: "https://hyperframes.dev/p/project-id" });
+      const warn = vi.spyOn(log, "warn").mockImplementation(() => {});
+      try {
+        await captureLog(() =>
+          publishCommand.run?.({ args: { dir: project, yes: true, proxy: false } } as never),
+        );
+        const warned = warn.mock.calls.map((call) => call.join(" ")).join("\n");
+
+        expect(warned).toContain("left out of the upload");
+        expect(warned.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+        expect(warned).toContain(".env.\\x1b[2J");
+      } finally {
+        warn.mockRestore();
+        rmSync(project, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("labels an authentication-required anonymous URL as a claim URL", async () => {
     const output = await runPublish({ public: false, claimed: false });
 
