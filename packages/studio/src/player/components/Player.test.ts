@@ -278,19 +278,6 @@ describe("callbacks after the player is already mounted", () => {
     expect(first).not.toHaveBeenCalled();
   });
 
-  it("tells its owner each time the player learns or changes the composition's size", async () => {
-    const first = vi.fn();
-    const onCompositionSize = vi.fn();
-    const { player, rerender } = await mountPlayer({ onCompositionSize: first });
-    await rerender({ onCompositionSize });
-
-    act(() => void player.dispatchEvent(new Event("ready")));
-    act(() => void player.dispatchEvent(new CustomEvent("resize", { detail: {} })));
-
-    expect(onCompositionSize).toHaveBeenCalledTimes(2);
-    expect(first).not.toHaveBeenCalled();
-  });
-
   it("loads the preview on the runtime's ready while a stalled font holds the window's load", async () => {
     const onLoad = vi.fn();
     const { player } = await mountPlayer({ onLoad });

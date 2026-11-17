@@ -184,6 +184,15 @@ export const NLEPreview = memo(function NLEPreview({
     onCompositionSizeChangeRef.current?.(compositionSize);
   }, [compositionSize]);
 
+  const showLive = poster.onLiveReadyToShowChange;
+  const onLiveReadyToShowChange = useCallback(
+    (ready: boolean) => {
+      showLive(ready);
+      if (ready) updateCompositionSizeFromPreview();
+    },
+    [showLive, updateCompositionSizeFromPreview],
+  );
+
   const setPreviewIframeRef = useCallback(
     (node: HTMLIFrameElement | null) => {
       previewIframeRef.current = node;
@@ -507,10 +516,9 @@ export const NLEPreview = memo(function NLEPreview({
                     applyInitialZoom();
                   }}
                   onCompositionLoadingChange={onCompositionLoadingChange}
-                  onReadyToShowChange={poster.onLiveReadyToShowChange}
+                  onReadyToShowChange={onLiveReadyToShowChange}
                   onPreviewError={poster.onPreviewError}
                   onPainted={(details) => reportPreviewFirstFrame(slot, details)}
-                  onCompositionSize={updateCompositionSizeFromPreview}
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
                   loadingUi={loadingUi}

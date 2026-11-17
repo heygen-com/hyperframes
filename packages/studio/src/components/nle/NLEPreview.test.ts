@@ -11,10 +11,7 @@ import { readPreviewComplexity } from "../../player/hooks/usePreviewFirstFrameTe
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const playerMounts: string[] = [];
-let livePlayerProps: {
-  onReadyToShowChange?: (ready: boolean) => void;
-  onCompositionSize?: () => void;
-} = {};
+let livePlayerProps: { onReadyToShowChange?: (ready: boolean) => void } = {};
 
 const measured = vi.hoisted(() => ({ size: null as { width: number; height: number } | null }));
 vi.mock("../../utils/previewCompositionSize", async (original) => ({
@@ -30,7 +27,6 @@ vi.mock("../../player", async () => {
       props: {
         onLoad?: () => void;
         onReadyToShowChange?: (ready: boolean) => void;
-        onCompositionSize?: () => void;
         suppressLoadingOverlay?: boolean;
         style?: React.CSSProperties;
         sandboxOrigin?: "opaque";
@@ -560,13 +556,13 @@ describe("NLEPreview", () => {
     }
   });
 
-  it("takes a sealed preview's size when its player reports it, after the frame has loaded", () => {
+  it("takes a sealed preview's size once its film is ready to show, after the frame has loaded", () => {
     const box = { width: 800, height: 600 };
     const sealed = renderPreview(undefined, { box, sandboxOrigin: "opaque" });
     try {
       expect([sealed.stage.style.width, sealed.stage.style.height]).toEqual(["784px", "441px"]);
       measured.size = { width: 1080, height: 1920 };
-      act(() => livePlayerProps.onCompositionSize?.());
+      act(() => livePlayerProps.onReadyToShowChange?.(true));
       const shape = parseFloat(sealed.stage.style.width) / parseFloat(sealed.stage.style.height);
       expect(shape).toBeCloseTo(1080 / 1920, 3);
       expect(sealed.stage.style.height).toBe("584px");

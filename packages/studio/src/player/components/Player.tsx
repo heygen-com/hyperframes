@@ -1,5 +1,5 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
-import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readiness";
 import { installAcceleratedCanvasTracker } from "@hyperframes/core/page-motion-blur";
 import { useMountEffect } from "../../hooks/useMountEffect";
@@ -39,7 +39,6 @@ interface PlayerProps {
   onPreviewError?: (message: string) => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
   onPainted?: (details: { iframe: HTMLIFrameElement; startedAt: number; loadId: number }) => void;
-  onCompositionSize?: () => void;
   portrait?: boolean;
   style?: React.CSSProperties;
   suppressLoadingOverlay?: boolean;
@@ -160,12 +159,6 @@ const runtimeBootedIn = (iframe: HTMLIFrameElement) =>
  * forwarded ref so useTimelinePlayer can access it for clip manifest parsing,
  * timeline probing, and DOM inspection.
  */
-function useLatestCall(call: (() => void) | undefined): () => void {
-  const latest = useRef(call);
-  latest.current = call;
-  return useCallback(() => latest.current?.(), []);
-}
-
 export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
   (
     {
@@ -176,7 +169,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       onPreviewError,
       onCompositionLoadingChange,
       onPainted,
-      onCompositionSize,
       portrait,
       style,
       suppressLoadingOverlay,
@@ -201,7 +193,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     onReadyToShowChangeRef.current = onReadyToShowChange;
     const onPreviewErrorRef = useRef(onPreviewError);
     onPreviewErrorRef.current = onPreviewError;
-    const handleSize = useLatestCall(onCompositionSize);
     const [loaded, setLoaded] = useState(false);
     const [assetsLoading, setAssetsLoading] = useState(false);
     const [assetOverlayVisible, setAssetOverlayVisible] = useState(false);
@@ -267,7 +258,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           setPreviewError(null);
           setCompositionLoading(false);
           if (iframe.contentDocument && runtimeBootedIn(iframe)) handleLoad();
-          handleSize();
         };
         const handlePainted = () => {
           setPainted(true);
@@ -348,7 +338,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.addEventListener("click", preventToggle, { capture: true });
         player.addEventListener("shadertransitionstate", handleShaderTransitionState);
         player.addEventListener("ready", handleReady);
-        player.addEventListener("resize", handleSize);
         player.addEventListener("painted", handlePainted);
         player.addEventListener("error", handleError);
 
@@ -383,7 +372,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           player.removeEventListener("click", preventToggle, { capture: true });
           player.removeEventListener("shadertransitionstate", handleShaderTransitionState);
           player.removeEventListener("ready", handleReady);
-          player.removeEventListener("resize", handleSize);
           player.removeEventListener("painted", handlePainted);
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
