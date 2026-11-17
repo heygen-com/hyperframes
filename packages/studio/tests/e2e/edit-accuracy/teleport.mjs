@@ -54,9 +54,12 @@ function linear(node) {
 }
 
 /** Border-box size in CSS px: offsetWidth rounds to whole px, and a bounding rect grows with rotation. */
-// fallow-ignore-next-line complexity
 function boxSize(el) {
-  const s = el.ownerDocument.defaultView.getComputedStyle(el);
+  return styleBoxSize(el.ownerDocument.defaultView.getComputedStyle(el));
+}
+
+// fallow-ignore-next-line complexity
+function styleBoxSize(s) {
   const px = (v) => Number.parseFloat(v) || 0;
   const edges = (a, b) =>
     s.boxSizing === "border-box"
@@ -68,6 +71,18 @@ function boxSize(el) {
   return [px(s.width) + edges("Left", "Right"), px(s.height) + edges("Top", "Bottom")];
 }
 
+/** A point in the viewport px of iframe `f`'s page, in the px of the page holding `f`. */
+function throughFrame(f, [x, y]) {
+  const fr = f.getBoundingClientRect();
+  const fs = f.ownerDocument.defaultView.getComputedStyle(f);
+  const [fw, fh] = boxSize(f);
+  const d = apply(linear(f), [
+    x + f.clientLeft + parseFloat(fs.paddingLeft) - fw / 2,
+    y + f.clientTop + parseFloat(fs.paddingTop) - fh / 2,
+  ]);
+  return [fr.left + fr.width / 2 + d[0], fr.top + fr.height / 2 + d[1]];
+}
+
 /** The element's quad in top-frame px, crossing each iframe through its element's own transform. */
 export function quadOf(el, top = el.ownerDocument.defaultView.top) {
   const r = el.getBoundingClientRect();
@@ -75,17 +90,8 @@ export function quadOf(el, top = el.ownerDocument.defaultView.top) {
   let m = linear(el);
   for (let win = el.ownerDocument.defaultView; win !== top; win = win.parent) {
     const f = win.frameElement;
-    const fr = f.getBoundingClientRect();
-    const fm = linear(f);
-    const fs = f.ownerDocument.defaultView.getComputedStyle(f);
-    const [fw, fh] = boxSize(f);
-    const inset = [
-      f.clientLeft + parseFloat(fs.paddingLeft),
-      f.clientTop + parseFloat(fs.paddingTop),
-    ];
-    const d = apply(fm, [c[0] + inset[0] - fw / 2, c[1] + inset[1] - fh / 2]);
-    c = [fr.left + fr.width / 2 + d[0], fr.top + fr.height / 2 + d[1]];
-    m = mul(fm, m);
+    c = throughFrame(f, c);
+    m = mul(linear(f), m);
   }
   const [w, h] = boxSize(el);
   const corner = (u, v) => {
@@ -119,41 +125,121 @@ function frameSampler() {
       true,
     );
   // Studio's previews sit in <hyperframes-player> shadow roots, which window.frames does not list.
-  const previewWindows = () =>
+  const previewFrames = () =>
     Array.from(document.querySelectorAll("iframe, hyperframes-player"))
       .flatMap((e) => (e.shadowRoot ? Array.from(e.shadowRoot.querySelectorAll("iframe")) : [e]))
-      .map((e) => e.contentWindow)
-      .filter((f) => {
-        try {
-          return f.location.pathname.includes("/preview");
-        } catch {
-          return false; // cross-origin
-        }
+      .filter((f) => /\/preview/.test(new URL(f.src || "about:blank").pathname));
+  // A sealed preview's page is out of reach, so each is read over an editing port of the bench's own. When Studio
+  // takes the same handoff both listen on that port; ids from 1e9 up never meet Studio's.
+  const ROOT = '[data-composition-id="main"]';
+  const SIZE = ["width", "height", "box-sizing", "clip-path"].concat(
+    ...["left", "right", "top", "bottom"].map((s) => [`padding-${s}`, `border-${s}-width`]),
+  );
+  const links = new Map();
+  let lastId = 1e9;
+  const linkOf = (f) => {
+    if (!links.has(f))
+      links.set(f, {
+        win: f.contentWindow,
+        port: null,
+        asked: -1e9,
+        pending: new Map(),
+        handles: {},
       });
-  // The largest visible preview holding the element; Studio loads edits in a hidden shadow frame.
-  // fallow-ignore-next-line complexity
-  const findElement = (selector) => {
-    let best = null;
-    for (const f of previewWindows()) {
-      const el = f.document.querySelector(selector);
-      const fe = f.frameElement;
-      if (!el || !fe.checkVisibility({ visibilityProperty: true, opacityProperty: true })) continue;
-      const r = fe.getBoundingClientRect();
-      if (!best || r.width * r.height > best.area) best = { el, area: r.width * r.height };
+    return links.get(f);
+  };
+  window.addEventListener("message", (e) => {
+    const d = e.data;
+    if (!d || d.source !== "hf-preview") return;
+    for (const l of links.values()) {
+      if (l.win !== e.source) continue;
+      // A new page in the frame: the old port and its handles went with the old one.
+      if (d.type === "ready") Object.assign(l, { port: null, handles: {} });
+      if (d.type !== "editing-port" || d.v !== 1 || e.ports.length !== 1 || l.port) continue;
+      l.port = e.ports[0];
+      l.port.addEventListener("message", ({ data }) => l.pending.get(data?.id)?.(data));
+      l.port.start();
     }
-    // A page with no preview (the blank-page control) holds its element itself.
-    return best?.el ?? document.querySelector(selector);
+  });
+  const ask = (l, kind, params) =>
+    new Promise((resolve) => {
+      if (!l.port) {
+        // A connect while Studio waits for its own handoff could take Studio's: asked at most twice a second.
+        if (performance.now() - l.asked > 500) {
+          l.asked = performance.now();
+          l.win?.postMessage({ source: "hf-parent", type: "editing-connect", v: 1 }, "*");
+        }
+        return resolve(null);
+      }
+      const id = ++lastId;
+      const timer = setTimeout(() => (l.pending.delete(id), (l.port = null), resolve(null)), 1000);
+      l.pending.set(id, (reply) => {
+        clearTimeout(timer);
+        l.pending.delete(id);
+        resolve(reply.ok ? reply.result : null);
+      });
+      l.port.postMessage({ v: 1, id, kind, params });
+    });
+  const handleOf = async (l, selector) =>
+    (l.handles[selector] ??= (await ask(l, "query", { selector }))?.matches?.[0]?.handle ?? null);
+  // fallow-ignore-next-line complexity
+  const measureIn = async (f, selector) => {
+    const l = linkOf(f);
+    const [el, root] = [await handleOf(l, selector), await handleOf(l, ROOT)];
+    if (!el || !root) return null;
+    const [geometry, computed] = await Promise.all([
+      ask(l, "geometry", { handles: [el, root] }),
+      ask(l, "computed-styles", { handle: el, properties: SIZE }),
+    ]);
+    const [box, rootBox] = geometry?.elements ?? [];
+    // A replaced element: look it up again next frame.
+    if (!box || !rootBox || !computed?.styles) return void (l.handles = {});
+    return { f, box, rootBox, styles: computed.styles };
+  };
+  const cornersOf = ({ rect: r, corners: c }) =>
+    c
+      ? [c.nw, c.ne, c.se, c.sw].map((p) => [p.x, p.y])
+      : [
+          [r.x, r.y],
+          [r.x + r.width, r.y],
+          [r.x + r.width, r.y + r.height],
+          [r.x, r.y + r.height],
+        ];
+  const camel = (styles) =>
+    Object.fromEntries(
+      Object.entries(styles).map(([k, v]) => [k.replace(/-(.)/g, (_, c) => c.toUpperCase()), v]),
+    );
+  // The largest visible preview holding the element; Studio loads edits in a hidden shadow frame.
+  const findInPreviews = async (selector) => {
+    const shown = previewFrames().filter((f) =>
+      f.checkVisibility({ visibilityProperty: true, opacityProperty: true }),
+    );
+    const area = ({ f }) => f.getBoundingClientRect().width * f.getBoundingClientRect().height;
+    const found = (await Promise.all(shown.map((f) => measureIn(f, selector)))).filter(Boolean);
+    return found.sort((a, b) => area(b) - area(a))[0] ?? null;
   };
   // fallow-ignore-next-line complexity
-  const read = () => {
-    const el = findElement(rec.selector);
-    const root = el?.ownerDocument.querySelector('[data-composition-id="main"]');
+  const read = async () => {
+    const samples = rec.samples;
+    const hit = await findInPreviews(rec.selector);
+    // Everything else is read as the reply lands, so the box is never ahead of the pointer it is scored against.
+    if (!rec.on || rec.samples !== samples) return;
+    // A page with no preview (the blank-page control) holds its element itself.
+    const el = hit ? null : document.querySelector(rec.selector);
+    const root = el?.ownerDocument.querySelector(ROOT);
     const outline = document.querySelector("[data-dom-edit-crop-frame] > div.border-dashed");
     const waiting = document.querySelector("[data-dom-edit-press-waiting]");
-    rec.samples.push({
+    const lift = (box) => cornersOf(box).map((p) => throughFrame(hit.f, p));
+    samples.push({
       t: performance.now(),
       pointer: rec.pointer,
       down: rec.down,
+      ...(hit && {
+        root: lift(hit.rootBox),
+        quad: lift(hit.box),
+        size: styleBoxSize(camel(hit.styles)),
+        clip: hit.styles["clip-path"] ?? "none",
+      }),
       ...(root && { root: quadOf(root) }),
       ...(el && {
         quad: quadOf(el),
@@ -164,17 +250,25 @@ function frameSampler() {
       ...(waiting && { waitingQuad: quadOf(waiting) }),
     });
   };
-  // ResizeObserver runs after every document's rAF callbacks and layout, just before paint, so it reads
-  // what the frame shows. A task after paint can see a state no frame painted.
+  // True when a preview holds a match, false when every preview answered without one, null while one cannot answer.
+  rec.matchesInPreviews = async (selector) => {
+    const replies = await Promise.all(
+      previewFrames().map((f) => ask(linkOf(f), "query", { selector })),
+    );
+    if (replies.some((r) => r?.matches?.length)) return true;
+    return replies.every(Boolean) ? false : null;
+  };
+  // ResizeObserver runs after every document's rAF callbacks and layout, just before paint; each one asks for the
+  // frame it fires on, and one ask at a time keeps the replies in order.
   const tick = document.createElement("div");
   tick.style.cssText = "position: fixed; height: 1px; opacity: 0; pointer-events: none";
+  let reading = false;
   new ResizeObserver(() => {
-    if (!rec.on) return;
-    try {
-      read();
-    } catch (error) {
-      rec.samples.push({ t: performance.now(), error: String(error) });
-    }
+    if (!rec.on || reading) return;
+    reading = true;
+    read()
+      .catch((error) => rec.samples.push({ t: performance.now(), error: String(error) }))
+      .finally(() => (reading = false));
   }).observe(tick);
   const loop = () => {
     if (rec.on) {
@@ -188,7 +282,7 @@ function frameSampler() {
 
 /** The page script with the geometry it calls, for evaluateOnNewDocument; scoped so no page global clashes. */
 export const frameSamplerScript = `(() => {
-${[mul, apply, rotation, ownLinear, parentOf, linear, boxSize, quadOf].map(String).join("\n")}
+${[mul, apply, rotation, ownLinear, parentOf, linear, boxSize, styleBoxSize, throughFrame, quadOf].map(String).join("\n")}
 (${frameSampler})();
 })();`;
 
