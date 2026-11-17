@@ -1,7 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
 
-// Ends Chrome's tree by its exact pid when the CLI dies before closing it. launch.ts releases the watchdog the moment
-// Chrome exits, so a pid it ends is still that Chrome's and never one Windows gave to a later process.
 const WATCHDOG = `let clean = false;
 const done = () => {
   if (!clean) require("node:child_process").spawnSync("taskkill", ["/PID", process.env.HF_CHROME_PID, "/T", "/F"], { windowsHide: true, stdio: "ignore", timeout: 20000 });
@@ -15,7 +13,6 @@ export interface ChromeWatchdog {
   release(clean: boolean): void;
 }
 
-/** Windows does not end a process's children with it, so Chrome's children outlive a killed CLI without this. */
 export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefined {
   if (process.platform !== "win32" || chrome.pid === undefined) return undefined;
   const watchdog = spawn(process.execPath, ["-e", WATCHDOG], {
