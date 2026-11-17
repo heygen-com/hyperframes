@@ -591,7 +591,7 @@ export {
   chromeSandboxEnabled,
   launchWithChromeSandboxFallback,
   type ChromeSandboxHost,
-} from "./services/chromeSandbox.js";
+} from "@hyperframes/core/chrome-sandbox";
 export {
   VariablesInvalidError,
   type VariablesIssue,

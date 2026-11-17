@@ -45,7 +45,7 @@ import {
   chromeSandboxArgs,
   chromeSandboxEnabled,
   launchWithChromeSandboxFallback,
-} from "./chromeSandbox.js";
+} from "@hyperframes/core/chrome-sandbox";
 import { describeWslGpuAccess, detectWsl, type WslHostFacts } from "./wslHost.js";
 import {
   BrowserLeasePool,
