@@ -1954,6 +1954,19 @@ ${Array.from({ length: 10 }, (_, i) => `    <div class="clip" data-start="${i}" 
       expect(derived?.message).toContain("2 clip(s) whose length is only known at runtime");
     });
 
+    it("derives from a negative start like the parser does", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="clip" data-start="-2" data-duration="1"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+      expect(
+        result.findings.find((f) => f.code === "root_composition_duration_derived")?.message,
+      ).toContain("at least 1s");
+    });
+
     it("does not count a clip whose data-end is before its start", async () => {
       const html = `<html><body>
         <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
