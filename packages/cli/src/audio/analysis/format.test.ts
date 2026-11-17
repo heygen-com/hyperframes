@@ -31,12 +31,13 @@ describe("formatReport", () => {
     const text = formatReport({
       version: 1,
       items: [
-        item({ file: "a\x1b[2K.wav", ref: "#x\x07", warnings: ["w\x1b]52;c;aGk=\x07"] }),
+        item({ file: "a\x1b[2K.wav", ref: "#x\x07", warnings: ["w\x1b]52;c;aGk=\x07", "a\nb"] }),
         item({ file: "gone\x9b.wav", ref: null, error: "missing \x1b[8m" }),
       ],
     });
     expect(text).toContain("a\\x1b[2K.wav #x\\x07");
     expect(text).toContain("! w\\x1b]52;c;aGk=\\x07");
+    expect(text).toContain("! a\\x0ab");
     expect(text).toContain("gone\\x9b.wav: missing \\x1b[8m");
     for (const raw of ["\x07", "\x1b", "\x9b"]) expect(text).not.toContain(raw);
   });

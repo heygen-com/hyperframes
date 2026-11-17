@@ -281,11 +281,14 @@ if (type === "recipe") {
       console.log(JSON.stringify({ ok: true, ...used }));
     } else {
       console.log(
-        `resolved recipe ${used.recipe.name} (v${used.recipe.version}, ${used.recipe.workflow})`,
+        terminalText(
+          `resolved recipe ${used.recipe.name} (v${used.recipe.version}, ${used.recipe.workflow})`,
+        ),
       );
-      console.log(`  frame spec → ${used.frameSpecPath} (copied over)`);
-      console.log(`  storyboard skeleton → ${used.skeletonPath}`);
-      if (used.briefSkeletonPath) console.log(`  brief skeleton → ${used.briefSkeletonPath}`);
+      console.log(terminalText(`  frame spec → ${used.frameSpecPath} (copied over)`));
+      console.log(terminalText(`  storyboard skeleton → ${used.skeletonPath}`));
+      if (used.briefSkeletonPath)
+        console.log(terminalText(`  brief skeleton → ${used.briefSkeletonPath}`));
     }
     process.exit(0);
   } catch (err) {
@@ -1185,8 +1188,8 @@ function printStats(report) {
     return;
   }
   for (const [type, misses] of entries) {
-    console.log(`  ${type}:`);
-    for (const miss of misses) console.log(`    ${miss.count}  ${miss.intent}`);
+    console.log(terminalText(`  ${type}:`));
+    for (const miss of misses) console.log(terminalText(`    ${miss.count}  ${miss.intent}`));
   }
 }
 
@@ -1197,7 +1200,7 @@ function printMap(label, values) {
     console.log("  none");
     return;
   }
-  for (const [key, value] of entries) console.log(`  ${key}: ${value}`);
+  for (const [key, value] of entries) console.log(terminalText(`  ${key}: ${value}`));
 }
 
 function ffDoctorCheck(name, binary) {

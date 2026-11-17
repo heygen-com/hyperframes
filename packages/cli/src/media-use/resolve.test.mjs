@@ -546,6 +546,39 @@ test("a manifest hit prints control characters from the record as visible escape
   cleanup();
 });
 
+test("recipe and stats output print control characters as visible escapes", () => {
+  setup();
+  try {
+    const recipe = join(tmp, ".media", "recipes", "promo");
+    mkdirSync(recipe, { recursive: true });
+    const name = "promo\x1b[2K";
+    writeFileSync(
+      join(recipe, "recipe.json"),
+      JSON.stringify({ name, version: 1, workflow: "w\x07" }),
+    );
+    writeFileSync(join(recipe, "frame.md"), "# frame\n");
+    const used = runResolve(["--type", "recipe", "--entity", "promo", "--project", tmp]);
+    assert.ok(used.includes("resolved recipe promo\\x1b[2K (v1, w\\x07)"), used);
+
+    const home = join(process.env.HYPERFRAMES_MEDIA_HOME, ".media");
+    mkdirSync(home, { recursive: true });
+    const miss = {
+      ts: new Date().toISOString(),
+      type: "sfx\x1b[8m",
+      intent: "boom\x1b]52;c;agk=\x07",
+    };
+    writeFileSync(join(home, "misses.jsonl"), `${JSON.stringify(miss)}\n`);
+    const stats = runResolve(["--stats", "--project", tmp]);
+    assert.ok(stats.includes("  sfx\\x1b[8m:"), stats);
+    assert.ok(stats.includes("boom\\x1b]52;c;agk=\\x07"), stats);
+    for (const out of [used, stats])
+      for (const raw of ["\x07", "\x1b"])
+        assert.ok(!out.includes(raw), "no raw control character reaches the terminal");
+  } finally {
+    cleanup();
+  }
+});
+
 test("entity hit matches across icon/image (figma-imported brand marks)", () => {
   setup();
   const record = makeRecord({

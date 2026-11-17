@@ -51,12 +51,13 @@ describe("formatRead", () => {
         ...base.voice!,
         sentences: [{ ...base.voice!.sentences[0]!, text: "hi\x1b]52;c;aGk=\x07" }],
       },
-      warnings: ["w\x1b[8m"],
+      warnings: ["w\x1b[8m", "a\nb"],
     });
     expect(text).toContain("talk\\x1b[2K.wav");
     expect(text).toContain("overall: calm\\x1b]8;;https://x.test\\x07");
     expect(text).toContain('"hi\\x1b]52;c;aGk=\\x07"');
     expect(text).toContain("! w\\x1b[8m");
+    expect(text).toContain("! a\\x0ab");
     for (const raw of ["\x07", "\x1b"]) expect(text).not.toContain(raw);
   });
 
