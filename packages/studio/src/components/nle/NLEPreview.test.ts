@@ -34,9 +34,8 @@ vi.mock("../../player", async () => {
       ref: React.ForwardedRef<HTMLIFrameElement>,
     ) {
       if (!props.suppressLoadingOverlay) livePlayerProps = props;
-      React.useEffect(() => {
-        props.onLoad?.();
-      }, [props]);
+      const onLoad = React.useRef(props.onLoad);
+      React.useEffect(() => onLoad.current?.(), []);
       React.useState(() => playerMounts.push(props.suppressLoadingOverlay ? "shadow" : "live"));
 
       return React.createElement("div", {
