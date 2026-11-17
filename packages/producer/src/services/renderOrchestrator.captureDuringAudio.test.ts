@@ -12,6 +12,12 @@ const trace = vi.hoisted(() => ({
   finishAudio: (_result: object): void => {},
   failAudio: (_error: Error): void => {},
   finishCapture: (): void => {},
+  cpus: 8,
+}));
+
+vi.mock("@hyperframes/engine", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hyperframes/engine")>()),
+  usableCpuCount: () => trace.cpus,
 }));
 
 vi.mock("./render/shared.js", async (importOriginal) => ({
@@ -117,6 +123,7 @@ vi.mock("./render/stages/captureSegmentedStage.js", async (importOriginal) => ({
 const dirs: string[] = [];
 afterEach(() => {
   trace.events.length = 0;
+  trace.cpus = 8;
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -192,4 +199,21 @@ it("an audio stage that throws while frames are drawn stops them and fails the r
   expect(trace.events).toContain("capture aborted");
   expect(String(error)).toContain("the mix's FFmpeg exited with code 1");
   expect(job.status).not.toBe("cancelled");
+});
+
+it("on fewer than 4 CPUs draws frames only after the mix", async () => {
+  trace.cpus = 2;
+  const { root, failure } = startRender();
+  expect(await until(() => trace.events.includes("audio started"))).toBe(true);
+  expect(await until(() => trace.events.includes("capture started"))).toBe(false);
+
+  trace.finishAudio({
+    audioOutputPath: join(root, "audio.wav"),
+    hasAudio: false,
+    audioProcessMs: 0,
+  });
+  expect(await until(() => trace.events.includes("capture started"))).toBe(true);
+  expect(trace.events).toEqual(["audio started", "audio done", "capture started"]);
+  trace.finishCapture();
+  expect(String(await failure)).toContain("stop after capture");
 });

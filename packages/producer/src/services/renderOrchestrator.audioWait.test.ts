@@ -13,6 +13,10 @@ const trace = vi.hoisted(() => ({
   setUp: false,
 }));
 
+vi.mock("@hyperframes/engine", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hyperframes/engine")>()),
+  usableCpuCount: () => 8,
+}));
 vi.mock("./render/shared.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./render/shared.js")>()),
   createMemorySampler: () => ({
