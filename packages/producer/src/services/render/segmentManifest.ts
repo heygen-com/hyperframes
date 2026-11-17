@@ -6,7 +6,7 @@
  * guard that: the plan hash covers everything that determines segment bytes,
  * and every reused segment is re-validated on disk before it is skipped.
  */
-import { createHash } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { renameWithRetry } from "@hyperframes/engine";
@@ -27,6 +27,8 @@ export interface SegmentManifest {
   totalFrames: number;
   segmentFrames: number;
   completed: SegmentManifestEntry[];
+  /** HMAC by this install's resume key; resume trusts no manifest without a valid one. */
+  mac?: string;
 }
 
 export interface SegmentPlanHashInput {
@@ -135,11 +137,38 @@ export function readSegmentManifest(segmentDir: string): SegmentManifest | null 
   }
 }
 
+function manifestMac(manifest: SegmentManifest, key: Buffer): string {
+  const signed = [
+    manifest.planHash,
+    manifest.totalFrames,
+    manifest.segmentFrames,
+    manifest.completed.map((e) => [e.index, e.startFrame, e.endFrame, e.bytes]),
+  ];
+  return createHmac("sha256", key).update(JSON.stringify(signed)).digest("hex");
+}
+
+function signSegmentManifest(manifest: SegmentManifest, key: Buffer | null): SegmentManifest {
+  const { version, planHash, totalFrames, segmentFrames, completed } = manifest;
+  const unsigned: SegmentManifest = { version, planHash, totalFrames, segmentFrames, completed };
+  return key ? { ...unsigned, mac: manifestMac(unsigned, key) } : unsigned;
+}
+
+function hasValidMac(manifest: SegmentManifest, key: Buffer | null): boolean {
+  if (!key || typeof manifest.mac !== "string") return false;
+  const expected = Buffer.from(manifestMac(manifest, key), "hex");
+  const actual = Buffer.from(manifest.mac, "hex");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
 /** Atomic: write to a temp name, then rename over the manifest. */
-export function writeSegmentManifest(segmentDir: string, manifest: SegmentManifest): void {
+export function writeSegmentManifest(
+  segmentDir: string,
+  manifest: SegmentManifest,
+  key: Buffer | null,
+): void {
   mkdirSync(segmentDir, { recursive: true });
   const tmp = join(segmentDir, `${MANIFEST_FILENAME}.${process.pid}.tmp`);
-  writeFileSync(tmp, JSON.stringify(manifest, null, 2), "utf-8");
+  writeFileSync(tmp, JSON.stringify(signSegmentManifest(manifest, key), null, 2), "utf-8");
   renameWithRetry(tmp, join(segmentDir, MANIFEST_FILENAME));
 }
 
@@ -172,6 +201,7 @@ export interface SegmentResumeCheck {
   segmentDir: string;
   /** This render's segments; manifest entries are trusted only where they match one. */
   plan: readonly SegmentSlice[];
+  key: Buffer | null;
   probeFrames: (path: string) => Promise<number | null>;
 }
 
@@ -192,7 +222,8 @@ function isPlainFileOfSize(path: string, bytes: number): boolean {
 }
 
 /**
- * Indices safe to skip on resume. A segment counts only if the hash matches,
+ * Indices safe to skip on resume. A segment counts only if this install
+ * signed the manifest, the hash matches,
  * the entry matches a slice of this plan, and the file the join will read
  * (the slice's own path in `segmentDir`, never the manifest's `path`) is a
  * plain file at the recorded size whose frame count equals the slice length.
@@ -204,7 +235,7 @@ export async function validateCompletedSegments(
   check: SegmentResumeCheck,
 ): Promise<Set<number>> {
   const ok = new Set<number>();
-  if (manifest.planHash !== check.expectedHash) return ok;
+  if (manifest.planHash !== check.expectedHash || !hasValidMac(manifest, check.key)) return ok;
   for (const entry of manifest.completed) {
     const slice = plannedSlice(entry, check.plan);
     if (!slice) continue;

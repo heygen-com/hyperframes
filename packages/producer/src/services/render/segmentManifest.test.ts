@@ -112,7 +112,7 @@ describe("manifest io", () => {
         },
       ],
     };
-    writeSegmentManifest(dir, manifest);
+    writeSegmentManifest(dir, manifest, null);
     expect(readSegmentManifest(dir)).toEqual(manifest);
     writeFileSync(join(dir, "segments.json"), "{not json");
     expect(readSegmentManifest(dir)).toBeNull();
@@ -153,15 +153,40 @@ describe("validateCompletedSegments", () => {
     bytes,
     completedAt: "",
   });
+  const KEY = Buffer.alloc(32, 1);
+  /** Written and read back the way a render does, so it carries a real signature. */
   const manifestOf = (
     completed: SegmentManifestEntry[],
-    totalFrames = completed.length * 3,
-  ): SegmentManifest => ({ version: 1, planHash: "h", totalFrames, segmentFrames: 3, completed });
+    options: { totalFrames?: number; planHash?: string; key?: Buffer | null } = {},
+  ): SegmentManifest => {
+    const { totalFrames = completed.length * 3, planHash = "h", key = KEY } = options;
+    writeSegmentManifest(
+      dir,
+      { version: 1, planHash, totalFrames, segmentFrames: 3, completed },
+      key,
+    );
+    const written = readSegmentManifest(dir);
+    if (!written) throw new Error("manifest did not round-trip");
+    return written;
+  };
   const check = (
     totalFrames: number,
     probeFrames: (path: string) => Promise<number | null>,
     expectedHash = "h",
-  ) => ({ expectedHash, segmentDir: dir, plan: planSegments(totalFrames, 3), probeFrames });
+  ) => ({
+    expectedHash,
+    segmentDir: dir,
+    plan: planSegments(totalFrames, 3),
+    key: KEY,
+    probeFrames,
+  });
+  const reuses = async (manifest: SegmentManifest, totalFrames: number) =>
+    (
+      await validateCompletedSegments(
+        manifest,
+        check(totalFrames, async () => 3),
+      )
+    ).size;
 
   it("keeps only segments whose file exists and whose frame count matches", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
@@ -180,14 +205,7 @@ describe("validateCompletedSegments", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     writeFileSync(segmentOutputPath(dir, 0), "x");
     const manifest = manifestOf([entry(0, 999)]);
-    expect(
-      (
-        await validateCompletedSegments(
-          manifest,
-          check(3, async () => 3),
-        )
-      ).size,
-    ).toBe(0);
+    expect(await reuses(manifest, 3)).toBe(0);
   });
 
   it("a resume whose segment files were removed after a join captures them again rather than failing", async () => {
@@ -209,7 +227,7 @@ describe("validateCompletedSegments", () => {
     // `completed` list this assertion would pass with the check deleted.
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     writeFileSync(segmentOutputPath(dir, 0), "xx");
-    const manifest = { ...manifestOf([entry(0)]), planHash: "old" };
+    const manifest = manifestOf([entry(0)], { planHash: "old" });
     const probe = async () => 3;
     expect((await validateCompletedSegments(manifest, check(3, probe, "old"))).size).toBe(1);
     expect((await validateCompletedSegments(manifest, check(3, probe, "new"))).size).toBe(0);
@@ -237,23 +255,40 @@ describe("validateCompletedSegments", () => {
     writeFileSync(target, "xx");
     symlinkSync(target, segmentOutputPath(dir, 0));
     const manifest = manifestOf([entry(0)]);
-    expect(
-      (
-        await validateCompletedSegments(
-          manifest,
-          check(3, async () => 3),
-        )
-      ).size,
-    ).toBe(0);
+    expect(await reuses(manifest, 3)).toBe(0);
   });
 
   it("ignores entries for segments this plan does not have", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     for (const index of [0, 1, 5]) writeFileSync(segmentOutputPath(dir, index), "xx");
     const shifted = { ...entry(1), startFrame: 2, endFrame: 5 };
-    const manifest = manifestOf([entry(0), shifted, entry(5), { ...entry(0), index: 0.5 }], 6);
+    const manifest = manifestOf([entry(0), shifted, entry(5), { ...entry(0), index: 0.5 }], {
+      totalFrames: 6,
+    });
     const probe = async () => 3;
     expect([...(await validateCompletedSegments(manifest, check(6, probe)))]).toEqual([0]);
+  });
+  it("reuses segments only from a manifest this install signed", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    writeFileSync(segmentOutputPath(dir, 0), "xx");
+    expect(await reuses(manifestOf([entry(0)]), 3)).toBe(1);
+    // Copied from another install, or written by hand without a signature.
+    expect(await reuses(manifestOf([entry(0)], { key: Buffer.alloc(32, 2) }), 3)).toBe(0);
+    expect(await reuses(manifestOf([entry(0)], { key: null }), 3)).toBe(0);
+  });
+
+  it("rejects a signed manifest whose entries were edited afterwards", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    writeFileSync(segmentOutputPath(dir, 0), "xx");
+    const signed = manifestOf([entry(0, 3)]);
+    expect(await reuses({ ...signed, completed: [entry(0, 2)] }, 3)).toBe(0);
+  });
+
+  it("reuses nothing when this install has no key", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    writeFileSync(segmentOutputPath(dir, 0), "xx");
+    const noKey = { ...check(3, async () => 3), key: null };
+    expect((await validateCompletedSegments(manifestOf([entry(0)]), noKey)).size).toBe(0);
   });
 });
 

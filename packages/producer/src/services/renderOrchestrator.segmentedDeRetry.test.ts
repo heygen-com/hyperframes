@@ -112,6 +112,7 @@ vi.mock("./render/captureCost.js", async (importOriginal) => ({
     lastBrowserConsole: [],
   }),
 }));
+vi.mock("./render/segmentResumeKey.js", () => ({ loadSegmentResumeKey: () => null }));
 // A previous run left segment 0 complete; validating it for real needs ffprobe on a real file.
 vi.mock("./render/segmentManifest.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./render/segmentManifest.js")>();

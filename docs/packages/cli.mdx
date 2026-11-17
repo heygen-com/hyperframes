@@ -2119,6 +2119,11 @@ mismatched encodes. The directory is deleted after a successful render unless
 `--keep-segments`, and deliberately kept after a failure, because that is what
 `--resume` reads next time.
 
+`--resume` reuses only segments this install finished. Their record is signed
+with a key kept in `~/.hyperframes` (or `HYPERFRAMES_CONFIG_DIR`), so a
+`.hf-segments` folder copied from another machine or received inside a project
+is captured again.
+
 mp4 and mov only; png-sequence, gif, webm, HDR and shader-transition renders
 keep their existing routes.
 

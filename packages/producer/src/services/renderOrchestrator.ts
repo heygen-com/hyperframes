@@ -195,6 +195,7 @@ import {
 } from "./render/renderEtaGuard.js";
 import { checkPageNeverReady } from "./render/pageNeverReady.js";
 import { planSegments, resolveSegmentFrames } from "./render/segmentPlan.js";
+import { loadSegmentResumeKey } from "./render/segmentResumeKey.js";
 import { extractAllDeferredFrames } from "./render/deferredVideoFrames.js";
 import { measureLocalShownBoxes, oversizedVideos } from "./render/videoShownBoxes.js";
 import { createSegmentVideoFrames } from "./render/segmentVideoFrames.js";
@@ -5082,6 +5083,7 @@ async function executeRenderPipeline(input: {
           captureQuality: captureOptions.quality,
         });
         const segmentDir = segmentDirFor(join(projectDir, "renders"), segmentPlanHash);
+        const segmentResumeKey = loadSegmentResumeKey();
         let completedSegments: ReadonlySet<number> = new Set<number>();
         if (job.config.resumeSegments === true) {
           const existing = readSegmentManifest(segmentDir);
@@ -5090,6 +5092,7 @@ async function executeRenderPipeline(input: {
               expectedHash: segmentPlanHash,
               segmentDir,
               plan: planSegments(totalFrames, segmentFrames),
+              key: segmentResumeKey,
               probeFrames: (path) => probeSegmentFrameCount(path, extractMediaMetadata),
             });
             log.info(`[Render] resuming: ${completedSegments.size} segments complete`, {
@@ -5168,7 +5171,7 @@ async function executeRenderPipeline(input: {
                     ...segmentManifest.completed.filter((e) => e.index !== entry.index),
                     { ...entry, completedAt: new Date().toISOString() },
                   ];
-                  writeSegmentManifest(segmentDir, segmentManifest);
+                  writeSegmentManifest(segmentDir, segmentManifest, segmentResumeKey);
                 },
                 updateCaptureObservability,
               }),
