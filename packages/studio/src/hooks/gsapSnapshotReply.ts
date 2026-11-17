@@ -1,7 +1,6 @@
 // A gsap-snapshot reply is frame data: Studio holds one only in the shape and within the
 // bounds the frame keeps to.
 import {
-  EDITING_ELEMENT_HANDLE,
   MAX_SNAPSHOT_CHANNELS,
   MAX_SNAPSHOT_FIELDS,
   MAX_SNAPSHOT_TARGETS,
@@ -10,22 +9,18 @@ import {
   MAX_VARS_DEPTH,
   type EditingResult,
 } from "@hyperframes/core/runtime/editing-port";
+import { isFields, isHandle } from "../player/lib/previewElements";
 
 type Snapshot = EditingResult<"gsap-snapshot">;
-type Fields = Record<string, unknown>;
 /** What the whole reply may still spend, shared by every tween and vars field in it. */
 type Budget = { tweens: number; fields: number };
 
-const isFields = (value: unknown): value is Fields =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 const isText = (value: unknown): value is string =>
   typeof value === "string" && value.length <= MAX_SNAPSHOT_TEXT;
 const isTextOrNull = (value: unknown) => value === null || isText(value);
 const isNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 const isNumberOrNull = (value: unknown) => value === null || isNumber(value);
-const isHandle = (value: unknown) =>
-  typeof value === "string" && EDITING_ELEMENT_HANDLE.test(value);
 const isList = (value: unknown, max: number): value is unknown[] =>
   Array.isArray(value) && value.length <= max;
 
@@ -69,7 +64,7 @@ function isTween(value: unknown, budget: Budget): boolean {
 const isTargetHandles = (value: unknown) =>
   isList(value, MAX_SNAPSHOT_TARGETS) && value.every(isHandle);
 
-const isTiming = (tween: Fields) =>
+const isTiming = (tween: Record<string, unknown>) =>
   isNumber(tween.start) &&
   isNumber(tween.duration) &&
   typeof tween.from === "boolean" &&
