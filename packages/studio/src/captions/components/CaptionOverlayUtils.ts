@@ -497,6 +497,32 @@ export async function nudgeFrameWord(
   return frameWordTransform(iframe, { ...word, set: { x: x + dx, y: y + dy } });
 }
 
+/** Nudges run one after another, so quick repeats all count; none starts or stores once `live` is false. */
+export function sealedNudger(
+  live: () => boolean,
+  onMoved: (segmentId: string, transform: WordTransform) => void,
+) {
+  let nudging = Promise.resolve();
+  return (
+    iframe: HTMLIFrameElement,
+    model: Parameters<typeof findCaptionWord>[0],
+    segmentIds: Iterable<string>,
+    dx: number,
+    dy: number,
+  ): Promise<void> => {
+    for (const segmentId of segmentIds) {
+      const word = findCaptionWord(model, segmentId);
+      if (!word) continue;
+      nudging = nudging.then(async () => {
+        if (!live()) return;
+        const moved = await nudgeFrameWord(iframe, word, dx, dy);
+        if (moved && live()) onMoved(segmentId, moved.transform);
+      });
+    }
+    return nudging;
+  };
+}
+
 /** Draws the drag at the pointer once the press read lands; `last` follows the newest write. */
 export function moveSealedDrag(
   drag: SealedDrag,

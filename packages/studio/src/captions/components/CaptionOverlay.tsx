@@ -7,12 +7,11 @@ import { matchesKey } from "../../player/components/studioShortcuts";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import {
   dragTransform,
-  findCaptionWord,
   moveSealedDrag,
-  nudgeFrameWord,
   pressSealedDrag,
   readFrameWordBoxes,
   restoreSealedDrag,
+  sealedNudger,
   transformStyle,
   type DragStart,
   type SealedDrag,
@@ -65,7 +64,6 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
     null,
   );
   const sealedDragRef = useRef<SealedDrag | null>(null);
-  // False once the overlay unmounts or leaves edit mode, so a late frame reply stores nothing.
   const liveRef = useRef(false);
 
   // The observer and message filter bind to the live iframe element, which a promoted reload replaces.
@@ -222,7 +220,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
 
       const iframe = iframeRef.current;
       if (iframe && previewFrameOpaque(iframe)) {
-        nudgeSealed(iframe, m, sel, dx, dy);
+        void nudgeSealed(iframe, m, sel, dx, dy).then(scheduleTick);
         return;
       }
       const win = iframe?.contentWindow;
@@ -246,26 +244,10 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       scheduleTick();
     };
 
-    // Each nudge reads after the last one's write lands, so quick repeats all count.
-    let nudging = Promise.resolve();
-    const nudgeSealed = (
-      iframe: HTMLIFrameElement,
-      m: NonNullable<typeof model>,
-      sel: Set<string>,
-      dx: number,
-      dy: number,
-    ) => {
-      for (const segId of sel) {
-        const word = findCaptionWord(m, segId);
-        if (!word) continue;
-        nudging = nudging.then(async () => {
-          if (disposed) return;
-          const moved = await nudgeFrameWord(iframe, word, dx, dy);
-          if (moved && !disposed) storeStyle(segId, transformStyle(moved.transform));
-        });
-      }
-      void nudging.then(scheduleTick);
-    };
+    const nudgeSealed = sealedNudger(
+      () => !disposed,
+      (segId, moved) => storeStyle(segId, transformStyle(moved)),
+    );
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
