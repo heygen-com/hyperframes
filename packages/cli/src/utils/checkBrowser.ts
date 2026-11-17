@@ -987,7 +987,7 @@ export async function networkChangesStillFailing(drafts: RuntimeDraft[]): Promis
     urls.map(async (url) => {
       try {
         const response = await fetch(url, {
-          headers: { Range: "bytes=0-0" },
+          headers: { Range: "bytes=0-0", Referer: `${new URL(url).origin}/` },
           signal: AbortSignal.timeout(5000),
         });
         await response.body?.cancel();

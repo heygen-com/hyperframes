@@ -1,7 +1,7 @@
 import { wallSetTimeout } from "./wallClock";
 import { swallow } from "./diagnostics";
 import { isStylableElement } from "./domRealm";
-import { servedToAnotherSite } from "../studioPreviewMark";
+import { servedToAnotherSite, type PreviewTarget } from "../studioPreviewMark";
 import type { HfColorGradingTarget } from "../colorGrading";
 import type { RuntimeBridgeControlMessage, RuntimeOutboundMessage } from "./types";
 import {
@@ -40,6 +40,7 @@ type BridgeDeps = {
   onSetCopiesAhead?: (on: boolean) => void;
   onRetryPreviewCopies?: () => void;
   onRequestPreviewFacts?: () => void;
+  onScrubAudio?: (target: PreviewTarget | null, time: number | null, volume: number) => void;
   getCanonicalFps: () => number;
 };
 
@@ -118,6 +119,26 @@ function isGradingTarget(value: unknown): value is HfColorGradingTarget | string
   );
 }
 
+function isScrubTarget(value: unknown): value is PreviewTarget | null {
+  if (value === null) return true;
+  if (typeof value !== "object" || Array.isArray(value)) return false;
+  const target = value as Record<string, unknown>;
+  return (
+    isBoundedString(target.id) &&
+    isOptionalBoundedString(target.hfId) &&
+    isOptionalBoundedString(target.domId) &&
+    isOptionalBoundedString(target.sourceFile)
+  );
+}
+
+function dispatchScrubAudio(data: BridgeControlData, deps: BridgeDeps): void {
+  const target = data.target ?? null;
+  if (!isScrubTarget(target)) return;
+  if (data.time === null) return deps.onScrubAudio?.(target, null, 0);
+  if (!isFiniteNumber(data.time) || !isFiniteNumber(data.volume)) return;
+  deps.onScrubAudio?.(target, Math.max(0, data.time), Math.max(0, Math.min(1, data.volume)));
+}
+
 function dispatchColorGrading(
   target: unknown,
   value: unknown,
@@ -184,6 +205,7 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
     "enable-pick-mode": (_d, deps) => deps.onEnablePickMode(),
     "disable-pick-mode": (_d, deps) => deps.onDisablePickMode(),
     "flash-elements": (data) => handleFlashElements(data),
+    "scrub-audio": dispatchScrubAudio,
     "set-runtime-data": (data, deps) => {
       if (typeof data.channel === "string")
         deps.onSetRuntimeData?.(data.channel, data.payload, data.requestId);

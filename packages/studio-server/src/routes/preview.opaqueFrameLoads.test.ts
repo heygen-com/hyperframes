@@ -334,6 +334,12 @@ describe("a media proxy asked for by another site", () => {
     },
   );
 
+  // fails without the fix: a request carrying neither fetch metadata nor a Referer counted as the Studio's.
+  it("is refused on the plain path to a request with no fetch metadata and no Referer", async () => {
+    const res = await api.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264");
+    expect(res.status).toBe(403);
+  });
+
   it("is refused on the plain path even with a still query", async () => {
     const res = await api.request(
       "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=1",
@@ -345,6 +351,11 @@ describe("a media proxy asked for by another site", () => {
   it("goes through under the project's frame token, and from the Studio itself", async () => {
     expect((await ask(`~${token}/`, "cross-site")).status).not.toBe(403);
     expect((await ask("", "same-origin")).status).not.toBe(403);
+    const referred = await api.request(
+      "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      { headers: { referer: "http://localhost/projects/demo/preview/index.html" } },
+    );
+    expect(referred.status).not.toBe(403);
   });
 
   it("leaves another site's plain load of a video without the proxy query alone", async () => {

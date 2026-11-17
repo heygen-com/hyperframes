@@ -510,16 +510,11 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
     if (backSince !== null && Date.now() - backSince >= UNDONE_QUIET_MS) break;
   }
   await page.waitForFunction(
-    () => {
-      if (document.querySelector("[data-dom-edit-press-waiting]")) return false;
-      const frames = Array.from(document.querySelectorAll("iframe, hyperframes-player")).flatMap(
-        (host) =>
-          host.shadowRoot ? Array.from(host.shadowRoot.querySelectorAll("iframe")) : [host],
-      );
-      return frames.every(
-        (frame) => !frame.contentDocument?.querySelector("[data-hf-studio-manual-edit-gesture]"),
-      );
-    },
+    // Asked over each preview's editing port: a preview that cannot answer yet is not clear.
+    async () =>
+      !document.querySelector("[data-dom-edit-press-waiting]") &&
+      (await window.__editBenchFrames.matchesInPreviews("[data-hf-studio-manual-edit-gesture]")) ===
+        false,
     { timeout: 20_000 },
   );
   await waitForFiles(ctx.A, { timeout: 5000 });

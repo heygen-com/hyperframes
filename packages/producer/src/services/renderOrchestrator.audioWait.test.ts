@@ -5,14 +5,18 @@ import { join } from "node:path";
 import { resolveConfig } from "@hyperframes/engine";
 import { createRenderJob, executeRenderJob } from "./renderOrchestrator.js";
 
-// Entry: executeRenderJob. The audio mix is held open past capture setup, so capture waits on it; the test drives the
-// mix's FFmpeg progress and reads the lines the render reports meanwhile.
+// Entry: executeRenderJob. The audio mix is held open past capture, so the steps after it wait on it; the test drives
+// the mix's FFmpeg progress and reads the lines the render reports meanwhile.
 const trace = vi.hoisted(() => ({
   ffmpegProgressed: (): void => {},
   failAudio: (_error: Error): void => {},
   setUp: false,
 }));
 
+vi.mock("@hyperframes/engine", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hyperframes/engine")>()),
+  usableCpuCount: () => 8,
+}));
 vi.mock("./render/shared.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./render/shared.js")>()),
   createMemorySampler: () => ({
@@ -82,12 +86,21 @@ vi.mock("./render/stages/audioStage.js", () => ({
 }));
 vi.mock("./render/captureCost.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./render/captureCost.js")>()),
-  resolveRenderWorkerCount: () => {
-    // The mix writes more while capture is still setting up: not a line of its own yet.
-    trace.ffmpegProgressed();
-    trace.setUp = true;
-    return 1;
-  },
+  resolveRenderWorkerCount: () => 1,
+}));
+/** Capture finishes while the mix still runs; the mix writes more meanwhile: not a line of its own yet. */
+async function capturedWhileMixing() {
+  trace.ffmpegProgressed();
+  trace.setUp = true;
+  return { success: true, workerCount: 1, probeSession: null, lastBrowserConsole: [], encodeMs: 0 };
+}
+vi.mock("./render/stages/captureStage.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./render/stages/captureStage.js")>()),
+  runCaptureStage: capturedWhileMixing,
+}));
+vi.mock("./render/stages/captureStreamingStage.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./render/stages/captureStreamingStage.js")>()),
+  runCaptureStreamingStage: capturedWhileMixing,
 }));
 
 const dirs: string[] = [];
@@ -98,7 +111,7 @@ afterEach(() => {
 
 const turn = () => new Promise((resolve) => setImmediate(resolve));
 
-it("says it is processing audio while capture waits on a mix whose FFmpeg writes more, at most every 5 s", async () => {
+it("says it is processing audio while the render waits on a mix whose FFmpeg writes more, at most every 5 s", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   const root = mkdtempSync(join(tmpdir(), "hf-audio-wait-"));
   dirs.push(root);
@@ -123,7 +136,7 @@ it("says it is processing audio while capture waits on a mix whose FFmpeg writes
   // Only the stage's own first line.
   const before = audioLines().length;
   expect(before).toBe(1);
-  // The mix writes more every 6 s until capture, now waiting on it, says so.
+  // The mix writes more every 6 s until the render, now waiting on it, says so.
   for (let at = 0; at < 200 && audioLines().length === before; at++) {
     vi.setSystemTime(Date.now() + 6_000);
     trace.ffmpegProgressed();

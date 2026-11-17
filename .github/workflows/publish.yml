@@ -67,6 +67,7 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
           HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+          BEFORE: ${{ github.event.before }}
         run: |
           if [ "$REF_TYPE" = "tag" ]; then
             {
@@ -77,26 +78,41 @@ jobs:
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          gh api "repos/$REPO/commits/$SHA/pulls" > "$RUNNER_TEMP/pulls.json"
-          heads="$(jq -r --arg sha "$SHA" --arg repo "$REPO" '.[]
-            | select(.merged_at != null and .base.ref == "main" and .merge_commit_sha == $sha)
-            | select(.head.repo.full_name == $repo)
-            | select(.head.ref | test("^release/v[0-9]+[.][0-9]+[.][0-9]+$"))
-            | [.head.ref, .number, .head.sha, .user.login] | @tsv' "$RUNNER_TEMP/pulls.json")"
-          if [ -z "$heads" ]; then
+          # The merge queue can land several PRs in one push, and this runs once, for the last: every commit the push
+          # brought is read, and a release publishes its own merge commit, never a later one.
+          if [[ "$BEFORE" =~ ^0*$ ]]; then
+            jq -n --arg sha "$SHA" --arg message "$HEAD_MESSAGE" \
+              '{total_commits: 1, commits: [{sha: $sha, commit: {message: $message}}]}' > "$RUNNER_TEMP/push.json"
+          else
+            gh api "repos/$REPO/compare/$BEFORE...$SHA" > "$RUNNER_TEMP/push.json"
+          fi
+          [ "$(jq '.commits | length' "$RUNNER_TEMP/push.json")" = "$(jq .total_commits "$RUNNER_TEMP/push.json")" ] ||
+            { echo "::error::the push to $SHA has more commits than GitHub lists, so a release in it could be missed"; exit 1; }
+          heads=""
+          while IFS=$'\t' read -r -u 3 commit subject; do
+            gh api "repos/$REPO/commits/$commit/pulls" > "$RUNNER_TEMP/pulls.json"
+            found="$(jq -r --arg sha "$commit" --arg repo "$REPO" '.[]
+              | select(.merged_at != null and .base.ref == "main" and .merge_commit_sha == $sha)
+              | select(.head.repo.full_name == $repo)
+              | select(.head.ref | test("^release/v[0-9]+[.][0-9]+[.][0-9]+$"))
+              | [.head.ref, .number, .head.sha, .user.login, $sha] | @tsv' "$RUNNER_TEMP/pulls.json")"
             # A release commit GitHub has not linked to its PR yet must fail, where a rerun recovers it, not skip.
-            if [[ "${HEAD_MESSAGE%%$'\n'*}" =~ ^chore:\ release\ v[0-9] ]]; then
-              echo "::error::$SHA reads as a release commit but merges no release PR from this repo; rerun once GitHub lists it"
+            if [ -z "$found" ] && [[ "$subject" =~ ^chore:\ release\ v[0-9] ]]; then
+              echo "::error::$commit reads as a release commit but merges no release PR from this repo; rerun once GitHub lists it"
               exit 1
             fi
-            echo "$SHA merges no release PR; nothing to publish"
+            heads+="${found:+$found$'\n'}"
+          done 3< <(jq -r '.commits[] | [.sha, (.commit.message | split("\n")[0])] | @tsv' "$RUNNER_TEMP/push.json")
+          heads="${heads%$'\n'}"
+          if [ -z "$heads" ]; then
+            echo "the push to $SHA merges no release PR; nothing to publish"
             exit 0
           fi
           if [ "$(wc -l <<<"$heads")" -ne 1 ]; then
             echo "::error::$SHA is the merge of more than one release PR: $(cut -f1 <<<"$heads" | tr '\n' ' ')"
             exit 1
           fi
-          IFS=$'\t' read -r ref number head author <<<"$heads"
+          IFS=$'\t' read -r ref number head author release <<<"$heads"
           # Branch protection can be bypassed, so a maintainer who did not open, write or push the release must approve
           # its final commit, and no maintainer's or app's change request may stand. Anyone can review a public repo:
           # a person's review counts only with write access. Each reviewer's latest verdict counts.
@@ -134,7 +150,7 @@ jobs:
             exit 1
           fi
           {
-            echo "sha=$SHA"
+            echo "sha=$release"
             echo "version=${ref#release/v}"
             echo "source=release-pr"
             echo "ref=$ref"

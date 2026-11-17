@@ -15,6 +15,7 @@ import { Readable } from "node:stream";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isOwnLoopbackHost, listenOnBrowserSafePort } from "@hyperframes/engine";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
+import { serviceWorkerScriptFetch } from "@hyperframes/core/studio-preview-mark";
 
 export interface LocalCaptureTarget {
   /** Real path of the directory the page may read from. */
@@ -182,6 +183,8 @@ export async function startLocalPageServer(target: LocalCaptureTarget): Promise<
   let port = -1;
   const server = createServer((request, response) => {
     if (!isOwnLoopbackHost(request.headers.host, port)) return end(response, 403);
+    const { "service-worker": serviceWorker, "sec-fetch-dest": fetchDest } = request.headers;
+    if (serviceWorkerScriptFetch({ serviceWorker, fetchDest })) return end(response, 403);
     void (async () => {
       if (request.method !== "GET" && request.method !== "HEAD") return end(response, 405);
       const pathname = new URL(request.url ?? "/", "http://local").pathname;

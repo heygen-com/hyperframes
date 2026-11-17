@@ -17,7 +17,7 @@ import {
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
   documentFromAnotherSite,
-  requestFromAnotherSite,
+  proxyWorkFromAnotherSite,
   wildcardBindHostAllowed,
 } from "@hyperframes/studio-server/request-identity";
 import { SAME_ORIGIN_FRAMING_HEADERS } from "@hyperframes/engine";
@@ -252,7 +252,7 @@ export function sandboxForAnotherSite(app: Hono, path: string): void {
 /** A `?hf-proxy=` copy runs ffmpeg on this machine, so another site may not ask for one. */
 export function refuseProxyWorkForAnotherSite(app: Hono, path: string): void {
   app.use(path, async function refuseAnotherSiteProxyWork(c, next) {
-    const anotherSite = requestFromAnotherSite({
+    const anotherSite = proxyWorkFromAnotherSite({
       fetchSite: c.req.header("sec-fetch-site"),
       host: c.req.header("host") ?? new URL(c.req.url).host,
       referer: c.req.header("referer"),

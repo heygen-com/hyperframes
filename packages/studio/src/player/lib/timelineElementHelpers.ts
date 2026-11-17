@@ -10,6 +10,13 @@
 import type { TimelineElement } from "../store/playerStore";
 import { readTimelineText } from "./timelineText";
 import type { ClipManifestClip } from "./playbackTypes";
+import {
+  previewElementFinder,
+  previewElementSourceFile as getTimelineElementSourceFile,
+} from "@hyperframes/core/studio-preview-mark";
+
+export type { PreviewTarget } from "@hyperframes/core/studio-preview-mark";
+export { getTimelineElementSourceFile, previewElementFinder };
 import { isFinitePositive } from "./playbackAdapter";
 import { getSourceScopedSelectorIndex } from "../../utils/sourceScopedSelectorIndex";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
@@ -296,15 +303,6 @@ export function getTimelineElementSelector(el: Element): string | undefined {
   return undefined;
 }
 
-export function getTimelineElementSourceFile(el: Element): string | undefined {
-  const ownerRoot = el.parentElement?.closest("[data-composition-id]");
-  return (
-    ownerRoot?.getAttribute("data-composition-file") ??
-    ownerRoot?.getAttribute("data-composition-src") ??
-    undefined
-  );
-}
-
 export function getTimelineElementSelectorIndex(
   doc: Document,
   el: Element,
@@ -489,39 +487,6 @@ function findInClipScope(
     if (nodes.length === 1) lone ??= nodes[0];
   }
   return lone;
-}
-
-export type PreviewTarget = Pick<TimelineElement, "hfId" | "domId" | "id" | "sourceFile">;
-
-/** Finds a row's preview element by `data-hf-id`, then id, preferring one in the row's own file: both repeat across
- * files. Indexes the document once, so a pass over every row costs one scan. */
-export function previewElementFinder(
-  doc: Document,
-  selector = "[data-hf-id], [id]",
-): (target: PreviewTarget) => Element | null {
-  const byKey = new Map<string, Element[]>();
-  const add = (key: string, node: Element) => {
-    const nodes = byKey.get(key);
-    if (nodes) nodes.push(node);
-    else byKey.set(key, [node]);
-  };
-  for (const node of doc.querySelectorAll(selector)) {
-    const hfId = node.getAttribute("data-hf-id");
-    const id = node.getAttribute("id");
-    if (hfId) add(`hf:${hfId}`, node);
-    if (id) add(`id:${id}`, node);
-  }
-  return (target) => {
-    const matches = [
-      ...((target.hfId && byKey.get(`hf:${target.hfId}`)) || []),
-      ...(byKey.get(`id:${target.domId ?? target.id}`) ?? []),
-    ];
-    return (
-      matches.find((node) => getTimelineElementSourceFile(node) === target.sourceFile) ??
-      matches[0] ??
-      null
-    );
-  };
 }
 
 export function findClipElementById(doc: Document, clip: ClipManifestClip): Element | null {
