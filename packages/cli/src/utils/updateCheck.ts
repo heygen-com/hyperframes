@@ -1,3 +1,4 @@
+import { homeCliCommand } from "./homeCliCommand.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { compareVersions } from "compare-versions";
@@ -237,7 +238,7 @@ export function updateCommandForThisInstall(
     return projectNoticeCommand(install, cliBehind, skillsBehind, latest);
   }
   return install.channel === "npx" && cliBehind
-    ? `npx hyperframes@${updateChannel()} update`
+    ? homeCliCommand(updateChannel(), "update")
     : "npx hyperframes update";
 }
 
@@ -356,7 +357,7 @@ export function printUpdateNotice(): void {
   // the suppression + update-available gates, so it adds no cost to normal runs.
   const safeLatest = isSafeVersion(meta.latestVersion);
   const managerCommand = safeLatest ? detectInstaller().installCommand(meta.latestVersion) : null;
-  const command = managerCommand ?? `npx hyperframes@${updateChannel()}`;
+  const command = managerCommand ?? homeCliCommand(updateChannel());
 
   process.stderr.write(
     `\n  Update available: ${meta.version} \u2192 ${meta.latestVersion}\n` +
@@ -390,7 +391,8 @@ export function printStalePinNotice(cwd: string = process.cwd()): void {
   if (newerPins.length > 0) {
     process.stderr.write(
       `\n  This is hyperframes ${VERSION}, but this project pins hyperframes@${newerPins.join(", ")}.\n` +
-        `  Use the installed standalone skill launcher with --cli-version ${newerPins.at(-1)} to run the pinned release.\n\n`,
+        `  Use the installed standalone skill launcher with --cli-version ${newerPins.at(-1)} to run the pinned release.\n` +
+        `  Without standalone skills, start in your home folder, run npx hyperframes@${newerPins.at(-1)} with the desired command, and pass the project by absolute path.\n\n`,
     );
     return;
   }

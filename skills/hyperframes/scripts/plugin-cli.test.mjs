@@ -71,6 +71,22 @@ test("a standalone install runs the newest CLI that moves into the project, and 
   assert.deepEqual(result.env, { PATH: "/bin", HYPERFRAMES_PLUGIN_CWD: "/work/project" });
 });
 
+test("manifest pins and standalone selectors use the same exact release syntax", (t) => {
+  const { root } = fixture(t);
+  for (const version of ["1.0.0-rc.1+build.2", "01.2.3", "1.0.0-01", "1.0.0-rc..1"]) {
+    writeFileSync(join(root, "plugin.json"), JSON.stringify({ name: "hyperframes", version }));
+    const select = () =>
+      invocation(["--cli-version", version, "--version"], { version: null, platform: "linux" });
+    if (version === "1.0.0-rc.1+build.2") {
+      assert.equal(pluginVersion(root), version);
+      assert.ok(select().args.includes(`hyperframes@${version}`));
+    } else {
+      assert.throws(() => pluginVersion(root), /Invalid HyperFrames plugin release/);
+      assert.throws(select, /exact HyperFrames version/);
+    }
+  }
+});
+
 test("standalone release selection keeps npm in the home folder and passes only CLI arguments", () => {
   const options = {
     version: null,

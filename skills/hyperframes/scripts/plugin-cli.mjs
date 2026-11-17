@@ -55,19 +55,23 @@ function isBelowFloor(version) {
   return at === -1 ? version.split("+", 1)[0].includes("-") : have[at] < floor[at];
 }
 
-function standaloneRelease(value) {
-  if (value === "latest") return value;
+function isExactRelease(value) {
   const match =
     typeof value === "string" &&
     value.length <= 256 &&
     /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(
       value,
     );
-  if (
-    !match ||
-    match[4]?.split(".").some((id) => /^0\d+$/.test(id)) ||
-    !match.slice(1, 4).every((part) => Number.isSafeInteger(Number(part)))
-  ) {
+  return Boolean(
+    match &&
+    !match[4]?.split(".").some((id) => /^0\d+$/.test(id)) &&
+    match.slice(1, 4).every((part) => Number.isSafeInteger(Number(part))),
+  );
+}
+
+function standaloneRelease(value) {
+  if (value === "latest") return value;
+  if (!isExactRelease(value)) {
     throw new Error("--cli-version requires latest or an exact HyperFrames version.");
   }
   if (isBelowFloor(value)) throw new Error(`This launcher runs HyperFrames ${CLI_FLOOR} or newer.`);
@@ -80,10 +84,7 @@ export function pluginVersion(pluginRoot = root, workDir = process.cwd()) {
     const file = join(pluginRoot, path);
     if (!existsSync(file)) continue;
     const manifest = JSON.parse(readFileSync(file, "utf8"));
-    if (
-      manifest.name !== "hyperframes" ||
-      !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(manifest.version ?? "")
-    ) {
+    if (manifest.name !== "hyperframes" || !isExactRelease(manifest.version)) {
       throw new Error(`Invalid HyperFrames plugin release: ${file}`);
     }
     if (isBelowFloor(manifest.version))

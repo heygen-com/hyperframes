@@ -6,6 +6,7 @@
  * in charge.
  */
 
+import { homeCliCommand } from "./homeCliCommand.js";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { delimiter, dirname, join, posix } from "node:path";
 import { compareVersions } from "compare-versions";
@@ -286,7 +287,7 @@ export function updateCommandFor(install: RunningInstall, latest: string): strin
     const invocation = installInvocation(kind, latest);
     if (invocation) return `${invocation.bin} ${invocation.args.join(" ")}`;
   }
-  return "npx hyperframes@latest";
+  return homeCliCommand("latest");
 }
 
 /** The version in the `hyperframes` package.json at or above a resolved bin script, or null. */

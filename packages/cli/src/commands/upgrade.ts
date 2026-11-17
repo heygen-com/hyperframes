@@ -1,3 +1,4 @@
+import { homeCliCommand } from "../utils/homeCliCommand.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -138,14 +139,14 @@ function applyUpgrade(result: UpdateCheckResult, autoYes: boolean): void {
   }
 
   if (!autoYes) {
-    printManualCommands(plan.displayCmd, `npx hyperframes@${result.latest}`);
+    printManualCommands(plan.displayCmd, homeCliCommand(result.latest));
     return;
   }
 
   runDetectedInstall(plan.invocation, plan.displayCmd, result.latest);
 }
 
-const NPX_LATEST = `npx hyperframes@${updateChannel()}`;
+const NPX_LATEST = homeCliCommand(updateChannel());
 
 /**
  * How `upgrade --yes` moves this install to `latest`: the detected manager's argv, or, for an

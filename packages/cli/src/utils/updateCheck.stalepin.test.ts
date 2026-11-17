@@ -97,6 +97,8 @@ describe("printStalePinNotice", () => {
     const mismatch = writes.filter((w) => w.includes("This is hyperframes 0.7.71"));
     expect(mismatch.length).toBe(2);
     expect(mismatch[0]).toContain("--cli-version 0.9.66");
+    expect(mismatch[0]).toContain("start in your home folder, run npx hyperframes@0.9.66");
+    expect(mismatch[0]).toContain("absolute path");
     expect(writes.join("")).not.toContain("upgrade --project");
   });
 
