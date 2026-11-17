@@ -38,6 +38,7 @@ import {
   listenOnFreePort,
   refuseUnknownHosts,
   sandboxForAnotherSite,
+  refuseProxyWorkForAnotherSite,
   injectRuntime,
   injectMediaCodecMap,
   buildRangeResponse,
@@ -225,6 +226,7 @@ export async function registerCompositionRoute(
   const { isSafePath } = await import("@hyperframes/core/studio-api");
 
   sandboxForAnotherSite(app, "/composition/*");
+  refuseProxyWorkForAnotherSite(app, "/composition/*");
   // fallow-ignore-next-line complexity
   app.get("/composition/*", async (ctx) => {
     const reqPath = requestSubPath(ctx.req.url, "composition");
