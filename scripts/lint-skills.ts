@@ -509,6 +509,65 @@ export function lintDocRefs(filePath: string, content: string): LineViolation[] 
     .flatMap((ref) => checkDocRef(ref, filePath, content) ?? []);
 }
 
+// ---------------------------------------------------------------------------
+// Helper scripts run by a working-directory-relative path
+// ---------------------------------------------------------------------------
+//
+// An agent runs a skill's commands from the user's project directory, and that
+// project may come from someone else. `node skills/x/scripts/y.mjs` or
+// `node scripts/y.mjs` resolves inside that project, so a planted file with
+// the same name runs instead of the bundled helper. A doc names its helpers
+// through the skill's own folder (`<SKILL_DIR>/scripts/y.mjs`) instead.
+//
+// A doc whose relative commands are safe opts out with a marker line that
+// says why, for example when its commands run inside a HyperFrames checkout
+// rather than a user project:
+//
+//   <!-- skill-scripts: relative-ok, runs inside a HyperFrames checkout -->
+//
+// Only interpreter invocations are seen: a script run directly (`./setup.sh`)
+// or after interpreter flags (`node --test x.mjs`) is a known false negative.
+
+const RELATIVE_SCRIPT_OPT_OUT = /<!--\s*skill-scripts:\s*relative-ok,\s*\S[^>]*-->/;
+const CODE_FENCE = /^ {0,3}(?:```|~~~)/;
+const RELATIVE_SCRIPT_RUN =
+  /(?:^|[\s(;&|])(?:node|python3?|bash|sh|tsx|bun)\s+["']?((?![<$/~"'-])[^\s"'`]+\.(?:mjs|cjs|js|ts|py|sh))(?=["'\s;)|&]|$)/;
+
+/** Each fenced-block line and each inline code span, with its 1-based line number. */
+function codeSegments(content: string): { text: string; line: number }[] {
+  const segments: { text: string; line: number }[] = [];
+  let inFence = false;
+  content.split("\n").forEach((text, index) => {
+    if (CODE_FENCE.test(text)) {
+      inFence = !inFence;
+      return;
+    }
+    if (inFence) {
+      segments.push({ text, line: index + 1 });
+      return;
+    }
+    for (const span of text.matchAll(INLINE_CODE_SPAN)) {
+      segments.push({ text: span[1] ?? "", line: index + 1 });
+    }
+  });
+  return segments;
+}
+
+export function lintRelativeScriptRuns(content: string): LineViolation[] {
+  if (RELATIVE_SCRIPT_OPT_OUT.test(content)) return [];
+  return codeSegments(content).flatMap(({ text, line }) => {
+    const script = RELATIVE_SCRIPT_RUN.exec(text)?.[1];
+    if (!script) return [];
+    return [
+      violation(
+        line,
+        `Runs \`${script}\` by a path relative to the working directory, which resolves inside the user's project. Name the bundled helper through its skill folder, for example \`<SKILL_DIR>/scripts/...\`.`,
+        text,
+      ),
+    ];
+  });
+}
+
 function collectMarkdownFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true, recursive: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
@@ -537,6 +596,7 @@ function lintMarkdownFiles(paths: string[], knownItems: Set<string>, report: Rep
     const content = readFileSync(path, "utf-8");
     const file = relative(process.cwd(), path);
     report(file, lintDocRefs(path, content));
+    report(file, lintRelativeScriptRuns(content));
     const found = lintRegistryItemRefs(content, knownItems);
     if (found === null) continue;
     snapshotsChecked++;

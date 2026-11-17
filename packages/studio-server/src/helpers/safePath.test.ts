@@ -120,6 +120,13 @@ describe("isPrivateProjectFile", () => {
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/prepared-assets")).toBe(false);
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/requests/1/before.png")).toBe(false);
     expect(isPrivateProjectFile("/p", "/p/.hyperframes/requests-old/x")).toBe(true);
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/prepared-assets/downloads/a.gif")).toBe(
+      true,
+    );
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/Prepared-Assets/DOWNLOADS/a.gif")).toBe(
+      true,
+    );
+    expect(isPrivateProjectFile("/p", "/p/.hyperframes/prepared-assets/downloads")).toBe(true);
     expect(isPrivateProjectFile("/p", "/p/agent-handoff.json")).toBe(false);
   });
 
