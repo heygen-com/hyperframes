@@ -88,14 +88,31 @@ test("a push to main publishes only the merge of exactly one approved release PR
     submitted_at: `2026-11-17T0${hour}:00:00Z`,
   });
   const approved = [review("reviewer", "APPROVED", 1)];
-  // The fake answers PR 8000's reviews from FAKE_REVIEWS and the commit's PR lookup from FAKE_PULLS.
+  // The fake answers PR 8000's reviews, commits and events, the commit's PR lookup from FAKE_PULLS, and each
+  // reviewer's permission from FAKE_PERMISSIONS (login=permission lines); the lookup of FAKE_PERMISSION_FAILS fails.
   writeFileSync(
     join(bin, "gh"),
-    '#!/bin/sh\ncase "$*" in *pulls/8000/reviews*) printf \'%s\' "$FAKE_REVIEWS" ;; *) printf \'%s\' "$FAKE_PULLS" ;; esac\n',
+    `#!/bin/sh
+case "$*" in
+  *pulls/8000/reviews*) printf '%s' "$FAKE_REVIEWS" ;;
+  *pulls/8000/commits*) printf '%s' "$FAKE_COMMITS" ;;
+  *issues/8000/events*) printf '%s' "$FAKE_EVENTS" ;;
+  *collaborators/*/permission*)
+    login="$(printf '%s' "$*" | sed 's#.*collaborators/\\([^/]*\\)/permission.*#\\1#')"
+    [ "$login" != "$FAKE_PERMISSION_FAILS" ] || exit 1
+    printf '%s\\n' "$FAKE_PERMISSIONS" | sed -n "s/^$login=//p" ;;
+  *) printf '%s' "$FAKE_PULLS" ;;
+esac
+`,
   );
+  const commit = (author, committer = author) => ({
+    author: { login: author },
+    committer: { login: committer },
+  });
+  const permissions = "releaser=admin\nreviewer=write\nother=admin\noutsider=read";
   chmodSync(join(bin, "gh"), 0o755);
   const main = { REF_TYPE: "branch", REF_NAME: "main" };
-  const run = (pulls, ref = main, reviews = approved) => {
+  const run = (pulls, ref = main, reviews = approved, history = {}) => {
     const out = join(bin, "out");
     writeFileSync(out, "");
     const result = runStep(step, {
@@ -107,6 +124,10 @@ test("a push to main publishes only the merge of exactly one approved release PR
         GITHUB_OUTPUT: out,
         FAKE_PULLS: JSON.stringify(pulls),
         FAKE_REVIEWS: JSON.stringify(reviews),
+        FAKE_COMMITS: JSON.stringify(history.commits ?? [commit("releaser", "web-flow")]),
+        FAKE_EVENTS: JSON.stringify(history.events ?? []),
+        FAKE_PERMISSIONS: history.permissions ?? permissions,
+        FAKE_PERMISSION_FAILS: history.permissionFails ?? "",
         ...ref,
       },
       path: `${bin}:${process.env.PATH}`,
@@ -186,6 +207,40 @@ test("a push to main publishes only the merge of exactly one approved release PR
       ],
     ]) {
       assert.equal(run([pull()], main, reviews).status, 1, why);
+    }
+    // Anyone can review a public repo: only a reviewer with write access counts, either way.
+    assert.equal(
+      run([pull()], main, [review("outsider", "APPROVED", 1)]).status,
+      1,
+      "an approval from an account without write access",
+    );
+    assert.equal(
+      run([pull()], main, [...approved, review("outsider", "CHANGES_REQUESTED", 2)]).status,
+      0,
+      "a change request from an account without write access blocks nothing",
+    );
+    const outsiderObjects = [...approved, review("outsider", "CHANGES_REQUESTED", 2)];
+    assert.equal(
+      run([pull()], main, outsiderObjects, { permissionFails: "outsider" }).status,
+      1,
+      "a permission that cannot be read refuses the release, even for a review that would not count",
+    );
+    assert.equal(
+      run([pull()], main, [...approved, review("outsider", "COMMENTED", 2)], {
+        permissionFails: "outsider",
+      }).status,
+      0,
+      "a reviewer who only commented is not looked up",
+    );
+    for (const [why, history] of [
+      ["the approver wrote the approved commit", { commits: [commit("reviewer", "web-flow")] }],
+      ["the approver committed it", { commits: [commit("releaser", "reviewer")] }],
+      [
+        "the approver force-pushed the branch",
+        { events: [{ event: "head_ref_force_pushed", actor: { login: "reviewer" } }] },
+      ],
+    ]) {
+      assert.equal(run([pull()], main, approved, history).status, 1, why);
     }
     const reapproved = [
       review("reviewer", "CHANGES_REQUESTED", 1),

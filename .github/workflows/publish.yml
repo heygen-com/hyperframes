@@ -97,17 +97,40 @@ jobs:
             exit 1
           fi
           IFS=$'\t' read -r ref number head author <<<"$heads"
-          # Branch protection can be bypassed, so the release itself requires a person other than its author to have
-          # approved its final commit, with no change request from anyone still standing. Each latest verdict counts.
+          # Branch protection can be bypassed, so a maintainer who did not open, write or push the release must approve
+          # its final commit, and no maintainer's or app's change request may stand. Anyone can review a public repo:
+          # a person's review counts only with write access. Each reviewer's latest verdict counts.
           gh api --paginate "repos/$REPO/pulls/$number/reviews" > "$RUNNER_TEMP/reviews.json"
-          reviewed="$(jq -s -r --arg head "$head" --arg author "$author" 'add
-            | map(select(.user.login != $author and (.state == "APPROVED" or .state == "CHANGES_REQUESTED")))
+          gh api --paginate "repos/$REPO/pulls/$number/commits" > "$RUNNER_TEMP/commits.json"
+          gh api --paginate "repos/$REPO/issues/$number/events" > "$RUNNER_TEMP/events.json"
+          {
+            echo "$author"
+            jq -s -r 'add | .[] | .author.login?, .committer.login? | values' "$RUNNER_TEMP/commits.json"
+            jq -s -r 'add | .[] | select(.event == "head_ref_force_pushed") | .actor.login? | values' \
+              "$RUNNER_TEMP/events.json"
+          } > "$RUNNER_TEMP/writers.txt"
+          : > "$RUNNER_TEMP/maintainers.txt"
+          for login in $(jq -s -r 'add
+            | map(select(.user.type == "User" and (.state == "APPROVED" or .state == "CHANGES_REQUESTED")))
+            | map(.user.login) | unique[]' \
+            "$RUNNER_TEMP/reviews.json"); do
+            permission="$(gh api "repos/$REPO/collaborators/$login/permission" --jq .permission)" ||
+              { echo "::error::could not read $login's permission on $REPO, so the release does not publish"; exit 1; }
+            case "$permission" in admin | write) echo "$login" >> "$RUNNER_TEMP/maintainers.txt" ;; esac
+          done
+          reviewed="$(jq -s -r --arg head "$head" \
+            --rawfile maintainers "$RUNNER_TEMP/maintainers.txt" --rawfile writers "$RUNNER_TEMP/writers.txt" 'add
+            | ($maintainers | split("\n")) as $maintainers | ($writers | split("\n")) as $writers
+            | map(select(.state == "APPROVED" or .state == "CHANGES_REQUESTED"))
+            | map(select(.user.type != "User" or (.user.login | IN($maintainers[]))))
             | group_by(.user.login) | map(max_by(.submitted_at))
-            | any(.state == "APPROVED" and .commit_id == $head and .user.type == "User")
+            | any(.state == "APPROVED" and .commit_id == $head and .user.type == "User"
+                and (.user.login | IN($writers[]) | not))
               and all(.state != "CHANGES_REQUESTED")' \
             "$RUNNER_TEMP/reviews.json")"
           if [ "$reviewed" != "true" ]; then
-            echo "::error::$ref (#$number) has no approval of its final commit by someone else, or a change request stands"
+            echo "::error::$ref (#$number): no maintainer who did not write or push it approved its final commit," \
+              "or a change request stands"
             exit 1
           fi
           {
