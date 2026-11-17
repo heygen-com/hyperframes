@@ -64,7 +64,6 @@ export interface DeploySiteOptions {
   siteId?: string;
   /** Called with a line a user should see, such as audio sidecars skipped for want of ffmpeg. */
   onNotice?: (message: string) => void;
-  /** Upload files and folders a link brings in from outside `projectDir`. Without it they are left out and named via `onNotice`. */
   includeOutsideFiles?: boolean;
   expectedBucketOwner?: string;
   /** Injection seam for tests. Production callers leave unset. */

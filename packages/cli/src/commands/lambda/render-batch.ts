@@ -62,7 +62,6 @@ export interface RenderBatchArgs extends DeliveryFlagValues {
    * separate `sites create` step (CI / cross-machine).
    */
   siteId?: string;
-  /** Upload files a link brings in from outside the project (`--include-outside-files`). */
   includeOutsideFiles?: boolean;
   /** Composition config — fps/width/height/format required, rest optional. */
   fps: DistributedFps;

@@ -22,7 +22,6 @@ export interface SitesCreateArgs {
   projectDir: string;
   stackName: string;
   siteId?: string;
-  /** Upload files a link brings in from outside the project (`--include-outside-files`). */
   includeOutsideFiles?: boolean;
   /** Print machine-readable JSON instead of the human-friendly summary. */
   json: boolean;

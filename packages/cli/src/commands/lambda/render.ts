@@ -32,7 +32,6 @@ export interface RenderArgs extends DeliveryFlagValues {
   projectDir: string;
   stackName: string;
   siteId?: string;
-  /** Upload files a link brings in from outside the project (`--include-outside-files`). */
   includeOutsideFiles?: boolean;
   /** Composition config — fps/width/height/format required, rest optional. */
   fps: DistributedFps;

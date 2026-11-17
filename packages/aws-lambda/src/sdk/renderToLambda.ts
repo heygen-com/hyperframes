@@ -38,7 +38,6 @@ export interface RenderToLambdaOptions {
   /** Re-use an existing `deploySite` upload (skips tar+S3 PUT). */
   siteHandle?: SiteHandle;
   onNotice?: (message: string) => void;
-  /** Passed to {@link deploySite} when this call uploads the project. */
   includeOutsideFiles?: boolean;
   /** Validated `SerializableDistributedRenderConfig` (no logger / abortSignal). */
   config: SerializableDistributedRenderConfig;

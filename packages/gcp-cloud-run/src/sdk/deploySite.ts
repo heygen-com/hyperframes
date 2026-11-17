@@ -33,7 +33,6 @@ export interface DeploySiteOptions {
    */
   siteId?: string;
   onNotice?: (message: string) => void;
-  /** Upload files and folders a link brings in from outside `projectDir`. Without it they are left out and named via `onNotice`. */
   includeOutsideFiles?: boolean;
   /** Injection seam for tests. Production callers leave unset. */
   storage?: Storage;
