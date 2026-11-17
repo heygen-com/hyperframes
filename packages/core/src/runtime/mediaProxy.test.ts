@@ -1248,7 +1248,7 @@ describe("preview quality: lighter copies of heavy files", () => {
       expect(proxySrc.unproxiedSrc(el)).toBe("/video.mp4");
     });
 
-    // A hover or thumbnail capture timed out at 8 s waiting for the copy; a capture page never plays, so it takes the file.
+    // A hover capture timed out at 8 s waiting for the copy; a capture page never plays, so it takes the file.
     it("on a hidden capture page keeps its file and asks for no copy", async () => {
       const mark = document.head.appendChild(document.createElement("meta"));
       mark.name = STUDIO_PREVIEW_MARK_META;
