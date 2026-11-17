@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
+  renameSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -15,9 +17,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { isCredentialOrToolStatePath } from "@hyperframes/core/safe-path";
 import {
+  RECEIVED_STATE_ENV,
   isEnvOrGitPath,
   isPrivateCompositionFile,
   receivedFiles,
+  receivedRecordStatus,
   recordReceivedFiles,
 } from "./privateProjectFile.js";
 
@@ -36,6 +40,7 @@ let dir: string | undefined;
 
 afterEach(() => {
   zeroFileIds.on = false;
+  vi.unstubAllEnvs();
   if (dir) rmSync(dir, { recursive: true, force: true });
   dir = undefined;
 });
@@ -258,6 +263,82 @@ describe("receivedFiles for a received project copied into a folder", () => {
   });
 });
 
+describe("a host's received state file", () => {
+  function project(record?: string): string {
+    const root = mkdtempSync(join(tmpdir(), "hf-received-state-"));
+    mkdirSync(join(root, "app", "compositions"), { recursive: true });
+    writeFileSync(join(root, "app", "index.html"), "");
+    writeFileSync(join(root, "app", "compositions", "intro.html"), "");
+    if (record !== undefined) {
+      mkdirSync(join(root, "app", ".hyperframes"));
+      writeFileSync(join(root, "app", ".hyperframes", "received-files.json"), record);
+    }
+    dir = root;
+    return join(root, "app");
+  }
+
+  function hostSays(projects: Record<string, unknown>[] | string): void {
+    const file = join(dir as string, "state.json");
+    writeFileSync(file, typeof projects === "string" ? projects : JSON.stringify({ projects }));
+    vi.stubEnv(RECEIVED_STATE_ENV, file);
+  }
+
+  it("counts every file as received when an expected record is missing", () => {
+    const app = project();
+    hostSays([{ path: app, received: "expected" }]);
+    expect(receivedFiles(app)("index.html")).toBe(true);
+    expect(receivedFiles(join(app, "compositions"))("intro.html")).toBe(true);
+    expect(receivedFiles(dirname(app))("other.html")).toBe(true);
+    expect(receivedRecordStatus(app)).toMatchObject({ listed: null });
+  });
+
+  it("reads an expected record that is there as written", () => {
+    const app = project(JSON.stringify({ files: ["compositions/intro.html"] }));
+    hostSays([{ path: app, received: "expected" }]);
+    const received = receivedFiles(app);
+    expect(received("compositions/intro.html")).toBe(true);
+    expect(received("index.html")).toBe(false);
+  });
+
+  it("counts every file as received in a project named all, whatever its record lists", () => {
+    const app = project(JSON.stringify({ files: [] }));
+    hostSays([{ path: app, received: "all" }]);
+    expect(receivedFiles(app)("index.html")).toBe(true);
+    expect(receivedFiles(join(app, "compositions"))("intro.html")).toBe(true);
+    expect(receivedFiles(dirname(app))("other.html")).toBe(true);
+  });
+
+  it("finds a named project under a new name by its folder's identity", () => {
+    const app = project();
+    const { dev, ino } = lstatSync(app, { bigint: true });
+    hostSays([{ path: app, dev: String(dev), ino: String(ino), received: "expected" }]);
+    const renamed = `${app}-renamed`;
+    renameSync(app, renamed);
+    expect(receivedFiles(renamed)("index.html")).toBe(true);
+  });
+
+  it("counts every file as received when the state file cannot be read", () => {
+    const app = project(JSON.stringify({ files: [] }));
+    hostSays("{not json");
+    expect(receivedFiles(app)("index.html")).toBe(true);
+    vi.stubEnv(RECEIVED_STATE_ENV, join(dir as string, "missing.json"));
+    expect(receivedFiles(app)("index.html")).toBe(true);
+  });
+
+  it("does not start a fresh record in place of an expected one", () => {
+    const app = project();
+    hostSays([{ path: app, received: "expected" }]);
+    expect(recordReceivedFiles(app, ["index.html"])).toEqual([]);
+    expect(existsSync(join(app, ".hyperframes", "received-files.json"))).toBe(false);
+  });
+
+  it("leaves a project it does not name as having received nothing", () => {
+    const app = project();
+    hostSays([{ path: join(tmpdir(), "hf-some-other-project"), received: "all" }]);
+    expect(receivedFiles(app)("index.html")).toBe(false);
+  });
+});
+
 describe("recordReceivedFiles", () => {
   const record = (root: string) => join(root, ".hyperframes", "received-files.json");
   const lock = (root: string) => `${record(root)}.lock`;
@@ -307,6 +388,14 @@ describe("recordReceivedFiles", () => {
     utimesSync(lock(root), old, old);
     expect(recordReceivedFiles(root, ["mine.html"])).toEqual(["mine.html"]);
     expect(listed(root)).toEqual(["hyperframes.json", "mine.html"]);
+  });
+
+  it("takes over a lock dated in the future", () => {
+    const root = project();
+    writeFileSync(lock(root), "");
+    const later = new Date(Date.now() + 60 * 60_000);
+    utimesSync(lock(root), later, later);
+    expect(recordReceivedFiles(root, ["mine.html"])).toEqual(["mine.html"]);
   });
 
   it("fails rather than write past a lock that stays held", () => {
