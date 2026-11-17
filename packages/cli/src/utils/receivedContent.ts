@@ -5,8 +5,8 @@ import { extname } from "node:path";
 import { readRecordTail, recordKind, writeRecord } from "./projectRecords.js";
 
 /**
- * The sha256s of received content that left a listed path, in the project's `.hyperframes/received-content.json`,
- * the file and format the desktop app keeps. A file holding the same bytes counts as received. Keys this module does
+ * The sha256s of received content that left a listed path, kept beside the project's received-files record in the
+ * file and format the desktop app keeps. A file holding the same bytes counts as received. Keys this module does
  * not use are written back as they were read.
  */
 const RECEIVED_CONTENT = "received-content.json";
@@ -49,10 +49,18 @@ export function writeReceivedContent(dir: string, content: ReceivedContent): boo
 
 const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
-/** The sha256 of a plain file's bytes; null for a link, a folder or a file that cannot be read. */
+const MAX_HASHED_BYTES = 16 * 1024 * 1024;
+
+/** A plain file worth hashing: a page, stylesheet, script or SVG of any size, or another file up to 16 MB. */
+function hashable(path: string): boolean {
+  const stat = lstatSync(path);
+  return stat.isFile() && (stat.size <= MAX_HASHED_BYTES || isCodeFile(path));
+}
+
+/** The sha256 of a plain file's bytes; null for a link, a folder, a large file that names no others, or one that cannot be read. */
 export function contentHash(path: string): string | null {
   try {
-    return lstatSync(path).isFile() ? sha256(readFileSync(path)) : null;
+    return hashable(path) ? sha256(readFileSync(path)) : null;
   } catch {
     return null;
   }
@@ -60,7 +68,7 @@ export function contentHash(path: string): string | null {
 
 export async function contentHashAsync(path: string): Promise<string | null> {
   try {
-    return lstatSync(path).isFile() ? sha256(await readFile(path)) : null;
+    return hashable(path) ? sha256(await readFile(path)) : null;
   } catch {
     return null;
   }

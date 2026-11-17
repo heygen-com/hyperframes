@@ -313,7 +313,7 @@ function onDisk(path: string): boolean {
   }
 }
 
-export type ReceivedFiles = ((path: string) => boolean) & { gone?: string };
+export type ReceivedFiles = ((path: string) => boolean) & { gone?: string; unchecked?: boolean };
 
 const contentFolder = (record: ReceivedRecord) => dirname(dirname(record.file));
 
@@ -332,8 +332,8 @@ function holdsReceivedContent(projectDir: string, records: ReceivedRecord[]) {
 
 export function receivedFiles(projectDir: string): ReceivedFiles {
   const records = receivedRecords(projectDir);
-  if (records === null || records.some((record) => !Array.isArray(record.listed)))
-    return () => true;
+  if (records === null) return Object.assign(() => true, { unchecked: true });
+  if (records.some((record) => !Array.isArray(record.listed))) return () => true;
   const goneFile = records.flatMap(listedPaths).find((path) => !onDisk(path));
   const mayBeGoneFile = (path: string) =>
     goneFile !== undefined &&

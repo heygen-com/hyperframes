@@ -530,9 +530,24 @@ describe("outside references in files that came in with an imported project", ()
       { files: ["index.html", "Assets/a.html"] },
     );
     const caseInsensitive = existsSync(join(root, "p", "ASSETS", "a.html"));
-    expect(ext).toEqual(caseInsensitive ? [] : ["_ext/shared/logo.png"]);
-    expect(warnings).toHaveLength(caseInsensitive ? 1 : 0);
+    expect(ext).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    const gone = "Assets/a.html is listed as received but is gone";
+    if (caseInsensitive) expect(warnings[0]).not.toContain(gone);
+    else expect(warnings[0]).toContain(gone);
   });
+
+  it("says so when the project has too many folders to search for records", () => {
+    const { root } = stageReceived({ "index.html": "<html></html>" }, { files: ["index.html"] });
+    writeFileSync(join(root, "p", "mine.html"), `<img src="../shared/logo.png">`);
+    for (let i = 0; i <= 20_000; i++)
+      mkdirSync(join(root, "p", "many", `d${i}`), { recursive: true });
+    const warnings: string[] = [];
+    stagePublishFiles(join(root, "p"), Infinity, (w) => warnings.push(w));
+    expect(warnings).toEqual([
+      "mine.html references ../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload. The project has too many folders to search them all for received-files records, so every file counts as received.",
+    ]);
+  }, 30_000);
 
   it("treats every file as received when the record cannot be read", () => {
     const { ext, warnings } = stageReceived(

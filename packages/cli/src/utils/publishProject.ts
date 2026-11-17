@@ -521,12 +521,17 @@ const HARD_REFERENCES = new Set(["video[src]", "audio[src]", "img[src]", "video[
 const relativeToProject = (ctx: ExternalAssetContext, absPath: string) =>
   encodeUrlPath(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
 
-const goneNote = (received: ReceivedFiles, reason: LeftOutReason): string =>
-  reason === "received" && received.gone !== undefined
-    ? terminalText(
-        ` ${received.gone} is listed as received but is gone, so every page, stylesheet, script and SVG counts as received. To clear this, put the file back, or take its line out of .hyperframes/received-files.json once you know where its content went.`,
-      )
-    : "";
+const UNCHECKED_NOTE =
+  " The project has too many folders to search them all for received-files records, so every file counts as received.";
+
+function strictNote(received: ReceivedFiles, reason: LeftOutReason): string {
+  if (reason !== "received") return "";
+  if (received.unchecked) return UNCHECKED_NOTE;
+  if (received.gone === undefined) return "";
+  return terminalText(
+    ` ${received.gone} is listed as received but is gone, so every page, stylesheet, script and SVG counts as received. To clear this, put the file back, or take its line out of .hyperframes/received-files.json once you know where its content went.`,
+  );
+}
 
 function leaveOut(
   ctx: ExternalAssetContext,
@@ -535,7 +540,7 @@ function leaveOut(
   absPath: string,
   reason: LeftOutReason = "blocklisted",
 ): void {
-  const warning = `${leftOutWarning(entryPath, rawPath, reason)}${goneNote(ctx.received, reason)}`;
+  const warning = `${leftOutWarning(entryPath, rawPath, reason)}${strictNote(ctx.received, reason)}`;
   if (ctx.leftOut.has(warning)) return;
   ctx.leftOut.add(warning);
   ctx.onLeftOut?.(
@@ -918,7 +923,7 @@ export function stagePublishFiles(
     const reason = walkedFileLeftOut(absProjectDir, filePath, absPath, received);
     if (reason) {
       onLeftOut?.(
-        `${filePath} ${WALKED_LEFT_OUT[reason]}; it was left out of the upload.${goneNote(received, reason)}`,
+        `${filePath} ${WALKED_LEFT_OUT[reason]}; it was left out of the upload.${strictNote(received, reason)}`,
         leftOutReference(absProjectDir, filePath, filePath, absPath, reason),
       );
       walkedLeftOut.add(archiveKey(filePath));
