@@ -97,6 +97,18 @@ export function beaconProblems(skill, content) {
     : [`${skill}/SKILL.md does not run \`npx hyperframes events --skill=${skill}\` as it starts`];
 }
 
+/** Catch a blanket ban on events that contradicts the required usage beacon. */
+export function eventGuidanceProblems(skill, content) {
+  const hasBan = content.split(/\r?\n/).some((line) => {
+    if (/\b(?:don't|do not|never)\s+run\s+(?:`?events`?|npx hyperframes events)/i.test(line))
+      return true;
+    const pronounBan = /\b(?:don't|do not|never)\s+run\s+(?:them|it)\b/i.exec(line);
+    // A following "Run events" exception is not covered by an earlier alias ban.
+    return pronounBan !== null && /\bevents\b/i.test(line.slice(0, pronounBan.index));
+  });
+  return hasBan ? [`${skill}/SKILL.md forbids \`events\` despite requiring its usage beacon`] : [];
+}
+
 /** The line that has the skill run every CLI command through the launcher, never a project's npx. */
 export const LAUNCHER_LINE = "means `node <SKILLS>/hyperframes/scripts/plugin-cli.mjs <command>`";
 
@@ -120,6 +132,7 @@ export function checkCoreSkills(root = REPO_ROOT) {
       ...sizeProblems(skill, content, maxBytes),
       ...names,
       ...beaconProblems(skill, content),
+      ...eventGuidanceProblems(skill, content),
       ...launcherProblems(skill, content),
     ];
   });

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   beaconProblems,
+  eventGuidanceProblems,
   launcherProblems,
   LAUNCHER_LINE,
   checkCoreSkills,
@@ -102,6 +103,30 @@ test("flags a skill that never reports its own run", () => {
     beaconProblems("slideshow", "`npx hyperframes events --skill=slideshow-x`").length,
     1,
   );
+});
+
+test("flags a blanket events prohibition despite a required usage beacon", () => {
+  const oldRule =
+    "`validate`, `inspect` and `layout` are deprecated; `events` is telemetry. Don't run them.";
+  assert.equal(eventGuidanceProblems("hyperframes-cli", oldRule).length, 1);
+  assert.equal(eventGuidanceProblems("hyperframes-cli", "Never run `events` manually.").length, 1);
+  assert.equal(
+    eventGuidanceProblems("hyperframes-cli", "Do not run npx hyperframes events.").length,
+    1,
+  );
+  assert.deepEqual(
+    eventGuidanceProblems(
+      "hyperframes-cli",
+      "Don't run deprecated aliases. Run `events` only when a skill requires it.",
+    ),
+    [],
+  );
+});
+
+test("CLI documentation permits skill-requested events without recommending manual telemetry", () => {
+  const doc = readFileSync(new URL("../docs/packages/cli.mdx", import.meta.url), "utf8");
+  assert.match(doc, /Run it only when a skill explicitly requests a beacon/);
+  assert.doesNotMatch(doc, /Nothing calls it by hand/);
 });
 
 // fails without the fix: the skills ran `npx hyperframes` in the project, so npm could start the
