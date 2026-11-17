@@ -6,6 +6,7 @@
  * in charge.
  */
 
+import { homeCliCommand } from "./homeCliCommand.js";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { delimiter, dirname, join, posix } from "node:path";
 import { compareVersions } from "compare-versions";
@@ -286,7 +287,7 @@ export function updateCommandFor(install: RunningInstall, latest: string): strin
     const invocation = installInvocation(kind, latest);
     if (invocation) return `${invocation.bin} ${invocation.args.join(" ")}`;
   }
-  return "npx hyperframes@latest";
+  return homeCliCommand("latest");
 }
 
 /** The version in the `hyperframes` package.json at or above a resolved bin script, or null. */
@@ -315,8 +316,8 @@ const UPDATABLE_CHANNELS = new Set<InstallChannel>(["npm", "pnpm", "bun", "brew"
 
 export interface ShadowingInstall {
   version: string;
-  /** What moves that install to the latest release. */
-  updateCommand: string;
+  /** Global update command the person can run from home. */
+  updateCommand: string | null;
 }
 
 function resolvedOrNull(path: string): string | null {
@@ -358,5 +359,8 @@ export function shadowingInstall(current: string): ShadowingInstall | null {
   if (!global || !version || !isOlder(version, current)) return null;
   const install = installAt(global);
   if (!UPDATABLE_CHANNELS.has(install.channel)) return null;
-  return { version, updateCommand: updateCommandFor(install, current) };
+  return {
+    version,
+    updateCommand: install.channel === "project" ? null : updateCommandFor(install, current),
+  };
 }
