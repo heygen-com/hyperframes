@@ -571,6 +571,16 @@ describe("assertLiteralMediaInput", () => {
     }
   });
 
+  it("also refuses a harmless name that looks like a pattern, such as a %20 before a d", async () => {
+    const { assertLiteralMediaInput } = await importFresh();
+    expect(() => assertLiteralMediaInput("/job/My%20demo.mp4")).toThrow(
+      /Rename the file or folder/,
+    );
+    expect(() => assertLiteralMediaInput("/job/a%2d/clip.mp4")).toThrow(
+      /Rename the file or folder/,
+    );
+  });
+
   it("reads other percent signs, and URLs, as written", async () => {
     const { assertLiteralMediaInput } = await importFresh();
     for (const path of [
