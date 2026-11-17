@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 // The frame's real runtime agent, serving the opaque frame from this document.
-import { installEditingAgent } from "../../../../core/src/runtime/editingAgent";
+import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
 import { usePlayerStore, type TimelineElement } from "../../player";
 import { ClipMenuAudioItems } from "../../player/components/clipMenuAudioItems";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
@@ -62,7 +62,7 @@ function opaqueFrame() {
         new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
       ),
   } as unknown as Window;
-  const agent = installEditingAgent(parent);
+  const agent = installMarkedEditingAgent(parent);
   frame.postMessage = (data: unknown) =>
     window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
   closers.push(() => agent.dispose());
