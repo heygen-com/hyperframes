@@ -471,6 +471,12 @@ test("release-commit code runs only in a job without secrets", () => {
   assert.deepEqual(publish.needs, ["release-source", "pack"]);
 });
 
+test("npm publishes with the job's OIDC token only: no stored npm token is named", () => {
+  assert.doesNotMatch(JSON.stringify(config), /\bsecrets\b(?!\.GITHUB_TOKEN\b)/);
+  assert.equal(publish.permissions["id-token"], "write");
+  assert.equal(stepOf(publish, "Publish packages").env.NODE_AUTH_TOKEN, "");
+});
+
 test("the publish job runs no code from the release commit", () => {
   for (const step of publish.steps) {
     assert.doesNotMatch(step.uses ?? "", /setup-bun|^\.\//, `${step.uses} in the publish job`);
@@ -482,10 +488,7 @@ test("the publish job runs no code from the release commit", () => {
       assert.match(line, /--ignore-scripts/, step.name);
     }
   }
-  const job = JSON.stringify(publish);
-  assert.equal(job.split("secrets.NPM_TOKEN").length - 1, 1);
   const publishPackages = stepOf(publish, "Publish packages");
-  assert.equal(publishPackages.env.NODE_AUTH_TOKEN, "${{ secrets.NPM_TOKEN }}");
   assert.equal(publishPackages["working-directory"], "${{ runner.temp }}");
 });
 
