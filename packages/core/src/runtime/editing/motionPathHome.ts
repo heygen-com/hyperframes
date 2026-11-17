@@ -4,20 +4,18 @@ import { isElementVisibleThroughAncestors } from "../editingGeometry";
 /** The layer's centre with no animation, its size, and how far its centre moves per px it grows. */
 export type MotionPathHome = { x: number; y: number; w: number; h: number; ax: number; ay: number };
 
+const computedTransform = (el: HTMLElement): string =>
+  el.ownerDocument?.defaultView?.getComputedStyle(el).transform ?? "none";
+
+function matrixTranslate(transform: string): [string | undefined, string | undefined] {
+  const match = /(matrix3d|matrix)\(([^)]+)\)/.exec(transform);
+  const values = match?.[2]?.split(",") ?? [];
+  return match?.[1] === "matrix3d" ? [values[12], values[13]] : [values[4], values[5]];
+}
+
 function transformTranslate(el: HTMLElement): { x: number; y: number } {
-  const t = el.ownerDocument?.defaultView?.getComputedStyle(el).transform;
-  if (!t || t === "none") return { x: 0, y: 0 };
-  const m3 = t.match(/matrix3d\(([^)]+)\)/);
-  if (m3) {
-    const v = (m3[1] ?? "").split(",").map(Number);
-    return { x: v[12] || 0, y: v[13] || 0 };
-  }
-  const m = t.match(/matrix\(([^)]+)\)/);
-  if (m) {
-    const v = (m[1] ?? "").split(",").map(Number);
-    return { x: v[4] || 0, y: v[5] || 0 };
-  }
-  return { x: 0, y: 0 };
+  const [x, y] = matrixTranslate(computedTransform(el));
+  return { x: Number(x) || 0, y: Number(y) || 0 };
 }
 
 function cssTranslate(el: HTMLElement): [number, number] {

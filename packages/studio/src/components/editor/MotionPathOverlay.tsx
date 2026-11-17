@@ -218,10 +218,12 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
         void commitCreatePath(createSelector, t, px, py, commitMutation);
       };
       if (isHtmlElement(live)) place(elementHome(live), 1 / transformWDivisor(live));
-      else
+      else {
+        // A frame that cannot answer at the click falls back to the polled home, which may be a seek behind.
         void sealedMotionPathHome(frame, createSelector).then((read) =>
           place(read?.home ?? home!, read?.home ? read.perspective : pScale),
         );
+      }
       setMotionPathArmed(false);
     };
     surface.addEventListener("pointerdown", onDown, true);
