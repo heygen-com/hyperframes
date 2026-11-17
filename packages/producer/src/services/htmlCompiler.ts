@@ -302,11 +302,21 @@ const isPrivateCompositionFile = (projectDir: string, filePath: string): boolean
 
 type CompositionProblem = { srcPath: string; detail: string };
 
-function compositionSrcsIn(html: string): string[] {
-  const { document } = parseHTML(html);
-  return [...document.querySelectorAll("[data-composition-src]")]
+const mountSrcsUnder = (root: ParentNode): string[] =>
+  [...root.querySelectorAll("[data-composition-src]")]
     .map((el) => el.getAttribute("data-composition-src"))
     .filter((srcPath): srcPath is string => !!srcPath && !isUnresolvedAssetPlaceholder(srcPath));
+
+/** `templated` holds the mounts inside `<template>` content, which a document query does not see. */
+function compositionSrcsIn(html: string): { mounts: string[]; templated: string[] } {
+  const { document } = parseHTML(html);
+  const templated: string[] = [];
+  const templates = [...document.querySelectorAll("template")];
+  for (let template = templates.pop(); template; template = templates.pop()) {
+    templated.push(...mountSrcsUnder(template.content));
+    templates.push(...template.content.querySelectorAll("template"));
+  }
+  return { mounts: mountSrcsUnder(document), templated };
 }
 
 function compositionPathProblem(
@@ -330,7 +340,7 @@ function compositionPathProblem(
 function readSubCompositionFile(
   filePath: string,
   srcPath: string,
-): { detail: string } | { bytes: number; mounts: string[] } {
+): { detail: string } | { bytes: number; mounts: string[]; templated: string[] } {
   assertCompositionFileSize(filePath, srcPath);
   const read = readProjectFile(filePath);
   if (read.kind === "missing") return { detail: "the file does not exist" };
@@ -338,7 +348,7 @@ function readSubCompositionFile(
   const validity = checkSubCompositionUsability(read.text, parseSubCompHtmlForValidity);
   if (!validity.ok)
     return { detail: validity.detail ?? "the file is empty or could not be parsed" };
-  return { bytes: Buffer.byteLength(read.text), mounts: compositionSrcsIn(read.text) };
+  return { bytes: Buffer.byteLength(read.text), ...compositionSrcsIn(read.text) };
 }
 
 /**
@@ -378,7 +388,8 @@ function assertSubCompositionsUsable(
 
   // data-composition-src resolves root-relative at every level, as parseSubCompositions and the inliner
   // resolve it, so `projectDir` stays unchanged. Each path is checked, and each file read, once.
-  const walk = (srcPaths: readonly string[]): void => {
+  // A mount inside a template is charged to the budget but not reported: the inliner skips it with a warning.
+  const walk = (srcPaths: readonly string[], quiet: boolean): void => {
     for (const srcPath of srcPaths) {
       let resolved = paths.get(srcPath);
       if (!resolved) {
@@ -386,7 +397,7 @@ function assertSubCompositionsUsable(
         paths.set(srcPath, resolved);
       }
       if ("detail" in resolved) {
-        report(srcPath, resolved.detail);
+        if (!quiet) report(srcPath, resolved.detail);
         continue;
       }
       const { filePath } = resolved;
@@ -398,16 +409,19 @@ function assertSubCompositionsUsable(
         files.set(filePath, file);
       }
       if ("detail" in file) {
-        report(srcPath, file.detail);
+        if (!quiet) report(srcPath, file.detail);
         continue;
       }
       budget.charge(srcPath, file.bytes);
       chain.add(filePath);
-      walk(file.mounts);
+      walk(file.mounts, quiet);
+      walk(file.templated, true);
       chain.delete(filePath);
     }
   };
-  walk(compositionSrcsIn(html));
+  const entry = compositionSrcsIn(html);
+  walk(entry.mounts, false);
+  walk(entry.templated, true);
 
   if (problems.size > 0) {
     throw new EmptyCompositionError([...problems.values()]);

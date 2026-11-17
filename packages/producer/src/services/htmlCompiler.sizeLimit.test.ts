@@ -113,16 +113,15 @@ function fanOut(template: boolean): Record<string, string> {
 
 describe("composition expansion budget", () => {
   it.each([
-    ["before compiling, when the mounts are bare fragments", false],
-    ["while inlining, when the mounts sit in templates", true],
+    ["bare fragments", false],
+    ["templates", true],
   ])(
-    "refuses small files that mount each other many times at several levels %s",
+    "refuses small files that mount each other many times, as %s, before compiling",
     async (_, template) => {
-      const started = performance.now();
       const error = await compileError(project(fanOut(template)));
-      expect(performance.now() - started).toBeLessThan(15_000);
       expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
       expect(String(error)).toContain("10001 mounts");
+      expect(error).toMatchObject({ publicMetadata: { mounts: 10_001, exceeded: "mounts" } });
     },
   );
 
@@ -135,6 +134,15 @@ describe("composition expansion budget", () => {
     const error = await compileError(dir);
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
     expect(String(error)).toContain('"scene.html"');
+  });
+
+  it("leaves a missing mount inside a template to the inliner's warning, as before", async () => {
+    const dir = project({
+      "index.html": rootMounting("wrapper.html", 1),
+      "wrapper.html": `<template><div data-composition-id="wrapper"><h1>Kept</h1><div data-composition-src="missing.html"></div></div></template>`,
+    });
+    const compiled = await compileForRender(dir, join(dir, "index.html"), dir);
+    expect(compiled.html).toContain("<h1>Kept</h1>");
   });
 
   it("still compiles a scene mounted a few times, once per mount", async () => {

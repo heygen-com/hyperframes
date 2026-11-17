@@ -26,7 +26,12 @@ class CompositionTooLargeError extends Error {
 
   constructor(
     message: string,
-    readonly publicMetadata: Readonly<{ bytes: number; limitBytes: number; mounts?: number }>,
+    readonly publicMetadata: Readonly<{
+      bytes: number;
+      limitBytes: number;
+      mounts?: number;
+      exceeded?: "bytes" | "mounts";
+    }>,
   ) {
     super(message);
     this.name = "CompositionTooLargeError";
@@ -58,7 +63,12 @@ export class CompositionExpansionBudget {
         `across ${this.mounts} mounts. One render inlines at most ` +
         `${megabytes(MAX_EXPANDED_COMPOSITION_BYTES)} of composition HTML in at most ` +
         `${MAX_COMPOSITION_MOUNTS} mounts. Mount large or repeated scenes fewer times.`,
-      { bytes: this.bytes, limitBytes: MAX_EXPANDED_COMPOSITION_BYTES, mounts: this.mounts },
+      {
+        bytes: this.bytes,
+        limitBytes: MAX_EXPANDED_COMPOSITION_BYTES,
+        mounts: this.mounts,
+        exceeded: this.mounts > MAX_COMPOSITION_MOUNTS ? "mounts" : "bytes",
+      },
     );
   }
 }
