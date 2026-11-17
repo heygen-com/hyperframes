@@ -82,8 +82,9 @@ describe("Studio analytics leave the machine without paths or selectors", () => 
         selector_kind: "attribute",
         target_id_kind: "id",
         status_code: 403,
-        dropped_fields: "detail,error_message",
+        dropped_fields: "detail",
       });
+      expect(first?.error_message_shape).toMatch(/^[0-9a-f]{8}$/);
       expect(first?.file_path_hash).toMatch(/^[0-9a-f]{8}$/);
       // The same path from the same install groups; the salt that keys it never leaves.
       expect(second?.file_path_hash).toBe(first?.file_path_hash);
@@ -99,6 +100,51 @@ describe("Studio analytics leave the machine without paths or selectors", () => 
     expect(batch[0]?.properties.url_hash).not.toBe("custom");
     expect(batch[0]?.properties.tab_id).not.toBe("custom");
   });
+
+  const PROJECT_FRAME =
+    "http://localhost:3002/api/projects/acme-launch/preview/compositions/intro.html:12:3";
+  const STACK = [
+    "Error: Failed to save compositions/intro.html (403): forbidden path: /Users/ana/客户/x.html",
+    `    at mountClip (${PROJECT_FRAME})`,
+    `    at commitEdit (${location.origin}/assets/index-B4x2.js:40:7)`,
+    `    at ${location.origin}/assets/vendor-C9.js:1:99`,
+  ].join("\n");
+  const LEAKS = ["acme-launch", "intro.html", "客户", "/Users/ana", "forbidden path", "mountClip"];
+
+  it.each(["studio:*", "studio_*"] as const)(
+    "the %s transport sends an error's class, a shape and its own frames, never its words",
+    async (transport) => {
+      await send(transport, "crash", {
+        error_message:
+          "Failed to save compositions/intro.html (403): forbidden path: /Users/ana/客户/x.html",
+        error_name: "StudioSaveHttpError",
+        stack_trace: STACK,
+        component_stack: `\n    at ClipRow (${PROJECT_FRAME})\n    at Timeline (${location.origin}/assets/index-B4x2.js:9:1)`,
+      });
+      await send(transport, "unhandled_promise_rejection", {
+        error_message: "acme-launch secret",
+        error_name: null,
+        stack_trace: null,
+      });
+      await send(transport, "unhandled_error", {
+        error: "x",
+        filename: PROJECT_FRAME.replace(/:\d+:\d+$/, ""),
+      });
+      const { body, batch } = await sent();
+
+      for (const text of LEAKS) expect(body).not.toContain(text);
+      const [crash, rejection, uncaught] = batch.map((e) => e.properties);
+      expect(crash).toMatchObject({
+        error_name: "StudioSaveHttpError",
+        error_message_status: 403,
+        stack_trace: "?\ncommitEdit@index-B4x2.js:40:7\n<anonymous>@vendor-C9.js:1:99",
+        component_stack: "ClipRow\nTimeline",
+      });
+      expect(crash?.error_message_shape).toMatch(/^[0-9a-f]{8}$/);
+      expect(rejection?.error_message_shape).toMatch(/^[0-9a-f]{8}$/);
+      expect(uncaught?.dropped_fields).toBe("filename");
+    },
+  );
 
   it("leaves feedback text the person typed to send", async () => {
     await send("studio_*", "studio_feedback", {

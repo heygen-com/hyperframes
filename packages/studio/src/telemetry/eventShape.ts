@@ -14,9 +14,9 @@ const PATH_KEYS = new Set([
   "path",
   "composition",
   "render_composition",
-  "filename",
 ]);
 const SELECTOR_KEYS = new Set(["target_selector", "selector", "target_id", "animationId"]);
+const MESSAGE_KEYS = new Set(["error_message", "error", "render_error", "render_stage"]);
 // Text the person typed to send to us on purpose.
 const KEPT_AS_TYPED: Record<string, ReadonlySet<string>> = {
   studio_feedback: new Set(["comment"]),
@@ -96,6 +96,49 @@ function selectorFacts(key: string, value: string): Facts {
   return { [`${key}_kind`]: kind, [`${key}_hash`]: hashOf(s) };
 }
 
+function messageFacts(key: string, value: string): Facts {
+  const line = redactTelemetryString(value.split("\n", 1)[0] ?? "", Number.MAX_SAFE_INTEGER)
+    .replace(/(["'`]).*?\1/g, "?")
+    .replace(/\d+/g, "#");
+  const status = /(?:\(|HTTP |status |failed: )([1-5]\d\d)\b/.exec(value)?.[1];
+  return {
+    [`${key}_shape`]: hashContent(line).padStart(8, "0"),
+    ...(status ? { [`${key}_status`]: Number(status) } : {}),
+  };
+}
+
+function bundleFile(url: string): string | null {
+  try {
+    const at = new URL(url, location.href);
+    if (at.origin !== location.origin || at.pathname.startsWith("/api/")) return null;
+    const name = at.pathname.split("/").pop() ?? "";
+    return /^[\w.-]+\.(?:m?js|tsx?|jsx?)$/.test(name) ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+const V8_FRAME = /^\s*at (?:(.+?) \()?(.+?):(\d+):(\d+)\)?\s*$/;
+const GECKO_FRAME = /^(.*?)@(.+?):(\d+):(\d+)\s*$/;
+
+function shapedFrames(stack: string): string {
+  const frames: string[] = [];
+  for (const line of stack.split("\n")) {
+    const m = V8_FRAME.exec(line) ?? GECKO_FRAME.exec(line);
+    if (!m) continue;
+    const file = bundleFile(m[2] ?? "");
+    frames.push(file ? `${m[1]?.trim() || "<anonymous>"}@${file}:${m[3]}:${m[4]}` : "?");
+    if (frames.length === 20) break;
+  }
+  return frames.join("\n");
+}
+
+const componentNames = (stack: string): string =>
+  [...stack.matchAll(/^\s*(?:at|in)\s+([A-Za-z_$][\w$.]*)/gm)]
+    .slice(0, 30)
+    .map((m) => m[1])
+    .join("\n");
+
 const ATTRIBUTE_SELECTOR = /\[[\w:-]+(?:[~|^$*]?=[^\]]*)?\]/;
 const ID_OR_CLASS = /^\s*[#.][A-Za-z_-][\w-]*/;
 const HEX_COLOUR = /^#[0-9a-f]{3,8}$/i;
@@ -106,6 +149,23 @@ function readsAsPathOrSelector(value: string): boolean {
     ATTRIBUTE_SELECTOR.test(value) || (ID_OR_CLASS.test(value) && !HEX_COLOUR.test(value.trim()))
   );
 }
+
+type Shaper = (key: string, value: string) => Facts | null;
+const single =
+  (shape: (value: string) => string | null): Shaper =>
+  (key, value) => {
+    const shaped = shape(value);
+    return shaped === null ? null : { [key]: shaped };
+  };
+const otherValue: Shaper = (key, value) => (readsAsPathOrSelector(value) ? null : { [key]: value });
+const SHAPERS: Record<string, Shaper> = {
+  ...Object.fromEntries([...MESSAGE_KEYS].map((key) => [key, messageFacts])),
+  ...Object.fromEntries([...PATH_KEYS].map((key) => [key, pathFacts])),
+  ...Object.fromEntries([...SELECTOR_KEYS].map((key) => [key, selectorFacts])),
+  stack_trace: single(shapedFrames),
+  component_stack: single(componentNames),
+  filename: single(bundleFile),
+};
 
 /** A caller's properties as they may leave the machine; runs before the transport's own fields. */
 export function shapeEventProperties<V extends Value>(
@@ -118,15 +178,11 @@ export function shapeEventProperties<V extends Value>(
   for (const [key, value] of Object.entries(properties)) {
     if (typeof value !== "string" || value === "" || kept?.has(key)) {
       out[key] = value;
-    } else if (PATH_KEYS.has(key)) {
-      Object.assign(out, pathFacts(key, value));
-    } else if (SELECTOR_KEYS.has(key)) {
-      Object.assign(out, selectorFacts(key, value));
-    } else if (readsAsPathOrSelector(value)) {
-      dropped.push(key);
-    } else {
-      out[key] = value;
+      continue;
     }
+    const facts = (SHAPERS[key] ?? otherValue)(key, value);
+    if (facts) Object.assign(out, facts);
+    else dropped.push(key);
   }
   if (dropped.length > 0) out.dropped_fields = dropped.join(",");
   return out;
