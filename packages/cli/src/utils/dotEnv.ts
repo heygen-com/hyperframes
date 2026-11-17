@@ -112,6 +112,49 @@ export function projectEnvDir(name: string): string | undefined {
   return set !== undefined && process.env[name] === set.value ? set.sourceDir : undefined;
 }
 
+// Each group is one choice between providers: capture and snapshot vision, then Gemini speech and music.
+const COMPETING_PROVIDER_KEYS: readonly (readonly string[])[] = [
+  [
+    "OPENROUTER_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "HYPERFRAMES_VERTEX_PROJECT_ID",
+    "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT",
+  ],
+  ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "GCS_CREDS"],
+];
+
+const competitorsOf = (name: string): string[] =>
+  COMPETING_PROVIDER_KEYS.filter((group) => group.includes(name)).flatMap((group) =>
+    group.filter((other) => other !== name && Boolean(process.env[other])),
+  );
+
+/** Unsets each provider key a received project's `.env` set while the person has their own credential for a competing provider. */
+export async function yieldReceivedProviderKeys(warn: (line: string) => void): Promise<void> {
+  const contested = [...projectEnvValues.keys()].filter(
+    (name) => projectEnvDir(name) !== undefined && competitorsOf(name).length > 0,
+  );
+  if (contested.length === 0) return;
+  const { receivedFiles } = await import("./privateProjectFile.js");
+  const receivedDirs = new Map<string, boolean>();
+  const received = (name: string): boolean => {
+    const dir = projectEnvDir(name);
+    if (dir === undefined) return false;
+    if (!receivedDirs.has(dir)) receivedDirs.set(dir, receivedFiles(dir)(".env"));
+    return receivedDirs.get(dir) === true;
+  };
+  for (const name of contested.filter(received)) {
+    const own = competitorsOf(name).find((other) => !received(other));
+    if (own === undefined) continue;
+    const dir = projectEnvDir(name) ?? "";
+    delete process.env[name];
+    projectEnvValues.delete(name);
+    warn(
+      `[hyperframes] .env: ignoring ${name} from a received project (${join(dir, ".env")}); using your own ${own}`,
+    );
+  }
+}
+
 export function loadProjectDotEnv(
   dir: string,
   env: NodeJS.ProcessEnv,
