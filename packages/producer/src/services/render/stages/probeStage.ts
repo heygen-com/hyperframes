@@ -74,6 +74,7 @@ import {
   type FileServerHandle,
   VIRTUAL_TIME_SHIM,
 } from "../../fileServer.js";
+import { hasClosedMediaTag } from "../../htmlTagScans.js";
 import { servedPath } from "../../servedPath.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
@@ -303,7 +304,7 @@ function hasRuntimeMediaChanges(html: string): boolean {
     (script) =>
       /\bcreateElement\s*\(\s*["'`](?:video|audio)["'`]\s*\)/i.test(script) ||
       /\bnew\s+(?:Audio|Video)\s*\(/i.test(script) ||
-      /<(?:video|audio)\b[^>]*>/i.test(script),
+      hasClosedMediaTag(script),
   );
   if (insertedMedia) return true;
 
