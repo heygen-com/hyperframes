@@ -11,22 +11,55 @@ const COMPOSITION_TOO_LARGE = "COMPOSITION_TOO_LARGE" as const;
 
 const megabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
+/**
+ * What one render may inline across every sub-composition mount. Each file is checked on its own
+ * above, but a few small files that mount each other many times assemble a page far larger.
+ */
+export const MAX_EXPANDED_COMPOSITION_BYTES = 2 * MAX_COMPOSITION_HTML_BYTES;
+const MAX_COMPOSITION_MOUNTS = 10_000;
+
 class CompositionTooLargeError extends Error {
   readonly code = COMPOSITION_TOO_LARGE;
   // The producer server reads these off the error for the wire envelope.
   readonly owner = "user" as const;
   readonly retryable = false as const;
-  readonly publicMetadata: Readonly<{ bytes: number; limitBytes: number }>;
 
-  constructor(file: string, bytes: number) {
-    super(
-      `Composition file "${file}" is ${megabytes(bytes)}, over the ` +
-        `${megabytes(MAX_COMPOSITION_HTML_BYTES)} limit for one composition HTML file. ` +
-        "Keep large data such as images, fonts and JSON in separate asset files and reference " +
-        "them by path instead of inlining them.",
-    );
+  constructor(
+    message: string,
+    readonly publicMetadata: Readonly<{ bytes: number; limitBytes: number; mounts?: number }>,
+  ) {
+    super(message);
     this.name = "CompositionTooLargeError";
-    this.publicMetadata = { bytes, limitBytes: MAX_COMPOSITION_HTML_BYTES };
+  }
+}
+
+const fileTooLarge = (file: string, bytes: number) =>
+  new CompositionTooLargeError(
+    `Composition file "${file}" is ${megabytes(bytes)}, over the ` +
+      `${megabytes(MAX_COMPOSITION_HTML_BYTES)} limit for one composition HTML file. ` +
+      "Keep large data such as images, fonts and JSON in separate asset files and reference " +
+      "them by path instead of inlining them.",
+    { bytes, limitBytes: MAX_COMPOSITION_HTML_BYTES },
+  );
+
+/** Adds up every mount a render inlines and throws once the total passes either limit. */
+export class CompositionExpansionBudget {
+  private bytes = 0;
+  private mounts = 0;
+
+  charge(file: string, bytes: number): void {
+    this.bytes += bytes;
+    this.mounts += 1;
+    if (this.bytes <= MAX_EXPANDED_COMPOSITION_BYTES && this.mounts <= MAX_COMPOSITION_MOUNTS) {
+      return;
+    }
+    throw new CompositionTooLargeError(
+      `Sub-composition mounts, ending at "${file}", add up to ${megabytes(this.bytes)} ` +
+        `across ${this.mounts} mounts. One render inlines at most ` +
+        `${megabytes(MAX_EXPANDED_COMPOSITION_BYTES)} of composition HTML in at most ` +
+        `${MAX_COMPOSITION_MOUNTS} mounts. Mount large or repeated scenes fewer times.`,
+      { bytes: this.bytes, limitBytes: MAX_EXPANDED_COMPOSITION_BYTES, mounts: this.mounts },
+    );
   }
 }
 
@@ -43,5 +76,5 @@ export function assertCompositionFileSize(path: string, file: string): void {
   } catch {
     return;
   }
-  if (bytes > MAX_COMPOSITION_HTML_BYTES) throw new CompositionTooLargeError(file, bytes);
+  if (bytes > MAX_COMPOSITION_HTML_BYTES) throw fileTooLarge(file, bytes);
 }

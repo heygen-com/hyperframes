@@ -2,7 +2,11 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { assertCompositionFileSize, MAX_COMPOSITION_HTML_BYTES } from "./compositionSizeLimit.js";
+import {
+  assertCompositionFileSize,
+  MAX_COMPOSITION_HTML_BYTES,
+  MAX_EXPANDED_COMPOSITION_BYTES,
+} from "./compositionSizeLimit.js";
 import { compileForRender } from "./htmlCompiler.js";
 import { extractSafeRenderErrorCode } from "./safeRenderErrorCode.js";
 
@@ -74,5 +78,54 @@ describe("composition HTML size limit", () => {
       assertCompositionFileSize(join(dir, "missing.html"), "missing.html"),
     ).not.toThrow();
     expect(() => assertCompositionFileSize(dir, "folder")).not.toThrow();
+  });
+});
+
+/** A root that mounts `src` `count` times. */
+const rootMounting = (src: string, count: number) =>
+  ROOT.replace(
+    /<div data-composition-id="scene"[^>]*><\/div>/,
+    `<div data-composition-id="scene" data-composition-src="${src}" data-start="0" data-duration="2"></div>`.repeat(
+      count,
+    ),
+  );
+
+/** A sub-composition that mounts `src` `count` times. */
+const sceneMounting = (id: string, src: string, count: number) =>
+  `<template><div data-composition-id="${id}">${`<div data-composition-src="${src}"></div>`.repeat(count)}</div></template>`;
+
+describe("composition expansion budget", () => {
+  it("refuses small files that mount each other many times at several levels, in bounded time", async () => {
+    const files: Record<string, string> = { "index.html": rootMounting("level-0.html", 10) };
+    for (let level = 0; level < 6; level += 1) {
+      files[`level-${level}.html`] = sceneMounting(`level-${level}`, `level-${level + 1}.html`, 10);
+    }
+    files["level-6.html"] = SCENE;
+    const started = performance.now();
+    const error = await compileError(project(files));
+    expect(performance.now() - started).toBeLessThan(5_000);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(String(error)).toContain("10000 mounts");
+  });
+
+  it("refuses one large file mounted many times", async () => {
+    const big = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 4) + 1;
+    const dir = project({
+      "index.html": rootMounting("scene.html", 4),
+      "scene.html": paddedTo(SCENE, big),
+    });
+    const error = await compileError(dir);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(String(error)).toContain('"scene.html"');
+  });
+
+  it("still compiles a scene mounted a few times, once per mount", async () => {
+    const dir = project({
+      "index.html": rootMounting("wrapper.html", 3),
+      "wrapper.html": sceneMounting("wrapper", "scene.html", 2),
+      "scene.html": SCENE,
+    });
+    const compiled = await compileForRender(dir, join(dir, "index.html"), dir);
+    expect(compiled.html.split("<h1>Scene</h1>").length - 1).toBe(6);
   });
 });
