@@ -80,8 +80,8 @@ it("leaves a render's videos to the render", () => {
   expect(clip.currentTime).toBe(0);
 });
 
-/** The film's shape: 4 scenes of 4 timed lines, 8 videos; scene 3's first video reloads `into` s in. Small enough to run
-    well inside the test timeout on a loaded CI runner; any re-decided other clip still shows in `otherClips`. */
+/** The film's shape: 4 scenes of 4 timed lines, 8 videos; scene 3's first video reloads `into` s in. Small enough
+    to run well inside the test timeout on a busy CI runner; any re-decided other clip still shows in `otherClips`. */
 function reloadInLongFilm(into: number) {
   resetRuntimeFixtureDom();
   const videos = (s: number, count: number) =>
