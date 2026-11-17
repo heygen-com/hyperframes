@@ -23,6 +23,8 @@ const { state, RETRY_REACHED } = vi.hoisted(() => ({
     }>,
     failures: [] as unknown[],
     resumable: false,
+    resumeKey: null as Buffer | null,
+    warnings: [] as string[],
     sessions: [] as object[],
     closed: [] as object[],
   },
@@ -112,7 +114,7 @@ vi.mock("./render/captureCost.js", async (importOriginal) => ({
     lastBrowserConsole: [],
   }),
 }));
-vi.mock("./render/segmentResumeKey.js", () => ({ loadSegmentResumeKey: () => null }));
+vi.mock("./render/segmentResumeKey.js", () => ({ loadSegmentResumeKey: () => state.resumeKey }));
 // A previous run left segment 0 complete; validating it for real needs ffprobe on a real file.
 vi.mock("./render/segmentManifest.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./render/segmentManifest.js")>();
@@ -165,6 +167,8 @@ beforeEach(() => {
   state.sessions = [];
   state.closed = [];
   state.resumable = false;
+  state.resumeKey = null;
+  state.warnings = [];
   vi.stubEnv("HF_SEGMENTED_CAPTURE", "true");
   vi.stubEnv("PRODUCER_EXPERIMENTAL_FAST_CAPTURE", "");
   vi.stubEnv("HF_DE_PARALLEL_STREAM", "");
@@ -188,7 +192,14 @@ function render(resumeSegments = false): Promise<void> {
     hdrMode: "force-sdr",
     resumeSegments,
     producerConfig: resolveConfig({ useDrawElement: true, browserGpuMode: "hardware" }),
-    logger: { info() {}, warn() {}, error() {}, debug() {} },
+    logger: {
+      info() {},
+      warn(message: string) {
+        state.warnings.push(message);
+      },
+      error() {},
+      debug() {},
+    },
   });
   return executeRenderJob(job, root, join(root, "output.mp4"));
 }
@@ -226,6 +237,22 @@ it("re-captures every segment, including resumed ones, after a drawElement failu
   await expect(render(true)).rejects.toThrow(RETRY_REACHED);
   expect(state.attempts.map((a) => a.completedSegments)).toEqual([1, 0]);
   expect(state.attempts[1]?.segmentDirEntries).toEqual([]);
+});
+
+it("warns once under --resume when no resume key is available", async () => {
+  const resumeWarnings = () => state.warnings.filter((w) => w.includes("captured again"));
+  for (const [resume, key, expected] of [
+    [true, null, 1],
+    [true, Buffer.alloc(32, 1), 0],
+    [false, null, 0],
+  ] as const) {
+    state.attempts = [];
+    state.warnings = [];
+    state.resumeKey = key;
+    state.failures = [new DrawElementCaptureError(640, "suspect small frame")];
+    await expect(render(resume)).rejects.toThrow(RETRY_REACHED);
+    expect(resumeWarnings()).toHaveLength(expected);
+  }
 });
 
 it("does not retry a second drawElement failure", async () => {

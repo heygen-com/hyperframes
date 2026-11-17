@@ -3129,6 +3129,16 @@ export async function executeRenderJob(
   }
 }
 
+function loadResumeKeyOrWarn(resume: boolean, log: ProducerLogger): Buffer | null {
+  const key = loadSegmentResumeKey();
+  if (resume && !key) {
+    log.warn(
+      "[Render] --resume: no resume key could be read or created in the HyperFrames config folder, so every segment will be captured again",
+    );
+  }
+  return key;
+}
+
 async function executeRenderPipeline(input: {
   job: RenderJob;
   projectDir: string;
@@ -5083,7 +5093,7 @@ async function executeRenderPipeline(input: {
           captureQuality: captureOptions.quality,
         });
         const segmentDir = segmentDirFor(join(projectDir, "renders"), segmentPlanHash);
-        const segmentResumeKey = loadSegmentResumeKey();
+        const segmentResumeKey = loadResumeKeyOrWarn(job.config.resumeSegments === true, log);
         let completedSegments: ReadonlySet<number> = new Set<number>();
         if (job.config.resumeSegments === true) {
           const existing = readSegmentManifest(segmentDir);
