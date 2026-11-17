@@ -147,7 +147,7 @@ function watchHistory(page) {
 }
 
 /** Whether every group the gestures took is already an entry in the history list, polled for `ms`. */
-export async function groupsListed(listUrl, ids, ms = 3000) {
+async function groupsListed(listUrl, ids, ms = 3000) {
   if (!listUrl || !ids.length) return null;
   for (const deadline = Date.now() + ms; ; await sleep(100)) {
     const view = await fetch(listUrl)

@@ -204,6 +204,20 @@ function redoneAt(view: HistoryView): number | null {
   return view.entries.find((entry) => entry.id === undo?.undoes)?.endedAt ?? null;
 }
 
+function closeHeldClaimWithAClaimOfNothing(
+  projectId: string,
+  heldClaimRef: { current: { paths: string[]; at: number } | null },
+  refresh: () => Promise<void>,
+): void {
+  if (!heldClaimRef.current) return;
+  heldClaimRef.current = null;
+  void post(historyUrl(projectId, "/claim"), { label: "Edited in Studio", paths: [] }).then(
+    (reply) => {
+      if (reply.ok) void refresh();
+    },
+  );
+}
+
 /** Studio's undo over the server's project history: an edit claims what it wrote; Cmd+Z steps the person's. */
 export function usePersistentEditHistory({ projectId }: UsePersistentEditHistoryOptions) {
   const [view, setView] = useState<HistoryView>(EMPTY);
@@ -244,16 +258,9 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
 
   useEffect(() => {
     if (!projectId) return;
-    const closeHeldClaimWithAClaimOfNothing = () => {
-      if (!heldClaimRef.current) return;
-      heldClaimRef.current = null;
-      void post(historyUrl(projectId, "/claim"), { label: "Edited in Studio", paths: [] }).then(
-        (reply) => {
-          if (reply.ok) void refresh();
-        },
-      );
-    };
-    setStudioPendingEditsSettled(closeHeldClaimWithAClaimOfNothing);
+    setStudioPendingEditsSettled(() =>
+      closeHeldClaimWithAClaimOfNothing(projectId, heldClaimRef, refresh),
+    );
     return () => setStudioPendingEditsSettled(null);
   }, [projectId, refresh]);
 
