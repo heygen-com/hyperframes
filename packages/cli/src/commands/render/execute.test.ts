@@ -57,6 +57,14 @@ describe("renderOptionsFromPlan", () => {
     expect(on.browserPath).toBe("/usr/bin/chrome");
     expect(on.variables).toEqual({ title: "x" });
   });
+
+  it("carries --refuse-outside-files from the plan into the render options", () => {
+    const plan = createRenderPlan({ dir: projectDir });
+    expect(renderOptionsFromPlan(plan, undefined, undefined).refuseOutsideFiles).toBe(false);
+    const refused = createRenderPlan({ dir: projectDir, "refuse-outside-files": true });
+    expect(renderOptionsFromPlan(refused, undefined, undefined).refuseOutsideFiles).toBe(true);
+    expect(batchRowRenderOptions(refused, undefined).refuseOutsideFiles).toBe(true);
+  });
 });
 
 describe("the desktop-app line after a render", () => {

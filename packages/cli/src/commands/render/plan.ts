@@ -105,6 +105,7 @@ export interface RenderCommandArgs {
   strict?: boolean;
   "strict-all"?: boolean;
   "include-outside-files"?: boolean;
+  "refuse-outside-files"?: boolean;
   "lint-verbose"?: boolean;
   "max-concurrent-renders"?: string;
   variables?: string;
@@ -170,6 +171,7 @@ export interface RenderPlan {
   keepSegments: boolean;
   bestEffort: boolean;
   includeOutsideScripts: boolean;
+  refuseOutsideFiles: boolean;
   waitForRenderSlot: boolean;
   batchJson: boolean;
   effectiveQuiet: boolean;
@@ -674,6 +676,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     keepSegments: args["keep-segments"] ?? false,
     bestEffort: args["best-effort"] ?? true,
     includeOutsideScripts: args["include-outside-files"] ?? false,
+    refuseOutsideFiles: args["refuse-outside-files"] ?? false,
     waitForRenderSlot: args.wait ?? true,
     batchJson,
     effectiveQuiet: quiet || batchJson,
