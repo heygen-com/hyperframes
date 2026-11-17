@@ -612,6 +612,60 @@ describe("hasRuntimeMediaChanges", () => {
       matches.mockRestore();
     }
   });
+
+  it("charges a long selector's whole text against every media element", () => {
+    const videos = `<div data-x="a"><video src="a.mp4"></video></div>`.repeat(100);
+    const longValue = `[data-x="${"y".repeat(20_000)}"] video`;
+    const longGap = `div${" ".repeat(20_000)}video`;
+    const matches = elementMatchesSpy();
+    try {
+      for (const selector of [longValue, longGap]) {
+        const script = `document.querySelector(${JSON.stringify(selector)}).src = "x";`;
+        expect(hasRuntimeMediaChanges(page(videos, script))).toBe(true);
+      }
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("charges each simple test in a compound for the attribute text it reads", () => {
+    const video = `<video data-x="${"v".repeat(1_000)}" src="a.mp4"></video>`;
+    const selector = `video${"[data-x]".repeat(2_000)}`;
+    const script = `document.querySelector(${JSON.stringify(selector)}).src = "x";`;
+    const matches = elementMatchesSpy();
+    try {
+      expect(hasRuntimeMediaChanges(page(video, script))).toBe(true);
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("reads no attribute text when every write targets an id", () => {
+    let proto = Object.getPrototypeOf(parseHTML("<p></p>").document.querySelector("p"));
+    while (proto && !Object.getOwnPropertyDescriptor(proto, "attributes")) {
+      proto = Object.getPrototypeOf(proto);
+    }
+    const original = Object.getOwnPropertyDescriptor(proto, "attributes")!;
+    let reads = 0;
+    Object.defineProperty(proto, "attributes", {
+      ...original,
+      get(this: Element) {
+        reads += 1;
+        return original.get!.call(this);
+      },
+    });
+    try {
+      const body = `<div data-x="a"><video id="clip" src="a.mp4"></video></div>`;
+      expect(hasRuntimeMediaChanges(page(body, `document.getElementById("x").src = "b";`))).toBe(
+        false,
+      );
+      expect(reads).toBe(0);
+    } finally {
+      Object.defineProperty(proto, "attributes", original);
+    }
+  });
 });
 
 /** Spies on linkedom's `Element.matches`, wherever on the prototype chain it lives. */
