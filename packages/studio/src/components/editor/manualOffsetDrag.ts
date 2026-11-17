@@ -14,7 +14,11 @@ import {
   type StudioPathOffsetSnapshot,
 } from "./manualEdits";
 import type { EditMoment } from "./manualEditsTypes";
-import { computeDraggedGsapPosition, DRAG_MOVING_ATTR } from "../../hooks/draggedGsapPosition";
+import {
+  computeDraggedGsapPosition,
+  DRAG_MOVING_ATTR,
+  stampGestureBase,
+} from "../../hooks/draggedGsapPosition";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
 import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
@@ -455,28 +459,6 @@ export function applyManualOffsetDragDraft(
   const offset = resolveManualOffsetDragMemberOffset(member, dx, dy);
   drawMemberOffset(member, offset, false);
   return offset;
-}
-
-/**
- * Re-stamp the STABLE gesture-start base/offset before the source commit reads
- * them. A mid-gesture re-render can wipe these attrs; the commit converts the
- * drop offset → gsap x/y via computeDraggedGsapPosition, which without the base
- * falls back to the live (already-dragged) transform and re-adds the delta — so
- * the element flies off-screen the instant you drop it. The member holds the
- * true gesture-start values in JS, immune to the re-render.
- */
-export function stampGestureBase(
-  el: HTMLElement,
-  initialOffset: Point,
-  baseGsap: Point,
-  moving = false,
-): void {
-  if (moving) el.setAttribute(DRAG_MOVING_ATTR, "");
-  else el.removeAttribute(DRAG_MOVING_ATTR);
-  el.setAttribute("data-hf-drag-gsap-base-x", String(baseGsap.x));
-  el.setAttribute("data-hf-drag-gsap-base-y", String(baseGsap.y));
-  el.setAttribute("data-hf-drag-initial-offset-x", String(initialOffset.x));
-  el.setAttribute("data-hf-drag-initial-offset-y", String(initialOffset.y));
 }
 
 function applyManualOffsetCommitValue(

@@ -6,11 +6,8 @@ import {
 } from "./manualEdits";
 import { readTranslatePx } from "./plainTranslate";
 import { drawPreviewDraft } from "./previewDrafts";
-import {
-  getOffsetDragGsap,
-  stampGestureBase,
-  type ManualOffsetDragMember,
-} from "./manualOffsetDrag";
+import { getOffsetDragGsap, type ManualOffsetDragMember } from "./manualOffsetDrag";
+import { stampGestureBase } from "../../hooks/draggedGsapPosition";
 import type { StudioEditRevert } from "../../utils/studioPendingEdits";
 
 interface MemberPosition {
