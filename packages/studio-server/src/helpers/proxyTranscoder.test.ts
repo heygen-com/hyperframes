@@ -255,7 +255,7 @@ describe("resolveProxy on a long source", () => {
     }
   };
 
-  it("joins pieces as local mp4, mov or webm files only, and fails at one it refuses", async () => {
+  it("joins pieces through the shared concat input, which allows only local mp4, mov or webm files", async () => {
     const { spawn, calls } = createSpawnSpy();
     const { resolveProxy } = await loadModule(
       spawn,
