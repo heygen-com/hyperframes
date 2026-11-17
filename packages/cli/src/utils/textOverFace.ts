@@ -123,11 +123,18 @@ export function textOverFaceIssue(
 
 // Loaded on first use: a check with no text in front of a video never pays for OpenCV.
 const facesInFile: FaceFinder = async (file, times, signal) => {
-  const [{ faceBoxesAt }, { frameAt, probeVideo }] = await Promise.all([
-    import("../measure/face.js"),
-    import("../measure/media.js"),
-  ]);
-  const info = probeVideo(file);
+  const [{ faceBoxesAt }, { frameAt, probeVideo }, { readableAsMediaWithinProbeLimit }] =
+    await Promise.all([
+      import("../measure/face.js"),
+      import("../measure/media.js"),
+      import("../commands/snapshotHeldVideos.js"),
+    ]);
+  if (!(await readableAsMediaWithinProbeLimit(file))) {
+    throw new Error(
+      `${file} is not media: a document, a pipe or device, or a playlist naming files outside its folder`,
+    );
+  }
+  const info = probeVideo(file, { guarded: true });
   const frameOf = (time: number) => Math.min(Math.max(0, info.frames - 1), frameAt(time, info.fps));
   const frames = [...new Set(times.map(frameOf))].sort((a, b) => a - b);
   const found = await faceBoxesAt(info, frames, { signal });
