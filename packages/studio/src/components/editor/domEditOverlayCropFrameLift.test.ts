@@ -25,7 +25,7 @@ const settle = () => new Promise((done) => setTimeout(done, 0));
 async function lifted(clipPath = "inset(10px)") {
   const el = document.createElement("div");
   liftElementCrop(el);
-  sent[0]!.answer({ lifted: true, clipPath });
+  sent.at(-1)!.answer({ lifted: true, clipPath });
   await settle();
   return el;
 }
