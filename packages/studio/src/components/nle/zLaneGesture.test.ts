@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import {
+  setStudioPendingEditsSettled,
+  trackStudioPendingEdit,
+} from "../../utils/studioPendingEdits";
 import { runLaneZGesture, runZLaneGesture } from "./zLaneGesture";
 
 const durable = { durable: true, allMatched: true, changed: true };
@@ -173,4 +177,45 @@ describe("runZLaneGesture", () => {
     });
     expect(next).toBe(true);
   });
+});
+
+// fails without the fix: the z write settled before the lane mirror began, which closed the gesture's undo step.
+describe("one undo step per gesture", () => {
+  it.each([
+    [
+      "z then lanes",
+      (first: () => Promise<void>, second: () => Promise<boolean>) =>
+        runZLaneGesture({ commitZ: async () => void (await first()), mirror: second }),
+    ],
+    [
+      "lanes then z",
+      (first: () => Promise<void>, second: () => Promise<boolean>) =>
+        runLaneZGesture({
+          commitLane: async () => (await first(), true),
+          commitZ: async () => void (await second()),
+        }),
+    ],
+  ])(
+    "a layer reorder (%s) is one undo step: Studio's edits stay pending between its two writes",
+    async (_, gesture) => {
+      const settled = vi.fn();
+      setStudioPendingEditsSettled(settled);
+      const secondWrite = deferred<boolean>();
+      try {
+        const done = gesture(
+          () => trackStudioPendingEdit(Promise.resolve()) as Promise<void>,
+          () => trackStudioPendingEdit(secondWrite.promise) as Promise<boolean>,
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(settled).not.toHaveBeenCalled();
+        secondWrite.resolve(true);
+        await done;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(settled).toHaveBeenCalledTimes(1);
+      } finally {
+        secondWrite.resolve(true);
+        setStudioPendingEditsSettled(null);
+      }
+    },
+  );
 });

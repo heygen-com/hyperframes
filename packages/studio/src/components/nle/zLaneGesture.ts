@@ -1,4 +1,5 @@
 import type { DomEditPatchBatchesResult } from "../../hooks/domEditCommitTypes";
+import { trackStudioPendingEdit } from "../../utils/studioPendingEdits";
 
 /**
  * Run one COMPLETE z→lane gesture — the z-index persist followed by its
@@ -39,6 +40,7 @@ export function serializeZLaneGesture<Result>(run: () => Promise<Result>): Promi
       gesture = Promise.reject(error);
     }
   }
+  trackStudioPendingEdit(gesture);
   const tail = gesture.then(
     () => undefined,
     () => undefined,
