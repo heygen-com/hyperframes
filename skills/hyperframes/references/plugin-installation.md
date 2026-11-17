@@ -20,7 +20,12 @@ launcher.
 
 ## Standalone skill installs
 
-Without a plugin manifest, the launcher runs the newest published CLI. The person installs and
+Without a plugin manifest, the launcher runs the newest compatible published CLI. To select a
+release, put `--cli-version latest` or `--cli-version <exact-version>` before the command.
+Use the launcher from the loaded skill installation for commands shown in CLI output, too.
+For example, run `node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version latest --version`
+to read the current release. If the installed launcher lacks this option, ask the person to update
+their skills. The person installs and
 updates standalone skills with `npx hyperframes skills update`.
 
 ## Plugin installs

@@ -72,7 +72,7 @@ describe("printStalePinNotice", () => {
     printStalePinNotice(dir);
     printStalePinNotice(dir); // throttled — second call silent
     expect(writes.join("")).toContain("0.7.48");
-    expect(writes.join("")).toContain("upgrade --project");
+    expect(writes.join("")).toContain("--cli-version latest upgrade --project .");
     expect(writes.filter((w) => w.includes("upgrade --project")).length).toBe(1);
   });
 
@@ -86,17 +86,17 @@ describe("printStalePinNotice", () => {
   });
 
   it("warns on every run when an older CLI than the pin is running", () => {
-    store = { latestVersion: "0.8.71" };
+    store = { latestVersion: "0.9.71" };
     runningVersion = "0.7.71";
     writeFileSync(
       join(dir, "package.json"),
-      JSON.stringify({ scripts: { check: "npx --yes hyperframes@0.8.66 check" } }),
+      JSON.stringify({ scripts: { check: "npx --yes hyperframes@0.9.66 check" } }),
     );
     printStalePinNotice(dir);
     printStalePinNotice(dir);
     const mismatch = writes.filter((w) => w.includes("This is hyperframes 0.7.71"));
     expect(mismatch.length).toBe(2);
-    expect(mismatch[0]).toContain("npx hyperframes@0.8.66");
+    expect(mismatch[0]).toContain("--cli-version 0.9.66");
     expect(writes.join("")).not.toContain("upgrade --project");
   });
 

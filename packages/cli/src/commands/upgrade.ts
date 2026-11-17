@@ -318,8 +318,7 @@ function printProjectPinResult(
   console.log(
     `   ${c.success("◇")}  ${verb} project pins ${res.from.join(", ")} → ${c.accent(res.to)}`,
   );
-  if (checkOnly)
-    console.log(`   ${c.dim("Run `npx hyperframes@latest upgrade --project` to apply.")}`);
+  if (checkOnly) console.log(`   ${c.dim("Repeat the same command without --check to apply.")}`);
 }
 
 export function runDetectedInstall(

@@ -149,6 +149,9 @@ runs the newest published CLI; in a plugin it runs the version the plugin pins. 
 only when the plugin folder's name does not start with a dot, the folder is not the one the
 agent works in and does not contain it, and, if it lies inside that folder, a folder whose name
 starts with a dot (such as `.claude`) sits between them. A pin older than 0.9.34 is refused.
+For a standalone workflow that needs a particular release, the agent passes
+`--cli-version latest` or `--cli-version <exact-version>` to the installed launcher before the CLI
+command. This also works for releases with a prerelease suffix. Plugin installs keep their pin.
 The agent runs a project's own npm scripts only when you ask for one by name.
 
 ## Install more only when you need it

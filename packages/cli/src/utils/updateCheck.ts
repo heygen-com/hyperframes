@@ -390,7 +390,7 @@ export function printStalePinNotice(cwd: string = process.cwd()): void {
   if (newerPins.length > 0) {
     process.stderr.write(
       `\n  This is hyperframes ${VERSION}, but this project pins hyperframes@${newerPins.join(", ")}.\n` +
-        `  Run it through the project's npm scripts, or npx hyperframes@${newerPins.at(-1)}.\n\n`,
+        `  Use the installed standalone skill launcher with --cli-version ${newerPins.at(-1)} to run the pinned release.\n\n`,
     );
     return;
   }
@@ -414,6 +414,7 @@ export function printStalePinNotice(cwd: string = process.cwd()): void {
 
   process.stderr.write(
     `\n  This project pins hyperframes@${stale.join(", ")} (latest ${latest}).\n` +
-      `  Bump it: npx hyperframes@latest upgrade --project\n\n`,
+      `  Use the installed standalone skill launcher with --cli-version latest upgrade --project . to bump the pin.\n` +
+      `  Without standalone skills, run the latest CLI from your home folder and pass the absolute project path to upgrade --project.\n\n`,
   );
 }

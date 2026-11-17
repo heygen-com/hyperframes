@@ -49,10 +49,29 @@ function isPluginBundle(pluginRoot, workDir) {
 }
 
 function isBelowFloor(version) {
-  const parts = (text) => text.split("-")[0].split(".").map(Number);
+  const parts = (text) => text.split(/[-+]/, 1)[0].split(".").map(Number);
   const [have, floor] = [parts(version), parts(CLI_FLOOR)];
   const at = have.findIndex((part, index) => part !== floor[index]);
-  return at === -1 ? version.includes("-") : have[at] < floor[at];
+  return at === -1 ? version.split("+", 1)[0].includes("-") : have[at] < floor[at];
+}
+
+function standaloneRelease(value) {
+  if (value === "latest") return value;
+  const match =
+    typeof value === "string" &&
+    value.length <= 256 &&
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(
+      value,
+    );
+  if (
+    !match ||
+    match[4]?.split(".").some((id) => /^0\d+$/.test(id)) ||
+    !match.slice(1, 4).every((part) => Number.isSafeInteger(Number(part)))
+  ) {
+    throw new Error("--cli-version requires latest or an exact HyperFrames version.");
+  }
+  if (isBelowFloor(value)) throw new Error(`This launcher runs HyperFrames ${CLI_FLOOR} or newer.`);
+  return value;
 }
 
 export function pluginVersion(pluginRoot = root, workDir = process.cwd()) {
@@ -97,6 +116,14 @@ export function invocation(
     launcher = fileURLToPath(import.meta.url),
   } = {},
 ) {
+  let release = version;
+  if (args[0] === "--cli-version") {
+    if (version) throw new Error("The plugin manager selects this plugin's CLI version.");
+    release = standaloneRelease(args[1]);
+    args = args.slice(2);
+  } else if (!version && env.HYPERFRAMES_STANDALONE_CLI_VERSION !== undefined) {
+    release = standaloneRelease(env.HYPERFRAMES_STANDALONE_CLI_VERSION);
+  }
   if (version && args[0] === "skills")
     throw new Error(
       "Bundled skills are release-managed; the person updates HyperFrames through their agent's plugin manager.",
@@ -114,9 +141,10 @@ export function invocation(
     if (!args[1]) throw new Error("--script requires a Node script path.");
     // Helpers that call the CLI run it through this launcher, never a `hyperframes` from the project.
     const env = { ...childEnv, HYPERFRAMES_CLI_ENTRY: launcher };
+    if (!version && release) env.HYPERFRAMES_STANDALONE_CLI_VERSION = release;
     return { command: node, args: args.slice(1), env, cwd };
   }
-  const cliArgs = ["--yes", version ? `hyperframes@${version}` : STANDALONE_CLI, ...args];
+  const cliArgs = ["--yes", release ? `hyperframes@${release}` : STANDALONE_CLI, ...args];
   const cliEnv = { ...childEnv, HYPERFRAMES_PLUGIN_CWD: cwd };
   const npxCwd = npmCwd ?? npmFolder();
   if (platform !== "win32") return { command: "npx", args: cliArgs, env: cliEnv, cwd: npxCwd };

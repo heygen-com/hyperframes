@@ -328,14 +328,14 @@ describe("shadowingInstall: the older global install a plain `npx hyperframes` r
     return pkg;
   }
 
-  it("moves an older project-local install with the project's own manager", async () => {
+  it("reports an older project-local install without a global update command", async () => {
     const root = layout(null);
     onPathInstead(root, "app/node_modules/hyperframes");
     writeFileSync(join(root, "app/bun.lock"), "");
     const { shadowingInstall } = await import("./installerDetection.js");
     expect(shadowingInstall("0.9.29")).toEqual({
       version: "0.9.8",
-      updateCommand: "bun add hyperframes@0.9.29",
+      updateCommand: null,
     });
   });
 
@@ -355,7 +355,7 @@ describe("shadowingInstall: the older global install a plain `npx hyperframes` r
     expect(process.env["PATH"]).toBe(npxBin);
     expect(shadowingInstall("0.9.29")).toEqual({
       version: "0.9.8",
-      updateCommand: "bun add hyperframes@0.9.29",
+      updateCommand: null,
     });
   });
 
