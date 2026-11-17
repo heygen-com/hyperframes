@@ -19,7 +19,7 @@ import {
 } from "@hyperframes/core";
 import { getMimeType } from "@hyperframes/core/studio-api";
 import { decodeWellFormedEscapes, openRangeEnd } from "@hyperframes/studio-server";
-import { requestFromAnotherSite } from "@hyperframes/studio-server/request-identity";
+import { documentFromAnotherSite } from "@hyperframes/studio-server/request-identity";
 import { findStageProxyBox } from "./compositionViewport.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { injectMediaCodecMap } from "./compositionServer.js";
@@ -296,7 +296,7 @@ function markForAnotherSite(html: string): string {
 
 /** A load by another site is sandboxed, and the documents it gets are marked so their runtime offers it no editing port. */
 function loadedByAnotherSite(req: IncomingMessage, res: ServerResponse): boolean {
-  const anotherSite = requestFromAnotherSite({
+  const anotherSite = documentFromAnotherSite({
     fetchSite: req.headers["sec-fetch-site"] as string | undefined,
     host: req.headers.host,
     referer: req.headers.referer,

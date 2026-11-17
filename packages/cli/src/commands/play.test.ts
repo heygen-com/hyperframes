@@ -179,17 +179,21 @@ describe("registerCompositionRoute", () => {
 
     const etags: Record<string, string> = {};
     for (const path of ["/composition/index.html", "/composition/clip.mp4"]) {
-      const first = await app.request(path);
+      const own = { "Sec-Fetch-Site": "same-origin" };
+      const first = await app.request(path, { headers: own });
       etags[path] = first.headers.get("ETag") ?? "";
       expect(etags[path]).not.toBe("");
       expect(first.headers.get("Cache-Control")).toBe("no-cache");
-      const again = await app.request(path, { headers: { "If-None-Match": etags[path] } });
+      const again = await app.request(path, { headers: { ...own, "If-None-Match": etags[path] } });
       expect(again.status).toBe(304);
     }
 
     writeFileSync(join(project.dir, "clip.mp4"), Buffer.from("0123456789abc", "utf-8"));
     const edited = await app.request("/composition/clip.mp4", {
-      headers: { "If-None-Match": etags["/composition/clip.mp4"] ?? "" },
+      headers: {
+        "Sec-Fetch-Site": "same-origin",
+        "If-None-Match": etags["/composition/clip.mp4"] ?? "",
+      },
     });
     expect(edited.status).toBe(200);
   });

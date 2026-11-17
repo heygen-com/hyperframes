@@ -152,9 +152,10 @@ describe("a thumbnail capture document", () => {
 
   it("carries the sandbox on a 304", async () => {
     const path = "/projects/demo/preview?hf-capture=1";
-    const etag = (await request(sandboxing, path)).headers.get("etag");
+    const navigation = { "sec-fetch-site": "none" };
+    const etag = (await request(sandboxing, path, navigation)).headers.get("etag");
     expect(etag).toBeTruthy();
-    const res = await request(sandboxing, path, { "if-none-match": etag! });
+    const res = await request(sandboxing, path, { ...navigation, "if-none-match": etag! });
     expect(res.status).toBe(304);
     expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
   });
