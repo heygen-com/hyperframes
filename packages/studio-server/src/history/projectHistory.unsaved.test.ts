@@ -23,11 +23,16 @@ it("names the bytes the next restore point would copy in: changed files the stor
   const history = await openProjectHistory({ projectDir, historyRoot });
   cleanup.push(() => history.close());
   await (await history.beginWindow({ kind: "person", name: "You" }, "first")).close();
-  expect(await history.unsavedBytes()).toBe(0);
+  expect(await history.unsavedBlobBytes()).toBe(0);
 
   writeFileSync(join(projectDir, "scene.html"), "x".repeat(1000));
   // The same bytes as a stored file are already in the store.
   writeFileSync(join(projectDir, "copy.html"), "<h1>Hello</h1>");
   writeFileSync(join(projectDir, "clip.mp4"), "v".repeat(5000));
-  expect(await history.unsavedBytes()).toBe(1000);
+  expect(await history.unsavedBlobBytes()).toBe(1000);
+
+  // Two new files with the same bytes are one blob.
+  writeFileSync(join(projectDir, "b1.html"), "y".repeat(2000));
+  writeFileSync(join(projectDir, "b2.html"), "y".repeat(2000));
+  expect(await history.unsavedBlobBytes()).toBe(3000);
 });

@@ -158,8 +158,7 @@ export interface ProjectHistory {
     label: string,
     options?: { idleMs?: number; exclusive?: boolean },
   ): Promise<HistoryWindow>;
-  /** The bytes the next restore point would copy in: changed files whose contents the store lacks, media excluded. */
-  unsavedBytes(): Promise<number>;
+  unsavedBlobBytes(): Promise<number>;
   /**
    * For a writer that records after writing (Studio): moves the uncommitted changes to `paths` into one entry of
    * `who`'s, each cut at the `overwrote` version so earlier parts stay their writer's. Same-key claims merge until
@@ -294,6 +293,12 @@ function withoutHiddenPaths(log: HistoryLog): HistoryLog {
     entry.files = entry.files.filter((file) => isHistoryPath(file.path));
   return log;
 }
+
+const hashIfPresent = (path: string) =>
+  hashFile(path).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
 
 const historyFiles = async (dir: string) =>
   (await listProjectFilesAsync(dir)).filter((file) => isHistoryPath(file.path));
@@ -788,22 +793,18 @@ class Engine {
     replaceFileAtomically(join(this.home, "stat.json"), files, 0o644);
   }
 
-  async unsavedBytes(): Promise<number> {
+  async unsavedBlobBytes(): Promise<number> {
     if (this.whereFolder() !== "here") return 0;
     const now = this.now();
-    let bytes = 0;
+    const missing = new Map<string, number>();
     for (const file of await historyFiles(this.dir)) {
       if (this.adopting.has(file.path) || isUncopied(file.path, file.size)) continue;
       const stat = statKey(file, now);
       if (stat && this.tracked.get(file.path)?.stat === stat) continue;
-      const hash = await hashFile(join(this.dir, file.path)).catch((error) => {
-        // A file removed since the listing has nothing to copy.
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-        throw error;
-      });
-      if (hash !== null && !this.blobs.has(hash)) bytes += file.size;
+      const hash = await hashIfPresent(join(this.dir, file.path));
+      if (hash && !this.blobs.has(hash)) missing.set(hash, file.size);
     }
-    return bytes;
+    return [...missing.values()].reduce((sum, size) => sum + size, 0);
   }
 
   /**
@@ -1494,7 +1495,7 @@ class Engine {
           options.idleMs ?? this.options.maxGroupMs ?? 30_000,
           options.exclusive === true,
         ),
-      unsavedBytes: () => this.unsavedBytes(),
+      unsavedBlobBytes: () => this.unsavedBlobBytes(),
       claim: async (who, label, paths, options = {}) => {
         await Promise.all(paths.map((path) => this.adopting.get(this.logPath(path))?.retryNow()));
         return this.queue(() => this.claimNow(who, label, paths, options));
