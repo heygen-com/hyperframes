@@ -17,6 +17,7 @@ import {
   isStudioPrivatePath,
   mkdirWithinProject,
   resolveWithinProject,
+  toolTrustedFileKind,
 } from "./safePath.js";
 
 const recased = (path: string) => join(dirname(path), basename(path).toUpperCase());
@@ -291,6 +292,40 @@ describe("isStudioPrivatePath", () => {
     "certs/CERT.PEM.",
     ".config/gh/hosts.yml",
     "../.aws/credentials",
+    "sub/.hyperframes",
+    "sub/.hyperframes/app-history.jsonl",
+    "sub/.HyperFrames./App-History.JSONL",
+    "sub\\.hyperframes \\agent-handoff.json",
+    "a/b/.hyperframes:stream/comments.jsonl",
+    "sub/.hyperframes/backup/index.html",
+    "sub/.hyperframes/studio-motion.json",
+    "sub/.hyperframes/prepared-assets/gif/clip.gif",
+    "sub/.hyperframes/requests/1/before.png",
+    ".hyperframes/prepared-assets/.hyperframes/app-history.jsonl",
+    "assets/.hyperframes/logo.png",
+    ".dev.vars",
+    ".pgpass",
+    ".vault-token",
+    ".cargo/credentials.toml",
+    ".pulumi/credentials.json",
+    "sub/.terraform/providers.json",
+    ".DEV.VARS.",
+    ".hyperframes-pull.json",
+    "sub/.hyperframes-pull.json",
+    ".config/fonts/brand.txt",
+    ".cache/notes.yaml",
+    ".png",
+    "sub/.media/audio/bgm.json",
+    ".media/.lock",
+    "infra/terraform.tfstate",
+    "infra/terraform.tfstate.backup",
+    "prod.tfvars",
+    "prod.tfvars.json",
+    "android/release.jks",
+    "release.keystore",
+    "AuthKey_ABC.p8",
+    "vault.kdbx",
+    "putty.ppk",
   ])("refuses %s", (path) => {
     expect(isStudioPrivatePath(path)).toBe(true);
   });
@@ -301,13 +336,82 @@ describe("isStudioPrivatePath", () => {
     ".hyperframes/requests/sketch.png",
     ".hyperframes/studio-motion.json",
     ".hyperframes/studio-manual-edits.json",
-    ".hyperframes-pull.json",
-    "assets/.hyperframes/logo.png",
+    "sub/hyperframes/app-history.jsonl",
     "assets/logo.png",
     "assets/keynote-cover.png",
-    ".config/fonts/brand.woff2",
     "fonts/aws-logo.svg",
+    ".media/audio/bgm/bgm_001.wav",
+    ".MEDIA./luts/lut_001.cube",
+    ".config/fonts/brand.woff2",
+    ".assets/animation.js",
+    ".cache/still.webp",
+    "sub/.media/audio/bgm.wav",
+    "../../.cache/hyperframes/frames/v1/frame_0001.png",
+    "..\\.cache\\frames\\frame_0001.png",
   ])("allows %s", (path) => {
     expect(isStudioPrivatePath(path)).toBe(false);
+  });
+});
+
+describe("toolTrustedFileKind", () => {
+  it.each([
+    ["package.json", "project-config"],
+    ["sub/Package.JSON", "project-config"],
+    ["hyperframes.json.", "project-config"],
+    ["hyperframes.lock.json", "project-config"],
+    ["package.json::$DATA", "project-config"],
+    ["pnpm-lock.yaml", "lock-file"],
+    ["nested/yarn.lock", "lock-file"],
+    ["bun.lockb ", "lock-file"],
+    ["tsconfig.json", "tool-config"],
+    ["Makefile", "tool-config"],
+    ["vite.config.ts", "tool-config"],
+    ["lib/eslint.config.mjs", "tool-config"],
+    ["AGENTS.md", "agent-instructions"],
+    ["deep/sub\\CLAUDE.local.md", "agent-instructions"],
+    ["compositions/gemini.md", "agent-instructions"],
+    ["scripts/postinstall.sh", "program"],
+    ["tools/run.PY", "program"],
+    ["assets/app.exe", "program"],
+    ["PACKAG~1.JSO", "short-name"],
+    ["CLAUDE~1/notes.md", "short-name"],
+    ["COPILO~1.MD", "short-name"],
+    ["AGENT\u017f.md", "agent-instructions"],
+    ["package.j\u017fon", "project-config"],
+    ["Make\ufb01le", "tool-config"],
+    ["run.\u017fh", "program"],
+    ["\uff50ackage.json", "project-config"],
+    ["pack\u200bage.json", "project-config"],
+    ["jest.config.json", "tool-config"],
+    ["docker-compose.yml", "tool-config"],
+    ["gulpfile.mjs", "tool-config"],
+    ["turbo.json", "tool-config"],
+    ["pyproject.toml", "tool-config"],
+  ] as const)("names %s %s", (path, kind) => {
+    expect(toolTrustedFileKind(path)).toBe(kind);
+  });
+
+  it("finds an agent file below a folder with a decomposed name", () => {
+    expect(toolTrustedFileKind("caf\u0065\u0301/AGENTS.md")).toBe("agent-instructions");
+  });
+
+  it.each([
+    "index.html",
+    "compositions/scene.html",
+    "assets/style.css",
+    "assets/gsap.min.js",
+    "lib/scene.mjs",
+    "assets/data.json",
+    "assets/logo.svg",
+    "notes.md",
+    "README.md",
+    "compositions/lockup.html",
+    "assets/package-art.png",
+    ".hyperframes/studio-motion.json",
+    "media/take~2.mp4",
+    "assets/scene~10.png",
+    "assets/config.json",
+  ])("leaves %s to the other rules", (path) => {
+    expect(toolTrustedFileKind(path)).toBeNull();
   });
 });

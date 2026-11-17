@@ -62,6 +62,7 @@ export {
   findPreviewElementForTimelineElement,
   readable,
   standInFor,
+  standInHandle,
 } from "./components/editor/previewSelection";
 export { PREVIEW_QUALITY_LEVELS, type PreviewQuality } from "@hyperframes/core/preview-quality";
 export type {

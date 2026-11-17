@@ -158,7 +158,7 @@ export function formatLayoutIssue(issue: LayoutIssue): string {
   }
   const parts = [
     timeLabel,
-    issue.code,
+    terminalText(issue.code),
     terminalText(issue.selector),
     issue.containerSelector ? `inside ${terminalText(issue.containerSelector)}` : "",
     issue.overflow ? `overflowed ${formatOverflow(issue.overflow)}` : "",

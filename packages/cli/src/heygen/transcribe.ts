@@ -1,6 +1,7 @@
 // Transcription on HeyGen (`transcribe --engine heygen`): word times from its speech model, with speakers when asked.
 // The route runs inside the POST and takes an API key; the Idempotency-Key makes a re-run free.
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import type { TranscriptionCreateRequest } from "../cloud/_gen/types.js";
@@ -94,7 +95,7 @@ export async function transcribeWithHeygen(
       },
     );
     const words = wordsOf(job);
-    writeFileSync(transcriptPath, JSON.stringify(words, null, 2));
+    replaceFileAtomically(transcriptPath, JSON.stringify(words, null, 2));
     return {
       transcriptPath,
       model: typeof job.model === "string" ? job.model : MODEL,

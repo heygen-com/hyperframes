@@ -10,7 +10,9 @@ import { resolveCredential } from "../auth/resolver.js";
 import { refreshIfNeeded, resolveCloudAuthHeaders, resolveCloudBaseUrl } from "../cloud/auth.js";
 import { HyperframesApiError, HyperframesCloudClient } from "../cloud/_gen/client.js";
 import { Fix } from "../measure/media.js";
-import { creditLimit, creditsSpent } from "../media-use/lib/credit-limit.mjs";
+import { appendRecord } from "../utils/projectRecords.js";
+import { creditLimit } from "../media-use/lib/credit-limit.mjs";
+import { goneNote, ledgerScope, noteOwn, spentIn } from "./jobLedger.js";
 import { cliCheckoutLink, pageUrl } from "./plan.js";
 
 const MEDIA_USE_SKILL = "media-use";
@@ -87,23 +89,24 @@ async function jobSender(): Promise<Sender> {
   return { auth: buildAuthHeaders(credential), scope };
 }
 
-function failedKeys(scope: string): Set<string> {
-  const file = failedKeysFile();
+function scopedKeys(file: string, scope: string): Set<string> {
   const lines = existsSync(file) ? readFileSync(file, "utf8").split("\n") : [];
   return new Set(
     lines.filter((l) => l.startsWith(`${scope} `)).map((l) => l.slice(scope.length + 1)),
   );
 }
 
-function markFailed(key: string, scope: string | null): void {
+function noteKey(file: string, key: string, scope: string | null): void {
   if (!scope) return;
-  mkdirSync(configDir(), { recursive: true });
-  appendFileSync(failedKeysFile(), `${scope} ${key}\n`);
+  mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+  appendFileSync(file, `${scope} ${key}\n`, { mode: 0o600 });
 }
+
+const markFailed = (key: string, scope: string | null) => noteKey(failedKeysFile(), key, scope);
 
 /** The key to send: `key` itself, or past every key whose job failed or was refused, so a retry is a new job. */
 function liveKey(key: string, scope: string | null): string {
-  const failed = scope ? failedKeys(scope) : new Set<string>();
+  const failed = scope ? scopedKeys(failedKeysFile(), scope) : new Set<string>();
   let sent = key;
   for (let n = 1; failed.has(sent); n++) sent = `${key}-${n}`;
   return sent;
@@ -237,14 +240,27 @@ export interface JobLog {
   what: string;
 }
 
-function log(entry: JobLog, record: Record<string, unknown>) {
+const JOB_LOG = "heygen-jobs.jsonl";
+
+function appendJobLog(projectDir: string, line: Record<string, unknown>): void {
+  if (
+    !appendRecord(
+      projectDir,
+      JOB_LOG,
+      `${JSON.stringify({ at: new Date().toISOString(), ...line })}\n`,
+    )
+  )
+    throw new Fix(
+      `${join(projectDir, ".hyperframes", JOB_LOG)} could not be added to; a link or anything but a plain file there, or in place of .hyperframes, is never written through`,
+      "remove that link or file and run the same command again",
+    );
+}
+
+function log(entry: JobLog, record: Record<string, unknown>, at: string | null) {
   if (!entry.projectDir) return;
-  const dir = join(entry.projectDir, ".hyperframes");
-  mkdirSync(dir, { recursive: true });
-  appendFileSync(
-    join(dir, "heygen-jobs.jsonl"),
-    `${JSON.stringify({ at: new Date().toISOString(), what: entry.what, ...record })}\n`,
-  );
+  appendJobLog(entry.projectDir, { what: entry.what, ...record });
+  if (typeof record.key === "string" && typeof record.credits === "number")
+    noteOwn(at, record.key, record.credits);
 }
 
 export interface RunOptions {
@@ -260,19 +276,20 @@ export interface RunOptions {
 
 /** Refuses, before anything is sent, a new job past the project's credit limit, else reserves its credits. A vendor-priced
  *  image is checked and held at its estimate plus 10%, which its charge can pass, until HeyGen says what it charged.
- *  Every paid call comes through runJob. True when this call reserved. */
+ *  A key resumes unchecked only if this account's ledger holds credits for it, else is priced as new. True when reserved. */
 function withinLimit(
   limitLog: JobLog | undefined,
   sent: string,
+  at: string | null,
   credits: number | undefined,
   vendorPriced?: boolean,
 ): boolean {
   if (!limitLog?.projectDir) return false;
   const limit = creditLimit(limitLog.projectDir);
   if (limit === undefined) return false;
-  const spent = creditsSpent(limitLog.projectDir);
-  if (spent.keys.has(sent)) return false;
-  const left = limit - spent.total;
+  const spent = spentIn(limitLog.projectDir, at);
+  if ((spent.own.get(sent) ?? 0) > 0) return false;
+  const left = limit - spent.total + (spent.others.get(sent) ?? 0);
   const fix =
     "tell the person what their limit leaves out, then ask whether to raise it or make the video without this piece";
   if (credits === undefined)
@@ -283,10 +300,10 @@ function withinLimit(
   const { checked, about } = limitCheck(credits, vendorPriced);
   if (checked > left)
     throw new Fix(
-      `this call is ${about} and the run's credit limit of ${limit} leaves ${Math.max(0, left)}; nothing was made or charged`,
+      `this call is ${about} and the run's credit limit of ${limit} leaves ${Math.max(0, left)}; nothing was made or charged${goneNote(spent)}`,
       fix,
     );
-  log(limitLog, { key: sent, status: "reserved", credits: checked });
+  log(limitLog, { key: sent, status: "reserved", credits: checked }, at);
   return true;
 }
 
@@ -302,7 +319,8 @@ export async function runJob(
   const route = jobRoute.path;
   const { auth, scope } = await jobSender();
   const sent = liveKey(key, scope);
-  const reserved = withinLimit(opts.log, sent, opts.credits, opts.vendorPriced);
+  const at = ledgerScope(scope, opts.log?.projectDir);
+  const reserved = withinLimit(opts.log, sent, at, opts.credits, opts.vendorPriced);
   const held =
     opts.credits === undefined ? undefined : limitCheck(opts.credits, opts.vendorPriced).checked;
   let job: Job;
@@ -317,13 +335,13 @@ export async function runJob(
   } catch (err) {
     if (err instanceof Refused && !KEEPS_KEY.has(err.status)) {
       markFailed(sent, scope);
-      if (reserved && opts.log) log(opts.log, { key: sent, status: "refused", credits: 0 });
+      if (reserved && opts.log) log(opts.log, { key: sent, status: "refused", credits: 0 }, at);
     }
     throw err;
   }
   const waits = RUNNING.has(job.status.toLowerCase());
   if (opts.log && waits)
-    log(opts.log, { route, id: job.id, key: sent, status: job.status, credits: held });
+    log(opts.log, { route, id: job.id, key: sent, status: job.status, credits: held }, at);
   const status = jobRoute.status;
   while (status && RUNNING.has(job.status.toLowerCase())) {
     if (Date.now() - started > (opts.timeoutMs ?? 15 * 60_000))
@@ -341,13 +359,17 @@ export async function runJob(
     );
   }
   if (opts.log)
-    log(opts.log, {
-      route,
-      id: job.id,
-      key: sent,
-      status: job.status,
-      credits: chargedCredits(job) ?? opts.credits,
-    });
+    log(
+      opts.log,
+      {
+        route,
+        id: job.id,
+        key: sent,
+        status: job.status,
+        credits: chargedCredits(job) ?? opts.credits,
+      },
+      at,
+    );
   if (!/^(completed|succeeded|success|done)$/i.test(job.status)) {
     markFailed(sent, scope);
     throw await refusal(422, {
@@ -420,6 +442,7 @@ export function keptVoice(projectDir: string | null, request: string): Voice | u
 }
 
 export function keepVoice(projectDir: string | null, request: string, voice: Voice): void {
+  if (projectDir) return appendJobLog(projectDir, { voice_pick: request, voice });
   const file = picksFile(projectDir);
   mkdirSync(dirname(file), { recursive: true });
   appendFileSync(

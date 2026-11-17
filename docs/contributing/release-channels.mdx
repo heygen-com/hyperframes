@@ -15,7 +15,7 @@ Dist-tags only control npm install defaults; they do not remove code from a pack
 
 - `main` is stable/releasable. Anything merged to `main` is eligible for `latest`.
 - `release/v*` branches are for stable patch releases and hotfixes.
-- `next`, `alpha`, `beta`, `rc`, `canary`, and `prerelease/*` branches are for prerelease integration.
+- `next` and `alpha` are the prerelease branches. A prerelease tag publishes only a commit already on `main`, `next` or `alpha`.
 
 If a feature should ship in alpha only, merge or retarget that PR to a prerelease branch instead of `main`.
 
@@ -32,7 +32,7 @@ On the first run, `release:prepare` drafts missing changelog artifacts and exits
 
 See [Changelog process](/contributing/changelog-process) for the full workflow. For stable releases, `bun run set-version <version>` still enforces this checkpoint when maintainers run the lower-level release command directly.
 
-Push the release branch without its local tag, open a PR to `main`, and merge it after approval and CI. The publish workflow checks out the exact PR merge SHA, verifies it before publishing, creates the stable tag at that commit, publishes npm packages, and creates the GitHub release. Before it publishes, the run waits for a maintainer to approve it in the `npm-publish` environment.
+Push the release branch without its local tag, open a PR to `main`, and merge it after approval and CI. The publish workflow checks out the exact PR merge SHA, verifies it before publishing, creates the stable tag at that commit, publishes npm packages, and creates the GitHub release. Nothing waits for an approval after the merge: the reviewed release PR is the review.
 
 If that workflow needs recovery, rerun its original merged-PR event. Stable tag pushes and manual dispatches do not publish, so recovery cannot select a different commit.
 
@@ -40,7 +40,7 @@ For hotfixes, branch from the last stable tag, cherry-pick only the fix, publish
 
 ## Alpha release
 
-Alpha releases must be reachable from a prerelease branch such as `origin/next` or `origin/alpha`.
+Alpha releases must be reachable from `origin/main`, `origin/next` or `origin/alpha`. The publish workflow refuses a tag on any other commit before it builds anything.
 Use the same changelog draft workflow when the prerelease contains changes that users should know about.
 
 ```bash
@@ -50,7 +50,7 @@ git push origin next
 git push origin v0.4.25-alpha.1
 ```
 
-The tag push starts the publish workflow. It builds and packs the release, then waits for approval in the `npm-publish` environment. A maintainer other than the person who pushed the tag approves the run on the workflow page, and only then is anything published. A prerelease branch has no PR review, so this approval is its review.
+The tag push starts the publish workflow, which builds, packs and publishes the release with no approval step. Only repository admins may push `v*-*` tags.
 
 Consumers can install alpha builds explicitly:
 
@@ -66,8 +66,9 @@ The publish workflow validates release channel boundaries before publishing:
 - Stable versions must publish with `latest`.
 - Prerelease versions must publish with the prerelease dist-tag, such as `alpha`.
 - Stable releases must come from a merged, reviewed `release/vX.Y.Z` PR.
-- Prerelease tags must be reachable from a prerelease branch.
-- Every publish, stable or prerelease, waits for a maintainer other than the one who started it to approve the run in the `npm-publish` environment.
+- Prerelease tags must point at a commit already on `main`, `next` or `alpha`.
+- Only repository admins may push prerelease (`v*-*`) tags. That is a prerelease's only review: a prerelease branch takes pushes without a PR, and no approval follows the tag.
+- Every publish runs in the `npm-publish` environment, which npm trusted publishing names; it waits for no approval.
 - Merged `release/vX.Y.Z` PRs publish stable releases only.
 - Every publish job verifies that its checkout matches the immutable event SHA.
 - Builds, lifecycle scripts and `npm pack` run in a job with a read-only token and no secrets.

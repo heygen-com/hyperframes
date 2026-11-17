@@ -8,16 +8,16 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   isEnvOrGitPath,
   isPrivateOutsideFile,
   linksOutside,
 } from "@hyperframes/studio-server/outside-file";
 import { isPrivateProjectFile, realFilePath } from "@hyperframes/studio-server/safe-path";
-import { mkdirWithinProject } from "@hyperframes/core";
 import { isCredentialOrToolStatePath } from "@hyperframes/core/safe-path";
-import { publishRegistryFile, registryRoot, registryTargetPath } from "../registry/publication.js";
+import { registryRoot } from "../registry/publication.js";
+import { recordFolder, writeRecord } from "./projectRecords.js";
 import { walkBudget } from "./walkBudget.js";
 
 export { isEnvOrGitPath, isPrivateOutsideFile, linksOutside };
@@ -89,15 +89,25 @@ function takeRecordLock(lock: string): void {
 
 function changeReceivedRecord(projectDir: string, change: (files: Set<string>) => boolean): void {
   const root = registryRoot(projectDir);
-  const lock = registryTargetPath(root, RECEIVED_RECORD_LOCK);
-  mkdirWithinProject(root, dirname(lock));
+  if (!recordFolder(root, ""))
+    throw new Error(
+      `${join(root, ".hyperframes")} is a link or not a folder; remove it and try again.`,
+    );
+  const lock = join(root, RECEIVED_RECORD_LOCK);
   takeRecordLock(lock);
   try {
     const record = readRecord(root, true);
     if (record && !Array.isArray(record.listed)) return;
     const files = new Set(((record?.listed ?? []) as unknown[]).map(String));
     if (!change(files)) return;
-    publishRegistryFile(root, RECEIVED_RECORD, `${JSON.stringify({ files: [...files].sort() })}\n`);
+    if (
+      !writeRecord(
+        root,
+        basename(RECEIVED_RECORD),
+        `${JSON.stringify({ files: [...files].sort() })}\n`,
+      )
+    )
+      throw new Error(`Could not write ${join(root, RECEIVED_RECORD)}.`);
   } finally {
     rmSync(lock, { force: true });
   }

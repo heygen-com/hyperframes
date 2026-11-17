@@ -6,6 +6,7 @@ import {
   projectPathSegments,
   realpath,
   resolveWithinProject as resolveInProject,
+  toolTrustedFileKind,
 } from "@hyperframes/core/safe-path";
 import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
 
@@ -56,9 +57,9 @@ export function isPrivateProjectFile(projectDir: string, filePath: string): bool
 
 const WRITABLE_HIDDEN_FOLDERS = new Set([".hyperframes", ".media"]);
 
-/** Writes refuse the project folder, node_modules, and hidden paths but Studio's records and the media ledger. */
+/** Writes refuse the project folder, node_modules, hidden paths but Studio's records, and `toolTrustedFileKind` files. */
 export function isWritableProjectPath(relPath: string): boolean {
-  if (!relPath || isPrivateProjectPath(relPath)) return false;
+  if (!relPath || isPrivateProjectPath(relPath) || toolTrustedFileKind(relPath)) return false;
   const segments = projectPathSegments(relPath);
   return segments.every(
     (segment, at) =>
@@ -70,6 +71,42 @@ export function isWritableProjectPath(relPath: string): boolean {
 
 export function isWritableProjectFile(projectDir: string, filePath: string): boolean {
   return projectRelatives(projectDir, filePath).every(isWritableProjectPath);
+}
+
+/**
+ * The first `toolTrustedFileKind` file, `node_modules` or `.git` below `dir`, which a delete or move of the folder
+ * would take along. Links are not followed.
+ */
+export function toolTrustedFileWithin(projectDir: string, dir: string): string | null {
+  return protectedEntryWithin(dir, projectRelativePath(projectDir, dir));
+}
+
+const PROTECTED_FOLDERS = new Set(["node_modules", ".git"]);
+
+function protectedEntryWithin(dir: string, rel: string): string | null {
+  const entries = folderEntries(dir);
+  if (!entries) return rel || ".";
+  for (const entry of entries) {
+    const found = protectedEntry(dir, entry, rel ? `${rel}/${entry.name}` : entry.name);
+    if (found) return found;
+  }
+  return null;
+}
+
+function protectedEntry(dir: string, entry: Dirent, at: string): string | null {
+  if (!entry.isDirectory()) return toolTrustedFileKind(at) ? at : null;
+  if (toolTrustedFileKind(at) || PROTECTED_FOLDERS.has(projectPathSegments(entry.name)[0] ?? ""))
+    return at;
+  return protectedEntryWithin(join(dir, entry.name), at);
+}
+
+function folderEntries(dir: string): Dirent[] | null {
+  try {
+    return readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if (UNREADABLE_DIR_CODES.has((err as NodeJS.ErrnoException).code ?? "")) return null;
+    throw err;
+  }
 }
 
 export function resolveWritableWithinProject(base: string, relativePath: string): string | null {
@@ -130,7 +167,8 @@ const IGNORE_DIRS = new Set([
 ]);
 
 function shouldIgnoreDir(rel: string): boolean {
-  return rel === ".hyperframes/backup";
+  const segments = projectPathSegments(rel);
+  return segments.at(-1) === "backup" && segments.at(-2) === ".hyperframes";
 }
 
 /**

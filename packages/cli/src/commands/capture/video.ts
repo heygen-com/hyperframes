@@ -5,6 +5,7 @@ import { c } from "../../ui/colors.js";
 import { safeFetch } from "../../capture/assetDownloader.js";
 import { ensureCaptureDirSync } from "../../capture/captureFile.js";
 import { CAPTURE_USER_AGENT } from "../../capture/userAgent.js";
+import { terminalText } from "@hyperframes/core";
 
 const MAX_VIDEO_BYTES = 250 * 1024 * 1024;
 const VIDEO_CONTENT_TYPE_RE = /^(video\/|application\/(mp4|octet-stream|x-mpegurl))/i;
@@ -100,6 +101,8 @@ export function safeFilename(name: string): string {
 }
 
 export { VIDEO_CONTENT_TYPE_RE, MAX_VIDEO_BYTES };
+
+const shown = (value: unknown): string => terminalText(String(value));
 
 export interface ManifestEntry {
   index: number;
@@ -206,7 +209,9 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
   try {
     manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
   } catch (e) {
-    console.error(`${c.error("✗")} video-manifest.json is malformed: ${(e as Error).message}`);
+    console.error(
+      `${c.error("✗")} video-manifest.json is malformed: ${shown((e as Error).message)}`,
+    );
     setCommandExitCode(1);
     return;
   }
@@ -221,9 +226,9 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
     );
     for (const e of manifest) {
       console.log(
-        `  ${c.bold(`[${e.index}]`)} ${e.filename} — ${e.sourceWidth || e.width}×${e.sourceHeight || e.height}` +
-          (e.heading ? `\n      heading: "${e.heading}"` : "") +
-          `\n      url: ${e.url}`,
+        `  ${c.bold(`[${shown(e.index)}]`)} ${shown(e.filename)} — ${shown(e.sourceWidth || e.width)}×${shown(e.sourceHeight || e.height)}` +
+          (e.heading ? `\n      heading: "${shown(e.heading)}"` : "") +
+          `\n      url: ${shown(e.url)}`,
       );
     }
     return;
@@ -232,7 +237,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
   const pick = pickManifestEntry(manifest, args);
   if (!pick.ok) {
     console.error(
-      `${c.error("✗")} ${pick.message}` +
+      `${c.error("✗")} ${shown(pick.message)}` +
         (pick.code === "no-match-url" ? `\n  Run with --list to see what's available.` : ""),
     );
     setCommandExitCode(1);
@@ -245,7 +250,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
     console.error(
       `${c.error("✗")} filename "${safeFilename(entry.filename || basename(entry.url))}" ` +
         `collides with manifest entr${collisions.length === 1 ? "y" : "ies"} ` +
-        `${collisions.map((co) => `[${co.index}]`).join(", ")}. ` +
+        `${collisions.map((co) => `[${shown(co.index)}]`).join(", ")}. ` +
         `Refusing to download — the on-disk file's bytes would not match the requested entry.`,
     );
     setCommandExitCode(1);
@@ -267,15 +272,15 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
   const relPath = isW2hLayout ? `capture/assets/videos/${fname}` : `assets/videos/${fname}`;
 
   console.log(
-    `${c.accent("▸")} downloading [${entry.index}] ${entry.filename} (${entry.sourceWidth || entry.width}×${entry.sourceHeight || entry.height})`,
+    `${c.accent("▸")} downloading [${shown(entry.index)}] ${shown(entry.filename)} (${shown(entry.sourceWidth || entry.width)}×${shown(entry.sourceHeight || entry.height)})`,
   );
-  console.log(`     from: ${entry.url}`);
+  console.log(`     from: ${shown(entry.url)}`);
   try {
     const bytes = await streamToFile(entry.url, outPath);
     const sizeKb = Math.round(bytes / 1024);
     const sizeStr = sizeKb > 1024 ? `${(sizeKb / 1024).toFixed(1)}MB` : `${sizeKb}KB`;
     console.log(`${c.success("◇")}  wrote ${relPath} (${sizeStr})`);
-    const snippetId = `video-${entry.index}`;
+    const snippetId = `video-${shown(entry.index)}`;
     console.log(
       `     Reference it from a beat composition as:\n` +
         `       <video id="${snippetId}" src="${relPath}" data-start="0" data-duration="${(entry.sourceWidth || entry.width) === (entry.sourceHeight || entry.height) ? 5 : 4}" data-track-index="0" autoplay muted loop></video>`,
@@ -287,7 +292,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
       return;
     }
     const message = (e as Error).message.replace(/\r/g, "").replace(/\n/g, "");
-    console.error(`${c.error("✗")} download failed: ${message}`);
+    console.error(`${c.error("✗")} download failed: ${shown(message)}`);
     setCommandExitCode(1);
   }
 }

@@ -168,6 +168,7 @@ describe("installEditingAgent", () => {
           "draft",
           "gesture-start",
           "console-errors",
+          "watch-keys",
         ],
       },
     });
@@ -380,6 +381,19 @@ describe("installEditingAgent", () => {
         "invalid-params",
       ],
     ),
+    ...[
+      {},
+      { combos: "Space" },
+      { combos: [1] },
+      { combos: ["ctrl+alt+x"] },
+      { combos: ["k".repeat(65)] },
+      { combos: Array(33).fill("k") },
+      { combos: [], extra: 1 },
+    ].map((params, index) => [
+      { v: 1, id: 180 + index, kind: "watch-keys", params },
+      180 + index,
+      "invalid-params",
+    ]),
     ...[["--"], ["--a b"], ["--a;b"], ["--a:b"], ["Color"], ["-x"], ["--" + "a".repeat(255)]].map(
       (properties, index) => [
         { v: 1, id: 60 + index, kind: "computed-styles", params: { selector: "p", properties } },
@@ -500,6 +514,102 @@ describe("installEditingAgent", () => {
       id: 2,
       ok: false,
       error: { code: "failed" },
+    });
+  });
+
+  describe("watch-keys", () => {
+    const press = (type: string, init: KeyboardEventInit, target: EventTarget = document.body) => {
+      const event = new KeyboardEvent(type, { bubbles: true, cancelable: true, ...init });
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    const SPACE = { key: " ", code: "Space" };
+    const forwarded = (type: string, key: string, code: string, repeat = false) => ({
+      v: 1,
+      event: "key",
+      key: {
+        type,
+        key,
+        code,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: false,
+        repeat,
+      },
+    });
+    // Port messages arrive in order, so everything sent before this reply has arrived by then.
+    const received = async (port: MessagePort, seen: unknown[]) => {
+      port.postMessage({ v: 1, id: 99, kind: "hello" });
+      await vi.waitFor(() => expect(seen.at(-1)).toMatchObject({ id: 99 }));
+      return seen.slice(0, -1);
+    };
+    const watch = (port: MessagePort, combos: string[], id = 1) =>
+      ask(port, { v: 1, id, kind: "watch-keys", params: { combos } });
+    const collect = (port: MessagePort) => {
+      const seen: unknown[] = [];
+      port.onmessage = (event) => seen.push(event.data);
+      return seen;
+    };
+
+    it("cancels and forwards a watched combo outside the elements that own keys, and its keyup", async () => {
+      document.body.innerHTML = `<input id="field" /><button id="go">Go</button>`;
+      const port = connectedPort();
+      expect(await watch(port, ["Space", "k"])).toMatchObject({
+        ok: true,
+        result: { watching: 2 },
+      });
+      const seen = collect(port);
+
+      expect(press("keydown", SPACE)).toBe(true);
+      expect(press("keydown", { ...SPACE, repeat: true })).toBe(true);
+      expect(press("keydown", { key: "j", code: "KeyJ" })).toBe(false);
+      expect(press("keydown", SPACE, document.getElementById("field")!)).toBe(false);
+      expect(press("keydown", SPACE, document.getElementById("go")!)).toBe(false);
+      expect(press("keyup", SPACE)).toBe(false);
+      press("keyup", { key: "j", code: "KeyJ" });
+
+      expect(await received(port, seen)).toEqual([
+        forwarded("keydown", " ", "Space"),
+        forwarded("keydown", " ", "Space", true),
+        forwarded("keyup", " ", "Space"),
+      ]);
+    });
+
+    it("leaves a key the film cancelled before it", async () => {
+      const film = (event: Event) => event.preventDefault();
+      window.addEventListener("keydown", film, true);
+      try {
+        const port = connectedPort();
+        await watch(port, ["k"]);
+        const seen = collect(port);
+        press("keydown", { key: "k", code: "KeyK" });
+        expect(await received(port, seen)).toEqual([]);
+      } finally {
+        window.removeEventListener("keydown", film, true);
+      }
+    });
+
+    it("still forwards the keyup of a key held while the watch list changes", async () => {
+      const port = connectedPort();
+      await watch(port, ["k"]);
+      const seen = collect(port);
+      press("keydown", { key: "k", code: "KeyK" });
+      await vi.waitFor(() => expect(seen).toEqual([forwarded("keydown", "k", "KeyK")]));
+      expect(await watch(port, ["k", "j"], 2)).toMatchObject({ result: { watching: 2 } });
+      const after = collect(port);
+      press("keyup", { key: "k", code: "KeyK" });
+      expect(await received(port, after)).toEqual([forwarded("keyup", "k", "KeyK")]);
+    });
+
+    it("stops on an empty list and when disposed", async () => {
+      const port = connectedPort();
+      await watch(port, ["k"]);
+      expect(await watch(port, [], 2)).toMatchObject({ result: { watching: 0 } });
+      expect(press("keydown", { key: "k", code: "KeyK" })).toBe(false);
+      await watch(port, ["k"], 3);
+      agent.dispose();
+      expect(press("keydown", { key: "k", code: "KeyK" })).toBe(false);
     });
   });
 });

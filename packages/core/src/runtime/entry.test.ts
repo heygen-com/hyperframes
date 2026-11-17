@@ -511,6 +511,26 @@ describe("runtime entry", () => {
       expect(loadsOf(now, soon, later)).toEqual([2, 0, 0]);
     });
 
+    it("in a hidden capture page a clip with no authored length waits until due, and keeps its length once loaded", async () => {
+      spyLoad();
+      servePreview().setAttribute("content", STUDIO_PREVIEW_CAPTURE_MODE);
+      const clips = videos(mountRoot(), "0", "1.5", "9");
+      for (const clip of clips) clip.removeAttribute("data-duration");
+      const [now, soon, later] = clips;
+
+      await evaluateRuntime();
+      expect(armed(now!, soon!, later!)).toEqual([true, false, false]);
+      expect(loadsOf(now!, soon!, later!)).toEqual([1, 0, 0]);
+
+      Object.defineProperty(now!, "readyState", { value: 1 });
+      Object.defineProperty(now!, "duration", { value: 2 });
+      window.__player?.seek(9.4);
+      // The loaded clip is never reloaded, which would drop the length it is timed by; one with no length
+      // known that started before the playhead may still be on screen, so it loads.
+      expect(armed(now!, soon!, later!)).toEqual([true, true, true]);
+      expect(loadsOf(now!)).toEqual([1]);
+    });
+
     // Three takes of one file, each a picture and a sound, as an edit cut from a single source is.
     const takesOfOneFile = () => {
       const root = mountRoot();

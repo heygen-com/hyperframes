@@ -140,6 +140,12 @@
       "types": "./dist/assetResolution.d.ts",
       "environments": ["bun", "node"]
     },
+    "./private-path": {
+      "source": "./src/privatePath.ts",
+      "runtime": "./dist/privatePath.js",
+      "types": "./dist/privatePath.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./html-attribute-spans": {
       "source": "./src/htmlAttributeSpans.ts",
       "runtime": "./dist/htmlAttributeSpans.js",

@@ -12,6 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gzipSync } from "node:zlib";
 import test from "node:test";
 import { parse } from "yaml";
 
@@ -510,7 +511,7 @@ test("publishing skips only identical uploads and fails on a version it did not 
   assert.doesNotMatch(rerun.calls, /npm publish/);
 });
 
-test("every publish runs in the approval-gated npm-publish environment", () => {
+test("every publish runs in npm-publish, the environment npm trusted publishing names", () => {
   assert.equal(publish.environment, "npm-publish");
   const jobsWithEnvironment = Object.entries(config.jobs).filter(([, job]) => job.environment);
   assert.deepEqual(
@@ -609,3 +610,142 @@ for (const [job, name, artifact] of [
     assert.notEqual(runFindPrevious(step, [{ id: 1, name: artifact, expired: true }]).status, 0);
   });
 }
+
+// A tarball whose second entry GNU tar reads as package/d/package/package.json and npm's node-tar reads as
+// package/package.json: ustar magic, version bytes other than "00", a non-empty prefix.
+function packSplitReading(dir, file, checked, published) {
+  const staging = mkdtempSync(join(tmpdir(), "hyperframes-split-fixture-"));
+  try {
+    mkdirSync(join(staging, "package"));
+    writeFileSync(join(staging, "package", "package.json"), JSON.stringify(checked));
+    writeFileSync(join(staging, "package", "x.json"), JSON.stringify(published));
+    const tar = execFileSync("tar", [
+      "--format=ustar",
+      "-cf",
+      "-",
+      "-C",
+      staging,
+      "package/package.json",
+      "package/x.json",
+    ]);
+    const header = 1024;
+    tar.fill(0, header, header + 100);
+    tar.write("package/package.json", header, "latin1");
+    tar.fill(0, header + 345, header + 500);
+    tar.write("package/d", header + 345, "latin1");
+    tar.write("ustar\0", header + 257, "latin1");
+    tar.fill(0, header + 263, header + 265);
+    tar.fill(0x20, header + 148, header + 156);
+    let sum = 0;
+    for (let i = header; i < header + 512; i += 1) sum += tar[i];
+    tar.write(`${sum.toString(8).padStart(6, "0")}\0 `, header + 148, "latin1");
+    writeFileSync(join(dir, file), gzipSync(tar));
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
+}
+
+test("npm publishes only what the check read: name, version and every file", () => {
+  const step = stepOf(publish, "Check what npm will publish");
+  const name = "@hyperframes/core";
+  const version = "1.2.3-alpha.1";
+  const run = (make, expected = name) => {
+    const temp = mkdtempSync(join(tmpdir(), "hyperframes-npm-reads-"));
+    try {
+      make(temp, "core.tgz");
+      writeFileSync(join(temp, "publish-order.tsv"), `${expected}\t${join(temp, "core.tgz")}\n`);
+      return runStep(step, { cwd: temp, env: { VERSION: version, DIST_TAG: "alpha" } });
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  };
+  const clean = run((dir, file) => packTarball(dir, file, { name, version }));
+  assert.equal(clean.status, 0, clean.stderr + clean.stdout);
+  // fails without the fix: the layout check passed this tarball and npm would publish swapped-package@9.9.9.
+  const split = run((dir, file) =>
+    packSplitReading(dir, file, { name, version }, { name: "swapped-package", version: "9.9.9" }),
+  );
+  assert.equal(split.status, 1);
+  assert.match(
+    split.stdout,
+    /npm (would publish core\.tgz as swapped-package@9\.9\.9|and tar read different files)/,
+  );
+  // Same name and version, other contents: only the file lists differ.
+  const swapped = run((dir, file) =>
+    packSplitReading(
+      dir,
+      file,
+      { name, version },
+      { name, version, scripts: { postinstall: "x" } },
+    ),
+  );
+  assert.equal(swapped.status, 1);
+  assert.match(swapped.stdout, /npm and tar read different files in core\.tgz/);
+  const renamed = run((dir, file) =>
+    packTarball(dir, file, { name: "@hyperframes/other", version }),
+  );
+  assert.equal(renamed.status, 1);
+  assert.match(
+    renamed.stdout,
+    /would publish core\.tgz as @hyperframes\/other@1\.2\.3-alpha\.1, not @hyperframes\/core@1\.2\.3-alpha\.1/,
+  );
+});
+
+const stepIndex = (job, name) => {
+  const index = job.steps.findIndex((step) => step.name === name);
+  assert.ok(index >= 0, `missing step ${name}`);
+  return index;
+};
+
+test("both tarball checks pass before the release tag or anything else is written", () => {
+  const tag = stepIndex(publish, "Create release tag");
+  assert.ok(stepIndex(publish, "Check packed tarballs") < tag);
+  assert.ok(stepIndex(publish, "Check what npm will publish") < tag);
+  assert.ok(
+    stepIndex(publish, "Check packed tarballs") < stepIndex(publish, "Check what npm will publish"),
+  );
+});
+
+test("a tag publishes only a commit already on main, next or alpha, before any job builds it", () => {
+  const source = config.jobs["release-source"];
+  assert.ok(source, "missing the release-source job");
+  for (const name of ["lambda-arm64-ffmpeg", "lambda-handler-zip"]) {
+    assert.deepEqual(config.jobs[name].needs, ["release-source"], name);
+  }
+  assert.deepEqual(pack.needs.sort(), ["lambda-arm64-ffmpeg", "lambda-handler-zip"]);
+  const step = stepOf(source, "Check the tagged commit is on main, next or alpha");
+  assert.equal(step.if, "github.event_name == 'push'");
+  const bin = mkdtempSync(join(tmpdir(), "hyperframes-fake-gh-"));
+  try {
+    // The fake answers compare/<branch>...<sha> from FAKE_<branch>; an unset branch answers like a 404.
+    writeFileSync(
+      join(bin, "gh"),
+      '#!/bin/sh\nb="${2#*compare/}"; b="${b%%...*}"\neval "v=\\${FAKE_$b-}"\n[ -n "$v" ] || exit 1\necho "$v"\n',
+    );
+    chmodSync(join(bin, "gh"), 0o755);
+    const status = (branches) =>
+      runStep(step, {
+        cwd: bin,
+        env: {
+          REPO: "heygen-com/hyperframes",
+          TAGGED: "abc",
+          ...Object.fromEntries(Object.entries(branches).map(([b, v]) => [`FAKE_${b}`, v])),
+        },
+        path: `${bin}:${process.env.PATH}`,
+      }).status;
+    assert.equal(status({ main: "identical" }), 0);
+    assert.equal(status({ main: "behind" }), 0);
+    assert.equal(
+      status({ main: "diverged", next: "behind" }),
+      0,
+      "a commit on next publishes an alpha",
+    );
+    assert.equal(status({ main: "ahead", next: "diverged", alpha: "identical" }), 0);
+    // fails without the fix: a v*-* tag on any other commit went on to build and publish.
+    assert.equal(status({ main: "ahead", next: "diverged" }), 1, "a commit on no allowed branch");
+    assert.equal(status({ main: "diverged", next: "ahead", alpha: "ahead" }), 1);
+    assert.equal(status({}), 1, "no branch answers");
+  } finally {
+    rmSync(bin, { recursive: true, force: true });
+  }
+});

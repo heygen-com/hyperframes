@@ -17,4 +17,5 @@ it("exports a sealed preview's checked element reads and stand-ins as the ones S
   );
   expect(studio.readable).toBe(selection.readable);
   expect(studio.standInFor).toBe(selection.standInFor);
+  expect(studio.standInHandle).toBe(selection.standInHandle);
 });

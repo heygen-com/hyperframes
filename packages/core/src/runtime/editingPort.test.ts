@@ -76,11 +76,52 @@ describe("createEditingPortClient", () => {
           "draft",
           "gesture-start",
           "console-errors",
+          "watch-keys",
         ],
       });
     } finally {
       agent.dispose();
     }
+  });
+
+  it("hands each key the frame forwards to its listeners and drops off-shape ones", async () => {
+    const { iframe, frame } = previewFrame();
+    const { host, deliver } = fakeHost();
+    const client = createEditingPortClient({ iframe, host });
+    clients.push(client);
+    const { port1, port2 } = channel();
+    deliver({ source: frame, data: PORT_MESSAGE, ports: [port1] });
+    await client.ready;
+    const key = {
+      type: "keydown",
+      key: "k",
+      code: "KeyK",
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      repeat: false,
+    };
+    const first = vi.fn();
+    const second = vi.fn();
+    const stopFirst = client.onKey(first);
+    client.onKey(second);
+    for (const bad of [
+      { v: 2, event: "key", key },
+      { v: 1, event: "keys", key },
+      { v: 1, event: "key", key: { ...key, type: "keypress" } },
+      { v: 1, event: "key", key: { ...key, repeat: "no" } },
+      { v: 1, event: "key", key: { ...key, extra: 1 } },
+      { v: 1, event: "key", key: { ...key, key: "k".repeat(65) } },
+    ])
+      port2.postMessage(bad);
+    port2.postMessage({ v: 1, event: "key", key });
+    await vi.waitFor(() => expect(second).toHaveBeenCalledOnce());
+    expect(first).toHaveBeenCalledExactlyOnceWith(key);
+    stopFirst();
+    port2.postMessage({ v: 1, event: "key", key: { ...key, type: "keyup" } });
+    await vi.waitFor(() => expect(second).toHaveBeenCalledTimes(2));
+    expect(first).toHaveBeenCalledOnce();
   });
 
   it("serves a new client for the same frame after the first is disposed", async () => {

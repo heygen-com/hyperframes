@@ -33,7 +33,7 @@ import {
 import { closeServer, isLoopbackHost, servableProjectFile } from "./pageServer";
 import { Sources, fingerprint } from "./sources";
 import type { InspectRequest, Snippet } from "./types";
-import { hyperframesCacheDir } from "../../core/src/cacheDir";
+import { foreignWritablePath, trustedCacheRoot } from "../../core/src/cacheDir";
 import {
   browserProxyArgs,
   createPublicOnlyProfile,
@@ -85,7 +85,8 @@ function chromePath() {
       "Set HF_INSPECT_CHROME to an installed Chrome executable; inspection does not download a browser.",
     );
   }
-  const root = hyperframesCacheDir("chrome", "chrome-headless-shell");
+  const cacheRoot = trustedCacheRoot();
+  const root = join(cacheRoot, "chrome", "chrome-headless-shell");
   if (existsSync(root))
     for (const version of readdirSync(root).sort().reverse()) {
       const dir = join(root, version);
@@ -95,7 +96,7 @@ function chromePath() {
           platform,
           process.platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell",
         );
-        if (existsSync(file)) return file;
+        if (existsSync(file) && !foreignWritablePath(file, cacheRoot)) return file;
       }
     }
   throw new Error(

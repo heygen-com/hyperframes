@@ -1,9 +1,11 @@
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -12,6 +14,7 @@ import { join, resolve, win32 } from "node:path";
 import { isHyperframesProject } from "@hyperframes/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readSeen } from "./appHistory.js";
+import { loadProjectDotEnv } from "./dotEnv.js";
 import {
   AGENT_HANDOFF_FILE,
   agentSession,
@@ -298,6 +301,65 @@ describe("openInDesktop on Linux", () => {
       app: "the HyperFrames desktop app",
     });
   });
+
+  it.skipIf(process.platform === "win32")(
+    "starts the app in the home folder, not the folder the command runs in",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "open-from-home-"));
+      const realHome = join(dir, "home");
+      mkdirSync(realHome);
+      const startedIn = join(dir, "started-in");
+      const app = join(dir, "HyperFrames.AppImage");
+      writeFileSync(app, `#!/bin/sh\npwd -P > ${JSON.stringify(startedIn)}\n`);
+      chmodSync(app, 0o755);
+      vi.stubEnv("HOME", realHome);
+      const files = { [launcher("HyperFrames")]: JSON.stringify({ appImage: app }) };
+      try {
+        expect(openInDesktop(FILM, { ...LINUX, read: (p) => files[p] ?? null })).toMatchObject({
+          opened: true,
+        });
+        await vi.waitFor(() =>
+          expect(readFileSync(startedIn, "utf8").trim()).toBe(realpathSync(realHome)),
+        );
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "starts the app without the values the project's .env set, keeping the person's own",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "open-env-"));
+      const seen = join(dir, "seen");
+      const app = join(dir, "HyperFrames.AppImage");
+      writeFileSync(
+        app,
+        `#!/bin/sh\nprintf '%s|%s' "\${HEYGEN_API_KEY-unset}" "\${ELEVENLABS_API_KEY-unset}" > ${JSON.stringify(seen)}\n`,
+      );
+      chmodSync(app, 0o755);
+      writeFileSync(
+        join(dir, ".env"),
+        "HEYGEN_API_KEY=from-project\nELEVENLABS_API_KEY=from-project\n",
+      );
+      vi.stubEnv("ELEVENLABS_API_KEY", "the-person's");
+      const before = process.env.HEYGEN_API_KEY;
+      delete process.env.HEYGEN_API_KEY;
+      loadProjectDotEnv(dir, process.env, () => {});
+      const files = { [launcher("HyperFrames")]: JSON.stringify({ appImage: app }) };
+      try {
+        expect(process.env.HEYGEN_API_KEY).toBe("from-project");
+        expect(openInDesktop(FILM, { ...LINUX, read: (p) => files[p] ?? null })).toMatchObject({
+          opened: true,
+        });
+        await vi.waitFor(() => expect(readFileSync(seen, "utf8")).toBe("unset|the-person's"));
+      } finally {
+        if (before === undefined) delete process.env.HEYGEN_API_KEY;
+        else process.env.HEYGEN_API_KEY = before;
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("ignores a relative, moved, or unreadable AppImage path", () => {
     const relativeFile = { [launcher("HyperFrames")]: JSON.stringify({ appImage: "HF.AppImage" }) };

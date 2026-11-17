@@ -210,7 +210,7 @@ export default defineCommand({
     wait: {
       type: "boolean",
       description:
-        "Poll until completion and download the video (default: true). Pass `--no-wait` for fire-and-forget — submits and exits with the render_id.",
+        "Poll until completion and download the video. Pass `--no-wait` for fire-and-forget — submits and exits with the render_id.",
       default: true,
     },
     output: {

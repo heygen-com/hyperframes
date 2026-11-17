@@ -4,7 +4,12 @@
  * when blocks/components need it for the `add` command.
  */
 
-import type { ItemType, RegistryItem, RegistryManifestEntry } from "@hyperframes/core";
+import {
+  terminalText,
+  type ItemType,
+  type RegistryItem,
+  type RegistryManifestEntry,
+} from "@hyperframes/core";
 import { fetchItemManifest, fetchRegistryManifest, DEFAULT_REGISTRY_URL } from "./remote.js";
 import { runWithConcurrencyLimit } from "../utils/concurrency.js";
 import { closestNames } from "../utils/didYouMean.js";
@@ -22,7 +27,7 @@ export interface ResolveOptions {
 }
 
 function defaultWarn(message: string): void {
-  process.stderr.write(`hyperframes:registry ${message}\n`);
+  process.stderr.write(`hyperframes:registry ${terminalText(message)}\n`);
 }
 
 /**

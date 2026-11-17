@@ -1,4 +1,5 @@
 import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
+import { launchWithPageNetwork } from "../browser/pageNetwork.js";
 // Onion-skin motion screenshot: seek the LIVE timeline at N equal-time steps and
 // project the REAL element at each step, so an agent can SELF-VERIFY motion (the
 // rendered result — every channel: position, rotation, scale, opacity, colour),
@@ -420,11 +421,17 @@ async function openCompositionPage(
   const resolvedGpuMode = await resolveManagedGpuMode(requestedGpuMode, executablePath);
   const requiresWebGpu = compositionRequiresWebGpu(html);
   const { gpuConfig, softwareWebGpu } = resolveLocalWebGpu(resolvedGpuMode, requiresWebGpu);
-  const browser = await launchManagedBrowser(puppeteer.default, {
-    headless: true,
-    executablePath,
-    args: buildChromeArgs({ ...size, captureMode: "screenshot", requiresWebGpu }, gpuConfig),
-  });
+  const browser = await launchWithPageNetwork(url, (network) =>
+    launchManagedBrowser(puppeteer.default, {
+      headless: true,
+      executablePath,
+      userDataDir: network.userDataDir,
+      args: [
+        ...buildChromeArgs({ ...size, captureMode: "screenshot", requiresWebGpu }, gpuConfig),
+        ...network.args,
+      ],
+    }),
+  );
   try {
     const page = await browser.newPage();
     await page.setViewport(size);

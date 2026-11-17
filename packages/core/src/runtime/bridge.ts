@@ -1,6 +1,7 @@
 import { wallSetTimeout } from "./wallClock";
 import { swallow } from "./diagnostics";
 import { isStylableElement } from "./domRealm";
+import { servedToAnotherSite } from "../studioPreviewMark";
 import type { HfColorGradingTarget } from "../colorGrading";
 import type { RuntimeBridgeControlMessage, RuntimeOutboundMessage } from "./types";
 import {
@@ -48,7 +49,28 @@ export function setRuntimeProtocolFps(fps: number): void {
   runtimeProtocolFps = Number.isFinite(fps) && fps > 0 ? fps : 30;
 }
 
+// Another site framing the page learns only how playback stands: the timeline and the picker describe the composition.
+const ANOTHER_SITE_SEES = new Set<string>(["ready", "state", "stage-size"]);
+const ANOTHER_SITE_DRIVES = new Set<string>([
+  "play",
+  "pause",
+  "stop-media",
+  "seek",
+  "tick",
+  "set-muted",
+  "set-volume",
+  "set-media-output-muted",
+  "set-playback-rate",
+  "set-idle-heartbeat",
+  "set-display-scale",
+]);
+
+let markedForAnotherSite = false;
+const forAnotherSite = (): boolean =>
+  (markedForAnotherSite ||= typeof document !== "undefined" && servedToAnotherSite(document));
+
 export function postRuntimeMessage(payload: RuntimeOutboundMessage): void {
+  if (forAnotherSite() && !ANOTHER_SITE_SEES.has(payload.type)) return;
   try {
     window.parent.postMessage({ ...payload, ...runtimeProtocolMetadata(runtimeProtocolFps) }, "*");
   } catch (err) {
@@ -215,6 +237,10 @@ function handleFlashElements(data: BridgeControlData): void {
   flashElements(selectors, duration);
 }
 
+function isActionTakenHere(action: unknown): action is string {
+  return typeof action === "string" && (!forAnotherSite() || ANOTHER_SITE_DRIVES.has(action));
+}
+
 export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEvent) => void {
   const handler = (event: MessageEvent) => {
     if (event.source !== window.parent && event.source !== window) return;
@@ -222,7 +248,7 @@ export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEv
     if (!data || data.source !== "hf-parent" || data.type !== "control") return;
     if (rejectUnsupportedProtocol(data)) return;
     const action = data.action;
-    if (typeof action !== "string") return;
+    if (!isActionTakenHere(action)) return;
     const fn = CONTROL_HANDLERS.get(action);
     if (fn) fn(data, deps);
   };

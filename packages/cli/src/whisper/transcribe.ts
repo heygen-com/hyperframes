@@ -3,7 +3,16 @@ import { execFile, execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { createInterface } from "node:readline";
 import type { Readable } from "node:stream";
-import { existsSync, readFileSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+} from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { basename, join, extname } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
@@ -514,8 +523,10 @@ export async function transcribe(
     status: "started",
     durationSeconds: wavSeconds,
   });
-  const outputBase = join(outputDir, basename(TRANSCRIPT_FILE, ".json"));
   mkdirSync(outputDir, { recursive: true });
+  // whisper-cli opens its output by name and follows a link there, so it writes in a private folder.
+  const workDir = mkdtempSync(join(tmpdir(), "hyperframes-whisper-"));
+  const outputBase = join(workDir, basename(TRANSCRIPT_FILE, ".json"));
 
   const whisperArgs = [
     "--model",
@@ -540,8 +551,9 @@ export async function transcribe(
     through = Math.max(through, at);
     emitWords(onEvent, model, words, through);
   };
+  let produced: string;
   try {
-    await runWhisper(whisper.executablePath, whisperArgs, {
+    produced = await runWhisperInto(`${outputBase}.json`, whisper.executablePath, whisperArgs, {
       timeoutMs: whisperTimeoutMs,
       signal: options?.startCancellation?.(),
       onStdout:
@@ -559,6 +571,7 @@ export async function transcribe(
           : undefined,
     });
   } catch (err) {
+    if (err instanceof NoWhisperOutput) throw err;
     // Surface the timeout knob when the child was killed by our own timeout —
     // otherwise the reporter sees a bare ETIMEDOUT / SIGTERM with no hint that
     // `--timeout` even exists. Any other failure names the build, model and stderr.
@@ -570,15 +583,14 @@ export async function transcribe(
       });
     }
     throw await diagnoseWhisperFailure(err, whisper, modelPath, model);
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
   }
 
-  // 6. Read and validate output
-  const transcriptPath = `${outputBase}.json`;
-  if (!existsSync(transcriptPath)) {
-    throw new Error("Whisper did not produce output. Check the input file.");
-  }
-
-  const transcript = parseWhisperJson(readFileSync(transcriptPath, "utf-8"));
+  // 6. Validate the output, then put it in place by rename so a link at transcript.json is replaced
+  const transcript = parseWhisperJson(produced);
+  const transcriptPath = join(outputDir, TRANSCRIPT_FILE);
+  replaceFileAtomically(transcriptPath, produced);
   const reportedLanguage: unknown = transcript.result?.language;
   const detectedLanguage =
     automaticLanguage && typeof reportedLanguage === "string" && reportedLanguage.length > 0
@@ -642,6 +654,22 @@ function segmentWords(line: string): { words: Word[]; end: number } | null {
     return { text, start: toMs(from), end: toMs(at) };
   });
   return { words, end };
+}
+
+/** Runs whisper and returns the JSON it wrote to `output`; a run that wrote none fails as it is, not as a crash. */
+async function runWhisperInto(
+  output: string,
+  ...[executable, args, options]: Parameters<typeof runWhisper>
+): Promise<string> {
+  await runWhisper(executable, args, options);
+  if (!existsSync(output)) throw new NoWhisperOutput();
+  return readFileSync(output, "utf-8");
+}
+
+class NoWhisperOutput extends Error {
+  constructor() {
+    super("Whisper did not produce output. Check the input file.");
+  }
 }
 
 /** Resolves once whisper exits and both its streams are read, so no printed line is lost. */

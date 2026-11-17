@@ -80,6 +80,16 @@ export function isMusicTrack(
   return MUSIC_ID_RE.test(id);
 }
 
+/** Past a song's length a track is speech or a mix, and beat analysis decodes its whole file (62 min: 1.4 GB). */
+export const MAX_BEAT_SOURCE_SECONDS = 15 * 60;
+
+/** The decode reads the whole file, so a source fits once its file's length is known and within the cap. */
+export function fitsBeatAnalysis({
+  sourceDuration,
+}: Pick<TimelineElement, "sourceDuration">): boolean {
+  return sourceDuration != null && sourceDuration <= MAX_BEAT_SOURCE_SECONDS;
+}
+
 /**
  * Resolve the best audio source for beat analysis. An explicitly tagged or
  * named music track wins; when none is present (e.g. an audio file dropped
@@ -94,18 +104,27 @@ export function isMusicTrack(
 export function resolveBeatSourceTrack(
   elements: readonly Pick<
     TimelineElement,
-    "tag" | "src" | "id" | "domId" | "timelineRole" | "duration" | "hasAudio" | "muted"
+    | "tag"
+    | "src"
+    | "id"
+    | "domId"
+    | "timelineRole"
+    | "duration"
+    | "sourceDuration"
+    | "hasAudio"
+    | "muted"
   >[],
 ): { element: (typeof elements)[number]; isFallback: boolean } | null {
   const explicit = elements.find(isMusicTrack);
   if (explicit) return { element: explicit, isFallback: false };
 
   // Fallback: pick the longest audio clip (skipping explicitly non-music roles
-  // like "sfx" or "voiceover" to avoid triggering beat analysis on those).
+  // like "sfx" or "voiceover", and anything longer than a song, so none is beat-analysed).
   let best: (typeof elements)[number] | null = null;
   for (const el of elements) {
     if (!isMusicSourceElement(el)) continue;
     if (el.timelineRole && el.timelineRole !== "music") continue;
+    if (!fitsBeatAnalysis(el)) continue;
     if (!best || el.duration > best.duration) best = el;
   }
   return best ? { element: best, isFallback: true } : null;

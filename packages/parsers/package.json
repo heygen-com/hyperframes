@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/parsers",
-  "version": "0.9.57",
+  "version": "0.9.59",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -148,6 +148,12 @@
       "import": "./src/assetResolution.ts",
       "types": "./src/assetResolution.ts"
     },
+    "./private-path": {
+      "bun": "./src/privatePath.ts",
+      "node": "./dist/privatePath.js",
+      "import": "./src/privatePath.ts",
+      "types": "./src/privatePath.ts"
+    },
     "./html-attribute-spans": {
       "bun": "./src/htmlAttributeSpans.ts",
       "node": "./dist/htmlAttributeSpans.js",
@@ -270,6 +276,10 @@
       "./asset-resolution": {
         "import": "./dist/assetResolution.js",
         "types": "./dist/assetResolution.d.ts"
+      },
+      "./private-path": {
+        "import": "./dist/privatePath.js",
+        "types": "./dist/privatePath.d.ts"
       },
       "./html-attribute-spans": {
         "import": "./dist/htmlAttributeSpans.js",

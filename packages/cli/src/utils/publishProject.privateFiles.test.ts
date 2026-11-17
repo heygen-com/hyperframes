@@ -35,18 +35,19 @@ function stage(): { keys: string[]; leftOut: LeftOutReference[]; warnings: strin
 const SECRETS = [".env", ".env.local", ".env.production", "assets/.env", ".envrc"];
 
 describe("upload archives leave out env files and private data whatever .hyperframesignore says", () => {
+  // A rule that re-includes every hidden file also names the ignore file, which is hidden and no page loads.
   it.each([
-    ["re-includes .env files", "!.env\n!.env.*\n!.envrc\n!**/.env\n"],
-    ["re-includes every dotfile", "!.*\n"],
-    ["re-includes every path", "!*\n!**/*\n"],
-  ])("when it %s", (_, rules) => {
+    ["re-includes .env files", "!.env\n!.env.*\n!.envrc\n!**/.env\n", []],
+    ["re-includes every dotfile", "!.*\n", [".hyperframesignore"]],
+    ["re-includes every path", "!*\n!**/*\n", [".hyperframesignore"]],
+  ])("when it %s", (_, rules, alsoLeftOut) => {
     for (const path of SECRETS) write(path, "HEYGEN_API_KEY=secret");
     write(".hyperframesignore", rules);
 
     const { keys, leftOut, warnings } = stage();
 
     for (const path of SECRETS) expect(keys).not.toContain(path);
-    expect(leftOut.map((one) => one.file).sort()).toEqual([...SECRETS].sort());
+    expect(leftOut.map((one) => one.file).sort()).toEqual([...SECRETS, ...alsoLeftOut].sort());
     expect(new Set(leftOut.map((one) => one.reason))).toEqual(new Set(["private"]));
     expect(warnings.every((warning) => warning.endsWith("it was left out of the upload."))).toBe(
       true,
@@ -84,13 +85,13 @@ describe("upload archives leave out env files and private data whatever .hyperfr
     const publishLeftOut: string[] = [];
     const publishMap = buildPublishFileMap(dir, (_, one) => publishLeftOut.push(one.file));
     expect([...publishMap.keys()]).not.toContain(".env");
-    expect(publishLeftOut).toEqual([".env"]);
+    expect(publishLeftOut).toEqual([".env", ".hyperframesignore"]);
 
     const reproLeftOut: string[] = [];
     const repro = createPublishArchive(dir, (_, one) => reproLeftOut.push(one.file));
     const entries = new AdmZip(repro.buffer).getEntries().map((entry) => entry.entryName);
     expect(entries).not.toContain(".env");
-    expect(reproLeftOut).toEqual([".env"]);
+    expect(reproLeftOut).toEqual([".env", ".hyperframesignore"]);
   });
 
   it("says nothing when the ignore rules already leave the env file out", () => {

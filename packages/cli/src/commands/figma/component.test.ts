@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it, afterEach, beforeEach } from "vitest";
+import { describe, expect, it, afterEach, beforeEach, vi } from "vitest";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -129,6 +129,34 @@ describe("runComponentImport", () => {
       readFileSync(join(dir, "compositions", "components", out.name, "registry-item.json"), "utf8"),
     );
     expect(registry.files).toHaveLength(1);
+  });
+
+  it("prints a skipped node's name with control characters as visible escapes", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const tree = {
+      ...TREE,
+      children: TREE.children.map((child) =>
+        child.id === "1:3" ? { ...child, name: "Mark\u001b]52;c;eA==\u0007\u009b" } : child,
+      ),
+    };
+    const failing: FigmaClient = {
+      ...client(),
+      nodeTree: () => Promise.resolve(tree),
+      renderNode: () =>
+        Promise.reject(new FigmaClientError("RENDER_FAILED", "figma could not render node 1:3")),
+    };
+    try {
+      await runComponentImport("FILE:1-1", {
+        projectDir: dir,
+        client: failing,
+        download: () => Promise.resolve(SVG),
+      });
+      const said = warn.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+      expect(said).toContain('("Mark\\x1b]52;c;eA==\\x07\\x9b")');
+      for (const control of ["\u001b]", "\u0007", "\u009b"]) expect(said).not.toContain(control);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it("recovers a node via png when svg render fails", async () => {

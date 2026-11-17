@@ -10,6 +10,8 @@ import {
   isHdrColorSpace,
   sdrCanvasColourFilters,
 } from "@hyperframes/engine";
+import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import { projectFolder } from "../utils/projectRecords.js";
 import { screenshotOnceMore } from "../utils/screenshotOnceMore.js";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 import type { Page } from "puppeteer-core";
@@ -411,7 +413,11 @@ export function containingSourceFrameIndex(timestamps: readonly number[], time: 
   return index;
 }
 
-class FrameExtractError extends Error {}
+class FrameExtractError extends Error {
+  constructor(message: string) {
+    super(terminalText(message));
+  }
+}
 
 const lastLine = (text: string) => text.trim().split("\n").at(-1) ?? "";
 
@@ -491,7 +497,8 @@ export async function probeContainingSourceFrameSeek(
       const { stdout } = await runCancellableProcess(
         ffprobe,
         [
-          ...["-v", "error", "-select_streams", "v:0", "-read_intervals", readIntervals],
+          ...["-v", "error", ...mediaInputFormatArgs(ffprobe)],
+          ...["-select_streams", "v:0", "-read_intervals", readIntervals],
           ...["-show_entries", entries, "-of", "json", "--", videoPath],
         ],
         { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 32 * 1024 * 1024 },
@@ -615,7 +622,8 @@ async function probeSeekLanding(
     const { stdout } = await runCancellableProcess(
       ffmpeg,
       [
-        ...["-v", "error", "-copyts", "-noaccurate_seek", "-ss", String(seek), "-i", videoPath],
+        ...["-v", "error", "-copyts", "-noaccurate_seek", ...mediaInputFormatArgs(ffmpeg)],
+        ...["-ss", String(seek), "-i", videoPath],
         ...["-map", "0:v:0", "-c", "copy", "-frames:v", "1", "-f", "framecrc", "-"],
       ],
       { timeoutMs: FFMPEG_EXTRACT_TIMEOUT_MS, maxBufferBytes: 1024 * 1024 },
@@ -672,7 +680,12 @@ async function frameColour(
   videoPath: string,
   codec: string,
 ): Promise<ToneMapFrameColour> {
-  const read = (args: string[]) => runFfmpegOnce(ffmpegPath, args, FFMPEG_EXTRACT_TIMEOUT_MS);
+  const read = (args: string[]) =>
+    runFfmpegOnce(
+      ffmpegPath,
+      [...mediaInputFormatArgs(ffmpegPath), ...args],
+      FFMPEG_EXTRACT_TIMEOUT_MS,
+    );
   const probe = await read(firstFrameColourArgs(videoPath));
   const first = parseFirstFrameColour(probe.stderr);
   if (probe.code !== 0 || !readsKeyframeTransfers(first)) return first;
@@ -724,7 +737,7 @@ export async function extractVideoFrameToBuffer(
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
       if (seek.seek !== undefined) args.push("-ss", String(seek.seek));
-      args.push("-i", videoPath, "-map", "0:v:0");
+      args.push(...mediaInputFormatArgs(ffmpegPath), "-i", videoPath, "-map", "0:v:0");
       const filters = frameFilters(seek.select, displayedPixels, metadata, toneMapFilter);
       if (filters.length > 0) args.push("-vf", filters.join(","));
       args.push("-frames:v", "1", "-q:v", "2", "-y", outPath);
@@ -785,7 +798,8 @@ export async function decodeFramesInOnePass(
       const filters = [selectFirstFrameAfterEach(byTime.map(([offset]) => offset)), ...rest];
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
-      args.push("-ss", String(start), "-i", videoPath, "-map", "0:v:0", "-vf", filters.join(","));
+      args.push(...mediaInputFormatArgs(ffmpegPath), "-ss", String(start), "-i", videoPath);
+      args.push("-map", "0:v:0", "-vf", filters.join(","));
       args.push("-fps_mode", "passthrough", "-frames:v", String(byTime.length));
       args.push("-q:v", "2", "-y", join(tmp, "%d.png"));
       return args;
@@ -1163,7 +1177,10 @@ export async function captureSnapshots(
           : null;
 
       const snapshotDir = opts.outputDir ?? artifactDirectory(projectDir, "snapshots");
-      mkdirSync(snapshotDir, { recursive: true });
+      if (!projectFolder(projectDir, snapshotDir))
+        throw new Error(
+          `${snapshotDir} is reached through a link or a file; remove it and run again`,
+        );
       if (!opts.keep) replaced.push(...clearEarlierStills(snapshotDir));
       if (replaced.length > 0) {
         log(`   ${c.warn("⚠")} ${clearedNote(replaced.length, snapshotDir)}`);
@@ -1782,7 +1799,7 @@ export default defineCommand({
     },
     frames: {
       type: "string",
-      description: "Number of evenly-spaced frames to capture (default: 5)",
+      description: "Number of evenly-spaced frames to capture",
       default: "5",
     },
     at: {
@@ -1802,7 +1819,7 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: `Ms to wait for the composition to become render-ready, and for each still's seek to settle, up to 170 s (default: ${RENDER_READY_TIMEOUT_MS})`,
+      description: `Ms to wait for the composition to become render-ready, and for each still's seek to settle, up to 170 s`,
       default: String(RENDER_READY_TIMEOUT_MS),
     },
     angle: {
@@ -1813,7 +1830,7 @@ export default defineCommand({
     end: {
       type: "boolean",
       description:
-        "Always include a readable end-of-timeline frame (default: true). Pass --no-end to capture only your exact --at times.",
+        "Always include a readable end-of-timeline frame. Pass --no-end to capture only your exact --at times.",
       default: true,
     },
     keep: {
@@ -1829,7 +1846,7 @@ export default defineCommand({
     },
     "zoom-scale": {
       type: "string",
-      description: "Device-scale-factor density for --zoom crops (default: 3)",
+      description: "Device-scale-factor density for --zoom crops",
       default: "3",
     },
     against: {

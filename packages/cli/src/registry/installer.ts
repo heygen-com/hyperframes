@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve, relative, isAbsolute } from "node:path";
 import type { FileTarget, RegistryItem } from "@hyperframes/core";
+import { toolTrustedFileKind, type ToolTrustedKind } from "@hyperframes/core/safe-path";
 import { fetchItemFile, DEFAULT_REGISTRY_URL } from "./remote.js";
 import {
   applyVariableDefaults,
@@ -136,10 +137,9 @@ function keptByProject(
   return !force && existsSync(destPath) && hasLocalEdits(record, target, readFileSync(destPath));
 }
 
-// Project and tool configuration is never registry content: VCS metadata, package-manager and
-// agent or editor settings are executed or trusted by other tools. Only an example (a fresh `init`)
-// may bring its own package.json and HyperFrames config.
-const PROJECT_FILES = new Set(["package.json", "hyperframes.json", "hyperframes.lock.json"]);
+// Project and tool configuration is never registry content: VCS metadata, package-manager and agent or editor settings
+// are executed or trusted by other tools. Core's `toolTrustedFileKind` names the files other tools run or trust, the same
+// rule Studio's write routes apply. Only an example (a fresh `init`) may bring its own package.json and HyperFrames config.
 const EXAMPLE_DOTFILES = new Set([".gitignore"]);
 
 // A Windows short name such as `CLAUDE~1` or `PACKAG~1.JSO` can open any long name on NTFS.
@@ -151,12 +151,6 @@ const isShortName = (part: string): boolean => /~\d+(\.|$)/.test(part);
 const STANDARD_INSTALL_DIRS = ["compositions", "assets", "models", "lib"];
 // The one file a block may leave at the project root: the catalog's usage note. Any other name could be one a tool loads.
 const ROOT_NOTES = new Set(["template.md"]);
-// Coding agents load these on their own, wherever they sit.
-const AGENT_INSTRUCTIONS =
-  /^(agents?|claude|gemini|qwen|crush|warp|conventions|copilot-instructions)(\.[a-z]+)?\.md$/;
-// Programs and scripts a shell, an OS or another tool runs; a browser composition never needs them.
-const EXECUTABLE =
-  /\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|wsf|hta|msi|scr|pif|cpl|lnk|dll|so|dylib|node|sh|bash|zsh|command|jar|appimage|py|rb|pl|php)$/;
 
 function withoutTrailingDotsOrSpaces(part: string): string {
   let end = part.length;
@@ -205,12 +199,16 @@ type TargetRule = [
     file: string,
     example: boolean,
     installDirs: string[][] | null,
+    trusted: ToolTrustedKind | null,
   ) => boolean,
 ];
 
 const CONFIG_TARGET_RULES: TargetRule[] = [
   ["it writes into git metadata", (dirs, file) => [...dirs, file].includes(".git")],
-  ["it uses a Windows short name", (dirs, file) => [...dirs, file].some(isShortName)],
+  [
+    "it uses a Windows short name",
+    (_dirs, _file, _example, _installDirs, trusted) => trusted === "short-name",
+  ],
   ["it writes into a hidden tool directory", (dirs) => dirs.some((dir) => dir.startsWith("."))],
   [
     "it writes a hidden configuration file",
@@ -218,11 +216,20 @@ const CONFIG_TARGET_RULES: TargetRule[] = [
   ],
   [
     "it would replace project configuration",
-    (_dirs, file, example) => !example && PROJECT_FILES.has(file),
+    (_dirs, _file, example, _installDirs, trusted) =>
+      (trusted === "project-config" && !example) ||
+      trusted === "lock-file" ||
+      trusted === "tool-config",
   ],
   ["it writes into node_modules", (dirs) => dirs.includes("node_modules")],
-  ["it writes an agent instruction file", (_dirs, file) => AGENT_INSTRUCTIONS.test(file)],
-  ["it writes a program or script", (_dirs, file) => EXECUTABLE.test(file)],
+  [
+    "it writes an agent instruction file",
+    (_dirs, _file, _example, _installDirs, trusted) => trusted === "agent-instructions",
+  ],
+  [
+    "it writes a program or script",
+    (_dirs, _file, _example, _installDirs, trusted) => trusted === "program",
+  ],
   [
     "it writes outside the project's blocks, components and assets folders",
     (dirs, file, example, installDirs) =>
@@ -242,9 +249,11 @@ function configTargetError(
   const parts = targetSegments(target);
   const file = parts.pop() ?? "";
   const example = type === "hyperframes:example";
+  const trusted = toolTrustedFileKind(target);
   return (
-    CONFIG_TARGET_RULES.find(([, applies]) => applies(parts, file, example, installDirs))?.[0] ??
-    null
+    CONFIG_TARGET_RULES.find(([, applies]) =>
+      applies(parts, file, example, installDirs, trusted),
+    )?.[0] ?? null
   );
 }
 
