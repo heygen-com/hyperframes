@@ -102,6 +102,12 @@ export interface StudioSelectionResponse {
  * The shared API module calls these methods; each host (vite dev, CLI embedded)
  * provides its own implementation.
  */
+/** A refused request: which route refused it, and why. */
+export interface StudioRefusal {
+  route: string;
+  why: string;
+}
+
 export interface StudioApiAdapter {
   /** List all available projects. */
   listProjects(): Promise<ResolvedProject[]> | ResolvedProject[];
@@ -145,6 +151,12 @@ export interface StudioApiAdapter {
 
   /** URL to the hyperframe runtime JS (injected into preview HTML). */
   runtimeUrl: string;
+
+  /**
+   * Optional: hears each request the API refused with a 403, as the matched route pattern and the server's own
+   * reason code (`other` when it has none). Never a path, a name or the request's text.
+   */
+  onRefusal?: (refusal: StudioRefusal) => void;
 
   gsapLocalRoot?: `/${string}`;
 
