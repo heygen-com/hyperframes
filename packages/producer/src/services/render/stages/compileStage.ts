@@ -263,6 +263,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     animatedGifCacheDir: animatedGifCacheDir(cfg.extractCacheDir),
     ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
     allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+    includeOutsideScripts: job.config.includeOutsideScripts,
   });
   assertNotAborted();
   const compileOnlyMs = Date.now() - compileStart;

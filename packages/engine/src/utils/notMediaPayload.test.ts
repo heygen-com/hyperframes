@@ -302,17 +302,6 @@ describe("playlistLeavesItsFolder", () => {
       hls('#EXT-X-KEY:METHOD=AES-128,URI="/etc/key.bin"', "#EXTINF:1,", "seg.ts"),
     ],
     ["a Windows drive path", hls("#EXTINF:1,", "C:\\renders\\out.mp4")],
-    ["a drive-relative segment", hls("#EXTINF:1,", "C:Videos\\a.mp4")],
-    ["a lower-case drive-relative segment", hls("#EXTINF:1,", "c:x.mp4")],
-    ["a drive-relative step up", hls("#EXTINF:1,", "c:..\\a.mp4")],
-    ["a one-character pseudo-scheme", hls("#EXTINF:1,", "_:x.mp4")],
-    ["a pseudo-scheme with a space", hls("#EXTINF:1,", "a b:x.mp4")],
-    ["an encoded drive-relative segment", hls("#EXTINF:1,", "C%3Ax.mp4")],
-    [
-      "a drive-relative key",
-      hls('#EXT-X-KEY:METHOD=AES-128,URI="C:key.bin"', "#EXTINF:1,", "seg.ts"),
-    ],
-    ["a drive-relative concat entry", concat("'C:Videos\\a.mp4'")],
     ["an absolute concat entry", concat("'/var/renders/other/out.mp4'")],
     ["a concat entry above its folder", concat("../other/out.mp4")],
     ["a list too long to read whole", hls("#EXTINF:1,\nseg.ts\n".repeat(700_000))],
@@ -347,16 +336,6 @@ describe("playlistLeavesItsFolder", () => {
         writeTree({ "clip.m3u8": encrypted, "key.bin": "<\x01\x02", "seg.ts": "{\x00" }),
       ),
     ).toBe(false);
-  });
-
-  it("judges entries against the folder ffmpeg reads them from, cut at a # in the list's path", async () => {
-    const climbs = hls("#EXTINF:1,", "../h#z/x.ts");
-    expect(await playlistLeavesItsFolder(writeTree({ "proj/h#z/list.m3u8": climbs }))).toBe(true);
-    const beside = hls("#EXTINF:1,", "seg.ts");
-    expect(await playlistLeavesItsFolder(writeTree({ "Take #2/list.m3u8": beside }))).toBe(true);
-    expect(await playlistLeavesItsFolder(writeTree({ "take #2.m3u8": beside }))).toBe(false);
-    const named = hls("#EXTINF:1,", "Take #2/seg.ts");
-    expect(await playlistLeavesItsFolder(writeTree({ "Take #2/list.m3u8": named }))).toBe(false);
   });
 
   it("refuses a nested list naming a private file from its own folder", async () => {
@@ -403,12 +382,71 @@ describe("playlistLeavesItsFolder", () => {
   it.each([
     ["segments beside it", hls("#EXTINF:1,", "seg0.ts", "#EXTINF:1,", "parts/seg1.ts")],
     ["https segments", hls("#EXTINF:1,", "https://cdn.example.com/seg0.ts")],
-    ["a colon after a folder name", hls("#EXTINF:1,", "parts/take:2.ts")],
     ["a concat entry beside it", concat("'part 1.mp4'")],
     ["a media file", Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])],
   ])("keeps %s", async (_name, contents) => {
     expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", contents))).toBe(false);
   });
+});
+
+describe("playlistLeavesItsFolder reads entries and folders as ffmpeg resolves them", () => {
+  const hls = (...lines: string[]) => ["#EXTM3U", ...lines, "#EXT-X-ENDLIST"].join("\n");
+  const listIn = (folder: string, contents: string | Buffer, name = "list.m3u8"): string => {
+    const dir = join(mkdtempSync(join(tmpdir(), "hf-playlist-folder-")), folder);
+    mkdirSync(dir);
+    writeFileSync(join(dir, name), contents);
+    return join(dir, name);
+  };
+
+  it.each([
+    ["a drive-relative path", hls("C:Videos\\a.mp4")],
+    ["a drive-relative file name", hls("c:x.mp4")],
+    ["a colon after an underscore", hls("_:x.mp4")],
+    ["an encoded colon", hls("%63%3Ax.mp4")],
+    ["a colon in a map URI", hls('#EXT-X-MAP:URI="c:x.mp4"', "seg.ts")],
+    ["a colon in a concat entry", "ffconcat version 1.0\nfile c:x.mp4\n"],
+  ])("refuses %s", async (_name, contents) => {
+    const file = writeFixture("clip.m3u8", contents);
+    expect(await playlistLeavesItsFolder(file)).toBe(true);
+    expect(await isNotMediaPayload(file)).toBe(true);
+  });
+
+  it.each(process.platform === "win32" ? ["#"] : ["#", "?"])(
+    "refuses a list naming a file from a folder with %s in its name",
+    async (mark) => {
+      const file = listIn(`sub${mark}x`, hls("seg.ts"));
+      expect(await playlistLeavesItsFolder(file)).toBe(true);
+      expect(await isNotMediaPayload(file)).toBe(true);
+    },
+  );
+
+  it("refuses a nested list read from a folder with # in its name, and a list placed in one", async () => {
+    const top = writeTree({
+      "top.m3u8": hls("sub#x/inner.m3u8"),
+      "sub#x/inner.m3u8": hls("seg.ts"),
+    });
+    expect(await playlistLeavesItsFolder(top)).toBe(true);
+    const placedAt = join(tmpdir(), "sub#x", "list.m3u8");
+    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", hls("seg.ts")), placedAt)).toBe(
+      true,
+    );
+  });
+
+  it("keeps entries beside the list, https entries, and a media file in a folder with # in its name", async () => {
+    const beside = hls("seg.ts", "sub/seg.ts", "seg#1.ts", "https://cdn.example.com/seg.ts");
+    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", beside))).toBe(false);
+    const httpsOnly = listIn("sub#x", hls("https://cdn.example.com/a.ts"));
+    expect(await playlistLeavesItsFolder(httpsOnly)).toBe(false);
+    const mp4 = Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, ...Array(24).fill(0)]);
+    expect(await isNotMediaPayload(listIn("sub#x", mp4, "clip.mp4"))).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "keeps a list in a folder with : in its name",
+    async () => {
+      expect(await playlistLeavesItsFolder(listIn("c:d", hls("seg.ts")))).toBe(false);
+    },
+  );
 });
 
 describe("playlistLeavesItsFolder reads a list as ffprobe does", () => {

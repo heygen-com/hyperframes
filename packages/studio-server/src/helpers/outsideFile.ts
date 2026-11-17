@@ -146,14 +146,21 @@ export function isPrivateOutsideFile(projectDir: string, absPath: string): boole
 export const linksOutside = (projectDir: string, filePath: string): boolean =>
   isOutside(relative(realFilePath(projectDir), realFilePath(filePath)));
 
-/** `blocklisted`: a private location; `received`: reached from an imported file; `file_type`: not a type uploads copy; `network_share`: on another computer. */
-export type LeftOutReason = "blocklisted" | "received" | "file_type" | "private" | "network_share";
+/** `blocklisted`: a private location; `received`: reached from an imported file; `file_type`: not a type uploads copy; `network_share`: on another computer; `script`: a script a local render was not told to run. */
+export type LeftOutReason =
+  | "blocklisted"
+  | "received"
+  | "file_type"
+  | "private"
+  | "network_share"
+  | "script";
 
 const WHY: Record<Exclude<LeftOutReason, "file_type">, string> = {
   private: "which holds secrets or tool data",
   blocklisted: "which is outside the project in a private location",
   received: "which leads outside the project and came in with an imported project",
   network_share: "which is on another computer's network share or is a Windows device path",
+  script: "which is a script outside the project",
 };
 
 const COPIED_TYPES = {
@@ -172,5 +179,7 @@ export function leftOutWarning(
       ? `which is outside the project and is not ${COPIED_TYPES[from]}`
       : WHY[reason];
   const warning = `${file} references ${reference}, ${why}; it was left out of the ${from}.`;
-  return reason === "file_type" ? `${warning} Move it into the project to include it.` : warning;
+  if (reason === "file_type") return `${warning} Move it into the project to include it.`;
+  if (reason !== "script") return warning;
+  return `${warning} Move it into the project, or pass --include-outside-files to hyperframes render, to run it.`;
 }

@@ -104,6 +104,7 @@ export interface RenderCommandArgs {
   wait?: boolean;
   strict?: boolean;
   "strict-all"?: boolean;
+  "include-outside-files"?: boolean;
   "lint-verbose"?: boolean;
   "max-concurrent-renders"?: string;
   variables?: string;
@@ -168,6 +169,7 @@ export interface RenderPlan {
   /** Segmented capture: keep the segment directory after success. */
   keepSegments: boolean;
   bestEffort: boolean;
+  includeOutsideScripts: boolean;
   waitForRenderSlot: boolean;
   batchJson: boolean;
   effectiveQuiet: boolean;
@@ -671,6 +673,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     resumeSegments: args.resume ?? false,
     keepSegments: args["keep-segments"] ?? false,
     bestEffort: args["best-effort"] ?? true,
+    includeOutsideScripts: args["include-outside-files"] ?? false,
     waitForRenderSlot: args.wait ?? true,
     batchJson,
     effectiveQuiet: quiet || batchJson,

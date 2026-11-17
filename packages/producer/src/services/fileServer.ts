@@ -724,6 +724,7 @@ export interface FileServerOptions {
   stripEmbeddedRuntime?: boolean;
   /** Serve project symlinks that lead outside projectDir, as local preview does. Default: false. */
   allowOutsideProjectAssets?: boolean;
+  includeOutsideScripts?: boolean;
 }
 
 export interface FileServerHandle {
@@ -802,6 +803,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     port = 0,
     stripEmbeddedRuntime = true,
     allowOutsideProjectAssets = false,
+    includeOutsideScripts = false,
   } = options;
 
   // HF_EARLY_STUB must run before *any* page script so libraries that write
@@ -821,6 +823,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
 
   const app = new Hono();
   const warnLeftOut = (line: string) => console.warn(`[FileServer] ${terminalText(line)}`);
+  const outsidePolicy = { includeScripts: includeOutsideScripts };
   let listeningPort = -1;
 
   app.use(async function loadEachFileOnlyAsItsNamedType(c, next) {
@@ -845,7 +848,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       if (!isPathInside(candidate, root, { resolveSymlinks })) continue;
       if (isPrivateFileUnder(root, candidate, isStudioPrivatePath)) continue;
       const checksLinks = allowOutsideProjectAssets && root !== compiledDir;
-      if (checksLinks && refusesOutsideLink(root, candidate, warnLeftOut)) continue;
+      if (checksLinks && refusesOutsideLink(root, candidate, warnLeftOut, outsidePolicy)) continue;
       file = openRegularFile(candidate);
       if (file) break;
     }

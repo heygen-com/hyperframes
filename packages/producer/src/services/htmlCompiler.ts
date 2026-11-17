@@ -107,6 +107,7 @@ import {
   isPathInside,
   leftOutOfRender,
   outsideAssetRefusal,
+  type OutsideFilePolicy,
   refusesOutsideLink,
   toExternalAssetKey,
 } from "../utils/paths.js";
@@ -1478,6 +1479,7 @@ export function collectExternalAssets(
   projectDir: string,
   log: ProducerLogger = defaultLogger,
   file = "index.html",
+  policy: OutsideFilePolicy = {},
 ): { html: string; externalAssets: Map<string, string> } {
   const absProjectDir = resolve(projectDir);
   const externalAssets = new Map<string, string>();
@@ -1492,7 +1494,7 @@ export function collectExternalAssets(
     }
     const onShare = namesAnotherNetworkRoot(absProjectDir, absPath);
     if (!onShare && !existsSync(absPath)) return null;
-    const refusal = onShare ? "network_share" : outsideAssetRefusal(absProjectDir, absPath);
+    const refusal = onShare ? "network_share" : outsideAssetRefusal(absProjectDir, absPath, policy);
     if (refusal) {
       if (!leftOut.has(trimmed)) log.warn(`[Compiler] ${leftOutOfRender(file, trimmed, refusal)}`);
       leftOut.add(trimmed);
@@ -2109,6 +2111,7 @@ export interface CompileForRenderOptions {
   pageMotionBlur?: "off";
   /** Trusted local renders only (CLI, Studio): import files markup reaches outside projectDir. */
   allowOutsideProjectAssets?: boolean;
+  includeOutsideScripts?: boolean;
 }
 
 /** Renders follow the same `HYPERFRAMES_GSAP_BASE_URL` mirror as Studio preview. */
@@ -2411,6 +2414,7 @@ export async function compileForRender(
         projectDir,
         options.log,
         entryFileName(projectDir, htmlPath),
+        { includeScripts: options.includeOutsideScripts },
       )
     : { html: embeddedHtml, externalAssets: new Map<string, string>() };
 

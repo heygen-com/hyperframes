@@ -314,7 +314,8 @@ export async function isNotImagePayload(filePath: string): Promise<boolean> {
 const MAX_PLAYLIST_BYTES = 8 * 1024 * 1024;
 const MAX_PLAYLIST_DEPTH = 8;
 const HTTP_URL = /^https?:\/\//i;
-const COLON_BEFORE_SEPARATOR = /^[^/\\?#]*:/;
+const COLON_IN_FIRST_SEGMENT = /^[^/\\?#]*:/;
+const FOLDER_CUT_AT_QUERY_OR_FRAGMENT = /[?#]/;
 
 // ffmpeg reads a playlist line into a 4096-byte buffer and drops the rest of it.
 const MAX_HLS_LINE_BYTES = 4095;
@@ -386,17 +387,12 @@ function playlistEntries(text: string): string[] | undefined {
   return undefined;
 }
 
-function ffmpegListFolder(listPath: string): string {
-  const cut = listPath.search(/[?#]/);
-  if (cut < 0) return dirname(listPath);
-  const head = listPath.slice(0, cut);
-  return /[\\/]$/.test(head) ? head : dirname(head);
-}
-
 function entryLeavesFolder(entry: string, base: string, folder: string): boolean {
   if (HTTP_URL.test(entry)) return false;
+  if (FOLDER_CUT_AT_QUERY_OR_FRAGMENT.test(base)) return true;
   return [entry, percentDecoded(entry)].some((path) => {
-    if (isAbsolute(path) || COLON_BEFORE_SEPARATOR.test(path) || path.startsWith("\\")) return true;
+    if (COLON_IN_FIRST_SEGMENT.test(path)) return true;
+    if (isAbsolute(path) || path.startsWith("\\")) return true;
     const inside = relative(folder, resolve(base, path));
     return (
       inside === ".." || inside.startsWith("../") || inside.startsWith("..\\") || isAbsolute(inside)
@@ -514,7 +510,7 @@ async function listLeaves(
   if (walk.seen.has(path)) return false;
   walk.seen.add(path);
   for (const entry of playlistEntries(text) ?? []) {
-    if (await entryLeaves(entry, ffmpegListFolder(path), walk, depth)) return true;
+    if (await entryLeaves(entry, dirname(path), walk, depth)) return true;
   }
   return false;
 }
