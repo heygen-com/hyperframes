@@ -724,3 +724,53 @@ it("stores DOM targets in existing history and retains them through undo and red
   await act(() => hook().redo({ readFile }));
   expect(history.list().at(-1)?.targets).toEqual(targets);
 });
+
+it("three quick drags are three entries in the list as soon as each drag's saves are in", async () => {
+  const { hook, save, history } = await studio();
+  const moves = [
+    ["A", "B"],
+    ["B", "C"],
+    ["C", "D"],
+  ] as const;
+  for (const [i, [before, after]] of moves.entries()) {
+    // A drag claims under its own key with no idle limit, as a plain move does, and settles after its save.
+    const drag = beginStudioPendingEdit(() => () => {});
+    save(after);
+    const saved = hook().recordEdit({
+      label: "Move layer",
+      coalesceKey: `move:${i}`,
+      coalesceMs: Number.POSITIVE_INFINITY,
+      files: { "index.html": { before, after } },
+    });
+    drag.settle(saved);
+    await act(() => saved);
+  }
+  await vi.waitFor(() =>
+    expect(history.list().filter((entry) => entry.label === "Move layer")).toHaveLength(3),
+  );
+});
+
+it("a gesture that writes twice under one key stays one entry once it settles", async () => {
+  const { hook, save, history } = await studio();
+  const resize = beginStudioPendingEdit(() => () => {});
+  const writes = (async () => {
+    for (const [before, after] of [
+      ["A", "B"],
+      ["B", "C"],
+    ] as const) {
+      save(after);
+      await hook().recordEdit({
+        label: "Resize layer",
+        coalesceKey: "tx:resize",
+        coalesceMs: Number.POSITIVE_INFINITY,
+        files: { "index.html": { before, after } },
+      });
+    }
+  })();
+  resize.settle(writes);
+  await act(() => writes);
+  await vi.waitFor(() =>
+    expect(history.list().filter((entry) => entry.label === "Resize layer")).toHaveLength(1),
+  );
+  expect(history.list().find((entry) => entry.label === "Resize layer")?.files.length).toBe(1);
+});
