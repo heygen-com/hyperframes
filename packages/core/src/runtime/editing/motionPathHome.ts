@@ -1,17 +1,20 @@
-import type { MotionPathHome } from "./motionPathGeometry";
+import { isHtmlElement } from "../domRealm";
+import { isElementVisibleThroughAncestors } from "../editingGeometry";
 
-// An element's computed transform translate: a group wrapper GSAP moved carries its offset here.
+/** The layer's centre with no animation, its size, and how far its centre moves per px it grows. */
+export type MotionPathHome = { x: number; y: number; w: number; h: number; ax: number; ay: number };
+
 function transformTranslate(el: HTMLElement): { x: number; y: number } {
   const t = el.ownerDocument?.defaultView?.getComputedStyle(el).transform;
   if (!t || t === "none") return { x: 0, y: 0 };
   const m3 = t.match(/matrix3d\(([^)]+)\)/);
   if (m3) {
-    const v = m3[1].split(",").map(Number);
+    const v = (m3[1] ?? "").split(",").map(Number);
     return { x: v[12] || 0, y: v[13] || 0 };
   }
   const m = t.match(/matrix\(([^)]+)\)/);
   if (m) {
-    const v = m[1].split(",").map(Number);
+    const v = (m[1] ?? "").split(",").map(Number);
     return { x: v[4] || 0, y: v[5] || 0 };
   }
   return { x: 0, y: 0 };
@@ -72,4 +75,33 @@ export function elementHome(el: HTMLElement): MotionPathHome {
   const y = top + el.offsetHeight * (0.5 + py) + (parsed ? ty : 0);
   const { ax, ay } = growShares(el, px, py);
   return { x, y, w: el.offsetWidth, h: el.offsetHeight, ax, ay };
+}
+
+// A depth element (matrix3d m44) renders 1/m44 larger, so its path's offsets travel 1/m44 further on screen.
+export function transformWDivisor(el: HTMLElement): number {
+  const t = el.ownerDocument?.defaultView?.getComputedStyle(el).transform;
+  if (!t || !t.startsWith("matrix3d(")) return 1;
+  const v = t.slice("matrix3d(".length, -1).split(",");
+  const w = Number.parseFloat(v[15] ?? "");
+  return Number.isFinite(w) && w > 0 ? w : 1;
+}
+
+export interface MotionPathFrameHome {
+  home: MotionPathHome | null;
+  /** 1/m44 of the element's own transform: how much a depth element magnifies its path. */
+  perspective: number;
+  visible: boolean;
+  plugin: boolean;
+}
+
+export function motionPathHome(selector: string): MotionPathFrameHome {
+  const plugin = Boolean((window as { MotionPathPlugin?: unknown }).MotionPathPlugin);
+  const element = document.querySelector(selector);
+  if (!isHtmlElement(element)) return { home: null, perspective: 1, visible: true, plugin };
+  return {
+    home: elementHome(element),
+    perspective: 1 / transformWDivisor(element),
+    visible: isElementVisibleThroughAncestors(element),
+    plugin,
+  };
 }

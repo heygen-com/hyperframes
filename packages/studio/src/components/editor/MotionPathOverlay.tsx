@@ -26,8 +26,9 @@ import {
   commitRemoveWaypoint,
   nodeDropLabel,
 } from "./motionPathCommit";
-import { elementHome } from "./motionPathHome";
-import { hasMotionPathPlugin, transformWDivisor, useMotionPathData } from "./useMotionPathData";
+import { elementHome, transformWDivisor } from "@hyperframes/core/runtime/editing-port";
+import { hasMotionPathPlugin, useMotionPathData } from "./useMotionPathData";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
 interface MotionPathOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
@@ -196,16 +197,17 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       }
       // Resolve the element LIVE from the current iframe document — the selected
       // node may be detached after a soft-reload, which would skew home.
-      const live = frame.contentDocument?.querySelector(createSelector);
-      if (!isHtmlElement(live)) return;
+      const sealed = previewFrameOpaque(frame);
+      const live = sealed ? null : frame.contentDocument?.querySelector(createSelector);
+      if (!isHtmlElement(live) && !(sealed && home)) return;
       e.stopPropagation();
       e.preventDefault();
       const sc = r.width / compW;
-      const elHome = elementHome(live);
+      const elHome = isHtmlElement(live) ? elementHome(live) : home!;
       // De-magnify: the click lands on the projected (1/m44-magnified) path, so
       // divide the home-relative offset by the perspective factor to recover the
       // stored composition offset (inverse of the `* pScale` applied at draw).
-      const ps = 1 / transformWDivisor(live);
+      const ps = isHtmlElement(live) ? 1 / transformWDivisor(live) : pScale;
       const px = Math.round(((e.clientX - r.left) / sc - elHome.x) / ps);
       const py = Math.round(((e.clientY - r.top) / sc - elHome.y) / ps);
       const t = Math.round(usePlayerStore.getState().currentTime * 100) / 100;
@@ -217,7 +219,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       surface.removeEventListener("pointerdown", onDown, true);
       surface.style.cursor = prevCursor;
     };
-  }, [armed, createSelector, compW, iframeRef, commitMutation, setMotionPathArmed]);
+  }, [armed, createSelector, compW, iframeRef, commitMutation, setMotionPathArmed, home, pScale]);
 
   if (!rect || rect.width <= 0 || !compositionSize || compositionSize.width <= 0) return null;
   // Hide the whole overlay (path + create hint) when the element isn't painted —
