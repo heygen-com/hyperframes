@@ -11,11 +11,9 @@ import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { realpath, terminalText } from "@hyperframes/core";
 import {
-  closeSync,
+  createReadStream,
   existsSync,
-  openSync,
   readFileSync,
-  readSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -250,15 +248,12 @@ function collectRemoteGifImageSources(html: string): string[] {
   return [...urls];
 }
 
-function startsWithGifSignature(path: string): boolean {
-  const header = Buffer.alloc(6);
-  const fd = openSync(path, "r");
-  try {
-    readSync(fd, header, 0, header.length, 0);
-  } finally {
-    closeSync(fd);
+async function startsWithGifSignature(path: string): Promise<boolean> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of createReadStream(path, { start: 0, end: 5 })) {
+    chunks.push(Buffer.from(chunk));
   }
-  const signature = header.toString("latin1");
+  const signature = Buffer.concat(chunks).toString("latin1");
   return signature === "GIF87a" || signature === "GIF89a";
 }
 
@@ -272,7 +267,7 @@ async function downloadRemoteGifImageSources(
     collectRemoteGifImageSources(html).map(async (url) => {
       try {
         const path = await downloadToTemp(url, downloadDir);
-        if (!startsWithGifSignature(path)) {
+        if (!(await startsWithGifSignature(path))) {
           rmSync(path, { force: true });
           throw new Error("downloaded file is not a GIF");
         }
