@@ -6,12 +6,16 @@ import { resolveCaptionNudge, isEditableEventTarget } from "../keyboard";
 import { matchesKey } from "../../player/components/studioShortcuts";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import {
+  dragTransform,
   findCaptionWord,
-  frameWordTransform,
+  moveSealedDrag,
+  nudgeFrameWord,
+  pressSealedDrag,
   readFrameWordBoxes,
+  restoreSealedDrag,
   transformStyle,
-  type FrameWord,
-  type WordTransform,
+  type DragStart,
+  type SealedDrag,
   readWordBoxes,
   getWordEl,
   readGsapTransform,
@@ -40,72 +44,6 @@ function storeStyle(segmentId: string, style: Record<string, number>) {
     useCaptionStore.getState().updateSegmentStyle(segmentId, style);
   }
 }
-
-/** What a drag knows from its press: where it started and the word's transform then. */
-type DragStart =
-  | {
-      type: "move";
-      startMX: number;
-      startMY: number;
-      origTX: number;
-      origTY: number;
-      origScale: number;
-      origRotation: number;
-    }
-  | {
-      type: "scale";
-      startMX: number;
-      startDxFromCenter: number;
-      origTX: number;
-      origTY: number;
-      origScale: number;
-      origRotation: number;
-    }
-  | {
-      type: "rotate";
-      startMX: number;
-      origTX: number;
-      origTY: number;
-      origRotation: number;
-      origScale: number;
-    };
-
-/** The word's transform with the pointer at (`clientX`, `clientY`). */
-function dragTransform(
-  i: DragStart,
-  clientX: number,
-  clientY: number,
-  cssScale: number,
-): WordTransform {
-  const orig = { x: i.origTX, y: i.origTY, scale: i.origScale, rotation: i.origRotation };
-  if (i.type === "move") {
-    const dx = (clientX - i.startMX) / cssScale;
-    const dy = (clientY - i.startMY) / cssScale;
-    return { ...orig, x: i.origTX + dx, y: i.origTY + dy };
-  }
-  if (i.type === "scale") {
-    const cx = i.startMX - i.startDxFromCenter;
-    const startDist = Math.abs(i.startDxFromCenter);
-    const currentDist = Math.abs(clientX - cx);
-    const factor = startDist > 5 ? currentDist / startDist : 1;
-    return { ...orig, scale: Math.max(0.1, i.origScale * factor) };
-  }
-  const dx = clientX - i.startMX;
-  return { ...orig, rotation: i.origRotation + (dx / 200) * 90 };
-}
-
-/** A drag on a frame Studio cannot read: its press read lands later, and moves wait for it. */
-interface SealedDrag {
-  iframe: HTMLIFrameElement;
-  word: { group: number; word: number };
-  segmentId: string;
-  start: Promise<DragStart | null>;
-  /** The word's transform once the latest write lands. */
-  last: Promise<WordTransform | null>;
-}
-
-const restOf = (drag: DragStart | null): WordTransform | null =>
-  drag && { x: drag.origTX, y: drag.origTY, scale: drag.origScale, rotation: drag.origRotation };
 
 export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: CaptionOverlayProps) {
   const isEditMode = useCaptionStore((s) => s.isEditMode);
@@ -230,10 +168,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       const sealed = sealedDragRef.current;
       if (sealed) {
         sealedDragRef.current = null;
-        void sealed.start.then((drag) => {
-          const set = restOf(drag);
-          if (set) void frameWordTransform(sealed.iframe, { ...sealed.word, set });
-        });
+        restoreSealedDrag(sealed);
         return true;
       }
       const i = interactionRef.current;
@@ -321,13 +256,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
         const word = findCaptionWord(m, segId);
         if (!word) continue;
         nudging = nudging.then(async () => {
-          const now = await frameWordTransform(iframe, word);
-          if (!now) return;
-          const { x, y } = now.transform;
-          const moved = await frameWordTransform(iframe, {
-            ...word,
-            set: { x: x + dx, y: y + dy },
-          });
+          const moved = await nudgeFrameWord(iframe, word, dx, dy);
           if (moved) storeStyle(segId, transformStyle(moved.transform));
         });
       }
@@ -369,18 +298,13 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
     ) => {
       const iframe = iframeRef.current;
       if (!iframe) return;
-      const { clientX: startMX, clientY: startMY } = e;
-      const toDrag = ({ transform: t, rect }: FrameWord): DragStart => {
-        const orig = { origTX: t.x, origTY: t.y, origScale: t.scale, origRotation: t.rotation };
-        if (type === "move") return { type, startMX, startMY, ...orig };
-        if (type === "rotate") return { type, startMX, ...orig };
-        const cssScale = getCssScale();
-        const boxCenterX =
-          rect.x * cssScale + iframe.getBoundingClientRect().left + (rect.width * cssScale) / 2;
-        return { type, startMX, startDxFromCenter: startMX - boxCenterX, ...orig };
+      const press = {
+        startMX: e.clientX,
+        startMY: e.clientY,
+        cssScale: getCssScale(),
+        left: iframe.getBoundingClientRect().left,
       };
-      const start = frameWordTransform(iframe, word).then((read) => read && toDrag(read));
-      sealedDragRef.current = { iframe, word, segmentId, start, last: start.then(restOf) };
+      sealedDragRef.current = pressSealedDrag(iframe, type, word, segmentId, press);
     },
     [iframeRef, getCssScale],
   );
@@ -493,18 +417,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
       const sealed = sealedDragRef.current;
-      if (sealed) {
-        const { clientX, clientY } = e;
-        const cssScale = getCssScale();
-        sealed.last = sealed.start.then(async (drag) => {
-          if (!drag) return null;
-          const set = dragTransform(drag, clientX, clientY, cssScale);
-          return (
-            (await frameWordTransform(sealed.iframe, { ...sealed.word, set }))?.transform ?? null
-          );
-        });
-        return;
-      }
+      if (sealed) return moveSealedDrag(sealed, e.clientX, e.clientY, getCssScale());
       const i = interactionRef.current;
       if (!i) return;
       const win = getIframeWin();

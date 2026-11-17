@@ -17,6 +17,34 @@ export interface WordBox {
   height: number;
 }
 
+/** Maps a box in the frame's CSS pixels into the overlay's. */
+function overlayPlacement(iframe: HTMLIFrameElement, overlayEl: HTMLElement) {
+  const iframeDisplayRect = iframe.getBoundingClientRect();
+  const overlayRect = overlayEl.getBoundingClientRect();
+  const nativeW = parseFloat(iframe.style.width) || iframeDisplayRect.width;
+  const cssScale = iframeDisplayRect.width / nativeW;
+  const offsetX = iframeDisplayRect.left - overlayRect.left;
+  const offsetY = iframeDisplayRect.top - overlayRect.top;
+  return (x: number, y: number, width: number, height: number) => ({
+    x: x * cssScale + offsetX,
+    y: y * cssScale + offsetY,
+    width: width * cssScale,
+    height: height * cssScale,
+  });
+}
+
+function splitIntoSpans(doc: Document, text: string, into: HTMLElement[]): DocumentFragment {
+  const frag = doc.createDocumentFragment();
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const span = doc.createElement("span");
+    span.textContent = word + " ";
+    span.style.display = "inline";
+    frag.appendChild(span);
+    into.push(span);
+  }
+  return frag;
+}
+
 export function readWordBoxes(
   iframe: HTMLIFrameElement,
   model: {
@@ -35,13 +63,7 @@ export function readWordBoxes(
   }
   if (!doc || !win) return [];
 
-  const iframeDisplayRect = iframe.getBoundingClientRect();
-  const overlayRect = overlayEl.getBoundingClientRect();
-  const nativeW = parseFloat(iframe.style.width) || iframeDisplayRect.width;
-  const cssScale = iframeDisplayRect.width / nativeW;
-  const offsetX = iframeDisplayRect.left - overlayRect.left;
-  const offsetY = iframeDisplayRect.top - overlayRect.top;
-
+  const place = overlayPlacement(iframe, overlayEl);
   const groupEls = doc.querySelectorAll<HTMLElement>(".caption-group");
   const boxes: WordBox[] = [];
 
@@ -66,29 +88,14 @@ export function readWordBoxes(
     if (resolvedWordEls.length === 0 && groupEl.textContent?.trim()) {
       const textNode = groupEl.childNodes[0];
       if (textNode && textNode.nodeType === Node.TEXT_NODE) {
-        const words = (textNode.textContent || "").split(/\s+/).filter(Boolean);
-        const frag = doc.createDocumentFragment();
-        for (const word of words) {
-          const span = doc.createElement("span");
-          span.textContent = word + " ";
-          span.style.display = "inline";
-          frag.appendChild(span);
-          resolvedWordEls.push(span);
-        }
-        groupEl.replaceChild(frag, textNode);
+        groupEl.replaceChild(
+          splitIntoSpans(doc, textNode.textContent || "", resolvedWordEls),
+          textNode,
+        );
       } else {
         const singleSpan = groupEl.querySelector<HTMLElement>(":scope > span");
         if (singleSpan && singleSpan.textContent?.trim()) {
-          const words = singleSpan.textContent.split(/\s+/).filter(Boolean);
-          const frag = doc.createDocumentFragment();
-          for (const word of words) {
-            const span = doc.createElement("span");
-            span.textContent = word + " ";
-            span.style.display = "inline";
-            frag.appendChild(span);
-            resolvedWordEls.push(span);
-          }
-          singleSpan.replaceWith(frag);
+          singleSpan.replaceWith(splitIntoSpans(doc, singleSpan.textContent, resolvedWordEls));
         }
       }
     }
@@ -102,10 +109,7 @@ export function readWordBoxes(
         groupId,
         groupIndex: gi,
         wordIndex: wi,
-        x: rect.left * cssScale + offsetX,
-        y: rect.top * cssScale + offsetY,
-        width: rect.width * cssScale,
-        height: rect.height * cssScale,
+        ...place(rect.left, rect.top, rect.width, rect.height),
       });
     }
   }
@@ -292,14 +296,14 @@ export function transformStyle({ x, y, scale, rotation }: WordTransform): Record
   return style;
 }
 
-export interface WordTransform {
+interface WordTransform {
   x: number;
   y: number;
   scale: number;
   rotation: number;
 }
 type WordEntry = EditingParams<"caption-transform">["entries"][number];
-export interface FrameWord {
+interface FrameWord {
   transform: WordTransform;
   rect: { x: number; y: number; width: number; height: number };
 }
@@ -336,12 +340,7 @@ export async function readFrameWordBoxes(
   const reply = await previewRequest(iframe, "caption-words", { words });
   const boxes: unknown = reply?.boxes;
   if (!Array.isArray(boxes)) return null;
-  const iframeDisplayRect = iframe.getBoundingClientRect();
-  const overlayRect = overlayEl.getBoundingClientRect();
-  const nativeW = parseFloat(iframe.style.width) || iframeDisplayRect.width;
-  const cssScale = iframeDisplayRect.width / nativeW;
-  const offsetX = iframeDisplayRect.left - overlayRect.left;
-  const offsetY = iframeDisplayRect.top - overlayRect.top;
+  const place = overlayPlacement(iframe, overlayEl);
   return boxes.flatMap((box: unknown): WordBox[] => {
     if (!isPlainRecord(box) || !allFinite(box.rect, ["x", "y", "width", "height"])) return [];
     const { group, word } = box;
@@ -349,19 +348,9 @@ export async function readFrameWordBoxes(
     const groupId = model.groupOrder[group as number];
     const segmentId = groupId && model.groups.get(groupId)?.segmentIds[word as number];
     if (!segmentId) return [];
-    const rect = box.rect as FrameWord["rect"];
-    return [
-      {
-        segmentId,
-        groupId,
-        groupIndex: group as number,
-        wordIndex: word as number,
-        x: rect.x * cssScale + offsetX,
-        y: rect.y * cssScale + offsetY,
-        width: rect.width * cssScale,
-        height: rect.height * cssScale,
-      },
-    ];
+    const { x, y, width, height } = box.rect as FrameWord["rect"];
+    const at = place(x, y, width, height);
+    return [{ segmentId, groupId, groupIndex: group as number, wordIndex: word as number, ...at }];
   });
 }
 
@@ -405,4 +394,133 @@ export function frameWordTransform(
   });
   sendTransforms(iframe, queue);
   return promise;
+}
+
+/** What a drag knows from its press: where it started and the word's transform then. */
+export type DragStart =
+  | {
+      type: "move";
+      startMX: number;
+      startMY: number;
+      origTX: number;
+      origTY: number;
+      origScale: number;
+      origRotation: number;
+    }
+  | {
+      type: "scale";
+      startMX: number;
+      startDxFromCenter: number;
+      origTX: number;
+      origTY: number;
+      origScale: number;
+      origRotation: number;
+    }
+  | {
+      type: "rotate";
+      startMX: number;
+      origTX: number;
+      origTY: number;
+      origRotation: number;
+      origScale: number;
+    };
+
+/** The word's transform with the pointer at (`clientX`, `clientY`). */
+export function dragTransform(
+  i: DragStart,
+  clientX: number,
+  clientY: number,
+  cssScale: number,
+): WordTransform {
+  const orig = { x: i.origTX, y: i.origTY, scale: i.origScale, rotation: i.origRotation };
+  if (i.type === "move") {
+    const dx = (clientX - i.startMX) / cssScale;
+    const dy = (clientY - i.startMY) / cssScale;
+    return { ...orig, x: i.origTX + dx, y: i.origTY + dy };
+  }
+  if (i.type === "scale") {
+    const cx = i.startMX - i.startDxFromCenter;
+    const startDist = Math.abs(i.startDxFromCenter);
+    const currentDist = Math.abs(clientX - cx);
+    const factor = startDist > 5 ? currentDist / startDist : 1;
+    return { ...orig, scale: Math.max(0.1, i.origScale * factor) };
+  }
+  const dx = clientX - i.startMX;
+  return { ...orig, rotation: i.origRotation + (dx / 200) * 90 };
+}
+
+/** A drag on a frame Studio cannot read: its press read lands later, and moves wait for it. */
+export interface SealedDrag {
+  iframe: HTMLIFrameElement;
+  word: { group: number; word: number };
+  segmentId: string;
+  start: Promise<DragStart | null>;
+  /** The word's transform once the latest write lands. */
+  last: Promise<WordTransform | null>;
+}
+
+const restOf = (drag: DragStart | null): WordTransform | null =>
+  drag && { x: drag.origTX, y: drag.origTY, scale: drag.origScale, rotation: drag.origRotation };
+
+/** The drag a press starts from the word the frame reports; `left` is the frame's left edge on screen. */
+function toDragStart(
+  type: DragStart["type"],
+  { transform: t, rect }: FrameWord,
+  press: { startMX: number; startMY: number; cssScale: number; left: number },
+): DragStart {
+  const { startMX, startMY, cssScale, left } = press;
+  const orig = { origTX: t.x, origTY: t.y, origScale: t.scale, origRotation: t.rotation };
+  if (type === "move") return { type, startMX, startMY, ...orig };
+  if (type === "rotate") return { type, startMX, ...orig };
+  const boxCenterX = rect.x * cssScale + left + (rect.width * cssScale) / 2;
+  return { type, startMX, startDxFromCenter: startMX - boxCenterX, ...orig };
+}
+
+/** Moves a frame's word by (`dx`, `dy`) from where the frame has it now. */
+export async function nudgeFrameWord(
+  iframe: HTMLIFrameElement,
+  word: { group: number; word: number },
+  dx: number,
+  dy: number,
+): Promise<FrameWord | null> {
+  const now = await frameWordTransform(iframe, word);
+  if (!now) return null;
+  const { x, y } = now.transform;
+  return frameWordTransform(iframe, { ...word, set: { x: x + dx, y: y + dy } });
+}
+
+/** Draws the drag at the pointer once the press read lands; `last` follows the newest write. */
+export function moveSealedDrag(
+  drag: SealedDrag,
+  clientX: number,
+  clientY: number,
+  cssScale: number,
+) {
+  drag.last = drag.start.then(async (start) => {
+    if (!start) return null;
+    const set = dragTransform(start, clientX, clientY, cssScale);
+    return (await frameWordTransform(drag.iframe, { ...drag.word, set }))?.transform ?? null;
+  });
+}
+
+/** Puts the word back where the press found it. */
+export function restoreSealedDrag(drag: SealedDrag): void {
+  void drag.start.then((start) => {
+    const set = restOf(start);
+    if (set) void frameWordTransform(drag.iframe, { ...drag.word, set });
+  });
+}
+
+/** A press on a word of a frame Studio cannot read; moves wait for the frame's answer. */
+export function pressSealedDrag(
+  iframe: HTMLIFrameElement,
+  type: DragStart["type"],
+  word: { group: number; word: number },
+  segmentId: string,
+  press: { startMX: number; startMY: number; cssScale: number; left: number },
+): SealedDrag {
+  const start = frameWordTransform(iframe, word).then(
+    (read) => read && toDragStart(type, read, press),
+  );
+  return { iframe, word, segmentId, start, last: start.then(restOf) };
 }

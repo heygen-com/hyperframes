@@ -1,8 +1,10 @@
 // `caption-words`: the caption editor's word boxes, read where the words live.
-import { isPlainRecord } from "../editingPort";
 import { MAX_QUERY_MATCHES, type EditingRect } from "../editingElement";
 
-export const MAX_CAPTION_WORDS = 100_000;
+const MAX_CAPTION_WORDS = 100_000;
+
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Object.prototype.toString.call(value) === "[object Object]";
 
 /** Word `word` of the `group`-th `.caption-group`, both counted from 0. */
 export interface CaptionWordBox {
@@ -19,7 +21,7 @@ export const isCaptionIndex = (value: unknown): value is number =>
   Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) < MAX_CAPTION_WORDS;
 
 export function captionWordsParams(params: unknown): CaptionWordsParams | null {
-  if (!isPlainRecord(params) || Object.keys(params).join() !== "words") return null;
+  if (!isRecord(params) || Object.keys(params).join() !== "words") return null;
   const { words } = params;
   if (!Array.isArray(words) || words.length > MAX_CAPTION_WORDS) return null;
   return words.every(isCaptionIndex) ? { words } : null;

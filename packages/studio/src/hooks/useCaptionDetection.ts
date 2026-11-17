@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useCaptionStore } from "../captions/store";
 import { acceptStudioRuntimeMessage } from "../player/lib/runtimeProtocol";
 import { useCaptionSync } from "../captions/hooks/useCaptionSync";
-import { GROUP_SELECTOR, parseCaptionComposition, WORD_SELECTOR } from "../captions/parser";
+import { parseCaptionComposition } from "../captions/parser";
 import type { CaptionModel } from "../captions/types";
 import { studioApiFetch } from "../utils/studioApiFetch";
 import { MAX_DESCRIBE_HANDLES } from "@hyperframes/core/runtime/editing-port";
@@ -26,6 +26,10 @@ interface UseCaptionDetectionParams {
   captionSync: ReturnType<typeof useCaptionSync>;
   setRightCollapsed: (collapsed: boolean) => void;
 }
+
+// The parser's GROUP_SELECTOR and WORD_SELECTOR, the elements it reads.
+const GROUP_SELECTOR = ".caption-group, .caption-line, .caption-block";
+const WORD_SELECTOR = ".word, .caption-word";
 
 const attribute = (el: PreviewElement | null | undefined, name: string) =>
   el?.attributes.find(([key]) => key === name)?.[1] ?? null;
@@ -54,12 +58,8 @@ async function frameStyles(iframe: HTMLIFrameElement, handle: string | undefined
   return Object.fromEntries(CAPTION_STYLES.map((name) => [camel(name), styles[name] ?? ""]));
 }
 
-/**
- * What `parseCaptionComposition` reads off a frame Studio cannot read: its caption groups and words,
- * rebuilt in document order and nesting in a detached document, and their first word's and group's
- * computed styles behind a stand-in `getComputedStyle`. Null when the frame does not answer, or has
- * more of them than one query returns.
- */
+/** A frame's caption groups and words rebuilt in order in a detached document, with a stand-in
+ * `getComputedStyle` for the parser; null past one query's matches or with no answer. */
 async function frameCaptionDom(
   iframe: HTMLIFrameElement,
 ): Promise<{ doc: Document; win: Window } | null> {
@@ -94,7 +94,6 @@ async function frameCaptionDom(
     [mirrored.get(firstWord ?? ""), await frameStyles(iframe, firstWord)],
     [mirrored.get(firstGroup ?? ""), await frameStyles(iframe, firstGroup)],
   ]);
-  // ponytail: the parser only calls getComputedStyle, on those two elements.
   const win = { getComputedStyle: (el: Element) => styles.get(el) ?? {} } as unknown as Window;
   return { doc, win };
 }

@@ -1,7 +1,6 @@
 // `caption-transform`: reads and moves caption words, on a wrapper so the word's own tweens keep running.
-import { isPlainRecord, MAX_DRAFT_PX } from "../editingPort";
 import { MAX_DESCRIBE_HANDLES, type EditingRect } from "../editingElement";
-import { captionWordSpans, isCaptionIndex } from "./captionWords";
+import { captionWordSpans, isCaptionIndex, isRecord } from "./captionWords";
 
 export interface CaptionTransform {
   x: number;
@@ -21,19 +20,21 @@ export type CaptionTransformParams = { entries: CaptionTransformEntry[] };
 /** The wrapper's transform after any write, and the word's box; null for a word the frame lacks. */
 export type CaptionWordState = { transform: CaptionTransform; rect: EditingRect } | null;
 
-const TRANSFORM_KEYS = new Set(["x", "y", "scale", "rotation"]);
+const REST: CaptionTransform = { x: 0, y: 0, scale: 1, rotation: 0 };
+const PARTS = new Set(Object.keys(REST));
+const MAX_TRANSFORM = 100_000;
 
 const isBounded = (value: unknown): value is number =>
-  Number.isFinite(value) && Math.abs(value as number) <= MAX_DRAFT_PX;
+  Number.isFinite(value) && Math.abs(value as number) <= MAX_TRANSFORM;
 
 function transformPart(set: unknown): Partial<CaptionTransform> | null {
-  if (!isPlainRecord(set)) return null;
-  const valid = Object.entries(set).every(([key, v]) => TRANSFORM_KEYS.has(key) && isBounded(v));
+  if (!isRecord(set)) return null;
+  const valid = Object.entries(set).every(([key, v]) => PARTS.has(key) && isBounded(v));
   return valid ? (set as Partial<CaptionTransform>) : null;
 }
 
 function entry(value: unknown): CaptionTransformEntry | null {
-  if (!isPlainRecord(value)) return null;
+  if (!isRecord(value)) return null;
   const { group, word, set, ...rest } = value;
   if (Object.keys(rest).length || !isCaptionIndex(group) || !isCaptionIndex(word)) return null;
   if (!("set" in value)) return { group, word };
@@ -42,7 +43,7 @@ function entry(value: unknown): CaptionTransformEntry | null {
 }
 
 export function captionTransformParams(params: unknown): CaptionTransformParams | null {
-  if (!isPlainRecord(params) || Object.keys(params).join() !== "entries") return null;
+  if (!isRecord(params) || Object.keys(params).join() !== "entries") return null;
   const { entries } = params;
   if (!Array.isArray(entries) || !entries.length || entries.length > MAX_DESCRIBE_HANDLES)
     return null;
@@ -56,27 +57,25 @@ type Gsap = {
 };
 const frameGsap = () => (window as unknown as { gsap?: Gsap }).gsap;
 
+const CSS_PARTS: Array<[keyof CaptionTransform, RegExp]> = [
+  ["x", /translate\(([^,]+)px,\s*[^)]+px\)/],
+  ["y", /translate\([^,]+px,\s*([^)]+)px\)/],
+  ["scale", /scale\(([^)]+)\)/],
+  ["rotation", /rotate\(([^)]+)deg\)/],
+];
+
 /** GSAP keeps transforms in its own cache, so read through it when the page has it. */
 function readTransform(el: HTMLElement): CaptionTransform {
   const gsap = frameGsap();
-  if (gsap?.getProperty) {
-    return {
-      x: gsap.getProperty(el, "x") || 0,
-      y: gsap.getProperty(el, "y") || 0,
-      scale: gsap.getProperty(el, "scale") || 1,
-      rotation: gsap.getProperty(el, "rotation") || 0,
-    };
+  const read = { ...REST };
+  for (const [part, pattern] of CSS_PARTS) {
+    if (gsap?.getProperty) read[part] = gsap.getProperty(el, part) || REST[part];
+    else {
+      const match = (el.style.transform || "").match(pattern);
+      if (match) read[part] = parseFloat(match[1]!);
+    }
   }
-  const t = el.style.transform || "";
-  const scale = t.match(/scale\(([^)]+)\)/);
-  const rotation = t.match(/rotate\(([^)]+)deg\)/);
-  const translate = t.match(/translate\(([^,]+)px,\s*([^)]+)px\)/);
-  return {
-    x: translate ? parseFloat(translate[1]!) : 0,
-    y: translate ? parseFloat(translate[2]!) : 0,
-    scale: scale ? parseFloat(scale[1]!) : 1,
-    rotation: rotation ? parseFloat(rotation[1]!) : 0,
-  };
+  return read;
 }
 
 function writeTransform(el: HTMLElement, { x, y, scale, rotation }: CaptionTransform): void {
