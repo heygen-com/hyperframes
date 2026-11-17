@@ -227,7 +227,7 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
-  // The player turns pointer events back on for its own frame, so a reload's frame would take clicks meant for the live one.
+  // The player turns pointer events back on for its frame, so a reload's frame would take the live one's clicks.
   it("keeps a reload's player out of clicks and focus until it is promoted, then gives them back", () => {
     const { getApi, gen, root } = beginReload();
     const shadow = makeShadowWithSpies();
