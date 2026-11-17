@@ -134,10 +134,20 @@ esac
       commits.map(({ sha: c, pulls }) => [`FAKE_PULLS_${c}`, JSON.stringify(pulls)]),
     ),
   });
-  const run = (pulls, ref = main, reviews = approved, history = {}) => {
-    const prCommits = history.commits ?? [commit("releaser", "web-flow")];
+  /** A release PR's history: one commit and one push by its opener, unless `history` says otherwise. */
+  const historyOf = (pulls, ref, history) => ({
+    commits: [commit("releaser", "web-flow")],
+    push: [{ sha, message: ref.HEAD_MESSAGE ?? "fix: a change", pulls }],
+    before: "e".repeat(40),
+    activity: [pushBy("releaser", "User", "branch_creation"), pushBy("releaser")],
+    events: [],
+    permissions,
+    permissionFails: "",
+    ...history,
+  });
+  const run = (pulls, ref = main, reviews = approved, given = {}) => {
+    const history = historyOf(pulls, ref, given);
     const out = join(bin, "out");
-    const commits = history.push ?? [{ sha, message: ref.HEAD_MESSAGE ?? "fix: a change", pulls }];
     writeFileSync(out, "");
     const result = runStep(step, {
       cwd: bin,
@@ -146,17 +156,15 @@ esac
         SHA: sha,
         RUNNER_TEMP: bin,
         GITHUB_OUTPUT: out,
-        BEFORE: history.before ?? "e".repeat(40),
-        ...push(commits, history.total),
+        BEFORE: history.before,
+        ...push(history.push, history.total),
         FAKE_REVIEWS: JSON.stringify(reviews),
-        FAKE_COMMITS: JSON.stringify(prCommits),
-        FAKE_PULL: JSON.stringify({ commits: history.listed ?? prCommits.length }),
-        FAKE_ACTIVITY: JSON.stringify(
-          history.activity ?? [pushBy("releaser", "User", "branch_creation"), pushBy("releaser")],
-        ),
-        FAKE_EVENTS: JSON.stringify(history.events ?? []),
-        FAKE_PERMISSIONS: history.permissions ?? permissions,
-        FAKE_PERMISSION_FAILS: history.permissionFails ?? "",
+        FAKE_COMMITS: JSON.stringify(history.commits),
+        FAKE_PULL: JSON.stringify({ commits: history.listed ?? history.commits.length }),
+        FAKE_ACTIVITY: JSON.stringify(history.activity),
+        FAKE_EVENTS: JSON.stringify(history.events),
+        FAKE_PERMISSIONS: history.permissions,
+        FAKE_PERMISSION_FAILS: history.permissionFails,
         ...ref,
       },
       path: `${bin}:${process.env.PATH}`,
@@ -285,6 +293,15 @@ esac
       ],
       ["more commits than GitHub lists", { listed: 251 }],
       ["no push to the branch was recorded", { activity: [] }],
+      [
+        "a push with no recorded account",
+        {
+          activity: [
+            pushBy("releaser", "User", "branch_creation"),
+            { activity_type: "push", actor: null },
+          ],
+        },
+      ],
     ]) {
       assert.equal(run([pull()], main, approved, history).status, 1, why);
     }
