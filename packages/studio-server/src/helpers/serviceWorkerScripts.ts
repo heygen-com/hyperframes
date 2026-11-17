@@ -1,12 +1,9 @@
 import type { Context, Next } from "hono";
+import { serviceWorkerScriptFetch } from "@hyperframes/core/studio-preview-mark";
+
+export { serviceWorkerScriptFetch };
 
 // A project file served as a worker's script would control the origin's pages after the project is gone.
-export function serviceWorkerScriptFetch(headers: {
-  serviceWorker?: string;
-  fetchDest?: string;
-}): boolean {
-  return headers.serviceWorker === "script" || headers.fetchDest === "serviceworker";
-}
 
 export async function refuseServiceWorkerScripts(c: Context, next: Next) {
   const headers = {

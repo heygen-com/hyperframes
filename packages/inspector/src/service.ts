@@ -36,6 +36,7 @@ import {
   type BundleScriptProvenance,
 } from "../../core/src/compiler/htmlBundler";
 import { closeServer, isLoopbackHost, servableProjectFile } from "./pageServer";
+import { serviceWorkerScriptFetch } from "../../core/src/studioPreviewMark";
 import { Sources, fingerprint } from "./sources";
 import type { InspectRequest, Snippet } from "./types";
 import { foreignWritablePath, trustedCacheRoot } from "../../core/src/cacheDir";
@@ -232,6 +233,9 @@ export class Inspector {
       throw new Error("source_changed_during_load: retry against a stable project");
     const serve: PageHandler = (req, res) => {
       if (!isLoopbackHost(req.headers.host)) return void res.writeHead(403).end();
+      const { "service-worker": serviceWorker, "sec-fetch-dest": fetchDest } = req.headers;
+      if (serviceWorkerScriptFetch({ serviceWorker, fetchDest }))
+        return void res.writeHead(403).end();
       try {
         const path = decodeURIComponent(new URL(req.url ?? "/", "http://localhost").pathname);
         if (path === "/" || path === "/index.html") {
