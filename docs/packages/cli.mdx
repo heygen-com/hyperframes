@@ -2122,7 +2122,9 @@ mismatched encodes. The directory is deleted after a successful render unless
 `--resume` reuses only segments this install finished. Their record is signed
 with a key kept in `~/.hyperframes` (or `HYPERFRAMES_CONFIG_DIR`), so a
 `.hf-segments` folder copied from another machine or received inside a project
-is captured again.
+is captured again. Each reused segment must also match the size and SHA-256
+recorded when it finished. Segments recorded by an older HyperFrames version
+are captured again once.
 
 mp4 and mov only; png-sequence, gif, webm, HDR and shader-transition renders
 keep their existing routes.
