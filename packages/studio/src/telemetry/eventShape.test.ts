@@ -47,13 +47,16 @@ describe("Studio analytics leave the machine without paths or selectors", () => 
 
   async function sent(): Promise<{ body: string; batch: Sent }> {
     await vi.runOnlyPendingTimersAsync();
-    const bodies = fetchMock.mock.calls.map((call) => String((call[1] as { body?: string })?.body ?? ""));
+    const bodies = fetchMock.mock.calls.map((call) =>
+      String((call[1] as { body?: string })?.body ?? ""),
+    );
     const batch = bodies.flatMap((body) => (JSON.parse(body) as { batch: Sent }).batch);
     return { body: bodies.join("\n"), batch };
   }
 
   async function send(transport: "studio:*" | "studio_*", event: string, properties: object) {
-    if (transport === "studio:*") (await import("../utils/studioTelemetry")).trackStudioEvent(event, properties as never);
+    if (transport === "studio:*")
+      (await import("../utils/studioTelemetry")).trackStudioEvent(event, properties as never);
     else (await import("./client")).trackEvent(event, properties as never);
   }
 
@@ -84,7 +87,9 @@ describe("Studio analytics leave the machine without paths or selectors", () => 
       expect(first?.file_path_hash).toMatch(/^[0-9a-f]{8}$/);
       // The same path from the same install groups; the salt that keys it never leaves.
       expect(second?.file_path_hash).toBe(first?.file_path_hash);
-      expect(body).not.toContain(localStorage.getItem("hyperframes-studio:telemetrySalt") ?? "missing-salt");
+      expect(body).not.toContain(
+        localStorage.getItem("hyperframes-studio:telemetrySalt") ?? "missing-salt",
+      );
     },
   );
 
@@ -96,7 +101,9 @@ describe("Studio analytics leave the machine without paths or selectors", () => 
   });
 
   it("leaves feedback text the person typed to send", async () => {
-    await send("studio_*", "studio_feedback", { comment: "export of compositions/intro.html froze" });
+    await send("studio_*", "studio_feedback", {
+      comment: "export of compositions/intro.html froze",
+    });
     const { batch } = await sent();
     expect(batch[0]?.properties.comment).toBe("export of compositions/intro.html froze");
   });

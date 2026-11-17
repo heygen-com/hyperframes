@@ -109,7 +109,11 @@ describe("studio save diagnostics", () => {
     );
     const error = await createStudioSaveHttpError(response, "Failed to save compositions/x.html");
     const properties = buildStudioSaveFailureProperties({ source: "dom_edit", error });
-    expect(properties).toMatchObject({ error_key: "http", server_why: "protected_path", status_code: 403 });
+    expect(properties).toMatchObject({
+      error_key: "http",
+      server_why: "protected_path",
+      status_code: 403,
+    });
     expect(JSON.stringify(properties)).not.toContain("compositions/x.html");
   });
 

@@ -1,13 +1,13 @@
 import {
+  getStudioSaveErrorMessage,
   getStudioSaveStatusCode,
-  studioSaveErrorCodes,
   StudioFileConflictError,
   type StudioSaveDrainResult,
 } from "./studioSaveDiagnostics";
 
 interface DomEditSaveQueueOpenEvent {
   consecutiveFailures: number;
-  errorCodes: ReturnType<typeof studioSaveErrorCodes>;
+  errorMessage: string;
   statusCode: number | null;
 }
 
@@ -58,7 +58,7 @@ export function createDomEditSaveQueue(options: DomEditSaveQueueOptions = {}): D
     breakerOpen = true;
     options.onOpen?.({
       consecutiveFailures,
-      errorCodes: studioSaveErrorCodes(error),
+      errorMessage: getStudioSaveErrorMessage(error),
       statusCode: getStudioSaveStatusCode(error) ?? null,
     });
   };

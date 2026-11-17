@@ -16,7 +16,6 @@ export interface StudioSaveFailureInput {
   targetSourceFile?: string | null;
 }
 
-/** The studio server's fixed reasons for refusing a file (studio-server routes/files.ts `why`). */
 const SERVER_WHY = new Set([
   "nul",
   "dangling_symlink",
@@ -27,6 +26,8 @@ const SERVER_WHY = new Set([
   "not_a_file",
   "too_large",
   "binary",
+  "link",
+  "project_dir_missing",
 ]);
 
 export class StudioSaveHttpError extends Error {
@@ -190,23 +191,20 @@ export function buildStudioSaveFailureProperties(
   };
 }
 
-/** What failed, as fixed codes: the message carries the file's path and the server's own words. */
+const isNamed = (name: string) => (error: unknown) => error instanceof Error && error.name === name;
+const ERROR_KEYS: ReadonlyArray<readonly [string, (error: unknown) => boolean]> = [
+  ["conflict", (error) => findCause(error, StudioFileConflictError) !== null],
+  ["held", (error) => findCause(error, StudioSaveHttpError)?.heldFile === true],
+  ["http", (error) => findCause(error, StudioSaveHttpError) !== null],
+  ["network", (error) => findCause(error, StudioSaveNetworkError) !== null],
+  ["aborted", isNamed("AbortError")],
+  ["blocked", isNamed("GsapEditBlockedError")],
+];
+
 export function studioSaveErrorCodes(error: unknown): Record<string, StudioTelemetryValue> {
   const failure = error instanceof Error ? error : null;
   const http = findCause(error, StudioSaveHttpError);
-  const errorKey = findCause(error, StudioFileConflictError)
-    ? "conflict"
-    : http?.heldFile
-      ? "held"
-      : http
-        ? "http"
-        : findCause(error, StudioSaveNetworkError)
-          ? "network"
-          : failure?.name === "AbortError"
-            ? "aborted"
-            : failure?.name === "GsapEditBlockedError"
-              ? "blocked"
-              : "unknown";
+  const errorKey = ERROR_KEYS.find(([, matches]) => matches(error))?.[0] ?? "unknown";
   return {
     error_class: failure?.name ?? typeof error,
     error_key: errorKey,
@@ -230,9 +228,8 @@ function blockReason(error: unknown): string | undefined {
 }
 
 /**
- * The specific cause behind a blocked GSAP edit. `error_message` only carries
- * the coarse copy, and one of those strings covers six different situations,
- * so the message alone cannot say which one a user hit.
+ * The specific cause behind a blocked GSAP edit: one block reason covers six
+ * different situations, so the reason alone cannot say which one a user hit.
  */
 function gsapBlockDetail(error: unknown): string | undefined {
   if (!(error instanceof Error) || error.name !== "GsapEditBlockedError") return undefined;

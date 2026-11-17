@@ -18,7 +18,9 @@ const PATH_KEYS = new Set([
 ]);
 const SELECTOR_KEYS = new Set(["target_selector", "selector", "target_id", "animationId"]);
 // Text the person typed to send to us on purpose.
-const KEPT_AS_TYPED: Record<string, ReadonlySet<string>> = { studio_feedback: new Set(["comment"]) };
+const KEPT_AS_TYPED: Record<string, ReadonlySet<string>> = {
+  studio_feedback: new Set(["comment"]),
+};
 
 const SALT_KEY = "hyperframes-studio:telemetrySalt";
 let sessionSalt: string | undefined;
@@ -44,11 +46,22 @@ function installSalt(): string {
 }
 
 // ponytail: 32-bit FNV-1a groups one install's repeats; a collision only merges two groups.
-const hashOf = (value: string): string => hashContent(`${installSalt()}\0${value}`).padStart(8, "0");
+const hashOf = (value: string): string =>
+  hashContent(`${installSalt()}\0${value}`).padStart(8, "0");
 
-const SCRIPT = new Set(["js", "mjs", "cjs", "ts", "tsx", "jsx"]);
-const STYLE = new Set(["css", "scss", "less"]);
-const COMPOSITION = new Set(["html", "htm"]);
+const KINDS: Record<string, string> = {
+  html: "composition",
+  htm: "composition",
+  js: "script",
+  mjs: "script",
+  cjs: "script",
+  ts: "script",
+  tsx: "script",
+  jsx: "script",
+  css: "style",
+  scss: "style",
+  less: "style",
+};
 
 function pathFacts(key: string, value: string): Facts {
   const paths = value.split(",").filter((p) => p.trim().length > 0);
@@ -58,15 +71,7 @@ function pathFacts(key: string, value: string): Facts {
   const dot = name.lastIndexOf(".");
   const raw = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
   const ext = /^[a-z0-9]{1,8}$/.test(raw) ? raw : "none";
-  const kind = COMPOSITION.has(ext)
-    ? "composition"
-    : SCRIPT.has(ext)
-      ? "script"
-      : STYLE.has(ext)
-        ? "style"
-        : ext === "none"
-          ? "other"
-          : "asset";
+  const kind = ext === "none" ? "other" : (KINDS[ext] ?? "asset");
   return {
     [`${key}_ext`]: ext,
     [`${key}_kind`]: kind,
@@ -79,7 +84,15 @@ function pathFacts(key: string, value: string): Facts {
 function selectorFacts(key: string, value: string): Facts {
   const s = value.trim();
   const kind =
-    key === "target_id" ? "id" : s.startsWith("#") ? "id" : s.startsWith(".") ? "class" : s.startsWith("[") ? "attribute" : "other";
+    key === "target_id"
+      ? "id"
+      : s.startsWith("#")
+        ? "id"
+        : s.startsWith(".")
+          ? "class"
+          : s.startsWith("[")
+            ? "attribute"
+            : "other";
   return { [`${key}_kind`]: kind, [`${key}_hash`]: hashOf(s) };
 }
 
@@ -89,7 +102,9 @@ const HEX_COLOUR = /^#[0-9a-f]{3,8}$/i;
 
 function readsAsPathOrSelector(value: string): boolean {
   if (redactTelemetryString(value, Number.MAX_SAFE_INTEGER) !== value) return true;
-  return ATTRIBUTE_SELECTOR.test(value) || (ID_OR_CLASS.test(value) && !HEX_COLOUR.test(value.trim()));
+  return (
+    ATTRIBUTE_SELECTOR.test(value) || (ID_OR_CLASS.test(value) && !HEX_COLOUR.test(value.trim()))
+  );
 }
 
 /** A caller's properties as they may leave the machine; runs before the transport's own fields. */

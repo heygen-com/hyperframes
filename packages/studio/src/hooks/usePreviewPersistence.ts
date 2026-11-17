@@ -139,7 +139,7 @@ export function usePreviewPersistence({
         showToastRef.current(message, "error");
         trackStudioEvent("save_queue_paused", {
           source: "dom_edit",
-          ...event.errorCodes,
+          error_message: event.errorMessage,
           status_code: event.statusCode,
           consecutive_failures: event.consecutiveFailures,
         });
