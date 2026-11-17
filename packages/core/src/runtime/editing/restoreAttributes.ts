@@ -17,7 +17,7 @@ const MAX_ELEMENTS = 2_000;
 const MAX_ATTRIBUTES = 256;
 const MAX_KEY_LENGTH = 512;
 const MAX_VALUE_LENGTH = 200_000;
-const ATTRIBUTE_NAME = /^[^\s"'>/=\0]{1,256}$/;
+const ATTRIBUTE_NAME = /^[^\s"'>/=]{1,256}$/;
 const IDENTITY_SELECTOR = "[id], [data-hf-id]";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -39,17 +39,20 @@ function attribute(value: unknown): RestoreAttribute | null {
 function element(value: unknown): RestoreScope["elements"][number] | null {
   if (!isRecord(value) || !keysAre(value, "attributes,key")) return null;
   const { key, attributes } = value;
-  if (typeof key !== "string" || key.length > MAX_KEY_LENGTH || !/^(hf|id):./.test(key)) return null;
+  if (typeof key !== "string" || key.length > MAX_KEY_LENGTH || !/^(hf|id):./.test(key))
+    return null;
   if (!Array.isArray(attributes) || attributes.length > MAX_ATTRIBUTES) return null;
   const parsed = attributes.map(attribute);
   return parsed.every(Boolean) ? { key, attributes: parsed as RestoreAttribute[] } : null;
 }
 
+const isScopeFile = (file: unknown): file is string | null =>
+  file === null || (typeof file === "string" && file.length > 0 && file.length <= MAX_KEY_LENGTH);
+
 function scope(value: unknown): RestoreScope | null {
   if (!isRecord(value) || !keysAre(value, "elements,file")) return null;
   const { file, elements } = value;
-  if (file !== null && (typeof file !== "string" || !file || file.length > MAX_KEY_LENGTH)) return null;
-  if (!Array.isArray(elements) || !elements.length) return null;
+  if (!isScopeFile(file) || !Array.isArray(elements) || !elements.length) return null;
   const parsed = elements.map(element);
   return parsed.every(Boolean) ? { file, elements: parsed as RestoreScope["elements"] } : null;
 }
@@ -93,22 +96,31 @@ function scopeRoots(file: string | null): ParentNode[] {
   );
 }
 
+type RestorePlan = [Element, RestoreAttribute[]][];
+
+/** Adds `root`'s live elements to `plan`; false when any is missing or not the file's own. */
+function planRoot(
+  root: ParentNode,
+  elements: RestoreScope["elements"],
+  plan: RestorePlan,
+): boolean {
+  const live = identityMap(root);
+  if (!live) return false;
+  for (const { key, attributes } of elements) {
+    const el = live.get(key);
+    // The preview rewrites a sub-composition's own root, so its attributes are not the file's.
+    if (!el || el.hasAttribute("data-hf-inner-root")) return false;
+    plan.push([el, attributes]);
+  }
+  return true;
+}
+
 /** Each live element with the attributes it takes, or null when any is missing or not the file's own. */
-function planRestore(scopes: RestoreScope[]): [Element, RestoreAttribute[]][] | null {
-  const plan: [Element, RestoreAttribute[]][] = [];
+function planRestore(scopes: RestoreScope[]): RestorePlan | null {
+  const plan: RestorePlan = [];
   for (const { file, elements } of scopes) {
     const roots = scopeRoots(file);
-    if (!roots.length) return null;
-    for (const root of roots) {
-      const live = identityMap(root);
-      if (!live) return null;
-      for (const { key, attributes } of elements) {
-        const el = live.get(key);
-        // The preview rewrites a sub-composition's own root, so its attributes are not the file's.
-        if (!el || el.hasAttribute("data-hf-inner-root")) return null;
-        plan.push([el, attributes]);
-      }
-    }
+    if (!roots.length || !roots.every((root) => planRoot(root, elements, plan))) return null;
   }
   return plan;
 }
@@ -134,11 +146,9 @@ function rebindAt(win: RestoreWindow, time: number): void {
 }
 
 /** Applies the restore in place; `applied: false` changes nothing, and the parent reloads instead. */
-export function restoreAttributes({
-  scopes,
-  scripted,
-  time,
-}: RestoreAttributesParams): { applied: boolean } {
+export function restoreAttributes({ scopes, scripted, time }: RestoreAttributesParams): {
+  applied: boolean;
+} {
   const win = window as RestoreWindow;
   const plan = planRestore(scopes);
   if (!plan || typeof win.__player?.seek !== "function") return { applied: false };

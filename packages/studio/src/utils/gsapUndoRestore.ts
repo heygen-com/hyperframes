@@ -363,28 +363,38 @@ type SealedRestore = Omit<EditingParams<"restore-attributes">, "time">;
 const restoredAttributes = (el: Element): [string, string][] =>
   el.getAttributeNames().map((name) => [name, el.getAttribute(name) ?? ""]);
 
+// The preview server stamps data-hf-id on every page it serves.
+const stamped = (html: string) => (html.includes("data-hf-id") ? html : ensureHfIds(html));
+
+type SealedFile = { scripted: boolean; elements: SealedRestore["scopes"][number]["elements"] };
+
+/** One file's changed elements with their restored attributes, or null when it needs a reload. */
+function sealedFile(file: UndoRestoreFile, isActive: boolean): SealedFile | null {
+  // A changed script is re-run in the frame, which a sealed preview cannot be asked to do yet.
+  if (extractGsapScriptText(file.restored) !== extractGsapScriptText(file.previous)) return null;
+  const prevDoc = parseRestoreSource(stamped(file.previous));
+  const nextDoc = parseRestoreSource(stamped(file.restored));
+  const scripted = restoreScripted(prevDoc, nextDoc, isActive);
+  const keys = diffRestoreDocs(prevDoc, nextDoc);
+  const restoredByKey = identityElementMap(nextDoc);
+  if (scripted === null || !keys || !restoredByKey) return null;
+  const elements = keys.map((key) => ({
+    key,
+    attributes: restoredAttributes(restoredByKey.get(key)!),
+  }));
+  return { scripted, elements };
+}
+
 /** A sealed preview's in-place restore from the files alone, or null when it needs a reload. */
 function sealedRestore(activeDocPath: string, files: RestoreFiles): SealedRestore | null {
   const restore: SealedRestore = { scopes: [], scripted: false };
-  // The preview server stamps data-hf-id on every page it serves.
-  const stamped = (html: string) => (html.includes("data-hf-id") ? html : ensureHfIds(html));
   for (const [path, file] of Object.entries(files)) {
     const isActive = path === activeDocPath;
-    const prevDoc = parseRestoreSource(stamped(file.previous));
-    const nextDoc = parseRestoreSource(stamped(file.restored));
-    const scripted = restoreScripted(prevDoc, nextDoc, isActive);
-    const keys = diffRestoreDocs(prevDoc, nextDoc);
-    const restoredByKey = identityElementMap(nextDoc);
-    if (scripted === null || !keys || !restoredByKey) return null;
-    // A changed script is re-run in the frame, which a sealed preview cannot be asked to do yet.
-    if (extractGsapScriptText(file.restored) !== extractGsapScriptText(file.previous)) return null;
-    restore.scripted ||= scripted;
-    if (!keys.length) continue;
-    const elements = keys.map((key) => ({
-      key,
-      attributes: restoredAttributes(restoredByKey.get(key)!),
-    }));
-    restore.scopes.push({ file: isActive ? null : path, elements });
+    const found = sealedFile(file, isActive);
+    if (!found) return null;
+    restore.scripted ||= found.scripted;
+    if (found.elements.length)
+      restore.scopes.push({ file: isActive ? null : path, elements: found.elements });
   }
   return restore.scopes.length ? restore : null;
 }
