@@ -1742,6 +1742,10 @@ npx hyperframes measure face ref.mp4 --start 1 --end 2.5
 | `face`       | The face's size and position over a window                                              |
 | `sync`       | The lag between mouth motion and the voice                                              |
 
+In `cuts`, a shot that returns to an earlier camera setup after at least one other shot (a wide take, a close-up
+cut into it, the wide take again) carries `continues`: the index in `shots` of the shot it resumes, so one take can
+feed both. A shot that resumes nothing has no `continues`.
+
 ### `diff`
 
 Scores a render, or a project folder without rendering it, against the original
