@@ -12,7 +12,7 @@ import {
   swapPending,
   unsettledBy,
 } from "./case.mjs";
-import { heldSize } from "./sequences.mjs";
+import { heldSize, keyedBy } from "./sequences.mjs";
 
 describe("settling on the shown preview", () => {
   const read = (pending, x = 0, frames = "a") => ({
@@ -53,6 +53,19 @@ describe("settling on the shown preview", () => {
     expect(await swapPending({ page: page(frame("/studio", false, true)), keys })).toBe(false);
   });
 
+  it("reads a preview that went away mid-read as holding nothing, not as an error", async () => {
+    const gone = {
+      url: () => "/preview/a?_t=1",
+      frameElement: async () => ({
+        evaluate: async () => {
+          throw new Error("Attempted to use detached Frame");
+        },
+      }),
+      $: async () => ({}),
+    };
+    expect(await swapPending({ page: page(gone), keys })).toBe(false);
+  });
+
   it("calls a swap pending while Studio says the preview is changing, with no hidden preview yet", async () => {
     const changing = (on) => ({ frames: () => [], evaluate: async () => on });
     expect(await swapPending({ page: changing(true), keys })).toBe(true);
@@ -63,6 +76,25 @@ describe("settling on the shown preview", () => {
   it("never waits on a swap in a case without keyframes, so its undo keeps main's timing", async () => {
     expect(await swapPending({ page: swapping })).toBe(false);
     expect(await swapPending({ page: swapping, keys: undefined, selector: "#other" })).toBe(false);
+  });
+});
+
+describe("a plain element that gains keyframes mid-sequence", () => {
+  const changing = { frames: () => [], evaluate: async () => true };
+  const plain = () => ({ A: { page: changing }, B: { page: changing } });
+
+  it("waits out Studio's swap from the step that writes its first keyframe", async () => {
+    const ctx = plain();
+    keyedBy(ctx, { do: "drag" }, { autokey: false });
+    expect(await swapPending(ctx.A), "a drag with auto-keyframe off writes none").toBe(false);
+    keyedBy(ctx, { do: "addkey" }, { autokey: false });
+    expect(await swapPending(ctx.A)).toBe(true);
+  });
+
+  it("keys the element a drag with auto-keyframe on moved, and only that one", async () => {
+    const ctx = plain();
+    keyedBy(ctx, { do: "drag", element: "B" }, { autokey: true });
+    expect([await swapPending(ctx.A), await swapPending(ctx.B)]).toEqual([false, true]);
   });
 });
 
