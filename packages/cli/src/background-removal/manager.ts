@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { platform, arch } from "node:os";
 import { join } from "node:path";
 import { downloadFile } from "../utils/download.js";
+import { verifies, type ModelFile } from "../whisper/modelFile.js";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 export const MODELS_DIR = hyperframesCacheDir("background-removal", "models");
@@ -12,6 +13,15 @@ export type ModelId = typeof DEFAULT_MODEL;
 const MODEL_URLS: Record<ModelId, string> = {
   u2net_human_seg:
     "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net_human_seg.onnx",
+};
+
+/** Size and sha256 of each release asset, so a cut or replaced file is never loaded. */
+const MODEL_FILES: Record<ModelId, ModelFile> = {
+  u2net_human_seg: {
+    name: "u2net_human_seg.onnx",
+    bytes: 175_997_641,
+    sha256: "01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c",
+  },
 };
 
 export const MODEL_MEMORY_MB: Record<ModelId, number> = {
@@ -84,11 +94,21 @@ export async function ensureModel(
   options?: { onProgress?: (message: string) => void },
 ): Promise<string> {
   const dest = modelPath(model);
-  if (existsSync(dest)) return dest;
+  const pin = MODEL_FILES[model];
+  if (statSync(dest, { throwIfNoEntry: false })?.size === pin.bytes) return dest;
 
   mkdirSync(MODELS_DIR, { recursive: true });
+  rmSync(dest, { force: true });
   options?.onProgress?.(`Downloading ${model} weights (~168 MB)...`);
-  await downloadFile(MODEL_URLS[model], dest);
+  await downloadFile(MODEL_URLS[model], dest, {
+    verify: async (path) => {
+      if (!(await verifies(path, pin))) {
+        throw new Error(
+          `${pin.name} did not match its pinned size and sha256, so it was discarded. Re-run to retry.`,
+        );
+      }
+    },
+  });
 
   if (!existsSync(dest)) {
     throw new Error(`Model download failed: ${model}`);
