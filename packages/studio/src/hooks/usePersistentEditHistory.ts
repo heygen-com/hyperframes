@@ -3,7 +3,10 @@ import type { HistoryListItem, HistoryResult } from "@hyperframes/studio-server"
 import { studioFileContentVersion, studioWriteHeaders } from "../utils/studioFileVersion";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
 import { studioApiFetch } from "../utils/studioApiFetch";
-import { setStudioPendingEditClaimClock } from "../utils/studioPendingEdits";
+import {
+  setStudioPendingEditClaimClock,
+  setStudioPendingEditsSettled,
+} from "../utils/studioPendingEdits";
 import type { RecordEditInput } from "../utils/studioFileHistory";
 import { generateId } from "../utils/generateId";
 
@@ -238,6 +241,21 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
     setStudioPendingEditClaimClock(own.claimCount);
     return () => setStudioPendingEditClaimClock(null);
   }, [own]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const closeHeldClaimWithAClaimOfNothing = () => {
+      if (!heldClaimRef.current) return;
+      heldClaimRef.current = null;
+      void post(historyUrl(projectId, "/claim"), { label: "Edited in Studio", paths: [] }).then(
+        (reply) => {
+          if (reply.ok) void refresh();
+        },
+      );
+    };
+    setStudioPendingEditsSettled(closeHeldClaimWithAClaimOfNothing);
+    return () => setStudioPendingEditsSettled(null);
+  }, [projectId, refresh]);
 
   const recordEdit = useCallback(
     async ({ label, coalesceKey, coalesceMs, files, targets, created = [] }: RecordEditInput) => {
