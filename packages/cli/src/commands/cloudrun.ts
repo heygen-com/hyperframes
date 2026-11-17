@@ -159,6 +159,12 @@ export default defineCommand({
 
     // sites / render
     "site-id": { type: "string", description: "Explicit site id (overrides content hash)" },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Upload the files a link brings in from outside the project folder. Otherwise they are left out and named.",
+      default: false,
+    },
     width: { type: "string", description: "Render width in pixels" },
     height: { type: "string", description: "Render height in pixels" },
     fps: { type: "string", description: `Render fps (${DISTRIBUTED_FPS.join(" | ")})` },
@@ -512,6 +518,7 @@ async function runSites(args: Record<string, unknown>): Promise<void> {
     projectDir: resolve(projectDir),
     bucketName: state.bucketName,
     siteId: args["site-id"] as string | undefined,
+    includeOutsideFiles: args["include-outside-files"] === true,
     onNotice: (message) => console.error(message),
   });
   if (args.json) {
@@ -563,6 +570,8 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
   const { renderToCloudRun, getRenderProgress } = await loadCloudRunAdapter();
   const handle = await renderToCloudRun({
     projectDir: resolve(projectDir),
+    includeOutsideFiles: args["include-outside-files"] === true,
+    onNotice: (message) => console.error(message),
     config: config as Parameters<typeof renderToCloudRun>[0]["config"],
     bucketName: state.bucketName,
     projectId: state.projectId,
@@ -694,6 +703,7 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     projectDir: resolve(projectDir),
     bucketName: state.bucketName,
     siteId: args["site-id"] as string | undefined,
+    includeOutsideFiles: args["include-outside-files"] === true,
     onNotice: (message) => console.error(message),
   });
 
