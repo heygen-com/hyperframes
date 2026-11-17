@@ -72,10 +72,24 @@ export const TRANSCODE_STALL_MS = boundedEnvInteger(
 /** A longer source is copied in pieces this long; a stopped copy keeps its finished pieces and loses at most one. */
 export const PROXY_CHUNK_SECONDS = 15;
 const CHUNK_PREFIX = ".part-";
+// Without a preview token, pieces are reused only within this process.
 const UNSIGNED_PIECE_SECRET = randomBytes(32).toString("hex");
+let warnedNoPieceToken = false;
+
+function pieceSecret(): string {
+  const token = previewToken();
+  if (token) return token;
+  if (!warnedNoPieceToken) {
+    warnedNoPieceToken = true;
+    console.warn(
+      "[media-proxy] no preview token could be read, so a stopped copy restarts from its first piece after Studio restarts",
+    );
+  }
+  return UNSIGNED_PIECE_SECRET;
+}
 
 function unguessablePiecePrefix(cacheDir: string, stem: string): string {
-  const tag = createHmac("sha256", previewToken() ?? UNSIGNED_PIECE_SECRET)
+  const tag = createHmac("sha256", pieceSecret())
     .update(`proxy-piece\n${stem}`)
     .digest("hex")
     .slice(0, 32);
