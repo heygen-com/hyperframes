@@ -39,8 +39,6 @@ interface PlayerProps {
   onPreviewError?: (message: string) => void;
   onCompositionLoadingChange?: (loading: boolean) => void;
   onPainted?: (details: { iframe: HTMLIFrameElement; startedAt: number; loadId: number }) => void;
-  /** Fires when the player learns the composition's size or it changes (its ready and resize events): a sealed
-   * frame's size is known only to its player. */
   onCompositionSize?: () => void;
   portrait?: boolean;
   style?: React.CSSProperties;

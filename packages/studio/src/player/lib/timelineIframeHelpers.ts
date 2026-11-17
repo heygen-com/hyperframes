@@ -101,7 +101,6 @@ function isPreviewPlayerHost(value: unknown): value is PreviewPlayerHost {
   return value instanceof HTMLElement;
 }
 
-/** The <hyperframes-player> whose shadow root holds `iframe`; null for a bare iframe. */
 export function resolvePreviewPlayerHost(iframe: HTMLIFrameElement): PreviewPlayerHost | null {
   const root = iframe.getRootNode();
   if (

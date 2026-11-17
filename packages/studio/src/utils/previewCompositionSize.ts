@@ -15,22 +15,19 @@ type SizedPlayer = HTMLElement & {
 const isPositive = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value) && value > 0;
 
-/** A sealed frame's size, as its player holds it: the runtime's timeline message sets it before the player is ready,
- * so before that the player's numbers are only its defaults. */
-function readPlayerCompositionSize(iframe: HTMLIFrameElement): PreviewCompositionSize | null {
+function readyPlayerCompositionSize(iframe: HTMLIFrameElement): PreviewCompositionSize | null {
   const player = resolvePreviewPlayerHost(iframe) as SizedPlayer | null;
   if (!player?.ready) return null;
   const { compositionWidth: width, compositionHeight: height } = player;
   return isPositive(width) && isPositive(height) ? { width, height } : null;
 }
 
-/** The root composition's authored size, read from the preview document itself, or from its player when the frame
- * is sealed and its document is out of reach. */
+/** The root composition's authored size, from the preview document, or from its player when the frame is sealed. */
 // fallow-ignore-next-line complexity
 export function readPreviewCompositionSize(
   iframe: HTMLIFrameElement | null,
 ): PreviewCompositionSize | null {
-  if (iframe && previewFrameOpaque(iframe)) return readPlayerCompositionSize(iframe);
+  if (iframe && previewFrameOpaque(iframe)) return readyPlayerCompositionSize(iframe);
   try {
     const doc = iframe?.contentDocument;
     const root =
