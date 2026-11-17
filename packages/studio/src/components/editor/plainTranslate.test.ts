@@ -94,4 +94,12 @@ describe("readTranslatePxLeavingPercent", () => {
     vi.restoreAllMocks();
     el.remove();
   });
+
+  // fails without the fix: a sealed preview's stand-in has no window, so Add keyframe seeded 0,0 and the layer jumped.
+  it("seeds from the inline translate of a layer with no window, like a sealed preview's stand-in", () => {
+    const standIn = document.implementation.createHTMLDocument("").createElement("div");
+    standIn.style.setProperty("translate", "319.893px -75.508px");
+
+    expect(readTranslatePxLeavingPercent(standIn)).toEqual({ x: 319.893, y: -75.508 });
+  });
 });
