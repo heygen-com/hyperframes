@@ -98,18 +98,21 @@ function selectorFacts(key: string, value: string): Facts {
 
 function messageFacts(key: string, value: string): Facts {
   const line = redactTelemetryString(value.split("\n", 1)[0] ?? "", Number.MAX_SAFE_INTEGER)
+    .replace(/\b(?:https?|blob|data|file|[a-z-]+-extension):\S*/gi, "<url>")
+    .replace(/(^|[\s(])[#.][A-Za-z_][\w-]*/g, "$1<sel>")
     .replace(/(["'`]).*?\1/g, "?")
     .replace(/\d+/g, "#");
   const status = /(?:\(|HTTP |status |failed: )([1-5]\d\d)\b/.exec(value)?.[1];
   return {
-    [`${key}_shape`]: hashContent(line).padStart(8, "0"),
+    [`${key}_shape`]: hashOf(line),
     ...(status ? { [`${key}_status`]: Number(status) } : {}),
   };
 }
 
 function bundleFile(url: string): string | null {
+  if (!/^https?:\/\//i.test(url)) return null;
   try {
-    const at = new URL(url, location.href);
+    const at = new URL(url);
     if (at.origin !== location.origin || at.pathname.startsWith("/api/")) return null;
     const name = at.pathname.split("/").pop() ?? "";
     return /^[\w.-]+\.(?:m?js|tsx?|jsx?)$/.test(name) ? name : null;

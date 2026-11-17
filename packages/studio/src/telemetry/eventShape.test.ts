@@ -154,3 +154,36 @@ describe("Studio analytics leave the machine without paths or selectors", () => 
     expect(batch[0]?.properties.comment).toBe("export of compositions/intro.html froze");
   });
 });
+
+describe("errors leave no project name, even shaped", () => {
+  const shape = async (properties: Record<string, string>) =>
+    (await import("./eventShape")).shapeEventProperties("studio:crash", properties);
+
+  it("keeps only frames with an absolute address on Studio's own origin", async () => {
+    const shaped = await shape({
+      stack_trace: [
+        "Error: acme-launch@acme-launch.js:1:2",
+        "    at secretHandler (/home/ana/acme-launch/server.js:10:5)",
+        "    at secretHandler (acme-launch-intro.js:10:5)",
+      ].join("\n"),
+      filename: "acme-launch.js",
+    });
+    expect(JSON.stringify(shaped)).not.toMatch(/acme|secretHandler/);
+    expect(shaped.dropped_fields).toBe("filename");
+  });
+
+  it("gives two projects' same failure the same shape", async () => {
+    const pairs = [
+      ["acme-launch", "other-proj"].map(
+        (name) =>
+          `Failed to fetch dynamically imported module: http://localhost/api/projects/${name}/preview/x.js`,
+      ),
+      ["#acme-title", "#other-title"].map((id) => `GSAP target ${id} not found.`),
+    ];
+    for (const [a, b] of pairs) {
+      expect((await shape({ error_message: a! })).error_message_shape).toBe(
+        (await shape({ error_message: b! })).error_message_shape,
+      );
+    }
+  });
+});
