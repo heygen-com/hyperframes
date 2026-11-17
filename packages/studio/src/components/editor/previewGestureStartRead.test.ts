@@ -15,7 +15,6 @@ import {
   createManualOffsetDragMember,
   restoreManualOffsetDragMembers,
 } from "./manualOffsetDrag";
-import { MOVING_LAYER_UNREADABLE } from "./plainTranslate";
 import { measurePreviewGestureStart, type PreviewGestureStart } from "./previewGestureStartRead";
 import { standInFor } from "./previewSelection";
 import { collectSnapContext } from "./snapTargetCollection";
@@ -240,16 +239,6 @@ describe("starting a gesture from what an opaque frame read", () => {
     expect([g.actualWidth, g.actualHeight]).toEqual([200, 100]);
     expect(g.snapContext).toBe(SNAP);
     restoreManualOffsetDragMembers(g.pathOffsetMember ? [g.pathOffsetMember] : []);
-  });
-
-  it("refuses a drag of a layer a tween moves, which this preview cannot save yet", () => {
-    const element = document.createElement("div");
-    const selection = makeSelection("card", element);
-    const opts = gestureOpts(selection);
-    const moving = { ...START, gsap: { x: 0, y: 0, moving: true } };
-    expect(startGesture("drag", press(), opts, { start: moving })).toBe(false);
-    expect(opts.onBlockedMoveRef.current).toHaveBeenCalledWith(selection, MOVING_LAYER_UNREADABLE);
-    expect(opts.gestureRef.current).toBeNull();
   });
 
   it("drags a group from each member's GSAP position, snapping with the targets it read", () => {

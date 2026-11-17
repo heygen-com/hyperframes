@@ -19,6 +19,7 @@ import {
 import { getFreeDiskMb } from "../telemetry/system.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { processReadArgs } from "../utils/windowsProcesses.js";
 
 export type EnvironmentCheckLevel = "ok" | "warn" | "error";
 
@@ -281,18 +282,8 @@ async function windowsChromeVersionMajor(
   try {
     const { stdout } = await runCancellableProcess(
       "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        "(Get-Item -LiteralPath $env:HF_CHROME).VersionInfo.ProductVersion",
-      ],
-      {
-        signal,
-        timeoutMs: 10_000,
-        maxBufferBytes: 4 * 1024,
-        env: { ...process.env, HF_CHROME: executablePath },
-      },
+      processReadArgs("version", executablePath),
+      { signal, timeoutMs: 10_000, maxBufferBytes: 4 * 1024 },
     );
     return extractMajorVersion(stdout);
   } catch {

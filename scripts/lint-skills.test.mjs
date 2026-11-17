@@ -17,6 +17,7 @@ import {
   lintFrontmatter,
   lintRegistryItemRefs,
   lintRelativeScriptRuns,
+  lintVersionedCliRuns,
 } from "./lint-skills.ts";
 
 const wrap = (frontmatter) => `---\n${frontmatter}\n---\n\n# body\n`;
@@ -400,4 +401,16 @@ test("relative scripts: a marker with a reason opts the doc out", () => {
   assert.deepEqual(lintRelativeScriptRuns(marked), []);
   const noReason = "<!-- skill-scripts: relative-ok -->\n" + body;
   assert.equal(lintRelativeScriptRuns(noReason).length, 1);
+});
+
+test("versioned CLI examples use the installed launcher", () => {
+  for (const prefix of ["npx", "npx -y", "npx --yes", "npm exec --", "bunx"]) {
+    assert.equal(lintVersionedCliRuns(`Run \`${prefix} hyperframes@latest --version\`.`).length, 1);
+  }
+  assert.deepEqual(
+    lintVersionedCliRuns(
+      'Run `node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version latest --version`.',
+    ),
+    [],
+  );
 });

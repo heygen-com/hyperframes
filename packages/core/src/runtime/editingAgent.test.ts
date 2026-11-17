@@ -195,6 +195,8 @@ describe("installEditingAgent", () => {
           "document-markup",
           "set-audio-group-attribute",
           "assign-audio-group",
+          "gsap-snapshot",
+          "motion-path-home",
         ],
       },
     });

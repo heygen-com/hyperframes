@@ -118,7 +118,10 @@ export function useCaptionSync(projectId: string | null) {
       .catch((error: unknown) => {
         // Caption auto-save is a data-loss path: surface it to the user, not
         // just telemetry. pendingRef stays true so beforeunload still warns.
-        trackEvent("studio_caption_autosave_failed", { error: String(error) });
+        trackEvent("studio_caption_autosave_failed", {
+          error_name: error instanceof Error ? error.name : typeof error,
+          error: String(error),
+        });
         useCaptionStore.getState().setSyncError(held ?? "Caption changes couldn't be saved");
       });
   }, []);

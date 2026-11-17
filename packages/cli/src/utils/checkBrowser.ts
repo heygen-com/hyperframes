@@ -5,9 +5,9 @@ import { logCheckProgress } from "./checkProgress.js";
 import { BrowserCleanupError, closeManagedBrowser, onStopSignal } from "../browser/launch.js";
 import { collectMotionBlurDrafts, dropMotionBlurConsoleEcho } from "./checkMotionBlur.js";
 import { checkSnapshotDirectory } from "./checkSnapshotDirectory.js";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import type { Browser, Page } from "puppeteer-core";
 import {
   AUDIT_SEEK_OPTIONS,
@@ -30,6 +30,7 @@ import {
   shouldIgnoreRequestFailure,
 } from "../commands/validate.js";
 import { loadBrowserScript } from "../commands/browserScript.js";
+import { projectLocalFile } from "../commands/snapshotHeldVideos.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import { ambiguousIssue, type MotionFrame } from "./motionAudit.js";
 import type { LayoutIssue, LayoutIssueCode, LayoutRect } from "./layoutAudit.js";
@@ -1597,15 +1598,20 @@ async function collectTextOverVideo(
   return raw.flatMap((value) => parseTextOverVideo(value, time, page.url(), projectDir));
 }
 
-/** The project file a page-origin URL is served from; null for a remote source or a path outside the project. */
+/** The project file a page-origin URL is served from; null for a remote source, or a path outside the project, private or not a regular file. */
 export function servedProjectFile(src: string, pageUrl: string, projectDir: string): string | null {
   const url = parseUrl(src);
-  const path = decodedPath(url);
-  if (!url || !path || url.origin !== parseUrl(pageUrl)?.origin) return null;
-  const file = resolve(projectDir, `.${path}`);
-  const inside = relative(projectDir, file);
-  if (!inside || inside.startsWith("..") || isAbsolute(inside)) return null;
-  return existsSync(file) ? file : null;
+  if (!url || url.origin !== parseUrl(pageUrl)?.origin) return null;
+  const file = projectLocalFile(projectDir, url.href);
+  return file && isRegularFile(file) ? file : null;
+}
+
+function isRegularFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function parsePlacedVideo(

@@ -43,6 +43,9 @@ describe("checkRegistryItemCompatibility", () => {
       "0.6.79",
     );
     expect(result.error).toContain('Registry item "demo-block" requires hyperframes >= 0.6.80');
+    expect(result.error).toContain("Retry the original command");
+    expect(result.error).toContain("--cli-version latest");
+    expect(result.error).not.toContain("npx");
   });
 
   it("allows source/dev CLI builds to install future-gated registry items", () => {

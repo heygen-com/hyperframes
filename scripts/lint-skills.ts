@@ -10,7 +10,7 @@
  */
 
 import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml, YAMLParseError } from "yaml";
 import type { RegistryManifest } from "../packages/core/src/index.js";
@@ -568,6 +568,20 @@ export function lintRelativeScriptRuns(content: string): LineViolation[] {
   });
 }
 
+export function lintVersionedCliRuns(content: string): LineViolation[] {
+  return codeSegments(content)
+    .filter(({ text }) =>
+      /\b(?:npx|npm\s+exec|bunx)\s+(?:-{1,2}[\w-]+\s+|--\s+)*hyperframes@/.test(text),
+    )
+    .map(({ text, line }) =>
+      violation(
+        line,
+        "Select the CLI release with the installed launcher's --cli-version option.",
+        text,
+      ),
+    );
+}
+
 function collectMarkdownFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true, recursive: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
@@ -597,6 +611,9 @@ function lintMarkdownFiles(paths: string[], knownItems: Set<string>, report: Rep
     const file = relative(process.cwd(), path);
     report(file, lintDocRefs(path, content));
     report(file, lintRelativeScriptRuns(content));
+    if (path.startsWith(join(REPO_ROOT, "skills") + sep)) {
+      report(file, lintVersionedCliRuns(content));
+    }
     const found = lintRegistryItemRefs(content, knownItems);
     if (found === null) continue;
     snapshotsChecked++;

@@ -27,9 +27,9 @@ export type PreviewElement = EditingElementDescription & { readonly [checked]: t
 export type PreviewElementHit = EditingElementHit & { readonly [checked]: true };
 
 type Fields = Record<string, unknown>;
-const isFields = (value: unknown): value is Fields =>
+export const isFields = (value: unknown): value is Fields =>
   typeof value === "object" && value !== null && !Array.isArray(value);
-const isHandle = (value: unknown) =>
+export const isHandle = (value: unknown) =>
   typeof value === "string" && EDITING_ELEMENT_HANDLE.test(value);
 const isText = (value: unknown) => typeof value === "string";
 const isTextOrNull = (value: unknown) => value === null || typeof value === "string";

@@ -35,6 +35,8 @@ import { drawDrafts } from "./editingDraft";
 import { restoreAttributes } from "./editing/restoreAttributes";
 import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
 import { gestureStart } from "./editingGestureStart";
+import { gsapSnapshot } from "./editing/gsapSnapshot";
+import { motionPathHome } from "./editing/motionPathHome";
 import {
   getLogicalOpacity,
   markedForStudio,
@@ -210,6 +212,8 @@ const HANDLERS: Handlers = {
   "document-markup": documentMarkup,
   "set-audio-group-attribute": setAudioGroupAttribute,
   "assign-audio-group": (params) => assignAudioGroup(params, elementForHandle),
+  "gsap-snapshot": () => gsapSnapshot(),
+  "motion-path-home": ({ selector }) => motionPathHome(selector),
 };
 
 function serve(port: MessagePort): void {

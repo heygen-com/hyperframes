@@ -20,11 +20,16 @@ import {
 } from "./gsapTweenSynth";
 import { fetchParsedAnimations, populateKeyframeCacheFromAst } from "./keyframeCacheAstLoad";
 import { getAnimationsForElement } from "./gsapElementMatch";
+import { frameDocument, useGsapSnapshotVersion } from "./gsapFrameSnapshot";
 
 // Re-exported so callers keep importing the GSAP cache surface from one module.
 export { resolveClipTimingBasis } from "./gsapShared";
 export { fetchParsedAnimations, resolveSelectorElementIds } from "./keyframeCacheAstLoad";
 export { getAnimationsForElement } from "./gsapElementMatch";
+
+/** The frame's document, or a sealed frame's tween targets as one a selector can query. */
+const previewDocument = (iframe: HTMLIFrameElement | null | undefined) =>
+  iframe?.contentDocument ?? frameDocument(iframe ?? null);
 
 export function useGsapAnimationsForElement(
   projectId: string | null,
@@ -83,20 +88,21 @@ export function useGsapAnimationsForElement(
 
   const targetId = target?.id ?? null;
   const targetSelector = target?.selector ?? null;
+  const snapshotVersion = useGsapSnapshotVersion();
   const rawAnimations = useMemo(() => {
     if (!targetId && !targetSelector) return [];
     // Resolve the live element so class / descendant tweens (e.g.
     // gsap.from(".dot", {stagger})) attribute to every matching element, not
     // just the one whose exact selector equals the tween's. `version` re-runs
     // this after composition reloads.
-    const element = target ? findPreviewNode(iframeRef?.current?.contentDocument, target) : null;
+    const element = target ? findPreviewNode(previewDocument(iframeRef?.current), target) : null;
     return getAnimationsForElement(
       allAnimations,
       { id: targetId, selector: targetSelector },
       element,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allAnimations, target, version, iframeRef]);
+  }, [allAnimations, target, version, iframeRef, snapshotVersion]);
 
   // fallow-ignore-next-line complexity
   const animations = useMemo(() => {
@@ -301,7 +307,7 @@ export function usePopulateKeyframeCacheForFile(
     if (!sameData) pruneKeyframeCacheToFiles(files);
     if (stale.length === 0) return;
     runtimeScanDoneRef.current = "";
-    const doc = iframeRef?.current?.contentDocument;
+    const doc = previewDocument(iframeRef?.current);
     for (const sf of stale) {
       void populateKeyframeCacheFromAst(projectId, sf, doc).then((loaded) => {
         if (!loaded && loadedRef.current.dataKey === dataKey) loadedRef.current.files.delete(sf);
