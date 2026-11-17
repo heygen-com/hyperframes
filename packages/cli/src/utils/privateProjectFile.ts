@@ -500,7 +500,7 @@ function receivedRecords(projectDir: string): ReceivedRecord[] | null {
   return records;
 }
 
-function fileIdentity(path: string): string | null {
+export function fileIdentity(path: string): string | null {
   try {
     const stat = lstatSync(path, { bigint: true });
     return stat.ino === 0n ? null : `${stat.dev}:${stat.ino}`;
