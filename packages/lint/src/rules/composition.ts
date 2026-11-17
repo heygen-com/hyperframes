@@ -24,7 +24,11 @@ import {
 import { readClipTiming } from "@hyperframes/parsers/composition-contract";
 import { rawCssUrlMatches } from "@hyperframes/parsers/css-url-scans";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
-import { resolveMediaDuration, type MediaTag } from "@hyperframes/parsers/media-duration";
+import {
+  readAuthoredDurationSeconds,
+  resolveMediaDuration,
+  type MediaTag,
+} from "@hyperframes/parsers/media-duration";
 
 // Agent guidance thresholds: warning-only nudges for files/tracks that become hard
 // to inspect and revise reliably in a single composition.
@@ -1973,14 +1977,14 @@ function deriveDurationFromClips(tags: OpenTag[], rootTag: OpenTag) {
     if (tag === rootTag) continue;
     const getAttr = (name: string) => readAttr(tag.raw, name);
     if (getAttr("data-start") === null) continue;
-    const timing = readClipTiming({ getAttribute: getAttr });
+    const timing = readTagTiming(tag.raw);
     // A reference start is resolved by the runtime; here it is a clip of unknown end.
     if (timing.start === null) {
       clipEnds.push(null);
       continue;
     }
     const start = timing.start;
-    const authored = timing.duration;
+    const authored = readAuthoredDurationSeconds(getAttr, start);
     if (CLIP_MEDIA_TAGS.has(tag.name)) {
       const { seconds } = resolveMediaDuration({
         tag: tag.name as MediaTag,
