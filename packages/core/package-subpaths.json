@@ -74,6 +74,12 @@
       "types": "./dist/chromeEnv.d.ts",
       "environments": ["bun", "node"]
     },
+    "./chrome-sandbox": {
+      "source": "./src/chromeSandbox.ts",
+      "runtime": "./dist/chromeSandbox.js",
+      "types": "./dist/chromeSandbox.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./atomic-file": {
       "source": "./src/atomicFile.ts",
       "runtime": "./dist/atomicFile.js",

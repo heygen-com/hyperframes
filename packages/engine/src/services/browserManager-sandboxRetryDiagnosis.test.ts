@@ -6,7 +6,7 @@ import {
   acquireBrowser,
   drainBrowserPool,
 } from "./browserManager.js";
-import { _resetChromeSandboxFallbackForTests } from "./chromeSandbox.js";
+import { _resetChromeSandboxFallbackForTests } from "@hyperframes/core/chrome-sandbox";
 
 const explained = vi.hoisted(() => [] as (readonly string[] | undefined)[]);
 const explainedEnvs = vi.hoisted(() => [] as (NodeJS.ProcessEnv | undefined)[]);

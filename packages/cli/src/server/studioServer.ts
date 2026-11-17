@@ -5,7 +5,7 @@
  * providing a CLI-specific adapter for single-project, in-process rendering.
  */
 
-import { PREVIEW_NONCE_HEADER, previewProof } from "@hyperframes/core/preview-proof";
+import { PREVIEW_NONCE_HEADER, previewProof, previewToken } from "@hyperframes/core/preview-proof";
 import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
@@ -496,6 +496,15 @@ function rewriteWrittenToHostViewport(projectDir: string, written: string[]): vo
   }
 }
 
+function previewDocumentStore(projectDir: string): PreviewApiAdapter["previewDocuments"] {
+  const secret = previewToken();
+  if (!secret) return undefined;
+  const salt = createHash("sha256")
+    .update(readFileSync(fileURLToPath(import.meta.url)))
+    .digest("hex");
+  return createPreviewDocumentStore(projectDir, salt, secret);
+}
+
 function createStateFolderBeforeWatching(projectDir: string): void {
   recordFolder(projectDir, "");
 }
@@ -581,13 +590,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
     listProjects: () => [project],
 
-    // Salted with the running CLI file, so an upgraded CLI never serves an older build's document.
-    previewDocuments: createPreviewDocumentStore(
-      projectDir,
-      createHash("sha256")
-        .update(readFileSync(fileURLToPath(import.meta.url)))
-        .digest("hex"),
-    ),
+    // Salted with the running CLI file; keyed with this user's preview token, so a shipped document is never served.
+    previewDocuments: previewDocumentStore(projectDir),
 
     resolveProject: (id: string) => (id === projectId ? project : null),
 

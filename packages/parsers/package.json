@@ -130,6 +130,12 @@
       "import": "./src/ffBinaries.ts",
       "types": "./src/ffBinaries.ts"
     },
+    "./literal-media-input": {
+      "bun": "./src/literalMediaInput.ts",
+      "node": "./dist/literalMediaInput.js",
+      "import": "./src/literalMediaInput.ts",
+      "types": "./src/literalMediaInput.ts"
+    },
     "./media-alpha": {
       "bun": "./src/mediaAlpha.ts",
       "node": "./dist/mediaAlpha.js",
@@ -264,6 +270,10 @@
       "./ff-binaries": {
         "import": "./dist/ffBinaries.js",
         "types": "./dist/ffBinaries.d.ts"
+      },
+      "./literal-media-input": {
+        "import": "./dist/literalMediaInput.js",
+        "types": "./dist/literalMediaInput.d.ts"
       },
       "./media-alpha": {
         "import": "./dist/mediaAlpha.js",

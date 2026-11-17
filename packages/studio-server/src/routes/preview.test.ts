@@ -1235,7 +1235,7 @@ describe("built preview reuse", () => {
         app,
         createAdapter(projectDir, {
           bundle,
-          previewDocuments: createPreviewDocumentStore(projectDir, salt),
+          previewDocuments: createPreviewDocumentStore(projectDir, salt, "secret"),
         } as Partial<StudioApiAdapter>),
       );
       const html = await (await app.request("http://localhost/projects/demo/preview")).text();
@@ -1258,7 +1258,7 @@ describe("built preview reuse", () => {
         app,
         createAdapter(projectDir, {
           bundle,
-          previewDocuments: createPreviewDocumentStore(projectDir, "build-a"),
+          previewDocuments: createPreviewDocumentStore(projectDir, "build-a", "secret"),
         } as Partial<StudioApiAdapter>),
       );
       for (const path of paths) await app.request(`http://localhost/projects/demo/${path}`);
@@ -3396,7 +3396,7 @@ describe("GSAP mirror configuration", () => {
     );
     const overrides = {
       bundle,
-      previewDocuments: createPreviewDocumentStore(projectDir, "same-build"),
+      previewDocuments: createPreviewDocumentStore(projectDir, "same-build", "secret"),
     };
     const first = appForMirror(projectDir, mirror, overrides);
     const root = await first.request(previewUrl);

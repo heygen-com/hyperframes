@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication
+import { _resetChromeSandboxFallbackForTests } from "@hyperframes/core/chrome-sandbox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { EventEmitter } from "node:events";
@@ -764,6 +765,36 @@ describe("resolveBrowserGpuMode", () => {
         expect(existsSync(marker)).toBe(false);
       } finally {
         rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("probes the GPU with Chrome's sandbox where the host allows it, as the render runs", async () => {
+    const { launch } = setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA" });
+    await resolveBrowserGpuMode("auto", { sandbox: true });
+    const args: string[] = launch.mock.calls[0]?.[0]?.args ?? [];
+    expect(args).toContain("--enable-webgl");
+    for (const flag of ["--no-sandbox", "--disable-setuid-sandbox", "--no-zygote"])
+      expect(args).not.toContain(flag);
+  });
+
+  it.skipIf(process.platform !== "linux")(
+    "retries the GPU probe without the sandbox when Chrome refuses it, as the render does",
+    async () => {
+      const { launch } = setMockWebGlProbe({
+        hasWebGL: true,
+        vendor: "NVIDIA",
+        renderer: "NVIDIA",
+      });
+      const browser = await launch();
+      launch.mockReset();
+      launch.mockRejectedValueOnce(new Error("No usable sandbox!")).mockResolvedValue(browser);
+      try {
+        await resolveBrowserGpuMode("auto", { sandbox: true });
+        const args = launch.mock.calls.map(([options]) => options.args.includes("--no-sandbox"));
+        expect(args).toEqual([false, true]);
+      } finally {
+        _resetChromeSandboxFallbackForTests();
       }
     },
   );

@@ -45,6 +45,9 @@ import { matchCombo, parseCombo, type Combo } from "../keyCombo";
 import { shouldIgnorePlaybackShortcutTarget } from "../typingTarget";
 import { captionWords } from "./editing/captionWords";
 import { captionTransform } from "./editing/captionTransform";
+import { colorGradingStatus } from "./editing/color-grading-status";
+import { colorGradingPreviews } from "./editing/color-grading-previews";
+import { colorGradingPlayback } from "./editing/color-grading-playback";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -194,6 +197,9 @@ const HANDLERS: Handlers = {
   "restore-attributes": (params) => restoreAttributes(params),
   "caption-words": captionWords,
   "caption-transform": captionTransform,
+  "color-grading-status": colorGradingStatus,
+  "color-grading-previews": colorGradingPreviews,
+  "color-grading-playback": colorGradingPlayback,
 };
 
 function serve(port: MessagePort): void {

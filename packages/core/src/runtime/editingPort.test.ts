@@ -80,6 +80,9 @@ describe("createEditingPortClient", () => {
           "restore-attributes",
           "caption-words",
           "caption-transform",
+          "color-grading-status",
+          "color-grading-previews",
+          "color-grading-playback",
         ],
       });
     } finally {

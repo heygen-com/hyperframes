@@ -3,6 +3,11 @@
 
 import puppeteer, { type Browser } from "puppeteer";
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
+import {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  launchWithChromeSandboxFallback,
+} from "@hyperframes/core/chrome-sandbox";
 import { injectScriptsAtHeadStart } from "@hyperframes/core/compiler";
 import { getVerifiedHyperframeRuntimeSource } from "./services/hyperframeRuntimeLoader.js";
 
@@ -10,12 +15,14 @@ export interface PageCheckResult {
   failures: string[];
 }
 
-export async function launchVerifyBrowser(): Promise<Browser> {
-  return puppeteer.launch({
-    headless: true,
-    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    args: withHyperframesBrowserMarker(["--no-sandbox", "--disable-setuid-sandbox"]),
-  });
+export async function launchVerifyBrowser(sandbox = chromeSandboxEnabled()): Promise<Browser> {
+  return launchWithChromeSandboxFallback(chromeSandboxArgs(sandbox), (args) =>
+    puppeteer.launch({
+      headless: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      args: withHyperframesBrowserMarker(args),
+    }),
+  );
 }
 
 export async function checkPageLoads(

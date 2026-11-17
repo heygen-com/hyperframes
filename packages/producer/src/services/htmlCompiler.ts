@@ -102,7 +102,7 @@ import {
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { linksOutside } from "@hyperframes/studio-server/outside-file";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
-import { assertCompositionFileSize } from "./compositionSizeLimit.js";
+import { assertCompositionFileSize, CompositionExpansionBudget } from "./compositionSizeLimit.js";
 import {
   escapesAssetRoot,
   isPathInside,
@@ -300,6 +300,57 @@ const runsOutsideMarkupUnasked = (
 const isPrivateCompositionFile = (projectDir: string, filePath: string): boolean =>
   isPrivateFileUnder(projectDir, filePath, isStudioPrivatePath);
 
+type CompositionProblem = { srcPath: string; detail: string };
+
+const mountSrcsUnder = (root: ParentNode): string[] =>
+  [...root.querySelectorAll("[data-composition-src]")]
+    .map((el) => el.getAttribute("data-composition-src"))
+    .filter((srcPath): srcPath is string => !!srcPath && !isUnresolvedAssetPlaceholder(srcPath));
+
+/** `templated` holds the mounts inside `<template>` content, which a document query does not see. */
+function compositionSrcsIn(html: string): { mounts: string[]; templated: string[] } {
+  const { document } = parseHTML(html);
+  const templated: string[] = [];
+  const templates = [...document.querySelectorAll("template")];
+  for (let template = templates.pop(); template; template = templates.pop()) {
+    templated.push(...mountSrcsUnder(template.content));
+    templates.push(...template.content.querySelectorAll("template"));
+  }
+  return { mounts: mountSrcsUnder(document), templated };
+}
+
+function compositionPathProblem(
+  projectDir: string,
+  filePath: string,
+  assetRoot: string | undefined,
+  outsideFiles: OutsideFilePolicy,
+): string | null {
+  if (outsideAssetRefusal(projectDir, filePath) === "blocklisted") {
+    return "it is outside the project in a private location";
+  }
+  if (runsOutsideMarkupUnasked(projectDir, filePath, assetRoot, outsideFiles)) {
+    return OUTSIDE_COMPOSITION_NEEDS_FLAG;
+  }
+  if (isPrivateCompositionFile(projectDir, filePath)) {
+    return "it is git metadata, an env file or a private tool record";
+  }
+  return COMPOSITION_FILE.test(filePath) ? null : NOT_A_COMPOSITION_FILE;
+}
+
+function readSubCompositionFile(
+  filePath: string,
+  srcPath: string,
+): { detail: string } | { bytes: number; mounts: string[]; templated: string[] } {
+  assertCompositionFileSize(filePath, srcPath);
+  const read = readProjectFile(filePath);
+  if (read.kind === "missing") return { detail: "the file does not exist" };
+  if (read.kind === "folder") return { detail: "it is a folder, not an HTML file" };
+  const validity = checkSubCompositionUsability(read.text, parseSubCompHtmlForValidity);
+  if (!validity.ok)
+    return { detail: validity.detail ?? "the file is empty or could not be parsed" };
+  return { bytes: Buffer.byteLength(read.text), ...compositionSrcsIn(read.text) };
+}
+
 /**
  * Recursively walk every `data-composition-src` reference reachable from
  * `html` (including nested sub-compositions) and verify each resolves to a
@@ -314,98 +365,66 @@ const isPrivateCompositionFile = (projectDir: string, filePath: string): boolean
  * exchange for failing in milliseconds instead of after the browser has
  * already launched and waited out a capture timeout.
  */
-// fallow-ignore-next-line complexity
 function assertSubCompositionsUsable(
   html: string,
   projectDir: string,
   assetRoot: string | undefined,
   outsideFiles: OutsideFilePolicy,
-  visited: Set<string> = new Set(),
 ): void {
-  const { document } = parseHTML(html);
-  const hosts = [...document.querySelectorAll("[data-composition-src]")];
-  const problems: Array<{ srcPath: string; detail: string }> = [];
-
-  for (const el of hosts) {
-    const srcPath = el.getAttribute("data-composition-src");
-    if (!srcPath) continue;
-    if (isUnresolvedAssetPlaceholder(srcPath)) continue; // __UPPER__ placeholder or unresolved templating token — not a real reference (shared with lint via @hyperframes/parsers)
-
+  const budget = new CompositionExpansionBudget();
+  const files = new Map<string, ReturnType<typeof readSubCompositionFile>>();
+  const problems = new Map<string, CompositionProblem>();
+  const report = (srcPath: string, detail: string) =>
+    problems.set(`${srcPath}\0${detail}`, { srcPath, detail });
+  // The files on the current mount chain. A repeat is a cycle, which the compiler skips silently too.
+  const chain = new Set<string>();
+  const paths = new Map<string, { detail: string } | { filePath: string }>();
+  const resolveMount = (srcPath: string): { detail: string } | { filePath: string } => {
     const filePath = resolveCompositionPath(projectDir, srcPath, assetRoot);
-    if (filePath === null) {
-      problems.push({ srcPath, detail: "it is outside the project folder" });
-      continue;
-    }
-    if (outsideAssetRefusal(projectDir, filePath) === "blocklisted") {
-      problems.push({ srcPath, detail: "it is outside the project in a private location" });
-      continue;
-    }
-    if (runsOutsideMarkupUnasked(projectDir, filePath, assetRoot, outsideFiles)) {
-      problems.push({ srcPath, detail: OUTSIDE_COMPOSITION_NEEDS_FLAG });
-      continue;
-    }
-    if (isPrivateCompositionFile(projectDir, filePath)) {
-      problems.push({
-        srcPath,
-        detail: "it is git metadata, an env file or a private tool record",
-      });
-      continue;
-    }
-    if (!COMPOSITION_FILE.test(filePath)) {
-      problems.push({ srcPath, detail: NOT_A_COMPOSITION_FILE });
-      continue;
-    }
-    // Circular reference guard. parseSubCompositions (below) silently
-    // `continue`s on a repeat visit with no reporting at all — mirror that
-    // silence here rather than pretend it surfaces an error somewhere else.
-    if (visited.has(filePath)) continue;
+    if (filePath === null) return { detail: "it is outside the project folder" };
+    const detail = compositionPathProblem(projectDir, filePath, assetRoot, outsideFiles);
+    return detail ? { detail } : { filePath };
+  };
 
-    assertCompositionFileSize(filePath, srcPath);
-    const read = readProjectFile(filePath);
-    if (read.kind === "missing") {
-      problems.push({ srcPath, detail: "the file does not exist" });
-      continue;
-    }
-    if (read.kind === "folder") {
-      problems.push({ srcPath, detail: "it is a folder, not an HTML file" });
-      continue;
-    }
-
-    const fileHtml = read.text;
-    const validity = checkSubCompositionUsability(fileHtml, parseSubCompHtmlForValidity);
-    if (!validity.ok) {
-      problems.push({
-        srcPath,
-        detail: validity.detail ?? "the file is empty or could not be parsed",
-      });
-      continue;
-    }
-
-    // Recurse into nested sub-compositions so a broken scene three levels
-    // deep is still named directly instead of surfacing as a parent-level
-    // "no error, just missing content" mystery.
-    //
-    // Pass `projectDir` unchanged (not dirname(filePath)) — data-composition-src
-    // is always resolved root-relative, even from within a nested
-    // sub-composition. This must match parseSubCompositions' own recursive
-    // call below exactly (it threads the original projectDir through every
-    // level too), or this pre-flight check resolves nested references to the
-    // wrong path and aborts renders that would have actually succeeded.
-    const nestedVisited = new Set(visited);
-    nestedVisited.add(filePath);
-    try {
-      assertSubCompositionsUsable(fileHtml, projectDir, assetRoot, outsideFiles, nestedVisited);
-    } catch (err) {
-      if (err instanceof EmptyCompositionError) {
-        problems.push(...err.problems);
-      } else {
-        throw err;
+  // data-composition-src resolves root-relative at every level, as parseSubCompositions and the inliner
+  // resolve it, so `projectDir` stays unchanged. Each path is checked, and each file read, once.
+  // A mount inside a template is charged to the budget but not reported: the inliner skips it with a warning.
+  const walk = (srcPaths: readonly string[], quiet: boolean): void => {
+    for (const srcPath of srcPaths) {
+      let resolved = paths.get(srcPath);
+      if (!resolved) {
+        resolved = resolveMount(srcPath);
+        paths.set(srcPath, resolved);
       }
-    }
-  }
+      if ("detail" in resolved) {
+        if (!quiet) report(srcPath, resolved.detail);
+        continue;
+      }
+      const { filePath } = resolved;
+      if (chain.has(filePath)) continue;
 
-  if (problems.length > 0) {
-    throw new EmptyCompositionError(problems);
+      let file = files.get(filePath);
+      if (!file) {
+        file = readSubCompositionFile(filePath, srcPath);
+        files.set(filePath, file);
+      }
+      if ("detail" in file) {
+        if (!quiet) report(srcPath, file.detail);
+        continue;
+      }
+      budget.charge(srcPath, file.bytes);
+      chain.add(filePath);
+      walk(file.mounts, quiet);
+      walk(file.templated, true);
+      chain.delete(filePath);
+    }
+  };
+  const entry = compositionSrcsIn(html);
+  walk(entry.mounts, false);
+  walk(entry.templated, true);
+
+  if (problems.size > 0) {
+    throw new EmptyCompositionError([...problems.values()]);
   }
 }
 
@@ -875,6 +894,7 @@ async function parseSubCompositions(
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
   probes?: SourceProbes,
   assetRoot?: string,
+  compiledSrcs: Set<string> = new Set(),
 ): Promise<{ subCompositions: Map<string, string> }> {
   const subCompositions = new Map<string, string>();
 
@@ -900,6 +920,9 @@ async function parseSubCompositions(
     if (visited.has(filePath)) {
       continue;
     }
+    // A path compiles the same wherever it is mounted, so each one is compiled once per render.
+    if (compiledSrcs.has(srcPath)) continue;
+    compiledSrcs.add(srcPath);
 
     assertCompositionFileSize(filePath, srcPath);
     const read = readProjectFile(filePath);
@@ -936,6 +959,7 @@ async function parseSubCompositions(
         urlByAbsentLocalPath,
         probes,
         assetRoot,
+        compiledSrcs,
       );
 
       return {
@@ -1162,6 +1186,26 @@ function inlineSubCompositions(
     return { html: emitted ? document.toString() : html, variablesByComp: {} };
   }
 
+  const budget = new CompositionExpansionBudget();
+  const readOnce = new Map<string, string | null>();
+  const readMountHtml = (srcPath: string): string | null => {
+    const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
+    if (filePath) assertCompositionFileSize(filePath, srcPath);
+    const read =
+      filePath && !isPrivateCompositionFile(projectDir, filePath)
+        ? readProjectFile(filePath)
+        : null;
+    return read?.kind === "file"
+      ? rewriteUnresolvableGsapToCdn(read.text, projectDir, srcPath)
+      : null;
+  };
+  const resolveMountHtml = (srcPath: string): string | null => {
+    const compiled = subCompositions.get(srcPath);
+    if (compiled) return compiled;
+    if (!readOnce.has(srcPath)) readOnce.set(srcPath, readMountHtml(srcPath));
+    return readOnce.get(srcPath) ?? null;
+  };
+
   // Assign per-instance runtime composition ids before each host is inlined,
   // mirroring the preview bundler. Initial hosts are assigned as one pre-pass;
   // hosts discovered by the shared inliner's queue are assigned lazily by the
@@ -1189,18 +1233,8 @@ function inlineSubCompositions(
       readVariableDefaults: readDeclaredDefaults,
       parseHostVariables: parseHostVariableValues,
       resolveHtml: (srcPath: string) => {
-        let compHtml = subCompositions.get(srcPath) || null;
-        if (!compHtml) {
-          const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
-          if (filePath) assertCompositionFileSize(filePath, srcPath);
-          const read =
-            filePath && !isPrivateCompositionFile(projectDir, filePath)
-              ? readProjectFile(filePath)
-              : null;
-          if (read?.kind === "file") {
-            compHtml = rewriteUnresolvableGsapToCdn(read.text, projectDir, srcPath);
-          }
-        }
+        const compHtml = resolveMountHtml(srcPath);
+        if (compHtml) budget.charge(srcPath, Buffer.byteLength(compHtml));
         return compHtml;
       },
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,

@@ -29,6 +29,7 @@ import {
   isProjectRootMissing,
   mkdirWithinProject,
   projectRelativePath,
+  readProjectCacheFile,
   resolveWithinProject,
 } from "../helpers/safePath.js";
 import { proxyActivityMark } from "../helpers/proxyTranscoder.js";
@@ -231,9 +232,9 @@ export function registerThumbnailRoutes(
         new Set([...thumbnailGenerationCoordinator.protectedKeys(), cachePath]),
       );
     }
-    const cached = readFileOnce(cachePath);
-    if (typeof cached === "object") {
-      return new Response(new Uint8Array(cached.data), {
+    const cached = readProjectCacheFile(project.dir, cachePath, THUMBNAIL_CACHE_MAX_BYTES);
+    if (cached) {
+      return new Response(new Uint8Array(cached), {
         headers: { "Content-Type": contentType, "Cache-Control": "no-cache" },
       });
     }

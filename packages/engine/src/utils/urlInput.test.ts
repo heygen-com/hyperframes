@@ -26,6 +26,13 @@ const formatsOf = (args: string[]) => args[args.indexOf("-format_whitelist") + 1
 describe("urlInputArgs", () => {
   afterEach(() => _setDemuxerListingForTests());
 
+  it("refuses a local path that ffmpeg would read as a pattern of other files", () => {
+    _setDemuxerListingForTests(LISTING);
+    expect(() => urlInputArgs("/job/.x%d/decoy%d.png")).toThrow(/pattern of other files/);
+    expect(() => urlInputArgs("/job/clip%%.mp4", { tool: "ffprobe" })).toThrow(/pattern/);
+    expect(formatsOf(urlInputArgs("/job/clip 100% done.mp4"))).toContain("mov");
+  });
+
   const caBundles = ["/nonexistent.crt", import.meta.filename];
   const verifyAndReconnect = [
     "-tls_verify",

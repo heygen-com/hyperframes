@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { decodeAudioPeaks } from "../helpers/waveform.js";
+import { basename, join } from "node:path";
+import { buildWaveformCacheKey, decodeAudioPeaks } from "../helpers/waveform.js";
 import { registerWaveformRoutes } from "./waveform";
 import { stubAdapter } from "./stubAdapter.test-helpers";
 
@@ -52,5 +52,56 @@ describe("GET /projects/:id/waveform/*", () => {
     finish([0.6]);
     for (const res of await both) expect(await res.json()).toEqual({ peaks: [0.6] });
     expect(decode).toHaveBeenCalledTimes(1);
+  });
+  describe.skipIf(process.platform === "win32")("a cache entry the project ships", () => {
+    function projectWithCacheEntry(): { dir: string; entry: string; outside: string } {
+      const dir = mkdtempSync(join(tmpdir(), "hf-waveform-route-"));
+      const elsewhere = mkdtempSync(join(tmpdir(), "hf-waveform-outside-"));
+      dirs.push(dir, elsewhere);
+      writeFileSync(join(dir, "bed.wav"), "audio");
+      mkdirSync(join(dir, ".waveform-cache"));
+      const outside = join(elsewhere, "credentials.json");
+      writeFileSync(outside, JSON.stringify({ token: "secret-token" }));
+      const key = buildWaveformCacheKey("bed.wav", statSync(join(dir, "bed.wav")));
+      return { dir, entry: join(dir, ".waveform-cache", key), outside };
+    }
+
+    it("decodes again instead of reading through a link at the entry", async () => {
+      const { dir, entry, outside } = projectWithCacheEntry();
+      symlinkSync(outside, entry);
+      vi.mocked(decodeAudioPeaks).mockImplementation(async () => [0.4]);
+      const app = new Hono();
+      registerWaveformRoutes(app, stubAdapter(dir));
+
+      const body = await (await app.request("http://localhost/projects/p/waveform/bed.wav")).text();
+      expect(body).not.toContain("secret-token");
+      expect(JSON.parse(body)).toEqual({ peaks: [0.4] });
+    });
+
+    it("decodes again when the cache folder is a link", async () => {
+      const { dir, entry, outside } = projectWithCacheEntry();
+      rmSync(join(dir, ".waveform-cache"), { recursive: true });
+      const linkedFolder = join(outside, "..", "cache");
+      mkdirSync(linkedFolder);
+      writeFileSync(join(linkedFolder, basename(entry)), "[0.9]");
+      symlinkSync(linkedFolder, join(dir, ".waveform-cache"));
+      vi.mocked(decodeAudioPeaks).mockImplementation(async () => [0.4]);
+      const app = new Hono();
+      registerWaveformRoutes(app, stubAdapter(dir));
+
+      const res = await app.request("http://localhost/projects/p/waveform/bed.wav");
+      expect(await res.json()).toEqual({ peaks: [0.4] });
+    });
+
+    it("decodes again when a plain entry holds anything but numbers", async () => {
+      const { dir, entry } = projectWithCacheEntry();
+      writeFileSync(entry, JSON.stringify({ token: "secret-token" }));
+      vi.mocked(decodeAudioPeaks).mockImplementation(async () => [0.4]);
+      const app = new Hono();
+      registerWaveformRoutes(app, stubAdapter(dir));
+
+      const res = await app.request("http://localhost/projects/p/waveform/bed.wav");
+      expect(await res.json()).toEqual({ peaks: [0.4] });
+    });
   });
 });

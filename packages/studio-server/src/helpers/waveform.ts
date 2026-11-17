@@ -14,7 +14,8 @@ import { dirname, join } from "node:path";
 import { requireFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { probeAudioTrack } from "./mediaMetadata.js";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
-import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
+import { isProjectCacheFile, readProjectCacheFile } from "./safePath.js";
+import { mediaInputArgs } from "./mediaExtensions.js";
 
 const SAMPLE_RATE = 4000;
 const PEAK_COUNT = 4000;
@@ -117,7 +118,7 @@ export async function decodeAudioPeaks(audioPath: string, signal?: AbortSignal):
     const proc = spawn(
       ffmpeg,
       [
-        ...MEDIA_INPUT_ARGS,
+        ...mediaInputArgs(audioPath),
         "-i",
         audioPath,
         "-map",
@@ -160,13 +161,13 @@ export async function generateWaveformCache(projectDir: string, assetPath: strin
   const stats = statSync(audioPath);
   const cacheDir = join(projectDir, ".waveform-cache");
   const cachePath = join(cacheDir, buildWaveformCacheKey(assetPath, stats));
-  if (isWaveformCacheDirectory(cacheDir) && existsSync(cachePath)) return;
+  if (isProjectCacheFile(projectDir, cachePath)) return;
 
   const peaks = await decodeAudioPeaks(audioPath);
   writeWaveformCache(cachePath, peaks);
 }
 
-export function isWaveformCacheDirectory(cacheDir: string): boolean {
+function isWaveformCacheDirectory(cacheDir: string): boolean {
   return lstatSync(cacheDir, { throwIfNoEntry: false })?.isDirectory() ?? false;
 }
 
@@ -197,6 +198,22 @@ export function writeWaveformCache(
     } catch {
       // Cleanup must not mask a write error or fail an already published cache.
     }
+  }
+}
+
+const PEAKS_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+
+/** A peaks cache entry's numbers; a link, a non-file or anything but numbers is a miss and is decoded again. */
+export function readCachedPeaks(projectDir: string, cachePath: string): number[] | null {
+  const bytes = readProjectCacheFile(projectDir, cachePath, PEAKS_CACHE_MAX_BYTES);
+  if (!bytes) return null;
+  try {
+    const parsed: unknown = JSON.parse(bytes.toString("utf-8"));
+    if (!Array.isArray(parsed) || !parsed.every((n) => typeof n === "number")) return null;
+    markWaveformCacheUsed(cachePath);
+    return parsed;
+  } catch {
+    return null;
   }
 }
 

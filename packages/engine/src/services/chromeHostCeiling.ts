@@ -5,7 +5,11 @@ import { debuglog } from "node:util";
 import { release } from "node:os";
 import { dirname, join } from "node:path";
 import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
-import { noSandboxUnlessRequired } from "./chromeSandbox.js";
+import {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  startsWithChromeSandboxFallback,
+} from "@hyperframes/core/chrome-sandbox";
 
 /** Chrome 151 dropped macOS 12 and older (Darwin < 22); 150 is the last major that launches there. */
 const MACOS_12_LAST_CHROME_MAJOR = 150;
@@ -157,18 +161,25 @@ const starts = new Map<string, boolean>();
 const debug = debuglog("hyperframes:browser");
 
 /** Whether a shell loads a blank page and exits: an old build can die at launch on a newer OS. Asked once per path. */
-export function shellStarts(binary: string, timeoutMs = 10_000): boolean {
+export function shellStarts(
+  binary: string,
+  timeoutMs = 10_000,
+  sandbox = chromeSandboxEnabled(),
+): boolean {
   let answer = starts.get(binary);
   if (answer === undefined) {
-    const probe = [...noSandboxUnlessRequired(), "--dump-dom", "about:blank"];
-    answer =
-      spawnSync(binary, probe, {
-        env: buildChromeLaunchEnv(),
-        stdio: "ignore",
-        timeout: timeoutMs,
-        killSignal: "SIGKILL",
-        windowsHide: true,
-      })?.status === 0;
+    const probe = [...chromeSandboxArgs(sandbox), "--dump-dom", "about:blank"];
+    answer = startsWithChromeSandboxFallback(
+      probe,
+      (args) =>
+        spawnSync(binary, args, {
+          env: buildChromeLaunchEnv(),
+          stdio: "ignore",
+          timeout: timeoutMs,
+          killSignal: "SIGKILL",
+          windowsHide: true,
+        })?.status === 0,
+    );
     if (!answer) debug("skipping %s: it did not start", binary);
     starts.set(binary, answer);
   }

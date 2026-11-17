@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { downloadFile } from "../utils/download.js";
+import { ensurePinnedFile } from "../utils/pinnedFile.js";
+import type { ModelFile } from "../whisper/modelFile.js";
 import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
 
 const CACHE_DIR = hyperframesCacheDir("tts");
@@ -14,8 +14,22 @@ const MODEL_URLS: Record<string, string> = {
     "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
 };
 
+const MODEL_PINS: Record<string, ModelFile> = {
+  "kokoro-v1.0": {
+    name: "kokoro-v1.0.onnx",
+    bytes: 325_532_387,
+    sha256: "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5",
+  },
+};
+
 const VOICES_URL =
   "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin";
+
+const VOICES_PIN: ModelFile = {
+  name: "voices-v1.0.bin",
+  bytes: 28_214_398,
+  sha256: "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
+};
 
 // Locale codes accepted by Kokoro's phonemizer (misaki for English,
 // espeak-ng for everything else). Kept as a readonly tuple so the union
@@ -103,25 +117,18 @@ export async function ensureModel(
   model: string = DEFAULT_MODEL,
   options?: { onProgress?: (message: string) => void },
 ): Promise<string> {
-  const modelPath = join(MODELS_DIR, `${model}.onnx`);
-  if (existsSync(modelPath)) return modelPath;
-
   const url = MODEL_URLS[model];
-  if (!url) {
+  const pin = MODEL_PINS[model];
+  if (!url || !pin) {
     throw new Error(
       `Unknown TTS model: ${model}. Available: ${Object.keys(MODEL_URLS).join(", ")}`,
     );
   }
 
-  mkdirSync(MODELS_DIR, { recursive: true });
-  options?.onProgress?.(`Downloading TTS model ${model} (~311 MB)...`);
-  await downloadFile(url, modelPath);
-
-  if (!existsSync(modelPath)) {
-    throw new Error(`Model download failed: ${model}`);
-  }
-
-  return modelPath;
+  return ensurePinnedFile(url, join(MODELS_DIR, `${model}.onnx`), pin, {
+    downloading: `Downloading TTS model ${model} (~311 MB)...`,
+    onProgress: options?.onProgress,
+  });
 }
 
 /**
@@ -131,18 +138,10 @@ export async function ensureModel(
 export async function ensureVoices(options?: {
   onProgress?: (message: string) => void;
 }): Promise<string> {
-  const voicesPath = join(VOICES_DIR, "voices-v1.0.bin");
-  if (existsSync(voicesPath)) return voicesPath;
-
-  mkdirSync(VOICES_DIR, { recursive: true });
-  options?.onProgress?.("Downloading voice data (~27 MB)...");
-  await downloadFile(VOICES_URL, voicesPath);
-
-  if (!existsSync(voicesPath)) {
-    throw new Error("Voice data download failed");
-  }
-
-  return voicesPath;
+  return ensurePinnedFile(VOICES_URL, join(VOICES_DIR, VOICES_PIN.name), VOICES_PIN, {
+    downloading: "Downloading voice data (~27 MB)...",
+    onProgress: options?.onProgress,
+  });
 }
 
 export { MODELS_DIR, DEFAULT_MODEL };
