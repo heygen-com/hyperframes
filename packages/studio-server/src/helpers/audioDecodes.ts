@@ -2,7 +2,6 @@ import { createJobSlots, JobAbandonedError } from "./jobSlots.js";
 
 export type DecodeAudio = (mediaPath: string, signal: AbortSignal) => Promise<number[]>;
 
-/** The most full-file audio decodes (waveform and peaks together) that run at once. */
 export const AUDIO_DECODE_LIMIT = 4;
 
 const runDecode = createJobSlots(AUDIO_DECODE_LIMIT);
@@ -28,9 +27,8 @@ function startDecode(key: string, mediaPath: string, decode: DecodeAudio): Share
 }
 
 /**
- * One decode per cache entry, shared by every request that asks for it while it runs, in a slot shared by the
- * waveform and peaks routes. When the last request waiting on a decode goes away, the decode stops (its ffmpeg is
- * killed, or it leaves the queue) and the next request for that entry starts a new one.
+ * One decode per cache entry, shared by its requests, in slots shared by the waveform and peaks routes.
+ * When the last request waiting on a decode goes away, its ffmpeg is killed or it leaves the queue.
  */
 export function decodeShared(
   key: string,

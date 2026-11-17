@@ -18,7 +18,6 @@ import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
 const SAMPLE_RATE = 4000;
 const PEAK_COUNT = 4000;
 const WAVEFORM_CACHE_VERSION = "v2";
-/** The most entries `.waveform-cache` keeps (waveform and peaks together); a write past it drops the oldest. */
 export const WAVEFORM_CACHE_LIMIT = 500;
 
 /**
@@ -147,19 +146,14 @@ export function writeWaveformCache(cachePath: string, peaks: number[]): void {
   } finally {
     try {
       rmSync(stagingDir, { recursive: true, force: true });
+      dropEntriesPastCacheLimit(cacheDir);
     } catch {
       // Cleanup must not mask a write error or fail an already published cache.
     }
   }
-  try {
-    evictOldest(cacheDir);
-  } catch {
-    // The entry is published; a folder that cannot be listed or pruned now is pruned by a later write.
-  }
 }
 
-/** Drops the oldest cache entries past `WAVEFORM_CACHE_LIMIT`, so the folder cannot grow without bound. */
-function evictOldest(cacheDir: string): void {
+function dropEntriesPastCacheLimit(cacheDir: string): void {
   const entries = readdirSync(cacheDir, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
     .map((entry) => join(cacheDir, entry.name));
