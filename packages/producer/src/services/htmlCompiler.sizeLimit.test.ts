@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assertCompositionFileSize,
+  CompositionExpansionBudget,
   MAX_COMPOSITION_HTML_BYTES,
   MAX_EXPANDED_COMPOSITION_BYTES,
 } from "./compositionSizeLimit.js";
@@ -125,15 +126,23 @@ describe("composition expansion budget", () => {
     },
   );
 
+  it("allows 64 MB of mounted HTML and refuses one byte more", () => {
+    expect(MAX_EXPANDED_COMPOSITION_BYTES).toBe(64 * 1024 * 1024);
+    const budget = new CompositionExpansionBudget();
+    for (let i = 0; i < 4; i += 1) budget.charge("scene.html", MAX_COMPOSITION_HTML_BYTES);
+    expect(() => budget.charge("scene.html", 1)).toThrow(/64\.0 MB of composition HTML/);
+  });
+
   it("refuses one large file mounted many times", async () => {
-    const big = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 4) + 1;
+    const big = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 5) + 1;
     const dir = project({
-      "index.html": rootMounting("scene.html", 4),
+      "index.html": rootMounting("scene.html", 5),
       "scene.html": paddedTo(SCENE, big),
     });
     const error = await compileError(dir);
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
     expect(String(error)).toContain('"scene.html"');
+    expect(error).toMatchObject({ publicMetadata: { exceeded: "bytes" } });
   });
 
   it("leaves a missing mount inside a template to the inliner's warning, as before", async () => {
