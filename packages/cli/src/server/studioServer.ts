@@ -10,7 +10,15 @@ import type { HttpBindings } from "@hono/node-server";
 import { Hono, type Context } from "hono";
 import { streamSSE } from "hono/streaming";
 import { realpath, terminalText } from "@hyperframes/core";
-import { existsSync, readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
+import {
+  createReadStream,
+  existsSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  unlinkSync,
+} from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -121,7 +129,7 @@ const LINT_WORKER_HEAP_MB = 1024;
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
 
 const REMOTE_GIF_IMG_SRC_RE =
-  /<img\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"']+\.gif(?:[?#][^"']*)?)["'][^>]*>/gi;
+  /<img\b[^>]*?\bsrc\s*=\s*["'](https?:\/\/[^"'?#]+\.gif(?:[?#][^"']*)?)["'][^>]*>/gi;
 
 async function loadStudioProducer() {
   if (!isDevMode()) return await import("@hyperframes/producer");
@@ -240,6 +248,15 @@ function collectRemoteGifImageSources(html: string): string[] {
   return [...urls];
 }
 
+async function startsWithGifSignature(path: string): Promise<boolean> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of createReadStream(path, { start: 0, end: 5 })) {
+    chunks.push(Buffer.from(chunk));
+  }
+  const signature = Buffer.concat(chunks).toString("latin1");
+  return signature === "GIF87a" || signature === "GIF89a";
+}
+
 async function downloadRemoteGifImageSources(
   html: string,
   downloadDir: string,
@@ -249,7 +266,12 @@ async function downloadRemoteGifImageSources(
   await Promise.all(
     collectRemoteGifImageSources(html).map(async (url) => {
       try {
-        sourceAssets.set(url, await downloadToTemp(url, downloadDir));
+        const path = await downloadToTemp(url, downloadDir);
+        if (!(await startsWithGifSignature(path))) {
+          rmSync(path, { force: true });
+          throw new Error("downloaded file is not a GIF");
+        }
+        sourceAssets.set(url, path);
       } catch (err) {
         console.warn(
           "[Studio] Remote animated GIF prep skipped:",
