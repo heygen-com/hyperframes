@@ -1,6 +1,6 @@
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
-import { frameSamplerScript, quadOf, scoreTeleport } from "./teleport.mjs";
+import { frameSamplerScript, quadOf, scoreTeleport, startFrames } from "./teleport.mjs";
 import { entry, score } from "./report.mjs";
 
 // The composition root drawn 1:1 at the origin, and a 100 px box whose centre the pointer holds.
@@ -368,6 +368,7 @@ describe("frameSamplerScript in a sealed preview", () => {
     let tick = () => {};
     const clock = { now: 0 };
     const studio = { waiting: null };
+    const frames = [];
     const window = { addEventListener: (type, f) => (on[type] = f) };
     window.top = window;
     const page = {
@@ -384,7 +385,7 @@ describe("frameSamplerScript in a sealed preview", () => {
         }
         observe() {}
       },
-      requestAnimationFrame: () => 0,
+      requestAnimationFrame: (f) => frames.push(f),
       performance: { timeOrigin: 1_000, now: () => clock.now },
       setTimeout,
       clearTimeout,
@@ -408,7 +409,11 @@ describe("frameSamplerScript in a sealed preview", () => {
     };
     const move = (x, buttons = 1) =>
       on.pointermove({ isTrusted: true, clientX: x, clientY: 225, buttons });
-    return { rec, tick, clock, settle, watching, move, studio };
+    const frame = () => frames.splice(0).forEach((f) => f());
+    const pageApi = {
+      evaluate: (f, arg) => runInNewContext(`(${f})(${JSON.stringify(arg)})`, page),
+    };
+    return { rec, tick, clock, settle, watching, move, studio, frame, pageApi };
   }
 
   it("measures the element from the preview's pushes, in top-frame px, and Studio keeps the shared port", async () => {
@@ -482,6 +487,28 @@ describe("frameSamplerScript in a sealed preview", () => {
       await settle();
       tick();
       expect(rec.samples.filter((s) => s.quad).map((s) => s.t)).toEqual([60]);
+    } finally {
+      close();
+    }
+  });
+
+  it("starts recording only once a frame has measured the element, so a drag's first sample is before the press", async () => {
+    const { iframe, on, asked, push, close } = sealedFrame([]);
+    const { rec, tick, settle, watching, move, frame, pageApi } = samplerFor(iframe, on);
+    try {
+      move(150);
+      let ready = false;
+      void startFrames(pageApi, "#target").then(() => (ready = true));
+      await watching(asked);
+      frame();
+      await settle();
+      expect(ready).toBe(false);
+      push(1_010);
+      await settle();
+      tick();
+      frame();
+      await settle();
+      expect([ready, rec.samples.filter((s) => s.quad).length]).toEqual([true, 1]);
     } finally {
       close();
     }

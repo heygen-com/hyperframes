@@ -229,6 +229,12 @@ function frameSampler() {
     l.styling = false;
     if (reply?.styles) l.styles = reply.styles;
   };
+  // Resolves once a frame measured the element, so a drag's first sample is before the press, as a direct read's is.
+  rec.measured = async (from, ms = 3000) => {
+    const end = performance.now() + ms;
+    while (!rec.samples.slice(from).some((s) => s.quad) && performance.now() < end)
+      await new Promise(requestAnimationFrame);
+  };
   rec.unwatch = () => {
     for (const l of links.values())
       if (l.watched) void ask(forget(l), "watch-geometry", { handles: [] });
@@ -372,6 +378,7 @@ export const startFrames = (page, selector) =>
     rec.selector = sel;
     rec.marks.push(rec.samples.length);
     rec.since = performance.timeOrigin + performance.now();
+    return rec.measured(rec.marks.at(-1));
   }, selector);
 
 /** Stops recording: one window of frames per drag, each running until the next drag's mark. */
