@@ -18,6 +18,7 @@ import {
   type FigmaTokensSidecar,
 } from "@hyperframes/core/figma";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { terminalText } from "@hyperframes/core";
 import { join } from "node:path";
 import { withFigmaErrors } from "./cliError.js";
 
@@ -93,7 +94,7 @@ export default defineCommand({
             : "variables are Enterprise-gated on this plan, and this file has no published library styles to fall back to — nothing recorded. Publish the file's styles to a team library, or read variables via the Figma MCP connector's get_variable_defs instead (works on any plan, rate-limited).",
         );
       }
-      console.log(`wrote ${result.sidecarPath} (${result.mode})`);
+      console.log(terminalText(`wrote ${result.sidecarPath} (${result.mode})`));
       if (result.entries.length > 0) {
         console.log("add to data-composition-variables:");
         console.log(JSON.stringify(result.entries, null, 2));
