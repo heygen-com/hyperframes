@@ -406,6 +406,8 @@ export interface CapturePerfSummary {
    * `|`-join distinct reasons when parallel workers diverge.)
    */
   staticDedupSkipReason?: string;
+  /** Why the page was `ineligible`: `no_static_frames` or `+`-joined causes (see computeStaticFrameSet). */
+  staticDedupIneligibleCause?: string;
   // ── BeginFrame no-damage reuse (Linux/Docker lastFrameCache visibility) ──
   /**
    * BeginFrame frames where Chrome reported `hasDamage=false` and the previous

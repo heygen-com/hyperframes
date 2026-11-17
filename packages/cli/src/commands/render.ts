@@ -2035,6 +2035,7 @@ function trackRenderMetrics(
     staticDedupEnabled: perf?.staticDedup?.enabled,
     staticDedupArmed: perf?.staticDedup?.armed,
     staticDedupSkipReason: perf?.staticDedup?.skipReason,
+    staticDedupIneligibleCause: perf?.staticDedup?.ineligibleCause,
     staticDedupPredictedFrames: perf?.staticDedup?.predictedFrames,
     staticDedupReusedFrames: perf?.staticDedup?.reusedFrames,
     beginFrameNoDamageFrames: perf?.beginFrameReuse?.noDamageFrames,

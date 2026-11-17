@@ -216,6 +216,8 @@ export interface CaptureSession {
    * Undefined when armed or disabled.
    */
   staticDedupSkipReason?: string;
+  /** With skip reason `ineligible`: `no_static_frames` or `+`-joined {@link StaticDedupIneligibleCause}s. */
+  staticDedupIneligibleCause?: string;
   /** The init-time page analysis of a check deferred by `deferStaticDedup`; `armDeferredStaticDedup` runs it. */
   staticDedupDeferred?: StaticFrameStats;
   // Tracks whether the page/browser handles have already been released by
@@ -3795,6 +3797,26 @@ function addFrameRanges(target: Set<number>, ranges: Array<[number, number]>): v
  */
 type StaticFrameStats = Awaited<ReturnType<typeof computeStaticFrameSet>>;
 
+/** Why a composition cannot be predicted static: the key goes to telemetry, the value to the log. */
+const STATIC_DEDUP_INELIGIBLE_CAUSES = {
+  zero_duration: "unknown/zero duration",
+  video: "video",
+  canvas: "canvas/webgl",
+  frame_source: "registered frame source",
+  iframe: "iframe",
+  no_gsap_tweens: "no GSAP tweens (non-GSAP animation)",
+  css_animation: "running CSS/WAAPI animation",
+  timeline_call: "tl.call() side effect (not seek-safe)",
+  unresolvable_clip_start: "unresolvable clip start (reference expression)",
+  frame_limit: `static-dedup frame analysis limit (${MAX_STATIC_DEDUP_ANALYSIS_FRAMES})`,
+  interval_limit: `static-dedup tween interval limit (${MAX_TIMELINE_FRAME_INTERVALS})`,
+} as const;
+export type StaticDedupIneligibleCause = keyof typeof STATIC_DEDUP_INELIGIBLE_CAUSES;
+
+function describeIneligible(causes: readonly StaticDedupIneligibleCause[]): string {
+  return causes.map((cause) => STATIC_DEDUP_INELIGIBLE_CAUSES[cause]).join("+");
+}
+
 export async function computeStaticFrameSet(
   page: Page,
   fps: number,
@@ -3810,6 +3832,8 @@ export async function computeStaticFrameSet(
   hasNonGsapAnim: boolean;
   tweenCount: number;
   eligible: boolean;
+  /** Empty when eligible. */
+  causes: StaticDedupIneligibleCause[];
   reason: string;
 }> {
   const result = await page.evaluate(
@@ -3962,7 +3986,8 @@ export async function computeStaticFrameSet(
       hasNonGsapAnim,
       tweenCount,
       eligible: false,
-      reason: `static-dedup frame analysis limit (${MAX_STATIC_DEDUP_ANALYSIS_FRAMES})`,
+      causes: ["frame_limit"],
+      reason: describeIneligible(["frame_limit"]),
     };
   }
   if (intervals.length > MAX_TIMELINE_FRAME_INTERVALS) {
@@ -3975,7 +4000,8 @@ export async function computeStaticFrameSet(
       hasNonGsapAnim,
       tweenCount,
       eligible: false,
-      reason: `static-dedup tween interval limit (${MAX_TIMELINE_FRAME_INTERVALS})`,
+      causes: ["interval_limit"],
+      reason: describeIneligible(["interval_limit"]),
     };
   }
   const animatedRanges: Array<[number, number]> = [];
@@ -3991,23 +4017,23 @@ export async function computeStaticFrameSet(
   addFrameRanges(animated, animatedRanges);
   addFrameRanges(spatialFrameSet, spatialRanges);
   for (const f of await computeClipBoundaryFrames(page, fps)) animated.add(f);
-  const reasons: string[] = [];
-  if (!(duration > 0)) reasons.push("unknown/zero duration");
-  if (hasVideo) reasons.push("video");
-  if (hasCanvas) reasons.push("canvas/webgl");
+  const causes: StaticDedupIneligibleCause[] = [];
+  if (!(duration > 0)) causes.push("zero_duration");
+  if (hasVideo) causes.push("video");
+  if (hasCanvas) causes.push("canvas");
   // GSAP intervals cannot predict frame-source or opaque iframe draws.
-  if (hasFrameSources) reasons.push("registered frame source");
-  if (hasIframe) reasons.push("iframe");
-  if (tweenCount === 0) reasons.push("no GSAP tweens (non-GSAP animation)");
-  if (hasNonGsapAnim) reasons.push("running CSS/WAAPI animation");
+  if (hasFrameSources) causes.push("frame_source");
+  if (hasIframe) causes.push("iframe");
+  if (tweenCount === 0) causes.push("no_gsap_tweens");
+  if (hasNonGsapAnim) causes.push("css_animation");
   // tl.call() side effects are not seek-idempotent (see hasTimelineCall detection
   // above) — the arm-time verifier's own forward-seeking can permanently fire
   // one, corrupting the page for a later, unrelated static run's real capture
   // even though each run's own verification passes in isolation (HF static-
   // dedup content-drift report, tools-onboarding FR render).
-  if (hasTimelineCall) reasons.push("tl.call() side effect (not seek-safe)");
-  if (hasUnresolvableClipStart) reasons.push("unresolvable clip start (reference expression)");
-  const eligible = reasons.length === 0;
+  if (hasTimelineCall) causes.push("timeline_call");
+  if (hasUnresolvableClipStart) causes.push("unresolvable_clip_start");
+  const eligible = causes.length === 0;
   const staticFrameSet = new Set<number>();
   if (eligible) {
     for (let f = 1; f < totalFrames; f++) {
@@ -4027,7 +4053,8 @@ export async function computeStaticFrameSet(
     hasNonGsapAnim,
     tweenCount,
     eligible,
-    reason: eligible ? "eligible" : reasons.join("+"),
+    causes,
+    reason: eligible ? "eligible" : describeIneligible(causes),
   };
 }
 
@@ -4492,6 +4519,7 @@ export async function armFromSharedStaticDedup(
   const spot = pickStaticSpotCheck(frames, session.options.staticDedupFrameRange);
   if (spot.size === 0) {
     session.staticDedupSkipReason = "ineligible";
+    session.staticDedupIneligibleCause = "no_static_frames";
     logInitPhase("static-frame dedup: disabled (no shared static run in this session's frames)");
     return;
   }
@@ -4638,6 +4666,9 @@ async function armStaticDedupFrames(
     (await computeStaticFrameSet(page, fps, session.options.hiddenElementIds));
   if (!stats.eligible || stats.staticFrameSet.size === 0) {
     session.staticDedupSkipReason = "ineligible";
+    session.staticDedupIneligibleCause = stats.eligible
+      ? "no_static_frames"
+      : stats.causes.join("+");
     logInitPhase(`static-frame dedup: disabled (${stats.reason})`);
     return;
   }
@@ -6276,6 +6307,7 @@ export function getCapturePerfSummary(session: CaptureSession): CapturePerfSumma
     staticDedupVerificationComparisons: session.staticDedupVerification?.stats.byteComparisons,
     staticDedupVerificationElapsedMs: session.staticDedupVerification?.stats.elapsedMs,
     staticDedupSkipReason: session.staticDedupSkipReason,
+    staticDedupIneligibleCause: session.staticDedupIneligibleCause,
     beginFrameNoDamage: session.beginFrameNoDamageCount,
     beginFrameHasDamage: session.beginFrameHasDamageCount,
     captureMode: session.captureMode,
