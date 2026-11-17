@@ -22,7 +22,9 @@
  */
 import "./lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, copyFileSync } from "node:fs";
+import { existsSync, mkdirSync, copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const N1 = 9,
   PAD1 = 0.4; // stage 1: strips per axis, padding in STRIP units
@@ -54,21 +56,21 @@ function probe(img) {
   const [w, h] = out.split(",").map(Number);
   return { w, h };
 }
+// The grid font is copied to a plain path ffmpeg's filter syntax takes as is, inside a
+// folder only this run can open (mkdtemp makes it 0700), removed when the run ends.
+let fontPath;
 function font() {
-  const dst = "/tmp/locate-font.ttf";
-  if (!existsSync(dst)) {
-    for (const c of [
-      "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-      "/System/Library/Fonts/Supplemental/Arial.ttf",
-      "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-    ]) {
-      if (existsSync(c)) {
-        copyFileSync(c, dst);
-        break;
-      }
-    }
-  }
-  return dst;
+  if (fontPath) return fontPath;
+  const dir = mkdtempSync(join(tmpdir(), "locate-font-"));
+  process.on("exit", () => rmSync(dir, { recursive: true, force: true }));
+  fontPath = join(dir, "font.ttf");
+  const system = [
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+  ].find((c) => existsSync(c));
+  if (system) copyFileSync(system, fontPath);
+  return fontPath;
 }
 function gridFilters(w, h, n, axis, fz) {
   const F = font(),
