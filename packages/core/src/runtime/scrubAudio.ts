@@ -2,6 +2,8 @@
 // playing; it pauses 140 ms after the last one and gives the element back its muted state and volume.
 import { previewElementFinder, type PreviewTarget } from "../studioPreviewMark";
 import { isAudioElement } from "./domRealm";
+import { mediaElementTime } from "./mediaClock";
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 
 const SCRUB_VOLUME = 0.25;
 const SCRUB_HOLD_MS = 140;
@@ -20,12 +22,12 @@ function musicTrack(target: PreviewTarget | null): HTMLAudioElement | null {
 
 export function createScrubAudio({ lease, release }: PausedMediaLease) {
   let playing: HTMLAudioElement | null = null;
-  let stopTimer: ReturnType<typeof setTimeout> | null = null;
+  let stopTimer: ReturnType<typeof wallSetTimeout> | null = null;
   let prevMuted: boolean | null = null;
   let prevVolume: number | null = null;
 
   const stop = (): void => {
-    if (stopTimer) clearTimeout(stopTimer);
+    wallClearTimeout(stopTimer);
     stopTimer = null;
     const el = playing;
     playing = null;
@@ -52,13 +54,13 @@ export function createScrubAudio({ lease, release }: PausedMediaLease) {
     try {
       el.muted = false;
       el.volume = SCRUB_VOLUME * volume;
-      if (Math.abs(el.currentTime - time) > 0.04) el.currentTime = time;
+      if (Math.abs(el.currentTime - time) > 0.04) el.currentTime = mediaElementTime(time);
       if (el.paused) void el.play().catch(() => {});
     } catch {
       /* element not ready */
     }
-    if (stopTimer) clearTimeout(stopTimer);
-    stopTimer = setTimeout(stop, SCRUB_HOLD_MS);
+    wallClearTimeout(stopTimer);
+    stopTimer = wallSetTimeout(stop, SCRUB_HOLD_MS);
   };
 
   /** `time` is seconds into the track's file; null stops. */
