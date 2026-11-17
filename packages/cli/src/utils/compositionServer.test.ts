@@ -101,13 +101,17 @@ describe("scriptsAfterWorkersDropped", () => {
     const navigator = { serviceWorker: { getRegistrations: async () => registrations } };
     const head = { append: (s: { src: string }) => void steps.push(`load ${s.src}`) };
     const document = { head, createElement: () => ({ src: "", async: true }) };
-    const script = /^<script>([\s\S]*)<\/script>$/.exec(
-      scriptsAfterWorkersDropped(["/player.js", "/slideshow.js"]),
-    )![1]!;
+    const html = scriptsAfterWorkersDropped(["/player.js", "/slideshow.js"]);
+    const script = html.slice("<script>".length, -"</script>".length);
     await new Function("navigator", "document", `return ${script.replace(/;$/, "")}`)(
       navigator,
       document,
     );
     expect(steps).toEqual(["unregister", "load /player.js", "load /slideshow.js"]);
+  });
+
+  it("keeps a source that holds a closing tag inside its one script", () => {
+    const html = scriptsAfterWorkersDropped(["/a</script><b>.js"]);
+    expect(html.indexOf("</script>")).toBe(html.length - "</script>".length);
   });
 });

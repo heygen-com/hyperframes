@@ -306,6 +306,10 @@ export async function listenOnFreePort(server: PortBindable, startPort: number):
 export function scriptsAfterWorkersDropped(srcs: readonly string[]): string {
   const add =
     'var s=document.createElement("script");s.src=src;s.async=false;document.head.append(s)';
-  const load = `function(){${JSON.stringify(srcs)}.forEach(function(src){${add}})}`;
+  const list = JSON.stringify(srcs).replace(
+    /[<>/\u2028\u2029]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+  const load = `function(){${list}.forEach(function(src){${add}})}`;
   return `<script>(${dropServiceWorkers.toString()})().then(${load});</script>`;
 }
