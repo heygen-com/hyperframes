@@ -13,7 +13,7 @@ import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
-import { stageReferencedFiles } from "../utils/stageReferencedFiles.js";
+import { leftOutNotice, stageReferencedFiles } from "../utils/stageReferencedFiles.js";
 import { withMeta } from "../utils/updateCheck.js";
 
 export const examples: Example[] = [
@@ -933,7 +933,11 @@ async function captureOnionShot(
   const stage = await singleFileStage(scope.singleFile, scope.projectDir!);
   const stagedDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-"));
   try {
-    stageReferencedFiles(stage.root, stage.entries, stagedDir);
+    const notice = leftOutNotice(
+      `keyframes --shot ${stage.entryFile}`,
+      stageReferencedFiles(stage.root, stage.entries, stagedDir),
+    );
+    if (notice) console.warn(c.dim(notice));
     return await captureMotionPathShot(stagedDir, requests, outPath, {
       ...options,
       entryFile: stage.entryFile,

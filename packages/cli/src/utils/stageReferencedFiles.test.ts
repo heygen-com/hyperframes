@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { stageReferencedFiles } from "./stageReferencedFiles.js";
+import { leftOutNotice, stageReferencedFiles } from "./stageReferencedFiles.js";
 
 let root: string;
 let folder: string;
@@ -102,5 +102,69 @@ describe("stageReferencedFiles", () => {
     stageReferencedFiles(folder, [join(folder, "page.html")], staged);
 
     expect(stagedFiles()).toEqual(["page.html"]);
+  });
+
+  it("copies root-relative names, string imports, SVG links and the grading table", () => {
+    write(
+      join(folder, "page.html"),
+      `<style>@import "css/theme.css";</style>
+       <img src="/img/logo.png?v=1">
+       <svg><image xlink:href="img/art.png"/><use xlink:href="icons.svg#star"/></svg>
+       <video src="clip.mp4" data-color-grading='{"lut":{"src":"looks/warm.cube"}}'></video>
+       <img src="looks/cold.cube">`,
+    );
+    write(
+      join(folder, "css", "theme.css"),
+      `@import 'more.css'; body { background: url(/img/bg.png) }`,
+    );
+    write(join(folder, "css", "more.css"), "p {}");
+    for (const file of ["img/logo.png", "img/art.png", "icons.svg", "img/bg.png", "clip.mp4"])
+      write(join(folder, file));
+    write(join(folder, "looks", "warm.cube"));
+    write(join(folder, "looks", "cold.cube"));
+
+    const result = stageReferencedFiles(folder, [join(folder, "page.html")], staged);
+
+    expect(stagedFiles()).toEqual([
+      "clip.mp4",
+      "css/more.css",
+      "css/theme.css",
+      "icons.svg",
+      "img/art.png",
+      "img/bg.png",
+      "img/logo.png",
+      "looks/warm.cube",
+      "page.html",
+    ]);
+    expect(result).toEqual({ leftOut: ["looks/cold.cube"], complete: true });
+  });
+
+  it("names what it left out, and nothing that does not exist", () => {
+    write(join(root, "Pictures", "IMG_0001.png"));
+    write(join(folder, "notes.txt"));
+    write(
+      join(folder, "page.html"),
+      `<img src="../Pictures/IMG_0001.png"><img src="notes.txt"><img src="missing.png">`,
+    );
+
+    const result = stageReferencedFiles(folder, [join(folder, "page.html")], staged);
+
+    expect(result).toEqual({ leftOut: ["../Pictures/IMG_0001.png", "notes.txt"], complete: true });
+  });
+});
+
+describe("leftOutNotice", () => {
+  it("says nothing when nothing was left out", () => {
+    expect(leftOutNotice("compare a.html", { leftOut: [], complete: true })).toBeNull();
+  });
+
+  it("names the first five escaped, counts the rest and says how to keep them", () => {
+    const leftOut = ["a\x1b[2J.png", "b.txt", "c.txt", "d.txt", "e.txt", "f.txt", "g.txt"];
+    const notice = leftOutNotice("compare a.html", { leftOut, complete: false });
+
+    expect(notice).not.toContain("\x1b");
+    expect(notice).toContain("a\\x1b[2J.png, b.txt, c.txt, d.txt, e.txt, and 2 more.");
+    expect(notice).toContain("too large or too many");
+    expect(notice).toContain("pass the project folder");
   });
 });

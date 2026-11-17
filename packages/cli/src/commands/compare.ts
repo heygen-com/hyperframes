@@ -14,7 +14,7 @@ import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { displayPathFromInput, readOptionalString, resolveFromBase } from "../utils/pathArgs.js";
 import { trackCompareSheet } from "../telemetry/events.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
-import { stageReferencedFiles } from "../utils/stageReferencedFiles.js";
+import { leftOutNotice, stageReferencedFiles } from "../utils/stageReferencedFiles.js";
 import { withMeta } from "../utils/updateCheck.js";
 import type { Example } from "./_examples.js";
 import { failCaught } from "../utils/jsonError.js";
@@ -215,7 +215,11 @@ function stageHtmlVariant(variant: CompareVariantSpec): PreparedCompareVariant {
   const stagedDir = mkdtempSync(join(tmpdir(), "hf-compare-variant-"));
   try {
     const source = realpathSync(variant.inputPath);
-    stageReferencedFiles(dirname(source), [source], stagedDir);
+    const notice = leftOutNotice(
+      `compare ${variant.displayPath}`,
+      stageReferencedFiles(dirname(source), [source], stagedDir),
+    );
+    if (notice) console.warn(c.dim(notice));
     const sourceName = basename(source);
     if (sourceName !== "index.html") {
       renameSync(join(stagedDir, sourceName), join(stagedDir, "index.html"));

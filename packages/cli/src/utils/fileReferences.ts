@@ -4,14 +4,16 @@ import { fileURLToPath } from "node:url";
 import { parseHTML } from "linkedom";
 import { isNonRelativeUrl } from "@hyperframes/core";
 import { resolveCompositionSrc } from "@hyperframes/parsers/asset-resolution";
+import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core/color-grading";
 
-const REFERENCE_ATTRS = ["src", "href", "poster"];
+const REFERENCE_ATTRS = ["src", "href", "poster", "xlink:href"];
 const MAX_SCANNED_BYTES = 2 * 1024 * 1024;
 
 export interface Reference {
   raw: string;
   composition: boolean;
   follow: boolean;
+  colorGradingLut?: boolean;
 }
 
 function unquote(value: string): string {
@@ -30,7 +32,21 @@ export function cssReferences(css: string): Reference[] {
     if (raw) refs.push({ raw, composition: false, follow: true });
     at = css.indexOf("url(", close + 1);
   }
+  for (const [, , raw] of css.matchAll(/@import\s+(["'])(.+?)\1/g)) {
+    if (raw?.trim()) refs.push({ raw: raw.trim(), composition: false, follow: true });
+  }
   return refs;
+}
+
+function colorGradingLut(value: string | null): string | undefined {
+  try {
+    const parsed: unknown = JSON.parse(value ?? "");
+    const lut: unknown = typeof parsed === "object" && parsed ? Reflect.get(parsed, "lut") : null;
+    const src: unknown = typeof lut === "object" && lut ? Reflect.get(lut, "src") : lut;
+    return typeof src === "string" && src.trim() ? src.trim() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function elementReferences(el: Element): Reference[] {
@@ -45,13 +61,15 @@ function elementReferences(el: Element): Reference[] {
   }
   const composition = el.getAttribute("data-composition-src")?.trim();
   if (composition) refs.push({ raw: composition, composition: true, follow: true });
+  const lut = colorGradingLut(el.getAttribute(HF_COLOR_GRADING_ATTR));
+  if (lut) refs.push({ raw: lut, composition: false, follow: false, colorGradingLut: true });
   return refs;
 }
 
 export function htmlReferences(html: string): Reference[] {
   const { document } = parseHTML(html);
   const hosts = document.querySelectorAll(
-    "[src], [href], [poster], [srcset], [data-composition-src]",
+    `[src], [href], [poster], [xlink\\:href], [srcset], [data-composition-src], [${HF_COLOR_GRADING_ATTR}]`,
   );
   const refs = [...hosts].flatMap(elementReferences);
   for (const style of document.querySelectorAll("style")) {
@@ -73,7 +91,7 @@ function withoutQuery(raw: string): string {
   return device + raw.slice(device.length).replace(/[?#].*$/, "");
 }
 
-function localPath(raw: string, fromDir: string): string | null {
+export function localPath(raw: string, fromDir: string): string | null {
   if (raw.startsWith("file:")) {
     try {
       return fileURLToPath(raw);
