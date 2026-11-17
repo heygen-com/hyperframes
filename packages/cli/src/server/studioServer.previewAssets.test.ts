@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
 import { cleanupStudioServerRoot, makeStudioServerRoot } from "./studioServerTestFixture.js";
 
@@ -139,5 +140,52 @@ describe("bundled GSAP", () => {
       if (previous === undefined) delete process.env.HYPERFRAMES_GSAP_BASE_URL;
       else process.env.HYPERFRAMES_GSAP_BASE_URL = previous;
     }
+  });
+});
+
+describe("preview image prep and files outside the project", () => {
+  const heic = fileURLToPath(
+    new URL("../../../producer/tests/fixtures/heic/rotated-grid.heic", import.meta.url),
+  );
+  const outsidePhoto = () => path.join(root, "Pictures", "IMG_0001.HEIC");
+  const preparedHeif = () => path.join(projectDir, ".hyperframes", "prepared-assets", "heif");
+
+  beforeEach(() => {
+    fs.mkdirSync(path.dirname(outsidePhoto()));
+    fs.copyFileSync(heic, outsidePhoto());
+    fs.writeFileSync(
+      path.join(projectDir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-width="320" data-height="180">
+<img id="photo" src="../Pictures/IMG_0001.HEIC" data-start="0" data-duration="1">
+</div></body></html>`,
+    );
+  });
+
+  async function previewPhotoSrc(): Promise<string | undefined> {
+    const html = await (await server.app.request("/api/projects/film/preview")).text();
+    return html.match(/<img [^>]*id="photo"[^>]*src="([^"]+)"/)?.[1];
+  }
+
+  it("converts no outside photo for a received project, as its render would not", async () => {
+    fs.mkdirSync(path.join(projectDir, ".hyperframes"), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["index.html"] }),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await previewPhotoSrc()).not.toContain("prepared-assets");
+      expect(await previewPhotoSrc()).not.toContain("prepared-assets");
+      expect(fs.existsSync(preparedHeif())).toBe(false);
+      const refusals = warn.mock.calls.filter(([line]) => String(line).includes("someone else"));
+      expect(refusals).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("still converts an outside photo for the developer's own project, as its render does", async () => {
+    expect(await previewPhotoSrc()).toMatch(/^\.hyperframes\/prepared-assets\/heif\//);
+    expect(fs.readdirSync(preparedHeif())).toHaveLength(1);
   });
 });

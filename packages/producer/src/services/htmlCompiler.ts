@@ -2372,7 +2372,7 @@ export async function compileForRender(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: remoteImageAssets,
     timeoutMs: options.ffmpegProcessTimeout,
-    assetRoot,
+    allowOutsideFiles: assetRoot === undefined,
   });
   if (preparedHeifImages.length > 0) {
     defaultLogger.debug(`[Compiler] Converted ${preparedHeifImages.length} HEIC image(s) to JPEG`);
@@ -2389,7 +2389,7 @@ export async function compileForRender(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: gifSourceAssets,
     timeoutMs: options.ffmpegProcessTimeout,
-    assetRoot,
+    allowOutsideFiles: assetRoot === undefined,
   });
   if (preparedGifs.length > 0) {
     defaultLogger.debug(`[Compiler] Prepared ${preparedGifs.length} animated GIF input(s) as WebM`);
