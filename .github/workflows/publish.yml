@@ -110,7 +110,8 @@ jobs:
               "$RUNNER_TEMP/events.json"
           } > "$RUNNER_TEMP/writers.txt"
           : > "$RUNNER_TEMP/maintainers.txt"
-          for login in $(jq -s -r 'add | map(select(.user.type == "User")) | map(.user.login) | unique[]' \
+          for login in $(jq -s -r 'add | map(select(.user.type == "User" and (.state == "APPROVED" or .state == "CHANGES_REQUESTED")))
+            | map(.user.login) | unique[]' \
             "$RUNNER_TEMP/reviews.json"); do
             permission="$(gh api "repos/$REPO/collaborators/$login/permission" --jq .permission)" ||
               { echo "::error::could not read $login's permission on $REPO, so the release does not publish"; exit 1; }

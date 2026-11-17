@@ -89,7 +89,7 @@ test("a push to main publishes only the merge of exactly one approved release PR
   });
   const approved = [review("reviewer", "APPROVED", 1)];
   // The fake answers PR 8000's reviews, commits and events, each reviewer's permission from FAKE_PERMISSIONS
-  // (login=permission lines; FAKE_PERMISSION_FAILS makes the lookup fail), and the commit's PR lookup from FAKE_PULLS.
+  // (login=permission lines; the lookup of FAKE_PERMISSION_FAILS's login fails), and the commit's PR lookup from FAKE_PULLS.
   writeFileSync(
     join(bin, "gh"),
     `#!/bin/sh
@@ -98,8 +98,8 @@ case "$*" in
   *pulls/8000/commits*) printf '%s' "$FAKE_COMMITS" ;;
   *issues/8000/events*) printf '%s' "$FAKE_EVENTS" ;;
   *collaborators/*/permission*)
-    [ -z "$FAKE_PERMISSION_FAILS" ] || exit 1
     login="$(printf '%s' "$*" | sed 's#.*collaborators/\\([^/]*\\)/permission.*#\\1#')"
+    [ "$login" != "$FAKE_PERMISSION_FAILS" ] || exit 1
     printf '%s\\n' "$FAKE_PERMISSIONS" | sed -n "s/^$login=//p" ;;
   *) printf '%s' "$FAKE_PULLS" ;;
 esac
@@ -127,7 +127,7 @@ esac
         FAKE_COMMITS: JSON.stringify(history.commits ?? [commit("releaser", "web-flow")]),
         FAKE_EVENTS: JSON.stringify(history.events ?? []),
         FAKE_PERMISSIONS: history.permissions ?? permissions,
-        FAKE_PERMISSION_FAILS: history.permissionFails ? "1" : "",
+        FAKE_PERMISSION_FAILS: history.permissionFails ?? "",
         ...ref,
       },
       path: `${bin}:${process.env.PATH}`,
@@ -219,10 +219,18 @@ esac
       0,
       "a change request from an account without write access blocks nothing",
     );
+    const outsiderObjects = [...approved, review("outsider", "CHANGES_REQUESTED", 2)];
     assert.equal(
-      run([pull()], main, approved, { permissionFails: true }).status,
+      run([pull()], main, outsiderObjects, { permissionFails: "outsider" }).status,
       1,
-      "a permission that cannot be read refuses the release",
+      "a permission that cannot be read refuses the release, even for a review that would not count",
+    );
+    assert.equal(
+      run([pull()], main, [...approved, review("outsider", "COMMENTED", 2)], {
+        permissionFails: "outsider",
+      }).status,
+      0,
+      "a reviewer who only commented is not looked up",
     );
     for (const [why, history] of [
       ["the approver wrote the approved commit", { commits: [commit("reviewer", "web-flow")] }],
