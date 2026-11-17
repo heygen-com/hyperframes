@@ -9,7 +9,10 @@ import { fileURLToPath } from "node:url";
 import { getMimeType, openRangeEnd } from "@hyperframes/studio-server";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
-import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
+import {
+  PREVIEW_FOR_ANOTHER_SITE_META,
+  dropServiceWorkers,
+} from "@hyperframes/core/studio-preview-mark";
 import {
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
@@ -298,4 +301,11 @@ export async function listenOnFreePort(server: PortBindable, startPort: number):
     }
   }
   throw new Error(`No free port found in [${startPort}, ${startPort + 9}]`);
+}
+
+export function scriptsAfterWorkersDropped(srcs: readonly string[]): string {
+  const add =
+    'var s=document.createElement("script");s.src=src;s.async=false;document.head.append(s)';
+  const load = `function(){${JSON.stringify(srcs)}.forEach(function(src){${add}})}`;
+  return `<script>(${dropServiceWorkers.toString()})().then(${load});</script>`;
 }

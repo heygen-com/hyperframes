@@ -88,3 +88,15 @@ export function applyAuthoredTiming(
   for (const [name, value] of attrs) el.setAttribute(name, value);
   el.removeAttribute(RUNTIME_STAMPED_ATTR);
 }
+
+export function dropServiceWorkers(): Promise<void> {
+  const workers = typeof navigator === "undefined" ? undefined : navigator.serviceWorker;
+  if (!workers) return Promise.resolve();
+  return workers
+    .getRegistrations()
+    .then((all) => Promise.all(all.map((each) => each.unregister())))
+    .then(
+      () => undefined,
+      () => undefined,
+    );
+}

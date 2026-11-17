@@ -38,6 +38,7 @@ import {
   listenOnFreePort,
   refuseUnknownHosts,
   sandboxForAnotherSite,
+  scriptsAfterWorkersDropped,
   refuseProxyWorkForAnotherSite,
   injectRuntime,
   injectMediaCodecMap,
@@ -342,7 +343,7 @@ function buildPlayerPage(projectName: string): string {
       <hyperframes-player src="/composition/index.html" controls muted></hyperframes-player>
     </div>
     <div class="info">${projectName} — hyperframes play</div>
-    <script src="/player.js"></script>
+    ${scriptsAfterWorkersDropped(["/player.js"])}
   </body>
 </html>`;
 }
