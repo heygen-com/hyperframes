@@ -56,17 +56,27 @@ function probe(img) {
   const [w, h] = out.split(",").map(Number);
   return { w, h };
 }
-// A value placed in a filter option: escaped once for the option list, then for the filtergraph.
-const filterValue = (value) => value.replace(/[\\':]/g, "\\$&").replace(/[\\'[\],;]/g, "\\$&");
+// A value placed in a filter option, escaped for the option list and then for the filtergraph.
+const FILTER_ESCAPES = {
+  "\\": "\\\\\\\\",
+  "'": "\\\\\\'",
+  ":": "\\\\:",
+  "[": "\\[",
+  "]": "\\]",
+  ",": "\\,",
+  ";": "\\;",
+};
+const filterValue = (value) => value.replace(/[\\':[\],;]/g, (ch) => FILTER_ESCAPES[ch]);
 // The grid font is copied into a folder only this run can open (mkdtemp makes it 0700),
-// removed when the run ends or is stopped.
+// removed when the run ends or is stopped. A stop signal is handled once the ffmpeg call
+// in progress returns.
 let fontPath;
 function font() {
   if (fontPath) return fontPath;
   const dir = mkdtempSync(join(tmpdir(), "locate-font-"));
   const remove = () => rmSync(dir, { recursive: true, force: true });
   process.on("exit", remove);
-  for (const signal of ["SIGINT", "SIGTERM"])
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"])
     process.once(signal, () => {
       remove();
       process.kill(process.pid, signal);

@@ -668,6 +668,26 @@ describe("startup lint", () => {
     expect(lint.inProcess).not.toHaveBeenCalled();
   }, 5_000);
 
+  it("prints a background start failure with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    lint.worker.mockImplementation(neverSettles);
+    vi.spyOn(previewLifecycle, "startBackgroundPreview").mockRejectedValue(
+      new Error(`background preview did not stop for /work/video${esc}[2J`),
+    );
+    const error = vi.spyOn(clack.log, "error").mockImplementation(() => {});
+    const dir = tempProject();
+    writeFileSync(join(dir, "index.html"), "<html></html>");
+    try {
+      await runCommand(previewCommand, { rawArgs: [dir, "--background"] });
+
+      expect(error).toHaveBeenCalledWith("background preview did not stop for /work/video\\x1b[2J");
+    } finally {
+      lint.worker.mockReset();
+      killOrphanedProcesses.mockClear();
+    }
+  });
+
   it("prints a lint failure with control characters as visible escapes", async () => {
     // Built rather than written: a literal control character in the source is a lint error.
     const esc = String.fromCharCode(27);

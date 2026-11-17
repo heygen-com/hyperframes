@@ -539,15 +539,12 @@ export default defineCommand({
           preferredPort: explicitPort,
         });
       } catch (error) {
-        const message = errorMessage(error);
-        if (args.json) {
-          writeLifecycleJson(
-            lifecycleFailurePayload("start", backgroundStartFailureCode(error), message),
-          );
-        } else {
-          clack.log.error(message);
-        }
-        setCommandExitCode(1);
+        reportPreviewFailure(
+          Boolean(args.json),
+          "start",
+          backgroundStartFailureCode(error),
+          errorMessage(error),
+        );
         return;
       }
       const url = `http://localhost:${background.port}`;

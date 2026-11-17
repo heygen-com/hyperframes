@@ -40,6 +40,7 @@ import {
   CANVAS_DIMENSIONS,
   checkOutputResolutionCompatibility,
   type CanvasResolution,
+  terminalText,
 } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
@@ -698,7 +699,7 @@ async function prepareLocalArchive(
   const project = resolveProject(source.dir);
   if (!asJson) {
     console.log("");
-    console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
+    console.log(`${c.accent("◆")}  Zipping ${c.accent(terminalText(project.name))}`);
   }
   const { fileMap, entryPath, leftOut, outsideFiles } = stageAndReport(
     project,

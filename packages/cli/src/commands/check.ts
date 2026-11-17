@@ -489,7 +489,7 @@ async function runPrepareMedia(
     console.log(
       `${mark}  Browser-playable copies: ${files.length - failed.length}/${files.length} ready`,
     );
-    for (const file of failed) console.log(`   ${file.file}: ${file.reason}`);
+    for (const file of failed) console.log(terminalLines(`   ${file.file}: ${file.reason}`));
   }
   setCommandExitCode(failed.length === 0 ? 0 : 1);
 }
@@ -889,12 +889,13 @@ function printSnapshotSection(report: CheckReport): void {
     console.log(`  ${c.dim("◇")} disabled`);
   } else {
     console.log(`  ${c.success("◇")} ${report.snapshots.files.length} PNG(s) saved`);
-    for (const file of report.snapshots.files) console.log(`    ${c.dim(file)}`);
+    for (const file of report.snapshots.files) console.log(`    ${c.dim(terminalText(file))}`);
     if (report.snapshots.findingFiles.length > 0) {
       console.log(
         `  ${c.success("◇")} ${report.snapshots.findingFiles.length} finding crop(s) saved`,
       );
-      for (const file of report.snapshots.findingFiles) console.log(`    ${c.dim(file)}`);
+      for (const file of report.snapshots.findingFiles)
+        console.log(`    ${c.dim(terminalText(file))}`);
     }
   }
 }

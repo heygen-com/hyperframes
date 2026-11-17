@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
+import { consumeCommandResult } from "../utils/commandResult.js";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -108,6 +109,35 @@ it.skipIf(process.platform === "win32")(
       expect(human).toContain("deck\\x1b]0;x\\x07\\x1b[2J");
     } finally {
       log.mockRestore();
+    }
+  },
+);
+
+// Windows refuses control characters in folder names.
+it.skipIf(process.platform === "win32")(
+  "prints an invalid slideshow island error with control characters as visible escapes",
+  async () => {
+    const { log } = await import("@clack/prompts");
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    dir = mkdtempSync(join(tmpdir(), "hf-present-test-"));
+    const project = join(dir, `deck${esc}[2J`);
+    mkdirSync(project);
+    writeFileSync(
+      join(project, "index.html"),
+      '<script type="application/hyperframes-slideshow+json">{"a":</script>',
+    );
+    const error = vi.spyOn(log, "error").mockImplementation(() => {});
+    try {
+      await runCommand(present, { rawArgs: [project, "--no-open"] });
+      const printed = error.mock.calls.map((call) => call.join(" ")).join("\n");
+
+      expect(printed).toContain("is not valid JSON");
+      expect(printed).not.toContain(esc);
+      expect(printed).toContain("deck\\x1b[2J");
+    } finally {
+      error.mockRestore();
+      consumeCommandResult();
     }
   },
 );

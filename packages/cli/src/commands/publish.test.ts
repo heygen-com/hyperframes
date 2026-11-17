@@ -269,6 +269,29 @@ describe("publish visibility messaging", () => {
     }
   });
 
+  it("prints the server's title and URL with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const project = mkdtempSync(join(tmpdir(), "hf-publish-escapes-"));
+    writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
+    mockPublished({
+      title: `film${esc}]0;x${String.fromCharCode(7)}`,
+      projectId: "project-id",
+      url: `https://hyperframes.dev/p/project-id${esc}[2J`,
+    });
+    try {
+      const output = await captureLog(() =>
+        publishCommand.run?.({ args: { dir: project, yes: true, proxy: false } } as never),
+      );
+
+      expect(output.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+      expect(output).toContain("film\\x1b]0;x\\x07");
+      expect(output).toContain("project-id\\x1b[2J");
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
   it("labels an authentication-required anonymous URL as a claim URL", async () => {
     const output = await runPublish({ public: false, claimed: false });
 

@@ -53,17 +53,18 @@ if (process.env.STOP_LOCATE) process.kill(process.ppid, process.env.STOP_LOCATE)
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-  return { temp, run, calls };
+  return { base, temp, run, calls };
 }
 
-// ffmpeg's two escaping levels, written out for the characters in the fixture's TMPDIR.
-const escaped = (path) => path.replace(/[\\':]/g, "\\$&").replace(/[\\'[\],;]/g, "\\$&");
+// The fixture's TMPDIR as the filter must spell it: ' and : escaped for the option list, then
+// every backslash and ' [ ] , ; escaped again for the filtergraph.
+const FILTER_TEMP = String.raw`t\\\'m\,p\\:\[x\]\;y`;
 
 test(
   "the grid font lives in a private folder of the run's own, removed afterwards",
   posixOnly,
   (t) => {
-    const { temp, run, calls } = fixture(t);
+    const { base, temp, run, calls } = fixture(t);
 
     const result = run();
 
@@ -73,7 +74,7 @@ test(
       const [[name, mode]] = folders;
       assert.match(name, /^locate-font-/);
       assert.equal(mode, "700");
-      assert.ok(filter.includes(`fontfile=${escaped(join(temp, name, "font.ttf"))}:`), filter);
+      assert.ok(filter.includes(`fontfile=${base}/${FILTER_TEMP}/${name}/font.ttf:`), filter);
     }
     assert.deepEqual(readdirSync(temp), []);
   },
