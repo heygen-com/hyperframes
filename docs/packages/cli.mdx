@@ -3006,6 +3006,7 @@ And these drive `render` and `render-batch`:
 | ----------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `--width`, `--height`   | required                            | Render dimensions in pixels                                                                                       |
 | `--site-id`             | content hash                        | Reuse an uploaded site instead of uploading again                                                                  |
+| `--include-outside-files` | off                               | Upload the files a link brings in from outside the project folder. Without it they are left out and named         |
 | `--fps`                 | `30`                                | `24`, `25`, `30`, or `60`                                                                                         |
 | `--format`              | `mp4`                               | `mp4`, `mov`, `webm`, or `png-sequence`                                                                           |
 | `--codec`               | `h264`                              | `h264` or `h265`, MP4 only                                                                                        |
@@ -3057,6 +3058,10 @@ hyperframes lambda sites create ./my-project
 
 hyperframes lambda render ./my-project --site-id=abc1234deadbeef0 --width 1920 --height 1080
 ```
+
+A file or folder that a symlink brings in from outside the project is left out
+of the upload, and a notice names each one. Pass `--include-outside-files` (or
+`includeOutsideFiles: true` to the SDK's `deploySite`) to upload them too.
 
 ### `lambda render <projectDir>`
 

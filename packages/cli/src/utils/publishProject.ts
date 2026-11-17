@@ -1186,8 +1186,8 @@ export interface PublishOptions {
    * Pre-built archive to upload instead of building one fresh from
    * `projectDir` via `createPublishArchive`. `publish.ts` passes this so it
    * can bake proxies into the file map between `buildPublishFileMap` and
-   * `zipPublishFileMap` (U6); callers that omit it (e.g. `feedback`'s
-   * minimal-repro publish) keep today's behavior unchanged.
+   * `zipPublishFileMap` (U6). Without it, the archive built here leaves out
+   * every file from outside the project, since no one approved those.
    */
   archive?: PublishArchiveResult;
   /** The credential the caller already checked; `null` publishes anonymously. Resolved here when omitted. */
@@ -1200,7 +1200,7 @@ export async function publishProjectArchive(
 ): Promise<PublishedProjectResponse> {
   const isPublic = opts.public === true;
   const title = basename(projectDir);
-  const archive = opts.archive ?? createPublishArchive(projectDir);
+  const archive = opts.archive ?? createPublishArchive(projectDir, undefined, () => false);
   const apiBaseUrl = getPublishApiBaseUrl();
   const credential = await resolvePublishCredential(opts.credential);
   const authHeaders = credential ? buildAuthHeaders(credential) : {};

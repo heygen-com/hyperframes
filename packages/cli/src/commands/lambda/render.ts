@@ -32,6 +32,8 @@ export interface RenderArgs extends DeliveryFlagValues {
   projectDir: string;
   stackName: string;
   siteId?: string;
+  /** Upload files a link brings in from outside the project (`--include-outside-files`). */
+  includeOutsideFiles?: boolean;
   /** Composition config — fps/width/height/format required, rest optional. */
   fps: DistributedFps;
   width: number;
@@ -146,6 +148,7 @@ export async function runRender(args: RenderArgs): Promise<void> {
     config,
     executionName: args.executionName,
     outputKey: args.outputKey,
+    includeOutsideFiles: args.includeOutsideFiles,
     onNotice: (message) => console.error(c.dim(message)),
   });
 

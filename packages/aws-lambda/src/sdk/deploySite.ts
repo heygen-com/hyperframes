@@ -64,6 +64,8 @@ export interface DeploySiteOptions {
   siteId?: string;
   /** Called with a line a user should see, such as audio sidecars skipped for want of ffmpeg. */
   onNotice?: (message: string) => void;
+  /** Upload files and folders a link brings in from outside `projectDir`. Without it they are left out and named via `onNotice`. */
+  includeOutsideFiles?: boolean;
   expectedBucketOwner?: string;
   /** Injection seam for tests. Production callers leave unset. */
   s3?: S3Client;
@@ -162,7 +164,7 @@ export async function deploySite(opts: DeploySiteOptions): Promise<SiteHandle> {
   if (!statSync(opts.projectDir).isDirectory()) {
     throw new Error(`[deploySite] projectDir is not a directory: ${opts.projectDir}`);
   }
-  const files = listSiteFilesForUpload(opts.projectDir, opts.onNotice);
+  const files = listSiteFilesForUpload(opts.projectDir, opts.onNotice, opts.includeOutsideFiles);
   const siteId = opts.siteId ?? hashProjectDir(opts.projectDir, files);
   const projectS3Uri = siteManifestUri(opts.bucketName, siteId);
 

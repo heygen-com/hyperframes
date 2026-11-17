@@ -22,6 +22,8 @@ export interface SitesCreateArgs {
   projectDir: string;
   stackName: string;
   siteId?: string;
+  /** Upload files a link brings in from outside the project (`--include-outside-files`). */
+  includeOutsideFiles?: boolean;
   /** Print machine-readable JSON instead of the human-friendly summary. */
   json: boolean;
 }
@@ -38,6 +40,7 @@ export async function runSitesCreate(args: SitesCreateArgs): Promise<void> {
     expectedBucketOwner: parseStateMachineArn(stack.stateMachineArn).account,
     region: stack.region,
     siteId: args.siteId,
+    includeOutsideFiles: args.includeOutsideFiles,
     onNotice: (message) => console.error(c.dim(message)),
   });
 

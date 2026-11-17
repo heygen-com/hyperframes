@@ -33,6 +33,8 @@ export interface DeploySiteOptions {
    */
   siteId?: string;
   onNotice?: (message: string) => void;
+  /** Upload files and folders a link brings in from outside `projectDir`. Without it they are left out and named via `onNotice`. */
+  includeOutsideFiles?: boolean;
   /** Injection seam for tests. Production callers leave unset. */
   storage?: Storage;
 }
@@ -66,7 +68,7 @@ export async function deploySite(opts: DeploySiteOptions): Promise<SiteHandle> {
     throw new Error(`[deploySite] projectDir is not a directory: ${opts.projectDir}`);
   }
 
-  const files = listSiteFilesForUpload(opts.projectDir, opts.onNotice);
+  const files = listSiteFilesForUpload(opts.projectDir, opts.onNotice, opts.includeOutsideFiles);
   const siteId = opts.siteId ?? hashProjectDir(opts.projectDir, files);
   const key = `sites/${siteId}/project.tar.gz`;
   const projectGcsUri = formatGcsUri({ bucket: opts.bucketName, key });

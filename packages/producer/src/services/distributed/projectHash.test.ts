@@ -125,6 +125,44 @@ describe("listSiteFiles / hashProjectDir", () => {
     expect(listSiteFiles(dir)).toEqual(["index.html"]);
   });
 
+  // fails without the fix: an upload shipped whatever a link inside the project pointed at.
+  it("leaves out an upload's files and folders linked in from outside the project, naming each", () => {
+    const dir = project();
+    const outside = tempDir();
+    mkdirSync(join(outside, "media"));
+    mkdirSync(join(dir, "assets"));
+    writeFileSync(join(outside, "shared.css"), "a{}");
+    writeFileSync(join(outside, "media", "clip.txt"), "v1");
+    writeFileSync(join(dir, "assets", "logo.png"), "png");
+    symlinkSync(join(outside, "shared.css"), join(dir, "shared.css"));
+    symlinkSync(join(outside, "media"), join(dir, "media"));
+    symlinkSync(join(dir, "assets", "logo.png"), join(dir, "logo.png"));
+    const notices: string[] = [];
+
+    expect(listSiteFilesForUpload(dir, (line) => notices.push(line))).toEqual([
+      "assets/logo.png",
+      "index.html",
+      "logo.png",
+    ]);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain("outside the project: media, shared.css.");
+    expect(notices[0]).toContain("--include-outside-files");
+  });
+
+  it("uploads files linked in from outside the project when the caller includes them", () => {
+    const dir = project();
+    const outside = tempDir();
+    writeFileSync(join(outside, "shared.css"), "a{}");
+    symlinkSync(join(outside, "shared.css"), join(dir, "shared.css"));
+    const notices: string[] = [];
+
+    expect(listSiteFilesForUpload(dir, (line) => notices.push(line), true)).toEqual([
+      "index.html",
+      "shared.css",
+    ]);
+    expect(notices).toEqual([]);
+  });
+
   it("does not loop on a folder that links back to an ancestor", () => {
     const dir = project();
     symlinkSync(dir, join(dir, "self"));
