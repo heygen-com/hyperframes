@@ -223,10 +223,7 @@ export function scopeCssToComposition(
     : "";
 }
 
-/**
- * Scoping writes at most two forms of a selector. Each holds the scope once per composition-id
- * mention plus twice, and turns each `#` into an authored-id attribute.
- */
+/** Up to two forms per selector, each with the scope per id mention plus twice, and an attribute per `#`. */
 function scopedSelectorsBound(
   selectors: readonly string[],
   scope: string,
@@ -271,9 +268,14 @@ function scopeParsedCss(
   charge?.(cssLength);
   forEachScopedRule(root, (rule) => {
     const authored = rule.selector.length;
-    const reserved = charge ? scopedSelectorsBound(rule.selectors, scope, authoredRootId) : 0;
+    const selectors = rule.selectors;
+    // postcss re-joins the list with the first separator in the authored selector.
+    const separator = selectors.length > 1 ? (rule.selector.match(/,\s*/)?.[0].length ?? 1) : 0;
+    const reserved = charge
+      ? scopedSelectorsBound(selectors, scope, authoredRootId) + (selectors.length - 1) * separator
+      : 0;
     charge?.(reserved);
-    rule.selectors = rule.selectors.map((selector) =>
+    rule.selectors = selectors.map((selector) =>
       scopeSelector(
         selector,
         scope,
@@ -363,7 +365,8 @@ function scopeTemplate(
   });
   return rawSelector
     ? null
-    : scopeParsedCss(root, css.length, PLACEHOLDER_SCOPE, compositionId, authoredRootId, options);
+    : // The cached template stays in memory for the render, so it is charged as well as each join.
+      scopeParsedCss(root, css.length, PLACEHOLDER_SCOPE, compositionId, authoredRootId, options);
 }
 
 function isFontFaceAtRule(node: { type: string; name?: string }): node is AtRule {

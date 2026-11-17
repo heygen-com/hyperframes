@@ -68,8 +68,10 @@ const scopesFor = (id: string) => [
 describe("createCompositionCssScoper", () => {
   it("reserves an upper bound for each rule before scoping it and settles to the sheet's size", () => {
     const scope = createCompositionCssScoper();
+    const selectorList = Array.from({ length: 200 }, (_, i) => `.s${i}`).join(", ");
+    const wideSeparator = `.first,${" ".repeat(5_000)}${selectorList} { color: red; }`;
     for (const id of ["card", "c.a:rd", 'ca"rd', "hf-scope-placeholder"]) {
-      for (const css of randomSheets(id, 200)) {
+      for (const css of [...randomSheets(id, 200), wideSeparator]) {
         for (const authoredRootId of [undefined, "card-root"]) {
           for (const selector of [...scopesFor(id), scopeOf("x".repeat(500))]) {
             for (const scoper of [scope, scopeCssToComposition]) {
