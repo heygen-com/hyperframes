@@ -56,7 +56,7 @@ describe.each(routes)("%s", (_name, path, type) => {
     expect(res.headers.get("vary")).toBe("Sec-Fetch-Site");
   });
 
-  it.each([["same-origin"], ["none"], [undefined]])(
+  it.each([["same-origin"], ["none"]])(
     "keeps its origin when Sec-Fetch-Site is %s",
     async (site) => {
       const res = await get(path, site);
@@ -214,4 +214,36 @@ describe("a plain-HTTP request to a LAN name, which carries no fetch metadata", 
       expect(own.status).not.toBe(403);
     },
   );
+});
+
+// fails without the fix: with no fetch metadata a loopback load counted as Studio's own, so another site's frame got
+// an unmarked page whose runtime offered it the editing port.
+describe("a loopback request from a browser that sends no fetch metadata", () => {
+  const MARK = '<meta name="hyperframes-preview-for-another-site">';
+  const LOCAL = "http://localhost:3002";
+  const documents = routes.filter(([, , type]) => type === "text/html");
+  const localGet = (path: string, headers: Record<string, string> = {}) =>
+    api.request(`${LOCAL}${path}`, { headers });
+
+  it.each(documents)("%s is marked and sandboxed with no Referer", async (_n, path) => {
+    const res = await localGet(path);
+    expect(await res.text()).toContain(MARK);
+    expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+  });
+
+  it.each(documents)("%s is marked and sandboxed for another site's Referer", async (_n, path) => {
+    const res = await localGet(path, { referer: "http://elsewhere.example/page" });
+    expect(await res.text()).toContain(MARK);
+    expect(res.headers.get("content-security-policy")).toBe(SANDBOX);
+  });
+
+  it.each(documents)("%s stays unmarked for the Studio's own player", async (_n, path) => {
+    const res = await localGet(path, { referer: `${LOCAL}/?project=demo` });
+    expect(await res.text()).not.toContain(MARK);
+    expect(res.headers.get("content-security-policy")).toBeNull();
+  });
+
+  it("still answers a local tool's request to a route that refuses other sites", async () => {
+    expect((await localGet("/projects/demo/frame-token")).status).not.toBe(403);
+  });
 });

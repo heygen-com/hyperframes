@@ -789,6 +789,16 @@ describe("serveStaticProjectHtml page another site loads", () => {
       }
     },
   );
+
+  // fails without the fix: a loopback load with no fetch metadata counted as the capture's own.
+  it("marks a page loaded with no fetch metadata unless its Referer is this server", async () => {
+    const url = await serveProject();
+    const bare = await fetch(`${url}scene.html`);
+    expect(await bare.text()).toContain(MARK);
+    expect(bare.headers.get("content-security-policy")).toContain(SANDBOX);
+    const own = await fetch(`${url}scene.html`, { headers: { Referer: url } });
+    expect(await own.text()).not.toContain(MARK);
+  });
 });
 
 function writeToolRecords(projectDir: string): void {
