@@ -102,8 +102,8 @@ export function dropServiceWorkers(): Promise<void> {
 }
 
 export function serviceWorkerScriptFetch(headers: {
-  serviceWorker?: string;
-  fetchDest?: string;
+  serviceWorker?: string | string[];
+  fetchDest?: string | string[];
 }): boolean {
   return headers.serviceWorker === "script" || headers.fetchDest === "serviceworker";
 }
