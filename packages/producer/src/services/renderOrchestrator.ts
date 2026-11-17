@@ -3875,6 +3875,7 @@ async function executeRenderPipeline(input: {
         needsAlpha,
         motionBlur: job.config.motionBlur,
         chromaSubsampling: job.config.chromaSubsampling,
+        videoCount: composition.videos.length,
       },
       job.config.quality,
     );
