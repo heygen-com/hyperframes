@@ -14,6 +14,7 @@ import {
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
   documentFromAnotherSite,
+  requestFromAnotherSite,
   wildcardBindHostAllowed,
 } from "@hyperframes/studio-server/request-identity";
 import { SAME_ORIGIN_FRAMING_HEADERS } from "@hyperframes/engine";
@@ -241,6 +242,20 @@ export function sandboxForAnotherSite(app: Hono, path: string): void {
     if (!anotherSite) return;
     c.header("Content-Security-Policy", "sandbox allow-scripts");
     await markDocumentForAnotherSite(c);
+  });
+}
+
+/** A `?hf-proxy=` copy runs ffmpeg on this machine, so another site may not ask for one. */
+export function refuseProxyWorkForAnotherSite(app: Hono, path: string): void {
+  app.use(path, async function refuseAnotherSiteProxyWork(c, next) {
+    const anotherSite = requestFromAnotherSite({
+      fetchSite: c.req.header("sec-fetch-site"),
+      host: c.req.header("host") ?? new URL(c.req.url).host,
+      referer: c.req.header("referer"),
+    });
+    if (anotherSite && c.req.query("hf-proxy") !== undefined)
+      return c.text("Forbidden: media proxy requested by another site", 403);
+    await next();
   });
 }
 

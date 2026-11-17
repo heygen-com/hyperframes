@@ -19,7 +19,10 @@ import {
 } from "@hyperframes/core";
 import { getMimeType } from "@hyperframes/core/studio-api";
 import { decodeWellFormedEscapes, openRangeEnd } from "@hyperframes/studio-server";
-import { documentFromAnotherSite } from "@hyperframes/studio-server/request-identity";
+import {
+  documentFromAnotherSite,
+  requestFromAnotherSite,
+} from "@hyperframes/studio-server/request-identity";
 import { findStageProxyBox } from "./compositionViewport.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { injectMediaCodecMap } from "./compositionServer.js";
@@ -295,6 +298,15 @@ function markForAnotherSite(html: string): string {
 }
 
 /** A load by another site is sandboxed, and the documents it gets are marked so their runtime offers it no editing port. */
+/** A `?hf-proxy=` copy runs ffmpeg on this machine, so another site may not ask for one. */
+function proxyRequestedByAnotherSite(req: IncomingMessage): boolean {
+  return requestFromAnotherSite({
+    fetchSite: req.headers["sec-fetch-site"] as string | undefined,
+    host: req.headers.host,
+    referer: req.headers.referer,
+  });
+}
+
 function loadedByAnotherSite(req: IncomingMessage, res: ServerResponse): boolean {
   const anotherSite = documentFromAnotherSite({
     fetchSite: req.headers["sec-fetch-site"] as string | undefined,
@@ -382,6 +394,11 @@ export async function serveStaticProjectHtml(
     if (proxyBox === null || (proxyBox && !proxyRequest)) {
       res.writeHead(404);
       res.end();
+      return;
+    }
+    if (proxyParam !== null && proxyRequestedByAnotherSite(req)) {
+      res.writeHead(403);
+      res.end("Forbidden: media proxy requested by another site");
       return;
     }
 
