@@ -445,7 +445,8 @@ const VOID_ELEMENTS = new Set([
   "wbr",
 ]);
 
-const closeTag = (name: string) => new RegExp(`</${name}>`, "gi");
+// The parser keeps any tag name up to whitespace, `/` or `>`, so escape it before it becomes a pattern.
+const closeTag = (name: string) => new RegExp(`</${escapeRegExp(name)}>`, "gi");
 
 function innermostTimedWrapper(
   source: string,
