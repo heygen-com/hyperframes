@@ -80,9 +80,20 @@ export function captureNativeVideoFrame(video: HTMLVideoElement): HTMLCanvasElem
   canvas.height = video.videoHeight;
   const context = canvas.getContext("2d");
   if (!context) return null;
+  const frame = videoFrameOf(video);
   try {
-    context.drawImage(video, 0, 0);
+    context.drawImage(frame ?? video, 0, 0);
     return canvas;
+  } catch {
+    return null;
+  } finally {
+    frame?.close();
+  }
+}
+
+function videoFrameOf(video: HTMLVideoElement): VideoFrame | null {
+  try {
+    return new VideoFrame(video);
   } catch {
     return null;
   }
