@@ -34,6 +34,7 @@ import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
 import { restoreAttributes } from "./editing/restoreAttributes";
 import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
+import { maxZIndex } from "./editing/maxZIndex";
 import { gestureStart } from "./editingGestureStart";
 import { gsapSnapshot } from "./editing/gsapSnapshot";
 import { motionPathHome } from "./editing/motionPathHome";
@@ -214,6 +215,7 @@ const HANDLERS: Handlers = {
   "assign-audio-group": (params) => assignAudioGroup(params, elementForHandle),
   "gsap-snapshot": () => gsapSnapshot(),
   "motion-path-home": ({ selector }) => motionPathHome(selector),
+  "max-z-index": () => maxZIndex(),
 };
 
 function serve(port: MessagePort): void {

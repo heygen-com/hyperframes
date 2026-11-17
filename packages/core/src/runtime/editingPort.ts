@@ -168,6 +168,7 @@ export const EDITING_REQUEST_KINDS = [
   "assign-audio-group",
   "gsap-snapshot",
   "motion-path-home",
+  "max-z-index",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -296,6 +297,7 @@ export interface EditingRequests {
   };
   "gsap-snapshot": { params: NoParams; result: GsapSnapshot };
   "motion-path-home": { params: { selector: string }; result: MotionPathFrameHome };
+  "max-z-index": { params: NoParams; result: { zIndex: number } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -498,6 +500,7 @@ const PARAM_PARSERS: {
     hasKeys(params, "selector") && isSelector(params.selector)
       ? { selector: params.selector }
       : null,
+  "max-z-index": noParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
