@@ -32,16 +32,15 @@ function statEntry(full: string, relPath: string) {
 
 /**
  * The files a site upload ships, as `/`-separated paths under `projectDir`. Symlinks are followed
- * (root included), top-level {@link PLAN_PROJECT_DIR_SKIP_SEGMENTS} are left out as the plan stage
- * does, and a dangling symlink throws. Private files (env, Git, credentials, tool and agent state,
- * app records) are left out at every depth, by name or by where a link points; `onPrivate` hears
- * each one left out, a folder once. With `onOutside`, a file or folder whose link points outside
- * the project is left out too, and `onOutside` hears it, a folder once.
+ * (root included), out of the project only with `onOutside` `"include"`; top-level
+ * {@link PLAN_PROJECT_DIR_SKIP_SEGMENTS} are left out as the plan stage does, and a dangling link
+ * throws. Private files (env, Git, credentials, tool and agent state, app records) are left out at
+ * every depth, by name or by link target. `onPrivate` and `onOutside` hear each, a folder once.
  */
 export function listSiteFiles(
   projectDir: string,
   onPrivate?: (relPath: string) => void,
-  onOutside?: (relPath: string) => void,
+  onOutside: ((relPath: string) => void) | "include" = () => {},
 ): string[] {
   const files: string[] = [];
   const root = realpathSync(projectDir);
@@ -50,7 +49,9 @@ export function listSiteFiles(
     if (isPrivateFileUnder(projectDir, full, isStudioPrivatePath)) return void onPrivate?.(relPath);
     const stat = statEntry(full, relPath);
     if (!stat.isFile() && !stat.isDirectory()) return;
-    if (onOutside && outsideFolder(root, realpathSync(full))) return void onOutside(relPath);
+    if (onOutside !== "include" && outsideFolder(root, realpathSync(full))) {
+      return void onOutside(relPath);
+    }
     if (stat.isFile()) return void files.push(relPath);
     const real = realpathSync(full);
     // A folder linking back to an ancestor is skipped rather than walked forever.
@@ -83,12 +84,12 @@ const printablePath = (path: string): string =>
 
 /**
  * {@link listSiteFiles} for an upload: one line to `onNotice` names the private files left out.
- * Files linked in from outside the project ship only with `includeOutsideFiles`; otherwise a second
- * line names each one, since the person may not know a link put them in the project.
+ * Files linked in from outside ship only with `includeOutsideFiles`, else a second line names them.
+ * The upload reads each path again after this check, so a link swapped in meanwhile still ships.
  */
 export function listSiteFilesForUpload(
   projectDir: string,
-  onNotice?: (message: string) => void,
+  onNotice: (message: string) => void = (message) => console.warn(message),
   includeOutsideFiles = false,
 ): string[] {
   const leftOut: string[] = [];
@@ -96,16 +97,16 @@ export function listSiteFilesForUpload(
   const files = listSiteFiles(
     projectDir,
     (path) => leftOut.push(path),
-    includeOutsideFiles ? undefined : (path) => outside.push(path),
+    includeOutsideFiles ? "include" : (path) => outside.push(path),
   );
   if (leftOut.length > 0) {
     const more = leftOut.length > 5 ? ` and ${leftOut.length - 5} more` : "";
-    onNotice?.(
+    onNotice(
       `[deploySite] left out private files no composition loads (env, Git, credentials, tool state): ${leftOut.slice(0, 5).map(printablePath).join(", ")}${more}`,
     );
   }
   if (outside.length > 0) {
-    onNotice?.(
+    onNotice(
       `[deploySite] left out files linked in from outside the project: ${outside.map(printablePath).join(", ")}. Pass --include-outside-files (includeOutsideFiles in the SDK) to upload them.`,
     );
   }
