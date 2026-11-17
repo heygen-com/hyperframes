@@ -25,12 +25,10 @@ export function typeDirPath(projectDir: string, type: FigmaManifestRecord["type"
   return join(mediaDir(projectDir), TYPE_DIRS[type]);
 }
 
-/** The project's own `.media`, made if missing; throws when it is a link or leads outside the project. */
 export function ownMediaDir(projectDir: string): string {
   return ownProjectDir(projectDir, mediaDir(projectDir));
 }
 
-/** `typeDirPath`, made if missing, with the same check as `ownMediaDir` on each folder. */
 export function ownTypeDir(projectDir: string, type: FigmaManifestRecord["type"]): string {
   return ownProjectDir(projectDir, typeDirPath(projectDir, type));
 }
