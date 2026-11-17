@@ -7,6 +7,8 @@ import {
   type ClipPathInsetSides,
   type ParsedInsetClipPathSides,
 } from "./clipPathHelpers";
+import { previewRequest } from "../../player/lib/previewChannel";
+import { previewStandIn } from "./previewDrafts";
 
 export type CropEdge = "top" | "right" | "bottom" | "left";
 
@@ -38,7 +40,8 @@ export function cropRectFromInsets(
 
 // A selected croppable element shows uncropped so the crop UI can dim what is cut away. A rule keyed on its
 // identity does that, so the element's own clip-path stays the one record undo, redo and panel edits rewrite.
-const cropLifts = new WeakMap<HTMLElement, { rule: HTMLStyleElement; sheetClip?: string }>();
+// A sealed preview's lift is that rule in the frame (core `editing/cropLift.ts`), and `rule` is null.
+const cropLifts = new WeakMap<HTMLElement, { rule: HTMLStyleElement | null; sheetClip?: string }>();
 
 function liftSelector(element: HTMLElement): string | null {
   const quote = (value: string) => `"${value.replace(/["\\]/g, "\\$&")}"`;
@@ -47,7 +50,26 @@ function liftSelector(element: HTMLElement): string | null {
   return element.id ? `[id=${quote(element.id)}]` : null;
 }
 
+function liftInFrame(element: HTMLElement, lift: boolean): boolean {
+  const target = previewStandIn(element);
+  if (!target) return false;
+  if (!lift) {
+    void previewRequest(target.iframe, "crop-lift", { handle: target.handle, lift });
+    return true;
+  }
+  // Until the frame answers, the clip it last reported is the one under the lift.
+  const record = { rule: null, sheetClip: frameClipPaths.get(element)?.computed ?? "" };
+  cropLifts.set(element, record);
+  void previewRequest(target.iframe, "crop-lift", { handle: target.handle, lift }).then((reply) => {
+    if (cropLifts.get(element) !== record) return;
+    if (!reply?.lifted) cropLifts.delete(element);
+    else if (typeof reply.clipPath === "string") record.sheetClip = reply.clipPath.trim();
+  });
+  return true;
+}
+
 export function liftElementCrop(element: HTMLElement): void {
+  if (cropLifts.has(element) || liftInFrame(element, true)) return;
   const selector = liftSelector(element);
   if (!selector || cropLifts.has(element)) return;
   const doc = element.ownerDocument;
@@ -58,7 +80,10 @@ export function liftElementCrop(element: HTMLElement): void {
 }
 
 export function dropElementCropLift(element: HTMLElement): void {
-  cropLifts.get(element)?.rule.remove();
+  const lift = cropLifts.get(element);
+  if (!lift) return;
+  if (lift.rule) lift.rule.remove();
+  else liftInFrame(element, false);
   cropLifts.delete(element);
 }
 
@@ -66,22 +91,33 @@ export function isElementCropLifted(element: HTMLElement): boolean {
   return cropLifts.has(element);
 }
 
-const computedClipPath = (element: HTMLElement) =>
-  element.ownerDocument.defaultView?.getComputedStyle(element).clipPath.trim() || "";
+// A sealed preview's stand-in has no styles of its own: its clip-path is the one the frame reported.
+const frameClipPaths = new WeakMap<Element, { inline: string; computed: string }>();
+
+export function rememberFrameClipPath(element: HTMLElement, inline: string, computed: string) {
+  frameClipPaths.set(element, { inline: inline.trim(), computed: computed.trim() });
+}
+
+const computedClipPath = (element: HTMLElement) => {
+  const view = element.ownerDocument.defaultView;
+  if (!view) return frameClipPaths.get(element)?.computed ?? "";
+  return view.getComputedStyle(element).clipPath.trim();
+};
 
 /** The element's clip-path, inline first, then the stylesheet's as it is without the lift. */
 function readElementClipPath(element: HTMLElement): string {
-  const inline = element.style.getPropertyValue("clip-path").trim();
+  const inline =
+    element.style.getPropertyValue("clip-path").trim() || frameClipPaths.get(element)?.inline;
   const lift = cropLifts.get(element);
   if (inline || !lift) return inline || computedClipPath(element);
   // Only inline writes happen while selected, so the stylesheet's clip is read once per lift.
-  if (lift.sheetClip === undefined) {
+  if (lift.sheetClip === undefined && lift.rule) {
     const { parentNode, nextSibling } = lift.rule;
     lift.rule.remove();
     lift.sheetClip = computedClipPath(element);
     parentNode?.insertBefore(lift.rule, nextSibling);
   }
-  return lift.sheetClip;
+  return lift.sheetClip ?? "";
 }
 
 /** Zeros = no clip yet. `null` = a clip this tool cannot represent (circle/polygon/non-px inset):
