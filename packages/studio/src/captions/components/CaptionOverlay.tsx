@@ -4,7 +4,14 @@ import { useCaptionStore } from "../store";
 import { usePlayerStore } from "../../player";
 import { resolveCaptionNudge, isEditableEventTarget } from "../keyboard";
 import { matchesKey } from "../../player/components/studioShortcuts";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import {
+  findCaptionWord,
+  frameWordTransform,
+  readFrameWordBoxes,
+  transformStyle,
+  type FrameWord,
+  type WordTransform,
   readWordBoxes,
   getWordEl,
   readGsapTransform,
@@ -25,11 +32,80 @@ const ROTATION_OFFSET = 20; // px above the selection box
 
 /** Sync canvas state back to the Zustand store so the property panel reflects it. */
 function syncToStore(segmentId: string, el: HTMLElement, iframeWin: Window) {
-  const style = computeTransformStyle(el, iframeWin);
+  storeStyle(segmentId, computeTransformStyle(el, iframeWin));
+}
+
+function storeStyle(segmentId: string, style: Record<string, number>) {
   if (Object.keys(style).length > 0) {
     useCaptionStore.getState().updateSegmentStyle(segmentId, style);
   }
 }
+
+/** What a drag knows from its press: where it started and the word's transform then. */
+type DragStart =
+  | {
+      type: "move";
+      startMX: number;
+      startMY: number;
+      origTX: number;
+      origTY: number;
+      origScale: number;
+      origRotation: number;
+    }
+  | {
+      type: "scale";
+      startMX: number;
+      startDxFromCenter: number;
+      origTX: number;
+      origTY: number;
+      origScale: number;
+      origRotation: number;
+    }
+  | {
+      type: "rotate";
+      startMX: number;
+      origTX: number;
+      origTY: number;
+      origRotation: number;
+      origScale: number;
+    };
+
+/** The word's transform with the pointer at (`clientX`, `clientY`). */
+function dragTransform(
+  i: DragStart,
+  clientX: number,
+  clientY: number,
+  cssScale: number,
+): WordTransform {
+  const orig = { x: i.origTX, y: i.origTY, scale: i.origScale, rotation: i.origRotation };
+  if (i.type === "move") {
+    const dx = (clientX - i.startMX) / cssScale;
+    const dy = (clientY - i.startMY) / cssScale;
+    return { ...orig, x: i.origTX + dx, y: i.origTY + dy };
+  }
+  if (i.type === "scale") {
+    const cx = i.startMX - i.startDxFromCenter;
+    const startDist = Math.abs(i.startDxFromCenter);
+    const currentDist = Math.abs(clientX - cx);
+    const factor = startDist > 5 ? currentDist / startDist : 1;
+    return { ...orig, scale: Math.max(0.1, i.origScale * factor) };
+  }
+  const dx = clientX - i.startMX;
+  return { ...orig, rotation: i.origRotation + (dx / 200) * 90 };
+}
+
+/** A drag on a frame Studio cannot read: its press read lands later, and moves wait for it. */
+interface SealedDrag {
+  iframe: HTMLIFrameElement;
+  word: { group: number; word: number };
+  segmentId: string;
+  start: Promise<DragStart | null>;
+  /** The word's transform once the latest write lands. */
+  last: Promise<WordTransform | null>;
+}
+
+const restOf = (drag: DragStart | null): WordTransform | null =>
+  drag && { x: drag.origTX, y: drag.origTY, scale: drag.origScale, rotation: drag.origRotation };
 
 export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: CaptionOverlayProps) {
   const isEditMode = useCaptionStore((s) => s.isEditMode);
@@ -47,41 +123,10 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
   const cancelDragRef = useRef<(() => boolean) | null>(null);
 
   // Interaction mode — only one active at a time
-  const interactionRef = useRef<
-    | {
-        type: "move";
-        wordEl: HTMLElement;
-        segmentId: string;
-        startMX: number;
-        startMY: number;
-        origTX: number;
-        origTY: number;
-        origScale: number;
-        origRotation: number;
-      }
-    | {
-        type: "scale";
-        wordEl: HTMLElement;
-        segmentId: string;
-        startMX: number;
-        startDxFromCenter: number;
-        origTX: number;
-        origTY: number;
-        origScale: number;
-        origRotation: number;
-      }
-    | {
-        type: "rotate";
-        wordEl: HTMLElement;
-        segmentId: string;
-        startMX: number;
-        origTX: number;
-        origTY: number;
-        origRotation: number;
-        origScale: number;
-      }
-    | null
-  >(null);
+  const interactionRef = useRef<(DragStart & { wordEl: HTMLElement; segmentId: string }) | null>(
+    null,
+  );
+  const sealedDragRef = useRef<SealedDrag | null>(null);
 
   // The observer and message filter bind to the live iframe element, which a promoted reload replaces.
   // eslint-disable-next-line no-restricted-syntax
@@ -93,13 +138,36 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
 
     let prevBoxes: WordBox[] = [];
     let rafId: number | null = null;
+    let disposed = false;
+    let reading = false;
+    let readAgain = false;
     const tick = () => {
       rafId = null;
       const iframe = iframeRef.current;
       const m = modelRef.current;
       const overlay = overlayRef.current;
       if (!iframe || !m || !overlay) return;
-      const next = readWordBoxes(iframe, m, overlay);
+      if (previewFrameOpaque(iframe)) return readSealed(iframe, m, overlay);
+      show(readWordBoxes(iframe, m, overlay));
+    };
+    // One frame read in flight; triggers meanwhile collapse into one more read after it.
+    const readSealed = (iframe: HTMLIFrameElement, m: NonNullable<typeof model>, overlay: HTMLElement) => {
+      if (reading) {
+        readAgain = true;
+        return;
+      }
+      reading = true;
+      void readFrameWordBoxes(iframe, m, overlay).then((next) => {
+        reading = false;
+        if (disposed) return;
+        if (next) show(next);
+        if (readAgain) {
+          readAgain = false;
+          scheduleTick();
+        }
+      });
+    };
+    const show = (next: WordBox[]) => {
       if (
         next.length === prevBoxes.length &&
         next.every(
@@ -155,6 +223,15 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
     };
 
     const cancelActiveDrag = (): boolean => {
+      const sealed = sealedDragRef.current;
+      if (sealed) {
+        sealedDragRef.current = null;
+        void sealed.start.then((drag) => {
+          const set = restOf(drag);
+          if (set) void frameWordTransform(sealed.iframe, { ...sealed.word, set });
+        });
+        return true;
+      }
       const i = interactionRef.current;
       if (!i) return false;
       const win = getWin();
@@ -202,6 +279,10 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       const { dx, dy } = nudge;
 
       const iframe = iframeRef.current;
+      if (iframe && previewFrameOpaque(iframe)) {
+        nudgeSealed(iframe, m, sel, dx, dy);
+        return;
+      }
       const win = iframe?.contentWindow;
       if (!iframe || !win) return;
 
@@ -223,8 +304,32 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       scheduleTick();
     };
 
+    // Each nudge reads after the last one's write lands, so quick repeats all count.
+    let nudging = Promise.resolve();
+    const nudgeSealed = (
+      iframe: HTMLIFrameElement,
+      m: NonNullable<typeof model>,
+      sel: Set<string>,
+      dx: number,
+      dy: number,
+    ) => {
+      for (const segId of sel) {
+        const word = findCaptionWord(m, segId);
+        if (!word) continue;
+        nudging = nudging.then(async () => {
+          const now = await frameWordTransform(iframe, word);
+          if (!now) return;
+          const { x, y } = now.transform;
+          const moved = await frameWordTransform(iframe, { ...word, set: { x: x + dx, y: y + dy } });
+          if (moved) storeStyle(segId, transformStyle(moved.transform));
+        });
+      }
+      void nudging.then(scheduleTick);
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     return () => {
+      disposed = true;
       unregisterIframe();
       unsubPlayer();
       unsubPlayback();
@@ -247,6 +352,32 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
     return rect.width / nativeW;
   }, [iframeRef]);
 
+  /** A press on a frame Studio cannot read: the drag starts from the word the frame reports. */
+  const startSealedDrag = useCallback(
+    (
+      type: DragStart["type"],
+      word: { group: number; word: number },
+      segmentId: string,
+      e: React.PointerEvent,
+    ) => {
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+      const { clientX: startMX, clientY: startMY } = e;
+      const toDrag = ({ transform: t, rect }: FrameWord): DragStart => {
+        const orig = { origTX: t.x, origTY: t.y, origScale: t.scale, origRotation: t.rotation };
+        if (type === "move") return { type, startMX, startMY, ...orig };
+        if (type === "rotate") return { type, startMX, ...orig };
+        const cssScale = getCssScale();
+        const boxCenterX =
+          rect.x * cssScale + iframe.getBoundingClientRect().left + (rect.width * cssScale) / 2;
+        return { type, startMX, startDxFromCenter: startMX - boxCenterX, ...orig };
+      };
+      const start = frameWordTransform(iframe, word).then((read) => read && toDrag(read));
+      sealedDragRef.current = { iframe, word, segmentId, start, last: start.then(restOf) };
+    },
+    [iframeRef, getCssScale],
+  );
+
   // --- Move ---
   const startMove = useCallback(
     (groupIndex: number, wordIndex: number, segmentId: string, e: React.PointerEvent) => {
@@ -254,6 +385,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       const iframe = iframeRef.current;
       if (!iframe) return;
+      if (previewFrameOpaque(iframe)) return startSealedDrag("move", { group: groupIndex, word: wordIndex }, segmentId, e);
       const wordEl = getWordEl(iframe, groupIndex, wordIndex);
       const win = iframe.contentWindow;
       if (!wordEl || !win) return;
@@ -270,7 +402,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
         origRotation: state.rotation,
       };
     },
-    [iframeRef],
+    [iframeRef, startSealedDrag],
   );
 
   // --- Scale ---
@@ -281,6 +413,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       const iframe = iframeRef.current;
       if (!iframe) return;
+      if (previewFrameOpaque(iframe)) return startSealedDrag("scale", { group: groupIndex, word: wordIndex }, segmentId, e);
       const wordEl = getWordEl(iframe, groupIndex, wordIndex);
       const win = iframe.contentWindow;
       if (!wordEl || !win) return;
@@ -303,7 +436,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
         origRotation: state.rotation,
       };
     },
-    [iframeRef, getCssScale],
+    [iframeRef, getCssScale, startSealedDrag],
   );
 
   // --- Rotate ---
@@ -314,6 +447,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       const iframe = iframeRef.current;
       if (!iframe) return;
+      if (previewFrameOpaque(iframe)) return startSealedDrag("rotate", { group: box.groupIndex, word: box.wordIndex }, box.segmentId, e);
       const wordEl = getWordEl(iframe, box.groupIndex, box.wordIndex);
       const win = iframe.contentWindow;
       if (!wordEl || !win) return;
@@ -329,7 +463,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
         origScale: state.scale,
       };
     },
-    [iframeRef],
+    [iframeRef, startSealedDrag],
   );
 
   const getIframeWin = useCallback((): Window | null => {
@@ -343,34 +477,36 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
   // --- Unified pointer move ---
   const handlePointerMove = useCallback(
     (e: React.PointerEvent) => {
+      const sealed = sealedDragRef.current;
+      if (sealed) {
+        const { clientX, clientY } = e;
+        const cssScale = getCssScale();
+        sealed.last = sealed.start.then(async (drag) => {
+          if (!drag) return null;
+          const set = dragTransform(drag, clientX, clientY, cssScale);
+          return (await frameWordTransform(sealed.iframe, { ...sealed.word, set }))?.transform ?? null;
+        });
+        return;
+      }
       const i = interactionRef.current;
       if (!i) return;
       const win = getIframeWin();
       if (!win) return;
 
-      if (i.type === "move") {
-        const cssScale = getCssScale();
-        const dx = (e.clientX - i.startMX) / cssScale;
-        const dy = (e.clientY - i.startMY) / cssScale;
-        writeTransform(i.wordEl, win, i.origTX + dx, i.origTY + dy, i.origScale, i.origRotation);
-      } else if (i.type === "scale") {
-        const cx = i.startMX - i.startDxFromCenter;
-        const startDist = Math.abs(i.startDxFromCenter);
-        const currentDist = Math.abs(e.clientX - cx);
-        const factor = startDist > 5 ? currentDist / startDist : 1;
-        const newScale = Math.max(0.1, i.origScale * factor);
-        writeTransform(i.wordEl, win, i.origTX, i.origTY, newScale, i.origRotation);
-      } else if (i.type === "rotate") {
-        const dx = e.clientX - i.startMX;
-        const delta = (dx / 200) * 90;
-        writeTransform(i.wordEl, win, i.origTX, i.origTY, i.origScale, i.origRotation + delta);
-      }
+      const t = dragTransform(i, e.clientX, e.clientY, getCssScale());
+      writeTransform(i.wordEl, win, t.x, t.y, t.scale, t.rotation);
     },
     [getCssScale, getIframeWin],
   );
 
   // --- Unified pointer up — sync back to store ---
   const handlePointerUp = useCallback(() => {
+    const sealed = sealedDragRef.current;
+    if (sealed) {
+      sealedDragRef.current = null;
+      void sealed.last.then((t) => t && storeStyle(sealed.segmentId, transformStyle(t)));
+      return;
+    }
     const i = interactionRef.current;
     if (i) {
       const win = getIframeWin();

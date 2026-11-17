@@ -113,8 +113,8 @@ function buildGroupedCaptionModel(
   };
 }
 
-const GROUP_SELECTOR = ".caption-group, .caption-line, .caption-block";
-const WORD_SELECTOR = ".word, .caption-word";
+export const GROUP_SELECTOR = ".caption-group, .caption-line, .caption-block";
+export const WORD_SELECTOR = ".word, .caption-word";
 
 /** Read outer groups in transcript order; return null if their word counts do not match. */
 function readTranscriptGroups(transcript: TranscriptWord[], groupEls: NodeListOf<Element>) {

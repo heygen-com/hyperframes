@@ -1,4 +1,10 @@
 // DOM helpers for CaptionOverlay — word box reading, transform I/O, wrapper management
+import {
+  isPlainRecord,
+  MAX_DESCRIBE_HANDLES,
+  type EditingParams,
+} from "@hyperframes/core/runtime/editing-port";
+import { previewFrameOpaque, previewRequest } from "../../player/lib/previewChannel";
 
 export interface WordBox {
   segmentId: string;
@@ -237,6 +243,17 @@ export function applyCaptionModelToIframe(model: {
 }): void {
   const iframe = registeredIframe?.current;
   if (!iframe) return;
+  if (previewFrameOpaque(iframe)) {
+    model.groupOrder.forEach((groupId, group) =>
+      model.groups.get(groupId)?.segmentIds.forEach((segmentId, word) => {
+        const s = model.segments.get(segmentId)?.style;
+        if (!s) return;
+        const set = { x: s.x ?? 0, y: s.y ?? 0, scale: s.scaleX ?? 1, rotation: s.rotation ?? 0 };
+        void frameWordTransform(iframe, { group, word, set });
+      }),
+    );
+    return;
+  }
   let win: Window | null = null;
   try {
     win = iframe.contentWindow;
@@ -260,8 +277,11 @@ export function applyCaptionModelToIframe(model: {
 
 /** Compute style deltas from the current wrapper transform — used by syncToStore in the overlay. */
 export function computeTransformStyle(el: HTMLElement, iframeWin: Window): Record<string, number> {
-  const wrapper = getOrCreateWrapper(el);
-  const { x, y, scale, rotation } = readGsapTransform(wrapper, iframeWin);
+  return transformStyle(readGsapTransform(getOrCreateWrapper(el), iframeWin));
+}
+
+/** The style parts a transform moves away from rest, as the caption model stores them. */
+export function transformStyle({ x, y, scale, rotation }: WordTransform): Record<string, number> {
   const style: Record<string, number> = {};
   if (Math.abs(x) > 0.5) style.x = x;
   if (Math.abs(y) > 0.5) style.y = y;
@@ -271,4 +291,128 @@ export function computeTransformStyle(el: HTMLElement, iframeWin: Window): Recor
   }
   if (Math.abs(rotation) > 0.1) style.rotation = rotation;
   return style;
+}
+
+// ---------------------------------------------------------------------------
+// Sealed preview: the frame's runtime reads and moves its words over the editing port.
+// ---------------------------------------------------------------------------
+
+export interface WordTransform {
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+}
+type WordEntry = EditingParams<"caption-transform">["entries"][number];
+/** A word's wrapper transform, and its box in the frame's CSS pixels. */
+export interface FrameWord {
+  transform: WordTransform;
+  rect: { x: number; y: number; width: number; height: number };
+}
+
+const allFinite = (value: unknown, keys: string[]) =>
+  isPlainRecord(value) && keys.every((key) => Number.isFinite(value[key]));
+
+function readFrameWord(value: unknown): FrameWord | null {
+  if (!isPlainRecord(value)) return null;
+  const ok =
+    allFinite(value.transform, ["x", "y", "scale", "rotation"]) &&
+    allFinite(value.rect, ["x", "y", "width", "height"]);
+  return ok ? (value as unknown as FrameWord) : null;
+}
+
+/** Where a segment sits in the model, as the frame counts its caption groups and words. */
+export function findCaptionWord(
+  model: { groupOrder: string[]; groups: Map<string, { segmentIds: string[] }> },
+  segmentId: string,
+): { group: number; word: number } | null {
+  for (let group = 0; group < model.groupOrder.length; group++) {
+    const word = model.groups.get(model.groupOrder[group])?.segmentIds.indexOf(segmentId) ?? -1;
+    if (word >= 0) return { group, word };
+  }
+  return null;
+}
+
+/** `readWordBoxes` for a frame Studio cannot read; null when its runtime does not answer. */
+export async function readFrameWordBoxes(
+  iframe: HTMLIFrameElement,
+  model: { groupOrder: string[]; groups: Map<string, { segmentIds: string[] }> },
+  overlayEl: HTMLElement,
+): Promise<WordBox[] | null> {
+  const words = model.groupOrder.map((id) => model.groups.get(id)?.segmentIds.length ?? 0);
+  const reply = await previewRequest(iframe, "caption-words", { words });
+  const boxes: unknown = reply?.boxes;
+  if (!Array.isArray(boxes)) return null;
+  const iframeDisplayRect = iframe.getBoundingClientRect();
+  const overlayRect = overlayEl.getBoundingClientRect();
+  const nativeW = parseFloat(iframe.style.width) || iframeDisplayRect.width;
+  const cssScale = iframeDisplayRect.width / nativeW;
+  const offsetX = iframeDisplayRect.left - overlayRect.left;
+  const offsetY = iframeDisplayRect.top - overlayRect.top;
+  return boxes.flatMap((box: unknown): WordBox[] => {
+    if (!isPlainRecord(box) || !allFinite(box.rect, ["x", "y", "width", "height"])) return [];
+    const { group, word } = box;
+    if (!Number.isSafeInteger(group) || !Number.isSafeInteger(word)) return [];
+    const groupId = model.groupOrder[group as number];
+    const segmentId = groupId && model.groups.get(groupId)?.segmentIds[word as number];
+    if (!segmentId) return [];
+    const rect = box.rect as FrameWord["rect"];
+    return [
+      {
+        segmentId,
+        groupId,
+        groupIndex: group as number,
+        wordIndex: word as number,
+        x: rect.x * cssScale + offsetX,
+        y: rect.y * cssScale + offsetY,
+        width: rect.width * cssScale,
+        height: rect.height * cssScale,
+      },
+    ];
+  });
+}
+
+type Op = { entry: WordEntry; done: Array<(word: FrameWord | null) => void> };
+const transformQueues = new WeakMap<HTMLIFrameElement, { ops: Op[]; sending: boolean }>();
+
+function sendTransforms(iframe: HTMLIFrameElement, queue: { ops: Op[]; sending: boolean }) {
+  if (queue.sending || !queue.ops.length) return;
+  const ops = queue.ops.splice(0, MAX_DESCRIBE_HANDLES);
+  queue.sending = true;
+  const entries = ops.map((op) => op.entry);
+  void previewRequest(iframe, "caption-transform", { entries })
+    .then((reply) => {
+      const words: unknown = reply?.words;
+      ops.forEach((op, i) => {
+        const word = Array.isArray(words) ? readFrameWord(words[i]) : null;
+        op.done.forEach((done) => done(word));
+      });
+    })
+    .finally(() => {
+      queue.sending = false;
+      sendTransforms(iframe, queue);
+    });
+}
+
+/**
+ * Reads, or with `set` moves, one word of a frame Studio cannot read. Requests go one at a time in
+ * order; a write still waiting for the same word takes the later one's parts (latest wins).
+ */
+export function frameWordTransform(
+  iframe: HTMLIFrameElement,
+  entry: WordEntry,
+): Promise<FrameWord | null> {
+  let queue = transformQueues.get(iframe);
+  if (!queue) transformQueues.set(iframe, (queue = { ops: [], sending: false }));
+  const { ops } = queue;
+  const promise = new Promise<FrameWord | null>((resolve) => {
+    const last = ops[ops.length - 1];
+    const sameWord = last?.entry.group === entry.group && last.entry.word === entry.word;
+    if (last && sameWord && last.entry.set && entry.set) {
+      last.entry = { ...entry, set: { ...last.entry.set, ...entry.set } };
+      last.done.push(resolve);
+    } else ops.push({ entry, done: [resolve] });
+  });
+  sendTransforms(iframe, queue);
+  return promise;
 }

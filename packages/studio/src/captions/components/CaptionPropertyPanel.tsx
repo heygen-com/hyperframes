@@ -1,8 +1,10 @@
 import { memo, useCallback, useState } from "react";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import { useCaptionStore } from "../store";
 import type { CaptionStyle } from "../types";
 import { CaptionAnimationPanel } from "./CaptionAnimationPanel";
 import { Section, Row, NumberField } from "./shared";
+import { findCaptionWord, frameWordTransform } from "./CaptionOverlayUtils";
 
 /** True when the given style key differs across the selected segments. */
 function isMixedValue(
@@ -78,6 +80,16 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
     (updates: Partial<CaptionStyle>) => {
       const iframe = iframeRef.current;
       if (!iframe || !model) return;
+      if (previewFrameOpaque(iframe)) {
+        const parts = { x: updates.x, y: updates.y, scale: updates.scaleX, rotation: updates.rotation };
+        const set = Object.fromEntries(Object.entries(parts).filter(([, v]) => v !== undefined));
+        if (Object.keys(set).length === 0) return;
+        for (const segId of selectedSegmentIds) {
+          const word = findCaptionWord(model, segId);
+          if (word) void frameWordTransform(iframe, { ...word, set });
+        }
+        return;
+      }
       let doc: Document | null = null;
       try {
         doc = iframe.contentDocument;
