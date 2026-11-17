@@ -1,5 +1,5 @@
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { lstatSync, readdirSync, type Dirent } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, statSync, type Dirent } from "node:fs";
 import {
   isStudioPrivatePath,
   mkdirWithinProject,
@@ -70,8 +70,69 @@ export function isWritableProjectPath(relPath: string): boolean {
 }
 
 export function isWritableProjectFile(projectDir: string, filePath: string): boolean {
-  return projectRelatives(projectDir, filePath).every(isWritableProjectPath);
+  return projectRelatives(projectDir, filePath).every((path) =>
+    isWritableInProject(projectDir, path),
+  );
 }
+
+/** `isWritableProjectPath`, and not a script the project's package.json runs. */
+export function isWritableInProject(projectDir: string, relPath: string): boolean {
+  return isWritableProjectPath(relPath) && !scriptsPackageRuns(projectDir).has(foldedPath(relPath));
+}
+
+// A word in package.json that names a JavaScript or TypeScript file: `node server.js`, `tsx ./scripts/build.ts`.
+const SCRIPT_FILE = /\.[cm]?[jt]sx?$/;
+const SHELL_WORD_BREAKS = /[\s;&|()<>"'`=,]+/;
+const NO_SCRIPTS: ReadonlySet<string> = new Set();
+const packageScripts = new Map<string, { stat: string; files: ReadonlySet<string> }>();
+
+const foldedPath = (path: string): string =>
+  projectPathSegments(path)
+    .filter((segment) => segment !== "" && segment !== ".")
+    .join("/");
+
+/**
+ * The script files the project's package.json runs (its `main`, `bin` and every script file its scripts name), folded
+ * as `projectPathSegments` folds. npm, node or a tool runs these with the developer's rights.
+ */
+function scriptsPackageRuns(projectDir: string): ReadonlySet<string> {
+  const path = join(projectDir, "package.json");
+  const stat = statSync(path, { throwIfNoEntry: false });
+  if (!stat?.isFile()) return NO_SCRIPTS;
+  const key = `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+  const cached = packageScripts.get(path);
+  if (cached?.stat === key) return cached.files;
+  const files = scriptFilesNamedBy(readPackageJson(path));
+  packageScripts.set(path, { stat: key, files });
+  return files;
+}
+
+function readPackageJson(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+function scriptFilesNamedBy(pkg: unknown): ReadonlySet<string> {
+  if (!pkg || typeof pkg !== "object") return NO_SCRIPTS;
+  const { main, bin, scripts }: { main?: unknown; bin?: unknown; scripts?: unknown } = pkg;
+  const words = [main, ...valuesOf(bin), ...valuesOf(scripts)].flatMap((value) =>
+    typeof value === "string" ? value.split(SHELL_WORD_BREAKS) : [],
+  );
+  const files = words.filter(
+    (word) => SCRIPT_FILE.test(word) && !word.split(/[\\/]/).includes(".."),
+  );
+  return new Set(files.map(foldedPath));
+}
+
+const valuesOf = (value: unknown): unknown[] =>
+  typeof value === "string"
+    ? [value]
+    : value && typeof value === "object"
+      ? Object.values(value)
+      : [];
 
 /**
  * The first `toolTrustedFileKind` file, `node_modules` or `.git` below `dir`, which a delete or move of the folder
