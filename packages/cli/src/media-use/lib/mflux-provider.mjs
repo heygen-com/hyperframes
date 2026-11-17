@@ -1,9 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { describeDownload, probeSpecs } from "./specs.mjs";
 import { buildArgv, selectModelLadder } from "./local-models.mjs";
+import { privateOutputPath } from "./private-output.mjs";
 
 // Local image generation via mflux (FLUX-on-MLX), the Mac-native runner.
 // Spec-gated: selectModelLadder("imagegen", specs) returns every FLUX-class
@@ -69,7 +68,7 @@ export async function mfluxImageGenerate(
       continue;
     }
 
-    const outPath = join(tmpdir(), `media-use-mflux-${process.pid}-${Date.now()}.png`);
+    const outPath = privateOutputPath("mflux", ".png");
     const vars = {
       prompt: intent,
       w: ctx?.width || 512,

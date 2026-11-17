@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir } from "node:os";
 import { describeDownload, probeSpecs } from "./specs.mjs";
 import { buildArgv, selectModel, selectModelLadder } from "./local-models.mjs";
+import { privateOutputPath } from "./private-output.mjs";
 
 export async function ltxVideoGenerate(
   intent,
@@ -50,7 +50,7 @@ export async function ltxVideoGenerate(
       continue;
     }
 
-    const outPath = join(tmpdir(), `media-use-ltx-${process.pid}-${Date.now()}.mp4`);
+    const outPath = privateOutputPath("ltx", ".mp4");
     const argv = buildArgv(model.invoke, {
       prompt: intent,
       w: ctx?.width || 512,

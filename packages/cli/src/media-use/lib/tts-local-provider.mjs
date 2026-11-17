@@ -1,8 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { ffprobeBinary } from "./ff-binaries.mjs";
+import { privateOutputPath } from "./private-output.mjs";
 import { resolveSpawnCommand } from "../../audio/scripts/lib/tts.mjs";
 
 // Local voiceover via the packaged Kokoro-82M TTS (the `hyperframes tts` CLI),
@@ -41,7 +40,7 @@ export async function localTtsGenerate(
   pathExists = existsSync,
 ) {
   const ffprobe = ffprobeBinary();
-  const outPath = join(tmpdir(), `media-use-kokoro-${process.pid}-${Date.now()}.wav`);
+  const outPath = privateOutputPath("kokoro", ".wav");
   const argv = ["hyperframes", "tts", intent, "--output", outPath];
   if (ctx?.voice) argv.push("--voice", ctx.voice);
   if (ctx?.lang && ctx.lang !== "en") argv.push("--lang", ctx.lang);

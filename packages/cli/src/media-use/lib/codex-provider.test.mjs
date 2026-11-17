@@ -1,6 +1,89 @@
 import test from "node:test";
 import assert from "node:assert";
-import { imageGenFlag } from "./codex-provider.mjs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { delimiter, dirname, join } from "node:path";
+import { codexImageGenerate, imageGenFlag } from "./codex-provider.mjs";
+
+// A stand-in `codex` on PATH: `features list` offers the image tool; `exec` records its
+// arguments, renders nothing, and plants a file where an attacker could (EVIL_PATH).
+function fakeCodex(t) {
+  const root = mkdtempSync(join(tmpdir(), "fake-codex-"));
+  const bin = join(root, "bin");
+  mkdirSync(bin);
+  writeFileSync(
+    join(bin, "codex"),
+    [
+      "#!/bin/sh",
+      'case "$1" in',
+      '  features) echo "image_generation   stable   true" ;;',
+      '  exec) printf "%s\\n" "$@" > "$CODEX_LOG"; cat > /dev/null;',
+      '        [ -n "$EVIL_PATH" ] && printf EVIL > "$EVIL_PATH" ;;',
+      "esac",
+      "",
+    ].join("\n"),
+  );
+  chmodSync(join(bin, "codex"), 0o755);
+  const codexHome = join(root, "codex-home");
+  mkdirSync(codexHome);
+  writeFileSync(join(codexHome, "auth.json"), "{}");
+  const saved = { PATH: process.env.PATH, CODEX_HOME: process.env.CODEX_HOME };
+  process.env.PATH = `${bin}${delimiter}${process.env.PATH}`;
+  process.env.CODEX_HOME = codexHome;
+  process.env.CODEX_LOG = join(root, "exec.log");
+  t.after(() => {
+    process.env.PATH = saved.PATH;
+    if (saved.CODEX_HOME === undefined) delete process.env.CODEX_HOME;
+    else process.env.CODEX_HOME = saved.CODEX_HOME;
+    if (process.env.EVIL_PATH) rmSync(process.env.EVIL_PATH, { force: true });
+    delete process.env.CODEX_LOG;
+    delete process.env.EVIL_PATH;
+    rmSync(root, { recursive: true, force: true });
+  });
+  return () => readFileSync(process.env.CODEX_LOG, "utf8").trim().split("\n");
+}
+
+const posixOnly = { skip: process.platform === "win32" };
+
+test(
+  "codex works in a private per-user folder and is told not to look above it",
+  posixOnly,
+  async (t) => {
+    const execLog = fakeCodex(t);
+    await codexImageGenerate("a red cube");
+    const args = execLog();
+    const cwd = args[args.indexOf("--cd") + 1];
+    assert.equal(dirname(cwd).endsWith(join(".cache", "hyperframes", "media-use")), true, cwd);
+    assert.equal(dirname(cwd).startsWith(homedir()), true, cwd);
+    assert.deepEqual(args.slice(args.indexOf("--cd"), args.indexOf("--cd") + 4), [
+      "--cd",
+      cwd,
+      "-c",
+      "project_root_markers=[]",
+    ]);
+    assert.equal(existsSync(cwd), false, "the work folder is removed afterwards");
+  },
+);
+
+test(
+  "a file planted at the old guessable temp path is not taken as the image",
+  posixOnly,
+  async (t) => {
+    fakeCodex(t);
+    const now = 1_700_000_000_000;
+    t.mock.method(Date, "now", () => now);
+    process.env.EVIL_PATH = join(tmpdir(), `media-use-codex-${process.pid}-${now}.png`);
+    assert.equal(await codexImageGenerate("a red cube"), null);
+  },
+);
 
 // Real `codex features list` output is three space-padded columns:
 //   <name> <stage> <enabled>

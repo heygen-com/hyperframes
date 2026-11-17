@@ -89,8 +89,8 @@ test("successful generation returns the generated MP4 result", async () => {
 
   assert.ok(result);
   assert.equal(calls.length, 2);
-  assert.equal(dirname(result.localPath), tmpdir());
-  assert.match(result.localPath, /media-use-ltx-\d+-\d+\.mp4$/);
+  assert.equal(dirname(dirname(result.localPath)), tmpdir());
+  assert.match(result.localPath, /media-use-ltx-[^/\\]+[/\\]output\.mp4$/);
   assert.deepEqual(result, {
     localPath: result.localPath,
     ext: ".mp4",

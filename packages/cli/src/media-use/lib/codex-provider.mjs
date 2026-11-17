@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, readdirSync, statSync, unlinkSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { copyFileSync, existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
+import { privateOutputPath, privateWorkDir } from "./private-output.mjs";
 
 // Image generation via the OpenAI Codex CLI's built-in image tool (gpt-image-2)
 // on the user's ChatGPT subscription: the codex CLI owns auth, media-use holds
@@ -107,17 +108,25 @@ export async function codexImageGenerate(intent) {
     console.error(`media-use: codex image upsell unavailable: ${reason}`);
     return null;
   }
-  const outPath = join(tmpdir(), `media-use-codex-${process.pid}-${Date.now()}.png`);
+  // Codex works in a fresh private folder, removed when this returns. Codex reads project
+  // instructions (AGENTS.md) from its working folder up to the nearest folder holding a project
+  // marker, so that folder sits under the per-user cache rather than the shared temp folder, and
+  // `project_root_markers=[]` keeps current Codex from looking above it at all.
+  const workDir = privateWorkDir("codex");
+  try {
+    return generateIn(workDir, intent, flag);
+  } finally {
+    rmSync(workDir, { recursive: true, force: true });
+  }
+}
+
+function generateIn(workDir, intent, flag) {
+  const savePath = join(workDir, "image.png");
   const prompt =
     `${intent}\n\n` +
     `Use your built-in image generation tool to render this, then save the image ` +
-    `to ${outPath} (overwrite if it exists). Do not ask for confirmation. ` +
+    `to ${savePath} (overwrite if it exists). Do not ask for confirmation. ` +
     `If you have no built-in image tool, do nothing (no PIL/matplotlib/SVG substitute).`;
-  try {
-    unlinkSync(outPath); // clear any prior file so verify-first can't accept a stale render
-  } catch {
-    /* no prior file */
-  }
   const started = Date.now();
   try {
     execFileSync(
@@ -125,7 +134,9 @@ export async function codexImageGenerate(intent) {
       [
         "exec",
         "--cd",
-        tmpdir(),
+        workDir,
+        "-c",
+        "project_root_markers=[]",
         "-s",
         "workspace-write",
         "--skip-git-repo-check",
@@ -143,14 +154,15 @@ export async function codexImageGenerate(intent) {
   }
   // Verify-first (save-to-path may have worked), else fetch the image-tool artifact.
   const produced =
-    existsSync(outPath) && statSync(outPath).size > 0 ? outPath : freshestGeneratedImage(started);
+    existsSync(savePath) && statSync(savePath).size > 0
+      ? savePath
+      : freshestGeneratedImage(started);
   if (!produced) return null;
-  if (produced !== outPath) {
-    try {
-      copyFileSync(produced, outPath);
-    } catch {
-      return null;
-    }
+  const outPath = privateOutputPath("codex", ".png");
+  try {
+    copyFileSync(produced, outPath);
+  } catch {
+    return null;
   }
   return {
     localPath: outPath,
