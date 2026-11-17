@@ -9,7 +9,16 @@ import { ensurePinnedFile } from "./pinnedFile.js";
 const served = vi.hoisted(() => ({ bytes: "model" }));
 vi.mock("./download.js", () => ({
   downloadFile: vi.fn(
-    async (_url: string, dest: string, options: { verify: (path: string) => Promise<void> }) => {
+    async (
+      _url: string,
+      dest: string,
+      options: {
+        keepExisting: (path: string) => Promise<boolean>;
+        verify: (path: string) => Promise<void>;
+      },
+    ) => {
+      if (existsSync(dest) && (await options.keepExisting(dest))) return;
+      rmSync(dest, { force: true });
       writeFileSync(`${dest}.part`, served.bytes);
       await options.verify(`${dest}.part`).catch((error: unknown) => {
         rmSync(`${dest}.part`);
@@ -73,7 +82,8 @@ it("discards a download that does not match its pin and refuses it", async () =>
   writeFileSync(dest, "other");
 
   await expect(ensurePinnedFile("https://x.test/m", dest, pin, progress)).rejects.toThrow(
-    "model.onnx did not match its pinned size and sha256, so it was discarded. Re-run to retry.",
+    "model.onnx was discarded because it does not match its expected size and sha256. " +
+      "Retrying helps only if the download was interrupted or corrupted.",
   );
 
   expect(existsSync(dest)).toBe(false);

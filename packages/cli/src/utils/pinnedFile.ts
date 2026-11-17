@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
 import { verifies, type ModelFile } from "../whisper/modelFile.js";
 import { downloadFile } from "./download.js";
@@ -17,17 +17,18 @@ export async function ensurePinnedFile(
   if (cached && (await verifies(dest, pin))) return dest;
 
   mkdirSync(dirname(dest), { recursive: true });
-  rmSync(dest, { force: true });
   progress.onProgress?.(
     cached
       ? `The cached ${pin.name} does not match its pinned sha256; downloading it again...`
       : progress.downloading,
   );
   await downloadFile(url, dest, {
+    keepExisting: (path) => verifies(path, pin),
     verify: async (path) => {
       if (!(await verifies(path, pin))) {
         throw new Error(
-          `${pin.name} did not match its pinned size and sha256, so it was discarded. Re-run to retry.`,
+          `${pin.name} was discarded because it does not match its expected size and sha256. ` +
+            "Retrying helps only if the download was interrupted or corrupted.",
         );
       }
     },

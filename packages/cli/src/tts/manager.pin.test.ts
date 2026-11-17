@@ -10,7 +10,16 @@ const cache = vi.hoisted(() => {
 });
 vi.mock("../utils/download.js", () => ({
   downloadFile: vi.fn(
-    async (_url: string, dest: string, options: { verify: (path: string) => Promise<void> }) => {
+    async (
+      _url: string,
+      dest: string,
+      options: {
+        keepExisting: (path: string) => Promise<boolean>;
+        verify: (path: string) => Promise<void>;
+      },
+    ) => {
+      if (existsSync(dest) && (await options.keepExisting(dest))) return;
+      rmSync(dest, { force: true });
       writeFileSync(`${dest}.part`, "swapped");
       await options.verify(`${dest}.part`).catch((error: unknown) => {
         rmSync(`${dest}.part`);
@@ -30,8 +39,18 @@ afterAll(() => {
 });
 
 it.each([
-  ["model", () => ensureModel(), model, /kokoro-v1\.0\.onnx did not match its pinned/],
-  ["voices", () => ensureVoices(), voices, /voices-v1\.0\.bin did not match its pinned/],
+  [
+    "model",
+    () => ensureModel(),
+    model,
+    /kokoro-v1\.0\.onnx was discarded because it does not match/,
+  ],
+  [
+    "voices",
+    () => ensureVoices(),
+    voices,
+    /voices-v1\.0\.bin was discarded because it does not match/,
+  ],
 ])(
   "refuses a downloaded %s file that does not match the pinned sha256",
   async (_k, run, path, error) => {
@@ -50,7 +69,7 @@ it.each([
     mkdirSync(join(path, ".."), { recursive: true });
     writeFileSync(path, "swapped");
 
-    await expect(run()).rejects.toThrow(/did not match its pinned/);
+    await expect(run()).rejects.toThrow(/was discarded because it does not match/);
 
     expect(existsSync(path)).toBe(false);
   },
