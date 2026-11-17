@@ -7,6 +7,7 @@
 import {
   closeSync,
   constants,
+  fstatSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -51,18 +52,41 @@ export function ownProjectDir(projectDir: string, dir: string): string {
   return target;
 }
 
-/** Throws on a link at `path` instead of appending through it. */
+function notPlainFile(path: string): Error {
+  return new Error(`${path} is a link or not a plain file; nothing was written through it`);
+}
+
+/**
+ * Throws on a link at `path` instead of appending through it. Opened first, then
+ * written only when `lstat` finds the same single-link plain file at the path, as
+ * projectRecords' appendRecord does; O_NOFOLLOW is undefined on Windows.
+ */
 export function appendWithoutFollowing(path: string, text: string): void {
-  if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) {
-    throw new Error(`${path} is a link; nothing was written through it`);
-  }
-  // O_NOFOLLOW is undefined on Windows; the lstat above covers it there.
-  const fd = openSync(
-    path,
-    constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT | (constants.O_NOFOLLOW ?? 0),
-    0o666,
-  );
+  let fd: number;
   try {
+    fd = openSync(
+      path,
+      constants.O_WRONLY |
+        constants.O_APPEND |
+        constants.O_CREAT |
+        (constants.O_NOFOLLOW ?? 0) |
+        (constants.O_NONBLOCK ?? 0),
+      0o666,
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ELOOP") throw notPlainFile(path);
+    throw error;
+  }
+  try {
+    const opened = fstatSync(fd);
+    const named = lstatSync(path);
+    const samePlainFile =
+      opened.isFile() &&
+      named.isFile() &&
+      opened.nlink === 1 &&
+      named.ino === opened.ino &&
+      named.dev === opened.dev;
+    if (!samePlainFile) throw notPlainFile(path);
     writeSync(fd, text);
   } finally {
     closeSync(fd);

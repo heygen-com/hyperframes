@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, afterEach } from "vitest";
 import {
+  linkSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -370,6 +371,17 @@ describe("runAssetImport with links in the project", () => {
     symlinkSync(outside, join(dir, ".media", "manifest.jsonl"));
     await expect(runAssetImport("FILEKEY:1-2", { format: "png" }, deps(dir))).rejects.toThrow(
       /link/,
+    );
+    expect(readFileSync(outside, "utf8")).toBe("keep me\n");
+  });
+
+  posixOnly("refuses to append to a manifest.jsonl hard-linked to another file", async () => {
+    const dir = scratch();
+    const outside = outsideFile();
+    mkdirSync(join(dir, ".media"));
+    linkSync(outside, join(dir, ".media", "manifest.jsonl"));
+    await expect(runAssetImport("FILEKEY:1-2", { format: "png" }, deps(dir))).rejects.toThrow(
+      /not a plain file/,
     );
     expect(readFileSync(outside, "utf8")).toBe("keep me\n");
   });
