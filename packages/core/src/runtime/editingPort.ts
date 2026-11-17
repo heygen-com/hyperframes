@@ -156,6 +156,7 @@ export const EDITING_REQUEST_KINDS = [
   "document-markup",
   "set-audio-group-attribute",
   "assign-audio-group",
+  "gsap-snapshot",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -282,6 +283,7 @@ export interface EditingRequests {
     params: AssignAudioGroupParams;
     result: { previous: Array<string | null>; changed: boolean };
   };
+  "gsap-snapshot": { params: NoParams; result: import("./editing/gsapSnapshot").GsapSnapshot };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -479,6 +481,7 @@ const PARAM_PARSERS: {
   "document-markup": noParams,
   "set-audio-group-attribute": parseSetAudioGroupAttribute,
   "assign-audio-group": parseAssignAudioGroup,
+  "gsap-snapshot": noParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
