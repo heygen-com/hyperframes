@@ -193,7 +193,7 @@ class SnapshotReader {
   private plain(value: unknown, depth: number): SnapshotValue | undefined {
     if (++this.fields > MAX_SNAPSHOT_FIELDS) throw new SnapshotBound("tween fields");
     if (Array.isArray(value)) return this.list(value, depth);
-    if (isPlainRecord(value)) return this.record(value, depth);
+    if (isLiteralRecord(value)) return this.record(value, depth);
     return scalar(value);
   }
 
@@ -221,6 +221,10 @@ function timing(live: LiveTween) {
     initted: Boolean(live._initted),
   };
 }
+
+// GSAP puts live objects on a tween's vars (`parent` is its timeline), and they reach the whole graph.
+const isLiteralRecord = (value: unknown): value is Record<string, unknown> =>
+  isPlainRecord(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 
 function nested(depth: number) {
   if (depth >= MAX_VARS_DEPTH) throw new SnapshotBound("nesting");
