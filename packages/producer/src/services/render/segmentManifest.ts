@@ -7,7 +7,14 @@
  * and every reused segment is re-validated on disk before it is skipped.
  */
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  createReadStream,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { renameWithRetry } from "@hyperframes/engine";
 import { segmentOutputPath, type SegmentSlice } from "./segmentPlan.js";
@@ -18,6 +25,8 @@ export interface SegmentManifestEntry {
   endFrame: number;
   path: string;
   bytes: number;
+  /** Hex SHA-256 of the segment file, taken when it finished. */
+  sha256: string;
   completedAt: string;
 }
 
@@ -107,6 +116,7 @@ function isEntry(value: unknown): value is SegmentManifestEntry {
     hasNumber(value, "endFrame") &&
     hasString(value, "path") &&
     hasNumber(value, "bytes") &&
+    hasString(value, "sha256") &&
     hasString(value, "completedAt")
   );
 }
@@ -142,7 +152,7 @@ function manifestMac(manifest: SegmentManifest, key: Buffer): string {
     manifest.planHash,
     manifest.totalFrames,
     manifest.segmentFrames,
-    manifest.completed.map((e) => [e.index, e.startFrame, e.endFrame, e.bytes]),
+    manifest.completed.map((e) => [e.index, e.startFrame, e.endFrame, e.bytes, e.sha256]),
   ];
   return createHmac("sha256", key).update(JSON.stringify(signed)).digest("hex");
 }
@@ -158,6 +168,12 @@ function hasValidMac(manifest: SegmentManifest, key: Buffer | null): boolean {
   const expected = Buffer.from(manifestMac(manifest, key), "hex");
   const actual = Buffer.from(manifest.mac, "hex");
   return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+export async function hashSegmentFile(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest("hex");
 }
 
 /** Atomic: write to a temp name, then rename over the manifest. */
@@ -226,7 +242,7 @@ function isPlainFileOfSize(path: string, bytes: number): boolean {
  * signed the manifest, the plan hash matches, the entry matches a slice of
  * this plan, and the file the join will read (the slice's own path in
  * `segmentDir`, never the manifest's `path`) is a plain file at the recorded
- * size whose frame count equals the slice length. Anything else re-captures:
+ * size and hash whose frame count equals the slice length. Anything else re-captures:
  * re-capturing a good segment costs minutes, reusing a bad one silently
  * produces a wrong video.
  */
@@ -243,6 +259,7 @@ export async function validateCompletedSegments(
     if (!isPlainFileOfSize(path, entry.bytes)) continue;
     const frames = await check.probeFrames(path);
     if (frames !== slice.endFrame - slice.startFrame) continue;
+    if ((await hashSegmentFile(path)) !== entry.sha256) continue;
     ok.add(slice.index);
   }
   return ok;

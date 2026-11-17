@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   computeSegmentPlanHash,
+  hashSegmentFile,
   probeSegmentFrameCount,
   readSegmentManifest,
   segmentDirFor,
@@ -108,6 +110,7 @@ describe("manifest io", () => {
           endFrame: 3,
           path: join(dir, "segment_00000.mp4"),
           bytes: 10,
+          sha256: "0".repeat(64),
           completedAt: "2026-09-17T00:00:00.000Z",
         },
       ],
@@ -145,12 +148,14 @@ describe("validateCompletedSegments", () => {
   let dir = "";
   afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
+  const XX_SHA256 = createHash("sha256").update("xx").digest("hex");
   const entry = (index: number, bytes = 2): SegmentManifestEntry => ({
     index,
     startFrame: index * 3,
     endFrame: index * 3 + 3,
     path: segmentOutputPath(dir, index),
     bytes,
+    sha256: XX_SHA256,
     completedAt: "",
   });
   const KEY = Buffer.alloc(32, 1);
@@ -282,6 +287,21 @@ describe("validateCompletedSegments", () => {
     writeFileSync(segmentOutputPath(dir, 0), "xx");
     const signed = manifestOf([entry(0, 3)]);
     expect(await reuses({ ...signed, completed: [entry(0, 2)] }, 3)).toBe(0);
+  });
+
+  it("re-captures a segment replaced by a different file of the same size", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    writeFileSync(segmentOutputPath(dir, 0), "xx");
+    const manifest = manifestOf([entry(0)]);
+    expect(await reuses(manifest, 3)).toBe(1);
+    writeFileSync(segmentOutputPath(dir, 0), "yy");
+    expect(await reuses(manifest, 3)).toBe(0);
+  });
+
+  it("hashes a segment file's contents", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    writeFileSync(segmentOutputPath(dir, 0), "xx");
+    expect(await hashSegmentFile(segmentOutputPath(dir, 0))).toBe(XX_SHA256);
   });
 
   it("reuses nothing when this install has no key", async () => {
