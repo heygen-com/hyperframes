@@ -764,6 +764,23 @@ test("--adopt registers existing assets/ files", () => {
   cleanup();
 });
 
+test("--adopt shows a file name's control characters as visible escapes", () => {
+  if (process.platform === "win32") return; // Windows file names cannot hold control characters
+  setup();
+  mkdirSync(join(tmp, "assets/bgm"), { recursive: true });
+  writeFileSync(join(tmp, "assets/bgm/track\x1b[2J.mp3"), "fake mp3");
+
+  const out = runResolve(["--adopt", "--project", tmp]);
+
+  const controls = [...out].filter((ch) => {
+    const code = ch.charCodeAt(0);
+    return (code < 0x20 && code !== 0x09 && code !== 0x0a) || (code >= 0x7f && code <= 0x9f);
+  });
+  assert.deepEqual(controls, []);
+  assert.match(out, /track\\x1b\[2J\.mp3/);
+  cleanup();
+});
+
 test("--adopt stops, adopting nothing, when HYPERFRAMES_FFPROBE_PATH cannot run", () => {
   setup();
   mkdirSync(join(tmp, "assets/bgm"), { recursive: true });

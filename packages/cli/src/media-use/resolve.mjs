@@ -69,6 +69,7 @@ import {
   scoreMatch,
 } from "./lib/sfx-provider.mjs";
 import { writeSfxCredit } from "./lib/openverse.mjs";
+import { terminalLines } from "./lib/terminal-text.mjs";
 import { mediaVectorRows, rankMediaRowsWithVectors } from "./lib/local-media-search.mjs";
 
 const INGEST_TYPES = listTypes();
@@ -179,7 +180,7 @@ if (args.adopt) {
     console.log("no new assets to adopt (assets/ empty or already registered)");
   } else {
     console.log(`adopted ${adopted.length} asset${adopted.length === 1 ? "" : "s"} from assets/`);
-    for (const r of adopted) console.log(`  ${r.id} → ${r.path} (${r.type})`);
+    for (const r of adopted) console.log(terminalLines(`  ${r.id} → ${r.path} (${r.type})`));
   }
   process.exit(0);
 }
@@ -248,7 +249,7 @@ if (args.analyze) {
   }
   const mediaPath = resolve(args.for);
   if (!existsSync(mediaPath)) {
-    console.error(`error: --for file not found: ${mediaPath}`);
+    console.error(terminalLines(`error: --for file not found: ${mediaPath}`));
     process.exit(2);
   }
   let analysis;
@@ -263,7 +264,7 @@ if (args.analyze) {
   if (args.json) {
     console.log(JSON.stringify({ ok: true, type: "grade-analysis", ...analysis }));
   } else {
-    console.log(formatMeasuredNote(mediaPath, analysis.measured));
+    console.log(terminalLines(formatMeasuredNote(mediaPath, analysis.measured)));
     console.log(`suggested adjust: ${JSON.stringify(analysis.adjust)}`);
   }
   process.exit(0);
@@ -280,11 +281,14 @@ if (type === "recipe") {
       console.log(JSON.stringify({ ok: true, ...used }));
     } else {
       console.log(
-        `resolved recipe ${used.recipe.name} (v${used.recipe.version}, ${used.recipe.workflow})`,
+        terminalLines(
+          `resolved recipe ${used.recipe.name} (v${used.recipe.version}, ${used.recipe.workflow})`,
+        ),
       );
-      console.log(`  frame spec → ${used.frameSpecPath} (copied over)`);
-      console.log(`  storyboard skeleton → ${used.skeletonPath}`);
-      if (used.briefSkeletonPath) console.log(`  brief skeleton → ${used.briefSkeletonPath}`);
+      console.log(terminalLines(`  frame spec → ${used.frameSpecPath} (copied over)`));
+      console.log(terminalLines(`  storyboard skeleton → ${used.skeletonPath}`));
+      if (used.briefSkeletonPath)
+        console.log(terminalLines(`  brief skeleton → ${used.briefSkeletonPath}`));
     }
     process.exit(0);
   } catch (err) {
@@ -553,7 +557,7 @@ async function run() {
         }),
       );
     } else {
-      console.error(`error: ${msg}`);
+      console.error(terminalLines(`error: ${msg}`));
     }
     process.exit(1);
   }
@@ -620,7 +624,7 @@ function mergeSmartAdjust(block) {
     ffmpegPath: ffmpegBinary(),
     ffprobePath: ffprobeBinary(),
   });
-  console.error(formatMeasuredNote(mediaPath, analysis.measured));
+  console.error(terminalLines(formatMeasuredNote(mediaPath, analysis.measured)));
   return {
     ...block,
     adjust: {
@@ -671,7 +675,7 @@ function exitError(message, status = 1) {
   if (args.json) {
     console.log(JSON.stringify({ ok: false, error: message }));
   } else {
-    console.error(`error: ${message}`);
+    console.error(terminalLines(`error: ${message}`));
   }
   process.exit(status);
 }
@@ -743,7 +747,7 @@ async function colorMiss(type, intent) {
   if (args.json) {
     console.log(JSON.stringify({ ok: false, error: msg }));
   } else {
-    console.error(`error: ${msg}`);
+    console.error(terminalLines(`error: ${msg}`));
   }
   process.exit(1);
 }
@@ -902,13 +906,13 @@ async function ingest(src) {
     process.exit(2);
   }
   if (!isUrl && !existsSync(resolve(src))) {
-    console.error(`error: file not found: ${src}`);
+    console.error(terminalLines(`error: file not found: ${src}`));
     process.exit(2);
   }
   // Refuse 0-byte input: an empty asset would register clean but fail at render
   // (freezeUrl already rejects empty responses; this covers local files).
   if (!isUrl && statSync(resolve(src)).size === 0) {
-    console.error(`error: refusing to ingest a 0-byte file: ${src}`);
+    console.error(terminalLines(`error: refusing to ingest a 0-byte file: ${src}`));
     process.exit(2);
   }
   if (args.source && !AGENT_SOURCES.includes(args.source)) {
@@ -1014,7 +1018,7 @@ async function showCandidates() {
   if (args.json) {
     console.log(JSON.stringify({ ok: true, candidates, truncated, total, similar }));
   } else {
-    console.log(formatCandidates(candidates, { truncated, total }));
+    console.log(terminalLines(formatCandidates(candidates, { truncated, total })));
   }
 }
 
@@ -1159,7 +1163,7 @@ function printDoctor(checks) {
         : check.fix === BUNDLED_SFX_RECOVERY_COMMAND
           ? ` — For the user: \`${check.fix}\` repairs it`
           : ` — fix: ${check.fix}`;
-    console.log(`${prefix} ${check.detail}${freePath}${fix}`);
+    console.log(terminalLines(`${prefix} ${check.detail}${freePath}${fix}`));
   }
 }
 
@@ -1185,7 +1189,7 @@ function printStats(report) {
   }
   for (const [type, misses] of entries) {
     console.log(`  ${type}:`);
-    for (const miss of misses) console.log(`    ${miss.count}  ${miss.intent}`);
+    for (const miss of misses) console.log(terminalLines(`    ${miss.count}  ${miss.intent}`));
   }
 }
 
@@ -1280,7 +1284,7 @@ async function reuseGlobal(shaArg) {
   }
   // Do not import an asset under the wrong type.
   if (!typesMatch(rec.type, type)) {
-    console.error(`error: sha "${shaArg}" is a ${rec.type} asset, not ${type}`);
+    console.error(terminalLines(`error: sha "${shaArg}" is a ${rec.type} asset, not ${type}`));
     process.exit(2);
   }
   const ext = extname(rec.cached_path || "") || defaultExt(type);
@@ -1308,7 +1312,9 @@ function warnLowConfidence(record, match) {
         ? `found by its file name, resolved earlier for "${match.resolved_for}"`
         : `found by its file name, sharing ${match.matched_words.length} of ${match.intent_words} words`;
   console.error(
-    `media-use: low-confidence match for "${intent}": ${record.description || record.path} (${why}). Listen before placing it, or resolve again with other words.`,
+    terminalLines(
+      `media-use: low-confidence match for "${intent}": ${record.description || record.path} (${why}). Listen before placing it, or resolve again with other words.`,
+    ),
   );
 }
 
@@ -1367,7 +1373,7 @@ async function result(record, source, match = recordedMatch(record)) {
     );
   } else {
     const meta = formatMeta(record, source);
-    console.log(`resolved ${record.id} → ${record.path || "inline"} (${meta})`);
+    console.log(terminalLines(`resolved ${record.id} → ${record.path || "inline"} (${meta})`));
   }
 }
 
@@ -1399,7 +1405,7 @@ run().catch((err) => {
   if (args.json) {
     console.log(JSON.stringify({ ok: false, error: err.message }));
   } else {
-    console.error(`error: ${err.message}`);
+    console.error(terminalLines(`error: ${err.message}`));
   }
   process.exit(1);
 });

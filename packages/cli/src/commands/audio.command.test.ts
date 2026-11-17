@@ -37,3 +37,44 @@ describe("audio --read --layer", () => {
     ).rejects.toThrow("--layer only works with --read");
   });
 });
+
+describe("audio --read on a terminal", () => {
+  it("shows control characters in the read as visible escapes", async () => {
+    readAudio.mockReset();
+    readAudio.mockResolvedValue({
+      analysis: {
+        version: 1,
+        file: "take\x1b[2J.wav",
+        sha256: "test",
+        duration: 3,
+        separation: "none",
+        stems: [],
+        stemsDir: null,
+        voiceFreeMix: null,
+        bpm: null,
+        description: null,
+        transcript: null,
+        voice: null,
+        effects: null,
+        music: null,
+        ambience: null,
+        warnings: ["clipped\x1b]52;c;cHduZWQ=\x07"],
+      },
+      textPath: "read\x1b[1A.txt",
+      jsonPath: "x.json",
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await runCommand(audioCommand, { rawArgs: ["a.wav", "--read"] });
+
+    const shown = log.mock.calls.map((call) => String(call[0])).join("\n");
+    const controls = [...shown].filter((ch) => {
+      const code = ch.charCodeAt(0);
+      return (code < 0x20 && code !== 0x09 && code !== 0x0a) || (code >= 0x7f && code <= 0x9f);
+    });
+    expect(controls).toEqual([]);
+    expect(shown).toContain("take\\x1b[2J.wav");
+    expect(shown).toContain("clipped\\x1b]52;c;cHduZWQ=\\x07");
+    expect(shown).toContain("read\\x1b[1A.txt");
+  });
+});
