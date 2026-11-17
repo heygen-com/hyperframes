@@ -16,6 +16,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import { previewToken } from "@hyperframes/core/preview-proof";
 import { renameWithRetry } from "@hyperframes/engine";
 import { segmentOutputPath, type SegmentSlice } from "./segmentPlan.js";
 
@@ -36,7 +37,7 @@ export interface SegmentManifest {
   totalFrames: number;
   segmentFrames: number;
   completed: SegmentManifestEntry[];
-  /** HMAC by this install's resume key; resume trusts no manifest without a valid one. */
+  /** HMAC by this user's manifest key; resume trusts no manifest without a valid one. */
   mac?: string;
 }
 
@@ -147,6 +148,14 @@ export function readSegmentManifest(segmentDir: string): SegmentManifest | null 
   }
 }
 
+/**
+ * The key that signs segment manifests, derived from this user's preview token, which lives in the
+ * user's home outside every project. Null when no token can be read or made; resume then reuses nothing.
+ */
+export function segmentManifestKey(token: string | null = previewToken()): Buffer | null {
+  return token ? createHmac("sha256", token).update("segment-manifest").digest() : null;
+}
+
 function manifestMac(manifest: SegmentManifest, key: Buffer): string {
   const signed = [
     manifest.planHash,
@@ -238,11 +247,12 @@ function isPlainFileOfSize(path: string, bytes: number): boolean {
 }
 
 /**
- * Indices safe to skip on resume. A segment counts only if this install
+ * Indices safe to skip on resume. A segment counts only if this user's key
  * signed the manifest, the plan hash matches, the entry matches a slice of
  * this plan, and the file the join will read (the slice's own path in
  * `segmentDir`, never the manifest's `path`) is a plain file at the recorded
- * size and hash whose frame count equals the slice length. Anything else re-captures:
+ * size and hash whose frame count equals the slice length. The hash is
+ * checked before the prober opens the file. Anything else re-captures:
  * re-capturing a good segment costs minutes, reusing a bad one silently
  * produces a wrong video.
  */
@@ -257,9 +267,9 @@ export async function validateCompletedSegments(
     if (!slice) continue;
     const path = segmentOutputPath(check.segmentDir, slice.index);
     if (!isPlainFileOfSize(path, entry.bytes)) continue;
+    if ((await hashSegmentFile(path)) !== entry.sha256) continue;
     const frames = await check.probeFrames(path);
     if (frames !== slice.endFrame - slice.startFrame) continue;
-    if ((await hashSegmentFile(path)) !== entry.sha256) continue;
     ok.add(slice.index);
   }
   return ok;

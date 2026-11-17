@@ -176,6 +176,27 @@ describe.skipIf(!HAS_FFMPEG)("concat input formats", () => {
     expect(result.success).toBe(false);
   }, 30_000);
 
+  it("follows a listed file that is itself an ffconcat list, but only to relative names", async () => {
+    // `concat` stays in the format whitelist because the list itself opens through it, so a nested
+    // list is followed. It opens with the default `-safe 1`, which refuses absolute paths.
+    const sub = join(root, "sub");
+    mkdirSync(sub);
+    makeClip(join(root, "a.mp4"), 2);
+    makeClip(join(sub, "beside.mp4"), 3);
+    const nested = join(sub, "nested.mp4");
+    const joined = join(root, "joined.mp4");
+
+    writeFileSync(nested, "ffconcat version 1.0\nfile 'beside.mp4'\n");
+    expect(await concatVideoFiles([join(root, "a.mp4"), nested], joined)).toEqual({
+      success: true,
+    });
+    expect(frameCount(joined)).toBe("5");
+
+    writeFileSync(nested, `ffconcat version 1.0\nfile '${join(sub, "beside.mp4")}'\n`);
+    const absolute = await concatVideoFiles([join(root, "a.mp4"), nested], joined);
+    expect(absolute.success).toBe(false);
+  }, 30_000);
+
   it("fails the join when a refused file sits between good ones", async () => {
     const good = [join(root, "a.mp4"), join(root, "b.mp4")];
     for (const path of good) makeClip(path, 2);

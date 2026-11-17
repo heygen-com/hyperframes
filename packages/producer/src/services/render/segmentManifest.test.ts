@@ -2,13 +2,15 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { previewToken } from "@hyperframes/core/preview-proof";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   computeSegmentPlanHash,
   hashSegmentFile,
   probeSegmentFrameCount,
   readSegmentManifest,
   segmentDirFor,
+  segmentManifestKey,
   validateCompletedSegments,
   writeSegmentManifest,
   type SegmentManifest,
@@ -289,13 +291,19 @@ describe("validateCompletedSegments", () => {
     expect(await reuses({ ...signed, completed: [entry(0, 2)] }, 3)).toBe(0);
   });
 
-  it("re-captures a segment replaced by a different file of the same size", async () => {
+  it("re-captures a segment replaced by a different file of the same size, without probing it", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     writeFileSync(segmentOutputPath(dir, 0), "xx");
     const manifest = manifestOf([entry(0)]);
     expect(await reuses(manifest, 3)).toBe(1);
     writeFileSync(segmentOutputPath(dir, 0), "yy");
-    expect(await reuses(manifest, 3)).toBe(0);
+    let probed = 0;
+    const probe = async () => {
+      probed += 1;
+      return 3;
+    };
+    expect((await validateCompletedSegments(manifest, check(3, probe))).size).toBe(0);
+    expect(probed).toBe(0);
   });
 
   it("hashes a segment file's contents", async () => {
@@ -309,6 +317,27 @@ describe("validateCompletedSegments", () => {
     writeFileSync(segmentOutputPath(dir, 0), "xx");
     const noKey = { ...check(3, async () => 3), key: null };
     expect((await validateCompletedSegments(manifestOf([entry(0)]), noKey)).size).toBe(0);
+  });
+});
+
+describe("segmentManifestKey", () => {
+  it("derives one stable key from this user's preview token, distinct from the token", () => {
+    const home = mkdtempSync(join(tmpdir(), "hf-seg-home-"));
+    onTestFinished(() => rmSync(home, { recursive: true, force: true }));
+    for (const name of ["HOME", "USERPROFILE", "LOCALAPPDATA"]) vi.stubEnv(name, home);
+    onTestFinished(() => vi.unstubAllEnvs());
+
+    const key = segmentManifestKey();
+    const token = previewToken();
+    expect(token).not.toBeNull();
+    expect(key?.length).toBe(32);
+    expect(segmentManifestKey()).toEqual(key);
+    expect(key?.toString("hex")).not.toBe(token);
+    expect(segmentManifestKey("ab".repeat(32))).not.toEqual(key);
+  });
+
+  it("is null without a preview token", () => {
+    expect(segmentManifestKey(null)).toBeNull();
   });
 });
 

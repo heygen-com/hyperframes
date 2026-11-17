@@ -195,7 +195,6 @@ import {
 } from "./render/renderEtaGuard.js";
 import { checkPageNeverReady } from "./render/pageNeverReady.js";
 import { planSegments, resolveSegmentFrames } from "./render/segmentPlan.js";
-import { loadSegmentResumeKey } from "./render/segmentResumeKey.js";
 import { extractAllDeferredFrames } from "./render/deferredVideoFrames.js";
 import { measureLocalShownBoxes, oversizedVideos } from "./render/videoShownBoxes.js";
 import { createSegmentVideoFrames } from "./render/segmentVideoFrames.js";
@@ -206,6 +205,7 @@ import {
   probeSegmentFrameCount,
   readSegmentManifest,
   segmentDirFor,
+  segmentManifestKey,
   validateCompletedSegments,
   writeSegmentManifest,
   type SegmentManifest,
@@ -3132,10 +3132,10 @@ export async function executeRenderJob(
 }
 
 function loadResumeKeyOrWarn(resume: boolean, log: ProducerLogger): Buffer | null {
-  const key = loadSegmentResumeKey();
+  const key = segmentManifestKey();
   if (resume && !key) {
     log.warn(
-      "[Render] --resume: no resume key could be read or created in the HyperFrames config folder, so every segment will be captured again",
+      "[Render] --resume: no preview token could be read or created, so every segment will be captured again",
     );
   }
   return key;
@@ -5109,7 +5109,7 @@ async function executeRenderPipeline(input: {
           captureQuality: captureOptions.quality,
         });
         const segmentDir = segmentDirFor(join(projectDir, "renders"), segmentPlanHash);
-        const segmentResumeKey = loadResumeKeyOrWarn(job.config.resumeSegments === true, log);
+        const manifestKey = loadResumeKeyOrWarn(job.config.resumeSegments === true, log);
         let completedSegments: ReadonlySet<number> = new Set<number>();
         if (job.config.resumeSegments === true) {
           const existing = readSegmentManifest(segmentDir);
@@ -5118,7 +5118,7 @@ async function executeRenderPipeline(input: {
               expectedHash: segmentPlanHash,
               segmentDir,
               plan: planSegments(totalFrames, segmentFrames),
-              key: segmentResumeKey,
+              key: manifestKey,
               probeFrames: (path) => probeSegmentFrameCount(path, extractMediaMetadata),
             });
             log.info(`[Render] resuming: ${completedSegments.size} segments complete`, {
@@ -5197,7 +5197,7 @@ async function executeRenderPipeline(input: {
                     ...segmentManifest.completed.filter((e) => e.index !== entry.index),
                     { ...entry, completedAt: new Date().toISOString() },
                   ];
-                  writeSegmentManifest(segmentDir, segmentManifest, segmentResumeKey);
+                  writeSegmentManifest(segmentDir, segmentManifest, manifestKey);
                 },
                 updateCaptureObservability,
               }),
