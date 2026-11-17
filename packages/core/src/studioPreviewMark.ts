@@ -100,3 +100,10 @@ export function dropServiceWorkers(): Promise<void> {
       () => undefined,
     );
 }
+
+export function serviceWorkerScriptFetch(headers: {
+  serviceWorker?: string;
+  fetchDest?: string;
+}): boolean {
+  return headers.serviceWorker === "script" || headers.fetchDest === "serviceworker";
+}
