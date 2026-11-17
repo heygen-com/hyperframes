@@ -125,6 +125,25 @@ export function requestFromAnotherSite(headers: {
   return !refererNamesHost(headers.referer, host);
 }
 
+export function proxyWorkFromAnotherSite(headers: {
+  fetchSite?: string;
+  host?: string;
+  referer?: string;
+}): boolean {
+  const site = headers.fetchSite;
+  if (site !== undefined) return site !== "same-origin" && site !== "none";
+  return !headers.host || !refererNamesHost(headers.referer, headers.host);
+}
+
+export function documentFromAnotherSite(headers: {
+  fetchSite?: string;
+  host?: string;
+  referer?: string;
+}): boolean {
+  if (headers.fetchSite !== undefined || !headers.host) return requestFromAnotherSite(headers);
+  return !refererNamesHost(headers.referer, headers.host);
+}
+
 function firstForwarded(value: string | undefined): string | undefined {
   const first = value?.split(",")[0]?.trim();
   return first === "" ? undefined : first;

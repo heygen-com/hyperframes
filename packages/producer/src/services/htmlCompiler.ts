@@ -95,18 +95,21 @@ import {
 import {
   isUnresolvedAssetPlaceholder,
   namesAnotherNetworkRoot,
+  projectAssetExists,
   readProjectFile,
   readTextFile,
   resolveCompositionSrc,
 } from "@hyperframes/parsers/asset-resolution";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
+import { linksOutside } from "@hyperframes/studio-server/outside-file";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
-import { assertCompositionFileSize } from "./compositionSizeLimit.js";
+import { assertCompositionFileSize, CompositionExpansionBudget } from "./compositionSizeLimit.js";
 import {
   escapesAssetRoot,
   isPathInside,
   leftOutOfRender,
   outsideAssetRefusal,
+  type OutsideFilePolicy,
   refusesOutsideLink,
   toExternalAssetKey,
 } from "../utils/paths.js";
@@ -251,10 +254,10 @@ class EmptyCompositionError extends Error {
   }
 }
 
-/** The html with each data-composition-src as the project-relative path it names (%xx decoded, no leading /). */
+/** The html with each data-composition-src as the project-relative path it names (%xx decoded, no leading /, \ or ./). */
 function normalizeCompositionSrcs(html: string, projectDir: string): string {
   return html.replace(/(\bdata-composition-src=)(["'])([^"']*)\2/g, (whole, name, quote, value) => {
-    if (!value.includes("%") && !value.startsWith("/")) return whole;
+    if (!value.includes("%") && !/^\.?[\\/]/.test(value)) return whole;
     const file = resolveCompositionSrc(projectDir, value);
     if (file === null) return whole;
     return `${name}${quote}${relative(projectDir, file).split(sep).join("/")}${quote}`;
@@ -282,9 +285,90 @@ function resolveCompositionFile(
   return file !== null && COMPOSITION_FILE.test(file) ? file : null;
 }
 
+const OUTSIDE_COMPOSITION_NEEDS_FLAG =
+  "it is outside the project, and any scripts in it would run; move it into the project, or pass --include-outside-files to hyperframes render, to include it";
+
+/** A trusted local render was not told to run markup whose real file is outside the project. */
+const runsOutsideMarkupUnasked = (
+  projectDir: string,
+  filePath: string,
+  assetRoot: string | undefined,
+  outsideFiles: OutsideFilePolicy,
+): boolean =>
+  assetRoot === undefined && !outsideFiles.includeScripts && linksOutside(projectDir, filePath);
+
+/** The readers check again, so a file swapped for an outside link after the pre-flight is still refused. */
+function assertOutsideMarkupAsked(
+  projectDir: string,
+  filePath: string,
+  srcPath: string,
+  assetRoot: string | undefined,
+  outsideFiles: OutsideFilePolicy,
+): void {
+  if (runsOutsideMarkupUnasked(projectDir, filePath, assetRoot, outsideFiles)) {
+    throw new EmptyCompositionError([{ srcPath, detail: OUTSIDE_COMPOSITION_NEEDS_FLAG }]);
+  }
+}
+
 // Git metadata, env files and the app's `.hyperframes/` records are never inlined into a render, as preview refuses them.
 const isPrivateCompositionFile = (projectDir: string, filePath: string): boolean =>
   isPrivateFileUnder(projectDir, filePath, isStudioPrivatePath);
+
+type CompositionProblem = { srcPath: string; detail: string };
+
+/** `templated` holds mounts inside templates. Reading `template.content` per level would clone each subtree again. */
+function compositionSrcsIn(html: string): { mounts: string[]; templated: string[] } {
+  const { document } = parseHTML(html);
+  const mounts: string[] = [];
+  const templated: string[] = [];
+  const stack: Array<[Element, boolean]> = [...document.children]
+    .reverse()
+    .map((el) => [el, false]);
+  for (let next = stack.pop(); next; next = stack.pop()) {
+    const [el, inTemplate] = next;
+    const srcPath = el.getAttribute("data-composition-src");
+    if (srcPath && !isUnresolvedAssetPlaceholder(srcPath)) {
+      (inTemplate ? templated : mounts).push(srcPath);
+    }
+    const childrenInTemplate = inTemplate || el.localName === "template";
+    const children = [...el.children];
+    for (let i = children.length - 1; i >= 0; i -= 1)
+      stack.push([children[i]!, childrenInTemplate]);
+  }
+  return { mounts, templated };
+}
+
+function compositionPathProblem(
+  projectDir: string,
+  filePath: string,
+  assetRoot: string | undefined,
+  outsideFiles: OutsideFilePolicy,
+): string | null {
+  if (outsideAssetRefusal(projectDir, filePath) === "blocklisted") {
+    return "it is outside the project in a private location";
+  }
+  if (runsOutsideMarkupUnasked(projectDir, filePath, assetRoot, outsideFiles)) {
+    return OUTSIDE_COMPOSITION_NEEDS_FLAG;
+  }
+  if (isPrivateCompositionFile(projectDir, filePath)) {
+    return "it is git metadata, an env file or a private tool record";
+  }
+  return COMPOSITION_FILE.test(filePath) ? null : NOT_A_COMPOSITION_FILE;
+}
+
+function readSubCompositionFile(
+  filePath: string,
+  srcPath: string,
+): { detail: string } | { bytes: number; mounts: string[]; templated: string[] } {
+  assertCompositionFileSize(filePath, srcPath);
+  const read = readProjectFile(filePath);
+  if (read.kind === "missing") return { detail: "the file does not exist" };
+  if (read.kind === "folder") return { detail: "it is a folder, not an HTML file" };
+  const validity = checkSubCompositionUsability(read.text, parseSubCompHtmlForValidity);
+  if (!validity.ok)
+    return { detail: validity.detail ?? "the file is empty or could not be parsed" };
+  return { bytes: Buffer.byteLength(read.text), ...compositionSrcsIn(read.text) };
+}
 
 /**
  * Recursively walk every `data-composition-src` reference reachable from
@@ -300,93 +384,66 @@ const isPrivateCompositionFile = (projectDir: string, filePath: string): boolean
  * exchange for failing in milliseconds instead of after the browser has
  * already launched and waited out a capture timeout.
  */
-// fallow-ignore-next-line complexity
 function assertSubCompositionsUsable(
   html: string,
   projectDir: string,
   assetRoot: string | undefined,
-  visited: Set<string> = new Set(),
+  outsideFiles: OutsideFilePolicy,
 ): void {
-  const { document } = parseHTML(html);
-  const hosts = [...document.querySelectorAll("[data-composition-src]")];
-  const problems: Array<{ srcPath: string; detail: string }> = [];
-
-  for (const el of hosts) {
-    const srcPath = el.getAttribute("data-composition-src");
-    if (!srcPath) continue;
-    if (isUnresolvedAssetPlaceholder(srcPath)) continue; // __UPPER__ placeholder or unresolved templating token — not a real reference (shared with lint via @hyperframes/parsers)
-
+  const budget = new CompositionExpansionBudget();
+  const files = new Map<string, ReturnType<typeof readSubCompositionFile>>();
+  const problems = new Map<string, CompositionProblem>();
+  const report = (srcPath: string, detail: string) =>
+    problems.set(`${srcPath}\0${detail}`, { srcPath, detail });
+  // The files on the current mount chain. A repeat is a cycle, which the compiler skips silently too.
+  const chain = new Set<string>();
+  const paths = new Map<string, { detail: string } | { filePath: string }>();
+  const resolveMount = (srcPath: string): { detail: string } | { filePath: string } => {
     const filePath = resolveCompositionPath(projectDir, srcPath, assetRoot);
-    if (filePath === null) {
-      problems.push({ srcPath, detail: "it is outside the project folder" });
-      continue;
-    }
-    if (outsideAssetRefusal(projectDir, filePath) === "blocklisted") {
-      problems.push({ srcPath, detail: "it is outside the project in a private location" });
-      continue;
-    }
-    if (isPrivateCompositionFile(projectDir, filePath)) {
-      problems.push({
-        srcPath,
-        detail: "it is git metadata, an env file or a private tool record",
-      });
-      continue;
-    }
-    if (!COMPOSITION_FILE.test(filePath)) {
-      problems.push({ srcPath, detail: NOT_A_COMPOSITION_FILE });
-      continue;
-    }
-    // Circular reference guard. parseSubCompositions (below) silently
-    // `continue`s on a repeat visit with no reporting at all — mirror that
-    // silence here rather than pretend it surfaces an error somewhere else.
-    if (visited.has(filePath)) continue;
+    if (filePath === null) return { detail: "it is outside the project folder" };
+    const detail = compositionPathProblem(projectDir, filePath, assetRoot, outsideFiles);
+    return detail ? { detail } : { filePath };
+  };
 
-    assertCompositionFileSize(filePath, srcPath);
-    const read = readProjectFile(filePath);
-    if (read.kind === "missing") {
-      problems.push({ srcPath, detail: "the file does not exist" });
-      continue;
-    }
-    if (read.kind === "folder") {
-      problems.push({ srcPath, detail: "it is a folder, not an HTML file" });
-      continue;
-    }
-
-    const fileHtml = read.text;
-    const validity = checkSubCompositionUsability(fileHtml, parseSubCompHtmlForValidity);
-    if (!validity.ok) {
-      problems.push({
-        srcPath,
-        detail: validity.detail ?? "the file is empty or could not be parsed",
-      });
-      continue;
-    }
-
-    // Recurse into nested sub-compositions so a broken scene three levels
-    // deep is still named directly instead of surfacing as a parent-level
-    // "no error, just missing content" mystery.
-    //
-    // Pass `projectDir` unchanged (not dirname(filePath)) — data-composition-src
-    // is always resolved root-relative, even from within a nested
-    // sub-composition. This must match parseSubCompositions' own recursive
-    // call below exactly (it threads the original projectDir through every
-    // level too), or this pre-flight check resolves nested references to the
-    // wrong path and aborts renders that would have actually succeeded.
-    const nestedVisited = new Set(visited);
-    nestedVisited.add(filePath);
-    try {
-      assertSubCompositionsUsable(fileHtml, projectDir, assetRoot, nestedVisited);
-    } catch (err) {
-      if (err instanceof EmptyCompositionError) {
-        problems.push(...err.problems);
-      } else {
-        throw err;
+  // data-composition-src resolves root-relative at every level, as parseSubCompositions and the inliner
+  // resolve it, so `projectDir` stays unchanged. Each path is checked, and each file read, once.
+  // A mount inside a template is charged to the budget but not reported: the inliner skips it with a warning.
+  const walk = (srcPaths: readonly string[], quiet: boolean): void => {
+    for (const srcPath of srcPaths) {
+      let resolved = paths.get(srcPath);
+      if (!resolved) {
+        resolved = resolveMount(srcPath);
+        paths.set(srcPath, resolved);
       }
-    }
-  }
+      if ("detail" in resolved) {
+        if (!quiet) report(srcPath, resolved.detail);
+        continue;
+      }
+      const { filePath } = resolved;
+      if (chain.has(filePath)) continue;
 
-  if (problems.length > 0) {
-    throw new EmptyCompositionError(problems);
+      let file = files.get(filePath);
+      if (!file) {
+        file = readSubCompositionFile(filePath, srcPath);
+        files.set(filePath, file);
+      }
+      if ("detail" in file) {
+        if (!quiet) report(srcPath, file.detail);
+        continue;
+      }
+      budget.charge(srcPath, file.bytes);
+      chain.add(filePath);
+      walk(file.mounts, quiet);
+      walk(file.templated, true);
+      chain.delete(filePath);
+    }
+  };
+  const entry = compositionSrcsIn(html);
+  walk(entry.mounts, false);
+  walk(entry.templated, true);
+
+  if (problems.size > 0) {
+    throw new EmptyCompositionError([...problems.values()]);
   }
 }
 
@@ -856,6 +913,8 @@ async function parseSubCompositions(
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
   probes?: SourceProbes,
   assetRoot?: string,
+  outsideFiles: OutsideFilePolicy = {},
+  compiledSrcs: Set<string> = new Set(),
 ): Promise<{ subCompositions: Map<string, string> }> {
   const subCompositions = new Map<string, string>();
 
@@ -881,7 +940,11 @@ async function parseSubCompositions(
     if (visited.has(filePath)) {
       continue;
     }
+    // A path compiles the same wherever it is mounted, so each one is compiled once per render.
+    if (compiledSrcs.has(srcPath)) continue;
+    compiledSrcs.add(srcPath);
 
+    assertOutsideMarkupAsked(projectDir, filePath, srcPath, assetRoot, outsideFiles);
     assertCompositionFileSize(filePath, srcPath);
     const read = readProjectFile(filePath);
     if (read.kind !== "file") {
@@ -917,6 +980,8 @@ async function parseSubCompositions(
         urlByAbsentLocalPath,
         probes,
         assetRoot,
+        outsideFiles,
+        compiledSrcs,
       );
 
       return {
@@ -1124,6 +1189,7 @@ function inlineSubCompositions(
   projectDir: string,
   variableOverrides: Record<string, unknown>,
   assetRoot: string | undefined,
+  outsideFiles: OutsideFilePolicy,
 ): { html: string; variablesByComp: Record<string, Record<string, unknown>> } {
   const { document } = parseHTML(html);
   const head = document.querySelector("head");
@@ -1142,6 +1208,33 @@ function inlineSubCompositions(
     );
     return { html: emitted ? document.toString() : html, variablesByComp: {} };
   }
+
+  const budget = new CompositionExpansionBudget();
+  const readOnce = new Map<string, string | null>();
+  const readMountHtml = (srcPath: string): string | null => {
+    const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
+    if (filePath) {
+      assertOutsideMarkupAsked(projectDir, filePath, srcPath, assetRoot, outsideFiles);
+      assertCompositionFileSize(filePath, srcPath);
+    }
+    const read =
+      filePath && !isPrivateCompositionFile(projectDir, filePath)
+        ? readProjectFile(filePath)
+        : null;
+    return read?.kind === "file"
+      ? rewriteUnresolvableGsapToCdn(
+          normalizeCompositionSrcs(read.text, projectDir),
+          projectDir,
+          srcPath,
+        )
+      : null;
+  };
+  const resolveMountHtml = (srcPath: string): string | null => {
+    const compiled = subCompositions.get(srcPath);
+    if (compiled) return compiled;
+    if (!readOnce.has(srcPath)) readOnce.set(srcPath, readMountHtml(srcPath));
+    return readOnce.get(srcPath) ?? null;
+  };
 
   // Assign per-instance runtime composition ids before each host is inlined,
   // mirroring the preview bundler. Initial hosts are assigned as one pre-pass;
@@ -1170,24 +1263,14 @@ function inlineSubCompositions(
       readVariableDefaults: readDeclaredDefaults,
       parseHostVariables: parseHostVariableValues,
       resolveHtml: (srcPath: string) => {
-        let compHtml = subCompositions.get(srcPath) || null;
-        if (!compHtml) {
-          const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
-          if (filePath) assertCompositionFileSize(filePath, srcPath);
-          const read =
-            filePath && !isPrivateCompositionFile(projectDir, filePath)
-              ? readProjectFile(filePath)
-              : null;
-          if (read?.kind === "file") {
-            compHtml = rewriteUnresolvableGsapToCdn(read.text, projectDir, srcPath);
-          }
-        }
+        const compHtml = resolveMountHtml(srcPath);
+        if (compHtml) budget.charge(srcPath, Buffer.byteLength(compHtml));
         return compHtml;
       },
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
       // Mirrors the preview bundler: a sub-composition's SIBLING assets resolve
       // against its own directory, project-root refs stay as authored.
-      assetExists: (path: string) => existsSync(resolve(projectDir, path)),
+      assetExists: projectAssetExists(projectDir),
       // Preserve the authored root wrapper as a child of the host, matching
       // the preview bundler's shape (htmlBundler.ts's prepareFlattenedInnerRoot,
       // which the runtime compositionLoader mirrors with its own copy for the
@@ -1478,6 +1561,7 @@ export function collectExternalAssets(
   projectDir: string,
   log: ProducerLogger = defaultLogger,
   file = "index.html",
+  policy: OutsideFilePolicy = {},
 ): { html: string; externalAssets: Map<string, string> } {
   const absProjectDir = resolve(projectDir);
   const externalAssets = new Map<string, string>();
@@ -1492,7 +1576,7 @@ export function collectExternalAssets(
     }
     const onShare = namesAnotherNetworkRoot(absProjectDir, absPath);
     if (!onShare && !existsSync(absPath)) return null;
-    const refusal = onShare ? "network_share" : outsideAssetRefusal(absProjectDir, absPath);
+    const refusal = onShare ? "network_share" : outsideAssetRefusal(absProjectDir, absPath, policy);
     if (refusal) {
       if (!leftOut.has(trimmed)) log.warn(`[Compiler] ${leftOutOfRender(file, trimmed, refusal)}`);
       leftOut.add(trimmed);
@@ -2109,6 +2193,7 @@ export interface CompileForRenderOptions {
   pageMotionBlur?: "off";
   /** Trusted local renders only (CLI, Studio): import files markup reaches outside projectDir. */
   allowOutsideProjectAssets?: boolean;
+  includeOutsideScripts?: boolean;
 }
 
 /** Renders follow the same `HYPERFRAMES_GSAP_BASE_URL` mirror as Studio preview. */
@@ -2154,7 +2239,7 @@ function rebaseDirectEntryAssetPaths(html: string, projectDir: string, htmlPath:
   if (!entryPath.includes("/")) return html;
 
   const { document } = parseHTML(html);
-  const assetExists = (path: string) => existsSync(resolve(projectDir, path));
+  const assetExists = projectAssetExists(projectDir);
   rewriteAssetPaths(
     document.querySelectorAll("[src], [href], [srcset]"),
     entryPath,
@@ -2215,8 +2300,15 @@ export async function compileForRender(
   options: CompileForRenderOptions = {},
 ): Promise<CompiledComposition> {
   const assetRoot = options.allowOutsideProjectAssets ? undefined : projectDir;
+  const outsideFiles: OutsideFilePolicy = { includeScripts: options.includeOutsideScripts };
   if (isPathInside(htmlPath, projectDir) && escapesAssetRoot(htmlPath, assetRoot)) {
     throw new Error(`Entry file ${htmlPath} leads outside the project folder`);
+  }
+  if (
+    isPathInside(htmlPath, projectDir) &&
+    runsOutsideMarkupUnasked(projectDir, htmlPath, assetRoot, outsideFiles)
+  ) {
+    throw new Error(`Entry file ${htmlPath} ${OUTSIDE_COMPOSITION_NEEDS_FLAG}`);
   }
   if (!COMPOSITION_FILE.test(htmlPath)) {
     throw new Error(`Entry file ${htmlPath} is not an .html file, so it is refused`);
@@ -2234,7 +2326,7 @@ export async function compileForRender(
   // unconditional (not gated behind --strict like lint warnings) — a render
   // that silently drops a scene is strictly worse than one that refuses to
   // start.
-  assertSubCompositionsUsable(rawHtml, projectDir, assetRoot);
+  assertSubCompositionsUsable(rawHtml, projectDir, assetRoot, outsideFiles);
 
   const probes: SourceProbes = new Map();
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
@@ -2257,6 +2349,7 @@ export async function compileForRender(
     options.urlByAbsentLocalPath,
     probes,
     assetRoot,
+    outsideFiles,
   );
 
   // Ensure the HTML is a full document before inlining sub-compositions.
@@ -2274,6 +2367,7 @@ export async function compileForRender(
     projectDir,
     options.variables ?? {},
     assetRoot,
+    outsideFiles,
   );
 
   // Strip preload="none" from media elements — the renderer needs to load all
@@ -2372,7 +2466,7 @@ export async function compileForRender(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: remoteImageAssets,
     timeoutMs: options.ffmpegProcessTimeout,
-    assetRoot,
+    allowOutsideFiles: assetRoot === undefined,
   });
   if (preparedHeifImages.length > 0) {
     defaultLogger.debug(`[Compiler] Converted ${preparedHeifImages.length} HEIC image(s) to JPEG`);
@@ -2389,7 +2483,7 @@ export async function compileForRender(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: gifSourceAssets,
     timeoutMs: options.ffmpegProcessTimeout,
-    assetRoot,
+    allowOutsideFiles: assetRoot === undefined,
   });
   if (preparedGifs.length > 0) {
     defaultLogger.debug(`[Compiler] Prepared ${preparedGifs.length} animated GIF input(s) as WebM`);
@@ -2411,6 +2505,7 @@ export async function compileForRender(
         projectDir,
         options.log,
         entryFileName(projectDir, htmlPath),
+        { includeScripts: options.includeOutsideScripts },
       )
     : { html: embeddedHtml, externalAssets: new Map<string, string>() };
 
@@ -3060,6 +3155,7 @@ export async function recompileWithResolutions(
   projectDir: string,
   downloadDir: string,
   assetRoot?: string,
+  outsideFiles: OutsideFilePolicy = {},
 ): Promise<CompiledComposition> {
   if (resolutions.length === 0) return compiled;
 
@@ -3078,6 +3174,7 @@ export async function recompileWithResolutions(
     undefined,
     undefined,
     assetRoot,
+    outsideFiles,
   );
   const { videos, audios, images } = compiled;
 

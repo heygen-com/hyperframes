@@ -19,8 +19,8 @@ describe("release channel validation", () => {
     const errors = validateReleaseChannel({
       version: "0.4.24",
       distTag: "latest",
-      eventName: "pull_request",
-      prHeadRef: "release/v0.4.24",
+      source: "release-pr",
+      releaseRef: "release/v0.4.24",
       remoteBranches: [],
     });
 
@@ -31,8 +31,8 @@ describe("release channel validation", () => {
     const errors = validateReleaseChannel({
       version: "0.4.24",
       distTag: "latest",
-      eventName: "push",
-      prHeadRef: "",
+      source: "tag",
+      releaseRef: "",
       remoteBranches: ["origin/main", "origin/next"],
     });
 
@@ -44,8 +44,8 @@ describe("release channel validation", () => {
     const errors = validateReleaseChannel({
       version: "0.4.24",
       distTag: "latest",
-      eventName: "push",
-      prHeadRef: "",
+      source: "tag",
+      releaseRef: "",
       remoteBranches: ["origin/release/v0.4.24"],
     });
 
@@ -57,8 +57,8 @@ describe("release channel validation", () => {
     const errors = validateReleaseChannel({
       version: "0.4.24-alpha.1",
       distTag: "alpha",
-      eventName: "push",
-      prHeadRef: "",
+      source: "tag",
+      releaseRef: "",
       remoteBranches: ["origin/next"],
     });
 
@@ -69,8 +69,8 @@ describe("release channel validation", () => {
     const errors = validateReleaseChannel({
       version: "0.4.24-alpha.1",
       distTag: "alpha",
-      eventName: "push",
-      prHeadRef: "",
+      source: "tag",
+      releaseRef: "",
       remoteBranches: ["origin/main"],
     });
 
@@ -82,8 +82,8 @@ describe("release channel validation", () => {
     const errors = validateReleaseChannel({
       version: "0.4.24-alpha.1",
       distTag: "latest",
-      eventName: "push",
-      prHeadRef: "",
+      source: "tag",
+      releaseRef: "",
       remoteBranches: ["origin/next"],
     });
 
@@ -95,8 +95,8 @@ describe("release channel validation", () => {
     const errors = validateReleaseChannel({
       version: "0.4.24-alpha.1",
       distTag: "alpha",
-      eventName: "pull_request",
-      prHeadRef: "release/v0.4.24-alpha.1",
+      source: "release-pr",
+      releaseRef: "release/v0.4.24-alpha.1",
       remoteBranches: [],
     });
 
@@ -105,16 +105,16 @@ describe("release channel validation", () => {
     assert.match(errors.join("\n"), /stable releases only/);
   });
 
-  it("rejects manual publish events", () => {
+  it("rejects an unknown release source", () => {
     const errors = validateReleaseChannel({
       version: "0.4.24",
       distTag: "latest",
-      eventName: "workflow_dispatch",
-      prHeadRef: "",
+      source: "workflow_dispatch",
+      releaseRef: "",
       remoteBranches: ["origin/main"],
     });
 
-    assert.deepEqual(errors, ['Unsupported publish event "workflow_dispatch".']);
+    assert.deepEqual(errors, ['Unsupported release source "workflow_dispatch".']);
   });
 
   it("normalizes git branch output", () => {

@@ -27,6 +27,21 @@ describe("sparkline", () => {
 });
 
 describe("formatReport", () => {
+  it("prints control characters from the project's src, id, errors and warnings as visible escapes", () => {
+    const text = formatReport({
+      version: 1,
+      items: [
+        item({ file: "a\x1b[2K.wav", ref: "#x\x07", warnings: ["w\x1b]52;c;aGk=\x07", "a\nb"] }),
+        item({ file: "gone\x9b.wav", ref: null, error: "missing \x1b[8m" }),
+      ],
+    });
+    expect(text).toContain("a\\x1b[2K.wav #x\\x07");
+    expect(text).toContain("! w\\x1b]52;c;aGk=\\x07");
+    expect(text).toContain("! a\\x0ab");
+    expect(text).toContain("gone\\x9b.wav: missing \\x1b[8m");
+    for (const raw of ["\x07", "\x1b", "\x9b"]) expect(text).not.toContain(raw);
+  });
+
   it("prints file seconds as film seconds through the clip's placement", () => {
     const text = formatReport({
       version: 1,

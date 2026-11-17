@@ -1,8 +1,13 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
-import { assertCompositionFileSize, MAX_COMPOSITION_HTML_BYTES } from "./compositionSizeLimit.js";
+import { parseHTML } from "linkedom";
+import { describe, expect, it, vi } from "vitest";
+import {
+  assertCompositionFileSize,
+  MAX_COMPOSITION_HTML_BYTES,
+  MAX_EXPANDED_COMPOSITION_BYTES,
+} from "./compositionSizeLimit.js";
 import { compileForRender } from "./htmlCompiler.js";
 import { extractSafeRenderErrorCode } from "./safeRenderErrorCode.js";
 
@@ -75,4 +80,114 @@ describe("composition HTML size limit", () => {
     ).not.toThrow();
     expect(() => assertCompositionFileSize(dir, "folder")).not.toThrow();
   });
+});
+
+/** A root that mounts `src` `count` times. */
+const rootMounting = (src: string, count: number) =>
+  ROOT.replace(
+    /<div data-composition-id="scene"[^>]*><\/div>/,
+    `<div data-composition-id="scene" data-composition-src="${src}" data-start="0" data-duration="2"></div>`.repeat(
+      count,
+    ),
+  );
+
+/** A sub-composition that mounts `src` `count` times, as a bare fragment or inside a `<template>`. */
+const sceneMounting = (id: string, src: string, count: number, template = true) => {
+  const root = `<div data-composition-id="${id}">${`<div data-composition-src="${src}"></div>`.repeat(count)}</div>`;
+  return template ? `<template>${root}</template>` : root;
+};
+
+/** Seven files, each mounting the next one ten times. */
+function fanOut(template: boolean): Record<string, string> {
+  const files: Record<string, string> = { "index.html": rootMounting("level-0.html", 10) };
+  for (let level = 0; level < 6; level += 1) {
+    files[`level-${level}.html`] = sceneMounting(
+      `level-${level}`,
+      `level-${level + 1}.html`,
+      10,
+      template,
+    );
+  }
+  files["level-6.html"] = SCENE;
+  return files;
+}
+
+describe("composition expansion budget", () => {
+  it.each([
+    ["bare fragments", false],
+    ["templates", true],
+  ])(
+    "refuses small files that mount each other many times, as %s, before compiling",
+    async (_, template) => {
+      const error = await compileError(project(fanOut(template)));
+      expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+      expect(String(error)).toContain("10001 mounts");
+      expect(error).toMatchObject({ publicMetadata: { mounts: 10_001, exceeded: "mounts" } });
+    },
+  );
+
+  it("refuses one large file mounted many times", async () => {
+    const big = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 4) + 1;
+    const dir = project({
+      "index.html": rootMounting("scene.html", 4),
+      "scene.html": paddedTo(SCENE, big),
+    });
+    const error = await compileError(dir);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(String(error)).toContain('"scene.html"');
+  });
+
+  it("leaves a missing mount inside a template to the inliner's warning, as before", async () => {
+    const dir = project({
+      "index.html": rootMounting("wrapper.html", 1),
+      "wrapper.html": `<template><div data-composition-id="wrapper"><h1>Kept</h1><div data-composition-src="missing.html"></div></div></template>`,
+    });
+    const compiled = await compileForRender(dir, join(dir, "index.html"), dir);
+    expect(compiled.html).toContain("<h1>Kept</h1>");
+  });
+
+  it("still compiles a scene mounted a few times, once per mount", async () => {
+    const dir = project({
+      "index.html": rootMounting("wrapper.html", 3),
+      "wrapper.html": sceneMounting("wrapper", "scene.html", 2),
+      "scene.html": SCENE,
+    });
+    const compiled = await compileForRender(dir, join(dir, "index.html"), dir);
+    expect(compiled.html.split("<h1>Scene</h1>").length - 1).toBe(6);
+  });
+
+  /** The fan-out project with `depth` nested templates in `file`, the innermost one mounting the fan-out. */
+  function nestedFanOut(file: string, depth: number): Record<string, string> {
+    const nested = `${"<template>".repeat(depth)}<div data-composition-src="level-0.html"></div>${"</template>".repeat(depth)}`;
+    const files = fanOut(true);
+    files["index.html"] = rootMounting("wrapper.html", 1).replace("</body>", `${nested}</body>`);
+    files["wrapper.html"] = SCENE;
+    if (file === "wrapper.html") {
+      files["index.html"] = rootMounting("wrapper.html", 1);
+      files["wrapper.html"] = SCENE.replace("<h1>Scene</h1>", `<h1>Scene</h1>${nested}`);
+    }
+    return files;
+  }
+
+  it.each([
+    ["the entry file", "index.html"],
+    ["a mounted file", "wrapper.html"],
+  ])(
+    "finds mounts in deeply nested templates in %s without copying each level",
+    async (_, file) => {
+      const template = parseHTML("<template></template>").document.querySelector("template")!;
+      const content = vi.spyOn(Object.getPrototypeOf(template), "content", "get");
+      try {
+        const contentReads = async (depth: number) => {
+          content.mockClear();
+          const error = await compileError(project(nestedFanOut(file, depth)));
+          expect(error).toMatchObject({ publicMetadata: { exceeded: "mounts" } });
+          return content.mock.calls.length;
+        };
+        expect(await contentReads(3_000)).toBe(await contentReads(1));
+      } finally {
+        content.mockRestore();
+      }
+    },
+  );
 });

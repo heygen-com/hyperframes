@@ -241,6 +241,29 @@ describe("prepareHeifImageInputs", () => {
     expect(primaryGrid({ stream_groups: [grid(5)] })?.width).toBe(5);
   });
 
+  it("reads no HEIC outside the project unless the caller allows outside files", async () => {
+    const d = project({});
+    const outside = join(d.base, "Pictures", "IMG_0001.HEIC");
+    spawnSync("mkdir", ["-p", join(outside, "..")]);
+    writeFileSync(outside, readFileSync(FIXTURE));
+    const html = `<img src="../Pictures/IMG_0001.HEIC"><img src="${outside}">`;
+    const { calls, transcode } = countingTranscode();
+
+    const contained = await prepareHeifImageInputs(html, { ...d, transcode });
+    expect(contained.html).toBe(html);
+    expect(contained.preparedImages).toEqual([]);
+    expect(calls).toHaveLength(0);
+    expect(existsSync(d.outputDir)).toBe(false);
+
+    const trusted = await prepareHeifImageInputs(html, {
+      ...d,
+      transcode,
+      allowOutsideFiles: true,
+    });
+    expect(trusted.preparedImages).toHaveLength(2);
+    expect(trusted.html).not.toContain("IMG_0001.HEIC");
+  });
+
   it("spawns nothing and writes nothing without a HEIC image", async () => {
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==",

@@ -1,4 +1,5 @@
-import { audioFailureDiagnostics } from "@hyperframes/engine";
+import type { ExpectedOutputDimensions } from "./render/outputDimensions.js";
+import { audioFailureDiagnostics, usableCpuCount } from "@hyperframes/engine";
 // fallow-ignore-file unused-type circular-dependency code-duplication complexity
 /**
  * Render Orchestrator Service
@@ -274,7 +275,7 @@ import {
   canEncodeWhileCapturing,
   encodeWhileCapturing,
   runEncodeStage,
-  type EncodeStageInput,
+  type VideoEncodeInput,
 } from "./render/stages/encodeStage.js";
 import { recordLimiterAttenuation, runAssembleStage } from "./render/stages/assembleStage.js";
 import { shouldUseLayeredComposite } from "./hdrCompositor.js";
@@ -452,6 +453,7 @@ export interface RenderConfig {
   /** Entry HTML file relative to projectDir. Defaults to "index.html". */
   entryFile?: string;
   allowOutsideProjectAssets?: CompileForRenderOptions["allowOutsideProjectAssets"];
+  includeOutsideScripts?: CompileForRenderOptions["includeOutsideScripts"];
   /** Full producer config. When provided, env vars are not read. */
   producerConfig?: EngineConfig;
   /** Custom logger. Defaults to console-based defaultLogger. */
@@ -495,6 +497,7 @@ export interface RenderConfig {
    */
   variables?: Record<string, unknown>;
   strictVariables?: boolean;
+  expectedOutputDimensions?: ExpectedOutputDimensions;
   /**
    * Override the output resolution via Chrome `deviceScaleFactor` (DPR).
    * The composition's authored dimensions are unchanged. See
@@ -618,6 +621,7 @@ export interface RenderPerfSummary {
     verifiedFrames?: number;
     reusedFrames: number;
     skipReason?: string;
+    ineligibleCause?: string;
     verificationOutcomes?: StaticVerificationOutcome[];
     plannedRuns?: number;
     completedRuns?: number;
@@ -806,6 +810,7 @@ export interface RenderStageProgress {
 export interface RenderJob extends Partial<ReferenceBackgroundResult> {
   id: string;
   strictVariablesChecked?: boolean;
+  outputDimensionsChecked?: boolean;
   config: RenderConfig;
   status: RenderStatus;
   progress: number;
@@ -851,6 +856,8 @@ export class RenderQualityError extends Error {
     this.name = "RenderQualityError";
   }
 }
+
+const MIN_CPUS_TO_CAPTURE_DURING_MIX = 4;
 
 export function applyRenderWarningPolicy(
   job: RenderJob,
@@ -3148,10 +3155,15 @@ async function executeRenderPipeline(input: {
   const onProgress = execution.onProgress;
   const tooSlow = new AbortController();
   let tooSlowError: RenderTooSlowError | undefined;
+  // Frames are drawn while the audio mixes; a failed mix stops them and is the render's error.
+  const audioFailed = new AbortController();
+  let audioFailure: unknown;
   let calibrationEvaluateTimedOut = false;
-  const executionSignal = job.config.maxRenderMs
-    ? AbortSignal.any([tooSlow.signal, ...(execution.signal ? [execution.signal] : [])])
-    : execution.signal;
+  const executionSignal = AbortSignal.any([
+    audioFailed.signal,
+    ...(job.config.maxRenderMs ? [tooSlow.signal] : []),
+    ...(execution.signal ? [execution.signal] : []),
+  ]);
   let fileServer: FileServerHandle | null = null;
   let probeSession: CaptureSession | null = null;
   let lastBrowserConsole: string[] = [];
@@ -3793,6 +3805,7 @@ async function executeRenderPipeline(input: {
           preHeadScripts: [VIRTUAL_TIME_SHIM],
           fps: job.config.fps,
           allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+          includeOutsideScripts: job.config.includeOutsideScripts,
         });
         assertNotAborted();
         observability.stageEnd("file_server", fileServerStart);
@@ -4934,41 +4947,50 @@ async function executeRenderPipeline(input: {
     const effectiveQuality = job.config.crf ?? preset.quality;
     const effectiveBitrate = job.config.crf != null ? undefined : job.config.videoBitrate;
 
-    const audioResult = await audioWait.wait(audioStage);
-    const { audioOutputPath, deliverySourcePath, hasAudio } = audioResult;
-    perfStages.audioProcessMs = audioResult.audioProcessMs;
-    recordLimiterAttenuation(job, audioResult.audioLoweredDb);
-    if (audioResult.audioError) {
-      const audioFailures = audioResult.audioFailures ?? [];
-      const failureOwner =
-        audioFailures.length === 0
-          ? undefined
-          : audioFailures.some((failure) => failure.owner === "system")
-            ? "system"
-            : "user";
-      const retryable =
-        audioFailures.length === 0
-          ? undefined
-          : audioFailures.every((failure) => failure.retryable);
-      applyRenderWarningPolicy(
-        job,
-        [
-          {
-            code: "audio_processing_failed",
-            message: `Audio mix failed; output would be video-only: ${audioResult.audioError}`,
-            details: {
-              mediaType: "audio",
-              audioFailures: audioFailureDiagnostics(audioFailures),
-              failureReasons: [...new Set(audioFailures.map((failure) => failure.reason))],
-              failureStages: [...new Set(audioFailures.map((failure) => failure.stage))],
-              failureOwner,
-              retryable,
+    // Capture never reads the mix: it starts now, and the first step that needs the mix waits for it.
+    const audioReady = audioStage.then((audioResult) => {
+      perfStages.audioProcessMs = audioResult.audioProcessMs;
+      recordLimiterAttenuation(job, audioResult.audioLoweredDb);
+      if (audioResult.audioError) {
+        const audioFailures = audioResult.audioFailures ?? [];
+        const failureOwner =
+          audioFailures.length === 0
+            ? undefined
+            : audioFailures.some((failure) => failure.owner === "system")
+              ? "system"
+              : "user";
+        const retryable =
+          audioFailures.length === 0
+            ? undefined
+            : audioFailures.every((failure) => failure.retryable);
+        applyRenderWarningPolicy(
+          job,
+          [
+            {
+              code: "audio_processing_failed",
+              message: `Audio mix failed; output would be video-only: ${audioResult.audioError}`,
+              details: {
+                mediaType: "audio",
+                audioFailures: audioFailureDiagnostics(audioFailures),
+                failureReasons: [...new Set(audioFailures.map((failure) => failure.reason))],
+                failureStages: [...new Set(audioFailures.map((failure) => failure.stage))],
+                failureOwner,
+                retryable,
+              },
             },
-          },
-        ],
-        log,
-      );
-    }
+          ],
+          log,
+        );
+      }
+      return audioResult;
+    });
+    audioReady.catch((error: unknown) => {
+      if (executionSignal.aborted) return;
+      audioFailure = error;
+      audioFailed.abort(error);
+    });
+    const mixedAudio = () => audioWait.wait(audioReady);
+    if (usableCpuCount() < MIN_CPUS_TO_CAPTURE_DURING_MIX) await mixedAudio();
 
     resetCaptureAttemptProgress(job);
 
@@ -5174,7 +5196,7 @@ async function executeRenderPipeline(input: {
           if (
             (!isVerifyError && !isDrawElementCaptureError(err) && !isDeStall) ||
             err instanceof RenderCancelledError ||
-            executionSignal?.aborted === true
+            executionSignal.aborted === true
           ) {
             throw err;
           }
@@ -5354,7 +5376,7 @@ async function executeRenderPipeline(input: {
           const isParallelStall = isParallelCaptureStallError(err);
           const isEncoderDeath = isRetryableEncoderDeath(err);
           const isCancellation =
-            err instanceof RenderCancelledError || executionSignal?.aborted === true;
+            err instanceof RenderCancelledError || executionSignal.aborted === true;
           if (
             !shouldRetryViaPinnedFallback({
               isVerifyError,
@@ -5543,7 +5565,7 @@ async function executeRenderPipeline(input: {
         }
         // ── Disk-based capture (original flow) ────────────────────────────
         resetCaptureAttemptProgress(job);
-        const encodeInput: EncodeStageInput = {
+        const encodeInput: VideoEncodeInput = {
           job,
           log,
           outputPath: stagedOutputPath,
@@ -5553,8 +5575,6 @@ async function executeRenderPipeline(input: {
           height,
           needsAlpha,
           captureImageFormat: captureOptions.format ?? "jpeg",
-          hasAudio,
-          audioOutputPath,
           isPngSequence,
           isGif,
           preset,
@@ -5575,7 +5595,10 @@ async function executeRenderPipeline(input: {
           !cfg.useDrawElement &&
           workerSizing !== undefined &&
           canEncodeWhileCapturing(encodeInput, capturePlan.workerCount, workerSizing.cpuCount)
-            ? encodeWhileCapturing(encodeInput, totalFrames)
+            ? encodeWhileCapturing(encodeInput, totalFrames, {
+                workerCount: capturePlan.workerCount,
+                cpuCount: workerSizing.cpuCount,
+              })
             : null;
         const captureFrameStart = Date.now();
         const invokeDiskCapture = (diskPlan: SdrDiskCapturePlan) =>
@@ -5619,7 +5642,7 @@ async function executeRenderPipeline(input: {
           if (
             (!isDrawElementVerificationError(err) && !isDrawElementCaptureError(err)) ||
             err instanceof RenderCancelledError ||
-            executionSignal?.aborted === true
+            executionSignal.aborted === true
           ) {
             throw err;
           }
@@ -5692,6 +5715,7 @@ async function executeRenderPipeline(input: {
         perfStages.captureFrameMs = captureFrameMs;
         perfStages.captureSetupMs = Math.max(0, perfStages.captureMs - captureFrameMs);
 
+        const { hasAudio, audioOutputPath } = await mixedAudio();
         const encodeRes = await observeRenderStage(
           observability,
           "encode",
@@ -5701,7 +5725,10 @@ async function executeRenderPipeline(input: {
             isGif,
             chunkedEncode: enableChunkedEncode,
           }),
-          () => (overlap ? overlap.finish() : runEncodeStage(encodeInput)),
+          () =>
+            overlap
+              ? overlap.finish()
+              : runEncodeStage({ ...encodeInput, hasAudio, audioOutputPath }),
         );
         perfStages.encodeMs = encodeRes.encodeMs;
       }
@@ -5742,6 +5769,7 @@ async function executeRenderPipeline(input: {
     // directory deliverable, and gif is written directly to outputPath by the
     // two-pass palette encoder. hls is a directory deliverable but still runs
     // this stage — the HLS packaging IS its assemble step.
+    const { audioOutputPath, deliverySourcePath, hasAudio } = await mixedAudio();
     if (!isPngSequence && !isGif) {
       const assembleRes = await observeRenderStage(
         observability,
@@ -5891,8 +5919,15 @@ async function executeRenderPipeline(input: {
       framesRendered: job.framesRendered ?? 0,
       error: caught,
     });
-    const error = surfaceScriptFailure(tooSlowError ?? pageNeverReady ?? caught, job);
-    if (!tooSlowError && (error instanceof RenderCancelledError || executionSignal?.aborted)) {
+    const error = surfaceScriptFailure(
+      tooSlowError ?? audioFailure ?? pageNeverReady ?? caught,
+      job,
+    );
+    if (
+      !tooSlowError &&
+      !audioFailure &&
+      (error instanceof RenderCancelledError || executionSignal.aborted)
+    ) {
       job.error = error instanceof Error ? error.message : "render_cancelled";
       updateJobStatus(job, "cancelled", "Render cancelled", job.progress, onProgress);
       await eventPublisher.flush();
@@ -5982,7 +6017,7 @@ async function executeRenderPipeline(input: {
       );
     }
 
-    const failedStage = job.currentStage || "pipeline";
+    const failedStage = audioFailure === undefined ? job.currentStage || "pipeline" : AUDIO_STAGE;
     const observabilitySummary = observability.summary({
       lastBrowserConsole,
       capture: withCapturedBeyondViewport(captureObservability, dedupPerfs),

@@ -112,6 +112,15 @@ describe("startLocalPageServer", () => {
     expect(await (await fetch(`${server.origin}/logo.png`)).text()).toBe("png-bytes");
   });
 
+  // fails without the fix: a capture page could make a file of the folder its origin's service worker.
+  it("refuses a file asked for as a service worker's script, and serves it otherwise", async () => {
+    const get = (headers: Record<string, string>) =>
+      fetch(`${server.origin}/logo.png`, { headers });
+    expect((await get({ "service-worker": "script" })).status).toBe(403);
+    expect((await get({ "sec-fetch-dest": "serviceworker" })).status).toBe(403);
+    expect((await get({ "sec-fetch-dest": "image" })).status).toBe(200);
+  });
+
   it.each([
     "/%2e%2e/secret.txt",
     "/..%2fsecret.txt",

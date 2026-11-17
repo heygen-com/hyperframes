@@ -1,12 +1,18 @@
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetChromeSandboxFallbackForTests,
   chromeSandboxEnabled,
   launchWithChromeSandboxFallback,
   NO_SANDBOX_ARGS,
+  startsWithChromeSandboxFallback,
   type ChromeSandboxHost,
-} from "./chromeSandbox.js";
+} from "@hyperframes/core/chrome-sandbox";
+import { shellStarts } from "./chromeHostCeiling.js";
 import { buildChromeArgs } from "./browserManager.js";
+import { buildHdrChromeArgs } from "./hdrCapture.js";
 
 function host(overrides: Partial<ChromeSandboxHost> = {}): ChromeSandboxHost {
   return {
@@ -67,6 +73,60 @@ describe("chromeSandboxEnabled", () => {
       chromeSandboxEnabled(host({ platform: "darwin", env: { HYPERFRAMES_CHROME_SANDBOX: "0" } })),
     ).toBe(false);
     expect(chromeSandboxEnabled(host({ env: { HYPERFRAMES_CHROME_SANDBOX: "yes" } }))).toBe(true);
+  });
+});
+
+describe("probe and HDR launches follow the same sandbox rule as the render", () => {
+  it("HDR capture keeps the sandbox where the host allows it, and drops all three flags together", () => {
+    const sandboxed = buildHdrChromeArgs(640, 360, true);
+    for (const flag of NO_SANDBOX_ARGS) expect(sandboxed).not.toContain(flag);
+    expect(buildHdrChromeArgs(640, 360, false)).toEqual(expect.arrayContaining(NO_SANDBOX_ARGS));
+  });
+
+  it("HDR capture keeps the sandbox when HYPERFRAMES_CHROME_SANDBOX=1 requires it", () => {
+    vi.stubEnv("HYPERFRAMES_CHROME_SANDBOX", "1");
+    try {
+      for (const flag of NO_SANDBOX_ARGS) expect(buildHdrChromeArgs(640, 360)).not.toContain(flag);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "the host-ceiling probe starts a shell with its sandbox where the host allows it",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-shell-starts-"));
+      try {
+        const shell = join(dir, "chrome");
+        const seen = join(dir, "args");
+        writeFileSync(shell, `#!/bin/sh\nprintf '%s\\n' "$@" >> "${seen}"\n`);
+        chmodSync(shell, 0o755);
+        expect(shellStarts(shell, 5_000, true)).toBe(true);
+        const args = readFileSync(seen, "utf8").trim().split("\n");
+        expect(args).toContain("--dump-dom");
+        for (const flag of NO_SANDBOX_ARGS) expect(args).not.toContain(flag);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe("startsWithChromeSandboxFallback", () => {
+  const refusesSandbox = (args: string[]) => args.includes("--no-sandbox");
+
+  it("tries a Linux start once more without the sandbox when the sandboxed one fails", () => {
+    const starts = vi.fn(refusesSandbox);
+    expect(startsWithChromeSandboxFallback(["--dump-dom"], starts, "linux", {})).toBe(true);
+    expect(starts.mock.calls.map(([args]) => args.includes("--no-sandbox"))).toEqual([false, true]);
+  });
+
+  it("never drops the sandbox when it is required, or off Linux", () => {
+    const starts = vi.fn(refusesSandbox);
+    const env = { HYPERFRAMES_CHROME_SANDBOX: "1" };
+    expect(startsWithChromeSandboxFallback(["--dump-dom"], starts, "linux", env)).toBe(false);
+    expect(startsWithChromeSandboxFallback(["--dump-dom"], starts, "darwin", {})).toBe(false);
+    expect(starts).toHaveBeenCalledTimes(2);
   });
 });
 

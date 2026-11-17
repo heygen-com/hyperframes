@@ -389,6 +389,66 @@ describe("playlistLeavesItsFolder", () => {
   });
 });
 
+describe("playlistLeavesItsFolder reads entries and folders as ffmpeg resolves them", () => {
+  const hls = (...lines: string[]) => ["#EXTM3U", ...lines, "#EXT-X-ENDLIST"].join("\n");
+  const listIn = (folder: string, contents: string | Buffer, name = "list.m3u8"): string => {
+    const dir = join(mkdtempSync(join(tmpdir(), "hf-playlist-folder-")), folder);
+    mkdirSync(dir);
+    writeFileSync(join(dir, name), contents);
+    return join(dir, name);
+  };
+
+  it.each([
+    ["a drive-relative path", hls("C:Videos\\a.mp4")],
+    ["a drive-relative file name", hls("c:x.mp4")],
+    ["a colon after an underscore", hls("_:x.mp4")],
+    ["an encoded colon", hls("%63%3Ax.mp4")],
+    ["a colon in a map URI", hls('#EXT-X-MAP:URI="c:x.mp4"', "seg.ts")],
+    ["a colon in a concat entry", "ffconcat version 1.0\nfile c:x.mp4\n"],
+  ])("refuses %s", async (_name, contents) => {
+    const file = writeFixture("clip.m3u8", contents);
+    expect(await playlistLeavesItsFolder(file)).toBe(true);
+    expect(await isNotMediaPayload(file)).toBe(true);
+  });
+
+  it.each(process.platform === "win32" ? ["#"] : ["#", "?"])(
+    "refuses a list naming a file from a folder with %s in its name",
+    async (mark) => {
+      const file = listIn(`sub${mark}x`, hls("seg.ts"));
+      expect(await playlistLeavesItsFolder(file)).toBe(true);
+      expect(await isNotMediaPayload(file)).toBe(true);
+    },
+  );
+
+  it("refuses a nested list read from a folder with # in its name, and a list placed in one", async () => {
+    const top = writeTree({
+      "top.m3u8": hls("sub#x/inner.m3u8"),
+      "sub#x/inner.m3u8": hls("seg.ts"),
+    });
+    expect(await playlistLeavesItsFolder(top)).toBe(true);
+    const placedAt = join(tmpdir(), "sub#x", "list.m3u8");
+    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", hls("seg.ts")), placedAt)).toBe(
+      true,
+    );
+  });
+
+  it("keeps entries beside the list, https entries, and a media file in a folder with # in its name", async () => {
+    const beside = hls("seg.ts", "sub/seg.ts", "seg#1.ts", "https://cdn.example.com/seg.ts");
+    expect(await playlistLeavesItsFolder(writeFixture("clip.m3u8", beside))).toBe(false);
+    const httpsOnly = listIn("sub#x", hls("https://cdn.example.com/a.ts"));
+    expect(await playlistLeavesItsFolder(httpsOnly)).toBe(false);
+    const mp4 = Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, ...Array(24).fill(0)]);
+    expect(await isNotMediaPayload(listIn("sub#x", mp4, "clip.mp4"))).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "keeps a list in a folder with : in its name",
+    async () => {
+      expect(await playlistLeavesItsFolder(listIn("c:d", hls("seg.ts")))).toBe(false);
+    },
+  );
+});
+
 describe("playlistLeavesItsFolder reads a list as ffprobe does", () => {
   const FFPROBE_8 = /^ffprobe version n?8\./.test(
     spawnSync(getFfprobeBinary(), ["-version"], { encoding: "utf-8" }).stdout ?? "",

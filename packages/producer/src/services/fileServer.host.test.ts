@@ -67,6 +67,15 @@ describe("createFileServer Host and framing", () => {
     expect(asset.body).toBe("body{}");
   });
 
+  // fails without the fix: a pooled render browser kept a worker one render registered for later renders.
+  it("refuses a project file asked for as a service worker's script, and serves it as a script", async () => {
+    const { url } = await serve();
+    const get = (headers: Record<string, string>) => fetch(`${url}/style.css`, { headers });
+    expect((await get({ "service-worker": "script" })).status).toBe(403);
+    expect((await get({ "sec-fetch-dest": "serviceworker" })).status).toBe(403);
+    expect((await get({ "sec-fetch-dest": "style" })).status).toBe(200);
+  });
+
   it("answers the URL it hands the capture browser", async () => {
     const { url } = await serve();
     const response = await fetch(`${url}/index.html`);

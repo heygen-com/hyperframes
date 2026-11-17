@@ -27,6 +27,7 @@ import {
   loadSharp,
   type OptionalPackageModules,
 } from "../utils/optionalPackages.js";
+import { noteProjectProviderKey, visionCredential } from "../utils/dotEnv.js";
 
 const DEFAULT_VISION_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -367,6 +368,9 @@ export async function captionImagesWithGemini(
     gemini: process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview",
   }[provider];
   const requestTimeoutMs = resolveVisionRequestTimeoutMs();
+  for (const name of visionCredential() ?? []) {
+    await noteProjectProviderKey(name, `images go to that key's ${providerName} account`);
+  }
 
   progress("design", `Captioning images with ${providerName} vision...`);
   try {

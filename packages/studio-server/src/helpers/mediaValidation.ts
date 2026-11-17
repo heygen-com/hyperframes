@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { FFPROBE_PATH_ENV, findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { decodableAudioStream, type FfprobeStreamCodec } from "@hyperframes/parsers/media-streams";
-import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
+import { mediaInputArgs } from "./mediaExtensions.js";
 
 const VIDEO_EXT = /\.(mp4|webm|mov|mkv|avi|m4v|mxf|mts|m2ts|ts)$/i;
 const AUDIO_EXT = /\.(mp3|wav|ogg|m4a|aac|flac)$/i;
@@ -47,7 +47,7 @@ export function validateUploadedMedia(
       "stream=codec_type,codec_name",
       "-of",
       "json",
-      ...MEDIA_INPUT_ARGS,
+      ...mediaInputArgs(filePath),
       "--",
       filePath,
     ],

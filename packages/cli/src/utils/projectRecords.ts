@@ -49,7 +49,10 @@ function plainFileAt(fd: number, path: string) {
 /** The last `maxBytes` of a plain file, and whether that is all of it; null for a link, a device, or a missing file.
  * The file is opened first and read only when `lstat` then finds the same plain file at the path, so nothing
  * path-based follows the check. */
-function readPlainTail(path: string, maxBytes: number): { text: string; whole: boolean } | null {
+export function readPlainTail(
+  path: string,
+  maxBytes: number,
+): { text: string; whole: boolean } | null {
   let fd: number;
   try {
     fd = openSync(path, constants.O_RDONLY | NO_FOLLOW | NON_BLOCK);

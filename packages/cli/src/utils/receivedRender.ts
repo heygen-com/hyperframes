@@ -1,154 +1,27 @@
-import {
-  closeSync,
-  openSync,
-  readdirSync,
-  readSync,
-  realpathSync,
-  statSync,
-  type Dirent,
-} from "node:fs";
-import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { parseHTML } from "linkedom";
-import { isNonRelativeUrl, isPathInside, terminalText } from "@hyperframes/core";
-import {
-  namesAnotherNetworkRoot,
-  resolveCompositionSrc,
-} from "@hyperframes/parsers/asset-resolution";
-import { linksOutside, receivedRecordStatus } from "./privateProjectFile.js";
+import { closeSync, openSync, readdirSync, readSync, statSync, type Dirent } from "node:fs";
+import { extname, join, relative, resolve } from "node:path";
+import { isPathInside, terminalText } from "@hyperframes/core";
+import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
+import { linksOutside, mayHoldLoadedFiles, receivedRecordStatus } from "./privateProjectFile.js";
+import { contentHash } from "./receivedContent.js";
 import { walkBudget } from "./walkBudget.js";
+import {
+  htmlReferences,
+  cssReferences,
+  isFile,
+  isPageOrStylesheet,
+  readHead,
+  realOrNull,
+  referencePath,
+  type Reference,
+} from "./fileReferences.js";
 
-const REFERENCE_ATTRS = ["src", "href", "poster"];
-const MAX_SCANNED_BYTES = 2 * 1024 * 1024;
 const MAX_SCANNED_FILES = 500;
-
-interface Reference {
-  raw: string;
-  composition: boolean;
-  follow: boolean;
-}
-
-function unquote(value: string): string {
-  const first = value[0];
-  return value.length >= 2 && (first === '"' || first === "'") && value.at(-1) === first
-    ? value.slice(1, -1).trim()
-    : value;
-}
-
-function cssReferences(css: string): Reference[] {
-  const refs: Reference[] = [];
-  for (let at = css.indexOf("url("); at !== -1; ) {
-    const close = css.indexOf(")", at + 4);
-    if (close === -1) break;
-    const raw = unquote(css.slice(at + 4, close).trim());
-    if (raw) refs.push({ raw, composition: false, follow: true });
-    at = css.indexOf("url(", close + 1);
-  }
-  return refs;
-}
-
-function elementReferences(el: Element): Reference[] {
-  const follow = el.localName === "link";
-  const refs: Reference[] = REFERENCE_ATTRS.flatMap((attr) => {
-    const raw = el.getAttribute(attr)?.trim();
-    return raw ? [{ raw, composition: false, follow }] : [];
-  });
-  const composition = el.getAttribute("data-composition-src")?.trim();
-  if (composition) refs.push({ raw: composition, composition: true, follow: true });
-  return refs;
-}
-
-function htmlReferences(html: string): Reference[] {
-  const { document } = parseHTML(html);
-  const hosts = document.querySelectorAll("[src], [href], [poster], [data-composition-src]");
-  const refs = [...hosts].flatMap(elementReferences);
-  for (const style of document.querySelectorAll("style")) {
-    refs.push(...cssReferences(style.textContent ?? ""));
-  }
-  for (const el of document.querySelectorAll("[style]")) {
-    refs.push(...cssReferences(el.getAttribute("style") ?? ""));
-  }
-  for (const template of document.querySelectorAll("template")) {
-    refs.push(...htmlReferences(template.innerHTML));
-  }
-  return refs;
-}
-
-const WINDOWS_DEVICE_PREFIX = /^[\\/]{2}[?.][\\/]/;
-
-function withoutQuery(raw: string): string {
-  const device = WINDOWS_DEVICE_PREFIX.exec(raw)?.[0] ?? "";
-  return device + raw.slice(device.length).replace(/[?#].*$/, "");
-}
-
-function localPath(raw: string, fromDir: string): string | null {
-  if (raw.startsWith("file:")) {
-    try {
-      return fileURLToPath(raw);
-    } catch {
-      return null;
-    }
-  }
-  const path = withoutQuery(raw);
-  if (isAbsolute(path) && !path.startsWith("//")) return path;
-  if (path === "" || isNonRelativeUrl(path)) return null;
-  try {
-    return resolve(fromDir, decodeURIComponent(path));
-  } catch {
-    return resolve(fromDir, path);
-  }
-}
-
-function isFile(path: string): boolean {
-  try {
-    return statSync(path, { throwIfNoEntry: false })?.isFile() === true;
-  } catch {
-    return false;
-  }
-}
-
-function realOrNull(path: string): string | null {
-  try {
-    return realpathSync(path);
-  } catch {
-    return null;
-  }
-}
-
-function readHead(file: string): { text: string; whole: boolean } | null {
-  let fd: number | undefined;
-  try {
-    fd = openSync(file, "r");
-    const size = statSync(file).size;
-    const buffer = Buffer.alloc(Math.min(size, MAX_SCANNED_BYTES));
-    const read = readSync(fd, buffer, 0, buffer.length, 0);
-    return {
-      text: buffer.toString("utf-8", 0, read),
-      whole: size <= MAX_SCANNED_BYTES,
-    };
-  } catch {
-    return null;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
-}
-
-const isPageOrStylesheet = (path: string) => /\.(?:html?|css)$/i.test(path);
 
 interface OutsideReferences {
   assets: Set<string>;
   compositions: Set<string>;
   complete: boolean;
-}
-
-// A composition resolves as the render compiler resolves it; one that leaves the project resolves as written.
-function referencePath(ref: Reference, file: string, projectDir: string): string | null {
-  if (!ref.composition) return localPath(ref.raw, dirname(file));
-  try {
-    return resolveCompositionSrc(projectDir, ref.raw) ?? localPath(ref.raw, projectDir);
-  } catch {
-    return null;
-  }
 }
 
 function referencesIn(found: OutsideReferences, file: string): Reference[] {
@@ -285,7 +158,7 @@ function firstBytes(path: string): Buffer | null {
   }
 }
 
-function isMediaFontOrImage(path: string): boolean {
+export function isMediaFontOrImage(path: string): boolean {
   const matches = MEDIA_SIGNATURES[extname(path).toLowerCase()];
   const bytes = matches && isFile(path) ? firstBytes(path) : null;
   return bytes !== null && matches !== undefined && matches(bytes);
@@ -327,7 +200,8 @@ function listDir(dir: string): Dirent[] | null {
   }
 }
 
-const isMediaName = (path: string) => MEDIA_SIGNATURES[extname(path).toLowerCase()] !== undefined;
+export const isMediaName = (path: string): boolean =>
+  MEDIA_SIGNATURES[extname(path).toLowerCase()] !== undefined;
 
 // A linked folder is checked when it leads to a folder inside the project, which the walk lists under its own name.
 function linkedFolderChecked(path: string, realProjectDir: string): boolean {
@@ -392,9 +266,60 @@ interface Refusal {
 
 const READS_NOTHING_OUTSIDE = "so the render reads nothing outside the project.";
 
+function holderIn(
+  dir: string,
+  listing: Dirent[],
+  walk: { projectDir: string; known: Set<string>; pending: string[] },
+) {
+  for (const entry of listing) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (mayHoldLoadedFiles(walk.projectDir, path)) walk.pending.push(path);
+    } else if (entry.isFile() && !isMediaName(path) && walk.known.has(contentHash(path) ?? "")) {
+      return path;
+    }
+  }
+  return undefined;
+}
+
+function receivedContentHolder(projectDir: string, hashes: string[]): string | null | undefined {
+  if (hashes.length === 0) return undefined;
+  const withinBudget = walkBudget();
+  const walk = { projectDir, known: new Set(hashes), pending: [projectDir] };
+  for (let dir = walk.pending.pop(); dir !== undefined; dir = walk.pending.pop()) {
+    const listing = listDir(dir);
+    if (listing === null || !withinBudget(listing.length)) return null;
+    const holder = holderIn(dir, listing, walk);
+    if (holder !== undefined) return holder;
+  }
+  return undefined;
+}
+
+function receivedContentRefusal(projectDir: string, hashes: string[]): Refusal | null {
+  const holder = receivedContentHolder(projectDir, hashes);
+  if (holder === undefined) return null;
+  if (holder === null) {
+    const reason = `Could not check every project file for content that came from someone else, ${READS_NOTHING_OUTSIDE}`;
+    return { reason, alwaysWarn: true };
+  }
+  const shown = relative(realOrNull(projectDir) ?? projectDir, holder);
+  const reason = `${shown} holds the content of a file that came from someone else, ${READS_NOTHING_OUTSIDE}`;
+  return { reason, alwaysWarn: false };
+}
+
+function nonMediaRefusal(listed: string[], shown: (path: string) => string): Refusal | null {
+  const nonMedia = listed.find((path) => !isMediaFontOrImage(path));
+  if (nonMedia === undefined) return null;
+  const what = isFile(nonMedia)
+    ? "is not a media, font or image file"
+    : "is gone but still listed; take its line out of the received-files record that lists it to clear this";
+  const reason = `${shown(nonMedia)} came from someone else and ${what}, ${READS_NOTHING_OUTSIDE}`;
+  return { reason, alwaysWarn: false };
+}
+
 function receivedRefusal(
   projectDir: string,
-  record: { path: string; listed: string[] | null } | "unchecked",
+  record: { path: string; listed: string[] | null; hashes: string[] } | "unchecked",
 ): Refusal | null {
   const shown = (path: string) => relative(realOrNull(projectDir) ?? projectDir, path);
   if (record === "unchecked") {
@@ -404,12 +329,10 @@ function receivedRefusal(
   if (record.listed === null) {
     return { reason: `Could not read ${record.path}, ${READS_NOTHING_OUTSIDE}`, alwaysWarn: true };
   }
-  if (record.listed.length === 0) return null;
-  const nonMedia = record.listed.find((path) => !isMediaFontOrImage(path));
-  if (nonMedia !== undefined) {
-    const reason = `${shown(nonMedia)} came from someone else and is not a media, font or image file, ${READS_NOTHING_OUTSIDE}`;
-    return { reason, alwaysWarn: false };
-  }
+  const listedRefusal = nonMediaRefusal(record.listed, shown);
+  if (listedRefusal !== null) return listedRefusal;
+  const contentRefusal = receivedContentRefusal(projectDir, record.hashes);
+  if (contentRefusal !== null || record.listed.length === 0) return contentRefusal;
   const received = receivedIdentities(record.listed);
   const aliases = received === null ? null : nonMediaAliases(projectDir, received);
   if (aliases === null) {

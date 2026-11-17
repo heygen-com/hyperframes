@@ -1,5 +1,7 @@
 # Contributing a Block or Component to the Registry
 
+<!-- skill-scripts: relative-ok, runs inside a HyperFrames checkout -->
+
 Guide the user from idea to merged PR for a new registry block or component.
 
 ## Workflow

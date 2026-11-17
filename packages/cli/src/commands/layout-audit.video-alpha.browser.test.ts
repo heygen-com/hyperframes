@@ -430,17 +430,32 @@ describe("layout-audit.browser text behind a <video>", () => {
     expect(occlusionOf(runAudit(), "ship")).toBeUndefined();
   });
 
-  it("reads each probed video's frame once per sample and leaves videos under no text alone", () => {
+  it("reads each probed video's frame once per sample, above the text or beneath it", () => {
     const covering = installVideoScene({ text: SHIP, alphaAt: subjectLeftOf(860) });
     runAudit();
     expect(covering.getImageData).toHaveBeenCalledTimes(1);
     runAudit();
     expect(covering.getImageData).toHaveBeenCalledTimes(2);
 
+    // A video beneath text is read too: text_over_face looks through a cutout to the take under it.
     vi.restoreAllMocks();
     const beneath = installVideoScene({ text: SHIP, video: { overlapsText: false } });
     runAudit();
-    expect(beneath.getImageData).not.toHaveBeenCalled();
+    expect(beneath.getImageData).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a video no text touches alone", () => {
+    const apart = installVideoScene({
+      text: SHIP,
+      sizedText: true,
+      video: { overlapsText: false },
+    });
+    const video = document.getElementById("clip") as HTMLVideoElement;
+    vi.spyOn(video, "getBoundingClientRect").mockReturnValue(
+      domRect({ left: 0, top: 0, width: 400, height: 300 }),
+    );
+    runAudit();
+    expect(apart.getImageData).not.toHaveBeenCalled();
   });
 
   it.each([

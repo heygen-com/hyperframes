@@ -53,6 +53,9 @@ const mocks = vi.hoisted(() => {
 });
 const FakeProxyTranscodeError = mocks.ProxyTranscodeError;
 
+/** What the page itself sends for its media; a proxy copy needs a same-site signal. */
+const OWN_PAGE = { headers: { "Sec-Fetch-Site": "same-origin" } };
+
 const mediaMocks = vi.hoisted(() => ({
   probeAssetCodec: vi.fn(async () => ({
     codecName: "hevc",
@@ -135,7 +138,7 @@ it("serves direct VP8 proxy requests for alpha sources", async () => {
   mocks.resolveProxy.mockResolvedValueOnce(proxyPath);
   const app = await buildApp(project, true);
 
-  const res = await app.request("/composition/clip.mov?hf-proxy=auto");
+  const res = await app.request("/composition/clip.mov?hf-proxy=auto", OWN_PAGE);
 
   expect(res.status).toBe(200);
   expect(res.headers.get("content-type")).toBe("video/webm");
@@ -179,17 +182,21 @@ describe("registerCompositionRoute", () => {
 
     const etags: Record<string, string> = {};
     for (const path of ["/composition/index.html", "/composition/clip.mp4"]) {
-      const first = await app.request(path);
+      const own = { "Sec-Fetch-Site": "same-origin" };
+      const first = await app.request(path, { headers: own });
       etags[path] = first.headers.get("ETag") ?? "";
       expect(etags[path]).not.toBe("");
       expect(first.headers.get("Cache-Control")).toBe("no-cache");
-      const again = await app.request(path, { headers: { "If-None-Match": etags[path] } });
+      const again = await app.request(path, { headers: { ...own, "If-None-Match": etags[path] } });
       expect(again.status).toBe(304);
     }
 
     writeFileSync(join(project.dir, "clip.mp4"), Buffer.from("0123456789abc", "utf-8"));
     const edited = await app.request("/composition/clip.mp4", {
-      headers: { "If-None-Match": etags["/composition/clip.mp4"] ?? "" },
+      headers: {
+        "Sec-Fetch-Site": "same-origin",
+        "If-None-Match": etags["/composition/clip.mp4"] ?? "",
+      },
     });
     expect(edited.status).toBe(200);
   });
@@ -292,7 +299,7 @@ describe("registerCompositionRoute", () => {
     mocks.resolveProxy.mockResolvedValue(proxyPath);
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/clip.mp4?hf-proxy=h264");
+    const res = await app.request("/composition/clip.mp4?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("transcoded-h264-bytes");
@@ -311,7 +318,7 @@ describe("registerCompositionRoute", () => {
     mocks.resolveProxy.mockResolvedValue(proxyPath);
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/clip.mov?hf-proxy=h264");
+    const res = await app.request("/composition/clip.mov?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("video/mp4");
@@ -328,7 +335,7 @@ describe("registerCompositionRoute", () => {
       mocks.resolveProxy.mockResolvedValue(proxyPath);
       const app = await buildApp(project, true);
 
-      const res = await app.request(`/composition/clip.${extension}?hf-proxy=h264`);
+      const res = await app.request(`/composition/clip.${extension}?hf-proxy=h264`, OWN_PAGE);
 
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("transcoded-h264-bytes");
@@ -343,7 +350,7 @@ describe("registerCompositionRoute", () => {
     );
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/clip.mp4?hf-proxy=h264");
+    const res = await app.request("/composition/clip.mp4?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(502);
   });
@@ -354,7 +361,7 @@ describe("registerCompositionRoute", () => {
     mocks.resolveProxy.mockRejectedValue(new mocks.ProxyCapacityError());
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/clip.mp4?hf-proxy=h264");
+    const res = await app.request("/composition/clip.mp4?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(503);
     expect(res.headers.get("retry-after")).toBe("1");
@@ -365,10 +372,57 @@ describe("registerCompositionRoute", () => {
     writeFileSync(join(project.dir, "image.png"), "not-a-video");
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/image.png?hf-proxy=h264");
+    const res = await app.request("/composition/image.png?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(404);
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
+  });
+
+  // fails without the fix: another site's page could make this machine transcode the asset,
+  // and a request carrying neither fetch metadata nor a Referer counted as this site's.
+  it.each([
+    ["cross-site", { "Sec-Fetch-Site": "cross-site" }],
+    ["same-site", { "Sec-Fetch-Site": "same-site" }],
+    ["no fetch metadata and no Referer", {}],
+  ])(
+    "refuses ?hf-proxy for a request from another site (%s) without starting a transcode",
+    async (_label, headers: Record<string, string>) => {
+      const project = tmpProject();
+      writeFileSync(join(project.dir, "clip.mp4"), "original-hevc-bytes");
+      const app = await buildApp(project, true);
+
+      const res = await app.request("/composition/clip.mp4?hf-proxy=h264", { headers });
+
+      expect(res.status).toBe(403);
+      expect(mocks.resolveProxy).not.toHaveBeenCalled();
+      expect(mediaMocks.probeAssetCodec).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still serves ?hf-proxy to the play page itself and plain assets to another site", async () => {
+    const project = tmpProject();
+    writeFileSync(join(project.dir, "clip.mp4"), "original-hevc-bytes");
+    const proxyPath = join(project.dir, "proxy.mp4");
+    writeFileSync(proxyPath, "transcoded-h264-bytes");
+    mocks.resolveProxy.mockResolvedValue(proxyPath);
+    const app = await buildApp(project, true);
+
+    const own = await app.request("/composition/clip.mp4?hf-proxy=h264", {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+    });
+    expect(own.status).toBe(200);
+    expect(await own.text()).toBe("transcoded-h264-bytes");
+
+    const referred = await app.request("http://localhost/composition/clip.mp4?hf-proxy=h264", {
+      headers: { Referer: "http://localhost/" },
+    });
+    expect(referred.status).toBe(200);
+
+    const plain = await app.request("/composition/clip.mp4", {
+      headers: { "Sec-Fetch-Site": "cross-site" },
+    });
+    expect(plain.status).toBe(200);
+    expect(await plain.text()).toBe("original-hevc-bytes");
   });
 
   it("serves the runtime script ahead of every author script", async () => {
@@ -428,7 +482,7 @@ describe("registerCompositionRoute", () => {
     expect(await htmlRes.text()).not.toContain("__HF_MEDIA_CODEC_MAP__");
     expect(mocks.scanProjectMediaCodecMap).not.toHaveBeenCalled();
 
-    const proxyRes = await app.request("/composition/clip.mp4?hf-proxy=h264");
+    const proxyRes = await app.request("/composition/clip.mp4?hf-proxy=h264", OWN_PAGE);
     expect(proxyRes.status).toBe(404);
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
@@ -487,5 +541,23 @@ describe("a composition document another site loads", () => {
       headers: { Referer: `${lan}/` },
     });
     expect(await own.text()).not.toContain(MARK);
+  });
+
+  // fails without the fix: a loopback load with no fetch metadata counted as the play page's own.
+  it("is marked on loopback with no fetch metadata unless the play page sent it", async () => {
+    const app = await setup();
+    const local = "http://localhost:3003";
+    const bare = await app.request(`${local}/composition/index.html`);
+    expect(await bare.text()).toContain(MARK);
+    expect(bare.headers.get("Content-Security-Policy")).toBe(SANDBOX);
+    const foreign = await app.request(`${local}/composition/index.html`, {
+      headers: { Referer: "http://elsewhere.example/page" },
+    });
+    expect(await foreign.text()).toContain(MARK);
+    const own = await app.request(`${local}/composition/index.html`, {
+      headers: { Referer: `${local}/` },
+    });
+    expect(await own.text()).not.toContain(MARK);
+    for (const res of [bare, own]) expect(res.headers.get("Vary")).toBe("Sec-Fetch-Site, Referer");
   });
 });
