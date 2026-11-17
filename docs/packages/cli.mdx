@@ -2907,6 +2907,9 @@ imports projects for you can tell the CLI more by pointing
   `"<dev>:<ino>:<birth time in ns>"` of the project folder. A copy with
   `"files": null` or `"doubted": true`, or one that is a link or cannot be read,
   counts every file as received.
+- A file the copy lists that is no longer at its path is not added back. A
+  received file that is renamed after its record entry is removed is judged by
+  the project's record alone until the app reads the record again.
 
 A file from outside the project folder that would be copied (each file a
 composition points at, and each project file that is a link to a file outside
