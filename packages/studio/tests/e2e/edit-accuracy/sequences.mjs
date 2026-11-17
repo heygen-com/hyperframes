@@ -124,9 +124,11 @@ export function watchVersions(dir, files) {
 /** Studio's own history replies in arrival order: each claim's group, each undo or redo's entry and what it reverts. */
 function watchHistory(page) {
   const replies = [];
+  const at = { list: null };
   const read = (response) => {
     const kind = /\/history\/(claim|step|undo)$/.exec(new URL(response.url()).pathname)?.[1];
     if (!kind || response.request().method() !== "POST") return;
+    at.list ??= response.url().replace(/\/(claim|step|undo)$/, "");
     const status = response.status();
     replies.push(
       response
@@ -141,7 +143,20 @@ function watchHistory(page) {
     );
   };
   page.on("response", read);
-  return { replies, stop: () => page.off("response", read) };
+  return { replies, at, stop: () => page.off("response", read) };
+}
+
+/** Whether every group the gestures took is already an entry in the history list, polled for `ms`. */
+async function groupsListed(listUrl, ids, ms = 3000) {
+  if (!listUrl || !ids.length) return null;
+  for (const deadline = Date.now() + ms; ; await sleep(100)) {
+    const view = await fetch(listUrl)
+      .then((r) => r.json())
+      .catch(() => null);
+    const listed = new Set((view?.entries ?? []).map((entry) => entry.id));
+    if (ids.every((id) => listed.has(id))) return true;
+    if (Date.now() > deadline) return false;
+  }
 }
 
 /** The groups left to undo, oldest first: a claim opens one unless it names the newest (one gesture writing
@@ -523,6 +538,8 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
   const groups = historyGroups(await Promise.all(history.replies));
   const ids = groups.stack.toReversed();
   const groupsOk = !groups.faults.length && groups.stack.length === state.depth;
+  // Each gesture is its own entry in the list once its saves are in, before anything else happens.
+  const listed = await groupsListed(history.at.list, groups.stack);
   // A settled case knows each step's bytes (its saves ended before the next step); a fast one only
   // where all are undone and all redone, since one gesture may write more than once.
   const stack = [];
@@ -619,6 +636,7 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
     reloaded: { ...reloaded, time: state.time },
     undo: {
       groups: groupsOk,
+      listed,
       bytes: undo.ok && sameFiles(committedFiles, expected ?? {}),
       box: quadDistance(undone.visible, pre.visible),
       redoBytes: redo.ok,

@@ -9,7 +9,7 @@ import {
   NO_SANDBOX_ARGS,
   startsWithChromeSandboxFallback,
   type ChromeSandboxHost,
-} from "./chromeSandbox.js";
+} from "@hyperframes/core/chrome-sandbox";
 import { shellStarts } from "./chromeHostCeiling.js";
 import { buildChromeArgs } from "./browserManager.js";
 import { buildHdrChromeArgs } from "./hdrCapture.js";

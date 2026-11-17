@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, truncateSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,7 +29,7 @@ describe("listSiteFiles / hashProjectDir", () => {
     expect(hashProjectDir(link)).toBe(hashProjectDir(real));
   });
 
-  it("lists symlinked files and folders, and hashes their targets' bytes", () => {
+  it("lists symlinked files and folders when asked to include them, and hashes their targets' bytes", () => {
     const dir = project();
     const outside = tempDir();
     mkdirSync(join(outside, "media"));
@@ -37,11 +37,38 @@ describe("listSiteFiles / hashProjectDir", () => {
     writeFileSync(join(outside, "media", "clip.txt"), "v1");
     symlinkSync(join(outside, "shared.css"), join(dir, "shared.css"));
     symlinkSync(join(outside, "media"), join(dir, "media"));
-    expect(listSiteFiles(dir)).toEqual(["index.html", "media/clip.txt", "shared.css"]);
+    const list = () => listSiteFiles(dir, undefined, "include");
+    expect(list()).toEqual(["index.html", "media/clip.txt", "shared.css"]);
 
-    const before = hashProjectDir(dir);
+    const before = hashProjectDir(dir, list());
     writeFileSync(join(outside, "media", "clip.txt"), "v2");
-    expect(hashProjectDir(dir)).not.toBe(before);
+    expect(hashProjectDir(dir, list())).not.toBe(before);
+  });
+
+  // fails without the fix: a bare listSiteFiles followed links out of the project.
+  it("leaves out files and folders linked in from outside the project unless asked to include them", () => {
+    const dir = project();
+    const outside = tempDir();
+    mkdirSync(join(outside, "media"));
+    writeFileSync(join(outside, "shared.css"), "a{}");
+    writeFileSync(join(outside, "media", "clip.txt"), "v1");
+    symlinkSync(join(outside, "shared.css"), join(dir, "shared.css"));
+    symlinkSync(join(outside, "media"), join(dir, "media"));
+    expect(listSiteFiles(dir)).toEqual(["index.html"]);
+    expect(hashProjectDir(dir)).toBe(hashProjectDir(project()));
+  });
+
+  it("treats a sibling folder whose name starts with the project's as outside it", () => {
+    const parent = tempDir();
+    const dir = join(parent, "proj");
+    mkdirSync(dir);
+    writeFileSync(join(dir, "index.html"), "<html>hi</html>");
+    mkdirSync(join(parent, "proj-other"));
+    writeFileSync(join(parent, "proj-other", "a.css"), "a{}");
+    symlinkSync(join(parent, "proj-other", "a.css"), join(dir, "a.css"));
+    const outside: string[] = [];
+    expect(listSiteFiles(dir, undefined, (path) => outside.push(path))).toEqual(["index.html"]);
+    expect(outside).toEqual(["a.css"]);
   });
 
   it("skips top-level skip-list folders", () => {
@@ -123,6 +150,60 @@ describe("listSiteFiles / hashProjectDir", () => {
     writeFileSync(join(home, ".ssh", "config"), "Host x");
     symlinkSync(join(home, ".ssh"), join(dir, "assets", "keys"));
     expect(listSiteFiles(dir)).toEqual(["index.html"]);
+  });
+
+  // fails without the fix: an upload shipped whatever a link inside the project pointed at.
+  it("leaves out an upload's files and folders linked in from outside the project, naming each", () => {
+    const dir = project();
+    const outside = tempDir();
+    mkdirSync(join(outside, "media"));
+    mkdirSync(join(dir, "assets"));
+    writeFileSync(join(outside, "shared.css"), "a{}");
+    writeFileSync(join(outside, "media", "clip.txt"), "v1");
+    writeFileSync(join(dir, "assets", "logo.png"), "png");
+    symlinkSync(join(outside, "shared.css"), join(dir, "shared.css"));
+    symlinkSync(join(outside, "media"), join(dir, "media"));
+    symlinkSync(join(dir, "assets", "logo.png"), join(dir, "logo.png"));
+    const notices: string[] = [];
+
+    expect(listSiteFilesForUpload(dir, (line) => notices.push(line))).toEqual([
+      "assets/logo.png",
+      "index.html",
+      "logo.png",
+    ]);
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toContain("outside the project: media, shared.css.");
+    expect(notices[0]).toContain("--include-outside-files");
+  });
+
+  // fails without the fix: an SDK caller with no onNotice lost these files without a word.
+  it("warns on the console about files an upload left out when the caller passes no onNotice", () => {
+    const dir = project();
+    const outside = tempDir();
+    writeFileSync(join(outside, "shared.css"), "a{}");
+    symlinkSync(join(outside, "shared.css"), join(dir, "shared.css"));
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(listSiteFilesForUpload(dir)).toEqual(["index.html"]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]?.[0])).toContain("outside the project: shared.css.");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("uploads files linked in from outside the project when the caller includes them", () => {
+    const dir = project();
+    const outside = tempDir();
+    writeFileSync(join(outside, "shared.css"), "a{}");
+    symlinkSync(join(outside, "shared.css"), join(dir, "shared.css"));
+    const notices: string[] = [];
+
+    expect(listSiteFilesForUpload(dir, (line) => notices.push(line), true)).toEqual([
+      "index.html",
+      "shared.css",
+    ]);
+    expect(notices).toEqual([]);
   });
 
   it("does not loop on a folder that links back to an ancestor", () => {

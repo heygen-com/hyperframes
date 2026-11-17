@@ -62,6 +62,7 @@ export interface RenderBatchArgs extends DeliveryFlagValues {
    * separate `sites create` step (CI / cross-machine).
    */
   siteId?: string;
+  includeOutsideFiles?: boolean;
   /** Composition config — fps/width/height/format required, rest optional. */
   fps: DistributedFps;
   width: number;
@@ -244,6 +245,7 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
       bucketName: stack.bucketName,
       expectedBucketOwner: parseStateMachineArn(stack.stateMachineArn).account,
       region: stack.region,
+      includeOutsideFiles: args.includeOutsideFiles,
       onNotice: (message) => console.error(c.dim(message)),
     });
     if (!args.json) {

@@ -12,6 +12,13 @@ export function servedToAnotherSite(doc: Document): boolean {
   return doc.querySelector(`meta[name="${PREVIEW_FOR_ANOTHER_SITE_META}"]`) !== null;
 }
 
+export function markedForStudio(doc: Document): boolean {
+  return (
+    doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null &&
+    !servedToAnotherSite(doc)
+  );
+}
+
 export function getLogicalOpacity(el: Element, computed: CSSStyleDeclaration): string {
   const overlay = el.previousElementSibling;
   if (
@@ -80,4 +87,16 @@ export function applyAuthoredTiming(
 ): void {
   for (const [name, value] of attrs) el.setAttribute(name, value);
   el.removeAttribute(RUNTIME_STAMPED_ATTR);
+}
+
+export function dropServiceWorkers(): Promise<void> {
+  const workers = typeof navigator === "undefined" ? undefined : navigator.serviceWorker;
+  if (!workers) return Promise.resolve();
+  return workers
+    .getRegistrations()
+    .then((all) => Promise.all(all.map((each) => each.unregister())))
+    .then(
+      () => undefined,
+      () => undefined,
+    );
 }

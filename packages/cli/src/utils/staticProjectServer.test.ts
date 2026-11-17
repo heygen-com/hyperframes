@@ -631,6 +631,43 @@ describe("serveStaticProjectHtml transparent media proxies", () => {
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });
 
+  // fails without the fix: another site's page could make this machine transcode the asset.
+  it.each(["cross-site", "same-site"])(
+    "refuses ?hf-proxy for a request from another site (%s) without starting a transcode",
+    async (site) => {
+      const projectDir = mk();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      server = await serveStaticProjectHtml(projectDir, "<html></html>");
+
+      const res = await fetch(`${server.url}clip.mp4?hf-proxy=h264`, {
+        headers: { "Sec-Fetch-Site": site },
+      });
+      expect(res.status).toBe(403);
+      expect(mocks.resolveProxy).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still serves ?hf-proxy to its own page and plain assets to another site", async () => {
+    const projectDir = mk();
+    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+    const proxyPath = join(projectDir, "proxy.mp4");
+    writeFileSync(proxyPath, "transcoded-h264-bytes");
+    mocks.resolveProxy.mockResolvedValue(proxyPath);
+    server = await serveStaticProjectHtml(projectDir, "<html></html>");
+
+    const own = await fetch(`${server.url}clip.mp4?hf-proxy=h264`, {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+    });
+    expect(own.status).toBe(200);
+    expect(await own.text()).toBe("transcoded-h264-bytes");
+
+    const plain = await fetch(`${server.url}clip.mp4`, {
+      headers: { "Sec-Fetch-Site": "cross-site" },
+    });
+    expect(plain.status).toBe(200);
+    expect(await plain.text()).toBe("original-hevc-bytes");
+  });
+
   it("stops the copies it started, pre-warmed or asked for, when it closes", async () => {
     mocks.scanProjectMediaCodecMap.mockResolvedValue({
       "/clip.mp4": { codecName: "hevc", browserHostile: true, representativeMime: null },

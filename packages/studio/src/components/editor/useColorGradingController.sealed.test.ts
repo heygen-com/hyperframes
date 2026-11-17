@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { normalizeHfColorGrading } from "@hyperframes/core/color-grading";
 // The frame's real runtime agent, serving the opaque frame from this document.
-import { installEditingAgent } from "../../../../core/src/runtime/editingAgent";
+import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
 import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
 import type { DomEditSelection } from "./domEditing";
@@ -36,7 +36,7 @@ function opaqueFrame(): HTMLIFrameElement {
         new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
       ),
   } as unknown as Window;
-  const agent = installEditingAgent(parent);
+  const agent = installMarkedEditingAgent(parent);
   frame.postMessage = (data: unknown) =>
     window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
   closers.push(() => agent.dispose());

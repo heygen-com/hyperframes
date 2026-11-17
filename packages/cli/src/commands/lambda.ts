@@ -136,6 +136,12 @@ export default defineCommand({
 
     // sites / render
     "site-id": { type: "string", description: "Explicit site id (overrides content hash)" },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Upload the files a link brings in from outside the project folder. Otherwise they are left out and named.",
+      default: false,
+    },
     width: {
       type: "string",
       description:
@@ -303,6 +309,7 @@ export default defineCommand({
           projectDir,
           stackName,
           siteId: args["site-id"] as string | undefined,
+          includeOutsideFiles: args["include-outside-files"] === true,
           json: Boolean(args.json),
         });
         return;
@@ -334,6 +341,7 @@ export default defineCommand({
           projectDir,
           stackName,
           siteId: args["site-id"] as string | undefined,
+          includeOutsideFiles: args["include-outside-files"] === true,
           fps: fpsRaw,
           width,
           height,
@@ -392,6 +400,7 @@ export default defineCommand({
           stackName,
           batch,
           siteId: args["site-id"] as string | undefined,
+          includeOutsideFiles: args["include-outside-files"] === true,
           fps: fpsRaw,
           width,
           height,

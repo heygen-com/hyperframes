@@ -621,6 +621,7 @@ export interface RenderPerfSummary {
     verifiedFrames?: number;
     reusedFrames: number;
     skipReason?: string;
+    ineligibleCause?: string;
     verificationOutcomes?: StaticVerificationOutcome[];
     plannedRuns?: number;
     completedRuns?: number;

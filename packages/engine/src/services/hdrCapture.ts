@@ -27,7 +27,7 @@ import {
   chromeSandboxArgs,
   chromeSandboxEnabled,
   launchWithChromeSandboxFallback,
-} from "./chromeSandbox.js";
+} from "@hyperframes/core/chrome-sandbox";
 
 // ── PQ (SMPTE 2084) OETF ─────────────────────────────────────────────────────
 

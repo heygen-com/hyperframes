@@ -710,6 +710,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             projectDir,
             join(workDir, "downloads"),
             job.config.allowOutsideProjectAssets ? undefined : projectDir,
+            { includeScripts: job.config.includeOutsideScripts },
           );
           assertNotAborted();
           // Update composition metadata with re-parsed media
