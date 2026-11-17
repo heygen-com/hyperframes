@@ -70,11 +70,11 @@ if (rootVersionRequested) {
 
 // The working directory is project data: load only the settings a project `.env` may supply,
 // before browser selection can observe the environment.
-const { loadProjectDotEnv, yieldProjectProviderKeys } = await import("./utils/dotEnv.js");
+const { loadProjectDotEnv, yieldReceivedProviderKeys } = await import("./utils/dotEnv.js");
 const captureEnv = argv[commandWordIndex(argv)] === "capture";
 if (!captureEnv || process.env.HYPERFRAMES_NO_CAPTURE_DOTENV !== "1") {
   loadProjectDotEnv(process.cwd(), process.env, (line) => console.error(line));
-  await yieldProjectProviderKeys((line) => console.error(line));
+  await yieldReceivedProviderKeys((line) => console.error(line));
 }
 
 // ── Lazy imports ────────────────────────────────────────────────────────────

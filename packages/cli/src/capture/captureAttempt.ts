@@ -16,7 +16,7 @@ import { setupAnimationCapture, startCdpAnimationCapture } from "./animationCata
 import type { DiscoveredLottie } from "./mediaCapture.js";
 import { detectLibraries } from "./contentExtractor.js";
 import { loadEnvFile, generateProjectScaffold } from "./scaffolding.js";
-import { yieldProjectProviderKeys } from "../utils/dotEnv.js";
+import { yieldProjectVisionKeys, yieldReceivedProviderKeys } from "../utils/dotEnv.js";
 import { captureProtocolTimeoutMs } from "./captureTimeout.js";
 import { CAPTURE_PHASE_SCHEMA, DEFAULT_MAX_SCREENSHOTS } from "./types.js";
 import type {
@@ -114,7 +114,8 @@ export async function captureWebsiteAttempt(
 
   // Load .env file from repo root if it exists (for GEMINI_API_KEY, etc.)
   loadEnvFile(outputDir);
-  await yieldProjectProviderKeys((line) => console.error(line));
+  await yieldReceivedProviderKeys((line) => console.error(line));
+  yieldProjectVisionKeys((line) => console.error(line));
 
   // Create output directories
   ensureCaptureDirSync(outputDir, join(outputDir, "extracted"));

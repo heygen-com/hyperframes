@@ -179,11 +179,15 @@ function keyRank(name) {
   return untrustedOrigin(name) === null ? 1 : 2;
 }
 
-// A credential for a competing provider from a source the person controls more surely, named for the note.
+// A credential for a competing provider from a source the person controls more surely, named for the note. The
+// person's own project key gives way only to the other API key, which speech and music both accept, and an own
+// ElevenLabs key stays for an explicit provider choice.
 function ownCompetingCredential(name) {
   const rank = keyRank(name);
   const surer = (other) => other !== name && process.env[other] && keyRank(other) < rank;
-  if (name !== "ELEVENLABS_API_KEY") return GEMINI_CREDENTIALS.find(surer);
+  if (name !== "ELEVENLABS_API_KEY")
+    return (rank === 2 ? GEMINI_CREDENTIALS : ["GEMINI_API_KEY", "GOOGLE_API_KEY"]).find(surer);
+  if (rank < 2) return undefined;
   if (process.env.HEYGEN_ACCESS_TOKEN) return "HEYGEN_ACCESS_TOKEN";
   const heygenKey = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"].find(surer);
   if (heygenKey) return heygenKey;

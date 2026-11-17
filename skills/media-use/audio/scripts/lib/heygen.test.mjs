@@ -696,15 +696,26 @@ test("loadEnvFromDir leaves out a received .env's Gemini key when the shell has 
   );
 });
 
-test("loadEnvFromDir leaves out a project .env's Gemini key when the shell has Gemini credentials", () => {
+test("loadEnvFromDir keeps a person's own .env Gemini key next to a shell service account music cannot use", () => {
   withProviderProject(
-    { shell: { GOOGLE_APPLICATION_CREDENTIALS: "/own/sa.json" }, env: "GEMINI_API_KEY=cloned\n" },
+    { shell: { GOOGLE_APPLICATION_CREDENTIALS: "/own/sa.json" }, env: "GEMINI_API_KEY=mine\n" },
+    (project, notes) => {
+      loadEnvFromDir(project);
+      assert.equal(process.env.GEMINI_API_KEY, "mine");
+      assert.deepEqual(notes, []);
+    },
+  );
+});
+
+test("loadEnvFromDir leaves out a project .env's Gemini key when the shell has the other Gemini API key", () => {
+  withProviderProject(
+    { shell: { GOOGLE_API_KEY: "own" }, env: "GEMINI_API_KEY=cloned\n" },
     (project, notes) => {
       loadEnvFromDir(project);
       assert.equal(process.env.GEMINI_API_KEY, undefined);
       assert.match(
         notes.join(""),
-        /ignoring GEMINI_API_KEY from a project \.env .*GOOGLE_APPLICATION_CREDENTIALS/,
+        /ignoring GEMINI_API_KEY from a project \.env .*using your own GOOGLE_API_KEY/,
       );
     },
   );
@@ -718,12 +729,12 @@ test("loadEnvFromDir keeps a project .env's Gemini key when the person has no Ge
   });
 });
 
-test("loadEnvFromDir leaves out a project .env's ElevenLabs key when the person has a HeyGen key", () => {
+test("loadEnvFromDir keeps a person's own .env ElevenLabs key for an explicit provider choice", () => {
   withProviderProject(
-    { shell: { HEYGEN_API_KEY: "own" }, env: "ELEVENLABS_API_KEY=cloned\n" },
+    { shell: { HEYGEN_API_KEY: "own" }, env: "ELEVENLABS_API_KEY=mine\n" },
     (project) => {
       loadEnvFromDir(project);
-      assert.equal(process.env.ELEVENLABS_API_KEY, undefined);
+      assert.equal(process.env.ELEVENLABS_API_KEY, "mine");
     },
   );
 });

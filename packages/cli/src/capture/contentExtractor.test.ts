@@ -8,7 +8,7 @@ import {
   type VisionCaptionOutcome,
 } from "./contentExtractor.js";
 import { loadOptionalPackage } from "../utils/optionalPackages.js";
-import { yieldProjectProviderKeys } from "../utils/dotEnv.js";
+import { yieldProjectVisionKeys, yieldReceivedProviderKeys } from "../utils/dotEnv.js";
 import { loadEnvFile } from "./scaffolding.js";
 
 const { generateContentMock, clientOptions, sharpState } = vi.hoisted(() => ({
@@ -452,7 +452,8 @@ describe("captionImagesWithGemini — Gemini provider", () => {
     generateContentMock.mockResolvedValue({ text: "A caption." });
 
     loadEnvFile(join(dir, "out"));
-    await yieldProjectProviderKeys(() => {});
+    await yieldReceivedProviderKeys(() => {});
+    yieldProjectVisionKeys(() => {});
     const captions = await captionImagesWithGemini(dir, () => {}, []);
 
     expect(fetchMock).not.toHaveBeenCalled();
