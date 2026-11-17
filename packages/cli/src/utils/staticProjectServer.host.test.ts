@@ -72,4 +72,27 @@ describe("serveStaticProjectHtml Host and framing", () => {
     expect(page.headers["content-security-policy"]).toBe("frame-ancestors 'self'");
     expect(page.headers["x-frame-options"]).toBe("SAMEORIGIN");
   });
+
+  it("refuses a project file asked for as a service worker's script, and serves it as a script", async () => {
+    const { port } = await serve();
+    writeFileSync(join(projectDir, "worker.js"), "self.onfetch = () => {};");
+    const ask = (dest: string, worker?: string) =>
+      new Promise<number>((done, fail) => {
+        const headers = {
+          host: `127.0.0.1:${port}`,
+          "sec-fetch-site": "same-origin",
+          "sec-fetch-dest": dest,
+          ...(worker && { "service-worker": worker }),
+        };
+        const req = request({ hostname: "127.0.0.1", port, path: "/worker.js", headers }, (res) => {
+          res.resume();
+          done(res.statusCode ?? 0);
+        });
+        req.on("error", fail);
+        req.end();
+      });
+    expect(await ask("serviceworker", "script")).toBe(403);
+    expect(await ask("serviceworker")).toBe(403);
+    expect(await ask("script")).toBe(200);
+  });
 });

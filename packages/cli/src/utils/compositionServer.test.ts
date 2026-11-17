@@ -6,6 +6,7 @@ import { Hono } from "hono";
 import {
   buildRangeResponse,
   refuseUnknownHosts,
+  sandboxForAnotherSite,
   scriptsAfterWorkersDropped,
 } from "./compositionServer.js";
 
@@ -113,5 +114,20 @@ describe("scriptsAfterWorkersDropped", () => {
   it("keeps a source that holds a closing tag inside its one script", () => {
     const html = scriptsAfterWorkersDropped(["/a</script><b>.js"]);
     expect(html.indexOf("</script>")).toBe(html.length - "</script>".length);
+  });
+});
+
+describe("sandboxForAnotherSite", () => {
+  it("refuses a file under its path as a service worker's script, and serves it otherwise", async () => {
+    const app = new Hono();
+    sandboxForAnotherSite(app, "/composition/*");
+    app.get("/composition/*", (c) => c.text("self.onfetch = () => {};"));
+    const get = (headers: Record<string, string>) =>
+      app.request("/composition/worker.js", {
+        headers: { "sec-fetch-site": "same-origin", ...headers },
+      });
+    expect((await get({ "service-worker": "script" })).status).toBe(403);
+    expect((await get({ "sec-fetch-dest": "serviceworker" })).status).toBe(403);
+    expect((await get({ "sec-fetch-dest": "script" })).status).toBe(200);
   });
 });
