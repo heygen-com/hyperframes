@@ -102,10 +102,10 @@ export function translatePx(value: string, read?: ComputedRead): Point {
   };
 }
 
-const frameTranslates = new WeakMap<Element, { inline: string; px: Point }>();
+const frameTranslates = new WeakMap<Element, { inline: string; px: Point; computed: string }>();
 
-export function rememberFrameTranslate(el: HTMLElement, px: Point): void {
-  frameTranslates.set(el, { inline: el.style.getPropertyValue("translate"), px });
+export function rememberFrameTranslate(el: HTMLElement, px: Point, computed: string): void {
+  frameTranslates.set(el, { inline: el.style.getPropertyValue("translate"), px, computed });
 }
 
 /** The element's CSS `translate` in px, as it renders now. */
@@ -120,10 +120,11 @@ export function readTranslatePx(el: HTMLElement): Point {
 }
 
 export function readTranslatePxLeavingPercent(el: HTMLElement): Point {
-  const value =
-    el.ownerDocument.defaultView?.getComputedStyle(el).translate ||
-    el.style.getPropertyValue("translate") ||
-    "none";
+  const cs = el.ownerDocument.defaultView?.getComputedStyle(el);
+  const inline = el.style.getPropertyValue("translate");
+  const frame = cs ? undefined : frameTranslates.get(el);
+  const computed = frame?.inline === inline ? frame.computed : cs?.translate;
+  const value = computed || inline || "none";
   const [x = "0px", y = "0px"] = value === "none" ? [] : splitTopLevelWhitespace(value);
   const px = (part: string) => roundTo3(evaluateLength(part, 0)) || 0;
   return { x: px(x), y: px(y) };

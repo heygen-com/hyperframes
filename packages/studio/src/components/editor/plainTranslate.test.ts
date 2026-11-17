@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
-import { readTranslatePx, readTranslatePxLeavingPercent } from "./plainTranslate";
+import {
+  readTranslatePx,
+  readTranslatePxLeavingPercent,
+  rememberFrameTranslate,
+} from "./plainTranslate";
 
 function box(style: string): HTMLElement {
   const element = document.createElement("div");
@@ -101,5 +105,14 @@ describe("readTranslatePxLeavingPercent", () => {
     standIn.style.setProperty("translate", "319.893px -75.508px");
 
     expect(readTranslatePxLeavingPercent(standIn)).toEqual({ x: 319.893, y: -75.508 });
+  });
+
+  it("seeds a stand-in from the translate its frame renders, a stylesheet's included, until a move rewrites it", () => {
+    const standIn = document.implementation.createHTMLDocument("").createElement("div");
+    rememberFrameTranslate(standIn, { x: 40, y: 30 }, "40px 30px");
+
+    expect(readTranslatePxLeavingPercent(standIn)).toEqual({ x: 40, y: 30 });
+    standIn.style.setProperty("translate", "70px 10px");
+    expect(readTranslatePxLeavingPercent(standIn)).toEqual({ x: 70, y: 10 });
   });
 });
