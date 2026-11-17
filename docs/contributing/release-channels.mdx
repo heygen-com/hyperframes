@@ -65,7 +65,7 @@ The publish workflow validates release channel boundaries before publishing:
 
 - Stable versions must publish with `latest`.
 - Prerelease versions must publish with the prerelease dist-tag, such as `alpha`.
-- Stable releases must come from a merged, reviewed `release/vX.Y.Z` PR.
+- Stable releases must come from a merged `release/vX.Y.Z` PR whose final commit a maintainer with write access approved. That maintainer must not have opened the PR, or written, committed or force-pushed its commits. Reviews from accounts without write access count neither as approvals nor as change requests.
 - Prerelease tags must point at a commit already on `main`, `next` or `alpha`.
 - Only repository admins may push prerelease (`v*-*`) tags. That is a prerelease's only review: a prerelease branch takes pushes without a PR, and no approval follows the tag.
 - Every publish runs in the `npm-publish` environment, which npm trusted publishing names; it waits for no approval.
