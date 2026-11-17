@@ -5580,7 +5580,10 @@ async function executeRenderPipeline(input: {
           !cfg.useDrawElement &&
           workerSizing !== undefined &&
           canEncodeWhileCapturing(encodeInput, capturePlan.workerCount, workerSizing.cpuCount)
-            ? encodeWhileCapturing(encodeInput, totalFrames)
+            ? encodeWhileCapturing(encodeInput, totalFrames, {
+                workerCount: capturePlan.workerCount,
+                cpuCount: workerSizing.cpuCount,
+              })
             : null;
         const captureFrameStart = Date.now();
         const invokeDiskCapture = (diskPlan: SdrDiskCapturePlan) =>

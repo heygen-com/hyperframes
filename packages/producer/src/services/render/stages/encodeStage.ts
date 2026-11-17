@@ -268,7 +268,15 @@ function resolveEngineConfig(input: EncodeStageInput) {
   return input.engineConfig ?? input.job.config.producerConfig ?? resolveConfig();
 }
 
-function videoEncoderOptions(input: EncodeStageInput, engineCfg: Pick<EngineConfig, "vp9CpuUsed">) {
+export function overlapEncoderThreads(workerCount: number, cpuCount: number): number {
+  return Math.max(1, Math.floor(cpuCount) - Math.floor(workerCount));
+}
+
+export function videoEncoderOptions(
+  input: EncodeStageInput,
+  engineCfg: Pick<EngineConfig, "vp9CpuUsed">,
+  softwareEncoderThreads?: number,
+) {
   const { job, preset } = input;
   return {
     fps: job.config.fps,
@@ -289,6 +297,7 @@ function videoEncoderOptions(input: EncodeStageInput, engineCfg: Pick<EngineConf
     // renders leave both undefined → preserves the existing open-GOP output.
     lockGopForChunkConcat: input.lockGopForChunkConcat === true,
     gopSize: input.gopSize,
+    softwareEncoderThreads,
   };
 }
 
@@ -343,8 +352,12 @@ async function readLandedFrame(workerPath: string | undefined, mergedPath: strin
 export function encodeWhileCapturing(
   input: EncodeStageInput,
   totalFrames: number,
+  captureBudget?: { workerCount: number; cpuCount: number },
 ): EncodeWhileCapturing {
   const engineCfg = resolveEngineConfig(input);
+  const softwareEncoderThreads = captureBudget
+    ? overlapEncoderThreads(captureBudget.workerCount, captureBudget.cpuCount)
+    : undefined;
   const stop = new AbortController();
   const signal = input.abortSignal
     ? AbortSignal.any([input.abortSignal, stop.signal])
@@ -362,7 +375,10 @@ export function encodeWhileCapturing(
 
   const encoder = spawnStreamingEncoder(
     input.videoOnlyPath,
-    { ...videoEncoderOptions(input, engineCfg), imageFormat: "jpeg" },
+    {
+      ...videoEncoderOptions(input, engineCfg, softwareEncoderThreads),
+      imageFormat: "jpeg",
+    },
     signal,
     engineCfg,
   );
