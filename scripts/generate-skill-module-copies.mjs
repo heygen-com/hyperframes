@@ -13,6 +13,10 @@ export const skillModuleCopies = [
     ["skills/media-use/scripts/lib/terminal-text.mjs"],
   ],
   [
+    "packages/cli/src/media-use/lib/received-env.mjs",
+    ["skills/media-use/scripts/lib/received-env.mjs"],
+  ],
+  [
     "packages/cli/src/media-use/lib/openverse.mjs",
     ["skills/media-use/audio/scripts/lib/openverse.mjs"],
   ],

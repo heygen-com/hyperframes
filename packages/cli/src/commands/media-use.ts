@@ -5,7 +5,12 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { finishCommand } from "../utils/commandResult.js";
 import { withMediaAuthEnvironment } from "../auth/media-environment.js";
-import { PROJECT_ENV_ORIGINS, projectEnvOrigins } from "../utils/dotEnv.js";
+import {
+  PROJECT_ENV_ORIGINS,
+  PROJECT_ENV_YIELDED,
+  projectEnvOrigins,
+  projectEnvYielded,
+} from "../utils/dotEnv.js";
 import {
   skipWorkingDirectoryInExeSearch,
   withOnlyTrustedPathFolders,
@@ -85,10 +90,12 @@ export function mediaUseEngineEnv(
   entry: string | undefined = process.argv[1],
   platform: NodeJS.Platform = process.platform,
   origins: Record<string, string> = projectEnvOrigins(),
+  yielded: [string, string][] = projectEnvYielded(),
 ): NodeJS.ProcessEnv {
   const scoped = withOnlyTrustedPathFolders(env, platform);
   skipWorkingDirectoryInExeSearch(scoped, platform);
   if (Object.keys(origins).length > 0) scoped[PROJECT_ENV_ORIGINS] = JSON.stringify(origins);
+  if (yielded.length > 0) scoped[PROJECT_ENV_YIELDED] = JSON.stringify(yielded);
   if (!entry || /\.[cm]?ts$/.test(entry)) return scoped;
   return { ...scoped, HYPERFRAMES_CLI_ENTRY: resolve(entry) };
 }

@@ -29,6 +29,14 @@ describe("mediaUseEngineEnv", () => {
     });
   });
 
+  // fails without the fix: the engine loaded a key the CLI had unset again from the same .env.
+  it("names each key the CLI unset from a project .env, so the engine leaves it unset", () => {
+    const env = mediaUseEngineEnv({}, "", "linux", {}, [["ELEVENLABS_API_KEY", "/work/project"]]);
+    expect(JSON.parse(env.HYPERFRAMES_PROJECT_ENV_YIELDED ?? "[]")).toEqual([
+      ["ELEVENLABS_API_KEY", "/work/project"],
+    ]);
+  });
+
   it("hands nothing over from a TypeScript source entry, which plain node cannot run", () => {
     expect(mediaUseEngineEnv({}, "src/cli.ts", "linux")).toEqual({});
     expect(mediaUseEngineEnv({}, "", "linux")).toEqual({});
