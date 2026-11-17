@@ -4,7 +4,11 @@ import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-
 import type { StudioApiAdapter } from "./types.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerFileRoutes } from "./routes/files.js";
-import { PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./routes/preview.js";
+import {
+  PREVIEW_CAPTURE_PARAM,
+  PREVIEW_PROXY_PARAM,
+  registerPreviewRoutes,
+} from "./routes/preview.js";
 import { registerLintRoutes } from "./routes/lint.js";
 import { registerRenderRoutes } from "./routes/render.js";
 import { registerImageThumbnailRoutes } from "./routes/imageThumbnail.js";
@@ -30,7 +34,11 @@ import {
 } from "./helpers/requestIdentity.js";
 import { previewErrorPage } from "./helpers/previewErrorPage.js";
 import type { CaptureSandboxOption } from "./helpers/captureLoads.js";
-import { createFrameTokens, serveTokenPreviewPaths } from "./helpers/opaqueFrameLoads.js";
+import {
+  createFrameTokens,
+  loadedThroughFrameToken,
+  serveTokenPreviewPaths,
+} from "./helpers/opaqueFrameLoads.js";
 
 async function answerRefusedFrameWithPage(c: Context, next: Next) {
   await next();
@@ -91,6 +99,13 @@ const sandboxPreviewForAnotherSiteOrCapture =
     if (anotherSite) await markPreviewForAnotherSite(c);
   };
 
+async function refuseProxyWorkForAnotherSite(c: Context, next: Next) {
+  const proxyWork = c.req.query(PREVIEW_PROXY_PARAM) !== undefined;
+  if (proxyWork && fromAnotherSite(c) && !loadedThroughFrameToken(c.req.raw))
+    return c.text("forbidden: media proxy requested by another site", 403);
+  return next();
+}
+
 const refuseForAnotherSite = (what: string) => async (c: Context, next: Next) => {
   if (fromAnotherSite(c))
     return c.json({ error: `forbidden: ${what} requested by another site` }, 403);
@@ -130,6 +145,7 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
         () => undefined,
       );
   api.use("/projects/:id/preview/*", serveTokenPreviewPaths(api, frameTokens, resolveProjectId));
+  api.use("/projects/:id/preview/*", refuseProxyWorkForAnotherSite);
   api.use(
     "/projects/:id/preview/*",
     sandboxPreviewForAnotherSiteOrCapture(sandboxThumbnailCaptures),
@@ -224,7 +240,11 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
   });
   registerLintRoutes(api, adapter);
   registerRenderRoutes(api, adapter);
-  registerThumbnailRoutes(api, adapter);
+  registerThumbnailRoutes(
+    api,
+    adapter,
+    sandboxThumbnailCaptures ? frameTokens.tokenFor : undefined,
+  );
   registerImageThumbnailRoutes(api, adapter);
   registerSelectionRoutes(api, adapter);
   registerRecoveryDraftRoutes(api, adapter);

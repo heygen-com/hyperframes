@@ -1174,6 +1174,7 @@ npx hyperframes publish --space <space-id>
 | `--update <url-or-id>`   | Update an existing project in place. Requires sign-in.             |
 | `--space <space-id>`     | Publish into a shared team space. Requires sign-in.                |
 | `--proxy` / `--no-proxy` | Bake H.264 proxies for browser-hostile codecs, or skip them        |
+| `--include-outside-files` | Upload files from outside the project folder without asking. Otherwise they need your approval, and `--yes` leaves them out |
 
 `publish` zips the project, uploads it, and prints a URL that resolves to stored
 content — so it keeps working after the CLI exits. No local server stays alive,
@@ -1605,6 +1606,13 @@ npx hyperframes keyframes [dir] --selector "#card" --shot card-motion.png
 Use `--ghost` for motion that happens *inside* a canvas, where the marker onion
 has nothing to draw.
 
+With a single `.html` file, `--shot` serves only the files that file's markup,
+stylesheets and sub-compositions name in its own folder, and only the types a
+composition loads. A scene that its project's `index.html` mounts is served from
+the project instead. Files the page builds names for in script are not served,
+and the command prints a line naming any file it left out. Pass the project
+folder to keep everything.
+
 ### `compare` and `grade-compare`
 
 `compare` renders two or more independent variants into one labelled PNG.
@@ -1621,6 +1629,12 @@ npx hyperframes compare ./variant-a ./variant-b --labels "A,B"
 | `--cols`    | Grid columns (default: a sqrt heuristic, max 4)    |
 | `--timeout` | Render-ready timeout per variant in ms; must be a positive integer (default 5000) |
 | `--json`    | Machine-readable results                           |
+
+A variant can also be a single `.html` file. Then only the files its markup,
+stylesheets and sub-compositions name in its own folder are served, and only the
+types a composition loads. Files the page builds names for in script are not
+served, and the command prints a line naming any file it left out. Pass a
+project folder to keep everything.
 
 `grade-compare` does the same for colour: candidate grades or LUTs applied to
 one reference frame.
@@ -1953,10 +1967,27 @@ How it uses the machine, and when it gives up:
 | `--wait` / `--no-wait`                                   | on                                         | One local render at a time per user account: wait while another runs, or fail at once. Env: `HYPERFRAMES_RENDER_LOCK=off` renders side by side. |
 | `--strict` / `--strict-all`                              | off                                        | Fail on lint errors, or on errors and warnings                                                                     |
 | `--strict-variables`                                     | off                                        | Fail rather than warn on an undeclared or mistyped variable key                                                    |
+| `--include-outside-files`                                | off                                        | Also run `.js` and `.mjs` scripts the project references from outside its folder. See the note below.            |
+| `--refuse-outside-files`                                 | off                                        | Leave out every file the project references from outside its folder. See the note below.                          |
 | `--batch-concurrency` / `--batch-fail-fast`              | `1` / off                                  | Batch rows at once, and whether the first failure stops the rest                                                   |
 | `--debug`                                                | off                                        | Keep intermediates and write diagnostics under the Producer `.debug` directory                                     |
 | `--quiet`                                                | off                                        | Less output                                                                                                        |
 | `--skill`                                                | —                                          | Record which authoring workflow started this render, in usage telemetry                                            |
+
+A local render brings in images, video, audio, fonts and CSS that the project
+references from outside its folder. It leaves out scripts from outside the
+folder, warning with each one's name, because a script runs in the render's
+browser and can read and send anything the render can reach. Move a script you
+trust into the project, or pass `--include-outside-files` to run it where it is.
+A composition that needs the left-out script stops with a script-load error.
+
+A received-files record lists the files in a folder that came from someone
+else. When a record in the project, or in a folder above it, lists anything but
+media, fonts and images, the render leaves out every file from outside the
+project folder and warns with each one's name. A `--docker` render makes this check on your
+machine, where the folders above the project are visible, and passes
+`--refuse-outside-files` into the container, so it leaves out the same files a
+local render would.
 
 Renders started side by side starve each other of CPU and GPU until frames stop
 landing, so a second local or `--docker` render from the same user account waits
@@ -2802,14 +2833,22 @@ same share as the project is copied like any other. To include such a
 file, move it into the project folder. Under `--json`, the result lists those
 as `left_out`, each with the `file` that points at it, the `reference` as
 written, its `path` from the project folder, the `reason` (`blocklisted`,
-`received`, `file_type`, `private` or `network_share`) and `levels_up`, how many folders above the project
+`received`, `file_type`, `private`, `network_share` or `not_approved`) and `levels_up`, how many folders above the project
 it is. A full run also prints each as a `{"event":"left_out",…}`
 line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
 and still hear about each one during the run.
 
-Before uploading, the command also names every file it carries from outside the
-project folder: each file a composition points at, and each project file that is
-a link to a file outside the project. It prints the list and carries on. Under
+A file from outside the project folder that would be copied (each file a
+composition points at, and each project file that is a link to a file outside
+the project) is uploaded only when you approve it. Run in a terminal, the
+command lists those files and asks, defaulting to no. A yes is remembered for
+that project in `~/.hyperframes/outside-files.json`, never in the project. Under
+`--json` or `--dry-run`, or when nobody can answer, they are left out with the
+`not_approved` reason and a warning naming each one. `--include-outside-files`
+uploads them without asking; `hyperframes publish` and `hyperframes feedback
+--file-issue` take the same flag and ask the same way unless given `--yes`.
+
+Before uploading, the command names every outside file it carries. Under
 `--json`, the result lists them as `outside_files`, with the same `file`,
 `reference`, `path` and `levels_up` fields, and each is printed as a
 `{"event":"outside_file",…}` line on stderr. For a project link, `file` and
@@ -2831,6 +2870,7 @@ Render parameters mirror local `hyperframes render` where they overlap:
 | `--title`              | —                           | Free-text label echoed back in detail responses                                                                                                  |
 | `--output` / `-o`      | `renders/<render_id>.<ext>` | Where the downloaded video lands                                                                                                                 |
 | `--dry-run`            | off                         | Build and inspect the zip without authenticating, uploading, or rendering                                                                        |
+| `--include-outside-files` | off                      | Upload files from outside the project folder without asking. Otherwise only approved ones go                                                     |
 
 Lifecycle and control:
 

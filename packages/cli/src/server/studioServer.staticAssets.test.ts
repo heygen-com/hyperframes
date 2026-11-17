@@ -98,3 +98,25 @@ describe("studio bundle cache policy", () => {
     expect(await response.text()).toBe(BUNDLE_BYTES);
   });
 });
+
+describe("studio shell framing", () => {
+  it("lets only its own origin frame the shell, on any SPA route", async () => {
+    for (const route of ["/", "/projects/demo"]) {
+      const response = await server.app.request(route);
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("Content-Security-Policy")).toBe("frame-ancestors 'self'");
+      expect(response.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
+    }
+  });
+
+  it("refuses other sites' framing of the missing-bundle page too", async () => {
+    fs.rmSync(path.join(hooks.studioDir, "index.html"));
+
+    const response = await server.app.request("/");
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("Content-Security-Policy")).toBe("frame-ancestors 'self'");
+    expect(response.headers.get("X-Frame-Options")).toBe("SAMEORIGIN");
+  });
+});

@@ -5,8 +5,15 @@ export class JobAbandonedError extends Error {
   }
 }
 
-/** Runs at most `limit` jobs at once; a waiter whose signal aborts leaves the queue without starting. */
-export function createJobSlots(limit: number) {
+export class JobQueueFullError extends Error {
+  constructor() {
+    super("job queue is full; retry shortly");
+    this.name = "JobQueueFullError";
+  }
+}
+
+/** Runs at most `limit` jobs at once and queues at most `maxWaiting` more; an aborted waiter leaves without starting. */
+export function createJobSlots(limit: number, maxWaiting = Number.POSITIVE_INFINITY) {
   let running = 0;
   const waiting: Array<() => void> = [];
 
@@ -17,6 +24,7 @@ export function createJobSlots(limit: number) {
         running++;
         return resolve();
       }
+      if (waiting.length >= maxWaiting) return reject(new JobQueueFullError());
       const leave = () => {
         waiting.splice(waiting.indexOf(start), 1);
         reject(new JobAbandonedError());

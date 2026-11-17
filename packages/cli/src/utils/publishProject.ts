@@ -32,6 +32,7 @@ import {
   receivedFiles,
 } from "./privateProjectFile.js";
 import {
+  INCLUDE_OUTSIDE_FILES_HINT,
   leftOutReference,
   leftOutWarning,
   type LeftOutReason,
@@ -415,6 +416,7 @@ interface ExternalAssetContext {
   externalMap: Map<string, string>;
   usedArchivePaths: Set<string>;
   leftOut: Set<string>;
+  notApproved: Set<string>;
   onLeftOut?: OnLeftOut;
   onOutsideFile?: OnOutsideFile;
   received: (path: string) => boolean;
@@ -427,10 +429,15 @@ function addExternalAsset(
   absPath: string,
   entryPath: string,
   rawPath: string,
-): string {
+): string | null {
   const existing = ctx.externalMap.get(absPath);
   if (existing) return existing;
-  ctx.onOutsideFile?.(outsideFileReference(ctx.absProjectDir, entryPath, rawPath, absPath));
+  const reference = outsideFileReference(ctx.absProjectDir, entryPath, rawPath, absPath);
+  if (ctx.notApproved.has(absPath) || ctx.onOutsideFile?.(reference) === false) {
+    ctx.notApproved.add(absPath);
+    leaveOut(ctx, entryPath, rawPath, absPath, "not_approved");
+    return null;
+  }
 
   const rel = relative(ctx.absProjectDir, absPath).replaceAll("\\", "/");
   const stripped = rel.replace(/^(?:\.\.\/)+/, "");
@@ -465,24 +472,27 @@ const loadableReference = (absProjectDir: string, absPath: string): boolean =>
 function referencedFileLeftOut(
   ctx: ExternalAssetContext,
   entryPath: string,
+  rel: string,
   absPath: string,
 ): LeftOutReason | null {
   if (linksToPrivateOutsideFile(ctx.absProjectDir, absPath)) return "blocklisted";
   if (isPrivateCompositionFile(ctx.absProjectDir, absPath)) return "private";
   if (ctx.received(entryPath) && linksOutside(ctx.absProjectDir, absPath)) return "received";
   if (!loadableReference(ctx.absProjectDir, absPath)) return "private";
+  if (!linkOutsideApproved(ctx.absProjectDir, rel, absPath, ctx.onOutsideFile))
+    return "not_approved";
   return null;
 }
 
-function reportProjectLinkOutside(
+/** Whether a project file may be uploaded as far as where it links goes: false when it links outside, unapproved. */
+function linkOutsideApproved(
   absProjectDir: string,
   file: string,
   absPath: string,
   onOutsideFile: OnOutsideFile | undefined,
-): void {
-  if (onOutsideFile && linksOutside(absProjectDir, absPath)) {
-    onOutsideFile(outsideFileReference(absProjectDir, file, file, absPath));
-  }
+): boolean {
+  if (!onOutsideFile || !linksOutside(absProjectDir, absPath)) return true;
+  return onOutsideFile(outsideFileReference(absProjectDir, file, file, absPath)) !== false;
 }
 
 /** Ships a referenced in-project file the ignore rules skipped, resolved from its folder or the root. */
@@ -504,9 +514,8 @@ function includeReferencedProjectFile(
       continue;
     }
     if (!statSync(absPath).isFile()) return;
-    const reason = referencedFileLeftOut(ctx, entryPath, absPath);
+    const reason = referencedFileLeftOut(ctx, entryPath, rel, absPath);
     if (reason) return leaveOut(ctx, entryPath, rawPath, absPath, reason);
-    reportProjectLinkOutside(ctx.absProjectDir, rel, absPath, ctx.onOutsideFile);
     ctx.fileContents.set(rel, stageFile(absPath, ctx.onDiskMinBytes));
     return;
   }
@@ -580,7 +589,17 @@ function archiveTargetOf(
   } catch {
     return undefined;
   }
-  return encodeUrlPath(addExternalAsset(ctx, absPath, options.entryPath, rawPath));
+  return externalArchiveTarget(ctx, absPath, options.entryPath, rawPath);
+}
+
+function externalArchiveTarget(
+  ctx: ExternalAssetContext,
+  absPath: string,
+  entryPath: string,
+  rawPath: string,
+): string | undefined {
+  const archivePath = addExternalAsset(ctx, absPath, entryPath, rawPath);
+  return archivePath === null ? undefined : encodeUrlPath(archivePath);
 }
 
 // The ? of a \\?\ device path is part of the path, not a query.
@@ -806,6 +825,7 @@ export function localizeExternalAssets(
     externalMap: new Map(),
     usedArchivePaths: new Set(),
     leftOut: new Set(),
+    notApproved: new Set(),
     onLeftOut,
     onOutsideFile,
     received: receivedFiles(absProjectDir),
@@ -860,13 +880,14 @@ function composeNamesInText(fileContents: Map<string, StagedFile>, filePaths: st
   }
 }
 
-type WalkedLeftOutReason = Exclude<LeftOutReason, "file_type" | "network_share">;
+type WalkedLeftOutReason = Exclude<LeftOutReason, "file_type" | "network_share" | "script">;
 
 const WALKED_LEFT_OUT: Record<WalkedLeftOutReason, string> = {
   private:
     "holds secrets or tool data (an env file, Git data, credentials, agent or editor state, or Studio records)",
   blocklisted: "links to a file outside the project in a private location",
   received: "links to a file outside the project and came in with an imported project",
+  not_approved: "links to a file outside the project that was not approved for upload",
 };
 
 function walkedFileLeftOut(
@@ -924,7 +945,14 @@ export function stagePublishFiles(
       );
     }
     diskPathOf.set(key, filePath);
-    reportProjectLinkOutside(absProjectDir, filePath, absPath, onOutsideFile);
+    if (!linkOutsideApproved(absProjectDir, filePath, absPath, onOutsideFile)) {
+      onLeftOut?.(
+        `${filePath} ${WALKED_LEFT_OUT.not_approved}; it was left out of the upload. ${INCLUDE_OUTSIDE_FILES_HINT}`,
+        leftOutReference(absProjectDir, filePath, filePath, absPath, "not_approved"),
+      );
+      walkedLeftOut.add(key);
+      continue;
+    }
     fileContents.set(key, stageFile(absPath, onDiskMinBytes));
   }
 

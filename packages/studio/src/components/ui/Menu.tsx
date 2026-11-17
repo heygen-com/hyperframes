@@ -98,6 +98,45 @@ interface PositionedProps {
   "data-preview-state"?: PopupPreviewState;
 }
 
+/** What Base UI hands `onOpenChange`: why it would close, the event, and a way to keep it open. */
+type OpenChangeDetails = { reason: string; event: Event; cancel: () => void };
+
+/**
+ * The topmost open layer owns Escape. Escape pressed inside a dialog that holds neither this popup nor its trigger (one
+ * opened from the popup's own row) keeps the popup open and leaves the key alone, so that dialog closes first; the
+ * popup hears the next Escape, once it is on top again.
+ */
+export function useTopLayerEscape<D extends OpenChangeDetails>(
+  onOpenChange: ((open: boolean, details: D) => void) | undefined,
+) {
+  const own = useRef<{ popup: Element | null; trigger: Element | null }>({
+    popup: null,
+    trigger: null,
+  });
+  const change = (open: boolean, details: D) => {
+    const { popup, trigger } = own.current;
+    if (
+      !open &&
+      details.reason === "escape-key" &&
+      insideLayerAbove([popup, trigger], details.event)
+    )
+      return details.cancel();
+    onOpenChange?.(open, details);
+  };
+  return {
+    popup: (el: Element | null) => void (own.current.popup = el),
+    trigger: (el: Element | null) => void (own.current.trigger = el),
+    onOpenChange: change,
+  };
+}
+
+/** Whether `event` started inside an open dialog or modal that holds none of `own`. */
+function insideLayerAbove(own: (Element | null)[], event: Event): boolean {
+  const from = event.composedPath()[0];
+  const layer = from instanceof Element ? from.closest('dialog[open], [aria-modal="true"]') : null;
+  return layer !== null && !own.some((el) => el !== null && layer.contains(el));
+}
+
 interface MenuProps
   extends PositionedProps, Omit<ComponentPropsWithoutRef<typeof BaseMenu.Root>, "children"> {
   /** A single element. It becomes the trigger; no wrapper is added around it. */
@@ -123,9 +162,10 @@ export function Menu({
   ...root
 }: MenuProps) {
   const inline = useInlinePortal(container);
+  const escape = useTopLayerEscape(root.onOpenChange);
   return (
-    <BaseMenu.Root {...root}>
-      <BaseMenu.Trigger render={trigger} />
+    <BaseMenu.Root {...root} onOpenChange={escape.onOpenChange}>
+      <BaseMenu.Trigger ref={escape.trigger} render={trigger} />
       {inline.host}
       <BaseMenu.Portal {...inline.portal}>
         <BaseMenu.Positioner
@@ -136,6 +176,7 @@ export function Menu({
           className={POPUP_LAYER}
         >
           <BaseMenu.Popup
+            ref={escape.popup}
             aria-label={ariaLabel}
             data-preview-state={previewState}
             className={cn(menuPopup, className)}
@@ -169,13 +210,15 @@ export function ContextMenu({
   ...root
 }: Omit<ContextMenuProps, "side" | "align" | "sideOffset">) {
   const inline = useInlinePortal(container);
+  const escape = useTopLayerEscape(root.onOpenChange);
   return (
-    <BaseContextMenu.Root {...root}>
-      <BaseContextMenu.Trigger render={trigger} />
+    <BaseContextMenu.Root {...root} onOpenChange={escape.onOpenChange}>
+      <BaseContextMenu.Trigger ref={escape.trigger} render={trigger} />
       {inline.host}
       <BaseContextMenu.Portal {...inline.portal}>
         <BaseContextMenu.Positioner collisionPadding={VIEWPORT_MARGIN} className={POPUP_LAYER}>
           <BaseContextMenu.Popup
+            ref={escape.popup}
             aria-label={ariaLabel}
             data-preview-state={previewState}
             className={cn(menuPopup, className)}

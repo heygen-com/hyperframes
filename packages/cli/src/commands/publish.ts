@@ -32,12 +32,9 @@ import {
   writeTeamProject,
 } from "../utils/projectLink.js";
 import { cliSourced } from "../utils/sourceTag.js";
-import {
-  type LeftOutReference,
-  type OutsideFileReference,
-  outsideFilesNotice,
-} from "../utils/leftOutReference.js";
+import { type LeftOutReference, outsideFilesNotice } from "../utils/leftOutReference.js";
 import { trackUploadLeftOut } from "../telemetry/uploadLeftOut.js";
+import { confirmOutsideFiles, stageWithOutsideFileApproval } from "../utils/outsideFileApproval.js";
 
 export const examples: Example[] = [
   ["Publish the current project privately to a stable URL", "hyperframes publish"],
@@ -100,6 +97,12 @@ export default defineCommand({
     "lint-verbose": {
       type: "boolean",
       description: "Show full lint findings before publishing instead of a one-line summary",
+      default: false,
+    },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Upload the files the project uses from outside its folder without asking. Otherwise they are left out unless you approve them.",
       default: false,
     },
   },
@@ -257,17 +260,35 @@ export default defineCommand({
       // committed config, else on by default.
       const proxyFlagValue = typeof args.proxy === "boolean" ? args.proxy : undefined;
       const autoProxy = resolveAutoProxy(dir, proxyFlagValue);
-      const leftOut: string[] = [];
-      const references: LeftOutReference[] = [];
-      const outsideFiles: OutsideFileReference[] = [];
-      const fileMap = buildPublishFileMap(
+      const { staged, outsideFiles } = await stageWithOutsideFileApproval(
         dir,
-        (warning, reference) => {
-          leftOut.push(warning);
-          references.push(reference);
+        {
+          includeAll: args["include-outside-files"] === true,
+          ask:
+            args.yes === true
+              ? undefined
+              : (files) => {
+                  publishSpinner.stop("Project prepared");
+                  return confirmOutsideFiles(files).finally(() =>
+                    publishSpinner.start("Preparing project..."),
+                  );
+                },
         },
-        (reference) => outsideFiles.push(reference),
+        (onOutsideFile) => {
+          const leftOut: string[] = [];
+          const references: LeftOutReference[] = [];
+          const fileMap = buildPublishFileMap(
+            dir,
+            (warning, reference) => {
+              leftOut.push(warning);
+              references.push(reference);
+            },
+            onOutsideFile,
+          );
+          return { fileMap, leftOut, references };
+        },
       );
+      const { fileMap, leftOut, references } = staged;
       trackUploadLeftOut("publish", references);
       let proxyBakeManifest: Awaited<ReturnType<typeof bakeMediaProxies>> | undefined;
       if (autoProxy) {

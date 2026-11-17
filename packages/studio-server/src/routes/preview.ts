@@ -89,6 +89,7 @@ import {
   ProxyTranscodeError,
   ProxyWaitTimeoutError,
   PROXY_PENDING_RETRY_AFTER_SECONDS,
+  StillPastEndError,
 } from "../helpers/proxyTranscoder.js";
 import {
   decideMediaProxyEligibility,
@@ -109,10 +110,10 @@ import {
 import { requestSubPath } from "../helpers/requestSubPath.js";
 import { lazyPreviewImages } from "../helpers/lazyPreviewImages.js";
 import { corsProjectVideos } from "../helpers/captureVideos.js";
-import { createJobSlots, JobAbandonedError } from "../helpers/jobSlots.js";
+import { createJobSlots, JobAbandonedError, JobQueueFullError } from "../helpers/jobSlots.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
-const runStillJob = createJobSlots(4);
+const runStillJob = createJobSlots(4, 16);
 
 function escapeGsapUrl(url: string): string {
   return url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -359,6 +360,7 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
 
 /** Captures screenshot right after a seek, so they get every image eager; media loads near the playhead. */
 export const PREVIEW_CAPTURE_PARAM = "hf-capture";
+export const PREVIEW_PROXY_PARAM = "hf-proxy";
 
 export function scriptJson(value: unknown): string {
   return JSON.stringify(value)
@@ -756,7 +758,7 @@ export function registerPreviewRoutes(
     // only a video asset can be proxied, and only when auto-proxy is enabled
     // for this adapter/project. Checked BEFORE any transcode or 304 shortcut
     // so a bogus/disabled request never spawns ffmpeg.
-    const proxyParam = c.req.query("hf-proxy");
+    const proxyParam = c.req.query(PREVIEW_PROXY_PARAM);
     const boxParam = c.req.query(PREVIEW_PROXY_BOX_PARAM);
     const proxyBox = boxParam === undefined ? undefined : parsePreviewProxyBox(boxParam);
     const lightRequested = c.req.query(PREVIEW_PROXY_LIGHT_PARAM) !== undefined;
@@ -807,6 +809,10 @@ export function registerPreviewRoutes(
           headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600" },
         });
       } catch (err) {
+        if (err instanceof JobQueueFullError) {
+          return c.text(err.message, 503, { "Retry-After": "5" });
+        }
+        if (err instanceof StillPastEndError) return c.text("not found", 404);
         if (isProjectRootMissing(err)) throw err;
         return c.text("media still failed", 502);
       }

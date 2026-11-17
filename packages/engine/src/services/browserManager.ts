@@ -41,7 +41,11 @@ import {
 } from "./publicNetwork/captureProxy.js";
 import { removeTreeBestEffortAsync } from "@hyperframes/core/remove-tree";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
-import { chromeSandboxArgs, launchWithChromeSandboxFallback } from "./chromeSandbox.js";
+import {
+  chromeSandboxArgs,
+  launchWithChromeSandboxFallback,
+  noSandboxUnlessRequired,
+} from "./chromeSandbox.js";
 import { describeWslGpuAccess, detectWsl, type WslHostFacts } from "./wslHost.js";
 import {
   BrowserLeasePool,
@@ -572,8 +576,7 @@ async function getPuppeteerOrNull(): Promise<PuppeteerNode | null> {
 
 function getHardwareGpuProbeArgs(platform: NodeJS.Platform): string[] {
   return [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
+    ...noSandboxUnlessRequired(),
     "--disable-dev-shm-usage",
     "--enable-webgl",
     "--ignore-gpu-blocklist",

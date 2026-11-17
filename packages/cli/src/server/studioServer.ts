@@ -90,6 +90,7 @@ import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip"
 import type { RenderJob } from "@hyperframes/producer";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
+import { SAME_ORIGIN_FRAMING_HEADERS } from "@hyperframes/engine";
 import { createThumbnailPages } from "./thumbnailPages.js";
 import {
   assertWebGpuAdapterAvailable,
@@ -539,6 +540,13 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // launching a browser shutdown() has no way to know about and close.
   let shuttingDown = false;
 
+  const previewWarnings = new Set<string>();
+  const warnPreviewOnce = (line: string) => {
+    if (previewWarnings.has(line)) return;
+    previewWarnings.add(line);
+    console.warn(`[studio] ${line}`);
+  };
+
   const adapter: PreviewApiAdapter = {
     history: () => (hostAppOwnsHistory ? null : projectHistory()),
     loadSharp: () => loadSharpInBackground("image thumbnails"),
@@ -593,11 +601,13 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const preparedDirs = [gifOutputDir, gifDownloadDir, heifOutputDir];
       if (!preparedDirs.every((dir) => isLinkFreeWithinProject(project.dir, dir)))
         return injectDeterministicFontFaces(html);
+      const allowOutsideFiles = outsideAssetsAllowed(project.dir, undefined, warnPreviewOnce);
       const { html: htmlWithJpegs } = await prepareHeifImageInputs(html, {
         projectDir: project.dir,
         downloadDir: gifDownloadDir,
         outputDir: heifOutputDir,
         outputSrcPrefix: ".hyperframes/prepared-assets/heif",
+        allowOutsideFiles,
         onFailure: (error) => console.warn(`[studio] ${error.message}`),
       });
       const prepared = await prepareAnimatedGifInputs(htmlWithJpegs, {
@@ -605,6 +615,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         downloadDir: gifDownloadDir,
         outputDir: gifOutputDir,
         outputSrcPrefix: ".hyperframes/prepared-assets/gif",
+        allowOutsideFiles,
         cacheDir: gifOutputDir,
         sourceAssets: await downloadRemoteGifImageSources(html, gifDownloadDir, (url, destDir) =>
           downloadToTemp(url, destDir, undefined, undefined, undefined, {
@@ -1215,8 +1226,9 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return `<script>window.__HF_STUDIO_ENV__=${JSON.stringify(overrides)};</script>`;
   }
 
-  // SPA fallback
+  // SPA fallback. The shell's own requests pass every same-origin check, so only its own pages may frame it.
   app.get("*", (c) => {
+    for (const [name, value] of Object.entries(SAME_ORIGIN_FRAMING_HEADERS)) c.header(name, value);
     const indexPath = resolve(studioDir, "index.html");
     const indexContent = readBundleFile(indexPath);
     if (indexContent === null) {

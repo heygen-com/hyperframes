@@ -318,3 +318,39 @@ describe("an opaque preview frame's wait for a video's proxy copy", () => {
     ]);
   });
 });
+
+describe("a media proxy asked for by another site", () => {
+  const ask = (prefix: string, site: string) =>
+    api.request(`http://localhost/projects/demo/preview/${prefix}clip.mp4?hf-proxy=h264`, {
+      headers: { "sec-fetch-site": site },
+    });
+
+  it.each(["cross-site", "same-site"])(
+    "is refused on the plain path to a %s request",
+    async (site) => {
+      const res = await ask("", site);
+      expect(res.status).toBe(403);
+      expect(await res.text()).toBe("forbidden: media proxy requested by another site");
+    },
+  );
+
+  it("is refused on the plain path even with a still query", async () => {
+    const res = await api.request(
+      "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=1",
+      { headers: { "sec-fetch-site": "cross-site" } },
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("goes through under the project's frame token, and from the Studio itself", async () => {
+    expect((await ask(`~${token}/`, "cross-site")).status).not.toBe(403);
+    expect((await ask("", "same-origin")).status).not.toBe(403);
+  });
+
+  it("leaves another site's plain load of a video without the proxy query alone", async () => {
+    const res = await api.request("http://localhost/projects/demo/preview/clip.mp4", {
+      headers: { "sec-fetch-site": "cross-site" },
+    });
+    expect(res.status).not.toBe(403);
+  });
+});

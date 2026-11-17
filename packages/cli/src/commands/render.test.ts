@@ -652,6 +652,21 @@ describe("renderLocal browser GPU config", () => {
     }
   });
 
+  it("brings in no outside file when the render is told to refuse them", async () => {
+    await renderLocal(PROJECT_DIR, join(PROJECT_DIR, "out.mp4"), {
+      fps: { num: 30, den: 1 },
+      quality: "standard",
+      format: "mp4",
+      gpu: false,
+      browserGpuMode: "software",
+      hdrMode: "auto",
+      quiet: true,
+      throwOnError: true,
+      refuseOutsideFiles: true,
+    });
+    expect(producerState.createdJobs.at(-1)?.allowOutsideProjectAssets).toBe(false);
+  });
+
   it("cleans orphaned browser trees before starting a local render", async () => {
     orphanCleanupState.killed = 1;
 
@@ -2499,6 +2514,62 @@ describe("render command batch options", () => {
       rmSync(projectDir, { recursive: true, force: true });
     }
   }, 60_000);
+});
+
+describe("dockerRenderOptions", () => {
+  const { dockerRenderOptions } = renderModule;
+  const options = {
+    fps: { num: 30, den: 1 },
+    quality: "standard",
+    format: "mp4",
+    gpu: false,
+    hdrMode: "auto",
+    quiet: true,
+  } as const;
+
+  function receivedProject(files: string[] | undefined): { root: string; projectDir: string } {
+    const root = mkdtempSync(join(tmpdir(), "hf-docker-received-"));
+    const projectDir = join(root, "scene");
+    mkdirSync(projectDir);
+    writeFileSync(join(projectDir, "index.html"), '<img src="../output/photo.png">');
+    writeFileSync(
+      join(projectDir, "photo.png"),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    if (files) {
+      mkdirSync(join(root, ".hyperframes"));
+      writeFileSync(join(root, ".hyperframes", "received-files.json"), JSON.stringify({ files }));
+    }
+    return { root, projectDir };
+  }
+
+  it("refuses outside files when a record in a folder above the project lists its entry", () => {
+    const { root, projectDir } = receivedProject(["scene/index.html"]);
+    mkdirSync(join(root, "output"));
+    writeFileSync(join(root, "output", "photo.png"), "secret");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(dockerRenderOptions(projectDir, options).refuseOutsideFiles).toBe(true);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringMatching(/came from someone else.*photo\.png/),
+      );
+    } finally {
+      warn.mockRestore();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    { name: "no received-files record", files: undefined },
+    { name: "a record listing only an image", files: ["scene/photo.png"] },
+  ])("leaves outside files in for $name", ({ files }) => {
+    const { root, projectDir } = receivedProject(files);
+    try {
+      expect(dockerRenderOptions(projectDir, options).refuseOutsideFiles).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("normalizeStageCode", () => {

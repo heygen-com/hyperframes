@@ -447,6 +447,7 @@ export interface SyntheticRenderJobInput {
   strictVariables?: RenderConfig["strictVariables"];
   pageMotionBlur?: RenderConfig["pageMotionBlur"];
   allowOutsideProjectAssets?: boolean;
+  includeOutsideScripts?: boolean;
 }
 
 /**
@@ -477,6 +478,7 @@ export function buildSyntheticRenderJob(input: SyntheticRenderJobInput): RenderJ
     strictVariables: input.strictVariables,
     pageMotionBlur: input.pageMotionBlur,
     allowOutsideProjectAssets: input.allowOutsideProjectAssets,
+    includeOutsideScripts: input.includeOutsideScripts,
   };
   return createRenderJob(renderConfig);
 }
