@@ -86,10 +86,6 @@ export function readSamples(info: VideoInfo, ks: number[], w: number, h: number)
   });
 }
 
-/**
- * Each sampled frame's faces as [x, y, w, h] shares of the frame. `minFace` is the smallest face looked for as a
- * share of the frame's height (default FACE_MIN; 0 looks down to the cascades' 20 px, for crowds).
- */
 export async function faceBoxes(
   info: VideoInfo,
   start: number,
@@ -97,8 +93,15 @@ export async function faceBoxes(
   samples: number,
   opts: { minFace?: number } = {},
 ) {
+  return faceBoxesAt(info, sampleFrames(info.fps, start, end, samples), opts);
+}
+
+/**
+ * The faces of frames `ks` (ascending indices) as [x, y, w, h] shares of the frame. `minFace` is the smallest face
+ * looked for as a share of the frame's height (default FACE_MIN; 0 looks down to the cascades' 20 px, for crowds).
+ */
+export async function faceBoxesAt(info: VideoInfo, ks: number[], opts: { minFace?: number } = {}) {
   const cv = await loadOpenCv((m) => console.error(m));
-  const ks = sampleFrames(info.fps, start, end, samples);
   const w = Math.min(WORK_W, info.width);
   const h =
     w === info.width

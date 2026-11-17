@@ -2,7 +2,7 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONFIG } from "@hyperframes/engine";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -21,6 +21,7 @@ import {
   preResolveHostileMediaProxies,
   dropFailedProxyEchoes,
   runBrowserCheck,
+  servedProjectFile,
   collectSeekClock,
   mergeHelperDrafts,
   parseLayoutIssue,
@@ -1375,6 +1376,37 @@ describe("mergeHelperDrafts", () => {
       end: Number.POSITIVE_INFINITY,
     };
     expect(mergeHelperDrafts(primary, helper)).toEqual(primary.drafts);
+  });
+});
+
+describe("servedProjectFile", () => {
+  const page = "http://127.0.0.1:4000/";
+  let root: string;
+  let projectDir: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "hf-served-file-"));
+    projectDir = join(root, "project");
+    mkdirSync(join(projectDir, "takes"), { recursive: true });
+    writeFileSync(join(projectDir, "takes", "my take.mp4"), "");
+    writeFileSync(join(root, "outside.mp4"), "");
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it("resolves a page-origin source to its project file, proxied or not", () => {
+    const file = join(projectDir, "takes", "my take.mp4");
+    expect(servedProjectFile(`${page}takes/my%20take.mp4`, page, projectDir)).toBe(file);
+    expect(servedProjectFile(`${page}takes/my%20take.mp4?hf-proxy=h264`, page, projectDir)).toBe(
+      file,
+    );
+  });
+
+  it("gives no file for a remote source, a missing file or a path outside the project", () => {
+    const remote = "https://cdn.example.com/takes/my%20take.mp4";
+    expect(servedProjectFile(remote, page, projectDir)).toBeNull();
+    expect(servedProjectFile(`${page}takes/gone.mp4`, page, projectDir)).toBeNull();
+    expect(servedProjectFile(`${page}..%2Foutside.mp4`, page, projectDir)).toBeNull();
+    expect(servedProjectFile("", page, projectDir)).toBeNull();
   });
 });
 
