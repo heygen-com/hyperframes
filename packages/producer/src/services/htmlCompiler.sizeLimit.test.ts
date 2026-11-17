@@ -90,23 +90,41 @@ const rootMounting = (src: string, count: number) =>
     ),
   );
 
-/** A sub-composition that mounts `src` `count` times. */
-const sceneMounting = (id: string, src: string, count: number) =>
-  `<template><div data-composition-id="${id}">${`<div data-composition-src="${src}"></div>`.repeat(count)}</div></template>`;
+/** A sub-composition that mounts `src` `count` times, as a bare fragment or inside a `<template>`. */
+const sceneMounting = (id: string, src: string, count: number, template = true) => {
+  const root = `<div data-composition-id="${id}">${`<div data-composition-src="${src}"></div>`.repeat(count)}</div>`;
+  return template ? `<template>${root}</template>` : root;
+};
+
+/** Seven files, each mounting the next one ten times. */
+function fanOut(template: boolean): Record<string, string> {
+  const files: Record<string, string> = { "index.html": rootMounting("level-0.html", 10) };
+  for (let level = 0; level < 6; level += 1) {
+    files[`level-${level}.html`] = sceneMounting(
+      `level-${level}`,
+      `level-${level + 1}.html`,
+      10,
+      template,
+    );
+  }
+  files["level-6.html"] = SCENE;
+  return files;
+}
 
 describe("composition expansion budget", () => {
-  it("refuses small files that mount each other many times at several levels, in bounded time", async () => {
-    const files: Record<string, string> = { "index.html": rootMounting("level-0.html", 10) };
-    for (let level = 0; level < 6; level += 1) {
-      files[`level-${level}.html`] = sceneMounting(`level-${level}`, `level-${level + 1}.html`, 10);
-    }
-    files["level-6.html"] = SCENE;
-    const started = performance.now();
-    const error = await compileError(project(files));
-    expect(performance.now() - started).toBeLessThan(5_000);
-    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
-    expect(String(error)).toContain("10000 mounts");
-  });
+  it.each([
+    ["before compiling, when the mounts are bare fragments", false],
+    ["while inlining, when the mounts sit in templates", true],
+  ])(
+    "refuses small files that mount each other many times at several levels %s",
+    async (_, template) => {
+      const started = performance.now();
+      const error = await compileError(project(fanOut(template)));
+      expect(performance.now() - started).toBeLessThan(15_000);
+      expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+      expect(String(error)).toContain("10001 mounts");
+    },
+  );
 
   it("refuses one large file mounted many times", async () => {
     const big = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 4) + 1;

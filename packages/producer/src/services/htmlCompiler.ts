@@ -368,21 +368,28 @@ function assertSubCompositionsUsable(
     problems.set(`${srcPath}\0${detail}`, { srcPath, detail });
   // The files on the current mount chain. A repeat is a cycle, which the compiler skips silently too.
   const chain = new Set<string>();
+  const paths = new Map<string, { detail: string } | { filePath: string }>();
+  const resolveMount = (srcPath: string): { detail: string } | { filePath: string } => {
+    const filePath = resolveCompositionPath(projectDir, srcPath, assetRoot);
+    if (filePath === null) return { detail: "it is outside the project folder" };
+    const detail = compositionPathProblem(projectDir, filePath, assetRoot, outsideFiles);
+    return detail ? { detail } : { filePath };
+  };
 
   // data-composition-src resolves root-relative at every level, as parseSubCompositions and the inliner
-  // resolve it, so `projectDir` stays unchanged. A file is read once however often it is mounted.
+  // resolve it, so `projectDir` stays unchanged. Each path is checked, and each file read, once.
   const walk = (srcPaths: readonly string[]): void => {
     for (const srcPath of srcPaths) {
-      const filePath = resolveCompositionPath(projectDir, srcPath, assetRoot);
-      if (filePath === null) {
-        report(srcPath, "it is outside the project folder");
+      let resolved = paths.get(srcPath);
+      if (!resolved) {
+        resolved = resolveMount(srcPath);
+        paths.set(srcPath, resolved);
+      }
+      if ("detail" in resolved) {
+        report(srcPath, resolved.detail);
         continue;
       }
-      const pathProblem = compositionPathProblem(projectDir, filePath, assetRoot, outsideFiles);
-      if (pathProblem) {
-        report(srcPath, pathProblem);
-        continue;
-      }
+      const { filePath } = resolved;
       if (chain.has(filePath)) continue;
 
       let file = files.get(filePath);
@@ -1165,6 +1172,26 @@ function inlineSubCompositions(
     return { html: emitted ? document.toString() : html, variablesByComp: {} };
   }
 
+  const budget = new CompositionExpansionBudget();
+  const readOnce = new Map<string, string | null>();
+  const readMountHtml = (srcPath: string): string | null => {
+    const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
+    if (filePath) assertCompositionFileSize(filePath, srcPath);
+    const read =
+      filePath && !isPrivateCompositionFile(projectDir, filePath)
+        ? readProjectFile(filePath)
+        : null;
+    return read?.kind === "file"
+      ? rewriteUnresolvableGsapToCdn(read.text, projectDir, srcPath)
+      : null;
+  };
+  const resolveMountHtml = (srcPath: string): string | null => {
+    const compiled = subCompositions.get(srcPath);
+    if (compiled) return compiled;
+    if (!readOnce.has(srcPath)) readOnce.set(srcPath, readMountHtml(srcPath));
+    return readOnce.get(srcPath) ?? null;
+  };
+
   // Assign per-instance runtime composition ids before each host is inlined,
   // mirroring the preview bundler. Initial hosts are assigned as one pre-pass;
   // hosts discovered by the shared inliner's queue are assigned lazily by the
@@ -1176,20 +1203,6 @@ function inlineSubCompositions(
   // data-variable-values clobbers the earlier ones and all-but-one instance
   // renders blank. #2066 fixed the single-instance case but left this
   // divergence (snapshot/preview correct, render wrong).
-  const budget = new CompositionExpansionBudget();
-  const resolveMountHtml = (srcPath: string): string | null => {
-    const compiled = subCompositions.get(srcPath);
-    if (compiled) return compiled;
-    const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
-    if (filePath) assertCompositionFileSize(filePath, srcPath);
-    const read =
-      filePath && !isPrivateCompositionFile(projectDir, filePath)
-        ? readProjectFile(filePath)
-        : null;
-    return read?.kind === "file"
-      ? rewriteUnresolvableGsapToCdn(read.text, projectDir, srcPath)
-      : null;
-  };
   const hostIdentityByElement = new ProducerHostIdentityMap(
     document as unknown as Document,
     hosts as unknown as Element[],
