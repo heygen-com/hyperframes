@@ -618,7 +618,6 @@ export interface RenderPerfSummary {
     verifiedFrames?: number;
     reusedFrames: number;
     skipReason?: string;
-    /** Why an `ineligible` page could not be predicted static, distinct values `|`-joined. */
     ineligibleCause?: string;
     verificationOutcomes?: StaticVerificationOutcome[];
     plannedRuns?: number;
