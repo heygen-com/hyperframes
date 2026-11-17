@@ -509,10 +509,30 @@ function undiciTransport(lookup: LookupFunction): Promise<DownloadFetch> {
   return transport;
 }
 
+const UNRESOLVED_HOST_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "ENODATA", "ESERVFAIL"]);
+
+/** Behind an env proxy, refuses a host this machine resolves to a non-public address; the proxy resolves the rest. */
+function assertProxiedHostResolvesPublic(url: string): Promise<void> {
+  const hostname = new URL(url).hostname.replace(/^\[|\]$/g, "");
+  return new Promise((resolvePromise, reject) => {
+    dns.lookup(hostname, { all: true }, (error, answers) => {
+      if (error) {
+        return UNRESOLVED_HOST_CODES.has(error.code ?? "") ? resolvePromise() : reject(error);
+      }
+      if (answers.some((a) => isBlockedNetworkHost(a.address.split("%")[0]!))) {
+        return reject(nonPublicAddressError());
+      }
+      resolvePromise();
+    });
+  });
+}
+
 const fetchPublic: DownloadFetch = async (url, init) => {
   if (resolveRestrictPageNetwork()) return (await undiciTransport(capturePolicyLookup))(url, init);
-  // Behind an env proxy the proxy resolves the name; the URL and redirect checks are the guard then.
-  if (fetchGoesThroughEnvProxy()) return fetch(url, init);
+  if (fetchGoesThroughEnvProxy()) {
+    await assertProxiedHostResolvesPublic(url);
+    return fetch(url, init);
+  }
   return (await undiciTransport(publicOnlyLookup))(url, init);
 };
 

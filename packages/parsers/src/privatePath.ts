@@ -47,6 +47,7 @@ const STUDIO_FILES = new Set([
   ".hyperframes/studio-manual-edits.json",
 ]);
 const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
+const UNCONVERTED_PREVIEW_DOWNLOADS = ".hyperframes/prepared-assets/downloads";
 
 // Credentials and coding-tool state that projects often sit next to: registry tokens, MCP and agent settings, cloud and
 // SSH keys. No composition loads one, so no file server serves one and no upload ships one.
@@ -121,6 +122,11 @@ const LOADED_ASSET_TYPE =
   /.\.(?:png|jpe?g|gif|webp|avif|svg|ico|bmp|tiff?|heic|heif|mp4|m4v|mov|webm|mkv|mxf|avi|mp3|wav|m4a|aac|ogg|oga|opus|flac|woff2?|ttf|otf|css|m?js|cjs)$/;
 
 function isStudioOwnFile(path: string): boolean {
+  if (
+    path === UNCONVERTED_PREVIEW_DOWNLOADS ||
+    path.startsWith(`${UNCONVERTED_PREVIEW_DOWNLOADS}/`)
+  )
+    return false;
   return (
     STUDIO_FILES.has(path) ||
     STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
