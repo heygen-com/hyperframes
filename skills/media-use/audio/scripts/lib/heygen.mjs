@@ -11,9 +11,9 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
 // Vendored so the skill ships standalone. Pure node.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 
 export const HEYGEN_BASE = "https://api.heygen.com/v3";
 
@@ -88,8 +88,140 @@ function projectKeyDir(name) {
   return set !== undefined && set.val === process.env[name] ? set.dir : undefined;
 }
 
+const GEMINI_CREDENTIALS = [
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_APPLICATION_CREDENTIALS",
+  "GCS_CREDS",
+];
+
+// The hyperframes CLI names the folder whose .env set each key it passes on, so a key it loaded is not the shell's.
+function inheritProjectKeyOrigins() {
+  let origins;
+  try {
+    origins = JSON.parse(process.env.HYPERFRAMES_PROJECT_ENV_ORIGINS || "{}");
+  } catch {
+    return;
+  }
+  for (const name of [...GEMINI_CREDENTIALS, "ELEVENLABS_API_KEY"]) {
+    const dir = origins?.[name];
+    if (typeof dir === "string" && process.env[name] && !projectEnvValues.has(name))
+      projectEnvValues.set(name, { val: process.env[name], dir });
+  }
+}
+
+function isFile(path) {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function fileIdentity(path) {
+  try {
+    const stat = lstatSync(path, { bigint: true });
+    return stat.ino === 0n ? null : `${stat.dev}:${stat.ino}`;
+  } catch {
+    return null;
+  }
+}
+
+// The CLI's received-files rule: a record at or above `dir` lists its .env (by path or as the same file on disk), or a
+// record there cannot be read. → "listed" | "unreadable" | null.
+function receivedEnvFile(dir) {
+  let start;
+  try {
+    start = realpathSync(dir);
+  } catch {
+    start = resolve(dir);
+  }
+  const envIdentity = fileIdentity(join(dir, ".env"));
+  for (let root = start; ; root = dirname(root)) {
+    const record = join(root, ".hyperframes", "received-files.json");
+    if (root === start || isFile(record)) {
+      let files;
+      try {
+        files = JSON.parse(readFileSync(record, "utf8")).files;
+      } catch (error) {
+        if (root !== start || !["ENOENT", "ENOTDIR"].includes(error.code)) return "unreadable";
+        files = [];
+      }
+      if (!Array.isArray(files)) return "unreadable";
+      const key = relative(root, join(start, ".env")).split(sep).join("/").normalize("NFC");
+      const listed = files.some((file) => {
+        const entry = String(file).normalize("NFC");
+        return (
+          entry === key || (envIdentity !== null && fileIdentity(join(root, entry)) === envIdentity)
+        );
+      });
+      if (listed) return "listed";
+    }
+    if (dirname(root) === root) return null;
+  }
+}
+
+const RECEIVED_ORIGIN = {
+  listed: "a received project",
+  unreadable: "a project whose received-files record could not be read",
+};
+
+// How a project key's .env is not the person's own, or null when it is theirs or the key is not from a .env.
+function untrustedOrigin(name) {
+  const dir = projectKeyDir(name);
+  const kind = dir === undefined ? null : receivedEnvFile(dir);
+  return kind === null ? null : RECEIVED_ORIGIN[kind];
+}
+
+// The person's own credential that the provider of `name` competes with, named for the note; undefined when none.
+function ownCompetingCredential(name) {
+  if (name !== "ELEVENLABS_API_KEY")
+    return GEMINI_CREDENTIALS.find(
+      (other) => other !== name && process.env[other] && untrustedOrigin(other) === null,
+    );
+  if (process.env.HEYGEN_ACCESS_TOKEN) return "HEYGEN_ACCESS_TOKEN";
+  const heygenKey = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"].find(
+    (other) => process.env[other] && untrustedOrigin(other) === null,
+  );
+  if (heygenKey) return heygenKey;
+  return storedCredential() ? "saved HeyGen credentials" : undefined;
+}
+
+// A received project's provider key gives way to the person's own credential for a competing provider.
+function yieldReceivedProviderKeys() {
+  for (const name of ["GEMINI_API_KEY", "GOOGLE_API_KEY", "ELEVENLABS_API_KEY"]) {
+    const origin = untrustedOrigin(name);
+    const own = origin === null ? undefined : ownCompetingCredential(name);
+    if (own === undefined) continue;
+    const dir = projectKeyDir(name);
+    delete process.env[name];
+    projectEnvValues.delete(name);
+    process.stderr.write(
+      `[hyperframes] .env: ignoring ${name} from ${origin} (${join(dir, ".env")}); using your own ${own}\n`,
+    );
+  }
+}
+
+let elevenlabsKeyNoted = false;
+
+// Says once, before ElevenLabs speaks, that the key came from a received project's .env.
+export function noteReceivedElevenLabsKey() {
+  const origin = untrustedOrigin("ELEVENLABS_API_KEY");
+  if (origin === null || elevenlabsKeyNoted) return;
+  elevenlabsKeyNoted = true;
+  process.stderr.write(
+    `[hyperframes] Using ELEVENLABS_API_KEY from ${join(projectKeyDir("ELEVENLABS_API_KEY"), ".env")}, the .env of ${origin}: speech goes to that key's ElevenLabs account.\n`,
+  );
+}
+
 // Walk up ≤5 dirs from startDir; load the first .env (shell env always wins).
 export function loadEnvFromDir(startDir) {
+  inheritProjectKeyOrigins();
+  loadFirstEnvFile(startDir);
+  yieldReceivedProviderKeys();
+}
+
+function loadFirstEnvFile(startDir) {
   let dir = resolve(startDir);
   for (let i = 0; i < 5; i++) {
     const text = envFileText(join(dir, ".env"));

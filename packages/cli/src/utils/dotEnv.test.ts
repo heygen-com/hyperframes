@@ -4,6 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { applyDotEnv, loadProjectDotEnv, yieldReceivedProviderKeys } from "./dotEnv.js";
 
+const records = vi.hoisted(() => ({ unchecked: false }));
+vi.mock("./privateProjectFile.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./privateProjectFile.js")>();
+  return {
+    ...actual,
+    receivedRecordStatus: (dir: string) =>
+      records.unchecked ? ("unchecked" as const) : actual.receivedRecordStatus(dir),
+  };
+});
+
 describe("applyDotEnv", () => {
   it("copies a project's keys without overwriting what is already set", () => {
     const env: NodeJS.ProcessEnv = { KEPT: "outer" };
@@ -158,6 +168,7 @@ describe("yieldReceivedProviderKeys", () => {
   const dirs: string[] = [];
 
   afterEach(() => {
+    records.unchecked = false;
     vi.unstubAllEnvs();
     for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
   });
@@ -217,5 +228,14 @@ describe("yieldReceivedProviderKeys", () => {
     const { warn } = await load({}, "OPENROUTER_API_KEY=received\n", true);
     expect(process.env.OPENROUTER_API_KEY).toBe("received");
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("says the project's origin could not be checked when its folders are too many to scan", async () => {
+    records.unchecked = true;
+    const { dir, warn } = await load({ GEMINI_API_KEY: "own" }, "OPENROUTER_API_KEY=mine\n", false);
+    expect(process.env.OPENROUTER_API_KEY).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      `[hyperframes] .env: ignoring OPENROUTER_API_KEY from a project whose origin could not be checked (too many folders to scan) (${join(dir, ".env")}); using your own GEMINI_API_KEY`,
+    );
   });
 });

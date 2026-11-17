@@ -129,30 +129,46 @@ const competitorsOf = (name: string): string[] =>
     group.filter((other) => other !== name && Boolean(process.env[other])),
   );
 
+async function untrustedEnvOrigin(dir: string): Promise<string | null> {
+  const { receivedFiles, receivedRecordStatus } = await import("./privateProjectFile.js");
+  if (receivedRecordStatus(dir) === "unchecked")
+    return "a project whose origin could not be checked (too many folders to scan)";
+  return receivedFiles(dir)(".env") ? "a received project" : null;
+}
+
 /** Unsets each provider key a received project's `.env` set while the person has their own credential for a competing provider. */
 export async function yieldReceivedProviderKeys(warn: (line: string) => void): Promise<void> {
   const contested = [...projectEnvValues.keys()].filter(
     (name) => projectEnvDir(name) !== undefined && competitorsOf(name).length > 0,
   );
-  if (contested.length === 0) return;
-  const { receivedFiles } = await import("./privateProjectFile.js");
-  const receivedDirs = new Map<string, boolean>();
-  const received = (name: string): boolean => {
-    const dir = projectEnvDir(name);
-    if (dir === undefined) return false;
-    if (!receivedDirs.has(dir)) receivedDirs.set(dir, receivedFiles(dir)(".env"));
-    return receivedDirs.get(dir) === true;
-  };
-  for (const name of contested.filter(received)) {
-    const own = competitorsOf(name).find((other) => !received(other));
+  const origins = new Map<string, string | null>();
+  for (const dir of new Set(contested.map((name) => projectEnvDir(name) ?? ""))) {
+    origins.set(dir, await untrustedEnvOrigin(dir));
+  }
+  const originOf = (name: string) => origins.get(projectEnvDir(name) ?? "") ?? null;
+  for (const name of contested.filter((name) => originOf(name) !== null)) {
+    const own = competitorsOf(name).find((other) => originOf(other) === null);
     if (own === undefined) continue;
     const dir = projectEnvDir(name) ?? "";
+    const origin = originOf(name);
     delete process.env[name];
     projectEnvValues.delete(name);
     warn(
-      `[hyperframes] .env: ignoring ${name} from a received project (${join(dir, ".env")}); using your own ${own}`,
+      `[hyperframes] .env: ignoring ${name} from ${origin} (${join(dir, ".env")}); using your own ${own}`,
     );
   }
+}
+
+export const PROJECT_ENV_ORIGINS = "HYPERFRAMES_PROJECT_ENV_ORIGINS";
+
+/** The folder of each key a project `.env` set, for the scripts the CLI launches to weigh the same way. */
+export function projectEnvOrigins(): Record<string, string> {
+  return Object.fromEntries(
+    [...projectEnvValues.keys()].flatMap((name) => {
+      const dir = projectEnvDir(name);
+      return dir === undefined ? [] : [[name, dir]];
+    }),
+  );
 }
 
 export function loadProjectDotEnv(
