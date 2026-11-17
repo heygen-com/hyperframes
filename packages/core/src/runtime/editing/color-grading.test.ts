@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installEditingAgent } from "../editingAgent";
+import { installMarkedEditingAgent } from "../editingAgent.test-helpers";
 
 const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
 const target = { id: "clip", hfId: null, selector: "#clip", selectorIndex: 0 };
@@ -16,7 +16,7 @@ function connect(): MessagePort {
   const parent = document.body.appendChild(document.createElement("iframe")).contentWindow!;
   const handoff = vi.fn();
   parent.postMessage = handoff as unknown as Window["postMessage"];
-  agent = installEditingAgent(parent);
+  agent = installMarkedEditingAgent(parent);
   window.dispatchEvent(new MessageEvent("message", { source: parent, data: CONNECT }));
   return (handoff.mock.calls[0]![2] as MessagePort[])[0]!;
 }

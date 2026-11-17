@@ -4,7 +4,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // The frame's real runtime agent, serving the opaque frame from this document.
-import { installEditingAgent } from "../../../../core/src/runtime/editingAgent";
+import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
 import { makeSelection, installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 import { queryPreviewElements } from "../../player/lib/previewElements";
@@ -131,7 +131,7 @@ function opaqueFrame() {
         new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
       ),
   } as unknown as Window;
-  const agent = installEditingAgent(parent);
+  const agent = installMarkedEditingAgent(parent);
   frame.postMessage = (data: unknown) =>
     window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
   closers.push(() => agent.dispose());

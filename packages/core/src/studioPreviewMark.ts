@@ -12,6 +12,13 @@ export function servedToAnotherSite(doc: Document): boolean {
   return doc.querySelector(`meta[name="${PREVIEW_FOR_ANOTHER_SITE_META}"]`) !== null;
 }
 
+export function markedForStudio(doc: Document): boolean {
+  return (
+    doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null &&
+    !servedToAnotherSite(doc)
+  );
+}
+
 export function getLogicalOpacity(el: Element, computed: CSSStyleDeclaration): string {
   const overlay = el.previousElementSibling;
   if (

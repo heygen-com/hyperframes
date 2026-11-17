@@ -19,6 +19,28 @@ const MAX_KEY_LENGTH = 512;
 const MAX_VALUE_LENGTH = 200_000;
 const ATTRIBUTE_NAME = /^[^\s"'>/=]{1,256}$/;
 const IDENTITY_SELECTOR = "[id], [data-hf-id]";
+const SAFE_TO_SET = new Set([
+  "class",
+  "style",
+  "data-start",
+  "data-end",
+  "data-duration",
+  "data-track-index",
+  "data-media-start",
+  "data-playback-start",
+  "data-playback-rate",
+  "data-volume",
+  "data-audio-muted",
+  "data-hidden",
+  "data-label",
+  "data-timeline-label",
+  "data-width",
+  "data-height",
+  "data-x",
+  "data-y",
+  "data-hf-group",
+]);
+const safeToDrop = (name: string) => SAFE_TO_SET.has(name) || name.startsWith("data-");
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Object.prototype.toString.call(value) === "[object Object]";
@@ -96,9 +118,9 @@ function scopeRoots(file: string | null): ParentNode[] {
   );
 }
 
-type RestorePlan = [Element, RestoreAttribute[]][];
+type RestorePlan = [Element, drop: string[], set: RestoreAttribute[]][];
 
-/** Adds `root`'s live elements to `plan`; false when any is missing or not the file's own. */
+/** Adds `root`'s live elements to `plan`; false when any is missing, not the file's own, or changes an attribute it may not. */
 function planRoot(
   root: ParentNode,
   elements: RestoreScope["elements"],
@@ -110,12 +132,16 @@ function planRoot(
     const el = live.get(key);
     // The preview rewrites a sub-composition's own root, so its attributes are not the file's.
     if (!el || el.hasAttribute("data-hf-inner-root")) return false;
-    plan.push([el, attributes]);
+    const keep = new Set(attributes.map(([name]) => name));
+    const drop = el.getAttributeNames().filter((name) => !keep.has(name));
+    const set = attributes.filter(([name, value]) => el.getAttribute(name) !== value);
+    if (!drop.every(safeToDrop) || !set.every(([name]) => SAFE_TO_SET.has(name))) return false;
+    plan.push([el, drop, set]);
   }
   return true;
 }
 
-/** Each live element with the attributes it takes, or null when any is missing or not the file's own. */
+/** Each live element with the attributes it drops and sets, or null when the restore cannot apply in place. */
 function planRestore(scopes: RestoreScope[]): RestorePlan | null {
   const plan: RestorePlan = [];
   for (const { file, elements } of scopes) {
@@ -153,10 +179,9 @@ export function restoreAttributes({ scopes, scripted, time }: RestoreAttributesP
   const plan = planRestore(scopes);
   if (!plan || typeof win.__player?.seek !== "function") return { applied: false };
   if (scripted && plan.some(([el]) => "_gsap" in el)) return { applied: false };
-  for (const [el, attributes] of plan) {
-    const keep = new Set(attributes.map(([name]) => name));
-    for (const name of el.getAttributeNames()) if (!keep.has(name)) el.removeAttribute(name);
-    for (const [name, value] of attributes) el.setAttribute(name, value);
+  for (const [el, drop, set] of plan) {
+    for (const name of drop) el.removeAttribute(name);
+    for (const [name, value] of set) el.setAttribute(name, value);
   }
   rebindAt(win, time);
   return { applied: true };

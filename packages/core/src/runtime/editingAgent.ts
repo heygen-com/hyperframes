@@ -36,8 +36,8 @@ import { restoreAttributes } from "./editing/restoreAttributes";
 import { gestureStart } from "./editingGestureStart";
 import {
   getLogicalOpacity,
+  markedForStudio,
   previewConsoleErrorText,
-  servedToAnotherSite,
   STUDIO_PREVIEW_ERRORS,
 } from "../studioPreviewMark";
 import { MAX_QUERY_MATCHES } from "./editingElement";
@@ -251,7 +251,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     const data = event.data;
     if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
       return;
-    if (data.v !== EDITING_PROTOCOL_VERSION || servedToAnotherSite(document)) return;
+    if (data.v !== EDITING_PROTOCOL_VERSION || !markedForStudio(document)) return;
     const channel = new MessageChannel();
     const port = channel.port1;
     ports.add(port);
