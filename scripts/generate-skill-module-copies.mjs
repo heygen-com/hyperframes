@@ -9,6 +9,10 @@ export const skillModuleCopies = [
     ["skills/media-use/scripts/lib/media-fetch.mjs"],
   ],
   [
+    "packages/cli/src/media-use/lib/terminal-text.mjs",
+    ["skills/media-use/scripts/lib/terminal-text.mjs"],
+  ],
+  [
     "packages/cli/src/media-use/lib/openverse.mjs",
     ["skills/media-use/audio/scripts/lib/openverse.mjs"],
   ],

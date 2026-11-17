@@ -409,7 +409,9 @@ when your shell holds a complete credential for another vision provider,
 capture ignores the `.env` vision key, with a note naming the file.
 Model and timeout settings in the `.env` still apply. A received project's
 `.env` (one its received-files record lists) also gives way to your own
-project's `.env`, for every command.
+project's `.env`, for every command. When capture or `snapshot --describe` uses
+a vision key from a project's `.env`, a note naming the file prints before the
+first request.
 
 #### Local HTML files
 
