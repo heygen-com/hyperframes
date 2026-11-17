@@ -14,6 +14,7 @@ import {
   heygenMessage,
   loadEnvFromDir,
   noteProjectElevenLabsKey,
+  noteProjectProviderKey,
 } from "./heygen.mjs";
 
 const HEYGEN_ENV = [
@@ -714,6 +715,10 @@ test("loadEnvFromDir keeps a cloned project's .env Gemini key next to the shell'
       loadEnvFromDir(project);
       assert.equal(process.env.GEMINI_API_KEY, "cloned");
       assert.deepEqual(notes, []);
+      noteProjectProviderKey("GEMINI_API_KEY", "speech goes to that key's Gemini account");
+      assert.deepEqual(notes, [
+        `[hyperframes] Using GEMINI_API_KEY from ${join(project, ".env")}, a project .env: speech goes to that key's Gemini account.\n`,
+      ]);
     },
   );
 });

@@ -453,12 +453,12 @@ describe("captionImagesWithGemini — Gemini provider", () => {
 
     loadEnvFile(join(dir, "out"));
     await yieldReceivedProviderKeys(() => {});
-    return captionImagesWithGemini(dir, () => {}, []);
+    return { dir, captions: await captionImagesWithGemini(dir, () => {}, []) };
   }
 
   it("captions with the shell's Gemini key, never a received project's OpenRouter key", async () => {
     const fetchMock = vi.fn();
-    const captions = await captionNextToShellGemini(true, fetchMock);
+    const { captions } = await captionNextToShellGemini(true, fetchMock);
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(captions).toEqual({ "hero.png": "A caption." });
@@ -473,11 +473,17 @@ describe("captionImagesWithGemini — Gemini provider", () => {
         headers: { "content-type": "application/json" },
       });
     });
-    const captions = await captionNextToShellGemini(false, fetchMock);
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { dir, captions } = await captionNextToShellGemini(false, fetchMock);
+    const notes = errors.mock.calls.map(([line]) => String(line));
+    errors.mockRestore();
 
     expect(captions).toEqual({ "hero.png": "Routed." });
     expect(authorization).toBe("Bearer project-key");
     expect(generateContentMock).not.toHaveBeenCalled();
+    expect(notes).toEqual([
+      `[hyperframes] Using OPENROUTER_API_KEY from ${join(dir, ".env")}, a project .env: images go to that key's OpenRouter account.`,
+    ]);
   });
 
   // fails without the fix: a received project's Gemini key captioned images with no note.
