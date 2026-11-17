@@ -7,7 +7,12 @@ import { useGsapInteractionFailureTelemetry } from "../../hooks/useGsapInteracti
 import { usePlayerStore } from "../../player/store/playerStore";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
-import { nearestPointOnPath, nodeCentre, type MotionNodeRef } from "./motionPathGeometry";
+import {
+  nearestPointOnPath,
+  nodeCentre,
+  type MotionNodeRef,
+  type MotionPathHome,
+} from "./motionPathGeometry";
 import { editableAnimationId, selectorFor } from "./motionPathSelection";
 import { controlForNode, controlUnder, pressControl } from "./motionPathLayerNode";
 import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
@@ -27,7 +32,7 @@ import {
   nodeDropLabel,
 } from "./motionPathCommit";
 import { elementHome, transformWDivisor } from "@hyperframes/core/runtime/editing-port";
-import { hasMotionPathPlugin, useMotionPathData } from "./useMotionPathData";
+import { hasMotionPathPlugin, sealedMotionPathHome, useMotionPathData } from "./useMotionPathData";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
 interface MotionPathOverlayProps {
@@ -203,15 +208,20 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       e.stopPropagation();
       e.preventDefault();
       const sc = r.width / compW;
-      const elHome = isHtmlElement(live) ? elementHome(live) : home!;
+      const t = Math.round(usePlayerStore.getState().currentTime * 100) / 100;
       // De-magnify: the click lands on the projected (1/m44-magnified) path, so
       // divide the home-relative offset by the perspective factor to recover the
       // stored composition offset (inverse of the `* pScale` applied at draw).
-      const ps = isHtmlElement(live) ? 1 / transformWDivisor(live) : pScale;
-      const px = Math.round(((e.clientX - r.left) / sc - elHome.x) / ps);
-      const py = Math.round(((e.clientY - r.top) / sc - elHome.y) / ps);
-      const t = Math.round(usePlayerStore.getState().currentTime * 100) / 100;
-      void commitCreatePath(createSelector, t, px, py, commitMutation);
+      const place = (elHome: MotionPathHome, ps: number) => {
+        const px = Math.round(((e.clientX - r.left) / sc - elHome.x) / ps);
+        const py = Math.round(((e.clientY - r.top) / sc - elHome.y) / ps);
+        void commitCreatePath(createSelector, t, px, py, commitMutation);
+      };
+      if (isHtmlElement(live)) place(elementHome(live), 1 / transformWDivisor(live));
+      else
+        void sealedMotionPathHome(frame, createSelector).then((read) =>
+          place(read?.home ?? home!, read?.home ? read.perspective : pScale),
+        );
       setMotionPathArmed(false);
     };
     surface.addEventListener("pointerdown", onDown, true);
