@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { Hono } from "hono";
 import {
+  closeSync,
+  constants,
   existsSync,
-  lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -111,7 +113,11 @@ describe("PUT /projects/:id/render-variables", () => {
 
     expect(response.status).toBe(200);
     expect(readFileSync(join(project, "package.json"), "utf8")).toBe(manifest);
-    expect(lstatSync(record).isSymbolicLink()).toBe(false);
-    expect(JSON.parse(readFileSync(record, "utf8"))).toEqual(values);
+    const fd = openSync(record, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      expect(JSON.parse(readFileSync(fd, "utf8"))).toEqual(values);
+    } finally {
+      closeSync(fd);
+    }
   });
 });
