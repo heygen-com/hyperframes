@@ -349,6 +349,16 @@ describe("playlistLeavesItsFolder", () => {
     ).toBe(false);
   });
 
+  it("judges entries against the folder ffmpeg reads them from, cut at a # in the list's path", async () => {
+    const climbs = hls("#EXTINF:1,", "../h#z/x.ts");
+    expect(await playlistLeavesItsFolder(writeTree({ "proj/h#z/list.m3u8": climbs }))).toBe(true);
+    const beside = hls("#EXTINF:1,", "seg.ts");
+    expect(await playlistLeavesItsFolder(writeTree({ "Take #2/list.m3u8": beside }))).toBe(true);
+    expect(await playlistLeavesItsFolder(writeTree({ "take #2.m3u8": beside }))).toBe(false);
+    const named = hls("#EXTINF:1,", "Take #2/seg.ts");
+    expect(await playlistLeavesItsFolder(writeTree({ "Take #2/list.m3u8": named }))).toBe(false);
+  });
+
   it("refuses a nested list naming a private file from its own folder", async () => {
     const master = writeTree({
       "master.m3u8": "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nsub/inner.m3u8\n",

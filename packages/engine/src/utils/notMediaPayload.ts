@@ -386,6 +386,13 @@ function playlistEntries(text: string): string[] | undefined {
   return undefined;
 }
 
+function ffmpegListFolder(listPath: string): string {
+  const cut = listPath.search(/[?#]/);
+  if (cut < 0) return dirname(listPath);
+  const head = listPath.slice(0, cut);
+  return /[\\/]$/.test(head) ? head : dirname(head);
+}
+
 function entryLeavesFolder(entry: string, base: string, folder: string): boolean {
   if (HTTP_URL.test(entry)) return false;
   return [entry, percentDecoded(entry)].some((path) => {
@@ -507,7 +514,7 @@ async function listLeaves(
   if (walk.seen.has(path)) return false;
   walk.seen.add(path);
   for (const entry of playlistEntries(text) ?? []) {
-    if (await entryLeaves(entry, dirname(path), walk, depth)) return true;
+    if (await entryLeaves(entry, ffmpegListFolder(path), walk, depth)) return true;
   }
   return false;
 }
