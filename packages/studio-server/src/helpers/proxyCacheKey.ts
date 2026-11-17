@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import {
   closeSync,
   createReadStream,
-  existsSync,
   fstatSync,
   openSync,
   readFileSync,
@@ -11,6 +10,7 @@ import {
 } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { formatPreviewProxyBox, type PreviewProxyBox } from "@hyperframes/core";
+import { isProjectCacheFile, readProjectCacheFile } from "./safePath.js";
 
 const SMALL_FILE_BYTES = 16 * 1024 * 1024;
 const COPY_NAME = /^[0-9a-f]{64}\.(?:mp4|webm)$/;
@@ -83,15 +83,11 @@ export function contentIndexPath(cacheDir: string, contentKey: string): string {
   return join(cacheDir, `.content-${contentKey}`);
 }
 
-/** The copy an index file names, when it is a copy in the same folder and still there. */
-export function readCopyIndex(indexPath: string): string | null {
-  try {
-    const name = readFileSync(indexPath, "utf8").trim();
-    const target = join(dirname(indexPath), name);
-    return COPY_NAME.test(name) && existsSync(target) ? target : null;
-  } catch {
-    return null;
-  }
+/** The copy an index file names, when it is a plain file in the same folder; a link at either is a miss. */
+export function readCopyIndex(projectDir: string, indexPath: string): string | null {
+  const name = readProjectCacheFile(projectDir, indexPath, 256)?.toString("utf8").trim() ?? "";
+  const target = join(dirname(indexPath), name);
+  return COPY_NAME.test(name) && isProjectCacheFile(projectDir, target) ? target : null;
 }
 
 export function writeCopyIndex(indexPath: string, copyPath: string): void {

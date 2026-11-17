@@ -29,7 +29,7 @@ import {
 } from "./proxyCacheKey.js";
 import { acquireCopyLock, CopyLockStalledError } from "./proxyLock.js";
 import { PROXY_STILL_EXTENSION, PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
-import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
+import { isProjectCacheFile, mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
 
 /**
  * Transcodes browser-hostile local video sources (HEVC, ProRes, ...) into a
@@ -204,7 +204,9 @@ function getCanonicalProxyCachePath(
     CACHE_DIR_NAME,
     `${key}${PROXY_VARIANT_CONFIG[variant].extension}`,
   );
-  return existsSync(made) ? made : (readCopyIndex(fastIndexPath(made)) ?? made);
+  return isProjectCacheFile(source.projectDir, made)
+    ? made
+    : (readCopyIndex(source.projectDir, fastIndexPath(made)) ?? made);
 }
 
 /**
@@ -582,7 +584,8 @@ async function encodeInChunks(
 ): Promise<void> {
   const extension = extname(tempPath);
   const pieces = ranges.map((_, index) => `${chunkPrefix}${index}${extension}`);
-  const pending = ranges.flatMap((_, index) => (existsSync(pieces[index]!) ? [] : [index]));
+  const madeAsPlainFile = (piece: string) => isProjectCacheFile(dirname(chunkPrefix), piece);
+  const pending = ranges.flatMap((_, index) => (madeAsPlainFile(pieces[index]!) ? [] : [index]));
   let doneSeconds = 0;
   for (const [index, range] of ranges.entries()) {
     if (!pending.includes(index)) doneSeconds += range.lengthSeconds;
@@ -932,7 +935,7 @@ async function transcodeToCache(
   await acquireSlot(job);
   try {
     // Another caller may have finished (or a pre-warm beat us) while queued.
-    if (existsSync(cachePath)) return cachePath;
+    if (isProjectCacheFile(projectDir, cachePath)) return cachePath;
 
     const cacheDir = dirname(cachePath);
     mkdirWithinProject(projectDir, cacheDir);
@@ -946,7 +949,7 @@ async function transcodeToCache(
         job.abandoned.signal,
       ),
     );
-    const sameContent = readCopyIndex(contentIndex);
+    const sameContent = readCopyIndex(projectDir, contentIndex);
     if (sameContent) {
       writeCopyIndex(fastIndexPath(cachePath), sameContent);
       return sameContent;
@@ -1048,7 +1051,7 @@ export async function resolveProxy(
   options.signal?.throwIfAborted();
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
   const cachePath = getCanonicalProxyCachePath(source, variant, box, options.limitSeconds);
-  if (existsSync(cachePath)) {
+  if (isProjectCacheFile(source.projectDir, cachePath)) {
     markCacheEntryUsed(cachePath);
     maintainProxyCache(dirname(cachePath));
     return cachePath;
@@ -1178,7 +1181,7 @@ export function resolveStill(
   const at = Math.max(0, Math.round(atSeconds * 10) / 10);
   const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
   const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
-  if (existsSync(cachePath)) {
+  if (isProjectCacheFile(source.projectDir, cachePath)) {
     markCacheEntryUsed(cachePath);
     maintainProxyCache(dirname(cachePath), undefined, cachePath);
     return Promise.resolve(cachePath);

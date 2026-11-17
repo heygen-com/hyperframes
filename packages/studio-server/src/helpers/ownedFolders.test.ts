@@ -117,7 +117,7 @@ describe.skipIf(process.platform === "win32")("the tool's own folders inside a p
     mkdirSync(join(project, ".hyperframes"));
     symlinkSync(outside, join(project, ".hyperframes", "preview"));
 
-    createPreviewDocumentStore(project, "salt").write("key", "<html></html>");
+    createPreviewDocumentStore(project, "salt", "secret").write("key", "<html></html>");
 
     expect(listing(outside)).toEqual(["notes.txt"]);
   });
