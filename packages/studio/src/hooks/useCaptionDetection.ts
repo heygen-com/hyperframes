@@ -158,7 +158,10 @@ export function useCaptionDetection({
       return captionCompId === null ? null : compIdToSrc.get(captionCompId) || null;
     };
 
-    const loadCaptions = (srcPath: string, parse: (content: string) => Promise<CaptionModel | null>) =>
+    const loadCaptions = (
+      srcPath: string,
+      parse: (content: string) => Promise<CaptionModel | null>,
+    ) =>
       studioApiFetch(buildProjectApiPath(projectId, `/files/${encodeURIComponent(srcPath)}`))
         .then((r) => r.json())
         .then(async (data: { content?: string }) => {
@@ -199,7 +202,9 @@ export function useCaptionDetection({
       if (iframe && previewFrameOpaque(iframe)) {
         activating = true;
         void frameCaptionSource(iframe)
-          .then((src) => (src ? loadCaptions(src, (content) => frameCaptionModel(iframe, content)) : null))
+          .then((src) =>
+            src ? loadCaptions(src, (content) => frameCaptionModel(iframe, content)) : null,
+          )
           .finally(() => {
             activating = false;
           });
@@ -218,12 +223,16 @@ export function useCaptionDetection({
       const groups = doc.querySelectorAll(".caption-group");
       if (groups.length === 0) return;
 
-      const hostSrcs = [...doc.querySelectorAll("[data-composition-src], [data-composition-file]")].map(
+      const hostSrcs = [
+        ...doc.querySelectorAll("[data-composition-src], [data-composition-file]"),
+      ].map(
         (host) =>
           host.getAttribute("data-composition-src") || host.getAttribute("data-composition-file"),
       );
       const captionComp = doc.querySelector('[data-composition-id*="caption"]');
-      const captionCompId = captionComp ? captionComp.getAttribute("data-composition-id") || "" : null;
+      const captionCompId = captionComp
+        ? captionComp.getAttribute("data-composition-id") || ""
+        : null;
       const captionSrcPath = pickCaptionSource(hostSrcs, captionCompId);
       if (!captionSrcPath) return;
 

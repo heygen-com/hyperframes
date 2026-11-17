@@ -280,7 +280,6 @@ export function computeTransformStyle(el: HTMLElement, iframeWin: Window): Recor
   return transformStyle(readGsapTransform(getOrCreateWrapper(el), iframeWin));
 }
 
-/** The style parts a transform moves away from rest, as the caption model stores them. */
 export function transformStyle({ x, y, scale, rotation }: WordTransform): Record<string, number> {
   const style: Record<string, number> = {};
   if (Math.abs(x) > 0.5) style.x = x;
@@ -293,10 +292,6 @@ export function transformStyle({ x, y, scale, rotation }: WordTransform): Record
   return style;
 }
 
-// ---------------------------------------------------------------------------
-// Sealed preview: the frame's runtime reads and moves its words over the editing port.
-// ---------------------------------------------------------------------------
-
 export interface WordTransform {
   x: number;
   y: number;
@@ -304,7 +299,6 @@ export interface WordTransform {
   rotation: number;
 }
 type WordEntry = EditingParams<"caption-transform">["entries"][number];
-/** A word's wrapper transform, and its box in the frame's CSS pixels. */
 export interface FrameWord {
   transform: WordTransform;
   rect: { x: number; y: number; width: number; height: number };
@@ -321,7 +315,6 @@ function readFrameWord(value: unknown): FrameWord | null {
   return ok ? (value as unknown as FrameWord) : null;
 }
 
-/** Where a segment sits in the model, as the frame counts its caption groups and words. */
 export function findCaptionWord(
   model: { groupOrder: string[]; groups: Map<string, { segmentIds: string[] }> },
   segmentId: string,
@@ -394,10 +387,7 @@ function sendTransforms(iframe: HTMLIFrameElement, queue: { ops: Op[]; sending: 
     });
 }
 
-/**
- * Reads, or with `set` moves, one word of a frame Studio cannot read. Requests go one at a time in
- * order; a write still waiting for the same word takes the later one's parts (latest wins).
- */
+/** One request in flight per frame; a waiting write to the same word takes the later one's parts. */
 export function frameWordTransform(
   iframe: HTMLIFrameElement,
   entry: WordEntry,

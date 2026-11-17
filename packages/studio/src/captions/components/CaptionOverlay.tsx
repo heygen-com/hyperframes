@@ -151,7 +151,11 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       show(readWordBoxes(iframe, m, overlay));
     };
     // One frame read in flight; triggers meanwhile collapse into one more read after it.
-    const readSealed = (iframe: HTMLIFrameElement, m: NonNullable<typeof model>, overlay: HTMLElement) => {
+    const readSealed = (
+      iframe: HTMLIFrameElement,
+      m: NonNullable<typeof model>,
+      overlay: HTMLElement,
+    ) => {
       if (reading) {
         readAgain = true;
         return;
@@ -320,7 +324,10 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
           const now = await frameWordTransform(iframe, word);
           if (!now) return;
           const { x, y } = now.transform;
-          const moved = await frameWordTransform(iframe, { ...word, set: { x: x + dx, y: y + dy } });
+          const moved = await frameWordTransform(iframe, {
+            ...word,
+            set: { x: x + dx, y: y + dy },
+          });
           if (moved) storeStyle(segId, transformStyle(moved.transform));
         });
       }
@@ -385,7 +392,8 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       const iframe = iframeRef.current;
       if (!iframe) return;
-      if (previewFrameOpaque(iframe)) return startSealedDrag("move", { group: groupIndex, word: wordIndex }, segmentId, e);
+      if (previewFrameOpaque(iframe))
+        return startSealedDrag("move", { group: groupIndex, word: wordIndex }, segmentId, e);
       const wordEl = getWordEl(iframe, groupIndex, wordIndex);
       const win = iframe.contentWindow;
       if (!wordEl || !win) return;
@@ -413,7 +421,8 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       const iframe = iframeRef.current;
       if (!iframe) return;
-      if (previewFrameOpaque(iframe)) return startSealedDrag("scale", { group: groupIndex, word: wordIndex }, segmentId, e);
+      if (previewFrameOpaque(iframe))
+        return startSealedDrag("scale", { group: groupIndex, word: wordIndex }, segmentId, e);
       const wordEl = getWordEl(iframe, groupIndex, wordIndex);
       const win = iframe.contentWindow;
       if (!wordEl || !win) return;
@@ -447,7 +456,13 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       const iframe = iframeRef.current;
       if (!iframe) return;
-      if (previewFrameOpaque(iframe)) return startSealedDrag("rotate", { group: box.groupIndex, word: box.wordIndex }, box.segmentId, e);
+      if (previewFrameOpaque(iframe))
+        return startSealedDrag(
+          "rotate",
+          { group: box.groupIndex, word: box.wordIndex },
+          box.segmentId,
+          e,
+        );
       const wordEl = getWordEl(iframe, box.groupIndex, box.wordIndex);
       const win = iframe.contentWindow;
       if (!wordEl || !win) return;
@@ -484,7 +499,9 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
         sealed.last = sealed.start.then(async (drag) => {
           if (!drag) return null;
           const set = dragTransform(drag, clientX, clientY, cssScale);
-          return (await frameWordTransform(sealed.iframe, { ...sealed.word, set }))?.transform ?? null;
+          return (
+            (await frameWordTransform(sealed.iframe, { ...sealed.word, set }))?.transform ?? null
+          );
         });
         return;
       }

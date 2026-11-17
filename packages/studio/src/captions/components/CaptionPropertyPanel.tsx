@@ -81,7 +81,12 @@ export const CaptionPropertyPanel = memo(function CaptionPropertyPanel({
       const iframe = iframeRef.current;
       if (!iframe || !model) return;
       if (previewFrameOpaque(iframe)) {
-        const parts = { x: updates.x, y: updates.y, scale: updates.scaleX, rotation: updates.rotation };
+        const parts = {
+          x: updates.x,
+          y: updates.y,
+          scale: updates.scaleX,
+          rotation: updates.rotation,
+        };
         const set = Object.fromEntries(Object.entries(parts).filter(([, v]) => v !== undefined));
         if (Object.keys(set).length === 0) return;
         for (const segId of selectedSegmentIds) {

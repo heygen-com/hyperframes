@@ -34,9 +34,14 @@ it("moves a word on a wrapper with a CSS transform, keeping the parts it was not
   const again = captionTransform({ entries: [{ group: 0, word: 1, set: { y: 4 } }] });
   expect(again.words[0]!.transform).toEqual({ x: 3, y: 4, scale: 1, rotation: 9 });
   expect(document.querySelectorAll("[data-caption-wrapper]")).toHaveLength(1);
-  expect(captionTransform({ entries: [{ group: 0, word: 2 }, { group: 1, word: 0 }] }).words).toEqual(
-    [null, null],
-  );
+  expect(
+    captionTransform({
+      entries: [
+        { group: 0, word: 2 },
+        { group: 1, word: 0 },
+      ],
+    }).words,
+  ).toEqual([null, null]);
 });
 
 it("moves a word through the page's GSAP when it has one", () => {
