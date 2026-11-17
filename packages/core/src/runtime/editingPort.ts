@@ -573,14 +573,17 @@ export function createEditingPortClient(options: {
     if ("error" in outcome) entry.reject(outcome.error);
     else entry.resolve(outcome.result);
   };
+  const onPush = (data: Record<string, unknown>) => {
+    const key = data.v === EDITING_PROTOCOL_VERSION && data.event === "key" && keyEvent(data.key);
+    if (key) return keyListeners.forEach((listener) => listener(key));
+    const geometry = geometryEvent(data, EDITING_PROTOCOL_VERSION);
+    if (geometry) geometryListeners.forEach((listener) => listener(geometry));
+  };
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
     if (!isPlainRecord(data)) return;
     if (typeof data.id === "number") return settle(data.id, replyOutcome(data));
-    const key = data.v === EDITING_PROTOCOL_VERSION && data.event === "key" && keyEvent(data.key);
-    if (key) for (const listener of keyListeners) listener(key);
-    const geometry = !key && geometryEvent(data, EDITING_PROTOCOL_VERSION);
-    if (geometry) for (const listener of geometryListeners) listener(geometry);
+    onPush(data);
   };
   const connect = () => {
     try {
