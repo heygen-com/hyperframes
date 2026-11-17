@@ -8,6 +8,13 @@ import { usePlayerStore } from "../player/store/playerStore";
 import { useAppHotkeys } from "./useAppHotkeys";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { APP_HOTKEY_ACTIONS } from "./appHotkeysDispatch";
+import { PLAYBACK_ACTIONS } from "../player/hooks/usePlaybackKeyboard";
+import { DEFAULT_STUDIO_KEYS } from "../player/components/studioShortcuts";
+import {
+  detachedFakeIframe,
+  serveEditingRequests,
+} from "../player/hooks/timelinePlayerTestHarness";
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
@@ -166,5 +173,82 @@ describe("preview iframe hotkey forwarding", () => {
     // happy-dom removes a listener whatever its capture flag; a browser does not, so pin the flag.
     expect(add).toHaveBeenCalled();
     expect(remove.mock.calls).toEqual(add.mock.calls);
+  });
+
+  describe("a sealed preview", () => {
+    const closers: Array<() => void> = [];
+    afterEach(() => closers.splice(0).forEach((close) => close()));
+
+    // A frame whose document refuses Studio, reached only over the editing port it hands out per connect.
+    function sealedFrame() {
+      const frame: Record<string, unknown> = {};
+      const iframe = detachedFakeIframe(frame);
+      Object.defineProperty(iframe, "contentDocument", { value: null });
+      Object.defineProperty(frame, "document", {
+        get: () => {
+          throw new DOMException("blocked", "SecurityError");
+        },
+      });
+      const watched: string[][] = [];
+      const ports: MessagePort[] = [];
+      closers.push(
+        serveEditingRequests(
+          frame,
+          (kind, params) => {
+            if (kind !== "watch-keys") return null;
+            watched.push((params as { combos: string[] }).combos);
+            return { watching: watched.at(-1)!.length };
+          },
+          (port) => ports.push(port),
+        ),
+      );
+      const keyDown = (key: string, code: string) =>
+        ports.at(-1)!.postMessage({
+          v: 1,
+          event: "key",
+          key: {
+            type: "keydown",
+            key,
+            code,
+            altKey: false,
+            ctrlKey: false,
+            metaKey: false,
+            shiftKey: false,
+            repeat: false,
+          },
+        });
+      return { iframe, watched, ports, keyDown };
+    }
+
+    it("deletes the selection on a Delete pressed inside the preview", async () => {
+      root = mountReactHarness(<Harness />);
+      const { iframe, watched, keyDown } = sealedFrame();
+      act(() => sync?.(iframe));
+      await vi.waitFor(() => expect(watched).toHaveLength(1));
+      expect(new Set(watched[0])).toEqual(
+        new Set(APP_HOTKEY_ACTIONS.map((action) => DEFAULT_STUDIO_KEYS[action])),
+      );
+      keyDown("Delete", "Delete");
+      await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(1));
+    });
+
+    it("stops watching on the preview's next load, from a new port", async () => {
+      root = mountReactHarness(<Harness />);
+      const { iframe, watched, ports } = sealedFrame();
+      act(() => sync?.(iframe));
+      await vi.waitFor(() => expect(watched).toHaveLength(1));
+      act(() => sync?.(iframe));
+      await vi.waitFor(() => expect(watched).toHaveLength(3));
+      expect(watched.slice(1)).toContainEqual([]);
+      expect(ports).toHaveLength(2);
+    });
+
+    it("watches no key the playback keys also watch, so the frame forwards each press once", () => {
+      const app = new Set(APP_HOTKEY_ACTIONS.map((action) => DEFAULT_STUDIO_KEYS[action]));
+      const shared = PLAYBACK_ACTIONS.map((action) => DEFAULT_STUDIO_KEYS[action]).filter((combo) =>
+        app.has(combo),
+      );
+      expect(shared).toEqual([]);
+    });
   });
 });

@@ -45,7 +45,7 @@ const FRAME_STEPS = {
   frameBackTen: -10,
   frameForwardTen: 10,
 } as const;
-const PLAYBACK_ACTIONS = [
+export const PLAYBACK_ACTIONS = [
   "playPause",
   ...(Object.keys(FRAME_STEPS) as Array<keyof typeof FRAME_STEPS>),
   "mute",

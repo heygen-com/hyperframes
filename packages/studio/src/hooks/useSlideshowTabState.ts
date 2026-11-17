@@ -1,7 +1,7 @@
-import { useMemo, type MutableRefObject } from "react";
+import { useEffect, useMemo, useState, type MutableRefObject } from "react";
 import { SLIDESHOW_ISLAND_TYPE, slideshowIslandRegex } from "@hyperframes/core/slideshow";
 import type { SceneInfo } from "../components/panels/SlideshowPanel";
-import type { IframeWindow } from "../player/lib/playbackTypes";
+import { previewClipManifest } from "../player/lib/previewChannel";
 
 /**
  * Derives whether the currently-edited composition is a slideshow (carries
@@ -28,20 +28,22 @@ export function useSlideshowTabState(params: {
     return slideshowIslandRegex("i").test(editingFileContent);
   }, [editingFileContent]);
 
-  // Derive scene list from the live clip manifest in the preview iframe.
-  const slideshowScenes = useMemo<SceneInfo[]>(() => {
-    try {
-      const win = previewIframeRef.current?.contentWindow as IframeWindow | null;
-      return (win?.__clipManifest?.scenes ?? []).map((s) => ({
-        id: s.id,
-        label: s.label,
-        start: s.start,
-        duration: s.duration,
-      }));
-    } catch {
-      return [];
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // The scene list from the preview's live clip manifest, read over its editing port.
+  const [slideshowScenes, setSlideshowScenes] = useState<SceneInfo[]>([]);
+  useEffect(() => {
+    const iframe = previewIframeRef.current;
+    if (!iframe) return setSlideshowScenes([]);
+    let current = true;
+    void previewClipManifest(iframe).then((manifest) => {
+      if (!current) return;
+      const scenes = Array.isArray(manifest?.scenes) ? manifest.scenes : [];
+      setSlideshowScenes(
+        scenes.map((s) => ({ id: s.id, label: s.label, start: s.start, duration: s.duration })),
+      );
+    });
+    return () => {
+      current = false;
+    };
   }, [previewIframeRef, slideshowVisible, refreshKey]);
 
   return { isSlideshowComposition, slideshowScenes };

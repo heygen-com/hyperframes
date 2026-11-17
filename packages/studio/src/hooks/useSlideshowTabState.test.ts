@@ -2,8 +2,14 @@
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { previewClipManifest } from "../player/lib/previewChannel";
 import { useSlideshowTabState } from "./useSlideshowTabState";
+
+vi.mock("../player/lib/previewChannel", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../player/lib/previewChannel")>();
+  return { ...actual, previewClipManifest: vi.fn(async () => null) };
+});
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -14,16 +20,21 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-function renderHook(params: { editingFileContent: string | null | undefined }) {
+function renderHook(params: {
+  editingFileContent: string | null | undefined;
+  iframe?: HTMLIFrameElement | null;
+}) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
   let current: ReturnType<typeof useSlideshowTabState> | null = null;
+  // One ref for every render, as Studio's useRef gives.
+  const previewIframeRef = { current: params.iframe ?? null };
 
   function Harness() {
     current = useSlideshowTabState({
       editingFileContent: params.editingFileContent,
-      previewIframeRef: { current: null },
+      previewIframeRef,
       refreshKey: 0,
       slideshowVisible: false,
     });
@@ -69,6 +80,34 @@ describe("useSlideshowTabState", () => {
     const malformed = `<html><body><script type="application/hyperframes-slideshow+json">{not valid json</script></body></html>`;
     const harness = renderHook({ editingFileContent: malformed });
     expect(harness.getState().isSlideshowComposition).toBe(true);
+    harness.unmount();
+  });
+
+  it("lists the scenes of a sealed preview, read over its editing port", async () => {
+    // A cross-origin frame's window refuses every property read.
+    const sealedWindow = new Proxy(
+      {},
+      {
+        get() {
+          throw new DOMException(
+            "Blocked a frame from accessing a cross-origin frame.",
+            "SecurityError",
+          );
+        },
+      },
+    );
+    const iframe = document.createElement("iframe");
+    Object.defineProperty(iframe, "contentWindow", { value: sealedWindow });
+    vi.mocked(previewClipManifest).mockResolvedValueOnce({
+      clips: [],
+      durationInFrames: 300,
+      scenes: [{ id: "s1", label: "Intro", start: 0, duration: 4 }],
+    } as unknown as Awaited<ReturnType<typeof previewClipManifest>>);
+    const harness = renderHook({ editingFileContent: SLIDESHOW_HTML, iframe });
+    await act(async () => {});
+    expect(harness.getState().slideshowScenes).toEqual([
+      { id: "s1", label: "Intro", start: 0, duration: 4 },
+    ]);
     harness.unmount();
   });
 });
