@@ -1698,6 +1698,33 @@ describe("linked private project files", () => {
     expect(JSON.stringify(await lintProject(project))).not.toContain("TOP-SECRET-VALUE");
   });
 
+  // The kind check alone lets these through: they are JSON, as an import map is.
+  it.each([".git/m.json", ".mcp.json", ".hyperframes/share.json"])(
+    "never reads %s as an import map",
+    async (path) => {
+      const project = makeProject("");
+      mkdirSync(dirname(join(project, path)), { recursive: true });
+      writeFileSync(join(project, path), "TOP-SECRET-VALUE not json");
+      writeFileSync(
+        join(project, "index.html"),
+        validHtml().replace("</body>", `<script type="importmap" src="${path}"></script></body>`),
+      );
+      expect(JSON.stringify(await lintProject(project))).not.toContain("TOP-SECRET-VALUE");
+    },
+  );
+
+  it("lints no composition in a hidden folder, and refuses a private entry", async () => {
+    const project = makeProject(validHtml(), {
+      ".cache/stale.html": "<div>TOP-SECRET-VALUE</div>",
+    });
+    expect(
+      JSON.stringify(await lintProject(project, undefined, {}, { includeUnmounted: true })),
+    ).not.toContain(".cache");
+    await expect(
+      lintProject(project, join(project, "compositions/.cache/stale.html")),
+    ).rejects.toThrow("private project file");
+  });
+
   it("reads a linked file only when it is the kind its link names", async () => {
     const project = makeProject("");
     writeFileSync(join(project, "notes.txt"), "TOP-SECRET-VALUE not json {#main{}");
