@@ -88,13 +88,15 @@ describe("restore-attributes", () => {
     refused(box, [id, ["data-composition-src", "https://example.com/a.html"]]);
     refused('<iframe data-hf-id="box" sandbox=""></iframe>', [id]);
 
-    document.body.innerHTML = '<img data-hf-id="box" src="a.png" style="left: 9px">';
+    document.body.innerHTML =
+      '<img data-hf-id="box" src="a.png" style="left: 9px" loading="lazy" data-hf-preview-lazy>';
     player();
     const img = document.querySelector("img")!;
     const setAttribute = vi.spyOn(img, "setAttribute");
     const params = restore("hf:box", [id, ["src", "a.png"], ["style", "left: 0px"]]);
     expect(restoreAttributes(params)).toEqual({ applied: true });
     expect(setAttribute.mock.calls).toEqual([["style", "left: 0px"]]);
+    expect(img.hasAttribute("loading")).toBe(false);
   });
 
   it("accepts only bounded, well-formed params", () => {

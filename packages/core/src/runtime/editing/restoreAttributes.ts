@@ -40,7 +40,8 @@ const SAFE_TO_SET = new Set([
   "data-y",
   "data-hf-group",
 ]);
-const safeToDrop = (name: string) => SAFE_TO_SET.has(name) || name.startsWith("data-");
+const safeToDrop = (name: string) =>
+  SAFE_TO_SET.has(name) || name === "loading" || name.startsWith("data-");
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Object.prototype.toString.call(value) === "[object Object]";
