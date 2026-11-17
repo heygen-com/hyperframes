@@ -44,6 +44,7 @@ const RENDER_MIME: Record<string, string> = {
 const RENDER_FILE_EXTENSIONS = [".mp4", ".webm", ".mov", ".gif"] as const;
 const RENDER_ARTIFACT_EXTENSIONS = [...RENDER_FILE_EXTENSIONS, ".meta.json"] as const;
 const RENDER_FILE_PATTERN = /\.(mp4|webm|mov|gif)$/;
+const RENDER_ALIAS_PREFIX = ".hf-render~";
 
 type RenderFormat = "mp4" | "webm" | "mov" | "gif" | "png-sequence";
 type RenderArtifactKind = "file" | "directory";
@@ -223,6 +224,39 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   const CANCEL_SETTLE_MS = 45_000;
   // Outlives the swept job records; a few bytes per render on disk, so never evicted.
   const renderArtifacts = new Map<string, { kind: RenderArtifactKind; outputPath: string }>();
+
+  const restoreListedRenders = (rows: RenderListingRow[]): void => {
+    const idsByPath = new Map(
+      [...renderArtifacts].map(([id, artifact]) => [artifact.outputPath, id]),
+    );
+    const reservedIds = new Set([...renderArtifacts.keys(), ...rows.map((row) => row.id)]);
+    const fileFirst = [...rows].sort(
+      (a, b) => Number(a.kind === "directory") - Number(b.kind === "directory"),
+    );
+    for (const row of fileFirst) {
+      const kind = row.kind === "directory" ? "directory" : "file";
+      const existingId = idsByPath.get(row.path);
+      let id = existingId ?? row.id;
+      if (existingId === undefined && renderArtifacts.has(id)) {
+        const alias = `${RENDER_ALIAS_PREFIX}${id}~${kind}`;
+        id = alias;
+        for (let n = 2; reservedIds.has(id); n++) id = `${alias}-${n}`;
+      }
+      row.id = id;
+      reservedIds.add(id);
+      idsByPath.set(row.path, id);
+      renderArtifacts.set(id, { kind, outputPath: row.path });
+      if (!renderJobs.has(id)) {
+        renderJobs.set(id, {
+          id,
+          status: row.status,
+          progress: 100,
+          outputPath: row.path,
+          kind,
+        });
+      }
+    }
+  };
 
   const nextFreeRenderJobId = (baseId: string, ext: string, rendersDir: string): string => {
     let jobId = baseId;
@@ -463,7 +497,8 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
 
   // Serve render inline (for in-browser playback — opens in a new tab).
   api.get("/render/:jobId/view", (c) => {
-    const job = renderJobs.get(c.req.param("jobId"));
+    const jobId = c.req.param("jobId");
+    const job = renderJobs.get(jobId) ?? renderArtifacts.get(jobId);
     if (!job?.outputPath || job.kind === "directory" || !isPlainFile(job.outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
@@ -473,9 +508,13 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   // Download render
   api.get("/render/:jobId/download", (c) => {
     const { jobId } = c.req.param();
-    const job = renderJobs.get(jobId);
+    const state = renderJobs.get(jobId);
+    const job = state ?? renderArtifacts.get(jobId);
     if (job?.kind === "directory") {
-      const archive = job.status === "rendering" ? null : directoryDownload(job.outputPath, jobId);
+      const archive =
+        state?.status === "rendering"
+          ? null
+          : directoryDownload(job.outputPath, basename(job.outputPath));
       return archive ?? c.json({ error: "not found" }, 404);
     }
     if (!job?.outputPath || !isPlainFile(job.outputPath)) {
@@ -510,10 +549,19 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     if (renderJobs.get(jobId)?.status === "rendering") {
       return c.json({ error: "render in progress; cancel it first" }, 409);
     }
+    if (jobId.startsWith(RENDER_ALIAS_PREFIX) && !renderArtifacts.has(jobId)) {
+      return c.json({ error: "not found" }, 404);
+    }
     const directories = await renderDirectories(jobId);
-    const kind: RenderArtifactKind =
-      renderArtifacts.get(jobId)?.kind ?? renderKindOnDisk(directories, jobId);
-    const artifacts = resolveRenderArtifacts(directories, jobId, kind);
+    const recorded = renderArtifacts.get(jobId);
+    const outputName = recorded && basename(recorded.outputPath);
+    const diskJobId = outputName
+      ? recorded.kind === "directory"
+        ? outputName
+        : outputName.replace(RENDER_FILE_PATTERN, "")
+      : jobId;
+    const kind: RenderArtifactKind = recorded?.kind ?? renderKindOnDisk(directories, diskJobId);
+    const artifacts = resolveRenderArtifacts(directories, diskJobId, kind);
     if (!artifacts) return c.json({ error: "forbidden" }, 403);
 
     for (const artifact of artifacts) deleteRenderArtifact(artifact);
@@ -609,19 +657,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
 
     // Register on-disk renders that aren't in the current session's job map
     // so they remain downloadable after a server restart.
-    for (const row of rows) {
-      if (!renderJobs.has(row.id)) {
-        const kind = row.kind === "directory" ? "directory" : "file";
-        renderJobs.set(row.id, {
-          id: row.id,
-          status: row.status,
-          progress: 100,
-          outputPath: row.path,
-          kind,
-        });
-        renderArtifacts.set(row.id, { kind, outputPath: row.path });
-      }
-    }
+    restoreListedRenders(rows);
     return c.json({ renders: rows.map(({ path: _path, ...render }) => render) });
   });
 }

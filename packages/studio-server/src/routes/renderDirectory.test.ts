@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -197,6 +198,140 @@ describe("directory (PNG-sequence) renders", () => {
     const download = await app.request("/render/restored/download");
     expect(download.status).toBe(200);
     expect(download.headers.get("content-type")).toBe("application/zip");
+  });
+
+  it.each(["posted", "listed"] as const)(
+    "downloads a %s directory after progress expires without listing it again",
+    async (source) => {
+      vi.useFakeTimers();
+      const { app, adapter, rendersDir } = fixture();
+      let jobId = "restored";
+      if (source === "posted") {
+        ({ jobId } = await (await post(app, { format: "png-sequence" })).json());
+      } else {
+        writeSequence(join(rendersDir, jobId));
+        await listRenders(app);
+      }
+      await vi.advanceTimersByTimeAsync(PROGRESS_EXPIRED_MS);
+      expect((await app.request(`/render/${jobId}/progress`)).status).toBe(404);
+      vi.spyOn(adapter, "listProjects").mockResolvedValue([]);
+
+      const download = await app.request(`/render/${jobId}/download`);
+      expect(download.status).toBe(200);
+      expect(download.headers.get("content-type")).toBe("application/zip");
+      const body = Buffer.from(await download.arrayBuffer());
+      expect(body.length).toBe(Number(download.headers.get("content-length")));
+      expect(body.readUInt32LE(0)).toBe(0x04034b50);
+    },
+  );
+
+  describe("same-stem history rows", () => {
+    it.each(
+      (["file", "directory"] as const).flatMap((newer) =>
+        (["file", "directory"] as const).flatMap((deleted) =>
+          [0, PROGRESS_EXPIRED_MS].map((elapsed) => ({ newer, deleted, elapsed })),
+        ),
+      ),
+    )(
+      "keeps both actions separate with $newer newer, deleting $deleted first after $elapsed ms",
+      async ({ newer, deleted, elapsed }) => {
+        vi.useFakeTimers();
+        const { app, rendersDir } = fixture();
+        const file = join(rendersDir, "intro.mp4");
+        const directory = join(rendersDir, "intro");
+        writeFileSync(file, "keep-video");
+        writeSequence(directory);
+        utimesSync(file, 100, newer === "file" ? 200 : 100);
+        utimesSync(directory, 100, newer === "directory" ? 200 : 100);
+
+        const rows = await listRenders(app);
+        expect(new Set(rows.map((row) => row.id)).size).toBe(2);
+        const fileId = String(rows.find((row) => row.filename === "intro.mp4")?.id);
+        const directoryId = String(rows.find((row) => row.kind === "directory")?.id);
+        expect(fileId).toBe("intro");
+        expect(await listRenders(app)).toEqual(rows);
+        await vi.advanceTimersByTimeAsync(elapsed);
+
+        expect(await (await app.request(`/render/${fileId}/download`)).text()).toBe("keep-video");
+        const archive = await app.request(`/render/${directoryId}/download`);
+        expect(archive.headers.get("content-type")).toBe("application/zip");
+        expect(archive.headers.get("content-disposition")).toContain("intro.zip");
+        await archive.arrayBuffer();
+        expect((await app.request(`/render/${directoryId}/view`)).status).toBe(404);
+        expect(await (await app.request(`/render/${fileId}/view`)).text()).toBe("keep-video");
+
+        const firstId = deleted === "file" ? fileId : directoryId;
+        const remainingId = deleted === "file" ? directoryId : fileId;
+        expect((await app.request(`/render/${firstId}`, { method: "DELETE" })).status).toBe(200);
+        expect(existsSync(file)).toBe(deleted !== "file");
+        expect(existsSync(join(directory, "frame_000000.png"))).toBe(deleted !== "directory");
+        const remaining = await app.request(`/render/${remainingId}/download`);
+        expect(remaining.status).toBe(200);
+        await remaining.arrayBuffer();
+        expect(await listRenders(app)).toHaveLength(1);
+        expect((await app.request(`/render/${remainingId}`, { method: "DELETE" })).status).toBe(
+          200,
+        );
+        expect(existsSync(file)).toBe(false);
+        expect(existsSync(directory)).toBe(false);
+      },
+    );
+
+    it.each(["mp4", "png-sequence"] as const)(
+      "preserves the posted %s identity when a counterpart is listed",
+      async (format) => {
+        const { app, rendersDir } = fixture((opts) => {
+          if (opts.format === "png-sequence") writeSequence(opts.outputPath);
+          else writeFileSync(opts.outputPath, "video");
+          return { id: opts.jobId, status: "complete", progress: 100, outputPath: opts.outputPath };
+        });
+        const { jobId } = await (await post(app, { format })).json();
+        if (format === "mp4") writeSequence(join(rendersDir, jobId));
+        else writeFileSync(join(rendersDir, `${jobId}.mp4`), "video");
+
+        const rows = await listRenders(app);
+        expect(new Set(rows.map((row) => row.id)).size).toBe(2);
+        const posted = rows.find((row) => row.id === jobId);
+        expect(posted?.filename).toBe(`${jobId}${format === "mp4" ? ".mp4" : ""}`);
+        const counterpart = rows.find((row) => row.id !== jobId);
+        expect((await app.request(`/render/${counterpart?.id}`, { method: "DELETE" })).status).toBe(
+          200,
+        );
+        expect(existsSync(join(rendersDir, String(posted?.filename)))).toBe(true);
+      },
+    );
+
+    it("does not reuse another row's bare id for a directory alias", async () => {
+      const { app, rendersDir } = fixture();
+      writeFileSync(join(rendersDir, "intro.mp4"), "video");
+      writeFileSync(join(rendersDir, "intro~directory.mp4"), "other-video");
+      writeSequence(join(rendersDir, "intro"));
+      const rows = await listRenders(app);
+      expect(new Set(rows.map((row) => row.id)).size).toBe(3);
+      expect(rows.find((row) => row.filename === "intro~directory.mp4")?.id).toBe(
+        "intro~directory",
+      );
+      for (const row of rows) {
+        expect((await app.request(`/render/${row.id}`, { method: "DELETE" })).status).toBe(200);
+        expect(existsSync(join(rendersDir, String(row.filename)))).toBe(false);
+      }
+    });
+
+    it("never treats a stale listing alias as another on-disk render after a restart", async () => {
+      const { app, adapter, rendersDir } = fixture();
+      writeFileSync(join(rendersDir, "intro.mp4"), "video");
+      writeSequence(join(rendersDir, "intro"));
+      const rows = await listRenders(app);
+      const alias = String(rows.find((row) => row.kind === "directory")?.id);
+      writeSequence(join(rendersDir, alias));
+      const restarted = new Hono();
+      registerRenderRoutes(restarted, adapter);
+
+      expect((await restarted.request(`/render/${alias}`, { method: "DELETE" })).status).toBe(404);
+      expect(existsSync(join(rendersDir, alias, "frame_000000.png"))).toBe(true);
+      expect(existsSync(join(rendersDir, "intro", "frame_000000.png"))).toBe(true);
+      expect(existsSync(join(rendersDir, "intro.mp4"))).toBe(true);
+    });
   });
 
   it("serves individual frames as image/png", async () => {
