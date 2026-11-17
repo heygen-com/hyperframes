@@ -17,6 +17,8 @@ Composition id: `canopy-part-title`. Duration 12 s at 30 fps, 1920×1080.
 
 ## Install
 
+For install and render commands, expand `npx hyperframes` to `node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs"` in the project directory. Use the absolute path to your installed HyperFrames skills for `<SKILLS>`. If the launcher is missing, ask for the skill before proceeding.
+
 Install with `npx hyperframes add canopy-part-title`; by default the files above land under `compositions/canopy-part-title/`. Then mount the block from the host `index.html`:
 
 ```html
@@ -34,7 +36,7 @@ Install with `npx hyperframes add canopy-part-title`; by default the files above
 Render with custom values by targeting the composition file directly:
 
 ```sh
-npx --yes hyperframes@0.8.12 render 'compositions/canopy-part-title/canopy-part-title.html' --variables '{"headline1":"Understory","headline2":"Move slowly"}'
+npx hyperframes render 'compositions/canopy-part-title/canopy-part-title.html' --variables '{"headline1":"Understory","headline2":"Move slowly"}'
 ```
 
 ## Variables

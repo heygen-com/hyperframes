@@ -25,7 +25,7 @@ import {
 } from "@hyperframes/studio-server";
 import {
   documentFromAnotherSite,
-  requestFromAnotherSite,
+  proxyWorkFromAnotherSite,
 } from "@hyperframes/studio-server/request-identity";
 import { findStageProxyBox } from "./compositionViewport.js";
 import { resolveAutoProxy } from "./projectConfig.js";
@@ -304,7 +304,7 @@ function markForAnotherSite(html: string): string {
 /** A load by another site is sandboxed, and the documents it gets are marked so their runtime offers it no editing port. */
 /** A `?hf-proxy=` copy runs ffmpeg on this machine, so another site may not ask for one. */
 function proxyRequestedByAnotherSite(req: IncomingMessage): boolean {
-  return requestFromAnotherSite({
+  return proxyWorkFromAnotherSite({
     fetchSite: req.headers["sec-fetch-site"] as string | undefined,
     host: req.headers.host,
     referer: req.headers.referer,

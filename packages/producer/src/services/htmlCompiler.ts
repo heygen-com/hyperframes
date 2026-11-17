@@ -316,21 +316,26 @@ const isPrivateCompositionFile = (projectDir: string, filePath: string): boolean
 
 type CompositionProblem = { srcPath: string; detail: string };
 
-const mountSrcsUnder = (root: ParentNode): string[] =>
-  [...root.querySelectorAll("[data-composition-src]")]
-    .map((el) => el.getAttribute("data-composition-src"))
-    .filter((srcPath): srcPath is string => !!srcPath && !isUnresolvedAssetPlaceholder(srcPath));
-
-/** `templated` holds the mounts inside `<template>` content, which a document query does not see. */
+/** `templated` holds mounts inside templates. Reading `template.content` per level would clone each subtree again. */
 function compositionSrcsIn(html: string): { mounts: string[]; templated: string[] } {
   const { document } = parseHTML(html);
+  const mounts: string[] = [];
   const templated: string[] = [];
-  const templates = [...document.querySelectorAll("template")];
-  for (let template = templates.pop(); template; template = templates.pop()) {
-    templated.push(...mountSrcsUnder(template.content));
-    templates.push(...template.content.querySelectorAll("template"));
+  const stack: Array<[Element, boolean]> = [...document.children]
+    .reverse()
+    .map((el) => [el, false]);
+  for (let next = stack.pop(); next; next = stack.pop()) {
+    const [el, inTemplate] = next;
+    const srcPath = el.getAttribute("data-composition-src");
+    if (srcPath && !isUnresolvedAssetPlaceholder(srcPath)) {
+      (inTemplate ? templated : mounts).push(srcPath);
+    }
+    const childrenInTemplate = inTemplate || el.localName === "template";
+    const children = [...el.children];
+    for (let i = children.length - 1; i >= 0; i -= 1)
+      stack.push([children[i]!, childrenInTemplate]);
   }
-  return { mounts: mountSrcsUnder(document), templated };
+  return { mounts, templated };
 }
 
 function compositionPathProblem(

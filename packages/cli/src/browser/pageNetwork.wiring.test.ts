@@ -10,6 +10,8 @@ const SRC = fileURLToPath(new URL("..", import.meta.url));
 const OPENS_NO_COMPOSITION: Record<string, string> = {
   "browser/launch.ts": "defines the launch, and its GPU probe opens a blank page",
   "capture/launchCaptureBrowser.ts": "`capture` opens a website, not a composition",
+  "measure/hands.ts":
+    "`measure hands` opens its own page of pinned MediaPipe code; every request is answered from disk or aborted",
 };
 
 const WATCHED = new Set(["launchManagedBrowser", "acquireBrowser", "launchWithPageNetwork"]);

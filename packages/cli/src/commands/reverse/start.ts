@@ -52,19 +52,22 @@ function signInForThisTerminal() {
   if (isRemoteOrHeadless()) {
     return {
       login_command: "npx hyperframes auth login --device",
-      next: `Not signed in, and no browser can open here. Start \`npx hyperframes auth login --device\` in the background now, then send the person one message: first why, in their language, for example: ${WHY} Then the link and code it printed. It returns once they approve; then run reverse start again. ${PLAIN}`,
+      next: `Not signed in, and no browser can open here. Start \`auth login --device\` through the same launcher in the background now, then send the person one message: first why, in their language, for example: ${WHY} Then the link and code it printed. It returns once they approve; then run reverse start again. ${PLAIN}`,
     };
   }
   return {
     login_command: "npx hyperframes auth login",
-    next: `Not signed in. Tell the person why first, in their language, for example: ${WHY} Run \`npx hyperframes auth login\` now and wait for it: it opens the browser and returns once they are signed in (when the browser does not open it prints a link: send it with the same reason). Then run reverse start again. ${PLAIN}`,
+    next: `Not signed in. Tell the person why first, in their language, for example: ${WHY} Run \`auth login\` through the same launcher now and wait for it: it opens the browser and returns once they are signed in (when the browser does not open it prints a link: send it with the same reason). Then run reverse start again. ${PLAIN}`,
   };
 }
 
 function staleInstallLine(): string | null {
   const stale = shadowingInstall(VERSION);
   if (!stale) return null;
-  return `Their installed HyperFrames (${stale.version}) is out of date and answers plain \`npx hyperframes\`, so run every command of this run as \`npx -y hyperframes@${VERSION} <command>\`. Your next message to the person opens with this, in their language: "Your installed HyperFrames is out of date, so I'm using the latest release for this run. To update it, run \`${stale.updateCommand}\`."`;
+  const update = stale.updateCommand
+    ? ` To update it, run \`${stale.updateCommand}\` from your home directory.`
+    : "";
+  return `Their installed HyperFrames (${stale.version}) is out of date. For this run, use the installed standalone skill launcher with --cli-version ${VERSION} before each command. Your next message to the person opens with this, in their language: "Your installed HyperFrames is out of date, so I'm using release ${VERSION} for this run.${update}"`;
 }
 
 function withStaleLine(next: string | undefined): { next?: string } {

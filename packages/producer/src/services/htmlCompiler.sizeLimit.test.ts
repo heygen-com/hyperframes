@@ -1,7 +1,8 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { parseHTML } from "linkedom";
+import { describe, expect, it, vi } from "vitest";
 import {
   assertCompositionFileSize,
   MAX_COMPOSITION_HTML_BYTES,
@@ -212,4 +213,39 @@ describe("composition expansion budget", () => {
     const compiled = await compileForRender(dir, join(dir, "index.html"), dir);
     expect(compiled.html.split("<h1>Scene</h1>").length - 1).toBe(60);
   });
+
+  /** The fan-out project with `depth` nested templates in `file`, the innermost one mounting the fan-out. */
+  function nestedFanOut(file: string, depth: number): Record<string, string> {
+    const nested = `${"<template>".repeat(depth)}<div data-composition-src="level-0.html"></div>${"</template>".repeat(depth)}`;
+    const files = fanOut(true);
+    files["index.html"] = rootMounting("wrapper.html", 1).replace("</body>", `${nested}</body>`);
+    files["wrapper.html"] = SCENE;
+    if (file === "wrapper.html") {
+      files["index.html"] = rootMounting("wrapper.html", 1);
+      files["wrapper.html"] = SCENE.replace("<h1>Scene</h1>", `<h1>Scene</h1>${nested}`);
+    }
+    return files;
+  }
+
+  it.each([
+    ["the entry file", "index.html"],
+    ["a mounted file", "wrapper.html"],
+  ])(
+    "finds mounts in deeply nested templates in %s without copying each level",
+    async (_, file) => {
+      const template = parseHTML("<template></template>").document.querySelector("template")!;
+      const content = vi.spyOn(Object.getPrototypeOf(template), "content", "get");
+      try {
+        const contentReads = async (depth: number) => {
+          content.mockClear();
+          const error = await compileError(project(nestedFanOut(file, depth)));
+          expect(error).toMatchObject({ publicMetadata: { exceeded: "mounts" } });
+          return content.mock.calls.length;
+        };
+        expect(await contentReads(3_000)).toBe(await contentReads(1));
+      } finally {
+        content.mockRestore();
+      }
+    },
+  );
 });

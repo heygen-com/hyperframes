@@ -3,6 +3,7 @@ import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import {
   StudioFileConflictError,
   buildStudioSaveFailureProperties,
+  getStudioSaveErrorMessage,
   heldFileWords,
   trackStudioSaveFailure,
   type StudioSaveDrainResult,
@@ -76,7 +77,7 @@ export function useEditorSave({
       const fingerprint = JSON.stringify([
         path,
         errorName,
-        properties.error_message,
+        getStudioSaveErrorMessage(error),
         properties.status_code,
       ]);
       const previous = lastFailureReportRef.current;

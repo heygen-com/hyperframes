@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { terminalText } from "@hyperframes/core";
 import { FEEDBACK_EMAIL_ENV } from "./feedbackSource.js";
 
 export const PROJECT_ENV_KEYS = [
@@ -165,7 +166,7 @@ export async function yieldReceivedProviderKeys(warn: (line: string) => void): P
     const origin = originOf(name);
     yieldKey(name, dir);
     warn(
-      `[hyperframes] .env: ignoring ${name} from ${origin} (${join(dir, ".env")}); using your own ${own}`,
+      `[hyperframes] .env: ignoring ${name} from ${origin} (${terminalText(join(dir, ".env"))}); using your own ${own}`,
     );
   }
 }
@@ -194,13 +195,41 @@ export function yieldProjectVisionKeys(warn: (line: string) => void): void {
       if (dir === undefined) continue;
       yieldKey(name, dir);
       warn(
-        `[hyperframes] .env: ignoring ${name} from a project .env (${join(dir, ".env")}); capture uses your own ${own.join(" and ")}`,
+        `[hyperframes] .env: ignoring ${name} from a project .env (${terminalText(join(dir, ".env"))}); capture uses your own ${own.join(" and ")}`,
       );
     }
   }
 }
 
+export const geminiKeyName = (): string =>
+  process.env.GEMINI_API_KEY ? "GEMINI_API_KEY" : "GOOGLE_API_KEY";
+
+export const visionCredential = (): readonly string[] | undefined =>
+  VISION_CREDENTIALS.find((parts) => parts.every((part) => Boolean(process.env[part])));
+
+const projectKeysNoted = new Set<string>();
+
+/** Says once per process, before a provider uses `name` from a project `.env`, which file it came from. */
+export async function noteProjectProviderKey(
+  name: string,
+  use: string,
+  warn: (line: string) => void = (line) => console.error(line),
+): Promise<void> {
+  const dir = projectEnvDir(name);
+  if (dir === undefined || projectKeysNoted.has(name)) return;
+  projectKeysNoted.add(name);
+  const origin = (await untrustedEnvOrigin(dir)) ?? "a project .env";
+  warn(`[hyperframes] Using ${name} from ${terminalText(join(dir, ".env"))}, ${origin}: ${use}.`);
+}
+
 export const PROJECT_ENV_ORIGINS = "HYPERFRAMES_PROJECT_ENV_ORIGINS";
+export const PROJECT_ENV_YIELDED = "HYPERFRAMES_PROJECT_ENV_YIELDED";
+
+export const projectEnvYielded = (): [string, string][] =>
+  [...yieldedKeys].map((id) => {
+    const [dir = "", name = ""] = id.split("\0");
+    return [name, dir];
+  });
 
 /** The folder of each key a project `.env` set, for the scripts the CLI launches to weigh the same way. */
 export function projectEnvOrigins(): Record<string, string> {

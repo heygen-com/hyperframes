@@ -566,9 +566,7 @@ export async function recordAnimationResolverParity(
       ...(diskChecked ? { diskChecked: true } : {}),
       ...(sourceReadFailed ? { sourceReadFailed: true } : {}),
       mismatchCount: 1,
-      mismatches: JSON.stringify([
-        { kind: "animation_not_found", animationId } satisfies SdkResolverMismatch,
-      ]),
+      mismatches: JSON.stringify([{ kind: "animation_not_found" } satisfies SdkResolverMismatch]),
     });
   } catch {
     // never propagate from the shadow path
