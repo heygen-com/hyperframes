@@ -121,7 +121,7 @@ function scopeRoots(file: string | null): ParentNode[] {
 
 type RestorePlan = [Element, drop: string[], set: RestoreAttribute[]][];
 
-/** Adds `root`'s live elements to `plan`; false when any is missing, not the file's own, or changes an attribute it may not. */
+/** Adds `root`'s live elements to `plan`; false when any is missing, not the file's own, or unsafe to change. */
 function planRoot(
   root: ParentNode,
   elements: RestoreScope["elements"],
