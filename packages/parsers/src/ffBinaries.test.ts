@@ -631,13 +631,13 @@ describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)("concatListInput
     const dir = mkdtempSync(join(tmpdir(), "hf-concat-list-"));
     onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
     const list = join(dir, "list.txt");
-    writeFileSync(list, "file 'http://127.0.0.1:9/piece.mp4'\n");
+    writeFileSync(list, "file 'data:video/mp4;base64,AAAA'\n");
     const run = spawnSync(
       "ffmpeg",
       ["-v", "error", ...concatListInputArgs(list), "-c", "copy", "-y", join(dir, "out.mp4")],
       { encoding: "utf8" },
     );
     expect(run.status).not.toBe(0);
-    expect(run.stderr).toContain("not on whitelist");
+    expect(run.stderr).toContain("not on whitelist 'file'");
   });
 });
