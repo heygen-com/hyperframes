@@ -750,6 +750,40 @@ it("three quick drags are three entries in the list as soon as each drag's saves
   );
 });
 
+it("the next drag's claim reaches the server after the settled drag's empty claim, however slow that one is", async () => {
+  const { hook, save } = await studio();
+  const forward = globalThis.fetch;
+  const arrived: string[] = [];
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+    const claim = url.endsWith("/claim")
+      ? (JSON.parse(String(init?.body)) as { paths: string[] })
+      : null;
+    if (claim && !claim.paths.length) await held;
+    if (claim) arrived.push(claim.paths.length ? "claim" : "empty");
+    return forward(url, init);
+  });
+  const drag = (i: number, before: string, after: string) => {
+    const pending = beginStudioPendingEdit(() => () => {});
+    save(after);
+    const saved = hook().recordEdit({
+      label: "Move layer",
+      coalesceKey: `move:${i}`,
+      coalesceMs: Number.POSITIVE_INFINITY,
+      files: { "index.html": { before, after } },
+    });
+    pending.settle(saved);
+    return saved;
+  };
+  await act(() => drag(0, "A", "B"));
+  const next = drag(1, "B", "C");
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  release();
+  await act(() => next);
+  expect(arrived.slice(0, 3)).toEqual(["claim", "empty", "claim"]);
+});
+
 it("a gesture that writes twice under one key stays one entry once it settles", async () => {
   const { hook, save, history } = await studio();
   const resize = beginStudioPendingEdit(() => () => {});

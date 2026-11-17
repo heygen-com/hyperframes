@@ -209,10 +209,10 @@ function closeHeldClaimWithAClaimOfNothing(
   projectId: string,
   heldClaimRef: { current: { paths: string[]; at: number } | null },
   refresh: () => Promise<void>,
-): void {
-  if (!heldClaimRef.current) return;
+): Promise<void> {
+  if (!heldClaimRef.current) return Promise.resolve();
   heldClaimRef.current = null;
-  void post(historyUrl(projectId, "/claim"), { label: "Edited in Studio", paths: [] }).then(
+  return post(historyUrl(projectId, "/claim"), { label: "Edited in Studio", paths: [] }).then(
     (reply) => {
       if (reply.ok) void refresh();
     },
@@ -226,6 +226,7 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
   const [loaded, setLoaded] = useState(false);
   // A coalescing claim the server just took, until `refresh()` brings its entry into `view`.
   const heldClaimRef = useRef<{ paths: string[]; at: number } | null>(null);
+  const claimsAfterTheClose = useRef<Promise<void>>(Promise.resolve());
   const projectIdRef = useRef(projectId);
   projectIdRef.current = projectId;
   const [own] = useState(createOwnHistory);
@@ -260,9 +261,13 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
 
   useEffect(() => {
     if (!projectId) return;
-    setStudioPendingEditsSettled(() =>
-      closeHeldClaimWithAClaimOfNothing(projectId, heldClaimRef, refresh),
-    );
+    setStudioPendingEditsSettled(() => {
+      claimsAfterTheClose.current = closeHeldClaimWithAClaimOfNothing(
+        projectId,
+        heldClaimRef,
+        refresh,
+      );
+    });
     return () => setStudioPendingEditsSettled(null);
   }, [projectId, refresh]);
 
@@ -271,6 +276,7 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
       if (!projectId) return;
       const paths = [...Object.keys(files), ...created];
       own.overtake();
+      await claimsAfterTheClose.current;
       const reply = await post(historyUrl(projectId, "/claim"), {
         label,
         paths,
