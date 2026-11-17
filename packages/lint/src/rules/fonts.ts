@@ -33,6 +33,7 @@ const GENERIC_FAMILIES = new Set([
   "initial",
   "unset",
   "revert",
+  "revert-layer",
 ]);
 
 function parseFontCss(style: { content: string }): postcss.Root | null {
