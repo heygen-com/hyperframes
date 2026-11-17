@@ -13,6 +13,7 @@ import {
 } from "./utils/rejectionTelemetry";
 import { prefetchPreviewForHash } from "./utils/previewPrefetch";
 import { bindThumbnailPageLifecycle } from "./player/lib/thumbnailPageLifecycle";
+import { dropServiceWorkers } from "@hyperframes/core/studio-preview-mark";
 import "./styles/studio.css";
 
 const unbindThumbnailPageLifecycle = bindThumbnailPageLifecycle(window, document);
@@ -110,16 +111,18 @@ window.addEventListener("unhandledrejection", (event) => {
   trackStudioEvent("unhandled_promise_rejection", props);
 });
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    {/* One icon size and weight for the whole app, taken from the theme file.
+void dropServiceWorkers().then(() =>
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      {/* One icon size and weight for the whole app, taken from the theme file.
         Icons that pass their own size or weight still win. */}
-    <IconContext.Provider value={readIconTokens()}>
-      <StudioErrorBoundary>
-        <ShowThemeToggle.Provider value>
-          <StudioApp />
-        </ShowThemeToggle.Provider>
-      </StudioErrorBoundary>
-    </IconContext.Provider>
-  </StrictMode>,
+      <IconContext.Provider value={readIconTokens()}>
+        <StudioErrorBoundary>
+          <ShowThemeToggle.Provider value>
+            <StudioApp />
+          </ShowThemeToggle.Provider>
+        </StudioErrorBoundary>
+      </IconContext.Provider>
+    </StrictMode>,
+  ),
 );

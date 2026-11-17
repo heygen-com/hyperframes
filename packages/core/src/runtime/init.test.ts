@@ -4654,6 +4654,93 @@ describe("initSandboxRuntimeModular", () => {
     expect(window.__renderReady).toBe(true);
   });
 
+  it("drops motion-blur filters and its window api on teardown", () => {
+    const raf = createManualRaf();
+    vi.spyOn(performance, "now").mockImplementation(() => raf.now());
+    window.requestAnimationFrame = raf.requestAnimationFrame as typeof window.requestAnimationFrame;
+    window.cancelAnimationFrame = raf.cancelAnimationFrame as typeof window.cancelAnimationFrame;
+
+    document.body.innerHTML =
+      `<div id="root" data-composition-id="main" data-root="true" data-start="0" ` +
+      `data-duration="1" data-width="640" data-height="360" data-motion-blur="on" ` +
+      `data-motion-blur-tier="filter">` +
+      `<div id="slider" class="clip" data-start="0" data-duration="1" data-track-index="1"></div>` +
+      `</div>`;
+    const slider = document.getElementById("slider")!;
+    for (const [k, v] of Object.entries({
+      offsetWidth: 10,
+      offsetHeight: 10,
+      offsetLeft: 0,
+      offsetTop: 0,
+      offsetParent: document.getElementById("root")!,
+    })) {
+      Object.defineProperty(slider, k, { value: v, configurable: true });
+    }
+    const x = () => Number(/translate3d\(([-\d.e]+)px/.exec(slider.style.transform)?.[1] ?? 0);
+    slider.getBoundingClientRect = () =>
+      ({ left: x(), top: 0, right: x() + 10, bottom: 10, width: 10, height: 10 }) as DOMRect;
+    // A browser resolves the tween's translate to matrix(...) in the computed style;
+    // jsdom keeps the string. The pose reader only parses matrix(...).
+    const realComputedStyle = window.getComputedStyle.bind(window);
+    vi.spyOn(window, "getComputedStyle").mockImplementation((el, pseudoElt) => {
+      const cs = realComputedStyle(el, pseudoElt);
+      if (el !== slider) return cs;
+      return new Proxy(cs, {
+        get: (target, prop) => {
+          if (prop === "transform") return `matrix(1, 0, 0, 1, ${x()}, 0)`;
+          if (prop === "translate" || prop === "rotate" || prop === "scale") {
+            return Reflect.get(target, prop) || "none";
+          }
+          const v = Reflect.get(target, prop);
+          return typeof v === "function" ? v.bind(target) : v;
+        },
+        // gsap's transform parse writes the individual properties back to "none"
+        // on the computed view it was handed; jsdom has no setters for them.
+        set: () => true,
+      });
+    });
+    const tl = gsap.timeline({ paused: true });
+    tl.to(slider, { x: 300, duration: 1, ease: "none" }, 0);
+    window.__timelines = { main: tl as unknown as RuntimeTimelineLike };
+
+    const blurWindow = window as { __hfMotionBlur?: unknown };
+    const blurFilters = () => document.documentElement.querySelectorAll('filter[id^="hf-mb"]');
+
+    const rangeRect = Range.prototype.getBoundingClientRect;
+    Range.prototype.getBoundingClientRect = () => new DOMRect();
+    try {
+      initSandboxRuntimeModular();
+      window.__player?.play();
+      for (let frame = 0; frame < 30; frame++) raf.step(16);
+
+      expect(blurFilters()).toHaveLength(1);
+      expect(slider.style.filter).toMatch(/hf-mb-0/);
+      expect(blurWindow.__hfMotionBlur).toBeDefined();
+
+      window.__hfRuntimeTeardown?.();
+
+      // The filter <svg> sits on <html>, outside the body swap a re-init performs.
+      // Left behind, the next run's hf-mb-0 collides with it and `url(#hf-mb-0)`
+      // resolves to the stale filter's old region, drawing the new mover blank.
+      expect(blurFilters()).toHaveLength(0);
+      expect(document.documentElement.querySelector("svg")).toBeNull();
+      expect(blurWindow.__hfMotionBlur).toBeUndefined();
+      expect(slider.style.filter).not.toMatch(/hf-mb/);
+
+      window.__timelines = { main: tl as unknown as RuntimeTimelineLike };
+      initSandboxRuntimeModular();
+      window.__player?.play();
+      for (let frame = 0; frame < 30; frame++) raf.step(16);
+
+      const ids = [...blurFilters()].map((filter) => filter.id);
+      expect(document.documentElement.querySelectorAll("svg")).toHaveLength(1);
+      expect(ids).toEqual(["hf-mb-0"]);
+      expect(slider.style.filter).toMatch(/hf-mb-0/);
+    } finally {
+      Range.prototype.getBoundingClientRect = rangeRect;
+    }
+  });
+
   it("a torn-down runtime's pending readiness check leaves the next document alone", () => {
     vi.useFakeTimers();
     try {

@@ -33,6 +33,7 @@ import { pointerTargetsAt } from "./editingTargets";
 import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
 import { restoreAttributes } from "./editing/restoreAttributes";
+import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
 import { gestureStart } from "./editingGestureStart";
 import {
   getLogicalOpacity,
@@ -48,6 +49,10 @@ import { captionTransform } from "./editing/captionTransform";
 import { colorGradingStatus } from "./editing/color-grading-status";
 import { colorGradingPreviews } from "./editing/color-grading-previews";
 import { colorGradingPlayback } from "./editing/color-grading-playback";
+import { assignAudioGroup } from "./editing/assignAudioGroup";
+import { audioMeter } from "./editing/audioMeter";
+import { documentMarkup } from "./editing/documentMarkup";
+import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -200,6 +205,11 @@ const HANDLERS: Handlers = {
   "color-grading-status": colorGradingStatus,
   "color-grading-previews": colorGradingPreviews,
   "color-grading-playback": colorGradingPlayback,
+  "watch-geometry": (params, port) => watchGeometry(port, params, EDITING_PROTOCOL_VERSION),
+  "audio-meter": (params) => audioMeter(params, window.__hf?.audioMeter),
+  "document-markup": documentMarkup,
+  "set-audio-group-attribute": setAudioGroupAttribute,
+  "assign-audio-group": (params) => assignAudioGroup(params, elementForHandle),
 };
 
 function serve(port: MessagePort): void {
@@ -279,6 +289,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       consoleWatch = null;
       keyWatches.clear();
       listenForKeys(false);
+      stopWatchingGeometry();
     },
   };
 }

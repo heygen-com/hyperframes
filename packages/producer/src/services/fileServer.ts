@@ -29,7 +29,10 @@ import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
-import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
+import {
+  PREVIEW_FOR_ANOTHER_SITE_META,
+  serviceWorkerScriptFetch,
+} from "@hyperframes/core/studio-preview-mark";
 import { fpsToNumber, type Fps, terminalText } from "@hyperframes/core";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
@@ -831,6 +834,12 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
     c.res.headers.set("X-Content-Type-Options", "nosniff");
   });
   answerOwnLoopbackHostOnly(app, () => listeningPort);
+  app.use(async function refuseServiceWorkerScripts(c, next) {
+    const serviceWorker = c.req.header("service-worker");
+    if (!serviceWorkerScriptFetch({ serviceWorker, fetchDest: c.req.header("sec-fetch-dest") }))
+      return next();
+    return c.text("Forbidden", 403);
+  });
 
   app.get("/*", async (c) => {
     let requestPath = c.req.path;

@@ -12,6 +12,7 @@ import { useTimelineEditContextOptional } from "../../contexts/TimelineEditConte
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 import { mintGroupId } from "../../components/editor/useFxCarveGrouping";
 import { runtimeAudioId } from "../lib/timelineElementHelpers";
+import { previewDocumentCopy, previewFrameOpaque } from "../lib/previewChannel";
 import { isAudioOnlyTrack } from "../../utils/timelineInspector";
 import { TimelineFxButton } from "./TimelineFxButton";
 import { getTimelinePropertyLanes } from "./TimelinePropertyLanes";
@@ -262,10 +263,17 @@ export function TimelineTrackHeader({
     : null;
   const canGroupWholeTrack = (allGroupableClipIds?.length ?? 0) >= 2;
   const groupUngroupedClips = (label: string) => {
-    const doc = domEditActions?.previewIframeRef.current?.contentDocument;
-    if (!doc || !onGroupClips) return;
-    if (!allGroupableClipIds || allGroupableClipIds.length < 2) return;
-    void onGroupClips(allGroupableClipIds, mintGroupId(doc), label);
+    const iframe = domEditActions?.previewIframeRef.current;
+    const ids = allGroupableClipIds;
+    if (!onGroupClips || !ids || ids.length < 2) return;
+    if (iframe && previewFrameOpaque(iframe)) {
+      void previewDocumentCopy(iframe).then(
+        (doc) => doc && onGroupClips(ids, mintGroupId(doc), label),
+      );
+      return;
+    }
+    const doc = iframe?.contentDocument;
+    if (doc) void onGroupClips(ids, mintGroupId(doc), label);
   };
 
   return (

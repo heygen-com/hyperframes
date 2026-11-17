@@ -13,7 +13,11 @@ import os, { availableParallelism, tmpdir, totalmem } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
 import { previewToken } from "@hyperframes/core/preview-proof";
-import { concatListInputArgs, findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import {
+  concatListInputArgs,
+  findFfBinary,
+  followFfmpegProgress,
+} from "@hyperframes/parsers/ff-binaries";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import { ffmpegHasHdrFilters } from "./hdrFilters.js";
 import { mediaInputArgs, NOT_MEDIA } from "./mediaExtensions.js";
@@ -851,9 +855,6 @@ function concatArgs(listPath: string, target: string, variant: ProxyVariant): st
   ];
 }
 
-/** ffmpeg's `-progress` lines name the output time reached, in microseconds. */
-const OUT_TIME = /^out_time_(?:us|ms)=(\d+)$/;
-
 /** Runs ffmpeg and ends it when it makes no progress for `stallMs`; a slow encode that moves on is left to finish.
  * `onProgress` hears the seconds of output made so far (from `-progress pipe:1`). */
 function lowerPriorityUnlessExited(pid: number): void {
@@ -892,21 +893,12 @@ function spawnFfmpeg(
       timer.unref();
     };
     armStall();
-    let furthest = 0;
-    let lineTail = "";
-    proc.stdout?.on("data", (chunk: Buffer) => {
-      const lines = (lineTail + chunk.toString()).split("\n");
-      lineTail = lines.pop() ?? "";
-      for (const line of lines) {
-        const reached = OUT_TIME.exec(line.trim());
-        if (!reached) continue;
-        const seconds = Number(reached[1]) / 1e6;
-        if (seconds <= furthest) continue;
-        furthest = seconds;
+    if (proc.stdout) {
+      followFfmpegProgress(proc.stdout, (seconds) => {
         armStall();
         onProgress?.(seconds);
-      }
-    });
+      });
+    }
     let stderrTail = "";
     proc.stderr?.on("data", (chunk: Buffer) => {
       stderrTail = (stderrTail + chunk.toString()).slice(-STDERR_TAIL_MAX_CHARS);

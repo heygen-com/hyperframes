@@ -18,7 +18,11 @@ import {
   type PreviewProxyBox,
 } from "@hyperframes/core";
 import { getMimeType } from "@hyperframes/core/studio-api";
-import { decodeWellFormedEscapes, openRangeEnd } from "@hyperframes/studio-server";
+import {
+  decodeWellFormedEscapes,
+  openRangeEnd,
+  serviceWorkerScriptFetch,
+} from "@hyperframes/studio-server";
 import {
   documentFromAnotherSite,
   requestFromAnotherSite,
@@ -367,7 +371,11 @@ export async function serveStaticProjectHtml(
   // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
-    if (!answersHost(req.headers.host)) {
+    const workerScript = serviceWorkerScriptFetch({
+      serviceWorker: req.headers["service-worker"] as string | undefined,
+      fetchDest: req.headers["sec-fetch-dest"] as string | undefined,
+    });
+    if (!answersHost(req.headers.host) || workerScript) {
       res.writeHead(403, { "Content-Type": "text/plain" });
       res.end("Forbidden");
       return;

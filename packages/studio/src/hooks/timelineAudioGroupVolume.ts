@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   failedTimelineSave,
   projectForTimelineSave,
@@ -9,6 +9,11 @@ import { HF_AUDIO_AUTOMATION_ATTR } from "@hyperframes/core/audio-automation";
 import { usePlayerStore } from "../player";
 import type { TimelineElementPatch } from "../player/store/timelineElement";
 import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
+import {
+  previewDocumentCopy,
+  previewFrameOpaque,
+  previewRequest,
+} from "../player/lib/previewChannel";
 import {
   buildPatchTarget,
   persistElementAttribute,
@@ -21,6 +26,35 @@ import type {
   UseTimelineElementVisibilityEditingInput,
 } from "./timelineTrackVisibility";
 
+type SealedLane = { busy: boolean; next: { value: string | null } | null };
+const sealedLanes = new WeakMap<HTMLIFrameElement, Map<string, SealedLane>>();
+
+/** A drag writes per frame: one write in flight per group attribute, and only the newest waits. */
+function writeSealedGroupAttribute(
+  iframe: HTMLIFrameElement,
+  groupId: string,
+  attr: string,
+  value: string | null,
+): void {
+  const lanes = sealedLanes.get(iframe) ?? new Map<string, SealedLane>();
+  sealedLanes.set(iframe, lanes);
+  const key = audioGroupAttributeLiveKey(groupId, attr);
+  const lane = lanes.get(key) ?? { busy: false, next: null };
+  lanes.set(key, lane);
+  lane.next = { value };
+  const pump = () => {
+    if (lane.busy || !lane.next) return;
+    const params = { id: groupId, attr, value: lane.next.value };
+    lane.next = null;
+    lane.busy = true;
+    void previewRequest(iframe, "set-audio-group-attribute", params).finally(() => {
+      lane.busy = false;
+      pump();
+    });
+  };
+  pump();
+}
+
 /** Direct DOM write on the group element for the gesture in progress — no
  *  file write, no history entry (mirrors FxParamRow's live/commit split). */
 function patchLiveGroupAttribute(
@@ -29,6 +63,10 @@ function patchLiveGroupAttribute(
   attr: string,
   value: string | null,
 ): void {
+  if (iframe && previewFrameOpaque(iframe)) {
+    writeSealedGroupAttribute(iframe, groupId, attr, value);
+    return;
+  }
   const target = iframe?.contentDocument?.getElementById(groupId);
   if (!target) return;
   if (value === null) target.removeAttribute(attr);
@@ -146,12 +184,9 @@ export function resolveGroupSourceFile(groupEl: Element | null): string | undefi
 
 interface SetAudioGroupAttributeInput {
   projectId: string;
-  activeCompPath: string | null;
-  groupId: string;
-  attr: string;
+  source: LiveLaneSource;
   value: string | null;
   label: string;
-  previewIframe: HTMLIFrameElement | null;
   patchLive: (value: string | null) => void;
   onFileRead: (value: string | null) => void;
   writeProjectFile: (path: string, content: string) => Promise<void>;
@@ -165,36 +200,31 @@ interface SetAudioGroupAttributeInput {
  * `createAudioGroupAndAssignMembers`'s save shape but for a single element
  * and attribute rather than a member-assignment sweep.
  */
-function groupSaveTarget(
-  previewIframe: HTMLIFrameElement | null,
-  groupId: string,
-  activeCompPath: string | null,
-) {
-  const groupEl = previewIframe?.contentDocument?.getElementById(groupId) ?? null;
+function groupSaveTarget(groupEl: Element | null, groupId: string, activeCompPath: string | null) {
   return {
     targetPath: resolveGroupSourceFile(groupEl) || activeCompPath || "index.html",
     patchTarget: buildPatchTarget({ domId: groupId }),
   };
 }
 
+const liveGroupElement = (previewIframe: HTMLIFrameElement | null, groupId: string) =>
+  previewIframe?.contentDocument?.getElementById(groupId) ?? null;
+
 function groupLiveSource(
-  previewIframe: HTMLIFrameElement | null,
+  groupEl: Element | null,
   groupId: string,
   activeCompPath: string | null,
   attr: string,
 ): LiveLaneSource {
-  const { targetPath, patchTarget } = groupSaveTarget(previewIframe, groupId, activeCompPath);
+  const { targetPath, patchTarget } = groupSaveTarget(groupEl, groupId, activeCompPath);
   return { path: targetPath, target: patchTarget, attr };
 }
 
 async function setAudioGroupAttribute({
   projectId,
-  activeCompPath,
-  groupId,
-  attr,
+  source,
   value,
   label,
-  previewIframe,
   patchLive,
   onFileRead,
   writeProjectFile,
@@ -209,7 +239,7 @@ async function setAudioGroupAttribute({
   // means `readTagSnippetByTarget` finds nothing and every mute, fader move and
   // FX preset throws "Unable to patch element in index.html". Every sibling
   // timeline writer already routes `element.sourceFile || activeCompPath`.
-  const { targetPath, patchTarget } = groupSaveTarget(previewIframe, groupId, activeCompPath);
+  const { path: targetPath, target: patchTarget, attr } = source;
   if (!patchTarget) return null;
 
   return persistElementAttribute({
@@ -255,22 +285,62 @@ export function useSetAudioGroupAttribute({
   restoreLive: (restore: LiveLaneRestore) => void;
 } {
   const liveLanes = useLiveLanes(projectIdRef, activeCompPath);
+  // A sealed preview's gesture reads the group once, off a copy of the frame, before its first write.
+  const [sealedReads] = useState(() => new Map<string, Promise<Document | null>>());
+  const openSealedLane = useCallback(
+    (iframe: HTMLIFrameElement, groupId: string, attr: string) => {
+      const key = audioGroupAttributeLiveKey(groupId, attr);
+      const open = sealedReads.get(key);
+      if (open) return open;
+      const read = previewDocumentCopy(iframe);
+      sealedReads.set(key, read);
+      void read.then((doc) => {
+        if (sealedReads.get(key) !== read) return;
+        const groupEl = doc?.getElementById(groupId) ?? null;
+        liveLanes.preview(
+          key,
+          () => groupEl?.getAttribute(attr) ?? null,
+          groupLiveSource(groupEl, groupId, activeCompPath, attr),
+        );
+      });
+      return read;
+    },
+    [sealedReads, liveLanes, activeCompPath],
+  );
+  const sealedGroupElement = useCallback(
+    async (iframe: HTMLIFrameElement, groupId: string, attr: string) => {
+      const key = audioGroupAttributeLiveKey(groupId, attr);
+      const read = sealedReads.get(key) ?? previewDocumentCopy(iframe);
+      const doc = await read;
+      if (sealedReads.get(key) === read) sealedReads.delete(key);
+      return doc?.getElementById(groupId) ?? null;
+    },
+    [sealedReads],
+  );
   const setLive = useCallback(
     (groupId: string, attr: string, value: string | null) => {
       const key = audioGroupAttributeLiveKey(groupId, attr);
-      const target = previewIframeRef.current?.contentDocument?.getElementById(groupId);
-      liveLanes.preview(
-        key,
-        () => target?.getAttribute(attr) ?? null,
-        groupLiveSource(previewIframeRef.current, groupId, activeCompPath, attr),
-      );
-      patchLiveGroupAttribute(previewIframeRef.current, groupId, attr, value);
+      const iframe = previewIframeRef.current;
+      if (iframe && previewFrameOpaque(iframe)) {
+        const read = openSealedLane(iframe, groupId, attr);
+        void read.then(() => {
+          if (sealedReads.get(key) === read) patchLiveGroupAttribute(iframe, groupId, attr, value);
+        });
+      } else {
+        const target = liveGroupElement(iframe, groupId);
+        liveLanes.preview(
+          key,
+          () => target?.getAttribute(attr) ?? null,
+          groupLiveSource(target, groupId, activeCompPath, attr),
+        );
+        patchLiveGroupAttribute(iframe, groupId, attr, value);
+      }
       // Live too, not just on commit: a fader drag is `setLive` per frame and
       // `setQuiet` once on release, so without this the strip's own readout
       // fights the drag.
       syncStoredGroupAttribute(groupId, attr, value);
     },
-    [liveLanes, previewIframeRef, activeCompPath],
+    [liveLanes, previewIframeRef, activeCompPath, openSealedLane, sealedReads],
   );
   const laneApply = useCallback(
     (groupId: string, attr: string) => ({
@@ -286,9 +356,12 @@ export function useSetAudioGroupAttribute({
     [liveLanes, laneApply],
   );
   const revertLive = useCallback(
-    (groupId: string, attr: string) =>
-      liveLanes.revert(audioGroupAttributeLiveKey(groupId, attr), laneApply(groupId, attr)),
-    [liveLanes, laneApply],
+    (groupId: string, attr: string) => {
+      const key = audioGroupAttributeLiveKey(groupId, attr);
+      sealedReads.delete(key);
+      liveLanes.revert(key, laneApply(groupId, attr));
+    },
+    [liveLanes, laneApply, sealedReads],
   );
   const setQuiet = useCallback(
     async (
@@ -301,7 +374,12 @@ export function useSetAudioGroupAttribute({
       const pid = projectForTimelineSave(isRecordingRef?.current, project, showToast);
       // Settles on what the file holds, so overlapping saves that fail cannot leave
       // the preview or the store on a value that never landed.
-      const source = groupLiveSource(previewIframeRef.current, groupId, activeCompPath, attr);
+      const iframe = previewIframeRef.current;
+      const groupEl =
+        iframe && previewFrameOpaque(iframe)
+          ? await sealedGroupElement(iframe, groupId, attr)
+          : liveGroupElement(iframe, groupId);
+      const source = groupLiveSource(groupEl, groupId, activeCompPath, attr);
       const live = claimLive(groupId, attr, source);
       const unsaved = async (outcome: TimelineEditOutcome): Promise<TimelineEditOutcome> => {
         live.settle(
@@ -313,12 +391,9 @@ export function useSetAudioGroupAttribute({
       try {
         const written = await setAudioGroupAttribute({
           projectId: pid,
-          activeCompPath,
-          groupId,
-          attr,
+          source,
           value,
           label,
-          previewIframe: previewIframeRef.current,
           patchLive: live.preview,
           onFileRead: live.read,
           writeProjectFile,
@@ -337,6 +412,7 @@ export function useSetAudioGroupAttribute({
     },
     [
       claimLive,
+      sealedGroupElement,
       activeCompPath,
       previewIframeRef,
       writeProjectFile,

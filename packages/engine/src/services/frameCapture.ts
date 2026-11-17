@@ -18,6 +18,7 @@ import {
   type ConsoleMessage,
 } from "puppeteer-core";
 import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { availableParallelism } from "os";
 import { join } from "path";
 import {
   COMPOSITION_SOURCE_URL,
@@ -4071,6 +4072,7 @@ const STATIC_VERIFY_REFERENCE_STRIDE = 24;
 const STATIC_VERIFY_MAX_MS = 15_000;
 const STATIC_VERIFY_HEADROOM = 1.5;
 const STATIC_VERIFY_CEILING_MS = 60_000;
+const STATIC_VERIFY_MAX_PAGES = 4;
 // Two captures (anchor + comparison) are the minimum proof for a run. Four hundred
 // therefore permits 200 fully verified runs while bounding pathological schedules.
 const STATIC_VERIFY_MIN_SCREENSHOT_CAP = 400;
@@ -4305,7 +4307,7 @@ export async function createStaticVerificationPage(session: CaptureSession): Pro
  */
 export async function verifyStaticFramesSafe(
   session: CaptureSession,
-  page: Page,
+  page: Page | readonly Page[],
   staticFrames: Set<number>,
   fps: number,
   sampleCount: number,
@@ -4341,10 +4343,11 @@ export async function verifyStaticFramesSafe(
     stats,
   });
   if (plan.runs.length === 0) return finish("unprofitable");
-  const seekToFrame = async (frameIdx: number): Promise<void> => {
+  const pages = Array.isArray(page) ? page : [page];
+  const seekToFrame = async (target: Page, frameIdx: number): Promise<void> => {
     stats.seeks++;
     const t = quantizeTimeToFrame(frameIdx / fps, fps);
-    await page.evaluate((tt: number) => {
+    await target.evaluate((tt: number) => {
       const hf = (
         window as unknown as {
           __hf?: { seek?: (t: number, options?: { suppressEvents?: boolean }) => void };
@@ -4360,6 +4363,7 @@ export async function verifyStaticFramesSafe(
   );
   let firstShotMs = 0;
   const seekCapture = async (
+    target: Page,
     frameIdx: number,
   ): Promise<Buffer | "time_budget" | "count_budget"> => {
     const spent = now() - startedAt;
@@ -4373,46 +4377,75 @@ export async function verifyStaticFramesSafe(
     if (spent >= budget) return "time_budget";
     if (stats.screenshots >= hardCap) return "count_budget";
     const shotStart = now();
-    await seekToFrame(frameIdx);
-    stats.screenshots++;
-    const buf = await capture(page, session.options);
+    await seekToFrame(target, frameIdx);
+    const first = stats.screenshots++ === 0;
+    const buf = await capture(target, session.options);
     session.options.onStaticDedupActivity?.();
-    if (stats.screenshots === 1) firstShotMs = now() - shotStart;
+    if (first) firstShotMs = now() - shotStart;
     return buf;
   };
-  // Verify profitable runs in deterministic savings order. A run is added to the armed
-  // set only after its anchor and every planner-selected comparison match. Budget exits
-  // retain completed runs; mismatch or infrastructure failure clears all verified frames.
-  try {
-    for (const run of plan.runs) {
-      const anchorBuf = await seekCapture(run.anchor);
-      if (typeof anchorBuf === "string") return finish(anchorBuf, run.a);
+  // Each page takes the next profitable run in savings order. A run is added to the armed set
+  // only after its anchor and every planner-selected comparison match. Budget exits retain
+  // completed runs; a mismatch or infrastructure failure on any page clears all verified frames.
+  let next = 0;
+  let budgetExit: StaticVerificationResult | undefined;
+  let mismatchAt: number | undefined;
+  let failed = false;
+  const stopped = () => budgetExit !== undefined || mismatchAt !== undefined || failed;
+  const verifyOn = async (target: Page): Promise<void> => {
+    while (!stopped() && next < plan.runs.length) {
+      const run = plan.runs[next++]!;
+      const anchorBuf = await seekCapture(target, run.anchor);
+      if (typeof anchorBuf === "string") {
+        budgetExit ??= finish(anchorBuf, run.a);
+        return;
+      }
       stats.completedAnchors++;
       for (const f of run.comparisons) {
-        const cur = await seekCapture(f);
-        if (typeof cur === "string") return finish(cur, f);
+        const cur = await seekCapture(target, f);
+        if (typeof cur === "string") {
+          budgetExit ??= finish(cur, f);
+          return;
+        }
         stats.completedComparisons++;
         stats.byteComparisons++;
         if (!anchorBuf.equals(cur)) {
-          verifiedFrames.clear();
-          stats.verifiedFrames = 0;
-          stats.unverifiedFrames = plan.predictedFrames;
-          return finish("mismatch", f);
+          mismatchAt ??= f;
+          return;
         }
       }
+      if (mismatchAt !== undefined || failed) return;
       stats.completedRuns++;
       for (let frame = run.a; frame <= run.b; frame++) verifiedFrames.add(frame);
       stats.verifiedFrames = verifiedFrames.size;
       stats.unverifiedFrames = plan.predictedFrames - verifiedFrames.size;
     }
-    return finish("verified");
-  } catch {
+  };
+  const clearVerified = () => {
     verifiedFrames.clear();
     stats.verifiedFrames = 0;
     stats.unverifiedFrames = plan.predictedFrames;
-    return finish("infrastructure");
+  };
+  try {
+    const settled = await Promise.allSettled(
+      pages.map((target) =>
+        verifyOn(target).catch((error: unknown) => {
+          failed = true;
+          throw error;
+        }),
+      ),
+    );
+    if (settled.some((lane) => lane.status === "rejected")) {
+      clearVerified();
+      return finish("infrastructure");
+    }
+    if (mismatchAt !== undefined) {
+      clearVerified();
+      return finish("mismatch", mismatchAt);
+    }
+    return budgetExit ?? finish("verified");
   } finally {
-    await seekToFrame(0).catch(() => {});
+    await Promise.all(pages.map((target) => seekToFrame(target, 0).catch(() => {})));
     stats.elapsedMs = Math.max(0, now() - startedAt);
   }
 }
@@ -4733,6 +4766,13 @@ async function verifyOrShareStaticFrames(
   }
 }
 
+/** Pages that verify static runs side by side; seeks and screenshots mostly wait on Chrome, not the CPU. */
+function staticVerificationPageCount(): number {
+  const forced = Number(process.env.HF_STATIC_DEDUP_VERIFY_PAGES);
+  if (Number.isInteger(forced) && forced >= 1) return forced;
+  return Math.min(STATIC_VERIFY_MAX_PAGES, Math.max(1, availableParallelism()));
+}
+
 async function verifyAndArmStaticDedup(
   session: CaptureSession,
   stats: Awaited<ReturnType<typeof computeStaticFrameSet>>,
@@ -4741,13 +4781,19 @@ async function verifyAndArmStaticDedup(
   logInitPhase: (phase: string) => void,
   onVerdict: (verdict: StaticVerificationResult) => void,
 ): Promise<void> {
-  let verificationPage: Page | undefined;
+  let verificationPages: Page[] = [];
   let verdict: StaticVerificationResult;
   try {
-    verificationPage = await createStaticVerificationPage(session);
+    const opened = await Promise.allSettled(
+      Array.from({ length: staticVerificationPageCount() }, () =>
+        createStaticVerificationPage(session),
+      ),
+    );
+    verificationPages = opened.flatMap((p) => (p.status === "fulfilled" ? [p.value] : []));
+    if (verificationPages.length === 0) throw new Error("no verification page opened");
     verdict = await verifyStaticFramesSafe(
       session,
-      verificationPage,
+      verificationPages,
       stats.staticFrameSet,
       fps,
       samples,
@@ -4757,7 +4803,7 @@ async function verifyAndArmStaticDedup(
     logInitPhase("static-frame dedup: disabled (verification infrastructure failure)");
     return;
   } finally {
-    await verificationPage?.close().catch(() => {});
+    await Promise.all(verificationPages.map((p) => p.close().catch(() => {})));
   }
   session.staticDedupVerification = verdict;
   onVerdict(verdict);

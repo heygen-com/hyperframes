@@ -88,3 +88,67 @@ export function applyAuthoredTiming(
   for (const [name, value] of attrs) el.setAttribute(name, value);
   el.removeAttribute(RUNTIME_STAMPED_ATTR);
 }
+
+export function dropServiceWorkers(): Promise<void> {
+  const workers = typeof navigator === "undefined" ? undefined : navigator.serviceWorker;
+  if (!workers) return Promise.resolve();
+  return workers
+    .getRegistrations()
+    .then((all) => Promise.all(all.map((each) => each.unregister())))
+    .then(
+      () => undefined,
+      () => undefined,
+    );
+}
+
+export function serviceWorkerScriptFetch(headers: {
+  serviceWorker?: string | string[];
+  fetchDest?: string | string[];
+}): boolean {
+  return headers.serviceWorker === "script" || headers.fetchDest === "serviceworker";
+}
+
+export interface PreviewTarget {
+  hfId?: string;
+  domId?: string;
+  id: string;
+  sourceFile?: string;
+}
+
+export function previewElementSourceFile(el: Element): string | undefined {
+  const ownerRoot = el.parentElement?.closest("[data-composition-id]");
+  return (
+    ownerRoot?.getAttribute("data-composition-file") ??
+    ownerRoot?.getAttribute("data-composition-src") ??
+    undefined
+  );
+}
+
+export function previewElementFinder(
+  doc: Document,
+  selector = "[data-hf-id], [id]",
+): (target: PreviewTarget) => Element | null {
+  const byKey = new Map<string, Element[]>();
+  const add = (key: string, node: Element) => {
+    const nodes = byKey.get(key);
+    if (nodes) nodes.push(node);
+    else byKey.set(key, [node]);
+  };
+  for (const node of doc.querySelectorAll(selector)) {
+    const hfId = node.getAttribute("data-hf-id");
+    const id = node.getAttribute("id");
+    if (hfId) add(`hf:${hfId}`, node);
+    if (id) add(`id:${id}`, node);
+  }
+  return (target) => {
+    const matches = [
+      ...((target.hfId && byKey.get(`hf:${target.hfId}`)) || []),
+      ...(byKey.get(`id:${target.domId ?? target.id}`) ?? []),
+    ];
+    return (
+      matches.find((node) => previewElementSourceFile(node) === target.sourceFile) ??
+      matches[0] ??
+      null
+    );
+  };
+}

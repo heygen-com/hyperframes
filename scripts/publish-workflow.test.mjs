@@ -88,8 +88,8 @@ test("a push to main publishes only the merge of exactly one approved release PR
     submitted_at: `2026-11-17T0${hour}:00:00Z`,
   });
   const approved = [review("reviewer", "APPROVED", 1)];
-  // The fake answers PR 8000's reviews, commits and events, the commit's PR lookup from FAKE_PULLS, and each
-  // reviewer's permission from FAKE_PERMISSIONS (login=permission lines); the lookup of FAKE_PERMISSION_FAILS fails.
+  // The fake answers PR 8000's reviews, commits and events, the push from FAKE_COMPARE, each commit's PR lookup from
+  // FAKE_PULLS_<sha>, and each reviewer's permission from FAKE_PERMISSIONS; the lookup of FAKE_PERMISSION_FAILS fails.
   writeFileSync(
     join(bin, "gh"),
     `#!/bin/sh
@@ -97,6 +97,11 @@ case "$*" in
   *pulls/8000/reviews*) printf '%s' "$FAKE_REVIEWS" ;;
   *pulls/8000/commits*) printf '%s' "$FAKE_COMMITS" ;;
   *issues/8000/events*) printf '%s' "$FAKE_EVENTS" ;;
+  *compare/*) printf '%s' "$FAKE_COMPARE" ;;
+  *commits/*/pulls*)
+    c="$(printf '%s' "$*" | sed 's#.*commits/\\([0-9a-f]*\\)/pulls.*#\\1#')"
+    eval "v=\\\${FAKE_PULLS_$c-}"
+    printf '%s' "\${v:-[]}" ;;
   *collaborators/*/permission*)
     login="$(printf '%s' "$*" | sed 's#.*collaborators/\\([^/]*\\)/permission.*#\\1#')"
     [ "$login" != "$FAKE_PERMISSION_FAILS" ] || exit 1
@@ -112,8 +117,19 @@ esac
   const permissions = "releaser=admin\nreviewer=write\nother=admin\noutsider=read";
   chmodSync(join(bin, "gh"), 0o755);
   const main = { REF_TYPE: "branch", REF_NAME: "main" };
+  /** A push of `commits` (oldest first, each `{ sha, message, pulls }`) whose last commit is the run's sha. */
+  const push = (commits, total = commits.length) => ({
+    FAKE_COMPARE: JSON.stringify({
+      total_commits: total,
+      commits: commits.map(({ sha: c, message }) => ({ sha: c, commit: { message } })),
+    }),
+    ...Object.fromEntries(
+      commits.map(({ sha: c, pulls }) => [`FAKE_PULLS_${c}`, JSON.stringify(pulls)]),
+    ),
+  });
   const run = (pulls, ref = main, reviews = approved, history = {}) => {
     const out = join(bin, "out");
+    const commits = history.push ?? [{ sha, message: ref.HEAD_MESSAGE ?? "fix: a change", pulls }];
     writeFileSync(out, "");
     const result = runStep(step, {
       cwd: bin,
@@ -122,7 +138,8 @@ esac
         SHA: sha,
         RUNNER_TEMP: bin,
         GITHUB_OUTPUT: out,
-        FAKE_PULLS: JSON.stringify(pulls),
+        BEFORE: history.before ?? "e".repeat(40),
+        ...push(commits, history.total),
         FAKE_REVIEWS: JSON.stringify(reviews),
         FAKE_COMMITS: JSON.stringify(history.commits ?? [commit("releaser", "web-flow")]),
         FAKE_EVENTS: JSON.stringify(history.events ?? []),
@@ -250,6 +267,34 @@ esac
       run([pull()], main, reapproved).status,
       0,
       "a later approval answers its own change request",
+    );
+    // The merge queue can land the release with other PRs in one push; the run is for the push's last commit.
+    const release = "f".repeat(40);
+    const batched = (releasePulls, total) => ({
+      push: [
+        { sha: release, message: "chore: release v0.9.61 (#8000)", pulls: releasePulls },
+        { sha, message: "fix: a server change (#8001)", pulls: [] },
+      ],
+      total,
+    });
+    assert.deepEqual(run([], main, approved, batched([pull({ merge_commit_sha: release })])), {
+      status: 0,
+      outputs: { sha: release, version: "0.9.61", source: "release-pr", ref: "release/v0.9.61" },
+    });
+    assert.equal(
+      run([], main, approved, batched([])).status,
+      1,
+      "a release commit below the tip that GitHub has not linked yet fails, never skips",
+    );
+    assert.equal(
+      run([], main, approved, batched([pull({ merge_commit_sha: release })], 300)).status,
+      1,
+      "a push with more commits than GitHub lists",
+    );
+    assert.deepEqual(
+      run([pull()], main, approved, { before: "0".repeat(40) }).outputs.sha,
+      sha,
+      "a push that created the branch reads only its last commit",
     );
     const second = pull({
       head: { ref: "release/v0.9.62", repo: { full_name: "heygen-com/hyperframes" } },
@@ -471,6 +516,12 @@ test("release-commit code runs only in a job without secrets", () => {
   assert.deepEqual(publish.needs, ["release-source", "pack"]);
 });
 
+test("npm publishes with the job's OIDC token only: no stored npm token is named", () => {
+  assert.doesNotMatch(JSON.stringify(config), /\bsecrets\b(?!\.GITHUB_TOKEN\b)/);
+  assert.equal(publish.permissions["id-token"], "write");
+  assert.equal(stepOf(publish, "Publish packages").env.NODE_AUTH_TOKEN, "");
+});
+
 test("the publish job runs no code from the release commit", () => {
   for (const step of publish.steps) {
     assert.doesNotMatch(step.uses ?? "", /setup-bun|^\.\//, `${step.uses} in the publish job`);
@@ -482,10 +533,7 @@ test("the publish job runs no code from the release commit", () => {
       assert.match(line, /--ignore-scripts/, step.name);
     }
   }
-  const job = JSON.stringify(publish);
-  assert.equal(job.split("secrets.NPM_TOKEN").length - 1, 1);
   const publishPackages = stepOf(publish, "Publish packages");
-  assert.equal(publishPackages.env.NODE_AUTH_TOKEN, "${{ secrets.NPM_TOKEN }}");
   assert.equal(publishPackages["working-directory"], "${{ runner.temp }}");
 });
 
