@@ -24,7 +24,7 @@ let projectDir: string;
 afterEach(() => rmSync(projectDir, { recursive: true, force: true }));
 
 function project(listed: string[]): string {
-  projectDir = realpathSync(mkdtempSync(join(tmpdir(), "hf-record-follow-")));
+  projectDir = realpathSync.native(mkdtempSync(join(tmpdir(), "hf-record-follow-")));
   mkdirSync(join(projectDir, ".hyperframes"));
   writeFileSync(
     join(projectDir, ".hyperframes", "received-files.json"),
