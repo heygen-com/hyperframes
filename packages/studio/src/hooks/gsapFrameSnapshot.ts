@@ -78,8 +78,12 @@ function refreshGsapSnapshot(iframe: HTMLIFrameElement): Promise<void> {
 /** Reads the frame again unless the held read is at the paused playhead, for async callers. */
 export async function settleGsapSnapshot(iframe: HTMLIFrameElement | null): Promise<void> {
   if (!iframe || !previewFrameOpaque(iframe)) return;
-  const snapshot = held.get(previewEditingClient(iframe));
-  if (!snapshot || !fresh(snapshot)) await refreshGsapSnapshot(iframe);
+  const client = previewEditingClient(iframe);
+  for (let reads = 0; reads < 2; reads++) {
+    const snapshot = held.get(client);
+    if (snapshot && fresh(snapshot)) return;
+    await refreshGsapSnapshot(iframe);
+  }
 }
 
 async function read(iframe: HTMLIFrameElement, client: EditingPortClient): Promise<void> {
