@@ -860,7 +860,7 @@ function composeNamesInText(fileContents: Map<string, StagedFile>, filePaths: st
   }
 }
 
-type WalkedLeftOutReason = Exclude<LeftOutReason, "file_type" | "network_share">;
+type WalkedLeftOutReason = Exclude<LeftOutReason, "file_type" | "network_share" | "script">;
 
 const WALKED_LEFT_OUT: Record<WalkedLeftOutReason, string> = {
   private:

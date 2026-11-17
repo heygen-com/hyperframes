@@ -1953,10 +1953,18 @@ How it uses the machine, and when it gives up:
 | `--wait` / `--no-wait`                                   | on                                         | One local render at a time per user account: wait while another runs, or fail at once. Env: `HYPERFRAMES_RENDER_LOCK=off` renders side by side. |
 | `--strict` / `--strict-all`                              | off                                        | Fail on lint errors, or on errors and warnings                                                                     |
 | `--strict-variables`                                     | off                                        | Fail rather than warn on an undeclared or mistyped variable key                                                    |
+| `--include-outside-files`                                | off                                        | Also run `.js` and `.mjs` scripts the project references from outside its folder. See the note below.            |
 | `--batch-concurrency` / `--batch-fail-fast`              | `1` / off                                  | Batch rows at once, and whether the first failure stops the rest                                                   |
 | `--debug`                                                | off                                        | Keep intermediates and write diagnostics under the Producer `.debug` directory                                     |
 | `--quiet`                                                | off                                        | Less output                                                                                                        |
 | `--skill`                                                | —                                          | Record which authoring workflow started this render, in usage telemetry                                            |
+
+A local render brings in images, video, audio, fonts and CSS that the project
+references from outside its folder. It leaves out scripts from outside the
+folder, warning with each one's name, because a script runs in the render's
+browser and can read and send anything the render can reach. Move a script you
+trust into the project, or pass `--include-outside-files` to run it where it is.
+A composition that needs the left-out script stops with a script-load error.
 
 Renders started side by side starve each other of CPU and GPU until frames stop
 landing, so a second local or `--docker` render from the same user account waits
