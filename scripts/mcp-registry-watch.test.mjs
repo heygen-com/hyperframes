@@ -15,12 +15,15 @@ test("a listing under a HeyGen namespace that server.json never held is unexpect
     listing("io.github.heygen-com/hyperframes", "1.0.1"),
     listing("io.github.heygen-com/other", "0.1.0"),
     listing("com.heygen/hyperframes-x", "9.9.9"),
+    listing("com.heygen.docs/hyperframes", "1.0.0"),
+    listing("com.heygenx/hyperframes", "1.0.0"),
     listing("io.github.someone/heygen-tools", "1.0.0"),
   ];
   assert.deepEqual(unexpectedListings(servers, published), [
     "io.github.heygen-com/hyperframes@1.0.1",
     "io.github.heygen-com/other@0.1.0",
     "com.heygen/hyperframes-x@9.9.9",
+    "com.heygen.docs/hyperframes@1.0.0",
   ]);
 });
 
