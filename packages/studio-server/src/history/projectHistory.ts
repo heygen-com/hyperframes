@@ -23,7 +23,7 @@ import {
   onFileOverwritten,
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
-import { realFilePath } from "../helpers/safePath.js";
+import { isWritableInProject, realFilePath } from "../helpers/safePath.js";
 import {
   STUDIO_SIGNATURE_MANIFEST_PATHS,
   affectsProjectSignature,
@@ -370,6 +370,23 @@ function chainBackFrom(
   return chain;
 }
 
+const SEEN_PER_PATH = 32;
+
+/** Per path, the latest hashes the server itself found or replaced there; a claim's word counts only for these. */
+class SeenVersions extends Map<string, Set<string>> {
+  note(path: string, hash: string): void {
+    const hashes = this.get(path) ?? new Set<string>();
+    hashes.delete(hash);
+    hashes.add(hash);
+    const oldest = hashes.values().next().value;
+    if (hashes.size > SEEN_PER_PATH && oldest !== undefined) hashes.delete(oldest);
+    this.set(path, hashes);
+  }
+  sawAt(path: string, hash: string | undefined): string | undefined {
+    return hash && this.get(path)?.has(hash) ? hash : undefined;
+  }
+}
+
 /** Files one change to a group; a later change to the same path keeps the group's first "before". */
 function addChange(group: Group, path: string, before: string | null, after: string | null): void {
   const earlier = group.changes.get(path);
@@ -392,11 +409,15 @@ function keepTargetsOfItsFiles(entry: HistoryEntry): HistoryEntry {
 
 /** The tracked files; any change owes the project's video-state.json a rewrite. */
 class TrackedFiles extends Map<string, Tracked> {
-  constructor(private readonly changed: () => void) {
+  constructor(
+    private readonly changed: () => void,
+    private readonly seen: (path: string, hash: string) => void,
+  ) {
     super();
   }
   override set(path: string, file: Tracked): this {
     this.changed();
+    this.seen(path, file.hash);
     return super.set(path, file);
   }
   override delete(path: string): boolean {
@@ -412,7 +433,11 @@ class Engine {
   readonly home: string;
   log: HistoryLog = { baseline: new Map(), entries: [], pins: new Set() };
   owesVideoState = true;
-  tracked = new TrackedFiles(() => (this.owesVideoState = true));
+  seen = new SeenVersions();
+  tracked = new TrackedFiles(
+    () => (this.owesVideoState = true),
+    (path, hash) => this.seen.note(path, hash),
+  );
   windows: Group[] = [];
   outside: Group | null = null;
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
@@ -556,6 +581,8 @@ class Engine {
       if (!replaced || replaced === after) return;
       const path = relative(realDir, absPath).split(sep).join("/");
       if (!isHistoryPath(path)) return;
+      this.seen.note(path, replaced);
+      this.seen.note(path, after);
       // One chain per file, a new Map per write (forgetWritesBefore checks identity); off-chain notes were overwritten.
       this.overwritten.set(
         path,
@@ -919,6 +946,8 @@ class Engine {
       : null;
   }
 
+  studioWouldWrite = (path: string): boolean => isWritableInProject(this.dir, path);
+
   logPath(path: string): string {
     return relative(this.dir, resolve(this.dir, path)).split(sep).join("/");
   }
@@ -929,12 +958,12 @@ class Engine {
     paths: readonly string[],
     overwrote: Readonly<Record<string, string>>,
   ): Promise<HistoryFileChange[]> {
-    const wanted = new Set(paths.map((path) => this.logPath(path)));
+    const wanted = new Set(paths.map((path) => this.logPath(path)).filter(this.studioWouldWrite));
     const at = new Map(
-      Object.entries(overwrote).map(([path, version]) => [
-        this.logPath(path),
-        hashOfVersion(version),
-      ]),
+      Object.entries(overwrote).map(([path, version]) => {
+        const logPath = this.logPath(path);
+        return [logPath, this.seen.sawAt(logPath, hashOfVersion(version))];
+      }),
     );
     const others = this.windows.filter((open) => !sameWho(open.who, who));
     const groups = this.outside ? [this.outside, ...others] : others;
@@ -1239,7 +1268,10 @@ class Engine {
   ): Promise<HistoryEntry | null> {
     this.assertWritable();
     const changes = [...target]
-      .filter(([path, hash]) => (this.tracked.get(path)?.hash ?? null) !== hash)
+      .filter(
+        ([path, hash]) =>
+          this.studioWouldWrite(path) && (this.tracked.get(path)?.hash ?? null) !== hash,
+      )
       .sort(([, a], [, b]) => Number(a !== null) - Number(b !== null));
     const setAsideByDeletesFirst = new Set(
       changes.filter(([, hash]) => hash === null).map(([path]) => this.tracked.get(path)?.hash),
@@ -1344,8 +1376,9 @@ class Engine {
   next(direction: "back" | "forward", who: HistoryWho): HistoryEntry | undefined {
     // An outside change has no known author, so it is everyone's; a step commits it after the held claim.
     const mine = (author: HistoryWho) => sameWho(author, who) || sameWho(author, OUTSIDE);
+    const writes = (paths: Iterable<string>) => [...paths].some(this.studioWouldWrite);
     const pending = [...[...this.windows].reverse(), this.outside, this.claimed?.group].find(
-      (group) => group?.changes.size && mine(group.who),
+      (group) => group && writes(group.changes.keys()) && mine(group.who),
     );
     if (pending) return direction === "back" ? this.pendingEntry(pending) : undefined;
     const everyone = this.options.undoScope === "everyone";
@@ -1354,7 +1387,9 @@ class Engine {
     return stepTarget(
       this.log.entries,
       direction,
-      (entry) => entry.files.length > 0 && (mine(entry.who) || (everyone && !ofOpenTurn(entry))),
+      (entry) =>
+        writes(entry.files.map((file) => file.path)) &&
+        (mine(entry.who) || (everyone && !ofOpenTurn(entry))),
     );
   }
 

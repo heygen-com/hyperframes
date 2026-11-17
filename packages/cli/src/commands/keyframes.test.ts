@@ -18,6 +18,7 @@ import {
   collectCompositions,
   collectShotSelectors,
   resolveScope,
+  singleFileStage,
   surfaceComposition,
 } from "./keyframes.js";
 import { ensureShotOutputDir } from "./motionShot.js";
@@ -109,6 +110,47 @@ describe("keyframes direct composition scope", () => {
 
     expect(scope.projectDir).toBe(projectDir);
     expect(scope.entryFile).toBe("compositions/scene.html");
+    expect(scope.singleFile).toBe(scenePath);
+  });
+});
+
+describe("keyframes --shot on a bare HTML file", () => {
+  const scene = `<template id="scene-template"><div data-composition-id="scene"></div></template>`;
+  const mountingIndex = wrap("").replace(
+    '<div id="dot" class="clip"></div>',
+    '<div data-composition-id="scene" data-composition-src="compositions/scene.html"></div>',
+  );
+
+  function project(index: string) {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-stage-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
+    mkdirSync(join(projectDir, "compositions"));
+    writeFileSync(join(projectDir, "index.html"), index);
+    return projectDir;
+  }
+
+  it("stages a scene its project mounts from the project, so the scene keeps its shell", async () => {
+    const projectDir = project(mountingIndex);
+    const scenePath = join(projectDir, "compositions", "scene.html");
+    writeFileSync(scenePath, scene);
+
+    expect(await singleFileStage(scenePath, projectDir)).toEqual({
+      root: projectDir,
+      entries: [join(projectDir, "index.html"), scenePath],
+      entryFile: "compositions/scene.html",
+    });
+  });
+
+  it("stages any other file from its own folder, even under a folder holding index.html", async () => {
+    const projectDir = project(wrap(""));
+    const sentPath = join(projectDir, "compositions", "sent.html");
+    writeFileSync(sentPath, scene);
+
+    expect(await singleFileStage(sentPath, projectDir)).toEqual({
+      root: join(projectDir, "compositions"),
+      entries: [sentPath],
+      entryFile: "sent.html",
+    });
   });
 });
 

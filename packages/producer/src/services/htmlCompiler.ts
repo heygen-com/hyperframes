@@ -101,11 +101,13 @@ import {
 } from "@hyperframes/parsers/asset-resolution";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
+import { assertCompositionFileSize } from "./compositionSizeLimit.js";
 import {
   escapesAssetRoot,
   isPathInside,
   leftOutOfRender,
   outsideAssetRefusal,
+  type OutsideFilePolicy,
   refusesOutsideLink,
   toExternalAssetKey,
 } from "../utils/paths.js";
@@ -340,6 +342,7 @@ function assertSubCompositionsUsable(
     // silence here rather than pretend it surfaces an error somewhere else.
     if (visited.has(filePath)) continue;
 
+    assertCompositionFileSize(filePath, srcPath);
     const read = readProjectFile(filePath);
     if (read.kind === "missing") {
       problems.push({ srcPath, detail: "the file does not exist" });
@@ -880,6 +883,7 @@ async function parseSubCompositions(
       continue;
     }
 
+    assertCompositionFileSize(filePath, srcPath);
     const read = readProjectFile(filePath);
     if (read.kind !== "file") {
       continue;
@@ -1170,6 +1174,7 @@ function inlineSubCompositions(
         let compHtml = subCompositions.get(srcPath) || null;
         if (!compHtml) {
           const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
+          if (filePath) assertCompositionFileSize(filePath, srcPath);
           const read =
             filePath && !isPrivateCompositionFile(projectDir, filePath)
               ? readProjectFile(filePath)
@@ -1474,6 +1479,7 @@ export function collectExternalAssets(
   projectDir: string,
   log: ProducerLogger = defaultLogger,
   file = "index.html",
+  policy: OutsideFilePolicy = {},
 ): { html: string; externalAssets: Map<string, string> } {
   const absProjectDir = resolve(projectDir);
   const externalAssets = new Map<string, string>();
@@ -1488,7 +1494,7 @@ export function collectExternalAssets(
     }
     const onShare = namesAnotherNetworkRoot(absProjectDir, absPath);
     if (!onShare && !existsSync(absPath)) return null;
-    const refusal = onShare ? "network_share" : outsideAssetRefusal(absProjectDir, absPath);
+    const refusal = onShare ? "network_share" : outsideAssetRefusal(absProjectDir, absPath, policy);
     if (refusal) {
       if (!leftOut.has(trimmed)) log.warn(`[Compiler] ${leftOutOfRender(file, trimmed, refusal)}`);
       leftOut.add(trimmed);
@@ -2105,6 +2111,7 @@ export interface CompileForRenderOptions {
   pageMotionBlur?: "off";
   /** Trusted local renders only (CLI, Studio): import files markup reaches outside projectDir. */
   allowOutsideProjectAssets?: boolean;
+  includeOutsideScripts?: boolean;
 }
 
 /** Renders follow the same `HYPERFRAMES_GSAP_BASE_URL` mirror as Studio preview. */
@@ -2217,6 +2224,7 @@ export async function compileForRender(
   if (!COMPOSITION_FILE.test(htmlPath)) {
     throw new Error(`Entry file ${htmlPath} is not an .html file, so it is refused`);
   }
+  assertCompositionFileSize(htmlPath, basename(htmlPath));
   const entryHtml = rebaseDirectEntryAssetPaths(readTextFile(htmlPath), projectDir, htmlPath);
   const rawHtml = bindVariableMediaSources(
     normalizeCompositionSrcs(rewriteUnresolvableGsapToCdn(entryHtml, projectDir), projectDir),
@@ -2367,7 +2375,7 @@ export async function compileForRender(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: remoteImageAssets,
     timeoutMs: options.ffmpegProcessTimeout,
-    assetRoot,
+    allowOutsideFiles: assetRoot === undefined,
   });
   if (preparedHeifImages.length > 0) {
     defaultLogger.debug(`[Compiler] Converted ${preparedHeifImages.length} HEIC image(s) to JPEG`);
@@ -2384,7 +2392,7 @@ export async function compileForRender(
     cacheDir: options.animatedGifCacheDir,
     sourceAssets: gifSourceAssets,
     timeoutMs: options.ffmpegProcessTimeout,
-    assetRoot,
+    allowOutsideFiles: assetRoot === undefined,
   });
   if (preparedGifs.length > 0) {
     defaultLogger.debug(`[Compiler] Prepared ${preparedGifs.length} animated GIF input(s) as WebM`);
@@ -2406,6 +2414,7 @@ export async function compileForRender(
         projectDir,
         options.log,
         entryFileName(projectDir, htmlPath),
+        { includeScripts: options.includeOutsideScripts },
       )
     : { html: embeddedHtml, externalAssets: new Map<string, string>() };
 

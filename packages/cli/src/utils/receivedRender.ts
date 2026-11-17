@@ -1,155 +1,27 @@
-import {
-  closeSync,
-  openSync,
-  readdirSync,
-  readSync,
-  realpathSync,
-  statSync,
-  type Dirent,
-} from "node:fs";
-import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { parseHTML } from "linkedom";
-import { isNonRelativeUrl, isPathInside, terminalText } from "@hyperframes/core";
-import {
-  namesAnotherNetworkRoot,
-  resolveCompositionSrc,
-} from "@hyperframes/parsers/asset-resolution";
+import { closeSync, openSync, readdirSync, readSync, statSync, type Dirent } from "node:fs";
+import { extname, join, relative, resolve } from "node:path";
+import { isPathInside, terminalText } from "@hyperframes/core";
+import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 import { linksOutside, mayHoldLoadedFiles, receivedRecordStatus } from "./privateProjectFile.js";
 import { contentHash } from "./receivedContent.js";
 import { walkBudget } from "./walkBudget.js";
+import {
+  htmlReferences,
+  cssReferences,
+  isFile,
+  isPageOrStylesheet,
+  readHead,
+  realOrNull,
+  referencePath,
+  type Reference,
+} from "./fileReferences.js";
 
-const REFERENCE_ATTRS = ["src", "href", "poster"];
-const MAX_SCANNED_BYTES = 2 * 1024 * 1024;
 const MAX_SCANNED_FILES = 500;
-
-interface Reference {
-  raw: string;
-  composition: boolean;
-  follow: boolean;
-}
-
-function unquote(value: string): string {
-  const first = value[0];
-  return value.length >= 2 && (first === '"' || first === "'") && value.at(-1) === first
-    ? value.slice(1, -1).trim()
-    : value;
-}
-
-function cssReferences(css: string): Reference[] {
-  const refs: Reference[] = [];
-  for (let at = css.indexOf("url("); at !== -1; ) {
-    const close = css.indexOf(")", at + 4);
-    if (close === -1) break;
-    const raw = unquote(css.slice(at + 4, close).trim());
-    if (raw) refs.push({ raw, composition: false, follow: true });
-    at = css.indexOf("url(", close + 1);
-  }
-  return refs;
-}
-
-function elementReferences(el: Element): Reference[] {
-  const follow = el.localName === "link";
-  const refs: Reference[] = REFERENCE_ATTRS.flatMap((attr) => {
-    const raw = el.getAttribute(attr)?.trim();
-    return raw ? [{ raw, composition: false, follow }] : [];
-  });
-  const composition = el.getAttribute("data-composition-src")?.trim();
-  if (composition) refs.push({ raw: composition, composition: true, follow: true });
-  return refs;
-}
-
-function htmlReferences(html: string): Reference[] {
-  const { document } = parseHTML(html);
-  const hosts = document.querySelectorAll("[src], [href], [poster], [data-composition-src]");
-  const refs = [...hosts].flatMap(elementReferences);
-  for (const style of document.querySelectorAll("style")) {
-    refs.push(...cssReferences(style.textContent ?? ""));
-  }
-  for (const el of document.querySelectorAll("[style]")) {
-    refs.push(...cssReferences(el.getAttribute("style") ?? ""));
-  }
-  for (const template of document.querySelectorAll("template")) {
-    refs.push(...htmlReferences(template.innerHTML));
-  }
-  return refs;
-}
-
-const WINDOWS_DEVICE_PREFIX = /^[\\/]{2}[?.][\\/]/;
-
-function withoutQuery(raw: string): string {
-  const device = WINDOWS_DEVICE_PREFIX.exec(raw)?.[0] ?? "";
-  return device + raw.slice(device.length).replace(/[?#].*$/, "");
-}
-
-function localPath(raw: string, fromDir: string): string | null {
-  if (raw.startsWith("file:")) {
-    try {
-      return fileURLToPath(raw);
-    } catch {
-      return null;
-    }
-  }
-  const path = withoutQuery(raw);
-  if (isAbsolute(path) && !path.startsWith("//")) return path;
-  if (path === "" || isNonRelativeUrl(path)) return null;
-  try {
-    return resolve(fromDir, decodeURIComponent(path));
-  } catch {
-    return resolve(fromDir, path);
-  }
-}
-
-function isFile(path: string): boolean {
-  try {
-    return statSync(path, { throwIfNoEntry: false })?.isFile() === true;
-  } catch {
-    return false;
-  }
-}
-
-function realOrNull(path: string): string | null {
-  try {
-    return realpathSync(path);
-  } catch {
-    return null;
-  }
-}
-
-function readHead(file: string): { text: string; whole: boolean } | null {
-  let fd: number | undefined;
-  try {
-    fd = openSync(file, "r");
-    const size = statSync(file).size;
-    const buffer = Buffer.alloc(Math.min(size, MAX_SCANNED_BYTES));
-    const read = readSync(fd, buffer, 0, buffer.length, 0);
-    return {
-      text: buffer.toString("utf-8", 0, read),
-      whole: size <= MAX_SCANNED_BYTES,
-    };
-  } catch {
-    return null;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
-}
-
-const isPageOrStylesheet = (path: string) => /\.(?:html?|css)$/i.test(path);
 
 interface OutsideReferences {
   assets: Set<string>;
   compositions: Set<string>;
   complete: boolean;
-}
-
-// A composition resolves as the render compiler resolves it; one that leaves the project resolves as written.
-function referencePath(ref: Reference, file: string, projectDir: string): string | null {
-  if (!ref.composition) return localPath(ref.raw, dirname(file));
-  try {
-    return resolveCompositionSrc(projectDir, ref.raw) ?? localPath(ref.raw, projectDir);
-  } catch {
-    return null;
-  }
 }
 
 function referencesIn(found: OutsideReferences, file: string): Reference[] {

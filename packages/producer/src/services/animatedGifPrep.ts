@@ -39,7 +39,7 @@ export interface PrepareAnimatedGifInputsOptions {
   sourceAssets?: Map<string, string>;
   timeoutMs?: number;
   transcode?: (input: AnimatedGifTranscodeRequest) => Promise<void>;
-  assetRoot?: string;
+  allowOutsideFiles?: boolean;
 }
 
 export interface AnimatedGifTranscodeRequest {
@@ -89,7 +89,7 @@ export function resolveLocalImageSourcePath(
   src: string,
   options: Pick<
     PrepareAnimatedGifInputsOptions,
-    "projectDir" | "downloadDir" | "sourceAssets" | "assetRoot"
+    "projectDir" | "downloadDir" | "sourceAssets" | "allowOutsideFiles"
   >,
 ): string | null {
   const trimmed = src.trim();
@@ -110,10 +110,11 @@ export function resolveLocalImageSourcePath(
     resolve(options.downloadDir, normalizedBase),
   ];
 
+  const assetRoot = options.allowOutsideFiles ? undefined : options.projectDir;
   const allowed = (candidate: string) =>
     !namesAnotherNetworkRoot(options.projectDir, candidate) &&
     !isPrivateUnderAssetRoots(candidate, [options.projectDir, options.downloadDir]) &&
-    ((!escapesAssetRoot(candidate, options.assetRoot) &&
+    ((!escapesAssetRoot(candidate, assetRoot) &&
       outsideAssetRefusal(options.projectDir, candidate) !== "blocklisted") ||
       !escapesAssetRoot(candidate, options.downloadDir));
   return candidates.find((candidate) => allowed(candidate) && existsSync(candidate)) ?? null;

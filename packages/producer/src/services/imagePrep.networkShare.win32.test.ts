@@ -70,6 +70,7 @@ describe("image prep under Windows path rules", () => {
     await prepareHeifImageInputs(page([...SHARES, "local.gif"]), {
       projectDir: PROJECT,
       downloadDir: DOWNLOADS,
+      allowOutsideFiles: true,
     });
     expect(touched.filter(onAShare)).toEqual([]);
     expect(touched).toContain("C:\\project\\local.gif");
@@ -79,6 +80,7 @@ describe("image prep under Windows path rules", () => {
     await prepareAnimatedGifInputs(page([...SHARES, "local.gif"]), {
       projectDir: PROJECT,
       downloadDir: DOWNLOADS,
+      allowOutsideFiles: true,
     });
     expect(touched.filter(onAShare)).toEqual([]);
     expect(touched).toContain("C:\\project\\local.gif");
