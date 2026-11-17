@@ -334,9 +334,10 @@ it("draws a held picture through a VideoFrame closed after the draw, else from t
   vi.stubGlobal("VideoFrame", FakeVideoFrame);
   expect(captureNativeVideoFrame(video)?.width).toBe(64);
   const [first] = draws;
-  expect(first?.source).toBeInstanceOf(FakeVideoFrame);
+  const source = first?.source;
+  expect(source).toBeInstanceOf(FakeVideoFrame);
   expect(first?.closed).toBe(false);
-  expect((first?.source as FakeVideoFrame).closed).toBe(true);
+  expect(source instanceof FakeVideoFrame && source.closed).toBe(true);
   vi.stubGlobal(
     "VideoFrame",
     class {
