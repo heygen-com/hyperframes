@@ -175,6 +175,7 @@ describe("installEditingAgent", () => {
           "color-grading-status",
           "color-grading-previews",
           "color-grading-playback",
+          "watch-geometry",
         ],
       },
     });
@@ -400,6 +401,13 @@ describe("installEditingAgent", () => {
       180 + index,
       "invalid-params",
     ]),
+    ...[{}, { handles: ["1"] }, { handles: Array(33).fill(H) }, { handles: [], extra: 1 }].map(
+      (params, index) => [
+        { v: 1, id: 900 + index, kind: "watch-geometry", params },
+        900 + index,
+        "invalid-params",
+      ],
+    ),
     ...[["--"], ["--a b"], ["--a;b"], ["--a:b"], ["Color"], ["-x"], ["--" + "a".repeat(255)]].map(
       (properties, index) => [
         { v: 1, id: 60 + index, kind: "computed-styles", params: { selector: "p", properties } },

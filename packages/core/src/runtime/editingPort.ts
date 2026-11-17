@@ -11,6 +11,12 @@
  */
 import { parseRestoreAttributes, type RestoreAttributesParams } from "./editing/restoreAttributes";
 import {
+  geometryEvent,
+  parseWatchGeometry,
+  type EditingGeometryEvent,
+  type WatchGeometryParams,
+} from "./editing/watchGeometry";
+import {
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
   type EditingElementDescription,
@@ -139,6 +145,7 @@ export const EDITING_REQUEST_KINDS = [
   "color-grading-status",
   "color-grading-previews",
   "color-grading-playback",
+  "watch-geometry",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -254,6 +261,7 @@ export interface EditingRequests {
   "color-grading-status": ColorGradingStatusRequest;
   "color-grading-previews": ColorGradingPreviewsRequest;
   "color-grading-playback": ColorGradingPlaybackRequest;
+  "watch-geometry": { params: WatchGeometryParams; result: { watching: number } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -446,6 +454,7 @@ const PARAM_PARSERS: {
   "color-grading-status": parseColorGradingStatusParams,
   "color-grading-previews": parseColorGradingPreviewsParams,
   "color-grading-playback": parseColorGradingPlaybackParams,
+  "watch-geometry": parseWatchGeometry,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
@@ -485,6 +494,7 @@ export interface EditingPortClient {
   ): Promise<EditingResult<K>>;
   /** Calls `listener` with each key the frame forwards for `watch-keys`; returns the unsubscribe. */
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
+  onGeometry(listener: (event: EditingGeometryEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
   dispose(): void;
 }
@@ -542,6 +552,8 @@ export function createEditingPortClient(options: {
   const { iframe, timeoutMs = 5_000, host = window } = options;
   const pending = new Map<number, Pending>();
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
+  const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
+  let watchedGeometry = false;
   let port: MessagePort | null = null;
   let disposed = false;
   let lastId = 0;
@@ -567,6 +579,8 @@ export function createEditingPortClient(options: {
     if (typeof data.id === "number") return settle(data.id, replyOutcome(data));
     const key = data.v === EDITING_PROTOCOL_VERSION && data.event === "key" && keyEvent(data.key);
     if (key) for (const listener of keyListeners) listener(key);
+    const geometry = !key && geometryEvent(data, EDITING_PROTOCOL_VERSION);
+    if (geometry) for (const listener of geometryListeners) listener(geometry);
   };
   const connect = () => {
     try {
@@ -595,6 +609,7 @@ export function createEditingPortClient(options: {
     request(kind, params, requestOptions) {
       if (disposed) return Promise.reject(new EditingPortError("disposed", "client disposed"));
       const id = ++lastId;
+      if (kind === "watch-geometry") watchedGeometry = true;
       const limit = requestOptions?.timeoutMs ?? timeoutMs;
       const result = new Promise<unknown>((resolve, reject) => {
         const timer = wallSetTimeout(
@@ -619,11 +634,20 @@ export function createEditingPortClient(options: {
       keyListeners.add(listener);
       return () => keyListeners.delete(listener);
     },
+    onGeometry(listener) {
+      geometryListeners.add(listener);
+      return () => geometryListeners.delete(listener);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       keyListeners.clear();
+      geometryListeners.clear();
       host.removeEventListener("message", onWindowMessage);
+      if (watchedGeometry) {
+        const stop = { kind: "watch-geometry", params: { handles: [] } };
+        port?.postMessage({ v: EDITING_PROTOCOL_VERSION, id: ++lastId, ...stop });
+      }
       port?.close();
       rejectReady(new EditingPortError("disposed", "client disposed"));
       for (const id of [...pending.keys()]) {
