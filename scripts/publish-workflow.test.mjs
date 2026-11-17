@@ -47,17 +47,119 @@ function runCreateReleaseTag(cwd, version) {
 }
 
 test("stable publishing has one reviewed immutable event path", () => {
-  assert.deepEqual(config.on.push.tags, ["v*-*"]);
-  assert.equal(config.on.workflow_dispatch, undefined);
-  assert.equal(
-    normalizeExpression(publish.if),
-    "github.event_name == 'push' || (github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/v'))",
-  );
-  assert.equal(
-    normalizeExpression(publish.env.EXPECTED_RELEASE_SHA),
-    "${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}",
-  );
+  // fails without the fix: a merged release PR's event ran as refs/pull/N/merge, a ref the publish environment refuses.
+  assert.deepEqual(config.on, { push: { branches: ["main"], tags: ["v*-*"] } });
+  for (const name of ["lambda-arm64-ffmpeg", "lambda-handler-zip", "pack", "publish"]) {
+    const job = config.jobs[name];
+    assert.ok(job.needs.includes("release-source"), `${name} needs release-source`);
+    assert.equal(normalizeExpression(job.if), "needs.release-source.outputs.sha != ''", name);
+    assert.equal(job.env.EXPECTED_RELEASE_SHA, "${{ needs.release-source.outputs.sha }}", name);
+  }
   assert.equal(checkout.with.ref, "${{ env.EXPECTED_RELEASE_SHA }}");
+});
+
+test("a release run waits behind another run of the same release, never behind main", () => {
+  // A ref-wide group on main lets any later push cancel a release run that is still pending.
+  assert.equal(config.concurrency, undefined);
+  assert.deepEqual(publish.concurrency, {
+    group: "publish-${{ needs.release-source.outputs.version }}",
+    "cancel-in-progress": false,
+  });
+});
+
+test("a push to main publishes only the merge commit of exactly one release PR from this repo", () => {
+  const step = stepOf(config.jobs["release-source"], "Find the release this push publishes");
+  const bin = mkdtempSync(join(tmpdir(), "hyperframes-fake-gh-"));
+  const sha = "a".repeat(40);
+  const pull = (overrides = {}) => ({
+    merged_at: "2026-11-17T02:24:00Z",
+    merge_commit_sha: sha,
+    base: { ref: "main" },
+    head: { ref: "release/v0.9.61", repo: { full_name: "heygen-com/hyperframes" } },
+    ...overrides,
+  });
+  writeFileSync(join(bin, "gh"), "#!/bin/sh\nprintf '%s' \"$FAKE_PULLS\"\n");
+  chmodSync(join(bin, "gh"), 0o755);
+  const run = (pulls, ref = { REF_TYPE: "branch", REF_NAME: "main" }) => {
+    const out = join(bin, "out");
+    writeFileSync(out, "");
+    const result = runStep(step, {
+      cwd: bin,
+      env: {
+        REPO: "heygen-com/hyperframes",
+        SHA: sha,
+        RUNNER_TEMP: bin,
+        GITHUB_OUTPUT: out,
+        FAKE_PULLS: JSON.stringify(pulls),
+        ...ref,
+      },
+      path: `${bin}:${process.env.PATH}`,
+    });
+    const outputs = Object.fromEntries(
+      readFileSync(out, "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => line.split(/=(.*)/s).slice(0, 2)),
+    );
+    return { status: result.status, outputs };
+  };
+  try {
+    assert.deepEqual(run([pull()]), {
+      status: 0,
+      outputs: { sha, version: "0.9.61", source: "release-pr", ref: "release/v0.9.61" },
+    });
+    for (const [why, pulls] of [
+      ["no PR", []],
+      ["not merged", [pull({ merged_at: null })]],
+      ["another commit of the PR", [pull({ merge_commit_sha: "b".repeat(40) })]],
+      ["not into main", [pull({ base: { ref: "next" } })]],
+      [
+        "from a fork",
+        [pull({ head: { ref: "release/v0.9.61", repo: { full_name: "x/hyperframes" } } })],
+      ],
+      ["a deleted fork", [pull({ head: { ref: "release/v0.9.61", repo: null } })]],
+      [
+        "not a release branch",
+        [pull({ head: { ref: "fix/x", repo: { full_name: "heygen-com/hyperframes" } } })],
+      ],
+      [
+        "a prerelease branch",
+        [
+          pull({
+            head: { ref: "release/v0.9.61-alpha.1", repo: { full_name: "heygen-com/hyperframes" } },
+          }),
+        ],
+      ],
+    ]) {
+      assert.deepEqual(run(pulls), { status: 0, outputs: {} }, why);
+    }
+    const releaseSubject = {
+      REF_TYPE: "branch",
+      REF_NAME: "main",
+      HEAD_MESSAGE: "chore: release v0.9.61 (#8000)\n\nnotes",
+    };
+    assert.equal(
+      run([], releaseSubject).status,
+      1,
+      "a release commit whose PR is not listed yet fails, never skips",
+    );
+    assert.equal(
+      run([], { ...releaseSubject, HEAD_MESSAGE: "fix: name chore: release v1 in the docs" })
+        .status,
+      0,
+      "only the subject's start counts",
+    );
+    const second = pull({
+      head: { ref: "release/v0.9.62", repo: { full_name: "heygen-com/hyperframes" } },
+    });
+    assert.equal(run([pull(), second]).status, 1, "two release PRs for one commit");
+    assert.deepEqual(run([], { REF_TYPE: "tag", REF_NAME: "v0.9.61-alpha.1" }), {
+      status: 0,
+      outputs: { sha, version: "0.9.61-alpha.1", source: "tag", ref: "v0.9.61-alpha.1" },
+    });
+  } finally {
+    rmSync(bin, { recursive: true, force: true });
+  }
 });
 
 test("the executable checkout guard cannot be conditionally disabled", () => {
@@ -79,7 +181,7 @@ test("the executable checkout guard cannot be conditionally disabled", () => {
 
 test("stable release tag recovery is idempotent and immutable", () => {
   assert.ok(createReleaseTag);
-  assert.equal(createReleaseTag.if, "github.event_name == 'pull_request'");
+  assert.equal(createReleaseTag.if, "needs.release-source.outputs.source == 'release-pr'");
   assert.equal(
     createReleaseTag.run.trim(),
     [
@@ -264,7 +366,7 @@ test("release-commit code runs only in a job without secrets", () => {
       assert.equal(name, "GH_TOKEN");
     }
   }
-  assert.deepEqual(publish.needs, ["pack"]);
+  assert.deepEqual(publish.needs, ["release-source", "pack"]);
 });
 
 test("the publish job runs no code from the release commit", () => {
@@ -287,20 +389,21 @@ test("the publish job runs no code from the release commit", () => {
 
 test("the publish job checks the release channel without repo scripts", () => {
   const step = stepOf(publish, "Check release channel");
-  const check = (EVENT_NAME, VERSION, PRERELEASE, DIST_TAG = "alpha") =>
-    runStep(step, { cwd: tmpdir(), env: { EVENT_NAME, VERSION, PRERELEASE, DIST_TAG } }).status;
-  assert.equal(check("push", "0.9.55-alpha.1", "true"), 0);
-  assert.equal(check("pull_request", "0.9.55", "false"), 0);
-  assert.equal(check("push", "0.9.55", "false"), 1);
-  assert.equal(check("pull_request", "0.9.55-alpha.1", "true"), 1);
-  assert.equal(check("push", "0.9.55-alpha.1;id", "true"), 1);
-  assert.equal(check("push", "0.9.55-latest.1", "true", "latest"), 1);
-  assert.equal(check("push", "0.9.55-hdr.1", "true", "hdr"), 0);
-  assert.equal(check("push", "0.9.55-beta.1", "true", "beta"), 0);
-  assert.equal(check("push", "0.9.55-LATEST.1", "true", "LATEST"), 1);
-  assert.equal(check("push", "0.9.55-Latest.1", "true", "Latest"), 1);
-  assert.equal(check("push", "0.9.55-Alpha.1", "true", "Alpha"), 1);
-  assert.equal(check("push", "0.9.55-stable.1", "true", "stable"), 1);
+  const check = (SOURCE, VERSION, PRERELEASE, DIST_TAG = "alpha") =>
+    runStep(step, { cwd: tmpdir(), env: { SOURCE, VERSION, PRERELEASE, DIST_TAG } }).status;
+  assert.equal(check("tag", "0.9.55-alpha.1", "true"), 0);
+  assert.equal(check("release-pr", "0.9.55", "false"), 0);
+  assert.equal(check("tag", "0.9.55", "false"), 1);
+  assert.equal(check("release-pr", "0.9.55-alpha.1", "true"), 1);
+  assert.equal(check("tag", "0.9.55-alpha.1;id", "true"), 1);
+  assert.equal(check("tag", "0.9.55-latest.1", "true", "latest"), 1);
+  assert.equal(check("tag", "0.9.55-hdr.1", "true", "hdr"), 0);
+  assert.equal(check("tag", "0.9.55-beta.1", "true", "beta"), 0);
+  assert.equal(check("tag", "0.9.55-LATEST.1", "true", "LATEST"), 1);
+  assert.equal(check("tag", "0.9.55-Latest.1", "true", "Latest"), 1);
+  assert.equal(check("tag", "0.9.55-Alpha.1", "true", "Alpha"), 1);
+  assert.equal(check("tag", "0.9.55-stable.1", "true", "stable"), 1);
+  assert.equal(check("", "0.9.55", "false", "latest"), 1, "no release source");
 });
 
 test("the publish job takes only tarballs that npm reads the way the check does", () => {
@@ -717,9 +820,13 @@ test("a tag publishes only a commit already on main, next or alpha, before any j
   for (const name of ["lambda-arm64-ffmpeg", "lambda-handler-zip"]) {
     assert.deepEqual(config.jobs[name].needs, ["release-source"], name);
   }
-  assert.deepEqual(pack.needs.sort(), ["lambda-arm64-ffmpeg", "lambda-handler-zip"]);
+  assert.deepEqual([...pack.needs].sort(), [
+    "lambda-arm64-ffmpeg",
+    "lambda-handler-zip",
+    "release-source",
+  ]);
   const step = stepOf(source, "Check the tagged commit is on main, next or alpha");
-  assert.equal(step.if, "github.event_name == 'push'");
+  assert.equal(step.if, "github.ref_type == 'tag'");
   const bin = mkdtempSync(join(tmpdir(), "hyperframes-fake-gh-"));
   try {
     // The fake answers compare/<branch>...<sha> from FAKE_<branch>; an unset branch answers like a 404.

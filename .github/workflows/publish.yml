@@ -9,13 +9,12 @@ defaults:
 
 on:
   push:
-    tags:
-      # Stable tags are created only by a merged, reviewed release PR. Direct
-      # tag pushes are reserved for prerelease channels.
-      - "v*-*"
-  pull_request:
-    types: [closed]
+    # A stable release publishes from the push that merges its reviewed release PR into main.
     branches: [main]
+    tags:
+      # Stable tags are created only by the publish job. Direct tag pushes are reserved for
+      # prerelease channels.
+      - "v*-*"
 
 env:
   # Every package a release publishes, in publish order. The CLI is packed from
@@ -26,10 +25,6 @@ env:
     @hyperframes/player @hyperframes/producer @hyperframes/shader-transitions
     @hyperframes/studio @hyperframes/aws-lambda @hyperframes/gcp-cloud-run hyperframes
 
-concurrency:
-  group: publish-${{ github.event.pull_request.head.ref || github.ref }}
-  cancel-in-progress: false
-
 jobs:
   release-source:
     name: Check the release commit
@@ -37,15 +32,17 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-    if: >-
-      github.event_name == 'push' ||
-      (github.event.pull_request.merged == true &&
-       startsWith(github.event.pull_request.head.ref, 'release/v'))
+      pull-requests: read
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      version: ${{ steps.source.outputs.version }}
+      source: ${{ steps.source.outputs.source }}
+      ref: ${{ steps.source.outputs.ref }}
     steps:
       # A prerelease tag can name any commit; every job after this builds what it names. Alphas are cut from main,
       # next or alpha (release-channels.mdx), so the tagged commit must already be on one of them.
       - name: Check the tagged commit is on main, next or alpha
-        if: github.event_name == 'push'
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -59,6 +56,52 @@ jobs:
           echo "::error::the tagged commit $TAGGED is not an ancestor of main, next or alpha, so it does not publish"
           exit 1
 
+      # Every later job reads the release from these outputs. A push to main that merges no release PR leaves them
+      # empty, so nothing after this job runs.
+      - name: Find the release this push publishes
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then
+            {
+              echo "sha=$SHA"
+              echo "version=${REF_NAME#v}"
+              echo "source=tag"
+              echo "ref=$REF_NAME"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh api "repos/$REPO/commits/$SHA/pulls" > "$RUNNER_TEMP/pulls.json"
+          heads="$(jq -r --arg sha "$SHA" --arg repo "$REPO" '.[]
+            | select(.merged_at != null and .base.ref == "main" and .merge_commit_sha == $sha)
+            | select(.head.repo.full_name == $repo)
+            | .head.ref | select(test("^release/v[0-9]+[.][0-9]+[.][0-9]+$"))' "$RUNNER_TEMP/pulls.json")"
+          if [ -z "$heads" ]; then
+            # A release commit GitHub has not linked to its PR yet must fail, where a rerun recovers it, not skip.
+            if [[ "${HEAD_MESSAGE%%$'\n'*}" =~ ^chore:\ release\ v[0-9] ]]; then
+              echo "::error::$SHA reads as a release commit but merges no release PR from this repo; rerun once GitHub lists it"
+              exit 1
+            fi
+            echo "$SHA merges no release PR; nothing to publish"
+            exit 0
+          fi
+          if [ "$(wc -l <<<"$heads")" -ne 1 ]; then
+            echo "::error::$SHA is the merge of more than one release PR: $(tr '\n' ' ' <<<"$heads")"
+            exit 1
+          fi
+          {
+            echo "sha=$SHA"
+            echo "version=${heads#release/v}"
+            echo "source=release-pr"
+            echo "ref=$heads"
+          } >> "$GITHUB_OUTPUT"
+
   lambda-arm64-ffmpeg:
     name: Lambda arm64 ffmpeg
     needs: [release-source]
@@ -68,14 +111,8 @@ jobs:
     permissions:
       contents: read
     env:
-      EXPECTED_RELEASE_SHA: >-
-        ${{ github.event_name == 'pull_request'
-            && github.event.pull_request.merge_commit_sha
-            || github.sha }}
-    if: >-
-      github.event_name == 'push' ||
-      (github.event.pull_request.merged == true &&
-       startsWith(github.event.pull_request.head.ref, 'release/v'))
+      EXPECTED_RELEASE_SHA: ${{ needs.release-source.outputs.sha }}
+    if: needs.release-source.outputs.sha != ''
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -110,14 +147,8 @@ jobs:
     permissions:
       contents: read
     env:
-      EXPECTED_RELEASE_SHA: >-
-        ${{ github.event_name == 'pull_request'
-            && github.event.pull_request.merge_commit_sha
-            || github.sha }}
-    if: >-
-      github.event_name == 'push' ||
-      (github.event.pull_request.merged == true &&
-       startsWith(github.event.pull_request.head.ref, 'release/v'))
+      EXPECTED_RELEASE_SHA: ${{ needs.release-source.outputs.sha }}
+    if: needs.release-source.outputs.sha != ''
     outputs:
       sha256: ${{ steps.zip.outputs.sha256 }}
     steps:
@@ -158,7 +189,7 @@ jobs:
     name: Build and pack
     outputs:
       bundle_id: ${{ steps.previous_bundle.outputs.artifact || steps.bundle.outputs.artifact-id }}
-    needs: [lambda-arm64-ffmpeg, lambda-handler-zip]
+    needs: [release-source, lambda-arm64-ffmpeg, lambda-handler-zip]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Every build and lifecycle script of the release commit runs here, with a
@@ -167,21 +198,14 @@ jobs:
       contents: read
       actions: read
     env:
-      EXPECTED_RELEASE_SHA: >-
-        ${{ github.event_name == 'pull_request'
-            && github.event.pull_request.merge_commit_sha
-            || github.sha }}
-    if: >-
-      github.event_name == 'push' ||
-      (github.event.pull_request.merged == true &&
-       startsWith(github.event.pull_request.head.ref, 'release/v'))
+      EXPECTED_RELEASE_SHA: ${{ needs.release-source.outputs.sha }}
+    if: needs.release-source.outputs.sha != ''
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-          # Pin every release to an immutable ref. In particular, a merged
-          # release PR event exposes main as github.ref, which may advance
-          # before this job starts; use the event's exact merge commit instead.
+          # Pin every release to an immutable ref: main may advance before this job starts, so check out
+          # the exact commit release-source found.
           ref: ${{ env.EXPECTED_RELEASE_SHA }}
           persist-credentials: false
 
@@ -217,15 +241,8 @@ jobs:
         if: steps.previous_bundle.outputs.artifact == ''
         id: version
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          VERSION: ${{ needs.release-source.outputs.version }}
         run: |
-          if [ "$EVENT_NAME" = "push" ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            BRANCH="${PR_HEAD_REF}"
-            VERSION="${BRANCH#release/v}"
-          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           # Detect pre-release tag (e.g. 0.1.16-alpha.1 → alpha, 0.1.16-beta.2 → beta)
@@ -244,8 +261,8 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
           DIST_TAG: ${{ steps.version.outputs.dist_tag }}
-          EVENT_NAME: ${{ github.event_name }}
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          SOURCE: ${{ needs.release-source.outputs.source }}
+          RELEASE_REF: ${{ needs.release-source.outputs.ref }}
         run: node scripts/validate-release-channel.mjs
 
       # The release installs the bun it downloads, never one restored from the shared cache.
@@ -363,9 +380,13 @@ jobs:
 
   publish:
     name: Publish
-    needs: [pack]
+    needs: [release-source, pack]
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Per release, not per ref: on main a later push would cancel a release run still waiting to start.
+    concurrency:
+      group: publish-${{ needs.release-source.outputs.version }}
+      cancel-in-progress: false
     # npm's trusted publishers name this environment, so every trigger uses it. It has no approval step:
     # stable releases come from reviewed release PRs, and only repository admins may push v*-* tags.
     environment: npm-publish
@@ -377,16 +398,10 @@ jobs:
       actions: read
       id-token: write
     env:
-      EXPECTED_RELEASE_SHA: >-
-        ${{ github.event_name == 'pull_request'
-            && github.event.pull_request.merge_commit_sha
-            || github.sha }}
-    # Stable releases come only from reviewed release PRs. Tag pushes are
+      EXPECTED_RELEASE_SHA: ${{ needs.release-source.outputs.sha }}
+    # Stable releases come only from the merge of a reviewed release PR. Tag pushes are
     # prerelease-only because the trigger pattern requires a hyphenated version.
-    if: >-
-      github.event_name == 'push' ||
-      (github.event.pull_request.merged == true &&
-       startsWith(github.event.pull_request.head.ref, 'release/v'))
+    if: needs.release-source.outputs.sha != ''
     steps:
       # Only git reads this checkout, for the release tag.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -406,19 +421,13 @@ jobs:
             exit 1
           fi
 
-      # Resolved again from the event: the pack job ran release-commit code, so its outputs are not trusted here.
+      # Read from release-source, which runs no release-commit code: the pack job did, so its outputs are not
+      # trusted here.
       - name: Resolve version
         id: version
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          VERSION: ${{ needs.release-source.outputs.version }}
         run: |
-          if [ "$EVENT_NAME" = "push" ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            BRANCH="${PR_HEAD_REF}"
-            VERSION="${BRANCH#release/v}"
-          fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           # Detect pre-release tag (e.g. 0.1.16-alpha.1 → alpha, 0.1.16-beta.2 → beta)
@@ -436,7 +445,7 @@ jobs:
       # hold even when the release commit changes that script.
       - name: Check release channel
         env:
-          EVENT_NAME: ${{ github.event_name }}
+          SOURCE: ${{ needs.release-source.outputs.source }}
           VERSION: ${{ steps.version.outputs.version }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
           DIST_TAG: ${{ steps.version.outputs.dist_tag }}
@@ -445,11 +454,15 @@ jobs:
             echo "::error::Invalid release version \"$VERSION\". Expected x.y.z or x.y.z-channel.N."
             exit 1
           fi
-          if [ "$EVENT_NAME" = "push" ] && [ "$PRERELEASE" != "true" ]; then
+          if [ "$SOURCE" != "tag" ] && [ "$SOURCE" != "release-pr" ]; then
+            echo "::error::Unknown release source \"$SOURCE\"."
+            exit 1
+          fi
+          if [ "$SOURCE" = "tag" ] && [ "$PRERELEASE" != "true" ]; then
             echo "::error::Tag pushes publish prereleases only; v$VERSION is a stable version."
             exit 1
           fi
-          if [ "$EVENT_NAME" = "pull_request" ] && [ "$PRERELEASE" != "false" ]; then
+          if [ "$SOURCE" = "release-pr" ] && [ "$PRERELEASE" != "false" ]; then
             echo "::error::Merged release PRs publish stable releases only; v$VERSION is a prerelease."
             exit 1
           fi
@@ -580,7 +593,7 @@ jobs:
           done < publish-order.tsv
 
       - name: Create release tag
-        if: github.event_name == 'pull_request'
+        if: needs.release-source.outputs.source == 'release-pr'
         env:
           VERSION: ${{ steps.version.outputs.version }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
