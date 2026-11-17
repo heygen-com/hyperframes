@@ -14,6 +14,13 @@ const MAX_BUFFER = 1 << 30;
 const FFMPEG_QUIET = ["-nostdin", "-v", "error"];
 export const GUARDED_RUN_MS = 30_000;
 
+export function guardedLimitReason(err: unknown): string | undefined {
+  const { code, signal } = (err ?? {}) as { code?: unknown; signal?: unknown };
+  return code === "ETIMEDOUT" || signal === "SIGTERM"
+    ? `stopped after ${GUARDED_RUN_MS / 1000} s`
+    : undefined;
+}
+
 /** An error whose message says what to run instead; commands print `fix` as its own line. */
 export class Fix extends Error {
   constructor(
@@ -220,7 +227,7 @@ export function probeVideo(path: string, { guarded = false } = {}): VideoInfo {
       ).toString(),
     );
   } catch (err) {
-    const reason = ffprobeReason(err, path);
+    const reason = (guarded ? guardedLimitReason(err) : undefined) ?? ffprobeReason(err, path);
     throw new Fix(
       `ffprobe cannot read ${path}${reason ? `: ${reason}` : ""}`,
       unreadableFix(reason, startsWithMp4Header(path)),

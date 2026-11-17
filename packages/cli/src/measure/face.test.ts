@@ -1,12 +1,27 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { findFFmpeg, findFFprobe } from "../browser/ffmpeg.js";
 import { againstStart, faceBoxes, faceFit, minWindow, readSamples, sampleFrames } from "./face.js";
 import { probeVideo, runFfmpeg } from "./media.js";
 import { OPENCV_DIR } from "./opencv.js";
+
+// A run with the 30 s limit that names this file fails the way execFileSync reports a run its timeout stopped.
+const stalled = vi.hoisted(() => ({ file: "" }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  const execFileSync = ((...args: Parameters<typeof actual.execFileSync>) => {
+    if (stalled.file && args[1]?.includes(stalled.file) && args[2]?.timeout === 30_000)
+      throw Object.assign(new Error(`spawnSync ${args[0]} ETIMEDOUT`), {
+        code: "ETIMEDOUT",
+        signal: "SIGTERM",
+      });
+    return actual.execFileSync(...args);
+  }) as typeof actual.execFileSync;
+  return { ...actual, execFileSync };
+});
 
 // As in opencv.test.ts: borrow this machine's verified opencv.js cache, skip without one.
 const cached = join(userInfo().homedir, ".cache", "hyperframes", "opencv", "4.10.0");
@@ -136,6 +151,26 @@ describe.skipIf(!media)("readSamples", () => {
     expect(readSamples(probeVideo(video, { guarded: true }), ks, 80, 48)).toEqual(
       readSamples(probeVideo(video), ks, 80, 48),
     );
+  });
+
+  it("refuses text that a text-art demuxer would show as a picture", () => {
+    const art = join(dir, "notes.ans");
+    writeFileSync(art, "SECRET=abc\n");
+    const info = probeVideo(art);
+    expect(readSamples(info, [0], 80, 48)).toHaveLength(1);
+    expect(() => readSamples({ ...info, guarded: true }, [0], 80, 48)).toThrow(/not on whitelist/);
+  });
+
+  it("says the time limit stopped a guarded decode", () => {
+    const info = probeVideo(video, { guarded: true });
+    stalled.file = video;
+    try {
+      expect(() => readSamples(info, [1], 80, 48)).toThrow(
+        `ffmpeg cannot read ${video}: stopped after 30 s`,
+      );
+    } finally {
+      stalled.file = "";
+    }
   });
 });
 
