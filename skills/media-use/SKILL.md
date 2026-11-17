@@ -26,7 +26,7 @@ It prints one line, `resolved <id> → <path> (<type>, <metadata>)`. List reusab
 | Images, icons | HeyGen asset search, 75k+ (signed in) | Generated images | Local FLUX (mflux), if installed |
 | Logos (`logo`) | theSVG, GitHub avatar, favicon; never redrawn | | |
 | Voiceover (`voice`) | Voice Turbo, Free plan: 3 min a month | Voice Turbo on a paid plan, other HeyGen voices, cloning | `npx hyperframes tts` (Kokoro on device) |
-| A presenter speaking | | Avatar video (`--type video`) | Local LTX for generic clips, if installed |
+| A presenter speaking | | Avatar video (`--type avatar`) | Local LTX for generic clips, if installed |
 | Transcripts | `npx hyperframes transcribe` (Parakeet or whisper) | | |
 | Cutouts | | Video: `--type cutout` | `npx hyperframes remove-background` |
 | Grades, LUTs, looks | `npx hyperframes media-treatment` | | |
