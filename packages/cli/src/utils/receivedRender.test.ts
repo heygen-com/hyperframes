@@ -583,9 +583,11 @@ describe("outsideAssetsAllowed", () => {
       expect(line).toContain("scene.html is another name for a file that came from someone else");
     });
 
+    // With --include-outside-files, so a scene in a linked folder outside the project is read too.
     async function compiledPage(dir: string) {
       const compiled = await compileForRender(dir, join(dir, "index.html"), join(dir, ".dl"), {
         allowOutsideProjectAssets: true,
+        includeOutsideScripts: true,
       });
       const rendered = [compiled.html, ...compiled.subCompositions.values()].join("\n");
       return { rendered, outside: [...compiled.externalAssets.values()] };
