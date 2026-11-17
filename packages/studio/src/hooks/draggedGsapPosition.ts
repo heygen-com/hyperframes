@@ -37,6 +37,8 @@ export function readCssRotation(element: HTMLElement, withRotate = true): number
   }
 }
 
+export const DRAG_MOVING_ATTR = "data-hf-drag-gsap-moving";
+
 export interface DragStamp {
   origX: number;
   origY: number;
@@ -44,6 +46,7 @@ export interface DragStamp {
   baseY: number;
   at?: EditMoment;
   frozen?: boolean;
+  moving?: true;
 }
 
 /** The drag-start attributes as they are now; NaN for an absent base. */
@@ -55,6 +58,7 @@ export function readDragStamp(element: HTMLElement): DragStamp {
     baseX: read("data-hf-drag-gsap-base-x"),
     baseY: read("data-hf-drag-gsap-base-y"),
     at: readEditMoment(element),
+    ...(element.getAttribute(DRAG_MOVING_ATTR) !== null && { moving: true }),
   };
 }
 

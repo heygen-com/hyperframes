@@ -49,7 +49,7 @@ function showMemberPosition(member: ManualOffsetDragMember, position: MemberPosi
   if (position.gsap) getOffsetDragGsap(member.element)?.set(member.element, { ...position.gsap });
   // The restore drops the gesture's base stamps; its save still reads them.
   if (!member.plainTranslate)
-    stampGestureBase(member.element, member.initialOffset, member.baseGsap);
+    stampGestureBase(member.element, member.initialOffset, member.baseGsap, !!member.moving);
 }
 
 function redrawMemberOnFrame(member: ManualOffsetDragMember): void {

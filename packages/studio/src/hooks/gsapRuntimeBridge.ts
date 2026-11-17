@@ -262,7 +262,9 @@ export async function tryGsapDragIntercept(
   const stamp = options?.stamp ?? readDragStamp(selection.element);
   const moment = editMoment(stamp);
   const time = moment.time;
-  await settleGsapSnapshot(iframe);
+  if (!(await settleGsapSnapshot(iframe)) && stamp.moving) {
+    return { status: "blocked", reason: "source-uneditable", detail: "frame-tweens-unreadable" };
+  }
   if (!options?.preflightPassed) {
     const preflight = await preflightGsapDragIntercept(
       selection,

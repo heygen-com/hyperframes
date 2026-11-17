@@ -14,7 +14,7 @@ import {
   type StudioPathOffsetSnapshot,
 } from "./manualEdits";
 import type { EditMoment } from "./manualEditsTypes";
-import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
+import { computeDraggedGsapPosition, DRAG_MOVING_ATTR } from "../../hooks/draggedGsapPosition";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
 import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
@@ -94,6 +94,8 @@ export interface ManualOffsetDragMember {
    * making the element accelerate away ("flies"). See applyOffsetDragDraftViaGsap.
    */
   baseGsap: { x: number; y: number };
+  /** The sealed preview's gesture start reported a tween moving it. */
+  moving?: true;
   initialPathOffset: StudioPathOffsetSnapshot;
   gestureToken: string;
   screenToOffset: ManualOffsetDragMatrix;
@@ -344,7 +346,8 @@ export function createManualOffsetDragMember(input: {
   const gsapX = (!plainTranslate && win?.gsap?.getProperty?.(input.element, "x")) || 0;
   const gsapY = (!plainTranslate && win?.gsap?.getProperty?.(input.element, "y")) || 0;
   const baseGsap = start?.gsap ? { x: start.gsap.x, y: start.gsap.y } : { x: gsapX, y: gsapY };
-  if (!plainTranslate) stampGestureBase(input.element, initialOffset, baseGsap);
+  const moving = start?.gsap?.moving === true;
+  if (!plainTranslate) stampGestureBase(input.element, initialOffset, baseGsap, moving);
 
   if (win?.__timelines) {
     const paused: string[] = [];
@@ -390,6 +393,7 @@ export function createManualOffsetDragMember(input: {
         initialOffset,
         plainTranslate,
         baseGsap,
+        ...(moving && { moving }),
         initialPathOffset,
         gestureToken,
         screenToOffset: start?.screenToOffset ?? { a: w / scaleX, b: 0, c: 0, d: w / scaleY },
@@ -407,6 +411,7 @@ export function createManualOffsetDragMember(input: {
       initialOffset,
       plainTranslate,
       baseGsap,
+      ...(moving && { moving }),
       initialPathOffset,
       gestureToken,
       screenToOffset: measured.matrix,
@@ -460,7 +465,14 @@ export function applyManualOffsetDragDraft(
  * the element flies off-screen the instant you drop it. The member holds the
  * true gesture-start values in JS, immune to the re-render.
  */
-export function stampGestureBase(el: HTMLElement, initialOffset: Point, baseGsap: Point): void {
+export function stampGestureBase(
+  el: HTMLElement,
+  initialOffset: Point,
+  baseGsap: Point,
+  moving = false,
+): void {
+  if (moving) el.setAttribute(DRAG_MOVING_ATTR, "");
+  else el.removeAttribute(DRAG_MOVING_ATTR);
   el.setAttribute("data-hf-drag-gsap-base-x", String(baseGsap.x));
   el.setAttribute("data-hf-drag-gsap-base-y", String(baseGsap.y));
   el.setAttribute("data-hf-drag-initial-offset-x", String(initialOffset.x));
@@ -472,7 +484,7 @@ function applyManualOffsetCommitValue(
   offset: { x: number; y: number },
 ): { x: number; y: number } {
   if (!member.plainTranslate)
-    stampGestureBase(member.element, member.initialOffset, member.baseGsap);
+    stampGestureBase(member.element, member.initialOffset, member.baseGsap, !!member.moving);
   drawMemberOffset(member, offset, true);
   return offset;
 }
@@ -552,6 +564,7 @@ export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): v
     member.element.removeAttribute("data-hf-drag-initial-offset-y");
     member.element.removeAttribute("data-hf-drag-gsap-base-x");
     member.element.removeAttribute("data-hf-drag-gsap-base-y");
+    member.element.removeAttribute(DRAG_MOVING_ATTR);
     // Do NOT clearProps:"transform" — that nukes the committed GSAP position
     // and causes a visual snap-back before the soft reload re-applies it.
     const gsapOwnsPosition = !member.plainTranslate && Boolean(getOffsetDragGsap(member.element));
