@@ -41,12 +41,11 @@ export function ownProjectDir(projectDir: string, dir: string): string {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
-    if (
-      lstatSync(current).isSymbolicLink() ||
-      realpathSync(current) !== expected ||
-      !statSync(current).isDirectory()
-    ) {
+    if (lstatSync(current).isSymbolicLink() || realpathSync(current) !== expected) {
       throw leadsOutside(current);
+    }
+    if (!statSync(current).isDirectory()) {
+      throw new Error(`${current} is not a folder; nothing was written there`);
     }
   }
   return target;

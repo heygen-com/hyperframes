@@ -70,7 +70,6 @@ export async function runComponentImport(
     console.warn(
       `component dir compositions/components/${name} already exists — overwriting (rename the figma frame for a separate import)`,
     );
-  ownProjectDir(deps.projectDir, componentDir);
 
   const { html, frozenAssets, failedRasterize } = await rasterizeFallback(
     mapped,
@@ -78,6 +77,7 @@ export async function runComponentImport(
     componentDir,
     deps,
   );
+  ownProjectDir(deps.projectDir, componentDir);
 
   const htmlFile = join(componentDir, `${name}.html`);
   replaceFileAtomically(htmlFile, html + "\n");

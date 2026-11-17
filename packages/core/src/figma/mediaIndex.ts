@@ -2,9 +2,8 @@
  * Regenerate .media/index.md — the agent-readable inventory table — after a
  * figma import, exactly the way media-use does after a resolve. Both writers
  * regenerate the SAME file from the manifest's current rows (all writers'), so the
- * output format AND row selection here must stay byte-identical with
- * skills/media-use/scripts/lib/index-gen.mjs — including rendering every
- * JSON-parseable row (no shape filtering), or the file would flip-flop
+ * output format AND row selection (every JSON-parseable row, no shape filtering) must stay
+ * byte-identical with skills/media-use/scripts/lib/index-gen.mjs, or the file would flip-flop
  * depending on which writer ran last.
  */
 
@@ -23,13 +22,12 @@ export function indexPath(projectDir: string): string {
   return join(mediaDir(projectDir), "index.md");
 }
 
-// One table cell: a line break in a record would start a new line of the index, so it becomes a space.
-function cell(value: unknown): string {
+function singleLineCell(value: unknown): string {
   return String(value ?? "").replace(/\s*[\r\n]+\s*/g, " ");
 }
 
 function pad(str: unknown, len: number): string {
-  return cell(str).padEnd(len);
+  return singleLineCell(str).padEnd(len);
 }
 
 function formatDur(r: IndexRow): string {
@@ -50,11 +48,11 @@ export function generateIndexContent(records: IndexRow[]): string {
 
   const cols = { id: 4, type: 5, dur: 4, dims: 5, path: 5 };
   for (const r of records) {
-    cols.id = Math.max(cols.id, cell(r.id).length);
-    cols.type = Math.max(cols.type, cell(r.type).length);
+    cols.id = Math.max(cols.id, singleLineCell(r.id).length);
+    cols.type = Math.max(cols.type, singleLineCell(r.type).length);
     cols.dur = Math.max(cols.dur, formatDur(r).length);
     cols.dims = Math.max(cols.dims, formatDims(r).length);
-    cols.path = Math.max(cols.path, cell(r.path).length);
+    cols.path = Math.max(cols.path, singleLineCell(r.path).length);
   }
 
   const heading =
@@ -73,7 +71,7 @@ export function generateIndexContent(records: IndexRow[]): string {
         pad(formatDur(r), cols.dur + 2) +
         pad(formatDims(r), cols.dims + 2) +
         pad(r.path, cols.path + 2) +
-        cell(r.description),
+        singleLineCell(r.description),
     );
   }
   return lines.join("\n") + "\n";
