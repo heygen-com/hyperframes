@@ -467,8 +467,8 @@ jobs:
     concurrency:
       group: publish-${{ needs.release-source.outputs.version }}
       cancel-in-progress: false
-    # npm's trusted publishers name this environment, so every trigger uses it. It has no approval step:
-    # stable releases come from reviewed release PRs, and only repository admins may push v*-* tags.
+    # npm's trusted publishers name this environment, so every trigger uses it. A required reviewer
+    # approves each run, on top of the reviewed release PR; only repository admins may push v*-* tags.
     environment: npm-publish
     # This job holds the release credentials, so it runs no code from the
     # release commit: no install, no build, no repo scripts. It checks the
