@@ -6,7 +6,9 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   truncateSync,
   utimesSync,
   writeFileSync,
@@ -617,5 +619,54 @@ describe("registerThumbnailRoutes", () => {
     expect(existsSync(expiredPath)).toBe(false);
     expect(existsSync(protectedPath)).toBe(true);
     expect(existsSync(overflowPath)).toBe(false);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("a thumbnail cache entry the project ships", () => {
+  async function cachedThumbnail(): Promise<{
+    app: Hono;
+    dir: string;
+    entry: string;
+    url: string;
+  }> {
+    const adapter = createAdapter();
+    await writeComposition(adapter, 1920, 1080);
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=3";
+    expect(await (await app.request(url)).text()).toBe("thumb");
+    const [name] = readdirSync(join(project.dir, ".thumbnails"));
+    if (!name) throw new Error("nothing cached");
+    return { app, dir: project.dir, entry: join(project.dir, ".thumbnails", name), url };
+  }
+
+  function outsideDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-thumbnail-outside-"));
+    tempProjectDirs.push(dir);
+    return dir;
+  }
+
+  it("is a miss when a link stands at the entry", async () => {
+    const { app, entry, url } = await cachedThumbnail();
+    const secret = join(outsideDir(), "id_rsa");
+    writeFileSync(secret, "PRIVATE KEY");
+    rmSync(entry);
+    symlinkSync(secret, entry);
+
+    const response = await app.request(`${url}&cached=1`);
+    expect(response.status).toBe(204);
+    expect(await response.text()).not.toContain("PRIVATE KEY");
+  });
+
+  it("is a miss when the cache folder is a link", async () => {
+    const { app, dir, url } = await cachedThumbnail();
+    const moved = join(outsideDir(), "thumbnails");
+    renameSync(join(dir, ".thumbnails"), moved);
+    symlinkSync(moved, join(dir, ".thumbnails"));
+
+    const response = await app.request(`${url}&cached=1`);
+    expect(response.status).toBe(204);
   });
 });

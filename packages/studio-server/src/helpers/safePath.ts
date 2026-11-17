@@ -1,5 +1,16 @@
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { lstatSync, readdirSync, readFileSync, statSync, type Dirent } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  type Dirent,
+  type Stats,
+} from "node:fs";
 import {
   isStudioPrivatePath,
   mkdirWithinProject,
@@ -211,6 +222,47 @@ export function isLinkFreeWithinProject(root: string, dir: string): boolean {
     if (!stat?.isDirectory()) return true;
   }
   return true;
+}
+
+/** A file Studio keeps under the project, such as a cache entry: a plain file, reached with no link from `root` down. */
+export function isProjectCacheFile(root: string, file: string): boolean {
+  if (!isLinkFreeWithinProject(root, dirname(file))) return false;
+  const stat = lstatSync(file, { throwIfNoEntry: false });
+  return stat !== undefined && isPlainFileWithOneName(stat);
+}
+
+const isPlainFileWithOneName = (stat: Stats) => stat.isFile() && stat.nlink === 1;
+
+const NO_FOLLOW_READ =
+  constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+const sameFile = (a: Stats | undefined, b: Stats) =>
+  a !== undefined && !a.isSymbolicLink() && a.dev === b.dev && a.ino === b.ino;
+
+/** `isProjectCacheFile`'s bytes, opened without following a link, or null; a hard link or one over `maxBytes` is a miss too. */
+export function readProjectCacheFile(root: string, file: string, maxBytes: number): Buffer | null {
+  if (!isLinkFreeWithinProject(root, dirname(file))) return null;
+  let fd: number;
+  try {
+    fd = openSync(file, NO_FOLLOW_READ);
+  } catch {
+    return null;
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!isPlainFileWithOneName(stat) || stat.size > maxBytes) return null;
+    // Without O_NOFOLLOW (Windows) the open followed a link, so the name must still be this plain file.
+    if (
+      constants.O_NOFOLLOW === undefined &&
+      !sameFile(lstatSync(file, { throwIfNoEntry: false }), stat)
+    )
+      return null;
+    return readFileSync(fd);
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
 }
 
 /** `mkdirWithinProject` for the tool's own caches and records: a link on the way would put their files outside the project. */
