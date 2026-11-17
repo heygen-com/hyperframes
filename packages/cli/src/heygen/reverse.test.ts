@@ -162,7 +162,18 @@ describe("startReverseSession", () => {
   ])("reports status %i as %s", async (status, cause) => {
     serve({ [START_URL]: () => new Response("no", { status }) });
     expect(await startReverseSession()).toMatchObject({ recorded: false, cause });
-    expect(track).toHaveBeenCalledExactlyOnceWith({ cause, status });
+    expect(track).toHaveBeenCalledExactlyOnceWith({ cause, status, heygenBody: false });
+  });
+
+  it.each([
+    ["HeyGen's v1 body", { code: 40102, message: "Unauthorized" }, true],
+    ["HeyGen's error body", { data: null, error: { code: "unauthorized", message: "no" } }, true],
+    ["a proxy's JSON", { error: "blocked by policy" }, false],
+    ["a JSON array", [403], false],
+  ])("says whether a refusal came from HeyGen: %s", async (_name, body, heygenBody) => {
+    serve({ [START_URL]: () => Response.json(body, { status: 403 }) });
+    await startReverseSession();
+    expect(track).toHaveBeenCalledExactlyOnceWith({ cause: "http_4xx", status: 403, heygenBody });
   });
 
   it("reports a network failure", async () => {

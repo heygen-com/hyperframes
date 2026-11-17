@@ -54,6 +54,14 @@ function parseSession(body: unknown): ReverseSession | undefined {
   return { sessionId, plan, gate, ...upgradeUrl };
 }
 
+/** HeyGen's API errors are `{ code: number }` or `{ error: { code } }`; any other body came from in between. */
+function isHeygenBody(body: unknown): boolean {
+  if (!isRecord(body)) return false;
+  return (
+    typeof body.code === "number" || (isRecord(body.error) && typeof body.error.code === "string")
+  );
+}
+
 /** The plan from the subscription route, for when the reverse route cannot answer. */
 async function fallbackPlan(): Promise<"free" | "pro" | undefined> {
   const plan = await readPlan();
@@ -87,6 +95,7 @@ export async function startReverseSession(
   }
   let cause: ReverseUnrecordedCause;
   let status: number | undefined;
+  let heygenBody: boolean | undefined;
   try {
     const res = await fetch(`${api2BaseUrl()}/v1/hyperframes/reverse/start`, {
       method: "POST",
@@ -104,11 +113,16 @@ export async function startReverseSession(
     } else {
       status = res.status;
       cause = res.status >= 500 ? "http_5xx" : res.status >= 400 ? "http_4xx" : "http_other";
+      heygenBody = isHeygenBody(await res.json().catch(() => null));
     }
   } catch {
     cause = "network";
   }
-  trackReverseStartUnrecorded({ cause, status });
+  trackReverseStartUnrecorded({
+    cause,
+    status,
+    ...(heygenBody === undefined ? {} : { heygenBody }),
+  });
   const plan = await fallbackPlan().catch(() => undefined);
   return { recorded: false, reason: "unavailable", cause, ...(plan ? { plan } : {}) };
 }
