@@ -16,21 +16,36 @@ export interface StudioSaveFailureInput {
   targetSourceFile?: string | null;
 }
 
+/** The studio server's fixed reasons for refusing a file (studio-server routes/files.ts `why`). */
+const SERVER_WHY = new Set([
+  "nul",
+  "dangling_symlink",
+  "outside_project",
+  "protected_path",
+  "busy",
+  "permission",
+  "not_a_file",
+  "too_large",
+  "binary",
+]);
+
 export class StudioSaveHttpError extends Error {
   readonly statusCode: number;
   readonly alreadyToasted: boolean;
   readonly heldFile: boolean;
+  readonly why: string | null;
 
   constructor(
     message: string,
     statusCode: number,
-    options: { alreadyToasted?: boolean; heldFile?: boolean } = {},
+    options: { alreadyToasted?: boolean; heldFile?: boolean; why?: string | null } = {},
   ) {
     super(message);
     this.name = "StudioSaveHttpError";
     this.statusCode = statusCode;
     this.alreadyToasted = options.alreadyToasted ?? false;
     this.heldFile = options.heldFile ?? false;
+    this.why = options.why ?? null;
   }
 }
 
@@ -162,7 +177,7 @@ export function buildStudioSaveFailureProperties(
   const attempt = input.attempt ?? getStudioSaveAttempt(input.error) ?? undefined;
   return {
     source: input.source,
-    error_message: getStudioSaveErrorMessage(input.error),
+    ...studioSaveErrorCodes(input.error),
     status_code: statusCode,
     file_path: input.filePath ?? input.targetSourceFile ?? undefined,
     mutation_type: input.mutationType ?? undefined,
@@ -173,6 +188,45 @@ export function buildStudioSaveFailureProperties(
     target_source_file: input.targetSourceFile ?? undefined,
     block_detail: gsapBlockDetail(input.error),
   };
+}
+
+/** What failed, as fixed codes: the message carries the file's path and the server's own words. */
+export function studioSaveErrorCodes(error: unknown): Record<string, StudioTelemetryValue> {
+  const failure = error instanceof Error ? error : null;
+  const http = findCause(error, StudioSaveHttpError);
+  const errorKey = findCause(error, StudioFileConflictError)
+    ? "conflict"
+    : http?.heldFile
+      ? "held"
+      : http
+        ? "http"
+        : findCause(error, StudioSaveNetworkError)
+          ? "network"
+          : failure?.name === "AbortError"
+            ? "aborted"
+            : failure?.name === "GsapEditBlockedError"
+              ? "blocked"
+              : "unknown";
+  return {
+    error_class: failure?.name ?? typeof error,
+    error_key: errorKey,
+    server_why: http ? (http.why ?? "other") : undefined,
+    block_reason: blockReason(error),
+  };
+}
+
+function findCause<T extends Error>(error: unknown, type: new (...args: never[]) => T): T | null {
+  for (let at = error, depth = 0; at && typeof at === "object" && depth < 5; depth++) {
+    if (at instanceof type) return at;
+    at = (at as { cause?: unknown }).cause;
+  }
+  return null;
+}
+
+function blockReason(error: unknown): string | undefined {
+  if (!(error instanceof Error) || error.name !== "GsapEditBlockedError") return undefined;
+  const reason = (error as { reason?: unknown }).reason;
+  return typeof reason === "string" ? reason : undefined;
 }
 
 /**
@@ -234,12 +288,26 @@ export async function createStudioSaveHttpError(
   }
   const detail = body.trim().slice(0, 300);
   const held = heldFileMessage(body, options.path);
+  const why = serverWhy(body);
   const message =
     held ??
     (detail
       ? `${fallbackMessage} (${response.status}): ${detail}`
       : `${fallbackMessage} (${response.status})`);
-  return new StudioSaveHttpError(message, response.status, { ...options, heldFile: held !== null });
+  return new StudioSaveHttpError(message, response.status, {
+    ...options,
+    heldFile: held !== null,
+    why,
+  });
+}
+
+function serverWhy(body: string): string | null {
+  try {
+    const why: unknown = (JSON.parse(body) as { why?: unknown }).why;
+    return typeof why === "string" && SERVER_WHY.has(why) ? why : null;
+  } catch {
+    return null;
+  }
 }
 
 export const heldFileWords = (error: unknown): string | null =>

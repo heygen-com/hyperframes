@@ -455,7 +455,7 @@ describe("useDomEditCommits z-index reorder persistence", () => {
         expect.objectContaining({
           mutation_type: "z-reorder-unmatched",
           file_path: "index.html",
-          error_message: expect.stringContaining("b"),
+          error_key: "unknown",
         }),
       );
     } finally {
