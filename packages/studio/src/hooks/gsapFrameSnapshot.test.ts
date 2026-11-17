@@ -16,7 +16,7 @@ vi.mock("../player/lib/previewChannel", () => {
 });
 
 import { usePlayerStore } from "../player/store/playerStore";
-import { frameDocument, frameTimelines, settleGsapSnapshot } from "./gsapFrameSnapshot";
+import { frameDocument, frameGsap, frameTimelines, settleGsapSnapshot } from "./gsapFrameSnapshot";
 
 const HANDLE = "0123456789abcdef:1";
 const tween = {
@@ -90,4 +90,24 @@ it("keeps a timeline named __proto__ as a timeline, not the record's prototype",
   );
 
   expect(Object.keys(frameTimelines(iframe) ?? {})).toEqual(["__proto__"]);
+});
+
+// fails without the fix: a click waited on the read the first seek started, which holds that seek's time, so right
+// after a second seek it found no GSAP values at the playhead and the add did nothing.
+it("waits for a read at the playhead when a second seek lands while the first read is out", async () => {
+  usePlayerStore.setState({ currentTime: 0.5, isPlaying: false });
+  let answerFirst = (_reply: unknown) => {};
+  request.mockImplementationOnce(() => new Promise((resolve) => (answerFirst = resolve)));
+  const atOne = { id: "main", time: 1, defaultEase: null, tweens: [tween] };
+  request.mockResolvedValueOnce(snapshot({ time: 1, timelines: [atOne] }));
+  const iframe = document.createElement("iframe");
+
+  const first = settleGsapSnapshot(iframe);
+  usePlayerStore.setState({ currentTime: 1 });
+  const click = settleGsapSnapshot(iframe);
+  answerFirst(snapshot());
+  await Promise.all([first, click]);
+
+  expect(request).toHaveBeenCalledTimes(2);
+  expect(frameGsap(iframe)).not.toBeNull();
 });
