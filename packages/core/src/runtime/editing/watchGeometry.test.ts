@@ -112,6 +112,7 @@ describe("watchGeometry", () => {
     const seen = pushes(parent);
     expect(watchGeometry(frame, { handles: [handle, H] }, 1)).toEqual({ watching: 2 });
     step();
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
     step();
     await vi.waitFor(() => expect(seen).toHaveLength(2));
     const [expected] = elementGeometry([handle], undefined).elements;
@@ -151,6 +152,7 @@ describe("watchGeometry", () => {
     watchGeometry(lost, { handles: [handle] }, 1);
     watchGeometry(frame, { handles: [handle] }, 1);
     step();
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
     step();
     await vi.waitFor(() => expect(seen).toHaveLength(2));
     stopWatchingGeometry(frame);
@@ -158,14 +160,29 @@ describe("watchGeometry", () => {
     parent.close();
   });
 
-  it("keeps the loop running when a frame's measure throws", () => {
+  it("keeps the loop running when a frame's measure throws", async () => {
     const { handle, frame, parent } = setUp();
     watchGeometry(frame, { handles: [handle] }, 1);
-    vi.spyOn(window, "getComputedStyle").mockImplementationOnce(() => {
+    const measure = vi.spyOn(window, "getComputedStyle").mockImplementationOnce(() => {
       throw new Error("detached");
     });
-    expect(step).toThrow("detached");
-    expect(frames.size).toBe(1);
+    step();
+    await vi.waitFor(() => expect(frames.size).toBe(1));
+    expect(measure).toHaveBeenCalled();
+    parent.close();
+  });
+
+  it("measures after the frame renders, so a later rAF callback's change is what it reports", async () => {
+    const { handle, frame, parent } = setUp();
+    const seen = pushes(parent);
+    const box = document.getElementById("box")!;
+    watchGeometry(frame, { handles: [handle] }, 1);
+    // A callback queued after the watch's, as Studio's or the runtime's own rAF work would be.
+    requestAnimationFrame(() => box.style.setProperty("clip-path", "inset(2px)"));
+    step();
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
+    const [element] = (seen[0] as { elements: Array<{ clipPath: string }> }).elements;
+    expect(element.clipPath).toBe("inset(2px)");
     parent.close();
   });
 

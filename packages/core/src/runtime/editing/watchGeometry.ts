@@ -7,6 +7,7 @@ import {
   type EditingElementHandle,
   type EditingRect,
 } from "../editingElement";
+import { swallow } from "../diagnostics";
 import { elementGeometry, type EditingElementGeometry } from "../editingGeometry";
 
 export const MAX_WATCHED_GEOMETRY = 32;
@@ -92,13 +93,26 @@ function push(): void {
   const at = performance.timeOrigin + performance.now();
   try {
     for (const [port, handles] of watches) pushTo(port, handles, at);
+  } catch (err) {
+    swallow("watchGeometry.push", err);
   } finally {
     schedule();
   }
 }
 
+// Measured in the task after the frame renders: inside rAF, a later callback may still change what paints.
+let afterRender: MessagePort | null = null;
+function measureAfterRender(): void {
+  if (!afterRender) {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = push;
+    afterRender = channel.port2;
+  }
+  afterRender.postMessage(null);
+}
+
 function schedule(): void {
-  if (watches.size && !nextFrame) nextFrame = requestAnimationFrame(push);
+  if (watches.size && !nextFrame) nextFrame = requestAnimationFrame(measureAfterRender);
   if (!watches.size && nextFrame) {
     cancelAnimationFrame(nextFrame);
     nextFrame = 0;
