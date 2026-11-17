@@ -2,14 +2,22 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { type OutsideFileReference, outsideFilesNotice } from "./leftOutReference.js";
+import {
+  type LeftOutReference,
+  type OutsideFileReference,
+  outsideFilesNotice,
+} from "./leftOutReference.js";
 import { stagePublishFiles } from "./publishProject.js";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
 
 /** Writes `files` under a fresh folder, makes `links` (link to target), and stages its `p` project. */
-function stage(files: Record<string, string>, links: Record<string, string> = {}) {
+function stage(
+  files: Record<string, string>,
+  links: Record<string, string> = {},
+  approve = (_reference: OutsideFileReference) => true,
+) {
   const root = mkdtempSync(join(tmpdir(), "hf-outside-list-"));
   dirs.push(root);
   for (const [name, body] of Object.entries(files)) {
@@ -21,10 +29,17 @@ function stage(files: Record<string, string>, links: Record<string, string> = {}
     symlinkSync(join(root, target), join(root, link));
   }
   const outside: OutsideFileReference[] = [];
-  const staged = stagePublishFiles(join(root, "p"), Infinity, undefined, (reference) =>
-    outside.push(reference),
+  const leftOut: { warning: string; reference: LeftOutReference }[] = [];
+  const staged = stagePublishFiles(
+    join(root, "p"),
+    Infinity,
+    (warning, reference) => leftOut.push({ warning, reference }),
+    (reference) => {
+      outside.push(reference);
+      return approve(reference);
+    },
   );
-  return { root, staged, outside };
+  return { root, staged, outside, leftOut };
 }
 
 describe("files from outside the project that an upload carries", () => {
@@ -92,6 +107,66 @@ describe("files from outside the project that an upload carries", () => {
       ].join(""),
     });
     expect(outside).toEqual([]);
+  });
+});
+
+describe("files from outside the project nobody approved", () => {
+  const refuse = () => false;
+
+  it("stay out of the upload for ../ and absolute references, each named with how to include it", () => {
+    const { staged, leftOut } = stage(
+      {
+        "shared/logo.png": "png",
+        "shared/brand.woff2": "woff2",
+        "p/style.css": `@font-face { font-family: B; src: url("../shared/brand.woff2"); }`,
+        "p/index.html": [
+          `<img src="../shared/logo.png"><img src="<root>/shared/logo.png">`,
+          `<link rel="stylesheet" href="style.css">`,
+        ].join(""),
+      },
+      {},
+      refuse,
+    );
+    expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([]);
+    expect(String(staged.get("index.html"))).toContain(`src="../shared/logo.png"`);
+    expect(leftOut.map(({ reference }) => [reference.reference, reference.reason])).toEqual(
+      expect.arrayContaining([
+        ["../shared/logo.png", "not_approved"],
+        ["../shared/brand.woff2", "not_approved"],
+      ]),
+    );
+    expect(leftOut.map(({ reference }) => reference.path)).not.toContain("logo.png");
+    for (const { warning } of leftOut) expect(warning).toContain("--include-outside-files");
+  });
+
+  it("leave out project files that are links to them", () => {
+    const { staged, leftOut } = stage(
+      { "shared/logo.png": "png", "p/index.html": `<img src="logo.png">` },
+      { "p/logo.png": "shared/logo.png" },
+      refuse,
+    );
+    expect(staged.has("logo.png")).toBe(false);
+    expect(leftOut).toEqual([
+      expect.objectContaining({
+        warning: expect.stringContaining("--include-outside-files"),
+        reference: expect.objectContaining({ file: "logo.png", reason: "not_approved" }),
+      }),
+    ]);
+  });
+
+  it("go when approved one by one", () => {
+    const { staged } = stage(
+      {
+        "shared/a.png": "a",
+        "shared/b.png": "b",
+        "p/index.html": `<img src="../shared/a.png"><img src="../shared/b.png">`,
+      },
+      {},
+      (reference) => reference.path.endsWith("a.png"),
+    );
+    expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([
+      "_ext/shared/a.png",
+    ]);
   });
 });
 

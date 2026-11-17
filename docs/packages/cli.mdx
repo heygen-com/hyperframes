@@ -1174,6 +1174,7 @@ npx hyperframes publish --space <space-id>
 | `--update <url-or-id>`   | Update an existing project in place. Requires sign-in.             |
 | `--space <space-id>`     | Publish into a shared team space. Requires sign-in.                |
 | `--proxy` / `--no-proxy` | Bake H.264 proxies for browser-hostile codecs, or skip them        |
+| `--include-outside-files` | Upload files from outside the project folder without asking. Otherwise they need your approval, and `--yes` leaves them out |
 
 `publish` zips the project, uploads it, and prints a URL that resolves to stored
 content — so it keeps working after the CLI exits. No local server stays alive,
@@ -2810,14 +2811,22 @@ same share as the project is copied like any other. To include such a
 file, move it into the project folder. Under `--json`, the result lists those
 as `left_out`, each with the `file` that points at it, the `reference` as
 written, its `path` from the project folder, the `reason` (`blocklisted`,
-`received`, `file_type`, `private` or `network_share`) and `levels_up`, how many folders above the project
+`received`, `file_type`, `private`, `network_share` or `not_approved`) and `levels_up`, how many folders above the project
 it is. A full run also prints each as a `{"event":"left_out",…}`
 line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
 and still hear about each one during the run.
 
-Before uploading, the command also names every file it carries from outside the
-project folder: each file a composition points at, and each project file that is
-a link to a file outside the project. It prints the list and carries on. Under
+A file from outside the project folder that would be copied (each file a
+composition points at, and each project file that is a link to a file outside
+the project) is uploaded only when you approve it. Run in a terminal, the
+command lists those files and asks, defaulting to no. A yes is remembered for
+that project in `~/.hyperframes/outside-files.json`, never in the project. Under
+`--json` or `--dry-run`, or when nobody can answer, they are left out with the
+`not_approved` reason and a warning naming each one. `--include-outside-files`
+uploads them without asking; `hyperframes publish` and `hyperframes feedback
+--file-issue` take the same flag and ask the same way unless given `--yes`.
+
+Before uploading, the command names every outside file it carries. Under
 `--json`, the result lists them as `outside_files`, with the same `file`,
 `reference`, `path` and `levels_up` fields, and each is printed as a
 `{"event":"outside_file",…}` line on stderr. For a project link, `file` and
@@ -2839,6 +2848,7 @@ Render parameters mirror local `hyperframes render` where they overlap:
 | `--title`              | —                           | Free-text label echoed back in detail responses                                                                                                  |
 | `--output` / `-o`      | `renders/<render_id>.<ext>` | Where the downloaded video lands                                                                                                                 |
 | `--dry-run`            | off                         | Build and inspect the zip without authenticating, uploading, or rendering                                                                        |
+| `--include-outside-files` | off                      | Upload files from outside the project folder without asking. Otherwise only approved ones go                                                     |
 
 Lifecycle and control:
 
