@@ -256,3 +256,147 @@ describe("frameSamplerScript", () => {
     expect(runInNewContext("[linear, quadOf]", page)).toEqual([1, 2]);
   });
 });
+
+describe("frameSamplerScript in a sealed preview", () => {
+  const style = {
+    transform: "none",
+    rotate: "none",
+    scale: "none",
+    width: "1920px",
+    height: "1080px",
+    boxSizing: "content-box",
+    paddingLeft: "0px",
+    paddingRight: "0px",
+    paddingTop: "0px",
+    paddingBottom: "0px",
+    borderLeftWidth: "0px",
+    borderRightWidth: "0px",
+    borderTopWidth: "0px",
+    borderBottomWidth: "0px",
+  };
+  const topDocument = { querySelector: () => null };
+  const topWindow = { getComputedStyle: () => style };
+  topDocument.defaultView = topWindow;
+
+  // The frame's document and location throw, as a cross-origin frame's do; only postMessage reaches it.
+  function sealedFrame(studioReplies) {
+    const channel = new MessageChannel();
+    const boxes = {
+      "#target": { rect: { x: 100, y: 200, width: 100, height: 50 }, angle: 0, corners: null },
+      '[data-composition-id="main"]': {
+        rect: { x: 0, y: 0, width: 1920, height: 1080 },
+        angle: 0,
+        corners: null,
+      },
+    };
+    channel.port1.onmessage = ({ data: { id, kind, params } }) => {
+      const result =
+        kind === "query"
+          ? {
+              matches: boxes[params.selector] ? [{ handle: params.selector }] : [],
+              truncated: false,
+            }
+          : kind === "geometry"
+            ? {
+                elements: params.handles.map((h) => ({ ...boxes[h], visible: true })),
+                children: null,
+              }
+            : kind === "computed-styles"
+              ? { styles: { width: "100px", height: "50px", "box-sizing": "border-box" } }
+              : null;
+      channel.port1.postMessage({ v: 1, id, ok: true, result });
+    };
+    const win = {
+      get document() {
+        throw new Error("cross-origin");
+      },
+      get location() {
+        throw new Error("cross-origin");
+      },
+      postMessage(message) {
+        if (message.type !== "editing-connect") return;
+        // Studio already holds the port when the bench's handoff arrives: both listen on it.
+        channel.port2.onmessage = ({ data }) => studioReplies.push(data);
+        queueMicrotask(() =>
+          on.message({
+            source: win,
+            data: { source: "hf-preview", type: "editing-port", v: 1 },
+            ports: [channel.port2],
+          }),
+        );
+      },
+    };
+    const on = {};
+    const iframe = {
+      src: "http://studio.test/preview/index.html",
+      contentWindow: win,
+      ownerDocument: topDocument,
+      clientLeft: 0,
+      clientTop: 0,
+      parentElement: null,
+      getRootNode: () => ({}),
+      checkVisibility: () => true,
+      getBoundingClientRect: () => ({ left: 0, top: 0, width: 1920, height: 1080 }),
+    };
+    return { iframe, on, channel };
+  }
+
+  it("measures the element through the preview's editing port, in top-frame px", async () => {
+    const studioReplies = [];
+    const { iframe, on, channel } = sealedFrame(studioReplies);
+    let tick = () => {};
+    const window = { addEventListener: (type, f) => (on[type] = f) };
+    window.top = window;
+    const page = {
+      window,
+      document: {
+        querySelectorAll: () => [iframe],
+        querySelector: () => null,
+        createElement: () => ({ style: {}, isConnected: true }),
+        documentElement: { append() {} },
+      },
+      ResizeObserver: class {
+        constructor(f) {
+          tick = f;
+        }
+        observe() {}
+      },
+      requestAnimationFrame: () => 0,
+      performance: { now: () => 0 },
+      setTimeout,
+      clearTimeout,
+      URL,
+      DOMMatrix: class {},
+    };
+    runInNewContext(frameSamplerScript, page);
+    const rec = window.__editBenchFrames;
+    Object.assign(rec, { on: true, selector: "#target", pointer: [150, 225], samples: [] });
+    const measured = async () => {
+      for (let i = 0; i < 50 && !rec.samples.some((s) => s.quad); i++) {
+        tick();
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      return rec.samples.find((s) => s.quad);
+    };
+    try {
+      const sample = await measured();
+      expect(sample, JSON.stringify(rec.samples.slice(-2))).toBeDefined();
+      expect(sample.quad).toEqual([
+        [100, 200],
+        [200, 200],
+        [200, 250],
+        [100, 250],
+      ]);
+      expect(sample.size).toEqual([100, 50]);
+      expect(sample.root[2]).toEqual([1920, 1080]);
+      expect(sample.pointer).toEqual([150, 225]);
+      // Studio's own request on the shared port still reaches Studio.
+      channel.port2.postMessage({ v: 1, id: 1, kind: "query", params: { selector: "#target" } });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(studioReplies.map((r) => r.id)).toContain(1);
+    } finally {
+      channel.port1.close();
+      channel.port2.close();
+    }
+  });
+});
