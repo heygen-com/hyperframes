@@ -200,7 +200,8 @@ function listDir(dir: string): Dirent[] | null {
   }
 }
 
-const isMediaName = (path: string) => MEDIA_SIGNATURES[extname(path).toLowerCase()] !== undefined;
+export const isMediaName = (path: string): boolean =>
+  MEDIA_SIGNATURES[extname(path).toLowerCase()] !== undefined;
 
 // A linked folder is checked when it leads to a folder inside the project, which the walk lists under its own name.
 function linkedFolderChecked(path: string, realProjectDir: string): boolean {
