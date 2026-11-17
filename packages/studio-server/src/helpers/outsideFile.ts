@@ -7,12 +7,20 @@ import {
   CONVERTIBLE_IMAGE_EXTS,
   isControlByte,
   MEDIA_INPUT_ARGS,
+  mediaInputArgs,
   startsAsMediaPlaylist,
   VIDEO_EXTS,
 } from "./mediaExtensions.js";
 import { realFilePath } from "./safePath.js";
 
-export { AUDIO_EXTS, CONVERTIBLE_IMAGE_EXTS, MEDIA_INPUT_ARGS, startsAsMediaPlaylist, VIDEO_EXTS };
+export {
+  AUDIO_EXTS,
+  CONVERTIBLE_IMAGE_EXTS,
+  MEDIA_INPUT_ARGS,
+  mediaInputArgs,
+  startsAsMediaPlaylist,
+  VIDEO_EXTS,
+};
 
 const COPIED_TYPE = /^(?:image|video|audio|font)\/|^text\/(?:css|javascript);/;
 

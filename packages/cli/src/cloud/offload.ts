@@ -36,7 +36,7 @@ import { bytesMatchExtension } from "./offloadSniff.js";
 import {
   AUDIO_EXTS,
   CONVERTIBLE_IMAGE_EXTS,
-  MEDIA_INPUT_ARGS,
+  mediaInputArgs,
   startsAsMediaPlaylist,
   VIDEO_EXTS,
 } from "@hyperframes/studio-server/outside-file";
@@ -246,7 +246,7 @@ async function probeVideo(path: string): Promise<VideoProbe> {
     "stream=codec_name,pix_fmt,color_primaries,color_transfer,color_space:stream_tags",
     "-of",
     "json",
-    ...MEDIA_INPUT_ARGS,
+    ...mediaInputArgs(path),
     "--",
     path,
   ]);
@@ -295,13 +295,13 @@ async function segmentArgs(
   segments: PlayedSegment[] | undefined,
   media: "audio" | "image" | "video",
 ): Promise<string[]> {
-  if (media === "image") return [...decoder, ...MEDIA_INPUT_ARGS, "-i", sourcePath];
+  if (media === "image") return [...decoder, ...mediaInputArgs(sourcePath), "-i", sourcePath];
   const audio = await keptAudio(sourcePath, media);
   const cuts = segments?.length ? segments : [undefined];
   const inputs = cuts.flatMap((s) => [
     ...decoder,
     ...seekArgs(s),
-    ...MEDIA_INPUT_ARGS,
+    ...mediaInputArgs(sourcePath),
     "-i",
     sourcePath,
   ]);
@@ -313,7 +313,7 @@ async function segmentArgs(
 }
 
 async function keptAudio(sourcePath: string, media: "audio" | "video"): Promise<number | null> {
-  const audio = (await probeAudio(sourcePath, MEDIA_INPUT_ARGS))?.audioStream ?? null;
+  const audio = (await probeAudio(sourcePath, mediaInputArgs(sourcePath)))?.audioStream ?? null;
   if (media === "audio" && audio === null) {
     throw new Error("the file has no audio track ffmpeg can decode");
   }
@@ -374,7 +374,7 @@ async function durationSeconds(sourcePath: string): Promise<number | null> {
     "format=duration",
     "-of",
     "csv=p=0",
-    ...MEDIA_INPUT_ARGS,
+    ...mediaInputArgs(sourcePath),
     "--",
     sourcePath,
   ]);
@@ -466,7 +466,7 @@ async function isAnimatedImage(path: string): Promise<boolean> {
       "stream=nb_frames",
       "-of",
       "csv=p=0",
-      ...MEDIA_INPUT_ARGS,
+      ...mediaInputArgs(path),
       "--",
       path,
     ]);
@@ -491,7 +491,7 @@ async function trimGrid(sourcePath: string, kind: MediaKind): Promise<number | n
     "stream=r_frame_rate,avg_frame_rate",
     "-of",
     "csv=p=0",
-    ...MEDIA_INPUT_ARGS,
+    ...mediaInputArgs(sourcePath),
     "--",
     sourcePath,
   ]);
@@ -517,7 +517,7 @@ async function hasVideoStream(sourcePath: string): Promise<boolean> {
       "stream=codec_type",
       "-of",
       "csv=p=0",
-      ...MEDIA_INPUT_ARGS,
+      ...mediaInputArgs(sourcePath),
       "--",
       sourcePath,
     ]);

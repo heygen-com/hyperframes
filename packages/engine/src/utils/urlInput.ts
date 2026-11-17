@@ -1,6 +1,10 @@
 import { existsSync } from "node:fs";
 import { redactUrlQueryStrings } from "@hyperframes/core";
-import { SELF_CONTAINED_FORMATS, mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
+import {
+  SELF_CONTAINED_FORMATS,
+  assertLiteralMediaInput,
+  mediaInputFormatArgs,
+} from "@hyperframes/parsers/ff-binaries";
 import { resolveRestrictPageNetwork } from "../config.js";
 import { getFfmpegBinary, getFfprobeBinary } from "./ffmpegBinaries.js";
 
@@ -57,8 +61,9 @@ export function urlInputArgs(
     caBundles = CA_BUNDLES,
   }: { tool?: "ffmpeg" | "ffprobe"; caBundles?: readonly string[] } = {},
 ): string[] {
+  assertLiteralMediaInput(input);
   const mediaFormats = () =>
-    mediaInputFormatArgs(tool === "ffprobe" ? getFfprobeBinary() : getFfmpegBinary());
+    mediaInputFormatArgs(tool === "ffprobe" ? getFfprobeBinary() : getFfmpegBinary(), input);
   const restricted = resolveRestrictPageNetwork();
   const route = restricted ? restrictedRoute(input) : undefined;
   if (route === "proxy" && !/^https:\/\//i.test(input))

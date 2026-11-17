@@ -122,6 +122,12 @@
       "types": "./dist/ffBinaries.d.ts",
       "environments": ["bun", "node"]
     },
+    "./literal-media-input": {
+      "source": "./src/literalMediaInput.ts",
+      "runtime": "./dist/literalMediaInput.js",
+      "types": "./dist/literalMediaInput.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./media-alpha": {
       "source": "./src/mediaAlpha.ts",
       "runtime": "./dist/mediaAlpha.js",
