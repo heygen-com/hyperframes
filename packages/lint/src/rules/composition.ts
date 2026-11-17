@@ -1461,11 +1461,11 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const timed = tags
       .filter((tag) => tag.index !== rootTag.index && readAttr(tag.raw, "data-start") !== null)
       .map((tag) => {
-        const start = Number(readAttr(tag.raw, "data-start")) || 0;
-        const dur = Number(readAttr(tag.raw, "data-duration"));
-        const end = Number.isFinite(dur) && dur > 0 ? start + dur : Infinity;
-        return { tag, start, end };
-      });
+        const timing = readTagTiming(tag.raw);
+        if (timing.start === null) return null;
+        return { tag, start: timing.start, end: timing.end ?? Infinity };
+      })
+      .filter((row): row is { tag: OpenTag; start: number; end: number } => row !== null);
 
     // `tags` is a flat list (no nesting depth), so a timed element nested
     // *inside* a candidate slot is treated as a tail-covering sibling rather
