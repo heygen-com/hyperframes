@@ -9,7 +9,7 @@ import {
   receivedLinesAtOrAbove,
 } from "./privateProjectFile.js";
 import { contentHashAsync, hashable, readReceivedContent } from "./receivedContent.js";
-import { isMediaFontOrImage } from "./receivedRender.js";
+import { isMediaFontOrImage, isMediaName } from "./receivedRender.js";
 
 type Lines = Map<string, string[]>;
 
@@ -17,6 +17,7 @@ type Lines = Map<string, string[]>;
 interface Leaving {
   line: string;
   hash?: string;
+  stays?: boolean;
 }
 
 /** Worked out while the files are on disk. A line whose file is already gone stays, as the sign it is gone. */
@@ -111,9 +112,10 @@ export async function keepListedInFolder(projectDir: string, target: string): Pr
 async function leaving(line: string, path: string): Promise<Leaving | null> {
   const stat = await lstat(path).catch(() => null);
   if (stat === null) return null;
-  if (isMediaFontOrImage(path) || (stat.isFile() && !hashable(path, stat))) return { line };
+  if (isMediaFontOrImage(path)) return { line };
+  if (stat.isFile() && !hashable(path, stat)) return { line, stays: true };
   const hash = await contentHashAsync(path);
-  return hash === null ? null : { line, hash };
+  return hash === null ? null : { line, hash, stays: true };
 }
 
 export async function plannedReceivedChange(
@@ -129,10 +131,16 @@ export async function plannedReceivedChange(
     for (const line of lines.filter(at)) {
       const left = await leaving(line, join(folder, line));
       if (left === null) continue;
-      push(change.leaving, folder, left);
-      if (to === undefined) continue;
+      if (to === undefined) {
+        push(change.leaving, folder, left);
+        continue;
+      }
       const rest = line.normalize("NFC").slice(fromKey.length);
       const toKey = keyIn(folder, to);
+      push(change.leaving, folder, {
+        ...left,
+        stays: left.stays === true && isMediaName(toKey + rest),
+      });
       if (leavesFolder(toKey)) push(change.arriving, root, keyIn(root, to) + rest);
       else push(change.arriving, folder, toKey + rest);
     }
@@ -170,7 +178,12 @@ export async function recordReceivedArrivals(change: ReceivedChange): Promise<Re
 
 export const dropReceivedLeavers = (change: ReceivedChange): Promise<void> =>
   dropLines(
-    new Map([...change.leaving].map(([folder, lines]) => [folder, lines.map((left) => left.line)])),
+    new Map(
+      [...change.leaving].map(([folder, lines]) => [
+        folder,
+        lines.flatMap((left) => (left.stays ? [] : [left.line])),
+      ]),
+    ),
   );
 
 export const dropReceivedArrivals = (change: ReceivedChange): Promise<void> =>

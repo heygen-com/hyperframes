@@ -2017,8 +2017,11 @@ A composition that needs the left-out script stops with a script-load error.
 A received-files record lists the files in a folder that came from someone
 else. When a record in the project, or in a folder above it, lists anything but
 media, fonts and images, the render leaves out every file from outside the
-project folder and warns with each one's name. A `--docker` render makes this check on your
-machine, where the folders above the project are visible, and passes
+project folder and warns with each one's name. When you delete a listed page,
+stylesheet or script in Studio, its line stays, so whatever is later written in
+its place still counts as received; take the line out of
+`.hyperframes/received-files.json` yourself once you know the content is gone.
+A `--docker` render makes this check on your machine, where the folders above the project are visible, and passes
 `--refuse-outside-files` into the container, so it leaves out the same files a
 local render would.
 
