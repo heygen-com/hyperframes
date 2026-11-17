@@ -41,6 +41,8 @@ interface PlayerProps {
   onPainted?: (details: { iframe: HTMLIFrameElement; startedAt: number; loadId: number }) => void;
   portrait?: boolean;
   style?: React.CSSProperties;
+  /** Out of hit testing and focus, frame included: a preview loading behind the live one. */
+  inert?: boolean;
   suppressLoadingOverlay?: boolean;
   loadingUi?: "studio" | "host";
   noLoadTimeout?: boolean;
@@ -171,6 +173,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       onPainted,
       portrait,
       style,
+      inert,
       suppressLoadingOverlay,
       noLoadTimeout,
       ...host
@@ -506,6 +509,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       <div
         className="relative w-full h-full max-w-full max-h-full overflow-hidden flex items-center justify-center"
         style={style}
+        inert={inert}
       >
         <div ref={containerRef} className="w-full h-full" />
         {showCompositionOverlay && (

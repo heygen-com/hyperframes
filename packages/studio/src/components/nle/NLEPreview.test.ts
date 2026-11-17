@@ -44,6 +44,7 @@ vi.mock("../../player", async () => {
         "data-testid": "mock-player",
         "data-sandbox-origin": props.sandboxOrigin,
         style: props.style,
+        inert: props.inert,
       });
     }),
   };
@@ -592,7 +593,7 @@ describe("NLEPreview", () => {
 
   // Chrome stops rendering a hidden or clipped cross-origin frame, and a sealed one is cross-origin.
   it.each([
-    ["opaque" as const, ["opacity: 0", "z-index: -1"], ["visibility", "clip-path"]],
+    ["opaque" as const, ["opacity: 0"], ["visibility", "clip-path", "z-index"]],
     [undefined, ["visibility: hidden", "clip-path: inset(100%)"], ["opacity"]],
   ])(
     "keeps a reload's preview out of sight, and a sealed one rendering (%s)",
@@ -604,10 +605,11 @@ describe("NLEPreview", () => {
         ],
         { sandboxOrigin },
       );
-      const shadow = [...view.stage.querySelectorAll('[data-testid="mock-player"]')]
-        .map((player) => player.getAttribute("style") ?? "")
-        .filter((style) => style.includes("pointer-events: none"));
+      const shadow = [...view.stage.querySelectorAll('[data-testid="mock-player"][inert]')].map(
+        (player) => player.getAttribute("style") ?? "",
+      );
       expect(shadow).toHaveLength(1);
+      expect(shadow[0]).toContain("pointer-events: none");
       for (const rule of present) expect(shadow[0]).toContain(rule);
       for (const rule of absent) expect(shadow[0]).not.toContain(rule);
       view.cleanup();
