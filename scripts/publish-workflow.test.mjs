@@ -88,8 +88,8 @@ test("a push to main publishes only the merge of exactly one approved release PR
     submitted_at: `2026-11-17T0${hour}:00:00Z`,
   });
   const approved = [review("reviewer", "APPROVED", 1)];
-  // The fake answers PR 8000's reviews, commits and events, each reviewer's permission from FAKE_PERMISSIONS
-  // (login=permission lines; the lookup of FAKE_PERMISSION_FAILS's login fails), and the commit's PR lookup from FAKE_PULLS.
+  // The fake answers PR 8000's reviews, commits and events, the commit's PR lookup from FAKE_PULLS, and each
+  // reviewer's permission from FAKE_PERMISSIONS (login=permission lines); the lookup of FAKE_PERMISSION_FAILS fails.
   writeFileSync(
     join(bin, "gh"),
     `#!/bin/sh

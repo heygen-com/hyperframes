@@ -97,9 +97,9 @@ jobs:
             exit 1
           fi
           IFS=$'\t' read -r ref number head author <<<"$heads"
-          # Branch protection can be bypassed, so the release itself requires its final commit to be approved by a
-          # maintainer who neither opened, wrote nor pushed it, with no maintainer's or app's change request standing.
-          # Anyone can review a public repo, so a person's review counts only with write access. Each latest verdict counts.
+          # Branch protection can be bypassed, so a maintainer who did not open, write or push the release must approve
+          # its final commit, and no maintainer's or app's change request may stand. Anyone can review a public repo:
+          # a person's review counts only with write access. Each reviewer's latest verdict counts.
           gh api --paginate "repos/$REPO/pulls/$number/reviews" > "$RUNNER_TEMP/reviews.json"
           gh api --paginate "repos/$REPO/pulls/$number/commits" > "$RUNNER_TEMP/commits.json"
           gh api --paginate "repos/$REPO/issues/$number/events" > "$RUNNER_TEMP/events.json"
@@ -110,7 +110,8 @@ jobs:
               "$RUNNER_TEMP/events.json"
           } > "$RUNNER_TEMP/writers.txt"
           : > "$RUNNER_TEMP/maintainers.txt"
-          for login in $(jq -s -r 'add | map(select(.user.type == "User" and (.state == "APPROVED" or .state == "CHANGES_REQUESTED")))
+          for login in $(jq -s -r 'add
+            | map(select(.user.type == "User" and (.state == "APPROVED" or .state == "CHANGES_REQUESTED")))
             | map(.user.login) | unique[]' \
             "$RUNNER_TEMP/reviews.json"); do
             permission="$(gh api "repos/$REPO/collaborators/$login/permission" --jq .permission)" ||
@@ -128,7 +129,8 @@ jobs:
               and all(.state != "CHANGES_REQUESTED")' \
             "$RUNNER_TEMP/reviews.json")"
           if [ "$reviewed" != "true" ]; then
-            echo "::error::$ref (#$number) has no approval of its final commit by a maintainer who did not write or push it, or a change request stands"
+            echo "::error::$ref (#$number): no maintainer who did not write or push it approved its final commit," \
+              "or a change request stands"
             exit 1
           fi
           {
