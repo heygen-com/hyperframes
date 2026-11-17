@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  beginStudioPendingEdit,
+  paintBackNewestStudioPendingEdit,
   setStudioPendingEditsSettled,
   trackStudioPendingEdit,
 } from "../../utils/studioPendingEdits";
@@ -218,4 +220,24 @@ describe("one undo step per gesture", () => {
       }
     },
   );
+
+  it("Cmd+Z during a lane drag's save still paints that drag back at once", async () => {
+    const revert = vi.fn(() => () => {});
+    const save = deferred<void>();
+    const done = runLaneZGesture({
+      commitLane: async () => {
+        beginStudioPendingEdit(revert).settle(save.promise);
+        await save.promise;
+        return true;
+      },
+      commitZ: async () => {},
+    });
+    try {
+      expect(paintBackNewestStudioPendingEdit()).not.toBeNull();
+      expect(revert).toHaveBeenCalledTimes(1);
+    } finally {
+      save.resolve();
+      await done;
+    }
+  });
 });

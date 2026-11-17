@@ -28,6 +28,8 @@ let gestureTail: Promise<void> | null = null;
 /** The single ordering owner for every gesture that crosses z/lane persistence. */
 export function serializeZLaneGesture<Result>(run: () => Promise<Result>): Promise<Result> {
   const previous = gestureTail;
+  let release!: () => void;
+  trackStudioPendingEdit(new Promise<void>((resolve) => (release = resolve)));
   // Preserve synchronous optimistic updates for the first gesture. A queued
   // gesture starts only after the preceding gesture fully settled.
   let gesture: Promise<Result>;
@@ -40,7 +42,7 @@ export function serializeZLaneGesture<Result>(run: () => Promise<Result>): Promi
       gesture = Promise.reject(error);
     }
   }
-  trackStudioPendingEdit(gesture);
+  void gesture.then(release, release);
   const tail = gesture.then(
     () => undefined,
     () => undefined,
