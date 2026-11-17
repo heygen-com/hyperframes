@@ -269,13 +269,16 @@ function receivedRecordsBelow(start: string): ReceivedRecord[] | null {
   return records;
 }
 
-function receivedRecords(projectDir: string): ReceivedRecord[] | null {
-  let start: string;
+function walkStart(projectDir: string): string {
   try {
-    start = realpathSync(projectDir);
+    return realpathSync(projectDir);
   } catch {
-    start = resolve(projectDir);
+    return resolve(projectDir);
   }
+}
+
+function receivedRecords(projectDir: string): ReceivedRecord[] | null {
+  const start = walkStart(projectDir);
   const below = receivedRecordsBelow(start);
   return below && [...receivedRecordsAtOrAbove(start), ...below];
 }
@@ -342,7 +345,7 @@ export function receivedFiles(projectDir: string): ReceivedFiles {
   const listedInAnyRecord = records.map((record) => listedIn(record, projectDir));
   const received = (path: string) =>
     listedInAnyRecord.some((listed) => listed(path)) || mayBeGoneFile(path) || sameContent(path);
-  const gone = goneFile && relative(realFilePath(projectDir), goneFile).split(sep).join("/");
+  const gone = goneFile && relative(walkStart(projectDir), goneFile).split(sep).join("/");
   return Object.assign(received, gone === undefined ? {} : { gone });
 }
 

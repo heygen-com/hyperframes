@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { closeSync, constants, fstatSync, openSync, readFileSync, type Stats } from "node:fs";
+import { type FileHandle, open } from "node:fs/promises";
 import { extname } from "node:path";
 import { readRecordTail, recordKind, writeRecord } from "./projectRecords.js";
 
@@ -25,8 +25,8 @@ export interface ReceivedContent {
 /** The received content beside the record in `dir`; empty when it is missing. One that cannot be read is never written over. */
 export function readReceivedContent(dir: string): ReceivedContent {
   const empty = (readable: boolean) => ({ hashes: new Set<string>(), saved: {}, readable });
-  if (recordKind(dir, RECEIVED_CONTENT) === "absent") return empty(true);
   const read = readRecordTail(dir, RECEIVED_CONTENT, MAX_CONTENT_BYTES);
+  if (read === null) return empty(recordKind(dir, RECEIVED_CONTENT) === "absent");
   let saved: unknown;
   try {
     saved = read?.whole ? JSON.parse(read.text) : null;
@@ -50,27 +50,42 @@ export function writeReceivedContent(dir: string, content: ReceivedContent): boo
 const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
 const MAX_HASHED_BYTES = 16 * 1024 * 1024;
+const READ_PLAIN = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
 
-/** A plain file worth hashing: a page, stylesheet, script or SVG of any size, or another file up to 16 MB. */
-function hashable(path: string): boolean {
-  const stat = lstatSync(path);
-  return stat.isFile() && (stat.size <= MAX_HASHED_BYTES || isCodeFile(path));
-}
+/** Pages, stylesheets, scripts and SVG of any size, and other plain files up to 16 MB, as `stat` reads them. */
+const hashable = (path: string, stat: Stats) =>
+  stat.isFile() && (stat.size <= MAX_HASHED_BYTES || isCodeFile(path));
 
 /** The sha256 of a plain file's bytes; null for a link, a folder, a large file that names no others, or one that cannot be read. */
 export function contentHash(path: string): string | null {
+  let fd: number;
   try {
-    return hashable(path) ? sha256(readFileSync(path)) : null;
+    fd = openSync(path, READ_PLAIN);
   } catch {
     return null;
+  }
+  try {
+    return hashable(path, fstatSync(fd)) ? sha256(readFileSync(fd)) : null;
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
   }
 }
 
 export async function contentHashAsync(path: string): Promise<string | null> {
+  let handle: FileHandle;
   try {
-    return hashable(path) ? sha256(await readFile(path)) : null;
+    handle = await open(path, READ_PLAIN);
   } catch {
     return null;
+  }
+  try {
+    return hashable(path, await handle.stat()) ? sha256(await handle.readFile()) : null;
+  } catch {
+    return null;
+  } finally {
+    await handle.close();
   }
 }
 
