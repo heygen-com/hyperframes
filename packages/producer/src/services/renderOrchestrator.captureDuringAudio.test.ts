@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveConfig } from "@hyperframes/engine";
 import { createRenderJob, executeRenderJob, RenderQualityError } from "./renderOrchestrator.js";
+import { AUDIO_STAGE } from "./render/shared.js";
 
 // Entry: executeRenderJob. The audio mix is held open; every capture stage records that it started, then waits for the
 // test or for the render's signal, so the test sees whether frames are drawn while the mix runs and what stops them.
@@ -187,6 +188,7 @@ it("an audio mix that fails while frames are drawn stops them and fails the rend
     "Audio mix failed; output would be video-only: the music track could not be read",
   );
   expect(job.status).not.toBe("cancelled");
+  expect(job.failedStage).toBe(AUDIO_STAGE);
 });
 
 it("an audio stage that throws while frames are drawn stops them and fails the render with its error", async () => {
@@ -199,6 +201,7 @@ it("an audio stage that throws while frames are drawn stops them and fails the r
   expect(trace.events).toContain("capture aborted");
   expect(String(error)).toContain("the mix's FFmpeg exited with code 1");
   expect(job.status).not.toBe("cancelled");
+  expect(job.failedStage).toBe(AUDIO_STAGE);
 });
 
 it("on fewer than 4 CPUs draws frames only after the mix", async () => {
