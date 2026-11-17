@@ -125,13 +125,8 @@ const computedClipPath = (element: HTMLElement) => {
   return view.getComputedStyle(element).clipPath.trim();
 };
 
-/** The element's clip-path, inline first, then the stylesheet's as it is without the lift. */
-function readElementClipPath(element: HTMLElement): string {
-  const inline =
-    element.style.getPropertyValue("clip-path").trim() || frameClipPaths.get(element)?.inline;
-  const lift = cropLifts.get(element);
-  if (inline || !lift || lift.dropped) return inline || computedClipPath(element);
-  // Only inline writes happen while selected, so the stylesheet's clip is read once per lift.
+/** The stylesheet's clip under a lift, read once per lift: only inline writes happen while selected. */
+function sheetClipUnder(element: HTMLElement, lift: CropLift): string {
   if (lift.sheetClip === undefined && lift.rule) {
     const { parentNode, nextSibling } = lift.rule;
     lift.rule.remove();
@@ -139,6 +134,15 @@ function readElementClipPath(element: HTMLElement): string {
     parentNode?.insertBefore(lift.rule, nextSibling);
   }
   return lift.sheetClip ?? "";
+}
+
+/** The element's clip-path, inline first, then the stylesheet's as it is without the lift. */
+function readElementClipPath(element: HTMLElement): string {
+  const inline =
+    element.style.getPropertyValue("clip-path").trim() || frameClipPaths.get(element)?.inline;
+  if (inline) return inline;
+  const lift = cropLifts.get(element);
+  return lift && !lift.dropped ? sheetClipUnder(element, lift) : computedClipPath(element);
 }
 
 /** Zeros = no clip yet. `null` = a clip this tool cannot represent (circle/polygon/non-px inset):
