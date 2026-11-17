@@ -537,6 +537,7 @@ export async function runBrowserCheck(
       deadline?.enter,
       logCheckProgress,
       deadline?.keepPartial,
+      deadline?.signal,
     );
     helperSession?.stop();
     const helper = await helperOpen?.catch(() => undefined);

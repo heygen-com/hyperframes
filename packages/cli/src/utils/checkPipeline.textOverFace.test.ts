@@ -99,7 +99,7 @@ describe("text_over_face in the check grid", () => {
     const found = result.layoutIssues.filter((issue) => issue.code === "text_over_face");
     expect(found.map((issue) => issue.time).sort()).toEqual([1, 7]);
     expect(found[0]).toMatchObject({
-      severity: "warning",
+      severity: "info",
       selector: "#title",
       containerSelector: "#take",
       coveredFraction: 0.91,
@@ -107,6 +107,28 @@ describe("text_over_face in the check grid", () => {
       message: '"HELLO" covers 91% of a face in the video beneath it.',
     });
     expect(result.faceCheck).toEqual({ ran: true, candidates: 3, faces: 2 });
+  });
+
+  it("hands the detector the signal that ends with the check", async () => {
+    mocks.probeVideo.mockReturnValue(INFO);
+    mocks.faceBoxesAt.mockResolvedValue([]);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const stop = new AbortController();
+    const noop = undefined;
+    await runAuditGrid(
+      driver({ collectTextOverVideo: async () => [title(1)] }),
+      { ...OPTIONS, at: [1] },
+      { kind: "none" },
+      noop,
+      noop,
+      noop,
+      noop,
+      stop.signal,
+    );
+    const given: AbortSignal | undefined = mocks.faceBoxesAt.mock.calls[0]?.[2]?.signal;
+    expect(given?.aborted).toBe(false);
+    stop.abort();
+    expect(given?.aborted).toBe(true);
   });
 
   it("does not load the detector when no text is in front of a video", async () => {

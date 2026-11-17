@@ -405,6 +405,7 @@ export type RunAuditGrid = (
   enter?: (phase: CheckPhase) => void,
   report?: CheckProgress,
   keep?: (read: () => Partial<CheckBrowserResult>) => void,
+  stop?: AbortSignal,
 ) => Promise<CheckBrowserResult>;
 
 export interface CheckSection<T extends CheckFinding = CheckFinding> {

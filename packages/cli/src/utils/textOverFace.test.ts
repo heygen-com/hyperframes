@@ -3,9 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CheckBbox, TextOverVideoCandidate } from "./checkTypes.js";
 import {
   FACE_COVER_REPORT,
-  FACE_COVER_WARNING,
   coveredShare,
-  faceCoverSeverity,
   faceRectOnCanvas,
   findTextOverFace,
   textOverFaceIssue,
@@ -105,25 +103,13 @@ describe("coveredShare", () => {
   });
 });
 
-describe("faceCoverSeverity", () => {
-  it("reports from 5% of the face and warns from 30%", () => {
-    expect(FACE_COVER_REPORT).toBe(0.05);
-    expect(FACE_COVER_WARNING).toBe(0.3);
-    expect(faceCoverSeverity(0.04)).toBeNull();
-    expect(faceCoverSeverity(0.05)).toBe("info");
-    expect(faceCoverSeverity(0.29)).toBe("info");
-    expect(faceCoverSeverity(0.3)).toBe("warning");
-    expect(faceCoverSeverity(1)).toBe("warning");
-  });
-});
-
 describe("textOverFaceIssue", () => {
   it("builds the finding the contract names", () => {
     // The face is 430..605.5 x 768..960; the title covers its top 92 px across 170 px of it.
     const [issue] = textOverFaceIssue(candidate(), [FACE]);
     expect(issue).toEqual({
       code: "text_over_face",
-      severity: "warning",
+      severity: "info",
       time: 7,
       selector: "#title",
       containerSelector: "#take",
@@ -140,12 +126,21 @@ describe("textOverFaceIssue", () => {
     });
   });
 
-  it("is info under 30% of the face and nothing under 5%", () => {
+  it("is info however much of the face is covered, so a face found in texture never fails --strict", () => {
     const grazing = candidate({ wordRects: [box(400, 760, 200, 40)] });
     expect(textOverFaceIssue(grazing, [FACE])[0]).toMatchObject({
       severity: "info",
       coveredFraction: 0.16,
     });
+    const whole = candidate({ wordRects: [box(0, 0, 1080, 1920)] });
+    expect(textOverFaceIssue(whole, [FACE])[0]).toMatchObject({
+      severity: "info",
+      coveredFraction: 1,
+    });
+  });
+
+  it("reports nothing under 5% of the face", () => {
+    expect(FACE_COVER_REPORT).toBe(0.05);
     const touching = candidate({ wordRects: [box(400, 760, 200, 15)] });
     expect(textOverFaceIssue(touching, [FACE])).toEqual([]);
   });
@@ -192,7 +187,7 @@ describe("findTextOverFace", () => {
       [at(1), at(4), at(7), at(7), at(7, "/project/other.mp4")],
       facesIn,
     );
-    expect(facesIn.mock.calls).toEqual([
+    expect(facesIn.mock.calls.map(([file, times]) => [file, times])).toEqual([
       ["/project/take.mp4", [1, 4, 7]],
       ["/project/other.mp4", [7]],
     ]);
@@ -229,6 +224,58 @@ describe("findTextOverFace", () => {
     expect(stderr.mock.calls[0]?.[0]).toBe(
       "[hyperframes] check: text over a face was not looked for in 2 of 2 video(s): could not download opencv.js (fetch failed)",
     );
+  });
+
+  // A detector whose first-use download never answers: it settles only when its signal ends.
+  const neverReady = () =>
+    vi.fn<FaceFinder>(
+      (_file, _times, signal) =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason));
+        }),
+    );
+
+  it("gives up on a detector that is not ready within 30 s and says how to get it", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const facesIn = neverReady();
+      const pending = findTextOverFace([at(1)], facesIn);
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(facesIn.mock.calls[0]?.[2]?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await pending).toEqual({
+        issues: [],
+        faceCheck: {
+          ran: false,
+          reason:
+            "no answer within 30 s; `hyperframes measure face <video>` downloads it with no time limit",
+        },
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops the detector when the check stops", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const stop = new AbortController();
+    const pending = findTextOverFace([at(1)], neverReady(), undefined, stop.signal);
+    stop.abort(new Error("Check stopped before finishing (SIGINT)."));
+    expect((await pending).faceCheck).toEqual({
+      ran: false,
+      reason: "Check stopped before finishing (SIGINT).",
+    });
+  });
+
+  it("leaves no timer running once the faces are read", async () => {
+    vi.useFakeTimers();
+    try {
+      await findTextOverFace([at(7)], finder([7]));
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the findings of the videos it could read and counts the ones it could not", async () => {

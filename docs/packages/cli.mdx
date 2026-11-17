@@ -1386,11 +1386,14 @@ enters with `data-layout-allow-occlusion`.
 
 Text painted in front of an opaque `<video>` is judged against the faces in the
 frame that video shows at the sample. `text_over_face` is an info finding when
-the words cover 5% or more of a face and a warning from 30%; `coveredFraction`
-is the share of the face covered and `faceRect` is the face in canvas pixels.
-The faces are found in the video file itself, with the detector
-[`measure face`](#measure) uses (its first use downloads OpenCV), so only a
-video served from the project is looked at. A rotated video and a frame not yet
+the words cover 5% or more of a face; `coveredFraction` is the share of the face
+covered and `faceRect` is the face in canvas pixels. It is never more than info,
+so it never fails `--strict`: the detector can take texture for a face. The
+faces are found in the video file itself, with the detector
+[`measure face`](#measure) uses, so only a video served from the project is
+looked at. That detector's first use downloads OpenCV; when the download has not
+answered within 30 seconds the check goes on without this pass and `faceCheck`
+says why. A rotated video and a frame not yet
 decoded are skipped, a transparent cutout between the text and the take is looked
 through, and text behind a cutout stays `text_occluded`'s to judge. Mark an
 intended overlap with `data-layout-allow-on-face` on the text or an ancestor.

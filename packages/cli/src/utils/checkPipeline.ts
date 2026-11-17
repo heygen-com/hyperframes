@@ -1604,6 +1604,7 @@ export function reportingProgress<T extends object>(
 async function textOverFace(
   collected: GridSamples,
   onFile: () => void,
+  stop?: AbortSignal,
 ): Promise<{ issues: AnchoredLayoutIssue[]; faceCheck: FaceCheck }> {
   if (collected.textOverVideoUnavailable) {
     return {
@@ -1615,7 +1616,7 @@ async function textOverFace(
     return { issues: [], faceCheck: { ran: true, candidates: 0, faces: 0 } };
   }
   const { findTextOverFace } = await import("./textOverFace.js");
-  return findTextOverFace(collected.textOverVideo, undefined, onFile);
+  return findTextOverFace(collected.textOverVideo, undefined, onFile, stop);
 }
 
 export async function runAuditGrid(
@@ -1626,6 +1627,7 @@ export async function runAuditGrid(
   enter: (phase: CheckPhase, detail?: string) => void = () => {},
   report: CheckProgress = () => {},
   keep: (read: () => Partial<CheckBrowserResult>) => void = () => {},
+  stop?: AbortSignal,
 ): Promise<CheckBrowserResult> {
   enter("samples");
   await driver.initialize(options.contrast);
@@ -1683,7 +1685,7 @@ export async function runAuditGrid(
     await analysing.getCanvas(),
   );
   const offPivotFindings = detectOffPivotRotation(collected.indicatorFrames);
-  const overFace = await textOverFace(collected, () => enter("analysis", "faces under text"));
+  const overFace = await textOverFace(collected, () => enter("analysis", "faces under text"), stop);
   const contrast = buildContrastResults(collected.contrastEntries);
   report("analyze", 2, 3);
   const craft = craftEnabled(analysing, options)

@@ -11,11 +11,12 @@ import { normalizeErrorMessage } from "./errorMessage.js";
 
 /** Below this share of the face a descender or a letter's corner touches it, which hides nothing. */
 export const FACE_COVER_REPORT = 0.05;
-/** From about a third of the face, an eye or the mouth is under the text. */
-export const FACE_COVER_WARNING = 0.3;
 // A face the video's own box crops to less than half is not one the viewer is shown.
 const FACE_SHOWN_MIN = 0.5;
 const MESSAGE_TEXT_MAX = 40;
+// The detector's first use downloads OpenCV: a network that never answers costs the finding, not the check.
+const DETECTOR_READY_MS = 30_000;
+const DETECTOR_LATE = `no answer within ${DETECTOR_READY_MS / 1000} s; \`hyperframes measure face <video>\` downloads it with no time limit`;
 
 type VideoPlacement = Pick<TextOverVideoCandidate["video"], "box" | "frame" | "flipX" | "flipY">;
 
@@ -23,6 +24,7 @@ type VideoPlacement = Pick<TextOverVideoCandidate["video"], "box" | "frame" | "f
 export type FaceFinder = (
   file: string,
   times: number[],
+  signal?: AbortSignal,
 ) => Promise<Map<number, { frame: number; boxes: number[][] }>>;
 
 const area = (box: CheckBbox) => box.width * box.height;
@@ -72,11 +74,6 @@ export function coveredShare(rects: readonly CheckBbox[], face: CheckBbox): numb
   return area(face) > 0 ? covered / area(face) : 0;
 }
 
-export function faceCoverSeverity(coveredFraction: number): "warning" | "info" | null {
-  if (coveredFraction < FACE_COVER_REPORT) return null;
-  return coveredFraction >= FACE_COVER_WARNING ? "warning" : "info";
-}
-
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
 function quoted(text: string): string {
@@ -95,13 +92,13 @@ export function textOverFaceIssue(
     const coveredFraction = round2(coveredShare(candidate.wordRects, faceRect));
     if (!most || coveredFraction > most.coveredFraction) most = { faceRect, coveredFraction };
   }
-  const severity = most ? faceCoverSeverity(most.coveredFraction) : null;
-  if (!most || !severity) return [];
+  if (!most || most.coveredFraction < FACE_COVER_REPORT) return [];
   const { faceRect, coveredFraction } = most;
   return [
     {
       code: "text_over_face",
-      severity,
+      // The detector can take texture for a face, so a cover is reported and never fails a strict check.
+      severity: "info",
       time: candidate.time,
       selector: candidate.selector,
       containerSelector: candidate.video.selector,
@@ -125,7 +122,7 @@ export function textOverFaceIssue(
 }
 
 // Loaded on first use: a check with no text in front of a video never pays for OpenCV.
-const facesInFile: FaceFinder = async (file, times) => {
+const facesInFile: FaceFinder = async (file, times, signal) => {
   const [{ faceBoxesAt }, { frameAt, probeVideo }] = await Promise.all([
     import("../measure/face.js"),
     import("../measure/media.js"),
@@ -133,7 +130,7 @@ const facesInFile: FaceFinder = async (file, times) => {
   const info = probeVideo(file);
   const frameOf = (time: number) => Math.min(Math.max(0, info.frames - 1), frameAt(time, info.fps));
   const frames = [...new Set(times.map(frameOf))].sort((a, b) => a - b);
-  const found = await faceBoxesAt(info, frames);
+  const found = await faceBoxesAt(info, frames, { signal });
   // A frame that did not decode shifts every later one, so the boxes no longer belong to their times.
   if (found.length !== frames.length) throw new Error(`could not read every frame of ${file}`);
   const byFrame = new Map(found.map((sample) => [sample.frame, sample.boxes]));
@@ -141,6 +138,30 @@ const facesInFile: FaceFinder = async (file, times) => {
     times.map((time) => [time, { frame: frameOf(time), boxes: byFrame.get(frameOf(time)) ?? [] }]),
   );
 };
+
+type FacesByTime = Awaited<ReturnType<FaceFinder>>;
+
+async function readFaces(
+  timesByFile: Map<string, Set<number>>,
+  facesIn: FaceFinder,
+  onFile: () => void,
+  stop?: AbortSignal,
+): Promise<{ faces: Map<string, FacesByTime>; unread: string[] }> {
+  const faces = new Map<string, FacesByTime>();
+  const unread: string[] = [];
+  const late = new AbortController();
+  const timer = setTimeout(() => late.abort(new Error(DETECTOR_LATE)), DETECTOR_READY_MS);
+  const signal = stop ? AbortSignal.any([stop, late.signal]) : late.signal;
+  for (const [file, times] of timesByFile) {
+    onFile();
+    await facesIn(file, [...times], signal).then(
+      (found) => faces.set(file, found),
+      (error: unknown) => unread.push(normalizeErrorMessage(error)),
+    );
+  }
+  clearTimeout(timer);
+  return { faces, unread };
+}
 
 /**
  * The text_over_face findings for what the page saw in front of videos, and whether the pass
@@ -151,22 +172,14 @@ export async function findTextOverFace(
   candidates: readonly TextOverVideoCandidate[],
   facesIn: FaceFinder = facesInFile,
   onFile: () => void = () => {},
+  stop?: AbortSignal,
 ): Promise<{ issues: AnchoredLayoutIssue[]; faceCheck: FaceCheck }> {
   const timesByFile = new Map<string, Set<number>>();
   for (const { video } of candidates) {
     const times = timesByFile.get(video.file) ?? new Set<number>();
     timesByFile.set(video.file, times.add(video.mediaTime));
   }
-  const faces = new Map<string, Awaited<ReturnType<FaceFinder>>>();
-  const unread: string[] = [];
-  for (const [file, times] of timesByFile) {
-    onFile();
-    try {
-      faces.set(file, await facesIn(file, [...times]));
-    } catch (error) {
-      unread.push(normalizeErrorMessage(error));
-    }
-  }
+  const { faces, unread } = await readFaces(timesByFile, facesIn, onFile, stop);
   const reason = unread[0];
   if (reason !== undefined) {
     console.error(
