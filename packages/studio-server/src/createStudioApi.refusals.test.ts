@@ -22,7 +22,11 @@ function createApp() {
   return { app, heard };
 }
 
-const write = (app: ReturnType<typeof createStudioApi>, name: string, headers: Record<string, string>) =>
+const write = (
+  app: ReturnType<typeof createStudioApi>,
+  name: string,
+  headers: Record<string, string>,
+) =>
   app.request(`http://localhost/projects/demo/files/${name}`, {
     method: "POST",
     headers: { Host: "localhost", "Content-Type": "text/plain", ...headers },

@@ -113,7 +113,10 @@ async function refuseProxyWorkForAnotherSite(c: Context, next: Next) {
 
 const refuseForAnotherSite = (what: string) => async (c: Context, next: Next) => {
   if (fromAnotherSite(c))
-    return c.json({ error: `forbidden: ${what} requested by another site`, why: "another_site" }, 403);
+    return c.json(
+      { error: `forbidden: ${what} requested by another site`, why: "another_site" },
+      403,
+    );
   return next();
 };
 
@@ -133,9 +136,16 @@ function urlScheme(url: string): string | undefined {
   }
 }
 
-const REFUSAL_WHYS = new Set(["nul", "outside_project", "protected_path", "another_site", "cross_origin_write"]);
+const REFUSAL_WHYS = new Set([
+  "nul",
+  "outside_project",
+  "protected_path",
+  "another_site",
+  "cross_origin_write",
+]);
 
-/** Reports every 403 the API answers, by route pattern and the body's own `why` code, after the answer is made. */
+const ENDPOINT_ASKED_FOR = -1;
+
 const reportRefusals =
   (onRefusal: (refusal: StudioRefusal) => void) => async (c: Context, next: Next) => {
     await next();
@@ -147,11 +157,11 @@ const reportRefusals =
     const why = body && typeof body === "object" ? (body as { why?: unknown }).why : undefined;
     try {
       onRefusal({
-        route: routePath(c, -1), // the endpoint asked for, not the middleware that refused it
+        route: routePath(c, ENDPOINT_ASKED_FOR),
         why: typeof why === "string" && REFUSAL_WHYS.has(why) ? why : "other",
       });
     } catch {
-      // A host's counter cannot change the answer.
+      return;
     }
   };
 
