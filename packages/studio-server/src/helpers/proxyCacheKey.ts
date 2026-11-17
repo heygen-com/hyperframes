@@ -1,15 +1,8 @@
 import { createHash } from "node:crypto";
-import {
-  closeSync,
-  createReadStream,
-  fstatSync,
-  openSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { closeSync, createReadStream, fstatSync, openSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { formatPreviewProxyBox, type PreviewProxyBox } from "@hyperframes/core";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { isProjectCacheFile, readProjectCacheFile } from "./safePath.js";
 
 const SMALL_FILE_BYTES = 16 * 1024 * 1024;
@@ -91,5 +84,5 @@ export function readCopyIndex(projectDir: string, indexPath: string): string | n
 }
 
 export function writeCopyIndex(indexPath: string, copyPath: string): void {
-  writeFileSync(indexPath, basename(copyPath));
+  replaceFileAtomically(indexPath, basename(copyPath), 0o644);
 }

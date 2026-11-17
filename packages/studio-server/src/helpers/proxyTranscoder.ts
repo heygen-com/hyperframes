@@ -571,10 +571,12 @@ function createPieceGate(size: number): PieceGate {
   };
 }
 
+type ChunkFiles = { projectDir: string; prefix: string };
+
 /** Copies a long source in pieces that stay in the cache, so a stopped copy continues from the first missing one. */
 async function encodeInChunks(
   ranges: ChunkRange[],
-  chunkPrefix: string,
+  chunks: ChunkFiles,
   tempPath: string,
   encode: EncodeFn,
   concat: (listPath: string, target: string) => Promise<void>,
@@ -583,8 +585,8 @@ async function encodeInChunks(
   onDone: (doneSeconds: number) => void = () => {},
 ): Promise<void> {
   const extension = extname(tempPath);
-  const pieces = ranges.map((_, index) => `${chunkPrefix}${index}${extension}`);
-  const madeAsPlainFile = (piece: string) => isProjectCacheFile(dirname(chunkPrefix), piece);
+  const pieces = ranges.map((_, index) => `${chunks.prefix}${index}${extension}`);
+  const madeAsPlainFile = (piece: string) => isProjectCacheFile(chunks.projectDir, piece);
   const pending = ranges.flatMap((_, index) => (madeAsPlainFile(pieces[index]!) ? [] : [index]));
   let doneSeconds = 0;
   for (const [index, range] of ranges.entries()) {
@@ -735,7 +737,7 @@ async function buildVideoFilter(
 async function runFfmpeg(
   sourcePath: string,
   outputPath: string,
-  chunkPrefix: string,
+  chunks: ChunkFiles,
   variant: ProxyVariant,
   box: PreviewProxyBox | undefined,
   limitSeconds: number | undefined,
@@ -799,7 +801,7 @@ async function runFfmpeg(
     }
     await encodeInChunks(
       ranges,
-      chunkPrefix,
+      chunks,
       outputPath,
       encode,
       (listPath, target) =>
@@ -954,8 +956,10 @@ async function transcodeToCache(
       writeCopyIndex(fastIndexPath(cachePath), sameContent);
       return sameContent;
     }
+    const copyMade = (path: string) => isProjectCacheFile(projectDir, path);
     const release = await acquireCopyLock(
       cachePath,
+      copyMade,
       job.abandoned.signal,
       TRANSCODE_STALL_MS,
     ).catch((error: unknown) => {
@@ -963,17 +967,20 @@ async function transcodeToCache(
         ? new ProxyTranscodeError(error.message, null, "")
         : error;
     });
-    if (!release) return cachePath;
+    if (!release) {
+      if (copyMade(cachePath)) return cachePath;
+      throw new ProxyTranscodeError("the copy is not a plain file in the cache", null, "");
+    }
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
-      const chunkPrefix = join(
-        cacheDir,
-        `${CHUNK_PREFIX}${basename(cachePath, extname(cachePath))}-`,
-      );
+      const chunks = {
+        projectDir,
+        prefix: join(cacheDir, `${CHUNK_PREFIX}${basename(cachePath, extname(cachePath))}-`),
+      };
       await runFfmpeg(
         absoluteSourcePath,
         tempPath,
-        chunkPrefix,
+        chunks,
         variant,
         box,
         limitSeconds,
