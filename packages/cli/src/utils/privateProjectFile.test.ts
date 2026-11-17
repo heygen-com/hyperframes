@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { isCredentialOrToolStatePath } from "@hyperframes/core/safe-path";
@@ -26,7 +27,7 @@ vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   const lstatSync = ((path: string, options?: { bigint?: boolean }) => {
     const stat = actual.lstatSync(path, options as never);
-    return zeroFileIds.on ? Object.assign(stat, { dev: 0n, ino: 0n }) : stat;
+    return zeroFileIds.on && stat ? Object.assign(stat, { dev: 0n, ino: 0n }) : stat;
   }) as typeof actual.lstatSync;
   return { ...actual, default: { ...actual, lstatSync }, lstatSync };
 });
@@ -137,6 +138,77 @@ describe("receivedFiles", () => {
   });
 });
 
+describe("receivedFiles when a listed file is gone", () => {
+  function project(listed: string[]): string {
+    dir = mkdtempSync(join(tmpdir(), "hf-received-gone-"));
+    mkdirSync(join(dir, ".hyperframes"));
+    writeFileSync(join(dir, "mine.html"), "");
+    writeFileSync(
+      join(dir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: listed }),
+    );
+    return dir;
+  }
+
+  it("counts every page, stylesheet, script and SVG as received, and names the gone file", () => {
+    const root = project(["theirs.html"]);
+    writeFileSync(join(root, "logo.png"), "png");
+    const received = receivedFiles(root);
+    for (const code of ["mine.html", "renamed.html", "a.css", "b.js", "c.mjs", "d.svg"])
+      expect(received(code)).toBe(true);
+    expect(received("logo.png")).toBe(false);
+    expect(received.gone).toBe("theirs.html");
+  });
+
+  it("counts a file with the content of a received file that left the record as received", () => {
+    const root = project([]);
+    writeFileSync(join(root, "logo.png"), "theirs");
+    writeFileSync(
+      join(root, ".hyperframes", "received-content.json"),
+      JSON.stringify({ hashes: [createHash("sha256").update("theirs").digest("hex")] }),
+    );
+    const received = receivedFiles(root);
+    expect(received("logo.png")).toBe(true);
+    expect(received("mine.html")).toBe(false);
+    expect(received.gone).toBeUndefined();
+  });
+
+  it("counts every file as received when the received content cannot be read", () => {
+    const root = project([]);
+    writeFileSync(join(root, ".hyperframes", "received-content.json"), "{not json");
+    expect(receivedFiles(root)("mine.html")).toBe(true);
+  });
+
+  it("ignores a gone file a record lists outside the project", () => {
+    const root = project([]);
+    mkdirSync(join(root, "sub", ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(root, "sub", ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["../../not-in-project/gone.html"] }),
+    );
+    const received = receivedFiles(root);
+    expect(received.gone).toBeUndefined();
+    expect(received("mine.html")).toBe(false);
+  });
+
+  it("counts every page as received for a gone file listed by a received folder's own record", () => {
+    const root = project([]);
+    mkdirSync(join(root, "sub", ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(root, "sub", ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["gone.html"] }),
+    );
+    expect(receivedFiles(root)("mine.html")).toBe(true);
+  });
+
+  it("still tells the person's own files apart when every listed file is there", () => {
+    const root = project(["theirs.html"]);
+    writeFileSync(join(root, "theirs.html"), "");
+    expect(receivedFiles(root)("theirs.html")).toBe(true);
+    expect(receivedFiles(root)("mine.html")).toBe(false);
+  });
+});
+
 describe("receivedFiles for a received project copied into a folder", () => {
   function withNested(record?: string): string {
     dir = mkdtempSync(join(tmpdir(), "hf-received-nested-"));
@@ -164,6 +236,25 @@ describe("receivedFiles for a received project copied into a folder", () => {
     const received = receivedFiles(withNested());
     expect(received("compositions/x/index.html")).toBe(false);
     expect(received("index.html")).toBe(false);
+  });
+
+  it.each([
+    "renders",
+    "dist",
+    ".next",
+    "coverage",
+    "renders/x",
+    ".hyperframes/requests/x",
+    ".hyperframes/prepared-assets/x",
+  ])("names the copy's files when it sits in %s", (folder) => {
+    dir = mkdtempSync(join(tmpdir(), "hf-received-nested-"));
+    mkdirSync(join(dir, folder, ".hyperframes"), { recursive: true });
+    writeFileSync(join(dir, folder, "index.html"), "");
+    writeFileSync(
+      join(dir, folder, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["index.html"] }),
+    );
+    expect(receivedFiles(dir)(`${folder}/index.html`)).toBe(true);
   });
 });
 
