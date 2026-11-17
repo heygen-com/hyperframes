@@ -201,6 +201,13 @@ export async function noteProjectProviderKey(
 }
 
 export const PROJECT_ENV_ORIGINS = "HYPERFRAMES_PROJECT_ENV_ORIGINS";
+export const PROJECT_ENV_YIELDED = "HYPERFRAMES_PROJECT_ENV_YIELDED";
+
+export const projectEnvYielded = (): [string, string][] =>
+  [...yieldedKeys].map((id) => {
+    const [dir = "", name = ""] = id.split("\0");
+    return [name, dir];
+  });
 
 /** The folder of each key a project `.env` set, for the scripts the CLI launches to weigh the same way. */
 export function projectEnvOrigins(): Record<string, string> {

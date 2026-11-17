@@ -7,6 +7,8 @@ lightweight WebGL editor helper, via `src/motion/editor.ts`).
 
 ## Build
 
+Run these build commands from this source directory in a trusted checkout of the HyperFrames repository. Installed projects already contain the bundle.
+
 ```sh
 npm install
 npm run build

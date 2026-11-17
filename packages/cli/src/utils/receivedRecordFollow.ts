@@ -139,7 +139,7 @@ export async function plannedReceivedChange(
       const toKey = keyIn(folder, to);
       push(change.leaving, folder, {
         ...left,
-        stays: left.stays === true && isMediaName(toKey + rest),
+        stays: left.stays === true && !isMediaName(line) && isMediaName(toKey + rest),
       });
       if (leavesFolder(toKey)) push(change.arriving, root, keyIn(root, to) + rest);
       else push(change.arriving, folder, toKey + rest);

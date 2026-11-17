@@ -26,6 +26,7 @@ import {
 } from "./editingElement";
 import type { EditingElementBox, EditingElementGeometry } from "./editingGeometry";
 import type { EditingGestureStart } from "./editingGestureStart";
+import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { EditingLayer } from "./editingLayers";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
@@ -97,6 +98,14 @@ export {
 export type { EditingGestureStart } from "./editingGestureStart";
 export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
 export {
+  MAX_SNAPSHOT_CHANNELS,
+  MAX_SNAPSHOT_FIELDS,
+  MAX_SNAPSHOT_TARGETS,
+  MAX_SNAPSHOT_TEXT,
+  MAX_SNAPSHOT_TWEENS,
+  MAX_VARS_DEPTH,
+} from "./editing/gsapSnapshotLimits";
+export {
   compositionPoint,
   coversComposition,
   isDomLayerElement,
@@ -156,6 +165,7 @@ export const EDITING_REQUEST_KINDS = [
   "document-markup",
   "set-audio-group-attribute",
   "assign-audio-group",
+  "gsap-snapshot",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -282,6 +292,7 @@ export interface EditingRequests {
     params: AssignAudioGroupParams;
     result: { previous: Array<string | null>; changed: boolean };
   };
+  "gsap-snapshot": { params: NoParams; result: GsapSnapshot };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -479,6 +490,7 @@ const PARAM_PARSERS: {
   "document-markup": noParams,
   "set-audio-group-attribute": parseSetAudioGroupAttribute,
   "assign-audio-group": parseAssignAudioGroup,
+  "gsap-snapshot": noParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
