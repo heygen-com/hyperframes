@@ -472,7 +472,7 @@ test("release-commit code runs only in a job without secrets", () => {
 });
 
 test("npm publishes with the job's OIDC token only: no stored npm token is named", () => {
-  assert.doesNotMatch(workflow, /secrets\.(?!GITHUB_TOKEN\b)\w+/);
+  assert.doesNotMatch(JSON.stringify(config), /\bsecrets\b(?!\.GITHUB_TOKEN\b)/);
   assert.equal(publish.permissions["id-token"], "write");
   assert.equal(stepOf(publish, "Publish packages").env.NODE_AUTH_TOKEN, "");
 });
