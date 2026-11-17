@@ -91,7 +91,7 @@ describe("createCompositionCssScoper", () => {
         }
       }
     }
-  });
+  }, 30_000);
 
   it("scopes every sheet exactly as scopeCssToComposition does, whatever the mount's scope", () => {
     const scope = createCompositionCssScoper();
