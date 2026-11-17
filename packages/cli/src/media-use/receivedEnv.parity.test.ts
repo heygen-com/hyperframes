@@ -58,15 +58,15 @@ const FIXTURES: [string, Arrange, "received" | "unchecked" | null][] = [
     "received",
   ],
   [
-    "an unreadable record in a Studio folder whose hidden name looks like an asset",
+    "an unreadable record in a Studio folder whose hidden name looks like an asset, which the walk skips",
     (_root, project) => unreadableRecord(join(project, ".hyperframes", "requests", ".clip.png")),
-    "received",
+    null,
   ],
   [
-    "a record in a Studio folder whose hidden name looks like an asset, listing the .env",
+    "a record in a Studio folder whose hidden name looks like an asset, listing the .env, which the walk skips",
     (_root, project) =>
       record(join(project, ".hyperframes", "requests", ".clip.png"), ["../../../.env"]),
-    "received",
+    null,
   ],
   [
     "an unreadable record in a Studio folder named like a key file, which the walk skips",

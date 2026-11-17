@@ -215,6 +215,10 @@ const CREDENTIAL_FILES = new Set([
   ".git-credentials",
   ".gitconfig",
   ".mcp.json",
+  "credentials.json",
+  "serviceaccountkey.json",
+  "service-account.json",
+  "service_account.json",
 ]);
 const CREDENTIAL_FOLDERS = new Set([
   ".ssh",
@@ -236,6 +240,17 @@ const KEY_FILE =
   /^(?:id_(?:rsa|dsa|ecdsa|ed25519).*|.*\.(?:pem|key|p12|pfx|p8|ppk|jks|keystore|kdbx))$/;
 const SECRET_STORE_FILE = /\.(?:tfstate(?:\.backup)?|tfvars(?:\.json)?)$/;
 const MEDIA_FOLDER = ".media";
+const BUILD_OUTPUT_FOLDERS = new Set([
+  ".next",
+  ".nuxt",
+  ".output",
+  ".svelte-kit",
+  ".vercel",
+  ".netlify",
+  ".wrangler",
+  ".astro",
+  ".turbo",
+]);
 const LOADED_ASSET_TYPE =
   /.\.(?:png|jpe?g|gif|webp|avif|svg|ico|bmp|tiff?|heic|heif|mp4|m4v|mov|webm|mkv|mxf|avi|mp3|wav|m4a|aac|ogg|oga|opus|flac|woff2?|ttf|otf|css|m?js|cjs)$/;
 
@@ -273,11 +288,13 @@ function isStudioPrivatePath(relPath) {
   if (isVcsOrSecretPath(relPath) || isCredentialOrToolStatePath(relPath)) return true;
   const segments = pathSegments(relPath);
   const inside = !isAbsolute(relPath) && !/^\.\.[. ]*$/.test(relPath.split(/[\\/]/, 1)[0] ?? "");
-  const loadedType = LOADED_ASSET_TYPE.test(segments.at(-1) ?? "");
+  const name = segments.at(-1) ?? "";
+  const loadedType = !name.startsWith(".") && LOADED_ASSET_TYPE.test(name);
   return segments.some((segment, at) => {
     const atRoot = segments.slice(0, at).every((before) => before === "");
     if (segment === ".hyperframes")
       return !atRoot || !isStudioOwnFile(segments.slice(at).join("/"));
+    if (BUILD_OUTPUT_FOLDERS.has(segment)) return inside;
     const mediaFolder = atRoot && segment === MEDIA_FOLDER;
     return inside && segment.startsWith(".") && !mediaFolder && !loadedType;
   });
