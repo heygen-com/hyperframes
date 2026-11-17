@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, mock } from "bun:test";
+import { afterAll, describe, expect, it, mock, spyOn } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,7 @@ import { collectRenderMedia } from "../../renderMediaCollector.js";
 const workDir = mkdtempSync(join(tmpdir(), "hf-stage-test-"));
 afterAll(() => rmSync(workDir, { recursive: true, force: true }));
 import { createHash } from "node:crypto";
+import { parseHTML } from "linkedom";
 import {
   hasAutoStartVideos,
   hasRuntimeMediaChanges,
@@ -449,14 +450,17 @@ describe("hasVariableBoundMedia", () => {
 describe("hasVariableBoundMedia — page size", () => {
   it("parses a large variables attribute once, not once per bound element", () => {
     const values = JSON.stringify(
-      Object.fromEntries(Array.from({ length: 40_000 }, (_, i) => [`k${i}`, "v".repeat(20)])),
+      Object.fromEntries(Array.from({ length: 1_000 }, (_, i) => [`k${i}`, "v"])),
     );
-    const images = `<img src="a.png" data-var-src="missing">`.repeat(8_000);
+    const images = `<img src="a.png" data-var-src="missing">`.repeat(2_000);
     const html = `<html><body><div data-variable-values='${values}'>${images}</div></body></html>`;
-
-    const started = performance.now();
-    expect(hasVariableBoundMedia(html, undefined)).toBe(false);
-    expect(performance.now() - started).toBeLessThan(2_500);
+    const parse = spyOn(JSON, "parse");
+    try {
+      expect(hasVariableBoundMedia(html, undefined)).toBe(false);
+      expect(parse.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      parse.mockRestore();
+    }
   });
 
   it("takes the conservative answer when the ancestor walks run past their budget", () => {
@@ -501,29 +505,77 @@ describe("hasRuntimeMediaChanges", () => {
     ).toBe(false);
   });
 
-  it("classifies a page of many source writes and nodes, none aimed at media, in linear time", () => {
-    const count = 12_000;
-    const divs = Array.from({ length: count }, (_, i) => `<div id="d${i}" class="c${i}"></div>`);
+  it("answers id writes from one index, with no document lookup per write", () => {
+    const count = 2_000;
+    const divs = Array.from({ length: count }, (_, i) => `<div id="d${i}"></div>`);
     const writes = Array.from(
       { length: count },
       (_, i) => `document.getElementById("n${i}").src = "x";`,
     );
     const html = page(`${divs.join("")}<video id="clip" src="a.mp4"></video>`, writes.join("\n"));
+    const lookups = documentLookupSpies();
+    try {
+      expect(hasRuntimeMediaChanges(html)).toBe(false);
+      expect(lookups.getElementById.mock.calls.length).toBe(0);
+      expect(lookups.querySelectorAll.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      lookups.restore();
+    }
+  });
 
-    const started = performance.now();
-    expect(hasRuntimeMediaChanges(html)).toBe(false);
-    expect(performance.now() - started).toBeLessThan(2_500);
+  it("finds a source write on a page written without the html, head or body tags", () => {
+    const html =
+      `<!doctype html><head><script>document.getElementById("clip").src = "b.mp4";</script></head>` +
+      `<body><video id="clip" src="a.mp4"></video></body>`;
+    expect(hasRuntimeMediaChanges(html)).toBe(true);
   });
 
   it("lets the browser probe decide when there are too many selectors to check", () => {
     const videos = `<video src="a.mp4"></video>`.repeat(50);
     const writes = Array.from(
-      { length: 3_000 },
+      { length: 8_000 },
       (_, i) => `document.querySelector(".q${i}").src = "x";`,
     );
     expect(hasRuntimeMediaChanges(page(videos, writes.join("\n")))).toBe(true);
   });
+
+  it("lets the browser probe decide a long selector against many media elements", () => {
+    const videos = `<video src="a.mp4"></video>`.repeat(100);
+    const selector = `${".nope ".repeat(2_000)}video`;
+    const script = `document.querySelector(${JSON.stringify(selector)}).src = "x";`;
+    expect(hasRuntimeMediaChanges(page(videos, script))).toBe(true);
+    expect(hasRuntimeMediaChanges(page(`<video></video>`, script))).toBe(false);
+  });
+
+  it("lets the browser probe decide a selector with a sibling combinator", () => {
+    const script = `document.querySelector(".nope ~ .none").src = "x";`;
+    expect(hasRuntimeMediaChanges(page(`<video src="a.mp4"></video>`, script))).toBe(true);
+  });
 });
+
+/** Spies on the linkedom document's own lookups, wherever on its prototype chain they live. */
+function documentLookupSpies() {
+  const owner = (name: string): object => {
+    for (
+      let proto = Object.getPrototypeOf(parseHTML("<html></html>").document);
+      proto;
+      proto = Object.getPrototypeOf(proto)
+    ) {
+      if (Object.hasOwn(proto, name)) return proto;
+    }
+    throw new Error(`no ${name} on the document`);
+  };
+  const getElementById = spyOn(owner("getElementById") as Document, "getElementById");
+  const querySelectorAll = spyOn(owner("querySelectorAll") as Document, "querySelectorAll");
+  return {
+    getElementById,
+    querySelectorAll,
+    restore() {
+      getElementById.mockRestore();
+      querySelectorAll.mockRestore();
+    },
+  };
+}
 
 describe("runProbeStage — forceScreenshot threading", () => {
   it("runs media-type preflight after the browser-reconciliation phase", async () => {

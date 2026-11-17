@@ -324,13 +324,15 @@ function reconcileBrowserMediaEnd(
   return existingEnd <= 0 ? projectedEnd : Math.min(existingEnd, projectedEnd);
 }
 
-/** Selector-against-media checks the static scan makes before it lets the browser probe decide. */
-const MAX_MEDIA_SELECTOR_CHECKS = 100_000;
+/** Selector characters times media elements matched statically before the browser probe decides. */
+const MAX_MEDIA_SELECTOR_WORK = 1_000_000;
+// Sibling combinators can make one match walk the page; the browser probe answers those.
+const SIBLING_COMBINATOR = /[~+]/;
 
 function managedMediaElements(document: Document): Element[] {
   const managed: Element[] = [];
   const pending: Array<{ element: Element; inMedia: boolean }> = [];
-  if (document.documentElement) pending.push({ element: document.documentElement, inMedia: false });
+  for (const element of Array.from(document.children)) pending.push({ element, inMedia: false });
   for (let next = pending.pop(); next; next = pending.pop()) {
     const name = next.element.tagName.toLowerCase();
     const isMedia = name === "video" || name === "audio";
@@ -365,6 +367,7 @@ export function hasRuntimeMediaChanges(html: string): boolean {
   if (managed.length === 0) return false;
   const managedIds = new Set(managed.map((element) => element.getAttribute("id")).filter(Boolean));
   const selectors = new Set<string>();
+  let selectorChars = 0;
   for (const script of scriptBodies) {
     for (const mutation of extractMediaSrcMutations(script)) {
       const id = /^#[A-Za-z_][\w-]*$/.test(mutation.selector) ? mutation.selector.slice(1) : null;
@@ -372,8 +375,11 @@ export function hasRuntimeMediaChanges(html: string): boolean {
         if (managedIds.has(id)) return true;
         continue;
       }
+      if (selectors.has(mutation.selector)) continue;
+      if (SIBLING_COMBINATOR.test(mutation.selector)) return true;
       selectors.add(mutation.selector);
-      if (selectors.size * managed.length > MAX_MEDIA_SELECTOR_CHECKS) return true;
+      selectorChars += mutation.selector.length;
+      if (selectorChars * managed.length > MAX_MEDIA_SELECTOR_WORK) return true;
     }
   }
   for (const selector of selectors) {
