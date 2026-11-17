@@ -52,6 +52,12 @@ import {
   parseColorGradingPlaybackParams,
   type ColorGradingPlaybackRequest,
 } from "./editing/color-grading-playback";
+import { parseAssignAudioGroup, type AssignAudioGroupParams } from "./editing/assignAudioGroup";
+import { parseAudioMeter, type AudioMeterLevels } from "./editing/audioMeter";
+import {
+  parseSetAudioGroupAttribute,
+  type SetAudioGroupAttributeParams,
+} from "./editing/setAudioGroupAttribute";
 
 export {
   buildStableSelector,
@@ -146,6 +152,10 @@ export const EDITING_REQUEST_KINDS = [
   "color-grading-previews",
   "color-grading-playback",
   "watch-geometry",
+  "audio-meter",
+  "document-markup",
+  "set-audio-group-attribute",
+  "assign-audio-group",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -262,6 +272,16 @@ export interface EditingRequests {
   "color-grading-previews": ColorGradingPreviewsRequest;
   "color-grading-playback": ColorGradingPlaybackRequest;
   "watch-geometry": { params: WatchGeometryParams; result: { watching: number } };
+  "audio-meter": { params: { on: boolean }; result: { levels: AudioMeterLevels | null } };
+  "document-markup": { params: NoParams; result: { html: string; baseURI: string } };
+  "set-audio-group-attribute": {
+    params: SetAudioGroupAttributeParams;
+    result: { applied: boolean };
+  };
+  "assign-audio-group": {
+    params: AssignAudioGroupParams;
+    result: { previous: Array<string | null>; changed: boolean };
+  };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -455,6 +475,10 @@ const PARAM_PARSERS: {
   "color-grading-previews": parseColorGradingPreviewsParams,
   "color-grading-playback": parseColorGradingPlaybackParams,
   "watch-geometry": parseWatchGeometry,
+  "audio-meter": parseAudioMeter,
+  "document-markup": noParams,
+  "set-audio-group-attribute": parseSetAudioGroupAttribute,
+  "assign-audio-group": parseAssignAudioGroup,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
