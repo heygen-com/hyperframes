@@ -5,10 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { createInspectorServer } from "../src/server";
 
 const project = mkdtempSync(join(tmpdir(), "hf-inspector-"));
+const STARTUP_TIMEOUT_MS = 10_000;
+vi.setConfig({ testTimeout: 2 * STARTUP_TIMEOUT_MS + 10_000 });
 
 function start(env?: NodeJS.ProcessEnv) {
   const server = spawn("bun", ["src/server.ts", project, "0"], {
@@ -18,7 +20,10 @@ function start(env?: NodeJS.ProcessEnv) {
   });
   const lines = createInterface({ input: server.stdout! });
   const ready = new Promise<string>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("service startup timeout")), 10000);
+    const timer = setTimeout(
+      () => reject(new Error("service startup timeout")),
+      STARTUP_TIMEOUT_MS,
+    );
     lines.once("line", (line) => {
       clearTimeout(timer);
       resolve(JSON.parse(line).url as string);
@@ -131,7 +136,10 @@ it("starts when the entry path is a symlink", async () => {
   const lines = createInterface({ input: child.stdout! });
   try {
     const url = await new Promise<string>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("symlink entry did not listen")), 10000);
+      const timer = setTimeout(
+        () => reject(new Error("symlink entry did not listen")),
+        STARTUP_TIMEOUT_MS,
+      );
       lines.once("line", (line) => {
         clearTimeout(timer);
         resolve(JSON.parse(line).url as string);

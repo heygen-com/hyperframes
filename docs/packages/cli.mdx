@@ -1968,7 +1968,8 @@ the slot. Do not share `HYPERFRAMES_CACHE_DIR` between accounts: it holds the
 browser, packages and helpers each account runs. HyperFrames never
 runs a cached one that another account can write: it installs its own copy,
 under `~/.cache/hyperframes` when another account can write the cache folder
-itself. A render whose process died frees its slot on its own. `--workers` is
+itself (a shared folder such as `/tmp` included), and stops with an error rather
+than install into a folder inside it that another account owns. A render whose process died frees its slot on its own. `--workers` is
 unaffected: it sets the parallelism inside the one render that runs.
 
 Low-memory detection reads **host** RAM, not cgroup or container limits, so

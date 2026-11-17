@@ -667,6 +667,19 @@ describe("install", () => {
         }
       });
 
+      it("rejects a writable dependency beside a private package entry", () => {
+        const { cache, dir } = setup();
+        try {
+          writePackage(dir, "module.exports = 'entry'");
+          const sibling = join(dir, "node_modules", name, "dependency.js");
+          writeFileSync(sibling, "module.exports = 'dependency'");
+          chmodSync(sibling, 0o666);
+          expect(installedPackagePath(dir, name)).toBeNull();
+        } finally {
+          rmSync(cache, { recursive: true, force: true });
+        }
+      });
+
       it("is never loaded when another account owns it", () => {
         const { cache, dir } = setup();
         const previous = process.umask(0o022);
@@ -701,6 +714,26 @@ describe("install", () => {
           rmSync(cache, { recursive: true, force: true });
         }
       });
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "does not sweep staging under a writable ancestor",
+    async () => {
+      const root = mkdtempSync(join(tmpdir(), "hf-unsafe-staging-"));
+      const dir = join(root, "cache", "pkg");
+      const deadPid = spawnSync(process.execPath, ["-e", ""]).pid;
+      const stale = `${dir}.tmp-${deadPid}-old`;
+      mkdirSync(stale, { recursive: true });
+      chmodSync(root, 0o777);
+      const run = vi.fn();
+      try {
+        await expect(install(dir, name, version, run)).rejects.toThrow();
+        expect(existsSync(stale)).toBe(true);
+        expect(run).not.toHaveBeenCalled();
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
     },
   );
 

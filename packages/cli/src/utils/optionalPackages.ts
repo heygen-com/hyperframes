@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
   existsSync,
-  mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
@@ -15,7 +14,9 @@ import { createRequire } from "node:module";
 import { basename, dirname, join, sep } from "node:path";
 import { buildNpmCommand } from "./npxCommand.js";
 import {
+  ensurePrivateCacheDir,
   foreignWritablePath,
+  foreignWritableTree,
   sealCacheInstall,
   trustedCacheRoot,
 } from "@hyperframes/core/cache-dir";
@@ -242,7 +243,7 @@ const writableByOthers = (dir: string, file: string) => !!foreignWritablePath(fi
 
 export function isInstalled(dir: string, name: string): boolean {
   const manifest = manifestPath(dir, name);
-  return existsSync(manifest) && !writableByOthers(dir, manifest);
+  return existsSync(manifest) && !foreignWritableTree(dir, dirname(dir));
 }
 
 export function installedPackagePath(dir: string, name: string): string | null {
@@ -350,9 +351,10 @@ export async function install(
   version: string,
   run: (args: string[], cwd: string) => Promise<void> = (args, cwd) => runNpm(args, undefined, cwd),
 ): Promise<void> {
+  ensurePrivateCacheDir(dirname(dir), dirname(dir));
   sweepStaleStaging(dir);
   const staging = `${dir}.tmp-${process.pid}-${randomUUID().slice(0, 8)}`;
-  mkdirSync(staging, { recursive: true, mode: 0o700 });
+  ensurePrivateCacheDir(staging, dirname(dir));
   writeFileSync(join(staging, "package.json"), "{}");
   try {
     await run(

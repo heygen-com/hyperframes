@@ -44,7 +44,7 @@ class FakeSFN {
         input: JSON.parse(input.input),
       });
       return {
-        executionArn: `arn:aws:states:us-east-1:1234:execution:hf:${input.name}`,
+        executionArn: `arn:aws:states:us-east-1:123456789012:execution:hf:${input.name}`,
         startDate: new Date(),
       };
     }
@@ -81,7 +81,7 @@ describe("renderToLambda", () => {
     const staleOptions = {
       projectDir,
       bucketName: "test-bucket",
-      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
       config: baseConfig,
       planProtocol: "v1",
       sfn: asSFNClient(sfn),
@@ -102,7 +102,7 @@ describe("renderToLambda", () => {
     const handle = await renderToLambda({
       projectDir,
       bucketName: "test-bucket",
-      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
       config: baseConfig,
       executionName: "smoke-1",
       sfn: asSFNClient(sfn),
@@ -127,7 +127,7 @@ describe("renderToLambda", () => {
     expect(sfn.starts).toHaveLength(1);
     const start = sfn.starts[0]!;
     expect(start.name).toBe("smoke-1");
-    expect(start.stateMachineArn).toBe("arn:aws:states:us-east-1:1234:stateMachine:hf");
+    expect(start.stateMachineArn).toBe("arn:aws:states:us-east-1:123456789012:stateMachine:hf");
     expect(start.input).toEqual({
       ProjectS3Uri: handle.projectS3Uri,
       PlanOutputS3Prefix: "s3://test-bucket/renders/smoke-1/",
@@ -137,13 +137,50 @@ describe("renderToLambda", () => {
     });
   });
 
+  it("names the state machine's account as the owner of every bucket it touches", async () => {
+    const s3 = new FakeS3();
+    const site = await deploySite({ projectDir, bucketName: "test-bucket", s3: asS3Client(s3) });
+    s3.ops = [];
+    for (const siteHandle of [undefined, site]) {
+      await renderToLambda({
+        projectDir,
+        siteHandle,
+        bucketName: "test-bucket",
+        stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
+        config: baseConfig,
+        sfn: asSFNClient(new FakeSFN()),
+        s3: asS3Client(s3),
+      });
+    }
+
+    expect(s3.ops.length).toBeGreaterThan(0);
+    expect(s3.ops.filter((op) => op.owner !== "123456789012")).toEqual([]);
+  });
+
+  it("refuses a state machine ARN that is not one before any AWS work", async () => {
+    const sfn = new FakeSFN();
+    const s3 = new FakeS3();
+    await expect(
+      renderToLambda({
+        projectDir,
+        bucketName: "test-bucket",
+        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        config: baseConfig,
+        sfn: asSFNClient(sfn),
+        s3: asS3Client(s3),
+      }),
+    ).rejects.toMatchObject({ name: "INVALID_STATE_MACHINE_ARN" });
+    expect(sfn.describes).toBe(0);
+    expect(s3.ops).toHaveLength(0);
+  });
+
   it("derives the file extension from config.format", async () => {
     const sfn = new FakeSFN();
     const s3 = new FakeS3();
     const handle = await renderToLambda({
       projectDir,
       bucketName: "test-bucket",
-      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
       config: { ...baseConfig, format: "mov" },
       executionName: "smoke-mov",
       sfn: asSFNClient(sfn),
@@ -166,7 +203,7 @@ describe("renderToLambda", () => {
     const handle = await renderToLambda({
       siteHandle: prebuilt,
       bucketName: "test-bucket",
-      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
       config: baseConfig,
       executionName: "smoke-reuse",
       sfn: asSFNClient(sfn),
@@ -185,7 +222,7 @@ describe("renderToLambda", () => {
       renderToLambda({
         projectDir,
         bucketName: "test-bucket",
-        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
         config: baseConfig,
         sfn: asSFNClient(sfn),
         s3: asS3Client(s3),
@@ -203,7 +240,7 @@ describe("renderToLambda", () => {
       renderToLambda({
         siteHandle: siteHandleFromId("test-bucket", siteId),
         bucketName: "test-bucket",
-        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
         config: baseConfig,
         sfn: asSFNClient(sfn),
         s3: asS3Client(s3),
@@ -244,7 +281,7 @@ describe("renderToLambda", () => {
         siteHandle: site,
         projectDir: dir,
         bucketName: "test-bucket",
-        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
         config: baseConfig,
         sfn: asSFNClient(sfn),
         s3: asS3Client(s3),
@@ -316,7 +353,7 @@ describe("renderToLambda", () => {
       await renderToLambda({
         projectDir,
         bucketName: "test-bucket",
-        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
         config: { ...baseConfig, fps: 50 as never },
         sfn: asSFNClient(sfn),
         s3: asS3Client(s3),
@@ -334,7 +371,7 @@ describe("renderToLambda", () => {
     await expect(
       renderToLambda({
         bucketName: "test-bucket",
-        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
         config: baseConfig,
         sfn: asSFNClient(sfn),
         s3: asS3Client(s3),
@@ -348,7 +385,7 @@ describe("renderToLambda", () => {
     const handle = await renderToLambda({
       projectDir,
       bucketName: "test-bucket",
-      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
       config: baseConfig,
       sfn: asSFNClient(sfn),
       s3: asS3Client(s3),
@@ -363,7 +400,7 @@ describe("renderToLambda", () => {
     await renderToLambda({
       projectDir,
       bucketName: "test-bucket",
-      stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+      stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
       config: { ...baseConfig, variables },
       executionName: "smoke-variables",
       sfn: asSFNClient(sfn),
@@ -387,7 +424,7 @@ describe("renderToLambda", () => {
       renderToLambda({
         projectDir,
         bucketName: "test-bucket",
-        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
         config: { ...baseConfig, variables: { blob: huge } },
         executionName: "smoke-too-big",
         sfn: asSFNClient(sfn),
@@ -406,7 +443,7 @@ describe("renderToLambda", () => {
       renderToLambda({
         projectDir,
         bucketName: "test-bucket",
-        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
         config: {
           ...baseConfig,
           // BigInt would throw at JSON.stringify time; catch it at the validator
@@ -445,7 +482,7 @@ describe("renderToLambda", () => {
       renderToLambda({
         projectDir,
         bucketName: "test-bucket",
-        stateMachineArn: "arn:aws:states:us-east-1:1234:stateMachine:hf",
+        stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
         config: baseConfig,
         sfn: asSFNClient(sfn),
         s3: asS3Client(s3),
