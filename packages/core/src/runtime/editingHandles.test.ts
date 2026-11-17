@@ -164,6 +164,14 @@ describe("element handles over the editing port", () => {
     }
   });
 
+  it("leaves out an id, selector or attribute name it would have to cut, and says so", async () => {
+    const long = "x".repeat(MAX_ELEMENT_VALUE + 1);
+    document.body.innerHTML = `<div id="${long}" data-${long}="1" data-kept="2"></div>`;
+    const described = await describeOne(document.querySelector("div")!);
+    expect(described).toMatchObject({ id: null, selector: null, truncated: true });
+    expect(described.attributes.map(([name]) => name)).toEqual(["id", "data-kept"]);
+  });
+
   it("cuts long values, keeps only a long data: value's header, and leaves script and style text out", async () => {
     const long = "x".repeat(MAX_ELEMENT_VALUE + 50);
     document.body.innerHTML = `<div class="card" title="${long}" style="--note: ${long}">

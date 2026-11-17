@@ -111,8 +111,9 @@ function inlineStyles(element: Element, state: Cut): Record<string, string> {
 }
 
 function attributes(element: Element, state: Cut): EditingElementDescription["attributes"] {
-  const kept = Array.from(element.attributes).filter((attribute) => attribute.name !== "style");
-  if (kept.length > MAX_ELEMENT_ENTRIES) state.truncated = true;
+  const named = Array.from(element.attributes).filter((attribute) => attribute.name !== "style");
+  const kept = named.filter((attribute) => attribute.name.length <= MAX_ELEMENT_VALUE);
+  if (kept.length < named.length || kept.length > MAX_ELEMENT_ENTRIES) state.truncated = true;
   return kept
     .slice(0, MAX_ELEMENT_ENTRIES)
     .map((attribute) => [attribute.name, cut(attribute.value, MAX_ELEMENT_VALUE, state, true)]);
@@ -137,19 +138,22 @@ export function elementHit(element: Element): EditingElementHit {
   const rect = element.getBoundingClientRect();
   return {
     handle: handleFor(element),
-    tag: element.tagName.toLowerCase(),
+    tag: element.tagName.toLowerCase().slice(0, MAX_ELEMENT_VALUE),
     rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
   };
 }
 
+const whole = (value: string | undefined) =>
+  value && value.length <= MAX_ELEMENT_VALUE ? value : undefined;
+
 function describeElement(element: Element): EditingElementDescription {
-  const selector = buildStableSelector(element);
+  const selector = whole(buildStableSelector(element));
   const state: Cut = { truncated: false };
   return {
     ...elementHit(element),
-    label: buildElementLabel(element),
+    label: buildElementLabel(element).slice(0, MAX_ELEMENT_VALUE),
     parent: element.parentElement ? handleFor(element.parentElement) : null,
-    id: element.id || null,
+    id: whole(element.id) ?? null,
     selector: selector ?? null,
     matchesBefore: matchesBefore(element, selector),
     source: readElementSource(element),
