@@ -302,6 +302,17 @@ describe("playlistLeavesItsFolder", () => {
       hls('#EXT-X-KEY:METHOD=AES-128,URI="/etc/key.bin"', "#EXTINF:1,", "seg.ts"),
     ],
     ["a Windows drive path", hls("#EXTINF:1,", "C:\\renders\\out.mp4")],
+    ["a drive-relative segment", hls("#EXTINF:1,", "C:Videos\\a.mp4")],
+    ["a lower-case drive-relative segment", hls("#EXTINF:1,", "c:x.mp4")],
+    ["a drive-relative step up", hls("#EXTINF:1,", "c:..\\a.mp4")],
+    ["a one-character pseudo-scheme", hls("#EXTINF:1,", "_:x.mp4")],
+    ["a pseudo-scheme with a space", hls("#EXTINF:1,", "a b:x.mp4")],
+    ["an encoded drive-relative segment", hls("#EXTINF:1,", "C%3Ax.mp4")],
+    [
+      "a drive-relative key",
+      hls('#EXT-X-KEY:METHOD=AES-128,URI="C:key.bin"', "#EXTINF:1,", "seg.ts"),
+    ],
+    ["a drive-relative concat entry", concat("'C:Videos\\a.mp4'")],
     ["an absolute concat entry", concat("'/var/renders/other/out.mp4'")],
     ["a concat entry above its folder", concat("../other/out.mp4")],
     ["a list too long to read whole", hls("#EXTINF:1,\nseg.ts\n".repeat(700_000))],
@@ -382,6 +393,7 @@ describe("playlistLeavesItsFolder", () => {
   it.each([
     ["segments beside it", hls("#EXTINF:1,", "seg0.ts", "#EXTINF:1,", "parts/seg1.ts")],
     ["https segments", hls("#EXTINF:1,", "https://cdn.example.com/seg0.ts")],
+    ["a colon after a folder name", hls("#EXTINF:1,", "parts/take:2.ts")],
     ["a concat entry beside it", concat("'part 1.mp4'")],
     ["a media file", Buffer.from([0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70])],
   ])("keeps %s", async (_name, contents) => {

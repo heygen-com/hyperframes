@@ -314,8 +314,7 @@ export async function isNotImagePayload(filePath: string): Promise<boolean> {
 const MAX_PLAYLIST_BYTES = 8 * 1024 * 1024;
 const MAX_PLAYLIST_DEPTH = 8;
 const HTTP_URL = /^https?:\/\//i;
-const OTHER_SCHEME = /^[a-z][a-z0-9+.-]+:/i;
-const DRIVE_PATH = /^[a-z]:[\\/]/i;
+const COLON_BEFORE_SEPARATOR = /^[^/\\?#]*:/;
 
 // ffmpeg reads a playlist line into a 4096-byte buffer and drops the rest of it.
 const MAX_HLS_LINE_BYTES = 4095;
@@ -389,9 +388,8 @@ function playlistEntries(text: string): string[] | undefined {
 
 function entryLeavesFolder(entry: string, base: string, folder: string): boolean {
   if (HTTP_URL.test(entry)) return false;
-  if (OTHER_SCHEME.test(entry) && !DRIVE_PATH.test(entry)) return true;
   return [entry, percentDecoded(entry)].some((path) => {
-    if (isAbsolute(path) || DRIVE_PATH.test(path) || path.startsWith("\\")) return true;
+    if (isAbsolute(path) || COLON_BEFORE_SEPARATOR.test(path) || path.startsWith("\\")) return true;
     const inside = relative(folder, resolve(base, path));
     return (
       inside === ".." || inside.startsWith("../") || inside.startsWith("..\\") || isAbsolute(inside)
