@@ -74,6 +74,10 @@ export async function readPlan(stop?: AbortSignal): Promise<Plan | null> {
 const webBase = () => "https://hyperframes.studio";
 const plansUrl = () => process.env["HYPERFRAMES_PLANS_URL"] || `${webBase()}/pricing`;
 const creditsUrl = () => process.env["HYPERFRAMES_CREDITS_URL"] || `${webBase()}/pricing`;
+const manageUrl = () => process.env["HYPERFRAMES_BILLING_URL"] || `${webBase()}/billing`;
+const PAGES = { plans: plansUrl, credits: creditsUrl, manage: manageUrl };
+
+export const MANAGE_LABEL = "Manage or cancel your plan:";
 
 async function signedInSpace(): Promise<string | undefined> {
   try {
@@ -104,9 +108,9 @@ export function cliCheckoutLink(link: string, skill = checkoutSkill()): string {
   return url.toString();
 }
 
-/** A plans or credits page link with what the web side reads, incl. the signed-in `workspace_hint`. */
+/** A plans, credits or plan-management page link with what the web side reads, incl. the signed-in `workspace_hint`. */
 export async function pageUrl(
-  kind: "plans" | "credits",
+  kind: keyof typeof PAGES,
   fields: {
     needed?: number;
     tool?: string;
@@ -116,7 +120,7 @@ export async function pageUrl(
     base?: string;
   } = {},
 ): Promise<string> {
-  const url = new URL(fields.base ?? (kind === "plans" ? plansUrl() : creditsUrl()));
+  const url = new URL(fields.base ?? PAGES[kind]());
   url.searchParams.set("from", "cli");
   url.searchParams.set("utm_source", "cli");
   const skill = checkoutSkill(fields.skill);

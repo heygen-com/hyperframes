@@ -22,6 +22,7 @@ export default defineConfig({
     backgroundChecksWorker: "src/backgroundChecksWorker.ts",
     sherpaWorker: "src/whisper/sherpaWorker.ts",
     shaderTransitionWorker: "../producer/src/services/shaderTransitionWorker.ts",
+    subCompositionWorker: "../studio-server/src/helpers/subCompositionWorker.ts",
     api: "src/api.ts",
   },
   format: ["esm"],

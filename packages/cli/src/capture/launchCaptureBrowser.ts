@@ -9,6 +9,7 @@ import { settleAcrossNavigation } from "./navigateForCapture.js";
 import {
   browserProxyArgs,
   createPublicOnlyProfile,
+  pageServerDirectHost,
   startCaptureProxy,
 } from "@hyperframes/engine/public-network";
 import { removeTreeBestEffortAsync } from "@hyperframes/core/remove-tree";
@@ -55,7 +56,7 @@ export async function launchCaptureBrowser(options: {
         ...captureBrowserArgs(options.disableWebgl, options.width, options.height),
         ...browserProxyArgs(
           proxy.url,
-          options.localOrigin ? new URL(options.localOrigin).host : undefined,
+          options.localOrigin ? pageServerDirectHost(options.localOrigin) : undefined,
         ),
       ],
     });

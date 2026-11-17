@@ -147,7 +147,11 @@ async function statusOf(
   }
 }
 
-async function compileInProcess(projectDir: string, allowOutsideProjectAssets?: boolean) {
+async function compileInProcess(
+  projectDir: string,
+  allowOutsideProjectAssets?: boolean,
+  includeOutsideScripts?: boolean,
+) {
   const workDir = join(projectDir, "..", "work");
   mkdirSync(workDir, { recursive: true });
   const warnings: string[] = [];
@@ -156,6 +160,7 @@ async function compileInProcess(projectDir: string, allowOutsideProjectAssets?: 
     fps: { num: 30, den: 1 },
     quality: "draft",
     allowOutsideProjectAssets,
+    includeOutsideScripts,
   });
   const cfg = resolveConfig();
   const result = await runCompileStage({
@@ -168,7 +173,8 @@ async function compileInProcess(projectDir: string, allowOutsideProjectAssets?: 
       ...{ projectDir, compiledDir, job, cfg, log, composition: result.composition },
       ...{ abortSignal: undefined, assertNotAborted: () => {} },
     });
-  const serve = () => createFileServer({ projectDir, compiledDir, allowOutsideProjectAssets });
+  const serve = () =>
+    createFileServer({ projectDir, compiledDir, allowOutsideProjectAssets, includeOutsideScripts });
   return { result, compiledDir, extract, serve, warnings };
 }
 
@@ -272,6 +278,36 @@ describe.skipIf(!HAS_FFMPEG)("render servers keep markup inside the project", ()
     ]);
   });
 
+  it("plans copy nothing through top-level links whose names start with two dots", async () => {
+    const { root, projectDir, outsideDir } = outsideProject(false);
+    symlinkSync(join(outsideDir, "secret.png"), join(projectDir, "..x"));
+    symlinkSync(join(outsideDir, "scene.html"), join(projectDir, "..."));
+    symlinkSync(outsideDir, join(projectDir, "..dir"), "dir");
+    const outsideBytes = readdirSync(outsideDir).map((name) =>
+      sha256(readFileSync(join(outsideDir, name))),
+    );
+
+    const planDir = join(root, "plan");
+    await plan(projectDir, config, planDir);
+    const planned = filesUnder(join(planDir, "compiled"));
+    expect(planned.filter((file) => file.startsWith(".."))).toEqual([]);
+    for (const file of planned) {
+      expect(outsideBytes).not.toContain(sha256(readFileSync(join(planDir, "compiled", file))));
+    }
+
+    await planV2(projectDir, config, join(root, "v2"));
+    const artifacts = readPlanV2Manifest(join(root, "v2")).artifacts;
+    expect(artifacts.filter((artifact) => outsideBytes.includes(artifact.sha256))).toEqual([]);
+  });
+
+  it("plans still copy an ordinary project file whose name starts with two dots", async () => {
+    const { root, projectDir } = outsideProject(false);
+    writeFileSync(join(projectDir, "..x"), "IN-PROJECT");
+    const planDir = join(root, "plan");
+    await plan(projectDir, config, planDir);
+    expect(readFileSync(join(planDir, "compiled", "..x"), "utf-8")).toBe("IN-PROJECT");
+  });
+
   it.each(["scene", "entry"] as const)(
     "refuses a symlinked %s that leads outside",
     async (link) => {
@@ -362,6 +398,58 @@ describe.skipIf(!HAS_FFMPEG)("render servers keep markup inside the project", ()
     const linked = symlinkedComposition("scene");
     const { result } = await compileInProcess(linked.projectDir, true);
     expect(result.compiled.html).toContain("OUTSIDE-SCENE");
+  });
+});
+
+function outsideScriptsProject() {
+  const { root, projectDir, outsideDir, secretKey } = outsideProject(false);
+  writeFileSync(join(outsideDir, "tool.js"), "window.OUTSIDE_TOOL = 1;");
+  writeFileSync(join(outsideDir, "tool.mjs"), "export const OUTSIDE_TOOL = 1;");
+  writeFileSync(join(outsideDir, "look.css"), ".x { color: red; }");
+  symlinkSync(join(outsideDir, "tool.mjs"), join(projectDir, "linked.mjs"));
+  const html = readFileSync(join(projectDir, "index.html"), "utf-8").replace(
+    "</head>",
+    `<link rel="stylesheet" href="../outside/look.css"><script src="../outside/tool.js"></script></head>`,
+  );
+  writeFileSync(join(projectDir, "index.html"), html);
+  const key = (file: string) => toExternalAssetKey(join(outsideDir, file));
+  return { root, projectDir, secretKey, tool: key("tool.js"), css: key("look.css") };
+}
+
+describe.skipIf(!HAS_FFMPEG)("outside scripts in a trusted local render", () => {
+  it("are left out with a warning naming the flag, while media and CSS still come in", async () => {
+    const { root, projectDir, secretKey, tool, css } = outsideScriptsProject();
+    const { result, compiledDir, serve, warnings } = await compileInProcess(projectDir, true);
+
+    expect(filesUnder(compiledDir).sort()).toEqual([css, secretKey, "index.html"].sort());
+    expect(result.compiled.html).toContain('src="../outside/tool.js"');
+    expect(warnings.join("\n")).toContain(
+      "index.html references ../outside/tool.js, which is a script outside the project; it was left out of the render. Move it into the project, or pass --include-outside-files to hyperframes render, to run it.",
+    );
+    expect(await statusOf(await serve(), ["/linked.mjs", "/link.png"])).toEqual([404, 200]);
+
+    const planDir = join(root, "plan");
+    await plan(projectDir, config, planDir, { allowOutsideProjectAssets: true });
+    const planned = filesUnder(join(planDir, "compiled"));
+    expect(planned).not.toContain(tool);
+    expect(planned).not.toContain("linked.mjs");
+    expect(planned).toEqual(expect.arrayContaining([css, secretKey, "link.png"]));
+  });
+
+  it("come in with --include-outside-files", async () => {
+    const { root, projectDir, tool } = outsideScriptsProject();
+    const { compiledDir, serve, warnings } = await compileInProcess(projectDir, true, true);
+
+    expect(existsSync(join(compiledDir, tool))).toBe(true);
+    expect(warnings.join("\n")).not.toContain("script outside the project");
+    expect(await statusOf(await serve(), [`/${tool}`, "/linked.mjs"])).toEqual([200, 200]);
+
+    const planDir = join(root, "plan");
+    const included = { allowOutsideProjectAssets: true, includeOutsideScripts: true };
+    await plan(projectDir, config, planDir, included);
+    expect(filesUnder(join(planDir, "compiled"))).toEqual(
+      expect.arrayContaining([tool, "linked.mjs"]),
+    );
   });
 });
 

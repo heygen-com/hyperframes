@@ -80,6 +80,12 @@
       "types": "./dist/atomicFile.d.ts",
       "environments": ["bun", "node"]
     },
+    "./preview-proof": {
+      "source": "./src/previewProof.ts",
+      "runtime": "./dist/previewProof.js",
+      "types": "./dist/previewProof.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./cache-dir": {
       "source": "./src/cacheDir.ts",
       "runtime": "./dist/cacheDir.js",

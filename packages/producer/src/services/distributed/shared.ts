@@ -448,6 +448,7 @@ export interface SyntheticRenderJobInput {
   expectedOutputDimensions?: RenderConfig["expectedOutputDimensions"];
   pageMotionBlur?: RenderConfig["pageMotionBlur"];
   allowOutsideProjectAssets?: boolean;
+  includeOutsideScripts?: boolean;
 }
 
 /**
@@ -479,6 +480,7 @@ export function buildSyntheticRenderJob(input: SyntheticRenderJobInput): RenderJ
     expectedOutputDimensions: input.expectedOutputDimensions,
     pageMotionBlur: input.pageMotionBlur,
     allowOutsideProjectAssets: input.allowOutsideProjectAssets,
+    includeOutsideScripts: input.includeOutsideScripts,
   };
   return createRenderJob(renderConfig);
 }

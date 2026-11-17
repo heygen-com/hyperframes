@@ -171,21 +171,46 @@ describe("registerProjectRoutes — composition discovery (#1384)", () => {
     expect(payload.compositions).not.toContain(".hyperframes/examples/preset.html");
   });
 
-  it("lists vendored dot-directory files in the file tree, but nothing under .hyperframes/ that isn't Studio's", async () => {
+  it("lists no hidden file but Studio's own and the media folder's, nothing under .hyperframes/ that isn't Studio's", async () => {
     const projectDir = createProjectDir();
     writeFileSync(join(projectDir, ".hyperframes", "app-history.jsonl"), "{}");
     writeFileSync(join(projectDir, ".hyperframes", "studio-motion.json"), "{}");
+    writeFileSync(join(projectDir, ".dev.vars"), "TOKEN=x");
+    mkdirSync(join(projectDir, ".pulumi"));
+    writeFileSync(join(projectDir, ".pulumi", "credentials.json"), "{}");
+    mkdirSync(join(projectDir, ".media", "audio"), { recursive: true });
+    writeFileSync(join(projectDir, ".media", "audio", "bgm.wav"), "RIFF");
     const app = new Hono();
     registerProjectRoutes(app, createAdapter(projectDir));
 
     const response = await app.request("http://localhost/projects/demo");
     const payload = (await response.json()) as { files?: string[] };
 
-    // Vendored dot-dirs stay browsable — discovery is gated, the file tree is not.
-    expect(payload.files).toContain(".cache/examples/preset.html");
     expect(payload.files).toContain(".hyperframes/studio-motion.json");
+    expect(payload.files).toContain(".media/audio/bgm.wav");
+    for (const hidden of [".cache/examples/preset.html", ".dev.vars", ".pulumi/credentials.json"])
+      expect(payload.files).not.toContain(hidden);
     for (const hidden of ["examples/preset.html", "backup/snapshot.html", "app-history.jsonl"])
       expect(payload.files).not.toContain(`.hyperframes/${hidden}`);
+  });
+
+  it("lists nothing under a nested project's .hyperframes/", async () => {
+    const projectDir = createProjectDir();
+    const nested = join(projectDir, "compositions", "x");
+    mkdirSync(join(nested, ".hyperframes", "backup"), { recursive: true });
+    writeFileSync(join(nested, "index.html"), COMPOSITION_HTML);
+    writeFileSync(join(nested, ".hyperframes", "app-history.jsonl"), "{}");
+    writeFileSync(join(nested, ".hyperframes", "studio-motion.json"), "{}");
+    writeFileSync(join(nested, ".hyperframes", "backup", "snapshot.html"), COMPOSITION_HTML);
+    const app = new Hono();
+    registerProjectRoutes(app, createAdapter(projectDir));
+
+    const response = await app.request("http://localhost/projects/demo");
+    const payload = (await response.json()) as { files: string[]; compositions: string[] };
+
+    expect(payload.files).toContain("compositions/x/index.html");
+    expect(payload.compositions).toContain("compositions/x/index.html");
+    expect(payload.files.filter((file) => file.includes("/.hyperframes"))).toEqual([]);
   });
 
   it("omits generated cache files from the project file tree", async () => {

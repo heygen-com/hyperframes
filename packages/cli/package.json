@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/cli",
-  "version": "0.9.54",
+  "version": "0.9.60",
   "description": "Make videos with code and AI agents: write HTML, render MP4. Open source.",
   "keywords": [
     "ai-agents",
@@ -50,6 +50,7 @@
     "build:copy": "node scripts/build-copy.mjs",
     "typecheck": "tsc --noEmit",
     "gen:skills-manifest": "tsx scripts/gen-skills-manifest.ts",
+    "pin:chrome": "bun scripts/pin-chrome.ts",
     "gen:agent-dirs": "tsx scripts/sync-agent-dirs.ts",
     "bench:startup": "node scripts/bench-startup.mjs"
   },

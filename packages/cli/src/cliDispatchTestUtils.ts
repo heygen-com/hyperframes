@@ -8,6 +8,7 @@ export function mockTelemetry(
     flushSync?: ReturnType<typeof vi.fn>;
     trackCommandResult?: ReturnType<typeof vi.fn>;
     trackCommandFailure?: ReturnType<typeof vi.fn>;
+    trackCliError?: ReturnType<typeof vi.fn>;
   } = {},
 ): void {
   vi.doMock("./telemetry/index.js", () => ({
@@ -16,7 +17,7 @@ export function mockTelemetry(
     incrementCommandCount: vi.fn(),
     showTelemetryNotice: vi.fn(),
     shouldTrack: () => false,
-    trackCliError: vi.fn(),
+    trackCliError: overrides.trackCliError ?? vi.fn(),
     trackCommand: vi.fn(),
     trackCommandResult: overrides.trackCommandResult ?? vi.fn(),
   }));

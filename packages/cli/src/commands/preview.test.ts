@@ -153,6 +153,7 @@ describe("preview --status reporting", () => {
           projectDir: "/tmp/preview-unverified",
           projectName: "scanned-project",
           version: "test",
+          proven: true,
         },
       ],
       listManaged: async () => [{ pid: null, port: 32600, projectDir: "/tmp/preview-unverified" }],

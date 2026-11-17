@@ -138,7 +138,10 @@ export interface StudioApiAdapter {
    * adapters provide this; the single-file method remains as a compatibility
    * fallback for third-party adapters compiled against older releases.
    */
-  lintProject?: (projectDir: string) => Promise<ProjectLintResult> | ProjectLintResult;
+  lintProject?: (
+    projectDir: string,
+    signal?: AbortSignal,
+  ) => Promise<ProjectLintResult> | ProjectLintResult;
 
   /** URL to the hyperframe runtime JS (injected into preview HTML). */
   runtimeUrl: string;

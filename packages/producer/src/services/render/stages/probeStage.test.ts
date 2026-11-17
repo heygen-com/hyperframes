@@ -402,6 +402,47 @@ describe("hasVariableBoundMedia", () => {
 
     expect(hasVariableBoundMedia(`${declared}${video}</body></html>`, undefined)).toBe(true);
   });
+
+  it("requires a browser probe when an inlined sub-composition declared the default", () => {
+    // Inlining drops a full-document sub-composition's <html data-composition-variables> and the
+    // inner root's data-composition-id; the compiled table, keyed by the host, keeps the merged value.
+    const mount =
+      `<div data-composition-id="card" data-composition-file="compositions/card.html">` +
+      `<div data-hf-inner-root="true"><video id="v" src="placeholder.mp4" data-var-src="src"></video></div>` +
+      `</div>`;
+    const html = `<html><body>${mount}</body></html>`;
+
+    expect(hasVariableBoundMedia(html, undefined, { card: { src: "clip.mp4" } })).toBe(true);
+    expect(hasVariableBoundMedia(html, undefined, { card: { other: "clip.mp4" } })).toBe(false);
+    expect(hasVariableBoundMedia(html, undefined, {})).toBe(false);
+  });
+
+  it("matches a repeated mount through the host's runtime composition id", () => {
+    const mount =
+      `<div data-composition-id="card__hf2" data-hf-original-composition-id="card">` +
+      `<div data-hf-inner-root="true"><video id="v" src="placeholder.mp4" data-var-src="src"></video></div>` +
+      `</div>`;
+
+    expect(
+      hasVariableBoundMedia(`<html><body>${mount}</body></html>`, undefined, {
+        card__hf1: { src: "a.mp4" },
+        card__hf2: { src: "b.mp4" },
+      }),
+    ).toBe(true);
+  });
+
+  it("lets the nearest scope's table entry answer alone, like the runtime", () => {
+    const nested =
+      `<div data-composition-id="outer"><div data-composition-id="inner">` +
+      `<video id="v" src="placeholder.mp4" data-var-src="src"></video></div></div>`;
+    const html = `<html><body>${nested}</body></html>`;
+
+    expect(
+      hasVariableBoundMedia(html, undefined, { outer: { src: "a.mp4" }, inner: { title: "x" } }),
+    ).toBe(false);
+    expect(hasVariableBoundMedia(html, undefined, { outer: { src: "a.mp4" } })).toBe(false);
+    expect(hasVariableBoundMedia(html, undefined, { inner: { src: "b.mp4" } })).toBe(true);
+  });
 });
 
 describe("runProbeStage — forceScreenshot threading", () => {

@@ -13,6 +13,7 @@ import {
   studioSelectionUrl,
 } from "./studioSelectionClient";
 import type { ActiveServer } from "../server/portUtils";
+import { previewConfigPayload } from "../../../studio/vite.preview-config";
 
 const servers: ActiveServer[] = [
   {
@@ -20,6 +21,7 @@ const servers: ActiveServer[] = [
     projectName: "other",
     projectDir: "/tmp/other",
     version: "0.7.17",
+    proven: true,
     pid: null,
   },
   {
@@ -27,12 +29,25 @@ const servers: ActiveServer[] = [
     projectName: "demo project",
     projectDir: "/tmp/demo",
     version: "0.7.17",
+    proven: true,
     pid: "123",
   },
 ];
 
+// The real Studio dev server's answer to the CLI's challenge, started by hand (no launch project).
+function proofResponse(url: string, init?: RequestInit): Response | null {
+  const { hostname, port, pathname } = new URL(url);
+  if (pathname !== "/__hyperframes_config") return null;
+  const headers = init?.headers as Record<string, string> | undefined;
+  const socket = { localAddress: hostname.replace(/^\[|\]$/g, ""), localPort: Number(port) };
+  const answer = previewConfigPayload({}, 1, "dev", { headers, socket } as never);
+  return new Response(JSON.stringify(answer), { status: answer ? 200 : 404 });
+}
+
 function mockProjectsFetch(port = 5190): typeof fetch {
-  return vi.fn(async (url: string | URL | Request) => {
+  return vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+    const proven = proofResponse(String(url), init);
+    if (proven) return proven;
     expect(String(url)).toBe(`http://127.0.0.1:${port}/api/projects`);
     return new Response(
       JSON.stringify({
@@ -61,6 +76,7 @@ describe("studioSelectionClient", () => {
         projectName: "third",
         projectDir: "/tmp/third",
         version: "0.7.17",
+        proven: true,
         pid: null,
       },
     ]);
@@ -119,6 +135,7 @@ describe("studioSelectionClient", () => {
       projectName: "demo project",
       projectDir: "/tmp/demo",
       version: "studio-dev",
+      proven: true,
       pid: null,
     });
   });
@@ -126,8 +143,10 @@ describe("studioSelectionClient", () => {
   it("discovers a Vite Studio that only binds IPv6 loopback ([::1])", async () => {
     const scan = vi.fn(async () => []);
     // Vite binds ::1 only: the IPv4 probe is refused, the IPv6 probe succeeds.
-    const fetchImpl = vi.fn(async (url: string | URL | Request) => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
       const u = String(url);
+      const proven = proofResponse(u, init);
+      if (proven) return proven;
       if (u === "http://127.0.0.1:5190/api/projects") throw new Error("ECONNREFUSED");
       expect(u).toBe("http://[::1]:5190/api/projects");
       return new Response(
@@ -144,6 +163,7 @@ describe("studioSelectionClient", () => {
       projectName: "demo project",
       projectDir: "/tmp/demo",
       version: "studio-dev",
+      proven: true,
       pid: null,
     });
     // Follow-up API calls must target the IPv6 host the server was found on.

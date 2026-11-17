@@ -4,7 +4,11 @@ import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-
 import type { StudioApiAdapter } from "./types.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerFileRoutes } from "./routes/files.js";
-import { PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./routes/preview.js";
+import {
+  PREVIEW_CAPTURE_PARAM,
+  PREVIEW_PROXY_PARAM,
+  registerPreviewRoutes,
+} from "./routes/preview.js";
 import { registerLintRoutes } from "./routes/lint.js";
 import { registerRenderRoutes } from "./routes/render.js";
 import { registerImageThumbnailRoutes } from "./routes/imageThumbnail.js";
@@ -16,6 +20,7 @@ import { registerPeakRoutes } from "./routes/peaks.js";
 import { registerFontRoutes } from "./routes/fonts.js";
 import { registerRegistryRoutes } from "./routes/registry.js";
 import { registerSelectionRoutes } from "./routes/selection.js";
+import { registerRecoveryDraftRoutes } from "./routes/recoveryDrafts.js";
 import { registerMediaRoutes } from "./routes/media.js";
 import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 import { registerHistoryRoutes } from "./routes/history.js";
@@ -29,7 +34,11 @@ import {
 } from "./helpers/requestIdentity.js";
 import { previewErrorPage } from "./helpers/previewErrorPage.js";
 import type { CaptureSandboxOption } from "./helpers/captureLoads.js";
-import { createFrameTokens, serveTokenPreviewPaths } from "./helpers/opaqueFrameLoads.js";
+import {
+  createFrameTokens,
+  loadedThroughFrameToken,
+  serveTokenPreviewPaths,
+} from "./helpers/opaqueFrameLoads.js";
 
 async function answerRefusedFrameWithPage(c: Context, next: Next) {
   await next();
@@ -90,6 +99,13 @@ const sandboxPreviewForAnotherSiteOrCapture =
     if (anotherSite) await markPreviewForAnotherSite(c);
   };
 
+async function refuseProxyWorkForAnotherSite(c: Context, next: Next) {
+  const proxyWork = c.req.query(PREVIEW_PROXY_PARAM) !== undefined;
+  if (proxyWork && fromAnotherSite(c) && !loadedThroughFrameToken(c.req.raw))
+    return c.text("forbidden: media proxy requested by another site", 403);
+  return next();
+}
+
 const refuseForAnotherSite = (what: string) => async (c: Context, next: Next) => {
   if (fromAnotherSite(c))
     return c.json({ error: `forbidden: ${what} requested by another site` }, 403);
@@ -114,6 +130,7 @@ function urlScheme(url: string): string | undefined {
 
 export interface StudioApiOptions extends CaptureSandboxOption {
   allowedHosts?: readonly string[];
+  subCompositionDeadlineMs?: number;
 }
 
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
@@ -128,6 +145,7 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
         () => undefined,
       );
   api.use("/projects/:id/preview/*", serveTokenPreviewPaths(api, frameTokens, resolveProjectId));
+  api.use("/projects/:id/preview/*", refuseProxyWorkForAnotherSite);
   api.use(
     "/projects/:id/preview/*",
     sandboxPreviewForAnotherSiteOrCapture(sandboxThumbnailCaptures),
@@ -141,6 +159,9 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
   api.use("/projects/:id/thumbnail/*", refuseForAnotherSite("thumbnail"));
   api.use("/projects/:id/waveform/*", refuseForAnotherSite("waveform"));
   api.use("/projects/:id/peaks/*", refuseForAnotherSite("peaks"));
+  api.use("/projects/:id/image-thumbnail/*", refuseForAnotherSite("image thumbnail"));
+  api.use("/projects/:id/media/metadata", refuseForAnotherSite("media metadata"));
+  api.use("/projects/:id/lint", refuseForAnotherSite("lint"));
   // This API is unauthenticated and simple cross-origin POSTs need no
   // preflight, so the guard rejects writes the shared predicate refuses.
   api.use(async function rejectCrossOriginWrites(c, next) {
@@ -213,12 +234,20 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
 
   registerProjectRoutes(api, adapter);
   registerFileRoutes(api, adapter);
-  registerPreviewRoutes(api, adapter, { sandboxThumbnailCaptures });
+  registerPreviewRoutes(api, adapter, {
+    sandboxThumbnailCaptures,
+    subCompositionDeadlineMs: options.subCompositionDeadlineMs,
+  });
   registerLintRoutes(api, adapter);
   registerRenderRoutes(api, adapter);
-  registerThumbnailRoutes(api, adapter);
+  registerThumbnailRoutes(
+    api,
+    adapter,
+    sandboxThumbnailCaptures ? frameTokens.tokenFor : undefined,
+  );
   registerImageThumbnailRoutes(api, adapter);
   registerSelectionRoutes(api, adapter);
+  registerRecoveryDraftRoutes(api, adapter);
   registerMediaRoutes(api, adapter);
   registerWaveformRoutes(api, adapter);
   registerFreezeFrameRoutes(api, adapter);

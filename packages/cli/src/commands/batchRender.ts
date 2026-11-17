@@ -1,5 +1,5 @@
 import { failCommand } from "../utils/commandResult.js";
-import { writeFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -87,6 +87,7 @@ interface RunBatchRenderOptions {
 }
 
 const PLACEHOLDER_RE = /\{([A-Za-z0-9_.-]+)\}/g;
+const ROWS_NAME_WHOLE_OUTPUT_PATH = "{path}";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -160,9 +161,11 @@ function folderOfPrefix(prefix: string): string {
 }
 
 function checkOutputsInsideTemplateFolder(rows: readonly PreparedBatchRow[], template: string) {
+  if (template === ROWS_NAME_WHOLE_OUTPUT_PATH) return;
   const firstPlaceholder = template.search(PLACEHOLDER_RE);
-  if (firstPlaceholder <= 0) return;
-  const folder = folderOfPrefix(template.slice(0, firstPlaceholder));
+  if (firstPlaceholder < 0) return;
+  const folder =
+    firstPlaceholder === 0 ? resolve() : folderOfPrefix(template.slice(0, firstPlaceholder));
   for (const row of rows) {
     const rel = relative(folder, row.outputPath);
     const outside = rel === "" || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
@@ -345,7 +348,7 @@ function summarizeManifest(manifest: BatchManifest): void {
 function writeManifest(manifest: BatchManifest): void {
   summarizeManifest(manifest);
   makeOutputFolder(dirname(manifest.manifestPath));
-  writeFileSync(manifest.manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
+  replaceFileAtomically(manifest.manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 }
 
 async function renderBatchRow(

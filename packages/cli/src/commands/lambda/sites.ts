@@ -30,11 +30,12 @@ export async function runSitesCreate(args: SitesCreateArgs): Promise<void> {
   const stack = requireStack(args.stackName);
   const projectDir = resolvePath(args.projectDir);
 
-  const { assertStackReadsSites, deploySite } = await loadSDK();
+  const { assertStackReadsSites, deploySite, parseStateMachineArn } = await loadSDK();
   await assertStackReadsSites({ stateMachineArn: stack.stateMachineArn, region: stack.region });
   const handle = await deploySite({
     projectDir,
     bucketName: stack.bucketName,
+    expectedBucketOwner: parseStateMachineArn(stack.stateMachineArn).account,
     region: stack.region,
     siteId: args.siteId,
     onNotice: (message) => console.error(c.dim(message)),

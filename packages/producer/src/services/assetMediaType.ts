@@ -4,7 +4,9 @@ import {
   fingerprintElementId,
   isHttpUrl,
   isInsideAssetRoots,
+  isNotImagePayload,
   isNotMediaPayload,
+  isPrivateUnderAssetRoots,
   playlistLeavesItsFolder,
   NotMediaPayloadError,
   probeMediaProfile,
@@ -97,7 +99,7 @@ export function mediaAssetRoots(projectDir: string, compiledDir: string): string
   return [projectDir, compiledDir, join(dirname(compiledDir), "downloads")];
 }
 
-/** Treats local media outside the project, compiled and download dirs as missing: no probe or extraction opens it. */
+/** Treats local media outside the project, compiled and download dirs, or private there, as missing: none is opened. */
 export function dropMediaOutsideProject(input: {
   projectDir: string;
   workDir: string;
@@ -111,6 +113,10 @@ export function dropMediaOutsideProject(input: {
   const staysInside = ({ id, src }: { id: string; src: string }) => {
     if (!src || isHttpUrl(src)) return true;
     const path = resolveProjectRelativeSrc(src, projectDir, compiledDir);
+    if (isPrivateUnderAssetRoots(path, roots)) {
+      log.warn(`[Render] Media "${id}" source is missing: it is a private project file`, { src });
+      return false;
+    }
     if (isInsideAssetRoots(path, roots)) return true;
     if (input.allowOutsideProjectAssets) {
       const refusal = outsideAssetRefusal(projectDir, path);
@@ -126,13 +132,15 @@ export function dropMediaOutsideProject(input: {
 }
 
 // STUDIO-5433: the one place every local src is seen whatever its timing. Documents are refused under <video> only
-// (an <img> may be SVG, a bad audio track is per-element in audioMixer); a playlist leaving its folder, under any.
+// (a bad audio track is per-element in audioMixer), and non-SVG markup or JSON under <img>; a leaving playlist, under any.
 async function notMediaReferences(
   path: string,
   references: MediaReference[],
 ): Promise<MediaReference[]> {
   const videos = references.filter((ref) => ref.expected === "video");
   if (videos.length > 0 && (await isNotMediaPayload(path))) return videos;
+  const images = references.filter((ref) => ref.expected === "image");
+  if (images.length > 0 && (await isNotImagePayload(path))) return images;
   return (await playlistLeavesItsFolder(path)) ? references : [];
 }
 

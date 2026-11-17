@@ -298,7 +298,11 @@ export function createRenderRequest(input: CreateRenderRequestInput): RenderRequ
 
 export function renderConfigFromRequest(
   request: RenderRequest,
-  runtime: { logger?: ProducerLogger; allowOutsideProjectAssets?: boolean } = {},
+  runtime: {
+    logger?: ProducerLogger;
+    allowOutsideProjectAssets?: boolean;
+    includeOutsideScripts?: boolean;
+  } = {},
 ): RenderConfig {
   const { engineConfig, distributed: _distributed, ...options } = request.options;
   return {
@@ -306,6 +310,7 @@ export function renderConfigFromRequest(
     producerConfig: engineConfig,
     logger: runtime.logger,
     allowOutsideProjectAssets: runtime.allowOutsideProjectAssets === true,
+    includeOutsideScripts: runtime.includeOutsideScripts === true,
   };
 }
 

@@ -59,7 +59,14 @@ import {
 } from "@hyperframes/core";
 import { HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import type { CompileForRenderOptions } from "./htmlCompiler.js";
-import { HTML_BODY_CSS_HEIGHT_FIRST_RE, HTML_BODY_CSS_WIDTH_FIRST_RE } from "@hyperframes/parsers";
+import {
+  countCompositionSrcMounts,
+  countTagsWithAttr,
+  countedTagNames,
+  firstCompositionIdTag,
+  removeScriptAndStyleBlocks,
+} from "./htmlTagScans.js";
+import { matchHtmlBodyCssHeightFirst, matchHtmlBodyCssWidthFirst } from "@hyperframes/parsers";
 import {
   type EngineConfig,
   extractMediaMetadata,
@@ -156,6 +163,8 @@ import {
   type MemorySampler,
   reportExtractProgress,
   updateJobStatus,
+  audioWaitReporter,
+  AUDIO_STAGE,
   audioWorkDir,
 } from "./render/shared.js";
 import { frameCacheOptions } from "./render/frameCacheBudget.js";
@@ -444,6 +453,7 @@ export interface RenderConfig {
   /** Entry HTML file relative to projectDir. Defaults to "index.html". */
   entryFile?: string;
   allowOutsideProjectAssets?: CompileForRenderOptions["allowOutsideProjectAssets"];
+  includeOutsideScripts?: CompileForRenderOptions["includeOutsideScripts"];
   /** Full producer config. When provided, env vars are not read. */
   producerConfig?: EngineConfig;
   /** Custom logger. Defaults to console-based defaultLogger. */
@@ -1742,12 +1752,9 @@ export interface ElementTagScan {
 }
 
 const MAX_REPORTED_ELEMENT_TAGS = 50;
+const MAX_SCRIPT_STYLE_STRIP_PASSES = 8;
 /** none < self < backdrop — mirrors @hyperframes/core vfx.ts's internal CAPTURE_RANK, duplicated here (not exported) to combine per-host captures across an entire composition's static scan. */
 const VFX_CAPTURE_RANK: Record<HfVfxCapture, number> = { none: 0, self: 1, backdrop: 2 };
-
-/** First element carrying data-composition-id, the same root marker other `[data-composition-id]` queries here use. */
-const ROOT_COMPOSITION_TAG_RE =
-  /<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\bdata-composition-id=["'][^"']*["'][^>]*>/i;
 
 function bucketPxDelta(delta: number): NonNullable<ElementTagScan["rootBodyDeltaPxBucket"]> {
   if (delta === 0) return "0";
@@ -1762,15 +1769,16 @@ function bucketPxDelta(delta: number): NonNullable<ElementTagScan["rootBodyDelta
 function detectRootBodySizeMismatch(
   html: string,
 ): Pick<ElementTagScan, "rootBodyMismatch" | "rootBodyDeltaPxBucket"> {
-  const rootTag = html.match(ROOT_COMPOSITION_TAG_RE)?.[0];
+  // The first element carrying data-composition-id, the root marker other queries here use.
+  const rootTag = firstCompositionIdTag(html);
   const dataWidth = rootTag && Number(rootTag.match(/\bdata-width=["'](\d+)["']/i)?.[1]);
   const dataHeight = rootTag && Number(rootTag.match(/\bdata-height=["'](\d+)["']/i)?.[1]);
   if (!dataWidth || !dataHeight) return {};
 
   // Groups 1 and 3 are prefix text for applyResolutionPreset's in-place
   // replace; this read-only comparison only needs the digit groups (2 and 4).
-  const widthFirst = html.match(HTML_BODY_CSS_WIDTH_FIRST_RE);
-  const heightFirst = widthFirst ? undefined : html.match(HTML_BODY_CSS_HEIGHT_FIRST_RE);
+  const widthFirst = matchHtmlBodyCssWidthFirst(html);
+  const heightFirst = widthFirst ? undefined : matchHtmlBodyCssHeightFirst(html);
   const [cssWidth, cssHeight] = widthFirst
     ? [Number(widthFirst[2]), Number(widthFirst[4])]
     : heightFirst
@@ -1839,20 +1847,24 @@ export function scanElementTags(html: string): ElementTagScan {
   // CodeQL flags as incomplete multi-character sanitization. The impact here
   // is nil — the stripped string is counted and discarded, never rendered —
   // but the incompleteness is real, and a stray reformed tag would perturb
-  // the count this gate reads. Converges: every iteration strictly shortens
-  // the string or changes nothing and exits.
+  // the count this gate reads. Each pass takes time linear in the markup, and
+  // the loop stops after MAX_SCRIPT_STYLE_STRIP_PASSES passes. Only a tag
+  // re-formed from pieces nested more deeply than that stops short of the
+  // fixed point, which no real composition does.
   let markup = html;
-  for (let previous = ""; markup !== previous; ) {
+  for (
+    let previous = "", pass = 0;
+    markup !== previous && pass < MAX_SCRIPT_STYLE_STRIP_PASSES;
+    pass++
+  ) {
     previous = markup;
-    markup = markup.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, "");
+    markup = removeScriptAndStyleBlocks(markup);
   }
   let total = 0;
   const counts = new Map<string, number>();
-  for (const m of markup.matchAll(
-    /<\/([a-zA-Z][-a-zA-Z0-9]*)|<(img|br|hr|input|source|track|area|base|col|embed|link|meta|param|wbr)\b|<([a-zA-Z][-a-zA-Z0-9]*)\b[^>]*\/>/gi,
-  )) {
+  for (const name of countedTagNames(markup)) {
     total++;
-    const tag = (m[1] ?? m[2] ?? m[3] ?? "").toLowerCase();
+    const tag = name.toLowerCase();
     counts.set(tag, (counts.get(tag) ?? 0) + 1);
   }
   const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
@@ -1871,14 +1883,16 @@ export function scanElementTags(html: string): ElementTagScan {
   // gate), but this count is scoped to <video> only, matching its name: a-roll
   // is a video-editing term for primary-take footage, and every real usage in
   // this codebase's fixtures stamps it on video elements.
-  const arollVideoCount =
-    markup.match(/<video\b[^>]*\bdata-aroll=["']true["'][^>]*>/gi)?.length ?? 0;
+  const arollVideoCount = countTagsWithAttr(markup, "video", `\\bdata-aroll=["']true["']`);
   // `data-media-source="heygen"` is the media-use skill's own provenance
   // stamp (see resolve.md), written only when the mounted video's ledger
   // record traces to the "heygen.video" provider — never any other provider
   // or value, so a plain presence check is exact, not a substring guess.
-  const heygenVideoCount =
-    markup.match(/<video\b[^>]*\bdata-media-source=["']heygen["'][^>]*>/gi)?.length ?? 0;
+  const heygenVideoCount = countTagsWithAttr(
+    markup,
+    "video",
+    `\\bdata-media-source=["']heygen["']`,
+  );
   // Uncapped `counts` Map, not `byTag`: 50+ distinct tags could push these
   // into the "other" bucket, zeroing a named field the cap shouldn't affect.
   const audioCount = counts.get("audio") ?? 0;
@@ -1887,9 +1901,7 @@ export function scanElementTags(html: string): ElementTagScan {
   // Not collectSubCompositionSrcs (@hyperframes/parsers/asset-resolution):
   // that dedupes by src and drops placeholder/remote mounts, so its length is
   // distinct resolvable sub-comps, not this field's mount-element count.
-  const subCompositionCount =
-    markup.match(/<[a-zA-Z][-a-zA-Z0-9]*\b[^>]*\bdata-composition-src=["'][^"']*["']/gi)?.length ??
-    0;
+  const subCompositionCount = countCompositionSrcMounts(markup);
   let colorGradingCount = 0;
   let hasLut = false;
   for (const m of markup.matchAll(
@@ -3733,10 +3745,11 @@ async function executeRenderPipeline(input: {
     });
 
     // ── Stage 3: Audio processing ───────────────────────────────────────
-    updateJobStatus(job, "preprocessing", "Processing audio tracks", 20, onProgress, {
+    updateJobStatus(job, "preprocessing", AUDIO_STAGE, 20, onProgress, {
       code: "process_audio",
     });
 
+    const audioWait = audioWaitReporter(job, onProgress);
     const audioStage = observeRenderStage(
       observability,
       "audio_process",
@@ -3757,6 +3770,7 @@ async function executeRenderPipeline(input: {
           assertNotAborted,
           log,
           keepDeliverySource: true,
+          onFfmpegProgress: audioWait.progressed,
         }),
     );
     pendingAudio = audioStage.catch(() => undefined);
@@ -3783,6 +3797,7 @@ async function executeRenderPipeline(input: {
           preHeadScripts: [VIRTUAL_TIME_SHIM],
           fps: job.config.fps,
           allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+          includeOutsideScripts: job.config.includeOutsideScripts,
         });
         assertNotAborted();
         observability.stageEnd("file_server", fileServerStart);
@@ -4924,7 +4939,7 @@ async function executeRenderPipeline(input: {
     const effectiveQuality = job.config.crf ?? preset.quality;
     const effectiveBitrate = job.config.crf != null ? undefined : job.config.videoBitrate;
 
-    const audioResult = await audioStage;
+    const audioResult = await audioWait.wait(audioStage);
     const { audioOutputPath, deliverySourcePath, hasAudio } = audioResult;
     perfStages.audioProcessMs = audioResult.audioProcessMs;
     recordLimiterAttenuation(job, audioResult.audioLoweredDb);

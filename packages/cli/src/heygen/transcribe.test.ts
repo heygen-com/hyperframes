@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
@@ -70,6 +70,28 @@ describe("HeyGen transcription", () => {
     });
     expect(JSON.parse(readFileSync(out, "utf8"))).toHaveLength(2);
   });
+
+  it.skipIf(!ffmpeg)(
+    "replaces a link at transcript.json instead of writing through it",
+    async () => {
+      const audio = join(dir, "c.wav");
+      execFileSync(ffmpeg!, ["-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=300:d=1", audio]);
+      vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ data: job })));
+      const outside = mkdtempSync(join(tmpdir(), "hf-heygen-outside-"));
+      const target = join(outside, "profile");
+      writeFileSync(target, "keep me\n");
+      mkdirSync(join(dir, "linked"));
+      const out = join(dir, "linked", "transcript.json");
+      symlinkSync(target, out);
+      try {
+        await transcribeWithHeygen(audio, out);
+        expect(readFileSync(target, "utf8")).toBe("keep me\n");
+        expect(JSON.parse(readFileSync(out, "utf8"))).toHaveLength(2);
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    },
+  );
 
   it.skipIf(!ffmpeg)("logs the job in the project, wherever the transcript goes", async () => {
     const audio = join(dir, "a.wav");

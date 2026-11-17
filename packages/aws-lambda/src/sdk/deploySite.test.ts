@@ -45,6 +45,18 @@ const HTML = "<html><body>hi</body></html>";
 const CSS = "body { color: red; }";
 
 describe("deploySite", () => {
+  it("names expectedBucketOwner as the bucket's owner on every request", async () => {
+    const s3 = new FakeS3();
+    await deploySite({
+      projectDir,
+      bucketName: "test-bucket",
+      expectedBucketOwner: "123456789012",
+      s3: asS3Client(s3),
+    });
+    expect(s3.ops.length).toBeGreaterThan(0);
+    expect(s3.ops.filter((op) => op.owner !== "123456789012")).toEqual([]);
+  });
+
   it("uploads each file once under its content hash, then the site manifest", async () => {
     const s3 = new FakeS3();
     const result = await deploySite({

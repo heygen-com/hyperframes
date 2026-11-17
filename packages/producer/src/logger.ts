@@ -1,7 +1,7 @@
 /**
  * Pluggable Producer Logger
  *
- * Lightweight pluggable logger with zero dependencies.
+ * Lightweight pluggable logger.
  * Default implementation writes to console with level filtering.
  *
  * All levels write to stderr (console.error/console.warn), never stdout —
@@ -13,6 +13,8 @@
  * Users can provide their own logger (e.g. Winston, Pino) by
  * implementing the ProducerLogger interface.
  */
+
+import { terminalText } from "@hyperframes/core";
 
 export type LogLevel = "error" | "warn" | "info" | "debug";
 
@@ -62,27 +64,27 @@ export function createConsoleLogger(level: LogLevel = "info"): ProducerLogger {
   const shouldLog = (msgLevel: LogLevel): boolean => LOG_LEVEL_PRIORITY[msgLevel] <= threshold;
 
   const formatMeta = (meta?: Record<string, unknown>): string =>
-    meta ? ` ${JSON.stringify(meta)}` : "";
+    meta ? ` ${terminalText(JSON.stringify(meta))}` : "";
 
   return {
     error(message, meta) {
       if (shouldLog("error")) {
-        console.error(`[ERROR] ${message}${formatMeta(meta)}`);
+        console.error(`[ERROR] ${terminalText(message)}${formatMeta(meta)}`);
       }
     },
     warn(message, meta) {
       if (shouldLog("warn")) {
-        console.warn(`[WARN] ${message}${formatMeta(meta)}`);
+        console.warn(`[WARN] ${terminalText(message)}${formatMeta(meta)}`);
       }
     },
     info(message, meta) {
       if (shouldLog("info")) {
-        console.error(`[INFO] ${message}${formatMeta(meta)}`);
+        console.error(`[INFO] ${terminalText(message)}${formatMeta(meta)}`);
       }
     },
     debug(message, meta) {
       if (shouldLog("debug")) {
-        console.error(`[DEBUG] ${message}${formatMeta(meta)}`);
+        console.error(`[DEBUG] ${terminalText(message)}${formatMeta(meta)}`);
       }
     },
     isLevelEnabled(msgLevel) {

@@ -43,6 +43,7 @@ import { privateCacheRoot, type ChromaSubsampling, type EngineConfig } from "@hy
 import { suggestMatchingPreset, type CanvasResolution } from "@hyperframes/core";
 import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
+import { assertCompositionFileSize } from "../../compositionSizeLimit.js";
 import type { CompiledComposition } from "../../htmlCompiler.js";
 import { compileForRender } from "../../htmlCompiler.js";
 import type { ProducerLogger } from "../../../logger.js";
@@ -186,6 +187,7 @@ export function resolveEntryHtmlPath(input: {
         `Entry file "${relative(projectDir, path)}" leads outside the project folder`,
       );
     }
+    assertCompositionFileSize(path, relative(projectDir, path));
     return readTextFile(path);
   };
   const htmlPath = join(projectDir, entryFile);
@@ -262,6 +264,7 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     animatedGifCacheDir: animatedGifCacheDir(cfg.extractCacheDir),
     ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
     allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+    includeOutsideScripts: job.config.includeOutsideScripts,
   });
   assertNotAborted();
   const compileOnlyMs = Date.now() - compileStart;

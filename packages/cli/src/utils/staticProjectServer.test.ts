@@ -729,6 +729,28 @@ describe("serveStaticProjectHtml private project files", () => {
   );
 });
 
+describe("serveStaticProjectHtml credential files", () => {
+  it.each([".npmrc", ".mcp.json", ".claude/x.json", ".aws/credentials", "id_ed25519", "cert.pem"])(
+    "answers %s with 404",
+    async (requestPath) => {
+      dir = mkdtempSync(join(tmpdir(), "hf-static-credentials-"));
+      for (const folder of [".claude", ".aws"]) mkdirSync(join(dir, folder));
+      for (const file of [".npmrc", ".mcp.json", ".claude/x.json", ".aws/credentials"]) {
+        writeFileSync(join(dir, file), "SECRET=1");
+      }
+      writeFileSync(join(dir, "id_ed25519"), "SECRET=1");
+      writeFileSync(join(dir, "cert.pem"), "SECRET=1");
+      writeFileSync(join(dir, "asset.txt"), "ok");
+      server = await serveStaticProjectHtml(dir, "<html></html>");
+
+      const res = await fetch(`${server.url}${requestPath}`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain("SECRET");
+      expect((await fetch(`${server.url}asset.txt`)).status).toBe(200);
+    },
+  );
+});
+
 describe("serveStaticProjectHtml page another site loads", () => {
   const MARK = '<meta name="hyperframes-preview-for-another-site">';
   const SANDBOX = "sandbox allow-scripts";

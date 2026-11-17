@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { constants } from "node:fs";
 import { open as openFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 
 export const NOT_MEDIA_PAYLOAD = "NOT_MEDIA_PAYLOAD" as const;
 
@@ -53,6 +54,14 @@ export class NotMediaPayloadError extends Error {
     );
     this.name = "NotMediaPayloadError";
     this.elementFingerprints = elementFingerprints;
+  }
+}
+
+/** A file ffmpeg reads as text art, which it would draw into video frames. */
+export class TextArtMediaError extends NotMediaPayloadError {
+  constructor() {
+    super([]);
+    this.message = "Media source is a text file, not a media container";
   }
 }
 
@@ -115,13 +124,17 @@ async function openRegular(path: string | Buffer): Promise<FileHandle | null> {
   return null;
 }
 
-/** Read up to {@link SNIFF_BYTES} from the front of the file, with its length; null when it is not a regular file. */
+/** Read up to {@link SNIFF_BYTES} from where ffmpeg starts reading (past ID3v2 tags), with the length from there; null when it is not a regular file or its tags never end. */
 async function readHead(filePath: string): Promise<{ head: Buffer; fileSize: number } | null> {
   const fh = await openRegular(filePath);
   if (!fh) return null;
   try {
     const { size } = await fh.stat();
-    return { head: await readAt(fh, SNIFF_BYTES, 0), fileSize: size };
+    const first = await readAt(fh, SNIFF_BYTES, 0);
+    const start = await textStart(fh, first);
+    if (start < 0) return null;
+    const head = start === 0 ? first : await readAt(fh, SNIFF_BYTES, start);
+    return { head, fileSize: size - start };
   } finally {
     await fh.close().catch(() => {});
   }
@@ -225,11 +238,84 @@ export async function assertMediaPayload(filePath: string, elementId: string): P
   }
 }
 
+const IMAGE_SNIFF_BYTES = 64 * 1024;
+function withoutLeadingBlanks(text: string): string {
+  let at = 0;
+  while (at < text.length && (text[at] === "\0" || /\s/.test(text[at]!))) at++;
+  return text.slice(at);
+}
+
+/** The head as text: UTF-16 behind its byte order mark is decoded, anything else read byte per character. */
+function headText(head: Buffer): string {
+  const [first, second] = head;
+  if (first === 0xff && second === 0xfe) return head.subarray(2).toString("utf16le");
+  if (first === 0xfe && second === 0xff) {
+    return Buffer.from(head.subarray(2, head.length - (head.length % 2)))
+      .swap16()
+      .toString("utf16le");
+  }
+  return head.toString("latin1", byteOrderMarkLength(head));
+}
+
+function afterMarker(text: string, from: number, end: string): string | null {
+  const at = text.indexOf(end, from);
+  return at < 0 ? null : text.slice(at + end.length);
+}
+
+/** The text after a doctype, whose internal subset in brackets may itself hold `>`. */
+function afterDoctype(text: string): string | null {
+  for (let at = 9; at < text.length; at++) {
+    if (text[at] === ">") return text.slice(at + 1);
+    if (text[at] === "[") at = text.indexOf("]", at);
+    if (at < 0) return null;
+  }
+  return null;
+}
+
+/** The text after one leading prolog, comment or doctype; null when none opens it or it never ends. */
+function afterProlog(text: string): string | null {
+  if (text.startsWith("<?")) return afterMarker(text, 2, "?>");
+  if (text.startsWith("<!--")) return afterMarker(text, 4, "-->");
+  return /^<!doctype\b/i.test(text) ? afterDoctype(text) : null;
+}
+
+/** Whether markup opens as an SVG; a prolog that runs past the window of a longer file is given the benefit of the doubt. */
+function opensWithSvgRoot(markup: string, complete: boolean): boolean {
+  let rest = withoutLeadingBlanks(markup);
+  for (let next = afterProlog(rest); next !== null; next = afterProlog(rest)) {
+    rest = withoutLeadingBlanks(next);
+  }
+  return /^<svg[\s/>]/i.test(rest) || (!complete && /^<[?!]/.test(rest));
+}
+
+/**
+ * True when an `<img>` src opens as JSON or markup other than an SVG image, after the ID3v2 tags, byte order mark
+ * and blanks ffmpeg and a browser skip. A binary image passes. Like {@link isNotMediaPayload}, never throws.
+ */
+export async function isNotImagePayload(filePath: string): Promise<boolean> {
+  try {
+    const fh = await openRegular(filePath);
+    if (!fh) return true;
+    try {
+      const start = await textStart(fh, await readAt(fh, SNIFF_BYTES, 0));
+      if (start < 0) return true;
+      const head = await readAt(fh, IMAGE_SNIFF_BYTES, start);
+      const text = withoutLeadingBlanks(headText(head));
+      if (text.startsWith("{") || text.startsWith("[")) return true;
+      return text.startsWith("<") && !opensWithSvgRoot(text, head.length < IMAGE_SNIFF_BYTES);
+    } finally {
+      await fh.close().catch(() => {});
+    }
+  } catch {
+    return false;
+  }
+}
+
 const MAX_PLAYLIST_BYTES = 8 * 1024 * 1024;
 const MAX_PLAYLIST_DEPTH = 8;
 const HTTP_URL = /^https?:\/\//i;
-const OTHER_SCHEME = /^[a-z][a-z0-9+.-]+:/i;
-const DRIVE_PATH = /^[a-z]:[\\/]/i;
+const COLON_IN_FIRST_SEGMENT = /^[^/\\?#]*:/;
+const FOLDER_CUT_AT_QUERY_OR_FRAGMENT = /[?#]/;
 
 // ffmpeg reads a playlist line into a 4096-byte buffer and drops the rest of it.
 const MAX_HLS_LINE_BYTES = 4095;
@@ -303,9 +389,10 @@ function playlistEntries(text: string): string[] | undefined {
 
 function entryLeavesFolder(entry: string, base: string, folder: string): boolean {
   if (HTTP_URL.test(entry)) return false;
-  if (OTHER_SCHEME.test(entry) && !DRIVE_PATH.test(entry)) return true;
+  if (FOLDER_CUT_AT_QUERY_OR_FRAGMENT.test(base)) return true;
   return [entry, percentDecoded(entry)].some((path) => {
-    if (isAbsolute(path) || DRIVE_PATH.test(path) || path.startsWith("\\")) return true;
+    if (COLON_IN_FIRST_SEGMENT.test(path)) return true;
+    if (isAbsolute(path) || path.startsWith("\\")) return true;
     const inside = relative(folder, resolve(base, path));
     return (
       inside === ".." || inside.startsWith("../") || inside.startsWith("..\\") || isAbsolute(inside)
@@ -330,7 +417,7 @@ interface Walk {
 }
 
 /**
- * True for an HLS or ffconcat list naming a file outside its folder; ffmpeg would open it. Never throws.
+ * True for an HLS or ffconcat list naming a file outside its folder or private in it; ffmpeg would open it.
  * `placedAt` is where the file will live when it is read from elsewhere first (a download not yet published).
  */
 export async function playlistLeavesItsFolder(
@@ -371,6 +458,13 @@ async function textStart(fh: FileHandle, first: Buffer): Promise<number> {
   return -1;
 }
 
+// Encrypted segments and keys open with random bytes, so only a real document signature counts.
+const MANIFEST_SIGNATURE = /^<(\?xml|MPD\b|!DOCTYPE|html\b|SmoothStreamingMedia\b)/i;
+
+function opensAsManifest(head: Buffer): boolean {
+  return MANIFEST_SIGNATURE.test(withoutLeadingBlanks(headText(head)));
+}
+
 function startsAsPlaylist(head: Buffer): boolean {
   const text = head
     .toString("utf8")
@@ -379,15 +473,16 @@ function startsAsPlaylist(head: Buffer): boolean {
   return text.startsWith("#EXTM3U") || /^ffconcat\s+version/i.test(text);
 }
 
-/** The list's text as latin1, null when the file is not a list, true when it must be refused unread. One open. */
-async function readList(path: string): Promise<string | null | true> {
+/** The list's text as latin1, null when the file is not a list, true when it must be refused unread (a document, when `nested`). One open. */
+async function readList(path: string, nested: boolean): Promise<string | null | true> {
   const fh = await openRegular(Buffer.from(path, "latin1"));
   if (!fh) return true;
   try {
     const first = await readAt(fh, SNIFF_BYTES, 0);
     const start = await textStart(fh, first);
     if (start < 0) return true;
-    if (!startsAsPlaylist(start === 0 ? first : await readAt(fh, SNIFF_BYTES, start))) return null;
+    const head = start === 0 ? first : await readAt(fh, SNIFF_BYTES, start);
+    if (!startsAsPlaylist(head)) return nested && opensAsManifest(head) ? true : null;
     const body = await readAt(fh, MAX_PLAYLIST_BYTES + 1, start);
     return body.length > MAX_PLAYLIST_BYTES ? true : body.toString("latin1");
   } finally {
@@ -407,7 +502,7 @@ async function listLeaves(
   walk: Walk,
   depth: number,
 ): Promise<boolean> {
-  const text = await readList(readPath).catch((error: unknown) =>
+  const text = await readList(readPath, depth > 0).catch((error: unknown) =>
     depth > 0 && !isMissing(error) ? true : null,
   );
   if (text === null) return false;
@@ -430,6 +525,7 @@ async function entryLeaves(
   if (HTTP_URL.test(entry)) return false;
   for (const local of new Set([entry, percentDecoded(entry)])) {
     const nested = resolve(base, local);
+    if (isPrivateFileUnder(walk.folder, nested, isStudioPrivatePath)) return true;
     let verdict = walk.verdicts.get(nested);
     if (verdict === undefined) {
       verdict = await listLeaves(nested, nested, walk, depth + 1);

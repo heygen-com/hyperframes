@@ -1,5 +1,5 @@
+import { terminalText } from "@hyperframes/core";
 import { formatFindingTimes } from "./checkFindings.js";
-import { terminalText } from "./terminalText.js";
 export interface LayoutRect {
   left: number;
   top: number;
@@ -158,7 +158,7 @@ export function formatLayoutIssue(issue: LayoutIssue): string {
   }
   const parts = [
     timeLabel,
-    issue.code,
+    terminalText(issue.code),
     terminalText(issue.selector),
     issue.containerSelector ? `inside ${terminalText(issue.containerSelector)}` : "",
     issue.overflow ? `overflowed ${formatOverflow(issue.overflow)}` : "",

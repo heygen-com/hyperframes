@@ -35,6 +35,7 @@ import { createEnvelopeWalker } from "./audioVolumeEnvelope.js";
 import { riffChunks, wavFormatTag } from "./wavChunks.js";
 import { windowPrerollSeconds } from "./audioFxWarmup.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
+import { terminalText } from "@hyperframes/core";
 
 export class AudioFxRenderError extends Error {
   constructor(message: string) {
@@ -424,7 +425,9 @@ function chainPrerollSeconds(
   );
   if (capped) {
     console.warn(
-      `Audio FX for track ${trackId}: the chain remembers longer than the ${limits.maxPrerollSeconds}s pre-roll cap, so its oldest repeats are cut at window seams`,
+      terminalText(
+        `Audio FX for track ${trackId}: the chain remembers longer than the ${limits.maxPrerollSeconds}s pre-roll cap, so its oldest repeats are cut at window seams`,
+      ),
     );
   }
   return seconds;

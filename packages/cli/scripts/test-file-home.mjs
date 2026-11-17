@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll } from "vitest";
 
+const previousUmask = process.umask(0o022);
 const home = mkdtempSync(join(tmpdir(), "hf-test-file-home-"));
 process.env.HOME = process.env.USERPROFILE = home;
-afterAll(() => rmSync(home, { recursive: true, force: true }));
+afterAll(() => {
+  process.umask(previousUmask);
+  rmSync(home, { recursive: true, force: true });
+});

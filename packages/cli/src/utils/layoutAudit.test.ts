@@ -180,6 +180,16 @@ describe("layoutAudit helpers", () => {
     expect(formatted).toContain("\n    Fix: pad \\x1b]52;c;Y2xpcA==\\x07");
   });
 
+  it("shows control characters in an issue code from the page as visible escapes", () => {
+    const formatted = formatLayoutIssue({
+      ...issue("text_box_overflow", "error"),
+      code: "text_box_overflow\u001b]52;c;Y2xpcA==\u0007" as LayoutIssue["code"],
+    });
+
+    expect(formatted).not.toContain("\u001b");
+    expect(formatted).toContain("text_box_overflow\\x1b]52;c;Y2xpcA==\\x07");
+  });
+
   it("formats collapsed issue time ranges", () => {
     const formatted = formatLayoutIssue({
       ...issue("text_box_overflow", "error"),

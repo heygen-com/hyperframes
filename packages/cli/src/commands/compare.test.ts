@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -117,7 +125,7 @@ describe("prepareCompareVariantProjects", () => {
       const secondStage = prepared[1];
       if (!firstStage || !secondStage) throw new Error("expected two staged variants");
       expect(existsSync(join(secondStage.projectDir, basename(firstStage.projectDir)))).toBe(false);
-      expect(readFileSync(join(secondStage.projectDir, "first.html"), "utf8")).toContain("First");
+      expect(readdirSync(secondStage.projectDir)).toEqual(["index.html"]);
       expect(readFileSync(join(secondStage.projectDir, "index.html"), "utf8")).toContain("Second");
     } finally {
       temporaryRoot.path = "";
@@ -126,15 +134,17 @@ describe("prepareCompareVariantProjects", () => {
   });
 
   it.each(["direct", "nested"])(
-    "stages siblings when the temporary output is %s inside the source directory",
+    "stages only what the page names when the temporary output is %s inside the source directory",
     (placement) => {
       const dir = tempDir();
       const htmlFile = join(dir, "candidate.html");
       mkdirSync(join(dir, "assets"));
-      writeFileSync(htmlFile, "<!doctype html><title>Temporary candidate</title>");
-      writeFileSync(join(dir, "assets", "asset.txt"), "sibling asset");
-      mkdirSync(join(dir, "node_modules"));
-      writeFileSync(join(dir, "node_modules", "ignored.txt"), "ignored");
+      writeFileSync(
+        htmlFile,
+        '<!doctype html><title>Temporary candidate</title><img src="assets/asset.png">',
+      );
+      writeFileSync(join(dir, "assets", "asset.png"), "sibling asset");
+      writeFileSync(join(dir, "assets", "unnamed.png"), "not named");
       temporaryRoot.path = placement === "direct" ? dir : join(dir, "temporary");
       mkdirSync(temporaryRoot.path, { recursive: true });
       writeFileSync(join(temporaryRoot.path, "sibling.txt"), "temporary-root sibling");
@@ -149,17 +159,11 @@ describe("prepareCompareVariantProjects", () => {
         expect(readFileSync(join(staged.projectDir, "index.html"), "utf8")).toContain(
           "Temporary candidate",
         );
-        expect(readFileSync(join(staged.projectDir, "assets", "asset.txt"), "utf8")).toBe(
+        expect(readFileSync(join(staged.projectDir, "assets", "asset.png"), "utf8")).toBe(
           "sibling asset",
         );
-        expect(
-          readFileSync(
-            join(staged.projectDir, placement === "direct" ? "" : "temporary", "sibling.txt"),
-            "utf8",
-          ),
-        ).toBe("temporary-root sibling");
-        expect(existsSync(join(staged.projectDir, "candidate.html"))).toBe(false);
-        expect(existsSync(join(staged.projectDir, "node_modules"))).toBe(false);
+        expect(readdirSync(staged.projectDir).sort()).toEqual(["assets", "index.html"]);
+        expect(readdirSync(join(staged.projectDir, "assets"))).toEqual(["asset.png"]);
         expect(readFileSync(htmlFile, "utf8")).toContain("Temporary candidate");
       } finally {
         temporaryRoot.path = "";
@@ -167,6 +171,29 @@ describe("prepareCompareVariantProjects", () => {
       }
     },
   );
+
+  it("leaves out a file the page names that no composition loads", () => {
+    const dir = tempDir();
+    const htmlFile = join(dir, "sent.html");
+    writeFileSync(
+      htmlFile,
+      `<img src="taxes.pdf"><img src="notes.txt"><link href=".env"><img src="id_ed25519">
+       <script>fetch("statement.png").then((r) => r.blob())</script>`,
+    );
+    for (const name of ["taxes.pdf", "notes.txt", ".env", "id_ed25519", "statement.png"]) {
+      writeFileSync(join(dir, name), "private");
+    }
+
+    const prepared = prepareCompareVariantProjects([
+      { label: "Sent", inputPath: htmlFile, displayPath: "sent.html" },
+    ]);
+    try {
+      expect(readdirSync(prepared[0]!.projectDir)).toEqual(["index.html"]);
+    } finally {
+      rmSync(prepared[0]!.projectDir, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   it("uses project directories directly and stages standalone html files as index.html", () => {
     const dir = tempDir();
@@ -178,8 +205,10 @@ describe("prepareCompareVariantProjects", () => {
       mkdirSync(projectDir, { recursive: true });
       mkdirSync(htmlDir, { recursive: true });
       writeFileSync(projectIndex, "<!doctype html><title>A</title>", { flag: "wx" });
-      writeFileSync(htmlFile, "<!doctype html><title>B</title>", { flag: "wx" });
-      writeFileSync(join(htmlDir, "asset.txt"), "asset");
+      writeFileSync(htmlFile, '<!doctype html><title>B</title><img src="asset.png">', {
+        flag: "wx",
+      });
+      writeFileSync(join(htmlDir, "asset.png"), "asset");
 
       const prepared = prepareCompareVariantProjects([
         { label: "A", inputPath: projectDir, displayPath: "variant-a" },
@@ -200,7 +229,7 @@ describe("prepareCompareVariantProjects", () => {
         expect(readFileSync(join(prepared[1]!.projectDir, "index.html"), "utf-8")).toContain(
           "<title>B</title>",
         );
-        expect(readFileSync(join(prepared[1]!.projectDir, "asset.txt"), "utf-8")).toBe("asset");
+        expect(readFileSync(join(prepared[1]!.projectDir, "asset.png"), "utf-8")).toBe("asset");
         expect(existsSync(join(prepared[1]!.projectDir, "candidate.html"))).toBe(false);
       } finally {
         for (const variant of prepared) {

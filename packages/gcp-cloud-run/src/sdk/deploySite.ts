@@ -17,7 +17,7 @@ import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Storage } from "@google-cloud/storage";
-import { hashProjectDir, listSiteFiles } from "@hyperframes/producer/distributed";
+import { hashProjectDir, listSiteFilesForUpload } from "@hyperframes/producer/distributed";
 import { formatGcsUri, tarDirectory, uploadFileToGcs } from "../gcsTransport.js";
 
 /** Options for {@link deploySite}. */
@@ -32,6 +32,7 @@ export interface DeploySiteOptions {
    * the hash of the project tree picks it.
    */
   siteId?: string;
+  onNotice?: (message: string) => void;
   /** Injection seam for tests. Production callers leave unset. */
   storage?: Storage;
 }
@@ -65,7 +66,7 @@ export async function deploySite(opts: DeploySiteOptions): Promise<SiteHandle> {
     throw new Error(`[deploySite] projectDir is not a directory: ${opts.projectDir}`);
   }
 
-  const files = listSiteFiles(opts.projectDir);
+  const files = listSiteFilesForUpload(opts.projectDir, opts.onNotice);
   const siteId = opts.siteId ?? hashProjectDir(opts.projectDir, files);
   const key = `sites/${siteId}/project.tar.gz`;
   const projectGcsUri = formatGcsUri({ bucket: opts.bucketName, key });

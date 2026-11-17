@@ -190,6 +190,27 @@ describe("useRenderClipContent", () => {
     if (isValidElement(content)) expect(content.type).toBe(AudioWaveform);
   });
 
+  it("decodes a file from outside the project only when it is short and its length is known", () => {
+    const remote = (sourceDuration?: number) =>
+      renderClipContent({
+        id: "talk",
+        tag: "audio",
+        start: 0,
+        duration: 4,
+        track: 1,
+        src: "https://cdn.example.com/talk.mp3",
+        sourceDuration,
+      });
+    const audioUrlOf = (content: ReactNode) =>
+      isValidElement<{ audioUrl: string; waveformUrl?: string }>(content)
+        ? [content.props.audioUrl, content.props.waveformUrl]
+        : null;
+
+    expect(audioUrlOf(remote(180))).toEqual(["https://cdn.example.com/talk.mp3", undefined]);
+    expect(audioUrlOf(remote(62 * 60))).toEqual(["", undefined]);
+    expect(audioUrlOf(remote())).toEqual(["", undefined]);
+  });
+
   it("routes root-relative iframe media back through the active project", () => {
     usePlayerStore.setState({ thumbnailMode: "adaptive" });
     const resolvedRootMedia = `${window.location.origin}/assets/clip.mp4`;

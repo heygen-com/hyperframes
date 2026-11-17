@@ -24,6 +24,7 @@ import {
   CANVAS_DIMENSIONS,
   checkOutputResolutionCompatibility,
   type CanvasResolution,
+  terminalText,
 } from "@hyperframes/core";
 import {
   mediaIdPathSegment,
@@ -168,7 +169,7 @@ export function writeCompiledArtifacts(
   for (const [srcPath, html] of compiled.subCompositions) {
     const outPath = join(compileDir, srcPath);
     if (!isPathInside(outPath, compileDir)) {
-      console.warn(`[Render] Skipping sub-composition with unsafe path: ${srcPath}`);
+      console.warn(`[Render] Skipping sub-composition with unsafe path: ${terminalText(srcPath)}`);
       continue;
     }
     mkdirSync(dirname(outPath), { recursive: true });
@@ -183,7 +184,9 @@ export function writeCompiledArtifacts(
   for (const [relativePath, absolutePath] of compiled.externalAssets) {
     const outPath = resolve(join(compileDir, relativePath));
     if (!isPathInside(outPath, compileDir)) {
-      console.warn(`[Render] Skipping external asset with unsafe path: ${relativePath}`);
+      console.warn(
+        `[Render] Skipping external asset with unsafe path: ${terminalText(relativePath)}`,
+      );
       continue;
     }
     mkdirSync(dirname(outPath), { recursive: true });
@@ -374,6 +377,34 @@ export function reportEncodeProgress(
     { code: "encode", done: frames, total },
     "encoding",
   );
+}
+
+export const AUDIO_STAGE = "Processing audio tracks";
+const AUDIO_WAIT_REPORT_MS = 5_000;
+
+/** Once capture waits on the audio mix: a line at most every 5 s in which an FFmpeg of the mix wrote more, so whoever
+ * watches the render for silence hears it working, and a mix that writes nothing stays silent. */
+export function audioWaitReporter(job: RenderJob, onProgress: ProgressCallback | undefined) {
+  let waiting = false;
+  let reportedAt = -Infinity;
+  return {
+    progressed(): void {
+      const now = Date.now();
+      if (!waiting || now - reportedAt < AUDIO_WAIT_REPORT_MS) return;
+      reportedAt = now;
+      updateJobStatus(job, job.status, AUDIO_STAGE, job.progress, onProgress, {
+        code: "process_audio",
+      });
+    },
+    async wait<T>(audio: Promise<T>): Promise<T> {
+      waiting = true;
+      try {
+        return await audio;
+      } finally {
+        waiting = false;
+      }
+    },
+  };
 }
 
 const lastAssembleReportAt = new WeakMap<RenderJob, number>();

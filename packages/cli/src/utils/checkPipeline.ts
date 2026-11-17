@@ -1,3 +1,4 @@
+import { terminalLines } from "@hyperframes/core";
 import { DEFAULT_CONFIG } from "@hyperframes/engine";
 import { BrowserCleanupError, onStopSignal } from "../browser/launch.js";
 import type { CheckProgress } from "./checkProgress.js";
@@ -24,7 +25,7 @@ import {
   findingFrameRequests,
 } from "./checkFindingFrames.js";
 export { selectFindingFrames } from "./checkFindingFrames.js";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import type { PrelaunchedBrowser } from "../capture/captureCompositionFrame.js";
 import { join, relative } from "node:path";
@@ -58,7 +59,7 @@ import {
 } from "./motionAudit.js";
 import { findMotionSpec, readMotionSpec, type MotionAssertion } from "./motionSpec.js";
 import { auditCraft } from "./craftAudit.js";
-import { inspectHdrAutoPromotion } from "./hdrPromotion.js";
+import { inspectHdrAutoPromotion, remoteMediaNotInspected } from "./hdrPromotion.js";
 import { collectProjectMedia, type ProjectMedia } from "./projectMedia.js";
 import { normalizeErrorMessage } from "./errorMessage.js";
 import {
@@ -1767,8 +1768,7 @@ export async function runCheckPipeline(
         { kind: "none" },
         [],
         [],
-        hdr.autoPromotion,
-        hdr.inspection,
+        hdr,
         await audio,
       );
     }
@@ -1813,8 +1813,7 @@ export async function runCheckPipeline(
         motion,
         specFindings,
         snapshotFiles,
-        hdr.autoPromotion,
-        hdr.inspection,
+        hdr,
         await audio,
       );
       outcome = {
@@ -1906,7 +1905,7 @@ async function withFindingCrops(
     }
     // Still non-gating, but observable: rollouts need the crop-failure rate
     // (a second Chrome launch failing/timing out) without failing the run.
-    console.error("   finding crops skipped: " + normalizeErrorMessage(error));
+    console.error("   finding crops skipped: " + terminalLines(normalizeErrorMessage(error)));
     trackCommandFailure("check-finding-crops", error);
     return report;
   }
@@ -1938,7 +1937,7 @@ async function withOptionalFindingFrames(
       const finding = runtimeFailure(error);
       return { ...report, ok: false, runtime: section([...report.runtime.findings, finding]) };
     }
-    console.error("   finding frames skipped: " + normalizeErrorMessage(error));
+    console.error("   finding frames skipped: " + terminalLines(normalizeErrorMessage(error)));
     trackCommandFailure("check-finding-frames", error);
     return report;
   }
@@ -2085,8 +2084,7 @@ function buildReport(
   motion: MotionSpecResolution,
   extraMotionFindings: CheckFinding[],
   snapshotFiles: string[],
-  hdrPromotion: CheckReport["hdr"]["autoPromotion"] = null,
-  hdrInspection: CheckReport["hdr"]["inspection"] = "available",
+  hdr: CheckReport["hdr"] = { autoPromotion: null, inspection: "available" },
   audioFindings: CheckFinding[] = [],
 ): CheckReport {
   const shaping = options.components?.length
@@ -2148,7 +2146,7 @@ function buildReport(
       samples: browser.craft.samples,
     },
     audio: audioSection,
-    hdr: { autoPromotion: hdrPromotion, inspection: hdrInspection },
+    hdr,
     snapshots: {
       enabled: options.snapshots,
       files: snapshotFiles,
@@ -2418,7 +2416,6 @@ async function writeSnapshot(
   pngBase64: string,
 ): Promise<string> {
   const snapshotDir = checkSnapshotDirectory(projectDir);
-  mkdirSync(snapshotDir, { recursive: true });
   const filename = `frame-${String(index).padStart(2, "0")}-at-${time.toFixed(1)}s.png`;
   const path = join(snapshotDir, filename);
   writeFileSync(path, Buffer.from(pngBase64, "base64"));
@@ -2454,11 +2451,17 @@ async function inspectProjectMedia(
   const media = (dependencies.collectMedia ?? collectMedia)(project);
   let hdr: CheckReport["hdr"];
   try {
+    const found = await media;
     const promotion = (dependencies.inspectHdrAutoPromotion ?? inspectHdrAutoPromotion)(
       project,
-      await media,
+      found,
     );
-    hdr = { autoPromotion: await promotion, inspection: "available" };
+    const remote = remoteMediaNotInspected(found);
+    hdr = {
+      autoPromotion: await promotion,
+      inspection: "available",
+      ...(remote.length > 0 ? { remoteNotInspected: remote } : {}),
+    };
   } catch {
     hdr = { autoPromotion: null, inspection: "unavailable" };
   }
