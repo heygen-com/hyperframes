@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { receivedFiles } from "../utils/privateProjectFile.js";
@@ -14,7 +15,16 @@ afterEach(() => {
   server = undefined;
 });
 
-function write(path: string, text: string): void {
+function caseInsensitiveDisk(): boolean {
+  const probe = mkdtempSync(join(tmpdir(), "hf-case-probe-"));
+  try {
+    return existsSync(probe.toUpperCase()) && existsSync(probe.toLowerCase());
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+}
+
+function write(path: string, text: string | Buffer): void {
   mkdirSync(join(path, ".."), { recursive: true });
   writeFileSync(path, text);
 }
@@ -65,16 +75,15 @@ describe("a received folder with its own record, in a project with none", () => 
     expect(existsSync(join(projectDir, "sub"))).toBe(false);
   });
 
-  it("refuses a delete or move that would leave a file its record lists behind", async () => {
+  it("keeps a file its record lists outside the folder received after the folder is deleted", async () => {
     const { projectDir, app } = studio();
     withReceivedFolder(projectDir);
     write(
       join(projectDir, "sub", "notes", ".hyperframes", "received-files.json"),
       JSON.stringify({ files: ["../scene.html"] }),
     );
-    expect((await app.request(fileUrl("sub/notes"), { method: "DELETE" })).status).toBe(403);
-    expect((await move(app, "sub/notes", "dist")).status).toBe(403);
-    expect((await move(app, "sub/notes", "renders/notes")).status).toBe(403);
+    rmSync(join(projectDir, "sub", ".hyperframes"), { recursive: true });
+    expect((await app.request(fileUrl("sub/notes"), { method: "DELETE" })).status).toBe(200);
     expect(receivedFiles(projectDir)("sub/scene.html")).toBe(true);
     expect(allowed(projectDir)).toBe(false);
   });
@@ -116,6 +125,65 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     expect(deleted.status).toBe(200);
     expect(listed(projectDir)).toEqual(["scenes/logo.png"]);
     expect(receivedFiles(projectDir)("index.html")).toBe(false);
+  });
+
+  it("counts a deleted received file as received again when its content comes back", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    const before = readFileSync(join(projectDir, "scenes", "intro.html"));
+    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+      200,
+    );
+    const content = JSON.parse(
+      readFileSync(join(projectDir, ".hyperframes", "received-content.json"), "utf-8"),
+    );
+    expect(content.hashes).toHaveLength(1);
+    writeFileSync(join(projectDir, "scenes", "intro.html"), before);
+    writeFileSync(join(projectDir, "restored.html"), before);
+    const received = receivedFiles(projectDir);
+    expect(received("scenes/intro.html")).toBe(true);
+    expect(received("restored.html")).toBe(true);
+    expect(received("index.html")).toBe(false);
+    expect(allowed(projectDir)).toBe(false);
+  });
+
+  it("keeps the desktop app's own keys in the received content", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    const desktop = { hashes: [], unlisted: { "a.html": 1 }, copies: { "b.html": [] } };
+    write(join(projectDir, ".hyperframes", "received-content.json"), JSON.stringify(desktop));
+    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+      200,
+    );
+    const content = JSON.parse(
+      readFileSync(join(projectDir, ".hyperframes", "received-content.json"), "utf-8"),
+    );
+    expect(content).toMatchObject({ unlisted: desktop.unlisted, copies: desktop.copies });
+    expect(content.hashes).toHaveLength(1);
+  });
+
+  it.runIf(caseInsensitiveDisk())(
+    "follows a rename the request spells in another letter case",
+    async () => {
+      const { projectDir, app } = studio();
+      withRecord(projectDir);
+      expect((await move(app, "Scenes/INTRO.html", "scenes/opening.html")).status).toBe(200);
+      expect(listed(projectDir)).toEqual(["scenes/logo.png", "scenes/opening.html"]);
+    },
+  );
+
+  it("answers other requests while it waits for the record's lock", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    writeFileSync(`${record(projectDir)}.lock`, "");
+    const renaming = move(app, "scenes/intro.html", "scenes/opening.html");
+    const started = Date.now();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await app.request(fileUrl("index.html"));
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect((await renaming).status).toBe(200);
+    warn.mockRestore();
   });
 
   it("keeps a file moved out of a received folder received in the project's own record", async () => {

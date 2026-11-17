@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { isCredentialOrToolStatePath } from "@hyperframes/core/safe-path";
@@ -149,13 +150,30 @@ describe("receivedFiles when a listed file is gone", () => {
     return dir;
   }
 
-  it("counts every file as received, since the listed file may be on disk under another name", () => {
+  it("counts every page, stylesheet, script and SVG as received, and names the gone file", () => {
     const root = project(["theirs.html"]);
-    expect(receivedFiles(root)("mine.html")).toBe(true);
-    expect(receivedFiles(root)("renamed.html")).toBe(true);
+    writeFileSync(join(root, "logo.png"), "png");
+    const received = receivedFiles(root);
+    for (const code of ["mine.html", "renamed.html", "a.css", "b.js", "c.mjs", "d.svg"])
+      expect(received(code)).toBe(true);
+    expect(received("logo.png")).toBe(false);
+    expect(received.gone).toBe("theirs.html");
   });
 
-  it("counts every file as received for a gone file listed by a received folder's own record", () => {
+  it("counts a file with the content of a received file that left the record as received", () => {
+    const root = project([]);
+    writeFileSync(join(root, "logo.png"), "theirs");
+    writeFileSync(
+      join(root, ".hyperframes", "received-content.json"),
+      JSON.stringify({ hashes: [createHash("sha256").update("theirs").digest("hex")] }),
+    );
+    const received = receivedFiles(root);
+    expect(received("logo.png")).toBe(true);
+    expect(received("mine.html")).toBe(false);
+    expect(received.gone).toBeUndefined();
+  });
+
+  it("counts every page as received for a gone file listed by a received folder's own record", () => {
     const root = project([]);
     mkdirSync(join(root, "sub", ".hyperframes"), { recursive: true });
     writeFileSync(

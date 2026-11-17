@@ -10,6 +10,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compileForRender } from "../../../producer/src/services/htmlCompiler.js";
@@ -334,6 +335,33 @@ describe("outsideAssetsAllowed", () => {
       const { allowed, line } = decide(dir);
       expect(allowed).toBe(false);
       expect(line).toContain("Could not check every project folder");
+    });
+  });
+
+  describe("content of a received file that left the record", () => {
+    const hashOf = (text: string) => createHash("sha256").update(text).digest("hex");
+    function withLeftContent(text: string): string {
+      const dir = project(received());
+      write(
+        join(dir, ".hyperframes", "received-content.json"),
+        JSON.stringify({ hashes: [hashOf(text)] }),
+      );
+      return dir;
+    }
+
+    it("refuses outside files when a project file holds it, and names that file", () => {
+      const dir = withLeftContent(`<video src="../../outside/clip.mp4"></video>`);
+      const { allowed, line } = decide(dir);
+      expect(allowed).toBe(false);
+      expect(line).toContain(
+        `${join("compositions", "scene.html")} holds the content of a file that came from someone else`,
+      );
+    });
+
+    it("keeps outside files when only Studio's backups hold it", () => {
+      const dir = withLeftContent("<p>theirs</p>");
+      write(join(dir, ".hyperframes", "backup", "scene.html"), "<p>theirs</p>");
+      expect(decide(dir).allowed).toBe(true);
     });
   });
 

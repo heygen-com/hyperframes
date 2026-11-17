@@ -14,7 +14,7 @@ import { parseHTML } from "linkedom";
 import AdmZip from "adm-zip";
 import type { Ignore } from "ignore";
 import { projectIgnore } from "@hyperframes/lint";
-import { isNonRelativeUrl, isPathInside, rewriteSrcsetUrls } from "@hyperframes/core";
+import { isNonRelativeUrl, isPathInside, rewriteSrcsetUrls, terminalText } from "@hyperframes/core";
 import { cssUrlMatches, replaceMatches } from "@hyperframes/parsers/css-url-scans";
 import { decodeUrlPathVariants, encodeUrlPath } from "@hyperframes/parsers";
 import { buildAuthHeaders } from "../auth/client.js";
@@ -30,6 +30,7 @@ import {
   linksOutside,
   linksToPrivateOutsideFile,
   receivedFiles,
+  type ReceivedFiles,
 } from "./privateProjectFile.js";
 import {
   leftOutReference,
@@ -417,7 +418,7 @@ interface ExternalAssetContext {
   leftOut: Set<string>;
   onLeftOut?: OnLeftOut;
   onOutsideFile?: OnOutsideFile;
-  received: (path: string) => boolean;
+  received: ReceivedFiles;
   walkedLeftOut: ReadonlySet<string>;
   filmPages: Set<string> | null;
 }
@@ -469,7 +470,7 @@ function referencedFileLeftOut(
 ): LeftOutReason | null {
   if (linksToPrivateOutsideFile(ctx.absProjectDir, absPath)) return "blocklisted";
   if (isPrivateCompositionFile(ctx.absProjectDir, absPath)) return "private";
-  if (ctx.received(entryPath) && linksOutside(ctx.absProjectDir, absPath)) return "received";
+  if (linksOutside(ctx.absProjectDir, absPath) && ctx.received(entryPath)) return "received";
   if (!loadableReference(ctx.absProjectDir, absPath)) return "private";
   return null;
 }
@@ -520,6 +521,13 @@ const HARD_REFERENCES = new Set(["video[src]", "audio[src]", "img[src]", "video[
 const relativeToProject = (ctx: ExternalAssetContext, absPath: string) =>
   encodeUrlPath(relative(ctx.absProjectDir, absPath).replaceAll("\\", "/"));
 
+const goneNote = (received: ReceivedFiles, reason: LeftOutReason): string =>
+  reason === "received" && received.gone !== undefined
+    ? terminalText(
+        ` ${received.gone} is listed as received but is gone, so every page, stylesheet, script and SVG counts as received.`,
+      )
+    : "";
+
 function leaveOut(
   ctx: ExternalAssetContext,
   entryPath: string,
@@ -527,7 +535,7 @@ function leaveOut(
   absPath: string,
   reason: LeftOutReason = "blocklisted",
 ): void {
-  const warning = leftOutWarning(entryPath, rawPath, reason);
+  const warning = `${leftOutWarning(entryPath, rawPath, reason)}${goneNote(ctx.received, reason)}`;
   if (ctx.leftOut.has(warning)) return;
   ctx.leftOut.add(warning);
   ctx.onLeftOut?.(
@@ -877,7 +885,7 @@ function walkedFileLeftOut(
 ): WalkedLeftOutReason | null {
   if (linksToPrivateOutsideFile(absProjectDir, absPath)) return "blocklisted";
   if (isPrivateCompositionFile(absProjectDir, absPath)) return "private";
-  if (received(filePath) && linksOutside(absProjectDir, absPath)) return "received";
+  if (linksOutside(absProjectDir, absPath) && received(filePath)) return "received";
   return null;
 }
 
@@ -910,7 +918,7 @@ export function stagePublishFiles(
     const reason = walkedFileLeftOut(absProjectDir, filePath, absPath, received);
     if (reason) {
       onLeftOut?.(
-        `${filePath} ${WALKED_LEFT_OUT[reason]}; it was left out of the upload.`,
+        `${filePath} ${WALKED_LEFT_OUT[reason]}; it was left out of the upload.${goneNote(received, reason)}`,
         leftOutReference(absProjectDir, filePath, filePath, absPath, reason),
       );
       walkedLeftOut.add(archiveKey(filePath));

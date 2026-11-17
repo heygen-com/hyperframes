@@ -400,7 +400,7 @@ describe("outside references in files that came in with an imported project", ()
     const staged = stagePublishFiles(join(root, "p"), Infinity, (w) => after.push(w));
     expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([]);
     expect(after).toEqual([
-      "opening.html references ../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload.",
+      "opening.html references ../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload. scene.html is listed as received but is gone, so every page, stylesheet, script and SVG counts as received.",
     ]);
   });
 

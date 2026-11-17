@@ -15,7 +15,8 @@ import {
   namesAnotherNetworkRoot,
   resolveCompositionSrc,
 } from "@hyperframes/parsers/asset-resolution";
-import { linksOutside, receivedRecordStatus } from "./privateProjectFile.js";
+import { linksOutside, mayHoldLoadedFiles, receivedRecordStatus } from "./privateProjectFile.js";
+import { contentHash } from "./receivedContent.js";
 import { walkBudget } from "./walkBudget.js";
 
 const REFERENCE_ATTRS = ["src", "href", "poster"];
@@ -285,7 +286,7 @@ function firstBytes(path: string): Buffer | null {
   }
 }
 
-function isMediaFontOrImage(path: string): boolean {
+export function isMediaFontOrImage(path: string): boolean {
   const matches = MEDIA_SIGNATURES[extname(path).toLowerCase()];
   const bytes = matches && isFile(path) ? firstBytes(path) : null;
   return bytes !== null && matches !== undefined && matches(bytes);
@@ -392,9 +393,50 @@ interface Refusal {
 
 const READS_NOTHING_OUTSIDE = "so the render reads nothing outside the project.";
 
+function holderIn(
+  dir: string,
+  listing: Dirent[],
+  walk: { projectDir: string; known: Set<string>; pending: string[] },
+) {
+  for (const entry of listing) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (mayHoldLoadedFiles(walk.projectDir, path)) walk.pending.push(path);
+    } else if (entry.isFile() && !isMediaName(path) && walk.known.has(contentHash(path) ?? "")) {
+      return path;
+    }
+  }
+  return undefined;
+}
+
+function receivedContentHolder(projectDir: string, hashes: string[]): string | null | undefined {
+  if (hashes.length === 0) return undefined;
+  const withinBudget = walkBudget();
+  const walk = { projectDir, known: new Set(hashes), pending: [projectDir] };
+  for (let dir = walk.pending.pop(); dir !== undefined; dir = walk.pending.pop()) {
+    const listing = listDir(dir);
+    if (listing === null || !withinBudget(listing.length)) return null;
+    const holder = holderIn(dir, listing, walk);
+    if (holder !== undefined) return holder;
+  }
+  return undefined;
+}
+
+function receivedContentRefusal(projectDir: string, hashes: string[]): Refusal | null {
+  const holder = receivedContentHolder(projectDir, hashes);
+  if (holder === undefined) return null;
+  if (holder === null) {
+    const reason = `Could not check every project file for content that came from someone else, ${READS_NOTHING_OUTSIDE}`;
+    return { reason, alwaysWarn: true };
+  }
+  const shown = relative(realOrNull(projectDir) ?? projectDir, holder);
+  const reason = `${shown} holds the content of a file that came from someone else, ${READS_NOTHING_OUTSIDE}`;
+  return { reason, alwaysWarn: false };
+}
+
 function receivedRefusal(
   projectDir: string,
-  record: { path: string; listed: string[] | null } | "unchecked",
+  record: { path: string; listed: string[] | null; hashes: string[] } | "unchecked",
 ): Refusal | null {
   const shown = (path: string) => relative(realOrNull(projectDir) ?? projectDir, path);
   if (record === "unchecked") {
@@ -404,12 +446,13 @@ function receivedRefusal(
   if (record.listed === null) {
     return { reason: `Could not read ${record.path}, ${READS_NOTHING_OUTSIDE}`, alwaysWarn: true };
   }
-  if (record.listed.length === 0) return null;
   const nonMedia = record.listed.find((path) => !isMediaFontOrImage(path));
   if (nonMedia !== undefined) {
     const reason = `${shown(nonMedia)} came from someone else and is not a media, font or image file, ${READS_NOTHING_OUTSIDE}`;
     return { reason, alwaysWarn: false };
   }
+  const contentRefusal = receivedContentRefusal(projectDir, record.hashes);
+  if (contentRefusal !== null || record.listed.length === 0) return contentRefusal;
   const received = receivedIdentities(record.listed);
   const aliases = received === null ? null : nonMediaAliases(projectDir, received);
   if (aliases === null) {

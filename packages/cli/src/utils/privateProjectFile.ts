@@ -23,6 +23,13 @@ import {
 import { registryRoot } from "../registry/publication.js";
 import { recordFolder, writeRecord } from "./projectRecords.js";
 import { walkBudget } from "./walkBudget.js";
+import {
+  contentHash,
+  isCodeFile,
+  readReceivedContent,
+  type ReceivedContent,
+  writeReceivedContent,
+} from "./receivedContent.js";
 
 export { isEnvOrGitPath, isPrivateOutsideFile, linksOutside };
 
@@ -75,43 +82,75 @@ function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-function takeRecordLock(lock: string): void {
-  const deadline = Date.now() + LOCK_WAIT_MS;
-  for (;;) {
-    try {
-      closeSync(openSync(lock, "wx"));
-      return;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-    }
-    const heldFor = Date.now() - (statSync(lock, { throwIfNoEntry: false })?.mtimeMs ?? Date.now());
-    if (heldFor > LOCK_STALE_MS) rmSync(lock, { force: true });
-    else if (Date.now() < deadline) sleepSync(25);
-    else throw new Error(`Another program is changing ${RECEIVED_RECORD}; try again.`);
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function tryRecordLock(lock: string, deadline: number): "taken" | "wait" {
+  try {
+    closeSync(openSync(lock, "wx"));
+    return "taken";
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   }
+  const heldFor = Date.now() - (statSync(lock, { throwIfNoEntry: false })?.mtimeMs ?? Date.now());
+  if (heldFor > LOCK_STALE_MS) rmSync(lock, { force: true });
+  else if (Date.now() >= deadline)
+    throw new Error(`Another program is changing ${RECEIVED_RECORD}; try again.`);
+  return "wait";
 }
 
-function changeReceivedRecord(projectDir: string, change: (files: Set<string>) => boolean): void {
+function takeRecordLock(lock: string): void {
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  while (tryRecordLock(lock, deadline) === "wait") sleepSync(25);
+}
+
+async function takeRecordLockAsync(lock: string): Promise<void> {
+  const deadline = Date.now() + LOCK_WAIT_MS;
+  while (tryRecordLock(lock, deadline) === "wait") await sleep(25);
+}
+
+type RecordChange = (files: Set<string>, content: ReceivedContent) => boolean;
+
+function recordLock(projectDir: string): { root: string; lock: string } {
   const root = registryRoot(projectDir);
   if (!recordFolder(root, ""))
     throw new Error(
       `${join(root, ".hyperframes")} is a link or not a folder; remove it and try again.`,
     );
-  const lock = join(root, RECEIVED_RECORD_LOCK);
+  return { root, lock: join(root, RECEIVED_RECORD_LOCK) };
+}
+
+function applyRecordChange(root: string, change: RecordChange): void {
+  const record = readRecord(root, true);
+  if (record && !Array.isArray(record.listed)) return;
+  const files = new Set(((record?.listed ?? []) as unknown[]).map(String));
+  const content = readReceivedContent(root);
+  const known = content.hashes.size;
+  const changed = change(files, content);
+  const json = `${JSON.stringify({ files: [...files].sort() })}\n`;
+  if (changed && !writeRecord(root, basename(RECEIVED_RECORD), json))
+    throw new Error(`Could not write ${join(root, RECEIVED_RECORD)}.`);
+  if (content.hashes.size > known && !writeReceivedContent(root, content))
+    throw new Error(`Could not write the received content beside ${join(root, RECEIVED_RECORD)}.`);
+}
+
+function changeReceivedRecord(projectDir: string, change: RecordChange): void {
+  const { root, lock } = recordLock(projectDir);
   takeRecordLock(lock);
   try {
-    const record = readRecord(root, true);
-    if (record && !Array.isArray(record.listed)) return;
-    const files = new Set(((record?.listed ?? []) as unknown[]).map(String));
-    if (!change(files)) return;
-    if (
-      !writeRecord(
-        root,
-        basename(RECEIVED_RECORD),
-        `${JSON.stringify({ files: [...files].sort() })}\n`,
-      )
-    )
-      throw new Error(`Could not write ${join(root, RECEIVED_RECORD)}.`);
+    applyRecordChange(root, change);
+  } finally {
+    rmSync(lock, { force: true });
+  }
+}
+
+export async function changeReceivedRecordAsync(
+  projectDir: string,
+  change: RecordChange,
+): Promise<void> {
+  const { root, lock } = recordLock(projectDir);
+  await takeRecordLockAsync(lock);
+  try {
+    applyRecordChange(root, change);
   } finally {
     rmSync(lock, { force: true });
   }
@@ -135,46 +174,28 @@ export function forgetReceivedFiles(root: string, paths: string[]): void {
   changeReceivedRecord(root, (files) => paths.map((path) => files.delete(path)).some(Boolean));
 }
 
-const atOrUnder = (path: string) => (entry: string) =>
-  entry === path || entry.startsWith(`${path}/`);
-const keyIn = (folder: string, path: string) =>
-  relative(folder, path).split(sep).join("/").normalize("NFC");
-const recordFoldersHolding = (path: string) =>
-  receivedRecordsAtOrAbove(dirname(path)).map((record) => record.root);
+export const recordFoldersAtOrAbove = (dir: string): string[] =>
+  receivedRecordsAtOrAbove(dir).map((record) => record.root);
 
-function carryListed(root: string, folder: string, from: string, to: string): void {
-  const fromKey = keyIn(folder, from);
-  const toKey = keyIn(folder, to);
-  const staysInFolder = toKey !== ".." && !toKey.startsWith("../");
-  changeReceivedRecord(folder, (files) => {
-    const moved = [...files].filter(atOrUnder(fromKey));
-    const rest = (entry: string) => entry.slice(fromKey.length);
-    if (!staysInFolder)
-      recordReceivedFiles(
-        root,
-        moved.map((entry) => keyIn(root, to) + rest(entry)),
-      );
-    moved.forEach((entry) => files.delete(entry));
-    if (staysInFolder) moved.forEach((entry) => files.add(toKey + rest(entry)));
-    return moved.length > 0;
-  });
-}
+const listedPaths = (record: ReceivedRecord): string[] =>
+  Array.isArray(record.listed)
+    ? record.listed.map((entry) => join(record.root, String(entry)))
+    : [];
 
-export function followReceivedChange(
-  projectDir: string,
-  change: { from?: string; to: string },
-): void {
-  const root = registryRoot(projectDir);
-  const to = resolve(root, change.to);
-  for (const folder of recordFoldersHolding(to))
-    changeReceivedRecord(folder, (files) => {
-      const stale = [...files].filter(atOrUnder(keyIn(folder, to)));
-      stale.forEach((entry) => files.delete(entry));
-      return stale.length > 0;
-    });
-  if (change.from === undefined) return;
-  const from = resolve(root, change.from);
-  for (const folder of recordFoldersHolding(from)) carryListed(root, folder, from, to);
+const isAtOrUnder = (path: string, folder: string) => {
+  const inside = relative(folder, path);
+  return (
+    inside === "" || (inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside))
+  );
+};
+
+export function listedFilesLeaving(target: string): string[] {
+  const above = receivedRecordsAtOrAbove(dirname(target)).flatMap(listedPaths);
+  const within = [...receivedRecordsAtOrAbove(target), ...(receivedRecordsBelow(target) ?? [])];
+  return [
+    ...above.filter((path) => isAtOrUnder(path, target)),
+    ...within.filter((record) => isAtOrUnder(record.file, target)).flatMap(listedPaths),
+  ];
 }
 
 function receivedRecordsAtOrAbove(start: string): ReceivedRecord[] {
@@ -204,7 +225,7 @@ function nestedRecord(start: string, dir: string, record: { listed: unknown }): 
 
 const GIT_AND_PACKAGE_FOLDERS = new Set([".git", "node_modules"]);
 
-function mayHoldLoadedFiles(start: string, folder: string): boolean {
+export function mayHoldLoadedFiles(start: string, folder: string): boolean {
   const rel = relative(start, folder).split(sep).join("/");
   const segments = projectPathSegments(rel);
   if (GIT_AND_PACKAGE_FOLDERS.has(segments.at(-1) ?? "")) return false;
@@ -278,15 +299,37 @@ function onDisk(path: string): boolean {
   }
 }
 
-const listsEveryFileOnDisk = (record: ReceivedRecord): boolean =>
-  Array.isArray(record.listed) &&
-  record.listed.every((entry) => onDisk(join(record.root, String(entry))));
+export type ReceivedFiles = ((path: string) => boolean) & { gone?: string };
 
-export function receivedFiles(projectDir: string): (path: string) => boolean {
+const contentFolder = (record: ReceivedRecord) => dirname(dirname(record.file));
+
+const receivedHashes = (records: ReceivedRecord[]): string[] =>
+  records.flatMap((record) => [...readReceivedContent(contentFolder(record)).hashes]);
+
+function holdsReceivedContent(projectDir: string, records: ReceivedRecord[]) {
+  const hashes = new Set(receivedHashes(records));
+  const seen = new Map<string, boolean>();
+  return (path: string): boolean => {
+    if (hashes.size === 0) return false;
+    if (!seen.has(path)) seen.set(path, hashes.has(contentHash(join(projectDir, path)) ?? ""));
+    return seen.get(path) === true;
+  };
+}
+
+export function receivedFiles(projectDir: string): ReceivedFiles {
   const records = receivedRecords(projectDir);
-  if (records === null || !records.every(listsEveryFileOnDisk)) return () => true;
+  if (records === null || records.some((record) => !Array.isArray(record.listed)))
+    return () => true;
+  const goneFile = records.flatMap(listedPaths).find((path) => !onDisk(path));
+  const mayBeGoneFile = (path: string) =>
+    goneFile !== undefined &&
+    (isCodeFile(path) || linksOutside(projectDir, join(projectDir, path)));
+  const sameContent = holdsReceivedContent(projectDir, records);
   const listedInAnyRecord = records.map((record) => listedIn(record, projectDir));
-  return (path) => listedInAnyRecord.some((listed) => listed(path));
+  const received = (path: string) =>
+    listedInAnyRecord.some((listed) => listed(path)) || mayBeGoneFile(path) || sameContent(path);
+  const gone = goneFile && relative(realFilePath(projectDir), goneFile).split(sep).join("/");
+  return Object.assign(received, gone === undefined ? {} : { gone });
 }
 
 function listedUnder(record: ReceivedRecord): string[] {
@@ -311,14 +354,15 @@ function listedUnder(record: ReceivedRecord): string[] {
 
 export function receivedRecordStatus(
   projectDir: string,
-): { path: string; listed: string[] | null } | "unchecked" | null {
+): { path: string; listed: string[] | null; hashes: string[] } | "unchecked" | null {
   const records = receivedRecords(projectDir);
   if (records === null) return "unchecked";
   const [nearest] = records;
   if (!nearest) return null;
   const unreadable = records.find((record) => !Array.isArray(record.listed));
-  if (unreadable) return { path: unreadable.file, listed: null };
-  return { path: nearest.file, listed: records.flatMap(listedUnder) };
+  if (unreadable) return { path: unreadable.file, listed: null, hashes: [] };
+  const hashes = receivedHashes(records);
+  return { path: nearest.file, listed: records.flatMap(listedUnder), hashes };
 }
 
 const leavesProject = (path: string): boolean =>

@@ -374,25 +374,14 @@ describe("files other programs run or trust", () => {
         body: JSON.stringify({ newPath }),
       });
 
-    it("refuses a delete or move that would leave a file it lists behind", async () => {
+    it("deletes or moves a folder whose record lists a file outside it", async () => {
       const { app, project } = fixture();
       mkdirSync(join(project, "sub"));
       writeFileSync(join(project, "sub", "page.html"), "<div></div>");
       record(project, "sub/notes", ["../page.html"]);
-      expect((await app.request(fileUrl("sub/notes"), { method: "DELETE" })).status).toBe(403);
-      expect((await move(app, "sub/notes", "dist")).status).toBe(403);
-      expect(existsSync(join(project, "sub", "notes", ".hyperframes", "received-files.json"))).toBe(
-        true,
-      );
-    });
-
-    it("refuses a delete when a file it lists is reached through a link that leads out of its folder", async (context) => {
-      const { app, project } = fixture();
-      mkdirSync(join(project, "pages"));
-      writeFileSync(join(project, "pages", "page.html"), "<div></div>");
-      record(project, "sub", ["pages/page.html"]);
-      linkOrSkip(context, join(project, "pages"), join(project, "sub", "pages"), "dir");
-      expect((await app.request(fileUrl("sub"), { method: "DELETE" })).status).toBe(403);
+      expect((await move(app, "sub/notes", "sub/kept")).status).toBe(200);
+      expect((await app.request(fileUrl("sub/kept"), { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(join(project, "sub", "page.html"))).toBe(true);
     });
 
     it("deletes or moves a received folder whose record lists only its own files", async () => {
