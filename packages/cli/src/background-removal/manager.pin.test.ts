@@ -1,10 +1,12 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, expect, it, vi } from "vitest";
 import { ensureModel, modelPath } from "./manager.js";
 
-const cache = vi.hoisted(() => {
-  const dir = `${process.env.TMPDIR ?? "/tmp"}/hf-bgrm-pin-${process.pid}`;
+const cache = await vi.hoisted(async () => {
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(`${tmpdir()}/hf-bgrm-pin-`);
   process.env["HYPERFRAMES_CACHE_DIR"] = dir;
   return dir;
 });
@@ -18,14 +20,14 @@ vi.mock("../utils/download.js", () => ({
         verify: (path: string) => Promise<void>;
       },
     ) => {
-      if (existsSync(dest) && (await options.keepExisting(dest))) return;
+      if (await options.keepExisting(dest)) return;
       rmSync(dest, { force: true });
       writeFileSync(`${dest}.part`, "swapped weights");
       await options.verify(`${dest}.part`).catch((error: unknown) => {
         rmSync(`${dest}.part`);
         throw error;
       });
-      writeFileSync(dest, readFileSync(`${dest}.part`));
+      renameSync(`${dest}.part`, dest);
     },
   ),
 }));

@@ -1,5 +1,14 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -17,21 +26,20 @@ vi.mock("./download.js", () => ({
         verify: (path: string) => Promise<void>;
       },
     ) => {
-      if (existsSync(dest) && (await options.keepExisting(dest))) return;
+      if (await options.keepExisting(dest)) return;
       rmSync(dest, { force: true });
       writeFileSync(`${dest}.part`, served.bytes);
       await options.verify(`${dest}.part`).catch((error: unknown) => {
         rmSync(`${dest}.part`);
         throw error;
       });
-      writeFileSync(dest, readFileSync(`${dest}.part`));
-      rmSync(`${dest}.part`);
+      renameSync(`${dest}.part`, dest);
     },
   ),
 }));
 
-const dir = join(tmpdir(), `hf-pinned-file-${process.pid}`);
-const dest = join(dir, "models", "model.onnx");
+let dir = "";
+let dest = "";
 const pin = {
   name: "model.onnx",
   bytes: 5,
@@ -41,7 +49,8 @@ const progress = { downloading: "Downloading model..." };
 
 beforeEach(() => {
   served.bytes = "model";
-  mkdirSync(dir, { recursive: true });
+  dir = mkdtempSync(join(tmpdir(), "hf-pinned-file-"));
+  dest = join(dir, "models", "model.onnx");
 });
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
