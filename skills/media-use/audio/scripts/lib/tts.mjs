@@ -25,7 +25,7 @@ import {
   heygenCredential,
   heygenJSON,
   heygenMessage,
-  noteReceivedElevenLabsKey,
+  noteProjectElevenLabsKey,
 } from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
 import { synthesizeGemini } from "./gemini-tts.mjs";
@@ -57,12 +57,12 @@ export function pickProvider(userProvider) {
     if (userProvider === "heygen" && !heygenAvailable()) heygenAuthHeaders();
     if (userProvider === "elevenlabs" && !process.env.ELEVENLABS_API_KEY)
       throw new Error("provider=elevenlabs but $ELEVENLABS_API_KEY is not set");
-    if (userProvider === "elevenlabs") noteReceivedElevenLabsKey();
+    if (userProvider === "elevenlabs") noteProjectElevenLabsKey();
     return userProvider;
   }
   if (heygenAvailable()) return "heygen";
   if (!elevenlabsAvailable()) return "kokoro";
-  noteReceivedElevenLabsKey();
+  noteProjectElevenLabsKey();
   return "elevenlabs";
 }
 

@@ -173,27 +173,36 @@ function untrustedOrigin(name) {
   return kind === null ? null : RECEIVED_ORIGIN[kind];
 }
 
-// The person's own credential that the provider of `name` competes with, named for the note; undefined when none.
+// 0: set outside any project .env; 1: the person's own project .env; 2: a received or unreadable one.
+function keyRank(name) {
+  if (projectKeyDir(name) === undefined) return 0;
+  return untrustedOrigin(name) === null ? 1 : 2;
+}
+
+// A credential for a competing provider from a source the person controls more surely, named for the note. The
+// person's own project key gives way only to the other API key, which speech and music both accept, and an own
+// ElevenLabs key stays for an explicit provider choice.
 function ownCompetingCredential(name) {
+  const rank = keyRank(name);
+  const surer = (other) => other !== name && process.env[other] && keyRank(other) < rank;
   if (name !== "ELEVENLABS_API_KEY")
-    return GEMINI_CREDENTIALS.find(
-      (other) => other !== name && process.env[other] && untrustedOrigin(other) === null,
-    );
+    return (rank === 2 ? GEMINI_CREDENTIALS : ["GEMINI_API_KEY", "GOOGLE_API_KEY"]).find(surer);
+  if (rank < 2) return undefined;
   if (process.env.HEYGEN_ACCESS_TOKEN) return "HEYGEN_ACCESS_TOKEN";
-  const heygenKey = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"].find(
-    (other) => process.env[other] && untrustedOrigin(other) === null,
-  );
+  const heygenKey = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"].find(surer);
   if (heygenKey) return heygenKey;
   return storedCredential() ? "saved HeyGen credentials" : undefined;
 }
 
-// A received project's provider key gives way to the person's own credential for a competing provider.
-function yieldReceivedProviderKeys() {
+const projectOrigin = (name) => untrustedOrigin(name) ?? "a project .env";
+
+// A project .env's provider key gives way to the person's own credential for a competing provider.
+function yieldProjectProviderKeys() {
   for (const name of ["GEMINI_API_KEY", "GOOGLE_API_KEY", "ELEVENLABS_API_KEY"]) {
-    const origin = untrustedOrigin(name);
-    const own = origin === null ? undefined : ownCompetingCredential(name);
-    if (own === undefined) continue;
     const dir = projectKeyDir(name);
+    const own = dir === undefined ? undefined : ownCompetingCredential(name);
+    if (own === undefined) continue;
+    const origin = projectOrigin(name);
     delete process.env[name];
     projectEnvValues.delete(name);
     process.stderr.write(
@@ -204,13 +213,13 @@ function yieldReceivedProviderKeys() {
 
 let elevenlabsKeyNoted = false;
 
-// Says once, before ElevenLabs speaks, that the key came from a received project's .env.
-export function noteReceivedElevenLabsKey() {
-  const origin = untrustedOrigin("ELEVENLABS_API_KEY");
-  if (origin === null || elevenlabsKeyNoted) return;
+// Says once, before ElevenLabs speaks, that the key came from a project .env.
+export function noteProjectElevenLabsKey() {
+  const dir = projectKeyDir("ELEVENLABS_API_KEY");
+  if (dir === undefined || elevenlabsKeyNoted) return;
   elevenlabsKeyNoted = true;
   process.stderr.write(
-    `[hyperframes] Using ELEVENLABS_API_KEY from ${join(projectKeyDir("ELEVENLABS_API_KEY"), ".env")}, the .env of ${origin}: speech goes to that key's ElevenLabs account.\n`,
+    `[hyperframes] Using ELEVENLABS_API_KEY from ${join(dir, ".env")}, ${projectOrigin("ELEVENLABS_API_KEY")}: speech goes to that key's ElevenLabs account.\n`,
   );
 }
 
@@ -218,7 +227,7 @@ export function noteReceivedElevenLabsKey() {
 export function loadEnvFromDir(startDir) {
   inheritProjectKeyOrigins();
   loadFirstEnvFile(startDir);
-  yieldReceivedProviderKeys();
+  yieldProjectProviderKeys();
 }
 
 function loadFirstEnvFile(startDir) {
