@@ -91,6 +91,25 @@ export function inspectorChromeArgs(
   ];
 }
 
+export function launchInspectorChrome(options: {
+  executablePath: string;
+  userDataDir: string;
+  proxyArgs: readonly string[];
+  sandbox?: boolean;
+}): Promise<Browser> {
+  return launchWithChromeSandboxFallback(
+    inspectorChromeArgs(options.proxyArgs, options.sandbox),
+    (args) =>
+      puppeteer.launch({
+        executablePath: options.executablePath,
+        env: buildChromeLaunchEnv(),
+        headless: true,
+        userDataDir: options.userDataDir,
+        args: withHyperframesBrowserMarker(args),
+      }),
+  );
+}
+
 export interface InspectorOptions {
   executablePath?: string;
   idleMs?: number;
@@ -167,18 +186,11 @@ export class Inspector {
       const started = await startCaptureProxy();
       proxy = started;
       profile = await createPublicOnlyProfile("hf-inspect-profile-");
-      const proxyArgs = browserProxyArgs(started.url, `127.0.0.1:${address.port}`);
-      const browser = await launchWithChromeSandboxFallback(
-        inspectorChromeArgs(proxyArgs),
-        (args) =>
-          puppeteer.launch({
-            executablePath: this.options.executablePath ?? chromePath(),
-            env: buildChromeLaunchEnv(),
-            headless: true,
-            userDataDir: profile,
-            args: withHyperframesBrowserMarker(args),
-          }),
-      );
+      const browser = await launchInspectorChrome({
+        executablePath: this.options.executablePath ?? chromePath(),
+        userDataDir: profile,
+        proxyArgs: browserProxyArgs(started.url, `127.0.0.1:${address.port}`),
+      });
       this.stats.browserStarts++;
       this.host = { browser, server, port: address.port, proxy: started, profile };
       return this.host;
