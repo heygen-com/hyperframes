@@ -126,7 +126,11 @@ function manifestKey(file: string): { key: string; mtimeMs: number } {
   return { key: `_${hash}`, mtimeMs: Math.round(manifest.mtimeMs) };
 }
 
-export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): void {
+export function registerThumbnailRoutes(
+  api: Hono,
+  adapter: StudioApiAdapter,
+  frameTokenForCapture?: (projectId: string) => string,
+): void {
   api.get("/projects/:id/thumbnail/*", async (c) => {
     if (!adapter.generateThumbnail) {
       return c.json({ error: "Thumbnails not available" }, 501);
@@ -194,10 +198,13 @@ export function registerThumbnailRoutes(api: Hono, adapter: StudioApiAdapter): v
     const origin = thumbnailPreviewOrigin(adapter.serverOrigin?.(), c.req.header("host"));
     if (!origin) return c.json({ error: "thumbnail needs a loopback Host" }, 400);
     const projectUrl = `${origin}/api/projects/${encodeURIComponent(project.id)}`;
+    const preview = frameTokenForCapture
+      ? `preview/~${frameTokenForCapture(project.id)}`
+      : "preview";
     const previewPath =
       compPath === "index.html"
-        ? `${projectUrl}/preview`
-        : `${projectUrl}/preview/comp/${compPath.split("/").map(encodeURIComponent).join("/")}`;
+        ? `${projectUrl}/${preview}`
+        : `${projectUrl}/${preview}/comp/${compPath.split("/").map(encodeURIComponent).join("/")}`;
     const previewUrl = `${previewPath}?${PREVIEW_CAPTURE_PARAM}=1`;
 
     // Cache

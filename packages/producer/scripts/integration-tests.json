@@ -26,8 +26,12 @@
   "src/services/distributed/renderSpan.integration.test.ts",
   "src/services/fileServer.test.ts",
   "src/services/fileServer.file-race.test.ts",
+  "src/services/fileServer.host.test.ts",
   "src/services/fileServer.listenError.test.ts",
+  "src/services/outsideProjectAssets.test.ts",
   "src/services/healthWorker.test.ts",
+  "src/services/hyperframeLint.worker.test.ts",
+  "src/server.lintWorker.test.ts",
   "src/services/scriptFailureAttribution.test.ts",
   "src/services/strictVariablesSession.test.ts",
   "src/services/hyperframeLint.file-race.test.ts",
@@ -35,6 +39,7 @@
   "src/services/htmlCompiler.mediaType.test.ts",
   "src/services/htmlCompiler.naturalDuration.test.ts",
   "src/services/htmlCompiler.probeCount.test.ts",
+  "src/services/htmlCompiler.remoteBoundMedia.test.ts",
   "src/services/htmlCompiler.variableMedia.test.ts",
   "src/services/render/audioDeliveryLimit.integration.test.ts",
   "src/services/render/audioPadTrim.integration.test.ts",
@@ -64,5 +69,6 @@
   "src/services/distributed/referenceBackground.integration.test.ts",
   "src/services/render/planReferenceBackground.polling.test.ts",
   "src/services/render/deferredVideoFrames.integration.test.ts",
-  "src/services/render/stages/extractVideosStage.integration.test.ts"
+  "src/services/render/stages/extractVideosStage.integration.test.ts",
+  "src/services/render/videoShownBoxes.integration.test.ts"
 ]

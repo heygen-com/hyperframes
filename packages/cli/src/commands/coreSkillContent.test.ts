@@ -20,6 +20,15 @@ describe("hyperframes contract docs", () => {
     expect(minimal).toMatch(/window\.__timelines\["main"\]/);
   });
 
+  it("makes style-sampling pull a template before using it, resuming included", () => {
+    const skill = read("skills", "style-sampling", "SKILL.md");
+    const pull = skill.split("\n## Pull\n")[1]!.split("\n## ")[0]!;
+
+    expect(pull).toMatch(/every time, resuming included, before using `templates\/<slug>\/`/);
+    expect(pull).toMatch(/Never run a kit tool from a template this session did not pull/);
+    expect(pull).not.toMatch(/not downloaded again/);
+  });
+
   it("teaches check as the canonical quality gate", () => {
     const skill = read("skills", "hyperframes", "SKILL.md");
 

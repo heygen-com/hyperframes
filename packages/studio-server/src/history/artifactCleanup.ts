@@ -2,13 +2,15 @@ import { createHash } from "node:crypto";
 import {
   closeSync,
   constants,
+  existsSync,
   fstatSync,
   lstatSync,
   openSync,
   readFileSync,
   unlinkSync,
 } from "node:fs";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, parse, relative, resolve, sep } from "node:path";
+import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 import { pinProjectRecord, realFilePath } from "../helpers/safePath.js";
 import type { ArtifactRecord, RenderRecord, VideoState } from "./videoState.js";
 
@@ -28,11 +30,38 @@ const records = (state: VideoState, kind: PendingArtifactCleanup["kind"]) => [
 const protectedRevisions = (state: VideoState) =>
   new Set([state.currentRevision, ...(state.renders?.retainedRevisions ?? [])]);
 
+const canonicalUnlessOnAnotherShare = (projectDir: string, path: string): string =>
+  namesAnotherNetworkRoot(projectDir, path) ? resolve(path) : realFilePath(path);
+
+export const recordedFileGone = (projectDir: string, path: string): boolean =>
+  namesAnotherNetworkRoot(projectDir, path) || !existsSync(path);
+
+function spelledInsideArtifactsFolder(
+  projectDir: string,
+  path: string,
+  kind: PendingArtifactCleanup["kind"],
+): boolean {
+  if (!isAbsolute(path) || namesAnotherNetworkRoot(projectDir, path)) return false;
+  if (parse(resolve(path)).root.toLowerCase() !== parse(resolve(projectDir)).root.toLowerCase())
+    return false;
+  const parts = resolve(path)
+    .split(sep)
+    .map((part) => part.toLowerCase());
+  return parts.some(
+    (part, i) =>
+      part === ".hyperframes" &&
+      parts[i + 1] === "artifacts" &&
+      parts[i + 2] === kind &&
+      i + 3 < parts.length,
+  );
+}
+
 function managedPath(
   projectDir: string,
   path: string,
   kind: PendingArtifactCleanup["kind"],
 ): boolean {
+  if (!spelledInsideArtifactsFolder(projectDir, path, kind)) return false;
   const canonicalProject = realFilePath(resolve(projectDir));
   const canonicalPath = realFilePath(path);
   const root = join(canonicalProject, ".hyperframes", "artifacts", kind);
@@ -84,7 +113,7 @@ export function planArtifactCleanup(
       const path = record.image ?? record.report;
       if (!path || record.status === "cleaned") continue;
       if (removable(record, path, kind)) candidates.push({ kind, record, path });
-      else keepPaths.add(realFilePath(path));
+      else keepPaths.add(canonicalUnlessOnAnotherShare(projectDir, path));
     }
   }
   for (const { kind, record, path } of candidates) {
@@ -149,7 +178,7 @@ export function finishArtifactCleanup(projectDir: string, state: VideoState): vo
     kinds.flatMap((kind) =>
       records(state, kind)
         .flatMap((record) => record.image ?? record.report ?? [])
-        .map(realFilePath),
+        .map((path) => canonicalUnlessOnAnotherShare(projectDir, path)),
     ),
   );
   state.pendingArtifactCleanup = (state.pendingArtifactCleanup ?? []).filter((item) => {

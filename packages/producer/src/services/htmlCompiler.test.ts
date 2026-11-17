@@ -382,6 +382,71 @@ describe("collectExternalAssets", () => {
 // ── inlineExternalScripts ──────────────────────────────────────────────────
 
 describe("inlineExternalScripts", () => {
+  it("fetches composition scripts only from public HTTPS addresses", async () => {
+    const fetched: string[] = [];
+    const record = mock(async (url: string | URL | Request) => {
+      fetched.push(String(url));
+      return new Response("window.fromLocalHost = 1;");
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = record as unknown as typeof fetch;
+    _setDownloadFetchForTests(record);
+    try {
+      const html = `<html><body><script src="http://127.0.0.1:8080/a.js"></script><script src="https://127.0.0.1:8443/b.js"></script><script src="https://10.0.0.5/c.js"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+      expect({ fetched, inlined: result.includes("window.fromLocalHost") }).toEqual({
+        fetched: [],
+        inlined: false,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
+    }
+  });
+
+  it("trusts only the operator's GSAP mirror, without following its redirects", async () => {
+    const asked: { url: string; redirect?: RequestRedirect }[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
+      asked.push({ url: String(url), redirect: init?.redirect });
+      return new Response("window.fromMirror = 1;");
+    }) as unknown as typeof fetch;
+    const previous = process.env.HYPERFRAMES_GSAP_BASE_URL;
+    process.env.HYPERFRAMES_GSAP_BASE_URL = "http://127.0.0.1:8080/vendor/npm";
+    try {
+      const mirror = "http://127.0.0.1:8080/vendor/npm/gsap@3.15.0/dist/gsap.min.js";
+      const escape = "http://127.0.0.1:8080/vendor/npm/../../admin.js";
+      const result = await inlineExternalScripts(
+        `<script src="${mirror}"></script><script src="${escape}"></script>`,
+      );
+      expect(asked).toEqual([{ url: mirror, redirect: "error" }]);
+      expect(result).toContain("window.fromMirror = 1;");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previous === undefined) delete process.env.HYPERFRAMES_GSAP_BASE_URL;
+      else process.env.HYPERFRAMES_GSAP_BASE_URL = previous;
+    }
+  });
+
+  it("checks every redirect of a CDN script before following it", async () => {
+    const asked: string[] = [];
+    _setDownloadFetchForTests(async (url) => {
+      asked.push(url);
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://169.254.169.254/latest/meta-data/" },
+      });
+    });
+    try {
+      const html = `<html><body><script src="https://cdn.example.com/r.js"></script></body></html>`;
+      const result = await inlineExternalScripts(html);
+      expect(result).toContain('src="https://cdn.example.com/r.js"');
+      expect(asked).toEqual(["https://cdn.example.com/r.js"]);
+    } finally {
+      _setDownloadFetchForTests();
+    }
+  });
+
   it("returns HTML unchanged when no external scripts exist", async () => {
     const html = `<html><body><script>var x = 1;</script></body></html>`;
     const result = await inlineExternalScripts(html);
@@ -395,21 +460,21 @@ describe("inlineExternalScripts", () => {
   });
 
   it("leaves a CDN runtime link for the file server to strip", async () => {
-    const originalFetch = globalThis.fetch;
     const fetchMock = mock(async () => new Response("window.__hyperframeRuntime = {};"));
-    globalThis.fetch = fetchMock as any;
+    _setDownloadFetchForTests(fetchMock as any);
     try {
       const html = `<html><head><script src="https://cdn.example.com/hyperframe.runtime.iife.js"></script></head><body></body></html>`;
       expect(await inlineExternalScripts(html)).toBe(html);
       expect(fetchMock).not.toHaveBeenCalled();
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("inlines a CDN script on successful fetch", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => new Response("var gsap = {};", { status: 200 })) as any;
+    _setDownloadFetchForTests(
+      mock(async () => new Response("var gsap = {};", { status: 200 })) as any,
+    );
 
     try {
       const html = `<html><body><script src="https://cdn.example.com/gsap.min.js"></script></body></html>`;
@@ -418,7 +483,7 @@ describe("inlineExternalScripts", () => {
       expect(result).toContain("var gsap = {};");
       expect(result).not.toContain('src="https://cdn.example.com/gsap.min.js"');
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
@@ -445,8 +510,7 @@ describe("inlineExternalScripts", () => {
       { metadata: "sha384-YQ==", accepted: false },
       { metadata: "sha1-unknown malformed", accepted: true },
     ];
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => new Response(bytes)) as any;
+    _setDownloadFetchForTests(mock(async () => new Response(bytes)) as any);
     try {
       for (const { metadata, accepted } of cases) {
         const html = `<script src="https://cdn.example.com/script.js" integrity="${metadata}" crossorigin="anonymous"></script>`;
@@ -461,15 +525,14 @@ describe("inlineExternalScripts", () => {
         expect(result).not.toContain('src="https://cdn.example.com/script.js"');
       }
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("preserves non-src script attributes when inlining", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(
-      async () => new Response('console.log("module");', { status: 200 }),
-    ) as any;
+    _setDownloadFetchForTests(
+      mock(async () => new Response('console.log("module");', { status: 200 })) as any,
+    );
 
     try {
       const html =
@@ -481,15 +544,16 @@ describe("inlineExternalScripts", () => {
       expect(result).toContain('console.log("module");');
       expect(result).not.toContain('src="https://cdn.example.com/module.js"');
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("escapes </script in downloaded content", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(
-      async () => new Response('var x = "</script><script>alert(1)</script>";', { status: 200 }),
-    ) as any;
+    _setDownloadFetchForTests(
+      mock(
+        async () => new Response('var x = "</script><script>alert(1)</script>";', { status: 200 }),
+      ) as any,
+    );
 
     try {
       const html = `<html><body><script src="https://cdn.example.com/evil.js"></script></body></html>`;
@@ -498,18 +562,19 @@ describe("inlineExternalScripts", () => {
       expect(result).not.toContain("</script><script>alert(1)</script>");
       expect(result).toContain("<\\/script");
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("preserves literal replacement tokens in downloaded script content", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(
-      async () =>
-        new Response('const before = "$`"; const after = "$\'"; const both = "$&";', {
-          status: 200,
-        }),
-    ) as any;
+    _setDownloadFetchForTests(
+      mock(
+        async () =>
+          new Response('const before = "$`"; const after = "$\'"; const both = "$&";', {
+            status: 200,
+          }),
+      ) as any,
+    );
 
     try {
       const html = `<html><body><script src="https://cdn.example.com/d3.min.js"></script><div>tail</div></body></html>`;
@@ -520,13 +585,14 @@ describe("inlineExternalScripts", () => {
       expect(result).toContain('const both = "$&";');
       expect(result.match(/<script>/g)?.length).toBe(1);
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("returns a fragment when the input has no html/body wrapper", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => new Response("var d3 = {};", { status: 200 })) as any;
+    _setDownloadFetchForTests(
+      mock(async () => new Response("var d3 = {};", { status: 200 })) as any,
+    );
 
     try {
       const html = '<script src="https://cdn.example.com/d3.min.js"></script><div>tail</div>';
@@ -537,15 +603,16 @@ describe("inlineExternalScripts", () => {
       expect(result).toContain("<div>tail</div>");
       expect(result).not.toContain('src="https://cdn.example.com/d3.min.js"');
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("warns but keeps original tag when fetch fails", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => {
-      throw new Error("Network error");
-    }) as any;
+    _setDownloadFetchForTests(
+      mock(async () => {
+        throw new Error("Network error");
+      }) as any,
+    );
 
     try {
       const html = `<html><body><script src="https://cdn.example.com/gsap.min.js"></script></body></html>`;
@@ -553,18 +620,19 @@ describe("inlineExternalScripts", () => {
       // Original script tag should remain since download failed
       expect(result).toContain('src="https://cdn.example.com/gsap.min.js"');
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("handles multiple CDN scripts with mixed success/failure", async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async (url: string) => {
-      if (url.includes("gsap")) {
-        return new Response("var gsap = {};", { status: 200 });
-      }
-      throw new Error("404");
-    }) as any;
+    _setDownloadFetchForTests(
+      mock(async (url: string) => {
+        if (url.includes("gsap")) {
+          return new Response("var gsap = {};", { status: 200 });
+        }
+        throw new Error("404");
+      }) as any,
+    );
 
     try {
       const html = `<html><body>
@@ -577,17 +645,18 @@ describe("inlineExternalScripts", () => {
       // Lottie should remain as original tag
       expect(result).toContain('src="https://cdn.example.com/lottie.min.js"');
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
   it("handles duplicate CDN URLs (same script referenced twice)", async () => {
-    const originalFetch = globalThis.fetch;
     let fetchCount = 0;
-    globalThis.fetch = mock(async () => {
-      fetchCount++;
-      return new Response("var gsap = {};", { status: 200 });
-    }) as any;
+    _setDownloadFetchForTests(
+      mock(async () => {
+        fetchCount++;
+        return new Response("var gsap = {};", { status: 200 });
+      }) as any,
+    );
 
     try {
       const html = `<html><body>
@@ -601,7 +670,7 @@ describe("inlineExternalScripts", () => {
         result.match(/\/\* inlined: https:\/\/cdn\.example\.com\/gsap\.min\.js \*\//g)?.length,
       ).toBe(2);
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 });
@@ -791,6 +860,21 @@ describe("detectRenderModeHints", () => {
     expect(detectRenderModeHints(html, "off").reasons).toEqual([]);
   });
 
+  it("detects html-in-canvas API via the content=drawable canvas of Chrome 157+", () => {
+    const html = `<!DOCTYPE html>
+<html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080">
+    <canvas id="glass-canvas" content="drawable" width="1920" height="1080">
+      <div class="panel" drawable>Glass content</div>
+    </canvas>
+  </div>
+</body></html>`;
+
+    expect(detectRenderModeHints(html).reasons.map((reason) => reason.code)).toContain(
+      "htmlInCanvas",
+    );
+  });
+
   it("does not flag htmlInCanvas for plain canvas elements without layoutsubtree", () => {
     const html = `<!DOCTYPE html>
 <html><body>
@@ -832,13 +916,14 @@ describe("detectRenderModeHints", () => {
 </template>`,
     );
 
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => {
-      return new Response(
-        "window.gsap = { timeline: function() { return { paused: true }; } }; function __ticker(){ requestAnimationFrame(__ticker); }",
-        { status: 200 },
-      );
-    }) as any;
+    _setDownloadFetchForTests(
+      mock(async () => {
+        return new Response(
+          "window.gsap = { timeline: function() { return { paused: true }; } }; function __ticker(){ requestAnimationFrame(__ticker); }",
+          { status: 200 },
+        );
+      }) as any,
+    );
 
     try {
       const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
@@ -846,7 +931,7 @@ describe("detectRenderModeHints", () => {
       expect(result.renderModeHints.recommendScreenshot).toBe(false);
       expect(result.renderModeHints.reasons).toEqual([]);
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
     }
   });
 
@@ -997,19 +1082,14 @@ describe("detectRenderModeHints", () => {
   it("compileForRender aborts naming a data-composition-src that points at a folder", async () => {
     const projectDir = makeSubCompProject(
       "hf-folder-subcomp-",
-      [{ id: "intro", src: "compositions/intro" }],
+      [{ id: "intro", src: "compositions/intro.html" }],
       {},
     );
     try {
-      mkdirSync(join(projectDir, "compositions", "intro"));
-      writeFileSync(
-        join(projectDir, "compositions", "intro", "index.html"),
-        validSubCompHtml("intro", "Intro"),
-      );
-
+      mkdirSync(join(projectDir, "compositions", "intro.html"));
       await expect(
         compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
-      ).rejects.toThrow(/compositions\/intro[\s\S]*a folder, not an HTML file/);
+      ).rejects.toThrow(/compositions\/intro\.html[\s\S]*a folder, not an HTML file/);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
@@ -1024,7 +1104,29 @@ describe("detectRenderModeHints", () => {
     try {
       await expect(
         compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
-      ).rejects.toThrow(/compositions\/\.env\.html[\s\S]*git metadata or an env file/);
+      ).rejects.toThrow(
+        /compositions\/\.env\.html[\s\S]*git metadata, an env file or a private tool record/,
+      );
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("compileForRender refuses to inline the app's records under .hyperframes as a data-composition-src", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-record-subcomp-",
+      [{ id: "intro", src: ".hyperframes/agent-handoff.html" }],
+      {},
+    );
+    try {
+      mkdirSync(join(projectDir, ".hyperframes"));
+      writeFileSync(
+        join(projectDir, ".hyperframes", "agent-handoff.html"),
+        validSubCompHtml("intro", "HANDOFF_SECRET_VALUE"),
+      );
+      await expect(
+        compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+      ).rejects.toThrow(/\.hyperframes\/agent-handoff\.html[\s\S]*a private tool record/);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }
@@ -1085,6 +1187,61 @@ describe("detectRenderModeHints", () => {
       rmSync(projectDir, { recursive: true, force: true });
     }
   });
+
+  it("compileForRender refuses an entry that is not an .html file, and renders the same page named .html", async () => {
+    const projectDir = makeSubCompProject("hf-media-entry-", [], {});
+    try {
+      const page = readFileSync(join(projectDir, "index.html"), "utf-8");
+      writeFileSync(join(projectDir, "scene.png"), page);
+      writeFileSync(join(projectDir, "scene.html"), page);
+      await expect(
+        compileForRender(projectDir, join(projectDir, "scene.png"), projectDir),
+      ).rejects.toThrow(/scene\.png is not an \.html file, so it is refused/);
+      const compiled = await compileForRender(
+        projectDir,
+        join(projectDir, "scene.html"),
+        projectDir,
+      );
+      expect(compiled.html).toContain('data-composition-id="main"');
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("compileForRender checks containment before the file type of a data-composition-src", async () => {
+    const projectDir = makeSubCompProject(
+      "hf-outside-media-subcomp-",
+      [{ id: "intro", src: "../outside-scene.png" }],
+      {},
+    );
+    const outside = join(dirname(projectDir), "outside-scene.png");
+    writeFileSync(outside, validSubCompHtml("intro", "Outside"));
+    try {
+      await expect(
+        compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+      ).rejects.toThrow(/outside-scene\.png: it is outside the project folder/);
+    } finally {
+      rmSync(outside, { force: true });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it.each(["compositions/scene.png", "/compositions/scene.png", "compositions/scene.mp4"])(
+    "compileForRender refuses a data-composition-src that is not an .html file: %s",
+    async (src) => {
+      const name = src.split("/").pop() ?? "";
+      const projectDir = makeSubCompProject("hf-media-subcomp-", [{ id: "intro", src }], {
+        [name]: validSubCompHtml("intro", "Media named"),
+      });
+      try {
+        await expect(
+          compileForRender(projectDir, join(projectDir, "index.html"), projectDir),
+        ).rejects.toThrow(/not an \.html file/);
+      } finally {
+        rmSync(projectDir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it.each([
     ["dot-dot segments", "../outside-scene.html"],
@@ -1399,6 +1556,35 @@ describe("system-primary font normalization", () => {
 });
 
 describe("local font embedding", () => {
+  it.each([".env", ".git/config", ".hyperframes/agent-handoff.json"])(
+    "never inlines the private project file %s that an @font-face url names",
+    async (file) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-private-font-"));
+      const secret = "HEYGEN_API_KEY=not-for-the-page";
+      mkdirSync(dirname(join(projectDir, file)), { recursive: true });
+      writeFileSync(join(projectDir, file), secret);
+      writeFileSync(
+        join(projectDir, "index.html"),
+        `<!DOCTYPE html>
+<html><head><style>
+  @font-face { font-family: "P"; src: url("${file}"); }
+</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Text</div>
+</body></html>`,
+      );
+
+      const { html } = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        projectDir,
+      );
+
+      expect(html).not.toContain(Buffer.from(secret).toString("base64"));
+      expect(html).not.toContain("data:font/");
+      rmSync(projectDir, { recursive: true, force: true });
+    },
+  );
+
   it("deduplicates assembled scene fonts before embedding and keeps the last descriptor order", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-repeated-scene-fonts-"));
     mkdirSync(join(projectDir, "fonts"));
@@ -3201,6 +3387,24 @@ describe("compileForRender non-media payload sniff (STUDIO-5433)", () => {
     // error and this assertion would fail.
   });
 
+  it("aborts before ffprobe when a <video> playlist names a file outside its folder", async () => {
+    const projectDir = writeProject(
+      '<video id="v1" src="assets/clip.m3u8" data-start="0" muted></video>',
+    );
+    writeFileSync(
+      join(projectDir, "assets", "clip.m3u8"),
+      "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n../../outside.mp4\n#EXT-X-ENDLIST\n",
+    );
+    let caught: unknown;
+    try {
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(NotMediaPayloadError);
+    expect((caught as NotMediaPayloadError).message).not.toContain("clip.m3u8");
+  });
+
   it("drops an <audio> document payload to duration 0 and warns instead of failing the render", async () => {
     // The audio/video split is the compiler's contract: an unprobeable audio
     // src is excluded from the render, and only video surfaces its probe
@@ -3223,6 +3427,25 @@ describe("compileForRender non-media payload sniff (STUDIO-5433)", () => {
     expect(warnings.join("\n")).toContain("text document");
     expect(warnings.join("\n")).toContain("a1");
   });
+
+  it.each([".git/clip.mp4", ".hyperframes/clip.mp4", ".claude/clip.mp4", "keys/id_rsa"])(
+    "never probes the private project file %s that a <video> or <audio> names",
+    async (src) => {
+      const projectDir = writeProject(
+        `<video id="v1" src="${src}" data-start="0" muted></video>` +
+          `<audio id="a1" src="${src}" data-start="0"></audio>`,
+      );
+      mkdirSync(dirname(join(projectDir, src)), { recursive: true });
+      writeFileSync(join(projectDir, src), readFileSync(join(projectDir, "assets", "nested.html")));
+      const warnings: string[] = [];
+      const log = { ...defaultLogger, warn: (message: string) => warnings.push(message) };
+
+      await compileForRender(projectDir, join(projectDir, "index.html"), projectDir, { log });
+
+      expect(warnings.join("\n")).not.toContain("text document");
+      rmSync(projectDir, { recursive: true, force: true });
+    },
+  );
 });
 
 describe("duplicate media ids across nested compositions", () => {
@@ -3463,16 +3686,17 @@ describe("nested CDN integrity", () => {
       join(dir, "child.html"),
       `<html><head><script src="${src}" integrity="${integrity}" crossorigin="anonymous"></script></head><body><div data-composition-id="child" data-width="320" data-height="180" data-duration="1">Child</div></body></html>`,
     );
-    const originalFetch = globalThis.fetch;
     try {
-      globalThis.fetch = mock(async () => new Response(bytes)) as any;
+      _setDownloadFetchForTests(mock(async () => new Response(bytes)) as any);
       await expect(compileForRender(dir, join(dir, "index.html"), dir)).resolves.toBeDefined();
-      globalThis.fetch = mock(async () => new Response("window.compromised = true;")) as any;
+      _setDownloadFetchForTests(
+        mock(async () => new Response("window.compromised = true;")) as any,
+      );
       await expect(compileForRender(dir, join(dir, "index.html"), dir)).rejects.toThrow(
         "Subresource integrity mismatch",
       );
     } finally {
-      globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -3501,15 +3725,19 @@ describe("missing local GSAP in renders", () => {
     const previous = process.env.HYPERFRAMES_GSAP_BASE_URL;
     if (base === undefined) delete process.env.HYPERFRAMES_GSAP_BASE_URL;
     else process.env.HYPERFRAMES_GSAP_BASE_URL = base;
-    globalThis.fetch = mock(async (input: string | URL | Request) => {
+    const fetchMock = mock(async (input: string | URL | Request) => {
       fetched.push(String(input instanceof Request ? input.url : input));
       return new Response("window.gsap = {};", { status: 200 });
-    }) as unknown as typeof fetch;
+    });
+    // The operator's mirror is fetched directly; every other URL goes through the checked transport.
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    _setDownloadFetchForTests(fetchMock);
     try {
       const result = await compileForRender(projectDir, join(projectDir, "index.html"), projectDir);
       return { html: result.html, fetched };
     } finally {
       globalThis.fetch = originalFetch;
+      _setDownloadFetchForTests();
       if (previous === undefined) delete process.env.HYPERFRAMES_GSAP_BASE_URL;
       else process.env.HYPERFRAMES_GSAP_BASE_URL = previous;
       rmSync(projectDir, { recursive: true, force: true });

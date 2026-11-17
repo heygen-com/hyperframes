@@ -17,8 +17,8 @@
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
@@ -633,10 +633,13 @@ async function fetchManifest(url: string): Promise<SkillsManifest> {
  * Credential Manager (the Git for Windows default) answers a private or missing
  * repo's auth challenge with a blocking sign-in window. An empty credential.helper
  * clears every helper; an empty GIT_ASKPASS also skips core.askPass and SSH_ASKPASS.
+ * Git's folder and repository are an empty folder of its own, so no project's repo config is read.
  */
 async function remoteHeadSha(repoSlug: string): Promise<string | null> {
   if (!REPO_SLUG_PATTERN.test(repoSlug)) return null;
+  let noRepo: string | undefined;
   try {
+    noRepo = mkdtempSync(join(tmpdir(), "hyperframes-git-"));
     const { stdout } = await execFileAsync(
       "git",
       [
@@ -648,8 +651,10 @@ async function remoteHeadSha(repoSlug: string): Promise<string | null> {
       ],
       {
         timeout: FETCH_TIMEOUT_MS,
+        cwd: noRepo,
         env: {
           ...process.env,
+          GIT_DIR: noRepo,
           GIT_TERMINAL_PROMPT: "0",
           GIT_ASKPASS: "",
           GCM_INTERACTIVE: "never",
@@ -661,6 +666,8 @@ async function remoteHeadSha(repoSlug: string): Promise<string | null> {
     return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
   } catch {
     return null;
+  } finally {
+    if (noRepo) rmSync(noRepo, { recursive: true, force: true });
   }
 }
 

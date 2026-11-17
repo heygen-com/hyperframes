@@ -59,7 +59,7 @@ export function writeJsonAtomic(path, data) {
   const save = (queued.get(path) ?? Promise.resolve()).then(async () => {
     const temp = `${path}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temp, text, { mode: 0o600 });
+      await writeFile(temp, text, { mode: 0o600, flag: "wx" });
       await rename(temp, path);
     } finally {
       await rm(temp, { force: true });

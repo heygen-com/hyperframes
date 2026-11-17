@@ -41,7 +41,14 @@ import {
   decodedUrlPath,
   splitUrlSuffix,
 } from "@hyperframes/parsers/asset-paths";
-import { CSS_URL_RE, isNonRelativeUrl } from "./assetPaths.js";
+import {
+  blockCommentMatches,
+  cssImportMatches,
+  cssUrlMatches,
+  rawCssUrlMatches,
+  replaceMatches,
+} from "@hyperframes/parsers/css-url-scans";
+import { isNonRelativeUrl } from "./assetPaths.js";
 import { rewriteSrcsetUrls } from "./srcset.js";
 import { compileHtml, type MediaDurationProber } from "./htmlCompiler";
 import {
@@ -81,6 +88,7 @@ import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 import { assignMediaRenderIds } from "./mediaRenderIds";
+import { terminalText } from "../terminalText.js";
 
 const DEFAULT_RUNTIME_SCRIPT_URL = "";
 
@@ -146,30 +154,20 @@ function safeReadFile(filePath: string): string | null {
   }
 }
 
-const CSS_IMPORT_RE =
-  /@import\s+(?:url\(\s*(["']?)([^)"']+)\1\s*\)|(["'])([^"']+)\3)\s*([^;]*);\s*/g;
+const CSS_PLACEHOLDER_RE = /\/\*__hf_(?:c|import_)\d+__\*\//g;
 
-const CSS_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
+export function restoreCssPlaceholders(css: string, texts: ReadonlyMap<string, string>): string {
+  return css.replace(CSS_PLACEHOLDER_RE, (placeholder) => texts.get(placeholder) ?? placeholder);
+}
 
-function withCommentsStripped<T>(
-  css: string,
-  fn: (stripped: string) => T,
-): { result: T; restore: (s: string) => string } {
-  const comments: string[] = [];
-  const stripped = css.replace(CSS_COMMENT_RE, (m) => {
-    const idx = comments.length;
-    comments.push(m);
-    return `/*__hf_c${idx}__*/`;
+function withCommentsStripped(css: string): { stripped: string; comments: Map<string, string> } {
+  const comments = new Map<string, string>();
+  const stripped = replaceMatches(css, blockCommentMatches(css), (m) => {
+    const placeholder = `/*__hf_c${comments.size}__*/`;
+    comments.set(placeholder, m);
+    return placeholder;
   });
-  const result = fn(stripped);
-  const restore = (s: string) => {
-    let out = s;
-    for (let i = 0; i < comments.length; i++) {
-      out = out.replace(`/*__hf_c${i}__*/`, comments[i]!);
-    }
-    return out;
-  };
-  return { result, restore };
+  return { stripped, comments };
 }
 
 function resolveRelativeUrlPath(fromDir: string, basePath: string): string {
@@ -180,7 +178,7 @@ function rebaseCssUrls(css: string, cssFileDir: string, projectDir: string): str
   const resolvedRoot = resolve(projectDir);
   const resolvedDir = resolve(cssFileDir);
   if (resolvedDir === resolvedRoot) return css;
-  return css.replace(CSS_URL_RE, (full, quote: string, urlValue: string) => {
+  return replaceMatches(css, cssUrlMatches(css), (full, quote, urlValue) => {
     const decoded = decodeCssEscapes(urlValue);
     if (!decoded || !isRelativeUrl(decoded)) return full;
     const { basePath, suffix } = splitUrlSuffix(decoded);
@@ -275,10 +273,10 @@ function inlineCssFile(
   projectDir: string,
   activeImports: Set<string>,
 ): string {
-  const { result: strippedCss, restore: restoreComments } = withCommentsStripped(css, (s) => s);
-  const importPlaceholders: string[] = [];
-  const withPlaceholders = strippedCss.replace(
-    CSS_IMPORT_RE,
+  const { stripped: strippedCss, comments: placeholders } = withCommentsStripped(css);
+  const withPlaceholders = replaceMatches(
+    strippedCss,
+    cssImportMatches(strippedCss),
     (full, _q1, urlPath, _q2, barePath, mediaQuery) => {
       const importPath = urlPath ?? barePath;
       if (!importPath || !isRelativeUrl(importPath)) return full;
@@ -294,17 +292,15 @@ function inlineCssFile(
       activeImports.delete(resolved);
       const trimmedMedia = (mediaQuery || "").trim();
       const block = trimmedMedia ? `@media ${trimmedMedia} {\n${inlined}\n}\n` : inlined + "\n";
-      const idx = importPlaceholders.length;
-      importPlaceholders.push(block);
-      return `/*__hf_import_${idx}__*/`;
+      const placeholder = `/*__hf_import_${placeholders.size}__*/`;
+      placeholders.set(placeholder, block);
+      return placeholder;
     },
   );
-  let rebased = rebaseCssUrls(withPlaceholders, cssFileDir, projectDir);
-  rebased = restoreComments(rebased);
-  for (let i = 0; i < importPlaceholders.length; i++) {
-    rebased = rebased.replace(`/*__hf_import_${i}__*/`, importPlaceholders[i]!);
-  }
-  return rebased;
+  return restoreCssPlaceholders(
+    rebaseCssUrls(withPlaceholders, cssFileDir, projectDir),
+    placeholders,
+  );
 }
 
 function safeReadFileBuffer(filePath: string): Buffer | null {
@@ -387,13 +383,17 @@ function safeStatSize(filePath: string): number | null {
 function warnAssetTooLargeToInline(assetPath: string, byteLength: number): void {
   const mb = (byteLength / (1024 * 1024)).toFixed(1);
   console.warn(
-    `[HyperFrames] Not inlining "${assetPath}" (${mb} MB exceeds the ${MAX_INLINE_ASSET_BYTES / (1024 * 1024)} MB inline limit). The bundle may not be self-contained.`,
+    terminalText(
+      `[HyperFrames] Not inlining "${assetPath}" (${mb} MB exceeds the ${MAX_INLINE_ASSET_BYTES / (1024 * 1024)} MB inline limit). The bundle may not be self-contained.`,
+    ),
   );
 }
 
 function warnInlineBudgetExhausted(assetPath: string): void {
   console.warn(
-    `[HyperFrames] Not inlining "${assetPath}" and later assets: the bundle already inlines ${MAX_INLINED_BUNDLE_CHARS / (1024 * 1024)} MB of data URLs. The bundle may not be self-contained.`,
+    terminalText(
+      `[HyperFrames] Not inlining "${assetPath}" and later assets: the bundle already inlines ${MAX_INLINED_BUNDLE_CHARS / (1024 * 1024)} MB of data URLs. The bundle may not be self-contained.`,
+    ),
   );
 }
 
@@ -466,7 +466,9 @@ function warnColorGradingLutNotInlined(lutSrc: string): void {
   const trimmed = lutSrc.trim();
   if (!isRelativeUrl(trimmed)) return;
   console.warn(
-    `[HyperFrames] Could not inline color grading LUT "${trimmed}". The rendered bundle may not be self-contained.`,
+    terminalText(
+      `[HyperFrames] Could not inline color grading LUT "${trimmed}". The rendered bundle may not be self-contained.`,
+    ),
   );
 }
 
@@ -507,14 +509,11 @@ function rewriteColorGradingLutWithInlinedAssets(value: string, inlineAsset: Ass
 
 function rewriteCssUrlsWithInlinedAssets(cssText: string, inlineAsset: AssetInliner): string {
   if (!cssText) return cssText;
-  return cssText.replace(
-    /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g,
-    (_full, quote: string, rawUrl: string) => {
-      const maybeInlined = inlineAsset((rawUrl || "").trim());
-      if (!maybeInlined) return _full;
-      return `url(${quote || ""}${maybeInlined}${quote || ""})`;
-    },
-  );
+  return replaceMatches(cssText, rawCssUrlMatches(cssText), (_full, quote, rawUrl) => {
+    const maybeInlined = inlineAsset((rawUrl || "").trim());
+    if (!maybeInlined) return _full;
+    return `url(${quote || ""}${maybeInlined}${quote || ""})`;
+  });
 }
 
 /**
@@ -716,7 +715,8 @@ function joinCssHoistingImports(sheets: string[]): string {
   const imports = new Set<string>();
   const cssParts: string[] = [];
   for (const sheet of sheets) {
-    const rest = sheet.trim().replace(CSS_IMPORT_RE, (match) => {
+    const trimmed = sheet.trim();
+    const rest = replaceMatches(trimmed, cssImportMatches(trimmed), (match) => {
       imports.add(match.trim());
       return "";
     });
@@ -730,9 +730,11 @@ function placeSceneStylesLikeRender(document: Document): void {
   const styles = [...document.querySelectorAll("head style")];
   const imports = new Set<string>();
   for (const el of styles) {
-    el.textContent = (el.textContent || "")
-      .replace(CSS_IMPORT_RE, (match) => (imports.add(match.trim()), ""))
-      .trim();
+    const css = el.textContent || "";
+    el.textContent = replaceMatches(css, cssImportMatches(css), (match) => {
+      imports.add(match.trim());
+      return "";
+    }).trim();
   }
   styles.slice(1).reduce((previous, el) => (previous.after(el), el), styles[0]!);
   if (imports.size === 0) return;
@@ -933,7 +935,7 @@ export interface BundleOptions {
   onRead?: (filePath: string) => void;
   /**
    * Project files the build never reads; a refused file keeps its authored reference. Git metadata and env files
-   * always; `"studio"` also refuses the app's records under `.hyperframes/`, as Studio's file routes do.
+   * always; `"studio"`, the default, also refuses the app's records under `.hyperframes/`, as every file server does.
    */
   privateFiles?: BundlePrivateFiles;
 }
@@ -1029,7 +1031,9 @@ function hoistCompositionScripts(
       if (map) opts.importMaps.push(map);
       else
         console.warn(
-          `[HyperFrames] ${opts.compId}: import map is not valid JSON, so it is skipped.`,
+          terminalText(
+            `[HyperFrames] ${opts.compId}: import map is not valid JSON, so it is skipped.`,
+          ),
         );
     } else if (!externalSrc && type === "module") {
       const prelude = opts.compId ? scopedModulePrelude(opts.runtimeCompId || opts.compId) : "";
@@ -1074,7 +1078,7 @@ export function bundleToSingleHtml(projectDir: string, options?: BundleOptions):
   };
   const scope: BundleReadScope = {
     projectDir,
-    privateFiles: options?.privateFiles ?? "vcs-and-secrets",
+    privateFiles: options?.privateFiles ?? "studio",
     noteRead,
   };
   return bundleReads.run(scope, () => bundleProject(projectDir, options));
@@ -1142,7 +1146,9 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     });
     if (!staticGuard.isValid) {
       console.warn(
-        `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
+        terminalText(
+          `[StaticGuard] Invalid HyperFrame contract: ${staticGuard.missingKeys.join("; ")}`,
+        ),
       );
     }
   }
@@ -1231,7 +1237,9 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     scriptErrorLabel: "[HyperFrames] composition script error:",
     onMissingComposition: (srcPath: string, reason?: string) => {
       console.warn(
-        `[Bundler] Skipping sub-composition "${srcPath}": ${reason ?? "the file could not be found"}.`,
+        terminalText(
+          `[Bundler] Skipping sub-composition "${srcPath}": ${reason ?? "the file could not be found"}.`,
+        ),
       );
     },
   });

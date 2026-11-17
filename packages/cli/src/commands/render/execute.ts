@@ -206,6 +206,7 @@ export function renderOptionsFromPlan(
     resumeSegments: plan.resumeSegments,
     keepSegments: plan.keepSegments,
     bestEffort: plan.bestEffort,
+    includeOutsideScripts: plan.includeOutsideScripts,
     variables,
     strictVariables: plan.strictVariables,
     entryFile: plan.entryFile,
@@ -277,7 +278,7 @@ async function ensureRenderBrowser(plan: RenderPlan, signal?: AbortSignal): Prom
       normalizeErrorMessage(error),
       "Run: npx hyperframes browser ensure",
     );
-    failCommand();
+    failCommand(1, undefined, "chrome_not_found");
   }
 }
 
@@ -426,6 +427,7 @@ export function batchRowRenderOptions(
     resumeSegments: plan.resumeSegments,
     keepSegments: plan.keepSegments,
     bestEffort: plan.bestEffort,
+    includeOutsideScripts: plan.includeOutsideScripts,
     strictVariables: plan.strictVariables,
     exitAfterComplete: false,
     throwOnError: true,

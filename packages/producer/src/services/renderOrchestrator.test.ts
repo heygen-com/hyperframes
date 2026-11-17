@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, win32 } from "node:path";
 import { tmpdir } from "node:os";
-import type { CaptureOptions, EngineConfig, ExtractedFrames } from "@hyperframes/engine";
+import type {
+  CaptureOptions,
+  CaptureSession,
+  EngineConfig,
+  ExtractedFrames,
+} from "@hyperframes/engine";
 import {
   DEFAULT_CONFIG,
   DrawElementCaptureError,
@@ -32,6 +37,7 @@ import {
   getNextRetryWorkerCount,
   isRecoverableParallelCaptureError,
   MAX_TRANSIENT_CAPTURE_RETRIES,
+  pageInstallsShaderCompositor,
   resolveCaptureForceScreenshotForPageSideCompositing,
   resolveRenderWorkDirPrefix,
   shouldDiscardProbeSessionForPageSideCompositing,
@@ -1097,6 +1103,44 @@ describe("materializeExtractedFramesForCompiledDir", () => {
     expect(copies).toEqual([{ src: outputDir, dest: linkPath }]);
     expect(extracted.framePaths.get(0)).toBe(win32.join(linkPath, "frame_000001.jpg"));
   });
+
+  it("gives ids that differ only by case their own frames on a case-insensitive disk", () => {
+    // macOS and Windows disks fold case: `s12-vB1` and `s12-vb1` named as-is are one folder.
+    const entries = new Map<string, string>();
+    const fold = (path: string) => path.toLowerCase();
+    const clip = (videoId: string, cacheDir: string, frameCount: number) => ({
+      videoId,
+      outputDir: cacheDir,
+      framePaths: new Map(
+        Array.from({ length: frameCount }, (_, i): [number, string] => [
+          i,
+          join(cacheDir, `frame_${String(i + 1).padStart(5, "0")}.jpg`),
+        ]),
+      ),
+    });
+    const short = clip("s12-vB1", "/cache/hook", 64);
+    const long = clip("s12-vb1", "/cache/sparks", 66);
+
+    materializeExtractedFramesForCompiledDir([short, long], "/job/compiled", {
+      fileSystem: {
+        existsSync: (path) => entries.has(fold(String(path))),
+        mkdirSync: () => undefined,
+        symlinkSync: (target, path) => {
+          if (entries.has(fold(String(path)))) {
+            throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
+          }
+          entries.set(fold(String(path)), String(target));
+        },
+        cpSync: () => {
+          throw new Error("a symlink is expected");
+        },
+      },
+    });
+
+    const targetOf = (framePath: string) => entries.get(fold(join(framePath, "..")));
+    expect(targetOf(long.framePaths.get(64)!)).toBe("/cache/sparks");
+    expect(targetOf(short.framePaths.get(63)!)).toBe("/cache/hook");
+  });
 });
 
 describe("writeCompiledArtifacts — external assets on Windows drive-letter paths (GH #321)", () => {
@@ -1613,6 +1657,50 @@ describe("resolveCaptureForceScreenshotForPageSideCompositing", () => {
         usePageSideCompositing: false,
       }),
     ).toBe(true);
+  });
+});
+
+describe("pageInstallsShaderCompositor", () => {
+  // A page whose shader-transitions build added (or did not add) its compositor canvas.
+  const pageWith = (ids: string[]) =>
+    ({
+      page: {
+        evaluate: async (fn: (id: string) => boolean, id: string) => {
+          vi.stubGlobal("document", {
+            getElementById: (x: string) => (ids.includes(x) ? {} : null),
+          });
+          try {
+            return fn(id);
+          } finally {
+            vi.unstubAllGlobals();
+          }
+        },
+      },
+    }) as unknown as CaptureSession;
+  const lifecycle = () => ({
+    initializeSession: vi.fn(async () => {}),
+    closeCaptureSession: vi.fn(async () => {}),
+  });
+
+  it("answers from the canvas every published shader-transitions build adds once it composites", async () => {
+    const hooks = lifecycle();
+    expect(
+      await pageInstallsShaderCompositor(
+        async () => pageWith(["__hf-page-side-compositor"]),
+        hooks,
+      ),
+    ).toBe(true);
+    expect(await pageInstallsShaderCompositor(async () => pageWith([]), hooks)).toBe(false);
+    expect(hooks.closeCaptureSession).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes the page when it fails to load", async () => {
+    const hooks = lifecycle();
+    hooks.initializeSession.mockRejectedValueOnce(new Error("page never ready"));
+    await expect(pageInstallsShaderCompositor(async () => pageWith([]), hooks)).rejects.toThrow(
+      "page never ready",
+    );
+    expect(hooks.closeCaptureSession).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -2379,6 +2467,34 @@ describe("shouldPreferSingleWorkerDrawElement (DE priority inversion)", () => {
   });
 
   describe("scanElementTags", () => {
+    it("takes linear time on 1 MB of tags that never close or nest re-formed scripts", () => {
+      const root = '<div data-composition-id="r" data-width="100" data-height="100">';
+      const megabyte = (piece: string) => piece.repeat(Math.ceil(1_000_000 / piece.length));
+      const nested = (depth: number) =>
+        `${"<scr".repeat(depth)}<script></script>${"ipt></script>".repeat(depth)}`;
+      const inputs = [
+        megabyte("<a "),
+        megabyte("<script "),
+        megabyte("<style>"),
+        megabyte('<video data-aroll="true" '),
+        megabyte('<a data-composition-src="'),
+        megabyte('<a data-composition-id="x" '),
+        megabyte('<a data-color-grading="'),
+        root + megabyte("html,body{width:"),
+        `<video${" ".repeat(1_000_000)}x>`,
+        nested(70_000),
+      ];
+      for (const html of inputs) {
+        const start = performance.now();
+        scanElementTags(html);
+        expect(performance.now() - start).toBeLessThan(1000);
+      }
+    });
+
+    it("strips script blocks re-formed by an earlier pass", () => {
+      expect(scanElementTags("<scr<script></script>ipt><b></b></script><i></i>").total).toBe(1);
+    });
+
     it("counts closing tags", () => {
       expect(scanElementTags("<div><span>a</span></div>").total).toBe(2);
     });

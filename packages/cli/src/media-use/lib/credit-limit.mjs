@@ -16,18 +16,23 @@ export function creditLimit(projectDir) {
   return credits;
 }
 
-/** Credits already committed by jobs in this project, and the job keys behind them. */
+/** Credits already committed by jobs in this project, and what each job key holds. A logged amount that is not a
+ *  positive finite number holds nothing, so no row counts below zero. */
 export function creditsSpent(projectDir) {
   const charged = new Map();
-  for (const row of read(join(projectDir, ".hyperframes", "heygen-jobs.jsonl")).split("\n")) {
-    if (!row) continue;
-    const { key, credits } = JSON.parse(row);
-    if (key && typeof credits === "number") charged.set(key, credits);
+  for (const line of read(join(projectDir, ".hyperframes", "heygen-jobs.jsonl")).split("\n")) {
+    let row;
+    try {
+      row = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const { key, credits } = Object(row);
+    if (key && typeof credits === "number")
+      charged.set(key, Number.isFinite(credits) && credits > 0 ? credits : 0);
   }
-  return {
-    total: [...charged.values()].reduce((a, b) => a + b, 0),
-    keys: new Set([...charged].filter(([, c]) => c > 0).map(([k]) => k)),
-  };
+  const keys = new Map([...charged].filter(([, c]) => c > 0));
+  return { total: [...keys.values()].reduce((a, b) => a + b, 0), keys };
 }
 
 /** The engine shells out to `heygen`, which prices nothing here: under a limit those calls are refused, and

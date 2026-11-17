@@ -1,10 +1,10 @@
 /**
  * The runtime's end of the editing channel (wire types in `editingPort.ts`).
  *
- * The port goes to `window.parent` once, when the parent asks for it, so only
- * the parent holds a channel. A connect posted by anything else, including the
- * page itself, is ignored and does not use up the handoff. Requests on the port
- * are validated before they run; a bad one gets a typed error reply, never a throw.
+ * Each connect from `window.parent` gets a fresh port, so only the parent holds a channel and a
+ * remounted client is served too; any other connect, or any in a page served to another site, is
+ * ignored. Earlier ports stay open: a client may take any of them; a disposed one closes its own.
+ * Requests on the port are validated; a bad one gets a typed error reply, never a throw.
  */
 import { swallow } from "./diagnostics";
 import {
@@ -14,16 +14,39 @@ import {
   EDITING_REQUEST_KINDS,
   isPlainRecord,
   parseEditingRequest,
+  type EditingKeyMessage,
   type EditingParams,
   type EditingReply,
   type EditingRequestKind,
   type EditingResult,
 } from "./editingPort";
 import type { ClipNode } from "./clipTree";
+import {
+  ancestorHandles,
+  describeHandles,
+  elementForHandle,
+  elementsAtPoint,
+  queryElements,
+} from "./editingHandles";
+import { elementGeometry } from "./editingGeometry";
+import { pointerTargetsAt } from "./editingTargets";
+import { layersOf } from "./editingLayers";
+import { drawDrafts } from "./editingDraft";
+import { gestureStart } from "./editingGestureStart";
+import {
+  getLogicalOpacity,
+  previewConsoleErrorText,
+  servedToAnotherSite,
+  STUDIO_PREVIEW_ERRORS,
+} from "../studioPreviewMark";
+import { MAX_QUERY_MATCHES } from "./editingElement";
+import { matchCombo, parseCombo, type Combo } from "../keyCombo";
+import { shouldIgnorePlaybackShortcutTarget } from "../typingTarget";
 
 type Handlers = {
   [K in EditingRequestKind]: (
     params: EditingParams<K>,
+    port: MessagePort,
   ) => EditingResult<K> | Promise<EditingResult<K>>;
 };
 
@@ -33,6 +56,85 @@ function clipParents(nodes: readonly ClipNode[], out: Array<[string, string]> = 
     clipParents(node.children, out);
   }
   return out;
+}
+
+let consoleWatch: { seen: string[]; stop: () => void } | null = null;
+
+function watchConsoleErrors(): string[] {
+  if (consoleWatch) return consoleWatch.seen;
+  const raised: unknown = Reflect.get(window, STUDIO_PREVIEW_ERRORS);
+  const seen = Array.isArray(raised) ? raised.map(String) : [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => {
+    original.apply(console, args);
+    const text = previewConsoleErrorText(args);
+    if (text !== null) seen.push(text);
+  };
+  const onError = (e: ErrorEvent) => seen.push(e.message || String(e));
+  window.addEventListener("error", onError);
+  const stop = () => {
+    console.error = original;
+    window.removeEventListener("error", onError);
+  };
+  consoleWatch = { seen, stop };
+  return seen;
+}
+
+const keyWatches = new Map<MessagePort, { combos: Combo[]; down: Set<string> }>();
+
+function forwardKey(port: MessagePort, e: KeyboardEvent): void {
+  const { type, key, code, altKey, ctrlKey, metaKey, shiftKey, repeat } = e;
+  const message: EditingKeyMessage = {
+    v: EDITING_PROTOCOL_VERSION,
+    event: "key",
+    key: {
+      type: type === "keyup" ? "keyup" : "keydown",
+      key,
+      code,
+      altKey,
+      ctrlKey,
+      metaKey,
+      shiftKey,
+      repeat,
+    },
+  };
+  port.postMessage(message);
+}
+
+function onWatchedKeyDown(e: KeyboardEvent): void {
+  if (e.defaultPrevented || shouldIgnorePlaybackShortcutTarget(e.target)) return;
+  for (const [port, watch] of keyWatches) {
+    if (!watch.combos.some((combo) => matchCombo(e, combo))) continue;
+    e.preventDefault();
+    watch.down.add(e.code || e.key);
+    forwardKey(port, e);
+  }
+}
+
+function onWatchedKeyUp(e: KeyboardEvent): void {
+  for (const [port, watch] of keyWatches) {
+    if (watch.down.delete(e.code || e.key)) forwardKey(port, e);
+  }
+}
+
+function listenForKeys(on: boolean): void {
+  if (on) {
+    window.addEventListener("keydown", onWatchedKeyDown, true);
+    window.addEventListener("keyup", onWatchedKeyUp, true);
+  } else {
+    window.removeEventListener("keydown", onWatchedKeyDown, true);
+    window.removeEventListener("keyup", onWatchedKeyUp, true);
+  }
+}
+
+function watchKeys(port: MessagePort, combos: string[]): { watching: number } {
+  if (combos.length === 0) keyWatches.delete(port);
+  else {
+    const down = keyWatches.get(port)?.down ?? new Set<string>();
+    keyWatches.set(port, { combos: combos.map((text) => parseCombo(text)!), down });
+  }
+  listenForKeys(keyWatches.size > 0);
+  return { watching: combos.length };
 }
 
 const HANDLERS: Handlers = {
@@ -55,6 +157,37 @@ const HANDLERS: Handlers = {
     setLoopStart(seconds);
     return { applied: true };
   },
+  "computed-styles": (params) => {
+    const { properties } = params;
+    const element =
+      "handle" in params
+        ? elementForHandle(params.handle)
+        : document.querySelector(params.selector);
+    if (!element) return { styles: null };
+    const computed = window.getComputedStyle(element);
+    const styles: Record<string, string> = {};
+    for (const name of properties) {
+      const value =
+        name === "opacity" ? getLogicalOpacity(element, computed) : computed.getPropertyValue(name);
+      if (value) styles[name] = value;
+    }
+    return { styles };
+  },
+  "elements-at-point": ({ x, y }) => ({ elements: elementsAtPoint(x, y) }),
+  "pointer-targets": ({ x, y }) => pointerTargetsAt(x, y),
+  describe: ({ handles }) => ({ elements: describeHandles(handles) }),
+  ancestors: ({ handles }) => ({ ancestors: ancestorHandles(handles) }),
+  query: ({ selector }) => queryElements(selector),
+  geometry: ({ handles, children }) => elementGeometry(handles, children),
+  layers: ({ group, offset }) => layersOf(group, offset),
+  draft: ({ drafts }) => drawDrafts(drafts),
+  "gesture-start": ({ handles }) => gestureStart(handles),
+  "console-errors": ({ from }) => {
+    const seen = watchConsoleErrors();
+    const errors = seen.slice(from, from + MAX_QUERY_MATCHES);
+    return { errors, truncated: from + errors.length < seen.length };
+  },
+  "watch-keys": ({ combos }, port) => watchKeys(port, combos),
 };
 
 function serve(port: MessagePort): void {
@@ -78,9 +211,9 @@ function serve(port: MessagePort): void {
       });
       return;
     }
-    const handler = HANDLERS[request.kind] as (params: unknown) => unknown;
+    const handler = HANDLERS[request.kind] as (params: unknown, port: MessagePort) => unknown;
     Promise.resolve()
-      .then(() => handler(request.params))
+      .then(() => handler(request.params, port))
       .then(
         (result) => reply({ v: EDITING_PROTOCOL_VERSION, id: request.id, ok: true, result }),
         (err: unknown) => reply(failure(request.id, err)),
@@ -99,17 +232,17 @@ function failure(id: number, err: unknown): EditingReply {
 }
 
 export function installEditingAgent(parent: Window = window.parent): { dispose: () => void } {
-  let port: MessagePort | null = null;
+  const ports = new Set<MessagePort>();
   const onMessage = (event: MessageEvent<unknown>) => {
     // A top-level page is its own parent, so a self-post would pass the source check.
     if (parent === window || event.source !== parent) return;
     const data = event.data;
     if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
       return;
-    if (data.v !== EDITING_PROTOCOL_VERSION) return;
-    window.removeEventListener("message", onMessage);
+    if (data.v !== EDITING_PROTOCOL_VERSION || servedToAnotherSite(document)) return;
     const channel = new MessageChannel();
-    port = channel.port1;
+    const port = channel.port1;
+    ports.add(port);
     serve(port);
     try {
       // "*" as every runtime post does (bridge.ts): the frame is not told its parent's origin.
@@ -121,13 +254,19 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     } catch (err) {
       swallow("editingAgent.handoff", err);
       port.close();
+      ports.delete(port);
     }
   };
   window.addEventListener("message", onMessage);
   return {
     dispose() {
       window.removeEventListener("message", onMessage);
-      port?.close();
+      for (const port of ports) port.close();
+      ports.clear();
+      consoleWatch?.stop();
+      consoleWatch = null;
+      keyWatches.clear();
+      listenForKeys(false);
     },
   };
 }

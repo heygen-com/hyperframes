@@ -22,6 +22,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { CliUsageError } from "../../utils/commandResult.js";
+import { projectCopyHint } from "../../utils/projectCopyHint.js";
 
 /** Throws with a clear hint when the SAM CLI is not on PATH. */
 function assertSamAvailable(): void {
@@ -29,7 +30,8 @@ function assertSamAvailable(): void {
     execFileSync("sam", ["--version"], { stdio: "ignore" });
   } catch {
     throw new Error(
-      "`sam` CLI not found on PATH. Install AWS SAM CLI from https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html and retry.",
+      "`sam` CLI not found on PATH. Install AWS SAM CLI from https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html and retry." +
+        projectCopyHint("sam"),
     );
   }
 }
@@ -40,7 +42,8 @@ function assertAwsCliAvailable(): void {
     execFileSync("aws", ["--version"], { stdio: "ignore" });
   } catch {
     throw new Error(
-      "`aws` CLI not found on PATH. Install from https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html and configure credentials before retrying.",
+      "`aws` CLI not found on PATH. Install from https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html and configure credentials before retrying." +
+        projectCopyHint("aws"),
     );
   }
 }

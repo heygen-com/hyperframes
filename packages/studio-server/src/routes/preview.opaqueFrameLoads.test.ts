@@ -21,6 +21,8 @@ writeFileSync(join(projectDir, "scene.js"), "export const scene = 1;");
 writeFileSync(join(projectDir, "scene.mjs"), "export const scene = 2;");
 writeFileSync(join(projectDir, "data.json"), '{"secret":true}');
 writeFileSync(join(projectDir, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+writeFileSync(join(projectDir, "clip.mp4"), Buffer.from("mp4-bytes"));
+writeFileSync(join(projectDir, "music.mp3"), Buffer.from("mp3-bytes"));
 writeFileSync(join(root, "other", "index.html"), '<div data-composition-id="main"></div>');
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 afterEach(() => vi.useRealTimers());
@@ -91,6 +93,14 @@ describe("an opaque preview frame's loads under its token", () => {
     ["font", "fonts/Brand.ttf", "font/ttf"],
     ["script", "scene.js", "text/javascript"],
     ["script", "scene.mjs", "text/javascript"],
+    ["image", "logo.png", "image/png"],
+    ["video", "clip.mp4", "video/mp4"],
+    ["audio", "music.mp3", "audio/mpeg"],
+    // The runtime fetches captions, sub-compositions, grades and audio from its own frame.
+    ["empty", "data.json", "application/json"],
+    ["empty", "comp/scene.html", "text/html"],
+    ["empty", "music.mp3", "audio/mpeg"],
+    ["empty", "fonts/Brand.woff2", "font/woff2"],
   ])("lets a %s load of %s through", async (dest, path, type) => {
     const res = await load(path, { origin: "null", "sec-fetch-dest": dest });
     expect(res.status).toBe(200);
@@ -138,14 +148,15 @@ describe("an opaque preview frame's loads under its token", () => {
   });
 
   it.each([
-    ["empty", "fonts/Brand.woff2"],
-    ["empty", "scene.js"],
-    ["empty", "data.json"],
-    ["empty", "scene.html"],
     ["document", "scene.html"],
     ["iframe", "scene.html"],
-    ["image", "logo.png"],
     ["style", "fonts/Brand.woff2"],
+    ["image", "data.json"],
+    ["image", "clip.mp4"],
+    ["video", "music.mp3"],
+    ["video", "logo.png"],
+    ["audio", "clip.mp4"],
+    ["audio", "comp/music.mp3"],
     ["font", "data.json"],
     ["font", "scene.js"],
     ["script", "data.json"],
@@ -163,7 +174,7 @@ describe("an opaque preview frame's loads under its token", () => {
     expectNotGranted(res);
   });
 
-  it("refuses a page's own fetch, which carries no Sec-Fetch-Dest it can choose", async () => {
+  it("refuses a load that names no Sec-Fetch-Dest", async () => {
     expectNotGranted(await load("fonts/Brand.woff2", { origin: "null" }));
   });
 
@@ -194,6 +205,16 @@ describe("an opaque preview frame's loads under its token", () => {
     expect(html).toContain(`<base href="${tokened}">`);
     expect(html.replaceAll(tokened, "")).not.toContain("/api/projects/demo/preview/");
   });
+
+  it("serves the main preview under the token, re-based", async () => {
+    const res = await api.request(`http://localhost/projects/demo/preview/~${token}`, {
+      headers: { "sec-fetch-site": "same-origin", "sec-fetch-dest": "iframe" },
+    });
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('data-composition-id="main"');
+    expect(html).toContain(`<base href="/api/projects/demo/preview/~${token}/">`);
+  });
 });
 
 describe("a frame without the project's token", () => {
@@ -203,11 +224,13 @@ describe("a frame without the project's token", () => {
     ["a guessed token", `~${guessed}/`],
     ["another project's token", () => `~${otherToken}/`],
     ["a token of the wrong length", `~${"A".repeat(42)}/`],
-  ])("gets no grant for a font or module script on %s", async (_name, prefix) => {
+  ])("gets no grant for any load on %s", async (_name, prefix) => {
     const at = typeof prefix === "function" ? prefix() : prefix;
     for (const [dest, path] of [
       ["font", "fonts/Brand.woff2"],
       ["script", "scene.js"],
+      ["image", "logo.png"],
+      ["empty", "data.json"],
     ]) {
       const res = await load(path!, { origin: "null", "sec-fetch-dest": dest! }, at);
       expectNotGranted(res);
@@ -232,10 +255,102 @@ describe("a frame without the project's token", () => {
     expectNotGranted(res);
   });
 
-  it("refuses a font outside the preview path", async () => {
-    const res = await api.request("http://localhost/projects/demo/files/fonts/Brand.woff2", {
-      headers: { origin: "null", "sec-fetch-dest": "font", "sec-fetch-site": "cross-site" },
+  it.each([
+    ["font", "fonts/Brand.woff2"],
+    ["empty", "data.json"],
+  ])("refuses a %s load of %s outside the preview path", async (dest, path) => {
+    const res = await api.request(`http://localhost/projects/demo/files/${path}`, {
+      headers: { origin: "null", "sec-fetch-dest": dest, "sec-fetch-site": "cross-site" },
     });
     expectNotGranted(res);
+  });
+});
+
+describe("an opaque preview frame's wait for a video's proxy copy", () => {
+  const preflight = (path: string, headers: Record<string, string> = {}, prefix = `~${token}/`) =>
+    api.request(`http://localhost/projects/demo/preview/${prefix}${path}`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "null",
+        "sec-fetch-site": "cross-site",
+        "sec-fetch-mode": "cors",
+        "access-control-request-method": "GET",
+        "access-control-request-headers": "range,x-hf-proxy-priority",
+        ...headers,
+      },
+    });
+
+  it("answers its preflight with the proxy GET's method and headers", async () => {
+    const res = await preflight("clip.mp4?hf-proxy=1");
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("null");
+    expect(res.headers.get("access-control-allow-methods")).toBe("GET");
+    expect(res.headers.get("access-control-allow-headers")?.toLowerCase()).toBe(
+      "range, x-hf-proxy-priority",
+    );
+    expect(res.headers.get("vary")).toBe("Origin");
+  });
+
+  it.each([
+    ["a file that is not a video", "data.json?hf-proxy=1", {}],
+    ["a video without the proxy query", "clip.mp4", {}],
+    ["a caller that is not an opaque frame", "clip.mp4?hf-proxy=1", { origin: "https://a.test" }],
+    ["a method other than GET", "clip.mp4?hf-proxy=1", { "access-control-request-method": "PUT" }],
+  ])("leaves the preflight of %s unanswered", async (_name, path, headers) => {
+    const res = await preflight(path, headers);
+    expect(res.status).not.toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("leaves a preflight without the project's token unanswered", async () => {
+    const res = await preflight("clip.mp4?hf-proxy=1", {}, `~${"A".repeat(43)}/`);
+    expect(res.status).toBe(404);
+    expect(res.headers.get("access-control-allow-origin")).toBeNull();
+  });
+
+  it("lets the frame read the proxy wait's headers on a granted load", async () => {
+    const res = await load("clip.mp4", { origin: "null", "sec-fetch-dest": "empty" });
+    expectGranted(res);
+    expect(res.headers.get("access-control-expose-headers")?.split(/,\s*/)).toEqual([
+      "Retry-After",
+      "X-HF-Proxy-Progress",
+      "Content-Range",
+    ]);
+  });
+});
+
+describe("a media proxy asked for by another site", () => {
+  const ask = (prefix: string, site: string) =>
+    api.request(`http://localhost/projects/demo/preview/${prefix}clip.mp4?hf-proxy=h264`, {
+      headers: { "sec-fetch-site": site },
+    });
+
+  it.each(["cross-site", "same-site"])(
+    "is refused on the plain path to a %s request",
+    async (site) => {
+      const res = await ask("", site);
+      expect(res.status).toBe(403);
+      expect(await res.text()).toBe("forbidden: media proxy requested by another site");
+    },
+  );
+
+  it("is refused on the plain path even with a still query", async () => {
+    const res = await api.request(
+      "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=1",
+      { headers: { "sec-fetch-site": "cross-site" } },
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("goes through under the project's frame token, and from the Studio itself", async () => {
+    expect((await ask(`~${token}/`, "cross-site")).status).not.toBe(403);
+    expect((await ask("", "same-origin")).status).not.toBe(403);
+  });
+
+  it("leaves another site's plain load of a video without the proxy query alone", async () => {
+    const res = await api.request("http://localhost/projects/demo/preview/clip.mp4", {
+      headers: { "sec-fetch-site": "cross-site" },
+    });
+    expect(res.status).not.toBe(403);
   });
 });

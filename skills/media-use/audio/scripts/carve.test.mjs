@@ -1,17 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  DEFAULT_STRENGTH,
-  carveSources,
-  groupSourceRefusal,
-  loadCore,
-  parseArgs,
-} from "./carve.mjs";
+import { DEFAULT_STRENGTH, carveSources, groupSourceRefusal, parseArgs } from "./carve.mjs";
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -202,34 +204,60 @@ test("the CLI still runs when invoked through a symlinked path", () => {
   });
 });
 
-test("loadCore honours an import-only export map, as the published core has", () => {
-  // The published manifest carries only `import` + `types` for these subpaths, so
-  // `require.resolve` cannot resolve them at all and the fallback has to read the
-  // export map itself. A fixture pins that without depending on npm.
+test("carve never loads @hyperframes/core from the composition's project", () => {
+  // A received project is untrusted: a core planted in its node_modules must not run.
   return inTempDir(async (dir) => {
     const pkgDir = join(dir, "node_modules", "@hyperframes", "core");
-    mkdirSync(join(pkgDir, "dist"), { recursive: true });
-    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "fixture-project" }));
+    mkdirSync(pkgDir, { recursive: true });
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ name: "received-project" }));
+    const planted =
+      'import { writeFileSync } from "node:fs";\nwriteFileSync(new URL("./RAN", import.meta.url), "");\n';
+    writeFileSync(join(pkgDir, "planted.mjs"), planted);
     writeFileSync(
       join(pkgDir, "package.json"),
       JSON.stringify({
         name: "@hyperframes/core",
-        version: "0.0.0-fixture",
         type: "module",
         exports: {
           "./package.json": "./package.json",
-          "./audio-carve": { import: "./dist/audioCarve.js" },
-          "./audio-fx": { import: "./dist/audioFx.js" },
+          "./audio-carve": "./planted.mjs",
+          "./audio-fx": "./planted.mjs",
         },
       }),
     );
-    writeFileSync(join(pkgDir, "dist", "audioCarve.js"), 'export const marker = "carve";\n');
-    writeFileSync(join(pkgDir, "dist", "audioFx.js"), 'export const marker = "fx";\n');
+    writeFileSync(join(dir, "index.html"), "<html><body></body></html>");
 
-    const core = await loadCore(dir);
-    assert.equal(core.carve.marker, "carve");
-    assert.equal(core.fx.marker, "fx");
+    let stderr = "";
+    try {
+      execFileSync(
+        process.execPath,
+        [join(SCRIPTS_DIR, "carve.mjs"), "--comp", "index.html", "--dry-run"],
+        {
+          cwd: dir,
+          stdio: "pipe",
+        },
+      );
+    } catch (error) {
+      stderr = String(error.stderr);
+    }
+    assert.equal(existsSync(join(pkgDir, "RAN")), false, "the project's @hyperframes/core ran");
+    assert.match(
+      stderr,
+      /media in the composition/,
+      "carve stopped before it read the composition",
+    );
   });
+});
+
+test("the bundled core exports every function carve.mjs calls", async () => {
+  const source = readFileSync(join(SCRIPTS_DIR, "carve.mjs"), "utf-8");
+  const called = new Set([...source.matchAll(/carveApi\s*\.\s*(\w+)/g)].map((m) => m[1]));
+  const bundle = await import("./lib/audio-carve.mjs");
+  assert.ok(called.size > 0);
+  assert.deepEqual(
+    [...called].filter((name) => typeof bundle[name] !== "function"),
+    [],
+  );
 });
 
 test("members is required, so dropping it cannot silently restore the group form", () => {

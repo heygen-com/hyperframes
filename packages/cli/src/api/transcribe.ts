@@ -1,4 +1,5 @@
-import { existsSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync, rmSync, statSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { transcribeWithHeygen } from "../heygen/transcribe.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
@@ -279,7 +280,7 @@ function importTranscript(inputPath: string, dir: string): TranscribeResult {
   const { words, format } = readTranscript(inputPath);
 
   const transcriptPath = join(dir, TRANSCRIPT_FILE);
-  writeFileSync(transcriptPath, JSON.stringify(words, null, 2));
+  replaceFileAtomically(transcriptPath, JSON.stringify(words, null, 2));
   patchCaptionHtml(dir, words);
   return { kind: "imported", format, wordCount: words.length, transcriptPath };
 }
@@ -318,7 +319,7 @@ function writeCaptionSidecar(
   const preGrouped = preserveCues || phraseLevelSource;
   const content =
     to === "srt" ? formatSrt(words, { preGrouped }) : formatVtt(words, { preGrouped });
-  writeFileSync(outPath, content);
+  replaceFileAtomically(outPath, content);
 }
 
 // ---------------------------------------------------------------------------
@@ -387,7 +388,7 @@ function finishTranscript(
 ): TranscribeResult {
   const { words } = loadTranscript(result.transcriptPath);
 
-  writeFileSync(result.transcriptPath, JSON.stringify(words, null, 2));
+  replaceFileAtomically(result.transcriptPath, JSON.stringify(words, null, 2));
   patchCaptionHtml(dir, words);
   if (sidecar) {
     try {

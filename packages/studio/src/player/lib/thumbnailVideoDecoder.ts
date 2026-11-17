@@ -4,6 +4,7 @@ import {
   type ThumbnailLoadedResult,
   type ThumbnailValue,
 } from "./thumbnailScheduler";
+import { scaledFrames } from "./thumbnailFrameSink";
 import { MediaFetchError, reportMediaFetchFailure } from "./mediaFetch";
 import {
   acquireThumbnailSource,
@@ -395,12 +396,11 @@ async function decodeMissingFrames(
         }
       }
       const target = targetDimensions(info.aspect, budgets);
-      const sink = new mediabunny.CanvasSink(track, {
-        width: target.width,
-        height: target.height,
-        fit: request.fit ?? "cover",
-        poolSize: 1,
-      });
+      const frames = new mediabunny.VideoSampleSink(track);
+      const sink: ThumbnailCanvasSink = {
+        canvasesAtTimestamps: (timestamps) =>
+          scaledFrames(frames, timestamps, target, request.fit ?? "cover"),
+      };
       const times = decodeTimesAtNearbyKeyframes();
       await decodeFrames(sink, times, slots, signal, resources, source.progress);
     }

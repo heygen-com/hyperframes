@@ -218,9 +218,15 @@ export function registerFreezeFrameRoutes(
       return c.json({ error }, status);
     };
     if (!folded) return failAndRemoveStill("Freeze target was not found in the file", 400);
-    const written = writeFolded(project.dir, absPath, body.path, before, folded.html, {
-      token: body.transactionToken ?? c.req.header("X-Hyperframes-Write-Token"),
-    });
+    let written: ReturnType<typeof writeFolded>;
+    try {
+      written = writeFolded(project.dir, absPath, body.path, before, folded.html, {
+        token: body.transactionToken ?? c.req.header("X-Hyperframes-Write-Token"),
+      });
+    } catch (error) {
+      rmSync(imagePath, { force: true });
+      throw error;
+    }
     if ("error" in written) return failAndRemoveStill(written.error, written.status);
     const { version, writeToken, backupPath } = written;
     return c.json({

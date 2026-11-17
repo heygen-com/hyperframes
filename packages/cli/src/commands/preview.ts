@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { setCommandExitCode, requestCliExit } from "../utils/commandResult.js";
 // fallow-ignore-file code-duplication
 import { defineCommand } from "../utils/defineCommand.js";
@@ -48,6 +49,7 @@ import { createRequire } from "node:module";
 import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
 import { desktopHint, insideHostApp } from "../utils/desktopApp.js";
+import { shellArg } from "../utils/shellArg.js";
 import { isDevMode } from "../utils/env.js";
 import { normalizeErrorMessage as errorMessage } from "../utils/errorMessage.js";
 import { buildNpxCommand } from "../utils/npxCommand.js";
@@ -198,7 +200,7 @@ export default defineCommand({
     },
     "lint-verbose": {
       type: "boolean",
-      description: "Show full lint findings on startup (default: a one-line summary)",
+      description: "Show full lint findings on startup instead of a one-line summary",
       default: false,
     },
     open: {
@@ -572,7 +574,7 @@ export default defineCommand({
               : `Running in the background. Log: ${background.logPath}`,
             "Changes reload automatically in the studio.",
           ],
-          footer: `Stop with: hyperframes preview ${JSON.stringify(dir)} --stop`,
+          footer: `Stop with: ${stopBackgroundCommand(dir)}`,
         });
       }
       openStudioBrowser(url, projectName, {
@@ -702,6 +704,16 @@ export function previewLaunchModeError(options: {
     return "Preview launch overrides cannot be combined with lifecycle actions";
   }
   return null;
+}
+
+export function stopBackgroundCommand(
+  dir: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const shown = shellArg(dir, platform);
+  return shown === null
+    ? "hyperframes preview --stop from the project folder"
+    : `hyperframes preview ${shown} --stop`;
 }
 
 export function previewPortError(port: string | undefined): string | null {
@@ -1212,7 +1224,7 @@ async function printCurrentContext(
     if (selection.ok) {
       console.log(`  ${c.dim("Selection")} ${selection.value.label}`);
     } else {
-      console.log(`  ${c.dim("Selection")} ${selection.error.message}`);
+      console.log(`  ${c.dim("Selection")} ${terminalText(selection.error.message)}`);
     }
   }
   if (contextIncludes(fields, "lint")) {
@@ -1221,7 +1233,7 @@ async function printCurrentContext(
         `  ${c.dim("Lint")}      ${lint.summary.errors} error(s), ${lint.summary.warnings} warning(s)`,
       );
     } else {
-      console.log(`  ${c.dim("Lint")}      ${lint.error.message}`);
+      console.log(`  ${c.dim("Lint")}      ${terminalText(lint.error.message)}`);
     }
   }
   console.log();

@@ -3,12 +3,19 @@ import { runsWithoutInstallPrompt } from "../utils/appleStubs.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { platform } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { findFFmpeg } from "../browser/ffmpeg.js";
 import { downloadFile } from "../utils/download.js";
 import { stoppableExecFile } from "../utils/stoppableExecFile.js";
 import { verifies, type ModelFile } from "./modelFile.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
+  foreignWritableTree,
+  hyperframesCacheDir,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 
 const MODELS_DIR = hyperframesCacheDir("whisper", "models");
@@ -129,7 +136,8 @@ function findFromSystem(): WhisperResult | undefined {
 
 // --- Build from source ------------------------------------------------------
 
-const BUILD_DIR = hyperframesCacheDir("whisper", "whisper.cpp");
+const CODE_ROOT = trustedCacheRoot();
+const BUILD_DIR = join(CODE_ROOT, "whisper", "whisper.cpp");
 const WHISPER_REPO = "https://github.com/ggml-org/whisper.cpp.git";
 // A reviewed release, checked by commit after the clone, so a moved tag is never built or run.
 const WHISPER_TAG = "v1.9.5";
@@ -157,7 +165,8 @@ function findBuiltBinary(): WhisperResult | undefined {
     join(BUILD_DIR, "build", "bin", `whisper-cli${exe}`),
     join(BUILD_DIR, "build", `whisper-cli${exe}`),
   ]) {
-    if (existsSync(p)) return { executablePath: p, source: "build" };
+    if (existsSync(p) && !foreignWritableTree(BUILD_DIR, CODE_ROOT))
+      return { executablePath: p, source: "build" };
   }
   return undefined;
 }
@@ -167,6 +176,7 @@ async function buildFromSource(
   onProgress?: (msg: string) => void,
   signal?: AbortSignal,
 ): Promise<WhisperResult> {
+  ensurePrivateCacheDir(dirname(BUILD_DIR), CODE_ROOT);
   // Clean stale builds — if BUILD_DIR exists but has no binary, nuke and re-clone
   if (existsSync(BUILD_DIR) && !findBuiltBinary()) {
     rmSync(BUILD_DIR, { recursive: true, force: true });
@@ -174,7 +184,7 @@ async function buildFromSource(
 
   if (!existsSync(BUILD_DIR)) {
     onProgress?.("Downloading whisper.cpp...");
-    mkdirSync(BUILD_DIR, { recursive: true });
+    ensurePrivateCacheDir(BUILD_DIR, CODE_ROOT);
     await stoppableExecFile(
       git,
       ["clone", "--depth", "1", "--branch", WHISPER_TAG, WHISPER_REPO, "."],
@@ -190,6 +200,8 @@ async function buildFromSource(
   }
 
   onProgress?.("Building whisper.cpp (this may take a minute)...");
+  sealCacheInstall(BUILD_DIR, CODE_ROOT);
+  assertPrivateCachePath(BUILD_DIR, CODE_ROOT);
   try {
     await stoppableExecFile(cmake, ["-B", "build"], {
       cwd: BUILD_DIR,
@@ -216,6 +228,8 @@ async function buildFromSource(
     );
   }
 
+  sealCacheInstall(BUILD_DIR, CODE_ROOT);
+  assertPrivateCachePath(BUILD_DIR, CODE_ROOT);
   const result = findBuiltBinary();
   if (!result) throw new Error("Build completed but whisper-cli not found");
   return result;

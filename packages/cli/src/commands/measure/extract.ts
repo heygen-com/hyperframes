@@ -161,7 +161,7 @@ export default defineCommand({
     to: { type: "string", description: "A clip's end second" },
     audio: {
       type: "boolean",
-      description: "Keep the clip's sound (default: picture only)",
+      description: "Keep the clip's sound instead of picture only",
       default: false,
     },
     crf: { type: "string", description: "Clip quality, lower is better (default 14)" },

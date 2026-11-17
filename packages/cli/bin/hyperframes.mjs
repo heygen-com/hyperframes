@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import module from "node:module";
-import { runtimeVersionError } from "../dist/runtimeVersion.js";
+import { runtimeVersionError, runtimeVersionJson } from "../dist/runtimeVersion.js";
 
 // The plugin launcher starts npx outside the project so npm cannot pick the CLI from it,
 // and names the project here. Nested CLI runs keep the working folder their caller gives them.
@@ -16,6 +16,8 @@ if (projectDir) {
 const error = runtimeVersionError(process.versions.node);
 if (error) {
   console.error(error);
+  const json = runtimeVersionJson(error, process.argv.slice(2));
+  if (json) console.log(json);
   process.exitCode = 1;
 } else {
   // Reuses V8 bytecode across runs (os.tmpdir()/node-compile-cache); Node 22.0 has no such API.

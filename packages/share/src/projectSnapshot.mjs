@@ -1,7 +1,7 @@
 // @ts-check
 // A project's files as change detection sees them: every file the film can use (isOutsideFilm), keyed by mtime and
 // size, except html, keyed by content without the data-hf-id stamps. A run's change set and the watcher both read it.
-import { readChangeIgnore } from "./sourceIgnore.mjs";
+import { readChangeIgnore, readSourceIgnore } from "./sourceIgnore.mjs";
 import fs from "node:fs/promises";
 import { constants } from "node:fs";
 import path from "node:path";
@@ -57,11 +57,18 @@ async function entryKind(entry, full, followSymlinks) {
 // What a run is judged against: each file's mtime and size, except html, whose key ignores the data-hf-id stamps an
 // open or a save writes. Files the film cannot use are not part of the snapshot.
 /** @typedef {Map<string, unknown>} Snapshot */
-/** @param {string} dir @param {{ byContent?: boolean, followSymlinks?: boolean }} [options] @returns {Promise<Snapshot>} */
-export async function snapshotProject(dir, { byContent = false, followSymlinks = false } = {}) {
+// A `.hyperframesignore` this package can't read makes the snapshot throw, so a caller that picks files to send never
+// sends one the file meant to exclude. Change detection passes `lenientIgnore`: it then sees more files, never fewer.
+/** @typedef {{ lenientIgnore?: boolean }} IgnoreOptions */
+/** @param {string} dir @param {{ byContent?: boolean, followSymlinks?: boolean } & IgnoreOptions} [options]
+ * @returns {Promise<Snapshot>} */
+export async function snapshotProject(
+  dir,
+  { byContent = false, followSymlinks = false, lenientIgnore = false } = {},
+) {
   /** @type {Snapshot} */
   const result = new Map();
-  const ignored = await readChangeIgnore(dir);
+  const ignored = await ignoreFor(dir, lenientIgnore);
   /** @param {string} current @param {Set<string>} ancestors */
   async function walk(current, ancestors) {
     const real = await fs.realpath(current).catch(() => null);
@@ -98,11 +105,11 @@ export function snapshotFingerprint(snapshot) {
 
 /** Just these project files, keyed as snapshotProject keys them (undefined: not a file the snapshot holds); null when
  * one is a folder, which only a whole snapshot covers. @param {string} dir @param {Iterable<string>} files
- * @returns {Promise<Map<string, unknown> | null>} */
-export async function snapshotFiles(dir, files) {
+ * @param {IgnoreOptions} [options] @returns {Promise<Map<string, unknown> | null>} */
+export async function snapshotFiles(dir, files, { lenientIgnore = false } = {}) {
   /** @type {Map<string, unknown>} */
   const result = new Map();
-  const ignored = await readChangeIgnore(dir);
+  const ignored = await ignoreFor(dir, lenientIgnore);
   for (const file of files) {
     const full = path.join(dir, file);
     const stat = await fs.lstat(full).catch(() => null);
@@ -125,9 +132,15 @@ export function diffChangedFiles(before, after) {
   return changed;
 }
 
-/** @param {string} projectPath @param {{ byContent?: boolean }} [options] */
+/** Change detection only: a fingerprint names no files to send, so it reads the ignore file leniently.
+ * @param {string} projectPath @param {{ byContent?: boolean }} [options] */
 export const projectFingerprint = async (projectPath, options) =>
-  snapshotFingerprint(await snapshotProject(projectPath, { ...options, followSymlinks: true }));
+  snapshotFingerprint(
+    await snapshotProject(projectPath, { ...options, followSymlinks: true, lenientIgnore: true }),
+  );
+
+/** @param {string} dir @param {boolean} lenient */
+const ignoreFor = (dir, lenient) => (lenient ? readChangeIgnore(dir) : readSourceIgnore(dir));
 
 /** @param {string} dir @param {string} full @param {(path: string) => boolean} ignored */
 function excludedFromSnapshot(dir, full, ignored) {

@@ -40,8 +40,8 @@ export function sortLayersByZIndex(layers: DomEditLayerItem[]): DomEditLayerItem
   }
 
   chunks.sort((a, b) => {
-    const zA = getElementZIndex(a.root.element);
-    const zB = getElementZIndex(b.root.element);
+    const zA = a.root.preview?.zIndex ?? getElementZIndex(a.root.element);
+    const zB = b.root.preview?.zIndex ?? getElementZIndex(b.root.element);
     if (zA !== zB) return zB - zA;
     return b.domIndex - a.domIndex;
   });

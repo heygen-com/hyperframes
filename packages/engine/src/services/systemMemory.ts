@@ -8,9 +8,10 @@
  * it lives here once instead of being re-derived inline.
  */
 
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
+import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 import { readFileSync } from "fs";
-import { freemem, platform, totalmem } from "os";
+import { availableParallelism, cpus, freemem, platform, totalmem } from "os";
 
 const BYTES_PER_MIB = 1024 * 1024;
 const BYTES_PER_MIB_BIGINT = BigInt(BYTES_PER_MIB);
@@ -234,7 +235,9 @@ export function getAvailableMemoryMb(): number {
 
   if (platform() === "darwin") {
     try {
-      const raw = execSync("vm_stat", { encoding: "utf-8", timeout: 5000 });
+      const vmStat = findTrustedExecutable("vm_stat");
+      if (!vmStat) return fallback;
+      const raw = execFileSync(vmStat, [], { encoding: "utf-8", timeout: 5000 });
       const pageSize = parseInt(raw.match(/page size of (\d+)/)?.[1] ?? "0", 10);
       if (!pageSize) return fallback;
 
@@ -268,4 +271,13 @@ export function getAvailableMemoryMb(): number {
   }
 
   return fallback;
+}
+
+/** CPUs this process may run on: a cpuset (taskset, --cpuset-cpus) lowers it, a CPU quota does not. */
+export function usableCpuCount(): number {
+  return availableParallelism();
+}
+
+export function hostCpuCount(): number {
+  return cpus().length;
 }

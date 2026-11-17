@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { saveLottieAnimations } from "./mediaCapture.js";
-import { publicRequest } from "./publicNetwork.js";
+import { publicRequest } from "@hyperframes/engine/public-network";
 
-vi.mock("./publicNetwork.js", () => ({ publicRequest: vi.fn() }));
+vi.mock("@hyperframes/engine/public-network", () => ({ publicRequest: vi.fn() }));
 
 function iconAnimation(color: number[]) {
   return {

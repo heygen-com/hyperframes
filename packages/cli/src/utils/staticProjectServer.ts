@@ -1,7 +1,16 @@
-import { createServer, request as httpRequest, type Server, type ServerResponse } from "node:http";
+import {
+  createServer,
+  request as httpRequest,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
 import { Duplex } from "node:stream";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { isAbsolute, relative, resolve } from "node:path";
 import {
   PREVIEW_PROXY_BOX_PARAM,
@@ -10,6 +19,7 @@ import {
 } from "@hyperframes/core";
 import { getMimeType } from "@hyperframes/core/studio-api";
 import { decodeWellFormedEscapes, openRangeEnd } from "@hyperframes/studio-server";
+import { requestFromAnotherSite } from "@hyperframes/studio-server/request-identity";
 import { findStageProxyBox } from "./compositionViewport.js";
 import { resolveAutoProxy } from "./projectConfig.js";
 import { injectMediaCodecMap } from "./compositionServer.js";
@@ -27,7 +37,11 @@ import {
   PROXY_VARIANT_CONFIG,
   type ProxyVariantRequest,
 } from "@hyperframes/studio-server/media-codec-map";
-import { listenOnBrowserSafePort } from "@hyperframes/engine";
+import {
+  isOwnLoopbackHost,
+  listenOnBrowserSafePort,
+  SAME_ORIGIN_FRAMING_HEADERS,
+} from "@hyperframes/engine";
 
 export interface StaticProjectServer {
   url: string;
@@ -77,7 +91,11 @@ function socketPair(): [Duplex, Duplex] {
 }
 
 /** Hands one request to `server` over an in-memory socket, so its handler (Range, proxies) answers unchanged. */
-function answerInProcess(server: Server, request: InProcessRequest): Promise<InProcessResponse> {
+function answerInProcess(
+  server: Server,
+  host: string,
+  request: InProcessRequest,
+): Promise<InProcessResponse> {
   const [client, served] = socketPair();
   server.emit("connection", served);
   return new Promise((resolveAnswer, rejectAnswer) => {
@@ -85,7 +103,7 @@ function answerInProcess(server: Server, request: InProcessRequest): Promise<InP
       {
         method: request.method,
         path: request.path,
-        headers: { ...request.headers, connection: "close" },
+        headers: { ...request.headers, host, connection: "close" },
         // No `agent`: Node uses createConnection only when no agent is given.
         createConnection: () => client as never,
       },
@@ -272,6 +290,30 @@ async function serveProxyRequest(
   }
 }
 
+function markForAnotherSite(html: string): string {
+  return injectTagsAtHeadStart(html, `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`);
+}
+
+/** A load by another site is sandboxed, and the documents it gets are marked so their runtime offers it no editing port. */
+function loadedByAnotherSite(req: IncomingMessage, res: ServerResponse): boolean {
+  const anotherSite = requestFromAnotherSite({
+    fetchSite: req.headers["sec-fetch-site"] as string | undefined,
+    host: req.headers.host,
+    referer: req.headers.referer,
+  });
+  if (anotherSite) {
+    const policies = [res.getHeader("Content-Security-Policy"), "sandbox allow-scripts"];
+    res.setHeader("Content-Security-Policy", policies.filter((p) => p !== undefined).map(String));
+  }
+  return anotherSite;
+}
+
+function serveMarkedDocument(filePath: string, res: ServerResponse): void {
+  const body = markForAnotherSite(readFileSync(filePath, "utf-8"));
+  res.writeHead(200, { "Content-Type": getMimeType(filePath) });
+  res.end(body);
+}
+
 export async function serveStaticProjectHtml(
   projectDir: string,
   html: string,
@@ -301,13 +343,30 @@ export async function serveStaticProjectHtml(
         findStageProxyBox(html),
       )
     : html;
+  const markedHtml = markForAnotherSite(servedHtml);
+
+  let listeningPort = -1;
+  let inProcessHost: string | undefined;
+  const answersHost = (host: string | undefined) =>
+    isOwnLoopbackHost(host, listeningPort) ||
+    (inProcessHost !== undefined && host === inProcessHost);
 
   // fallow-ignore-next-line complexity
   const server = createServer((req, res) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    if (!answersHost(req.headers.host)) {
+      res.writeHead(403, { "Content-Type": "text/plain" });
+      res.end("Forbidden");
+      return;
+    }
+    for (const [name, value] of Object.entries(SAME_ORIGIN_FRAMING_HEADERS)) {
+      res.setHeader(name, value);
+    }
+    const anotherSite = loadedByAnotherSite(req, res);
     const url = req.url ?? "/";
     if (url === "/" || url === "/index.html") {
       res.writeHead(200, { "Content-Type": getMimeType("index.html") });
-      res.end(servedHtml);
+      res.end(anotherSite ? markedHtml : servedHtml);
       return;
     }
 
@@ -330,6 +389,7 @@ export async function serveStaticProjectHtml(
       const filePath = resolve(root, requestPath);
       const rel = relative(root, filePath);
       if (rel.startsWith("..") || isAbsolute(rel)) continue; // traversal guard; try next root
+      if (isPrivateFileUnder(root, filePath, isStudioPrivatePath)) continue;
       if (existsSync(filePath)) {
         if (proxyRequest) {
           void serveProxyRequest(
@@ -343,6 +403,8 @@ export async function serveStaticProjectHtml(
             copies.signal,
             proxyLimits.get(filePath),
           );
+        } else if (anotherSite && getMimeType(filePath).startsWith("text/html")) {
+          serveMarkedDocument(filePath, res);
         } else {
           if (!serveUntaggedPng(filePath, res))
             serveFileWithRange(filePath, req.headers.range, res);
@@ -368,7 +430,9 @@ export async function serveStaticProjectHtml(
     server.removeAllListeners("error");
     // A sandbox (e.g. an agent's) may refuse listen(); the browser asks this origin and the process answers.
     const url = `http://hyperframes-${++inProcessServers}.localhost/`;
-    const answer = (request: InProcessRequest) => answerInProcess(server, request);
+    const host = new URL(url).host;
+    inProcessHost = host;
+    const answer = (request: InProcessRequest) => answerInProcess(server, host, request);
     inProcessAnswers.set(new URL(url).origin, answer);
     return {
       url,
@@ -381,6 +445,7 @@ export async function serveStaticProjectHtml(
     };
   }
 
+  listeningPort = port;
   return {
     url: `http://127.0.0.1:${port}/`,
     port,

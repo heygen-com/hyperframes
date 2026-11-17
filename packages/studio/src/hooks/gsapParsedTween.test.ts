@@ -60,3 +60,22 @@ describe("findParsedTween", () => {
     timeline.kill();
   });
 });
+
+/** A preview on an opaque origin: every read of its window but postMessage throws, as a browser's does. */
+function sealedPreview(): HTMLIFrameElement {
+  const iframe = document.createElement("iframe");
+  const win = new Proxy({} as Record<string, unknown>, {
+    get: (_target, key) => {
+      if (key === "postMessage") return () => undefined;
+      throw new DOMException(`blocked read of ${String(key)}`, "SecurityError");
+    },
+  });
+  Object.defineProperty(iframe, "contentWindow", { value: win });
+  Object.defineProperty(iframe, "contentDocument", { value: null });
+  return iframe;
+}
+
+it("finds no tween in a sealed preview, whose window refuses the read", () => {
+  const edit = tween({ method: "to", properties: { x: 300 }, resolvedStart: 0, duration: 2 });
+  expect(findParsedTween(sealedPreview(), document.createElement("div"), edit)).toBeNull();
+});

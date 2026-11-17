@@ -15,6 +15,7 @@ import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import { ffmpegHasHdrFilters } from "./hdrFilters.js";
+import { MEDIA_INPUT_ARGS, NOT_MEDIA } from "./mediaExtensions.js";
 import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
 import {
@@ -115,6 +116,13 @@ export class ProxyCapacityError extends ProxyTranscodeError {
   constructor() {
     super("media proxy queue is full; retry shortly", null, "");
     this.name = "ProxyCapacityError";
+  }
+}
+
+export class StillPastEndError extends ProxyTranscodeError {
+  constructor() {
+    super("media still is past the end of the source", null, "");
+    this.name = "StillPastEndError";
   }
 }
 
@@ -348,9 +356,11 @@ function forget(job: ProxyJob): void {
   if (inFlight.get(job.cachePath)?.job === job) inFlight.delete(job.cachePath);
 }
 
-function maintainProxyCache(cacheDir: string, staleTempMs?: number): void {
+function maintainProxyCache(cacheDir: string, staleTempMs?: number, justServed?: string): void {
+  const protectedPaths = new Set([...inFlight.keys(), ...stillsInFlight.keys()]);
+  if (justServed) protectedPaths.add(justServed);
   try {
-    cleanupProxyCache(cacheDir, { protectedPaths: new Set(inFlight.keys()), staleTempMs });
+    cleanupProxyCache(cacheDir, { protectedPaths, staleTempMs });
   } catch (error) {
     // Cache maintenance must never turn a playable preview into an error.
     console.warn(
@@ -731,6 +741,7 @@ async function runFfmpeg(
   isBackground: () => boolean = () => false,
 ): Promise<void> {
   const metadata = await probeMediaMetadata(sourcePath);
+  if (metadata.probeError === NOT_MEDIA) throw new ProxyTranscodeError(NOT_MEDIA, null, "");
   const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpegPath) {
     throw new FfmpegUnavailableError();
@@ -760,6 +771,7 @@ async function runFfmpeg(
         "-nostats",
         ...(range ? ["-ss", String(range.startSeconds)] : []),
         ...decoderArgs,
+        ...MEDIA_INPUT_ARGS,
         "-i",
         sourcePath,
         ...streamArgs,
@@ -1142,27 +1154,67 @@ export async function resolveProxies(
   return results;
 }
 
-const stillsInFlight = new Map<string, Promise<string>>();
+interface StillJob {
+  made: Promise<string>;
+  /** Requests still waiting; one without a signal never leaves, so its still is always made. */
+  waiters: number;
+  abandoned: AbortController;
+}
 
-/** One JPEG of the source at a time (to a tenth of a second), sized like the copy's box. */
+const stillsInFlight = new Map<string, StillJob>();
+
+/** One JPEG of the source at a time (to a tenth of a second), sized like the copy's box. A
+ * caller's `signal` detaches that caller; once no caller is left, the still's ffmpeg is ended. */
 export function resolveStill(
   projectDir: string,
   absoluteSourcePath: string,
   atSeconds: number,
   box?: PreviewProxyBox,
+  startUncachedStill: (make: () => Promise<string>) => Promise<string> = (make) => make(),
+  signal?: AbortSignal,
 ): Promise<string> {
+  if (signal?.aborted) return Promise.reject(signal.reason);
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
   const at = Math.max(0, Math.round(atSeconds * 10) / 10);
   const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
   const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
-  if (existsSync(cachePath)) return Promise.resolve(cachePath);
-  const shared = stillsInFlight.get(cachePath);
-  if (shared) return shared;
-  const made = makeStill(source, at, box, cachePath).finally(() =>
-    stillsInFlight.delete(cachePath),
-  );
-  stillsInFlight.set(cachePath, made);
-  return made;
+  if (existsSync(cachePath)) {
+    markCacheEntryUsed(cachePath);
+    maintainProxyCache(dirname(cachePath), undefined, cachePath);
+    return Promise.resolve(cachePath);
+  }
+  let job = stillsInFlight.get(cachePath);
+  if (!job) {
+    const abandoned = new AbortController();
+    const made = startUncachedStill(() =>
+      makeStill(source, at, box, cachePath, abandoned.signal),
+    ).finally(() => forgetStill(cachePath, started));
+    const started: StillJob = { made, waiters: 0, abandoned };
+    stillsInFlight.set(cachePath, started);
+    job = started;
+  }
+  return waitForStill(job, cachePath, signal);
+}
+
+function forgetStill(cachePath: string, job: StillJob): void {
+  if (stillsInFlight.get(cachePath) === job) stillsInFlight.delete(cachePath);
+}
+
+function waitForStill(job: StillJob, cachePath: string, signal?: AbortSignal): Promise<string> {
+  job.waiters++;
+  if (!signal) return job.made;
+  return new Promise((resolveWait, rejectWait) => {
+    const leave = (): void => {
+      rejectWait(signal.reason);
+      if (--job.waiters > 0) return;
+      forgetStill(cachePath, job);
+      job.abandoned.abort();
+    };
+    signal.addEventListener("abort", leave, { once: true });
+    job.made
+      .finally(() => signal.removeEventListener("abort", leave))
+      .then(resolveWait, rejectWait);
+  });
 }
 
 async function makeStill(
@@ -1170,26 +1222,36 @@ async function makeStill(
   at: number,
   box: PreviewProxyBox | undefined,
   cachePath: string,
+  signal: AbortSignal,
 ): Promise<string> {
   const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpegPath) throw new FfmpegUnavailableError();
-  const filter = await buildVideoFilter(
-    ffmpegPath,
-    source.sourcePath,
-    await probeMediaMetadata(source.sourcePath),
-    false,
-    box,
-  );
+  const metadata = await probeMediaMetadata(source.sourcePath);
+  if (metadata.probeError === NOT_MEDIA) throw new ProxyTranscodeError(NOT_MEDIA, null, "");
+  if (metadata.durationSeconds !== undefined && at > metadata.durationSeconds) {
+    throw new StillPastEndError();
+  }
+  const filter = await buildVideoFilter(ffmpegPath, source.sourcePath, metadata, false, box);
   mkdirWithinProject(source.projectDir, dirname(cachePath));
   const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);
   try {
-    const args = ["-y", "-ss", String(at), "-i", source.sourcePath, "-map", "0:V:0"];
+    const args = [
+      "-y",
+      "-ss",
+      String(at),
+      ...MEDIA_INPUT_ARGS,
+      "-i",
+      source.sourcePath,
+      "-map",
+      "0:V:0",
+    ];
     args.push("-frames:v", "1", "-vf", filter, "-pix_fmt", "yuvj420p", "-q:v", "3", tempPath);
-    await spawnFfmpeg(ffmpegPath, args, TRANSCODE_STALL_MS, new AbortController().signal);
+    await spawnFfmpeg(ffmpegPath, args, TRANSCODE_STALL_MS, signal);
     renameSync(tempPath, cachePath);
   } finally {
     rmSync(tempPath, { force: true });
   }
+  maintainProxyCache(dirname(cachePath), undefined, cachePath);
   return cachePath;
 }
 

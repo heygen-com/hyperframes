@@ -7,7 +7,8 @@ const mocks = vi.hoisted(() => ({
   once: vi.fn(),
   launch: vi.fn(),
 }));
-vi.mock("./captureProxy.js", () => ({
+vi.mock("@hyperframes/engine/public-network", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hyperframes/engine/public-network")>()),
   startCaptureProxy: async () => ({ url: "http://127.0.0.1:4567", close: mocks.proxyClose }),
 }));
 vi.mock("../browser/launch.js", () => ({
@@ -62,6 +63,16 @@ describe("capture browser transport lifecycle", () => {
     });
     expect(mocks.launch.mock.calls[0]?.[1].args).toContain(
       "--proxy-bypass-list=<-loopback>;127.0.0.1:9123",
+    );
+    await session.close();
+  });
+
+  // fails without the fix: a local page server on its scheme's default port gave a bypass entry with no port, which
+  // Chrome takes as every port on that host.
+  it("names a local page server's default port in its bypass entry", async () => {
+    const session = await launchCaptureBrowser({ ...options, localOrigin: "http://localhost" });
+    expect(mocks.launch.mock.calls[0]?.[1].args).toContain(
+      "--proxy-bypass-list=<-loopback>;localhost:80",
     );
     await session.close();
   });

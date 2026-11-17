@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
+import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { ensureBrowser, findBrowser, type BrowserResult } from "./manager.js";
 import { describeBrowserInstall, type BrowserInstallFacts } from "./installFacts.js";
@@ -27,6 +28,7 @@ export interface EnvironmentCheckOutcome {
   detail: string;
   level: EnvironmentCheckLevel;
   title?: string;
+  code?: string;
   hint?: string;
   path?: string;
   /** Major version parsed from the tool's own `-version`/`--version` output, when available. */
@@ -125,6 +127,7 @@ async function checkFFmpeg(signal?: AbortSignal): Promise<EnvironmentCheckOutcom
       ok: false,
       level: "error",
       title: "FFmpeg not found",
+      code: "ffmpeg_not_found",
       detail: missingConfigured,
       hint: getFFmpegInstallHint(),
     };
@@ -162,6 +165,7 @@ async function checkFFmpeg(signal?: AbortSignal): Promise<EnvironmentCheckOutcom
     ok: false,
     level: "error",
     title: "FFmpeg not found",
+    code: "ffmpeg_not_found",
     // Second sentence dropped: "the render cannot proceed" is already said by
     // the error this accompanies, and in Studio by the disabled Export button.
     detail: "FFmpeg is required to encode video.",
@@ -177,6 +181,7 @@ async function checkFFprobe(signal?: AbortSignal): Promise<EnvironmentCheckOutco
       ok: false,
       level: "error",
       title: "FFprobe not found",
+      code: "ffprobe_not_found",
       detail: missingConfigured,
       hint: getFFmpegInstallHint(),
     };
@@ -193,6 +198,7 @@ async function checkFFprobe(signal?: AbortSignal): Promise<EnvironmentCheckOutco
     ok: false,
     level: "error",
     title: "FFprobe not found",
+    code: "ffprobe_not_found",
     detail:
       "FFprobe is required to probe media assets. It ships with FFmpeg but was not found on PATH.",
     hint: getFFmpegInstallHint(),
@@ -307,6 +313,7 @@ async function chromeLaunchOutcome(
   }
   try {
     const { stdout } = await runCancellableProcess(executablePath, ["--version"], {
+      env: buildChromeLaunchEnv(),
       signal,
       timeoutMs: FIRST_LAUNCH_TIMEOUT_MS,
       maxBufferBytes: 64 * 1024,
@@ -352,6 +359,7 @@ async function checkChrome(
       ok: false,
       level: "error",
       title: "Chrome not found",
+      code: "chrome_not_found",
       detail: `Chrome binary not found at "${browserPath}".`,
       hint: "Run: npx hyperframes browser ensure",
     };
@@ -392,6 +400,7 @@ async function checkChrome(
     ok: false,
     level: "error",
     title: "Chrome not found",
+    code: "chrome_not_found",
     detail: failure ?? "Chrome Headless Shell is required for local rendering.",
     hint: "Run: npx hyperframes browser ensure",
   };

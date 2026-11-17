@@ -24,9 +24,9 @@ import type { InlineTextEditSession } from "../../hooks/useInlineTextEdit";
 const READ_PROPERTIES = ["color", "font-weight", "font-style", "text-decoration-line"];
 
 /** Enough above the text to clear it, without leaving the element behind. */
-const GAP_PX = 10;
+export const GAP_PX = 10;
 /** h-6 controls + p-1 + the border. Used only to keep an above-toolbar onscreen. */
-const TOOLBAR_HEIGHT_PX = 34;
+export const TOOLBAR_HEIGHT_PX = 34;
 const DEFAULT_COLOR = "#ffffff";
 
 interface ToolbarPlacement {

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio-server",
-  "version": "0.9.35",
+  "version": "0.9.60",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -111,6 +111,18 @@
       "import": "./src/helpers/encoderOptions.ts",
       "types": "./src/helpers/encoderOptions.ts"
     },
+    "./mime": {
+      "bun": "./src/helpers/mime.ts",
+      "node": "./dist/helpers/mime.js",
+      "import": "./src/helpers/mime.ts",
+      "types": "./src/helpers/mime.ts"
+    },
+    "./outside-file": {
+      "bun": "./src/helpers/outsideFile.ts",
+      "node": "./dist/helpers/outsideFile.js",
+      "import": "./src/helpers/outsideFile.ts",
+      "types": "./src/helpers/outsideFile.ts"
+    },
     "./media-range": {
       "bun": "./src/helpers/mediaRange.ts",
       "node": "./dist/helpers/mediaRange.js",
@@ -186,6 +198,14 @@
         "import": "./dist/helpers/encoderOptions.js",
         "types": "./dist/helpers/encoderOptions.d.ts"
       },
+      "./mime": {
+        "import": "./dist/helpers/mime.js",
+        "types": "./dist/helpers/mime.d.ts"
+      },
+      "./outside-file": {
+        "import": "./dist/helpers/outsideFile.js",
+        "types": "./dist/helpers/outsideFile.d.ts"
+      },
       "./media-range": {
         "import": "./dist/helpers/mediaRange.js",
         "types": "./dist/helpers/mediaRange.d.ts"
@@ -206,19 +226,19 @@
   "dependencies": {
     "@hyperframes/core": "workspace:*",
     "@hyperframes/parsers": "workspace:*",
-    "hono": "^4.0.0",
+    "hono": "^4.13.16",
     "linkedom": "^0.18.12",
     "postcss": "^8.5.8",
-    "postcss-selector-parser": "^7.1.2"
+    "postcss-selector-parser": "^7.1.7"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.0.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.12"
   },
   "optionalDependencies": {
-    "sharp": "^0.35.0"
+    "sharp": "^0.35.5"
   }
 }

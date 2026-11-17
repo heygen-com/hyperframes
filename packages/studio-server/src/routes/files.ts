@@ -31,6 +31,7 @@ import type { StudioApiAdapter } from "../types.js";
 import { isAudioFile } from "../helpers/mime.js";
 import { lengthIsTimeline } from "../helpers/compositionInputs.js";
 import { createFileAtomically, replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { catchHeldRename, retryWindowsHold } from "@hyperframes/core/rename-retry";
 import { generateWaveformCache } from "../helpers/waveform.js";
 import { validateUploadedMediaBuffer } from "../helpers/mediaValidation.js";
 import {
@@ -43,6 +44,7 @@ import {
   pinWritableWithinProject,
   resolveWithinProject,
   resolveWritableWithinProject,
+  toolTrustedFileWithin,
   walkDir,
 } from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
@@ -2748,8 +2750,10 @@ async function processUploadedFiles(
 
     // The collision suffix chooses a different path; validate that destination
     // too, including dangling symlinks that existsSync treats as absent.
-    if (!isSafePath(projectDir, finalPath) || !isWritableProjectFile(projectDir, finalPath))
+    if (!isSafePath(projectDir, finalPath) || !isWritableProjectFile(projectDir, finalPath)) {
+      skipped.push(name);
       continue;
+    }
 
     const buffer = Buffer.from(await value.arrayBuffer());
     const validation = validateUploadedMediaBuffer(finalName, buffer);
@@ -2796,7 +2800,76 @@ async function processUploadedFiles(
 const MAX_TEXT_READ_BYTES = 32 * 1024 * 1024;
 const GIT_BINARY_SNIFF_BYTES = 8000;
 
+const HELD_EDIT_WAITS = [10, 20, 40, 80, 160, 320, 640, 1280, 2560];
+const EDIT_ROUTE =
+  /\/projects\/[^/]+\/(files|file-mutations|gsap-mutations(-batch)?|gsap-mutation-rollback)\//;
+const REPLAYED = "x-hyperframes-held-replay";
+const HELD = "x-hyperframes-held";
+
+function isEdit(request: Request): boolean {
+  return (
+    ["POST", "PUT"].includes(request.method) &&
+    EDIT_ROUTE.test(new URL(request.url).pathname) &&
+    !(request.headers.get("content-type") ?? "").startsWith("multipart/")
+  );
+}
+
+function keptForReplay(request: Request): () => Request {
+  const kept = request.clone();
+  return () => {
+    const again = new Request(kept.clone(), { headers: new Headers(kept.headers) });
+    again.headers.set(REPLAYED, "1");
+    return again;
+  };
+}
+
+async function sendAgainOnceFree(api: Hono, replay: () => Request): Promise<Response | null> {
+  for (const ms of HELD_EDIT_WAITS) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+    const again = await api.fetch(replay());
+    if (!again.headers.has(HELD)) return again;
+  }
+  return null;
+}
+
+function heldFileAnswer(c: RouteContext, error: unknown) {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  if (code === "EBUSY") return c.json({ error: "file in use", why: "busy" }, 423);
+  if (code === "EPERM" || code === "EACCES") {
+    return c.json({ error: "permission denied", why: "permission" }, 403);
+  }
+  return null;
+}
+
 export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
+  api.use("/projects/:id/*", async (c, next) => {
+    await next();
+    const refusedWrite = c.error ? heldFileAnswer(c, c.error) : null;
+    if (refusedWrite) c.res = refusedWrite;
+  });
+
+  const heldEdits = new Map<string, Promise<Response | null>>();
+  api.use("/projects/:id/*", async (c, next) => {
+    if (!isEdit(c.req.raw)) return next();
+    const project = c.req.param("id") ?? "";
+    const replayed = c.req.raw.headers.has(REPLAYED);
+    while (!replayed && heldEdits.has(project)) await heldEdits.get(project);
+    const replay = replayed ? null : keptForReplay(c.req.raw);
+    const held = await catchHeldRename(next);
+    if (held === null || (c.finalized && c.res.ok)) return;
+    if (!replay) {
+      c.res = new Response(null, { status: 423, headers: { [HELD]: "1" } });
+      return;
+    }
+    const waiting = sendAgainOnceFree(api, replay);
+    heldEdits.set(project, waiting);
+    const again = await waiting.finally(() => {
+      if (heldEdits.get(project) === waiting) heldEdits.delete(project);
+    });
+    if (!again) throw held;
+    c.res = again;
+  });
+
   // ── Read ──
 
   api.get("/projects/:id/files/*", async (c) => {
@@ -2808,8 +2881,10 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     // and the read can't land a stale answer — both act on the identical inode.
     let fd: number;
     try {
-      fd = openSync(res.absPath, "r");
-    } catch {
+      fd = await retryWindowsHold(() => openSync(res.absPath, "r"));
+    } catch (error) {
+      const held = heldFileAnswer(c, error);
+      if (held) return held;
       if (c.req.query("optional") === "1") {
         // `missing: true` separates the absent-file shim from a genuinely
         // 0-byte file — both answer `content: ""`, and the caller could not
@@ -2912,8 +2987,10 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     } else {
       let fd: number | null;
       try {
-        fd = openSync(res.absPath, "r+");
+        fd = await retryWindowsHold(() => openSync(res.absPath, "r+"));
       } catch (error) {
+        const held = heldFileAnswer(c, error);
+        if (held) return held;
         if (!error || typeof error !== "object" || !("code" in error) || error.code !== "ENOENT") {
           throw error;
         }
@@ -2993,6 +3070,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if ("error" in res) return res.error;
 
     const stat = statSync(res.absPath);
+    if (stat.isDirectory() && toolTrustedFileWithin(res.project.dir, res.absPath)) {
+      return c.json({ error: "forbidden", why: "protected_path" }, 403);
+    }
     const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
     if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
     if (stat.isDirectory()) {
@@ -3692,6 +3772,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     const isDirectory = statSync(res.absPath, { throwIfNoEntry: false })?.isDirectory() ?? false;
+    if (isDirectory && toolTrustedFileWithin(res.project.dir, res.absPath)) {
+      return c.json({ error: "forbidden", why: "protected_path" }, 403);
+    }
     ensureDir(res.project.dir, newAbs);
     renameSync(res.absPath, newAbs);
 

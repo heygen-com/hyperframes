@@ -266,7 +266,7 @@ function makeProbeInput(overrides: {
   };
 
   return {
-    projectDir: "/tmp/hf-probe-test-project",
+    projectDir: workDir,
     workDir: workDir,
     job: {
       id: "probe-test",
@@ -401,6 +401,47 @@ describe("hasVariableBoundMedia", () => {
     const video = `<video id="v" src="placeholder.mp4" data-var-src="src"></video>`;
 
     expect(hasVariableBoundMedia(`${declared}${video}</body></html>`, undefined)).toBe(true);
+  });
+
+  it("requires a browser probe when an inlined sub-composition declared the default", () => {
+    // Inlining drops a full-document sub-composition's <html data-composition-variables> and the
+    // inner root's data-composition-id; the compiled table, keyed by the host, keeps the merged value.
+    const mount =
+      `<div data-composition-id="card" data-composition-file="compositions/card.html">` +
+      `<div data-hf-inner-root="true"><video id="v" src="placeholder.mp4" data-var-src="src"></video></div>` +
+      `</div>`;
+    const html = `<html><body>${mount}</body></html>`;
+
+    expect(hasVariableBoundMedia(html, undefined, { card: { src: "clip.mp4" } })).toBe(true);
+    expect(hasVariableBoundMedia(html, undefined, { card: { other: "clip.mp4" } })).toBe(false);
+    expect(hasVariableBoundMedia(html, undefined, {})).toBe(false);
+  });
+
+  it("matches a repeated mount through the host's runtime composition id", () => {
+    const mount =
+      `<div data-composition-id="card__hf2" data-hf-original-composition-id="card">` +
+      `<div data-hf-inner-root="true"><video id="v" src="placeholder.mp4" data-var-src="src"></video></div>` +
+      `</div>`;
+
+    expect(
+      hasVariableBoundMedia(`<html><body>${mount}</body></html>`, undefined, {
+        card__hf1: { src: "a.mp4" },
+        card__hf2: { src: "b.mp4" },
+      }),
+    ).toBe(true);
+  });
+
+  it("lets the nearest scope's table entry answer alone, like the runtime", () => {
+    const nested =
+      `<div data-composition-id="outer"><div data-composition-id="inner">` +
+      `<video id="v" src="placeholder.mp4" data-var-src="src"></video></div></div>`;
+    const html = `<html><body>${nested}</body></html>`;
+
+    expect(
+      hasVariableBoundMedia(html, undefined, { outer: { src: "a.mp4" }, inner: { title: "x" } }),
+    ).toBe(false);
+    expect(hasVariableBoundMedia(html, undefined, { outer: { src: "a.mp4" } })).toBe(false);
+    expect(hasVariableBoundMedia(html, undefined, { inner: { src: "b.mp4" } })).toBe(true);
   });
 });
 
@@ -826,6 +867,54 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(mediaPreflightComposition).toBe(input.composition);
   });
 
+  it.each(["take one.mp4", "café.mp4", "take%20one.mp4", "caf%C3%A9.mp4"])(
+    "mixes the sound of a clip whose src is written %s once, however the browser spells it",
+    async (name) => {
+      resetRetryMocks();
+      const timing = { start: 0, end: 5, duration: 5, mediaStart: 0, loop: false, volume: 1 };
+      browserMediaResults = [
+        {
+          id: "clip",
+          tagName: "video",
+          src: new URL(name, "http://127.0.0.1:0/").href,
+          hasAudio: true,
+          muted: false,
+          ...timing,
+        },
+      ];
+      const { runProbeStage } = await import("./probeStage.js");
+      const { appendAutoDetectedVideoAudio } = await import("./extractVideosStage.js");
+      const input = makeProbeInput({});
+      input.composition.duration = 5;
+      input.composition.videos.push({
+        id: "clip",
+        src: name,
+        start: 0,
+        end: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: true,
+      });
+      input.composition.audios.push({
+        id: videoAudioId("clip"),
+        src: name,
+        start: 0,
+        end: 5,
+        mediaStart: 0,
+        layer: 0,
+        type: "video",
+      });
+
+      await runProbeStage({ ...input, measuresShownBoxes: true });
+      appendAutoDetectedVideoAudio(input.composition, [
+        { videoId: "clip", metadata: { hasAudio: true } },
+      ]);
+
+      expect(input.composition.videos[0]?.src).toBe(name);
+      expect(input.composition.audios.map((audio) => audio.id)).toEqual([videoAudioId("clip")]);
+    },
+  );
+
   it("uses selected intrinsic duration only when the variable-bound duration was inferred", async () => {
     resetRetryMocks();
     const media = (
@@ -1113,6 +1202,21 @@ describe("runProbeStage — forceScreenshot threading", () => {
     await runProbeStage(input);
 
     expect(capturedCfgs).toHaveLength(0);
+  });
+
+  it("opens a page for a video larger than the canvas, and none for a film without one", async () => {
+    resetRetryMocks();
+    const { runProbeStage } = await import("./probeStage.js");
+    for (const measuresShownBoxes of [false, true]) {
+      capturedCfgs.length = 0;
+      const input = makeProbeInput({});
+      input.composition.duration = 5;
+      input.compiled.html = `<video id="clip" src="clip.mp4" data-start="0" data-duration="5"></video>`;
+      await runProbeStage({ ...input, measuresShownBoxes });
+      expect(capturedCfgs.length > 0, `measuresShownBoxes ${measuresShownBoxes}`).toBe(
+        measuresShownBoxes,
+      );
+    }
   });
 
   it("probes when a source child of existing media is mutated", async () => {

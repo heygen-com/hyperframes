@@ -60,8 +60,128 @@ describe("createEditingPortClient", () => {
       await client.ready;
       expect(await client.request("hello", {})).toEqual({
         version: 1,
-        kinds: ["hello", "runtime-snapshot", "wait-for-seek", "set-loop-start"],
+        kinds: [
+          "hello",
+          "runtime-snapshot",
+          "wait-for-seek",
+          "set-loop-start",
+          "computed-styles",
+          "elements-at-point",
+          "pointer-targets",
+          "describe",
+          "ancestors",
+          "query",
+          "geometry",
+          "layers",
+          "draft",
+          "gesture-start",
+          "console-errors",
+          "watch-keys",
+        ],
       });
+    } finally {
+      agent.dispose();
+    }
+  });
+
+  it("hands each key the frame forwards to its listeners and drops off-shape ones", async () => {
+    const { iframe, frame } = previewFrame();
+    const { host, deliver } = fakeHost();
+    const client = createEditingPortClient({ iframe, host });
+    clients.push(client);
+    const { port1, port2 } = channel();
+    deliver({ source: frame, data: PORT_MESSAGE, ports: [port1] });
+    await client.ready;
+    const key = {
+      type: "keydown",
+      key: "k",
+      code: "KeyK",
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      repeat: false,
+    };
+    const first = vi.fn();
+    const second = vi.fn();
+    const stopFirst = client.onKey(first);
+    client.onKey(second);
+    for (const bad of [
+      { v: 2, event: "key", key },
+      { v: 1, event: "keys", key },
+      { v: 1, event: "key", key: { ...key, type: "keypress" } },
+      { v: 1, event: "key", key: { ...key, repeat: "no" } },
+      { v: 1, event: "key", key: { ...key, extra: 1 } },
+      { v: 1, event: "key", key: { ...key, key: "k".repeat(65) } },
+    ])
+      port2.postMessage(bad);
+    port2.postMessage({ v: 1, event: "key", key });
+    await vi.waitFor(() => expect(second).toHaveBeenCalledOnce());
+    expect(first).toHaveBeenCalledExactlyOnceWith(key);
+    stopFirst();
+    port2.postMessage({ v: 1, event: "key", key: { ...key, type: "keyup" } });
+    await vi.waitFor(() => expect(second).toHaveBeenCalledTimes(2));
+    expect(first).toHaveBeenCalledOnce();
+  });
+
+  it("serves a new client for the same frame after the first is disposed", async () => {
+    const { iframe, frame } = previewFrame();
+    const { host, deliver } = fakeHost();
+    const parent = document.body.appendChild(document.createElement("iframe")).contentWindow!;
+    parent.postMessage = ((data: unknown, _origin: string, transfer: MessagePort[]) => {
+      ports.push(...transfer);
+      deliver({ source: frame, data, ports: transfer });
+    }) as Window["postMessage"];
+    frame.postMessage = ((data: unknown) =>
+      window.dispatchEvent(
+        new MessageEvent("message", { source: parent, data }),
+      )) as Window["postMessage"];
+    const agent = installEditingAgent(parent);
+    try {
+      const first = createEditingPortClient({ iframe, host });
+      await first.ready;
+      first.dispose();
+      const second = createEditingPortClient({ iframe, host, timeoutMs: 1_000 });
+      clients.push(second);
+      await second.ready;
+      expect(await second.request("wait-for-seek", {})).toEqual({ waited: false });
+    } finally {
+      agent.dispose();
+    }
+  });
+
+  // The runtime posts `ready` before it installs its agent, so a client can send its connect
+  // twice and receive two ports. Each step below is one queued delivery, run in the order given.
+  it.each([
+    ["ready before either port", ["ready", "agent", "agent", "port", "port"]],
+    ["ready between the connects", ["agent", "ready", "port", "agent", "port"]],
+    ["first port before ready", ["agent", "port", "ready", "agent", "port"]],
+  ])("keeps a working port when %s", async (_name, steps) => {
+    const { iframe, frame } = previewFrame();
+    const { host, deliver } = fakeHost();
+    const parent = document.body.appendChild(document.createElement("iframe")).contentWindow!;
+    const toAgent: unknown[] = [];
+    const toHost: Partial<MessageEvent>[] = [];
+    parent.postMessage = ((data: unknown, _origin: string, transfer: MessagePort[]) => {
+      ports.push(...transfer);
+      toHost.push({ source: frame, data, ports: transfer });
+    }) as Window["postMessage"];
+    frame.postMessage = ((data: unknown) => toAgent.push(data)) as Window["postMessage"];
+    const agent = installEditingAgent(parent);
+    try {
+      const client = createEditingPortClient({ iframe, host, timeoutMs: 300 });
+      clients.push(client);
+      for (const step of steps) {
+        if (step === "ready")
+          deliver({ source: frame, data: { source: "hf-preview", type: "ready" } });
+        else if (step === "port") deliver(toHost.shift() ?? {});
+        else if (toAgent.length > 0)
+          window.dispatchEvent(
+            new MessageEvent("message", { source: parent, data: toAgent.shift() }),
+          );
+      }
+      await client.ready;
+      await expect(client.request("hello", {})).resolves.toMatchObject({ version: 1 });
     } finally {
       agent.dispose();
     }

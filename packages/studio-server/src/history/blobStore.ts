@@ -7,19 +7,17 @@ import {
   open,
   readdir,
   readFile,
+  rename,
   rm,
   stat,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { pipeline } from "node:stream/promises";
-import { atomicTempPath } from "@hyperframes/core/atomic-file";
-import {
-  isWindowsHold,
-  renameWithRetry,
-  renameWithRetryAsync,
-} from "@hyperframes/core/rename-retry";
+import { atomicTempPath, refuseReadOnly } from "@hyperframes/core/atomic-file";
+import { isWindowsHold, renameWithRetryAsync } from "@hyperframes/core/rename-retry";
 import { stopServingAndClose } from "../helpers/servedFiles.js";
+import { assertLandedIn, assertStillWithin, folderWithin } from "./containedPath.js";
 
 /** File contents stored once by sha256, text and binary alike. */
 export interface BlobStore {
@@ -28,8 +26,8 @@ export interface BlobStore {
   reference(absPath: string): Promise<string>;
   has(hash: string): boolean;
   read(hash: string): Promise<Buffer>;
-  /** Writes the blob's bytes to `absPath` by clone-or-copy and rename, so a reader never sees half a file. */
-  writeTo(hash: string, absPath: string, beforeReplace?: () => void): Promise<void>;
+  /** Writes the blob's bytes, checked against `hash`, to `path` in `root` by clone and rename; no link is followed. */
+  writeTo(hash: string, root: string, path: string, beforeReplace?: () => void): Promise<void>;
   bytes(): number;
   size(hash: string): number;
   keep(path: string, absPath: string, remove: boolean): Promise<void>;
@@ -59,7 +57,18 @@ export function blobPath(dir: string, hash: string): string {
   return join(dir, hash.slice(0, 2), hash);
 }
 
-export const readBlob = (dir: string, hash: string) => readFile(blobPath(dir, hash));
+const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
+
+const damaged = () =>
+  new Error("History's copy of this version is damaged, so it was not used. Nothing was changed.");
+
+async function readChecked(path: string, hash: string): Promise<Buffer> {
+  const bytes = await readFile(path);
+  if (sha256(bytes) !== hash) throw damaged();
+  return bytes;
+}
+
+export const readBlob = (dir: string, hash: string) => readChecked(blobPath(dir, hash), hash);
 
 async function hashFile(path: string): Promise<string> {
   const hash = createHash("sha256");
@@ -101,21 +110,32 @@ export function onRestoredInPlace(listener: InPlaceListener): () => void {
 
 async function cloneOrCopy(
   from: string,
-  to: string,
   hash: string,
+  root: string,
+  path: string,
   beforeReplace?: () => void,
 ): Promise<void> {
-  await mkdir(dirname(to), { recursive: true });
+  const folder = folderWithin(root, path, true)!;
+  const to = join(folder, basename(path));
+  const servedAs = join(root, path);
+  refuseReadOnly(to);
   const temp = atomicTempPath(to);
   try {
-    await copyFile(from, temp, constants.COPYFILE_FICLONE);
-    await stopServingAndClose(to);
-    beforeReplace?.();
+    await copyFile(from, temp, constants.COPYFILE_FICLONE | constants.COPYFILE_EXCL);
+    assertLandedIn(folder, temp);
+    if ((await hashFile(temp)) !== hash) throw damaged();
+    await stopServingAndClose(servedAs);
     try {
-      renameWithRetry(temp, to);
+      await renameWithRetryAsync(temp, to, {
+        rename: async (from, to) => {
+          beforeReplace?.();
+          assertStillWithin(folder);
+          await rename(from, to);
+        },
+      });
     } catch (error) {
       if (!isWindowsHold(error)) throw error;
-      await writeInPlace(temp, to, hash);
+      await writeInPlace(temp, folder, to, servedAs, hash);
     }
   } finally {
     await rm(temp, { force: true });
@@ -123,9 +143,16 @@ async function cloneOrCopy(
 }
 
 // Something outside the app still holds the file: write in place, sync, and fail on any mismatch with the blob.
-async function writeInPlace(temp: string, to: string, hash: string): Promise<void> {
+async function writeInPlace(
+  temp: string,
+  folder: string,
+  to: string,
+  servedAs: string,
+  hash: string,
+): Promise<void> {
   let outcome: InPlaceOutcome = "failed";
   try {
+    assertLandedIn(folder, to);
     await copyFile(temp, to);
     const handle = await open(to, "r+");
     try {
@@ -135,7 +162,7 @@ async function writeInPlace(temp: string, to: string, hash: string): Promise<voi
     }
     outcome = (await hashFile(to)) === hash ? "restored" : "mismatch";
   } finally {
-    for (const listener of inPlaceListeners) listener(to, outcome);
+    for (const listener of inPlaceListeners) listener(servedAs, outcome);
   }
   if (outcome === "mismatch")
     throw new Error("The file was written in place, but it does not match the copy history kept.");
@@ -193,7 +220,7 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     });
   // The bytes hashed are the bytes filed, so a write racing the read can never file bytes under the wrong hash.
   const putBytes = async (bytes: Buffer, mode: number) => {
-    const hash = createHash("sha256").update(bytes).digest("hex");
+    const hash = sha256(bytes);
     if (sizes.has(hash)) return hash;
     const temp = join(dir, `incoming-${randomUUID()}`);
     try {
@@ -250,9 +277,9 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     },
     reference: (absPath) => hashFile(absPath),
     has: (hash) => sizes.has(hash) || asideSizes.has(hash),
-    read: (hash) => readFile(pathOf(hash)),
-    writeTo: async (hash, absPath, beforeReplace) =>
-      cloneOrCopy(pathOf(hash), absPath, hash, beforeReplace),
+    read: (hash) => readChecked(pathOf(hash), hash),
+    writeTo: async (hash, root, path, beforeReplace) =>
+      cloneOrCopy(pathOf(hash), hash, root, path, beforeReplace),
     async release(held) {
       for (const [hash, path] of held) {
         holds.get(hash)?.delete(path);

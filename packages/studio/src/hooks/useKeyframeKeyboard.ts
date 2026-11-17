@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from "react";
 import { matchesKey } from "../player/components/studioShortcuts";
-import { isTypingTarget } from "../utils/typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 
 interface KeyframeKeyboardOptions {
   enabled: boolean;

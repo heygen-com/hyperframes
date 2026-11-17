@@ -121,6 +121,12 @@ describe("installItem", () => {
     "index.html",
     "src/index.js",
     "scripts\\postinstall.js",
+    "lib/package.json",
+    "compositions/pnpm-lock.yaml",
+    "lib/tsconfig.json",
+    "lib/vite.config.ts",
+    "compositions/Makefile",
+    "lib/AGENTS.md::$DATA",
   ])("refuses the install target %s before writing anything", async (planted) => {
     const dir = project();
     const hostile = { ...item, files: [{ ...item.files[0]!, target: planted }] };

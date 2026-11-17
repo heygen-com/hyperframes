@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -96,7 +97,9 @@ export default defineCommand({
       const fileCount = lintResult.results.length;
       const fileLabel =
         fileCount === 1 ? (lintResult.results[0]?.file ?? "index.html") : `${fileCount} files`;
-      console.log(`${c.accent("◆")}  Linting ${c.accent(`${project.name}/${fileLabel}`)}`);
+      console.log(
+        `${c.accent("◆")}  Linting ${c.accent(terminalText(`${project.name}/${fileLabel}`))}`,
+      );
       if (unmounted.length > 0) console.log(c.dim(unmountedNotice(unmounted.length)));
       console.log();
 

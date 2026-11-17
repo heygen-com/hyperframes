@@ -2,10 +2,14 @@
 
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { STUDIO_PREVIEW_ERRORS } from "@hyperframes/core/studio-preview-mark";
 import { announcePreviewDocumentLoaded } from "../player/sceneSwap";
 import { useConsoleErrorCapture } from "./useConsoleErrorCapture";
+import {
+  detachedFakeIframe,
+  serveEditingRequests,
+} from "../player/hooks/timelinePlayerTestHarness";
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -24,10 +28,42 @@ function previewFrame() {
 
 const shown = () => capture.consoleErrors?.map((finding) => finding.message);
 
+/** A frame whose window refuses Studio's reads; its runtime answers `console-errors` from `raised`. */
+function sealedFrame(
+  raised: string[],
+  page = (from: number) => {
+    const errors = raised.slice(from, from + 2);
+    return { errors, truncated: from + errors.length < raised.length };
+  },
+) {
+  const frame: Record<string, unknown> = {};
+  const iframe = detachedFakeIframe(frame);
+  Object.defineProperty(iframe, "contentDocument", { value: null });
+  Object.defineProperty(frame, "document", {
+    get: () => {
+      throw new DOMException("blocked", "SecurityError");
+    },
+  });
+  const asked: number[] = [];
+  const askedAt: number[] = [];
+  closers.push(
+    serveEditingRequests(frame, (kind, params) => {
+      if (kind !== "console-errors") return null;
+      const { from } = params as { from: number };
+      asked.push(from);
+      askedAt.push(performance.now());
+      return page(from);
+    }),
+  );
+  return { iframe, asked, askedAt };
+}
+
+const closers: Array<() => void> = [];
 let root: Root | null = null;
 afterEach(async () => {
   await act(async () => root?.unmount());
   root = null;
+  closers.splice(0).forEach((close) => close());
 });
 
 it("shows the errors a preview raised before its load, once each", async () => {
@@ -103,4 +139,36 @@ it("keeps a page's errors through its own late load, and clears them for the nex
   Object.assign(previewWindow, { [STUDIO_PREVIEW_ERRORS]: ["Uncaught Error: new page"] });
   await act(async () => announcePreviewDocumentLoaded(iframe));
   expect(shown()).toEqual(["Uncaught Error: new page"]);
+});
+
+it("shows a sealed preview's errors, read over its editing port a page at a time", async () => {
+  const raised = ["Uncaught Error: a", "Uncaught Error: b", "Uncaught Error: c"];
+  const { iframe, asked } = sealedFrame(raised);
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(React.createElement(Harness, { iframe })));
+  await act(async () => announcePreviewDocumentLoaded(iframe));
+
+  const shows = (expected: string[]) =>
+    vi.waitFor(
+      async () => {
+        await act(async () => {});
+        expect(shown()).toEqual(expected);
+      },
+      { timeout: 3_000 },
+    );
+  await shows(raised);
+  expect(asked).toContain(2);
+
+  raised.push("Uncaught Error: later");
+  await shows(raised);
+});
+
+it("waits for its next read when a sealed preview's page says more but brings nothing", async () => {
+  const { iframe, askedAt } = sealedFrame([], () => ({ errors: [], truncated: true }));
+  root = createRoot(document.createElement("div"));
+  await act(async () => root?.render(React.createElement(Harness, { iframe })));
+  await act(async () => announcePreviewDocumentLoaded(iframe));
+
+  await vi.waitFor(() => expect(askedAt.length).toBeGreaterThanOrEqual(3), { timeout: 3_000 });
+  expect(askedAt[2] - askedAt[1]).toBeGreaterThan(500);
 });

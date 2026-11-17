@@ -2165,7 +2165,7 @@ describe("the preview's scene window", () => {
   const audio = (src: string) => `<audio src="${src}" data-start="0.5" data-duration="1"></audio>`;
 
   it("lets a scene mounting ahead of a playing film join its mix, leaving what already plays alone", async () => {
-    vi.spyOn(WebAudioTransport.prototype, "init").mockResolvedValue(true);
+    vi.spyOn(WebAudioTransport.prototype, "open").mockReturnValue(true);
     const schedule = vi
       .spyOn(WebAudioTransport.prototype, "scheduleMediaElementPlayback")
       .mockResolvedValue(null);

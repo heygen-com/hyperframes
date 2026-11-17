@@ -1,4 +1,5 @@
 import { execFileSync, spawn as realSpawn, spawnSync, type ChildProcess } from "node:child_process";
+import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
 import os from "node:os";
 import { EventEmitter, once } from "node:events";
 import {
@@ -537,9 +538,10 @@ describe("resolveProxy", () => {
     const vp8 = resolveProxy(projectDir, sourcePath, "vp8");
     await flush();
     const vp8Args = calls[0]!.args;
-    expect(vp8Args.slice(vp8Args.indexOf("-i") - 2, vp8Args.indexOf("-i"))).toEqual([
+    expect(vp8Args.slice(vp8Args.indexOf("-i") - 4, vp8Args.indexOf("-i"))).toEqual([
       "-c:v",
       "libvpx-vp9",
+      ...MEDIA_INPUT_ARGS,
     ]);
     succeed(calls[0]!, "fake-vp8-bytes");
     await vp8;
@@ -1994,6 +1996,21 @@ describe("resolveProxy", () => {
 describe("resolveStill", () => {
   const canStill = Boolean(realFfmpeg) && Boolean(findFfBinary("ffprobe"));
 
+  it("refuses a playlist named as a video without running ffmpeg", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("node:child_process", () => ({ spawn, default: { spawn } }));
+    vi.doMock("@hyperframes/parsers/ff-binaries", () => ({ findFfBinary: () => FFMPEG_PATH }));
+    vi.doUnmock("./mediaMetadata.js");
+    const { resolveStill } = await import("./proxyTranscoder.js");
+    const projectDir = tmpProject();
+    const clip = join(projectDir, "clip.mp4");
+    writeFileSync(clip, "ffconcat version 1.0\n#\u0001\nfile seg.ts\n");
+
+    await expect(resolveStill(projectDir, clip, 1)).rejects.toThrow("not a media file");
+    expect(calls).toHaveLength(0);
+  });
+
   it.skipIf(!canStill)(
     "cuts one JPEG at the asked time and reuses it for the same tenth of a second",
     async () => {
@@ -2016,6 +2033,134 @@ describe("resolveStill", () => {
     },
     60_000,
   );
+
+  it.skipIf(!canStill)(
+    "sweeps the cache when it makes a still, so stills alone cannot grow it without bound",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      const { resolveStill, CACHE_DIR_NAME } = await import("./proxyTranscoder.js");
+      const projectDir = tmpProject();
+      const clip = join(projectDir, "clip.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=25:d=2"],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", clip],
+      ]);
+      const cacheDir = join(projectDir, CACHE_DIR_NAME);
+      mkdirSync(cacheDir, { recursive: true });
+      const idle = join(cacheDir, `${"a".repeat(64)}.jpg`);
+      writeFileSync(idle, "old still");
+      const longAgo = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+      utimesSync(idle, longAgo, longAgo);
+
+      const made = await resolveStill(projectDir, clip, 1);
+
+      expect(existsSync(made)).toBe(true);
+      expect(existsSync(idle)).toBe(false);
+    },
+    60_000,
+  );
+
+  async function stillSetup() {
+    const spy = createSpawnSpy();
+    const { resolveStill } = await loadModule(spy.spawn, FFMPEG_PATH);
+    const projectDir = tmpProject();
+    const clip = join(projectDir, "clip.mp4");
+    writeFileSync(clip, "clip");
+    const ask = (signal?: AbortSignal) =>
+      resolveStill(projectDir, clip, 1, undefined, undefined, signal);
+    return { calls: spy.calls, ask };
+  }
+
+  it("ends a still's ffmpeg once the last request waiting on it leaves, and starts afresh after", async () => {
+    const { calls, ask } = await stillSetup();
+    const first = new AbortController();
+    const second = new AbortController();
+    const firstWait = ask(first.signal);
+    const secondWait = ask(second.signal);
+    await flush();
+    expect(calls).toHaveLength(1);
+
+    first.abort();
+    await expect(firstWait).rejects.toBe(first.signal.reason);
+    expect(calls[0]!.options?.signal?.aborted).toBe(false);
+    second.abort();
+    await expect(secondWait).rejects.toBe(second.signal.reason);
+    expect(calls[0]!.options?.signal?.aborted).toBe(true);
+
+    calls[0]!.proc.emit("close", null, "SIGKILL");
+    await flush();
+    const again = ask();
+    await flush();
+    expect(calls).toHaveLength(2);
+    succeed(calls[1]!);
+    await expect(again).resolves.toMatch(/\.jpg$/);
+  });
+
+  it("keeps a still's ffmpeg running while a request without a signal waits on it", async () => {
+    const { calls, ask } = await stillSetup();
+    const kept = ask();
+    const leaving = new AbortController();
+    const left = ask(leaving.signal);
+    await flush();
+    leaving.abort();
+    await expect(left).rejects.toBe(leaving.signal.reason);
+
+    expect(calls[0]!.options?.signal?.aborted).toBe(false);
+    succeed(calls[0]!);
+    await expect(kept).resolves.toMatch(/\.jpg$/);
+    expect(calls).toHaveLength(1);
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "kills a still's running ffmpeg when its only request leaves",
+    async () => {
+      let child: ChildProcess | undefined;
+      const neverFinishes = (_command: string, _args: string[], options?: SpawnOptions) => {
+        child = realSpawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], options);
+        return child as unknown as FakeProc;
+      };
+      const { resolveStill } = await loadModule(neverFinishes, FFMPEG_PATH);
+      const projectDir = tmpProject();
+      const clip = join(projectDir, "clip.mp4");
+      writeFileSync(clip, "clip");
+      const leaving = new AbortController();
+      const left = resolveStill(projectDir, clip, 1, undefined, undefined, leaving.signal);
+      await flush();
+      leaving.abort();
+      await expect(left).rejects.toBe(leaving.signal.reason);
+
+      const [, exitSignal] = child!.exitCode === null ? await once(child!, "exit") : [];
+      expect(exitSignal).toBe("SIGKILL");
+    },
+  );
+
+  it("starts no ffmpeg for a still past the end of the source", async () => {
+    const spy = createSpawnSpy();
+    const { resolveStill, StillPastEndError } = await loadModule(
+      spy.spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      2,
+    );
+    const projectDir = tmpProject();
+    const clip = join(projectDir, "clip.mp4");
+    writeFileSync(clip, "clip");
+
+    await expect(resolveStill(projectDir, clip, 2.5)).rejects.toBeInstanceOf(StillPastEndError);
+    expect(spy.calls).toHaveLength(0);
+  });
+
+  it("starts no ffmpeg for a request that already left", async () => {
+    const { calls, ask } = await stillSetup();
+    const gone = new AbortController();
+    gone.abort();
+    await expect(ask(gone.signal)).rejects.toBe(gone.signal.reason);
+    await flush();
+    expect(calls).toHaveLength(0);
+  });
 });
 
 describe("sourceFolderKind", () => {

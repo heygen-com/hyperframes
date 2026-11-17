@@ -73,7 +73,9 @@ describe("assertKnownFlags", () => {
     expect(() => assertKnownFlags(cmd, ["--out", "x"], "render")).toThrow(
       expect.objectContaining({
         code: "unknown_flag",
-        hint: "Did you mean --output? Run 'hyperframes render --help' to see its flags.",
+        hint:
+          "Did you mean --output? Its flags: --output, --gif-loop, --docker, --workers, --json. " +
+          "Run 'hyperframes render --help' for what each does.",
       }),
     );
   });
@@ -83,12 +85,70 @@ describe("assertKnownFlags", () => {
       args: { start: { type: "string" }, end: { type: "string" }, out: { type: "string" } },
     } as unknown as CommandDef<ArgsDef>;
     const hint = (flag: string) =>
-      `Did you mean --${flag}? Run 'hyperframes measure cuts --help' to see its flags.`;
+      `Did you mean --${flag}? Its flags: --start, --end, --out. ` +
+      "Run 'hyperframes measure cuts --help' for what each does.";
     expect(() => assertKnownFlags(cuts, ["--from", "1"], "measure cuts")).toThrow(
       expect.objectContaining({ hint: hint("start") }),
     );
     expect(() => assertKnownFlags(cuts, ["-o", "x"], "measure cuts")).toThrow(
       expect.objectContaining({ hint: hint("out") }),
+    );
+  });
+
+  // fails without the fix: the hint only said to run --help, so an agent guessed another flag.
+  it("lists the command's own flags, not its positionals, when nothing close matches", () => {
+    const snapshot = {
+      args: {
+        dir: { type: "positional" },
+        at: { type: "string" },
+        frames: { type: "string" },
+        outDir: { type: "string" },
+      },
+    } as unknown as CommandDef<ArgsDef>;
+    expect(() => assertKnownFlags(snapshot, [".", "--width", "360"], "snapshot")).toThrow(
+      expect.objectContaining({
+        hint: "Its flags: --at, --frames, --out-dir. Run 'hyperframes snapshot --help' for what each does.",
+      }),
+    );
+  });
+
+  // fails without the fix: the list sent agents to hidden rename shims that only print an error.
+  it("leaves hidden flags out of the list, as --help does", () => {
+    const init = {
+      args: {
+        example: { type: "string" },
+        template: { type: "string", hidden: true, description: "[renamed] Use --example instead." },
+        agent: { type: "boolean", hidden: true },
+      },
+    } as unknown as CommandDef<ArgsDef>;
+    expect(() => assertKnownFlags(init, ["--demo"], "init")).toThrow(
+      expect.objectContaining({
+        hint: "Its flags: --example. Run 'hyperframes init --help' for what each does.",
+      }),
+    );
+  });
+
+  // fails without the fix: a typo near a hidden shim was told to use the shim.
+  it("never suggests a hidden flag for a typo", () => {
+    const init = {
+      args: {
+        example: { type: "string" },
+        template: { type: "string", hidden: true, description: "[renamed] Use --example instead." },
+      },
+    } as unknown as CommandDef<ArgsDef>;
+    expect(() => assertKnownFlags(init, ["--templat", "x"], "init")).toThrow(
+      expect.objectContaining({
+        hint: "Its flags: --example. Run 'hyperframes init --help' for what each does.",
+      }),
+    );
+  });
+
+  it("points --search at the query flag", () => {
+    const catalog = {
+      args: { words: { type: "positional" }, query: { type: "string" }, json: { type: "boolean" } },
+    } as unknown as CommandDef<ArgsDef>;
+    expect(() => assertKnownFlags(catalog, ["--search", "light leak"], "catalog")).toThrow(
+      expect.objectContaining({ hint: expect.stringMatching(/^Did you mean --query\? /) }),
     );
   });
 

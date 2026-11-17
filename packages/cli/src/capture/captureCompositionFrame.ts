@@ -1,4 +1,4 @@
-import { oneProcessOverPipe } from "@hyperframes/engine";
+import { oneProcessOverPipe, resolveRestrictPageNetwork } from "@hyperframes/engine";
 import { SEEK_SETTLES_BEFORE_PROTOCOL_TIMEOUT_MS } from "./captureTimeout.js";
 import {
   rethrowAfterBrowserCleanup,
@@ -16,6 +16,7 @@ import {
   resolveLocalWebGpu,
   type BrowserGpuMode,
 } from "../browser/gpuPolicy.js";
+import { launchWithPageNetwork } from "../browser/pageNetwork.js";
 import { windowsChromeCrashRemediation } from "../browser/windowsCrash.js";
 import { resolveCompositionViewportFromHtml } from "../utils/compositionViewport.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
@@ -161,7 +162,10 @@ export function prelaunchCompositionBrowser(
   const abort = new AbortController();
   const options = { browserGpuMode, signal: abort.signal };
   const key = launchKey(html, false, options);
-  const launched = launchCompositionBrowser(html, false, options).catch(() => undefined);
+  const launchNeedsPageUrl = resolveRestrictPageNetwork();
+  const launched = launchNeedsPageUrl
+    ? Promise.resolve(undefined)
+    : launchCompositionBrowser(html, false, options).catch(() => undefined);
   let taken = false;
   const discard = async () => {
     if (taken) return;
@@ -332,7 +336,7 @@ export async function openSettledCompositionPage(
   try {
     const launched =
       (await options.prelaunched?.take(launchKey(html, noListen, options))) ??
-      (await launchCompositionBrowser(html, noListen, options));
+      (await launchCompositionBrowser(html, noListen, options, url));
     chromeBrowser = launched.browser;
     const softwareWebGpu = launched.softwareWebGpu;
     options.onBrowser?.(chromeBrowser);
@@ -344,7 +348,6 @@ export async function openSettledCompositionPage(
     await installMediaRenderIdBridge(page);
     await page.evaluateOnNewDocument(forcePreservedDrawingBuffer);
     await page.evaluateOnNewDocument("window.__HF_REPLAY_SKIPPED_FRAMES = true");
-    await page.evaluateOnNewDocument("window.__HF_RELEASE_PASSED_MEDIA = true");
     await page.setViewport(viewport);
     if (answer) await answerPageInProcess(page, url, answer);
     await options.beforeNavigate?.(page);
@@ -362,6 +365,7 @@ async function launchCompositionBrowser(
   html: string,
   noListen: boolean,
   options: LaunchOptions,
+  pageUrl?: string,
 ): Promise<LaunchedBrowser> {
   const viewport = resolveCompositionViewportFromHtml(html);
   const { ensureBrowser, findSystemBrowser } = await import("../browser/manager.js");
@@ -385,11 +389,15 @@ async function launchCompositionBrowser(
       { ...viewport, captureMode: "screenshot", requiresWebGpu },
       webGpu.gpuConfig,
     );
-    return launchManagedBrowser(puppeteer.default, {
-      headless: true,
-      signal: options.signal,
-      executablePath,
-      ...(noListen ? oneProcessOverPipe({ args }) : { args }),
+    return launchWithPageNetwork(pageUrl, (network) => {
+      const allArgs = [...args, ...network.args];
+      return launchManagedBrowser(puppeteer.default, {
+        headless: true,
+        signal: options.signal,
+        executablePath,
+        userDataDir: network.userDataDir,
+        ...(noListen ? oneProcessOverPipe({ args: allArgs }) : { args: allArgs }),
+      });
     });
   };
 

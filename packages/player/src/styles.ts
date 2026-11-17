@@ -506,7 +506,8 @@ export const PLAYER_STYLES = /* css */ `
     gap: 0;
   }
 
-  .hfp-mute-btn {
+  .hfp-mute-btn,
+  .hfp-fullscreen-btn {
     background: none;
     border: none;
     color: var(--hfp-color, #fff);
@@ -520,13 +521,20 @@ export const PLAYER_STYLES = /* css */ `
     flex-shrink: 0;
   }
 
-  .hfp-mute-btn:hover {
+  .hfp-mute-btn:hover,
+  .hfp-fullscreen-btn:hover {
     opacity: 0.8;
   }
 
   .hfp-mute-btn svg,
-  .hfp-mute-btn svg * {
+  .hfp-mute-btn svg *,
+  .hfp-fullscreen-btn svg,
+  .hfp-fullscreen-btn svg * {
     pointer-events: none;
+  }
+
+  :host([disable-fullscreen]) .hfp-fullscreen-btn {
+    display: none;
   }
 
   .hfp-volume-slider-wrap {
@@ -570,6 +578,8 @@ export const PAUSE_ICON = `<svg width="24" height="24" viewBox="0 0 18 18" fill=
 export const VOLUME_HIGH_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/><path d="M14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>`;
 export const VOLUME_LOW_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>`;
 export const VOLUME_MUTED_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z" opacity="0.3"/><line x1="18" y1="7" x2="14" y2="17" stroke="currentColor" stroke-width="2"/></svg>`;
+export const FULLSCREEN_ENTER_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>`;
+export const FULLSCREEN_EXIT_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/></svg>`;
 
 /**
  * Process-wide cache for the constructed PLAYER_STYLES sheet. Lazy so the

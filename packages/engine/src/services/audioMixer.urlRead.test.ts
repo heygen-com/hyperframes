@@ -11,6 +11,7 @@ import { processCompositionAudio } from "./audioMixer.js";
 
 vi.mock("node:os", async (importOriginal) => ({
   ...(await importOriginal<typeof import("node:os")>()),
+  availableParallelism: () => 8,
   cpus: () =>
     Array.from({ length: 8 }, () => ({}) as ReturnType<typeof import("node:os").cpus>[number]),
 }));

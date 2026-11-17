@@ -56,6 +56,7 @@ import {
   shiftRateLane,
   sourceTimeAt,
   timeAtSourceTime,
+  terminalText,
 } from "@hyperframes/core";
 import { parseHostVariableValues, readDeclaredDefaults } from "@hyperframes/core/compiler";
 import { extractMediaSrcMutations } from "@hyperframes/parsers";
@@ -73,6 +74,8 @@ import {
   type FileServerHandle,
   VIRTUAL_TIME_SHIM,
 } from "../../fileServer.js";
+import { hasClosedMediaTag } from "../../htmlTagScans.js";
+import { servedPath } from "../../servedPath.js";
 import type { ProducerLogger } from "../../../logger.js";
 import {
   BROWSER_MEDIA_EPSILON,
@@ -84,13 +87,17 @@ import {
 } from "../shared.js";
 import type { RenderConfig, RenderJob } from "../../renderOrchestrator.js";
 import { isActionableProbeFailure } from "./probeFailures.js";
-import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
+import {
+  dropMediaOutsideProject,
+  preflightCompositionAssetMediaTypes,
+} from "../../assetMediaType.js";
 import { resolveCaptureSurface } from "../captureImageFormat.js";
 import { computeCompositionObservabilityHash } from "../observability.js";
 
 export interface ProbeStageInput {
   projectDir: string;
   workDir: string;
+  measuresShownBoxes?: boolean;
   recordReferenceBackground?: CaptureOptions["recordReferenceBackground"];
   job: RenderJob;
   cfg: EngineConfig;
@@ -180,12 +187,23 @@ export function hasAutoStartVideos(html: string): boolean {
   return document.querySelector("video[data-hf-auto-start]") !== null;
 }
 
+type VariablesByComp = Record<string, Record<string, unknown>>;
+
+function scopedVariablesFor(element: Element, variablesByComp: VariablesByComp) {
+  const scope = element.closest("[data-composition-id]");
+  const compId = scope?.getAttribute("data-composition-id")?.trim() ?? "";
+  return compId && Object.hasOwn(variablesByComp, compId) ? variablesByComp[compId] : undefined;
+}
+
 function variableHasValue(
   element: Element,
   variableId: string,
   variables: Record<string, unknown> | undefined,
+  variablesByComp: VariablesByComp,
 ): boolean {
   if (variables && Object.hasOwn(variables, variableId)) return true;
+  const scoped = scopedVariablesFor(element, variablesByComp);
+  if (scoped) return Object.hasOwn(scoped, variableId);
   for (let scope = element.parentElement; scope; scope = scope.parentElement) {
     if (Object.hasOwn(parseHostVariableValues(scope), variableId)) return true;
     if (Object.hasOwn(readDeclaredDefaults(scope), variableId)) return true;
@@ -195,11 +213,12 @@ function variableHasValue(
 
 /**
  * Variable-bound sources are resolved by the browser runtime, not the static compiler. Probe them whenever the
- * element's variable has a value (the render's, its mount's `data-variable-values`, a declared default).
+ * element's variable has a value (the render's, its scope's compiled table entry, its mount's, a declared default).
  */
 export function hasVariableBoundMedia(
   html: string,
   variables: Record<string, unknown> | undefined,
+  variablesByComp: VariablesByComp = {},
 ): boolean {
   const { document } = parseHTML(html);
   return Array.from(
@@ -208,7 +227,7 @@ export function hasVariableBoundMedia(
     ),
   ).some((element) => {
     const variableId = element.getAttribute("data-var-src")?.trim();
-    return Boolean(variableId && variableHasValue(element, variableId, variables));
+    return Boolean(variableId && variableHasValue(element, variableId, variables, variablesByComp));
   });
 }
 
@@ -285,7 +304,7 @@ function hasRuntimeMediaChanges(html: string): boolean {
     (script) =>
       /\bcreateElement\s*\(\s*["'`](?:video|audio)["'`]\s*\)/i.test(script) ||
       /\bnew\s+(?:Audio|Video)\s*\(/i.test(script) ||
-      /<(?:video|audio)\b[^>]*>/i.test(script),
+      hasClosedMediaTag(script),
   );
   if (insertedMedia) return true;
 
@@ -402,10 +421,15 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
     compiled.html,
     composition.audios.length,
   );
-  const hasVariableMedia = hasVariableBoundMedia(compiled.html, job.config.variables);
+  const hasVariableMedia = hasVariableBoundMedia(
+    compiled.html,
+    job.config.variables,
+    compiled.variablesByComp,
+  );
   const hasInsertedMedia = hasRuntimeMediaChanges(compiled.html);
   const needsBrowser =
     cfg.videoLayerPassthrough ||
+    input.measuresShownBoxes === true ||
     probeRequiresBrowser({
       durationSeconds: composition.duration,
       unresolvedCompositionCount: compiled.unresolvedCompositions.length,
@@ -426,6 +450,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       if (hasScriptedAudio) reasons.push("scripted audio volume");
       if (hasInsertedMedia) reasons.push("runtime-created or source-mutated media");
       if (hasVariableMedia) reasons.push("variable-bound media source(s)");
+      if (input.measuresShownBoxes) reasons.push("video(s) larger than the canvas");
 
       log.info("Launching browser for composition probe...", {
         reasons,
@@ -437,6 +462,8 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         port: 0,
         preHeadScripts: [VIRTUAL_TIME_SHIM],
         fps: job.config.fps,
+        allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+        includeOutsideScripts: job.config.includeOutsideScripts,
       });
       assertNotAborted();
 
@@ -622,6 +649,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             resolutions,
             projectDir,
             join(workDir, "downloads"),
+            job.config.allowOutsideProjectAssets ? undefined : projectDir,
           );
           assertNotAborted();
           // Update composition metadata with re-parsed media
@@ -660,7 +688,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
               // Reconcile to browser/runtime media metadata (runtime src can differ from static HTML).
               const existing = composition.videos.find((v) => v.id === el.id);
               if (existing) {
-                const sourceChanged = existing.src !== src;
+                const sourceChanged = servedPath(existing.src) !== servedPath(src);
                 if (sourceChanged) {
                   existing.src = src;
                 }
@@ -710,7 +738,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
             if (existingAudioIds.has(el.id)) {
               const existing = composition.audios.find((a) => a.id === el.id);
               if (existing) {
-                const sourceChanged = existing.src !== src;
+                const sourceChanged = servedPath(existing.src) !== servedPath(src);
                 if (sourceChanged) {
                   existing.src = src;
                 }
@@ -834,6 +862,13 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
       }
     }
 
+    dropMediaOutsideProject({
+      projectDir,
+      workDir,
+      composition,
+      log,
+      allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+    });
     await preflightCompositionAssetMediaTypes({
       projectDir,
       compiledDir: join(workDir, "compiled"),
@@ -926,7 +961,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         failures: failedRequests.slice(0, 10),
       });
       for (const line of failedRequests.slice(0, 5)) {
-        console.warn(`[Render] Asset load failure: ${line}`);
+        console.warn(`[Render] Asset load failure: ${terminalText(line)}`);
       }
     }
   }

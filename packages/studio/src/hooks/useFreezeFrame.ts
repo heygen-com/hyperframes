@@ -7,6 +7,7 @@ import { markStudioWriteToken } from "../utils/studioFileVersion";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import type { RecordEditInput } from "../utils/studioFileHistory";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { heldFileWordsOf } from "../utils/studioSaveDiagnostics";
 
 type ProjectFileWriter = (path: string, content: string, expectedContent?: string) => Promise<void>;
 
@@ -73,9 +74,10 @@ export async function requestFreezeFrame(input: {
       }),
     },
   );
+  const held = response.ok ? null : await heldFileWordsOf(response, input.path);
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok || !isFreezeFrameResponse(body)) {
-    throw new Error(errorOf(body) ?? `Freeze frame failed (${response.status})`);
+    throw new Error(held ?? errorOf(body) ?? `Freeze frame failed (${response.status})`);
   }
   return body;
 }

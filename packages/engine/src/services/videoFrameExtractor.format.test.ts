@@ -692,6 +692,65 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     expect(pngChunkTypes(result.framePaths.get(0)!)).not.toContain("sRGB");
   }, 60_000);
 
+  it("extracts each video at its own shown box, and caches halved frames apart from full ones", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-extract-shown-cache-"));
+    const size = (path: string) =>
+      spawnSync("ffprobe", [
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "csv=p=0",
+        "--",
+        path,
+      ])
+        .stdout.toString()
+        .trim();
+    const run = async (
+      name: string,
+      shownBoxes?: Map<string, { width: number; height: number }>,
+    ) => {
+      const outputDir = join(FIXTURE_DIR, name);
+      mkdirSync(outputDir, { recursive: true });
+      const result = await extractAllVideoFrames(
+        [fixtureVideo()],
+        FIXTURE_DIR,
+        { fps: 1, outputDir, shownBoxes },
+        undefined,
+        { extractCacheDir: cacheDir },
+      );
+      expect(result.errors).toEqual([]);
+      return {
+        size: size(result.extracted[0]!.framePaths.get(0)!),
+        hits: result.phaseBreakdown.cacheHits,
+      };
+    };
+    try {
+      const half = new Map([
+        ["ui", { width: UI_FIXTURE_WIDTH / 2, height: UI_FIXTURE_HEIGHT / 2 }],
+      ]);
+      expect(await run("shown-full")).toEqual({
+        size: `${UI_FIXTURE_WIDTH},${UI_FIXTURE_HEIGHT}`,
+        hits: 0,
+      });
+      expect(await run("shown-half", half)).toEqual({
+        size: `${UI_FIXTURE_WIDTH / 2},${UI_FIXTURE_HEIGHT / 2}`,
+        hits: 0,
+      });
+      expect(await run("shown-half-again", half)).toEqual({
+        size: `${UI_FIXTURE_WIDTH / 2},${UI_FIXTURE_HEIGHT / 2}`,
+        hits: 1,
+      });
+      expect(await run("shown-full-again")).toEqual({
+        size: `${UI_FIXTURE_WIDTH},${UI_FIXTURE_HEIGHT}`,
+        hits: 1,
+      });
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   it("keeps jpg and png extraction caches separate", async () => {
     const cacheDir = mkdtempSync(join(tmpdir(), "hf-extract-format-cache-"));
     try {

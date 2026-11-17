@@ -1,3 +1,4 @@
+import { terminalText, terminalTextDeep } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import { existsSync, readFileSync } from "node:fs";
 import { isWithinProjectRoot, readProjectFile } from "@hyperframes/parsers/asset-resolution";
@@ -749,7 +750,7 @@ export function collectCompositions(indexPath: string): SurfacedComposition[] {
 function fmtProps(props: Record<string, number | string>): string {
   return Object.entries(props)
     .filter(([k]) => k !== "ease")
-    .map(([k, v]) => `${k}:${v}`)
+    .map(([k, v]) => terminalText(`${k}:${v}`))
     .join(" ");
 }
 
@@ -761,18 +762,25 @@ function printTween(t: SurfacedTween): void {
   const timing = c.dim(
     `@${formatSeconds(t.start)}→${formatSeconds(t.end)} (${formatSeconds(t.duration)})`,
   );
-  const group = t.group ? c.dim(` ${t.group}`) : "";
-  console.log(`  ${c.accent(t.target)}${group}  ${c.dim(t.method)}/${t.shape}  ${timing}`);
+  const group = t.group ? c.dim(` ${terminalText(t.group)}`) : "";
+  console.log(
+    `  ${c.accent(terminalText(t.target))}${group}  ${c.dim(terminalText(t.method))}/${t.shape}  ${timing}`,
+  );
   if (t.shape === "motionPath") {
     console.log(c.dim(`    motionPath arc (${t.keyframes.length} stops)`));
   } else {
     const kfLine = t.keyframes.map((k) => `${k.pct}% {${fmtProps(k.properties)}}`).join("  ");
     console.log(`    ${c.dim(kfLine)}`);
   }
-  if (t.unresolved.length) console.log(c.dim(`    unresolved: ${t.unresolved.join(", ")}`));
+  if (t.unresolved.length)
+    console.log(c.dim(`    unresolved: ${terminalText(t.unresolved.join(", "))}`));
   if (t.composedWith?.length) {
     for (const a of t.composedWith) {
-      console.log(c.dim(`    ↑ composed with ${c.accent(a.selector)}${c.dim(": " + a.summary)}`));
+      console.log(
+        c.dim(
+          `    ↑ composed with ${c.accent(terminalText(a.selector))}${c.dim(": " + terminalText(a.summary))}`,
+        ),
+      );
     }
   }
   console.log();
@@ -783,7 +791,7 @@ function printTrace(tr: SurfacedTrace): void {
   const end = Math.max(...tr.strokes.flatMap((s) => (s.end === null ? [] : [s.end])));
   const n = tr.strokes.length;
   console.log(
-    `  ${c.accent(tr.target)}${c.dim(" position")}  ${c.dim("trace")}  ${c.dim(`${n} strokes`)} ${c.dim(`@${start}s→${end}s`)}`,
+    `  ${c.accent(terminalText(tr.target))}${c.dim(" position")}  ${c.dim("trace")}  ${c.dim(`${n} strokes`)} ${c.dim(`@${start}s→${end}s`)}`,
   );
   tr.strokes.forEach((s, i) => {
     const kfLine = s.keyframes.map((k) => `${k.pct}% {${fmtProps(k.properties)}}`).join("  ");
@@ -999,7 +1007,7 @@ function printCompositionTweens(cmp: SurfacedComposition): void {
 // Print one composition's traces + tweens (skipping strokes already shown in a trace).
 function printComposition(cmp: SurfacedComposition): void {
   if (isEmptyComposition(cmp)) return;
-  console.log(c.bold(`${cmp.composition}`) + c.dim(`  (${cmp.source})`));
+  console.log(c.bold(terminalText(cmp.composition)) + c.dim(`  (${terminalText(cmp.source)})`));
   for (const tr of cmp.traces) printTrace(tr);
   printCompositionTweens(cmp);
   for (const cssKeyframes of cmp.cssKeyframes) printCssKeyframes(cssKeyframes);
@@ -1008,20 +1016,24 @@ function printComposition(cmp: SurfacedComposition): void {
 
 function printCssKeyframes(cssKeyframes: SurfacedCssKeyframes): void {
   const selectors = cssKeyframes.selectors.length
-    ? cssKeyframes.selectors.join(", ")
+    ? terminalText(cssKeyframes.selectors.join(", "))
     : "(no selector found)";
   console.log(
-    `  ${c.accent(`@keyframes ${cssKeyframes.name}`)}${c.dim(" css")}  ${c.dim(selectors)}`,
+    `  ${c.accent(`@keyframes ${terminalText(cssKeyframes.name)}`)}${c.dim(" css")}  ${c.dim(selectors)}`,
   );
   for (const stop of cssKeyframes.keyframes) {
-    console.log(`    ${c.dim(`${stop.selector} {${stop.declarations.join("; ")}}`)}`);
+    console.log(`    ${c.dim(terminalText(`${stop.selector} {${stop.declarations.join("; ")}}`))}`);
   }
   console.log();
 }
 
 function printAnime(anime: SurfacedAnimeAnimation): void {
-  const targets = anime.targets.length ? anime.targets.join(", ") : "(targets not parsed)";
-  const durations = anime.durations.length ? ` duration ${anime.durations.join(",")}` : "";
+  const targets = anime.targets.length
+    ? terminalText(anime.targets.join(", "))
+    : "(targets not parsed)";
+  const durations = anime.durations.length
+    ? ` duration ${terminalText(anime.durations.join(","))}`
+    : "";
   const registered = anime.registered ? "registered" : "not registered";
   console.log(
     `  ${c.accent(`anime.${anime.kind}`)}${c.dim(` ${registered}`)}  ${c.dim(`${targets}${durations}`)}`,
@@ -1127,19 +1139,23 @@ function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) 
         console.log();
       }
 
-      const total = comps.reduce(
+      const shown = terminalTextDeep(comps);
+      const projectShown = terminalText(projectName);
+      const total = shown.reduce(
         (n, cmp) => n + cmp.tweens.length + cmp.cssKeyframes.length + cmp.anime.length,
         0,
       );
       if (total === 0) {
-        console.log(`${c.success("◇")}  ${c.accent(projectName)} ${c.dim("— no keyframes found")}`);
+        console.log(
+          `${c.success("◇")}  ${c.accent(projectShown)} ${c.dim("— no keyframes found")}`,
+        );
         return;
       }
       console.log(
-        `${c.success("◇")}  ${c.accent(projectName)} ${c.dim("—")} ${c.dim(`${total} item${total === 1 ? "" : "s"}`)}`,
+        `${c.success("◇")}  ${c.accent(projectShown)} ${c.dim("—")} ${c.dim(`${total} item${total === 1 ? "" : "s"}`)}`,
       );
       console.log();
-      for (const cmp of comps) printComposition(cmp);
+      for (const cmp of shown) printComposition(cmp);
       console.log(
         c.dim(
           `Tip: edit the keyframes in source, then \`${commandOptions.invocation} --shot out.png\` to see the rendered motion.`,

@@ -94,6 +94,23 @@ describe.each([true, false])("benchmark (json=%s)", (json) => {
     expect(await runBenchmark(json)).toMatchObject({ exitCode: 0, kind: "success" });
   });
 
+  it("reads files outside the project only when no received file rules it out", async () => {
+    await runBenchmark(json);
+    mkdirSync(join(projectDir, ".hyperframes"));
+    writeFileSync(
+      join(projectDir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["index.html"] }),
+    );
+    await runBenchmark(json);
+
+    const allowed = producer.executeRenderJob.mock.calls.map(
+      ([job]) =>
+        (job as { config: { allowOutsideProjectAssets?: boolean } }).config
+          .allowOutsideProjectAssets,
+    );
+    expect(allowed).toEqual([...Array(5).fill(true), ...Array(5).fill(false)]);
+  });
+
   it("isolates output between invocations and removes temporary renders", async () => {
     producer.executeRenderJob.mockImplementation(async (_job, _projectDir, outputPath) => {
       mkdirSync(dirname(outputPath), { recursive: true });

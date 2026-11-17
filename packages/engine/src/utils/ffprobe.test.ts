@@ -349,6 +349,56 @@ describe("probeMediaProfile", () => {
     vi.doUnmock("child_process");
   });
 
+  it.each([
+    { format_name: "tty", codec_name: "ansi" },
+    { format_name: "bin", codec_name: "bintext" },
+    { format_name: "xbin", codec_name: "xbin" },
+    { format_name: "idf", codec_name: "idf" },
+    { format_name: "tty", codec_name: undefined },
+  ])(
+    "refuses a text file ffmpeg reads as $format_name video",
+    async ({ format_name, codec_name }) => {
+      const outcome = {
+        kind: "exit" as const,
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", codec_name }],
+          format: { format_name },
+        }),
+      };
+      const { spawn } = createSpawnSpy([outcome, outcome]);
+      vi.resetModules();
+      vi.doMock("child_process", () => ({ spawn }));
+      const { probeMediaProfile, extractMediaMetadata } = await import("./ffprobe.js");
+      const { NotMediaPayloadError } = await import("./notMediaPayload.js");
+
+      await expect(probeMediaProfile("/tmp/notes-profile")).rejects.toBeInstanceOf(
+        NotMediaPayloadError,
+      );
+      await expect(extractMediaMetadata("/tmp/notes-meta")).rejects.toThrow(/text file/);
+    },
+  );
+
+  it.skipIf(spawnSync("ffprobe", ["-version"]).status !== 0)(
+    "refuses a real .asc or .nfo text file named as media",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("child_process");
+      const dir = mkdtempSync(resolve(tmpdir(), "hf-text-art-"));
+      const { probeMediaProfile, extractMediaMetadata } = await import("./ffprobe.js");
+      try {
+        for (const name of ["notes.asc", "notes.nfo"]) {
+          const path = resolve(dir, name);
+          writeFileSync(path, "API_TOKEN=not-for-the-frame\nhello\n");
+          await expect(probeMediaProfile(path)).rejects.toThrow(/text file/);
+          await expect(extractMediaMetadata(path)).rejects.toThrow(/text file/);
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("classifies still, moving, audio-only, and mixed streams from probe data", async () => {
     const { spawn } = createSpawnSpy([
       {

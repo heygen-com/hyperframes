@@ -1,12 +1,14 @@
 import { defineCommand } from "../utils/defineCommand.js";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { finishCommand } from "../utils/commandResult.js";
 import { withMediaAuthEnvironment } from "../auth/media-environment.js";
-import { trustedPathDirs } from "@hyperframes/parsers/ff-binaries";
-import { skipWorkingDirectoryInExeSearch } from "../utils/windowsExeSearch.js";
+import {
+  skipWorkingDirectoryInExeSearch,
+  withOnlyTrustedPathFolders,
+} from "../utils/windowsExeSearch.js";
 
 const MEDIA_USE_ARGS = {
   type: { type: "string", description: "What to find: bgm, sfx, image, icon, logo, voice" },
@@ -77,21 +79,12 @@ export function mediaUseVerbFlags(verb: MediaUseVerb): string[] {
   return verb === "resolve" ? [] : [`--${verb}`];
 }
 
-const NEVER_CREATED_PATH_FOLDER = fileURLToPath(new URL("no-trusted-path-folder", import.meta.url));
-
-function withOnlyTrustedPathFolders(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const pathKey = Object.keys(env).find((name) => name.toUpperCase() === "PATH");
-  if (!pathKey) return { ...env };
-  const dirs = trustedPathDirs(env[pathKey]);
-  return { ...env, [pathKey]: dirs.length > 0 ? dirs.join(delimiter) : NEVER_CREATED_PATH_FOLDER };
-}
-
 export function mediaUseEngineEnv(
   env: NodeJS.ProcessEnv,
   entry: string | undefined = process.argv[1],
   platform: NodeJS.Platform = process.platform,
 ): NodeJS.ProcessEnv {
-  const scoped = withOnlyTrustedPathFolders(env);
+  const scoped = withOnlyTrustedPathFolders(env, platform);
   skipWorkingDirectoryInExeSearch(scoped, platform);
   if (!entry || /\.[cm]?ts$/.test(entry)) return scoped;
   return { ...scoped, HYPERFRAMES_CLI_ENTRY: resolve(entry) };

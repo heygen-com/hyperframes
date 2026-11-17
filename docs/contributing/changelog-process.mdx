@@ -61,6 +61,10 @@ The docs changelog lives in `docs/changelog.mdx` and uses Mintlify `<Update>` en
 
     To recover a failed publish, rerun the original merged-PR workflow. Do not push the stable tag or use a manual dispatch; those paths are intentionally disabled so recovery cannot publish a different commit.
 
+    Retries reuse the original run's immutable `release-bundle` artifact, including the npm tarballs and Lambda assets. The publish job stores the release ID, source commit, run ID, and Lambda digests in a separate `lambda-release-receipt` artifact before uploading assets. It accepts an existing release only when that receipt matches, and skips an existing asset only when its digest matches the original bundle. Partially uploaded asset pairs can resume from those original bytes. An existing npm version with different contents fails even on a retry.
+
+    Both artifacts are retained for seven days. An expired or deleted receipt, a recreated release, mismatched bytes, or a failure between release creation and receipt persistence stops automatic recovery. Inspect the original run and any already published packages before choosing a new release version; do not recreate a receipt from release metadata or delete published assets just to make a retry pass. This workflow does not enable repository-wide immutable releases or add deploy-time attestation verification.
+
     The generated compare link points to the future `v0.6.53` tag. It may not resolve until the release PR merges and the publish workflow creates the tag.
   </Step>
 </Steps>

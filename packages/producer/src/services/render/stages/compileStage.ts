@@ -36,11 +36,13 @@
  */
 
 import { existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import type { ChromaSubsampling, EngineConfig } from "@hyperframes/engine";
+import { join, relative } from "node:path";
+import { escapesAssetRoot } from "../../../utils/paths.js";
+import { privateCacheRoot, type ChromaSubsampling, type EngineConfig } from "@hyperframes/engine";
 import { suggestMatchingPreset, type CanvasResolution } from "@hyperframes/core";
 import { extractStandaloneEntryFromIndex, isTemplateEntry } from "@hyperframes/core/compiler";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
+import { assertCompositionFileSize } from "../../compositionSizeLimit.js";
 import type { CompiledComposition } from "../../htmlCompiler.js";
 import { compileForRender } from "../../htmlCompiler.js";
 import type { ProducerLogger } from "../../../logger.js";
@@ -51,7 +53,19 @@ import {
   type CompositionMetadata,
 } from "../shared.js";
 import type { RenderJob } from "../../renderOrchestrator.js";
-import { preflightCompositionAssetMediaTypes } from "../../assetMediaType.js";
+import {
+  dropMediaOutsideProject,
+  preflightCompositionAssetMediaTypes,
+} from "../../assetMediaType.js";
+
+function animatedGifCacheDir(extractCacheDir: string | undefined): string | undefined {
+  try {
+    const root = extractCacheDir && privateCacheRoot(extractCacheDir);
+    return root ? join(root, "animated-gif") : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export interface CompileStageInput {
   projectDir: string;
@@ -163,10 +177,20 @@ export function resolveEntryHtmlPath(input: {
   workDir: string;
   entryFile: string;
   log: ProducerLogger;
+  assetRoot?: string;
 }): string {
   const { projectDir, workDir, entryFile, log } = input;
+  const readEntry = (path: string) => {
+    if (escapesAssetRoot(path, input.assetRoot)) {
+      throw new Error(
+        `Entry file "${relative(projectDir, path)}" leads outside the project folder`,
+      );
+    }
+    assertCompositionFileSize(path, relative(projectDir, path));
+    return readTextFile(path);
+  };
   const htmlPath = join(projectDir, entryFile);
-  const rawEntry = readTextFile(htmlPath);
+  const rawEntry = readEntry(htmlPath);
   if (entryFile === "index.html" || !isTemplateEntry(rawEntry)) return htmlPath;
 
   const projectIndexPath = join(projectDir, "index.html");
@@ -176,7 +200,7 @@ export function resolveEntryHtmlPath(input: {
     );
   }
   const standaloneHtml = extractStandaloneEntryFromIndex(
-    readTextFile(projectIndexPath),
+    readEntry(projectIndexPath),
     entryFile,
     rawEntry,
   );
@@ -225,7 +249,8 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     abortSignal,
   } = input;
 
-  const htmlPath = resolveEntryHtmlPath({ projectDir, workDir, entryFile, log });
+  const assetRoot = job.config.allowOutsideProjectAssets ? undefined : projectDir;
+  const htmlPath = resolveEntryHtmlPath({ projectDir, workDir, entryFile, log, assetRoot });
   const compileStart = Date.now();
   const compiled = await compileForRender(projectDir, htmlPath, join(workDir, "downloads"), {
     log,
@@ -235,10 +260,10 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     variables: input.variables,
     urlByAbsentLocalPath: input.urlByAbsentLocalPath,
     pageMotionBlur: input.pageMotionBlur,
-    animatedGifCacheDir: cfg.extractCacheDir
-      ? join(cfg.extractCacheDir, "animated-gif")
-      : undefined,
+    animatedGifCacheDir: animatedGifCacheDir(cfg.extractCacheDir),
     ffmpegProcessTimeout: cfg.ffmpegProcessTimeout,
+    allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+    includeOutsideScripts: job.config.includeOutsideScripts,
   });
   assertNotAborted();
   const compileOnlyMs = Date.now() - compileStart;
@@ -362,6 +387,13 @@ export async function runCompileStage(input: CompileStageInput): Promise<Compile
     width: compiled.width,
     height: compiled.height,
   };
+  dropMediaOutsideProject({
+    projectDir,
+    workDir,
+    composition,
+    log,
+    allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+  });
   await preflightCompositionAssetMediaTypes({
     projectDir,
     compiledDir: join(workDir, "compiled"),

@@ -138,6 +138,11 @@ export function namesAnotherNetworkRoot(base: string, target: string): boolean {
   return /^[\\/]{2}/.test(root) && root.toLowerCase() !== parse(resolve(base)).root.toLowerCase();
 }
 
+export function srcOnAnotherNetworkRoot(projectDir: string, src: string): boolean {
+  const path = fileUrlAsPath(cleanAssetUrl(src));
+  return isAbsolute(path) && namesAnotherNetworkRoot(projectDir, path);
+}
+
 const LEADING_PARENT_SEGMENT = /^\.\.(?:[\\/]|$)/;
 
 function staysInsideProject(projectDir: string, path: string): boolean {
@@ -230,7 +235,9 @@ export function resolveProjectRelativeSrc(
   const cleanSrc = fileUrlAsPath(cleanAssetUrl(src));
 
   // A leading slash is an origin-root URL served from the project root, unless the absolute path exists.
-  if (isAbsolute(cleanSrc) && existsSync(cleanSrc)) return cleanSrc;
+  if (isAbsolute(cleanSrc) && !namesAnotherNetworkRoot(baseDir, cleanSrc) && existsSync(cleanSrc)) {
+    return cleanSrc;
+  }
 
   const candidates = new Set<string>();
   for (const variant of decodeUrlPathVariants(cleanSrc)) {

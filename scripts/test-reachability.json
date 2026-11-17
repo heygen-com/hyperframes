@@ -22,16 +22,18 @@
       "packages/producer/**"
     ],
     "scripts/generate-catalog-payloads.test.ts": ["registry/**", "scripts/**"],
-    "scripts/check-skill-import-boundaries.test.mjs": ["skills/**"]
+    "scripts/check-skill-import-boundaries.test.mjs": ["skills/**"],
+    "scripts/check-skill-python-encoding.test.mjs": ["skills/**/*.py"]
   },
   "runners": [
     {
       "cwd": ".",
-      "command": "set -euo pipefail\nmapfile -t SKILLS_TESTS < <(find skills packages/cli/src/media-use -type f -name \"*.test.mjs\" | sort)\nif [ \"${#SKILLS_TESTS[@]}\" -eq 0 ]; then\necho \"::error::No skills/**/*.test.mjs files found. Did the layout change?\"\nexit 1\nfi\nSKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs scripts/creator-editing-capabilities.test.mjs)\nprintf 'Running %d skills test file(s):\\n' \"${#SKILLS_TESTS[@]}\"\nprintf '  * %s\\n' \"${SKILLS_TESTS[@]}\"\nnode --import ./packages/cli/scripts/test-home.mjs --test \"${SKILLS_TESTS[@]}\"",
+      "command": "set -euo pipefail\nmapfile -t SKILLS_TESTS < <(find skills packages/cli/src/media-use -type f -name \"*.test.mjs\" | sort)\nif [ \"${#SKILLS_TESTS[@]}\" -eq 0 ]; then\necho \"::error::No skills/**/*.test.mjs files found. Did the layout change?\"\nexit 1\nfi\nSKILLS_TESTS+=(scripts/check-media-use-copy-parity.test.mjs scripts/check-skill-python-encoding.test.mjs scripts/creator-editing-capabilities.test.mjs)\nprintf 'Running %d skills test file(s):\\n' \"${#SKILLS_TESTS[@]}\"\nprintf '  * %s\\n' \"${SKILLS_TESTS[@]}\"\nnode --import ./packages/cli/scripts/test-home.mjs --test \"${SKILLS_TESTS[@]}\"",
       "tests": [
         "skills/**/*.test.mjs",
         "packages/cli/src/media-use/**/*.test.mjs",
         "scripts/check-media-use-copy-parity.test.mjs",
+        "scripts/check-skill-python-encoding.test.mjs",
         "scripts/creator-editing-capabilities.test.mjs"
       ],
       "sources": {},
@@ -48,7 +50,7 @@
       "sources": {
         "packages/producer/scripts/run-test-lane.mjs": "4515ef37e756e000d6d3774b66154cba0821bdf7bd3f7da7d1dd3afa69bb7be8",
         "packages/producer/scripts/test-classification.mjs": "e0874fac79225203b38778b144adb753a656afa0f78e08758001ff32ba9a0c62",
-        ".github/workflows/ci.yml#job#producer-source-tests": "45da72aa6cf08cdfd5bcf5311e89f12af4842f9eebc6735df19da8c02f4d4864",
+        ".github/workflows/ci.yml#job#producer-source-tests": "efcc801419f12870daf480fc9f6238688fa451d0ed70480752135c31a37c5a03",
         "packages/producer/package.json#script#test:unit": "ae6beda8319d166774be958ea5593cd27dbf7f6c9bce1d787a3fe28dfc3477b1",
         "packages/producer/package.json#script#test:integration": "008589f37d026877595a13501cbb66abd5cbe50e21fdcac6904f45466c3f475d",
         "packages/producer/package.json#script#test:classification": "4ad50d88c81de374dd6ef8a53d702a4b1901483837ecd3d833b1cb0c9a29a058",

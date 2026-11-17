@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, type ReadStream } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+  type ReadStream,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fs from "node:fs";
@@ -156,6 +163,17 @@ describe("serveStaticProjectHtml colour-tagged PNGs", () => {
     expect(body.includes("cICP")).toBe(false);
     expect(body.includes("IDAT")).toBe(true);
     expect(res.headers.get("content-length")).toBe(String(body.length));
+  });
+});
+
+describe("serveStaticProjectHtml content types", () => {
+  it("tells the browser not to sniff a type, so an image cannot load as a script or stylesheet", async () => {
+    const { url } = await serveWith(Buffer.from("window.ran = true;"), "scene.png");
+    for (const path of ["", "scene.png", "missing.js"]) {
+      const response = await fetch(`${url}${path}`);
+      expect(response.headers.get("x-content-type-options"), path).toBe("nosniff");
+    }
+    expect((await fetch(`${url}scene.png`)).headers.get("content-type")).toBe("image/png");
   });
 });
 
@@ -688,5 +706,120 @@ describe("serveStaticProjectHtml when a sandbox refuses listen()", () => {
     await expect(serveStaticProjectHtml(dir, "<html></html>")).rejects.toMatchObject({
       code: "EADDRINUSE",
     });
+  });
+});
+
+describe("serveStaticProjectHtml private project files", () => {
+  it.each([".env", ".env.local", ".git/config", "%2egit/config"])(
+    "answers %s with 404",
+    async (requestPath) => {
+      dir = mkdtempSync(join(tmpdir(), "hf-static-private-"));
+      mkdirSync(join(dir, ".git"));
+      writeFileSync(join(dir, ".env"), "SECRET=1");
+      writeFileSync(join(dir, ".env.local"), "SECRET=1");
+      writeFileSync(join(dir, ".git", "config"), "SECRET=1");
+      writeFileSync(join(dir, "asset.txt"), "ok");
+      server = await serveStaticProjectHtml(dir, "<html></html>");
+
+      const res = await fetch(`${server.url}${requestPath}`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain("SECRET");
+      expect((await fetch(`${server.url}asset.txt`)).status).toBe(200);
+    },
+  );
+});
+
+describe("serveStaticProjectHtml credential files", () => {
+  it.each([".npmrc", ".mcp.json", ".claude/x.json", ".aws/credentials", "id_ed25519", "cert.pem"])(
+    "answers %s with 404",
+    async (requestPath) => {
+      dir = mkdtempSync(join(tmpdir(), "hf-static-credentials-"));
+      for (const folder of [".claude", ".aws"]) mkdirSync(join(dir, folder));
+      for (const file of [".npmrc", ".mcp.json", ".claude/x.json", ".aws/credentials"]) {
+        writeFileSync(join(dir, file), "SECRET=1");
+      }
+      writeFileSync(join(dir, "id_ed25519"), "SECRET=1");
+      writeFileSync(join(dir, "cert.pem"), "SECRET=1");
+      writeFileSync(join(dir, "asset.txt"), "ok");
+      server = await serveStaticProjectHtml(dir, "<html></html>");
+
+      const res = await fetch(`${server.url}${requestPath}`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toContain("SECRET");
+      expect((await fetch(`${server.url}asset.txt`)).status).toBe(200);
+    },
+  );
+});
+
+describe("serveStaticProjectHtml page another site loads", () => {
+  const MARK = '<meta name="hyperframes-preview-for-another-site">';
+  const SANDBOX = "sandbox allow-scripts";
+
+  async function serveProject(): Promise<string> {
+    dir = mkdtempSync(join(tmpdir(), "hf-static-site-"));
+    writeFileSync(join(dir, "scene.html"), "<html><head></head><body>scene</body></html>");
+    server = await serveStaticProjectHtml(
+      dir,
+      "<html><head></head><body>composition</body></html>",
+    );
+    return server.url;
+  }
+
+  it.each(["", "scene.html"])(
+    "marks and sandboxes /%s when another site frames it",
+    async (path) => {
+      const url = await serveProject();
+      const res = await fetch(`${url}${path}`, {
+        headers: { "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Dest": "iframe" },
+      });
+      expect(res.status).toBe(200);
+      expect(await res.text()).toContain(MARK);
+      expect(res.headers.get("content-security-policy")).toContain(SANDBOX);
+    },
+  );
+
+  it.each(["none", "same-origin"])(
+    "leaves the capture page unmarked for Sec-Fetch-Site %s",
+    async (site) => {
+      const url = await serveProject();
+      for (const path of ["", "scene.html"]) {
+        const res = await fetch(`${url}${path}`, { headers: { "Sec-Fetch-Site": site } });
+        expect(await res.text(), path).not.toContain(MARK);
+        expect(res.headers.get("content-security-policy"), path).not.toContain(SANDBOX);
+      }
+    },
+  );
+});
+
+function writeToolRecords(projectDir: string): void {
+  mkdirSync(join(projectDir, ".hyperframes", "prepared-assets"), { recursive: true });
+  for (const name of ["app-history.jsonl", "agent-handoff.json", "comments.jsonl"]) {
+    writeFileSync(join(projectDir, ".hyperframes", name), "PRIVATE_RECORD");
+  }
+  writeFileSync(join(projectDir, ".hyperframes", "prepared-assets", "clip.txt"), "prepared");
+  symlinkSync(
+    join(projectDir, ".hyperframes", "app-history.jsonl"),
+    join(projectDir, "linked-history.json"),
+  );
+}
+
+describe("serveStaticProjectHtml tool records", () => {
+  it.each([
+    ".hyperframes/app-history.jsonl",
+    ".hyperframes/agent-handoff.json",
+    ".hyperframes/comments.jsonl",
+    "%2ehyperframes/agent-handoff.json",
+    ".hyperframes%2fcomments.jsonl",
+    "linked-history.json",
+  ])("answers %s with 404 and still serves prepared assets", async (requestPath) => {
+    dir = mkdtempSync(join(tmpdir(), "hf-static-records-"));
+    writeToolRecords(dir);
+    server = await serveStaticProjectHtml(dir, "<html></html>");
+
+    const res = await fetch(`${server.url}${requestPath}`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("PRIVATE_RECORD");
+    const prepared = await fetch(`${server.url}.hyperframes/prepared-assets/clip.txt`);
+    expect(await prepared.text()).toBe("prepared");
   });
 });

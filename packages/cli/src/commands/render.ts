@@ -72,6 +72,7 @@ import { freemem, tmpdir } from "node:os";
 import { resolve, dirname, join, basename } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 import { loadProducer } from "../utils/producer.js";
+import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { c } from "../ui/colors.js";
 import { desktopHint } from "../utils/desktopApp.js";
 import {
@@ -148,6 +149,7 @@ import {
   runPostRenderStepAsync,
 } from "../utils/render-success-state.js";
 import type { ProducerLogger, RenderJob, RenderPerfSummary } from "@hyperframes/producer";
+import { recordFailure } from "../utils/jsonError.js";
 import {
   EXTRACT_CACHE_DIR_DISABLED_ALIASES,
   sandboxDeniedRemediation,
@@ -159,6 +161,7 @@ import {
   checkOutputResolutionCompatibility,
   suggestMatchingPreset,
   fpsToNumber,
+  terminalText,
   type CanvasResolution,
   type OutputResolutionIssueKind,
   type Fps,
@@ -237,7 +240,7 @@ export default defineCommand({
     "video-frame-format": {
       type: "string",
       description:
-        "Source video frame extraction format: auto, jpg, png (default: auto). " +
+        "Source video frame extraction format: auto, jpg, png. " +
         "Use png for UI recordings, screen captures, and color-sensitive source videos; " +
         "alpha-capable sources always extract as PNG.",
       default: "auto",
@@ -336,13 +339,20 @@ export default defineCommand({
       description:
         "Wait while another render of this user account runs, then start (default): renders side by " +
         "side starve each other. Use --no-wait to fail at once instead. Env: HYPERFRAMES_RENDER_LOCK=off " +
-        "lets renders run side by side; HYPERFRAMES_CACHE_DIR set to a shared folder shares the slot " +
-        "across user accounts.",
+        "lets renders run side by side; HYPERFRAMES_RENDER_LOCK_DIR set to one folder in every account " +
+        "shares the slot across user accounts.",
       default: true,
     },
     strict: {
       type: "boolean",
       description: "Fail render on lint errors",
+      default: false,
+    },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Also run .js and .mjs scripts the project references from outside its folder. Without it they are left out " +
+        "with a warning; images, video, audio, fonts and CSS outside the folder are always included.",
       default: false,
     },
     "strict-all": {
@@ -509,6 +519,7 @@ export default defineCommand({
         const reason = cancellation.signal.reason;
         const message = reason instanceof Error ? reason.message : String(reason);
         process.stderr.write(`Render cancelled: ${message}\n`);
+        recordFailure(`Render cancelled: ${message}`);
         requestCliExit(1);
       }
       throw error;
@@ -581,6 +592,8 @@ export interface RenderOptions {
   /** Segmented capture: keep the segment directory after success. */
   keepSegments?: boolean;
   bestEffort?: boolean;
+  /** --include-outside-files: run scripts the project references from outside its folder. */
+  includeOutsideScripts?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
   strictVariables?: boolean;
@@ -1070,7 +1083,7 @@ async function executeLocalRender(
     for (const check of failedChecks) {
       errorBox(check.title ?? `${check.name} check failed`, check.detail, check.hint);
     }
-    failCommand();
+    failCommand(1, undefined, failedChecks.at(-1)?.code);
   }
   if (!options.quiet) {
     for (const outcome of preflight.outcomes) {
@@ -1150,6 +1163,10 @@ async function executeLocalRender(
     process.env.HYPERFRAMES_GSAP_VENDOR_DIR = gsapVendorDir;
   }
   const producer = await loadProducer();
+  const allowOutsideProjectAssets = outsideAssetsAllowed(projectDir, options.entryFile, (line) =>
+    console.warn(c.warn(`  ${line}`)),
+  );
+  const includeOutsideScripts = options.includeOutsideScripts === true;
   const deParallelRouterActive =
     options.manageDeParallelRouterBreaker === true
       ? applyDeParallelRouterCircuitBreaker(options.quiet)
@@ -1230,9 +1247,17 @@ async function executeLocalRender(
       startTime,
       cpu,
       signal: cancellation.signal,
+      allowOutsideProjectAssets,
+      includeOutsideScripts,
     });
   }
-  const job = producer.createRenderJob(producer.renderConfigFromRequest(request, { logger }));
+  const job = producer.createRenderJob(
+    producer.renderConfigFromRequest(request, {
+      logger,
+      allowOutsideProjectAssets,
+      includeOutsideScripts,
+    }),
+  );
 
   const onProgress = options.quiet
     ? undefined
@@ -1349,6 +1374,8 @@ async function renderRange(input: {
   startTime: number;
   cpu: RenderCpuSampler;
   signal: AbortSignal;
+  allowOutsideProjectAssets: boolean;
+  includeOutsideScripts: boolean;
 }): Promise<SingleRenderResult> {
   const { producer, options } = input;
   let framesEncoded = 0;
@@ -1363,6 +1390,10 @@ async function renderRange(input: {
       config,
       input.range,
       input.outputPath,
+      {
+        allowOutsideProjectAssets: input.allowOutsideProjectAssets,
+        includeOutsideScripts: input.includeOutsideScripts,
+      },
     );
     framesEncoded = spanResult.framesEncoded;
     reference = producer.referenceBackgroundResult(spanResult[producer.REFERENCE_BACKGROUND_FIELD]);
@@ -1957,12 +1988,13 @@ function handleRenderError(
   if (options.throwOnError) {
     throw new Error(message);
   }
+  const shown = message.split(/\r?\n/).map(terminalText).join("\n");
   const launch = chromeLaunchFailure(message);
   if (launch) {
-    errorBox(launch.title, message, launch.remediation);
+    errorBox(launch.title, shown, launch.remediation);
     failCommand();
   }
-  errorBox("Render failed", message, hint);
+  errorBox("Render failed", shown, hint);
   failCommand();
 }
 

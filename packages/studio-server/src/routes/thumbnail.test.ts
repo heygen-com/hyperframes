@@ -84,6 +84,28 @@ describe("registerThumbnailRoutes", () => {
     expect(loaded).toEqual([`?${PREVIEW_CAPTURE_PARAM}=1`, `?${PREVIEW_CAPTURE_PARAM}=1`]);
   });
 
+  it("loads the capture page under the project's frame token when given one", async () => {
+    const adapter = createAdapter();
+    await writeComposition(adapter, 1920, 1080);
+    const app = new Hono();
+    const token = "t".repeat(43);
+    registerThumbnailRoutes(app, adapter, (projectId) => (projectId === "demo" ? token : ""));
+    const loaded: string[] = [];
+    vi.mocked(adapter.generateThumbnail!).mockImplementation(async ({ previewUrl }) => {
+      const url = new URL(previewUrl);
+      loaded.push(url.pathname + url.search);
+      return Buffer.from("thumb");
+    });
+
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=6");
+    await app.request("http://localhost/projects/demo/thumbnail/scenes%2Fb.html?t=6");
+
+    expect(loaded).toEqual([
+      `/api/projects/demo/preview/~${token}?${PREVIEW_CAPTURE_PARAM}=1`,
+      `/api/projects/demo/preview/~${token}/comp/scenes/b.html?${PREVIEW_CAPTURE_PARAM}=1`,
+    ]);
+  });
+
   it("forwards selector queries to thumbnail generation", async () => {
     const adapter = createAdapter();
     const app = new Hono();

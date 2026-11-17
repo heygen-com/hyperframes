@@ -74,7 +74,7 @@ CLI versions reserved 8 by default, so they stay at 8 until you pass
 `--concurrency=N`. Pass `--concurrency=none` to remove the reservation so each
 render sizes itself to the account.
 
-`deploy` records the stack's bucket and state machine in `.hyperframes/lambda-stack-<stack-name>.json` under the current directory. Every other `lambda` command reads that file, so run them from the same directory with the same `--stack-name`, or they stop with "no stack state". Redeploying to upgrade rewrites the same file.
+`deploy` records the stack's bucket and state machine in `.hyperframes/lambda-stack-<stack-name>.json` under the current directory. Every other `lambda` command reads that file, so run them from the same directory with the same `--stack-name`, or they stop with "no stack state". Redeploying to upgrade rewrites the same file. The commands check the file's fields, and they refuse a file that is a symlink. Uploads go only to a bucket owned by the AWS account of the file's state machine, so a state file in a project someone sent you cannot send the project to their bucket.
 
 After `deploy`, render anything with:
 

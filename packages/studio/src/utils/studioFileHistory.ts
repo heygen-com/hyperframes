@@ -4,8 +4,23 @@ import type { MutableRefObject } from "react";
 import { serializeStudioFileMutations } from "./studioFileMutationCoordinator";
 import { createStudioSaveHttpError } from "./studioSaveDiagnostics";
 import { studioApiFetch } from "./studioApiFetch";
+import type { PatchTarget } from "./sourcePatcher";
 
 export type EditContextTarget = HistoryTarget;
+
+export function editContextTarget(
+  file: string,
+  target: PatchTarget & { label?: string },
+): EditContextTarget {
+  return {
+    file,
+    ...(target.id && { id: target.id }),
+    ...(target.hfId && { hfId: target.hfId }),
+    ...(target.selector && { selector: target.selector }),
+    ...(target.selectorIndex !== undefined && { selectorIndex: target.selectorIndex }),
+    ...(target.label && { name: target.label }),
+  };
+}
 
 export interface RecordEditInput {
   targets?: EditContextTarget[];
@@ -31,6 +46,7 @@ type ProjectFileWriter = (path: string, content: string, expectedContent?: strin
 interface SaveProjectFilesWithHistoryInput {
   projectId: string;
   label: string;
+  targets?: EditContextTarget[];
   coalesceKey?: string;
   coalesceMs?: number;
   files: Record<string, (contentInsideFileQueue: string) => string>;
@@ -59,7 +75,7 @@ export async function readProjectFileContent(pid: string, path: string): Promise
     buildProjectApiPath(pid, `/files/${encodeURIComponent(path)}`),
   );
   if (!response.ok) {
-    throw await createStudioSaveHttpError(response, `Failed to read ${path}`);
+    throw await createStudioSaveHttpError(response, `Failed to read ${path}`, { path });
   }
   const data = (await response.json()) as { content?: string };
   if (typeof data.content !== "string") {
@@ -107,6 +123,7 @@ export async function saveServerRewriteWithHistory(input: {
 
 export async function writeProjectFilesWithHistoryInQueue({
   label,
+  targets,
   coalesceKey,
   coalesceMs,
   files,
@@ -134,7 +151,13 @@ export async function writeProjectFilesWithHistoryInQueue({
       writtenPaths.push(path);
     }
 
-    await recordEdit({ label, coalesceKey, coalesceMs, files: snapshots });
+    await recordEdit({
+      label,
+      coalesceKey,
+      coalesceMs,
+      ...(targets?.length && { targets }),
+      files: snapshots,
+    });
   } catch (error) {
     try {
       for (const path of writtenPaths.reverse()) {

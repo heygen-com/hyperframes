@@ -1,13 +1,16 @@
 // @vitest-environment node
+import { execFileSync, spawn } from "node:child_process";
 import {
   chmodSync,
   existsSync,
   linkSync,
+  lstatSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
   renameSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -95,7 +98,8 @@ function withoutHardLinks(code = "ENOTSUP"): void {
 }
 
 describe("takeHistoryOwnership on a drive without hard links", () => {
-  it.each(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EPERM", "EACCES"])(
+  // fails without the fix: EISDIR (Windows on a Google Drive folder) and EXDEV threw instead.
+  it.each(["ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EPERM", "EACCES", "EISDIR", "EXDEV"])(
     "takes the lock when linking fails with %s",
     async (code) => {
       withoutHardLinks(code);
@@ -250,7 +254,7 @@ describe.skipIf(process.platform === "win32")(
   () => {
     it("gives the lock back instead of keeping a file nobody would release", async () => {
       vi.mocked(writeFileSync).mockImplementation((...args) => {
-        if (String(args[0]).endsWith(".start")) {
+        if (/\.start(\.hf[0-9a-f]{6}\.tmp)?$/.test(String(args[0]))) {
           throw Object.assign(new Error("ENOSPC: no space left on device"), { code: "ENOSPC" });
         }
         return realWriteFileSync(...args);
@@ -261,6 +265,109 @@ describe.skipIf(process.platform === "win32")(
       vi.mocked(writeFileSync).mockImplementation(realWriteFileSync);
       const release = await takeHistoryOwnership(home, 100);
       release();
+    });
+  },
+);
+
+// Windows records no start time, and making links there needs extra rights.
+describe.skipIf(process.platform === "win32" || processStart(process.pid) === null)(
+  "takeHistoryOwnership with a linked entry at a start record's name",
+  () => {
+    const records = ["owner.pid.start", "owner.pid.evict.start"];
+
+    /** A lock home and a sentinel file outside it; a dead owner too, so the evict lock writes its record. */
+    function planted(record: string) {
+      const home = newHome();
+      const outside = newHome();
+      const sentinel = join(outside, "sentinel");
+      writeFileSync(sentinel, "unchanged");
+      if (record === "owner.pid.evict.start") writeFileSync(join(home, "owner.pid"), "2147483646");
+      return { home, outside, sentinel, entry: join(home, record) };
+    }
+
+    async function takeAndRelease(home: string): Promise<void> {
+      const release = await takeHistoryOwnership(home, 1_000);
+      expect(lstatSync(join(home, "owner.pid.start")).isFile()).toBe(true);
+      release();
+      expect(readdirSync(home)).toEqual([]);
+    }
+
+    it.each(records)("replaces a symlink at %s instead of writing through it", async (record) => {
+      const { home, sentinel, entry } = planted(record);
+      symlinkSync(sentinel, entry);
+      await takeAndRelease(home);
+      expect(readFileSync(sentinel, "utf-8")).toBe("unchanged");
+    });
+
+    it.each(records)("creates nothing where a dangling symlink at %s points", async (record) => {
+      const { home, outside, entry } = planted(record);
+      const target = join(outside, "created");
+      symlinkSync(target, entry);
+      await takeAndRelease(home);
+      expect(existsSync(target)).toBe(false);
+    });
+
+    it.each(records)("leaves a file hard-linked at %s as it was", async (record) => {
+      const { home, sentinel, entry } = planted(record);
+      linkSync(sentinel, entry);
+      await takeAndRelease(home);
+      expect(readFileSync(sentinel, "utf-8")).toBe("unchanged");
+    });
+
+    it("reads a FIFO at the start record as no record instead of waiting for a writer", async () => {
+      const home = newHome();
+      writeFileSync(join(home, "owner.pid"), String(process.ppid));
+      const fifo = join(home, "owner.pid.start");
+      execFileSync("mkfifo", [fifo]);
+      const writer = spawn("sh", ["-c", 'sleep 3; while :; do printf x > "$0"; done', fifo], {
+        stdio: "ignore",
+      });
+      try {
+        const began = Date.now();
+        await expect(takeHistoryOwnership(home, 100)).rejects.toThrow(HistoryBusyError);
+        expect(Date.now() - began).toBeLessThan(2_000);
+      } finally {
+        writer.kill("SIGKILL");
+      }
+    });
+  },
+);
+
+describe.skipIf(!canRefuseRead || processStart(process.pid) === null)(
+  "takeHistoryOwnership with a read-only entry at the start record's name",
+  () => {
+    it.each(["symlink", "file"])("takes the lock past a read-only %s", async (kind) => {
+      const home = newHome();
+      const sentinel = join(newHome(), "sentinel");
+      writeFileSync(sentinel, "unchanged");
+      chmodSync(sentinel, 0o444);
+      const entry = join(home, "owner.pid.start");
+      if (kind === "symlink") symlinkSync(sentinel, entry);
+      else {
+        writeFileSync(entry, "unchanged");
+        chmodSync(entry, 0o444);
+      }
+      const release = await takeHistoryOwnership(home, 1_000);
+      expect(lstatSync(entry).isFile()).toBe(true);
+      release();
+      expect(readFileSync(sentinel, "utf-8")).toBe("unchanged");
+    });
+  },
+);
+
+describe.skipIf(process.platform === "win32")(
+  "takeHistoryOwnership with a symlink at owner.pid",
+  () => {
+    it("clears the link as a lock without a pid and leaves its target as it was", async () => {
+      const home = newHome();
+      const sentinel = join(newHome(), "sentinel");
+      writeFileSync(sentinel, String(process.ppid));
+      symlinkSync(sentinel, join(home, "owner.pid"));
+      const release = await takeHistoryOwnership(home, 1_000);
+      expect(lstatSync(join(home, "owner.pid")).isFile()).toBe(true);
+      expect(readFileSync(join(home, "owner.pid"), "utf-8")).toBe(String(process.pid));
+      release();
+      expect(readFileSync(sentinel, "utf-8")).toBe(String(process.ppid));
     });
   },
 );
