@@ -10,6 +10,18 @@ import { previewClipManifest } from "../player/lib/previewChannel";
  * for the Slideshow panel. Extracted from StudioRightPanels to keep that file
  * under the 600-LOC gate.
  */
+/** The manifest is frame data: a scene entry must carry a string id and label and finite times. */
+function isSceneEntry(value: unknown): value is SceneInfo {
+  if (!value || typeof value !== "object") return false;
+  const s = value as Record<string, unknown>;
+  return (
+    typeof s.id === "string" &&
+    typeof s.label === "string" &&
+    Number.isFinite(s.start) &&
+    Number.isFinite(s.duration)
+  );
+}
+
 export function useSlideshowTabState(params: {
   editingFileContent: string | null | undefined;
   previewIframeRef: MutableRefObject<HTMLIFrameElement | null>;
@@ -36,9 +48,11 @@ export function useSlideshowTabState(params: {
     let current = true;
     void previewClipManifest(iframe).then((manifest) => {
       if (!current) return;
-      const scenes = Array.isArray(manifest?.scenes) ? manifest.scenes : [];
+      const scenes: unknown[] = Array.isArray(manifest?.scenes) ? manifest.scenes : [];
       setSlideshowScenes(
-        scenes.map((s) => ({ id: s.id, label: s.label, start: s.start, duration: s.duration })),
+        scenes
+          .filter(isSceneEntry)
+          .map((s) => ({ id: s.id, label: s.label, start: s.start, duration: s.duration })),
       );
     });
     return () => {

@@ -94,4 +94,12 @@ describe("addBlockToProject", () => {
     expect(vi.mocked(previewRequest)).toHaveBeenCalledWith(iframe, "max-z-index", {});
     expect(source).toContain("z-index: 42");
   });
+
+  it("stacks at 1 when the preview's z-index is not a whole number of zero or more", async () => {
+    for (const zIndex of [-5, 0.5, 1e308]) {
+      vi.mocked(previewRequest).mockResolvedValueOnce({ zIndex });
+      const { source } = await addHud({ previewIframe: document.createElement("iframe") });
+      expect(source).toContain('z-index: 1"');
+    }
+  });
 });

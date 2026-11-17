@@ -17,7 +17,7 @@ import { previewRequest } from "../player/lib/previewChannel";
 
 async function previewMaxZIndex(iframe: HTMLIFrameElement | null): Promise<number> {
   const zIndex = iframe ? (await previewRequest(iframe, "max-z-index", {}))?.zIndex : undefined;
-  return typeof zIndex === "number" && Number.isFinite(zIndex) ? zIndex : 0;
+  return Number.isSafeInteger(zIndex) && (zIndex as number) >= 0 ? (zIndex as number) : 0;
 }
 
 interface AddBlockOptions {

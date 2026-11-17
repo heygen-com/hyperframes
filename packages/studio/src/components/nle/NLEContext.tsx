@@ -11,7 +11,7 @@ import { useAssetPreviewStore } from "../../utils/assetPreviewStore";
 import { createStableContext } from "../../utils/hmrStableContext";
 import { studioApiFetch } from "../../utils/studioApiFetch";
 import { previewReloadBegun } from "../../player/previewReloading";
-import { previewRequest } from "../../player/lib/previewChannel";
+import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
 
 /** The `data-composition-src` of the preview's host for composition `compId`, read over its editing port. */
 export async function hostCompositionSrc(
@@ -19,9 +19,9 @@ export async function hostCompositionSrc(
   compId: string,
 ): Promise<string | undefined> {
   const selector = `[data-composition-id="${CSS.escape(compId)}"][data-composition-src]`;
-  const handle = (await previewRequest(iframe, "query", { selector }))?.matches[0]?.handle;
+  const handle = (await queryPreviewElements(iframe, selector))?.matches[0]?.handle;
   if (!handle) return undefined;
-  const [host] = (await previewRequest(iframe, "describe", { handles: [handle] }))?.elements ?? [];
+  const [host] = (await describePreviewElements(iframe, [handle])) ?? [];
   return host?.attributes.find(([name]) => name === "data-composition-src")?.[1] || undefined;
 }
 

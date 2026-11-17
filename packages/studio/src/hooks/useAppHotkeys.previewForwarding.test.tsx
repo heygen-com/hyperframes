@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 
+import { readFileSync } from "node:fs";
 import React, { act, useRef } from "react";
 import type { Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -180,9 +181,18 @@ describe("preview iframe hotkey forwarding", () => {
     afterEach(() => closers.splice(0).forEach((close) => close()));
 
     // A frame whose document refuses Studio, reached only over the editing port it hands out per connect.
-    function sealedFrame() {
+    function sealedFrame(focus = { inPreview: true }) {
       const frame: Record<string, unknown> = {};
       const iframe = detachedFakeIframe(frame);
+      const hasFocus = vi.spyOn(document, "hasFocus").mockImplementation(() => focus.inPreview);
+      Object.defineProperty(document, "activeElement", {
+        configurable: true,
+        get: () => (focus.inPreview ? iframe : document.body),
+      });
+      closers.push(() => {
+        hasFocus.mockRestore();
+        delete (document as { activeElement?: unknown }).activeElement;
+      });
       Object.defineProperty(iframe, "contentDocument", { value: null });
       Object.defineProperty(frame, "document", {
         get: () => {
@@ -217,7 +227,7 @@ describe("preview iframe hotkey forwarding", () => {
             repeat: false,
           },
         });
-      return { iframe, watched, ports, keyDown };
+      return { iframe, watched, ports, keyDown, hasFocus };
     }
 
     it("deletes the selection on a Delete pressed inside the preview", async () => {
@@ -232,6 +242,20 @@ describe("preview iframe hotkey forwarding", () => {
       await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(1));
     });
 
+    it("ignores a key the preview reports while the person is not in the preview", async () => {
+      root = mountReactHarness(<Harness />);
+      const focus = { inPreview: false };
+      const { iframe, watched, keyDown, hasFocus } = sealedFrame(focus);
+      act(() => sync?.(iframe));
+      await vi.waitFor(() => expect(watched).toHaveLength(1));
+      keyDown("Delete", "Delete");
+      await vi.waitFor(() => expect(hasFocus).toHaveBeenCalledTimes(1));
+      focus.inPreview = true;
+      keyDown("Delete", "Delete");
+      await vi.waitFor(() => expect(domDelete).toHaveBeenCalledTimes(1));
+      expect(hasFocus).toHaveBeenCalledTimes(2);
+    });
+
     it("stops watching on the preview's next load, from a new port", async () => {
       root = mountReactHarness(<Harness />);
       const { iframe, watched, ports } = sealedFrame();
@@ -241,6 +265,18 @@ describe("preview iframe hotkey forwarding", () => {
       await vi.waitFor(() => expect(watched).toHaveLength(3));
       expect(watched.slice(1)).toContainEqual([]);
       expect(ports).toHaveLength(2);
+    });
+
+    it("watches every action the app's key dispatchers answer, so none is dead in a sealed preview", () => {
+      const read = (file: string) => readFileSync(new URL(file, import.meta.url), "utf8");
+      const answered = new Set([
+        ...[...read("./appHotkeysDispatch.ts").matchAll(/matchesKey\(\w+, "(\w+)"\)/g)].map(
+          (m) => m[1],
+        ),
+        ...[...read("./linkShortcuts.ts").matchAll(/\["(\w+)", "\w+"\]/g)].map((m) => m[1]),
+      ]);
+      expect(answered.size).toBeGreaterThan(20);
+      expect(new Set(APP_HOTKEY_ACTIONS)).toEqual(answered);
     });
 
     it("watches no key the playback keys also watch, so the frame forwards each press once", () => {

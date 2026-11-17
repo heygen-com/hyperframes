@@ -101,7 +101,12 @@ describe("useSlideshowTabState", () => {
     vi.mocked(previewClipManifest).mockResolvedValueOnce({
       clips: [],
       durationInFrames: 300,
-      scenes: [{ id: "s1", label: "Intro", start: 0, duration: 4 }],
+      scenes: [
+        null,
+        { id: "s1", label: "Intro", start: 0, duration: 4 },
+        { id: 2, label: "Bad id", start: 4, duration: 4 },
+        { id: "s3", label: "No time", start: null, duration: 4 },
+      ],
     } as unknown as Awaited<ReturnType<typeof previewClipManifest>>);
     const harness = renderHook({ editingFileContent: SLIDESHOW_HTML, iframe });
     await act(async () => {});
