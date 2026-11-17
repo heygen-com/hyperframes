@@ -81,8 +81,8 @@ test("a push to main publishes only the merge of exactly one approved release PR
     head: { ref: "release/v0.9.61", sha: head, repo: { full_name: "heygen-com/hyperframes" } },
     ...overrides,
   });
-  const review = (login, state, hour, commit = head) => ({
-    user: { login },
+  const review = (login, state, hour, commit = head, type = "User") => ({
+    user: { login, type },
     state,
     commit_id: commit,
     submitted_at: `2026-11-17T0${hour}:00:00Z`,
@@ -171,6 +171,11 @@ test("a push to main publishes only the merge of exactly one approved release PR
       ["an earlier commit was approved", [review("reviewer", "APPROVED", 1, "d".repeat(40))]],
       ["a comment is not an approval", [review("reviewer", "COMMENTED", 1)]],
       ["a dismissed approval", [review("reviewer", "DISMISSED", 1)]],
+      ["an app's approval", [review("review-app[bot]", "APPROVED", 1, head, "Bot")]],
+      [
+        "an app's change request stands",
+        [...approved, review("review-app[bot]", "CHANGES_REQUESTED", 2, head, "Bot")],
+      ],
       [
         "another reviewer's change request stands",
         [...approved, review("other", "CHANGES_REQUESTED", 2)],
