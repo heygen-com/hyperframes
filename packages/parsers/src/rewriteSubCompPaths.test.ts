@@ -73,6 +73,19 @@ describe("rewriteAssetPath", () => {
     expect(out).not.toMatch(/:\\/);
   });
 
+  it("rewrites a quoted CSS url whose file name holds parentheses or the other quote", () => {
+    const css = [
+      `.a { background: url("../img/photo (1).png"); }`,
+      `.b { background: url("../img/don't.png"); }`,
+      `.c { background: url('../img/say "hi".png'); }`,
+    ].join("\n");
+    const out = rewriteCssAssetUrls(css, "compositions/scene.html");
+    expect(out).toContain(`url("img/photo%20%281%29.png")`);
+    expect(out).toContain(`url("img/don%27t.png")`);
+    expect(out).toContain(`url('img/say%20%22hi%22.png')`);
+    expect(out).not.toContain("../img");
+  });
+
   it("rewrites CSS urls inside inline style attributes", () => {
     const elements = [{ style: `background-image: url("../cover.png")` }];
 
