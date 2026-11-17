@@ -124,3 +124,13 @@ export async function previewComputedStyles(
   }
   return read;
 }
+
+export async function previewDocumentCopy(iframe: HTMLIFrameElement): Promise<Document | null> {
+  const reply = await previewRequest(iframe, "document-markup", {});
+  if (typeof reply?.html !== "string" || typeof reply.baseURI !== "string") return null;
+  const doc = new DOMParser().parseFromString(reply.html, "text/html");
+  const base = doc.createElement("base");
+  base.setAttribute("href", reply.baseURI);
+  doc.head.prepend(base);
+  return doc;
+}
