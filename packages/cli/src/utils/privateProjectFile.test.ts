@@ -173,6 +173,24 @@ describe("receivedFiles when a listed file is gone", () => {
     expect(received.gone).toBeUndefined();
   });
 
+  it("counts every file as received when the received content cannot be read", () => {
+    const root = project([]);
+    writeFileSync(join(root, ".hyperframes", "received-content.json"), "{not json");
+    expect(receivedFiles(root)("mine.html")).toBe(true);
+  });
+
+  it("ignores a gone file a record lists outside the project", () => {
+    const root = project([]);
+    mkdirSync(join(root, "sub", ".hyperframes"), { recursive: true });
+    writeFileSync(
+      join(root, "sub", ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["../../not-in-project/gone.html"] }),
+    );
+    const received = receivedFiles(root);
+    expect(received.gone).toBeUndefined();
+    expect(received("mine.html")).toBe(false);
+  });
+
   it("counts every page as received for a gone file listed by a received folder's own record", () => {
     const root = project([]);
     mkdirSync(join(root, "sub", ".hyperframes"), { recursive: true });

@@ -30,6 +30,7 @@ import {
   isCodeFile,
   readReceivedContent,
   type ReceivedContent,
+  receivedContentFile,
   writeReceivedContent,
 } from "./receivedContent.js";
 
@@ -186,6 +187,13 @@ const listedPaths = (record: ReceivedRecord): string[] =>
     ? record.listed.map((entry) => join(record.root, String(entry)))
     : [];
 
+const isAtOrUnder = (path: string, folder: string) => {
+  const inside = relative(folder, path);
+  return (
+    inside === "" || (inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside))
+  );
+};
+
 export async function filesListedInFolder(target: string): Promise<string[] | null> {
   if (!statSync(target, { throwIfNoEntry: false })?.isDirectory()) return [];
   const own = readRecord(target, true);
@@ -295,7 +303,11 @@ function fileIdentity(path: string): string | null {
   }
 }
 
-function listedIn(record: ReceivedRecord, projectDir: string): (path: string) => boolean {
+function listedIn(
+  record: ReceivedRecord,
+  projectDir: string,
+  start: string,
+): (path: string) => boolean {
   const listed = (record.listed as unknown[]).map((path) => String(path).normalize("NFC"));
   const files = new Set(listed);
   const keyOf = (path: string) =>
@@ -303,7 +315,10 @@ function listedIn(record: ReceivedRecord, projectDir: string): (path: string) =>
   let listedOnDisk: Set<string> | undefined;
   const sameFileAsListed = (path: string) => {
     listedOnDisk ??= new Set(
-      listed.flatMap((entry) => fileIdentity(join(record.root, entry)) ?? []),
+      listed
+        .map((entry) => join(record.root, entry))
+        .filter((file) => isAtOrUnder(file, start))
+        .flatMap((file) => fileIdentity(file) ?? []),
     );
     const identity = fileIdentity(join(projectDir, path));
     return identity !== null && listedOnDisk.has(identity);
@@ -323,11 +338,19 @@ export type ReceivedFiles = ((path: string) => boolean) & { gone?: string; unche
 
 const contentFolder = (record: ReceivedRecord) => dirname(dirname(record.file));
 
-const receivedHashes = (records: ReceivedRecord[]): string[] =>
-  records.flatMap((record) => [...readReceivedContent(contentFolder(record)).hashes]);
+function receivedContentOf(
+  records: ReceivedRecord[],
+): { hashes: string[] } | { unreadable: string } {
+  const hashes: string[] = [];
+  for (const folder of new Set(records.map(contentFolder))) {
+    const content = readReceivedContent(folder);
+    if (!content.readable) return { unreadable: receivedContentFile(folder) };
+    hashes.push(...content.hashes);
+  }
+  return { hashes };
+}
 
-function holdsReceivedContent(projectDir: string, records: ReceivedRecord[]) {
-  const hashes = new Set(receivedHashes(records));
+function holdsReceivedContent(projectDir: string, hashes: Set<string>) {
   const seen = new Map<string, boolean>();
   return (path: string): boolean => {
     if (hashes.size === 0) return false;
@@ -340,15 +363,19 @@ export function receivedFiles(projectDir: string): ReceivedFiles {
   const records = receivedRecords(projectDir);
   if (records === null) return Object.assign(() => true, { unchecked: true });
   if (records.some((record) => !Array.isArray(record.listed))) return () => true;
-  const goneFile = records.flatMap(listedPaths).find((path) => !onDisk(path));
+  const content = receivedContentOf(records);
+  if ("unreadable" in content) return () => true;
+  const start = walkStart(projectDir);
+  const listedInProject = records.flatMap(listedPaths).filter((path) => isAtOrUnder(path, start));
+  const goneFile = listedInProject.find((path) => !onDisk(path));
   const mayBeGoneFile = (path: string) =>
     goneFile !== undefined &&
     (isCodeFile(path) || linksOutside(projectDir, join(projectDir, path)));
-  const sameContent = holdsReceivedContent(projectDir, records);
-  const listedInAnyRecord = records.map((record) => listedIn(record, projectDir));
+  const sameContent = holdsReceivedContent(projectDir, new Set(content.hashes));
+  const listedInAnyRecord = records.map((record) => listedIn(record, projectDir, start));
   const received = (path: string) =>
     listedInAnyRecord.some((listed) => listed(path)) || mayBeGoneFile(path) || sameContent(path);
-  const gone = goneFile && relative(walkStart(projectDir), goneFile).split(sep).join("/");
+  const gone = goneFile && relative(start, goneFile).split(sep).join("/");
   return Object.assign(received, gone === undefined ? {} : { gone });
 }
 
@@ -381,8 +408,9 @@ export function receivedRecordStatus(
   if (!nearest) return null;
   const unreadable = records.find((record) => !Array.isArray(record.listed));
   if (unreadable) return { path: unreadable.file, listed: null, hashes: [] };
-  const hashes = receivedHashes(records);
-  return { path: nearest.file, listed: records.flatMap(listedUnder), hashes };
+  const content = receivedContentOf(records);
+  if ("unreadable" in content) return { path: content.unreadable, listed: null, hashes: [] };
+  return { path: nearest.file, listed: records.flatMap(listedUnder), hashes: content.hashes };
 }
 
 const leavesProject = (path: string): boolean =>

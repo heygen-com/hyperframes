@@ -358,6 +358,16 @@ describe("outsideAssetsAllowed", () => {
       );
     });
 
+    it("refuses outside files and names the received content when it cannot be read", () => {
+      const dir = project(received());
+      write(join(dir, ".hyperframes", "received-content.json"), "{not json");
+      const { allowed, line } = decide(dir);
+      expect(allowed).toBe(false);
+      expect(line).toContain(
+        `Could not read ${join(realpathSync(dir), ".hyperframes", "received-content.json")}`,
+      );
+    });
+
     it("keeps outside files when only Studio's backups hold it", () => {
       const dir = withLeftContent("<p>theirs</p>");
       write(join(dir, ".hyperframes", "backup", "scene.html"), "<p>theirs</p>");

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, openSync, readFileSync, type Stats } from "node:fs";
 import { type FileHandle, open } from "node:fs/promises";
-import { extname } from "node:path";
+import { extname, join } from "node:path";
 import { readRecordTail, recordKind, writeRecord } from "./projectRecords.js";
 
 /**
@@ -15,6 +15,9 @@ const SHA256 = /^[0-9a-f]{64}$/;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
+
+export const receivedContentFile = (dir: string): string =>
+  join(dir, ".hyperframes", RECEIVED_CONTENT);
 
 export interface ReceivedContent {
   hashes: Set<string>;
