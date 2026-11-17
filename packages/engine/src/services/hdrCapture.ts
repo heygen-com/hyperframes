@@ -23,6 +23,7 @@ import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
 import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import type { Page, Browser, PuppeteerNode } from "puppeteer-core";
 import { resolveFullChromePath, ownedLaunchOptions } from "./browserManager.js";
+import { noSandboxUnlessRequired } from "./chromeSandbox.js";
 
 // ── PQ (SMPTE 2084) OETF ─────────────────────────────────────────────────────
 
@@ -264,8 +265,7 @@ export async function launchHdrBrowser(
 export function buildHdrChromeArgs(width: number, height: number): string[] {
   return [
     "--enable-unsafe-webgpu",
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
+    ...noSandboxUnlessRequired(),
     "--window-position=-10000,-10000",
     `--window-size=${width},${height}`,
     "--disable-background-timer-throttling",
