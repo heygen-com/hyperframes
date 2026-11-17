@@ -92,21 +92,24 @@ describe("probe and HDR launches follow the same sandbox rule as the render", ()
     }
   });
 
-  it("the host-ceiling probe starts a shell with its sandbox where the host allows it", () => {
-    const dir = mkdtempSync(join(tmpdir(), "hf-shell-starts-"));
-    try {
-      const shell = join(dir, "chrome");
-      const seen = join(dir, "args");
-      writeFileSync(shell, `#!/bin/sh\nprintf '%s\\n' "$@" >> "${seen}"\n`);
-      chmodSync(shell, 0o755);
-      expect(shellStarts(shell, 5_000, true)).toBe(true);
-      const args = readFileSync(seen, "utf8").trim().split("\n");
-      expect(args).toContain("--dump-dom");
-      for (const flag of NO_SANDBOX_ARGS) expect(args).not.toContain(flag);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
+  it.skipIf(process.platform === "win32")(
+    "the host-ceiling probe starts a shell with its sandbox where the host allows it",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-shell-starts-"));
+      try {
+        const shell = join(dir, "chrome");
+        const seen = join(dir, "args");
+        writeFileSync(shell, `#!/bin/sh\nprintf '%s\\n' "$@" >> "${seen}"\n`);
+        chmodSync(shell, 0o755);
+        expect(shellStarts(shell, 5_000, true)).toBe(true);
+        const args = readFileSync(seen, "utf8").trim().split("\n");
+        expect(args).toContain("--dump-dom");
+        for (const flag of NO_SANDBOX_ARGS) expect(args).not.toContain(flag);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 describe("startsWithChromeSandboxFallback", () => {
