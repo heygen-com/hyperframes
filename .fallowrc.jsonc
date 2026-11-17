@@ -1065,6 +1065,9 @@
       "packages/inspector/src/timelineReport.ts",
       "packages/inspector/src/pageQueries.ts",
       "packages/core/src/runtime/timelineValues.ts",
+      // useColorGradingController.ts: the hook's complexity is inherited; the sealed-preview
+      // status read adds no branch to it, but its import lines shift the hook's fingerprint.
+      "packages/studio/src/components/editor/useColorGradingController.ts",
     ],
   },
 }

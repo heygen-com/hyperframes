@@ -34,6 +34,18 @@ import {
   type CaptionTransformParams,
   type CaptionWordState,
 } from "./editing/captionTransform";
+import {
+  parseColorGradingStatusParams,
+  type ColorGradingStatusRequest,
+} from "./editing/color-grading-status";
+import {
+  parseColorGradingPreviewsParams,
+  type ColorGradingPreviewsRequest,
+} from "./editing/color-grading-previews";
+import {
+  parseColorGradingPlaybackParams,
+  type ColorGradingPlaybackRequest,
+} from "./editing/color-grading-playback";
 
 export {
   buildStableSelector,
@@ -124,6 +136,9 @@ export const EDITING_REQUEST_KINDS = [
   "restore-attributes",
   "caption-words",
   "caption-transform",
+  "color-grading-status",
+  "color-grading-previews",
+  "color-grading-playback",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -236,6 +251,9 @@ export interface EditingRequests {
   /** Boxes of the words of visible caption groups; a group written as plain text is split into word spans. */
   "caption-words": { params: CaptionWordsParams; result: { boxes: CaptionWordBox[] } };
   "caption-transform": { params: CaptionTransformParams; result: { words: CaptionWordState[] } };
+  "color-grading-status": ColorGradingStatusRequest;
+  "color-grading-previews": ColorGradingPreviewsRequest;
+  "color-grading-playback": ColorGradingPlaybackRequest;
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -425,6 +443,9 @@ const PARAM_PARSERS: {
   "restore-attributes": parseRestoreAttributes,
   "caption-words": captionWordsParams,
   "caption-transform": captionTransformParams,
+  "color-grading-status": parseColorGradingStatusParams,
+  "color-grading-previews": parseColorGradingPreviewsParams,
+  "color-grading-playback": parseColorGradingPlaybackParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
