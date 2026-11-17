@@ -30,7 +30,14 @@ import {
   listProjectFilesAsync,
   type ListedProjectFile,
 } from "../helpers/projectSignature.js";
-import { isSettling, openBlobStore, readBlob, SETTLE_MS, type BlobStore } from "./blobStore.js";
+import {
+  hashFile,
+  isSettling,
+  openBlobStore,
+  readBlob,
+  SETTLE_MS,
+  type BlobStore,
+} from "./blobStore.js";
 import { isUncopied, uncopiedOnlyHashes } from "./uncopied.js";
 import {
   assertStillWithin,
@@ -151,6 +158,8 @@ export interface ProjectHistory {
     label: string,
     options?: { idleMs?: number; exclusive?: boolean },
   ): Promise<HistoryWindow>;
+  /** The bytes the next restore point would copy in: changed files whose contents the store lacks, media excluded. */
+  unsavedBytes(): Promise<number>;
   /**
    * For a writer that records after writing (Studio): moves the uncommitted changes to `paths` into one entry of
    * `who`'s, each cut at the `overwrote` version so earlier parts stay their writer's. Same-key claims merge until
@@ -777,6 +786,24 @@ class Engine {
     const files = JSON.stringify(Object.fromEntries(this.tracked));
     mkdirSync(this.home, { recursive: true });
     replaceFileAtomically(join(this.home, "stat.json"), files, 0o644);
+  }
+
+  async unsavedBytes(): Promise<number> {
+    if (this.whereFolder() !== "here") return 0;
+    const now = this.now();
+    let bytes = 0;
+    for (const file of await historyFiles(this.dir)) {
+      if (this.adopting.has(file.path) || isUncopied(file.path, file.size)) continue;
+      const stat = statKey(file, now);
+      if (stat && this.tracked.get(file.path)?.stat === stat) continue;
+      const hash = await hashFile(join(this.dir, file.path)).catch((error) => {
+        // A file removed since the listing has nothing to copy.
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw error;
+      });
+      if (hash !== null && !this.blobs.has(hash)) bytes += file.size;
+    }
+    return bytes;
   }
 
   /**
@@ -1467,6 +1494,7 @@ class Engine {
           options.idleMs ?? this.options.maxGroupMs ?? 30_000,
           options.exclusive === true,
         ),
+      unsavedBytes: () => this.unsavedBytes(),
       claim: async (who, label, paths, options = {}) => {
         await Promise.all(paths.map((path) => this.adopting.get(this.logPath(path))?.retryNow()));
         return this.queue(() => this.claimNow(who, label, paths, options));
