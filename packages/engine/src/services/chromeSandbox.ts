@@ -58,6 +58,10 @@ export function chromeSandboxEnabled(host: ChromeSandboxHost = currentHost()): b
   return host.platform !== "linux" || !linuxCannotSandbox(host);
 }
 
+export function noSandboxUnlessRequired(env: NodeJS.ProcessEnv = process.env): string[] {
+  return env.HYPERFRAMES_CHROME_SANDBOX === "1" ? [] : ["--no-sandbox", "--disable-setuid-sandbox"];
+}
+
 export function chromeSandboxArgs(sandbox = chromeSandboxEnabled()): string[] {
   return sandbox ? [] : NO_SANDBOX_ARGS;
 }

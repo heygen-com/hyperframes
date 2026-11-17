@@ -23,6 +23,7 @@ import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
 import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import type { Page, Browser, PuppeteerNode } from "puppeteer-core";
 import { resolveFullChromePath, ownedLaunchOptions } from "./browserManager.js";
+import { noSandboxUnlessRequired } from "./chromeSandbox.js";
 
 // ── PQ (SMPTE 2084) OETF ─────────────────────────────────────────────────────
 
@@ -262,10 +263,11 @@ export async function launchHdrBrowser(
 }
 
 export function buildHdrChromeArgs(width: number, height: number): string[] {
+  const noSandbox = noSandboxUnlessRequired();
+  const noZygoteOnlyWithoutSandbox = noSandbox.length > 0 ? ["--no-zygote"] : [];
   return [
     "--enable-unsafe-webgpu",
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
+    ...noSandbox,
     "--window-position=-10000,-10000",
     `--window-size=${width},${height}`,
     "--disable-background-timer-throttling",
@@ -276,7 +278,7 @@ export function buildHdrChromeArgs(width: number, height: number): string[] {
     "--disable-component-update",
     "--disable-default-apps",
     "--disable-sync",
-    "--no-zygote",
+    ...noZygoteOnlyWithoutSandbox,
     "--force-gpu-mem-available-mb=4096",
     "--autoplay-policy=no-user-gesture-required",
   ];
