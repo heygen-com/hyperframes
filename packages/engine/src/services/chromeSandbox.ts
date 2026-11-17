@@ -58,10 +58,6 @@ export function chromeSandboxEnabled(host: ChromeSandboxHost = currentHost()): b
   return host.platform !== "linux" || !linuxCannotSandbox(host);
 }
 
-export function noSandboxUnlessRequired(env: NodeJS.ProcessEnv = process.env): string[] {
-  return env.HYPERFRAMES_CHROME_SANDBOX === "1" ? [] : ["--no-sandbox", "--disable-setuid-sandbox"];
-}
-
 export function chromeSandboxArgs(sandbox = chromeSandboxEnabled()): string[] {
   return sandbox ? [] : NO_SANDBOX_ARGS;
 }
@@ -90,6 +86,17 @@ function sandboxStartFailure(error: unknown): boolean {
     chromeNamedSandboxFailure(error) ||
     (error instanceof Error && error.name === "TargetCloseError")
   );
+}
+
+export function startsWithChromeSandboxFallback(
+  args: readonly string[],
+  starts: (args: string[]) => boolean,
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (starts([...args])) return true;
+  const sandboxed = platform === "linux" && !args.includes("--no-sandbox");
+  return sandboxed && env.HYPERFRAMES_CHROME_SANDBOX !== "1" && starts(withoutChromeSandbox(args));
 }
 
 /**

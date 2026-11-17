@@ -768,6 +768,15 @@ describe("resolveBrowserGpuMode", () => {
     },
   );
 
+  it("probes the GPU with Chrome's sandbox where the host allows it, as the render runs", async () => {
+    const { launch } = setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA" });
+    await resolveBrowserGpuMode("auto", { sandbox: true });
+    const args: string[] = launch.mock.calls[0]?.[0]?.args ?? [];
+    expect(args).toContain("--enable-webgl");
+    for (const flag of ["--no-sandbox", "--disable-setuid-sandbox", "--no-zygote"])
+      expect(args).not.toContain(flag);
+  });
+
   it("lets a host own GPU probe launch and cleanup", async () => {
     const { launch } = setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA" });
     const close = vi.fn(async (browser: Browser) => {
