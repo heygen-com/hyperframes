@@ -1,10 +1,17 @@
 /**
- * The secret this install signs segment manifests with. It lives in the user's HyperFrames
- * config folder, outside every project, so segments that arrive inside a project folder can
- * never carry a signature this install accepts.
+ * This install's secret for signing segment manifests. It lives in the HyperFrames config folder,
+ * outside every project, so segments shipped inside a project never carry a signature it accepts.
  */
 import { randomBytes } from "node:crypto";
-import { linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -15,34 +22,40 @@ function defaultKeyPath(): string {
   return join(configDir, "segment-resume.key");
 }
 
-/** Publishes a new key under `path` only if none exists, so concurrent renders agree on one. */
-function createKeyOnce(path: string): void {
+function readUsableKey(path: string): Buffer | null {
+  try {
+    const key = readFileSync(path);
+    return key.length >= KEY_BYTES ? key : null;
+  } catch {
+    // expected: no key yet
+    return null;
+  }
+}
+
+/** A missing key is linked into place, so concurrent renders keep whichever landed first. */
+function publishKey(path: string): void {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, randomBytes(KEY_BYTES), { mode: 0o600 });
   try {
-    linkSync(tmp, path);
+    if (existsSync(path)) renameSync(tmp, path);
+    else linkSync(tmp, path);
   } catch {
-    // expected: another render published its key first; that one is read instead
+    // expected: another render linked its key first
   } finally {
     rmSync(tmp, { force: true });
   }
 }
 
-/** Null when the key cannot be read or created; segments are then never reused. */
+/** Null when no key can be read or created; resume then re-captures every segment. */
 export function loadSegmentResumeKey(path = defaultKeyPath()): Buffer | null {
+  const existing = readUsableKey(path);
+  if (existing) return existing;
   try {
-    const existing = readFileSync(path);
-    return existing.length >= KEY_BYTES ? existing : null;
+    publishKey(path);
   } catch {
-    // expected: no key yet, so this install makes one
-  }
-  try {
-    createKeyOnce(path);
-    const created = readFileSync(path);
-    return created.length >= KEY_BYTES ? created : null;
-  } catch {
-    // expected: a read-only or missing config folder; resume then re-captures every segment
+    // expected: a read-only or missing config folder
     return null;
   }
+  return readUsableKey(path);
 }
