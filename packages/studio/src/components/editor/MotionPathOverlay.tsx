@@ -7,7 +7,12 @@ import { useGsapInteractionFailureTelemetry } from "../../hooks/useGsapInteracti
 import { usePlayerStore } from "../../player/store/playerStore";
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
 import { parkPlayheadOnKeyframe } from "../../hooks/gsapDragCommit";
-import { nearestPointOnPath, nodeCentre, type MotionNodeRef } from "./motionPathGeometry";
+import {
+  nearestPointOnPath,
+  nodeCentre,
+  type MotionNodeRef,
+  type MotionPathHome,
+} from "./motionPathGeometry";
 import { editableAnimationId, selectorFor } from "./motionPathSelection";
 import { controlForNode, controlUnder, pressControl } from "./motionPathLayerNode";
 import { readGsapPositionFromIframe } from "../../hooks/gsapPositionDetection";
@@ -26,8 +31,9 @@ import {
   commitRemoveWaypoint,
   nodeDropLabel,
 } from "./motionPathCommit";
-import { elementHome } from "./motionPathHome";
-import { hasMotionPathPlugin, transformWDivisor, useMotionPathData } from "./useMotionPathData";
+import { elementHome, transformWDivisor } from "@hyperframes/core/runtime/editing-port";
+import { hasMotionPathPlugin, sealedMotionPathHome, useMotionPathData } from "./useMotionPathData";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
 interface MotionPathOverlayProps {
   iframeRef: RefObject<HTMLIFrameElement | null>;
@@ -196,20 +202,28 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       }
       // Resolve the element LIVE from the current iframe document — the selected
       // node may be detached after a soft-reload, which would skew home.
-      const live = frame.contentDocument?.querySelector(createSelector);
-      if (!isHtmlElement(live)) return;
+      const sealed = previewFrameOpaque(frame);
+      const live = sealed ? null : frame.contentDocument?.querySelector(createSelector);
+      if (!isHtmlElement(live) && !(sealed && home)) return;
       e.stopPropagation();
       e.preventDefault();
       const sc = r.width / compW;
-      const elHome = elementHome(live);
+      const t = Math.round(usePlayerStore.getState().currentTime * 100) / 100;
       // De-magnify: the click lands on the projected (1/m44-magnified) path, so
       // divide the home-relative offset by the perspective factor to recover the
       // stored composition offset (inverse of the `* pScale` applied at draw).
-      const ps = 1 / transformWDivisor(live);
-      const px = Math.round(((e.clientX - r.left) / sc - elHome.x) / ps);
-      const py = Math.round(((e.clientY - r.top) / sc - elHome.y) / ps);
-      const t = Math.round(usePlayerStore.getState().currentTime * 100) / 100;
-      void commitCreatePath(createSelector, t, px, py, commitMutation);
+      const place = (elHome: MotionPathHome, ps: number) => {
+        const px = Math.round(((e.clientX - r.left) / sc - elHome.x) / ps);
+        const py = Math.round(((e.clientY - r.top) / sc - elHome.y) / ps);
+        void commitCreatePath(createSelector, t, px, py, commitMutation);
+      };
+      if (isHtmlElement(live)) place(elementHome(live), 1 / transformWDivisor(live));
+      else {
+        // A frame that cannot answer at the click falls back to the polled home, which may be a seek behind.
+        void sealedMotionPathHome(frame, createSelector).then((read) =>
+          place(read?.home ?? home!, read?.home ? read.perspective : pScale),
+        );
+      }
       setMotionPathArmed(false);
     };
     surface.addEventListener("pointerdown", onDown, true);
@@ -217,7 +231,7 @@ export const MotionPathOverlay = memo(function MotionPathOverlay({
       surface.removeEventListener("pointerdown", onDown, true);
       surface.style.cursor = prevCursor;
     };
-  }, [armed, createSelector, compW, iframeRef, commitMutation, setMotionPathArmed]);
+  }, [armed, createSelector, compW, iframeRef, commitMutation, setMotionPathArmed, home, pScale]);
 
   if (!rect || rect.width <= 0 || !compositionSize || compositionSize.width <= 0) return null;
   // Hide the whole overlay (path + create hint) when the element isn't painted —

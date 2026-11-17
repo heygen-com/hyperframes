@@ -196,6 +196,7 @@ describe("installEditingAgent", () => {
           "set-audio-group-attribute",
           "assign-audio-group",
           "gsap-snapshot",
+          "motion-path-home",
         ],
       },
     });
