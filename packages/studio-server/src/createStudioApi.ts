@@ -30,6 +30,7 @@ import {
   PREVIEW_ALLOWED_HOSTS_ENV,
   documentFromAnotherSite,
   requestFromAnotherSite,
+  proxyWorkFromAnotherSite,
   requestHost,
   sameOriginPost,
 } from "./helpers/requestIdentity.js";
@@ -103,7 +104,7 @@ const sandboxPreviewForAnotherSiteOrCapture =
 
 async function refuseProxyWorkForAnotherSite(c: Context, next: Next) {
   const proxyWork = c.req.query(PREVIEW_PROXY_PARAM) !== undefined;
-  if (proxyWork && fromAnotherSite(c) && !loadedThroughFrameToken(c.req.raw))
+  if (proxyWork && proxyWorkFromAnotherSite(siteHeaders(c)) && !loadedThroughFrameToken(c.req.raw))
     return c.text("forbidden: media proxy requested by another site", 403);
   return next();
 }
