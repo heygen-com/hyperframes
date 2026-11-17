@@ -100,6 +100,7 @@ import {
   lintProject,
 } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
+import { geminiKeyName, noteProjectProviderKey } from "../utils/dotEnv.js";
 import { normalizeErrorMessage, atStep } from "../utils/errorMessage.js";
 import { describeSharpLoadFailure } from "../utils/sharpLoadFailure.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
@@ -2082,6 +2083,10 @@ export default defineCommand({
             if (!geminiKey) {
               log(`   ${c.dim("--describe: GEMINI_API_KEY or GOOGLE_API_KEY not set, skipping")}`);
             } else if (paths.length > 0) {
+              await noteProjectProviderKey(
+                geminiKeyName(),
+                "frames go to that key's Gemini account",
+              );
               log(`   ${c.dim("Describing frames with Gemini vision...")}`);
               const { GoogleGenAI } = await loadOptionalPackage("@google/genai", "--describe");
               const ai = new GoogleGenAI({ apiKey: geminiKey });

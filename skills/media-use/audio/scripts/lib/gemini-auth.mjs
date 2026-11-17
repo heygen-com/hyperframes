@@ -1,6 +1,7 @@
 import "../../../scripts/lib/windows-exe-search.mjs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { noteProjectProviderKey } from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
 
 export function geminiConfigured() {
@@ -14,7 +15,11 @@ export function geminiConfigured() {
 
 export function geminiAuth({ run = spawnSync } = {}) {
   const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (key) return { headers: { "x-goog-api-key": key }, secret: key };
+  if (key) {
+    const name = process.env.GEMINI_API_KEY ? "GEMINI_API_KEY" : "GOOGLE_API_KEY";
+    noteProjectProviderKey(name, "speech goes to that key's Gemini account");
+    return { headers: { "x-goog-api-key": key }, secret: key };
+  }
   if (!geminiConfigured()) {
     throw new Error(
       "Gemini TTS needs GEMINI_API_KEY or GOOGLE_API_KEY, or service-account credentials (GOOGLE_APPLICATION_CREDENTIALS or GCS_CREDS)",

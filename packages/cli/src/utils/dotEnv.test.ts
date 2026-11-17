@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   applyDotEnv,
   loadProjectDotEnv,
+  noteProjectProviderKey,
   yieldProjectVisionKeys,
   yieldReceivedProviderKeys,
 } from "./dotEnv.js";
@@ -341,5 +342,81 @@ describe("yieldProjectVisionKeys", () => {
     yieldProjectVisionKeys(warn);
     expect(process.env.OPENROUTER_API_KEY).toBeUndefined();
     expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("project .env key notes", () => {
+  const dirs: string[] = [];
+  // Windows refuses control characters in folder names, so there the path is plain.
+  const esc = process.platform === "win32" ? "" : String.fromCharCode(27);
+  const shown = (dir: string) => join(dir, ".env").replace(esc || "\0", "\\x1b");
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  function load(env: Record<string, string>, received: boolean): string {
+    for (const name of Object.keys(env)) vi.stubEnv(name, undefined);
+    const dir = mkdtempSync(join(tmpdir(), `hf-dotenv-${esc}[31m-`));
+    dirs.push(dir);
+    writeFileSync(
+      join(dir, ".env"),
+      Object.entries(env)
+        .map(([name, value]) => `${name}=${value}\n`)
+        .join(""),
+    );
+    if (received) {
+      mkdirSync(join(dir, ".hyperframes"));
+      writeFileSync(
+        join(dir, ".hyperframes", "received-files.json"),
+        JSON.stringify({ files: [".env"] }),
+      );
+    }
+    loadProjectDotEnv(dir, process.env, vi.fn());
+    return dir;
+  }
+
+  // fails without the fix: a project key with no competing credential was used silently.
+  it("notes a received .env's key once, with the file path escaped", async () => {
+    const dir = load({ OPENROUTER_API_KEY: "received" }, true);
+    const warn = vi.fn();
+    await noteProjectProviderKey("OPENROUTER_API_KEY", "images go there", warn);
+    await noteProjectProviderKey("OPENROUTER_API_KEY", "images go there", warn);
+    expect(warn.mock.calls).toEqual([
+      [
+        `[hyperframes] Using OPENROUTER_API_KEY from ${shown(dir)}, a received project: images go there.`,
+      ],
+    ]);
+  });
+
+  it("notes a key from the person's own project .env too", async () => {
+    const dir = load({ GEMINI_API_KEY: "mine" }, false);
+    const warn = vi.fn();
+    await noteProjectProviderKey("GEMINI_API_KEY", "images go there", warn);
+    expect(warn).toHaveBeenCalledWith(
+      `[hyperframes] Using GEMINI_API_KEY from ${shown(dir)}, a project .env: images go there.`,
+    );
+  });
+
+  it("says nothing for a key set in the shell", async () => {
+    vi.stubEnv("GOOGLE_API_KEY", "shell");
+    const warn = vi.fn();
+    await noteProjectProviderKey("GOOGLE_API_KEY", "images go there", warn);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  // fails without the fix: the ignoring note printed the folder name's control characters raw.
+  it("escapes the path in the note that a project vision key is ignored", async () => {
+    vi.stubEnv("HYPERFRAMES_VERTEX_PROJECT_ID", undefined);
+    vi.stubEnv("HYPERFRAMES_VERTEX_SERVICE_ACCOUNT", undefined);
+    vi.stubEnv("GOOGLE_API_KEY", undefined);
+    vi.stubEnv("GEMINI_API_KEY", "own");
+    const dir = load({ OPENROUTER_API_KEY: "cloned" }, false);
+    const warn = vi.fn();
+    yieldProjectVisionKeys(warn);
+    expect(warn).toHaveBeenCalledWith(
+      `[hyperframes] .env: ignoring OPENROUTER_API_KEY from a project .env (${shown(dir)}); capture uses your own GEMINI_API_KEY`,
+    );
   });
 });
