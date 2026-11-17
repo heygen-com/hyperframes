@@ -113,7 +113,9 @@ export async function startReverseSession(
     } else {
       status = res.status;
       cause = res.status >= 500 ? "http_5xx" : res.status >= 400 ? "http_4xx" : "http_other";
-      heygenBody = isHeygenBody(await res.json().catch(() => null));
+      // A non-JSON body (a proxy's page) is never read, so its size cannot matter.
+      const json = res.headers.get("content-type")?.includes("json") === true;
+      heygenBody = json && isHeygenBody(await res.json().catch(() => null));
     }
   } catch {
     cause = "network";

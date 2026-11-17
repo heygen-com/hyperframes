@@ -176,6 +176,20 @@ describe("startReverseSession", () => {
     expect(track).toHaveBeenCalledExactlyOnceWith({ cause: "http_4xx", status: 403, heygenBody });
   });
 
+  it("never reads a refusal body that is not JSON, however it looks", async () => {
+    const page = '{"code": 40102}';
+    serve({
+      [START_URL]: () =>
+        new Response(page, { status: 403, headers: { "content-type": "text/html" } }),
+    });
+    await startReverseSession();
+    expect(track).toHaveBeenCalledExactlyOnceWith({
+      cause: "http_4xx",
+      status: 403,
+      heygenBody: false,
+    });
+  });
+
   it("reports a network failure", async () => {
     vi.stubGlobal("fetch", async () => {
       throw new TypeError("fetch failed");
