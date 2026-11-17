@@ -78,6 +78,8 @@ describe("createEditingPortClient", () => {
           "console-errors",
           "watch-keys",
           "restore-attributes",
+          "caption-words",
+          "caption-transform",
         ],
       });
     } finally {
