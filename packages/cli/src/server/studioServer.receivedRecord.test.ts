@@ -285,6 +285,34 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     expect(allowed(projectDir)).toBe(false);
   });
 
+  it("keeps refusing outside files when content comes back after a plain Studio delete, and says the file was gone", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    const intro = join(projectDir, "scenes", "intro.html");
+    const before = readFileSync(intro);
+    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+      200,
+    );
+    write(join(projectDir, "index.html"), `<img src="../outside/pic.png">`);
+    const warnings: string[] = [];
+    expect(outsideAssetsAllowed(projectDir, "index.html", (line) => warnings.push(line))).toBe(
+      false,
+    );
+    expect(warnings.join("\n")).toContain("scenes/intro.html came from someone else and is gone");
+    writeFileSync(intro, before);
+    expect(listed(projectDir)).toContain("scenes/intro.html");
+    expect(receivedFiles(projectDir)("scenes/intro.html")).toBe(true);
+    expect(allowed(projectDir)).toBe(false);
+  });
+
+  it("drops the old line when a received file with a media name but other bytes is renamed to another media name", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    write(join(projectDir, "scenes", "logo.png"), "not a picture");
+    expect((await move(app, "scenes/logo.png", "scenes/logo.webp")).status).toBe(200);
+    expect(listed(projectDir)).toEqual(["scenes/intro.html", "scenes/logo.webp"]);
+  });
+
   it("drops the old line when a received image is renamed to another image name", async () => {
     const { projectDir, app } = studio();
     withRecord(projectDir);
