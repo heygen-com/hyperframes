@@ -1836,6 +1836,30 @@ ${Array.from({ length: 10 }, (_, i) => `    <div class="clip" data-start="${i}" 
       expect(find(result.findings)).toBeDefined();
     });
 
+    it("stays silent when the mount resolves its start at runtime", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="20">
+          <div class="clip" id="intro" data-start="0" data-duration="15"></div>
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="intro + 0.5" data-duration="5"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("measures a negative start from zero, as the renderer does", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="10">
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="-2" data-duration="3"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = find(result.findings);
+      expect(finding?.message).toContain("ends at 3s");
+      expect(finding?.message).toContain("~7s");
+      expect(finding?.fixHint).toContain("data-duration to 10");
+    });
+
     it("stays silent on an intentional short intro followed by another clip", async () => {
       const html = `<html><body>
         <div id="root" data-composition-id="main" data-start="0" data-duration="60">
