@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { ChildProcess, spawn } from "node:child_process";
 
 const WATCHDOG = `let clean = false;
 const done = () => {
@@ -14,7 +14,8 @@ export interface ChromeWatchdog {
 }
 
 export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefined {
-  if (process.platform !== "win32" || chrome.pid === undefined) return undefined;
+  if (process.platform !== "win32" || !(chrome instanceof ChildProcess) || chrome.pid === undefined)
+    return undefined;
   const watchdog = spawn(process.execPath, ["-e", WATCHDOG], {
     detached: true,
     env: { ...process.env, HF_CHROME_PID: String(chrome.pid) },

@@ -1,4 +1,4 @@
-import type { ChildProcess } from "node:child_process";
+import { ChildProcess } from "node:child_process";
 import {
   inAgentSandbox,
   isOneProcessOverPipe,
@@ -301,7 +301,8 @@ function closeGracefully(browser: Browser): Promise<void> {
 }
 
 async function killWithChildren(child: ChildProcess): Promise<void> {
-  if (process.platform !== "win32" || child.pid === undefined) return void child.kill("SIGKILL");
+  const ours = child instanceof ChildProcess && child.pid !== undefined;
+  if (process.platform !== "win32" || !ours) return void child.kill("SIGKILL");
   await terminateWindowsProcessTree(child.pid).catch(() => child.kill("SIGKILL"));
 }
 
