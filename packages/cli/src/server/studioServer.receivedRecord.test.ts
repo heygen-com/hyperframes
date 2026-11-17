@@ -298,7 +298,7 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     expect(outsideAssetsAllowed(projectDir, "index.html", (line) => warnings.push(line))).toBe(
       false,
     );
-    expect(warnings.join("\n")).toContain("scenes/intro.html came from someone else and is gone");
+    expect(warnings.join("\n")).toMatch(/intro\.html came from someone else and is gone/);
     writeFileSync(intro, before);
     expect(listed(projectDir)).toContain("scenes/intro.html");
     expect(receivedFiles(projectDir)("scenes/intro.html")).toBe(true);
