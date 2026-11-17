@@ -2819,6 +2819,12 @@ long source fits. Media inside sub-compositions, looping clips, clips with
 plain string names, such as one a script builds a path to or one picked through
 `--variables`, stays in the zip, as do animated GIFs inside sub-compositions.
 
+Under `--json`, each re-encode prints its progress on stderr as
+`{"event":"reencode_progress","file":…,"percent":…,"done_seconds":…,"total_seconds":…}`,
+once per whole percent, so a wrapper can tell a long encode from a stalled one. When the
+file's length cannot be read, `percent` and `total_seconds` are `null` and a line comes
+about once a second.
+
 The zip has to come in under 200 MB — the direct-upload cap — or the command
 stops before uploading it and names the largest files left. Use `--dry-run`
 first to see which media would upload and the compressed size, without
