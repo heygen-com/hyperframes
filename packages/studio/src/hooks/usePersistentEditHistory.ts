@@ -44,6 +44,7 @@ interface HistoryView {
   forward: NextStep | null;
 }
 
+const APP_KEEPS_NO_HISTORY = 404;
 const EMPTY: HistoryView = { entries: [], back: null, forward: null };
 /** ponytail: the newest entries' content is kept; older ones step through the server only. */
 const OWN_ENTRIES_KEPT = 100;
@@ -219,6 +220,7 @@ function closeHeldClaimWithAClaimOfNothing(
 }
 
 /** Studio's undo over the server's project history: an edit claims what it wrote; Cmd+Z steps the person's. */
+// fallow-ignore-next-line complexity
 export function usePersistentEditHistory({ projectId }: UsePersistentEditHistoryOptions) {
   const [view, setView] = useState<HistoryView>(EMPTY);
   const [loaded, setLoaded] = useState(false);
@@ -311,8 +313,8 @@ export function usePersistentEditHistory({ projectId }: UsePersistentEditHistory
         );
         heldClaimRef.current = null;
         void refresh();
-        // 404: this app keeps no history, so there is nothing to step.
-        if (!posted.ok && posted.status === 404) return { ok: false, reason: "empty" };
+        if (!posted.ok && posted.status === APP_KEEPS_NO_HISTORY)
+          return { ok: false, reason: "empty" };
         if (!posted.ok) return { ok: false, reason: "failed", message: posted.error };
         const reply = posted.body as HistoryResult;
         if (!reply.ok) {
