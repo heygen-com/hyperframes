@@ -30,6 +30,7 @@ import {
   type CompileStageResult,
 } from "./compileStage.js";
 import type { RenderJob } from "../../renderOrchestrator.js";
+import { MAX_COMPOSITION_HTML_BYTES } from "../../compositionSizeLimit.js";
 
 const noopLog = {
   error: () => {},
@@ -493,6 +494,13 @@ describe("resolveEntryHtmlPath", () => {
     fixture = setupFixture(PLAIN_HTML);
     expect(resolve("index.html")).toBe(fixture.htmlPath);
     expect(existsSync(join(fixture.workDir, "standalone-entry.html"))).toBe(false);
+  });
+
+  it("refuses an entry file over the composition size limit before reading it", () => {
+    fixture = setupFixture(PLAIN_HTML);
+    const bigPath = join(fixture.workDir, "project", "big.html");
+    writeFileSync(bigPath, " ".repeat(MAX_COMPOSITION_HTML_BYTES + 1), "utf-8");
+    expect(() => resolve("big.html")).toThrow(/over the 8\.0 MB limit/);
   });
 
   it("returns a non-template sub-composition file untouched", () => {

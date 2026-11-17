@@ -101,6 +101,7 @@ import {
 } from "@hyperframes/parsers/asset-resolution";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
+import { assertCompositionFileSize } from "./compositionSizeLimit.js";
 import {
   escapesAssetRoot,
   isPathInside,
@@ -340,6 +341,7 @@ function assertSubCompositionsUsable(
     // silence here rather than pretend it surfaces an error somewhere else.
     if (visited.has(filePath)) continue;
 
+    assertCompositionFileSize(filePath, srcPath);
     const read = readProjectFile(filePath);
     if (read.kind === "missing") {
       problems.push({ srcPath, detail: "the file does not exist" });
@@ -880,6 +882,7 @@ async function parseSubCompositions(
       continue;
     }
 
+    assertCompositionFileSize(filePath, srcPath);
     const read = readProjectFile(filePath);
     if (read.kind !== "file") {
       continue;
@@ -1170,6 +1173,7 @@ function inlineSubCompositions(
         let compHtml = subCompositions.get(srcPath) || null;
         if (!compHtml) {
           const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
+          if (filePath) assertCompositionFileSize(filePath, srcPath);
           const read =
             filePath && !isPrivateCompositionFile(projectDir, filePath)
               ? readProjectFile(filePath)
@@ -2217,6 +2221,7 @@ export async function compileForRender(
   if (!COMPOSITION_FILE.test(htmlPath)) {
     throw new Error(`Entry file ${htmlPath} is not an .html file, so it is refused`);
   }
+  assertCompositionFileSize(htmlPath, basename(htmlPath));
   const entryHtml = rebaseDirectEntryAssetPaths(readTextFile(htmlPath), projectDir, htmlPath);
   const rawHtml = bindVariableMediaSources(
     normalizeCompositionSrcs(rewriteUnresolvableGsapToCdn(entryHtml, projectDir), projectDir),
