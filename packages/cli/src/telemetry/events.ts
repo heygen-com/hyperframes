@@ -1023,8 +1023,14 @@ export type ReverseUnrecordedCause =
 export function trackReverseStartUnrecorded(props: {
   cause: ReverseUnrecordedCause;
   status?: number;
+  /** An error status only: whether HeyGen's API wrote the body, or something between (a proxy, a firewall). */
+  heygenBody?: boolean;
 }): void {
-  trackEvent("cli_reverse_start_unrecorded", { cause: props.cause, status: props.status });
+  trackEvent("cli_reverse_start_unrecorded", {
+    cause: props.cause,
+    status: props.status,
+    heygen_body: props.heygenBody,
+  });
 }
 
 export function trackSkillCommandRan(props: {
