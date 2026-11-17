@@ -211,6 +211,28 @@ describe("setPreviewMediaVolume", () => {
 });
 
 describe("scrubPreviewAudio", () => {
+  // fails without the fix: Studio played the track through the frame's document, which a sealed frame does not give it.
+  it("asks a sealed preview's runtime to play the music row's track, and to stop", () => {
+    const postMessage = vi.fn();
+    const iframe = {
+      contentDocument: null,
+      contentWindow: { postMessage },
+    } as unknown as HTMLIFrameElement;
+
+    scrubPreviewAudio(iframe, 0.5, { id: "music", hfId: "a1", sourceFile: "index.html" }, 0.4);
+    stopScrubPreviewAudio();
+
+    expect(postMessage.mock.calls.map(([message]) => message)).toEqual([
+      expect.objectContaining({
+        action: "scrub-audio",
+        time: 0.5,
+        volume: 0.4,
+        target: { id: "music", hfId: "a1", sourceFile: "index.html" },
+      }),
+      expect.objectContaining({ action: "scrub-audio", time: null }),
+    ]);
+  });
+
   it("scales scrub feedback by the Studio preview volume", () => {
     const iframe = document.createElement("iframe");
     document.body.append(iframe);
