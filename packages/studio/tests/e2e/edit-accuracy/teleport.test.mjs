@@ -279,7 +279,7 @@ describe("frameSamplerScript in a sealed preview", () => {
   topDocument.defaultView = topWindow;
 
   // The frame's document and location throw, as a cross-origin frame's do; only postMessage reaches it.
-  function sealedFrame(studioReplies) {
+  function sealedFrame(studioReplies, geometryHeld = null) {
     const channel = new MessageChannel();
     const boxes = {
       "#target": { rect: { x: 100, y: 200, width: 100, height: 50 }, angle: 0, corners: null },
@@ -289,7 +289,8 @@ describe("frameSamplerScript in a sealed preview", () => {
         corners: null,
       },
     };
-    channel.port1.onmessage = ({ data: { id, kind, params } }) => {
+    channel.port1.onmessage = async ({ data: { id, kind, params } }) => {
+      if (kind === "geometry" && geometryHeld) await geometryHeld.wait();
       const result =
         kind === "query"
           ? {
@@ -341,9 +342,8 @@ describe("frameSamplerScript in a sealed preview", () => {
     return { iframe, on, channel };
   }
 
-  it("measures the element through the preview's editing port, in top-frame px", async () => {
-    const studioReplies = [];
-    const { iframe, on, channel } = sealedFrame(studioReplies);
+  // Runs the page script in a top page whose one preview is `iframe`; ticks stand in for painted frames.
+  function samplerFor(iframe, on) {
     let tick = () => {};
     const window = { addEventListener: (type, f) => (on[type] = f) };
     window.top = window;
@@ -369,7 +369,13 @@ describe("frameSamplerScript in a sealed preview", () => {
       DOMMatrix: class {},
     };
     runInNewContext(frameSamplerScript, page);
-    const rec = window.__editBenchFrames;
+    return { rec: window.__editBenchFrames, tick: () => tick() };
+  }
+
+  it("measures the element through the preview's editing port, in top-frame px", async () => {
+    const studioReplies = [];
+    const { iframe, on, channel } = sealedFrame(studioReplies);
+    const { rec, tick } = samplerFor(iframe, on);
     Object.assign(rec, { on: true, selector: "#target", pointer: [150, 225], samples: [] });
     const measured = async () => {
       for (let i = 0; i < 50 && !rec.samples.some((s) => s.quad); i++) {
@@ -394,6 +400,70 @@ describe("frameSamplerScript in a sealed preview", () => {
       channel.port2.postMessage({ v: 1, id: 1, kind: "query", params: { selector: "#target" } });
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(studioReplies.map((r) => r.id)).toContain(1);
+    } finally {
+      channel.port1.close();
+      channel.port2.close();
+    }
+  });
+
+  it("drops a reply for the previous drag's element once the next drag has started", async () => {
+    let release = () => {};
+    let held = 0;
+    const gate = new Promise((resolve) => (release = resolve));
+    const geometryHeld = { wait: () => (held++, gate) };
+    const { iframe, on, channel } = sealedFrame([], geometryHeld);
+    const { rec, tick } = samplerFor(iframe, on);
+    Object.assign(rec, {
+      on: true,
+      selector: "#target",
+      pointer: [150, 225],
+      samples: [],
+      marks: [0],
+    });
+    try {
+      for (let i = 0; i < 50 && held === 0; i++) {
+        tick();
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(held).toBe(1);
+      // The next drag starts while the first one's geometry is still on its way.
+      rec.selector = "#other";
+      rec.marks.push(rec.samples.length);
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(rec.samples.slice(rec.marks[1]).filter((s) => s.quad)).toEqual([]);
+    } finally {
+      channel.port1.close();
+      channel.port2.close();
+    }
+  });
+
+  it("drops a reply asked before the release once the release is recorded", async () => {
+    let release = () => {};
+    let held = 0;
+    const gate = new Promise((resolve) => (release = resolve));
+    const { iframe, on, channel } = sealedFrame([], { wait: () => (held++, gate) });
+    const { rec, tick } = samplerFor(iframe, on);
+    Object.assign(rec, {
+      on: true,
+      selector: "#target",
+      pointer: [150, 225],
+      samples: [],
+      marks: [0],
+    });
+    try {
+      for (let i = 0; i < 50 && held === 0; i++) {
+        tick();
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+      expect(held).toBe(1);
+      // The release lands while the frame's geometry is still on its way.
+      on.pointerup({ isTrusted: true, clientX: 150, clientY: 225, buttons: 0 });
+      const upAt = rec.samples.findIndex((s) => s.up);
+      release();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(upAt).toBeGreaterThanOrEqual(0);
+      expect(rec.samples.slice(upAt + 1).filter((s) => s.quad)).toEqual([]);
     } finally {
       channel.port1.close();
       channel.port2.close();

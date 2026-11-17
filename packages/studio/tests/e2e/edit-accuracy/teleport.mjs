@@ -107,7 +107,15 @@ export function quadOf(el, top = el.ownerDocument.defaultView.top) {
  */
 function frameSampler() {
   if (window.top !== window) return;
-  const rec = { on: false, selector: null, pointer: null, down: false, samples: [] };
+  const rec = {
+    on: false,
+    selector: null,
+    pointer: null,
+    down: false,
+    samples: [],
+    marks: [],
+    ups: 0,
+  };
   window.__editBenchFrames = rec;
   for (const type of ["pointerdown", "pointermove", "pointerup"])
     window.addEventListener(
@@ -119,8 +127,10 @@ function frameSampler() {
         // From the buttons, not the event type: a move after release is not a drag.
         rec.down = (e.buttons & 1) === 1;
         // Kept as it happens, so a release that no frame painted still ends the drag at its own point.
-        if (type === "pointerup" && rec.on)
+        if (type === "pointerup" && rec.on) {
+          rec.ups += 1;
           rec.samples.push({ t: performance.now(), up: rec.pointer });
+        }
       },
       true,
     );
@@ -148,17 +158,20 @@ function frameSampler() {
       });
     return links.get(f);
   };
+  const takePort = (l, port) => {
+    l.port = port;
+    port.addEventListener("message", ({ data }) => l.pending.get(data?.id)?.(data));
+    port.start();
+  };
   window.addEventListener("message", (e) => {
     const d = e.data;
-    if (!d || d.source !== "hf-preview") return;
+    if (d?.source !== "hf-preview") return;
+    const handoff = d.type === "editing-port" && d.v === 1 && e.ports.length === 1;
     for (const l of links.values()) {
       if (l.win !== e.source) continue;
       // A new page in the frame: the old port and its handles went with the old one.
       if (d.type === "ready") Object.assign(l, { port: null, handles: {} });
-      if (d.type !== "editing-port" || d.v !== 1 || e.ports.length !== 1 || l.port) continue;
-      l.port = e.ports[0];
-      l.port.addEventListener("message", ({ data }) => l.pending.get(data?.id)?.(data));
-      l.port.start();
+      if (handoff && !l.port) takePort(l, e.ports[0]);
     }
   });
   const ask = (l, kind, params) =>
@@ -220,12 +233,14 @@ function frameSampler() {
   };
   // fallow-ignore-next-line complexity
   const read = async () => {
-    const samples = rec.samples;
-    const hit = await findInPreviews(rec.selector);
+    const { samples, selector } = rec;
+    const [drags, ups] = [rec.marks.length, rec.ups];
+    const hit = await findInPreviews(selector);
+    // A reply asked before a release or the next drag shows a box no frame after it painted.
+    if (!rec.on || rec.samples !== samples || rec.marks.length !== drags || rec.ups !== ups) return;
     // Everything else is read as the reply lands, so the box is never ahead of the pointer it is scored against.
-    if (!rec.on || rec.samples !== samples) return;
     // A page with no preview (the blank-page control) holds its element itself.
-    const el = hit ? null : document.querySelector(rec.selector);
+    const el = hit ? null : document.querySelector(selector);
     const root = el?.ownerDocument.querySelector(ROOT);
     const outline = document.querySelector("[data-dom-edit-crop-frame] > div.border-dashed");
     const waiting = document.querySelector("[data-dom-edit-press-waiting]");
