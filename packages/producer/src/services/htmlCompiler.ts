@@ -95,6 +95,7 @@ import {
 import {
   isUnresolvedAssetPlaceholder,
   namesAnotherNetworkRoot,
+  projectAssetExists,
   readProjectFile,
   readTextFile,
   resolveCompositionSrc,
@@ -253,10 +254,10 @@ class EmptyCompositionError extends Error {
   }
 }
 
-/** The html with each data-composition-src as the project-relative path it names (%xx decoded, no leading /). */
+/** The html with each data-composition-src as the project-relative path it names (%xx decoded, no leading /, \ or ./). */
 function normalizeCompositionSrcs(html: string, projectDir: string): string {
   return html.replace(/(\bdata-composition-src=)(["'])([^"']*)\2/g, (whole, name, quote, value) => {
-    if (!value.includes("%") && !value.startsWith("/")) return whole;
+    if (!value.includes("%") && !/^\.?[\\/]/.test(value)) return whole;
     const file = resolveCompositionSrc(projectDir, value);
     if (file === null) return whole;
     return `${name}${quote}${relative(projectDir, file).split(sep).join("/")}${quote}`;
@@ -1196,7 +1197,11 @@ function inlineSubCompositions(
         ? readProjectFile(filePath)
         : null;
     return read?.kind === "file"
-      ? rewriteUnresolvableGsapToCdn(read.text, projectDir, srcPath)
+      ? rewriteUnresolvableGsapToCdn(
+          normalizeCompositionSrcs(read.text, projectDir),
+          projectDir,
+          srcPath,
+        )
       : null;
   };
   const resolveMountHtml = (srcPath: string): string | null => {
@@ -1240,7 +1245,7 @@ function inlineSubCompositions(
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
       // Mirrors the preview bundler: a sub-composition's SIBLING assets resolve
       // against its own directory, project-root refs stay as authored.
-      assetExists: (path: string) => existsSync(resolve(projectDir, path)),
+      assetExists: projectAssetExists(projectDir),
       // Preserve the authored root wrapper as a child of the host, matching
       // the preview bundler's shape (htmlBundler.ts's prepareFlattenedInnerRoot,
       // which the runtime compositionLoader mirrors with its own copy for the
@@ -2209,7 +2214,7 @@ function rebaseDirectEntryAssetPaths(html: string, projectDir: string, htmlPath:
   if (!entryPath.includes("/")) return html;
 
   const { document } = parseHTML(html);
-  const assetExists = (path: string) => existsSync(resolve(projectDir, path));
+  const assetExists = projectAssetExists(projectDir);
   rewriteAssetPaths(
     document.querySelectorAll("[src], [href], [srcset]"),
     entryPath,
