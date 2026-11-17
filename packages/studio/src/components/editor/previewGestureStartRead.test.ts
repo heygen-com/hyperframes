@@ -17,7 +17,11 @@ import {
   createManualOffsetDragMember,
   restoreManualOffsetDragMembers,
 } from "./manualOffsetDrag";
-import { measurePreviewGestureStart, type PreviewGestureStart } from "./previewGestureStartRead";
+import {
+  gestureStartLayout,
+  measurePreviewGestureStart,
+  type PreviewGestureStart,
+} from "./previewGestureStartRead";
 import { standInFor } from "./previewSelection";
 import { collectSnapContext } from "./snapTargetCollection";
 
@@ -270,6 +274,17 @@ describe("starting a gesture from what an opaque frame read", () => {
 });
 
 describe("a resize in a preview Studio cannot script", () => {
+  it.each([-5, 1e-9, 1e9])("keeps no start box for a frame-reported width of %s", async (width) => {
+    const iframe = opaqueFrame();
+    Object.defineProperty(document.querySelector("#last"), "offsetWidth", {
+      value: width,
+      configurable: true,
+    });
+    const handle = (await queryPreviewElements(iframe, "#last"))!.matches[0]!.handle;
+    await measurePreviewGestureStart(iframe, overlayEl(), [handle]);
+    expect(gestureStartLayout(handle)).toBeNull();
+  });
+
   it("scales from the box its gesture started from, not a 200 px fallback", async () => {
     const iframe = opaqueFrame();
     const handle = (await queryPreviewElements(iframe, "#last"))!.matches[0]!.handle;
