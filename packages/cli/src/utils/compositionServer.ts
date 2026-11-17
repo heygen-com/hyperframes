@@ -6,7 +6,7 @@ import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { getMimeType, openRangeEnd } from "@hyperframes/studio-server";
+import { getMimeType, openRangeEnd, refuseServiceWorkerScripts } from "@hyperframes/studio-server";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import {
@@ -233,6 +233,7 @@ async function markDocumentForAnotherSite(c: Context): Promise<void> {
 
 /** Files under `path` that another site loads come back sandboxed, and documents marked so their runtime offers that site no editing port. */
 export function sandboxForAnotherSite(app: Hono, path: string): void {
+  app.use(path, refuseServiceWorkerScripts);
   app.use(path, async function sandboxAnotherSiteLoad(c, next) {
     const anotherSite = documentFromAnotherSite({
       fetchSite: c.req.header("sec-fetch-site"),

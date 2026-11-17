@@ -33,6 +33,7 @@ import {
   requestHost,
   sameOriginPost,
 } from "./helpers/requestIdentity.js";
+import { refuseServiceWorkerScripts } from "./helpers/serviceWorkerScripts.js";
 import { previewErrorPage } from "./helpers/previewErrorPage.js";
 import type { CaptureSandboxOption } from "./helpers/captureLoads.js";
 import {
@@ -137,6 +138,7 @@ export interface StudioApiOptions extends CaptureSandboxOption {
 
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
   const api = new Hono();
+  api.use(refuseServiceWorkerScripts);
   const sandboxThumbnailCaptures = options.sandboxThumbnailCaptures ?? false;
   const frameTokens = createFrameTokens();
   const resolveProjectId = (id: string) =>
