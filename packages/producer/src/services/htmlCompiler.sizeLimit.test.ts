@@ -46,7 +46,7 @@ describe("composition HTML size limit", () => {
     expect(performance.now() - started).toBeLessThan(1_000);
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
     expect(String(error)).toContain('"index.html"');
-    expect(String(error)).toContain("8.0 MB limit");
+    expect(String(error)).toContain("16.0 MB limit");
   });
 
   it("refuses a sub-composition file over the limit", async () => {

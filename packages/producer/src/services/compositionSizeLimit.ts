@@ -5,7 +5,7 @@ import { statSync } from "node:fs";
  * runs on the render server's main thread, and their cost grows with the page's size, so one huge
  * page would hold up every other render in the same process.
  */
-export const MAX_COMPOSITION_HTML_BYTES = 8 * 1024 * 1024;
+export const MAX_COMPOSITION_HTML_BYTES = 16 * 1024 * 1024;
 
 const COMPOSITION_TOO_LARGE = "COMPOSITION_TOO_LARGE" as const;
 

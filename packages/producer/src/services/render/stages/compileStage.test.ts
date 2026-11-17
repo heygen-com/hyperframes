@@ -500,7 +500,7 @@ describe("resolveEntryHtmlPath", () => {
     fixture = setupFixture(PLAIN_HTML);
     const bigPath = join(fixture.workDir, "project", "big.html");
     writeFileSync(bigPath, " ".repeat(MAX_COMPOSITION_HTML_BYTES + 1), "utf-8");
-    expect(() => resolve("big.html")).toThrow(/over the 8\.0 MB limit/);
+    expect(() => resolve("big.html")).toThrow(/over the 16\.0 MB limit/);
   });
 
   it("returns a non-template sub-composition file untouched", () => {
