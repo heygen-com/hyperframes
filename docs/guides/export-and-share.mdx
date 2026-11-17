@@ -129,21 +129,29 @@ publish creates a claimable link. Sign in when the CLI should own the project
 immediately, update an existing link, or publish into a shared space.
 
 A local video poster referenced with a relative path, such as
-`../shared/poster.png`, is copied into the published project even when it lives
-outside the project directory. Percent-encoded paths work too, such as
+`../shared/poster.png`, can be copied into the published project even when it
+lives outside the project directory, once you approve it (see below).
+Percent-encoded paths work too, such as
 `../shared/poster%20art.svg` for `poster art.svg` or
 `../shared/%E5%B0%81%E9%9D%A2.svg` for `封面.svg`.
 
 Local images outside the project referenced by an `<img>` or `<source>` element's
-`srcset` are included too. Their size or pixel-density descriptors are preserved,
+`srcset` can be included the same way. Their size or pixel-density descriptors are preserved,
 and your source files stay unchanged.
 
 Only images, video, audio, fonts and CSS files are copied from outside the
 project. Any other outside file, such as a script, a Lottie `.json` or a `.pdf`,
 is left out with a warning naming it; move it into the project folder to include
-it. Before uploading, `publish` lists every file it is about to copy from outside
-the project folder, including files the project only links to, so you can see
-what leaves your computer.
+it.
+
+Nothing from outside the project folder is uploaded without your say. Before
+uploading, `publish` lists each such file, including files the project only
+links to, and asks whether to upload them. The answer defaults to no, which
+leaves them out. A yes is remembered for that project in your user config
+folder (`~/.hyperframes/outside-files.json`), never in the project, so the next
+publish asks only about new files. With `--yes`, or when nobody can answer the
+prompt, outside files are left out with a warning naming each one. Pass
+`--include-outside-files` to upload them without asking.
 
 Before sharing source, remove secrets and confirm that every included media file
 can be shared. Tell a reviewer whether you need feedback on story, visuals,

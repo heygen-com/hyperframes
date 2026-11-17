@@ -22,12 +22,13 @@ import { isUnattended } from "../utils/attendedTerminal.js";
 import { parseFeedbackRating } from "../utils/feedbackRating.js";
 import { feedbackEmail, parseFeedbackSource } from "../utils/feedbackSource.js";
 import { lintFeedbackComment, type FeedbackLintInput } from "../utils/feedbackLint.js";
-import {
-  type LeftOutReference,
-  type OutsideFileReference,
-  outsideFilesNotice,
-} from "../utils/leftOutReference.js";
+import { type LeftOutReference, outsideFilesNotice } from "../utils/leftOutReference.js";
 import { trackUploadLeftOut } from "../telemetry/uploadLeftOut.js";
+import {
+  confirmOutsideFiles,
+  type OutsideFileChoice,
+  stageWithOutsideFileApproval,
+} from "../utils/outsideFileApproval.js";
 
 export const examples: Example[] = [
   ["Submit render feedback", 'hyperframes feedback --rating 8 --comment "fast but font missing"'],
@@ -122,21 +123,40 @@ async function confirmFileIssue(dir: string, yes: boolean): Promise<boolean> {
  * Publish a minimal repro and return its public URL. Degrades gracefully:
  * on failure it returns undefined so the issue still opens without a link.
  */
-async function publishRepro(dir: string): Promise<string | undefined> {
+async function publishRepro(
+  dir: string,
+  outsideFileChoice: OutsideFileChoice,
+): Promise<string | undefined> {
   const spinner = clack.spinner();
   spinner.start("Publishing minimal repro...");
   try {
-    const leftOut: string[] = [];
-    const references: LeftOutReference[] = [];
-    const outsideFiles: OutsideFileReference[] = [];
-    const archive = createPublishArchive(
+    const ask = outsideFileChoice.ask;
+    const { staged, outsideFiles } = await stageWithOutsideFileApproval(
       dir,
-      (warning, reference) => {
-        leftOut.push(warning);
-        references.push(reference);
+      {
+        ...outsideFileChoice,
+        ask:
+          ask &&
+          ((files) => {
+            spinner.stop("Repro prepared");
+            return ask(files).finally(() => spinner.start("Publishing minimal repro..."));
+          }),
       },
-      (reference) => outsideFiles.push(reference),
+      (onOutsideFile) => {
+        const leftOut: string[] = [];
+        const references: LeftOutReference[] = [];
+        const archive = createPublishArchive(
+          dir,
+          (warning, reference) => {
+            leftOut.push(warning);
+            references.push(reference);
+          },
+          onOutsideFile,
+        );
+        return { archive, leftOut, references };
+      },
     );
+    const { archive, leftOut, references } = staged;
     trackUploadLeftOut("feedback", references);
     if (outsideFiles.length > 0) {
       spinner.stop("Repro prepared");
@@ -186,11 +206,15 @@ async function fileGithubIssue(opts: {
   comment?: string;
   rawDir?: string;
   yes: boolean;
+  includeOutsideFiles: boolean;
   doctorSummary: string;
 }): Promise<void> {
   const dir = resolve(opts.rawDir ?? ".");
   if (!(await confirmFileIssue(dir, opts.yes))) return;
-  const repoPublicUrl = await publishRepro(dir);
+  const repoPublicUrl = await publishRepro(dir, {
+    includeAll: opts.includeOutsideFiles,
+    ask: opts.yes || isUnattended() ? undefined : confirmOutsideFiles,
+  });
   const url = buildIssueUrl({
     repoUrl: HYPERFRAMES_REPO_URL,
     rating: opts.rating,
@@ -290,6 +314,12 @@ export default defineCommand({
       description: "Skip the publish + file-issue consent prompt",
       default: false,
     },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Upload the files the repro uses from outside its folder without asking. Otherwise they are left out unless you approve them.",
+      default: false,
+    },
   },
   async run({ args }) {
     // A search miss is a different report from a rating: it names a gap in the
@@ -366,6 +396,7 @@ export default defineCommand({
         comment,
         rawDir: args.dir,
         yes: args.yes === true,
+        includeOutsideFiles: args["include-outside-files"] === true,
         doctorSummary,
       });
     }
