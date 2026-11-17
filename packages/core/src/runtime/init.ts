@@ -39,6 +39,7 @@ import { createPreviewSeek } from "./previewSeek";
 import { createPausedVideoFrames, releasePausedVideoFrame } from "./pausedVideoFrames";
 import { copiesReady } from "./previewCopies";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
+import { createScrubAudio } from "./scrubAudio";
 import { installEditingAgent } from "./editingAgent";
 import { instantTolerance } from "../clipFacts";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
@@ -6604,6 +6605,8 @@ export function initSandboxRuntimeModular(): void {
   // The runtime's external control surface only goes live once all of its
   // dependencies exist, so a load-time seek / set-playback-rate can never reach
   // a not-yet-initialized helper (the 'before initialization' TDZ this fixes).
+  const scrubAudio = createScrubAudio({ lease: leasePausedMedia, release: releasePausedMedia });
+  registerRuntimeCleanup(scrubAudio.stop);
   state.controlBridgeHandler = installRuntimeControlBridge({
     onPlay: () => {
       player.play();
@@ -6710,6 +6713,7 @@ export function initSandboxRuntimeModular(): void {
       setPreviewRasterScale(scale);
       noteDisplayScale(scale);
     },
+    onScrubAudio: scrubAudio.scrub,
     onRequestPreviewFacts: () =>
       postRuntimeMessage({
         source: "hf-preview",
