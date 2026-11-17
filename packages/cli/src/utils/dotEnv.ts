@@ -179,28 +179,6 @@ const VISION_CREDENTIALS: readonly (readonly string[])[] = [
   ["GOOGLE_API_KEY"],
 ];
 
-const setOutsideProjectEnv = (parts: readonly string[]) =>
-  parts.every((part) => Boolean(process.env[part]) && projectEnvDir(part) === undefined);
-
-/** Unsets capture's vision keys from a project `.env` when the person set another complete vision credential. */
-export function yieldProjectVisionKeys(warn: (line: string) => void): void {
-  for (const credential of VISION_CREDENTIALS) {
-    if (credential.every((part) => projectEnvDir(part) === undefined)) continue;
-    const own = VISION_CREDENTIALS.find(
-      (other) => other !== credential && setOutsideProjectEnv(other),
-    );
-    if (own === undefined) continue;
-    for (const name of credential) {
-      const dir = projectEnvDir(name);
-      if (dir === undefined) continue;
-      yieldKey(name, dir);
-      warn(
-        `[hyperframes] .env: ignoring ${name} from a project .env (${terminalText(join(dir, ".env"))}); capture uses your own ${own.join(" and ")}`,
-      );
-    }
-  }
-}
-
 export const geminiKeyName = (): string =>
   process.env.GEMINI_API_KEY ? "GEMINI_API_KEY" : "GOOGLE_API_KEY";
 

@@ -404,12 +404,10 @@ For AI image descriptions, set `GEMINI_API_KEY` in a `.env` file
 [OpenRouter](https://openrouter.ai) — it wins if both are set, and
 `HYPERFRAMES_OPENROUTER_MODEL` overrides the model.
 
-A project's `.env` never replaces a vision credential you set in your shell:
-when your shell holds a complete credential for another vision provider,
-capture ignores the `.env` vision key, with a note naming the file.
-Model and timeout settings in the `.env` still apply. A received project's
-`.env` (one its received-files record lists) also gives way to your own
-project's `.env`, for every command. When capture or `snapshot --describe` uses
+A received project's `.env` (one its received-files record lists) never
+replaces a vision or Gemini credential you set in your shell or your own
+project's `.env`: its competing keys are ignored, with a note naming the file.
+Keys in your own or a cloned project's `.env` are used as set. When capture or `snapshot --describe` uses
 a vision key from a project's `.env`, a note naming the file prints before the
 first request.
 
