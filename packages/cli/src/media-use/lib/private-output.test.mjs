@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert";
-import { rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { privateOutputPath, privateWorkDir } from "./private-output.mjs";
+import { discardPrivateOutput, privateOutputPath, privateWorkDir } from "./private-output.mjs";
 
 const ownerOnly = (path) => (statSync(path).mode & 0o777).toString(8);
 // Output folders land in the real temp folder; remove them with the test.
@@ -48,3 +48,30 @@ test(
     assert.equal(ownerOnly(privateWorkDir("codex")), "700");
   },
 );
+
+test("discarding a generator's output removes the folder it was made in", (t) => {
+  const out = privateOutputPath("kokoro", ".wav");
+  removeAfter(t, dirname(out));
+  writeFileSync(out, "voice");
+  discardPrivateOutput(out);
+  assert.equal(existsSync(dirname(out)), false);
+});
+
+test("discarding leaves any file a generator does not own", (t) => {
+  const elsewhere = removeAfter(t, mkdtempSync(join(tmpdir(), "bundled-sfx-")));
+  const library = join(elsewhere, "sfx", "whoosh.wav");
+  mkdirSync(dirname(library), { recursive: true });
+  writeFileSync(library, "whoosh");
+  const lookalikeParent = removeAfter(t, mkdtempSync(join(tmpdir(), "not-temp-root-")));
+  const lookalike = join(lookalikeParent, "media-use-codex-abcdef", "output.png");
+  mkdirSync(dirname(lookalike), { recursive: true });
+  writeFileSync(lookalike, "x");
+  const otherName = removeAfter(t, join(tmpdir(), `media-use-notes-${process.pid}.txt`));
+  writeFileSync(otherName, "x");
+
+  for (const path of [library, lookalike, otherName]) discardPrivateOutput(path);
+
+  assert.equal(existsSync(library), true);
+  assert.equal(existsSync(lookalike), true);
+  assert.equal(existsSync(otherName), true);
+});
