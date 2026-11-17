@@ -4351,10 +4351,10 @@ export async function verifyStaticFramesSafe(
     if (stats.screenshots >= hardCap) return "count_budget";
     const shotStart = now();
     await seekToFrame(target, frameIdx);
-    stats.screenshots++;
+    const first = stats.screenshots++ === 0;
     const buf = await capture(target, session.options);
     session.options.onStaticDedupActivity?.();
-    if (stats.screenshots === 1) firstShotMs = now() - shotStart;
+    if (first) firstShotMs = now() - shotStart;
     return buf;
   };
   // Each page takes the next profitable run in savings order. A run is added to the armed set

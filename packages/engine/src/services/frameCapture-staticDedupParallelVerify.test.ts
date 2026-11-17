@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { verifyStaticFramesSafe, type CaptureSession } from "./frameCapture.js";
+import {
+  planStaticVerification,
+  verifyStaticFramesSafe,
+  type CaptureSession,
+} from "./frameCapture.js";
 
 const fps = 30;
 type FakePage = { frame: number; evaluate: (fn: unknown, time: number) => Promise<void> };
@@ -37,6 +41,7 @@ function verify(
   pages: FakePage[],
   frames: Set<number>,
   capture: (target: unknown) => Promise<Buffer>,
+  now?: () => number,
 ) {
   return verifyStaticFramesSafe(
     { options: {} } as unknown as CaptureSession,
@@ -44,7 +49,7 @@ function verify(
     frames,
     fps,
     1,
-    { capture: capture as never },
+    { capture: capture as never, ...(now ? { now } : {}) },
   );
 }
 
@@ -86,5 +91,21 @@ describe("verifyStaticFramesSafe on several pages", () => {
     expect(three.outcome).toBe(one.outcome);
     expect(three.verifiedFrames).toEqual(one.verifiedFrames);
     expect(three.stats.completedRuns).toBe(one.stats.completedRuns);
+  });
+
+  it("scales its time budget from the first shot when pages capture together", async () => {
+    const frames = framesForRuns(runs);
+    const shotMs = Math.ceil(20_000 / planStaticVerification(frames, 1).plannedScreenshots);
+    let clock = 0;
+    const { capture } = capturing(() => "still");
+    const slowCapture = async (target: unknown) => {
+      clock += shotMs;
+      return capture(target);
+    };
+
+    const result = await verify([fakePage(), fakePage()], frames, slowCapture, () => clock);
+
+    expect(result.outcome).toBe("verified");
+    expect(result.verifiedFrames).toEqual(frames);
   });
 });
