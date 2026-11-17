@@ -71,7 +71,7 @@ describe("uploading files from outside the project", () => {
     expect(outsideFiles).toHaveLength(1);
     expect(existsSync(join(project, ".hyperframes"))).toBe(false);
     const saved = join(root, "config", "outside-files.json");
-    expect(statSync(saved).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") expect(statSync(saved).mode & 0o777).toBe(0o600);
     expect(Object.values(JSON.parse(readFileSync(saved, "utf-8")))).toEqual([
       ["../shared/logo.png"],
     ]);
