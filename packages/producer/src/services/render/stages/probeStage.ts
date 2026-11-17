@@ -189,26 +189,58 @@ export function hasAutoStartVideos(html: string): boolean {
 
 type VariablesByComp = Record<string, Record<string, unknown>>;
 
-function scopedVariablesFor(element: Element, variablesByComp: VariablesByComp) {
-  const scope = element.closest("[data-composition-id]");
-  const compId = scope?.getAttribute("data-composition-id")?.trim() ?? "";
-  return compId && Object.hasOwn(variablesByComp, compId) ? variablesByComp[compId] : undefined;
+/** Ancestor steps one variable-media scan may take before it gives the conservative answer. */
+const MAX_VARIABLE_SCOPE_STEPS = 1_000_000;
+
+interface VariableScopeScan {
+  readonly ids: Map<Element, ReadonlySet<string>>;
+  steps: number;
 }
 
+function variableIdsOn(scan: VariableScopeScan, element: Element): ReadonlySet<string> {
+  let ids = scan.ids.get(element);
+  if (!ids) {
+    ids = new Set([
+      ...Object.keys(parseHostVariableValues(element)),
+      ...Object.keys(readDeclaredDefaults(element)),
+    ]);
+    scan.ids.set(element, ids);
+  }
+  return ids;
+}
+
+/** The compiled table of the element's composition scope; null once the scan is out of steps. */
+function scopedVariablesFor(
+  scan: VariableScopeScan,
+  element: Element,
+  variablesByComp: VariablesByComp,
+): Record<string, unknown> | undefined | null {
+  for (let node: Element | null = element; node; node = node.parentElement) {
+    if (++scan.steps > MAX_VARIABLE_SCOPE_STEPS) return null;
+    if (!node.hasAttribute("data-composition-id")) continue;
+    const compId = node.getAttribute("data-composition-id")?.trim() ?? "";
+    return compId && Object.hasOwn(variablesByComp, compId) ? variablesByComp[compId] : undefined;
+  }
+  return undefined;
+}
+
+/** True when the variable has a value, or when the scan ran out of steps and cannot rule one out. */
 function variableHasValue(
+  scan: VariableScopeScan,
   element: Element,
   variableId: string,
   variables: Record<string, unknown> | undefined,
   variablesByComp: VariablesByComp,
 ): boolean {
   if (variables && Object.hasOwn(variables, variableId)) return true;
-  const scoped = scopedVariablesFor(element, variablesByComp);
+  const scoped = scopedVariablesFor(scan, element, variablesByComp);
+  if (scoped === null) return true;
   if (scoped) return Object.hasOwn(scoped, variableId);
   for (let scope = element.parentElement; scope; scope = scope.parentElement) {
-    if (Object.hasOwn(parseHostVariableValues(scope), variableId)) return true;
-    if (Object.hasOwn(readDeclaredDefaults(scope), variableId)) return true;
+    if (++scan.steps > MAX_VARIABLE_SCOPE_STEPS) return true;
+    if (variableIdsOn(scan, scope).has(variableId)) return true;
   }
-  return Object.hasOwn(readDeclaredDefaults(element.ownerDocument.documentElement), variableId);
+  return variableIdsOn(scan, element.ownerDocument.documentElement).has(variableId);
 }
 
 /**
@@ -221,13 +253,16 @@ export function hasVariableBoundMedia(
   variablesByComp: VariablesByComp = {},
 ): boolean {
   const { document } = parseHTML(html);
+  const scan: VariableScopeScan = { ids: new Map(), steps: 0 };
   return Array.from(
     document.querySelectorAll(
       "img[data-var-src], audio[data-var-src], video[data-var-src], source[data-var-src]",
     ),
   ).some((element) => {
     const variableId = element.getAttribute("data-var-src")?.trim();
-    return Boolean(variableId && variableHasValue(element, variableId, variables, variablesByComp));
+    return Boolean(
+      variableId && variableHasValue(scan, element, variableId, variables, variablesByComp),
+    );
   });
 }
 
@@ -289,13 +324,31 @@ function reconcileBrowserMediaEnd(
   return existingEnd <= 0 ? projectedEnd : Math.min(existingEnd, projectedEnd);
 }
 
+/** Selector-against-media checks the static scan makes before it lets the browser probe decide. */
+const MAX_MEDIA_SELECTOR_CHECKS = 100_000;
+
+function managedMediaElements(document: Document): Element[] {
+  const managed: Element[] = [];
+  const pending: Array<{ element: Element; inMedia: boolean }> = [];
+  if (document.documentElement) pending.push({ element: document.documentElement, inMedia: false });
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    const name = next.element.tagName.toLowerCase();
+    const isMedia = name === "video" || name === "audio";
+    if (isMedia || (next.inMedia && name === "source")) managed.push(next.element);
+    for (const child of Array.from(next.element.children)) {
+      pending.push({ element: child, inMedia: next.inMedia || isMedia });
+    }
+  }
+  return managed;
+}
+
 /**
  * Runtime-created media does not exist when the static compiler scans the HTML.
  * Launch a browser probe so discoverMediaFromBrowser can reconcile it before
  * extraction, even when the root duration is already known. External script
  * sources have no inline text to inspect and remain a known heuristic gap.
  */
-function hasRuntimeMediaChanges(html: string): boolean {
+export function hasRuntimeMediaChanges(html: string): boolean {
   const { document } = parseHTML(html);
   const scriptBodies = [...document.querySelectorAll("script")].map(
     (script) => script.textContent ?? "",
@@ -308,25 +361,26 @@ function hasRuntimeMediaChanges(html: string): boolean {
   );
   if (insertedMedia) return true;
 
-  const isManagedMedia = (element: Element): boolean => {
-    const name = element.tagName.toLowerCase();
-    if (name === "video" || name === "audio") return true;
-    return name === "source" && element.closest("video, audio") !== null;
-  };
+  const managed = managedMediaElements(document);
+  if (managed.length === 0) return false;
+  const managedIds = new Set(managed.map((element) => element.getAttribute("id")).filter(Boolean));
+  const selectors = new Set<string>();
   for (const script of scriptBodies) {
     for (const mutation of extractMediaSrcMutations(script)) {
-      try {
-        const id = /^#[A-Za-z_][\w-]*$/.test(mutation.selector) ? mutation.selector.slice(1) : null;
-        const idTarget = id ? document.getElementById(id) : null;
-        const targets = id
-          ? idTarget
-            ? [idTarget]
-            : []
-          : [...document.querySelectorAll(mutation.selector)];
-        if (targets.some(isManagedMedia)) return true;
-      } catch {
-        // Invalid selectors are diagnosed by lint and cannot prove a media target here.
+      const id = /^#[A-Za-z_][\w-]*$/.test(mutation.selector) ? mutation.selector.slice(1) : null;
+      if (id) {
+        if (managedIds.has(id)) return true;
+        continue;
       }
+      selectors.add(mutation.selector);
+      if (selectors.size * managed.length > MAX_MEDIA_SELECTOR_CHECKS) return true;
+    }
+  }
+  for (const selector of selectors) {
+    try {
+      if (managed.some((element) => element.matches(selector))) return true;
+    } catch {
+      // Invalid selectors are diagnosed by lint and cannot prove a media target here.
     }
   }
   return false;

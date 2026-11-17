@@ -16,6 +16,7 @@ afterAll(() => rmSync(workDir, { recursive: true, force: true }));
 import { createHash } from "node:crypto";
 import {
   hasAutoStartVideos,
+  hasRuntimeMediaChanges,
   hasScriptedAudioVolumeAutomation,
   hasVariableBoundMedia,
   reportedLengthSource,
@@ -442,6 +443,85 @@ describe("hasVariableBoundMedia", () => {
     ).toBe(false);
     expect(hasVariableBoundMedia(html, undefined, { outer: { src: "a.mp4" } })).toBe(false);
     expect(hasVariableBoundMedia(html, undefined, { inner: { src: "b.mp4" } })).toBe(true);
+  });
+});
+
+describe("hasVariableBoundMedia — page size", () => {
+  it("parses a large variables attribute once, not once per bound element", () => {
+    const values = JSON.stringify(
+      Object.fromEntries(Array.from({ length: 40_000 }, (_, i) => [`k${i}`, "v".repeat(20)])),
+    );
+    const images = `<img src="a.png" data-var-src="missing">`.repeat(8_000);
+    const html = `<html><body><div data-variable-values='${values}'>${images}</div></body></html>`;
+
+    const started = performance.now();
+    expect(hasVariableBoundMedia(html, undefined)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(2_500);
+  });
+
+  it("takes the conservative answer when the ancestor walks run past their budget", () => {
+    const depth = 600;
+    const images = `<img src="a.png" data-var-src="missing">`.repeat(2_000);
+    const html = `<html><body>${"<div>".repeat(depth)}${images}${"</div>".repeat(depth)}</body></html>`;
+
+    expect(hasVariableBoundMedia(html, undefined)).toBe(true);
+  });
+});
+
+describe("hasRuntimeMediaChanges", () => {
+  const page = (body: string, script: string) =>
+    `<html><body>${body}<script>${script}</script></body></html>`;
+
+  it("finds a source write aimed at a video by id or by selector", () => {
+    const video = `<div class="scene"><video id="clip" src="a.mp4"></video></div>`;
+    expect(
+      hasRuntimeMediaChanges(page(video, `document.getElementById("clip").src = "b.mp4";`)),
+    ).toBe(true);
+    expect(
+      hasRuntimeMediaChanges(page(video, `document.querySelector(".scene video").src = "b.mp4";`)),
+    ).toBe(true);
+    expect(
+      hasRuntimeMediaChanges(
+        page(
+          `<video><source id="s" src="a.mp4"></video>`,
+          `document.getElementById("s").src = "b";`,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores source writes aimed at other elements", () => {
+    const body = `<img id="poster" class="still" src="a.png"><video id="clip" src="a.mp4"></video>`;
+    const script = `document.getElementById("poster").src = "b.png";
+      document.querySelector(".still").setAttribute("src", "c.png");
+      document.querySelector("[[bad").src = "d.png";`;
+    expect(hasRuntimeMediaChanges(page(body, script))).toBe(false);
+    expect(
+      hasRuntimeMediaChanges(page(`<img id="clip">`, `document.getElementById("clip").src = "b";`)),
+    ).toBe(false);
+  });
+
+  it("classifies a page of many source writes and nodes, none aimed at media, in linear time", () => {
+    const count = 12_000;
+    const divs = Array.from({ length: count }, (_, i) => `<div id="d${i}" class="c${i}"></div>`);
+    const writes = Array.from(
+      { length: count },
+      (_, i) => `document.getElementById("n${i}").src = "x";`,
+    );
+    const html = page(`${divs.join("")}<video id="clip" src="a.mp4"></video>`, writes.join("\n"));
+
+    const started = performance.now();
+    expect(hasRuntimeMediaChanges(html)).toBe(false);
+    expect(performance.now() - started).toBeLessThan(2_500);
+  });
+
+  it("lets the browser probe decide when there are too many selectors to check", () => {
+    const videos = `<video src="a.mp4"></video>`.repeat(50);
+    const writes = Array.from(
+      { length: 3_000 },
+      (_, i) => `document.querySelector(".q${i}").src = "x";`,
+    );
+    expect(hasRuntimeMediaChanges(page(videos, writes.join("\n")))).toBe(true);
   });
 });
 
