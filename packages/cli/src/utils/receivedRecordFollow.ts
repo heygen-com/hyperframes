@@ -218,7 +218,7 @@ const movedAsPlanned = (folder: string, left: Leaving): left is Leaving & { land
   !holdsLeaver(join(folder, left.line), left) &&
   holdsLeaver(left.landsAt, left);
 
-/** Whether a moved non-media file sits where it was moved and a record lists it there by another line. */
+/** Whether a non-media file sits at its planned destination and a record lists it there by another line. */
 function listedWhereItLands(folder: string, left: Leaving): boolean {
   if (left.landsAt === undefined || left.hash === undefined) return true;
   if (!movedAsPlanned(folder, left)) return false;
