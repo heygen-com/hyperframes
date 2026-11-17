@@ -22,10 +22,11 @@ export type CaptionWordState = { transform: CaptionTransform; rect: EditingRect 
 
 const REST: CaptionTransform = { x: 0, y: 0, scale: 1, rotation: 0 };
 const PARTS = new Set(Object.keys(REST));
-const MAX_TRANSFORM = 100_000;
+/** Largest |x|, |y|, scale or rotation a caption word's transform may hold, in either direction. */
+export const MAX_CAPTION_TRANSFORM = 100_000;
 
 const isBounded = (value: unknown): value is number =>
-  Number.isFinite(value) && Math.abs(value as number) <= MAX_TRANSFORM;
+  Number.isFinite(value) && Math.abs(value as number) <= MAX_CAPTION_TRANSFORM;
 
 function transformPart(set: unknown): Partial<CaptionTransform> | null {
   if (!isRecord(set)) return null;

@@ -1,6 +1,7 @@
 // DOM helpers for CaptionOverlay — word box reading, transform I/O, wrapper management
 import {
   isPlainRecord,
+  MAX_CAPTION_TRANSFORM,
   MAX_DESCRIBE_HANDLES,
   type EditingParams,
 } from "@hyperframes/core/runtime/editing-port";
@@ -311,10 +312,17 @@ interface FrameWord {
 const allFinite = (value: unknown, keys: string[]) =>
   isPlainRecord(value) && keys.every((key) => Number.isFinite(value[key]));
 
+// The frame's own write bound: a larger reply, once stored, would make every later write to the word refused.
+const allBounded = (value: unknown, keys: string[]) =>
+  isPlainRecord(value) &&
+  keys.every(
+    (key) => Number.isFinite(value[key]) && Math.abs(value[key] as number) <= MAX_CAPTION_TRANSFORM,
+  );
+
 function readFrameWord(value: unknown): FrameWord | null {
   if (!isPlainRecord(value)) return null;
   const ok =
-    allFinite(value.transform, ["x", "y", "scale", "rotation"]) &&
+    allBounded(value.transform, ["x", "y", "scale", "rotation"]) &&
     allFinite(value.rect, ["x", "y", "width", "height"]);
   return ok ? (value as unknown as FrameWord) : null;
 }

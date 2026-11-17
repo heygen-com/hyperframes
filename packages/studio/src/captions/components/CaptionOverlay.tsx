@@ -65,11 +65,14 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
     null,
   );
   const sealedDragRef = useRef<SealedDrag | null>(null);
+  // False once the overlay unmounts or leaves edit mode, so a late frame reply stores nothing.
+  const liveRef = useRef(false);
 
   // The observer and message filter bind to the live iframe element, which a promoted reload replaces.
   // eslint-disable-next-line no-restricted-syntax
   useEffect(() => {
     if (!isEditMode) return;
+    liveRef.current = true;
 
     // Let undo/redo (useAppHotkeys) reapply restored models to this iframe.
     const unregisterIframe = registerCaptionIframe(iframeRef);
@@ -256,8 +259,9 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
         const word = findCaptionWord(m, segId);
         if (!word) continue;
         nudging = nudging.then(async () => {
+          if (disposed) return;
           const moved = await nudgeFrameWord(iframe, word, dx, dy);
-          if (moved) storeStyle(segId, transformStyle(moved.transform));
+          if (moved && !disposed) storeStyle(segId, transformStyle(moved.transform));
         });
       }
       void nudging.then(scheduleTick);
@@ -266,6 +270,7 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       disposed = true;
+      liveRef.current = false;
       unregisterIframe();
       unsubPlayer();
       unsubPlayback();
@@ -434,7 +439,9 @@ export const CaptionOverlay = memo(function CaptionOverlay({ iframeRef }: Captio
     const sealed = sealedDragRef.current;
     if (sealed) {
       sealedDragRef.current = null;
-      void sealed.last.then((t) => t && storeStyle(sealed.segmentId, transformStyle(t)));
+      void sealed.last.then(
+        (t) => t && liveRef.current && storeStyle(sealed.segmentId, transformStyle(t)),
+      );
       return;
     }
     const i = interactionRef.current;

@@ -71,6 +71,7 @@ export {
   type ElementTransformSnapshot,
 } from "./editingGeometry";
 export type { EditingGestureStart } from "./editingGestureStart";
+export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
 export {
   compositionPoint,
   coversComposition,

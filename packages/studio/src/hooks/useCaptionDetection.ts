@@ -146,6 +146,8 @@ export function useCaptionDetection({
     if (!projectId) return;
 
     let activating = false;
+    // A detection still in flight when the composition changes must not enter edit mode for the old one.
+    let disposed = false;
 
     const pickCaptionSource = (hostSrcs: Array<string | null>, captionCompId: string | null) => {
       const host = hostSrcs.find((src) => src && src.includes("captions"));
@@ -164,9 +166,9 @@ export function useCaptionDetection({
       studioApiFetch(buildProjectApiPath(projectId, `/files/${encodeURIComponent(srcPath)}`))
         .then((r) => r.json())
         .then(async (data: { content?: string }) => {
-          if (!data.content || useCaptionStore.getState().isEditMode) return;
+          if (disposed || !data.content || useCaptionStore.getState().isEditMode) return;
           const model = await parse(data.content);
-          if (!model || useCaptionStore.getState().isEditMode) return;
+          if (disposed || !model || useCaptionStore.getState().isEditMode) return;
           const store = useCaptionStore.getState();
           store.setModel(model);
           store.setSourceFilePath(srcPath);
@@ -202,7 +204,9 @@ export function useCaptionDetection({
         activating = true;
         void frameCaptionSource(iframe)
           .then((src) =>
-            src ? loadCaptions(src, (content) => frameCaptionModel(iframe, content)) : null,
+            src && !disposed
+              ? loadCaptions(src, (content) => frameCaptionModel(iframe, content))
+              : null,
           )
           .finally(() => {
             activating = false;
@@ -262,6 +266,7 @@ export function useCaptionDetection({
     tryActivateCaptions();
 
     return () => {
+      disposed = true;
       window.removeEventListener("message", handleMessage);
     };
   }, [activeCompPath, projectId, compIdToSrc, captionSync, previewIframeRef, livePreviewIframe]);
