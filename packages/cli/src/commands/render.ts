@@ -121,7 +121,11 @@ import {
   isRouterOff,
 } from "./render/deRouterBreaker.js";
 import { isDevMode } from "../utils/env.js";
-import { buildDockerRunArgs, resolveDockerPlatform } from "../utils/dockerRunArgs.js";
+import {
+  buildDockerRunArgs,
+  resolveDockerPlatform,
+  type DockerRenderOptions,
+} from "../utils/dockerRunArgs.js";
 import { createStderrTail, DockerRenderExitError } from "../utils/dockerStderrTail.js";
 import type { BrowserInstallFacts } from "../browser/installFacts.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
@@ -354,6 +358,14 @@ export default defineCommand({
         "Also run .js and .mjs scripts the project references from outside its folder. Without it they are left out " +
         "with a warning; images, video, audio, fonts and CSS outside the folder are always included.",
       default: false,
+    },
+    "refuse-outside-files": {
+      type: "boolean",
+      description:
+        "Leave out every file the project references from outside its folder. A --docker render passes it " +
+        "into the container when the received-files rule refuses those files on the host.",
+      default: false,
+      hidden: true,
     },
     "strict-all": {
       type: "boolean",
@@ -594,6 +606,11 @@ export interface RenderOptions {
   bestEffort?: boolean;
   /** --include-outside-files: run scripts the project references from outside its folder. */
   includeOutsideScripts?: boolean;
+  /**
+   * True brings in no file from outside the project folder (--refuse-outside-files). False means
+   * the caller already applied the received-files rule and it allows them. Absent, the render applies it.
+   */
+  refuseOutsideFiles?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
   strictVariables?: boolean;
@@ -865,10 +882,60 @@ async function registerRenderOutputOrWarn(projectDir: string, outputPath: string
   );
 }
 
-// Inherited minor finding (CRAP 37.1, cyclomatic 11). This PR only added
-// `pageNavigationTimeoutMs` to the options forwarded to `buildDockerRunArgs`.
+function outsideAssetsAllowedOrWarn(projectDir: string, entryFile: string | undefined): boolean {
+  return outsideAssetsAllowed(projectDir, entryFile, (line) => console.warn(c.warn(`  ${line}`)));
+}
+
+/**
+ * The render options passed into the container. The received-files rule is
+ * decided here on the host, because the container mounts only the project and
+ * cannot see a record in a folder above it. A container CLI without
+ * --refuse-outside-files rejects it as an unknown flag and does not render.
+ */
+export function dockerRenderOptions(
+  projectDir: string,
+  options: RenderOptions,
+): DockerRenderOptions {
+  return {
+    fps: options.fps,
+    quality: options.quality,
+    format: options.format,
+    gifLoop: options.gifLoop,
+    hlsSegmentSeconds: options.hlsSegmentSeconds,
+    workers: options.workers,
+    gpu: options.gpu,
+    browserGpu: options.browserGpuMode === "hardware",
+    hdrMode: options.hdrMode,
+    crf: options.crf,
+    vp9CpuUsed: options.vp9CpuUsed,
+    videoBitrate: options.videoBitrate,
+    keyframeIntervalSeconds: options.keyframeIntervalSeconds,
+    range: options.range,
+    proresProfile: options.proresProfile,
+    maxBitrate: options.maxBitrate,
+    bufferSize: options.bufferSize,
+    videoFrameFormat: options.videoFrameFormat,
+    chromaSubsampling: options.chromaSubsampling,
+    pageMotionBlur: options.pageMotionBlur,
+    quiet: options.quiet,
+    variables: options.variables,
+    entryFile: options.entryFile,
+    outputResolution: options.outputResolutionRaw ?? options.outputResolution,
+    pageSideCompositing: options.pageSideCompositing,
+    debug: options.debug,
+    bestEffort: options.bestEffort,
+    strictVariables: options.strictVariables,
+    experimentalFastCapture: options.experimentalFastCapture,
+    pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
+    protocolTimeoutMs: options.protocolTimeout,
+    playerReadyTimeoutMs: options.playerReadyTimeout,
+    refuseOutsideFiles:
+      options.refuseOutsideFiles ?? !outsideAssetsAllowedOrWarn(projectDir, options.entryFile),
+  };
+}
+
 // fallow-ignore-next-line complexity
-async function renderDocker(
+export async function renderDocker(
   projectDir: string,
   outputPath: string,
   options: RenderOptions,
@@ -905,40 +972,7 @@ async function renderDocker(
     outputFilename,
     platform,
     hostStdoutIsTty: process.stdout.isTTY === true,
-    options: {
-      fps: options.fps,
-      quality: options.quality,
-      format: options.format,
-      gifLoop: options.gifLoop,
-      hlsSegmentSeconds: options.hlsSegmentSeconds,
-      workers: options.workers,
-      gpu: options.gpu,
-      browserGpu: options.browserGpuMode === "hardware",
-      hdrMode: options.hdrMode,
-      crf: options.crf,
-      vp9CpuUsed: options.vp9CpuUsed,
-      videoBitrate: options.videoBitrate,
-      keyframeIntervalSeconds: options.keyframeIntervalSeconds,
-      range: options.range,
-      proresProfile: options.proresProfile,
-      maxBitrate: options.maxBitrate,
-      bufferSize: options.bufferSize,
-      videoFrameFormat: options.videoFrameFormat,
-      chromaSubsampling: options.chromaSubsampling,
-      pageMotionBlur: options.pageMotionBlur,
-      quiet: options.quiet,
-      variables: options.variables,
-      entryFile: options.entryFile,
-      outputResolution: options.outputResolutionRaw ?? options.outputResolution,
-      pageSideCompositing: options.pageSideCompositing,
-      debug: options.debug,
-      bestEffort: options.bestEffort,
-      strictVariables: options.strictVariables,
-      experimentalFastCapture: options.experimentalFastCapture,
-      pageNavigationTimeoutMs: options.pageNavigationTimeoutMs,
-      protocolTimeoutMs: options.protocolTimeout,
-      playerReadyTimeoutMs: options.playerReadyTimeout,
-    },
+    options: dockerRenderOptions(projectDir, options),
   });
 
   if (!options.quiet) {
@@ -1163,9 +1197,10 @@ async function executeLocalRender(
     process.env.HYPERFRAMES_GSAP_VENDOR_DIR = gsapVendorDir;
   }
   const producer = await loadProducer();
-  const allowOutsideProjectAssets = outsideAssetsAllowed(projectDir, options.entryFile, (line) =>
-    console.warn(c.warn(`  ${line}`)),
-  );
+  const allowOutsideProjectAssets =
+    options.refuseOutsideFiles === undefined
+      ? outsideAssetsAllowedOrWarn(projectDir, options.entryFile)
+      : !options.refuseOutsideFiles;
   const includeOutsideScripts = options.includeOutsideScripts === true;
   const deParallelRouterActive =
     options.manageDeParallelRouterBreaker === true

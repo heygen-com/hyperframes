@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { finishCommand } from "../utils/commandResult.js";
 import { withMediaAuthEnvironment } from "../auth/media-environment.js";
+import { PROJECT_ENV_ORIGINS, projectEnvOrigins } from "../utils/dotEnv.js";
 import {
   skipWorkingDirectoryInExeSearch,
   withOnlyTrustedPathFolders,
@@ -83,9 +84,11 @@ export function mediaUseEngineEnv(
   env: NodeJS.ProcessEnv,
   entry: string | undefined = process.argv[1],
   platform: NodeJS.Platform = process.platform,
+  origins: Record<string, string> = projectEnvOrigins(),
 ): NodeJS.ProcessEnv {
   const scoped = withOnlyTrustedPathFolders(env, platform);
   skipWorkingDirectoryInExeSearch(scoped, platform);
+  if (Object.keys(origins).length > 0) scoped[PROJECT_ENV_ORIGINS] = JSON.stringify(origins);
   if (!entry || /\.[cm]?ts$/.test(entry)) return scoped;
   return { ...scoped, HYPERFRAMES_CLI_ENTRY: resolve(entry) };
 }

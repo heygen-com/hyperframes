@@ -26,6 +26,7 @@ import { applyRenderEnvironment, renderOutputDirectory, type RenderPlan } from "
 import type { RenderOptions, SingleRenderResult } from "../render.js";
 import type { RenderCancellationScope } from "../../utils/renderCancellation.js";
 import { runRenderSetupWorker } from "../../utils/cancellableProcess.js";
+import { outsideAssetsAllowed } from "../../utils/receivedRender.js";
 
 type RenderExecutor = (
   projectDir: string,
@@ -207,6 +208,7 @@ export function renderOptionsFromPlan(
     keepSegments: plan.keepSegments,
     bestEffort: plan.bestEffort,
     includeOutsideScripts: plan.includeOutsideScripts,
+    refuseOutsideFiles: plan.refuseOutsideFiles ? true : undefined,
     variables,
     strictVariables: plan.strictVariables,
     entryFile: plan.entryFile,
@@ -429,12 +431,19 @@ export function batchRowRenderOptions(
     bestEffort: plan.bestEffort,
     includeOutsideScripts: plan.includeOutsideScripts,
     strictVariables: plan.strictVariables,
+    refuseOutsideFiles: plan.refuseOutsideFiles ? true : undefined,
     exitAfterComplete: false,
     throwOnError: true,
     skipFeedback: true,
     desktopHint: false,
     manageDeParallelRouterBreaker: plan.batchConcurrency <= 1,
   };
+}
+
+function outsideAssetsAllowedOnceForEveryRow(plan: RenderPlan): boolean {
+  return outsideAssetsAllowed(plan.project.dir, plan.entryFile, (line) =>
+    console.warn(c.warn(`  ${line}`)),
+  );
 }
 
 async function executeBatchRender(
@@ -447,6 +456,7 @@ async function executeBatchRender(
 ): Promise<void> {
   const batchQuiet = plan.quiet || plan.batchJson;
   const renderOptionsBase = batchRowRenderOptions(plan, browserPath);
+  renderOptionsBase.refuseOutsideFiles ??= !outsideAssetsAllowedOnceForEveryRow(plan);
   const manifest = await batchModule.runBatchRender({
     prepared: preparedBatch,
     concurrency: plan.batchConcurrency,

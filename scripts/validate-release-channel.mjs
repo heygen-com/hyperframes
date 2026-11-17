@@ -33,11 +33,11 @@ function validateDistTag(version, distTag) {
   ];
 }
 
-function validateMergedReleasePr({ version, prHeadRef }) {
+function validateMergedReleasePr({ version, releaseRef }) {
   const errors = [];
-  if (!RELEASE_PR_RE.test(prHeadRef)) {
+  if (!RELEASE_PR_RE.test(releaseRef)) {
     errors.push(
-      `Merged release PRs must come from release/vX.Y.Z branches, got "${prHeadRef || "<empty>"}".`,
+      `Merged release PRs must come from release/vX.Y.Z branches, got "${releaseRef || "<empty>"}".`,
     );
   }
   if (expectedDistTag(version) !== "latest") {
@@ -51,7 +51,7 @@ function validateMergedReleasePr({ version, prHeadRef }) {
 function validatePrereleaseTagPush({ version, distTag, remoteBranches }) {
   if (expectedDistTag(version) === "latest") {
     return [
-      "Stable tag publishing is disabled. Merge a reviewed release/vX.Y.Z PR into main and rerun that immutable merge event for recovery.",
+      "Stable tag publishing is disabled. Merge a reviewed release/vX.Y.Z PR into main; to recover, rerun the failed jobs of the publish run on that merge.",
     ];
   }
 
@@ -63,14 +63,14 @@ function validatePrereleaseTagPush({ version, distTag, remoteBranches }) {
   ];
 }
 
-const EVENT_VALIDATORS = new Map([
-  ["pull_request", validateMergedReleasePr],
-  ["push", validatePrereleaseTagPush],
+const SOURCE_VALIDATORS = new Map([
+  ["release-pr", validateMergedReleasePr],
+  ["tag", validatePrereleaseTagPush],
 ]);
 
 function validateReleaseSource(input) {
-  const validator = EVENT_VALIDATORS.get(input.eventName);
-  return validator ? validator(input) : [`Unsupported publish event "${input.eventName}".`];
+  const validator = SOURCE_VALIDATORS.get(input.source);
+  return validator ? validator(input) : [`Unsupported release source "${input.source}".`];
 }
 
 export function validateReleaseChannel(input) {
@@ -93,18 +93,18 @@ function readEnv(name) {
   return process.env[name] ?? "";
 }
 
-function readRemoteBranchesForEvent(eventName) {
-  return eventName === "pull_request" ? [] : readRemoteBranchesContainingHead();
+function readRemoteBranchesForSource(source) {
+  return source === "tag" ? readRemoteBranchesContainingHead() : [];
 }
 
 function readValidationInput() {
-  const eventName = readEnv("EVENT_NAME");
+  const source = readEnv("SOURCE");
   return {
     version: readEnv("VERSION"),
     distTag: readEnv("DIST_TAG"),
-    eventName,
-    prHeadRef: readEnv("PR_HEAD_REF"),
-    remoteBranches: readRemoteBranchesForEvent(eventName),
+    source,
+    releaseRef: readEnv("RELEASE_REF"),
+    remoteBranches: readRemoteBranchesForSource(source),
   };
 }
 

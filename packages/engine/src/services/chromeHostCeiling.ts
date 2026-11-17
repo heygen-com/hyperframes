@@ -5,6 +5,7 @@ import { debuglog } from "node:util";
 import { release } from "node:os";
 import { dirname, join } from "node:path";
 import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
+import { noSandboxUnlessRequired } from "./chromeSandbox.js";
 
 /** Chrome 151 dropped macOS 12 and older (Darwin < 22); 150 is the last major that launches there. */
 const MACOS_12_LAST_CHROME_MAJOR = 150;
@@ -159,7 +160,7 @@ const debug = debuglog("hyperframes:browser");
 export function shellStarts(binary: string, timeoutMs = 10_000): boolean {
   let answer = starts.get(binary);
   if (answer === undefined) {
-    const probe = ["--no-sandbox", "--dump-dom", "about:blank"];
+    const probe = [...noSandboxUnlessRequired(), "--dump-dom", "about:blank"];
     answer =
       spawnSync(binary, probe, {
         env: buildChromeLaunchEnv(),

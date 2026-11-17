@@ -38,6 +38,7 @@ import {
 import { emitStudioRenderComplete, emitStudioRenderError } from "./studioRenderTelemetry.js";
 import { startRenderCpuSampler } from "../telemetry/renderCpu.js";
 import { mountDesktopRoutes } from "./desktopRoutes.js";
+import { followReceivedRecords } from "./followReceivedRecords.js";
 import {
   hostHeaderAllowed,
   PREVIEW_ALLOWED_HOSTS_ENV,
@@ -540,6 +541,13 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   // launching a browser shutdown() has no way to know about and close.
   let shuttingDown = false;
 
+  const previewWarnings = new Set<string>();
+  const warnPreviewOnce = (line: string) => {
+    if (previewWarnings.has(line)) return;
+    previewWarnings.add(line);
+    console.warn(`[studio] ${line}`);
+  };
+
   const adapter: PreviewApiAdapter = {
     history: () => (hostAppOwnsHistory ? null : projectHistory()),
     loadSharp: () => loadSharpInBackground("image thumbnails"),
@@ -594,11 +602,13 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
       const preparedDirs = [gifOutputDir, gifDownloadDir, heifOutputDir];
       if (!preparedDirs.every((dir) => isLinkFreeWithinProject(project.dir, dir)))
         return injectDeterministicFontFaces(html);
+      const allowOutsideFiles = outsideAssetsAllowed(project.dir, undefined, warnPreviewOnce);
       const { html: htmlWithJpegs } = await prepareHeifImageInputs(html, {
         projectDir: project.dir,
         downloadDir: gifDownloadDir,
         outputDir: heifOutputDir,
         outputSrcPrefix: ".hyperframes/prepared-assets/heif",
+        allowOutsideFiles,
         onFailure: (error) => console.warn(`[studio] ${error.message}`),
       });
       const prepared = await prepareAnimatedGifInputs(htmlWithJpegs, {
@@ -606,6 +616,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         downloadDir: gifDownloadDir,
         outputDir: gifOutputDir,
         outputSrcPrefix: ".hyperframes/prepared-assets/gif",
+        allowOutsideFiles,
         cacheDir: gifOutputDir,
         sourceAssets: await downloadRemoteGifImageSources(html, gifDownloadDir, (url, destDir) =>
           downloadToTemp(url, destDir, undefined, undefined, undefined, {
@@ -1147,6 +1158,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
 
   mountDesktopRoutes(app, projectDir);
   mountShareRoutes(app, projectDir);
+  followReceivedRecords(app, projectDir);
 
   // ── Pre-flight checks for render ────────────────────────────────────────
   // Intercept render requests before they reach the shared API so we can

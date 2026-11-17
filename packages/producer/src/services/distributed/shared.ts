@@ -445,6 +445,7 @@ export interface SyntheticRenderJobInput {
   /** Render-time overrides consumed by the plan browser probe. */
   variables?: RenderConfig["variables"];
   strictVariables?: RenderConfig["strictVariables"];
+  expectedOutputDimensions?: RenderConfig["expectedOutputDimensions"];
   pageMotionBlur?: RenderConfig["pageMotionBlur"];
   allowOutsideProjectAssets?: boolean;
   includeOutsideScripts?: boolean;
@@ -476,6 +477,7 @@ export function buildSyntheticRenderJob(input: SyntheticRenderJobInput): RenderJ
     producerConfig: input.producerConfig,
     variables: input.variables,
     strictVariables: input.strictVariables,
+    expectedOutputDimensions: input.expectedOutputDimensions,
     pageMotionBlur: input.pageMotionBlur,
     allowOutsideProjectAssets: input.allowOutsideProjectAssets,
     includeOutsideScripts: input.includeOutsideScripts,

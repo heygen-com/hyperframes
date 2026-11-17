@@ -13,7 +13,7 @@ import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-
 import {
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
-  requestFromAnotherSite,
+  documentFromAnotherSite,
   wildcardBindHostAllowed,
 } from "@hyperframes/studio-server/request-identity";
 import { SAME_ORIGIN_FRAMING_HEADERS } from "@hyperframes/engine";
@@ -230,14 +230,14 @@ async function markDocumentForAnotherSite(c: Context): Promise<void> {
 /** Files under `path` that another site loads come back sandboxed, and documents marked so their runtime offers that site no editing port. */
 export function sandboxForAnotherSite(app: Hono, path: string): void {
   app.use(path, async function sandboxAnotherSiteLoad(c, next) {
-    const anotherSite = requestFromAnotherSite({
+    const anotherSite = documentFromAnotherSite({
       fetchSite: c.req.header("sec-fetch-site"),
       host: c.req.header("host") ?? new URL(c.req.url).host,
       referer: c.req.header("referer"),
     });
     if (anotherSite) c.req.raw = withoutValidators(c.req.raw);
     await next();
-    c.header("Vary", "Sec-Fetch-Site", { append: true });
+    c.header("Vary", "Sec-Fetch-Site, Referer", { append: true });
     if (!anotherSite) return;
     c.header("Content-Security-Policy", "sandbox allow-scripts");
     await markDocumentForAnotherSite(c);

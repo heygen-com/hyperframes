@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,7 +12,7 @@ import {
 } from "./execute.js";
 import * as manager from "../../browser/manager.js";
 import * as system from "../../telemetry/system.js";
-import { wantsDesktopHint, type SingleRenderResult } from "../render.js";
+import { wantsDesktopHint, type RenderOptions, type SingleRenderResult } from "../render.js";
 
 describe("renderOptionsFromPlan", () => {
   let projectDir: string;
@@ -80,6 +80,12 @@ describe("renderOptionsFromPlan", () => {
         undefined,
       ).strictVariables,
     ).toBe(true);
+  it("carries --refuse-outside-files from the plan into the render options", () => {
+    const plan = createRenderPlan({ dir: projectDir });
+    expect(renderOptionsFromPlan(plan, undefined, undefined).refuseOutsideFiles).toBeUndefined();
+    const refused = createRenderPlan({ dir: projectDir, "refuse-outside-files": true });
+    expect(renderOptionsFromPlan(refused, undefined, undefined).refuseOutsideFiles).toBe(true);
+    expect(batchRowRenderOptions(refused, undefined).refuseOutsideFiles).toBe(true);
   });
 });
 
@@ -136,6 +142,57 @@ describe("a render on a nearly full disk", () => {
       expect(said.includes("Low disk space")).toBe(!downloads);
     },
   );
+});
+
+describe("a Docker batch render of a received project", () => {
+  it("decides the received-files rule once and refuses outside files on every row", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-render-batch-received-"));
+    const projectDir = join(root, "scene");
+    mkdirSync(projectDir);
+    mkdirSync(join(root, "output"));
+    writeFileSync(join(root, "output", "photo.png"), "secret");
+    writeFileSync(
+      join(projectDir, "index.html"),
+      '<main data-composition-id="main"><img src="../output/photo.png"></main>',
+    );
+    mkdirSync(join(root, ".hyperframes"));
+    writeFileSync(
+      join(root, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["scene/index.html"] }),
+    );
+    const rowsPath = join(root, "rows.json");
+    writeFileSync(rowsPath, "[{}, {}, {}]");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const renderDocker = vi.fn(async (_dir: string, _out: string, _options: RenderOptions) => ({
+      renderTimeMs: 1,
+    }));
+    try {
+      const plan = createRenderPlan({
+        dir: projectDir,
+        docker: true,
+        quiet: true,
+        batch: rowsPath,
+        output: join(root, "renders", "{index}.mp4"),
+      });
+      await executeRenderPlan(plan, {
+        renderDocker,
+        renderLocal: vi.fn(),
+        checkResolution: async () => undefined,
+      });
+      expect(renderDocker).toHaveBeenCalledTimes(3);
+      expect(renderDocker.mock.calls.map(([, , options]) => options.refuseOutsideFiles)).toEqual([
+        true,
+        true,
+        true,
+      ]);
+      const warnings = warn.mock.calls.flat().filter((line) => /came from someone else/.test(line));
+      expect(warnings).toHaveLength(1);
+    } finally {
+      vi.restoreAllMocks();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("the machine result line after a single render", () => {

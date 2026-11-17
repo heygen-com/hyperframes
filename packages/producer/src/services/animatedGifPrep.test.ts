@@ -256,6 +256,36 @@ describe("prepareAnimatedGifInputs", () => {
     expect(calls[0]?.args).toContain("2");
   });
 
+  it("reads no GIF outside the project unless the caller allows outside files", async () => {
+    const root = makeProject();
+    const projectDir = join(root, "project");
+    const outside = join(root, "Downloads", "reaction.gif");
+    mkdirSync(projectDir);
+    mkdirSync(dirname(outside));
+    writeFileSync(outside, gif([...frame(10), ...frame(10)], 0));
+    const html = `<img data-start="0" data-duration="1" src="../Downloads/reaction.gif"><img data-start="0" data-duration="1" src="${outside}">`;
+    const calls: AnimatedGifTranscodeRequest[] = [];
+    const options = {
+      projectDir,
+      downloadDir: join(projectDir, "downloads"),
+      transcode: async (request: AnimatedGifTranscodeRequest) => {
+        calls.push(request);
+        writeFileSync(request.outputPath, "webm");
+      },
+    };
+
+    for (const src of ["../Downloads/reaction.gif", outside]) {
+      expect(resolveLocalImageSourcePath(src, options)).toBeNull();
+    }
+    const contained = await prepareAnimatedGifInputs(html, options);
+    expect(contained.html).toBe(html);
+    expect(calls).toHaveLength(0);
+
+    const trusted = await prepareAnimatedGifInputs(html, { ...options, allowOutsideFiles: true });
+    expect(trusted.preparedGifs).toHaveLength(2);
+    expect(calls).toHaveLength(1);
+  });
+
   it("uses source asset mappings for remote GIF URLs", async () => {
     const projectDir = makeProject();
     const sourceUrl = "https://cdn.example.com/reaction.gif";
