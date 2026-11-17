@@ -71,87 +71,95 @@ function workerEntry(): URL {
   return pathToFileURL(join(here, source));
 }
 
-// Jobs in the order the worker runs them: the first is the one it is running.
-const pending = new Map<number, Pending>();
-let worker: Worker | null = null;
-let nextId = 0;
+/** One build worker and the jobs it holds, in the order it runs them: the first is the one it is running. The root page
+ * and the sub-compositions each have one, so a root page never waits behind a project's sub-compositions. */
+function lane() {
+  const pending = new Map<number, Pending>();
+  let worker: Worker | null = null;
+  let nextId = 0;
 
-function startWorker(): Worker {
-  const started = new Worker(workerEntry());
-  started.on(
-    "message",
-    ({ id, result, error }: { id: number; result?: unknown; error?: string }) => {
-      const job = untrack(id);
-      if (!job) return;
-      if (error !== undefined) job.reject(new Error(error));
-      else job.resolve(result);
-    },
-  );
-  started.on("error", (error: unknown) =>
-    replace(started, error instanceof Error ? error : new Error(String(error))),
-  );
-  started.on("exit", (code) => replace(started, new Error(`the build worker exited (${code})`)));
-  return started;
-}
-
-function holdHostWhileBusy(): void {
-  if (pending.size === 0) worker?.unref();
-  else worker?.ref();
-}
-
-function track(id: number, job: Pending): void {
-  pending.set(id, job);
-  holdHostWhileBusy();
-}
-
-function untrack(id: number): Pending | undefined {
-  const job = pending.get(id);
-  if (!job) return undefined;
-  pending.delete(id);
-  clearTimeout(job.timer);
-  holdHostWhileBusy();
-  return job;
-}
-
-/** Ends `from` if it is still the worker. A crash (`failed`) fails every job it held, since any of them may be what
- * crashed it; after the running job's deadline, the rest go to a fresh worker. */
-function replace(from: Worker, failed?: Error): void {
-  if (worker !== from) return;
-  worker = null;
-  void from.terminate();
-  if (failed) {
-    for (const id of [...pending.keys()]) untrack(id)?.reject(failed);
-    return;
-  }
-  if (pending.size === 0) return;
-  const next = (worker = startWorker());
-  for (const [id, job] of pending) next.postMessage({ id, job: job.job });
-}
-
-/** `job` on the build worker, refused past `deadline` (performance.now() time). Only the running job's deadline ends
- * the worker; a queued job past its own is dropped. @param compPath names the page in the refusal */
-export function runOffThread<J extends SubCompositionJob>(
-  job: J,
-  deadline: number,
-  compPath: string,
-): Promise<Result<J>> {
-  const id = nextId++;
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => {
-        const running = pending.keys().next().value === id;
-        untrack(id);
-        reject(new SubCompositionDeadlineError(compPath));
-        if (running && worker) replace(worker);
+  function startWorker(): Worker {
+    const started = new Worker(workerEntry());
+    started.on(
+      "message",
+      ({ id, result, error }: { id: number; result?: unknown; error?: string }) => {
+        const job = untrack(id);
+        if (!job) return;
+        if (error !== undefined) job.reject(new Error(error));
+        else job.resolve(result);
       },
-      Math.max(0, deadline - performance.now()),
     );
-    timer.unref?.();
-    worker ??= startWorker();
-    track(id, { job, resolve: resolve as (result: unknown) => void, reject, timer });
-    worker.postMessage({ id, job });
-  });
+    started.on("error", (error: unknown) =>
+      replace(started, error instanceof Error ? error : new Error(String(error))),
+    );
+    started.on("exit", (code) => replace(started, new Error(`the build worker exited (${code})`)));
+    return started;
+  }
+
+  function holdHostWhileBusy(): void {
+    if (pending.size === 0) worker?.unref();
+    else worker?.ref();
+  }
+
+  function track(id: number, job: Pending): void {
+    pending.set(id, job);
+    holdHostWhileBusy();
+  }
+
+  function untrack(id: number): Pending | undefined {
+    const job = pending.get(id);
+    if (!job) return undefined;
+    pending.delete(id);
+    clearTimeout(job.timer);
+    holdHostWhileBusy();
+    return job;
+  }
+
+  /** Ends `from` if it is still the worker. A crash (`failed`) fails every job it held, since any of them may be what
+   * crashed it; after the running job's deadline, the rest go to a fresh worker. */
+  function replace(from: Worker, failed?: Error): void {
+    if (worker !== from) return;
+    worker = null;
+    void from.terminate();
+    if (failed) {
+      for (const id of [...pending.keys()]) untrack(id)?.reject(failed);
+      return;
+    }
+    if (pending.size === 0) return;
+    const next = (worker = startWorker());
+    for (const [id, job] of pending) next.postMessage({ id, job: job.job });
+  }
+
+  /** `job` on this lane's worker, refused past `deadline` (performance.now() time). Only the running job's deadline
+   * ends the worker; a queued job past its own is dropped. @param compPath names the page in the refusal */
+  return function run<J extends SubCompositionJob>(
+    job: J,
+    deadline: number,
+    compPath: string,
+  ): Promise<Result<J>> {
+    const id = nextId++;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => {
+          const running = pending.keys().next().value === id;
+          untrack(id);
+          reject(new SubCompositionDeadlineError(compPath));
+          if (running && worker) replace(worker);
+        },
+        Math.max(0, deadline - performance.now()),
+      );
+      timer.unref?.();
+      worker ??= startWorker();
+      track(id, { job, resolve: resolve as (result: unknown) => void, reject, timer });
+      worker.postMessage({ id, job });
+    });
+  };
 }
+
+/** A sub-composition's build on the shared sub-composition worker. */
+export const runOffThread = lane();
+/** The root page's build, on a worker of its own. */
+export const runRootOffThread = lane();
 
 /** `work`, refused past `deadline`; the work itself goes on, as nothing can end it. */
 export function withinDeadline<T>(

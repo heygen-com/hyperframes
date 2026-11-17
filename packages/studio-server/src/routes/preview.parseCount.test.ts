@@ -25,6 +25,8 @@ vi.mock("../helpers/subCompositionBuild", async (actual) => ({
   ...(await actual<typeof import("../helpers/subCompositionBuild")>()),
   runOffThread: async (job: import("../helpers/subCompositionBuild").SubCompositionJob) =>
     (await import("../helpers/previewJobs")).runPreviewJob(job),
+  runRootOffThread: async (job: import("../helpers/subCompositionBuild").SubCompositionJob) =>
+    (await import("../helpers/previewJobs")).runPreviewJob(job),
 }));
 
 const { registerPreviewRoutes } = await import("./preview");

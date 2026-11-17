@@ -50,6 +50,7 @@ import { openRangeEnd } from "../helpers/mediaRange.js";
 import { hasBaseElement } from "../helpers/subComposition.js";
 import {
   runOffThread,
+  runRootOffThread,
   ROOT_PREVIEW_DEADLINE_MS,
   SUB_COMPOSITION_DEADLINE_MS,
   SubCompositionDeadlineError,
@@ -548,7 +549,7 @@ export function registerPreviewRoutes(
       }
       // <base> and root paths under it, before the runtime adds the server's own root path
       const rootDeadline = performance.now() + ROOT_PREVIEW_DEADLINE_MS;
-      const based = await runOffThread(
+      const based = await runRootOffThread(
         { kind: "base", html: bundled, projectId: project.id, runtimeUrl: adapter.runtimeUrl },
         rootDeadline,
         mainCompositionPath,
@@ -572,7 +573,7 @@ export function registerPreviewRoutes(
         projectDir: project.dir,
         compPath: mainCompositionPath,
       };
-      bundled = await runOffThread(
+      bundled = await runRootOffThread(
         {
           kind: "finish",
           html: transformed,
@@ -591,7 +592,7 @@ export function registerPreviewRoutes(
         mediaCodecProbeCache,
       );
       const ignore = [`meta[name="${PROJECT_SIGNATURE_META}"]`];
-      bundled = await runOffThread(
+      bundled = await runRootOffThread(
         { kind: "parts", html: bundled, ignore },
         rootDeadline,
         mainCompositionPath,

@@ -27,7 +27,7 @@ workerThreads.Worker = class extends Real {
   }
 };
 syncBuiltinESMExports();
-const { runOffThread } = await import(${JSON.stringify(build)});
+const { runOffThread, runRootOffThread } = await import(${JSON.stringify(build)});
 const options = { capture: false, gsapBaseUrl: "", sandboxedCapture: false };
 const page = (html, ms) => runOffThread(
   { kind: "finish", html, runtimeUrl: "/api/runtime.js", signature: "s", projectDir: process.cwd(),
@@ -68,6 +68,23 @@ const [late, next] = await Promise.allSettled([slow(20), small()]);
 console.log(late.status, next.status);
 `);
   ended(child, /^rejected fulfilled$/);
+}, 30_000);
+
+// fails without the fix: one worker ran every job in turn, so a root page asked for while a project's sub-compositions
+// were building waited behind all of them (19 of them: a 15 s blank root page on a devbox).
+it("a root page is built while a slow sub-composition holds the other worker", () => {
+  const child = host(`
+const order = [];
+const sub = slow(60_000).then(() => order.push("sub"));
+const root = runRootOffThread(
+  { kind: "parts", html: "<html><body><p>Hi</p></body></html>", ignore: [] },
+  performance.now() + 60_000,
+  "index.html",
+).then(() => order.push("root"));
+await Promise.all([sub, root]);
+console.log(order.join(" "));
+`);
+  ended(child, /^root sub$/);
 }, 30_000);
 
 it("a host exits after its build worker dies mid-job", () => {
