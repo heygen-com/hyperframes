@@ -112,6 +112,65 @@ export function projectEnvDir(name: string): string | undefined {
   return set !== undefined && process.env[name] === set.value ? set.sourceDir : undefined;
 }
 
+// Each group is one choice between providers: capture and snapshot vision, then Gemini speech and music.
+const COMPETING_PROVIDER_KEYS: readonly (readonly string[])[] = [
+  [
+    "OPENROUTER_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "HYPERFRAMES_VERTEX_PROJECT_ID",
+    "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT",
+  ],
+  ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "GCS_CREDS"],
+];
+
+const competitorsOf = (name: string): string[] =>
+  COMPETING_PROVIDER_KEYS.filter((group) => group.includes(name)).flatMap((group) =>
+    group.filter((other) => other !== name && Boolean(process.env[other])),
+  );
+
+async function untrustedEnvOrigin(dir: string): Promise<string | null> {
+  const { receivedFiles, receivedRecordStatus } = await import("./privateProjectFile.js");
+  if (receivedRecordStatus(dir) === "unchecked")
+    return "a project whose origin could not be checked (too many folders to scan)";
+  return receivedFiles(dir)(".env") ? "a received project" : null;
+}
+
+/** Unsets each provider key a received project's `.env` set while the person has their own credential for a competing provider. */
+export async function yieldReceivedProviderKeys(warn: (line: string) => void): Promise<void> {
+  const contested = [...projectEnvValues.keys()].filter(
+    (name) => projectEnvDir(name) !== undefined && competitorsOf(name).length > 0,
+  );
+  const origins = new Map<string, string | null>();
+  for (const dir of new Set(contested.map((name) => projectEnvDir(name) ?? ""))) {
+    origins.set(dir, await untrustedEnvOrigin(dir));
+  }
+  const originOf = (name: string) => origins.get(projectEnvDir(name) ?? "") ?? null;
+  for (const name of contested.filter((name) => originOf(name) !== null)) {
+    const own = competitorsOf(name).find((other) => originOf(other) === null);
+    if (own === undefined) continue;
+    const dir = projectEnvDir(name) ?? "";
+    const origin = originOf(name);
+    delete process.env[name];
+    projectEnvValues.delete(name);
+    warn(
+      `[hyperframes] .env: ignoring ${name} from ${origin} (${join(dir, ".env")}); using your own ${own}`,
+    );
+  }
+}
+
+export const PROJECT_ENV_ORIGINS = "HYPERFRAMES_PROJECT_ENV_ORIGINS";
+
+/** The folder of each key a project `.env` set, for the scripts the CLI launches to weigh the same way. */
+export function projectEnvOrigins(): Record<string, string> {
+  return Object.fromEntries(
+    [...projectEnvValues.keys()].flatMap((name) => {
+      const dir = projectEnvDir(name);
+      return dir === undefined ? [] : [[name, dir]];
+    }),
+  );
+}
+
 export function loadProjectDotEnv(
   dir: string,
   env: NodeJS.ProcessEnv,

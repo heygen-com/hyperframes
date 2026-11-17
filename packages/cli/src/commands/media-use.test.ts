@@ -22,6 +22,13 @@ describe("mediaUseEngineEnv", () => {
     expect(env).toEqual({ HOME: "/home/u", HYPERFRAMES_CLI_ENTRY: resolve("dist/cli.js") });
   });
 
+  it("names the folder of each key a project .env set, so the engine weighs it as the CLI did", () => {
+    const env = mediaUseEngineEnv({}, "", "linux", { ELEVENLABS_API_KEY: "/work/project" });
+    expect(JSON.parse(env.HYPERFRAMES_PROJECT_ENV_ORIGINS ?? "{}")).toEqual({
+      ELEVENLABS_API_KEY: "/work/project",
+    });
+  });
+
   it("hands nothing over from a TypeScript source entry, which plain node cannot run", () => {
     expect(mediaUseEngineEnv({}, "src/cli.ts", "linux")).toEqual({});
     expect(mediaUseEngineEnv({}, "", "linux")).toEqual({});
