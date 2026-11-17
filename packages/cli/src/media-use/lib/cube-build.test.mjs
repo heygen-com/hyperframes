@@ -62,7 +62,12 @@ test("positive contrast darkens shadows and brightens highlights", () => {
 });
 
 test("outputs validate at the default size and are deterministic", () => {
-  const params = { exposure: 0.15, contrast: 0.2, temperature: -0.1, saturation: 0.12 };
+  const params = {
+    exposure: 0.15,
+    contrast: 0.2,
+    temperature: -0.1,
+    saturation: 0.12,
+  };
   const a = buildCube(params);
   const b = buildCube(params);
   assert.equal(a, b);
@@ -77,4 +82,26 @@ test("paramsFromIntent declines zero-overlap prompts and maps technical words", 
     contrast: 0.08,
     saturation: 0.04,
   });
+});
+
+test("spektrafilm negative + print stock and positive slide film build validated 3D LUTs", () => {
+  const portraCube = buildCube(
+    { film: "kodak_portra_400", paper: "kodak_portra_endura", exposureEv: 0 },
+    9,
+  );
+  assert.equal(validateCube(portraCube).ok, true);
+  assert.match(
+    portraCube,
+    /TITLE "spektrafilm Kodak Portra 400 \+ Kodak Professional Portra Endura"/,
+  );
+
+  const velviaCube = buildCube({ film: "fujifilm_velvia_100" }, 9);
+  assert.equal(validateCube(velviaCube).ok, true);
+  assert.match(velviaCube, /TITLE "spektrafilm Fujifilm Velvia 100"/);
+
+  // Mid-gray on balanced Portra 400 should remain near-neutral
+  const portraRows = rows(portraCube);
+  const mid = rowAt(portraRows, 9, 4, 4, 4);
+  const spread = Math.max(...mid) - Math.min(...mid);
+  assert.ok(spread < 0.08, `mid-gray spread (${spread}) should stay balanced`);
 });
