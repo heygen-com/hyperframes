@@ -102,6 +102,7 @@ function push(): void {
 
 // The measure runs in the frame's ResizeObserver step: after every rAF callback and layout, just before paint.
 // observe() resets the last reported size, so the root reports once each frame it is observed, resized or not.
+// A frame with no size has nothing to report: a hidden frame's pushes pause until it gets one.
 let observer: ResizeObserver | null = null;
 let observing = false;
 let nextFrame = 0;
