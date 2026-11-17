@@ -170,6 +170,8 @@ describe("installEditingAgent", () => {
           "console-errors",
           "watch-keys",
           "restore-attributes",
+          "caption-words",
+          "caption-transform",
         ],
       },
     });
@@ -402,6 +404,28 @@ describe("installEditingAgent", () => {
         "invalid-params",
       ],
     ),
+    ...[{}, { words: 3 }, { words: [-1] }, { words: [1.5] }, { words: [100_000] }].map(
+      (params, index) => [
+        { v: 1, id: 190 + index, kind: "caption-words", params },
+        190 + index,
+        "invalid-params",
+      ],
+    ),
+    ...[
+      { entries: [] },
+      { entries: Array(257).fill({ group: 0, word: 0 }) },
+      { entries: [{ group: -1, word: 0 }] },
+      { entries: [{ group: 0, word: 0, extra: 1 }] },
+      { entries: [{ group: 0, word: 0, set: { x: 100_001 } }] },
+      { entries: [{ group: 0, word: 0, set: { x: Infinity } }] },
+      { entries: [{ group: 0, word: 0, set: { x: undefined } }] },
+      { entries: [{ group: 0, word: 0, set: { skew: 1 } }] },
+      { entries: [{ group: 0, word: 0, set: [] }] },
+    ].map((params, index) => [
+      { v: 1, id: 200 + index, kind: "caption-transform", params },
+      200 + index,
+      "invalid-params",
+    ]),
   ])("rejects %j with a typed error", async (request, id, code) => {
     const setLoopStart = vi.fn();
     window.__hf = { setLoopStart };

@@ -1044,7 +1044,10 @@ export async function renderChunk(
           session = null;
           verifyStarted = Date.now();
           overlap.current = canEncodeWhileCapturing(encodeInput, chunkWorkerCount, usableCpuCount())
-            ? encodeWhileCapturing(encodeInput, framesInChunk)
+            ? encodeWhileCapturing(encodeInput, framesInChunk, {
+                workerCount: chunkWorkerCount,
+                cpuCount: usableCpuCount(),
+              })
             : null;
           await observeRenderStage(
             new RenderObservabilityRecorder({ pipelineStartMs: start, log }),
