@@ -6,7 +6,6 @@ import {
   openSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   statSync,
 } from "node:fs";
@@ -22,6 +21,7 @@ import {
   isCredentialOrToolStatePath,
   isStudioPrivatePath,
   projectPathSegments,
+  realpath,
 } from "@hyperframes/core/safe-path";
 import { registryRoot } from "../registry/publication.js";
 import { recordFolder, writeRecord } from "./projectRecords.js";
@@ -378,7 +378,7 @@ async function receivedRecordsBelowAsync(start: string): Promise<ReceivedRecord[
 
 function walkStart(projectDir: string): string {
   try {
-    return realpathSync(projectDir);
+    return realpath(projectDir);
   } catch {
     return resolve(projectDir);
   }
