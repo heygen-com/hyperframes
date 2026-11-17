@@ -28,6 +28,7 @@ import {
 } from "./privateProjectFile.js";
 
 const zeroFileIds = vi.hoisted(() => ({ on: false }));
+const opens = vi.hoisted(() => ({ path: "", seen: 0, replacing: 0 }));
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -35,13 +36,25 @@ vi.mock("node:fs", async (importOriginal) => {
     const stat = actual.lstatSync(path, options as never);
     return zeroFileIds.on && stat ? Object.assign(stat, { dev: 0n, ino: 0n }) : stat;
   }) as typeof actual.lstatSync;
-  return { ...actual, default: { ...actual, lstatSync }, lstatSync };
+  const openSync = ((...args: Parameters<typeof actual.openSync>) => {
+    const fd = actual.openSync(...args);
+    if (args[0] !== opens.path) return fd;
+    opens.seen += 1;
+    if (opens.replacing > 0) {
+      opens.replacing -= 1;
+      actual.copyFileSync(opens.path, `${opens.path}.new`);
+      actual.renameSync(`${opens.path}.new`, opens.path);
+    }
+    return fd;
+  }) as typeof actual.openSync;
+  return { ...actual, default: { ...actual, lstatSync, openSync }, lstatSync, openSync };
 });
 
 let dir: string | undefined;
 
 afterEach(() => {
   zeroFileIds.on = false;
+  Object.assign(opens, { path: "", seen: 0, replacing: 0 });
   vi.unstubAllEnvs();
   if (dir) rmSync(dir, { recursive: true, force: true });
   dir = undefined;
@@ -400,8 +413,45 @@ describe("a host's received state file", () => {
       renameSync(app, renamed);
       expect(receivedFiles(renamed)("index.html")).toBe(true);
       expect(receivedFiles(renamed)("assets/x.js")).toBe(false);
-      hostKeeps(app, { ...kept, identity: `${dev}:${ino}:1` });
-      expect(receivedFiles(renamed)("index.html")).toBe(false);
+    });
+
+    it("counts every file as received when a moved project's kept copy names another folder", () => {
+      const app = emptiedProject();
+      const { dev, ino } = lstatSync(app, { bigint: true });
+      hostSays([{ path: app, dev: String(dev), ino: String(ino), received: "expected" }]);
+      hostKeeps(app, {
+        project: app,
+        files: ["index.html"],
+        seenAt: 1,
+        identity: `${dev}:${ino}:1`,
+      });
+      const renamed = `${app}-renamed`;
+      renameSync(app, renamed);
+      expect(receivedFiles(renamed)("compositions/intro.html")).toBe(true);
+      expect(receivedRecordStatus(renamed)).toMatchObject({ path: keptFile(app), listed: null });
+    });
+
+    it("reads the kept copy once more when the host replaces it during the first read", () => {
+      const app = emptiedProject();
+      hostSays([{ path: app, received: "expected" }]);
+      keeps(app, ["index.html"]);
+      Object.assign(opens, { path: keptFile(app), seen: 0, replacing: 1 });
+      const received = receivedFiles(app);
+      expect(opens.seen).toBe(2);
+      expect(received("index.html")).toBe(true);
+      expect(received("compositions/intro.html")).toBe(false);
+    });
+
+    it("reads the kept copy once when the state file names the project by path and identity", () => {
+      const app = emptiedProject();
+      const { dev, ino } = lstatSync(app, { bigint: true });
+      hostSays([{ path: app, dev: String(dev), ino: String(ino), received: "expected" }]);
+      keeps(app, ["index.html"]);
+      Object.assign(opens, { path: keptFile(app), seen: 0, replacing: 0 });
+      const received = receivedFiles(app);
+      expect(opens.seen).toBe(1);
+      expect(received("index.html")).toBe(true);
+      expect(received("compositions/intro.html")).toBe(false);
     });
 
     it("counts every file as received when the kept copy holds no list, and keeps the record's lines", () => {

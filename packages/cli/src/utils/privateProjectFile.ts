@@ -178,22 +178,24 @@ function folderBirth(dir: string): string {
 }
 
 function namings(dir: string, states: HostStates): Naming[] {
-  const byPath = (states.byPath.get(dir)?.paths ?? []).map((path) => ({ path }));
+  const byPath = new Set(states.byPath.get(dir)?.paths);
+  const found = [...byPath].map((path) => ({ path }));
   const identity = states.byIdentity.size === 0 ? null : fileIdentity(dir);
   const named = identity === null ? undefined : states.byIdentity.get(identity);
-  if (!named) return byPath;
+  if (!named) return found;
   const kept = `${identity}:${folderBirth(dir)}`;
-  return [...byPath, ...named.paths.map((path) => ({ path, identity: kept }))];
+  const moved = [...new Set(named.paths)].filter((path) => !byPath.has(path));
+  return [...found, ...moved.map((path) => ({ path, identity: kept }))];
 }
 
 const KEPT_RECORDS = "received-records";
 const MAX_KEPT_BYTES = 16 * 1024 * 1024;
 
-type KeptFiles = string[] | "all" | null;
+type KeptFiles = string[] | "all";
 
 function keptFilesIn(kept: Record<string, unknown>, { path, identity }: Naming): KeptFiles {
   if (kept.project !== path) return "all";
-  if (identity !== undefined && kept.identity !== identity) return null;
+  if (identity !== undefined && kept.identity !== identity) return "all";
   const { files } = kept;
   if (kept.doubted === true || !Array.isArray(files)) return "all";
   return files.every((entry) => typeof entry === "string") ? files : "all";
@@ -211,7 +213,7 @@ function keptFilesFor(naming: Naming, text: string): KeptFiles {
 function hostKeptRecord(
   stateFile: string,
   naming: Naming,
-): { file: string; files: string[] | "all" } | null {
+): { file: string; files: KeptFiles } | null {
   const name = `${createHash("sha256").update(naming.path).digest("hex")}.json`;
   const file = join(dirname(stateFile), KEPT_RECORDS, name);
   try {
@@ -219,10 +221,9 @@ function hostKeptRecord(
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "ENOTDIR" ? null : { file, files: "all" };
   }
-  const read = readPlainTail(file, MAX_KEPT_BYTES);
+  const read = readPlainTail(file, MAX_KEPT_BYTES) ?? readPlainTail(file, MAX_KEPT_BYTES);
   if (!read?.whole) return onDisk(file) ? { file, files: "all" } : null;
-  const files = keptFilesFor(naming, read.text);
-  return files === null ? null : { file, files };
+  return { file, files: keptFilesFor(naming, read.text) };
 }
 
 function withEntriesHostKept(dir: string, listed: unknown[]): ReadRecord {
