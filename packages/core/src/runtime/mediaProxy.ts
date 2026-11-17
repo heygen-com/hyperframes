@@ -46,6 +46,7 @@ import {
   type PreviewSourceFacts,
   wantsLighterCopy,
 } from "../previewProxyBox";
+import { capturePageIn } from "../studioPreviewMark";
 
 /**
  * One entry per project-root-relative asset pathname, injected by the
@@ -572,8 +573,9 @@ export function maybeProxyProactively(el: HTMLMediaElement): void {
   else lightenIfHeavy(el, entry);
 }
 
+// A capture page never plays: a lighter copy spares only playback, and a capture would wait for it.
 function lightenIfHeavy(el: HTMLMediaElement, entry: MediaCodecMapEntry | null): void {
-  if (swappedElements.has(el) || proxyRequested.has(el)) return;
+  if (capturePageIn(document) || swappedElements.has(el) || proxyRequested.has(el)) return;
   const facts = sourceFactsOf(el);
   if (facts) swapToProxy(el, entry, "light", facts);
 }
