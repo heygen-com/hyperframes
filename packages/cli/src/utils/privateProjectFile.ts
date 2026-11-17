@@ -1,11 +1,11 @@
 import {
   closeSync,
+  fstatSync,
   type Dirent,
   lstatSync,
   openSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   statSync,
 } from "node:fs";
@@ -21,6 +21,7 @@ import {
   isCredentialOrToolStatePath,
   isStudioPrivatePath,
   projectPathSegments,
+  realpath,
 } from "@hyperframes/core/safe-path";
 import { registryRoot } from "../registry/publication.js";
 import { recordFolder, writeRecord } from "./projectRecords.js";
@@ -44,6 +45,7 @@ const RECEIVED_RECORD = join(".hyperframes", "received-files.json");
 const RECEIVED_RECORD_LOCK = `${RECEIVED_RECORD}.lock`;
 const LOCK_WAIT_MS = 2_000;
 const LOCK_STALE_MS = 10_000;
+const LOCK_CLOCK_SLACK_MS = 1_000;
 
 interface ReceivedRecord {
   file: string;
@@ -70,8 +72,102 @@ function recordKind(dir: string): RecordKind {
   }
 }
 
+export const RECEIVED_STATE_ENV = "HYPERFRAMES_RECEIVED_STATE_FILE";
+
+type HostState = "expected" | "all";
+
+interface HostStates {
+  unreadable: boolean;
+  byPath: Map<string, HostState>;
+  byIdentity: Map<string, HostState>;
+}
+
+let hostStatesCache: { key: string; states: HostStates } | undefined;
+
+const strongest = (a: HostState | undefined, b: HostState): HostState => (a === "all" ? a : b);
+
+interface HostEntry {
+  path: string;
+  received: HostState;
+  dev?: string;
+  ino?: string;
+}
+
+function hostEntry(value: unknown): HostEntry {
+  const { path, received, dev, ino } = (value ?? {}) as Record<string, unknown>;
+  if (typeof path !== "string" || !isAbsolute(path)) throw new Error("path is not absolute");
+  if (received !== "expected" && received !== "all") throw new Error("unknown state");
+  return {
+    path,
+    received,
+    ...(typeof dev === "string" && typeof ino === "string" && ino !== "0" ? { dev, ino } : {}),
+  };
+}
+
+function parseHostStates(text: string): HostStates {
+  const projects: unknown = JSON.parse(text)?.projects;
+  if (!Array.isArray(projects)) throw new Error("projects is not a list");
+  const states: HostStates = { unreadable: false, byPath: new Map(), byIdentity: new Map() };
+  for (const value of projects) {
+    const { path, received, dev, ino } = hostEntry(value);
+    const key = walkStart(path);
+    states.byPath.set(key, strongest(states.byPath.get(key), received));
+    if (dev !== undefined && ino !== undefined) {
+      const identity = `${dev}:${ino}`;
+      states.byIdentity.set(identity, strongest(states.byIdentity.get(identity), received));
+    }
+  }
+  return states;
+}
+
+function hostStates(): HostStates | null {
+  const file = process.env[RECEIVED_STATE_ENV];
+  if (!file) return null;
+  try {
+    const handle = openSync(file, "r");
+    try {
+      const stat = fstatSync(handle, { bigint: true });
+      const key = `${file}\0${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+      if (hostStatesCache?.key !== key)
+        hostStatesCache = { key, states: parseHostStates(readFileSync(handle, "utf-8")) };
+      return hostStatesCache.states;
+    } finally {
+      closeSync(handle);
+    }
+  } catch {
+    return { unreadable: true, byPath: new Map(), byIdentity: new Map() };
+  }
+}
+
+function hostState(dir: string, states = hostStates()): HostState | undefined {
+  if (!states) return undefined;
+  if (states.unreadable) return "all";
+  const named = states.byPath.get(dir);
+  if (named || states.byIdentity.size === 0) return named;
+  const identity = fileIdentity(dir);
+  return identity === null ? undefined : states.byIdentity.get(identity);
+}
+
+function allReceivedAtOrAbove(start: string, states: HostStates): boolean {
+  for (let dir = start; ; dir = dirname(dir)) {
+    if (hostState(dir, states) === "all") return true;
+    if (dirname(dir) === dir) return false;
+  }
+}
+
+function allReceivedAround(start: string): boolean {
+  const states = hostStates();
+  if (!states) return false;
+  if (states.unreadable) return true;
+  const overlaps = [...states.byPath].some(
+    ([path, state]) => state === "all" && (isAtOrUnder(path, start) || isAtOrUnder(start, path)),
+  );
+  return overlaps || allReceivedAtOrAbove(start, states);
+}
+
 function readRecord(dir: string, ownFolder: boolean): { listed: unknown } | null {
   const kind = recordKind(dir);
+  if (kind === "absent" && hostState(dir) !== undefined) return { listed: undefined };
   if (kind === "absent" || (kind === "unknown" && !ownFolder)) return null;
   if (kind !== "file") return { listed: undefined };
   try {
@@ -95,7 +191,7 @@ function tryRecordLock(lock: string, deadline: number): "taken" | "wait" {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   }
   const heldFor = Date.now() - (statSync(lock, { throwIfNoEntry: false })?.mtimeMs ?? Date.now());
-  if (heldFor > LOCK_STALE_MS) rmSync(lock, { force: true });
+  if (heldFor > LOCK_STALE_MS || heldFor < -LOCK_CLOCK_SLACK_MS) rmSync(lock, { force: true });
   else if (Date.now() >= deadline)
     throw new Error(`Another program is changing ${RECEIVED_RECORD}; try again.`);
   return "wait";
@@ -282,7 +378,7 @@ async function receivedRecordsBelowAsync(start: string): Promise<ReceivedRecord[
 
 function walkStart(projectDir: string): string {
   try {
-    return realpathSync(projectDir);
+    return realpath(projectDir);
   } catch {
     return resolve(projectDir);
   }
@@ -291,7 +387,16 @@ function walkStart(projectDir: string): string {
 function receivedRecords(projectDir: string): ReceivedRecord[] | null {
   const start = walkStart(projectDir);
   const below = receivedRecordsBelow(start);
-  return below && [...receivedRecordsAtOrAbove(start), ...below];
+  if (!below) return null;
+  const records = [...receivedRecordsAtOrAbove(start), ...below];
+  if (allReceivedAround(start))
+    records.push({
+      file: process.env[RECEIVED_STATE_ENV] ?? "",
+      root: start,
+      projectDirFromRoot: "",
+      listed: undefined,
+    });
+  return records;
 }
 
 function fileIdentity(path: string): string | null {
