@@ -129,7 +129,7 @@ jobs:
             "$RUNNER_TEMP/activity.json" > "$RUNNER_TEMP/pushers.tsv"
           [ -s "$RUNNER_TEMP/pushers.tsv" ] ||
             { echo "::error::no push to $ref is recorded, so who pushed it is unknown"; exit 1; }
-          ! cut -f1 "$RUNNER_TEMP/pushers.tsv" | grep -qx '' ||
+          ! grep -q $'^\t' "$RUNNER_TEMP/pushers.tsv" ||
             { echo "::error::a push to $ref is recorded with no account, so who pushed it is unknown"; exit 1; }
           {
             echo "$author"
