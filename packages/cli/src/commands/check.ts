@@ -343,7 +343,7 @@ export function createCheckCommand(
         const options = parseCheckOptions(args);
         const project = dependencies.resolveProject(args.dir);
         if (!asJson) {
-          console.log(`${c.accent("◆")}  Checking ${c.accent(project.name)}`);
+          console.log(`${c.accent("◆")}  Checking ${c.accent(terminalText(project.name))}`);
         }
         if (args["prepare-media"] === true) {
           await runPrepareMedia(dependencies, project, options, asJson);
@@ -359,11 +359,13 @@ export function createCheckCommand(
         if (asJson) {
           console.log(JSON.stringify(dependencies.withMeta(report), null, 2));
           if (report.saved)
-            console.error(`[hyperframes] check: report saved to ${report.saved.report}`);
+            console.error(
+              terminalText(`[hyperframes] check: report saved to ${report.saved.report}`),
+            );
         } else {
           printHumanReport(report);
           if (report.saved) {
-            console.log(`Report: ${report.saved.report}`);
+            console.log(terminalText(`Report: ${report.saved.report}`));
             console.log(
               `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
             );

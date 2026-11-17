@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { runCommand } from "citty";
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -101,7 +102,24 @@ vi.mock("@hyperframes/studio-server/media-proxy-preview", () => ({
   ),
 }));
 
-const { registerCompositionRoute } = await import("./play.js");
+const server = vi.hoisted(() => ({
+  fetch: undefined as ((request: Request) => Response | Promise<Response>) | undefined,
+}));
+vi.mock("@hono/node-server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hono/node-server")>()),
+  createAdaptorServer: (options: { fetch: (request: Request) => Response | Promise<Response> }) => {
+    server.fetch = options.fetch;
+    return {};
+  },
+}));
+vi.mock("../utils/compositionServer.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/compositionServer.js")>()),
+  resolveRuntimePath: () => "/unused-runtime.js",
+  resolvePlayerPath: () => "/unused-player.js",
+  listenOnFreePort: async () => 3003,
+}));
+
+const { default: play, registerCompositionRoute } = await import("./play.js");
 
 let dir: string | undefined;
 
@@ -489,3 +507,30 @@ describe("a composition document another site loads", () => {
     expect(await own.text()).not.toContain(MARK);
   });
 });
+
+// Windows refuses control characters in folder names.
+it.skipIf(process.platform === "win32")(
+  "shows a folder name with control characters as visible escapes and as HTML text",
+  async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    dir = mkdtempSync(join(tmpdir(), "hf-play-test-"));
+    const project = join(dir, `video<b>${esc}]0;x${String.fromCharCode(7)}${esc}[2J`);
+    mkdirSync(project);
+    writeFileSync(join(project, "index.html"), "<html></html>");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      void runCommand(play, { rawArgs: [project, "--no-open"] });
+      await vi.waitFor(() => expect(log.mock.calls.flat().join("\n")).toContain("Project"));
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      const page = await (await server.fetch!(new Request("http://localhost:3003/"))).text();
+
+      expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+      expect(human).toContain("video<b>\\x1b]0;x\\x07\\x1b[2J");
+      expect(page).not.toContain("video<b>");
+      expect(page).toContain("<title>video&lt;b&gt;");
+    } finally {
+      log.mockRestore();
+    }
+  },
+);

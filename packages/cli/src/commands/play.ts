@@ -20,6 +20,7 @@ export const examples: Example[] = [
 ];
 import { resolve } from "node:path";
 import type { Hono } from "hono";
+import { terminalText } from "@hyperframes/core";
 import { requestSubPath } from "@hyperframes/studio-server";
 import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
@@ -188,7 +189,7 @@ export default defineCommand({
     if (actualPort !== startPort) {
       console.log(`  ${c.warn(`Port ${startPort} is in use, using ${actualPort} instead`)}`);
     }
-    console.log(`  ${c.dim("Project")}   ${c.accent(project.name)}`);
+    console.log(`  ${c.dim("Project")}   ${c.accent(terminalText(project.name))}`);
     console.log(`  ${c.dim("Player")}    ${c.accent(url)}`);
     console.log();
     console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
@@ -309,12 +310,13 @@ export async function registerCompositionRoute(
 }
 
 function buildPlayerPage(projectName: string): string {
+  const shownName = escHtml(projectName);
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${projectName} — HyperFrames Player</title>
+    <title>${shownName} — HyperFrames Player</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
@@ -339,8 +341,16 @@ function buildPlayerPage(projectName: string): string {
     <div class="player-wrap">
       <hyperframes-player src="/composition/index.html" controls muted></hyperframes-player>
     </div>
-    <div class="info">${projectName} — hyperframes play</div>
+    <div class="info">${shownName} — hyperframes play</div>
     <script src="/player.js"></script>
   </body>
 </html>`;
+}
+
+function escHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }

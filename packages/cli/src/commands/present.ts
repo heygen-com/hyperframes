@@ -17,6 +17,7 @@ import { resolveProject, type ProjectDir } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { parsePort } from "../utils/port.js";
 import type { Hono } from "hono";
+import { terminalText } from "@hyperframes/core";
 import { requestSubPath } from "@hyperframes/studio-server";
 import {
   openBrowser,
@@ -103,7 +104,7 @@ export default defineCommand({
     const islandMatch = slideshowIslandRegex("i").exec(indexHtml);
     if (!islandMatch?.[1]) {
       clack.log.error(
-        `No slideshow island found in ${project.indexPath}. ` +
+        `No slideshow island found in ${terminalText(project.indexPath)}. ` +
           `Add a <script type="application/hyperframes-slideshow+json"> block — see /hyperframes (slideshow).`,
       );
       setCommandExitCode(1);
@@ -116,7 +117,9 @@ export default defineCommand({
       JSON.parse(islandJson);
     } catch (err) {
       clack.log.error(
-        `Slideshow island in ${project.indexPath} is not valid JSON: ${(err as Error).message}`,
+        terminalText(
+          `Slideshow island in ${project.indexPath} is not valid JSON: ${(err as Error).message}`,
+        ),
       );
       setCommandExitCode(1);
       return;
@@ -138,7 +141,7 @@ export default defineCommand({
     if (actualPort !== startPort) {
       console.log(`  ${c.warn(`Port ${startPort} is in use, using ${actualPort} instead`)}`);
     }
-    console.log(`  ${c.dim("Deck")}      ${c.accent(project.name)}`);
+    console.log(`  ${c.dim("Deck")}      ${c.accent(terminalText(project.name))}`);
     console.log(`  ${c.dim("Present")}   ${c.accent(url)}`);
     console.log();
     console.log(

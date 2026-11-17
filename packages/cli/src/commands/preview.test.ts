@@ -876,3 +876,59 @@ describe("stopBackgroundCommand", () => {
     );
   });
 });
+
+// Windows refuses control characters in folder names.
+describe.skipIf(process.platform === "win32")(
+  "preview with a control character folder name",
+  () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const name = `video${esc}]0;x${String.fromCharCode(7)}${esc}[2J`;
+    const shown = "video\\x1b]0;x\\x07\\x1b[2J";
+    const colors = new RegExp(`${esc}\\[[0-9;]*m`, "g");
+
+    function projectNamedWithControls(): string {
+      const dir = join(tempProject(), name);
+      mkdirSync(dir);
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      return dir;
+    }
+
+    it.each(["--status", "--stop"])("prints it as visible escapes for %s", async (flag) => {
+      const dir = projectNamedWithControls();
+      vi.spyOn(previewLifecycle, "readBackgroundPreviewStatus").mockResolvedValue({
+        pid: 5555,
+        port: 32530,
+        projectDir: dir,
+        logPath: join(dir, "preview.log"),
+      });
+      vi.spyOn(previewLifecycle, "stopBackgroundPreview").mockResolvedValue(true);
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runCommand(previewCommand, { rawArgs: [dir, flag] });
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+      expect(human.replace(colors, "")).not.toContain(esc);
+      expect(human).toContain(shown);
+    });
+
+    it("prints it as visible escapes in --list and keeps it in --list --json", async () => {
+      const dir = projectNamedWithControls();
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      const dependencies = {
+        scan: async () => [],
+        listManaged: async () => [{ pid: 4242, port: 32600, projectDir: dir }],
+      };
+      await handlePreviewList(3002, false, dependencies);
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      log.mockClear();
+      await handlePreviewList(3002, true, dependencies);
+
+      expect(human.replace(colors, "")).not.toContain(esc);
+      expect(human).toContain(shown);
+      expect(JSON.parse(log.mock.calls.flat().join("\n")).result.sessions[0]).toMatchObject({
+        projectName: name,
+        projectDir: dir,
+      });
+    });
+  },
+);
