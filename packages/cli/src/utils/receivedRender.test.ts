@@ -1,3 +1,4 @@
+import { realpath } from "@hyperframes/core/safe-path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   chmodSync,
@@ -5,7 +6,6 @@ import {
   linkSync,
   mkdirSync,
   mkdtempSync,
-  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -291,7 +291,7 @@ describe("outsideAssetsAllowed", () => {
       const dir = withNested("{not json");
       const { allowed, line } = decide(dir);
       expect(allowed).toBe(false);
-      const path = join(realpathSync(dir), NESTED, ".hyperframes", "received-files.json");
+      const path = join(realpath(dir), NESTED, ".hyperframes", "received-files.json");
       expect(line).toContain(`Could not read ${path}`);
     });
 
@@ -364,7 +364,7 @@ describe("outsideAssetsAllowed", () => {
       const { allowed, line } = decide(dir);
       expect(allowed).toBe(false);
       expect(line).toContain(
-        `Could not read ${join(realpathSync(dir), ".hyperframes", "received-content.json")}`,
+        `Could not read ${join(realpath(dir), ".hyperframes", "received-content.json")}`,
       );
     });
 
@@ -404,7 +404,7 @@ describe("outsideAssetsAllowed", () => {
       expect(allowed).toBe(false);
       expect(warn).toHaveBeenCalledTimes(1);
       expect(line).toContain(
-        `Could not read ${join(realpathSync(dir), ".hyperframes", "received-files.json")}`,
+        `Could not read ${join(realpath(dir), ".hyperframes", "received-files.json")}`,
       );
       expect(line).toContain("../outside/secret.js");
     },

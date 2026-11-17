@@ -409,7 +409,9 @@ when your shell holds a complete credential for another vision provider,
 capture ignores the `.env` vision key, with a note naming the file.
 Model and timeout settings in the `.env` still apply. A received project's
 `.env` (one its received-files record lists) also gives way to your own
-project's `.env`, for every command.
+project's `.env`, for every command. When capture or `snapshot --describe` uses
+a vision key from a project's `.env`, a note naming the file prints before the
+first request.
 
 #### Local HTML files
 
@@ -1384,6 +1386,25 @@ transparent. A fully transparent frame is treated as unread on purpose, since a
 failed draw looks the same; mark text that sits under a cutout before its subject
 enters with `data-layout-allow-occlusion`.
 
+Text painted in front of an opaque `<video>` is judged against the faces in the
+frame that video shows at the sample. `text_over_face` is an info finding when
+the words cover 5% or more of a face; `coveredFraction` is the share of the face
+covered and `faceRect` is the face in canvas pixels. It is never more than info,
+so it never fails `--strict`: the detector can take texture for a face. The
+faces are found in the video file itself, with the detector
+[`measure face`](#measure) uses, so only a video served from the project is
+looked at. That detector's first use downloads OpenCV; when the download has not
+answered within 30 seconds the check goes on without this pass and `faceCheck`
+says why. A rotated video and a frame not yet
+decoded are skipped, a transparent cutout between the text and the take is looked
+through, and text behind a cutout stays `text_occluded`'s to judge. Mark an
+intended overlap with `data-layout-allow-on-face` on the text or an ancestor.
+`layout.faceCheck` in the JSON says whether the pass looked, so no finding reads
+apart from no look: `{ "ran": true, "candidates": 3, "faces": 2 }` counts the
+text-over-video samples examined and the distinct video frames a face was found
+in (`unreadVideos` is added when some files could not be read), and
+`{ "ran": false, "reason": "..." }` says why it could not.
+
 `canvas_covered` is an error when an opaque element spanning the canvas sits above
 every other visible clip (shape, image, video or text) for most of the film, so the
 frame shows only it: typically a full-frame background placed last in the DOM. It
@@ -1724,7 +1745,12 @@ npx hyperframes measure face ref.mp4 --start 1 --end 2.5
 | `energy`     | How much two clips move, and whether at the same moments                                |
 | `look`       | Brightness, contrast, saturation and warmth, alone or against another video             |
 | `face`       | The face's size and position over a window                                              |
+| `hands`      | Where a hand's palm, index fingertip or pinch is in each frame of a stretch             |
 | `sync`       | The lag between mouth motion and the voice                                              |
+
+In `cuts`, a shot that returns to an earlier camera setup after at least one other shot (a wide take, a close-up
+cut into it, the wide take again) carries `continues`: the index in `shots` of the shot it resumes, so one take can
+feed both. A shot that resumes nothing has no `continues`.
 
 ### `diff`
 
@@ -2845,6 +2871,31 @@ it is. A full run also prints each as a `{"event":"left_out",…}`
 line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
 and still hear about each one during the run.
 
+Which files came in with an imported project is kept in the project's
+`.hyperframes/received-files.json`. A project without that file is read as
+having received nothing, which suits projects you made yourself. An app that
+imports projects for you can tell the CLI more by pointing
+`HYPERFRAMES_RECEIVED_STATE_FILE` at a JSON file it keeps:
+
+```json
+{
+  "projects": [
+    { "path": "/Users/me/projects/shared", "dev": "16777230", "ino": "4521", "received": "expected" },
+    { "path": "/Users/me/projects/draft", "received": "all" }
+  ]
+}
+```
+
+- `"expected"`: the project must carry the record. If it is missing, every file
+  counts as received, and the CLI does not start a new record in its place.
+- `"all"`: every file in the project counts as received, whatever its record
+  lists.
+- `dev` and `ino` are optional. When given, they also match the project folder
+  after it is renamed or moved on the same disk.
+- The state applies to the project, its subfolders, and any folder that holds it.
+- If the variable is set but the file is missing or cannot be parsed, every file
+  counts as received.
+
 A file from outside the project folder that would be copied (each file a
 composition points at, and each project file that is a link to a file outside
 the project) is uploaded only when you approve it. Run in a terminal, the
@@ -3006,6 +3057,7 @@ And these drive `render` and `render-batch`:
 | ----------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `--width`, `--height`   | required                            | Render dimensions in pixels                                                                                       |
 | `--site-id`             | content hash                        | Reuse an uploaded site instead of uploading again                                                                  |
+| `--include-outside-files` | off                               | Upload the files a link brings in from outside the project folder. Without it they are left out and named         |
 | `--fps`                 | `30`                                | `24`, `25`, `30`, or `60`                                                                                         |
 | `--format`              | `mp4`                               | `mp4`, `mov`, `webm`, or `png-sequence`                                                                           |
 | `--codec`               | `h264`                              | `h264` or `h265`, MP4 only                                                                                        |
@@ -3057,6 +3109,10 @@ hyperframes lambda sites create ./my-project
 
 hyperframes lambda render ./my-project --site-id=abc1234deadbeef0 --width 1920 --height 1080
 ```
+
+A file or folder that a symlink brings in from outside the project is left out
+of the upload, and a notice names each one. Pass `--include-outside-files` (or
+`includeOutsideFiles: true` to the SDK's `deploySite`) to upload them too.
 
 ### `lambda render <projectDir>`
 

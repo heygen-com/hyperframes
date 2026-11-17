@@ -1461,11 +1461,11 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const timed = tags
       .filter((tag) => tag.index !== rootTag.index && readAttr(tag.raw, "data-start") !== null)
       .map((tag) => {
-        const start = Number(readAttr(tag.raw, "data-start")) || 0;
-        const dur = Number(readAttr(tag.raw, "data-duration"));
-        const end = Number.isFinite(dur) && dur > 0 ? start + dur : Infinity;
-        return { tag, start, end };
-      });
+        const timing = readTagTiming(tag.raw);
+        if (timing.start === null) return null;
+        return { tag, start: timing.start, end: timing.end ?? Infinity };
+      })
+      .filter((row): row is { tag: OpenTag; start: number; end: number } => row !== null);
 
     // `tags` is a flat list (no nesting depth), so a timed element nested
     // *inside* a candidate slot is treated as a tail-covering sibling rather
@@ -1975,15 +1975,15 @@ function deriveDurationFromClips(tags: OpenTag[], rootTag: OpenTag) {
   const clipEnds: Array<number | null> = [];
   for (const tag of tags) {
     if (tag === rootTag) continue;
-    const startRaw = readAttr(tag.raw, "data-start");
-    if (startRaw === null) continue;
-    const start = Number(startRaw);
-    // A reference start ("intro+2") is resolved by the runtime; here it is a clip of unknown end.
-    if (!Number.isFinite(start)) {
+    const getAttr = (name: string) => readAttr(tag.raw, name);
+    if (getAttr("data-start") === null) continue;
+    const timing = readTagTiming(tag.raw);
+    // A reference start is resolved by the runtime; here it is a clip of unknown end.
+    if (timing.start === null) {
       clipEnds.push(null);
       continue;
     }
-    const getAttr = (name: string) => readAttr(tag.raw, name);
+    const start = timing.start;
     const authored = readAuthoredDurationSeconds(getAttr, start);
     if (CLIP_MEDIA_TAGS.has(tag.name)) {
       const { seconds } = resolveMediaDuration({

@@ -167,6 +167,20 @@ describe("buildRenderPerfSummary static-dedup aggregation", () => {
     expect(s?.skipReason).toBe("capture_mode|ineligible"); // sorted, deduped
   });
 
+  it("joins distinct ineligible causes across unarmed workers", () => {
+    const unarmed = (cause: string) =>
+      perf({
+        staticDedupEnabled: true,
+        staticDedupArmed: false,
+        staticDedupSkipReason: "ineligible",
+        staticDedupIneligibleCause: cause,
+      });
+    const s = buildRenderPerfSummary(
+      baseInput([unarmed("no_static_frames"), unarmed("canvas"), unarmed("canvas")]),
+    ).staticDedup;
+    expect(s?.ineligibleCause).toBe("canvas|no_static_frames");
+  });
+
   it("carries enabled=false through (opt-out renders)", () => {
     const s = buildRenderPerfSummary(baseInput([perf({ staticDedupEnabled: false })])).staticDedup;
     expect(s).toEqual({

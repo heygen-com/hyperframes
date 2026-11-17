@@ -38,6 +38,7 @@ export interface RenderToLambdaOptions {
   /** Re-use an existing `deploySite` upload (skips tar+S3 PUT). */
   siteHandle?: SiteHandle;
   onNotice?: (message: string) => void;
+  includeOutsideFiles?: boolean;
   /** Validated `SerializableDistributedRenderConfig` (no logger / abortSignal). */
   config: SerializableDistributedRenderConfig;
   /** S3 bucket from the SAM stack output (`RenderBucketName`). */
@@ -123,6 +124,7 @@ export async function renderToLambda(opts: RenderToLambdaOptions): Promise<Rende
         bucketName: opts.bucketName,
         region: opts.region,
         onNotice: opts.onNotice,
+        includeOutsideFiles: opts.includeOutsideFiles,
         s3,
       });
 

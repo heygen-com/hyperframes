@@ -65,14 +65,14 @@ The publish workflow validates release channel boundaries before publishing:
 
 - Stable versions must publish with `latest`.
 - Prerelease versions must publish with the prerelease dist-tag, such as `alpha`.
-- Stable releases must come from a merged, reviewed `release/vX.Y.Z` PR.
+- Stable releases must come from a merged `release/vX.Y.Z` PR whose final commit a maintainer with write access approved, after the PR's last base change. That maintainer must not have opened the PR, pushed to its branch (any push the branch's activity log records), or appear as an author or committer of its commits. A second person with write access must have opened the PR or pushed to its branch. Reviews from accounts without write access count neither as approvals nor as change requests.
 - Prerelease tags must point at a commit already on `main`, `next` or `alpha`.
 - Only repository admins may push prerelease (`v*-*`) tags. That is a prerelease's only review: a prerelease branch takes pushes without a PR, and no approval follows the tag.
 - Every publish runs in the `npm-publish` environment, which npm trusted publishing names; it waits for no approval.
 - Merged `release/vX.Y.Z` PRs publish stable releases only.
 - Every publish job verifies that its checkout matches the immutable event SHA.
 - Builds, lifecycle scripts and `npm pack` run in a job with a read-only token and no secrets.
-- The job that holds the npm token runs no code from the release commit. It checks that every packed tarball is a package this workflow publishes, at exactly the release version, then uploads it with lifecycle scripts off.
+- The job that publishes to npm runs no code from the release commit, and it holds no stored npm token: npm trusted publishing authenticates it with the job's OIDC token. It checks that every packed tarball is a package this workflow publishes, at exactly the release version, then uploads it with lifecycle scripts off.
 - A version already on npm is skipped only when its contents match the original run’s tarball, including on a retry. Different contents fail the publish.
 - The Lambda handler zip and arm64 video image are built by the run, and `@hyperframes/aws-lambda` pins those builds. Retries reuse the original immutable run bundle. If the version is already on npm, its verified package must pin those same bytes before any release mutation. A separate immutable run receipt binds the release ID and asset digests; foreign releases and mismatched assets fail instead of being adopted or overwritten. See [publish recovery](/contributing/changelog-process) for retention and recovery limits.
 

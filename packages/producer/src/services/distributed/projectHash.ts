@@ -11,7 +11,7 @@
 
 import { closeSync, openSync, readdirSync, readSync, realpathSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { PLAN_PROJECT_DIR_SKIP_SEGMENTS } from "./plan.js";
 
@@ -32,19 +32,27 @@ function statEntry(full: string, relPath: string) {
 
 /**
  * The files a site upload ships, as `/`-separated paths under `projectDir`. Symlinks are followed
- * (root included), top-level {@link PLAN_PROJECT_DIR_SKIP_SEGMENTS} are left out as the plan stage
- * does, and a dangling symlink throws. Private files (env, Git, credentials, tool and agent state,
- * app records) are left out at every depth, by name or by where a link points; `onPrivate` hears
- * each one left out, a folder once.
+ * (root included), out of the project only with `onOutside` `"include"`; top-level
+ * {@link PLAN_PROJECT_DIR_SKIP_SEGMENTS} are left out as the plan stage does, and a dangling link
+ * throws. Private files (env, Git, credentials, tool and agent state, app records) are left out at
+ * every depth, by name or by link target. `onPrivate` and `onOutside` hear each, a folder once.
  */
-export function listSiteFiles(projectDir: string, onPrivate?: (relPath: string) => void): string[] {
+export function listSiteFiles(
+  projectDir: string,
+  onPrivate?: (relPath: string) => void,
+  onOutside: ((relPath: string) => void) | "include" = () => {},
+): string[] {
   const files: string[] = [];
-  const ancestors = new Set([realpathSync(projectDir)]);
+  const root = realpathSync(projectDir);
+  const ancestors = new Set([root]);
   function visit(full: string, relPath: string): void {
     if (isPrivateFileUnder(projectDir, full, isStudioPrivatePath)) return void onPrivate?.(relPath);
     const stat = statEntry(full, relPath);
+    if (!stat.isFile() && !stat.isDirectory()) return;
+    if (onOutside !== "include" && outsideFolder(root, realpathSync(full))) {
+      return void onOutside(relPath);
+    }
     if (stat.isFile()) return void files.push(relPath);
-    if (!stat.isDirectory()) return;
     const real = realpathSync(full);
     // A folder linking back to an ancestor is skipped rather than walked forever.
     if (ancestors.has(real)) return;
@@ -62,6 +70,9 @@ export function listSiteFiles(projectDir: string, onPrivate?: (relPath: string) 
   return files;
 }
 
+const outsideFolder = (root: string, real: string): boolean =>
+  real !== root && !real.startsWith(root + sep);
+
 const printablePath = (path: string): string =>
   [...path]
     .map((ch) => {
@@ -71,17 +82,32 @@ const printablePath = (path: string): string =>
     })
     .join("");
 
-/** {@link listSiteFiles} for an upload: one line to `onNotice` names the private files left out. */
+/**
+ * {@link listSiteFiles} for an upload: one line to `onNotice` names the private files left out.
+ * Files linked in from outside ship only with `includeOutsideFiles`, else a second line names them.
+ * The upload reads each path again after this check, so a link swapped in meanwhile still ships.
+ */
 export function listSiteFilesForUpload(
   projectDir: string,
-  onNotice?: (message: string) => void,
+  onNotice: (message: string) => void = (message) => console.warn(message),
+  includeOutsideFiles = false,
 ): string[] {
   const leftOut: string[] = [];
-  const files = listSiteFiles(projectDir, (path) => leftOut.push(path));
+  const outside: string[] = [];
+  const files = listSiteFiles(
+    projectDir,
+    (path) => leftOut.push(path),
+    includeOutsideFiles ? "include" : (path) => outside.push(path),
+  );
   if (leftOut.length > 0) {
     const more = leftOut.length > 5 ? ` and ${leftOut.length - 5} more` : "";
-    onNotice?.(
+    onNotice(
       `[deploySite] left out private files no composition loads (env, Git, credentials, tool state): ${leftOut.slice(0, 5).map(printablePath).join(", ")}${more}`,
+    );
+  }
+  if (outside.length > 0) {
+    onNotice(
+      `[deploySite] left out files linked in from outside the project: ${outside.map(printablePath).join(", ")}. Pass --include-outside-files (includeOutsideFiles in the SDK) to upload them.`,
     );
   }
   return files;

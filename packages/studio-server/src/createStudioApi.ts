@@ -30,9 +30,11 @@ import {
   PREVIEW_ALLOWED_HOSTS_ENV,
   documentFromAnotherSite,
   requestFromAnotherSite,
+  proxyWorkFromAnotherSite,
   requestHost,
   sameOriginPost,
 } from "./helpers/requestIdentity.js";
+import { refuseServiceWorkerScripts } from "./helpers/serviceWorkerScripts.js";
 import { previewErrorPage } from "./helpers/previewErrorPage.js";
 import type { CaptureSandboxOption } from "./helpers/captureLoads.js";
 import {
@@ -103,7 +105,7 @@ const sandboxPreviewForAnotherSiteOrCapture =
 
 async function refuseProxyWorkForAnotherSite(c: Context, next: Next) {
   const proxyWork = c.req.query(PREVIEW_PROXY_PARAM) !== undefined;
-  if (proxyWork && fromAnotherSite(c) && !loadedThroughFrameToken(c.req.raw))
+  if (proxyWork && proxyWorkFromAnotherSite(siteHeaders(c)) && !loadedThroughFrameToken(c.req.raw))
     return c.text("forbidden: media proxy requested by another site", 403);
   return next();
 }
@@ -137,6 +139,7 @@ export interface StudioApiOptions extends CaptureSandboxOption {
 
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
   const api = new Hono();
+  api.use(refuseServiceWorkerScripts);
   const sandboxThumbnailCaptures = options.sandboxThumbnailCaptures ?? false;
   const frameTokens = createFrameTokens();
   const resolveProjectId = (id: string) =>

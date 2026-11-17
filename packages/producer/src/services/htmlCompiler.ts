@@ -95,6 +95,7 @@ import {
 import {
   isUnresolvedAssetPlaceholder,
   namesAnotherNetworkRoot,
+  projectAssetExists,
   readProjectFile,
   readTextFile,
   resolveCompositionSrc,
@@ -253,10 +254,10 @@ class EmptyCompositionError extends Error {
   }
 }
 
-/** The html with each data-composition-src as the project-relative path it names (%xx decoded, no leading /). */
+/** The html with each data-composition-src as the project-relative path it names (%xx decoded, no leading /, \ or ./). */
 function normalizeCompositionSrcs(html: string, projectDir: string): string {
   return html.replace(/(\bdata-composition-src=)(["'])([^"']*)\2/g, (whole, name, quote, value) => {
-    if (!value.includes("%") && !value.startsWith("/")) return whole;
+    if (!value.includes("%") && !/^\.?[\\/]/.test(value)) return whole;
     const file = resolveCompositionSrc(projectDir, value);
     if (file === null) return whole;
     return `${name}${quote}${relative(projectDir, file).split(sep).join("/")}${quote}`;
@@ -285,7 +286,7 @@ function resolveCompositionFile(
 }
 
 const OUTSIDE_COMPOSITION_NEEDS_FLAG =
-  "it is outside the project and its scripts would run; pass --include-outside-files to hyperframes render to run it";
+  "it is outside the project, and any scripts in it would run; move it into the project, or pass --include-outside-files to hyperframes render, to include it";
 
 /** A trusted local render was not told to run markup whose real file is outside the project. */
 const runsOutsideMarkupUnasked = (
@@ -295,6 +296,19 @@ const runsOutsideMarkupUnasked = (
   outsideFiles: OutsideFilePolicy,
 ): boolean =>
   assetRoot === undefined && !outsideFiles.includeScripts && linksOutside(projectDir, filePath);
+
+/** The readers check again, so a file swapped for an outside link after the pre-flight is still refused. */
+function assertOutsideMarkupAsked(
+  projectDir: string,
+  filePath: string,
+  srcPath: string,
+  assetRoot: string | undefined,
+  outsideFiles: OutsideFilePolicy,
+): void {
+  if (runsOutsideMarkupUnasked(projectDir, filePath, assetRoot, outsideFiles)) {
+    throw new EmptyCompositionError([{ srcPath, detail: OUTSIDE_COMPOSITION_NEEDS_FLAG }]);
+  }
+}
 
 // Git metadata, env files and the app's `.hyperframes/` records are never inlined into a render, as preview refuses them.
 const isPrivateCompositionFile = (projectDir: string, filePath: string): boolean =>
@@ -894,6 +908,7 @@ async function parseSubCompositions(
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
   probes?: SourceProbes,
   assetRoot?: string,
+  outsideFiles: OutsideFilePolicy = {},
   compiledSrcs: Set<string> = new Set(),
 ): Promise<{ subCompositions: Map<string, string> }> {
   const subCompositions = new Map<string, string>();
@@ -924,6 +939,7 @@ async function parseSubCompositions(
     if (compiledSrcs.has(srcPath)) continue;
     compiledSrcs.add(srcPath);
 
+    assertOutsideMarkupAsked(projectDir, filePath, srcPath, assetRoot, outsideFiles);
     assertCompositionFileSize(filePath, srcPath);
     const read = readProjectFile(filePath);
     if (read.kind !== "file") {
@@ -959,6 +975,7 @@ async function parseSubCompositions(
         urlByAbsentLocalPath,
         probes,
         assetRoot,
+        outsideFiles,
         compiledSrcs,
       );
 
@@ -1167,6 +1184,7 @@ function inlineSubCompositions(
   projectDir: string,
   variableOverrides: Record<string, unknown>,
   assetRoot: string | undefined,
+  outsideFiles: OutsideFilePolicy,
 ): { html: string; variablesByComp: Record<string, Record<string, unknown>> } {
   const { document } = parseHTML(html);
   const head = document.querySelector("head");
@@ -1190,13 +1208,20 @@ function inlineSubCompositions(
   const readOnce = new Map<string, string | null>();
   const readMountHtml = (srcPath: string): string | null => {
     const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
-    if (filePath) assertCompositionFileSize(filePath, srcPath);
+    if (filePath) {
+      assertOutsideMarkupAsked(projectDir, filePath, srcPath, assetRoot, outsideFiles);
+      assertCompositionFileSize(filePath, srcPath);
+    }
     const read =
       filePath && !isPrivateCompositionFile(projectDir, filePath)
         ? readProjectFile(filePath)
         : null;
     return read?.kind === "file"
-      ? rewriteUnresolvableGsapToCdn(read.text, projectDir, srcPath)
+      ? rewriteUnresolvableGsapToCdn(
+          normalizeCompositionSrcs(read.text, projectDir),
+          projectDir,
+          srcPath,
+        )
       : null;
   };
   const resolveMountHtml = (srcPath: string): string | null => {
@@ -1240,7 +1265,7 @@ function inlineSubCompositions(
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
       // Mirrors the preview bundler: a sub-composition's SIBLING assets resolve
       // against its own directory, project-root refs stay as authored.
-      assetExists: (path: string) => existsSync(resolve(projectDir, path)),
+      assetExists: projectAssetExists(projectDir),
       // Preserve the authored root wrapper as a child of the host, matching
       // the preview bundler's shape (htmlBundler.ts's prepareFlattenedInnerRoot,
       // which the runtime compositionLoader mirrors with its own copy for the
@@ -2209,7 +2234,7 @@ function rebaseDirectEntryAssetPaths(html: string, projectDir: string, htmlPath:
   if (!entryPath.includes("/")) return html;
 
   const { document } = parseHTML(html);
-  const assetExists = (path: string) => existsSync(resolve(projectDir, path));
+  const assetExists = projectAssetExists(projectDir);
   rewriteAssetPaths(
     document.querySelectorAll("[src], [href], [srcset]"),
     entryPath,
@@ -2319,6 +2344,7 @@ export async function compileForRender(
     options.urlByAbsentLocalPath,
     probes,
     assetRoot,
+    outsideFiles,
   );
 
   // Ensure the HTML is a full document before inlining sub-compositions.
@@ -2336,6 +2362,7 @@ export async function compileForRender(
     projectDir,
     options.variables ?? {},
     assetRoot,
+    outsideFiles,
   );
 
   // Strip preload="none" from media elements — the renderer needs to load all
@@ -3123,6 +3150,7 @@ export async function recompileWithResolutions(
   projectDir: string,
   downloadDir: string,
   assetRoot?: string,
+  outsideFiles: OutsideFilePolicy = {},
 ): Promise<CompiledComposition> {
   if (resolutions.length === 0) return compiled;
 
@@ -3141,6 +3169,7 @@ export async function recompileWithResolutions(
     undefined,
     undefined,
     assetRoot,
+    outsideFiles,
   );
   const { videos, audios, images } = compiled;
 

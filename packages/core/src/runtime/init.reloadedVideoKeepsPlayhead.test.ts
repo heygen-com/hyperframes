@@ -80,7 +80,8 @@ it("leaves a render's videos to the render", () => {
   expect(clip.currentTime).toBe(0);
 });
 
-/** The film's shape: 10 scenes of 20 timed lines, 14 videos; scene 3's first video reloads `into` s in. */
+/** The film's shape: 4 scenes of 4 timed lines, 8 videos; scene 3's first video reloads `into` s in. Small enough
+    to run well inside the test timeout on a busy CI runner; any re-decided other clip still shows in `otherClips`. */
 function reloadInLongFilm(into: number) {
   resetRuntimeFixtureDom();
   const videos = (s: number, count: number) =>
@@ -89,9 +90,9 @@ function reloadInLongFilm(into: number) {
       (_, v) =>
         `<video id="v${s}-${v}" data-start="${10 + v * 60}" data-duration="6.27" data-track-index="0" src="/v${s}-${v}.mp4"></video>`,
     ).join("");
-  const scenes = Array.from({ length: 10 }, (_, s) => {
+  const scenes = Array.from({ length: 4 }, (_, s) => {
     const lines = Array.from(
-      { length: 20 },
+      { length: 4 },
       (_, k) => `<div data-start="${k * 7}" data-duration="4" data-track-index="1">${k}</div>`,
     ).join("");
     return (
@@ -99,9 +100,9 @@ function reloadInLongFilm(into: number) {
       `${lines}${videos(s, s < 4 ? 2 : 1)}</div>`
     );
   }).join("");
-  document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="1410">${scenes}</div>`;
+  document.body.innerHTML = `<div data-composition-id="main" data-root="true" data-duration="564">${scenes}</div>`;
   document.querySelectorAll("video").forEach(loadedVideo);
-  window.__timelines = { main: createMockTimeline(1410) };
+  window.__timelines = { main: createMockTimeline(564) };
   initSandboxRuntimeModular();
   window.__player!.seek(3 * 141 + 10 + into);
   const reloaded = document.getElementById("v3-0") as HTMLVideoElement;

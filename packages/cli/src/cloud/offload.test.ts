@@ -15,6 +15,7 @@ import { tmpdir } from "node:os";
 import { dirname, extname, join } from "node:path";
 import { buildPublishFileMap, stagePublishFiles } from "../utils/publishProject.js";
 import {
+  CACHE_CHECK_TIMEOUT_MS,
   type GifPrep,
   OFFLOAD_MIN_BYTES,
   offloadHeavyMedia,
@@ -480,6 +481,43 @@ describe("offloadHeavyMedia", () => {
     expect(report[0]).toMatchObject({ action: "upload", url: "https://assets.example/2/clip.mp4" });
   });
 
+  it("uploads again when the cached asset URL never answers", async () => {
+    const dir = project({
+      "index.html": html(`<video src="clip.mp4"></video>`),
+      "clip.mp4": HEAVY,
+    });
+    const opts = {
+      apiBaseUrl: "https://api.example",
+      upload: fakeUpload(),
+      cachePath: cachePath(),
+    };
+    await offloadHeavyMedia(dir, buildPublishFileMap(dir), opts);
+    const silentHead = vi.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) =>
+          init?.signal?.addEventListener("abort", () => reject(init.signal!.reason)),
+        ),
+    ) as unknown as typeof fetch;
+
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      const pending = offloadHeavyMedia(dir, buildPublishFileMap(dir), {
+        ...opts,
+        fetchImpl: silentHead,
+      });
+      while (vi.mocked(silentHead).mock.calls.length === 0) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      await vi.advanceTimersByTimeAsync(CACHE_CHECK_TIMEOUT_MS);
+      const report = await pending;
+
+      expect(report[0]).toMatchObject({ action: "upload" });
+      expect(opts.upload).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("re-encodes media the asset API refuses and uploads the accepted format", async () => {
     const dir = project({
       "index.html": html(`<video src="take.mkv"></video>`),
@@ -503,7 +541,7 @@ describe("offloadHeavyMedia", () => {
       cachePath: cachePath(),
     });
 
-    expect(reencoder.run).toHaveBeenCalledWith(staged("take.mkv"), "video", undefined);
+    expect(reencoder.run).toHaveBeenCalledWith(staged("take.mkv"), "video", undefined, undefined);
     expect(upload.mock.calls[0]![0]).toMatchObject({
       filename: "take.mp4",
       contentType: "video/mp4",
@@ -896,7 +934,7 @@ describe("offloadHeavyMedia", () => {
       cachePath: cachePath(),
     });
 
-    expect(run).toHaveBeenCalledWith(join(dir, "take.mov"), "video", undefined);
+    expect(run).toHaveBeenCalledWith(join(dir, "take.mov"), "video", undefined, undefined);
     expect(item).toMatchObject({ path: "take.mov", action: "reencode", size_bytes: 2 ** 32 + 1 });
     expect(fileMap.has("take.mov")).toBe(false);
   }, 60_000);
@@ -990,10 +1028,15 @@ describe("offloadHeavyMedia", () => {
       cachePath: cachePath(),
     });
 
-    expect(run).toHaveBeenCalledWith(staged("long.mkv"), "video", [
-      { start: 9.5, end: 12.5 },
-      { start: 100, end: 105 },
-    ]);
+    expect(run).toHaveBeenCalledWith(
+      staged("long.mkv"),
+      "video",
+      [
+        { start: 9.5, end: 12.5 },
+        { start: 100, end: 105 },
+      ],
+      undefined,
+    );
     expect(report[0]).toMatchObject({ path: "long.mkv", trimmed_to_seconds: 8 });
     const index = fileMap.get("index.html")!.toString();
     expect(index).toMatch(/id="a"[^>]*data-media-start="0.5"/);
@@ -1119,7 +1162,7 @@ describe("offloadHeavyMedia", () => {
         reencoder: { choose: async () => "video", trimGrid: async () => 30, run },
         cachePath: cachePath(),
       });
-      expect(run).toHaveBeenCalledWith(staged("long.mkv"), "video", undefined);
+      expect(run).toHaveBeenCalledWith(staged("long.mkv"), "video", undefined, undefined);
       expect(fileMap.get("index.html")!.toString()).toContain(`data-media-start="10"`);
     }
   });

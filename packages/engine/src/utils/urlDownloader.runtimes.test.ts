@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fetchPublicHttpsText } from "./urlDownloader.js";
 
 const FIXTURE = fileURLToPath(new URL("./__fixtures__/downloadPrivateAnswer.mjs", import.meta.url));
+const BUN_START_MS = 60_000;
 const PROXY_VARS = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NODE_USE_ENV_PROXY"];
 
 function envWithoutProxy(): NodeJS.ProcessEnv {
@@ -33,15 +34,19 @@ describe("a name that resolves to a private address is refused on every runtime"
     }
   });
 
-  it("under Bun, which the Cloud Run image runs", () => {
-    const run = spawnSync("bun", [FIXTURE], {
-      encoding: "utf8",
-      env: envWithoutProxy(),
-      timeout: 60_000,
-    });
-    expect(run.status, run.stderr).toBe(0);
-    const result = JSON.parse(run.stdout.trim().split("\n").at(-1) ?? "{}");
-    expect(result.outcome).toBe("http_rejected");
-    expect(result.lookups).toBeGreaterThan(0);
-  });
+  it(
+    "under Bun, which the Cloud Run image runs",
+    () => {
+      const run = spawnSync("bun", [FIXTURE], {
+        encoding: "utf8",
+        env: envWithoutProxy(),
+        timeout: BUN_START_MS,
+      });
+      expect(run.status, run.stderr).toBe(0);
+      const result = JSON.parse(run.stdout.trim().split("\n").at(-1) ?? "{}");
+      expect(result.outcome).toBe("http_rejected");
+      expect(result.lookups).toBeGreaterThan(0);
+    },
+    BUN_START_MS,
+  );
 });
