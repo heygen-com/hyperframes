@@ -2,8 +2,8 @@
 
 import { afterEach, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-// The frame's real runtime agent, serving the opaque frame from this document.
-import { installEditingAgent } from "../../../core/src/runtime/editingAgent";
+// The frame's real runtime agent, serving the opaque frame from this document as Studio's marked preview page.
+import { installMarkedEditingAgent } from "../../../core/src/runtime/editingAgent.test-helpers";
 import { detachedFakeIframe } from "../player/hooks/timelinePlayerTestHarness";
 import { describePreviewElements, queryPreviewElements } from "../player/lib/previewElements";
 import { usePlayerStore } from "../player/store/playerStore";
@@ -35,7 +35,7 @@ function opaqueFrame() {
         new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
       ),
   } as unknown as Window;
-  const agent = installEditingAgent(parent);
+  const agent = installMarkedEditingAgent(parent);
   frame.postMessage = (data: unknown) =>
     window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
   closers.push(() => agent.dispose());
