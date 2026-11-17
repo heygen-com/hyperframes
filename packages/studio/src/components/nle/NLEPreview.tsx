@@ -29,11 +29,7 @@ import {
 } from "./previewZoom";
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
 import { PreviewZoomOverlay, usePreviewZoomOverlay } from "./PreviewZoomOverlay";
-import {
-  PREVIEW_STAGE_INSET_PX,
-  resolvePreviewStageSize,
-  SHADOW_IFRAME_STYLE,
-} from "./previewStage";
+import { PREVIEW_STAGE_INSET_PX, resolvePreviewStageSize, shadowIframeStyle } from "./previewStage";
 import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 import { PreviewPoster, usePreviewPoster } from "./PreviewPoster";
 interface NLEPreviewProps extends Pick<
@@ -534,7 +530,7 @@ export const NLEPreview = memo(function NLEPreview({
                   suppressLoadingOverlay
                   noLoadTimeout
                   sandboxOrigin={sandboxOrigin}
-                  style={SHADOW_IFRAME_STYLE}
+                  style={shadowIframeStyle(sandboxOrigin)}
                 />
               ),
             )}

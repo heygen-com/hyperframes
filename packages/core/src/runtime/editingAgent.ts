@@ -43,6 +43,8 @@ import {
 import { MAX_QUERY_MATCHES } from "./editingElement";
 import { matchCombo, parseCombo, type Combo } from "../keyCombo";
 import { shouldIgnorePlaybackShortcutTarget } from "../typingTarget";
+import { captionWords } from "./editing/captionWords";
+import { captionTransform } from "./editing/captionTransform";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -190,6 +192,8 @@ const HANDLERS: Handlers = {
   },
   "watch-keys": ({ combos }, port) => watchKeys(port, combos),
   "restore-attributes": (params) => restoreAttributes(params),
+  "caption-words": captionWords,
+  "caption-transform": captionTransform,
 };
 
 function serve(port: MessagePort): void {

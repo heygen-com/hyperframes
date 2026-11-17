@@ -287,6 +287,24 @@ describe("yieldProjectVisionKeys", () => {
     );
   });
 
+  it("names the credential capture will pick in the note", async () => {
+    await loadOwn(
+      {
+        GEMINI_API_KEY: "own",
+        HYPERFRAMES_VERTEX_PROJECT_ID: "own",
+        HYPERFRAMES_VERTEX_SERVICE_ACCOUNT: "/own/sa.json",
+      },
+      "OPENROUTER_API_KEY=cloned\n",
+    );
+    const warn = vi.fn();
+    yieldProjectVisionKeys(warn);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "capture uses your own HYPERFRAMES_VERTEX_PROJECT_ID and HYPERFRAMES_VERTEX_SERVICE_ACCOUNT",
+      ),
+    );
+  });
+
   it("keeps the project half of a Vertex credential whose other half is in the shell", async () => {
     await loadOwn(
       { HYPERFRAMES_VERTEX_SERVICE_ACCOUNT: "/own/sa.json" },

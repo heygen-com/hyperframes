@@ -86,6 +86,11 @@ function shadowPagePhase(iframe: HTMLIFrameElement | null): string {
 const pageGotTo = (iframe: HTMLIFrameElement | null) =>
   shadowPlayerReachable(iframe) ? "" : ` Its page had got to: ${shadowPagePhase(iframe)}.`;
 
+function hyperframesPlayerOf(iframe: HTMLIFrameElement): Element | null {
+  const root = iframe.getRootNode();
+  return root instanceof ShadowRoot ? root.host : null;
+}
+
 function isDocumentHidden(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
 }
@@ -293,6 +298,7 @@ export function useShadowPreviewReload({
       // The store takes the new document's timeline only now that it is the one on screen, and reads it there.
       const retired = iframeRef.current;
       iframeRef.current = shadow;
+      hyperframesPlayerOf(shadow)?.toggleAttribute("inert", false);
       pending.commit();
       shadowIframeRef.current = null;
       attachIframeShortcutListeners();
@@ -403,6 +409,7 @@ export function useShadowPreviewReload({
 
   const setShadowIframeNode = useCallback((node: HTMLIFrameElement | null) => {
     shadowIframeRef.current = node;
+    if (node) hyperframesPlayerOf(node)?.toggleAttribute("inert", true);
     const gen = budgetGenRef.current;
     if (!node || !shadowFrameLeftPageRef.current || gen == null || gen !== shadowGenRef.current)
       return;
