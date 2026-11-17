@@ -67,20 +67,35 @@ test("a release run waits behind another run of the same release, never behind m
   });
 });
 
-test("a push to main publishes only the merge commit of exactly one release PR from this repo", () => {
+test("a push to main publishes only the merge of exactly one approved release PR from this repo", () => {
   const step = stepOf(config.jobs["release-source"], "Find the release this push publishes");
   const bin = mkdtempSync(join(tmpdir(), "hyperframes-fake-gh-"));
   const sha = "a".repeat(40);
+  const head = "c".repeat(40);
   const pull = (overrides = {}) => ({
+    number: 8000,
+    user: { login: "releaser" },
     merged_at: "2026-11-17T02:24:00Z",
     merge_commit_sha: sha,
     base: { ref: "main" },
-    head: { ref: "release/v0.9.61", repo: { full_name: "heygen-com/hyperframes" } },
+    head: { ref: "release/v0.9.61", sha: head, repo: { full_name: "heygen-com/hyperframes" } },
     ...overrides,
   });
-  writeFileSync(join(bin, "gh"), "#!/bin/sh\nprintf '%s' \"$FAKE_PULLS\"\n");
+  const review = (login, state, hour, commit = head) => ({
+    user: { login },
+    state,
+    commit_id: commit,
+    submitted_at: `2026-11-17T0${hour}:00:00Z`,
+  });
+  const approved = [review("reviewer", "APPROVED", 1)];
+  // The fake answers PR 8000's reviews from FAKE_REVIEWS and the commit's PR lookup from FAKE_PULLS.
+  writeFileSync(
+    join(bin, "gh"),
+    '#!/bin/sh\ncase "$*" in *pulls/8000/reviews*) printf \'%s\' "$FAKE_REVIEWS" ;; *) printf \'%s\' "$FAKE_PULLS" ;; esac\n',
+  );
   chmodSync(join(bin, "gh"), 0o755);
-  const run = (pulls, ref = { REF_TYPE: "branch", REF_NAME: "main" }) => {
+  const main = { REF_TYPE: "branch", REF_NAME: "main" };
+  const run = (pulls, ref = main, reviews = approved) => {
     const out = join(bin, "out");
     writeFileSync(out, "");
     const result = runStep(step, {
@@ -91,6 +106,7 @@ test("a push to main publishes only the merge commit of exactly one release PR f
         RUNNER_TEMP: bin,
         GITHUB_OUTPUT: out,
         FAKE_PULLS: JSON.stringify(pulls),
+        FAKE_REVIEWS: JSON.stringify(reviews),
         ...ref,
       },
       path: `${bin}:${process.env.PATH}`,
@@ -148,6 +164,32 @@ test("a push to main publishes only the merge commit of exactly one release PR f
         .status,
       0,
       "only the subject's start counts",
+    );
+    for (const [why, reviews] of [
+      ["no review", []],
+      ["only the author approved", [review("releaser", "APPROVED", 1)]],
+      ["an earlier commit was approved", [review("reviewer", "APPROVED", 1, "d".repeat(40))]],
+      ["a comment is not an approval", [review("reviewer", "COMMENTED", 1)]],
+      ["a dismissed approval", [review("reviewer", "DISMISSED", 1)]],
+      [
+        "another reviewer's change request stands",
+        [...approved, review("other", "CHANGES_REQUESTED", 2)],
+      ],
+      [
+        "the approver later asked for changes",
+        [...approved, review("reviewer", "CHANGES_REQUESTED", 2)],
+      ],
+    ]) {
+      assert.equal(run([pull()], main, reviews).status, 1, why);
+    }
+    const reapproved = [
+      review("reviewer", "CHANGES_REQUESTED", 1),
+      review("reviewer", "APPROVED", 2),
+    ];
+    assert.equal(
+      run([pull()], main, reapproved).status,
+      0,
+      "a later approval answers its own change request",
     );
     const second = pull({
       head: { ref: "release/v0.9.62", repo: { full_name: "heygen-com/hyperframes" } },
