@@ -1919,8 +1919,10 @@ describe("buildEncoderArgs HDR color space", () => {
 describe("buildConcatArgs", () => {
   it("stream-copies the concat list and writes provenance before the output", () => {
     const args = buildConcatArgs("/w/concat-list.txt", "/w/video-only.mp4");
-    expect(args.slice(0, 11)).toEqual([
+    expect(args.slice(0, 13)).toEqual([
       "-xerror",
+      "-protocol_whitelist",
+      "file",
       "-f",
       "concat",
       "-safe",

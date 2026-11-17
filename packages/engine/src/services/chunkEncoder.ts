@@ -50,6 +50,7 @@ import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { concatListInputArgs } from "@hyperframes/parsers/ff-binaries";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -671,24 +672,6 @@ export async function encodeFramesFromDir(
     framesEncoded: frameCount,
     fileSize,
   };
-}
-
-/** The list itself plus what the chunk and segment encoders write; ffmpeg applies it to nested opens too. */
-const CONCAT_LIST_FORMATS = "concat,mov,matroska";
-
-/** `-xerror` fails the join at an entry ffmpeg refuses, where concat would otherwise end the output early. */
-export function concatListInputArgs(concatListPath: string): string[] {
-  return [
-    "-xerror",
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-format_whitelist",
-    CONCAT_LIST_FORMATS,
-    "-i",
-    concatListPath,
-  ];
 }
 
 export function buildConcatArgs(concatListPath: string, outputPath: string): string[] {

@@ -172,11 +172,14 @@ describe("cleanupProxyCache", () => {
     const hour = 60 * 60 * 1000;
     const key = basename(proxy(cache, "long"), ".mp4");
     const runningKey = basename(proxy(cache, "running"), ".mp4");
-    const stalePiece = join(cache, `.part-${key}-0.mp4`);
-    const stalePieceTemp = join(cache, `.tmp-${randomUUID()}-.part-${key}-1.mp4`);
-    const freshPiece = join(cache, `.part-${key}-2.mp4`);
-    const runningPiece = join(cache, `.part-${runningKey}-0.mp4`);
+    const tag = "0123456789abcdef".repeat(2);
+    const stalePiece = join(cache, `.part-${key}-${tag}-0.mp4`);
+    const stalePieceTemp = join(cache, `.tmp-${randomUUID()}-.part-${key}-${tag}-1.mp4`);
+    const untaggedPiece = join(cache, `.part-${key}-3.mp4`);
+    const freshPiece = join(cache, `.part-${key}-${tag}-2.mp4`);
+    const runningPiece = join(cache, `.part-${runningKey}-${tag}-0.mp4`);
     writeEntry(stalePiece, 3, now - 2 * hour);
+    writeEntry(untaggedPiece, 3, now - 2 * hour);
     writeEntry(stalePieceTemp, 3, now - 2 * hour);
     writeEntry(freshPiece, 3, now - 11 * 60 * 1000);
     writeEntry(runningPiece, 3, now - 2 * hour);
@@ -188,7 +191,7 @@ describe("cleanupProxyCache", () => {
       protectedPaths: new Set([join(cache, `${runningKey}.mp4`)]),
     });
 
-    expect(result.removed.sort()).toEqual([stalePiece, stalePieceTemp].sort());
+    expect(result.removed.sort()).toEqual([stalePiece, stalePieceTemp, untaggedPiece].sort());
     expect(existsSync(freshPiece)).toBe(true);
     expect(existsSync(runningPiece)).toBe(true);
   });

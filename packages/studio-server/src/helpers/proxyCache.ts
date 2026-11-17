@@ -11,8 +11,9 @@ const PROXY_EXTENSIONS: ReadonlySet<string> = new Set([
   PROXY_STILL_EXTENSION,
 ]);
 const TRANSCODER_PROXY_NAME = /^[0-9a-f]{64}\.\w+$/;
-const TRANSCODER_TEMP_NAME = /^\.tmp-[0-9a-f-]{36}-(?:\.part-[0-9a-f]{64}-\d+|[0-9a-f]{64})\.\w+$/;
-const TRANSCODER_PIECE_NAME = /^\.part-([0-9a-f]{64})-\d+(\.\w+)$/;
+const TRANSCODER_TEMP_NAME =
+  /^\.tmp-[0-9a-f-]{36}-(?:\.part-[0-9a-f]{64}-(?:[0-9a-f]{32}-)?\d+|[0-9a-f]{64})\.\w+$/;
+const TRANSCODER_PIECE_NAME = /^\.part-([0-9a-f]{64})-(?:[0-9a-f]{32}-)?\d+(\.\w+)$/;
 const STALE_PIECE_MS = 60 * 60 * 1000;
 
 export interface ProxyCacheCleanupOptions {
