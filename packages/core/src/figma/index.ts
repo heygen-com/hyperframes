@@ -25,6 +25,7 @@ export {
   mediaDir,
   manifestPath,
   typeDirPath,
+  ownTypeDir,
   updateRecord,
   isFigmaManifestRecord,
   readManifest,
@@ -34,6 +35,7 @@ export {
   nextId,
 } from "./manifest";
 export { regenerateIndex } from "./mediaIndex";
+export { ownProjectDir } from "./projectFiles";
 export { buildAssetSnippet } from "./assetSnippet";
 export { sanitizeSvg } from "./sanitizeSvg";
 export {

@@ -8,10 +8,10 @@
  * depending on which writer ran last.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+import { replaceFileAtomically } from "../atomicFile";
 import { readJsonlValues } from "./jsonl";
-import { manifestPath, mediaDir } from "./manifest";
+import { manifestPath, mediaDir, ownMediaDir } from "./manifest";
 
 type IndexRow = Record<string, unknown>;
 
@@ -23,8 +23,13 @@ export function indexPath(projectDir: string): string {
   return join(mediaDir(projectDir), "index.md");
 }
 
+// One table cell: a line break in a record would start a new line of the index, so it becomes a space.
+function cell(value: unknown): string {
+  return String(value ?? "").replace(/\s*[\r\n]+\s*/g, " ");
+}
+
 function pad(str: unknown, len: number): string {
-  return String(str ?? "").padEnd(len);
+  return cell(str).padEnd(len);
 }
 
 function formatDur(r: IndexRow): string {
@@ -38,10 +43,6 @@ function formatDims(r: IndexRow): string {
   return "—";
 }
 
-function len(value: unknown): number {
-  return String(value ?? "").length;
-}
-
 export function generateIndexContent(records: IndexRow[]): string {
   const count = records.length;
   const header = `# .media · ${count} asset${count === 1 ? "" : "s"}\n`;
@@ -49,11 +50,11 @@ export function generateIndexContent(records: IndexRow[]): string {
 
   const cols = { id: 4, type: 5, dur: 4, dims: 5, path: 5 };
   for (const r of records) {
-    cols.id = Math.max(cols.id, len(r.id));
-    cols.type = Math.max(cols.type, len(r.type));
+    cols.id = Math.max(cols.id, cell(r.id).length);
+    cols.type = Math.max(cols.type, cell(r.type).length);
     cols.dur = Math.max(cols.dur, formatDur(r).length);
     cols.dims = Math.max(cols.dims, formatDims(r).length);
-    cols.path = Math.max(cols.path, len(r.path));
+    cols.path = Math.max(cols.path, cell(r.path).length);
   }
 
   const heading =
@@ -72,7 +73,7 @@ export function generateIndexContent(records: IndexRow[]): string {
         pad(formatDur(r), cols.dur + 2) +
         pad(formatDims(r), cols.dims + 2) +
         pad(r.path, cols.path + 2) +
-        String(r.description ?? ""),
+        cell(r.description),
     );
   }
   return lines.join("\n") + "\n";
@@ -84,8 +85,7 @@ export function regenerateIndex(projectDir: string): string {
   const last = new Map(rows.map((row, index) => [row.path, index]));
   const records = rows.filter((row, index) => !row.path || last.get(row.path) === index);
   const content = generateIndexContent(records);
-  const p = indexPath(projectDir);
-  mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, content);
+  ownMediaDir(projectDir);
+  replaceFileAtomically(indexPath(projectDir), content);
   return content;
 }

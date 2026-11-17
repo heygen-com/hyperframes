@@ -17,7 +17,7 @@ import {
   type FigmaClient,
   type FigmaTokensSidecar,
 } from "@hyperframes/core/figma";
-import { writeFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { join } from "node:path";
 import { withFigmaErrors } from "./cliError.js";
 
@@ -55,7 +55,7 @@ export async function runTokensImport(
   if (vars !== null) {
     const out = tokensToVariables(vars, { fileKey, version });
     upsertBindings(deps.projectDir, out.bindings);
-    writeFileSync(sidecarPath, JSON.stringify(out.sidecar, null, 2) + "\n");
+    replaceFileAtomically(sidecarPath, JSON.stringify(out.sidecar, null, 2) + "\n");
     return { mode: "variables", entries: out.entries, sidecarPath };
   }
 
@@ -71,7 +71,7 @@ export async function runTokensImport(
       value: null,
     })),
   };
-  writeFileSync(sidecarPath, JSON.stringify(sidecar, null, 2) + "\n");
+  replaceFileAtomically(sidecarPath, JSON.stringify(sidecar, null, 2) + "\n");
   return { mode: "styles", entries: [], sidecarPath, styleCount: styles.length };
 }
 
