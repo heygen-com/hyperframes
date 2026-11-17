@@ -348,6 +348,13 @@ export default defineCommand({
       description: "Fail render on lint errors",
       default: false,
     },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Also run .js and .mjs scripts the project references from outside its folder. Without it they are left out " +
+        "with a warning; images, video, audio, fonts and CSS outside the folder are always included.",
+      default: false,
+    },
     "strict-all": {
       type: "boolean",
       description: "Fail render on lint errors AND warnings",
@@ -585,6 +592,8 @@ export interface RenderOptions {
   /** Segmented capture: keep the segment directory after success. */
   keepSegments?: boolean;
   bestEffort?: boolean;
+  /** --include-outside-files: run scripts the project references from outside its folder. */
+  includeOutsideScripts?: boolean;
   browserPath?: string;
   variables?: Record<string, unknown>;
   entryFile?: string;
@@ -1155,6 +1164,7 @@ async function executeLocalRender(
   const allowOutsideProjectAssets = outsideAssetsAllowed(projectDir, options.entryFile, (line) =>
     console.warn(c.warn(`  ${line}`)),
   );
+  const includeOutsideScripts = options.includeOutsideScripts === true;
   const deParallelRouterActive =
     options.manageDeParallelRouterBreaker === true
       ? applyDeParallelRouterCircuitBreaker(options.quiet)
@@ -1235,10 +1245,15 @@ async function executeLocalRender(
       cpu,
       signal: cancellation.signal,
       allowOutsideProjectAssets,
+      includeOutsideScripts,
     });
   }
   const job = producer.createRenderJob(
-    producer.renderConfigFromRequest(request, { logger, allowOutsideProjectAssets }),
+    producer.renderConfigFromRequest(request, {
+      logger,
+      allowOutsideProjectAssets,
+      includeOutsideScripts,
+    }),
   );
 
   const onProgress = options.quiet
@@ -1357,6 +1372,7 @@ async function renderRange(input: {
   cpu: RenderCpuSampler;
   signal: AbortSignal;
   allowOutsideProjectAssets: boolean;
+  includeOutsideScripts: boolean;
 }): Promise<SingleRenderResult> {
   const { producer, options } = input;
   let framesEncoded = 0;
@@ -1371,7 +1387,10 @@ async function renderRange(input: {
       config,
       input.range,
       input.outputPath,
-      { allowOutsideProjectAssets: input.allowOutsideProjectAssets },
+      {
+        allowOutsideProjectAssets: input.allowOutsideProjectAssets,
+        includeOutsideScripts: input.includeOutsideScripts,
+      },
     );
     framesEncoded = spanResult.framesEncoded;
     reference = producer.referenceBackgroundResult(spanResult[producer.REFERENCE_BACKGROUND_FIELD]);

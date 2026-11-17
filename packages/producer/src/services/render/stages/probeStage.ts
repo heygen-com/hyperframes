@@ -462,6 +462,7 @@ export async function runProbeStage(input: ProbeStageInput): Promise<ProbeStageR
         preHeadScripts: [VIRTUAL_TIME_SHIM],
         fps: job.config.fps,
         allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+        includeOutsideScripts: job.config.includeOutsideScripts,
       });
       assertNotAborted();
 
