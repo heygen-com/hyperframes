@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { gsap as realGsap } from "gsap";
 import { handleFor } from "../editingHandles";
 import { gsapSnapshot } from "./gsapSnapshot";
 import { MAX_SNAPSHOT_TEXT, MAX_SNAPSHOT_TWEENS } from "./gsapSnapshotLimits";
@@ -129,5 +130,24 @@ describe("gsapSnapshot", () => {
     const snapshot = await gsapSnapshot();
 
     expect(snapshot.timelines[0]!.tweens[0]!.parsed).toEqual([]);
+  });
+
+  // fails without the fix: GSAP's own state on a keyframes tween's vars tripped the nesting bound, so a sealed preview
+  // read no GSAP values and Add keyframe at playhead added nothing.
+  it("reads a real GSAP keyframes tween", async () => {
+    document.body.innerHTML = `<div id="box"></div>`;
+    const tl = realGsap.timeline({ paused: true });
+    tl.to(
+      "#box",
+      { keyframes: { "0%": { x: 0, y: 0 }, "100%": { x: 1200, y: 240 } }, duration: 2 },
+      0,
+    );
+    tl.seek(1);
+    Object.assign(window, { gsap: realGsap, __timelines: { main: tl } });
+
+    const snapshot = await gsapSnapshot();
+
+    expect(snapshot.timelines[0]!.tweens).toHaveLength(1);
+    expect(snapshot.targets[0]!.values.x).toBeCloseTo(600);
   });
 });
