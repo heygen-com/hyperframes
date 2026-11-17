@@ -3,7 +3,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { hostname, networkInterfaces, tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { buildRangeResponse, refuseUnknownHosts } from "./compositionServer.js";
+import {
+  buildRangeResponse,
+  refuseUnknownHosts,
+  scriptsAfterWorkersDropped,
+} from "./compositionServer.js";
 
 const TAGGED_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAABGNJQ1ABAQABlXPCVgAAAAxJREFUeJxj0NfXBwABHgCOTp25kgAAAABJRU5ErkJggg==",
@@ -87,5 +91,27 @@ describe("refuseUnknownHosts", () => {
     const res = await get(guardedApp(), "demo.tunnels.example");
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("project file");
+  });
+});
+
+describe("scriptsAfterWorkersDropped", () => {
+  it("adds the page's scripts in order only after every worker on the origin is unregistered", async () => {
+    const steps: string[] = [];
+    const registrations = [{ unregister: async () => void steps.push("unregister") }];
+    const navigator = { serviceWorker: { getRegistrations: async () => registrations } };
+    const head = { append: (s: { src: string }) => void steps.push(`load ${s.src}`) };
+    const document = { head, createElement: () => ({ src: "", async: true }) };
+    const html = scriptsAfterWorkersDropped(["/player.js", "/slideshow.js"]);
+    const script = html.slice("<script>".length, -"</script>".length);
+    await new Function("navigator", "document", `return ${script.replace(/;$/, "")}`)(
+      navigator,
+      document,
+    );
+    expect(steps).toEqual(["unregister", "load /player.js", "load /slideshow.js"]);
+  });
+
+  it("keeps a source that holds a closing tag inside its one script", () => {
+    const html = scriptsAfterWorkersDropped(["/a</script><b>.js"]);
+    expect(html.indexOf("</script>")).toBe(html.length - "</script>".length);
   });
 });
