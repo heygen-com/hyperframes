@@ -130,6 +130,13 @@ describe.skipIf(!media)("readSamples", () => {
       expect(Buffer.compare(f, raw.subarray(i * 80 * 48, (i + 1) * 80 * 48))).toBe(0),
     );
   });
+
+  it("reads the same frames from a file a composition names", () => {
+    const ks = [1, 40, 75, 210];
+    expect(readSamples(probeVideo(video, { guarded: true }), ks, 80, 48)).toEqual(
+      readSamples(probeVideo(video), ks, 80, 48),
+    );
+  });
 });
 
 describe.skipIf(!opencv)("faceBoxes", () => {

@@ -2,6 +2,7 @@
 // command for that install: the manager's for a global one, `npx hyperframes@latest` for npx.
 // The install detection is real; only the resolved entry path and the cached latest are stubbed.
 
+import { homeCliCommand } from "../utils/homeCliCommand.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const ENTRIES = {
@@ -70,7 +71,7 @@ describe("doctor: the update hint fits the install", () => {
   it.each([
     ["npm", ENTRIES.npm, "Run: npm install -g hyperframes@0.9.8"],
     ["brew", ENTRIES.brew, "Run: brew upgrade hyperframes"],
-    ["npx", ENTRIES.npx, "Run: npx hyperframes@latest"],
+    ["npx", ENTRIES.npx, `Run: ${homeCliCommand("latest")}`],
     ["project", ENTRIES.project, "Run: npm install hyperframes@0.9.8"],
   ])("%s", async (_channel, entry, hint) => {
     const { checkVersion } = await doctorAt(entry, "0.9.8");

@@ -1,7 +1,8 @@
 import { Hono, type Context, type Next } from "hono";
+import { routePath } from "hono/route";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
-import type { StudioApiAdapter } from "./types.js";
+import type { StudioApiAdapter, StudioRefusal, StudioRefusalWhy } from "./types.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerFileRoutes } from "./routes/files.js";
 import {
@@ -30,9 +31,11 @@ import {
   PREVIEW_ALLOWED_HOSTS_ENV,
   documentFromAnotherSite,
   requestFromAnotherSite,
+  proxyWorkFromAnotherSite,
   requestHost,
   sameOriginPost,
 } from "./helpers/requestIdentity.js";
+import { refuseServiceWorkerScripts } from "./helpers/serviceWorkerScripts.js";
 import { previewErrorPage } from "./helpers/previewErrorPage.js";
 import type { CaptureSandboxOption } from "./helpers/captureLoads.js";
 import {
@@ -40,6 +43,7 @@ import {
   loadedThroughFrameToken,
   serveTokenPreviewPaths,
 } from "./helpers/opaqueFrameLoads.js";
+import { isFetchedAgain } from "./helpers/fetchAgain.js";
 
 async function answerRefusedFrameWithPage(c: Context, next: Next) {
   await next();
@@ -103,14 +107,17 @@ const sandboxPreviewForAnotherSiteOrCapture =
 
 async function refuseProxyWorkForAnotherSite(c: Context, next: Next) {
   const proxyWork = c.req.query(PREVIEW_PROXY_PARAM) !== undefined;
-  if (proxyWork && fromAnotherSite(c) && !loadedThroughFrameToken(c.req.raw))
+  if (proxyWork && proxyWorkFromAnotherSite(siteHeaders(c)) && !loadedThroughFrameToken(c.req.raw))
     return c.text("forbidden: media proxy requested by another site", 403);
   return next();
 }
 
 const refuseForAnotherSite = (what: string) => async (c: Context, next: Next) => {
   if (fromAnotherSite(c))
-    return c.json({ error: `forbidden: ${what} requested by another site` }, 403);
+    return c.json(
+      { error: `forbidden: ${what} requested by another site`, why: "another_site" },
+      403,
+    );
   return next();
 };
 
@@ -130,6 +137,36 @@ function urlScheme(url: string): string | undefined {
   }
 }
 
+const REFUSAL_WHYS: ReadonlySet<string> = new Set<StudioRefusalWhy>([
+  "nul",
+  "outside_project",
+  "protected_path",
+  "another_site",
+  "cross_origin_write",
+]);
+
+const ENDPOINT_ASKED_FOR = -1;
+
+const reportRefusals =
+  (onRefusal: (refusal: StudioRefusal) => void) => async (c: Context, next: Next) => {
+    const fetchedAgain = isFetchedAgain(c.req.raw);
+    await next();
+    if (c.res.status !== 403 || fetchedAgain) return;
+    const body: unknown = await c.res
+      .clone()
+      .json()
+      .catch(() => null);
+    const why = body && typeof body === "object" ? (body as { why?: unknown }).why : undefined;
+    try {
+      onRefusal({
+        route: routePath(c, ENDPOINT_ASKED_FOR),
+        why: typeof why === "string" && REFUSAL_WHYS.has(why) ? (why as StudioRefusalWhy) : "other",
+      });
+    } catch {
+      return;
+    }
+  };
+
 export interface StudioApiOptions extends CaptureSandboxOption {
   allowedHosts?: readonly string[];
   subCompositionDeadlineMs?: number;
@@ -137,6 +174,8 @@ export interface StudioApiOptions extends CaptureSandboxOption {
 
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
   const api = new Hono();
+  if (adapter.onRefusal) api.use(reportRefusals(adapter.onRefusal));
+  api.use(refuseServiceWorkerScripts);
   const sandboxThumbnailCaptures = options.sandboxThumbnailCaptures ?? false;
   const frameTokens = createFrameTokens();
   const resolveProjectId = (id: string) =>
@@ -153,7 +192,8 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
     sandboxPreviewForAnotherSiteOrCapture(sandboxThumbnailCaptures),
   );
   api.get("/projects/:id/frame-token", async (c) => {
-    if (fromAnotherSite(c)) return c.json({ error: "forbidden: requested by another site" }, 403);
+    if (fromAnotherSite(c))
+      return c.json({ error: "forbidden: requested by another site", why: "another_site" }, 403);
     const projectId = await resolveProjectId(c.req.param("id"));
     if (!projectId) return c.json({ error: "not found" }, 404);
     return c.json({ token: frameTokens.tokenFor(projectId) }, 200, { "Cache-Control": "no-store" });
@@ -191,6 +231,7 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
             `forbidden: writes from host "${refusedHost}" are not allowed. ` +
             `Set ${PREVIEW_ALLOWED_HOSTS_ENV}=${refusedHost} to allow it ` +
             `(comma separated for several hosts).`,
+          why: "cross_origin_write",
         },
         403,
       );

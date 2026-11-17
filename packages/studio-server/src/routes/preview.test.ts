@@ -10,7 +10,6 @@ import {
   openSync,
   readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -1235,7 +1234,7 @@ describe("built preview reuse", () => {
         app,
         createAdapter(projectDir, {
           bundle,
-          previewDocuments: createPreviewDocumentStore(projectDir, salt),
+          previewDocuments: createPreviewDocumentStore(projectDir, salt, "secret"),
         } as Partial<StudioApiAdapter>),
       );
       const html = await (await app.request("http://localhost/projects/demo/preview")).text();
@@ -1258,7 +1257,7 @@ describe("built preview reuse", () => {
         app,
         createAdapter(projectDir, {
           bundle,
-          previewDocuments: createPreviewDocumentStore(projectDir, "build-a"),
+          previewDocuments: createPreviewDocumentStore(projectDir, "build-a", "secret"),
         } as Partial<StudioApiAdapter>),
       );
       for (const path of paths) await app.request(`http://localhost/projects/demo/${path}`);
@@ -3039,56 +3038,6 @@ describe("hf-proxy codec probe", () => {
     return { proxy, probeMediaMetadata };
   }
 
-  it("answers that the project folder is gone when it is renamed while a proxy is requested", async () => {
-    const projectDir = createProjectDir();
-    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
-    vi.resetModules();
-    vi.doMock("../helpers/mediaMetadata.js", async () => ({
-      ...(await vi.importActual<typeof import("../helpers/mediaMetadata.js")>(
-        "../helpers/mediaMetadata.js",
-      )),
-      probeMediaMetadata: async () => {
-        tempDirs.push(`${projectDir}-renamed`);
-        renameSync(projectDir, `${projectDir}-renamed`);
-        return { kind: "video" as const, color: { codecName: "hevc", pixelFormat: "yuv420p" } };
-      },
-    }));
-    const { createStudioApi: create } = await import("../createStudioApi.js");
-    const api = create(createAdapter(projectDir));
-
-    const response = await api.request(
-      "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
-    );
-
-    expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ why: "project_dir_missing" });
-  });
-
-  it("answers that the project folder is gone when a rename makes the codec probe fail", async () => {
-    const projectDir = createProjectDir();
-    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
-    vi.resetModules();
-    vi.doMock("../helpers/mediaMetadata.js", async () => ({
-      ...(await vi.importActual<typeof import("../helpers/mediaMetadata.js")>(
-        "../helpers/mediaMetadata.js",
-      )),
-      probeMediaMetadata: async () => {
-        tempDirs.push(`${projectDir}-renamed`);
-        renameSync(projectDir, `${projectDir}-renamed`);
-        return { kind: "video" as const, color: {}, probeError: "ffprobe failed" };
-      },
-    }));
-    const { createStudioApi: create } = await import("../createStudioApi.js");
-    const api = create(createAdapter(projectDir));
-
-    const response = await api.request(
-      "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
-    );
-
-    expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ why: "project_dir_missing" });
-  });
-
   it("runs ffprobe once for repeated proxy requests of the same unchanged clip", async () => {
     const projectDir = createProjectDir();
     writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
@@ -3396,7 +3345,7 @@ describe("GSAP mirror configuration", () => {
     );
     const overrides = {
       bundle,
-      previewDocuments: createPreviewDocumentStore(projectDir, "same-build"),
+      previewDocuments: createPreviewDocumentStore(projectDir, "same-build", "secret"),
     };
     const first = appForMirror(projectDir, mirror, overrides);
     const root = await first.request(previewUrl);

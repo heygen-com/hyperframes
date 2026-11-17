@@ -2,11 +2,8 @@ import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { parseHTML } from "linkedom";
 import { MEDIA_RENDER_ID_ATTR } from "@hyperframes/core";
-import {
-  isNotMediaPayload,
-  isPrivateUnderAssetRoots,
-  type CaptureVideoMetadataHint,
-} from "@hyperframes/engine";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
+import { isNotMediaPayload, type CaptureVideoMetadataHint } from "@hyperframes/engine";
 import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { findFFprobe } from "../browser/ffmpeg.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
@@ -36,7 +33,7 @@ export function projectLocalFile(projectDir: string, src: string): string | null
     const file = resolve(projectDir, path);
     const rel = relative(projectDir, file);
     const inside = !rel.startsWith("..") && !isAbsolute(rel) && existsSync(file);
-    return inside && !isPrivateUnderAssetRoots(file, [projectDir]) ? file : null;
+    return inside && !isPrivateFileUnder(projectDir, file, isStudioPrivatePath) ? file : null;
   } catch {
     return null;
   }
@@ -52,7 +49,7 @@ export async function projectVideoFile(
 
 const PROBE_TIMEOUT_MS = 30_000;
 
-async function readableAsMediaWithinProbeLimit(path: string): Promise<boolean> {
+export async function readableAsMediaWithinProbeLimit(path: string): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<boolean>((done) => {
     timer = setTimeout(() => done(false), PROBE_TIMEOUT_MS);
@@ -118,7 +115,7 @@ export function probeHeldVideo(
         [
           "-v",
           "error",
-          ...mediaInputFormatArgs(ffprobe),
+          ...mediaInputFormatArgs(ffprobe, path),
           "-select_streams",
           "v:0",
           "-show_entries",

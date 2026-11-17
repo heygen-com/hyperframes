@@ -1,3 +1,4 @@
+import { realpath } from "@hyperframes/core/safe-path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   chmodSync,
@@ -5,7 +6,6 @@ import {
   linkSync,
   mkdirSync,
   mkdtempSync,
-  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -239,6 +239,23 @@ describe("outsideAssetsAllowed", () => {
     expect(decide(project(received())).allowed).toBe(true);
   });
 
+  it("refuses outside files for a received entry that an emptied record lost, as the host's kept copy shows", () => {
+    const dir = project(received());
+    const state = join(root as string, "state.json");
+    writeFileSync(state, JSON.stringify({ projects: [{ path: dir, received: "expected" }] }));
+    const kept = { project: dir, identity: null, files: ["index.html", "style.css"], seenAt: 1 };
+    const name = `${createHash("sha256").update(dir).digest("hex")}.json`;
+    write(join(root as string, "received-records", name), JSON.stringify(kept));
+    vi.stubEnv("HYPERFRAMES_RECEIVED_STATE_FILE", state);
+    try {
+      const { allowed, line } = decide(dir);
+      expect(allowed).toBe(false);
+      expect(line).toContain(`index.html ${SOMEONE_ELSE}`);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("keeps outside files for an empty record in a project with very many files", () => {
     const dir = project(received());
     const many = join(dir, "node_modules");
@@ -291,7 +308,7 @@ describe("outsideAssetsAllowed", () => {
       const dir = withNested("{not json");
       const { allowed, line } = decide(dir);
       expect(allowed).toBe(false);
-      const path = join(realpathSync(dir), NESTED, ".hyperframes", "received-files.json");
+      const path = join(realpath(dir), NESTED, ".hyperframes", "received-files.json");
       expect(line).toContain(`Could not read ${path}`);
     });
 
@@ -364,7 +381,7 @@ describe("outsideAssetsAllowed", () => {
       const { allowed, line } = decide(dir);
       expect(allowed).toBe(false);
       expect(line).toContain(
-        `Could not read ${join(realpathSync(dir), ".hyperframes", "received-content.json")}`,
+        `Could not read ${join(realpath(dir), ".hyperframes", "received-content.json")}`,
       );
     });
 
@@ -404,7 +421,7 @@ describe("outsideAssetsAllowed", () => {
       expect(allowed).toBe(false);
       expect(warn).toHaveBeenCalledTimes(1);
       expect(line).toContain(
-        `Could not read ${join(realpathSync(dir), ".hyperframes", "received-files.json")}`,
+        `Could not read ${join(realpath(dir), ".hyperframes", "received-files.json")}`,
       );
       expect(line).toContain("../outside/secret.js");
     },

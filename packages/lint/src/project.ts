@@ -50,6 +50,7 @@ import {
 } from "./hevcPreviewLint.js";
 import { lintHyperframeHtml } from "./hyperframeLinter.js";
 import { readLinkedProjectFile } from "./linkedFile.js";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/parsers/private-path";
 import { collectGoogleFontFamilies, extractFontFaceFamilies } from "./rules/fonts.js";
 import { lintProjectShaderScripts } from "./projectShaders.js";
 import type {
@@ -341,6 +342,9 @@ export async function lintProject(
   if (entryFile && !isWithinProjectRoot(projectDir, indexPath)) {
     throw new Error(`Explicit lint entry is outside the project directory: ${entryFile}`);
   }
+  if (entryFile && isPrivateFileUnder(projectDir, indexPath, isStudioPrivatePath)) {
+    throw new Error(`Explicit lint entry is a private project file: ${entryFile}`);
+  }
   const rootFile = relative(resolve(projectDir), indexPath).replace(/\\/g, "/") || "index.html";
   const rootCompSrcPath = rootFile === "index.html" ? undefined : rootFile;
   const results: ProjectLintResult["results"] = [];
@@ -375,6 +379,7 @@ export async function lintProject(
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
         const relPath = rel ? `${rel}/${entry.name}` : entry.name;
         if (ignored.ignores(`compositions/${relPath}${entry.isDirectory() ? "/" : ""}`)) continue;
+        if (isStudioPrivatePath(`compositions/${relPath}`)) continue;
         if (entry.isDirectory()) {
           // Registry components are source snippets, not independently mounted
           // sub-compositions. Linting every installed template here makes an

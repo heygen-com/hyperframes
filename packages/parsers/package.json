@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/parsers",
-  "version": "0.9.60",
+  "version": "0.9.64",
   "repository": {
     "type": "git",
     "url": "https://github.com/heygen-com/hyperframes",
@@ -129,6 +129,12 @@
       "node": "./dist/ffBinaries.js",
       "import": "./src/ffBinaries.ts",
       "types": "./src/ffBinaries.ts"
+    },
+    "./literal-media-input": {
+      "bun": "./src/literalMediaInput.ts",
+      "node": "./dist/literalMediaInput.js",
+      "import": "./src/literalMediaInput.ts",
+      "types": "./src/literalMediaInput.ts"
     },
     "./media-alpha": {
       "bun": "./src/mediaAlpha.ts",
@@ -264,6 +270,10 @@
       "./ff-binaries": {
         "import": "./dist/ffBinaries.js",
         "types": "./dist/ffBinaries.d.ts"
+      },
+      "./literal-media-input": {
+        "import": "./dist/literalMediaInput.js",
+        "types": "./dist/literalMediaInput.d.ts"
       },
       "./media-alpha": {
         "import": "./dist/mediaAlpha.js",

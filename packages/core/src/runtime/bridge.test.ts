@@ -23,6 +23,7 @@ function createMockDeps() {
     onDisablePickMode: vi.fn(),
     onSetRuntimeData: vi.fn(),
     onClearRuntimeData: vi.fn(),
+    onScrubAudio: vi.fn(),
     getCanonicalFps: vi.fn(() => 30),
   };
 }
@@ -138,6 +139,30 @@ describe("installRuntimeControlBridge", () => {
     const handler = installRuntimeControlBridge(deps);
     handler(makeControlMessage("stop-media"));
     expect(deps.onStopMedia).toHaveBeenCalledOnce();
+  });
+
+  it("dispatches scrub-audio with the music row, the time and a volume held to 0..1", () => {
+    const deps = createMockDeps();
+    const handler = installRuntimeControlBridge(deps);
+    const target = { id: "music", hfId: "a1", sourceFile: "index.html" };
+
+    handler(makeControlMessage("scrub-audio", { target, time: 0.5, volume: 3 }));
+    handler(makeControlMessage("scrub-audio", { time: null }));
+
+    expect(deps.onScrubAudio.mock.calls).toEqual([
+      [target, 0.5, 1],
+      [null, null, 0],
+    ]);
+  });
+
+  it.each([
+    ["a target without an id", { target: { hfId: "a1" }, time: 0.5, volume: 1 }],
+    ["a time that is not a number", { target: null, time: "0.5", volume: 1 }],
+    ["no volume", { target: null, time: 0.5 }],
+  ])("drops scrub-audio with %s", (_name, extra) => {
+    const deps = createMockDeps();
+    installRuntimeControlBridge(deps)(makeControlMessage("scrub-audio", extra));
+    expect(deps.onScrubAudio).not.toHaveBeenCalled();
   });
 
   it("dispatches seek command with frame and mode", () => {

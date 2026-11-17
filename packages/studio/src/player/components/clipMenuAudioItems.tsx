@@ -1,11 +1,21 @@
+import { useEffect, useState } from "react";
+import { HF_AUDIO_GROUP_ATTR } from "@hyperframes/core/audio-groups";
 import type { TimelineElement } from "../store/timelineElement";
+import type { TimelineEditCallbacks } from "./timelineCallbacks";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
 import { useStudioShellContextOptional } from "../../contexts/StudioContext";
 import { usePlayerStore } from "../store/playerStore";
 import { useLivePreviewIframe } from "../store/previewIframeStore";
 import { clipHasSound, throwUnlessSaved, TimelineSaveError } from "./clipMenuNormalize";
 import { openAudioGainDialog } from "./audioGainDialogStore";
-import { offersDuck, readBedCarve, setDuckUnderVoice, type DuckOutcome } from "./clipMenuDuck";
+import {
+  offersDuck,
+  readBedCarve,
+  setDuckUnderVoice,
+  type DuckOutcome,
+  type GroupClips,
+} from "./clipMenuDuck";
+import { previewDocumentCopy, previewFrameOpaque } from "../lib/previewChannel";
 
 const ITEM_CLASS =
   "w-full flex items-center justify-between px-3 py-1.5 text-xs text-left outline-hidden text-neutral-300 hover:bg-neutral-800 focus-visible:bg-neutral-800 cursor-pointer";
@@ -16,6 +26,38 @@ const DUCK_TOAST: Record<DuckOutcome, string> = {
   "no-voice": "No overlapping voice to duck under.",
   aborted: "Could not group the voices to duck under.",
 };
+
+type Copy = { iframe: HTMLIFrameElement; doc: Document | null };
+
+function usePreviewDocument(iframe: HTMLIFrameElement | null): {
+  doc: Document | null;
+  copy: Document | null;
+} {
+  const sealed = iframe !== null && previewFrameOpaque(iframe);
+  const [read, setRead] = useState<Copy | null>(null);
+  useEffect(() => {
+    if (!iframe || !sealed) return;
+    let current = true;
+    void previewDocumentCopy(iframe).then((doc) => current && setRead({ iframe, doc }));
+    return () => {
+      current = false;
+    };
+  }, [iframe, sealed]);
+  if (!sealed) return { doc: iframe?.contentDocument ?? null, copy: null };
+  const copy = read?.iframe === iframe ? read.doc : null;
+  return { doc: copy, copy };
+}
+
+function voiceGrouper(
+  onGroupClips: NonNullable<TimelineEditCallbacks["onGroupClips"]>,
+  copy: Document | null,
+): GroupClips {
+  if (!copy) return (ids, groupId) => onGroupClips(ids, groupId, "Voice");
+  return async (ids, groupId) => {
+    await onGroupClips(ids, groupId, "Voice");
+    for (const id of ids) copy.getElementById(id)?.setAttribute(HF_AUDIO_GROUP_ATTR, groupId);
+  };
+}
 
 /** Audio Gain… (opens the G dialog) or Duck under voice (toggle), placed separately in the sound group. */
 export function ClipMenuAudioItems({
@@ -33,7 +75,8 @@ export function ClipMenuAudioItems({
   const sessionProjectId = usePlayerStore((s) => s.timelineProjectId);
   const projectId = shell?.projectId ?? sessionProjectId;
   const showToast = shell?.showToast ?? onNotice;
-  const doc = (shell?.previewIframeRef.current ?? liveIframe)?.contentDocument ?? null;
+  const iframe = shell?.previewIframeRef.current ?? liveIframe;
+  const { doc, copy } = usePreviewDocument(iframe);
   const bed = doc?.getElementById(element.domId ?? element.id) ?? null;
   const ducked = bed ? readBedCarve(bed)?.enabled === true : false;
   if (!clipHasSound(element) || !projectId || !showToast || !onSetElementAttributeQuiet) {
@@ -52,7 +95,7 @@ export function ClipMenuAudioItems({
           await onSetElementAttributeQuiet(element, attr, value, "Duck under voice"),
         );
       },
-      onGroupClips ? (ids, groupId) => onGroupClips(ids, groupId, "Voice") : undefined,
+      onGroupClips && voiceGrouper(onGroupClips, copy),
     ).catch((error: unknown): DuckOutcome | TimelineSaveError =>
       error instanceof TimelineSaveError ? error : "aborted",
     );

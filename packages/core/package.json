@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.60",
+  "version": "0.9.64",
   "description": "",
   "repository": {
     "type": "git",
@@ -85,6 +85,12 @@
       "node": "./dist/chromeEnv.js",
       "import": "./src/chromeEnv.ts",
       "types": "./src/chromeEnv.ts"
+    },
+    "./chrome-sandbox": {
+      "bun": "./src/chromeSandbox.ts",
+      "node": "./dist/chromeSandbox.js",
+      "import": "./src/chromeSandbox.ts",
+      "types": "./src/chromeSandbox.ts"
     },
     "./atomic-file": {
       "bun": "./src/atomicFile.ts",
@@ -713,6 +719,10 @@
       "./chrome-env": {
         "import": "./dist/chromeEnv.js",
         "types": "./dist/chromeEnv.d.ts"
+      },
+      "./chrome-sandbox": {
+        "import": "./dist/chromeSandbox.js",
+        "types": "./dist/chromeSandbox.d.ts"
       },
       "./atomic-file": {
         "import": "./dist/atomicFile.js",

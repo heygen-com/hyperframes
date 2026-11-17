@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { Hono } from "hono";
@@ -6,9 +6,8 @@ import type { StudioApiAdapter } from "../types.js";
 import {
   decodeAudioPeaks,
   buildWaveformCacheKey,
+  readCachedPeaks,
   writeWaveformCache,
-  isWaveformCacheDirectory,
-  markWaveformCacheUsed,
 } from "../helpers/waveform.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
 import { decodeShared } from "../helpers/audioDecodes.js";
@@ -34,15 +33,8 @@ export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): vo
       buildWaveformCacheKey(relative(project.dir, audioPath), stats),
     );
 
-    try {
-      if (isWaveformCacheDirectory(cacheDir) && existsSync(cachePath)) {
-        const peaks = JSON.parse(readFileSync(cachePath, "utf-8")) as number[];
-        markWaveformCacheUsed(cachePath);
-        return c.json({ peaks });
-      }
-    } catch {
-      // corrupt or inaccessible cache — regenerate
-    }
+    const cached = readCachedPeaks(project.dir, cachePath);
+    if (cached) return c.json({ peaks: cached });
 
     let peaks: number[];
     try {

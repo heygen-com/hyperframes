@@ -31,6 +31,7 @@ import {
   refuseUnknownHosts,
   refuseFramingByOtherSites,
   sandboxForAnotherSite,
+  scriptsAfterWorkersDropped,
   assetContentType,
 } from "../utils/compositionServer.js";
 import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
@@ -223,8 +224,7 @@ function buildPresentPage(projectName: string, islandJson: string): string {
       hyperframes-slideshow { display: block; position: relative; width: 100vw; height: 100vh; }
       hyperframes-player { position: absolute; inset: 0; }
     </style>
-    <script src="/player.js"></script>
-    <script src="/slideshow.js"></script>
+    ${scriptsAfterWorkersDropped(["/player.js", "/slideshow.js"])}
   </head>
   <body>
     <hyperframes-slideshow tabindex="0" sound>

@@ -10,7 +10,11 @@ import {
 } from "../components/editor/manualEditsDom";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { markScenesStale } from "../player/sceneSwap";
-import { createDomEditSaveQueue, type DomEditSaveDrainResult } from "../utils/domEditSaveQueue";
+import {
+  createDomEditSaveQueue,
+  type DomEditSaveDrainResult,
+  type DomEditSaveQueueOpenEvent,
+} from "../utils/domEditSaveQueue";
 import {
   flushStudioPendingEdits,
   hasStudioPendingEdits,
@@ -51,6 +55,18 @@ export interface UsePreviewPersistenceParams {
   activeCompPathRef: React.MutableRefObject<string | null>;
   /** Called to reload the preview after undo/redo or external file changes. */
   reloadPreview: () => void;
+}
+
+function saveQueuePaused(event: DomEditSaveQueueOpenEvent): string {
+  trackStudioEvent("save_queue_paused", {
+    source: "dom_edit",
+    ...event.errorCodes,
+    status_code: event.statusCode,
+    consecutive_failures: event.consecutiveFailures,
+  });
+  return event.statusCode === 409
+    ? "Save paused: this file changed elsewhere. Reload and review the latest version before reapplying your edit."
+    : "Auto-save is paused. Check your connection.";
 }
 
 function readIframeDocument(iframe: HTMLIFrameElement): Document | null {
@@ -131,18 +147,9 @@ export function usePreviewPersistence({
   if (!domEditSaveQueueRef.current) {
     domEditSaveQueueRef.current = createDomEditSaveQueue({
       onOpen: (event) => {
-        const message =
-          event.statusCode === 409
-            ? "Save paused: this file changed elsewhere. Reload and review the latest version before reapplying your edit."
-            : "Auto-save is paused. Check your connection.";
+        const message = saveQueuePaused(event);
         setDomEditSaveQueuePaused(message);
         showToastRef.current(message, "error");
-        trackStudioEvent("save_queue_paused", {
-          source: "dom_edit",
-          error_message: event.errorMessage,
-          status_code: event.statusCode,
-          consecutive_failures: event.consecutiveFailures,
-        });
       },
       onReset: () => {
         setDomEditSaveQueuePaused(null);

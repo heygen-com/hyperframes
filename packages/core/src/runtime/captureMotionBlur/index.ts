@@ -826,16 +826,27 @@ function suspendCaptureMotionBlur(): void {
   instance?.suspend();
 }
 
-/** Test-only: drop module state between cases. */
-export function resetCaptureMotionBlurForTests(): void {
+export function teardownCaptureMotionBlur(): void {
   instance?.teardown();
   instance = null;
   activeHost = null;
   activeConfig = null;
   onFallback = false;
   suspended = false;
+  const w = window as CompositeWindow;
+  delete w.__hfMotionBlur;
+  if (ourResolver && w.__hf_page_composite_resolve === ourResolver) {
+    if (priorResolver) w.__hf_page_composite_resolve = priorResolver;
+    else delete w.__hf_page_composite_resolve;
+    w.__hf_page_composite_pending = false;
+  }
   priorResolver = null;
   ourResolver = null;
+}
+
+/** Test-only: drop module state between cases. */
+export function resetCaptureMotionBlurForTests(): void {
+  teardownCaptureMotionBlur();
   setFilterPreviewQuality(1);
 }
 

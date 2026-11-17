@@ -861,6 +861,7 @@ async function offloadMedia(
       zipBudgetBytes: ZIP_BUDGET_BYTES_WITH_ROOM_FOR_ZIP_RECORDS,
       onFile: (item) =>
         (asJson ? console.error : console.log)(c.dim(`   ${describeOffload(item, !upload)}`)),
+      onReencodeProgress: asJson ? reencodeProgressLines() : undefined,
     });
   } catch (err) {
     reportApiError("Media upload failed", err);
@@ -900,6 +901,32 @@ export function assertArchiveFits(sizeBytes: number, largestFiles: ArchiveFileSu
     "Exclude files the render does not need with .hyperframesignore.",
   );
   failCommand();
+}
+
+/** Under --json, a line on stderr per whole percent a re-encode makes (per second when its length is unknown),
+ * so a caller can tell a long encode from a dead one. */
+export function reencodeProgressLines(
+  now: () => number = Date.now,
+): NonNullable<OffloadOptions["onReencodeProgress"]> {
+  let last = { path: "", percent: -1, at: 0 };
+  return ({ path, doneSeconds, totalSeconds }) => {
+    const percent = totalSeconds
+      ? Math.min(100, Math.floor((doneSeconds / totalSeconds) * 100))
+      : null;
+    const at = now();
+    const same = path === last.path;
+    if (same && (percent === null ? at - last.at < 1000 : percent === last.percent)) return;
+    last = { path, percent: percent ?? -1, at };
+    console.error(
+      JSON.stringify({
+        event: "reencode_progress",
+        file: path,
+        percent,
+        done_seconds: Math.round(doneSeconds * 10) / 10,
+        total_seconds: totalSeconds === null ? null : Math.round(totalSeconds * 10) / 10,
+      }),
+    );
+  };
 }
 
 /** A line per PUT progress event: JSON on stderr under --json, so a caller can tell a slow upload from a dead one. */

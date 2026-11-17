@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { terminalText } from "@hyperframes/core";
 import { FEEDBACK_EMAIL_ENV } from "./feedbackSource.js";
 
 export const PROJECT_ENV_KEYS = [
@@ -96,7 +97,7 @@ export function applyDotEnv(
     const [key, value] = entry;
     if (!key || key.toUpperCase() === FEEDBACK_EMAIL_ENV) continue;
     if (allowed !== undefined && !allowed.has(key)) ignored.push(key);
-    else if (!(key in env)) {
+    else if (!alreadySetOrYielded(env, key, sourceDir)) {
       env[key] = value;
       if (sourceDir !== undefined && env === process.env)
         projectEnvValues.set(key, { value, sourceDir });
@@ -105,7 +106,19 @@ export function applyDotEnv(
   return ignored;
 }
 
+function alreadySetOrYielded(env: NodeJS.ProcessEnv, key: string, sourceDir?: string): boolean {
+  return key in env || (sourceDir !== undefined && yieldedKeys.has(keyId(sourceDir, key)));
+}
+
 const projectEnvValues = new Map<string, { value: string; sourceDir: string }>();
+const yieldedKeys = new Set<string>();
+const keyId = (dir: string, name: string) => `${resolve(dir)}\0${name}`;
+
+function yieldKey(name: string, dir: string): void {
+  delete process.env[name];
+  projectEnvValues.delete(name);
+  yieldedKeys.add(keyId(dir, name));
+}
 
 export function projectEnvDir(name: string): string | undefined {
   const set = projectEnvValues.get(name);
@@ -151,15 +164,72 @@ export async function yieldReceivedProviderKeys(warn: (line: string) => void): P
     if (own === undefined) continue;
     const dir = projectEnvDir(name) ?? "";
     const origin = originOf(name);
-    delete process.env[name];
-    projectEnvValues.delete(name);
+    yieldKey(name, dir);
     warn(
-      `[hyperframes] .env: ignoring ${name} from ${origin} (${join(dir, ".env")}); using your own ${own}`,
+      `[hyperframes] .env: ignoring ${name} from ${origin} (${terminalText(join(dir, ".env"))}); using your own ${own}`,
     );
   }
 }
 
+// Capture's vision credentials in the order it picks them; the Vertex one is usable only with both parts set.
+const VISION_CREDENTIALS: readonly (readonly string[])[] = [
+  ["OPENROUTER_API_KEY"],
+  ["HYPERFRAMES_VERTEX_PROJECT_ID", "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT"],
+  ["GEMINI_API_KEY"],
+  ["GOOGLE_API_KEY"],
+];
+
+const setOutsideProjectEnv = (parts: readonly string[]) =>
+  parts.every((part) => Boolean(process.env[part]) && projectEnvDir(part) === undefined);
+
+/** Unsets capture's vision keys from a project `.env` when the person set another complete vision credential. */
+export function yieldProjectVisionKeys(warn: (line: string) => void): void {
+  for (const credential of VISION_CREDENTIALS) {
+    if (credential.every((part) => projectEnvDir(part) === undefined)) continue;
+    const own = VISION_CREDENTIALS.find(
+      (other) => other !== credential && setOutsideProjectEnv(other),
+    );
+    if (own === undefined) continue;
+    for (const name of credential) {
+      const dir = projectEnvDir(name);
+      if (dir === undefined) continue;
+      yieldKey(name, dir);
+      warn(
+        `[hyperframes] .env: ignoring ${name} from a project .env (${terminalText(join(dir, ".env"))}); capture uses your own ${own.join(" and ")}`,
+      );
+    }
+  }
+}
+
+export const geminiKeyName = (): string =>
+  process.env.GEMINI_API_KEY ? "GEMINI_API_KEY" : "GOOGLE_API_KEY";
+
+export const visionCredential = (): readonly string[] | undefined =>
+  VISION_CREDENTIALS.find((parts) => parts.every((part) => Boolean(process.env[part])));
+
+const projectKeysNoted = new Set<string>();
+
+/** Says once per process, before a provider uses `name` from a project `.env`, which file it came from. */
+export async function noteProjectProviderKey(
+  name: string,
+  use: string,
+  warn: (line: string) => void = (line) => console.error(line),
+): Promise<void> {
+  const dir = projectEnvDir(name);
+  if (dir === undefined || projectKeysNoted.has(name)) return;
+  projectKeysNoted.add(name);
+  const origin = (await untrustedEnvOrigin(dir)) ?? "a project .env";
+  warn(`[hyperframes] Using ${name} from ${terminalText(join(dir, ".env"))}, ${origin}: ${use}.`);
+}
+
 export const PROJECT_ENV_ORIGINS = "HYPERFRAMES_PROJECT_ENV_ORIGINS";
+export const PROJECT_ENV_YIELDED = "HYPERFRAMES_PROJECT_ENV_YIELDED";
+
+export const projectEnvYielded = (): [string, string][] =>
+  [...yieldedKeys].map((id) => {
+    const [dir = "", name = ""] = id.split("\0");
+    return [name, dir];
+  });
 
 /** The folder of each key a project `.env` set, for the scripts the CLI launches to weigh the same way. */
 export function projectEnvOrigins(): Record<string, string> {

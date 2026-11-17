@@ -3,7 +3,7 @@ import { gsap } from "gsap";
 import { act, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { elementHome } from "./motionPathHome";
+import { elementHome } from "@hyperframes/core/runtime/editing-port";
 import { useMotionPathData } from "./useMotionPathData";
 import { resetOverlayFrameLoopForTests } from "./overlayFrameLoop";
 import { usePlayerStore } from "../../player/store/playerStore";

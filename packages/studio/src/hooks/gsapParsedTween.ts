@@ -3,6 +3,7 @@ import { elementTargets } from "../utils/elementGsap";
 import { resolveTweenStart } from "../utils/globalTimeCompiler";
 import { KEYFRAME_PCT_MATCH } from "./gsapShared";
 import { previewFrameOpaque } from "../player/lib/previewChannel";
+import { frameDefaultEase, frameTarget, frameTimelines } from "./gsapFrameSnapshot";
 import type { ImplicitEndValue } from "./gsapValueAtPlayhead";
 import type { ReadTween } from "./gsapRuntimeKeyframes";
 
@@ -82,23 +83,28 @@ export function findParsedTween(
   element: Element,
   anim: GsapAnimation,
 ): ParsedTween | null {
-  if (!iframe || previewFrameOpaque(iframe)) return null;
-  const win = iframe.contentWindow as GsapWindow | null;
+  if (!iframe) return null;
+  const sealed = previewFrameOpaque(iframe);
+  const win = sealed ? null : (iframe.contentWindow as GsapWindow | null);
+  const timelines = sealed
+    ? (frameTimelines(iframe) as GsapWindow["__timelines"])
+    : win?.__timelines;
+  const target = sealed ? frameTarget(iframe, element) : element;
   const start = resolveTweenStart(anim);
-  if (!win?.__timelines || start == null) return null;
+  if (!timelines || !target || start == null) return null;
   const steps = anim.keyframes?.keyframes.map((kf) => kf.properties) ?? [anim.properties];
   const props = [...new Set(steps.flatMap((step) => Object.keys(step)))];
   const keyframed = Boolean(anim.keyframes);
-  for (const timeline of Object.values(win.__timelines)) {
+  for (const timeline of Object.values(timelines)) {
     for (const tween of timeline?.getChildren?.(true) ?? []) {
       const targets = (tween.targets?.() ?? []) as Array<{ id?: unknown }>;
-      if (!targets.includes(element) && !targets.some((t) => element.id && t.id === element.id))
+      if (!targets.includes(target) && !targets.some((t) => target.id && t.id === target.id))
         continue;
       if (!startsAt(tween, start)) continue;
       const vars = tween.vars ?? {};
       const carries = keyframed ? "keyframes" in vars : props.some((p) => p in vars);
       if (!carries || !((tween.duration?.() ?? 0) > 0)) continue;
-      parseUnplayed(win, element, tween, props);
+      if (win) parseUnplayed(win, element, tween, props);
       return tween;
     }
   }
@@ -220,9 +226,10 @@ function partsFrom(tween: ParsedTween, end: "start" | "end"): ParsedTween[] {
 /** The ease GSAP resolved for a flat tween that authors none: its timeline's default, else GSAP's. */
 export function parsedTweenEase(iframe: HTMLIFrameElement | null, tween: ParsedTween | null) {
   if (!tween) return null;
-  const win = iframe?.contentWindow as GsapWindow | null;
-  const ease =
-    tween.vars?.ease ?? tween.parent?.vars?.defaults?.ease ?? win?.gsap?.defaults?.().ease;
+  const sealed = iframe ? previewFrameOpaque(iframe) : false;
+  const win = sealed ? null : (iframe?.contentWindow as GsapWindow | null);
+  const fallback = sealed ? frameDefaultEase(iframe) : win?.gsap?.defaults?.().ease;
+  const ease = tween.vars?.ease ?? tween.parent?.vars?.defaults?.ease ?? fallback;
   if (typeof ease === "string") return ease;
   const named = (name: string) => win?.gsap?.parseEase?.(name) === ease;
   return typeof ease === "function" ? (BUILT_IN_EASES.find(named) ?? null) : null;

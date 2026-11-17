@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const answers = vi.hoisted(() => ({
   list: [] as Array<{ address: string; family: number }>,
   errorCode: undefined as string | undefined,
+  hang: false,
 }));
 vi.mock("node:dns", () => {
   const lookup = (
@@ -13,9 +14,11 @@ vi.mock("node:dns", () => {
     _options: unknown,
     callback: (error: NodeJS.ErrnoException | null, addresses: typeof answers.list) => void,
   ) =>
-    answers.errorCode
-      ? callback(Object.assign(new Error("lookup failed"), { code: answers.errorCode }), [])
-      : callback(null, answers.list);
+    answers.hang
+      ? undefined
+      : answers.errorCode
+        ? callback(Object.assign(new Error("lookup failed"), { code: answers.errorCode }), [])
+        : callback(null, answers.list);
   return { default: { lookup }, lookup };
 });
 
@@ -24,6 +27,7 @@ import { downloadToTemp, fetchPublicHttpsText, UrlDownloadError } from "./urlDow
 const dirs: string[] = [];
 afterEach(() => {
   answers.errorCode = undefined;
+  answers.hang = false;
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
@@ -89,6 +93,27 @@ describe("downloads refuse hosts that resolve to private addresses", () => {
     ).resolves.toBe("<html></html>");
     expect(viaProxy).toHaveBeenCalledOnce();
   });
+
+  it("ends a proxied download whose local lookup never answers when the request times out", async () => {
+    answers.hang = true;
+    const viaProxy = useEnvProxy();
+    await expect(
+      fetchPublicHttpsText("https://assets.example.test/x.html", { maxBytes: 1024, timeoutMs: 20 }),
+    ).rejects.toMatchObject({ kind: "timeout" });
+    expect(viaProxy).not.toHaveBeenCalled();
+  });
+
+  it.each(["ENOTFOUND", "EAI_AGAIN", "EAI_FAIL"])(
+    "leaves a name this machine cannot resolve (%s) to the env proxy",
+    async (code) => {
+      answers.errorCode = code;
+      const viaProxy = useEnvProxy();
+      await expect(
+        fetchPublicHttpsText("https://assets.example.test/x.html", { maxBytes: 1024 }),
+      ).resolves.toBe("<html></html>");
+      expect(viaProxy).toHaveBeenCalledOnce();
+    },
+  );
 
   it("leaves a name this machine cannot resolve to the env proxy", async () => {
     answers.errorCode = "ENOTFOUND";

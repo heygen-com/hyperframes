@@ -277,11 +277,10 @@ function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticD
   // rather than just the first — workers can diverge (e.g. one `ineligible`, one
   // `capture_mode`), and dropping the rest hides why dedup didn't engage. Cardinality
   // stays bounded (a handful of codes, small combinations).
-  const skipReasons = armed
-    ? []
-    : [
-        ...new Set(perfs.map((p) => p.staticDedupSkipReason).filter((r): r is string => !!r)),
-      ].sort();
+  const distinctUnarmed = (values: Array<string | undefined>): string | undefined => {
+    const distinct = armed ? [] : [...new Set(values.filter((v): v is string => !!v))].sort();
+    return distinct.length > 0 ? distinct.join("|") : undefined;
+  };
   const verificationPerfs = perfs.filter((perf) => perf.staticDedupVerificationOutcome);
   const verificationOutcomes = [
     ...new Set(
@@ -295,7 +294,8 @@ function aggregateDedup(perfs: CapturePerfSummary[]): RenderPerfSummary["staticD
     armed,
     predictedFrames: perfs.reduce((sum, p) => sum + (p.staticDedupPredicted ?? 0), 0),
     reusedFrames: perfs.reduce((sum, p) => sum + (p.staticDedupReused ?? 0), 0),
-    skipReason: skipReasons.length > 0 ? skipReasons.join("|") : undefined,
+    skipReason: distinctUnarmed(perfs.map((p) => p.staticDedupSkipReason)),
+    ineligibleCause: distinctUnarmed(perfs.map((p) => p.staticDedupIneligibleCause)),
     ...(verificationPerfs.length === 0
       ? {}
       : {

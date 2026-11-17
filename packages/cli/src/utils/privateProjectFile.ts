@@ -1,14 +1,15 @@
 import {
   closeSync,
+  fstatSync,
   type Dirent,
   lstatSync,
   openSync,
   readdirSync,
   readFileSync,
-  realpathSync,
   rmSync,
   statSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
@@ -21,9 +22,10 @@ import {
   isCredentialOrToolStatePath,
   isStudioPrivatePath,
   projectPathSegments,
+  realpath,
 } from "@hyperframes/core/safe-path";
 import { registryRoot } from "../registry/publication.js";
-import { recordFolder, writeRecord } from "./projectRecords.js";
+import { readPlainTail, recordFolder, writeRecord } from "./projectRecords.js";
 import { walkBudget } from "./walkBudget.js";
 import {
   contentHash,
@@ -44,12 +46,19 @@ const RECEIVED_RECORD = join(".hyperframes", "received-files.json");
 const RECEIVED_RECORD_LOCK = `${RECEIVED_RECORD}.lock`;
 const LOCK_WAIT_MS = 2_000;
 const LOCK_STALE_MS = 10_000;
+const LOCK_CLOCK_SLACK_MS = 1_000;
 
 interface ReceivedRecord {
   file: string;
   root: string;
   projectDirFromRoot: string;
   listed: unknown;
+  unreadKeptCopy?: string;
+}
+
+interface ReadRecord {
+  listed: unknown;
+  unreadKeptCopy?: string;
 }
 
 type RecordKind = "absent" | "file" | "other" | "unknown";
@@ -70,8 +79,189 @@ function recordKind(dir: string): RecordKind {
   }
 }
 
-function readRecord(dir: string, ownFolder: boolean): { listed: unknown } | null {
+export const RECEIVED_STATE_ENV = "HYPERFRAMES_RECEIVED_STATE_FILE";
+
+type HostState = "expected" | "all";
+
+interface Named {
+  received: HostState;
+  paths: string[];
+}
+
+interface HostStates {
+  file: string;
+  unreadable: boolean;
+  byPath: Map<string, Named>;
+  byIdentity: Map<string, Named>;
+}
+
+let hostStatesCache: { key: string; states: HostStates } | undefined;
+
+function addNamed(map: Map<string, Named>, key: string, received: HostState, path: string): void {
+  const known = map.get(key);
+  map.set(key, {
+    received: known?.received === "all" ? "all" : received,
+    paths: [...(known?.paths ?? []), path],
+  });
+}
+
+interface HostEntry {
+  path: string;
+  received: HostState;
+  dev?: string;
+  ino?: string;
+}
+
+function hostEntry(value: unknown): HostEntry {
+  const { path, received, dev, ino } = (value ?? {}) as Record<string, unknown>;
+  if (typeof path !== "string" || !isAbsolute(path)) throw new Error("path is not absolute");
+  if (received !== "expected" && received !== "all") throw new Error("unknown state");
+  return {
+    path,
+    received,
+    ...(typeof dev === "string" && typeof ino === "string" && ino !== "0" ? { dev, ino } : {}),
+  };
+}
+
+function parseHostStates(file: string, text: string): HostStates {
+  const projects: unknown = JSON.parse(text)?.projects;
+  if (!Array.isArray(projects)) throw new Error("projects is not a list");
+  const states: HostStates = { file, unreadable: false, byPath: new Map(), byIdentity: new Map() };
+  for (const value of projects) {
+    const { path, received, dev, ino } = hostEntry(value);
+    addNamed(states.byPath, walkStart(path), received, path);
+    if (dev !== undefined && ino !== undefined)
+      addNamed(states.byIdentity, `${dev}:${ino}`, received, path);
+  }
+  return states;
+}
+
+function hostStates(): HostStates | null {
+  const file = process.env[RECEIVED_STATE_ENV];
+  if (!file) return null;
+  try {
+    const handle = openSync(file, "r");
+    try {
+      const stat = fstatSync(handle, { bigint: true });
+      const key = `${file}\0${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeNs}:${stat.ctimeNs}`;
+      if (hostStatesCache?.key !== key)
+        hostStatesCache = { key, states: parseHostStates(file, readFileSync(handle, "utf-8")) };
+      return hostStatesCache.states;
+    } finally {
+      closeSync(handle);
+    }
+  } catch {
+    return { file, unreadable: true, byPath: new Map(), byIdentity: new Map() };
+  }
+}
+
+function hostState(dir: string, states = hostStates()): HostState | undefined {
+  if (!states) return undefined;
+  if (states.unreadable) return "all";
+  const named = states.byPath.get(dir)?.received;
+  if (named || states.byIdentity.size === 0) return named;
+  const identity = fileIdentity(dir);
+  return identity === null ? undefined : states.byIdentity.get(identity)?.received;
+}
+
+interface Naming {
+  path: string;
+  identity?: string;
+}
+
+function folderBirth(dir: string): string {
+  try {
+    return String(lstatSync(dir, { bigint: true }).birthtimeNs);
+  } catch {
+    return "";
+  }
+}
+
+function namings(dir: string, states: HostStates): Naming[] {
+  const byPath = (states.byPath.get(dir)?.paths ?? []).map((path) => ({ path }));
+  const identity = states.byIdentity.size === 0 ? null : fileIdentity(dir);
+  const named = identity === null ? undefined : states.byIdentity.get(identity);
+  if (!named) return byPath;
+  const kept = `${identity}:${folderBirth(dir)}`;
+  return [...byPath, ...named.paths.map((path) => ({ path, identity: kept }))];
+}
+
+const KEPT_RECORDS = "received-records";
+const MAX_KEPT_BYTES = 16 * 1024 * 1024;
+
+type KeptFiles = string[] | "all" | null;
+
+function keptFilesIn(kept: Record<string, unknown>, { path, identity }: Naming): KeptFiles {
+  if (kept.project !== path) return "all";
+  if (identity !== undefined && kept.identity !== identity) return null;
+  const { files } = kept;
+  if (kept.doubted === true || !Array.isArray(files)) return "all";
+  return files.every((entry) => typeof entry === "string") ? files : "all";
+}
+
+function keptFilesFor(naming: Naming, text: string): KeptFiles {
+  try {
+    const kept: unknown = JSON.parse(text);
+    return keptFilesIn((kept ?? {}) as Record<string, unknown>, naming);
+  } catch {
+    return "all";
+  }
+}
+
+function hostKeptRecord(
+  stateFile: string,
+  naming: Naming,
+): { file: string; files: string[] | "all" } | null {
+  const name = `${createHash("sha256").update(naming.path).digest("hex")}.json`;
+  const file = join(dirname(stateFile), KEPT_RECORDS, name);
+  try {
+    if (!lstatSync(file, { throwIfNoEntry: false })) return null;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "ENOTDIR" ? null : { file, files: "all" };
+  }
+  const read = readPlainTail(file, MAX_KEPT_BYTES);
+  if (!read?.whole) return onDisk(file) ? { file, files: "all" } : null;
+  const files = keptFilesFor(naming, read.text);
+  return files === null ? null : { file, files };
+}
+
+function withEntriesHostKept(dir: string, listed: unknown[]): ReadRecord {
+  const states = hostStates();
+  if (!states || hostState(dir, states) !== "expected") return { listed };
+  const copies = namings(dir, states).flatMap(
+    (naming) => hostKeptRecord(states.file, naming) ?? [],
+  );
+  const unread = copies.find((copy) => copy.files === "all");
+  if (unread) return { listed, unreadKeptCopy: unread.file };
+  const present = new Set(listed.map(String));
+  const kept = copies.flatMap((copy) => (copy.files === "all" ? [] : copy.files));
+  const back = [...new Set(kept)].filter(
+    (entry) => !present.has(entry) && onDisk(join(dir, entry)),
+  );
+  return { listed: back.length === 0 ? listed : [...listed, ...back] };
+}
+
+function allReceivedAtOrAbove(start: string, states: HostStates): boolean {
+  for (let dir = start; ; dir = dirname(dir)) {
+    if (hostState(dir, states) === "all") return true;
+    if (dirname(dir) === dir) return false;
+  }
+}
+
+function allReceivedAround(start: string): boolean {
+  const states = hostStates();
+  if (!states) return false;
+  if (states.unreadable) return true;
+  const overlaps = [...states.byPath].some(
+    ([path, { received }]) =>
+      received === "all" && (isAtOrUnder(path, start) || isAtOrUnder(start, path)),
+  );
+  return overlaps || allReceivedAtOrAbove(start, states);
+}
+
+function readRecordAsWritten(dir: string, ownFolder: boolean): { listed: unknown } | null {
   const kind = recordKind(dir);
+  if (kind === "absent" && hostState(dir) !== undefined) return { listed: undefined };
   if (kind === "absent" || (kind === "unknown" && !ownFolder)) return null;
   if (kind !== "file") return { listed: undefined };
   try {
@@ -79,6 +269,11 @@ function readRecord(dir: string, ownFolder: boolean): { listed: unknown } | null
   } catch {
     return { listed: undefined };
   }
+}
+
+function readRecord(dir: string, ownFolder: boolean): ReadRecord | null {
+  const record = readRecordAsWritten(dir, ownFolder);
+  return record && Array.isArray(record.listed) ? withEntriesHostKept(dir, record.listed) : record;
 }
 
 function sleepSync(ms: number): void {
@@ -95,7 +290,7 @@ function tryRecordLock(lock: string, deadline: number): "taken" | "wait" {
     if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
   }
   const heldFor = Date.now() - (statSync(lock, { throwIfNoEntry: false })?.mtimeMs ?? Date.now());
-  if (heldFor > LOCK_STALE_MS) rmSync(lock, { force: true });
+  if (heldFor > LOCK_STALE_MS || heldFor < -LOCK_CLOCK_SLACK_MS) rmSync(lock, { force: true });
   else if (Date.now() >= deadline)
     throw new Error(`Another program is changing ${RECEIVED_RECORD}; try again.`);
   return "wait";
@@ -123,7 +318,7 @@ function recordLock(projectDir: string): { root: string; lock: string } {
 }
 
 function applyRecordChange(root: string, change: RecordChange): void {
-  const record = readRecord(root, true);
+  const record = readRecordAsWritten(root, true);
   if (record && !Array.isArray(record.listed)) return;
   const files = new Set(((record?.listed ?? []) as unknown[]).map(String));
   const content = readReceivedContent(root);
@@ -220,12 +415,13 @@ function receivedRecordsAtOrAbove(start: string): ReceivedRecord[] {
   }
 }
 
-function nestedRecord(start: string, dir: string, record: { listed: unknown }): ReceivedRecord {
+function nestedRecord(start: string, dir: string, record: ReadRecord): ReceivedRecord {
   const folder = relative(start, dir).split(sep).join("/");
   const listed = Array.isArray(record.listed)
     ? record.listed.map((entry) => (folder ? `${folder}/${String(entry)}` : String(entry)))
     : undefined;
-  return { file: join(dir, RECEIVED_RECORD), root: start, projectDirFromRoot: "", listed };
+  const nested = { file: join(dir, RECEIVED_RECORD), root: start, projectDirFromRoot: "", listed };
+  return record.unreadKeptCopy ? { ...nested, unreadKeptCopy: record.unreadKeptCopy } : nested;
 }
 
 const GIT_AND_PACKAGE_FOLDERS = new Set([".git", "node_modules"]);
@@ -282,7 +478,7 @@ async function receivedRecordsBelowAsync(start: string): Promise<ReceivedRecord[
 
 function walkStart(projectDir: string): string {
   try {
-    return realpathSync(projectDir);
+    return realpath(projectDir);
   } catch {
     return resolve(projectDir);
   }
@@ -291,7 +487,17 @@ function walkStart(projectDir: string): string {
 function receivedRecords(projectDir: string): ReceivedRecord[] | null {
   const start = walkStart(projectDir);
   const below = receivedRecordsBelow(start);
-  return below && [...receivedRecordsAtOrAbove(start), ...below];
+  if (!below) return null;
+  const records = [...receivedRecordsAtOrAbove(start), ...below];
+  const everyFile = (file: string) => ({
+    file,
+    root: start,
+    projectDirFromRoot: "",
+    listed: undefined,
+  });
+  records.push(...records.flatMap(({ unreadKeptCopy }) => unreadKeptCopy ?? []).map(everyFile));
+  if (allReceivedAround(start)) records.push(everyFile(process.env[RECEIVED_STATE_ENV] ?? ""));
+  return records;
 }
 
 function fileIdentity(path: string): string | null {

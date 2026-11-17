@@ -63,6 +63,10 @@ const CREDENTIAL_FILES = new Set([
   ".git-credentials",
   ".gitconfig",
   ".mcp.json",
+  "credentials.json",
+  "serviceaccountkey.json",
+  "service-account.json",
+  "service_account.json",
 ]);
 const CREDENTIAL_FOLDERS = new Set([
   ".ssh",
@@ -105,19 +109,33 @@ export function isStudioPrivatePath(relPath: string): boolean {
   if (isVcsOrSecretPath(relPath) || isCredentialOrToolStatePath(relPath)) return true;
   const segments = projectPathSegments(relPath);
   const inside = !isAbsolute(relPath) && !/^\.\.[. ]*$/.test(relPath.split(/[\\/]/, 1)[0] ?? "");
-  const loadedType = LOADED_ASSET_TYPE.test(segments.at(-1) ?? "");
+  const name = segments.at(-1) ?? "";
+  const loadedType = !name.startsWith(".") && LOADED_ASSET_TYPE.test(name);
   return segments.some((segment, at) => {
     const atRoot = segments.slice(0, at).every((before) => before === "");
     if (segment === ".hyperframes")
       return !atRoot || !isStudioOwnFile(segments.slice(at).join("/"));
+    if (BUILD_OUTPUT_FOLDERS.has(segment)) return inside;
     const mediaFolder = atRoot && segment === MEDIA_FOLDER;
     return inside && segment.startsWith(".") && !mediaFolder && !loadedType;
   });
 }
 
-// A new tool keeps its token under a new hidden name, so a hidden file is private unless it is in the media folder or
-// is an asset a page loads. A path leaving the project (a linked frame cache) is judged elsewhere.
+// A new tool keeps its token under a new hidden name, so a hidden file is private, and a file in a hidden folder is
+// private unless it is in the media folder or is an asset a page loads. A path leaving the project is judged elsewhere.
 const MEDIA_FOLDER = ".media";
+// Framework build output: its scripts can carry server environment values inlined at build time.
+const BUILD_OUTPUT_FOLDERS = new Set([
+  ".next",
+  ".nuxt",
+  ".output",
+  ".svelte-kit",
+  ".vercel",
+  ".netlify",
+  ".wrangler",
+  ".astro",
+  ".turbo",
+]);
 const LOADED_ASSET_TYPE =
   /.\.(?:png|jpe?g|gif|webp|avif|svg|ico|bmp|tiff?|heic|heif|mp4|m4v|mov|webm|mkv|mxf|avi|mp3|wav|m4a|aac|ogg|oga|opus|flac|woff2?|ttf|otf|css|m?js|cjs)$/;
 

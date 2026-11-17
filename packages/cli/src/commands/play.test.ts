@@ -54,6 +54,9 @@ const mocks = vi.hoisted(() => {
 });
 const FakeProxyTranscodeError = mocks.ProxyTranscodeError;
 
+/** What the page itself sends for its media; a proxy copy needs a same-site signal. */
+const OWN_PAGE = { headers: { "Sec-Fetch-Site": "same-origin" } };
+
 const mediaMocks = vi.hoisted(() => ({
   probeAssetCodec: vi.fn(async () => ({
     codecName: "hevc",
@@ -153,7 +156,7 @@ it("serves direct VP8 proxy requests for alpha sources", async () => {
   mocks.resolveProxy.mockResolvedValueOnce(proxyPath);
   const app = await buildApp(project, true);
 
-  const res = await app.request("/composition/clip.mov?hf-proxy=auto");
+  const res = await app.request("/composition/clip.mov?hf-proxy=auto", OWN_PAGE);
 
   expect(res.status).toBe(200);
   expect(res.headers.get("content-type")).toBe("video/webm");
@@ -314,7 +317,7 @@ describe("registerCompositionRoute", () => {
     mocks.resolveProxy.mockResolvedValue(proxyPath);
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/clip.mp4?hf-proxy=h264");
+    const res = await app.request("/composition/clip.mp4?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("transcoded-h264-bytes");
@@ -333,7 +336,7 @@ describe("registerCompositionRoute", () => {
     mocks.resolveProxy.mockResolvedValue(proxyPath);
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/clip.mov?hf-proxy=h264");
+    const res = await app.request("/composition/clip.mov?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("video/mp4");
@@ -350,7 +353,7 @@ describe("registerCompositionRoute", () => {
       mocks.resolveProxy.mockResolvedValue(proxyPath);
       const app = await buildApp(project, true);
 
-      const res = await app.request(`/composition/clip.${extension}?hf-proxy=h264`);
+      const res = await app.request(`/composition/clip.${extension}?hf-proxy=h264`, OWN_PAGE);
 
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("transcoded-h264-bytes");
@@ -365,7 +368,7 @@ describe("registerCompositionRoute", () => {
     );
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/clip.mp4?hf-proxy=h264");
+    const res = await app.request("/composition/clip.mp4?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(502);
   });
@@ -376,7 +379,7 @@ describe("registerCompositionRoute", () => {
     mocks.resolveProxy.mockRejectedValue(new mocks.ProxyCapacityError());
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/clip.mp4?hf-proxy=h264");
+    const res = await app.request("/composition/clip.mp4?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(503);
     expect(res.headers.get("retry-after")).toBe("1");
@@ -387,10 +390,57 @@ describe("registerCompositionRoute", () => {
     writeFileSync(join(project.dir, "image.png"), "not-a-video");
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/image.png?hf-proxy=h264");
+    const res = await app.request("/composition/image.png?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(404);
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
+  });
+
+  // fails without the fix: another site's page could make this machine transcode the asset,
+  // and a request carrying neither fetch metadata nor a Referer counted as this site's.
+  it.each([
+    ["cross-site", { "Sec-Fetch-Site": "cross-site" }],
+    ["same-site", { "Sec-Fetch-Site": "same-site" }],
+    ["no fetch metadata and no Referer", {}],
+  ])(
+    "refuses ?hf-proxy for a request from another site (%s) without starting a transcode",
+    async (_label, headers: Record<string, string>) => {
+      const project = tmpProject();
+      writeFileSync(join(project.dir, "clip.mp4"), "original-hevc-bytes");
+      const app = await buildApp(project, true);
+
+      const res = await app.request("/composition/clip.mp4?hf-proxy=h264", { headers });
+
+      expect(res.status).toBe(403);
+      expect(mocks.resolveProxy).not.toHaveBeenCalled();
+      expect(mediaMocks.probeAssetCodec).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still serves ?hf-proxy to the play page itself and plain assets to another site", async () => {
+    const project = tmpProject();
+    writeFileSync(join(project.dir, "clip.mp4"), "original-hevc-bytes");
+    const proxyPath = join(project.dir, "proxy.mp4");
+    writeFileSync(proxyPath, "transcoded-h264-bytes");
+    mocks.resolveProxy.mockResolvedValue(proxyPath);
+    const app = await buildApp(project, true);
+
+    const own = await app.request("/composition/clip.mp4?hf-proxy=h264", {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+    });
+    expect(own.status).toBe(200);
+    expect(await own.text()).toBe("transcoded-h264-bytes");
+
+    const referred = await app.request("http://localhost/composition/clip.mp4?hf-proxy=h264", {
+      headers: { Referer: "http://localhost/" },
+    });
+    expect(referred.status).toBe(200);
+
+    const plain = await app.request("/composition/clip.mp4", {
+      headers: { "Sec-Fetch-Site": "cross-site" },
+    });
+    expect(plain.status).toBe(200);
+    expect(await plain.text()).toBe("original-hevc-bytes");
   });
 
   it("serves the runtime script ahead of every author script", async () => {
@@ -450,7 +500,7 @@ describe("registerCompositionRoute", () => {
     expect(await htmlRes.text()).not.toContain("__HF_MEDIA_CODEC_MAP__");
     expect(mocks.scanProjectMediaCodecMap).not.toHaveBeenCalled();
 
-    const proxyRes = await app.request("/composition/clip.mp4?hf-proxy=h264");
+    const proxyRes = await app.request("/composition/clip.mp4?hf-proxy=h264", OWN_PAGE);
     expect(proxyRes.status).toBe(404);
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
   });

@@ -1792,6 +1792,7 @@ function reportWithFindings(overrides: Partial<CheckReport> = {}): CheckReport {
       tolerance: 2,
       totalIssueCount: 0,
       truncated: false,
+      faceCheck: { ran: true, candidates: 0, faces: 0 },
     },
     motion: { ...emptySection(), enabled: false, samples: 0 },
     contrast: { ...emptySection(), enabled: true, samples: [], checked: 0, passed: 0 },
@@ -4438,6 +4439,33 @@ it("applies transition sample limits within the requested range", async () => {
   });
   expect(report.layout.transitionSamples).toEqual([7.8, 8]);
   expect(report.layout.transitionSamplesDropped).toBe(3);
+});
+
+describe("layout.faceCheck", () => {
+  it("says the face pass ran when no text was in front of a video", async () => {
+    const { report } = await runScenario(fakeDriver({ collectTextOverVideo: async () => [] }));
+    expect(report.layout.faceCheck).toEqual({ ran: true, candidates: 0, faces: 0 });
+  });
+
+  it("says why when the pass could not look", async () => {
+    const { report } = await runScenario(fakeDriver());
+    expect(report.layout.faceCheck).toEqual({
+      ran: false,
+      reason: "this check driver does not report text over video",
+    });
+  });
+
+  it("is present with a reason when the browser never ran", async () => {
+    const { deps } = dependencies(fakeDriver());
+    deps.runBrowserCheck = async () => {
+      throw new Error("Chrome did not start");
+    };
+    const report = await runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+    expect(report.layout.faceCheck).toEqual({
+      ran: false,
+      reason: "the check stopped before looking for faces under text",
+    });
+  });
 });
 
 describe("check cache", () => {

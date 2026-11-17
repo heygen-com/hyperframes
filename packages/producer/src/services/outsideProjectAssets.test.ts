@@ -49,6 +49,24 @@ vi.mock("node:child_process", async (importOriginal) => {
   };
 });
 
+// Runs once, right after the named file is read: lets a test change the file between the pre-flight's read and the reader's.
+const afterRead = vi.hoisted(() => ({ path: "", run: () => {} }));
+
+vi.mock("@hyperframes/parsers/asset-resolution", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@hyperframes/parsers/asset-resolution")>();
+  return {
+    ...actual,
+    readProjectFile: (path: string) => {
+      const read = actual.readProjectFile(path);
+      if (afterRead.path === path) {
+        afterRead.path = "";
+        afterRead.run();
+      }
+      return read;
+    },
+  };
+});
+
 vi.mock("../utils/urlDownloader.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/urlDownloader.js")>()),
   downloadToTemp: async (_url: string, destDir: string) => {
@@ -401,7 +419,7 @@ describe.skipIf(!HAS_FFMPEG)("render servers keep markup inside the project", ()
     async (link) => {
       const { root, projectDir } = symlinkedComposition(link);
       const needsFlag =
-        /outside the project and its scripts would run; pass --include-outside-files/;
+        /outside the project, and any scripts in it would run; move it into the project, or pass --include-outside-files/;
       await expect(compileInProcess(projectDir, true)).rejects.toThrow(needsFlag);
       const planDir = join(root, "plan");
       await expect(
@@ -412,6 +430,22 @@ describe.skipIf(!HAS_FFMPEG)("render servers keep markup inside the project", ()
       expect(result.compiled.html).toContain("OUTSIDE-SCENE");
     },
   );
+
+  it("trusted local renders refuse a scene swapped for an outside link after the pre-flight", async () => {
+    const { root, projectDir } = symlinkedComposition("scene");
+    const scenePath = join(projectDir, "scenes", "a.html");
+    rmSync(scenePath);
+    writeFileSync(scenePath, scene.replace("OUTSIDE-SCENE", "INSIDE-SCENE"));
+    afterRead.path = scenePath;
+    afterRead.run = () => {
+      rmSync(scenePath);
+      symlinkSync(join(root, "outside", "scene.html"), scenePath);
+    };
+    await expect(compileInProcess(projectDir, true)).rejects.toThrow(
+      /scenes\/a\.html: it is outside the project, and any scripts in it would run/,
+    );
+    expect(afterRead.path).toBe("");
+  });
 });
 
 function outsideScriptsProject() {

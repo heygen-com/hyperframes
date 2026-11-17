@@ -245,6 +245,7 @@ jobs:
               - "packages/cli/src/server/**"
               - "packages/cli/src/browser/**"
               - "packages/cli/src/utils/**"
+              - "packages/cli/src/whisper/modelFile.ts"
               - "packages/cli/src/ui/**"
               - "packages/cli/src/{background-removal,registry,telemetry}/**"
               - "packages/cli/src/capture/{captureCompositionFrame,captureTimeout,navigateForCapture,readBoundedResponse}.ts"

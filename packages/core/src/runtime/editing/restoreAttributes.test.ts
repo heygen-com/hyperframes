@@ -73,6 +73,32 @@ describe("restore-attributes", () => {
     expect(rebind).not.toHaveBeenCalled();
   });
 
+  it("changes no handler, URL or sandbox-style attribute, and leaves an unchanged one alone", () => {
+    const refused = (html: string, attributes: [string, string][]) => {
+      document.body.innerHTML = html;
+      player();
+      const before = document.body.innerHTML;
+      expect(restoreAttributes(restore("hf:box", attributes))).toEqual({ applied: false });
+      expect(document.body.innerHTML).toBe(before);
+    };
+    const box = '<div data-hf-id="box"></div>';
+    const id: [string, string] = ["data-hf-id", "box"];
+    for (const name of ["onclick", "ONCLICK", "href", "src", "srcdoc", "xlink:href", "sandbox"])
+      refused(box, [id, [name, "alert(1)"]]);
+    refused(box, [id, ["data-composition-src", "https://example.com/a.html"]]);
+    refused('<iframe data-hf-id="box" sandbox=""></iframe>', [id]);
+
+    document.body.innerHTML =
+      '<img data-hf-id="box" src="a.png" style="left: 9px" loading="lazy" data-hf-preview-lazy>';
+    player();
+    const img = document.querySelector("img")!;
+    const setAttribute = vi.spyOn(img, "setAttribute");
+    const params = restore("hf:box", [id, ["src", "a.png"], ["style", "left: 0px"]]);
+    expect(restoreAttributes(params)).toEqual({ applied: true });
+    expect(setAttribute.mock.calls).toEqual([["style", "left: 0px"]]);
+    expect(img.hasAttribute("loading")).toBe(false);
+  });
+
   it("accepts only bounded, well-formed params", () => {
     const ok = restore("hf:box", [["style", "left: 0"]]);
     expect(parseRestoreAttributes(ok)).toEqual(ok);

@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installEditingAgent } from "./editingAgent";
-import { PREVIEW_FOR_ANOTHER_SITE_META } from "../studioPreviewMark";
+import { PREVIEW_FOR_ANOTHER_SITE_META, STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 
 const CONNECT = { source: "hf-parent", type: "editing-connect", v: 1 };
 const H = "0123456789abcdef:1";
+const studioMark = document.createElement("meta");
+studioMark.name = STUDIO_PREVIEW_MARK_META;
+document.head.append(studioMark);
 
 function frameWindow(): Window {
   const iframe = document.createElement("iframe");
@@ -126,6 +129,18 @@ describe("installEditingAgent", () => {
     expect(handoff).toHaveBeenCalledOnce();
   });
 
+  it("never hands off in a document Studio's preview server did not mark", () => {
+    studioMark.remove();
+    try {
+      post(parent, CONNECT);
+      expect(handoff).not.toHaveBeenCalled();
+    } finally {
+      document.head.append(studioMark);
+    }
+    post(parent, CONNECT);
+    expect(handoff).toHaveBeenCalledOnce();
+  });
+
   it("stops listening for a connect once disposed", () => {
     agent.dispose();
     post(parent, CONNECT);
@@ -172,6 +187,16 @@ describe("installEditingAgent", () => {
           "restore-attributes",
           "caption-words",
           "caption-transform",
+          "color-grading-status",
+          "color-grading-previews",
+          "color-grading-playback",
+          "watch-geometry",
+          "audio-meter",
+          "document-markup",
+          "set-audio-group-attribute",
+          "assign-audio-group",
+          "gsap-snapshot",
+          "motion-path-home",
         ],
       },
     });
@@ -397,6 +422,13 @@ describe("installEditingAgent", () => {
       180 + index,
       "invalid-params",
     ]),
+    ...[{}, { handles: ["1"] }, { handles: Array(33).fill(H) }, { handles: [], extra: 1 }].map(
+      (params, index) => [
+        { v: 1, id: 900 + index, kind: "watch-geometry", params },
+        900 + index,
+        "invalid-params",
+      ],
+    ),
     ...[["--"], ["--a b"], ["--a;b"], ["--a:b"], ["Color"], ["-x"], ["--" + "a".repeat(255)]].map(
       (properties, index) => [
         { v: 1, id: 60 + index, kind: "computed-styles", params: { selector: "p", properties } },
