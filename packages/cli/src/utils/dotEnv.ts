@@ -147,17 +147,22 @@ interface KeySource {
   origin: string;
 }
 
+async function projectEnvSource(dir: string): Promise<KeySource> {
+  const received = await receivedEnvOrigin(dir);
+  return received === null
+    ? { rank: RANK.ownProjectEnv, origin: "a project .env" }
+    : { rank: RANK.receivedProjectEnv, origin: received };
+}
+
 /** Unsets each project `.env` provider key whose competing provider has a credential from a surer source. */
 export async function yieldProjectProviderKeys(warn: (line: string) => void): Promise<void> {
-  const origins = new Map<string, string | null>();
+  const sources = new Map<string, KeySource>();
   const sourceOf = async (name: string): Promise<KeySource> => {
     const dir = projectEnvDir(name);
     if (dir === undefined) return { rank: RANK.outsideProjectEnv, origin: "" };
-    if (!origins.has(dir)) origins.set(dir, await receivedEnvOrigin(dir));
-    const received = origins.get(dir) ?? null;
-    return received === null
-      ? { rank: RANK.ownProjectEnv, origin: "a project .env" }
-      : { rank: RANK.receivedProjectEnv, origin: received };
+    const known = sources.get(dir) ?? (await projectEnvSource(dir));
+    sources.set(dir, known);
+    return known;
   };
   for (const name of [...projectEnvValues.keys()]) {
     const dir = projectEnvDir(name);
@@ -174,10 +179,30 @@ export async function yieldProjectProviderKeys(warn: (line: string) => void): Pr
     if (own === undefined) continue;
     delete process.env[name];
     projectEnvValues.delete(name);
+    const { terminalText } = await import("@hyperframes/core");
     warn(
-      `[hyperframes] .env: ignoring ${name} from ${source.origin} (${join(dir, ".env")}); using your own ${own}`,
+      `[hyperframes] .env: ignoring ${name} from ${source.origin} (${terminalText(join(dir, ".env"))}); using your own ${own}`,
     );
   }
+}
+
+export const geminiKeyName = (): string =>
+  process.env.GEMINI_API_KEY ? "GEMINI_API_KEY" : "GOOGLE_API_KEY";
+
+const projectKeysNoted = new Set<string>();
+
+/** Says once per process, before a provider uses `name` from a project `.env`, which file it came from. */
+export async function noteProjectProviderKey(
+  name: string,
+  use: string,
+  warn: (line: string) => void = (line) => console.error(line),
+): Promise<void> {
+  const dir = projectEnvDir(name);
+  if (dir === undefined || projectKeysNoted.has(name)) return;
+  projectKeysNoted.add(name);
+  const { origin } = await projectEnvSource(dir);
+  const { terminalText } = await import("@hyperframes/core");
+  warn(`[hyperframes] Using ${name} from ${terminalText(join(dir, ".env"))}, ${origin}: ${use}.`);
 }
 
 export const PROJECT_ENV_ORIGINS = "HYPERFRAMES_PROJECT_ENV_ORIGINS";

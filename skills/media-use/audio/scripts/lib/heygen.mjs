@@ -192,6 +192,17 @@ function ownCompetingCredential(name) {
 
 const projectOrigin = (name) => untrustedOrigin(name) ?? "a project .env";
 
+// Copy of core's terminalText (packages/core/src/terminalText.ts): control characters print as \xNN.
+function terminalText(text) {
+  let shown = "";
+  for (const ch of text) {
+    const code = ch.charCodeAt(0);
+    const control = (code < 0x20 && code !== 0x09) || (code >= 0x7f && code <= 0x9f);
+    shown += control ? `\\x${code.toString(16).padStart(2, "0")}` : ch;
+  }
+  return shown;
+}
+
 // A project .env's provider key gives way to the person's own credential for a competing provider.
 function yieldProjectProviderKeys() {
   for (const name of ["GEMINI_API_KEY", "GOOGLE_API_KEY", "ELEVENLABS_API_KEY"]) {
@@ -202,21 +213,25 @@ function yieldProjectProviderKeys() {
     delete process.env[name];
     projectEnvValues.delete(name);
     process.stderr.write(
-      `[hyperframes] .env: ignoring ${name} from ${origin} (${join(dir, ".env")}); using your own ${own}\n`,
+      `[hyperframes] .env: ignoring ${name} from ${origin} (${terminalText(join(dir, ".env"))}); using your own ${own}\n`,
     );
   }
 }
 
-let elevenlabsKeyNoted = false;
+const projectKeysNoted = new Set();
 
-// Says once, before ElevenLabs speaks, that the key came from a project .env.
-export function noteProjectElevenLabsKey() {
-  const dir = projectKeyDir("ELEVENLABS_API_KEY");
-  if (dir === undefined || elevenlabsKeyNoted) return;
-  elevenlabsKeyNoted = true;
+// Says once per key, before a provider uses it, that the key came from a project .env.
+export function noteProjectProviderKey(name, use) {
+  const dir = projectKeyDir(name);
+  if (dir === undefined || projectKeysNoted.has(name)) return;
+  projectKeysNoted.add(name);
   process.stderr.write(
-    `[hyperframes] Using ELEVENLABS_API_KEY from ${join(dir, ".env")}, ${projectOrigin("ELEVENLABS_API_KEY")}: speech goes to that key's ElevenLabs account.\n`,
+    `[hyperframes] Using ${name} from ${terminalText(join(dir, ".env"))}, ${projectOrigin(name)}: ${use}.\n`,
   );
+}
+
+export function noteProjectElevenLabsKey() {
+  noteProjectProviderKey("ELEVENLABS_API_KEY", "speech goes to that key's ElevenLabs account");
 }
 
 // Walk up ≤5 dirs from startDir; load the first .env (shell env always wins).

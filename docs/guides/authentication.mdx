@@ -153,10 +153,10 @@ to a shared space with `--space`.
 | `HYPERFRAMES_ENV` | `prod` (default) or `dev`; `dev` keeps credentials in a separate `dev/` directory under the root. Hosts and the OAuth client id come from `HEYGEN_API_URL`, `HYPERFRAMES_OAUTH_*` and `HYPERFRAMES_PUBLISHED_PROJECTS_API_URL`. |
 | `HYPERFRAMES_OAUTH_CLIENT_ID` | Override the public client ID for a controlled OAuth environment. |
 | `ELEVENLABS_API_KEY` | ElevenLabs TTS, used when no HeyGen credential is present. A key from a project's `.env` is never used next to your own HeyGen credential, and a note names the file when it is used. |
-| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Explicit Gemini TTS selection and Lyria music generation; capture descriptions use `GEMINI_API_KEY`. |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Explicit Gemini TTS selection and Lyria music generation; capture descriptions use `GEMINI_API_KEY`. A key from a project's `.env` prints a note naming the file when it is used. |
 | `GOOGLE_APPLICATION_CREDENTIALS` / `GCS_CREDS` | Gemini TTS service-account JSON file path / injected JSON. Used when neither API key is set. |
 | `GOOGLE_CLOUD_PROJECT` / `GCLOUD_PROJECT_ID` | Gemini OAuth quota project; first set value wins, then the service account project. |
-| `OPENROUTER_API_KEY` | Capture descriptions; takes priority over Gemini for that step, unless it comes from a project's `.env` and your shell has a Gemini or Vertex credential. |
+| `OPENROUTER_API_KEY` | Capture descriptions; takes priority over Gemini for that step, unless it comes from a project's `.env` and your shell has a Gemini or Vertex credential. A key from a project's `.env` prints a note naming the file when it is used. |
 
 ## Related topics
 

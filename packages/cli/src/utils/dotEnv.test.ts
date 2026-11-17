@@ -2,7 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyDotEnv, loadProjectDotEnv, yieldProjectProviderKeys } from "./dotEnv.js";
+import {
+  applyDotEnv,
+  loadProjectDotEnv,
+  noteProjectProviderKey,
+  yieldProjectProviderKeys,
+} from "./dotEnv.js";
 
 const records = vi.hoisted(() => ({ unchecked: false }));
 vi.mock("./privateProjectFile.js", async (importOriginal) => {
@@ -289,5 +294,64 @@ describe("yieldProjectProviderKeys", () => {
     expect(warn).toHaveBeenCalledWith(
       `[hyperframes] .env: ignoring OPENROUTER_API_KEY from a project whose origin could not be checked (too many folders to scan) (${join(dir, ".env")}); using your own GEMINI_API_KEY`,
     );
+  });
+});
+
+describe("noteProjectProviderKey", () => {
+  const dirs: string[] = [];
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  // Windows refuses control characters in folder names, so there the path is plain.
+  const esc = process.platform === "win32" ? "" : String.fromCharCode(27);
+
+  function load(name: string, received: boolean): string {
+    vi.stubEnv(name, undefined);
+    const dir = mkdtempSync(join(tmpdir(), `hf-dotenv-${esc}[31m-`));
+    dirs.push(dir);
+    writeFileSync(join(dir, ".env"), `${name}=from-env\n`);
+    if (received) {
+      mkdirSync(join(dir, ".hyperframes"));
+      writeFileSync(
+        join(dir, ".hyperframes", "received-files.json"),
+        JSON.stringify({ files: [".env"] }),
+      );
+    }
+    loadProjectDotEnv(dir, process.env, vi.fn());
+    return dir;
+  }
+
+  const shown = (dir: string) => join(dir, ".env").replace(esc || "\0", "\\x1b");
+
+  // fails without the fix: a project key with no competing credential was used silently.
+  it("notes a received .env's key once, with the file path escaped", async () => {
+    const dir = load("OPENROUTER_API_KEY", true);
+    const warn = vi.fn();
+    await noteProjectProviderKey("OPENROUTER_API_KEY", "images go there", warn);
+    await noteProjectProviderKey("OPENROUTER_API_KEY", "images go there", warn);
+    expect(warn.mock.calls).toEqual([
+      [
+        `[hyperframes] Using OPENROUTER_API_KEY from ${shown(dir)}, a received project: images go there.`,
+      ],
+    ]);
+  });
+
+  it("notes a key from the person's own project .env too", async () => {
+    const dir = load("GEMINI_API_KEY", false);
+    const warn = vi.fn();
+    await noteProjectProviderKey("GEMINI_API_KEY", "images go there", warn);
+    expect(warn).toHaveBeenCalledWith(
+      `[hyperframes] Using GEMINI_API_KEY from ${shown(dir)}, a project .env: images go there.`,
+    );
+  });
+
+  it("says nothing for a key set in the shell", async () => {
+    vi.stubEnv("GOOGLE_API_KEY", "shell");
+    const warn = vi.fn();
+    await noteProjectProviderKey("GOOGLE_API_KEY", "images go there", warn);
+    expect(warn).not.toHaveBeenCalled();
   });
 });
