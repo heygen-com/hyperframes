@@ -2898,6 +2898,13 @@ imports projects for you can tell the CLI more by pointing
 - The state applies to the project, its subfolders, and any folder that holds it.
 - If the variable is set but the file is missing or cannot be parsed, every file
   counts as received.
+- The app can keep its own copy of an `"expected"` project's record in
+  `received-records/<sha256 of path>.json` beside the state file, as
+  `{ "project": "<path>", "files": [...] }` with `path` exactly as the state file
+  names it. A file that copy lists still counts as received while something is at
+  its path, even if the project's record no longer lists it. A copy with
+  `"files": null` or `"doubted": true`, or one that is a link or cannot be read,
+  counts every file as received.
 
 A file from outside the project folder that would be copied (each file a
 composition points at, and each project file that is a link to a file outside
