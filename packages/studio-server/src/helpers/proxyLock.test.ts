@@ -27,12 +27,20 @@ const within = <T>(work: Promise<T>, ms: number) =>
   ]);
 
 describe("acquireCopyLock", () => {
+  const TAG = "0123456789abcdef".repeat(2);
+
   it("keeps waiting while the owner writes a piece of a long source", async () => {
     const cachePath = staleLock("c.mp4");
-    writeFileSync(join(dir, ".tmp-1234-.part-c-0.mp4"), "x");
+    writeFileSync(join(dir, `.tmp-1234-.part-c-${TAG}-0.mp4`), "x");
     const abort = new AbortController();
 
-    const waiting = acquireCopyLock(cachePath, () => false, abort.signal, 60_000);
+    const waiting = acquireCopyLock(
+      cachePath,
+      () => false,
+      abort.signal,
+      60_000,
+      `.part-c-${TAG}-`,
+    );
     setTimeout(() => abort.abort(new Error("stopped")), 400);
 
     await expect(within(waiting, 3_000)).rejects.toThrow("stopped");
@@ -50,6 +58,25 @@ describe("acquireCopyLock", () => {
         3_000,
       ),
     ).rejects.toThrow(/a\.mp4.*no progress/);
+  });
+
+  it("gives up on a stalled owner even when a project shipped pieces dated in the future", async () => {
+    const cachePath = staleLock("d.mp4");
+    const nextYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    for (const name of [".part-d-0.mp4", `.part-d-${"f".repeat(32)}-0.mp4`]) {
+      writeFileSync(join(dir, name), "x");
+      utimesSync(join(dir, name), nextYear, nextYear);
+    }
+
+    const waiting = acquireCopyLock(
+      cachePath,
+      () => false,
+      new AbortController().signal,
+      300,
+      `.part-d-${TAG}-`,
+    );
+
+    await expect(within(waiting, 3_000)).rejects.toThrow(CopyLockStalledError);
   });
 
   it("keeps waiting while the owner's temp file is still changing", async () => {

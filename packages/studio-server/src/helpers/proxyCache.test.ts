@@ -196,6 +196,31 @@ describe("cleanupProxyCache", () => {
     expect(existsSync(runningPiece)).toBe(true);
   });
 
+  it("sweeps old-style pieces even while that copy runs, and pieces dated in the future", () => {
+    const cache = cacheDir();
+    const now = 1_800_000_000_000;
+    const hour = 60 * 60 * 1000;
+    const runningKey = basename(proxy(cache, "running"), ".mp4");
+    const stoppedKey = basename(proxy(cache, "stopped"), ".mp4");
+    const tag = "0123456789abcdef".repeat(2);
+    const untagged = join(cache, `.part-${runningKey}-0.mp4`);
+    const ownPiece = join(cache, `.part-${runningKey}-${tag}-1.mp4`);
+    const futureDated = join(cache, `.part-${stoppedKey}-${tag}-0.mp4`);
+    writeEntry(untagged, 3, now - 2 * hour);
+    writeEntry(ownPiece, 3, now - 2 * hour);
+    writeEntry(futureDated, 3, now + 365 * 24 * hour);
+
+    const result = cleanupProxyCache(cache, {
+      now,
+      staleTempMs: 10 * 60 * 1000,
+      minSweepIntervalMs: 0,
+      protectedPaths: new Set([join(cache, `${runningKey}.mp4`)]),
+    });
+
+    expect(result.removed.sort()).toEqual([futureDated, untagged].sort());
+    expect(existsSync(ownPiece)).toBe(true);
+  });
+
   it("never removes a file the transcoder did not name, even from an idle cache over budget", () => {
     const cache = cacheDir();
     const now = 1_800_000_000_000;

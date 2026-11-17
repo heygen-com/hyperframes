@@ -963,11 +963,16 @@ async function transcodeToCache(
       return sameContent;
     }
     const copyMade = (path: string) => isProjectCacheFile(projectDir, path);
+    const chunks = {
+      projectDir,
+      prefix: unguessablePiecePrefix(cacheDir, basename(cachePath, extname(cachePath))),
+    };
     const release = await acquireCopyLock(
       cachePath,
       copyMade,
       job.abandoned.signal,
       TRANSCODE_STALL_MS,
+      basename(chunks.prefix),
     ).catch((error: unknown) => {
       throw error instanceof CopyLockStalledError
         ? new ProxyTranscodeError(error.message, null, "")
@@ -979,10 +984,6 @@ async function transcodeToCache(
     }
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
-      const chunks = {
-        projectDir,
-        prefix: unguessablePiecePrefix(cacheDir, basename(cachePath, extname(cachePath))),
-      };
       await runFfmpeg(
         absoluteSourcePath,
         tempPath,
