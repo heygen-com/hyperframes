@@ -485,7 +485,7 @@ function toDragStart(
 }
 
 /** Moves a frame's word by (`dx`, `dy`) from where the frame has it now. */
-export async function nudgeFrameWord(
+async function nudgeFrameWord(
   iframe: HTMLIFrameElement,
   word: { group: number; word: number },
   dx: number,
