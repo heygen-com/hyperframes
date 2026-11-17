@@ -30,10 +30,16 @@ vi.mock("../utils/download.js", () => ({
     },
   ),
 }));
-vi.mock("../whisper/modelFile.js", async (original) => ({
-  ...(await original<typeof import("../whisper/modelFile.js")>()),
-  verifies: vi.fn(async () => true),
-}));
+// Downloads pass their pin check unless a test says otherwise; `real.verifies` hashes a file.
+const real = vi.hoisted(() => ({ verifies: undefined as unknown as typeof verifies }));
+vi.mock("../whisper/modelFile.js", async (original) => {
+  const actual = await original<typeof import("../whisper/modelFile.js")>();
+  real.verifies = actual.verifies;
+  return { ...actual, verifies: vi.fn(async () => true) };
+});
+/** The next pin check, which is the cached file's, really hashes it. */
+const hashCachedFile = () =>
+  vi.mocked(verifies).mockImplementationOnce((path, pin) => real.verifies(path, pin));
 const ttsDir = join(home, ".cache", "hyperframes", "tts");
 const model = join(ttsDir, "models", "kokoro-v1.0.onnx");
 const voices = join(ttsDir, "voices", "voices-v1.0.bin");
@@ -47,13 +53,16 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it.each([
-  ["model", model, () => ensureModel()],
-  ["voices", voices, () => ensureVoices()],
-])(
+const cases = [
+  ["model", model, 325_532_387, () => ensureModel()],
+  ["voices", voices, 28_214_398, () => ensureVoices()],
+] as const;
+
+it.each(cases)(
   "downloads the %s again when the cached file has the wrong size",
-  async (_kind, path, ensure) => {
+  async (_kind, path, _bytes, ensure) => {
     writeFileSync(path, "cut");
+    hashCachedFile();
 
     await expect(ensure()).resolves.toBe(path);
 
@@ -62,10 +71,25 @@ it.each([
   },
 );
 
+it.each(cases)(
+  "downloads the %s again when a cached file of the pinned size has other contents",
+  async (_kind, path, bytes, ensure) => {
+    writeFileSync(path, "");
+    truncateSync(path, bytes);
+    hashCachedFile();
+
+    await expect(ensure()).resolves.toBe(path);
+
+    expect(downloadFile).toHaveBeenCalledTimes(1);
+    expect(readFileSync(path, "utf8")).toBe("fresh");
+  },
+);
+
 it.each([
   ["kokoro-v1.0.onnx", model, () => ensureModel()],
   ["voices-v1.0.bin", voices, () => ensureVoices()],
 ])("discards a %s download that does not match its pin", async (name, path, ensure) => {
+  hashCachedFile();
   vi.mocked(verifies).mockResolvedValueOnce(false);
 
   await expect(ensure()).rejects.toThrow(`${name} did not match its pinned size and sha256`);
@@ -73,17 +97,14 @@ it.each([
   expect(readdirSync(join(path, ".."))).toEqual([]);
 });
 
-it.each([
-  ["model", model, 325_532_387, () => ensureModel()],
-  ["voices", voices, 28_214_398, () => ensureVoices()],
-])(
-  "keeps a cached %s of the pinned size without downloading it",
-  async (_kind, path, bytes, ensure) => {
-    writeFileSync(path, "");
-    truncateSync(path, bytes);
+it.each(cases)(
+  "keeps a cached %s that matches its pin without downloading it",
+  async (_kind, path, _bytes, ensure) => {
+    writeFileSync(path, "the real file");
 
     await expect(ensure()).resolves.toBe(path);
 
+    expect(vi.mocked(verifies).mock.calls[0]![0]).toBe(path);
     expect(downloadFile).not.toHaveBeenCalled();
   },
 );

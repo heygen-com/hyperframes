@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { downloadFile } from "../utils/download.js";
 import { verifies, type ModelFile } from "../whisper/modelFile.js";
@@ -33,9 +33,12 @@ const VOICES_FILE: ModelFile = {
   sha256: "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
 };
 
-/** A cached file of the pinned size; anything else is removed so it is fetched again. */
-function cachedAtPinnedSize(path: string, pin: ModelFile): boolean {
-  if (statSync(path, { throwIfNoEntry: false })?.size === pin.bytes) return true;
+/**
+ * A cached file that matches its pin, hashed on every load so a file replaced since its download
+ * is caught too; anything else is removed so it is fetched again.
+ */
+async function cachedAndVerified(path: string, pin: ModelFile): Promise<boolean> {
+  if (await verifies(path, pin)) return true;
   rmSync(path, { force: true });
   return false;
 }
@@ -147,7 +150,7 @@ export async function ensureModel(
       `Unknown TTS model: ${model}. Available: ${Object.keys(MODEL_URLS).join(", ")}`,
     );
   }
-  if (cachedAtPinnedSize(modelPath, pin)) return modelPath;
+  if (await cachedAndVerified(modelPath, pin)) return modelPath;
 
   mkdirSync(MODELS_DIR, { recursive: true });
   options?.onProgress?.(`Downloading TTS model ${model} (~311 MB)...`);
@@ -168,7 +171,7 @@ export async function ensureVoices(options?: {
   onProgress?: (message: string) => void;
 }): Promise<string> {
   const voicesPath = join(VOICES_DIR, VOICES_FILE.name);
-  if (cachedAtPinnedSize(voicesPath, VOICES_FILE)) return voicesPath;
+  if (await cachedAndVerified(voicesPath, VOICES_FILE)) return voicesPath;
 
   mkdirSync(VOICES_DIR, { recursive: true });
   options?.onProgress?.("Downloading voice data (~27 MB)...");

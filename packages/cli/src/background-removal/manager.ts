@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { platform, arch } from "node:os";
 import { join } from "node:path";
 import { downloadFile } from "../utils/download.js";
@@ -95,7 +95,8 @@ export async function ensureModel(
 ): Promise<string> {
   const dest = modelPath(model);
   const pin = MODEL_FILES[model];
-  if (statSync(dest, { throwIfNoEntry: false })?.size === pin.bytes) return dest;
+  // Hashed on every load, not only on download: a cached file replaced since then is caught too.
+  if (await verifies(dest, pin)) return dest;
 
   mkdirSync(MODELS_DIR, { recursive: true });
   rmSync(dest, { force: true });
