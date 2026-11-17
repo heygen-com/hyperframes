@@ -6,13 +6,26 @@ export const PREVIEW_STAGE_INSET_PX = 8;
 
 // clip-path as well as visibility: the player's loading overlay sets its own
 // visibility:visible and would otherwise paint over the live frame.
-export const SHADOW_IFRAME_STYLE: CSSProperties = {
+const SHADOW_IFRAME_STYLE: CSSProperties = {
   position: "absolute",
   inset: 0,
   visibility: "hidden",
   clipPath: "inset(100%)",
   pointerEvents: "none",
 };
+
+// A sealed frame is cross-origin, and Chrome stops rendering one that is hidden or clipped away, so its
+// runtime waits out its readiness timeout. Transparent, it keeps rendering out of sight.
+const SEALED_SHADOW_IFRAME_STYLE: CSSProperties = {
+  position: "absolute",
+  inset: 0,
+  opacity: 0,
+  pointerEvents: "none",
+};
+
+/** How a reload's preview loads out of sight behind the live one until it is promoted. */
+export const shadowIframeStyle = (sandboxOrigin: "opaque" | undefined): CSSProperties =>
+  sandboxOrigin === "opaque" ? SEALED_SHADOW_IFRAME_STYLE : SHADOW_IFRAME_STYLE;
 
 export function resolvePreviewStageSize(
   viewportWidth: number,

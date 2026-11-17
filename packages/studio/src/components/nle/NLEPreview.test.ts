@@ -590,6 +590,30 @@ describe("NLEPreview", () => {
     },
   );
 
+  // Chrome stops rendering a hidden or clipped cross-origin frame, and a sealed one is cross-origin.
+  it.each([
+    ["opaque" as const, ["opacity: 0"], ["visibility", "clip-path"]],
+    [undefined, ["visibility: hidden", "clip-path: inset(100%)"], ["opacity"]],
+  ])(
+    "keeps a reload's preview out of sight, and a sealed one rendering (%s)",
+    (sandboxOrigin, present, absent) => {
+      const view = renderPreview(
+        [
+          { gen: 0, role: "live" },
+          { gen: 1, role: "shadow", url: "/api/projects/p/preview?_t=1" },
+        ],
+        { sandboxOrigin },
+      );
+      const shadow = [...view.stage.querySelectorAll('[data-testid="mock-player"]')]
+        .map((player) => player.getAttribute("style") ?? "")
+        .filter((style) => style.includes("pointer-events: none"));
+      expect(shadow).toHaveLength(1);
+      for (const rule of present) expect(shadow[0]).toContain(rule);
+      for (const rule of absent) expect(shadow[0]).not.toContain(rule);
+      view.cleanup();
+    },
+  );
+
   it("covers the live preview with the cached frame-0 poster until it is ready to show", () => {
     const view = renderPreview();
     const poster = () =>
