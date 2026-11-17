@@ -6,6 +6,7 @@ import {
   renameSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -21,6 +22,7 @@ import {
   isEnvOrGitPath,
   isPrivateCompositionFile,
   receivedFiles,
+  receivedLinesAtOrAbove,
   receivedRecordStatus,
   recordReceivedFiles,
 } from "./privateProjectFile.js";
@@ -363,8 +365,9 @@ describe("a host's received state file", () => {
 
     it("counts entries an emptied record lost as received while their files are there", () => {
       const app = emptiedProject();
-      hostSays([{ path: app, received: "expected" }]);
-      keeps(app, ["index.html", "assets/x.js"]);
+      const named = realpathSync(app);
+      hostSays([{ path: named, received: "expected" }]);
+      keeps(named, ["index.html", "assets/x.js"]);
       const received = receivedFiles(app);
       expect(received("index.html")).toBe(true);
       expect(received("assets/x.js")).toBe(true);
@@ -389,21 +392,29 @@ describe("a host's received state file", () => {
 
     it("finds the kept copy of a project named under its old path by its folder's identity", () => {
       const app = emptiedProject();
-      const { dev, ino } = lstatSync(app, { bigint: true });
+      const { dev, ino, birthtimeNs } = lstatSync(app, { bigint: true });
       hostSays([{ path: app, dev: String(dev), ino: String(ino), received: "expected" }]);
-      keeps(app, ["index.html"]);
+      const kept = { project: app, files: ["index.html"], seenAt: 1 };
+      hostKeeps(app, { ...kept, identity: `${dev}:${ino}:${birthtimeNs}` });
       const renamed = `${app}-renamed`;
       renameSync(app, renamed);
       expect(receivedFiles(renamed)("index.html")).toBe(true);
       expect(receivedFiles(renamed)("assets/x.js")).toBe(false);
+      hostKeeps(app, { ...kept, identity: `${dev}:${ino}:1` });
+      expect(receivedFiles(renamed)("index.html")).toBe(false);
     });
 
-    it("counts every file as received when the kept copy holds no list", () => {
+    it("counts every file as received when the kept copy holds no list, and keeps the record's lines", () => {
       const app = emptiedProject();
+      writeFileSync(
+        join(app, ".hyperframes", "received-files.json"),
+        JSON.stringify({ files: ["index.html"] }),
+      );
       hostSays([{ path: app, received: "expected" }]);
       keeps(app, null);
       expect(receivedFiles(app)("compositions/intro.html")).toBe(true);
-      expect(receivedRecordStatus(app)).toMatchObject({ listed: null });
+      expect(receivedRecordStatus(app)).toMatchObject({ path: keptFile(app), listed: null });
+      expect(receivedLinesAtOrAbove(app).map(({ lines }) => lines)).toEqual([["index.html"]]);
     });
 
     it("counts every file as received when the kept copy is doubted, unreadable or for another project", () => {
