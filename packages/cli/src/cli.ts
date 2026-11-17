@@ -476,7 +476,7 @@ function reportPostRenderTerminationEvent(
   error: Error,
 ): void {
   process.stderr.write(
-    `  [hyperframes] Late ${label} (the command already delivered its result): ${error.message}\n`,
+    `  [hyperframes] Late ${label} (the command already delivered its result): ${terminalText(error.message)}\n`,
   );
   emitCliErrorEvent(kind, error);
 }
