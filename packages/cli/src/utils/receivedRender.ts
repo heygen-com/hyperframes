@@ -307,6 +307,16 @@ function receivedContentRefusal(projectDir: string, hashes: string[]): Refusal |
   return { reason, alwaysWarn: false };
 }
 
+function nonMediaRefusal(listed: string[], shown: (path: string) => string): Refusal | null {
+  const nonMedia = listed.find((path) => !isMediaFontOrImage(path));
+  if (nonMedia === undefined) return null;
+  const what = isFile(nonMedia)
+    ? "is not a media, font or image file"
+    : "is gone but still listed; take its line out of the received-files record that lists it to clear this";
+  const reason = `${shown(nonMedia)} came from someone else and ${what}, ${READS_NOTHING_OUTSIDE}`;
+  return { reason, alwaysWarn: false };
+}
+
 function receivedRefusal(
   projectDir: string,
   record: { path: string; listed: string[] | null; hashes: string[] } | "unchecked",
@@ -319,11 +329,8 @@ function receivedRefusal(
   if (record.listed === null) {
     return { reason: `Could not read ${record.path}, ${READS_NOTHING_OUTSIDE}`, alwaysWarn: true };
   }
-  const nonMedia = record.listed.find((path) => !isMediaFontOrImage(path));
-  if (nonMedia !== undefined) {
-    const reason = `${shown(nonMedia)} came from someone else and is not a media, font or image file, ${READS_NOTHING_OUTSIDE}`;
-    return { reason, alwaysWarn: false };
-  }
+  const listedRefusal = nonMediaRefusal(record.listed, shown);
+  if (listedRefusal !== null) return listedRefusal;
   const contentRefusal = receivedContentRefusal(projectDir, record.hashes);
   if (contentRefusal !== null || record.listed.length === 0) return contentRefusal;
   const received = receivedIdentities(record.listed);
