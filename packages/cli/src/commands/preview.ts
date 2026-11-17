@@ -912,7 +912,7 @@ function printSelectionFailure(code: string, message: string, json: boolean): vo
   if (json) {
     console.log(JSON.stringify({ ok: false, error: { code, message } }, null, 2));
   } else {
-    clack.log.error(message);
+    clack.log.error(terminalLines(message));
   }
   setCommandExitCode(1);
 }
@@ -1047,13 +1047,13 @@ async function printCurrentSelection(
     return;
   }
 
-  console.log(`${c.success("◇")}  ${c.accent(selection.label)} selected in Studio`);
-  console.log(`  ${c.dim("Source")}    ${selection.sourceFile}`);
-  console.log(
-    `  ${c.dim("Target")}    ${selection.target.hfId ?? selection.target.id ?? selection.target.selector ?? "(none)"}`,
-  );
+  const target =
+    selection.target.hfId ?? selection.target.id ?? selection.target.selector ?? "(none)";
+  console.log(`${c.success("◇")}  ${c.accent(terminalText(selection.label))} selected in Studio`);
+  console.log(`  ${c.dim("Source")}    ${terminalText(selection.sourceFile)}`);
+  console.log(`  ${c.dim("Target")}    ${terminalText(target)}`);
   console.log(`  ${c.dim("Time")}      ${selection.currentTime.toFixed(3)}s`);
-  console.log(`  ${c.dim("Thumbnail")} ${selection.thumbnailUrl}`);
+  console.log(`  ${c.dim("Thumbnail")} ${terminalText(selection.thumbnailUrl)}`);
   console.log();
   console.log(c.dim("Use --json for the full agent-readable selection payload."));
 }
@@ -1219,12 +1219,14 @@ async function printCurrentContext(
 
   console.log(`${c.success("◇")}  Studio context`);
   if (contextIncludes(fields, "server")) {
-    console.log(`  ${c.dim("Project")}   ${server.projectName}`);
-    console.log(`  ${c.dim("Studio")}    ${previewBaseUrl(server.port, server.host)}`);
+    console.log(`  ${c.dim("Project")}   ${terminalText(server.projectName)}`);
+    console.log(
+      `  ${c.dim("Studio")}    ${terminalText(previewBaseUrl(server.port, server.host))}`,
+    );
   }
   if (contextIncludes(fields, "selection")) {
     if (selection.ok) {
-      console.log(`  ${c.dim("Selection")} ${selection.value.label}`);
+      console.log(`  ${c.dim("Selection")} ${terminalText(selection.value.label)}`);
     } else {
       console.log(`  ${c.dim("Selection")} ${terminalText(selection.error.message)}`);
     }

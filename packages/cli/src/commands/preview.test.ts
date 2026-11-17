@@ -54,6 +54,14 @@ vi.mock("../utils/orphanCleanup.js", async (importOriginal) => ({
   killOrphanedProcesses,
 }));
 
+const studio = vi.hoisted(() => ({ find: vi.fn(), selection: vi.fn(), lint: vi.fn() }));
+vi.mock("../utils/studioSelectionClient.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/studioSelectionClient.js")>()),
+  findPreviewServerForProject: studio.find,
+  fetchStudioSelection: studio.selection,
+  fetchStudioLint: studio.lint,
+}));
+
 const tempDirs: string[] = [];
 
 afterEach(() => {
@@ -932,3 +940,75 @@ describe.skipIf(process.platform === "win32")(
     });
   },
 );
+
+describe("preview --selection and --context on a terminal", () => {
+  // Built rather than written: a literal control character in the source is a lint error.
+  const esc = String.fromCharCode(27);
+  const bel = String.fromCharCode(7);
+  const osc = `${esc}]52;c;cHduZWQ=${bel}`;
+  const shown = "\\x1b]52;c;cHduZWQ=\\x07";
+  const colors = new RegExp(`${esc}\\[[0-9;]*m`, "g");
+  const selection = {
+    schemaVersion: 1 as const,
+    projectId: "film",
+    compositionPath: "index.html",
+    sourceFile: `scene${osc}.html`,
+    currentTime: 1.5,
+    target: { hfId: `title${esc}[2J`, selector: "#title" },
+    label: `Title${osc}`,
+    tagName: "h1",
+    boundingBox: { x: 0, y: 0, width: 10, height: 10 },
+    textContent: "Title",
+    dataAttributes: {},
+    inlineStyles: {},
+    computedStyles: {},
+    textFields: [],
+    capabilities: {},
+    thumbnailUrl: `/thumb${osc}.png`,
+  };
+
+  function serveSelection(): void {
+    studio.find.mockResolvedValue({
+      port: 32700,
+      host: "127.0.0.1",
+      projectName: `film${osc}`,
+      projectDir: "/tmp/film",
+      version: "test",
+      pid: null,
+      proven: true,
+    });
+    studio.selection.mockResolvedValue({
+      selection,
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    studio.lint.mockResolvedValue({ findings: [] });
+  }
+
+  it.each(["--selection", "--context"])(
+    "prints Studio's text with control characters as visible escapes for %s",
+    async (flag) => {
+      const dir = tempProject();
+      writeFileSync(join(dir, "index.html"), "<html></html>");
+      serveSelection();
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      await runCommand(previewCommand, { rawArgs: [dir, flag] });
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      log.mockClear();
+      await runCommand(previewCommand, { rawArgs: [dir, flag, "--json"] });
+      const payload = JSON.parse(log.mock.calls.flat().join("\n"));
+
+      expect(human.replace(colors, "")).not.toContain(esc);
+      expect(human).toContain(`Title${shown}`);
+      if (flag === "--selection") {
+        expect(human).toContain(`scene${shown}.html`);
+        expect(human).toContain("title\\x1b[2J");
+        expect(human).toContain(`/thumb${shown}.png`);
+        expect(payload.selection.label).toBe(selection.label);
+      } else {
+        expect(human).toContain(`film${shown}`);
+        expect(payload.selection.label).toBe(selection.label);
+        expect(payload.server.projectName).toBe(`film${osc}`);
+      }
+    },
+  );
+});
