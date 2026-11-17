@@ -1605,6 +1605,13 @@ npx hyperframes keyframes [dir] --selector "#card" --shot card-motion.png
 Use `--ghost` for motion that happens *inside* a canvas, where the marker onion
 has nothing to draw.
 
+With a single `.html` file, `--shot` serves only the files that file's markup,
+stylesheets and sub-compositions name in its own folder, and only the types a
+composition loads. A scene that its project's `index.html` mounts is served from
+the project instead. Files the page builds names for in script are not served,
+and the command prints a line naming any file it left out. Pass the project
+folder to keep everything.
+
 ### `compare` and `grade-compare`
 
 `compare` renders two or more independent variants into one labelled PNG.
@@ -1621,6 +1628,12 @@ npx hyperframes compare ./variant-a ./variant-b --labels "A,B"
 | `--cols`    | Grid columns (default: a sqrt heuristic, max 4)    |
 | `--timeout` | Render-ready timeout per variant in ms; must be a positive integer (default 5000) |
 | `--json`    | Machine-readable results                           |
+
+A variant can also be a single `.html` file. Then only the files its markup,
+stylesheets and sub-compositions name in its own folder are served, and only the
+types a composition loads. Files the page builds names for in script are not
+served, and the command prints a line naming any file it left out. Pass a
+project folder to keep everything.
 
 `grade-compare` does the same for colour: candidate grades or LUTs applied to
 one reference frame.
