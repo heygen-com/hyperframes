@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert";
 import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
-import { discardPrivateOutput, privateOutputPath, privateWorkDir } from "./private-output.mjs";
+import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
 
 const ownerOnly = (path) => (statSync(path).mode & 0o777).toString(8);
 // Output folders land in the real temp folder; remove them with the test.
@@ -28,27 +28,6 @@ test("only this account can open an output folder", { skip: process.platform ===
   assert.equal(ownerOnly(dir), "700");
 });
 
-test("an agent work folder sits under the per-user cache, not the shared temp folder", () => {
-  const dir = privateWorkDir("codex");
-  assert.equal(dirname(dir), join(homedir(), ".cache", "hyperframes", "media-use"));
-  assert.notEqual(privateWorkDir("codex"), dir);
-});
-
-test("an agent work folder follows HYPERFRAMES_CACHE_DIR", (t) => {
-  const named = removeAfter(t, join(tmpdir(), `hf-cache-${process.pid}`));
-  process.env.HYPERFRAMES_CACHE_DIR = named;
-  t.after(() => delete process.env.HYPERFRAMES_CACHE_DIR);
-  assert.equal(dirname(privateWorkDir("codex")), join(named, "media-use"));
-});
-
-test(
-  "only this account can open an agent work folder",
-  { skip: process.platform === "win32" },
-  () => {
-    assert.equal(ownerOnly(privateWorkDir("codex")), "700");
-  },
-);
-
 test("discarding a generator's output removes the folder it was made in", (t) => {
   const out = privateOutputPath("kokoro", ".wav");
   removeAfter(t, dirname(out));
@@ -66,12 +45,12 @@ test("discarding leaves any file a generator does not own", (t) => {
   const lookalike = join(lookalikeParent, "media-use-codex-abcdef", "output.png");
   mkdirSync(dirname(lookalike), { recursive: true });
   writeFileSync(lookalike, "x");
-  const otherName = removeAfter(t, join(tmpdir(), `media-use-notes-${process.pid}.txt`));
-  writeFileSync(otherName, "x");
+  const otherTool = join(removeAfter(t, mkdtempSync(join(tmpdir(), "other-tool-"))), "output.png");
+  writeFileSync(otherTool, "x");
 
-  for (const path of [library, lookalike, otherName]) discardPrivateOutput(path);
+  for (const path of [library, lookalike, otherTool]) discardPrivateOutput(path);
 
   assert.equal(existsSync(library), true);
   assert.equal(existsSync(lookalike), true);
-  assert.equal(existsSync(otherName), true);
+  assert.equal(existsSync(otherTool), true);
 });

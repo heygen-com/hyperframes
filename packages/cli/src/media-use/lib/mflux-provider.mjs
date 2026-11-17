@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
 import { describeDownload, probeSpecs } from "./specs.mjs";
 import { buildArgv, selectModelLadder } from "./local-models.mjs";
-import { privateOutputPath } from "./private-output.mjs";
+import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
 
 // Local image generation via mflux (FLUX-on-MLX), the Mac-native runner.
 // Spec-gated: selectModelLadder("imagegen", specs) returns every FLUX-class
@@ -38,7 +38,7 @@ export async function mfluxImageGenerate(
   const ladder = selectModelLadder("imagegen", specs, { preferTier: ctx?.preferTier });
   if (!ladder.length) return null; // no local model fits -> codex upsell/fallback
 
-  // Each attempt mints its own timestamped output path, so a partial artifact
+  // Each attempt gets its own private output folder, so a partial artifact
   // from a failed tier is orphaned rather than overwritten - and a lower tier
   // then succeeding hides it. Discard it before demoting. Best-effort: a
   // partial we cannot remove must never mask the real failure.
@@ -48,6 +48,7 @@ export async function mfluxImageGenerate(
     } catch {
       // nothing actionable: the generate failure below is the real story
     }
+    discardPrivateOutput(path);
   };
 
   // Best tier first, demoting past any tier that cannot run here (runner off
@@ -85,6 +86,7 @@ export async function mfluxImageGenerate(
         why = `hf download failed: ${err.stderr?.toString().trim().slice(-200) || err.message}`;
       }
       if (!snap) {
+        discardPartial(outPath);
         console.error(`media-use: local image gen (${model.id}): ${why}`);
         continue;
       }
@@ -107,6 +109,7 @@ export async function mfluxImageGenerate(
       continue;
     }
     if (!pathExists(outPath)) {
+      discardPartial(outPath);
       console.error(
         `media-use: local image gen (${model.id}) exited cleanly but wrote no output file`,
       );

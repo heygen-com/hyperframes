@@ -9,8 +9,8 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { homedir, tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { basename, delimiter, dirname, join } from "node:path";
 import { codexImageGenerate, imageGenFlag } from "./codex-provider.mjs";
 
 // A stand-in `codex` on PATH: `features list` offers the image tool; `exec` records its
@@ -54,22 +54,22 @@ function fakeCodex(t) {
 const posixOnly = { skip: process.platform === "win32" };
 
 test(
-  "codex works in a private per-user folder and is told not to look above it",
+  "codex works in a fresh private temp folder and is told not to look above it",
   posixOnly,
   async (t) => {
     const execLog = fakeCodex(t);
-    await codexImageGenerate("a red cube");
+    assert.equal(await codexImageGenerate("a red cube"), null);
     const args = execLog();
     const cwd = args[args.indexOf("--cd") + 1];
-    assert.equal(dirname(cwd).endsWith(join(".cache", "hyperframes", "media-use")), true, cwd);
-    assert.equal(dirname(cwd).startsWith(homedir()), true, cwd);
+    assert.equal(dirname(cwd), tmpdir());
+    assert.match(basename(cwd), /^media-use-codex-/);
     assert.deepEqual(args.slice(args.indexOf("--cd"), args.indexOf("--cd") + 4), [
       "--cd",
       cwd,
       "-c",
       "project_root_markers=[]",
     ]);
-    assert.equal(existsSync(cwd), false, "the work folder is removed afterwards");
+    assert.equal(existsSync(cwd), false, "a folder with no image is removed");
   },
 );
 

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { ltxVideoGenerate } from "./ltx-video-provider.mjs";
@@ -293,6 +294,7 @@ test("every tier failing discards every partial, one per attempt", async (t) => 
   assert.equal(result, null);
   assert.equal(attempted.length, 2, "both tiers attempted");
   assert.deepEqual(unlinked, attempted, "nothing is left behind on the all-fail path");
+  for (const path of attempted) assert.equal(existsSync(dirname(path)), false, path);
 });
 
 test("a successful generation is never discarded", async () => {

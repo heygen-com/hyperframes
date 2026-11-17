@@ -3,7 +3,7 @@ import { existsSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { describeDownload, probeSpecs } from "./specs.mjs";
 import { buildArgv, selectModel, selectModelLadder } from "./local-models.mjs";
-import { privateOutputPath } from "./private-output.mjs";
+import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
 
 export async function ltxVideoGenerate(
   intent,
@@ -22,7 +22,7 @@ export async function ltxVideoGenerate(
     return null;
   }
 
-  // Each attempt mints its own timestamped output path, so a partial artifact
+  // Each attempt gets its own private output folder, so a partial artifact
   // from a failed tier is orphaned rather than overwritten - and a lower tier
   // then succeeding hides it. Discard it before demoting. Best-effort: a
   // partial we cannot remove must never mask the real failure.
@@ -32,6 +32,7 @@ export async function ltxVideoGenerate(
     } catch {
       // nothing actionable: the generate failure below is the real story
     }
+    discardPrivateOutput(path);
   };
 
   // Walk the whole ladder, best tier first. A tier that cannot run on this
@@ -76,6 +77,7 @@ export async function ltxVideoGenerate(
       continue;
     }
     if (!pathExists(outPath)) {
+      discardPartial(outPath);
       console.error(
         `media-use: local video gen (${model.id}) exited cleanly but wrote no output file`,
       );
