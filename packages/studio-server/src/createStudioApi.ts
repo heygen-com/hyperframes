@@ -2,7 +2,7 @@ import { Hono, type Context, type Next } from "hono";
 import { routePath } from "hono/route";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
-import type { StudioApiAdapter, StudioRefusal } from "./types.js";
+import type { StudioApiAdapter, StudioRefusal, StudioRefusalWhy } from "./types.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerFileRoutes } from "./routes/files.js";
 import {
@@ -43,6 +43,7 @@ import {
   loadedThroughFrameToken,
   serveTokenPreviewPaths,
 } from "./helpers/opaqueFrameLoads.js";
+import { isFetchedAgain } from "./helpers/fetchAgain.js";
 
 async function answerRefusedFrameWithPage(c: Context, next: Next) {
   await next();
@@ -136,7 +137,7 @@ function urlScheme(url: string): string | undefined {
   }
 }
 
-const REFUSAL_WHYS = new Set([
+const REFUSAL_WHYS: ReadonlySet<string> = new Set<StudioRefusalWhy>([
   "nul",
   "outside_project",
   "protected_path",
@@ -149,7 +150,7 @@ const ENDPOINT_ASKED_FOR = -1;
 const reportRefusals =
   (onRefusal: (refusal: StudioRefusal) => void) => async (c: Context, next: Next) => {
     await next();
-    if (c.res.status !== 403) return;
+    if (c.res.status !== 403 || isFetchedAgain(c.req.raw)) return;
     const body: unknown = await c.res
       .clone()
       .json()
@@ -158,7 +159,7 @@ const reportRefusals =
     try {
       onRefusal({
         route: routePath(c, ENDPOINT_ASKED_FOR),
-        why: typeof why === "string" && REFUSAL_WHYS.has(why) ? why : "other",
+        why: typeof why === "string" && REFUSAL_WHYS.has(why) ? (why as StudioRefusalWhy) : "other",
       });
     } catch {
       return;

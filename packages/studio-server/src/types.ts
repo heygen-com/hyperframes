@@ -97,16 +97,24 @@ export interface StudioSelectionResponse {
   updatedAt: string | null;
 }
 
+export type StudioRefusalWhy =
+  | "nul"
+  | "outside_project"
+  | "protected_path"
+  | "another_site"
+  | "cross_origin_write"
+  | "other";
+
+export interface StudioRefusal {
+  route: string;
+  why: StudioRefusalWhy;
+}
+
 /**
  * Adapter interface — injected by each consumer to handle host-specific behavior.
  * The shared API module calls these methods; each host (vite dev, CLI embedded)
  * provides its own implementation.
  */
-export interface StudioRefusal {
-  route: string;
-  why: string;
-}
-
 export interface StudioApiAdapter {
   /** List all available projects. */
   listProjects(): Promise<ResolvedProject[]> | ResolvedProject[];

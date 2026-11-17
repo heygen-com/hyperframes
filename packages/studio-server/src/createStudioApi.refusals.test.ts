@@ -45,6 +45,22 @@ describe("createStudioApi refusal reports", () => {
     expect(JSON.stringify(heard)).not.toMatch(/planted|evil/);
   });
 
+  it("counts a refusal through a frame-token preview path once, not once per pass through the API", async () => {
+    const { app, heard } = createApp();
+    const minted = await app.request("http://localhost/projects/demo/frame-token", {
+      headers: { Host: "localhost", "sec-fetch-site": "same-origin" },
+    });
+    const { token } = (await minted.json()) as { token: string };
+    const res = await app.request(`http://localhost/projects/demo/preview/~${token}/index.html`, {
+      method: "POST",
+      headers: { Host: "localhost", Origin: "null", "Content-Type": "text/plain" },
+      body: "<html>planted</html>",
+    });
+    expect(res.status).toBe(403);
+    expect(heard).toHaveLength(1);
+    expect(heard[0]?.why).toBe("cross_origin_write");
+  });
+
   it("carries the file routes' own why code for a protected path", async () => {
     const { app, heard } = createApp();
     const res = await write(app, "node_modules/x.js", { Origin: "http://localhost" });

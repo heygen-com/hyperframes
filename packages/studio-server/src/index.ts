@@ -22,6 +22,7 @@ export { CACHE_DIR_NAME as PROXY_CACHE_DIR_NAME } from "./helpers/proxyTranscode
 export type {
   StudioApiAdapter,
   StudioRefusal,
+  StudioRefusalWhy,
   ResolvedProject,
   RenderJobState,
   MediaProcessingJobState,

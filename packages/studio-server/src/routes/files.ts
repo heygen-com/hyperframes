@@ -123,6 +123,7 @@ import {
   hasCompositionOutsideTemplates,
   insertBeforeCloseTag,
 } from "@hyperframes/core/compiler/html-document";
+import { fetchAgain } from "../helpers/fetchAgain.js";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
 
@@ -2826,7 +2827,7 @@ function keptForReplay(request: Request): () => Request {
 async function sendAgainOnceFree(api: Hono, replay: () => Request): Promise<Response | null> {
   for (const ms of HELD_EDIT_WAITS) {
     await new Promise((resolve) => setTimeout(resolve, ms));
-    const again = await api.fetch(replay());
+    const again = await fetchAgain(api, replay());
     if (!again.headers.has(HELD)) return again;
   }
   return null;
