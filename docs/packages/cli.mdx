@@ -1386,6 +1386,25 @@ transparent. A fully transparent frame is treated as unread on purpose, since a
 failed draw looks the same; mark text that sits under a cutout before its subject
 enters with `data-layout-allow-occlusion`.
 
+Text painted in front of an opaque `<video>` is judged against the faces in the
+frame that video shows at the sample. `text_over_face` is an info finding when
+the words cover 5% or more of a face; `coveredFraction` is the share of the face
+covered and `faceRect` is the face in canvas pixels. It is never more than info,
+so it never fails `--strict`: the detector can take texture for a face. The
+faces are found in the video file itself, with the detector
+[`measure face`](#measure) uses, so only a video served from the project is
+looked at. That detector's first use downloads OpenCV; when the download has not
+answered within 30 seconds the check goes on without this pass and `faceCheck`
+says why. A rotated video and a frame not yet
+decoded are skipped, a transparent cutout between the text and the take is looked
+through, and text behind a cutout stays `text_occluded`'s to judge. Mark an
+intended overlap with `data-layout-allow-on-face` on the text or an ancestor.
+`layout.faceCheck` in the JSON says whether the pass looked, so no finding reads
+apart from no look: `{ "ran": true, "candidates": 3, "faces": 2 }` counts the
+text-over-video samples examined and the distinct video frames a face was found
+in (`unreadVideos` is added when some files could not be read), and
+`{ "ran": false, "reason": "..." }` says why it could not.
+
 `canvas_covered` is an error when an opaque element spanning the canvas sits above
 every other visible clip (shape, image, video or text) for most of the film, so the
 frame shows only it: typically a full-frame background placed last in the DOM. It
@@ -1726,7 +1745,12 @@ npx hyperframes measure face ref.mp4 --start 1 --end 2.5
 | `energy`     | How much two clips move, and whether at the same moments                                |
 | `look`       | Brightness, contrast, saturation and warmth, alone or against another video             |
 | `face`       | The face's size and position over a window                                              |
+| `hands`      | Where a hand's palm, index fingertip or pinch is in each frame of a stretch             |
 | `sync`       | The lag between mouth motion and the voice                                              |
+
+In `cuts`, a shot that returns to an earlier camera setup after at least one other shot (a wide take, a close-up
+cut into it, the wide take again) carries `continues`: the index in `shots` of the shot it resumes, so one take can
+feed both. A shot that resumes nothing has no `continues`.
 
 ### `diff`
 
@@ -1993,8 +2017,11 @@ A composition that needs the left-out script stops with a script-load error.
 A received-files record lists the files in a folder that came from someone
 else. When a record in the project, or in a folder above it, lists anything but
 media, fonts and images, the render leaves out every file from outside the
-project folder and warns with each one's name. A `--docker` render makes this check on your
-machine, where the folders above the project are visible, and passes
+project folder and warns with each one's name. When you delete a listed page,
+stylesheet or script in Studio, its line stays, so whatever is later written in
+its place still counts as received; take the line out of
+`.hyperframes/received-files.json` yourself once you know the content is gone.
+A `--docker` render makes this check on your machine, where the folders above the project are visible, and passes
 `--refuse-outside-files` into the container, so it leaves out the same files a
 local render would.
 
