@@ -31,8 +31,10 @@ export async function measurePreviewGestureStart(
   handles: string[],
 ): Promise<PreviewGestureStarts | null> {
   const reply = await previewGestureStart(iframe, handles);
+  startLayouts.clear();
   reply?.elements.forEach((start, i) => {
-    if (start) startLayouts.set(handles[i]!, start.layout);
+    const { width = 0, height = 0 } = start?.layout ?? {};
+    if (width >= 1 && height >= 1) startLayouts.set(handles[i]!, { width, height });
   });
   const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
   if (!reply || !scale) return null;

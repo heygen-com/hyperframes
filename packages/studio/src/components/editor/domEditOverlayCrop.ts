@@ -7,6 +7,7 @@ import {
   type ClipPathInsetSides,
   type ParsedInsetClipPathSides,
 } from "./clipPathHelpers";
+import { MAX_DRAFT_PX, MAX_ELEMENT_VALUE } from "@hyperframes/core/runtime/editing-port";
 import { previewRequest } from "../../player/lib/previewChannel";
 import { previewStandIn } from "./previewDrafts";
 
@@ -41,7 +42,10 @@ export function cropRectFromInsets(
 // A selected croppable element shows uncropped so the crop UI can dim what is cut away. A rule keyed on its
 // identity does that, so the element's own clip-path stays the one record undo, redo and panel edits rewrite.
 // A sealed preview's lift is that rule in the frame (core `editing/cropLift.ts`), and `rule` is null.
-const cropLifts = new WeakMap<HTMLElement, { rule: HTMLStyleElement | null; sheetClip?: string }>();
+// A frame lift is kept until the frame says it is gone, so a lost reply never leaves the crop hidden there.
+type CropLift = { rule: HTMLStyleElement | null; sheetClip?: string; dropped?: boolean };
+const cropLifts = new WeakMap<HTMLElement, CropLift>();
+const UNLIFT_TRIES = 3;
 
 function liftSelector(element: HTMLElement): string | null {
   const quote = (value: string) => `"${value.replace(/["\\]/g, "\\$&")}"`;
@@ -50,26 +54,38 @@ function liftSelector(element: HTMLElement): string | null {
   return element.id ? `[id=${quote(element.id)}]` : null;
 }
 
-function liftInFrame(element: HTMLElement, lift: boolean): boolean {
+function unliftInFrame(element: HTMLElement, record: CropLift, tries = UNLIFT_TRIES): void {
+  const target = previewStandIn(element);
+  if (!target) return;
+  void previewRequest(target.iframe, "crop-lift", { handle: target.handle, lift: false }).then(
+    (reply) => {
+      if (cropLifts.get(element) !== record) return;
+      if (reply?.lifted === false) cropLifts.delete(element);
+      else if (tries > 1) unliftInFrame(element, record, tries - 1);
+    },
+  );
+}
+
+function liftInFrame(element: HTMLElement): boolean {
   const target = previewStandIn(element);
   if (!target) return false;
-  if (!lift) {
-    void previewRequest(target.iframe, "crop-lift", { handle: target.handle, lift });
-    return true;
-  }
   // Until the frame answers, the clip it last reported is the one under the lift.
-  const record = { rule: null, sheetClip: frameClipPaths.get(element)?.computed ?? "" };
+  const record: CropLift = { rule: null, sheetClip: frameClipPaths.get(element)?.computed ?? "" };
   cropLifts.set(element, record);
-  void previewRequest(target.iframe, "crop-lift", { handle: target.handle, lift }).then((reply) => {
-    if (cropLifts.get(element) !== record) return;
-    if (!reply?.lifted) cropLifts.delete(element);
-    else if (typeof reply.clipPath === "string") record.sheetClip = reply.clipPath.trim();
-  });
+  void previewRequest(target.iframe, "crop-lift", { handle: target.handle, lift: true }).then(
+    (reply) => {
+      if (cropLifts.get(element) !== record || !reply) return;
+      if (!reply.lifted) cropLifts.delete(element);
+      else if (typeof reply.clipPath === "string" && reply.clipPath.length <= MAX_ELEMENT_VALUE)
+        record.sheetClip = reply.clipPath.trim();
+    },
+  );
   return true;
 }
 
 export function liftElementCrop(element: HTMLElement): void {
-  if (cropLifts.has(element) || liftInFrame(element, true)) return;
+  const held = cropLifts.get(element);
+  if ((held && !held.dropped) || liftInFrame(element)) return;
   const selector = liftSelector(element);
   if (!selector || cropLifts.has(element)) return;
   const doc = element.ownerDocument;
@@ -81,14 +97,19 @@ export function liftElementCrop(element: HTMLElement): void {
 
 export function dropElementCropLift(element: HTMLElement): void {
   const lift = cropLifts.get(element);
-  if (!lift) return;
-  if (lift.rule) lift.rule.remove();
-  else liftInFrame(element, false);
-  cropLifts.delete(element);
+  if (!lift || lift.dropped) return;
+  if (lift.rule) {
+    lift.rule.remove();
+    cropLifts.delete(element);
+    return;
+  }
+  lift.dropped = true;
+  unliftInFrame(element, lift);
 }
 
 export function isElementCropLifted(element: HTMLElement): boolean {
-  return cropLifts.has(element);
+  const lift = cropLifts.get(element);
+  return !!lift && !lift.dropped;
 }
 
 // A sealed preview's stand-in has no styles of its own: its clip-path is the one the frame reported.
@@ -109,7 +130,7 @@ function readElementClipPath(element: HTMLElement): string {
   const inline =
     element.style.getPropertyValue("clip-path").trim() || frameClipPaths.get(element)?.inline;
   const lift = cropLifts.get(element);
-  if (inline || !lift) return inline || computedClipPath(element);
+  if (inline || !lift || lift.dropped) return inline || computedClipPath(element);
   // Only inline writes happen while selected, so the stylesheet's clip is read once per lift.
   if (lift.sheetClip === undefined && lift.rule) {
     const { parentNode, nextSibling } = lift.rule;
@@ -124,7 +145,9 @@ function readElementClipPath(element: HTMLElement): string {
  *  croppers must not lift, edit, or restore it, or deselect silently replaces or destroys it. */
 function parseCropClipPath(value: string): ParsedInsetClipPathSides | null {
   if (!value || value === "none") return { top: 0, right: 0, bottom: 0, left: 0, radius: 0 };
-  return parseInsetClipPathSides(value);
+  const sides = parseInsetClipPathSides(value);
+  const sane = sides && Object.values(sides).every((side) => Math.abs(side) <= MAX_DRAFT_PX);
+  return sane ? sides : null;
 }
 
 export function readElementCropInsets(element: HTMLElement): ParsedInsetClipPathSides | null {
