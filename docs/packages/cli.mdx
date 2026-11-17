@@ -404,9 +404,11 @@ For AI image descriptions, set `GEMINI_API_KEY` in a `.env` file
 [OpenRouter](https://openrouter.ai) — it wins if both are set, and
 `HYPERFRAMES_OPENROUTER_MODEL` overrides the model.
 
-A received project's `.env` (one its received-files record lists) never
-replaces a vision or Gemini credential you set in your shell: its competing
-keys are ignored, with a note naming the file.
+A project's `.env` never replaces a vision credential you set in your shell:
+when your shell has a key for a competing provider, the `.env` key is ignored,
+with a note naming the file. Model and timeout settings in the `.env` still
+apply. A received project's `.env` (one its received-files record lists) also
+gives way to your own project's `.env`.
 
 #### Local HTML files
 

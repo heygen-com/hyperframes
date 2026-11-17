@@ -112,49 +112,70 @@ export function projectEnvDir(name: string): string | undefined {
   return set !== undefined && process.env[name] === set.value ? set.sourceDir : undefined;
 }
 
-// Each group is one choice between providers: capture and snapshot vision, then Gemini speech and music.
-const COMPETING_PROVIDER_KEYS: readonly (readonly string[])[] = [
-  [
-    "OPENROUTER_API_KEY",
-    "GEMINI_API_KEY",
-    "GOOGLE_API_KEY",
-    "HYPERFRAMES_VERTEX_PROJECT_ID",
-    "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT",
-  ],
-  ["GEMINI_API_KEY", "GOOGLE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "GCS_CREDS"],
+// Each group is one choice between providers; the media-use scripts remake the Gemini audio one from the passed origins.
+const VISION_PROVIDER_KEYS = [
+  "OPENROUTER_API_KEY",
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "HYPERFRAMES_VERTEX_PROJECT_ID",
+  "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT",
+];
+const GEMINI_AUDIO_KEYS = [
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_APPLICATION_CREDENTIALS",
+  "GCS_CREDS",
 ];
 
-const competitorsOf = (name: string): string[] =>
-  COMPETING_PROVIDER_KEYS.filter((group) => group.includes(name)).flatMap((group) =>
-    group.filter((other) => other !== name && Boolean(process.env[other])),
-  );
+const competitorsOf = (name: string, groups: readonly (readonly string[])[]): string[] =>
+  groups
+    .filter((group) => group.includes(name))
+    .flatMap((group) => group.filter((other) => other !== name && Boolean(process.env[other])));
 
-async function untrustedEnvOrigin(dir: string): Promise<string | null> {
+async function receivedEnvOrigin(dir: string): Promise<string | null> {
   const { receivedFiles, receivedRecordStatus } = await import("./privateProjectFile.js");
   if (receivedRecordStatus(dir) === "unchecked")
     return "a project whose origin could not be checked (too many folders to scan)";
   return receivedFiles(dir)(".env") ? "a received project" : null;
 }
 
-/** Unsets each provider key a received project's `.env` set while the person has their own credential for a competing provider. */
-export async function yieldReceivedProviderKeys(warn: (line: string) => void): Promise<void> {
-  const contested = [...projectEnvValues.keys()].filter(
-    (name) => projectEnvDir(name) !== undefined && competitorsOf(name).length > 0,
-  );
+const RANK = { outsideProjectEnv: 0, ownProjectEnv: 1, receivedProjectEnv: 2 } as const;
+type KeySourceRank = (typeof RANK)[keyof typeof RANK];
+
+interface KeySource {
+  rank: KeySourceRank;
+  origin: string;
+}
+
+/** Unsets each project `.env` provider key whose competing provider has a credential from a surer source. */
+export async function yieldProjectProviderKeys(warn: (line: string) => void): Promise<void> {
   const origins = new Map<string, string | null>();
-  for (const dir of new Set(contested.map((name) => projectEnvDir(name) ?? ""))) {
-    origins.set(dir, await untrustedEnvOrigin(dir));
-  }
-  const originOf = (name: string) => origins.get(projectEnvDir(name) ?? "") ?? null;
-  for (const name of contested.filter((name) => originOf(name) !== null)) {
-    const own = competitorsOf(name).find((other) => originOf(other) === null);
+  const sourceOf = async (name: string): Promise<KeySource> => {
+    const dir = projectEnvDir(name);
+    if (dir === undefined) return { rank: RANK.outsideProjectEnv, origin: "" };
+    if (!origins.has(dir)) origins.set(dir, await receivedEnvOrigin(dir));
+    const received = origins.get(dir) ?? null;
+    return received === null
+      ? { rank: RANK.ownProjectEnv, origin: "a project .env" }
+      : { rank: RANK.receivedProjectEnv, origin: received };
+  };
+  for (const name of [...projectEnvValues.keys()]) {
+    const dir = projectEnvDir(name);
+    if (dir === undefined) continue;
+    const source = await sourceOf(name);
+    const groups =
+      source.rank === RANK.receivedProjectEnv
+        ? [VISION_PROVIDER_KEYS, GEMINI_AUDIO_KEYS]
+        : [VISION_PROVIDER_KEYS];
+    let own: string | undefined;
+    for (const other of competitorsOf(name, groups)) {
+      if ((await sourceOf(other)).rank < source.rank) own = own ?? other;
+    }
     if (own === undefined) continue;
-    const dir = projectEnvDir(name) ?? "";
-    const origin = originOf(name);
     delete process.env[name];
     projectEnvValues.delete(name);
     warn(
-      `[hyperframes] .env: ignoring ${name} from ${origin} (${join(dir, ".env")}); using your own ${own}`,
+      `[hyperframes] .env: ignoring ${name} from ${source.origin} (${join(dir, ".env")}); using your own ${own}`,
     );
   }
 }

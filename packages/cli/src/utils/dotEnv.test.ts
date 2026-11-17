@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { applyDotEnv, loadProjectDotEnv, yieldReceivedProviderKeys } from "./dotEnv.js";
+import { applyDotEnv, loadProjectDotEnv, yieldProjectProviderKeys } from "./dotEnv.js";
 
 const records = vi.hoisted(() => ({ unchecked: false }));
 vi.mock("./privateProjectFile.js", async (importOriginal) => {
@@ -155,7 +155,7 @@ describe("loadProjectDotEnv", () => {
   });
 });
 
-describe("yieldReceivedProviderKeys", () => {
+describe("yieldProjectProviderKeys", () => {
   const PROVIDER_KEYS = [
     "OPENROUTER_API_KEY",
     "GEMINI_API_KEY",
@@ -188,7 +188,7 @@ describe("yieldReceivedProviderKeys", () => {
     }
     const warn = vi.fn();
     loadProjectDotEnv(dir, process.env, vi.fn());
-    await yieldReceivedProviderKeys(warn);
+    await yieldProjectProviderKeys(warn);
     return { dir, warn };
   }
 
@@ -218,10 +218,62 @@ describe("yieldReceivedProviderKeys", () => {
     expect(process.env.HYPERFRAMES_VERTEX_PROJECT_ID).toBeUndefined();
   });
 
-  it("keeps a person's own .env OpenRouter key ahead of their shell Gemini key", async () => {
-    const { warn } = await load({ GEMINI_API_KEY: "own" }, "OPENROUTER_API_KEY=mine\n", false);
+  it("drops a project .env's OpenRouter key when the shell has a Gemini key", async () => {
+    const { dir, warn } = await load(
+      { GEMINI_API_KEY: "own" },
+      "OPENROUTER_API_KEY=cloned\n",
+      false,
+    );
+    expect(process.env.OPENROUTER_API_KEY).toBeUndefined();
+    expect(process.env.GEMINI_API_KEY).toBe("own");
+    expect(warn).toHaveBeenCalledWith(
+      `[hyperframes] .env: ignoring OPENROUTER_API_KEY from a project .env (${join(dir, ".env")}); using your own GEMINI_API_KEY`,
+    );
+  });
+
+  it("drops a project .env's Vertex project when the shell has a Gemini key, keeping its model settings", async () => {
+    await load(
+      { GEMINI_API_KEY: "own" },
+      "HYPERFRAMES_VERTEX_PROJECT_ID=cloned\nHYPERFRAMES_GEMINI_MODEL=gemini-x\n",
+      false,
+    );
+    expect(process.env.HYPERFRAMES_VERTEX_PROJECT_ID).toBeUndefined();
+    expect(process.env.HYPERFRAMES_GEMINI_MODEL).toBe("gemini-x");
+  });
+
+  it("keeps a project .env's Gemini key next to a shell service account the CLI's vision step does not use", async () => {
+    const { warn } = await load(
+      { GOOGLE_APPLICATION_CREDENTIALS: "/own/sa.json" },
+      "GEMINI_API_KEY=mine\n",
+      false,
+    );
+    expect(process.env.GEMINI_API_KEY).toBe("mine");
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("keeps a project .env key when the person has no credential it competes with", async () => {
+    const { warn } = await load({}, "OPENROUTER_API_KEY=mine\n", false);
     expect(process.env.OPENROUTER_API_KEY).toBe("mine");
     expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("drops a received .env's key in favour of the person's own project .env key", async () => {
+    for (const key of PROVIDER_KEYS) vi.stubEnv(key, undefined);
+    const own = mkdtempSync(join(tmpdir(), "hf-dotenv-own-"));
+    const received = mkdtempSync(join(tmpdir(), "hf-dotenv-received-"));
+    dirs.push(own, received);
+    writeFileSync(join(own, ".env"), "GEMINI_API_KEY=mine\n");
+    writeFileSync(join(received, ".env"), "OPENROUTER_API_KEY=received\n");
+    mkdirSync(join(received, ".hyperframes"));
+    writeFileSync(
+      join(received, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: [".env"] }),
+    );
+    loadProjectDotEnv(own, process.env, vi.fn());
+    loadProjectDotEnv(received, process.env, vi.fn());
+    await yieldProjectProviderKeys(vi.fn());
+    expect(process.env.OPENROUTER_API_KEY).toBeUndefined();
+    expect(process.env.GEMINI_API_KEY).toBe("mine");
   });
 
   it("keeps a received .env key when the person has no credential it competes with", async () => {

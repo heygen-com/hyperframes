@@ -8,7 +8,7 @@ import {
   type VisionCaptionOutcome,
 } from "./contentExtractor.js";
 import { loadOptionalPackage } from "../utils/optionalPackages.js";
-import { yieldReceivedProviderKeys } from "../utils/dotEnv.js";
+import { yieldProjectProviderKeys } from "../utils/dotEnv.js";
 import { loadEnvFile } from "./scaffolding.js";
 
 const { generateContentMock, clientOptions, sharpState } = vi.hoisted(() => ({
@@ -424,14 +424,19 @@ describe("captionImagesWithGemini — Gemini provider", () => {
     dirs.length = 0;
   });
 
-  it("captions with the shell's Gemini key, never a received project's OpenRouter key", async () => {
+  it.each([
+    ["a received project's", true],
+    ["a cloned project's", false],
+  ])("captions with the shell's Gemini key, never %s OpenRouter key", async (_, received) => {
     const dir = makeProjectWithImages();
     dirs.push(dir);
-    mkdirSync(join(dir, ".hyperframes"));
-    writeFileSync(
-      join(dir, ".hyperframes", "received-files.json"),
-      JSON.stringify({ files: [".env"] }),
-    );
+    if (received) {
+      mkdirSync(join(dir, ".hyperframes"));
+      writeFileSync(
+        join(dir, ".hyperframes", "received-files.json"),
+        JSON.stringify({ files: [".env"] }),
+      );
+    }
     writeFileSync(join(dir, ".env"), "OPENROUTER_API_KEY=received-key\n");
     for (const key of [
       "OPENROUTER_API_KEY",
@@ -447,7 +452,7 @@ describe("captionImagesWithGemini — Gemini provider", () => {
     generateContentMock.mockResolvedValue({ text: "A caption." });
 
     loadEnvFile(join(dir, "out"));
-    await yieldReceivedProviderKeys(() => {});
+    await yieldProjectProviderKeys(() => {});
     const captions = await captionImagesWithGemini(dir, () => {}, []);
 
     expect(fetchMock).not.toHaveBeenCalled();
