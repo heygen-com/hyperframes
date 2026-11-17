@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Context, Hono, Next } from "hono";
 import { getMimeType } from "./mime.js";
+import { fetchAgain } from "./fetchAgain.js";
 import {
   isProxyWait,
   PREVIEW_EXPOSED_HEADERS,
@@ -112,7 +113,7 @@ export function serveTokenPreviewPaths(
       return new Response(null, { status: 204, headers: PROXY_PREFLIGHT_ANSWER });
     const req = new Request(url, { method: c.req.method, headers: c.req.raw.headers });
     frameTokenLoads.add(req);
-    const res = await api.fetch(req);
+    const res = await fetchAgain(api, req);
     return underToken(res, tokenPathHeaders(c, res, url.pathname), projectId, token);
   };
 }
