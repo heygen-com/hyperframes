@@ -239,7 +239,7 @@ it("re-captures every segment, including resumed ones, after a drawElement failu
   expect(state.attempts[1]?.segmentDirEntries).toEqual([]);
 });
 
-it("warns once under --resume when no resume key is available", async () => {
+it("warns once under --resume when no manifest key is available", async () => {
   const resumeWarnings = () => state.warnings.filter((w) => w.includes("captured again"));
   for (const [resume, key, expected] of [
     [true, null, 1],

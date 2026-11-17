@@ -275,11 +275,11 @@ describe("validateCompletedSegments", () => {
     const probe = async () => 3;
     expect([...(await validateCompletedSegments(manifest, check(6, probe)))]).toEqual([0]);
   });
-  it("reuses segments only from a manifest this install signed", async () => {
+  it("reuses segments only from a manifest this user signed", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     writeFileSync(segmentOutputPath(dir, 0), "xx");
     expect(await reuses(manifestOf([entry(0)]), 3)).toBe(1);
-    // Copied from another install, or written by hand without a signature.
+    // Copied from another user or machine, or written by hand without a signature.
     expect(await reuses(manifestOf([entry(0)], { key: Buffer.alloc(32, 2) }), 3)).toBe(0);
     expect(await reuses(manifestOf([entry(0)], { key: null }), 3)).toBe(0);
   });
@@ -312,7 +312,7 @@ describe("validateCompletedSegments", () => {
     expect(await hashSegmentFile(segmentOutputPath(dir, 0))).toBe(XX_SHA256);
   });
 
-  it("reuses nothing when this install has no key", async () => {
+  it("reuses nothing when this user has no key", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     writeFileSync(segmentOutputPath(dir, 0), "xx");
     const noKey = { ...check(3, async () => 3), key: null };

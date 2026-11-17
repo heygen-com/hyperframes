@@ -250,8 +250,8 @@ export function clearFfBinaryLookupCache(): void {
 }
 
 /**
- * Concat input for a list HyperFrames wrote; `-xerror` fails the join at a refused entry. `concat`
- * opens the list itself, so an entry that is an ffconcat list is followed too, in safe mode.
+ * Concat input for a list HyperFrames wrote: entries open only as local mov, matroska or concat
+ * files (an ffconcat entry is followed in safe mode), and `-xerror` fails at a refused entry.
  */
 export function concatListInputArgs(concatListPath: string): string[] {
   return [

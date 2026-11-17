@@ -2120,12 +2120,14 @@ mismatched encodes. The directory is deleted after a successful render unless
 `--resume` reads next time.
 
 `--resume` reuses only segments you finished on this machine. Their record is
-signed with a key derived from your preview token, which is kept in your home
-folder (`~/.local/state/hyperframes/auth`, or `%LOCALAPPDATA%\hyperframes` on
-Windows), so a `.hf-segments` folder copied from another machine or received
-inside a project is captured again. Each reused segment must also match the
-size and SHA-256 recorded when it finished. Segments recorded by an older
-HyperFrames version are captured again once.
+signed with a key derived from your per-user preview token, a private file in
+your home folder (`~/.local/state/hyperframes/auth`, or
+`%LOCALAPPDATA%\hyperframes` on Windows), so a `.hf-segments` folder copied
+from another machine or received inside a project is captured again. If that
+token cannot be read or created, for example in a read-only home folder,
+`--resume` warns and captures every segment again. Each reused segment must
+also match the size and SHA-256 recorded when it finished. Segments recorded by
+an older HyperFrames version are captured again once.
 
 mp4 and mov only; png-sequence, gif, webm, HDR and shader-transition renders
 keep their existing routes.
