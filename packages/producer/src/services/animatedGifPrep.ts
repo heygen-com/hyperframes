@@ -39,7 +39,6 @@ export interface PrepareAnimatedGifInputsOptions {
   sourceAssets?: Map<string, string>;
   timeoutMs?: number;
   transcode?: (input: AnimatedGifTranscodeRequest) => Promise<void>;
-  /** Trusted local projects only: read images whose path leads outside projectDir. */
   allowOutsideFiles?: boolean;
 }
 
