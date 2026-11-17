@@ -25,7 +25,7 @@ it("a forced close also ends what the browser started, as Windows ends no child 
     process.execPath,
     [
       "-e",
-      `const kid = require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"]);
+      `const kid = require("node:child_process").spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
        console.log(kid.pid); setTimeout(() => {}, 60000);`,
     ],
     { stdio: "pipe" },
