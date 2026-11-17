@@ -161,15 +161,26 @@ describe.skipIf(!HAS_FFMPEG)("concat input formats", () => {
     30_000,
   );
 
-  it("refuses a listed file that is a playlist of other files", async () => {
-    const elsewhere = join(root, "elsewhere.mp4");
-    makeClip(elsewhere, 4);
+  function writePlaylist(): string {
+    makeClip(join(root, "elsewhere.mp4"), 4);
     const playlist = join(root, "segment.m3u8");
     writeFileSync(
       playlist,
       "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nelsewhere.mp4\n#EXT-X-ENDLIST\n",
     );
-    const result = await concatVideoFiles([playlist], join(root, "joined.mp4"));
+    return playlist;
+  }
+
+  it("refuses a listed file that is a playlist of other files", async () => {
+    const result = await concatVideoFiles([writePlaylist()], join(root, "joined.mp4"));
+    expect(result.success).toBe(false);
+  }, 30_000);
+
+  it("fails the join when a refused file sits between good ones", async () => {
+    const good = [join(root, "a.mp4"), join(root, "b.mp4")];
+    for (const path of good) makeClip(path, 2);
+    const inputs = [good[0]!, writePlaylist(), good[1]!];
+    const result = await concatVideoFiles(inputs, join(root, "joined.mp4"));
     expect(result.success).toBe(false);
   }, 30_000);
 });

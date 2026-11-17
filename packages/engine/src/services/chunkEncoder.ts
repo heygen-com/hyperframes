@@ -676,8 +676,10 @@ export async function encodeFramesFromDir(
 /** The list itself plus what the chunk and segment encoders write; ffmpeg applies it to nested opens too. */
 const CONCAT_LIST_FORMATS = "concat,mov,matroska";
 
+/** `-xerror` fails the join at an entry ffmpeg refuses, where concat would otherwise end the output early. */
 export function concatListInputArgs(concatListPath: string): string[] {
   return [
+    "-xerror",
     "-f",
     "concat",
     "-safe",
