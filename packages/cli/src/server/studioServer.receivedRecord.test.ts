@@ -1,7 +1,9 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -10,18 +12,39 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { fileContentVersion } from "@hyperframes/studio-server";
 import { receivedFiles } from "../utils/privateProjectFile.js";
+import { contentHash } from "../utils/receivedContent.js";
 import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { createStudioServer, type StudioServer } from "./studioServer.js";
 import { cleanupStudioServerRoot, makeStudioServerRoot } from "./studioServerTestFixture.js";
+
+const walk = vi.hoisted(() => ({ exhausted: false }));
+
+vi.mock("../utils/walkBudget.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../utils/walkBudget.js")>();
+  return { walkBudget: () => (walk.exhausted ? () => false : real.walkBudget()) };
+});
 
 let root: string;
 let server: StudioServer | undefined;
 
 afterEach(() => {
-  if (server) cleanupStudioServerRoot(server, root);
+  walk.exhausted = false;
+  if (server) {
+    chmodAll(root);
+    cleanupStudioServerRoot(server, root);
+  }
   server = undefined;
 });
+
+function chmodAll(dir: string): void {
+  for (const entry of readdirSync(dir, { withFileTypes: true }))
+    if (entry.isDirectory() && !entry.isSymbolicLink()) {
+      chmodSync(join(dir, entry.name), 0o755);
+      chmodAll(join(dir, entry.name));
+    }
+}
 
 function caseInsensitiveDisk(): boolean {
   const probe = mkdtempSync(join(tmpdir(), "hf-case-probe-"));
@@ -41,7 +64,11 @@ function studio(): { projectDir: string; app: StudioServer["app"] } {
   const fixture = makeStudioServerRoot("hf-received-record-");
   root = fixture.root;
   write(join(root, "outside", "pic.png"), "x");
-  server = createStudioServer({ projectDir: fixture.projectDir, projectName: "film" });
+  server = createStudioServer({
+    projectDir: fixture.projectDir,
+    projectName: "film",
+    historyRoot: join(root, "history"),
+  });
   return { projectDir: fixture.projectDir, app: server.app };
 }
 
@@ -76,12 +103,37 @@ describe("a received folder with its own record, in a project with none", () => 
     },
   );
 
-  it("takes its received files along when Studio deletes it", async () => {
+  it("takes its received files along when Studio deletes it, keeping their content", async () => {
     const { projectDir, app } = studio();
     withReceivedFolder(projectDir);
+    const scene = contentHash(join(projectDir, "sub", "scene.html"));
     expect((await app.request(fileUrl("sub"), { method: "DELETE" })).status).toBe(200);
     expect(existsSync(join(projectDir, "sub"))).toBe(false);
+    const own = join(projectDir, ".hyperframes");
+    expect(JSON.parse(readFileSync(join(own, "received-files.json"), "utf-8")).files).toEqual([]);
+    const content = JSON.parse(readFileSync(join(own, "received-content.json"), "utf-8"));
+    expect(content.hashes).toEqual([scene]);
+    const received = receivedFiles(projectDir);
+    expect(received.gone).toBeUndefined();
+    expect(received("index.html")).toBe(false);
   });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "keeps its files listed when a folder delete stops partway",
+    async () => {
+      const { projectDir, app } = studio();
+      withReceivedFolder(projectDir);
+      write(join(projectDir, "sub", "locked", "keep.txt"), "x");
+      chmodSync(join(projectDir, "sub", "locked"), 0o555);
+      const deleted = await app.request(fileUrl("sub"), { method: "DELETE" });
+      expect(deleted.ok).toBe(false);
+      const listed = JSON.parse(
+        readFileSync(join(projectDir, ".hyperframes", "received-files.json"), "utf-8"),
+      ).files;
+      expect(listed).toContain("sub/scene.html");
+      expect(receivedFiles(projectDir)("sub/scene.html")).toBe(true);
+    },
+  );
 
   function withOutsideEntry(projectDir: string, entry: string): void {
     withReceivedFolder(projectDir);
@@ -111,6 +163,16 @@ describe("a received folder with its own record, in a project with none", () => 
       expect(receivedFiles(projectDir)("sub/link.png")).toBe(true);
     },
   );
+
+  it("deletes a folder past the project search's size limit, keeping what its record lists outside it", async () => {
+    const { projectDir, app } = studio();
+    withOutsideEntry(projectDir, "../scene.html");
+    walk.exhausted = true;
+    expect((await app.request(fileUrl("sub/notes"), { method: "DELETE" })).status).toBe(200);
+    walk.exhausted = false;
+    write(join(projectDir, "sub", "scene.html"), "<p>edited</p>");
+    expect(receivedFiles(projectDir)("sub/scene.html")).toBe(true);
+  });
 
   it("refuses a folder delete when the project's record cannot take the files listed outside it", async () => {
     const { projectDir, app } = studio();
@@ -220,8 +282,7 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     },
   );
 
-  it("answers other requests while it waits for the record's lock", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("answers other requests while it waits for the record's lock, then refuses the rename", async () => {
     const { projectDir, app } = studio();
     withRecord(projectDir);
     writeFileSync(`${record(projectDir)}.lock`, "");
@@ -230,8 +291,17 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     await new Promise((resolve) => setTimeout(resolve, 200));
     await app.request(fileUrl("index.html"));
     expect(Date.now() - started).toBeLessThan(1_000);
-    expect((await renaming).status).toBe(200);
-    warn.mockRestore();
+    expect((await renaming).status).toBe(409);
+    expect(existsSync(join(projectDir, "scenes", "intro.html"))).toBe(true);
+    expect(existsSync(join(projectDir, "scenes", "opening.html"))).toBe(false);
+    expect(listed(projectDir)).toEqual(["scenes/intro.html", "scenes/logo.png"]);
+  });
+
+  it("renames a file no record lists while the record is busy", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    writeFileSync(`${record(projectDir)}.lock`, "");
+    expect((await move(app, "index.html", "main.html")).status).toBe(200);
   });
 
   it("keeps a file moved out of a received folder received in the project's own record", async () => {
@@ -248,14 +318,67 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     expect(received("sub/opening.html")).toBe(true);
   });
 
-  it("leaves the readers answering received when the record cannot be changed", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("keeps a received file received through an edit after a delete and an undo", async () => {
     const { projectDir, app } = studio();
     withRecord(projectDir);
-    writeFileSync(`${record(projectDir)}.lock`, "");
-    expect((await move(app, "scenes/intro.html", "scenes/opening.html")).status).toBe(200);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("received-files record"));
-    expect(receivedFiles(projectDir)("scenes/opening.html")).toBe(true);
-    warn.mockRestore();
+    expect((await app.request("/api/projects/film/history")).status).toBe(200);
+    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+      200,
+    );
+    expect(listed(projectDir)).toEqual(["scenes/logo.png"]);
+    const restored = await app.request("/api/projects/film/history/restore", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ point: "start" }),
+    });
+    expect(restored.status).toBe(200);
+    expect(existsSync(join(projectDir, "scenes", "intro.html"))).toBe(true);
+    write(join(projectDir, "scenes", "intro.html"), `<img src="../../outside/pic.png"><p>2</p>`);
+    expect(receivedFiles(projectDir)("scenes/intro.html")).toBe(true);
+    expect(allowed(projectDir)).toBe(false);
+  });
+
+  it("lists a file holding received content again before a Studio save changes it", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    const intro = join(projectDir, "scenes", "intro.html");
+    const before = readFileSync(intro);
+    expect((await app.request(fileUrl("scenes/intro.html"), { method: "DELETE" })).status).toBe(
+      200,
+    );
+    writeFileSync(intro, before);
+    const saved = await app.request(fileUrl("scenes/intro.html"), {
+      method: "PUT",
+      headers: { "If-Match": fileContentVersion(before) },
+      body: `<img src="../../outside/pic.png"><p>2</p>`,
+    });
+    expect(saved.status).toBe(200);
+    expect(listed(projectDir)).toContain("scenes/intro.html");
+    expect(receivedFiles(projectDir)("scenes/intro.html")).toBe(true);
+  });
+
+  it("keeps a line whose file is already gone when Studio deletes or renames onto its folder", async () => {
+    const { projectDir, app } = studio();
+    withRecord(projectDir);
+    write(
+      record(projectDir),
+      JSON.stringify({ files: ["scenes/intro.html", "scenes/old.html", "parts/gone.html"] }),
+    );
+    expect((await app.request(fileUrl("scenes"), { method: "DELETE" })).status).toBe(200);
+    expect(listed(projectDir)).toEqual(["parts/gone.html", "scenes/old.html"]);
+    write(join(projectDir, "draft.html"), "<p></p>");
+    expect((await move(app, "draft.html", "parts/gone.html")).status).toBe(200);
+    expect(listed(projectDir)).toEqual(["parts/gone.html", "scenes/old.html"]);
+    expect(receivedFiles(projectDir).gone).toBe("scenes/old.html");
+  });
+
+  it("moves a line its record spells in decomposed Unicode", async () => {
+    const { projectDir, app } = studio();
+    const folder = "cafe\u0301";
+    write(join(projectDir, folder, "intro.html"), "<p></p>");
+    write(record(projectDir), JSON.stringify({ files: [`${folder}/intro.html`] }));
+    expect((await move(app, folder, `parts/${folder}`)).status).toBe(200);
+    expect(listed(projectDir)).toEqual(["parts/caf\u00e9/intro.html"]);
+    expect(receivedFiles(projectDir)("parts/caf\u00e9/intro.html")).toBe(true);
   });
 });

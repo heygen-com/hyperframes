@@ -1,51 +1,160 @@
-import { resolve } from "node:path";
-import type { Hono } from "hono";
+import { existsSync, statSync } from "node:fs";
+import type { Context, Hono } from "hono";
 import { requestSubPath } from "@hyperframes/studio-server";
 import {
-  followReceivedChange,
-  keepListedOutside,
+  resolveWithinProject,
+  resolveWritableWithinProject,
+} from "@hyperframes/studio-server/safe-path";
+import {
+  dropReceivedArrivals,
+  dropReceivedLeavers,
+  keepListedInFolder,
   onDiskPath,
-  receivedContentLeaving,
+  plannedReceivedChange,
+  type ReceivedChange,
+  recordReceivedArrivals,
+  relistReceivedContent,
 } from "../utils/receivedRecordFollow.js";
 
-const newPathOf = (body: unknown): string | undefined =>
-  body !== null && typeof body === "object" && "newPath" in body && typeof body.newPath === "string"
-    ? body.newPath
-    : undefined;
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const textAt = (value: unknown, key: string): string[] =>
+  isObject(value) && typeof value[key] === "string" ? [value[key]] : [];
+
+const listAt = (value: unknown, key: string): unknown[] =>
+  isObject(value) && Array.isArray(value[key]) ? value[key] : [];
 
 const warn = (error: unknown) =>
   console.warn(`[studio] Could not update the received-files record: ${String(error)}`);
 
+const busy = (c: Context) =>
+  c.json(
+    { error: "Could not update the received-files record; try again.", why: "record_busy" },
+    409,
+  );
+
+const jsonBody = (c: Context): Promise<unknown> =>
+  c.req.raw
+    .clone()
+    .json()
+    .catch(() => null);
+
+/** A project file the request may change, spelled as it is on disk; null when the route will refuse the path. */
+function writablePath(projectDir: string, path: string): string | null {
+  const found = path ? resolveWritableWithinProject(projectDir, path) : null;
+  return found && existsSync(found) ? onDiskPath(found) : null;
+}
+
+const isFile = (path: string) => statSync(path, { throwIfNoEntry: false })?.isFile() === true;
+
+async function requestedChange(
+  c: Context,
+  projectDir: string,
+): Promise<{ from: string; to?: string } | null> {
+  const from = writablePath(projectDir, requestSubPath(c.req.url, "projects/:id/files"));
+  if (from === null) return null;
+  if (c.req.method !== "PATCH") return { from };
+  const newPath = textAt(await jsonBody(c), "newPath")[0];
+  const to = newPath ? resolveWritableWithinProject(projectDir, newPath) : null;
+  return to === null ? null : { from, to: onDiskPath(to) };
+}
+
+async function startedChange(
+  projectDir: string,
+  { from, to }: { from: string; to?: string },
+): Promise<ReceivedChange | null> {
+  if (!(await keepListedInFolder(projectDir, from))) return null;
+  return plannedReceivedChange(projectDir, from, to)
+    .then(recordReceivedArrivals)
+    .catch(() => null);
+}
+
 /**
- * Follows every Studio rename, move or delete that succeeded in the project's received-files records, whichever
- * client sent it. A record that cannot be changed is left as it was, so the readers count the moved file as received.
+ * Follows a Studio rename, move or delete in the received-files records. Before the files move, every file listed in
+ * a record inside a moved or deleted folder is listed in the project's own record, the received content leaving a
+ * listed path is kept, and a renamed file is listed under its new path; when that fails, the request is refused.
+ * Once the files have moved, their old lines go.
  */
-export function followReceivedRecords(app: Hono, projectDir: string): void {
+function followMovesAndDeletes(app: Hono, projectDir: string): void {
   app.on(["PATCH", "DELETE"], "/api/projects/:id/files/*", async (c, next) => {
-    const sent =
-      c.req.method === "PATCH"
-        ? await c.req.raw
-            .clone()
-            .json()
-            .catch(() => null)
-        : null;
-    const target = onDiskPath(resolve(projectDir, requestSubPath(c.req.url, "projects/:id/files")));
-    if (!(await keepListedOutside(projectDir, target)))
-      return c.json(
-        { error: "Could not update the received-files record; try again.", why: "record_busy" },
-        409,
-      );
-    const left = await receivedContentLeaving(target).catch((error: unknown) => {
-      warn(error);
-      return [];
-    });
+    const requested = await requestedChange(c, projectDir);
+    if (requested === null) return next();
+    const change = await startedChange(projectDir, requested);
+    if (change === null) return busy(c);
+    await next();
+    await (c.res.ok ? dropReceivedLeavers(change) : dropReceivedArrivals(change)).catch(warn);
+  });
+}
+
+/** Undo, redo and restore: every file they write that holds received content is listed again. */
+function followHistory(app: Hono, projectDir: string): void {
+  const routes = ["step", "undo", "restore"].map((name) => `/api/projects/:id/history/${name}`);
+  app.on("POST", routes, async (c, next) => {
     await next();
     if (!c.res.ok) return;
-    const newPath = newPathOf(sent);
-    const change =
-      newPath === undefined
-        ? { to: target, left }
-        : { from: target, to: onDiskPath(resolve(projectDir, newPath)), left };
-    await followReceivedChange(projectDir, change).catch(warn);
+    const sent: unknown = await c.res
+      .clone()
+      .json()
+      .catch(() => null);
+    const entry = isObject(sent) && isObject(sent.entry) ? sent.entry : sent;
+    const paths = listAt(entry, "files")
+      .flatMap((file) => textAt(file, "path"))
+      .flatMap((path) => resolveWithinProject(projectDir, path) ?? [])
+      .filter(isFile);
+    await relistReceivedContent(projectDir, paths).catch(warn);
   });
+}
+
+const SAVES_NAMING_THE_FILE = [
+  "files",
+  "file-mutations/:operation",
+  "gsap-mutations",
+  "gsap-mutations-batch",
+  "gsap-mutation-rollback",
+];
+
+async function savedPaths(c: Context): Promise<string[]> {
+  const route = SAVES_NAMING_THE_FILE.find((prefix) =>
+    c.req.routePath.startsWith(`/api/projects/:id/${prefix}/`),
+  );
+  if (route !== undefined) return [requestSubPath(c.req.url, `projects/:id/${route}`)];
+  const body = await jsonBody(c);
+  return [
+    ...listAt(body, "files").flatMap((file) => textAt(file, "path")),
+    ...listAt(body, "batches").flatMap((batch) => textAt(batch, "sourceFile")),
+  ];
+}
+
+/**
+ * A Studio save to a file that holds received content no record lists lists that file first, so the edit leaves it
+ * received; when the record cannot take it, the save is refused.
+ */
+function followSaves(app: Hono, projectDir: string): void {
+  const relistBeforeSave = async (c: Context, next: () => Promise<void>) => {
+    const paths = (await savedPaths(c)).flatMap((path) => writablePath(projectDir, path) ?? []);
+    try {
+      await relistReceivedContent(projectDir, paths.filter(isFile));
+    } catch {
+      return busy(c);
+    }
+    return next();
+  };
+  app.put("/api/projects/:id/files/*", relistBeforeSave);
+  app.on(
+    "POST",
+    [
+      ...SAVES_NAMING_THE_FILE.slice(1).map((prefix) => `/api/projects/:id/${prefix}/*`),
+      "/api/projects/:id/file-mutations/split-batch",
+      "/api/projects/:id/file-mutations/patch-element-batches",
+    ],
+    relistBeforeSave,
+  );
+}
+
+/** Keeps the project's received-files records true to Studio's file requests, whichever client sent them. */
+export function followReceivedRecords(app: Hono, projectDir: string): void {
+  followMovesAndDeletes(app, projectDir);
+  followHistory(app, projectDir);
+  followSaves(app, projectDir);
 }

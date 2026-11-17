@@ -1,5 +1,6 @@
 import {
   closeSync,
+  type Dirent,
   lstatSync,
   openSync,
   readdirSync,
@@ -8,6 +9,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import {
   isEnvOrGitPath,
@@ -174,42 +176,23 @@ export function forgetReceivedFiles(root: string, paths: string[]): void {
   changeReceivedRecord(root, (files) => paths.map((path) => files.delete(path)).some(Boolean));
 }
 
-export const recordFoldersAtOrAbove = (dir: string): string[] =>
-  receivedRecordsAtOrAbove(dir).map((record) => record.root);
+export const receivedLinesAtOrAbove = (dir: string): { folder: string; lines: string[] }[] =>
+  receivedRecordsAtOrAbove(dir).flatMap((record) =>
+    Array.isArray(record.listed) ? [{ folder: record.root, lines: record.listed.map(String) }] : [],
+  );
 
 const listedPaths = (record: ReceivedRecord): string[] =>
   Array.isArray(record.listed)
     ? record.listed.map((entry) => join(record.root, String(entry)))
     : [];
 
-const isAtOrUnder = (path: string, folder: string) => {
-  const inside = relative(folder, path);
-  return (
-    inside === "" || (inside !== ".." && !inside.startsWith(`..${sep}`) && !isAbsolute(inside))
-  );
-};
-
-const recordsWithin = (target: string, below: ReceivedRecord[]): ReceivedRecord[] =>
-  [...receivedRecordsAtOrAbove(target), ...below].filter((record) =>
-    isAtOrUnder(record.file, target),
-  );
-
-export function listedFilesLeaving(target: string): string[] {
-  const above = receivedRecordsAtOrAbove(dirname(target)).flatMap(listedPaths);
-  return [
-    ...above.filter((path) => isAtOrUnder(path, target)),
-    ...recordsWithin(target, receivedRecordsBelow(target) ?? []).flatMap(listedPaths),
-  ];
-}
-
-export function listedOutsideFolder(target: string): string[] | null {
+export async function filesListedInFolder(target: string): Promise<string[] | null> {
   if (!statSync(target, { throwIfNoEntry: false })?.isDirectory()) return [];
-  const below = receivedRecordsBelow(target);
+  const own = readRecord(target, true);
+  const below = await receivedRecordsBelowAsync(target);
   if (below === null) return null;
-  const realTarget = realFilePath(target);
-  return recordsWithin(target, below)
-    .flatMap(listedPaths)
-    .filter((path) => !isAtOrUnder(path, target) || !isAtOrUnder(realFilePath(path), realTarget));
+  const records = own ? [nestedRecord(target, target, own), ...below] : below;
+  return records.flatMap(listedPaths);
 }
 
 function receivedRecordsAtOrAbove(start: string): ReceivedRecord[] {
@@ -232,7 +215,7 @@ function receivedRecordsAtOrAbove(start: string): ReceivedRecord[] {
 function nestedRecord(start: string, dir: string, record: { listed: unknown }): ReceivedRecord {
   const folder = relative(start, dir).split(sep).join("/");
   const listed = Array.isArray(record.listed)
-    ? record.listed.map((entry) => `${folder}/${String(entry)}`)
+    ? record.listed.map((entry) => (folder ? `${folder}/${String(entry)}` : String(entry)))
     : undefined;
   return { file: join(dir, RECEIVED_RECORD), root: start, projectDirFromRoot: "", listed };
 }
@@ -247,6 +230,12 @@ export function mayHoldLoadedFiles(start: string, folder: string): boolean {
   return segments.length === 1 || !isStudioPrivatePath(rel);
 }
 
+const subfolders = (start: string, dir: string, entries: Dirent[]): string[] =>
+  entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => join(dir, entry.name))
+    .filter((folder) => mayHoldLoadedFiles(start, folder));
+
 function receivedRecordsBelow(start: string): ReceivedRecord[] | null {
   const withinBudget = walkBudget();
   const records: ReceivedRecord[] = [];
@@ -254,14 +243,28 @@ function receivedRecordsBelow(start: string): ReceivedRecord[] | null {
   for (let dir = pending.pop(); dir !== undefined; dir = pending.pop()) {
     let folders: string[];
     try {
-      folders = readdirSync(dir, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => join(dir, entry.name))
-        .filter((folder) => mayHoldLoadedFiles(start, folder));
+      folders = subfolders(start, dir, readdirSync(dir, { withFileTypes: true }));
     } catch {
       return null;
     }
     if (!withinBudget(folders.length)) return null;
+    const record = dir === start ? null : readRecord(dir, true);
+    if (record) records.push(nestedRecord(start, dir, record));
+    pending.push(...folders);
+  }
+  return records;
+}
+
+async function receivedRecordsBelowAsync(start: string): Promise<ReceivedRecord[] | null> {
+  const records: ReceivedRecord[] = [];
+  const pending = [start];
+  for (let dir = pending.pop(); dir !== undefined; dir = pending.pop()) {
+    let folders: string[];
+    try {
+      folders = subfolders(start, dir, await readdir(dir, { withFileTypes: true }));
+    } catch {
+      return null;
+    }
     const record = dir === start ? null : readRecord(dir, true);
     if (record) records.push(nestedRecord(start, dir, record));
     pending.push(...folders);

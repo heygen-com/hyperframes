@@ -53,7 +53,7 @@ const MAX_HASHED_BYTES = 16 * 1024 * 1024;
 const READ_PLAIN = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
 
 /** Pages, stylesheets, scripts and SVG of any size, and other plain files up to 16 MB, as `stat` reads them. */
-const hashable = (path: string, stat: Stats) =>
+export const hashable = (path: string, stat: Stats) =>
   stat.isFile() && (stat.size <= MAX_HASHED_BYTES || isCodeFile(path));
 
 /** The sha256 of a plain file's bytes; null for a link, a folder, a large file that names no others, or one that cannot be read. */
