@@ -14,8 +14,11 @@ import { Readable } from "node:stream";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
 import { formatRenderOutputTimestamp, parseFps, fpsToNumber } from "@hyperframes/core";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { RENDER_VARIABLES_FILE } from "@hyperframes/core/project-folders";
 import {
   folderGone,
+  isLinkFreeWithinProject,
   isPrivateProjectFile,
   mkdirWithinProject,
   resolveWithinProject,
@@ -227,6 +230,23 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     ensureCleanupTimer();
 
     return c.json({ jobId, status: "rendering" });
+  });
+
+  api.put("/projects/:id/render-variables", async (c) => {
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (!project) return c.json({ error: "not found" }, 404);
+    const values: unknown = await c.req.json().catch(() => undefined);
+    if (!isVariablesPayload(values)) return c.json({ error: VARIABLES_PAYLOAD_ERROR }, 400);
+    if (folderGone(project.dir)) return projectDirMissing(c);
+    // The variable ids are the composition's, so a write through a link could put chosen JSON in package.json. A link
+    // on the way is refused; a link in the file's place is replaced by the rename, not written through.
+    const path = join(project.dir, RENDER_VARIABLES_FILE);
+    if (!isLinkFreeWithinProject(project.dir, dirname(path))) {
+      return c.json({ error: "forbidden", why: "link" }, 403);
+    }
+    mkdirWithinProject(project.dir, dirname(path));
+    replaceFileAtomically(path, JSON.stringify(values, null, 2) + "\n", 0o644);
+    return c.json({ path: RENDER_VARIABLES_FILE });
   });
 
   // SSE progress stream

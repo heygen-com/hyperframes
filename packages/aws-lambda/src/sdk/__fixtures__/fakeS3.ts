@@ -16,25 +16,52 @@ export interface FakeS3Op {
   kind: "head" | "put";
   bucket: string;
   key: string;
+  /** The `ExpectedBucketOwner` the request carried. */
+  owner?: string;
 }
+
+interface Request {
+  input: { Bucket: string; Key: string; ExpectedBucketOwner?: string };
+}
+type Handler = (args: Request) => Promise<{ output: unknown }>;
+type Middleware = (next: Handler) => Handler;
 
 export class FakeS3 {
   ops: FakeS3Op[] = [];
   existing = new Set<string>();
   bodies = new Map<string, Buffer>();
   metadata = new Map<string, Record<string, string> | undefined>();
+  /** The initialize-step middleware a real client would run, such as `pinBucketOwner`'s. */
+  private middleware = new Map<string, Middleware>();
+  readonly middlewareStack = {
+    add: (middleware: Middleware, options: { name: string }) =>
+      void this.middleware.set(options.name, middleware),
+    remove: (name: string) => this.middleware.delete(name),
+  };
 
   async send(command: unknown): Promise<unknown> {
     const cmdName = (command as { constructor: { name: string } }).constructor.name;
-    const input = (
+    let input = (
       command as {
-        input: { Bucket: string; Key: string; Metadata?: Record<string, string>; Body?: unknown };
+        input: {
+          Bucket: string;
+          Key: string;
+          ExpectedBucketOwner?: string;
+          Metadata?: Record<string, string>;
+          Body?: unknown;
+        };
       }
     ).input;
+    const sent: Handler = async (args) => {
+      input = { ...input, ...args.input };
+      return { output: undefined };
+    };
+    await [...this.middleware.values()].reduceRight((next, wrap) => wrap(next), sent)({ input });
+    const owner = input.ExpectedBucketOwner;
     const id = `${input.Bucket}/${input.Key}`;
     const handlers: Record<string, () => Promise<unknown>> = {
       HeadObjectCommand: async () => {
-        this.ops.push({ kind: "head", bucket: input.Bucket, key: input.Key });
+        this.ops.push({ kind: "head", bucket: input.Bucket, key: input.Key, owner });
         return this.head(id);
       },
       GetObjectCommand: async () => {
@@ -42,7 +69,7 @@ export class FakeS3 {
         return { Body: Readable.from([this.bodies.get(id) ?? Buffer.alloc(0)]) };
       },
       PutObjectCommand: async () => {
-        this.ops.push({ kind: "put", bucket: input.Bucket, key: input.Key });
+        this.ops.push({ kind: "put", bucket: input.Bucket, key: input.Key, owner });
         this.existing.add(id);
         this.metadata.set(id, input.Metadata);
         this.bodies.set(id, await drainBody(input.Body as NodeJS.ReadableStream | Buffer));

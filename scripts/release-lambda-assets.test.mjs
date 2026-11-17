@@ -306,7 +306,7 @@ test("receipt and bundle persistence precede side effects and do not overwrite p
       s.with.path === "${{ runner.temp }}/release-bundle",
   );
   assert.equal(download.with["artifact-ids"], "${{ needs.pack.outputs.bundle_id }}");
-  assert.equal(workflow.concurrency["cancel-in-progress"], false);
+  assert.equal(workflow.jobs.publish.concurrency["cancel-in-progress"], false);
 });
 
 // GitHub's implicit bash shell does not enable pipefail; explicit shell: bash does.

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { Hono } from "hono";
@@ -6,10 +6,11 @@ import type { StudioApiAdapter } from "../types.js";
 import {
   decodeAudioPeaks,
   buildWaveformCacheKey,
+  readCachedPeaks,
   writeWaveformCache,
-  isWaveformCacheDirectory,
 } from "../helpers/waveform.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
+import { decodeShared } from "../helpers/audioDecodes.js";
 
 export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): void {
   api.get("/projects/:id/waveform/*", async (c) => {
@@ -32,18 +33,12 @@ export function registerWaveformRoutes(api: Hono, adapter: StudioApiAdapter): vo
       buildWaveformCacheKey(relative(project.dir, audioPath), stats),
     );
 
-    try {
-      if (isWaveformCacheDirectory(cacheDir) && existsSync(cachePath)) {
-        const peaks = JSON.parse(readFileSync(cachePath, "utf-8")) as number[];
-        return c.json({ peaks });
-      }
-    } catch {
-      // corrupt or inaccessible cache — regenerate
-    }
+    const cached = readCachedPeaks(project.dir, cachePath);
+    if (cached) return c.json({ peaks: cached });
 
     let peaks: number[];
     try {
-      peaks = await decodeAudioPeaks(audioPath);
+      peaks = await decodeShared(cachePath, audioPath, decodeAudioPeaks, c.req.raw.signal);
     } catch {
       return c.json({ error: "failed to decode audio" }, 500);
     }

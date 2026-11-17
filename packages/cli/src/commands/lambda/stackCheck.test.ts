@@ -9,12 +9,16 @@ const sdk = vi.hoisted(() => ({
   renderToLambda: vi.fn(),
   siteHandleFromId: vi.fn(),
 }));
-vi.mock("@hyperframes/aws-lambda/sdk", () => sdk);
+vi.mock("@hyperframes/aws-lambda/sdk", async (importOriginal) => {
+  const { parseStateMachineArn } =
+    await importOriginal<typeof import("@hyperframes/aws-lambda/sdk")>();
+  return { ...sdk, parseStateMachineArn };
+});
 vi.mock("./state.js", () => ({
   DEFAULT_STACK_NAME: "hyperframes",
   requireStack: () => ({
     bucketName: "test-bucket",
-    stateMachineArn: "arn:aws:states:us-east-2:1234:stateMachine:hf",
+    stateMachineArn: "arn:aws:states:us-east-2:123456789012:stateMachine:hf",
     region: "us-east-2",
     reservedConcurrency: 8,
   }),
@@ -61,5 +65,38 @@ describe("a stack too old to read sites is refused before anything uploads", () 
       runSitesCreate({ projectDir, stackName: "hyperframes", json: true }),
     ).rejects.toMatchObject({ name: "STACK_TOO_OLD" });
     expect(sdk.deploySite).not.toHaveBeenCalled();
+  });
+});
+
+describe("an upload names the state machine's account as the bucket's owner", () => {
+  beforeEach(() => {
+    sdk.assertStackReadsSites.mockResolvedValue(undefined);
+    sdk.deploySite.mockResolvedValue({
+      siteId: "s",
+      projectS3Uri: "s3://test-bucket/sites/s/files.json",
+    });
+  });
+
+  it("in sites create", async () => {
+    await runSitesCreate({ projectDir, stackName: "hyperframes", json: true });
+    expect(sdk.deploySite).toHaveBeenCalledWith(
+      expect.objectContaining({ bucketName: "test-bucket", expectedBucketOwner: "123456789012" }),
+    );
+  });
+
+  it("in render-batch", async () => {
+    await runRenderBatch({
+      projectDir,
+      stackName: "hyperframes",
+      batch: join(projectDir, "batch.jsonl"),
+      fps: 30,
+      width: 1920,
+      height: 1080,
+      format: "mp4",
+      json: true,
+    }).catch(() => {});
+    expect(sdk.deploySite).toHaveBeenCalledWith(
+      expect.objectContaining({ bucketName: "test-bucket", expectedBucketOwner: "123456789012" }),
+    );
   });
 });

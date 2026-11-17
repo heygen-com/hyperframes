@@ -39,6 +39,7 @@ import { createPreviewSeek } from "./previewSeek";
 import { createPausedVideoFrames, releasePausedVideoFrame } from "./pausedVideoFrames";
 import { copiesReady } from "./previewCopies";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
+import { createScrubAudio } from "./scrubAudio";
 import { installEditingAgent } from "./editingAgent";
 import { instantTolerance } from "../clipFacts";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
@@ -194,6 +195,7 @@ import {
   paintCaptureMotionBlur,
   releaseCaptureMotionBlurFrame,
   setMotionBlurPreviewQuality,
+  teardownCaptureMotionBlur,
 } from "./captureMotionBlur";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -5173,7 +5175,7 @@ export function initSandboxRuntimeModular(): void {
     nativePlayTime = undefined;
     wallClearTimeout(nativeWarmTimer);
     if (
-      !(studioPreview || (playerFrame && isWebKit())) ||
+      !mediaDeferred ||
       state.nativeMediaSyncDisabled ||
       isExportRenderDrivingFrames() ||
       window.__HF_EXPORT_RENDER_SEEK_CONFIG ||
@@ -6604,6 +6606,8 @@ export function initSandboxRuntimeModular(): void {
   // The runtime's external control surface only goes live once all of its
   // dependencies exist, so a load-time seek / set-playback-rate can never reach
   // a not-yet-initialized helper (the 'before initialization' TDZ this fixes).
+  const scrubAudio = createScrubAudio({ lease: leasePausedMedia, release: releasePausedMedia });
+  registerRuntimeCleanup(scrubAudio.stop);
   state.controlBridgeHandler = installRuntimeControlBridge({
     onPlay: () => {
       player.play();
@@ -6710,6 +6714,7 @@ export function initSandboxRuntimeModular(): void {
       setPreviewRasterScale(scale);
       noteDisplayScale(scale);
     },
+    onScrubAudio: scrubAudio.scrub,
     onRequestPreviewFacts: () =>
       postRuntimeMessage({
         source: "hf-preview",
@@ -6819,6 +6824,11 @@ export function initSandboxRuntimeModular(): void {
       state.beforeUnloadHandler = null;
     }
     picker.disablePickMode();
+    try {
+      teardownCaptureMotionBlur();
+    } catch (err) {
+      swallow("runtime.init.site17", err);
+    }
     for (const adapter of state.deterministicAdapters) {
       if (!adapter || typeof adapter.revert !== "function") continue;
       try {

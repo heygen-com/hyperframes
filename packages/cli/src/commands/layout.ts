@@ -1,10 +1,8 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { launchManagedBrowser, resolveManagedGpuMode } from "../browser/launch.js";
 import { launchWithPageNetwork } from "../browser/pageNetwork.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { resolveProject } from "../utils/project.js";
@@ -39,9 +37,9 @@ import {
   type SeekCompositionTimelineOptions,
 } from "../capture/captureCompositionFrame.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
+import { parseLayoutIssue } from "../utils/checkBrowser.js";
+import { loadBrowserScript } from "./browserScript.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 const LAYOUT_SEEK_OPTIONS: SeekCompositionTimelineOptions = AUDIT_SEEK_OPTIONS;
 // All new envelope fields are optional (?); additive changes don't bump this.
 const INSPECT_SCHEMA_VERSION = 1;
@@ -288,14 +286,6 @@ async function runLayoutAudit(
   }
 }
 
-export function loadBrowserScript(name: string): string {
-  const candidates = [join(__dirname, name), join(__dirname, "commands", name)];
-  for (const candidate of candidates) {
-    if (existsSync(candidate)) return readFileSync(candidate, "utf-8");
-  }
-  throw new Error(`Missing browser script ${name}`);
-}
-
 function loadLayoutAuditScript(): string {
   return loadBrowserScript("layout-audit.browser.js");
 }
@@ -320,7 +310,7 @@ async function collectLayoutIssues(
       },
       { time, tolerance },
     );
-    issues.push(...(sampleIssues as LayoutIssue[]));
+    if (Array.isArray(sampleIssues)) issues.push(...sampleIssues.flatMap(parseLayoutIssue));
   }
   return issues;
 }
@@ -428,7 +418,7 @@ function resolveMotionSpec(specPath: string, json: boolean): MotionSpec {
       ),
     );
   } else {
-    console.error(`${c.error("✗")} ${message}`);
+    console.error(`${c.error("✗")} ${terminalLines(message)}`);
   }
   failCommand();
 }
@@ -531,7 +521,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
           ? ` + motion spec (${motionSpec.assertions.length} assertion(s))`
           : "";
         console.log(
-          `${c.accent("◆")}  Inspecting layout for ${c.accent(project.name)} (${sampleLabel}${motionLabel})`,
+          `${c.accent("◆")}  Inspecting layout for ${c.accent(terminalText(project.name))} (${sampleLabel}${motionLabel})`,
         );
       }
 
@@ -651,7 +641,7 @@ export function createInspectCommand(commandName: "inspect" | "layout") {
           );
           failCommand();
         }
-        console.error(`${c.error("✗")} Inspect failed: ${message}`);
+        console.error(`${c.error("✗")} Inspect failed: ${terminalLines(message)}`);
         failCommand();
       }
     },

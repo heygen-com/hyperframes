@@ -162,3 +162,17 @@ test("a job that reads a stored secret binds an environment", () => {
   );
   assert.deepEqual(unbound, []);
 });
+
+test("a job that can request an OIDC token binds an environment", () => {
+  const unbound = workflows.flatMap(({ file, doc }) =>
+    Object.entries(doc.jobs ?? {})
+      .filter(([, job]) => {
+        const permissions = job.permissions ?? doc.permissions ?? {};
+        return (
+          (permissions === "write-all" || permissions["id-token"] === "write") && !job.environment
+        );
+      })
+      .map(([name]) => `${file} ${name}`),
+  );
+  assert.deepEqual(unbound, []);
+});

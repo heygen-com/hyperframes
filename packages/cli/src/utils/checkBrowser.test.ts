@@ -2,7 +2,7 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONFIG } from "@hyperframes/engine";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -21,8 +21,10 @@ import {
   preResolveHostileMediaProxies,
   dropFailedProxyEchoes,
   runBrowserCheck,
+  servedProjectFile,
   collectSeekClock,
   mergeHelperDrafts,
+  parseLayoutIssue,
   samplingBrowserCount,
   RENDER_READY_WARNING_SUFFIX,
 } from "./checkBrowser.js";
@@ -1115,6 +1117,28 @@ it("hides only the ReadPixels stall check's own reads cause, not the film's othe
   ).toEqual([otherDriverNote.text(), ordinaryWarning.text()]);
 });
 
+describe("parseLayoutIssue", () => {
+  const rect = { left: 0, top: 0, right: 10, bottom: 10, width: 10, height: 10 };
+  const raw = (code: string) => ({
+    code,
+    severity: "error",
+    time: 1,
+    selector: "#title",
+    message: "clipped",
+    rect,
+  });
+
+  it("keeps an issue with a known code", () => {
+    expect(parseLayoutIssue(raw("clipped_text"))).toEqual([raw("clipped_text")]);
+  });
+
+  it("drops an issue whose code the audit never produces", () => {
+    expect(parseLayoutIssue(raw("clipped_text\u001b]52;c;Y2xpcA==\u0007"))).toEqual([]);
+    expect(parseLayoutIssue({ ...raw("clipped_text"), rect: "wide" })).toEqual([]);
+    expect(parseLayoutIssue("clipped_text")).toEqual([]);
+  });
+});
+
 describe("collectSeekClock", () => {
   afterEach(() => {
     Reflect.deleteProperty(window, "__timelines");
@@ -1352,6 +1376,37 @@ describe("mergeHelperDrafts", () => {
       end: Number.POSITIVE_INFINITY,
     };
     expect(mergeHelperDrafts(primary, helper)).toEqual(primary.drafts);
+  });
+});
+
+describe("servedProjectFile", () => {
+  const page = "http://127.0.0.1:4000/";
+  let root: string;
+  let projectDir: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "hf-served-file-"));
+    projectDir = join(root, "project");
+    mkdirSync(join(projectDir, "takes"), { recursive: true });
+    writeFileSync(join(projectDir, "takes", "my take.mp4"), "");
+    writeFileSync(join(root, "outside.mp4"), "");
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it("resolves a page-origin source to its project file, proxied or not", () => {
+    const file = join(projectDir, "takes", "my take.mp4");
+    expect(servedProjectFile(`${page}takes/my%20take.mp4`, page, projectDir)).toBe(file);
+    expect(servedProjectFile(`${page}takes/my%20take.mp4?hf-proxy=h264`, page, projectDir)).toBe(
+      file,
+    );
+  });
+
+  it("gives no file for a remote source, a missing file or a path outside the project", () => {
+    const remote = "https://cdn.example.com/takes/my%20take.mp4";
+    expect(servedProjectFile(remote, page, projectDir)).toBeNull();
+    expect(servedProjectFile(`${page}takes/gone.mp4`, page, projectDir)).toBeNull();
+    expect(servedProjectFile(`${page}..%2Foutside.mp4`, page, projectDir)).toBeNull();
+    expect(servedProjectFile("", page, projectDir)).toBeNull();
   });
 });
 

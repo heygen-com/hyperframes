@@ -414,6 +414,10 @@ npx hyperframes check
 
 Keep the first exact error rather than only the final “render failed” message. See [Troubleshooting](/help) for the next checks.
 
+A render refuses any composition HTML file, the entry or a sub-composition, that is larger than 16 MB. The error code is `COMPOSITION_TOO_LARGE`. Keep images, fonts and data in separate files and reference them by path instead of inlining them.
+
+The same error refuses a render whose sub-composition mounts add up to more than 32 MB of composition HTML, or to more than 10,000 mounts. Every mount counts, including each repeat of the same file and each mount nested inside another.
+
 <Tip>
   Always watch the exported file itself. Preview proves that the project can play; the output file
   proves that the delivery is correct.

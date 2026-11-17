@@ -15,8 +15,9 @@ on:
 
 jobs:
   publish:
-    # The registry trusts any OIDC token from this repo, so only main may request one.
+    # The environment admits only main.
     if: github.ref == 'refs/heads/main'
+    environment: mcp-registry
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

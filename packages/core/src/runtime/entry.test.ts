@@ -4,7 +4,6 @@ import { mediaElementTime } from "./mediaClock";
 import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading";
 import {
   PLAYER_FRAME_ATTR,
-  PLAYER_FRAME_NAME,
   STUDIO_PREVIEW_LAZY_ATTR,
   STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
@@ -77,7 +76,6 @@ function resetRuntimeGlobals(): void {
   delete win.__hyperframeRuntimeBootstrapped;
   delete win.__hfFirstPassHidden;
   delete (document as { readyState?: unknown }).readyState;
-  window.name = "";
 }
 
 // The first evaluation transforms the whole runtime graph. Paying it while the file loads keeps
@@ -490,9 +488,9 @@ describe("runtime entry", () => {
       srcWrites.observe(now, { attributeFilter: ["src"] });
       window.__player?.seek(7.6);
       expect(armed(now, soon, later)).toEqual([false, false, true]);
-      // The two that left are released: now by setting its src again, soon (no src) by reloading empty.
+      // The two that left are reloaded empty with src dropped for the reload, ending any fetch in flight.
       expect([now.preload, soon.preload]).toEqual(["none", "none"]);
-      expect(loadsOf(now, soon, later)).toEqual([1, 2, 1]);
+      expect(loadsOf(now, soon, later)).toEqual([2, 2, 1]);
       expect(srcWrites.takeRecords()).toHaveLength(2);
       expect(now.getAttribute("src")).toBe("now.mp4");
     });
@@ -550,45 +548,39 @@ describe("runtime entry", () => {
       if (userAgent === "safari") asSafari();
     };
 
-    // Chromium and Firefox keep a paused clip's request open with its unread bytes, and every
-    // request to one host shares one HTTP/2 or HTTP/3 window: with each take loaded, the window
-    // fills and the next take's request is never answered.
-    it.each(["safari", "chrome"] as const)(
-      "in the player on %s a file keeps the take on screen and the next one loading, and frees the rest",
-      async (userAgent) => {
-        spyLoad();
-        inPlayerFrame(userAgent);
-        const [first, second, third] = takesOfOneFile();
-
-        await evaluateRuntime();
-        expect([first, second, third].map((take) => armed(...take))).toEqual([
-          [true, true],
-          [true, true],
-          [false, false],
-        ]);
-
-        window.__player?.seek(3.5);
-        const video = second![0]!;
-        Object.defineProperty(video, "readyState", { value: 4, configurable: true });
-        video.dispatchEvent(new Event("seeked"));
-        expect([first, second, third].map((take) => armed(...take))).toEqual([
-          [false, false],
-          [true, true],
-          [true, true],
-        ]);
-      },
-    );
-
-    it("holds back the takes after the next in a player frame the composition cannot read, as with an opaque sandbox", async () => {
+    it("in the player on Safari a file keeps the take on screen and the next one loading, and frees the rest", async () => {
       spyLoad();
-      window.name = PLAYER_FRAME_NAME;
+      inPlayerFrame("safari");
+      const [first, second, third] = takesOfOneFile();
+
+      await evaluateRuntime();
+      expect([first, second, third].map((take) => armed(...take))).toEqual([
+        [true, true],
+        [true, true],
+        [false, false],
+      ]);
+
+      window.__player?.seek(3.5);
+      const video = second![0]!;
+      Object.defineProperty(video, "readyState", { value: 4, configurable: true });
+      video.dispatchEvent(new Event("seeked"));
+      expect([first, second, third].map((take) => armed(...take))).toEqual([
+        [false, false],
+        [true, true],
+        [true, true],
+      ]);
+    });
+
+    it("in the player on Chromium every take of a file loads at parse", async () => {
+      spyLoad();
+      inPlayerFrame("chrome");
       const takes = takesOfOneFile();
 
       await evaluateRuntime();
       expect(takes.map((take) => armed(...take))).toEqual([
         [true, true],
         [true, true],
-        [false, false],
+        [true, true],
       ]);
     });
 
@@ -1123,21 +1115,30 @@ describe("runtime entry", () => {
       expect([first.preload, later.preload, untrimmed.preload]).toEqual(["", "none", ""]);
     });
 
-    it.each(["safari", "chrome"] as const)(
-      "gives each parsed clip preload none in the player's frame on %s, where no clip fetches ahead of the first take",
-      async (userAgent) => {
-        const frame = document.createElement("iframe");
-        frame.setAttribute(PLAYER_FRAME_ATTR, "");
-        vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
-        if (userAgent === "safari") asSafari();
-        const root = mountRoot();
-        timed(root, "div", "0");
-        await evaluateRuntime();
-        const [first, later] = videos(root, "0", "5");
-        await Promise.resolve();
-        expect([first.preload, later.preload]).toEqual(["", "none"]);
-      },
-    );
+    it("gives each parsed clip preload none in the player's frame, where no clip fetches ahead of the first take", async () => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute(PLAYER_FRAME_ATTR, "");
+      vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
+      asSafari();
+      const root = mountRoot();
+      timed(root, "div", "0");
+      await evaluateRuntime();
+      const [first, later] = videos(root, "0", "5");
+      await Promise.resolve();
+      expect([first.preload, later.preload]).toEqual(["", "none"]);
+    });
+
+    it("leaves Chromium loading every clip at parse in the player's frame", async () => {
+      const frame = document.createElement("iframe");
+      frame.setAttribute(PLAYER_FRAME_ATTR, "");
+      vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
+      const root = mountRoot();
+      timed(root, "div", "0");
+      await evaluateRuntime();
+      const [first, later] = videos(root, "0", "5");
+      await Promise.resolve();
+      expect([first.preload, later.preload]).toEqual(["", ""]);
+    });
 
     it("leaves a frame the player did not mark loading every clip at parse", async () => {
       vi.spyOn(window, "frameElement", "get").mockReturnValue(document.createElement("iframe"));

@@ -11,7 +11,7 @@ export const examples: Example[] = [
 ];
 
 import * as clack from "../ui/prompts.js";
-import { realpath, type ItemType, type RegistryItem } from "@hyperframes/core";
+import { realpath, terminalText, type ItemType, type RegistryItem } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { loadAllItems } from "../registry/resolver.js";
 import { readRegistryManifest } from "../registry/remote.js";
@@ -232,7 +232,7 @@ export default defineCommand({
     // Asked for the whole manifest on purpose: its item list defines coverage,
     // and its artifact revision is the one owner of vector freshness.
     const manifest = await readRegistryManifest(config.registry).catch((error: unknown) => {
-      console.error(error instanceof Error ? error.message : String(error));
+      console.error(terminalText(error instanceof Error ? error.message : String(error)));
       return finishCommand(1);
     });
     const entries = manifest.items;
@@ -471,7 +471,7 @@ export default defineCommand({
       const options = matching.map((item) => ({
         value: item.name,
         label: item.name,
-        hint: item.description,
+        hint: terminalText(item.description),
       }));
 
       const selected = await clack.select({
@@ -491,18 +491,18 @@ export default defineCommand({
       });
 
       for (const warning of result.warnings) {
-        console.warn(c.warn(`Warning: ${warning}`));
+        console.warn(c.warn(`Warning: ${terminalText(warning)}`));
       }
       console.log("");
       console.log(`${c.success("✓")} Installed ${c.accent(result.name)} (${result.type})`);
       const root = realpath(dir);
       for (const file of result.written) {
-        console.log(`  ${c.dim(relative(root, file))}`);
+        console.log(`  ${c.dim(terminalText(relative(root, file)))}`);
       }
       if (result.snippet) {
         console.log("");
         console.log(c.dim("Include snippet:"));
-        console.log(`  ${result.snippet}`);
+        console.log(`  ${terminalText(result.snippet)}`);
       }
       return;
     }
@@ -516,9 +516,9 @@ export default defineCommand({
 
     for (const item of matching) {
       const type = item.type.replace("hyperframes:", "");
-      const tags = item.tags?.length ? c.dim(` [${item.tags.join(", ")}]`) : "";
+      const tags = item.tags?.length ? c.dim(` [${terminalText(item.tags.join(", "))}]`) : "";
       console.log(
-        `${c.cyan(item.name.padEnd(NAME_COL))}${type.padEnd(TYPE_COL)}${item.description}${tags}`,
+        `${c.cyan(item.name.padEnd(NAME_COL))}${type.padEnd(TYPE_COL)}${terminalText(item.description)}${tags}`,
       );
     }
 

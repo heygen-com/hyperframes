@@ -1,5 +1,7 @@
 # Making the episode
 
+<!-- skill-scripts: relative-ok, kit tools run only from a template this session pulled and checked -->
+
 The template holds every rule and tool; this file sets the order and the discipline. When this file and the template disagree, the template wins, except on the length the person picked (§3) and on Pro and credits (SKILL.md).
 
 Order: `read → settle the voice → say what's coming → ask (only what is open) → facts + script → stop 1 (storyboard) → voice → face → footage → shot plan + build → checks → stop 2 (draft) → render → reply`

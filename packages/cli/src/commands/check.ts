@@ -416,7 +416,7 @@ function reportCheckFailure(
     const code = usage ? error.code : "runtime_error";
     console.log(JSON.stringify(addMeta(jsonFailure(code, message)), null, 2));
   } else {
-    console.error(`${c.error("✗")} Check failed: ${message}`);
+    console.error(`${c.error("✗")} Check failed: ${terminalText(message)}`);
   }
   if (usage) failUsage();
   setCommandExitCode(1);

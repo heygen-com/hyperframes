@@ -4,7 +4,11 @@ import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-
 import type { StudioApiAdapter } from "./types.js";
 import { registerProjectRoutes } from "./routes/projects.js";
 import { registerFileRoutes } from "./routes/files.js";
-import { PREVIEW_CAPTURE_PARAM, registerPreviewRoutes } from "./routes/preview.js";
+import {
+  PREVIEW_CAPTURE_PARAM,
+  PREVIEW_PROXY_PARAM,
+  registerPreviewRoutes,
+} from "./routes/preview.js";
 import { registerLintRoutes } from "./routes/lint.js";
 import { registerRenderRoutes } from "./routes/render.js";
 import { registerImageThumbnailRoutes } from "./routes/imageThumbnail.js";
@@ -24,13 +28,20 @@ import { replaceWithProjectDirMissing } from "./helpers/projectDirMissing.js";
 import { folderGone, isProjectRootMissing } from "./helpers/safePath.js";
 import {
   PREVIEW_ALLOWED_HOSTS_ENV,
+  documentFromAnotherSite,
   requestFromAnotherSite,
+  proxyWorkFromAnotherSite,
   requestHost,
   sameOriginPost,
 } from "./helpers/requestIdentity.js";
+import { refuseServiceWorkerScripts } from "./helpers/serviceWorkerScripts.js";
 import { previewErrorPage } from "./helpers/previewErrorPage.js";
 import type { CaptureSandboxOption } from "./helpers/captureLoads.js";
-import { createFrameTokens, serveTokenPreviewPaths } from "./helpers/opaqueFrameLoads.js";
+import {
+  createFrameTokens,
+  loadedThroughFrameToken,
+  serveTokenPreviewPaths,
+} from "./helpers/opaqueFrameLoads.js";
 
 async function answerRefusedFrameWithPage(c: Context, next: Next) {
   await next();
@@ -44,12 +55,13 @@ async function answerRefusedFrameWithPage(c: Context, next: Next) {
   });
 }
 
-const fromAnotherSite = (c: Context) =>
-  requestFromAnotherSite({
-    fetchSite: c.req.header("sec-fetch-site"),
-    host: c.req.header("host") ?? urlHost(c.req.url),
-    referer: c.req.header("referer"),
-  });
+const siteHeaders = (c: Context) => ({
+  fetchSite: c.req.header("sec-fetch-site"),
+  host: c.req.header("host") ?? urlHost(c.req.url),
+  referer: c.req.header("referer"),
+});
+const fromAnotherSite = (c: Context) => requestFromAnotherSite(siteHeaders(c));
+const documentForAnotherSite = (c: Context) => documentFromAnotherSite(siteHeaders(c));
 
 const isThumbnailCapture = (c: Context) => c.req.query(PREVIEW_CAPTURE_PARAM) !== undefined;
 
@@ -68,7 +80,7 @@ async function markPreviewForAnotherSite(c: Context) {
 
 const FRAMED_DESTS = new Set(["document", "iframe", "frame", "embed", "object", "fencedframe"]);
 const framedByAnotherSite = (c: Context) => {
-  if (!fromAnotherSite(c)) return false;
+  if (!documentForAnotherSite(c)) return false;
   const dest = c.req.header("sec-fetch-dest");
   return dest === undefined || FRAMED_DESTS.has(dest);
 };
@@ -84,12 +96,19 @@ const sandboxPreviewForAnotherSiteOrCapture =
   (sandboxCaptures: boolean) => async (c: Context, next: Next) => {
     if (framedByAnotherSite(c)) c.req.raw = withoutValidators(c.req.raw);
     await next();
-    c.header("Vary", "Sec-Fetch-Site", { append: true });
-    const anotherSite = fromAnotherSite(c);
+    c.header("Vary", "Sec-Fetch-Site, Referer", { append: true });
+    const anotherSite = documentForAnotherSite(c);
     if (anotherSite || (sandboxCaptures && isThumbnailCapture(c)))
       c.header("Content-Security-Policy", "sandbox allow-scripts");
     if (anotherSite) await markPreviewForAnotherSite(c);
   };
+
+async function refuseProxyWorkForAnotherSite(c: Context, next: Next) {
+  const proxyWork = c.req.query(PREVIEW_PROXY_PARAM) !== undefined;
+  if (proxyWork && proxyWorkFromAnotherSite(siteHeaders(c)) && !loadedThroughFrameToken(c.req.raw))
+    return c.text("forbidden: media proxy requested by another site", 403);
+  return next();
+}
 
 const refuseForAnotherSite = (what: string) => async (c: Context, next: Next) => {
   if (fromAnotherSite(c))
@@ -120,6 +139,7 @@ export interface StudioApiOptions extends CaptureSandboxOption {
 
 export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOptions = {}): Hono {
   const api = new Hono();
+  api.use(refuseServiceWorkerScripts);
   const sandboxThumbnailCaptures = options.sandboxThumbnailCaptures ?? false;
   const frameTokens = createFrameTokens();
   const resolveProjectId = (id: string) =>
@@ -130,6 +150,7 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
         () => undefined,
       );
   api.use("/projects/:id/preview/*", serveTokenPreviewPaths(api, frameTokens, resolveProjectId));
+  api.use("/projects/:id/preview/*", refuseProxyWorkForAnotherSite);
   api.use(
     "/projects/:id/preview/*",
     sandboxPreviewForAnotherSiteOrCapture(sandboxThumbnailCaptures),
@@ -224,7 +245,11 @@ export function createStudioApi(adapter: StudioApiAdapter, options: StudioApiOpt
   });
   registerLintRoutes(api, adapter);
   registerRenderRoutes(api, adapter);
-  registerThumbnailRoutes(api, adapter);
+  registerThumbnailRoutes(
+    api,
+    adapter,
+    sandboxThumbnailCaptures ? frameTokens.tokenFor : undefined,
+  );
   registerImageThumbnailRoutes(api, adapter);
   registerSelectionRoutes(api, adapter);
   registerRecoveryDraftRoutes(api, adapter);

@@ -15,9 +15,23 @@ interface AuditIssue {
   coveredFraction?: number;
 }
 
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface TextOverVideo {
+  selector: string;
+  wordRects: Box[];
+  video: { selector: string; src: string; mediaTime: number; box: Box; frame: Box };
+}
+
 declare global {
   interface Window {
     __hyperframesLayoutAudit(options: { time: number; tolerance: number }): AuditIssue[];
+    __hyperframesTextOverVideo(options: { time: number }): TextOverVideo[];
   }
 }
 
@@ -162,7 +176,7 @@ describe.runIf(executablePath && hasFfmpeg)("text_occluded behind a <video> in C
     if (clipDir) rmSync(clipDir, { recursive: true, force: true });
   });
 
-  async function audit(html: string, seekTo: number | null = 0.25): Promise<AuditIssue[]> {
+  async function audited<T>(html: string, seekTo: number | null, read: () => T): Promise<T> {
     const path = `/page-${pages.size}.html`;
     pages.set(path, html);
     const tab = await browser.newPage();
@@ -171,21 +185,30 @@ describe.runIf(executablePath && hasFfmpeg)("text_occluded behind a <video> in C
       await tab.goto(`${origin}${path}`);
       if (seekTo !== null) {
         await tab.evaluate(async (time) => {
-          const video = document.querySelector("video");
-          if (!video) return;
-          if (video.readyState < 2) {
-            await new Promise((resolve) => video.addEventListener("loadeddata", resolve));
+          for (const video of Array.from(document.querySelectorAll("video"))) {
+            if (video.readyState < 2) {
+              await new Promise((resolve) => video.addEventListener("loadeddata", resolve));
+            }
+            video.currentTime = time;
+            await new Promise((resolve) => video.addEventListener("seeked", resolve));
           }
-          video.currentTime = time;
-          await new Promise((resolve) => video.addEventListener("seeked", resolve));
         }, seekTo);
       }
       await tab.addScriptTag({ content: script });
-      return await tab.evaluate(() => window.__hyperframesLayoutAudit({ time: 1, tolerance: 2 }));
+      return (await tab.evaluate(read)) as T;
     } finally {
       await tab.close();
     }
   }
+
+  const audit = (html: string, seekTo: number | null = 0.25): Promise<AuditIssue[]> =>
+    audited(html, seekTo, () => window.__hyperframesLayoutAudit({ time: 1, tolerance: 2 }));
+
+  const textOverVideo = (html: string): Promise<TextOverVideo[]> =>
+    audited(html, 0.25, () => {
+      window.__hyperframesLayoutAudit({ time: 1, tolerance: 2 });
+      return window.__hyperframesTextOverVideo({ time: 1 });
+    });
 
   const occlusionOf = (issues: AuditIssue[], id: string) =>
     issues.find((issue) => issue.code === "text_occluded" && issue.selector === `#${id}`);
@@ -276,6 +299,65 @@ describe.runIf(executablePath && hasFfmpeg)("text_occluded behind a <video> in C
       page(videoTag("cutout.webm"), word("waived", 160, "SHIP", "data-layout-allow-occlusion")),
     );
     expect(occlusionOf(issues, "waived")).toBeUndefined();
+  });
+
+  // text_over_face's page half: a title at z-index 3 over a take, with a cutout above or beneath it.
+  const title = (extra = "") =>
+    `<span id="title" ${extra} style="position:absolute;left:100px;top:150px;z-index:3;margin:0;font:700 48px/1 Arial;color:#fff;white-space:nowrap">SHIP IT</span>`;
+  const take = (style = "") =>
+    `<video id="take" src="/opaque.webm" muted playsinline style="position:absolute;left:0;top:0;width:640px;height:360px;z-index:1;${style}"></video>`;
+  const cutoutAt = (zIndex: number) =>
+    `<video id="cutout" src="/cutout.webm" muted playsinline style="position:absolute;left:0;top:0;width:640px;height:360px;z-index:${zIndex}"></video>`;
+  const stage = (body: string) =>
+    `<!doctype html><body style="margin:0"><div data-composition-id="main" data-width="640" data-height="360" style="position:relative;width:640px;height:360px;overflow:hidden;background:#111">${body}</div></body>`;
+
+  it("reports a title in front of a take with its word boxes and the take's clock", async () => {
+    const found = await textOverVideo(stage(take() + title()));
+    expect(found).toHaveLength(1);
+    const { selector, video, wordRects } = found[0]!;
+    expect(selector).toBe("#title");
+    expect(video).toMatchObject({
+      selector: "#take",
+      src: `${origin}/opaque.webm`,
+      mediaTime: 0.25,
+      box: { x: 0, y: 0, width: 640, height: 360 },
+      frame: { x: 0, y: 0, width: 640, height: 360 },
+    });
+    expect(wordRects).toHaveLength(2);
+    const [ship, it] = [wordRects[0]!, wordRects[1]!];
+    expect(ship.x).toBe(100);
+    expect(it.x).toBeGreaterThan(ship.x + ship.width);
+    expect(it).toMatchObject({ y: ship.y, height: ship.height });
+  });
+
+  it("places the frame of a take that object-fit crops", async () => {
+    // 320x180 covering a 220x360 box anchored top right: 640x360 painted, 420 px cut off the left.
+    const cropped = take("width:220px;object-fit:cover;object-position:right top");
+    const found = await textOverVideo(stage(cropped + title()));
+    expect(found).toHaveLength(1);
+    const { video, wordRects } = found[0]!;
+    expect(video).toMatchObject({
+      box: { x: 0, y: 0, width: 220, height: 360 },
+      frame: { x: -420, y: 0, width: 640, height: 360 },
+    });
+    // The title runs past the box onto the stage: only what is in front of the take is reported.
+    expect(wordRects.length).toBeGreaterThan(0);
+    for (const piece of wordRects) expect(piece.x + piece.width / 2).toBeLessThan(220);
+  });
+
+  it("looks through a cutout between the title and the take", async () => {
+    const found = await textOverVideo(stage(take() + cutoutAt(2) + title()));
+    expect(found.map((candidate) => candidate.video.selector)).toEqual(["#take"]);
+  });
+
+  it("leaves a title behind a cutout to text_occluded", async () => {
+    expect(await textOverVideo(stage(take() + cutoutAt(4) + title()))).toEqual([]);
+  });
+
+  it("skips a rotated take and honours data-layout-allow-on-face", async () => {
+    expect(await textOverVideo(stage(take("transform:rotate(8deg)") + title()))).toEqual([]);
+    const waived = stage(take() + title("data-layout-allow-on-face"));
+    expect(await textOverVideo(waived)).toEqual([]);
   });
 
   it("falls back to opaque with an info note when no frame has been decoded", async () => {

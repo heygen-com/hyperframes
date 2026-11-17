@@ -37,7 +37,7 @@ it.runIf(process.platform === "linux")(
     expect(compositionsAffectedBy(projectDir, "index.html")).toEqual(["index.html"]);
     const app = server.app;
     const endpoint = "/api/projects/film/preview/comp/scenes/intro.html";
-    const before = await app.request(endpoint);
+    const before = await app.request(endpoint, { headers: { "Sec-Fetch-Site": "same-origin" } });
     expect(before.status).toBe(200);
     expect(await before.text()).toContain("Original");
     const beforeTag = before.headers.get("etag");
@@ -75,14 +75,16 @@ it.runIf(process.platform === "linux")(
           affectedCompositions: null,
         });
       });
-      const after = await app.request(endpoint, { headers: { "If-None-Match": beforeTag! } });
+      const after = await app.request(endpoint, {
+        headers: { "Sec-Fetch-Site": "same-origin", "If-None-Match": beforeTag! },
+      });
       expect(after.status).toBe(200);
       expect(after.headers.get("etag")).not.toBe(beforeTag);
       expect(await after.text()).toContain("Replacement");
 
       writeFileSync(join(projectDir, "scenes/intro.html"), scene("Later edit"));
       await vi.waitFor(async () => {
-        const later = await app.request(endpoint);
+        const later = await app.request(endpoint, { headers: { "Sec-Fetch-Site": "same-origin" } });
         expect(later.status).toBe(200);
         expect(await later.text()).toContain("Later edit");
       });
@@ -110,7 +112,9 @@ it.runIf(process.platform === "linux").each([
     writeFileSync(join(projectDir, ".hyperframes/studio-motion.json"), "{}");
     server = createStudioServer({ projectDir, projectName: "film" });
     const endpoint = "/api/projects/film/preview/comp/index.html";
-    const before = await server.app.request(endpoint);
+    const before = await server.app.request(endpoint, {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+    });
     expect(before.status).toBe(200);
     const beforeTag = before.headers.get("etag");
     expect(beforeTag).toBeTruthy();
@@ -123,7 +127,7 @@ it.runIf(process.platform === "linux").each([
 
     await vi.waitFor(async () => {
       const after = await server!.app.request(endpoint, {
-        headers: { "If-None-Match": beforeTag! },
+        headers: { "Sec-Fetch-Site": "same-origin", "If-None-Match": beforeTag! },
       });
       expect(after.status).toBe(200);
       expect(after.headers.get("etag")).not.toBe(beforeTag);

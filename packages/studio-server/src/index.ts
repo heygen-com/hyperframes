@@ -1,5 +1,9 @@
 export { createStudioApi, type StudioApiOptions } from "./createStudioApi.js";
 export {
+  refuseServiceWorkerScripts,
+  serviceWorkerScriptFetch,
+} from "./helpers/serviceWorkerScripts.js";
+export {
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
 } from "./helpers/requestIdentity.js";

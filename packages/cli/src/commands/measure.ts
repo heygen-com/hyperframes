@@ -24,6 +24,7 @@ const subCommands = {
   ink: () => import("./measure/ink.js").then((m) => m.default),
   look: () => import("./measure/look.js").then((m) => m.default),
   face: () => import("./measure/face.js").then((m) => m.default),
+  hands: () => import("./measure/hands.js").then((m) => m.default),
   sync: () => import("./measure/sync.js").then((m) => m.default),
 };
 
@@ -33,7 +34,7 @@ export default defineCommand({
   meta: {
     name: "measure",
     description:
-      "Measure a video file as JSON: clock, cuts, events, frames, crops, eases, motion energy, ink, look, faces, lip sync",
+      "Measure a video file as JSON: clock, cuts, events, frames, crops, eases, motion energy, ink, look, faces, hands, lip sync",
   },
   subCommands,
 });

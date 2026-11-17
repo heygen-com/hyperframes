@@ -86,6 +86,10 @@ function fakeTranscript(dir: string, text: string) {
   };
 }
 
+/** A caption name the disk takes, whose temp sibling (13 characters longer) it refuses on every OS, even as root. */
+const NO_ROOM_FOR_TEMP = "c".repeat(250);
+const NAME_REFUSED = /ENAMETOOLONG|ENOENT|EINVAL/;
+
 function errorMessage(json: Record<string, unknown>): string {
   return String((json.error as { message?: unknown } | undefined)?.message);
 }
@@ -230,8 +234,9 @@ describe("transcribe command", () => {
 
   describe("engine selection", () => {
     beforeEach(() => {
-      runtimeDir = mkdtempSync(join(tmpdir(), "hf-transcribe-runtime-"));
-      dirs.push(runtimeDir);
+      const runtimeRoot = mkdtempSync(join(tmpdir(), "hf-transcribe-runtime-"));
+      dirs.push(runtimeRoot);
+      runtimeDir = join(runtimeRoot, "runtime");
       const pkg = join(runtimeDir, "node_modules", "sherpa-onnx-node");
       mkdirSync(pkg, { recursive: true });
       writeFileSync(join(pkg, "package.json"), JSON.stringify({ main: "index.js" }));
@@ -859,8 +864,7 @@ Render video. Built for agents.
     dirs.push(dir);
     const input = join(dir, "subtitles.srt");
     writeFileSync(input, "1\n00:00:00,000 --> 00:00:01,000\nHello\n");
-    const output = join(dir, "through-file.vtt");
-    symlinkSync(join(input, "x.vtt"), output);
+    const output = join(dir, NO_ROOM_FOR_TEMP);
 
     await expect(
       transcribeCmd.run!({ args: { input, json: true, to: "vtt", output } } as never),
@@ -872,8 +876,7 @@ Render video. Built for agents.
         message: expect.stringContaining(`The caption file ${output} could not be written: `),
       }),
     });
-    // Windows and Unix report a path through a file with different error codes.
-    expect(errorMessage(lastJson())).toMatch(/ENOTDIR|ENOENT/);
+    expect(errorMessage(lastJson())).toMatch(NAME_REFUSED);
   });
 
   async function runWithInodeZero(zero: (path: string) => boolean, args: object): Promise<void> {
@@ -973,12 +976,9 @@ Render video. Built for agents.
       "it is the same file as",
     ],
     [
-      "a link that runs through a file",
-      (dir: string) => {
-        symlinkSync(join(dir, "narration.wav", "x.srt"), join(dir, "through-file.srt"));
-        return join(dir, "through-file.srt");
-      },
-      /ENOTDIR|ENOENT/,
+      "a name with no room for its temp file",
+      (dir: string) => join(dir, NO_ROOM_FOR_TEMP),
+      NAME_REFUSED,
     ],
   ])("keeps the transcript when --output is %s", async (_name, output, reason) => {
     const { dir, input } = dummyAudio();
@@ -1005,6 +1005,36 @@ Render video. Built for agents.
     expect(errorMessage(lastJson())).toMatch(reason);
     expect(JSON.parse(readFileSync(transcript, "utf8"))).toMatchObject([{ text: "whisper" }]);
   });
+
+  it.each(["srt", "vtt"] as const)(
+    "replaces a link planted at transcript.%s instead of writing through it",
+    async (to) => {
+      const { dir, input } = dummyAudio();
+      const outside = mkdtempSync(join(tmpdir(), "hf-transcribe-outside-"));
+      dirs.push(dir, outside);
+      const target = join(outside, "profile");
+      writeFileSync(target, "keep me\n");
+      const caption = join(dir, `transcript.${to}`);
+      transcribeMock.mockImplementation(async (_input, outputDir) =>
+        fakeTranscript(outputDir, "whisper"),
+      );
+
+      symlinkSync(target, caption);
+      await transcribeCmd.run!({ args: { input, json: true, engine: "whisper", to } } as never);
+      expect(lastJson()).toMatchObject({ ok: true });
+      expect(readFileSync(target, "utf8")).toBe("keep me\n");
+
+      // Exporting the project's own transcript.json takes the other path to the same file name.
+      rmSync(caption);
+      symlinkSync(target, caption);
+      const transcript = join(dir, "transcript.json");
+      await transcribeCmd.run!({ args: { input: transcript, json: true, to } } as never);
+      expect(lastJson()).toMatchObject({ ok: true, outputPath: caption });
+
+      expect(readFileSync(target, "utf8")).toBe("keep me\n");
+      expect(readFileSync(caption, "utf8")).toContain("-->");
+    },
+  );
 
   it("says the transcript was saved when the caption file cannot be written", async () => {
     const { dir, input } = dummyAudio();

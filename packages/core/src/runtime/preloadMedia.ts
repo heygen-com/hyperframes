@@ -99,10 +99,8 @@ export function releaseMedia(media: HTMLMediaElement, whenBuffered = false): voi
   if (media.querySelector("source") || (!whenBuffered && wholeFileBuffered(media))) return;
   if (holdsWhenIdle(media)) return holdUntilDue(media);
   const src = media.getAttribute("src");
-  if (src === null) return stopMediaDownload(media);
-  cancelPlaybackStart(media);
-  media.removeAttribute("src");
-  media.setAttribute("src", src);
+  stopMediaDownload(media);
+  if (src !== null) media.setAttribute("src", src);
 }
 
 export function lengthIsAuthored(media: Element): boolean {

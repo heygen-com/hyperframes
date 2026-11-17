@@ -445,7 +445,7 @@ const VOID_ELEMENTS = new Set([
   "wbr",
 ]);
 
-const closeTag = (name: string) => new RegExp(`</${name}>`, "gi");
+const literalCloseTag = (name: string) => new RegExp(`</${escapeRegExp(name)}>`, "gi");
 
 function innermostTimedWrapper(
   source: string,
@@ -465,9 +465,9 @@ function innermostTimedWrapper(
       ...tags
         .filter((t) => t.name === parent.name && t.index > parent.index && t.index < media.index)
         .map((t): [number, 1] => [t.index, 1]),
-      ...[...source.substring(parent.index, media.index).matchAll(closeTag(parent.name))].map(
-        (m): [number, -1] => [parent.index + m.index, -1],
-      ),
+      ...[
+        ...source.substring(parent.index, media.index).matchAll(literalCloseTag(parent.name)),
+      ].map((m): [number, -1] => [parent.index + m.index, -1]),
     ];
     let depth = 1;
     for (const [, delta] of events.sort((x, y) => x[0] - y[0])) {

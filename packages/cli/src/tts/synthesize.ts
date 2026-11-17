@@ -1,6 +1,6 @@
 // fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, unlinkSync } from "node:fs";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { join, dirname, basename } from "node:path";
 import {
@@ -13,6 +13,8 @@ import {
 import { findPython, hasPythonPackage, workingPythonEnv } from "./python.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
   foreignWritablePath,
   sealCacheInstall,
   trustedCacheRoot,
@@ -125,10 +127,10 @@ const SCRIPT_DIR = join(CODE_ROOT, "tts");
 const SCRIPT_PATH = join(SCRIPT_DIR, "synth-v4.py");
 
 function ensureSynthScript(): string {
+  ensurePrivateCacheDir(SCRIPT_DIR, CODE_ROOT);
   if (existsSync(SCRIPT_PATH) && foreignWritablePath(SCRIPT_PATH, CODE_ROOT))
     unlinkSync(SCRIPT_PATH);
   if (!existsSync(SCRIPT_PATH)) {
-    mkdirSync(SCRIPT_DIR, { recursive: true, mode: 0o700 });
     writeNewFileSync(SCRIPT_PATH, SYNTH_SCRIPT);
     sealCacheInstall(SCRIPT_PATH, CODE_ROOT);
     // Best-effort: delete older versioned scripts left behind by previous
@@ -148,7 +150,7 @@ function ensureSynthScript(): string {
       // Ignore — directory read is best-effort.
     }
   }
-  return SCRIPT_PATH;
+  return assertPrivateCachePath(SCRIPT_PATH, CODE_ROOT);
 }
 
 // ---------------------------------------------------------------------------

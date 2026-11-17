@@ -1,3 +1,4 @@
+import { terminalLines } from "@hyperframes/core";
 import { basename, extname, join, resolve } from "node:path";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -294,7 +295,10 @@ export default defineCommand({
       const message = normalizeErrorMessage(err);
       if (json)
         console.log(formatJson(withMeta({ ok: false, error: message, ...(fix ? { fix } : {}) })));
-      else console.error(`${c.error("✗")} ${message}${fix ? `\n  Fix: ${fix}` : ""}`);
+      else
+        console.error(
+          `${c.error("✗")} ${terminalLines(message)}${fix ? `\n  Fix: ${terminalLines(fix)}` : ""}`,
+        );
       failCommand(1, err);
     } finally {
       scheduleCliExit(exitCode);

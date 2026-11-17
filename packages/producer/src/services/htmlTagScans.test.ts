@@ -4,6 +4,7 @@ import {
   countTagsWithAttr,
   countedTagNames,
   firstCompositionIdTag,
+  hasClosedMediaTag,
   inlineScriptBlocks,
   remoteSrcUrls,
   removeDelimitedRuns,
@@ -291,6 +292,12 @@ describe("htmlTagScans agree with the regexes they replace", { timeout: 60_000 }
     }
   });
 
+  it("closed media tag test", () => {
+    for (const text of both(7, FOCUSED.attrs)) {
+      expect(hasClosedMediaTag(text), text).toBe(/<(?:video|audio)\b[^>]*>/i.test(text));
+    }
+  });
+
   it("remote src urls", () => {
     for (const html of both(5, FOCUSED.remote)) {
       for (const tag of ["media", "source", "img"] as const) {
@@ -340,6 +347,7 @@ describe("htmlTagScans run in linear time", () => {
     ],
     ["crossorigin", (h) => stripCrossoriginAttr(h, "video"), ["<video ", "<video crossorigin "]],
     ["preload", stripPreloadNone, ["<video ", '<video preload="none" ']],
+    ["closed media tag", hasClosedMediaTag, ["<video", "<audio ", "<VIDEO"]],
     ["remote media", (h) => remoteSrcUrls(h, "media"), ["<video ", '<video src="http://a" ']],
     ["remote img", (h) => remoteSrcUrls(h, "img"), ["<img ", "<img src='https://a "]],
     ["script/style removal", removeScriptAndStyleBlocks, ["<script ", "<style>", "<script>"]],

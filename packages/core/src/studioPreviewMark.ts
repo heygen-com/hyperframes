@@ -1,3 +1,5 @@
+import { isWebKit } from "./runtime/mediaClock.js";
+
 export const STUDIO_PREVIEW_MARK_META = "hyperframes-studio-preview";
 export const PREVIEW_SEEK_HOLD_ATTR = "data-hf-preview-seek-hold";
 export const PREVIEW_VIDEO_FRAME_ATTR = "data-hf-preview-video-frame";
@@ -8,6 +10,13 @@ export const PREVIEW_FOR_ANOTHER_SITE_META = "hyperframes-preview-for-another-si
 
 export function servedToAnotherSite(doc: Document): boolean {
   return doc.querySelector(`meta[name="${PREVIEW_FOR_ANOTHER_SITE_META}"]`) !== null;
+}
+
+export function markedForStudio(doc: Document): boolean {
+  return (
+    doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null &&
+    !servedToAnotherSite(doc)
+  );
 }
 
 export function getLogicalOpacity(el: Element, computed: CSSStyleDeclaration): string {
@@ -21,14 +30,9 @@ export function getLogicalOpacity(el: Element, computed: CSSStyleDeclaration): s
   return computed.opacity;
 }
 export const PLAYER_FRAME_ATTR = "data-hf-player-frame";
-export const PLAYER_FRAME_NAME = "hyperframes-player";
 
 export function inPlayerFrame(doc: Document): boolean {
-  const frame = doc.defaultView;
-  return (
-    frame?.name === PLAYER_FRAME_NAME ||
-    frame?.frameElement?.hasAttribute(PLAYER_FRAME_ATTR) === true
-  );
+  return isWebKit() && doc.defaultView?.frameElement?.hasAttribute(PLAYER_FRAME_ATTR) === true;
 }
 
 export function defersMediaIn(doc: Document): boolean {
@@ -83,4 +87,68 @@ export function applyAuthoredTiming(
 ): void {
   for (const [name, value] of attrs) el.setAttribute(name, value);
   el.removeAttribute(RUNTIME_STAMPED_ATTR);
+}
+
+export function dropServiceWorkers(): Promise<void> {
+  const workers = typeof navigator === "undefined" ? undefined : navigator.serviceWorker;
+  if (!workers) return Promise.resolve();
+  return workers
+    .getRegistrations()
+    .then((all) => Promise.all(all.map((each) => each.unregister())))
+    .then(
+      () => undefined,
+      () => undefined,
+    );
+}
+
+export function serviceWorkerScriptFetch(headers: {
+  serviceWorker?: string | string[];
+  fetchDest?: string | string[];
+}): boolean {
+  return headers.serviceWorker === "script" || headers.fetchDest === "serviceworker";
+}
+
+export interface PreviewTarget {
+  hfId?: string;
+  domId?: string;
+  id: string;
+  sourceFile?: string;
+}
+
+export function previewElementSourceFile(el: Element): string | undefined {
+  const ownerRoot = el.parentElement?.closest("[data-composition-id]");
+  return (
+    ownerRoot?.getAttribute("data-composition-file") ??
+    ownerRoot?.getAttribute("data-composition-src") ??
+    undefined
+  );
+}
+
+export function previewElementFinder(
+  doc: Document,
+  selector = "[data-hf-id], [id]",
+): (target: PreviewTarget) => Element | null {
+  const byKey = new Map<string, Element[]>();
+  const add = (key: string, node: Element) => {
+    const nodes = byKey.get(key);
+    if (nodes) nodes.push(node);
+    else byKey.set(key, [node]);
+  };
+  for (const node of doc.querySelectorAll(selector)) {
+    const hfId = node.getAttribute("data-hf-id");
+    const id = node.getAttribute("id");
+    if (hfId) add(`hf:${hfId}`, node);
+    if (id) add(`id:${id}`, node);
+  }
+  return (target) => {
+    const matches = [
+      ...((target.hfId && byKey.get(`hf:${target.hfId}`)) || []),
+      ...(byKey.get(`id:${target.domId ?? target.id}`) ?? []),
+    ];
+    return (
+      matches.find((node) => previewElementSourceFile(node) === target.sourceFile) ??
+      matches[0] ??
+      null
+    );
+  };
 }
