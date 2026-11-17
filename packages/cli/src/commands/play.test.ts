@@ -197,17 +197,21 @@ describe("registerCompositionRoute", () => {
 
     const etags: Record<string, string> = {};
     for (const path of ["/composition/index.html", "/composition/clip.mp4"]) {
-      const first = await app.request(path);
+      const own = { "Sec-Fetch-Site": "same-origin" };
+      const first = await app.request(path, { headers: own });
       etags[path] = first.headers.get("ETag") ?? "";
       expect(etags[path]).not.toBe("");
       expect(first.headers.get("Cache-Control")).toBe("no-cache");
-      const again = await app.request(path, { headers: { "If-None-Match": etags[path] } });
+      const again = await app.request(path, { headers: { ...own, "If-None-Match": etags[path] } });
       expect(again.status).toBe(304);
     }
 
     writeFileSync(join(project.dir, "clip.mp4"), Buffer.from("0123456789abc", "utf-8"));
     const edited = await app.request("/composition/clip.mp4", {
-      headers: { "If-None-Match": etags["/composition/clip.mp4"] ?? "" },
+      headers: {
+        "Sec-Fetch-Site": "same-origin",
+        "If-None-Match": etags["/composition/clip.mp4"] ?? "",
+      },
     });
     expect(edited.status).toBe(200);
   });
@@ -505,6 +509,24 @@ describe("a composition document another site loads", () => {
       headers: { Referer: `${lan}/` },
     });
     expect(await own.text()).not.toContain(MARK);
+  });
+
+  // fails without the fix: a loopback load with no fetch metadata counted as the play page's own.
+  it("is marked on loopback with no fetch metadata unless the play page sent it", async () => {
+    const app = await setup();
+    const local = "http://localhost:3003";
+    const bare = await app.request(`${local}/composition/index.html`);
+    expect(await bare.text()).toContain(MARK);
+    expect(bare.headers.get("Content-Security-Policy")).toBe(SANDBOX);
+    const foreign = await app.request(`${local}/composition/index.html`, {
+      headers: { Referer: "http://elsewhere.example/page" },
+    });
+    expect(await foreign.text()).toContain(MARK);
+    const own = await app.request(`${local}/composition/index.html`, {
+      headers: { Referer: `${local}/` },
+    });
+    expect(await own.text()).not.toContain(MARK);
+    for (const res of [bare, own]) expect(res.headers.get("Vary")).toBe("Sec-Fetch-Site, Referer");
   });
 });
 

@@ -184,6 +184,29 @@ describe("preview image prep and files outside the project", () => {
     }
   });
 
+  it("still converts a photo inside a received project, with outside files refused", async () => {
+    fs.mkdirSync(path.join(projectDir, ".hyperframes"), { recursive: true });
+    fs.writeFileSync(
+      path.join(projectDir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["index.html"] }),
+    );
+    fs.mkdirSync(path.join(projectDir, "photos"));
+    fs.copyFileSync(heic, path.join(projectDir, "photos", "IMG_0002.HEIC"));
+    fs.writeFileSync(
+      path.join(projectDir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-width="320" data-height="180">
+<img id="photo" src="photos/IMG_0002.HEIC" data-start="0" data-duration="1">
+</div></body></html>`,
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(await previewPhotoSrc()).toMatch(/^\.hyperframes\/prepared-assets\/heif\//);
+      expect(fs.readdirSync(preparedHeif())).toHaveLength(1);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("still converts an outside photo for the developer's own project, as its render does", async () => {
     expect(await previewPhotoSrc()).toMatch(/^\.hyperframes\/prepared-assets\/heif\//);
     expect(fs.readdirSync(preparedHeif())).toHaveLength(1);

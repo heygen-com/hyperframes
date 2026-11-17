@@ -13,7 +13,8 @@ interface Answer {
 
 function getWithHost(port: number, path: string, host: string): Promise<Answer> {
   return new Promise((resolveAnswer, rejectAnswer) => {
-    const req = request({ hostname: "127.0.0.1", port, path, headers: { host } }, (res) => {
+    const headers = { host, "sec-fetch-site": "same-origin" };
+    const req = request({ hostname: "127.0.0.1", port, path, headers }, (res) => {
       let body = "";
       res.setEncoding("utf8");
       res.on("data", (chunk: string) => (body += chunk));

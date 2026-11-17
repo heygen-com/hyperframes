@@ -22,9 +22,7 @@
  */
 import "./lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, copyFileSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
 
 const N1 = 9,
   PAD1 = 0.4; // stage 1: strips per axis, padding in STRIP units
@@ -56,49 +54,25 @@ function probe(img) {
   const [w, h] = out.split(",").map(Number);
   return { w, h };
 }
-// A value placed in a filter option, escaped for the option list and then for the filtergraph.
-const FILTER_ESCAPES = {
-  "\\": "\\\\\\\\",
-  "'": "\\\\\\'",
-  ":": "\\\\:",
-  "[": "\\[",
-  "]": "\\]",
-  ",": "\\,",
-  ";": "\\;",
-};
-const filterValue = (value) => value.replace(/[\\':[\],;]/g, (ch) => FILTER_ESCAPES[ch]);
-// The grid font is copied into a folder only this run can open (mkdtemp makes it 0700),
-// removed when the run ends or is stopped. A stop signal is handled once the ffmpeg call
-// in progress returns.
-let fontPath;
-function font() {
-  if (fontPath) return fontPath;
-  const dir = mkdtempSync(join(tmpdir(), "locate-font-"));
-  const remove = () => rmSync(dir, { recursive: true, force: true });
-  process.on("exit", remove);
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"])
-    process.once(signal, () => {
-      remove();
-      process.kill(process.pid, signal);
-    });
-  fontPath = join(dir, "font.ttf");
-  const system = [
-    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-    "/System/Library/Fonts/Supplemental/Arial.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-  ].find((c) => existsSync(c));
-  if (system) copyFileSync(system, fontPath);
-  return fontPath;
+const FONT_FILES = [
+  "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+  "/System/Library/Fonts/Supplemental/Arial.ttf",
+  "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+];
+// ffmpeg reads the system font in place; with none found, drawtext falls back to its default font.
+function fontOption() {
+  const file = FONT_FILES.find((candidate) => existsSync(candidate));
+  return file ? `fontfile='${file}':` : "";
 }
 function gridFilters(w, h, n, axis, fz) {
-  const F = filterValue(font()),
+  const F = fontOption(),
     fs = [];
   if (axis === "v" || axis === "both") {
     for (let i = 1; i < n; i++)
       fs.push(`drawbox=x=${Math.round((i * w) / n)}:y=0:w=2:h=${h}:color=${GREEN}@0.8:t=fill`);
     for (let i = 0; i < n; i++)
       fs.push(
-        `drawtext=fontfile=${F}:text='${i + 1}':x=${Math.round(((i + 0.5) * w) / n - fz * 0.3)}:y=6:fontsize=${fz}:fontcolor=black:box=1:boxcolor=white@0.95:boxborderw=5`,
+        `drawtext=${F}text='${i + 1}':x=${Math.round(((i + 0.5) * w) / n - fz * 0.3)}:y=6:fontsize=${fz}:fontcolor=black:box=1:boxcolor=white@0.95:boxborderw=5`,
       );
   }
   if (axis === "h" || axis === "both") {
@@ -106,7 +80,7 @@ function gridFilters(w, h, n, axis, fz) {
       fs.push(`drawbox=x=0:y=${Math.round((j * h) / n)}:w=${w}:h=2:color=${BLUE}@0.8:t=fill`);
     for (let j = 0; j < n; j++)
       fs.push(
-        `drawtext=fontfile=${F}:text='${j + 1}':x=6:y=${Math.round(((j + 0.5) * h) / n - fz * 0.5)}:fontsize=${fz}:fontcolor=black:box=1:boxcolor=white@0.95:boxborderw=5`,
+        `drawtext=${F}text='${j + 1}':x=6:y=${Math.round(((j + 0.5) * h) / n - fz * 0.5)}:fontsize=${fz}:fontcolor=black:box=1:boxcolor=white@0.95:boxborderw=5`,
       );
   }
   return fs;

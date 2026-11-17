@@ -24,6 +24,16 @@ import type { EditingLayer } from "./editingLayers";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { parseCombo } from "../keyCombo";
+import {
+  captionWordsParams,
+  type CaptionWordBox,
+  type CaptionWordsParams,
+} from "./editing/captionWords";
+import {
+  captionTransformParams,
+  type CaptionTransformParams,
+  type CaptionWordState,
+} from "./editing/captionTransform";
 
 export {
   buildStableSelector,
@@ -61,6 +71,7 @@ export {
   type ElementTransformSnapshot,
 } from "./editingGeometry";
 export type { EditingGestureStart } from "./editingGestureStart";
+export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
 export {
   compositionPoint,
   coversComposition,
@@ -111,6 +122,8 @@ export const EDITING_REQUEST_KINDS = [
   "console-errors",
   "watch-keys",
   "restore-attributes",
+  "caption-words",
+  "caption-transform",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -220,6 +233,9 @@ export interface EditingRequests {
    * keyups to this port; an empty list stops. */
   "watch-keys": { params: { combos: string[] }; result: { watching: number } };
   "restore-attributes": { params: RestoreAttributesParams; result: { applied: boolean } };
+  /** Boxes of the words of visible caption groups; a group written as plain text is split into word spans. */
+  "caption-words": { params: CaptionWordsParams; result: { boxes: CaptionWordBox[] } };
+  "caption-transform": { params: CaptionTransformParams; result: { words: CaptionWordState[] } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -407,6 +423,8 @@ const PARAM_PARSERS: {
     hasKeys(params, "from") && isOffset(params.from) ? { from: params.from } : null,
   "watch-keys": comboList,
   "restore-attributes": parseRestoreAttributes,
+  "caption-words": captionWordsParams,
+  "caption-transform": captionTransformParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */

@@ -1,3 +1,4 @@
+import type { ExpectedOutputDimensions } from "./render/outputDimensions.js";
 import { audioFailureDiagnostics } from "@hyperframes/engine";
 // fallow-ignore-file unused-type circular-dependency code-duplication complexity
 /**
@@ -496,6 +497,7 @@ export interface RenderConfig {
    */
   variables?: Record<string, unknown>;
   strictVariables?: boolean;
+  expectedOutputDimensions?: ExpectedOutputDimensions;
   /**
    * Override the output resolution via Chrome `deviceScaleFactor` (DPR).
    * The composition's authored dimensions are unchanged. See
@@ -807,6 +809,7 @@ export interface RenderStageProgress {
 export interface RenderJob extends Partial<ReferenceBackgroundResult> {
   id: string;
   strictVariablesChecked?: boolean;
+  outputDimensionsChecked?: boolean;
   config: RenderConfig;
   status: RenderStatus;
   progress: number;
@@ -5577,7 +5580,10 @@ async function executeRenderPipeline(input: {
           !cfg.useDrawElement &&
           workerSizing !== undefined &&
           canEncodeWhileCapturing(encodeInput, capturePlan.workerCount, workerSizing.cpuCount)
-            ? encodeWhileCapturing(encodeInput, totalFrames)
+            ? encodeWhileCapturing(encodeInput, totalFrames, {
+                workerCount: capturePlan.workerCount,
+                cpuCount: workerSizing.cpuCount,
+              })
             : null;
         const captureFrameStart = Date.now();
         const invokeDiskCapture = (diskPlan: SdrDiskCapturePlan) =>
