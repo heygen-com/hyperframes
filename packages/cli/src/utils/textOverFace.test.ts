@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { findFFprobe } from "../browser/ffmpeg.js";
 import type { CheckBbox, TextOverVideoCandidate } from "./checkTypes.js";
 import {
   FACE_COVER_REPORT,
@@ -14,6 +15,8 @@ import {
 } from "./textOverFace.js";
 
 const spawned = vi.hoisted(() => [] as string[]);
+// A run with the 30 s limit that names this file fails the way execFileSync reports a run its timeout stopped.
+const stalled = vi.hoisted(() => ({ file: "" }));
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
   const recorded =
@@ -22,10 +25,18 @@ vi.mock("node:child_process", async (importOriginal) => {
       spawned.push(String(args[0]));
       return run(...args);
     };
+  const execFileSync = ((...args: Parameters<typeof actual.execFileSync>) => {
+    if (stalled.file && args[1]?.includes(stalled.file) && args[2]?.timeout === 30_000)
+      throw Object.assign(new Error(`spawnSync ${args[0]} ETIMEDOUT`), {
+        code: "ETIMEDOUT",
+        signal: "SIGTERM",
+      });
+    return actual.execFileSync(...args);
+  }) as typeof actual.execFileSync;
   return {
     ...actual,
     execFile: recorded(actual.execFile),
-    execFileSync: recorded(actual.execFileSync),
+    execFileSync: recorded(execFileSync),
     spawn: recorded(actual.spawn),
     spawnSync: recorded(actual.spawnSync),
   };
@@ -351,4 +362,34 @@ describe("findTextOverFace on a shipped playlist", () => {
       }
     },
   );
+});
+
+describe.skipIf(!findFFprobe())("findTextOverFace on a source the time limit stops", () => {
+  afterEach(() => {
+    stalled.file = "";
+    vi.restoreAllMocks();
+  });
+
+  it("says the probe stopped after 30 s", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-face-stalled-"));
+    try {
+      const file = join(dir, "take.mp4");
+      // An MP4's first bytes, so the file reads as media.
+      writeFileSync(file, Buffer.from("000000186674797069736f6d", "hex"));
+      const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      stalled.file = file;
+
+      const { faceCheck } = await findTextOverFace([
+        candidate({ video: { ...candidate().video, file } }),
+      ]);
+
+      const reason = `ffprobe cannot read ${file}: stopped after 30 s`;
+      expect(faceCheck).toEqual({ ran: false, reason });
+      expect(errors).toHaveBeenCalledWith(
+        `[hyperframes] check: text over a face was not looked for in 1 of 1 video(s): ${reason}`,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
