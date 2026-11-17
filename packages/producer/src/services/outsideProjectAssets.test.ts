@@ -394,11 +394,24 @@ describe.skipIf(!HAS_FFMPEG)("render servers keep markup inside the project", ()
     await plan(projectDir, config, planDir, { allowOutsideProjectAssets: true });
     expect(existsSync(join(planDir, "compiled", secretKey))).toBe(true);
     expect(existsSync(join(planDir, "compiled", "link.png"))).toBe(true);
-
-    const linked = symlinkedComposition("scene");
-    const { result } = await compileInProcess(linked.projectDir, true);
-    expect(result.compiled.html).toContain("OUTSIDE-SCENE");
   });
+
+  it.each(["scene", "entry"] as const)(
+    "trusted local renders refuse a symlinked %s outside the project unless told to run it",
+    async (link) => {
+      const { root, projectDir } = symlinkedComposition(link);
+      const needsFlag =
+        /outside the project and its scripts would run; pass --include-outside-files/;
+      await expect(compileInProcess(projectDir, true)).rejects.toThrow(needsFlag);
+      const planDir = join(root, "plan");
+      await expect(
+        plan(projectDir, config, planDir, { allowOutsideProjectAssets: true }),
+      ).rejects.toThrow(needsFlag);
+
+      const { result } = await compileInProcess(projectDir, true, true);
+      expect(result.compiled.html).toContain("OUTSIDE-SCENE");
+    },
+  );
 });
 
 function outsideScriptsProject() {

@@ -100,6 +100,7 @@ import {
   resolveCompositionSrc,
 } from "@hyperframes/parsers/asset-resolution";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
+import { linksOutside } from "@hyperframes/studio-server/outside-file";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
 import { assertCompositionFileSize } from "./compositionSizeLimit.js";
 import {
@@ -283,6 +284,18 @@ function resolveCompositionFile(
   return file !== null && COMPOSITION_FILE.test(file) ? file : null;
 }
 
+const OUTSIDE_COMPOSITION_NEEDS_FLAG =
+  "it is outside the project and its scripts would run; pass --include-outside-files to hyperframes render to run it";
+
+/** A trusted local render was not told to run markup whose real file is outside the project. */
+const runsOutsideMarkupUnasked = (
+  projectDir: string,
+  filePath: string,
+  assetRoot: string | undefined,
+  outsideFiles: OutsideFilePolicy,
+): boolean =>
+  assetRoot === undefined && !outsideFiles.includeScripts && linksOutside(projectDir, filePath);
+
 // Git metadata, env files and the app's `.hyperframes/` records are never inlined into a render, as preview refuses them.
 const isPrivateCompositionFile = (projectDir: string, filePath: string): boolean =>
   isPrivateFileUnder(projectDir, filePath, isStudioPrivatePath);
@@ -306,6 +319,7 @@ function assertSubCompositionsUsable(
   html: string,
   projectDir: string,
   assetRoot: string | undefined,
+  outsideFiles: OutsideFilePolicy,
   visited: Set<string> = new Set(),
 ): void {
   const { document } = parseHTML(html);
@@ -324,6 +338,10 @@ function assertSubCompositionsUsable(
     }
     if (outsideAssetRefusal(projectDir, filePath) === "blocklisted") {
       problems.push({ srcPath, detail: "it is outside the project in a private location" });
+      continue;
+    }
+    if (runsOutsideMarkupUnasked(projectDir, filePath, assetRoot, outsideFiles)) {
+      problems.push({ srcPath, detail: OUTSIDE_COMPOSITION_NEEDS_FLAG });
       continue;
     }
     if (isPrivateCompositionFile(projectDir, filePath)) {
@@ -376,7 +394,7 @@ function assertSubCompositionsUsable(
     const nestedVisited = new Set(visited);
     nestedVisited.add(filePath);
     try {
-      assertSubCompositionsUsable(fileHtml, projectDir, assetRoot, nestedVisited);
+      assertSubCompositionsUsable(fileHtml, projectDir, assetRoot, outsideFiles, nestedVisited);
     } catch (err) {
       if (err instanceof EmptyCompositionError) {
         problems.push(...err.problems);
@@ -2218,8 +2236,15 @@ export async function compileForRender(
   options: CompileForRenderOptions = {},
 ): Promise<CompiledComposition> {
   const assetRoot = options.allowOutsideProjectAssets ? undefined : projectDir;
+  const outsideFiles: OutsideFilePolicy = { includeScripts: options.includeOutsideScripts };
   if (isPathInside(htmlPath, projectDir) && escapesAssetRoot(htmlPath, assetRoot)) {
     throw new Error(`Entry file ${htmlPath} leads outside the project folder`);
+  }
+  if (
+    isPathInside(htmlPath, projectDir) &&
+    runsOutsideMarkupUnasked(projectDir, htmlPath, assetRoot, outsideFiles)
+  ) {
+    throw new Error(`Entry file ${htmlPath} ${OUTSIDE_COMPOSITION_NEEDS_FLAG}`);
   }
   if (!COMPOSITION_FILE.test(htmlPath)) {
     throw new Error(`Entry file ${htmlPath} is not an .html file, so it is refused`);
@@ -2237,7 +2262,7 @@ export async function compileForRender(
   // unconditional (not gated behind --strict like lint warnings) — a render
   // that silently drops a scene is strictly worse than one that refuses to
   // start.
-  assertSubCompositionsUsable(rawHtml, projectDir, assetRoot);
+  assertSubCompositionsUsable(rawHtml, projectDir, assetRoot, outsideFiles);
 
   const probes: SourceProbes = new Map();
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
