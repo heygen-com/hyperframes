@@ -36,6 +36,7 @@ describe("createStudioApi refusal reports", () => {
     expect(res.status).toBe(403);
     expect(heard).toHaveLength(1);
     expect(heard[0]?.why).toBe("cross_origin_write");
+    expect(heard.map((r) => r.route)).toEqual(["/projects/:id/files/*"]);
     expect(Object.keys(heard[0] ?? {}).sort()).toEqual(["route", "why"]);
     expect(JSON.stringify(heard)).not.toMatch(/planted|evil/);
   });
@@ -45,6 +46,7 @@ describe("createStudioApi refusal reports", () => {
     const res = await write(app, "node_modules/x.js", { Origin: "http://localhost" });
     expect(res.status).toBe(403);
     expect(heard.map((r) => r.why)).toEqual(["protected_path"]);
+    expect(heard.map((r) => r.route)).toEqual(["/projects/:id/files/*"]);
   });
 
   it("reports a read another site asked for", async () => {
@@ -54,6 +56,7 @@ describe("createStudioApi refusal reports", () => {
     });
     expect(res.status).toBe(403);
     expect(heard.map((r) => r.why)).toEqual(["another_site"]);
+    expect(heard.map((r) => r.route)).toEqual(["/projects/:id/lint"]);
   });
 
   it("hears nothing for an allowed request", async () => {

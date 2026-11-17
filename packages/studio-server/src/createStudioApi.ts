@@ -1,4 +1,5 @@
 import { Hono, type Context, type Next } from "hono";
+import { routePath } from "hono/route";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
 import type { StudioApiAdapter, StudioRefusal } from "./types.js";
@@ -146,7 +147,7 @@ const reportRefusals =
     const why = body && typeof body === "object" ? (body as { why?: unknown }).why : undefined;
     try {
       onRefusal({
-        route: c.req.routePath,
+        route: routePath(c, -1), // the endpoint asked for, not the middleware that refused it
         why: typeof why === "string" && REFUSAL_WHYS.has(why) ? why : "other",
       });
     } catch {
