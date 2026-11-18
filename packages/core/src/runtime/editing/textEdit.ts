@@ -11,7 +11,7 @@ export type TextEditParams =
   | { handle: EditingElementHandle; action: "start"; caret: Point | null }
   | { handle: EditingElementHandle; action: "end"; keep: boolean };
 export type TextEditResult = { applied: boolean; html: string | null; previous: string | null };
-/** Posted to the starting port when Enter or Escape in the frame ends the session; null html was refused. */
+/** Posted to the starting port when Enter, Escape or a blur ends the session in the frame; null html was refused. */
 export type TextEditEndedEvent = {
   handle: EditingElementHandle;
   html: string | null;
@@ -157,6 +157,7 @@ function listen(element: Editable, endInFrame: () => void): () => void {
   const view = element.ownerDocument.defaultView;
   const events = [
     ["keydown", onKeyDown],
+    ["blur", endInFrame],
     ["paste", onPaste],
     ["dragover", onDragOver],
     ["drop", onDrop],

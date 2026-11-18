@@ -135,6 +135,18 @@ describe("text-edit", () => {
     }
   });
 
+  it("ends keeping the text when the element loses focus, as a press elsewhere does", () => {
+    const { element, handle } = page();
+    const starter = port();
+    start(handle, starter);
+    element.innerHTML = "Hi";
+    element.dispatchEvent(new FocusEvent("blur"));
+    expect(starter.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ event: "text-edit-ended", handle, html: "Hi" }),
+    );
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+  });
+
   it("leaves Shift+Enter to the element as a line break", () => {
     const { element, handle } = page();
     const starter = port();
