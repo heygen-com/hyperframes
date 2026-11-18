@@ -1,5 +1,10 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { Page } from "puppeteer-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { createPageDriver } from "./checkBrowser.js";
 import { DEFAULT_CHECK_OPTIONS, runAuditGrid } from "./checkPipeline.js";
 import type { CheckAuditDriver, TextOverVideoCandidate } from "./checkTypes.js";
 import type { VideoInfo } from "../measure/media.js";
@@ -161,6 +166,55 @@ describe("text_over_face in the check grid", () => {
         "[hyperframes] check: text over a face was not looked for in 1 of 1 video(s): could not download opencv.js (fetch failed)",
       ],
     ]);
+  });
+
+  it("probes no file for text over a video whose source is a private project file", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-face-private-"));
+    try {
+      mkdirSync(join(projectDir, "takes"));
+      // An MP4's first bytes, so the file reads as media.
+      for (const name of [".env", "takes/take.mp4"])
+        writeFileSync(join(projectDir, name), Buffer.from("000000186674797069736f6d", "hex"));
+      const origin = "http://127.0.0.1:4000/";
+      const record = (src: string) => ({
+        selector: "#title",
+        sourceFile: "index.html",
+        dataAttributes: {},
+        text: "HELLO",
+        rect: { left: 340, top: 860, right: 740, bottom: 1060, width: 400, height: 200 },
+        wordRects: [{ x: 340, y: 860, width: 400, height: 200 }],
+        video: { ...title(1).video, src: `${origin}${src}` },
+      });
+      const page = (src: string) =>
+        ({
+          on: () => undefined,
+          url: () => `${origin}index.html`,
+          evaluate: async () => [record(src)],
+        }) as unknown as Page;
+      const sampled = (src: string) => {
+        const { collectTextOverVideo } = createPageDriver(
+          page(src),
+          undefined,
+          undefined,
+          projectDir,
+        );
+        return driver({ collectTextOverVideo });
+      };
+      mocks.probeVideo.mockReturnValue(INFO);
+      mocks.faceBoxesAt.mockResolvedValue([]);
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+      const hidden = await runAuditGrid(sampled(".env"), { ...OPTIONS, at: [1] }, { kind: "none" });
+      expect(mocks.probeVideo).not.toHaveBeenCalled();
+      expect(hidden.faceCheck).toEqual({ ran: true, candidates: 0, faces: 0 });
+
+      await runAuditGrid(sampled("takes/take.mp4"), { ...OPTIONS, at: [1] }, { kind: "none" });
+      expect(mocks.probeVideo).toHaveBeenCalledWith(join(projectDir, "takes", "take.mp4"), {
+        guarded: true,
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 
   it("says the pass did not run on a driver that cannot report text over video", async () => {

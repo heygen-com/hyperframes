@@ -43,11 +43,11 @@ afterEach(() => {
   usePlayerStore.setState({ currentTime: 0, isPlaying: false });
 });
 
-async function readReply(reply: unknown) {
+async function readReply(reply: unknown, holds = true) {
   usePlayerStore.setState({ currentTime: 0.5, isPlaying: false });
   request.mockResolvedValue(reply);
   const iframe = document.createElement("iframe");
-  await expect(settleGsapSnapshot(iframe)).resolves.toBeUndefined();
+  await expect(settleGsapSnapshot(iframe)).resolves.toBe(holds);
   return iframe;
 }
 
@@ -78,7 +78,7 @@ it.each([
   ["an id past the text bound", snapshot({ targets: [{ ...target, id: "b".repeat(4_097) }] })],
   ["a reply that is not a record", "gsap"],
 ])("refuses %s and holds nothing", async (_name, reply) => {
-  const iframe = await readReply(reply);
+  const iframe = await readReply(reply, false);
 
   expect(frameTimelines(iframe)).toBeNull();
   expect(frameDocument(iframe)).toBeNull();

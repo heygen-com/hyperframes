@@ -1267,6 +1267,7 @@ function inlineSubCompositions(
         if (compHtml) budget.charge(srcPath, Buffer.byteLength(compHtml));
         return compHtml;
       },
+      chargeEmitted: (srcPath: string, bytes: number) => budget.chargeGenerated(srcPath, bytes),
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
       // Mirrors the preview bundler: a sub-composition's SIBLING assets resolve
       // against its own directory, project-root refs stay as authored.

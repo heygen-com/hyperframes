@@ -10,6 +10,24 @@ import {
 } from "../utils/privateProjectFile.js";
 import { receivedFileState } from "./lib/received-env.mjs";
 
+const opens = vi.hoisted(() => ({ path: "", seen: 0, replacing: 0 }));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const openSync = ((...args: Parameters<typeof actual.openSync>) => {
+    const fd = actual.openSync(...args);
+    if (args[0] !== opens.path) return fd;
+    opens.seen += 1;
+    if (opens.replacing > 0) {
+      opens.replacing -= 1;
+      actual.copyFileSync(opens.path, `${opens.path}.new`);
+      actual.renameSync(`${opens.path}.new`, opens.path);
+    }
+    return fd;
+  }) as typeof actual.openSync;
+  return { ...actual, default: { ...actual, openSync }, openSync };
+});
+
 const ENV_TEXT = "ELEVENLABS_API_KEY=from-env\n";
 const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
 
@@ -25,6 +43,30 @@ const hostSays = (root: string, projects: unknown) => {
   writeFileSync(file, typeof projects === "string" ? projects : JSON.stringify({ projects }));
   vi.stubEnv(RECEIVED_STATE_ENV, file);
 };
+
+const keptFile = (root: string, path: string) =>
+  join(root, "received-records", `${sha256(path)}.json`);
+
+const hostKeeps = (root: string, path: string, kept: Record<string, unknown>) => {
+  mkdirSync(join(root, "received-records"), { recursive: true });
+  writeFileSync(keptFile(root, path), JSON.stringify({ project: path, seenAt: 1, ...kept }));
+};
+
+const expectedWithEmptyRecord = (root: string, project: string, extra: object = {}) => {
+  record(project, []);
+  hostSays(root, [{ path: project, received: "expected", ...extra }]);
+};
+
+function movedProject(root: string, project: string, identity: (birth: bigint) => string) {
+  const { dev, ino, birthtimeNs } = lstatSync(project, { bigint: true });
+  const old = join(root, "old-name");
+  record(project, []);
+  hostSays(root, [{ path: old, dev: String(dev), ino: String(ino), received: "expected" }]);
+  hostKeeps(root, old, {
+    files: ["index.html"],
+    identity: `${dev}:${ino}:${identity(birthtimeNs)}`,
+  });
+}
 
 const unreadableRecord = (folder: string) => {
   mkdirSync(join(folder, ".hyperframes"), { recursive: true });
@@ -152,6 +194,83 @@ const FIXTURES: [string, Arrange, "received" | "unchecked" | null][] = [
     },
     "received",
   ],
+  [
+    "an emptied record whose kept copy lists the .env",
+    (root, project) => {
+      expectedWithEmptyRecord(root, project);
+      hostKeeps(root, project, { files: [".env", "index.html"] });
+    },
+    "received",
+  ],
+  [
+    "an emptied record whose kept copy lists the .env, which is gone",
+    (root, project) => {
+      expectedWithEmptyRecord(root, project);
+      hostKeeps(root, project, { files: [".env"] });
+      rmSync(join(project, ".env"));
+    },
+    null,
+  ],
+  [
+    "a kept copy with no list",
+    (root, project) => {
+      expectedWithEmptyRecord(root, project);
+      hostKeeps(root, project, { files: null });
+    },
+    "received",
+  ],
+  [
+    "a doubted kept copy",
+    (root, project) => {
+      expectedWithEmptyRecord(root, project);
+      hostKeeps(root, project, { files: ["index.html"], doubted: true });
+    },
+    "received",
+  ],
+  [
+    "a kept copy for another project",
+    (root, project) => {
+      expectedWithEmptyRecord(root, project);
+      hostKeeps(root, project, { project: join(root, "other"), files: [] });
+    },
+    "received",
+  ],
+  [
+    "an unparsable kept copy",
+    (root, project) => {
+      expectedWithEmptyRecord(root, project);
+      hostKeeps(root, project, {});
+      writeFileSync(keptFile(root, project), "{not json");
+    },
+    "received",
+  ],
+  [
+    "no kept copy",
+    (root, project) => {
+      expectedWithEmptyRecord(root, project);
+      hostKeeps(root, join(root, "other"), { files: [".env"] });
+    },
+    null,
+  ],
+  [
+    "a moved project's kept copy with its folder's identity",
+    (root, project) => movedProject(root, project, (birth) => String(birth)),
+    null,
+  ],
+  [
+    "a moved project's kept copy with another folder's identity",
+    (root, project) => movedProject(root, project, () => "1"),
+    "received",
+  ],
+  [
+    "a nested project's kept copy with no list",
+    (root, project) => {
+      record(project, []);
+      expectedWithEmptyRecord(root, join(project, "scenes"));
+      hostKeeps(root, join(project, "scenes"), { files: null });
+    },
+    "received",
+  ],
   ["an unreadable host state file", (root) => hostSays(root, "{not json"), "received"],
   [
     "a host state file that is missing",
@@ -174,6 +293,7 @@ const dirs: string[] = [];
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  Object.assign(opens, { path: "", seen: 0, replacing: 0 });
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -210,5 +330,83 @@ it.skipIf(process.platform === "win32")(
     record(project, ["gone.html"]);
     expect(cliState(project)).toBe("received");
     expect(receivedFileState(project, ".env")).toBe("received");
+  },
+);
+
+function projectWithEmptyRecord(): { root: string; project: string } {
+  const root = mkdtempSync(join(tmpdir(), "hf-received-env-"));
+  dirs.push(root);
+  const project = join(root, "app");
+  mkdirSync(project);
+  writeFileSync(join(project, ".env"), ENV_TEXT);
+  return { root, project };
+}
+
+it.skipIf(process.platform === "win32")(
+  "the media-use copy reads a link in place of the kept copy as the CLI does",
+  () => {
+    const { root, project } = projectWithEmptyRecord();
+    expectedWithEmptyRecord(root, project);
+    hostKeeps(root, join(root, "elsewhere"), { project, files: ["index.html"] });
+    symlinkSync(keptFile(root, join(root, "elsewhere")), keptFile(root, project));
+    expect(cliState(project)).toBe("received");
+    expect(receivedFileState(project, ".env")).toBe("received");
+  },
+);
+
+it.skipIf(process.platform === "win32")(
+  "the media-use copy leaves off a gone kept entry as the CLI does",
+  () => {
+    const { root, project } = projectWithEmptyRecord();
+    rmSync(join(project, ".env"));
+    writeFileSync(join(root, "outside.env"), ENV_TEXT);
+    symlinkSync(join(root, "outside.env"), join(project, ".env"));
+    expectedWithEmptyRecord(root, project);
+    hostKeeps(root, project, { files: ["gone.html"] });
+    expect(cliState(project)).toBe(null);
+    expect(receivedFileState(project, ".env")).toBe(null);
+  },
+);
+
+it("the media-use copy reads the kept copy once more when the host replaces it, as the CLI does", () => {
+  const { root, project } = projectWithEmptyRecord();
+  expectedWithEmptyRecord(root, project);
+  hostKeeps(root, project, { files: ["index.html"] });
+  for (const state of [
+    (dir: string) => receivedFiles(dir)(".env"),
+    (dir: string) => receivedFileState(dir, ".env"),
+  ]) {
+    Object.assign(opens, { path: keptFile(root, project), seen: 0, replacing: 1 });
+    expect(state(project)).toBeFalsy();
+    expect(opens.seen).toBe(2);
+  }
+});
+
+it("the media-use copy reads a kept copy named by path and identity once, as the CLI does", () => {
+  const { root, project } = projectWithEmptyRecord();
+  const { dev, ino } = lstatSync(project, { bigint: true });
+  expectedWithEmptyRecord(root, project, { dev: String(dev), ino: String(ino) });
+  hostKeeps(root, project, { files: ["index.html"], identity: null });
+  for (const state of [
+    (dir: string) => receivedFiles(dir)(".env"),
+    (dir: string) => receivedFileState(dir, ".env"),
+  ]) {
+    Object.assign(opens, { path: keptFile(root, project), seen: 0, replacing: 0 });
+    expect(state(project)).toBeFalsy();
+    expect(opens.seen).toBe(1);
+  }
+});
+
+it.each([
+  [[".env"], "received"],
+  [null, "received"],
+  [["index.html"], null],
+])(
+  "the media-use copy reads a kept copy listing %j when it looks only at and above the folder",
+  (files, expected) => {
+    const { root, project } = projectWithEmptyRecord();
+    expectedWithEmptyRecord(root, project);
+    hostKeeps(root, project, { files });
+    expect(receivedFileState(project, ".env", { atOrAboveOnly: true })).toBe(expected);
   },
 );

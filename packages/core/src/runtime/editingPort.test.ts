@@ -89,6 +89,8 @@ describe("createEditingPortClient", () => {
           "set-audio-group-attribute",
           "assign-audio-group",
           "gsap-snapshot",
+          "motion-path-home",
+          "max-z-index",
         ],
       });
     } finally {

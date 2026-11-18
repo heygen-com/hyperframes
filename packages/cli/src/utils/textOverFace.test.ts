@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CheckBbox, TextOverVideoCandidate } from "./checkTypes.js";
@@ -9,6 +12,24 @@ import {
   textOverFaceIssue,
   type FaceFinder,
 } from "./textOverFace.js";
+
+const spawned = vi.hoisted(() => [] as string[]);
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  const recorded =
+    <T extends (...args: never[]) => unknown>(run: T) =>
+    (...args: Parameters<T>) => {
+      spawned.push(String(args[0]));
+      return run(...args);
+    };
+  return {
+    ...actual,
+    execFile: recorded(actual.execFile),
+    execFileSync: recorded(actual.execFileSync),
+    spawn: recorded(actual.spawn),
+    spawnSync: recorded(actual.spawnSync),
+  };
+});
 
 const box = (x: number, y: number, width: number, height: number): CheckBbox => ({
   x,
@@ -292,4 +313,42 @@ describe("findTextOverFace", () => {
     expect(issues).toHaveLength(1);
     expect(faceCheck).toEqual({ ran: true, candidates: 2, faces: 1, unreadVideos: 1 });
   });
+});
+
+describe("findTextOverFace on a shipped playlist", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([
+    [
+      "take.m3u8",
+      "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n../../outside.ts\n#EXT-X-ENDLIST\n",
+    ],
+    ["take.ffconcat", "ffconcat version 1.0\nfile ../../outside.mp4\n"],
+  ])(
+    "refuses %s naming a file outside the project before any ffprobe or ffmpeg runs",
+    async (name, list) => {
+      const root = mkdtempSync(join(tmpdir(), "hf-face-playlist-"));
+      try {
+        mkdirSync(join(root, "project", "takes"), { recursive: true });
+        writeFileSync(join(root, "outside.ts"), "");
+        writeFileSync(join(root, "outside.mp4"), "");
+        const file = join(root, "project", "takes", name);
+        writeFileSync(file, list);
+        vi.spyOn(console, "error").mockImplementation(() => undefined);
+        spawned.length = 0;
+
+        const { faceCheck } = await findTextOverFace([
+          candidate({ video: { ...candidate().video, file } }),
+        ]);
+
+        expect(faceCheck).toMatchObject({
+          ran: false,
+          reason: expect.stringContaining("is not media"),
+        });
+        expect(spawned).toEqual([]);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
 });

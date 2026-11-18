@@ -2,7 +2,8 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONFIG } from "@hyperframes/engine";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -1407,6 +1408,36 @@ describe("servedProjectFile", () => {
     expect(servedProjectFile(`${page}takes/gone.mp4`, page, projectDir)).toBeNull();
     expect(servedProjectFile(`${page}..%2Foutside.mp4`, page, projectDir)).toBeNull();
     expect(servedProjectFile("", page, projectDir)).toBeNull();
+  });
+
+  it("gives no file for a private project file, by its name or through a link, or for what is not a file", () => {
+    const write = (path: string) => {
+      mkdirSync(join(projectDir, path, ".."), { recursive: true });
+      writeFileSync(join(projectDir, path), "");
+    };
+    for (const path of [".env", ".git/take.mp4", "takes/.hyperframes/take.mp4", "takes/id_rsa"])
+      write(path);
+    symlinkSync(join(projectDir, ".env"), join(projectDir, "takes", "env.mp4"));
+    mkdirSync(join(root, ".ssh"));
+    writeFileSync(join(root, ".ssh", "id_rsa"), "");
+    symlinkSync(join(root, ".ssh", "id_rsa"), join(projectDir, "takes", "key.mp4"));
+    mkdirSync(join(projectDir, "takes", "folder.mp4"));
+    for (const path of [
+      ".env",
+      ".git/take.mp4",
+      "takes/.hyperframes/take.mp4",
+      "takes/id_rsa",
+      "takes/env.mp4",
+      "takes/key.mp4",
+      "takes/folder.mp4",
+    ]) {
+      expect(servedProjectFile(`${page}${path}`, page, projectDir), path).toBeNull();
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("gives no file for a named pipe", () => {
+    execFileSync("mkfifo", [join(projectDir, "takes", "pipe.mp4")]);
+    expect(servedProjectFile(`${page}takes/pipe.mp4`, page, projectDir)).toBeNull();
   });
 });
 

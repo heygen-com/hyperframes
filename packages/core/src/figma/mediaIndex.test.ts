@@ -125,3 +125,28 @@ describe("regenerateIndex", () => {
     expect(ours).toBe(theirs);
   });
 });
+
+describe("generateIndexContent with line breaks in a row", () => {
+  const BROKEN_ROWS = [
+    { ...IMAGE_ROW, id: "image_009\r\n", description: "first line\nsecond line\r\n  third" },
+    { ...ICON_ROW, path: ".media/images/\nicon.svg", description: "\n" },
+  ];
+
+  it("keeps each row on one line", () => {
+    const lines = generateIndexContent(BROKEN_ROWS).trimEnd().split("\n");
+    // Title, blank line, column heading, then one line per row.
+    expect(lines).toHaveLength(3 + BROKEN_ROWS.length);
+    expect(lines[3]).toContain("first line second line third");
+  });
+
+  it("matches media-use's index-gen output byte-for-byte", () => {
+    const script = `
+      import { generateIndexContent } from ${JSON.stringify(genUrl)};
+      process.stdout.write(generateIndexContent(${JSON.stringify(BROKEN_ROWS)}));
+    `;
+    const theirs = execFileSync("node", ["--input-type=module", "-e", script], {
+      encoding: "utf8",
+    });
+    expect(generateIndexContent(BROKEN_ROWS)).toBe(theirs);
+  });
+});
