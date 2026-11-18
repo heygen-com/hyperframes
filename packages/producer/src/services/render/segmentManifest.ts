@@ -7,13 +7,21 @@
  * and every reused segment is re-validated on disk before it is skipped.
  */
 import { createHash } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { ensurePrivateCacheDir, trustedCacheRoot } from "@hyperframes/core/cache-dir";
 import { isSafePath, realpath } from "@hyperframes/core/safe-path";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { planSegments, segmentOutputPath } from "./segmentPlan.js";
-import { renameWithRetry } from "@hyperframes/engine";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 
 export interface SegmentManifestEntry {
   index: number;
@@ -143,24 +151,36 @@ function isManifest(value: unknown): value is SegmentManifest {
 
 export function readSegmentManifest(segmentDir: string): SegmentManifest | null {
   const path = join(segmentDir, MANIFEST_FILENAME);
+  let fd: number | undefined;
   try {
-    const stat = lstatSync(path, { throwIfNoEntry: false });
-    if (!stat?.isFile() || stat.nlink !== 1) return null;
-    const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
+    fd = openSync(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+    );
+    const opened = fstatSync(fd);
+    if (!opened.isFile() || opened.nlink !== 1) return null;
+    // Windows lacks O_NOFOLLOW. Verify the directory entry still names the opened file.
+    const named = lstatSync(path);
+    if (!named.isFile() || named.dev !== opened.dev || named.ino !== opened.ino) return null;
+    const parsed: unknown = JSON.parse(readFileSync(fd, "utf-8"));
     return isManifest(parsed) ? parsed : null;
   } catch {
     // A truncated or hand-edited manifest means "no resume", never a crash:
     // the render still has every frame it needs to capture from scratch.
     return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
   }
 }
 
 /** Atomic: write to a temp name, then rename over the manifest. */
 export function writeSegmentManifest(segmentDir: string, manifest: SegmentManifest): void {
   mkdirSync(segmentDir, { recursive: true });
-  const tmp = join(segmentDir, `${MANIFEST_FILENAME}.${process.pid}.tmp`);
-  writeFileSync(tmp, JSON.stringify(manifest, null, 2), "utf-8");
-  renameWithRetry(tmp, join(segmentDir, MANIFEST_FILENAME));
+  replaceFileAtomically(
+    join(segmentDir, MANIFEST_FILENAME),
+    JSON.stringify(manifest, null, 2),
+    0o600,
+  );
 }
 
 /**

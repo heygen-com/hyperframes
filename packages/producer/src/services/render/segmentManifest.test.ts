@@ -127,6 +127,29 @@ describe("manifest io", () => {
     expect(readSegmentManifest(dir)).toBeNull();
   });
 
+  it("skips linked manifests even when they contain a valid checkpoint", () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    const copy = join(dir, "copy");
+    mkdirSync(copy);
+    const manifest: SegmentManifest = {
+      version: 1,
+      planHash: "abc",
+      totalFrames: 3,
+      segmentFrames: 3,
+      completed: [],
+    };
+    writeSegmentManifest(dir, manifest);
+    const source = join(dir, "segments.json");
+    const path = join(copy, "segments.json");
+    symlinkSync(source, path);
+    expect(readSegmentManifest(copy)).toBeNull();
+    rmSync(path);
+    linkSync(source, path);
+    expect(readSegmentManifest(copy)).toBeNull();
+    rmSync(path);
+    expect(readSegmentManifest(dir)).toEqual(manifest);
+  });
+
   it("rejects a manifest whose shape is wrong rather than resuming from it", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     writeFileSync(join(dir, "segments.json"), JSON.stringify({ version: 2, completed: [] }));
