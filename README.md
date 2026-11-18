@@ -150,6 +150,8 @@ Need ideas? Browse the [Showcase](https://hyperframes.heygen.com/examples?utm_so
 - Docs-to-video, PDF-to-video, and site-tour explainers
 - Reusable motion graphics for automated content pipelines
 
+By job: [AI video editor](https://hyperframes.heygen.com/tools/ai-video-editor?utm_source=github&utm_medium=readme) · [animated captions](https://hyperframes.heygen.com/tools/animated-captions?utm_source=github&utm_medium=readme) · [add text to video](https://hyperframes.heygen.com/tools/add-text-to-video?utm_source=github&utm_medium=readme) · [AI motion graphics](https://hyperframes.heygen.com/tools/ai-motion-graphics?utm_source=github&utm_medium=readme) · [HTML to MP4](https://hyperframes.heygen.com/tools/html-to-video?utm_source=github&utm_medium=readme) · [Lottie to MP4](https://hyperframes.heygen.com/tools/lottie-to-mp4?utm_source=github&utm_medium=readme) · [SVG to MP4](https://hyperframes.heygen.com/tools/svg-animation-to-mp4?utm_source=github&utm_medium=readme)
+
 ## Frame.md
 
 **frame.md — your design system, ready for video.**
@@ -300,7 +302,7 @@ HyperFrames is inspired by [Remotion](https://www.remotion.dev). Both tools rend
 | Distributed rendering    | Local and AWS Lambda render paths     | Remotion Lambda, mature cloud renderer  |
 | License                  | Apache 2.0                            | Source-available Remotion License       |
 
-Read the full comparison in the [HyperFrames vs Remotion guide](https://hyperframes.heygen.com/guides/hyperframes-vs-remotion?utm_source=github&utm_medium=readme).
+Read the full comparison in the [HyperFrames vs Remotion guide](https://hyperframes.heygen.com/guides/hyperframes-vs-remotion?utm_source=github&utm_medium=readme), or the [side-by-side comparison page](https://hyperframes.heygen.com/vs/remotion?utm_source=github&utm_medium=readme).
 
 ## Documentation
 
