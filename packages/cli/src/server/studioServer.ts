@@ -87,6 +87,9 @@ import {
   HistoryBusyError,
   HistoryClosedError,
   historyCache,
+  carriesOAuthReturn,
+  inertRefusal,
+  refuseOAuthReturn,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
 import { isLinkFreeWithinProject } from "@hyperframes/studio-server/safe-path";
@@ -101,7 +104,6 @@ import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
 import { SAME_ORIGIN_FRAMING_HEADERS } from "@hyperframes/engine";
 import { createThumbnailPages } from "./thumbnailPages.js";
-import { carriesOAuthReturn, inertRefusal } from "./inertRefusal.js";
 import {
   assertWebGpuAdapterAvailable,
   compositionRequiresWebGpu,
@@ -996,9 +998,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const allowedHosts = previewAllowedHostsFromEnv();
 
   // No Studio route takes an OAuth return, and project script runs on this origin.
-  app.use(async function refuseOAuthReturn(c, next) {
-    if (!carriesOAuthReturn(c.req.url)) return next();
-    return inertRefusal(400, "This HyperFrames preview server does not accept sign-in returns.");
+  app.use(async function refuseOAuthReturnAtAnyPath(c, next) {
+    return carriesOAuthReturn(c.req.url) ? refuseOAuthReturn() : next();
   });
 
   // Every route answers only loopback, the bind or an allowed host; a browser cannot forge Host.

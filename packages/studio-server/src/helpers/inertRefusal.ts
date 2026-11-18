@@ -10,14 +10,17 @@ const INERT_REFUSAL_HEADERS = {
   "Cache-Control": "no-store",
 } as const;
 
-/** A fixed message, so nothing from the request URL reaches the body. */
-export function inertRefusal(status: 400 | 404, message: string): Response {
-  return new Response(`${message}\n`, { status, headers: INERT_REFUSAL_HEADERS });
+export function inertRefusal(status: 400 | 404, fixedMessage: string): Response {
+  return new Response(`${fixedMessage}\n`, { status, headers: INERT_REFUSAL_HEADERS });
 }
 
 const OAUTH_RETURN_PARAMS = ["code", "state"] as const;
 
-export function carriesOAuthReturn(url: string): boolean {
-  const params = new URL(url).searchParams;
+export function carriesOAuthReturn(urlOrRequestTarget: string): boolean {
+  const params = new URL(urlOrRequestTarget, "http://loopback").searchParams;
   return OAUTH_RETURN_PARAMS.some((name) => params.has(name));
+}
+
+export function refuseOAuthReturn(): Response {
+  return inertRefusal(400, "This HyperFrames preview server does not accept sign-in returns.");
 }
