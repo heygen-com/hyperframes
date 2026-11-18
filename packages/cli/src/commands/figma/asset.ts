@@ -23,6 +23,7 @@ import {
   type FigmaClient,
   type FigmaManifestRecord,
 } from "@hyperframes/core/figma";
+import { terminalText } from "@hyperframes/core";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { downloadRender } from "./download.js";
@@ -260,7 +261,9 @@ function safeRegenerateIndex(projectDir: string): void {
   try {
     regenerateIndex(projectDir);
   } catch (err) {
-    console.warn(`index.md regeneration failed: ${err instanceof Error ? err.message : err}`);
+    console.warn(
+      terminalText(`index.md regeneration failed: ${err instanceof Error ? err.message : err}`),
+    );
   }
 }
 
@@ -317,8 +320,8 @@ export default defineCommand({
       );
       for (const result of results) {
         const verb = result.reused ? "reused" : "imported";
-        console.log(`${verb} ${result.record.id} → ${result.record.path}`);
-        console.log(result.snippet.html);
+        console.log(terminalText(`${verb} ${result.record.id} → ${result.record.path}`));
+        console.log(terminalText(result.snippet.html));
       }
       if (results.length > 1) {
         const rendered = results.filter((r) => !r.reused).length;
