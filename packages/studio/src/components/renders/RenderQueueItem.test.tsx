@@ -61,9 +61,7 @@ describe("GIF render preview", () => {
           />,
         ),
       );
-      expect(host.querySelector("img")?.getAttribute("src")).toBe(
-        "/api/projects/demo/renders/file/j1.gif",
-      );
+      expect(host.querySelector("img")?.getAttribute("src")).toBe("/api/render/j1/view");
       expect(host.querySelector("video")).toBeNull();
       expect(host.querySelector('[aria-label="Open j1.gif in a new tab"]')).not.toBeNull();
       expect(
@@ -84,6 +82,12 @@ describe("GIF render preview", () => {
 });
 
 describe("RenderQueueItem directory renders", () => {
+  it("uses the output filename, not an opaque identity, as the ZIP filename", () => {
+    const host = mount({ ...base, id: ".hf-render~opaque", filename: "intro", kind: "directory" });
+    const anchor = captureDownload(host, "Download intro.zip");
+    expect(anchor?.getAttribute("href")).toBe("/api/render/.hf-render~opaque/download");
+    expect(anchor?.download).toBe("intro.zip");
+  });
   it("has no video preview or open action, and downloads the ZIP archive", () => {
     const host = mount({ ...base, kind: "directory", frameCount: 90 });
 
@@ -97,11 +101,31 @@ describe("RenderQueueItem directory renders", () => {
     expect(anchor?.download).toBe("demo_2026.zip");
   });
 
-  it("keeps the open action and the direct file download for a file render", () => {
+  it("keeps identity-bound open and download actions for a file render", () => {
     const host = mount({ ...base, filename: "demo_2026.mp4" });
 
     expect(host.querySelector('[aria-label="Open demo_2026.mp4 in a new tab"]')).not.toBeNull();
     const anchor = captureDownload(host, "Download demo_2026.mp4");
-    expect(anchor?.getAttribute("href")).toContain("/renders/file/demo_2026.mp4");
+    expect(anchor?.getAttribute("href")).toBe("/api/render/demo_2026/download");
   });
+});
+
+describe("identity-bound file actions", () => {
+  it.each(["mp4", "webm", "mov", "gif"])(
+    "uses the opaque ID, not the filename or project ID, for %s actions",
+    (extension) => {
+      const opened = vi.spyOn(window, "open").mockImplementation(() => null);
+      const filename = `intro.${extension}`;
+      const host = mount({ ...base, id: ".hf-render~opaque id", filename });
+      const button = host.querySelector<HTMLButtonElement>(
+        `[aria-label="Open ${filename} in a new tab"]`,
+      );
+      expect(button).not.toBeNull();
+      act(() => button?.click());
+      expect.soft(opened).toHaveBeenCalledWith("/api/render/.hf-render~opaque%20id/view", "_blank");
+      const anchor = captureDownload(host, `Download ${filename}`);
+      expect(anchor?.getAttribute("href")).toBe("/api/render/.hf-render~opaque%20id/download");
+      expect(anchor?.download).toBe(filename);
+    },
+  );
 });

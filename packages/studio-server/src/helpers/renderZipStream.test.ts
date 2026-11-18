@@ -1,5 +1,16 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  constants,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from "node:fs";
+import type { FileHandle } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -9,6 +20,20 @@ import {
   tableCrc32,
   updateCrc32,
 } from "./renderZipStream";
+
+const handles = vi.hoisted(() => ({ files: new Set<FileHandle>(), peak: 0, followLinks: false }));
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs/promises")>();
+  return {
+    ...fs,
+    open: async (path: string, flags: number) => {
+      const file = await fs.open(path, handles.followLinks ? flags & ~constants.O_NOFOLLOW : flags);
+      handles.files.add(file);
+      handles.peak = Math.max(handles.peak, [...handles.files].filter((f) => f.fd !== -1).length);
+      return file;
+    },
+  };
+});
 
 interface ParsedEntry {
   name: string;
@@ -84,6 +109,11 @@ function referenceCrc32(bytes: Uint8Array): number {
 describe("directoryZipResponse", () => {
   const roots: string[] = [];
   afterEach(() => {
+    expect([...handles.files].every((file) => file.fd === -1)).toBe(true);
+    expect(handles.peak).toBeLessThanOrEqual(1);
+    handles.files.clear();
+    handles.peak = 0;
+    handles.followLinks = false;
     for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
   });
 
@@ -142,6 +172,132 @@ describe("directoryZipResponse", () => {
     expect(emptyArchive.length).toBe(98);
     expect(parseZip64(emptyArchive)).toEqual([]);
   });
+
+  it.each(["frame_000001.png", "audio.m4a"])(
+    "fails without disclosing %s replaced by an equal-sized outside symlink after the manifest",
+    async (name) => {
+      const payload = "OUTSIDE-PRIVATE-PAYLOAD";
+      const dir = sequence({
+        "frame_000000.png": Buffer.alloc(200_000, 7),
+        [name]: "x".repeat(payload.length),
+      });
+      const outside = join(dir, "..", "private");
+      writeFileSync(outside, payload);
+      const reader = directoryZipResponse(dir, "job").body!.getReader();
+      await reader.read(); // first local header
+      await reader.read(); // streaming the first frame, before opening the later entry
+      rmSync(join(dir, name));
+      symlinkSync(outside, join(dir, name));
+
+      const received: Uint8Array[] = [];
+      let error: unknown;
+      try {
+        for (;;) {
+          const next = await reader.read();
+          if (next.done) break;
+          received.push(next.value);
+        }
+      } catch (caught) {
+        error = caught;
+      }
+      expect.soft(Buffer.concat(received).includes(Buffer.from(payload))).toBe(false);
+      expect(error).toBeInstanceOf(Error);
+    },
+  );
+
+  it.each(["parent", "ordinary", "empty"] as const)(
+    "rejects a %s replacement between manifest and entry read",
+    async (replacement) => {
+      const payload = "OUTSIDE-PRIVATE-PAYLOAD";
+      const name = "frame_000001.png";
+      const dir = sequence({
+        "frame_000000.png": Buffer.alloc(200_000, 7),
+        [name]: replacement === "empty" ? "" : "x".repeat(payload.length),
+      });
+      const reader = directoryZipResponse(dir, "job").body!.getReader();
+      await reader.read();
+      await reader.read();
+      if (replacement === "parent") {
+        const outside = join(dir, "..", "outside");
+        mkdirSync(outside);
+        writeFileSync(join(outside, name), payload);
+        renameSync(dir, `${dir}-original`);
+        symlinkSync(outside, dir, "dir");
+      } else {
+        const next = join(dir, "replacement");
+        writeFileSync(next, replacement === "empty" ? "" : payload);
+        renameSync(next, join(dir, name));
+      }
+      const received: Uint8Array[] = [];
+      let error: unknown;
+      try {
+        for (;;) {
+          const next = await reader.read();
+          if (next.done) break;
+          received.push(next.value);
+        }
+      } catch (caught) {
+        error = caught;
+      }
+      expect.soft(Buffer.concat(received).includes(Buffer.from(payload))).toBe(false);
+      expect(error).toBeInstanceOf(Error);
+    },
+  );
+
+  it("produces an archive accepted and extracted by system unzip", async () => {
+    const dir = sequence({ "frame_000000.png": "frame-bytes", "audio.m4a": "audio-bytes" });
+    const archive = join(dir, "..", "archive.zip");
+    writeFileSync(archive, Buffer.from(await directoryZipResponse(dir, "job").arrayBuffer()));
+    execFileSync("unzip", ["-t", archive]);
+    expect(execFileSync("unzip", ["-p", archive, "frame_000000.png"]).toString()).toBe(
+      "frame-bytes",
+    );
+    expect(execFileSync("unzip", ["-p", archive, "audio.m4a"]).toString()).toBe("audio-bytes");
+  });
+
+  it.each([1, 2, 3])(
+    "closes the current descriptor on cancellation after %i chunks",
+    async (count) => {
+      const dir = sequence({ "frame_000000.png": Buffer.alloc(200_000, 7), "audio.m4a": "audio" });
+      const reader = directoryZipResponse(dir, "job").body!.getReader();
+      for (let i = 0; i < count; i++) await reader.read();
+      await reader.cancel();
+      expect((await reader.read()).done).toBe(true);
+    },
+  );
+
+  it("validates descriptor and pathname identity even without no-follow support", async () => {
+    handles.followLinks = true;
+    const dir = sequence({ "frame_000000.png": "local" });
+    const response = directoryZipResponse(dir, "job");
+    const outside = join(dir, "..", "private");
+    writeFileSync(outside, "other");
+    rmSync(join(dir, "frame_000000.png"));
+    symlinkSync(outside, join(dir, "frame_000000.png"));
+    await expect(response.arrayBuffer()).rejects.toThrow();
+  });
+
+  it.each(["", "a much longer replacement"])(
+    "rejects an entry resized to %j after its manifest",
+    async (content) => {
+      const dir = sequence({ "frame_000000.png": Buffer.alloc(200_000, 7), "audio.m4a": "audio" });
+      const response = directoryZipResponse(dir, "job");
+      writeFileSync(join(dir, "audio.m4a"), content);
+      await expect(response.arrayBuffer()).rejects.toThrow();
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "rejects FIFO replacement without blocking the open",
+    async () => {
+      const dir = sequence({ "frame_000000.png": "" });
+      const response = directoryZipResponse(dir, "job");
+      rmSync(join(dir, "frame_000000.png"));
+      execFileSync("mkfifo", [join(dir, "frame_000000.png")]);
+      await expect(response.arrayBuffer()).rejects.toThrow();
+    },
+    2_000,
+  );
 
   it("does not follow a symlinked frame out of the directory", async (context) => {
     const outside = mkdtempSync(join(tmpdir(), "hf-render-zip-outside-"));

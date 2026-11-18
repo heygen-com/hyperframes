@@ -344,7 +344,7 @@ export function createViteAdapter(
         removeRenderArtifacts([opts.outputPath, metaPath]);
       };
       // fallow-ignore-next-line complexity
-      (async () => {
+      const run = (async () => {
         try {
           if (!process.env.PRODUCER_HEADLESS_SHELL_PATH) {
             const systemChrome = findSystemChrome();
@@ -396,7 +396,7 @@ export function createViteAdapter(
               status: "complete",
               durationMs: Date.now() - startTime,
               ...(job.audioLoweredDb !== undefined ? { audioLoweredDb: job.audioLoweredDb } : {}),
-              ...renderDirectoryMetadata(opts.outputPath),
+              ...renderDirectoryMetadata(opts.outputPath, state.kind),
             }),
           );
         } catch (err) {
@@ -407,13 +407,23 @@ export function createViteAdapter(
           state.status = "failed";
           state.error = err instanceof Error ? err.message : String(err);
           try {
-            writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
+            writeFileSync(
+              metaPath,
+              JSON.stringify({
+                status: "failed",
+                ...renderDirectoryMetadata(opts.outputPath, state.kind),
+              }),
+            );
           } catch {
             /* ignore */
           }
         }
       })();
 
+      state.cancel = async () => {
+        abortController.abort();
+        await run;
+      };
       return state;
     },
 

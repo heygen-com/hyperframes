@@ -1,4 +1,5 @@
-import { createReadStream, lstatSync, readdirSync } from "node:fs";
+import { constants, lstatSync, readdirSync, type BigIntStats } from "node:fs";
+import { lstat, open } from "node:fs/promises";
 import { join } from "node:path";
 import * as zlib from "node:zlib";
 import { contentDispositionHeader } from "./contentDisposition.js";
@@ -21,6 +22,8 @@ interface ArchiveEntry {
   path: string;
   size: bigint;
   mtime: Date;
+  dev: bigint;
+  ino: bigint;
 }
 
 /** MS-DOS time and date fields, local time with 2-second resolution; dates before 1980 clamp to 1980-01-01. */
@@ -88,8 +91,16 @@ function readArchiveEntries(directory: string): ArchiveEntry[] {
   for (const name of candidates) {
     const path = join(directory, name);
     try {
-      const stat = lstatSync(path);
-      if (stat.isFile()) entries.push({ name, path, size: BigInt(stat.size), mtime: stat.mtime });
+      const stat = lstatSync(path, { bigint: true });
+      if (stat.isFile())
+        entries.push({
+          name,
+          path,
+          size: stat.size,
+          mtime: stat.mtime,
+          dev: stat.dev,
+          ino: stat.ino,
+        });
     } catch {
       // Ignore a file that disappeared while the archive manifest was read.
     }
@@ -203,6 +214,43 @@ function endRecords(entryCount: number, directorySize: bigint, directoryOffset: 
   return records;
 }
 
+function matchesManifest(entry: ArchiveEntry, stat: BigIntStats): boolean {
+  return (
+    stat.isFile() && stat.dev === entry.dev && stat.ino === entry.ino && stat.size === entry.size
+  );
+}
+
+const changedFile = (entry: ArchiveEntry) =>
+  new Error(`Render file changed while archiving: ${entry.name}`);
+
+async function* fileChunks(entry: ArchiveEntry): AsyncGenerator<Uint8Array, number> {
+  const file = await open(
+    entry.path,
+    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+  );
+  try {
+    const opened = await file.stat({ bigint: true });
+    // Also check the pathname for platforms without O_NOFOLLOW. Parent redirection
+    // cannot authorize a different inode, even when the final component is regular.
+    const path = await lstat(entry.path, { bigint: true });
+    if (!matchesManifest(entry, opened) || !matchesManifest(entry, path)) throw changedFile(entry);
+    let crc = 0;
+    let remaining = entry.size;
+    while (remaining > 0n) {
+      const buffer = Buffer.allocUnsafe(Number(remaining > 65_536n ? 65_536n : remaining));
+      const { bytesRead } = await file.read(buffer);
+      if (bytesRead === 0) throw changedFile(entry);
+      const chunk = buffer.subarray(0, bytesRead);
+      crc = updateCrc32(crc, chunk);
+      remaining -= BigInt(bytesRead);
+      yield chunk;
+    }
+    return crc;
+  } finally {
+    await file.close();
+  }
+}
+
 async function* zipChunks(entries: readonly ArchiveEntry[]): AsyncGenerator<Uint8Array> {
   const centralHeaders: Buffer[] = [];
   let offset = 0n;
@@ -213,26 +261,7 @@ async function* zipChunks(entries: readonly ArchiveEntry[]): AsyncGenerator<Uint
     yield header;
     offset += BigInt(header.length);
 
-    let crc = 0;
-    let bytesRead = 0n;
-    if (entry.size > 0n) {
-      // Bounded to the stat'd size so a file growing mid-download cannot push
-      // the body past the advertised Content-Length.
-      const stream = createReadStream(entry.path, { start: 0, end: Number(entry.size - 1n) });
-      try {
-        for await (const chunk of stream) {
-          if (!(chunk instanceof Uint8Array)) continue;
-          crc = updateCrc32(crc, chunk);
-          bytesRead += BigInt(chunk.length);
-          yield chunk;
-        }
-      } finally {
-        stream.destroy();
-      }
-    }
-    if (bytesRead !== entry.size) {
-      throw new Error(`Render file changed while archiving: ${entry.name}`);
-    }
+    const crc = yield* fileChunks(entry);
 
     offset += entry.size;
     const descriptor = dataDescriptor(crc, entry.size);

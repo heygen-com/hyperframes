@@ -9,6 +9,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createServer, type ViteDevServer } from "vite";
 import { createProjectSignatureCache, createViteAdapter } from "./vite.adapter";
+import { createStudioApi } from "@hyperframes/studio-server";
 
 const producer = vi.hoisted(() => ({
   createRenderJob: vi.fn((config: Record<string, unknown>) => ({ config })),
@@ -80,6 +81,40 @@ function writeSequence(directory: string, frames: number): void {
 }
 
 describe("Vite GIF rendering", { timeout: 30_000 }, () => {
+  it("starts, lists, downloads, and deletes outputs in Vite's shared render root through the routes", async () => {
+    producer.executeRenderJob.mockImplementation(async (_job, _dir, output: string) => {
+      writeSequence(output, 2);
+    });
+    const { dir, state } = await fixture({ format: "png-sequence" });
+    await vi.waitFor(() => expect(state.status).toBe("complete"));
+    const dataDir = join(dir, "projects");
+    mkdirSync(join(dataDir, "demo"), { recursive: true });
+    writeFileSync(join(dataDir, "demo", "index.html"), "<html></html>");
+    if (!server) throw new Error("Vite fixture did not start");
+    const adapter = createViteAdapter(dataDir, server, createProjectSignatureCache());
+    const app = createStudioApi(adapter);
+    const response = await app.request("/projects/demo/render", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"format":"png-sequence"}',
+    });
+    expect(response.status).toBe(200);
+    const { jobId, filename } = await response.json();
+    await vi.waitFor(() =>
+      expect(existsSync(join(dir, "renders", filename, "frame_000001.png"))).toBe(true),
+    );
+    const history = await app.request("/projects/demo/renders");
+    expect(history.status).toBe(200);
+    expect((await history.json()).renders).toEqual([
+      expect.objectContaining({ id: jobId, filename, frameCount: 2 }),
+    ]);
+    const download = await app.request(`/render/${jobId}/download`);
+    expect(download.status).toBe(200);
+    await download.arrayBuffer();
+    expect((await app.request(`/render/${jobId}`, { method: "DELETE" })).status).toBe(200);
+    expect(existsSync(join(dir, "renders", filename))).toBe(false);
+  });
+
   it("forwards loop count and writes a sidecar without overwriting the GIF", async () => {
     producer.executeRenderJob.mockImplementation(async (_job, _dir, outputPath: string) => {
       writeFileSync(outputPath, "GIF89a");
@@ -130,10 +165,27 @@ describe("Vite PNG-sequence rendering", () => {
     expect(existsSync(join(outputPath, "seq-job.meta.json"))).toBe(false);
     expect(JSON.parse(readFileSync(metaPath, "utf8"))).toMatchObject({
       status: "complete",
+      kind: "directory",
+      outputName: "seq-job",
       frameCount: 3,
       size: 3 * "png-bytes".length + "aac".length,
       audioSidecar: true,
     });
+  });
+
+  it("writes explicit directory identity when PNG rendering fails before publishing output", async () => {
+    producer.executeRenderJob.mockRejectedValue(new Error("PNG failed"));
+    const { state, outputPath, metaPath } = await fixture({
+      format: "png-sequence",
+      jobId: "failed-seq",
+    });
+    await vi.waitFor(() => expect(state.status).toBe("failed"), RENDER_DONE);
+    expect(JSON.parse(readFileSync(metaPath, "utf8"))).toMatchObject({
+      status: "failed",
+      kind: "directory",
+      outputName: "failed-seq",
+    });
+    expect(existsSync(outputPath)).toBe(false);
   });
 
   it.each([false, true])(

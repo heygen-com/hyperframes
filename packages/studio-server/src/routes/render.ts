@@ -1,16 +1,7 @@
 import type { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import {
-  createReadStream,
-  existsSync,
-  lstatSync,
-  readFileSync,
-  unlinkSync,
-  readdirSync,
-  statSync,
-  rmSync,
-} from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { createReadStream, existsSync, lstatSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
 import { Readable } from "node:stream";
 import type { StudioApiAdapter, RenderJobState } from "../types.js";
 import { VALID_CANVAS_RESOLUTIONS, type CanvasResolution } from "@hyperframes/parsers";
@@ -22,6 +13,7 @@ import {
   isLinkFreeWithinProject,
   isPrivateProjectFile,
   mkdirWithinProject,
+  realFilePath,
   resolveWithinProject,
 } from "../helpers/safePath.js";
 import { projectDirMissing } from "../helpers/projectDirMissing.js";
@@ -30,7 +22,17 @@ import { parseEncoderOptions, type EncoderOptionsBody } from "../helpers/encoder
 import { forgetJobsFinishedLongerThan } from "../helpers/finishedJobs.js";
 import { directoryZipResponse } from "../helpers/renderZipStream.js";
 import { contentDispositionHeader } from "../helpers/contentDisposition.js";
-import { readRenderDirectoryStats } from "../helpers/renderDirectoryStats.js";
+import {
+  RenderIdentityError,
+  RenderIdentityStore,
+  type RenderOwner,
+} from "../helpers/renderIdentityStore.js";
+import {
+  buildRenderDeletionPlan,
+  checkedRenderOutput,
+  renderJobFamily,
+} from "../helpers/renderDeletionPlan.js";
+import type { RenderArtifactKind } from "../helpers/renderHistory.js";
 
 const VALID_RESOLUTIONS = new Set<string>(VALID_CANVAS_RESOLUTIONS);
 const RENDER_MIME: Record<string, string> = {
@@ -41,13 +43,7 @@ const RENDER_MIME: Record<string, string> = {
   ".png": "image/png",
 };
 // `.png` serves frames inside a directory render; a loose PNG is never a render artifact.
-const RENDER_FILE_EXTENSIONS = [".mp4", ".webm", ".mov", ".gif"] as const;
-const RENDER_ARTIFACT_EXTENSIONS = [...RENDER_FILE_EXTENSIONS, ".meta.json"] as const;
-const RENDER_FILE_PATTERN = /\.(mp4|webm|mov|gif)$/;
-const RENDER_ALIAS_PREFIX = ".hf-render~";
-
 type RenderFormat = "mp4" | "webm" | "mov" | "gif" | "png-sequence";
-type RenderArtifactKind = "file" | "directory";
 
 const FORMAT_EXT: Record<RenderFormat, string> = {
   mp4: ".mp4",
@@ -75,83 +71,11 @@ function isRenderFormat(format: unknown): format is RenderFormat {
   );
 }
 
-interface RenderArtifact {
-  kind: RenderArtifactKind;
-  /** Containment-checked, symlinks resolved. */
-  path: string;
-  /** The literal `renders/<name>` entry, for removals that must not follow a symlink. */
-  candidatePath: string;
-}
-
-function resolveRenderArtifacts(
-  directories: readonly string[],
-  jobId: string,
-  kind: RenderArtifactKind,
-): RenderArtifact[] | null {
-  const artifacts: RenderArtifact[] = [];
-  for (const directory of new Set(directories)) {
-    if (!existsSync(directory)) continue;
-    // A job owns only artifacts of its kind: `intro/` beside `intro.mp4` is another render.
-    const names: Array<{ kind: RenderArtifactKind; name: string }> =
-      kind === "directory"
-        ? [
-            { kind: "directory", name: jobId },
-            { kind: "file", name: `${jobId}.meta.json` },
-          ]
-        : RENDER_ARTIFACT_EXTENSIONS.map((extension) => ({
-            kind: "file" as const,
-            name: `${jobId}${extension}`,
-          }));
-    for (const { kind, name } of names) {
-      // A candidate names an entry inside `renders/`, never the folder itself or its parent.
-      if (name === "" || name === "." || name === "..") return null;
-      const path = resolveWithinProject(directory, name);
-      if (!path) return null;
-      artifacts.push({ kind, path, candidatePath: join(directory, name) });
-    }
-  }
-  return artifacts;
-}
-
 function isRealDirectory(path: string): boolean {
   try {
     return lstatSync(path).isDirectory();
   } catch {
     return false;
-  }
-}
-
-/**
- * Kind of a job this process has no record of, judged like the listing does. A same-stem
- * file render wins, so a bare name is never removed recursively while a file artifact exists.
- */
-function renderKindOnDisk(directories: readonly string[], jobId: string): RenderArtifactKind {
-  const candidates = [...new Set(directories)];
-  const hasFileRender = candidates.some((directory) =>
-    RENDER_FILE_EXTENSIONS.some((extension) => existsSync(join(directory, `${jobId}${extension}`))),
-  );
-  if (jobId.startsWith(".") || hasFileRender) return "file";
-  for (const directory of candidates) {
-    const candidate = join(directory, jobId);
-    if (!isRealDirectory(candidate)) continue;
-    if (existsSync(join(directory, `${jobId}.meta.json`))) return "directory";
-    try {
-      if (readRenderDirectoryStats(candidate).frameCount > 0) return "directory";
-    } catch {
-      continue;
-    }
-  }
-  return "file";
-}
-
-function deleteRenderArtifact(artifact: RenderArtifact): void {
-  if (artifact.kind === "file") {
-    if (existsSync(artifact.path)) unlinkSync(artifact.path);
-    return;
-  }
-  // lstat on the literal entry: a symlink is never followed into a recursive removal.
-  if (isRealDirectory(artifact.candidatePath)) {
-    rmSync(artifact.candidatePath, { recursive: true, force: true });
   }
 }
 
@@ -188,89 +112,26 @@ function renderFileResponse(
   return new Response(body, { headers });
 }
 
-interface RenderMeta {
-  status?: unknown;
-  durationMs?: unknown;
-  audioLoweredDb?: unknown;
-  frameCount?: unknown;
-  size?: unknown;
-  audioSidecar?: unknown;
+function renderRootAnchor(projectDir: string, root: string): string {
+  const path = relative(projectDir, root);
+  return path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)
+    ? dirname(root)
+    : projectDir;
 }
-
-function readRenderMeta(metaPath: string): RenderMeta | null {
-  if (!existsSync(metaPath)) return null;
-  try {
-    const meta: unknown = JSON.parse(readFileSync(metaPath, "utf-8"));
-    return meta && typeof meta === "object" ? meta : null;
-  } catch {
-    return null;
-  }
-}
-
-type RenderListingRow = {
-  id: string;
-  filename: string;
-  path: string;
-  size: number;
-  createdAt: number;
-  status: "complete" | "failed";
-  durationMs?: number;
-  audioLoweredDb?: number;
-} & ({ kind?: undefined } | { kind: "directory"; frameCount: number; audioSidecar: boolean });
 
 export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void {
   // Scoped job store — not shared across createStudioApi() calls
   const renderJobs = new Map<string, RenderJobState>();
+  const cancellingJobs = new Set<RenderJobState>();
   const CANCEL_SETTLE_MS = 45_000;
-  // Outlives the swept job records; a few bytes per render on disk, so never evicted.
-  const renderArtifacts = new Map<string, { kind: RenderArtifactKind; outputPath: string }>();
-
-  const restoreListedRenders = (rows: RenderListingRow[]): void => {
-    const idsByPath = new Map(
-      [...renderArtifacts].map(([id, artifact]) => [artifact.outputPath, id]),
-    );
-    const reservedIds = new Set([...renderArtifacts.keys(), ...rows.map((row) => row.id)]);
-    const fileFirst = [...rows].sort(
-      (a, b) => Number(a.kind === "directory") - Number(b.kind === "directory"),
-    );
-    for (const row of fileFirst) {
-      const kind = row.kind === "directory" ? "directory" : "file";
-      const existingId = idsByPath.get(row.path);
-      let id = existingId ?? row.id;
-      if (existingId === undefined && renderArtifacts.has(id)) {
-        const alias = `${RENDER_ALIAS_PREFIX}${id}~${kind}`;
-        id = alias;
-        for (let n = 2; reservedIds.has(id); n++) id = `${alias}-${n}`;
-      }
-      row.id = id;
-      reservedIds.add(id);
-      idsByPath.set(row.path, id);
-      renderArtifacts.set(id, { kind, outputPath: row.path });
-      if (!renderJobs.has(id)) {
-        renderJobs.set(id, {
-          id,
-          status: row.status,
-          progress: 100,
-          outputPath: row.path,
-          kind,
-        });
-      }
-    }
-  };
-
-  const nextFreeRenderJobId = (baseId: string, ext: string, rendersDir: string): string => {
-    let jobId = baseId;
-    for (
-      let n = 2;
-      renderJobs.has(jobId) ||
-      renderArtifacts.has(jobId) ||
-      existsSync(join(rendersDir, `${jobId}${ext}`));
-      n++
-    ) {
-      jobId = `${baseId}-${n}`;
-    }
-    return jobId;
-  };
+  const identities = new RenderIdentityStore(async () => {
+    return (await adapter.listProjects()).map((project) => {
+      const root = adapter.rendersDir(project);
+      if (!isLinkFreeWithinProject(renderRootAnchor(project.dir, root), root))
+        throw new RenderIdentityError("forbidden", 403);
+      return root;
+    });
+  });
 
   // A finished job stays readable for 5 minutes after it finishes
   const TTL_MS = 300_000;
@@ -283,7 +144,11 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     !process.argv.includes("build");
 
   const cleanupFinishedJobs = () => {
-    forgetJobsFinishedLongerThan(TTL_MS, renderJobs, (job) => job.status !== "rendering");
+    forgetJobsFinishedLongerThan(
+      TTL_MS,
+      renderJobs,
+      (job) => job.status !== "rendering" && !cancellingJobs.has(job),
+    );
     if (renderJobs.size === 0 && cleanupTimer) {
       clearInterval(cleanupTimer);
       cleanupTimer = null;
@@ -304,6 +169,7 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   api.post("/projects/:id/render", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
+    if (folderGone(project.dir)) return projectDirMissing(c);
 
     const body = (await c.req.json().catch(() => ({}))) as EncoderOptionsBody & {
       // Polymorphic per design note in core.types.Fps:
@@ -382,14 +248,24 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
         : requestedPageMotionBlur;
 
     const rendersDir = adapter.rendersDir(project);
-    mkdirWithinProject(project.dir, rendersDir);
+    if (folderGone(project.dir)) return projectDirMissing(c);
+    mkdirWithinProject(renderRootAnchor(project.dir, rendersDir), rendersDir);
     const ext = FORMAT_EXT[format];
-    const jobId = nextFreeRenderJobId(
-      `${project.id}_${formatRenderOutputTimestamp(new Date())}`,
-      ext,
-      rendersDir,
-    );
-    const outputName = `${jobId}${ext}`;
+    let owner: RenderOwner & { id: string };
+    try {
+      owner = await identities.claim(
+        rendersDir,
+        `${project.id}_${formatRenderOutputTimestamp(new Date())}`,
+        ext,
+        kind,
+      );
+    } catch (error) {
+      if (folderGone(project.dir)) return projectDirMissing(c);
+      throw error;
+    }
+    if (folderGone(project.dir)) return projectDirMissing(c);
+    const jobId = owner.id;
+    const outputName = owner.output;
     const outputPath = join(rendersDir, outputName);
     // A directory output is later removed recursively, so it must resolve inside renders/.
     const checkedOutput = resolveWithinProject(rendersDir, outputName);
@@ -416,11 +292,10 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     });
     jobState.kind ??= kind;
     renderJobs.set(jobId, jobState);
-    renderArtifacts.set(jobId, { kind, outputPath });
 
     ensureCleanupTimer();
 
-    return c.json({ jobId, status: "rendering" });
+    return c.json({ jobId, filename: outputName, status: "rendering" });
   });
 
   api.put("/projects/:id/render-variables", async (c) => {
@@ -475,11 +350,17 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     const job = renderJobs.get(jobId);
     if (!job) return c.json({ error: "not found" }, 404);
     if (job.status === "rendering") {
+      cancellingJobs.add(job);
       job.status = "cancelled";
       let giveUp: ReturnType<typeof setTimeout> | undefined;
       const late = new Promise((done) => (giveUp = setTimeout(done, CANCEL_SETTLE_MS)));
       try {
-        await Promise.race([job.cancel?.(), late]);
+        const settle = Promise.resolve()
+          .then(() => job.cancel?.())
+          .finally(() => {
+            cancellingJobs.delete(job);
+          });
+        await Promise.race([settle, late]);
       } finally {
         clearTimeout(giveUp);
       }
@@ -496,40 +377,32 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
   };
 
   // Serve render inline (for in-browser playback — opens in a new tab).
-  api.get("/render/:jobId/view", (c) => {
+  api.get("/render/:jobId/view", async (c) => {
     const jobId = c.req.param("jobId");
-    const job = renderJobs.get(jobId) ?? renderArtifacts.get(jobId);
-    if (!job?.outputPath || job.kind === "directory" || !isPlainFile(job.outputPath)) {
+    const owner = await identities.resolve(jobId);
+    const outputPath = owner && checkedRenderOutput(owner);
+    if (!owner || owner.kind === "directory" || !outputPath || !isPlainFile(outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
-    return renderFileResponse(job.outputPath, "inline", basename(job.outputPath), c.req.method);
+    return renderFileResponse(outputPath, "inline", owner.output, c.req.method);
   });
 
   // Download render
-  api.get("/render/:jobId/download", (c) => {
+  api.get("/render/:jobId/download", async (c) => {
     const { jobId } = c.req.param();
     const state = renderJobs.get(jobId);
-    const job = state ?? renderArtifacts.get(jobId);
-    if (job?.kind === "directory") {
+    const owner = await identities.resolve(jobId);
+    const outputPath = owner && checkedRenderOutput(owner);
+    if (owner?.kind === "directory" && outputPath) {
       const archive =
-        state?.status === "rendering"
-          ? null
-          : directoryDownload(job.outputPath, basename(job.outputPath));
+        state?.status === "rendering" ? null : directoryDownload(outputPath, owner.output);
       return archive ?? c.json({ error: "not found" }, 404);
     }
-    if (!job?.outputPath || !isPlainFile(job.outputPath)) {
+    if (!owner || !outputPath || !isPlainFile(outputPath)) {
       return c.json({ error: "not found" }, 404);
     }
-    return renderFileResponse(job.outputPath, "attachment", basename(job.outputPath), c.req.method);
+    return renderFileResponse(outputPath, "attachment", owner.output, c.req.method);
   });
-
-  async function renderDirectories(jobId: string): Promise<string[]> {
-    const outputPath = renderArtifacts.get(jobId)?.outputPath;
-    if (outputPath) return [dirname(outputPath)];
-
-    const projects = await adapter.listProjects();
-    return projects.map((project) => adapter.rendersDir(project));
-  }
 
   // Delete render
   api.delete("/render/:jobId", async (c) => {
@@ -549,24 +422,17 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     if (renderJobs.get(jobId)?.status === "rendering") {
       return c.json({ error: "render in progress; cancel it first" }, 409);
     }
-    if (jobId.startsWith(RENDER_ALIAS_PREFIX) && !renderArtifacts.has(jobId)) {
-      return c.json({ error: "not found" }, 404);
+    const owner = await identities.resolve(jobId);
+    if (!owner)
+      return jobId.startsWith(".hf-render~")
+        ? c.json({ error: "not found" }, 404)
+        : c.json({ deleted: true });
+    identities.assertWritable(owner);
+    const plan = buildRenderDeletionPlan(owner, renderJobs.values(), cancellingJobs);
+    plan.remove();
+    for (const [id, job] of renderJobs) {
+      if (renderJobFamily(job) === plan.family) renderJobs.delete(id);
     }
-    const directories = await renderDirectories(jobId);
-    const recorded = renderArtifacts.get(jobId);
-    const outputName = recorded && basename(recorded.outputPath);
-    const diskJobId = outputName
-      ? recorded.kind === "directory"
-        ? outputName
-        : outputName.replace(RENDER_FILE_PATTERN, "")
-      : jobId;
-    const kind: RenderArtifactKind = recorded?.kind ?? renderKindOnDisk(directories, diskJobId);
-    const artifacts = resolveRenderArtifacts(directories, diskJobId, kind);
-    if (!artifacts) return c.json({ error: "forbidden" }, 403);
-
-    for (const artifact of artifacts) deleteRenderArtifact(artifact);
-    renderJobs.delete(jobId);
-    renderArtifacts.delete(jobId);
     return c.json({ deleted: true });
   });
 
@@ -594,70 +460,26 @@ export function registerRenderRoutes(api: Hono, adapter: StudioApiAdapter): void
     if (!project) return c.json({ error: "not found" }, 404);
     const rendersDir = adapter.rendersDir(project);
     if (!existsSync(rendersDir)) return c.json({ renders: [] });
-    const rows: RenderListingRow[] = [];
-    for (const entry of readdirSync(rendersDir, { withFileTypes: true })) {
-      // Dot-prefixed entries include the producer's staging dirs; Dirent never follows symlinks.
-      if (entry.name.startsWith(".")) continue;
-      const isDirectory = entry.isDirectory();
-      if (!isDirectory && !RENDER_FILE_PATTERN.test(entry.name)) continue;
-      const fp = resolveWithinProject(rendersDir, entry.name);
-      if (!fp || isPrivateProjectFile(project.dir, fp)) continue;
-
-      const rid = isDirectory ? entry.name : entry.name.replace(RENDER_FILE_PATTERN, "");
-      const meta = readRenderMeta(join(rendersDir, `${rid}.meta.json`));
-      let stat;
-      try {
-        stat = statSync(fp);
-      } catch {
-        continue;
-      }
-      // A stale failed sidecar can remain after a retry succeeds. An existing
-      // output artifact is authoritative for the list view; don't present a
-      // downloadable render as failed solely because an earlier attempt left
-      // behind failed metadata.
-      const status: "complete" | "failed" =
-        meta?.status === "failed" && !existsSync(fp) ? "failed" : "complete";
-      const durationMs =
-        typeof meta?.durationMs === "number" && meta.durationMs ? meta.durationMs : undefined;
-      const audioLoweredDb =
-        typeof meta?.audioLoweredDb === "number" ? meta.audioLoweredDb : undefined;
-      const base = {
-        id: rid,
-        filename: entry.name,
-        path: fp,
-        createdAt: stat.mtimeMs,
-        status,
-        durationMs,
-        ...(audioLoweredDb !== undefined ? { audioLoweredDb } : {}),
-      };
-
-      if (!isDirectory) {
-        rows.push({ ...base, size: stat.size });
-        continue;
-      }
-
-      let frameCount: number;
-      let size: number;
-      let audioSidecar: boolean;
-      if (typeof meta?.frameCount === "number" && typeof meta.size === "number") {
-        frameCount = meta.frameCount;
-        size = meta.size;
-        audioSidecar = meta.audioSidecar === true;
-      } else {
-        try {
-          ({ frameCount, size, audioSidecar } = readRenderDirectoryStats(fp));
-        } catch {
-          continue;
-        }
-        if (frameCount === 0 && !meta) continue;
-      }
-      rows.push({ ...base, kind: "directory", size, frameCount, audioSidecar });
-    }
+    if (!isLinkFreeWithinProject(renderRootAnchor(project.dir, rendersDir), rendersDir))
+      return c.json({ error: "forbidden" }, 403);
+    identities.includeRoot(rendersDir);
+    const rows = (await identities.history()).filter(
+      (row) => row.root === realFilePath(rendersDir),
+    );
     rows.sort((a, b) => b.createdAt - a.createdAt);
 
     // Register on-disk renders that aren't in the current session's job map
     // so they remain downloadable after a server restart.
-    restoreListedRenders(rows);
-    return c.json({ renders: rows.map(({ path: _path, ...render }) => render) });
+    for (const row of rows) {
+      if (!renderJobs.has(row.id))
+        renderJobs.set(row.id, {
+          id: row.id,
+          status: row.status,
+          progress: 100,
+          outputPath: row.path,
+          kind: row.kind === "directory" ? "directory" : "file",
+        });
+    }
+    return c.json({ renders: rows.map(({ path: _path, root: _root, ...render }) => render) });
   });
 }

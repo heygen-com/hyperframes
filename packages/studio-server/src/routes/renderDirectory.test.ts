@@ -200,6 +200,38 @@ describe("directory (PNG-sequence) renders", () => {
     expect(download.headers.get("content-type")).toBe("application/zip");
   });
 
+  it("errors the download body after headers if a later frame becomes an outside symlink", async () => {
+    const { app, rendersDir } = fixture();
+    const directory = join(rendersDir, "raced");
+    writeSequence(directory, 2, false);
+    writeFileSync(join(directory, "frame_000000.png"), Buffer.alloc(200_000, 7));
+    const payload = "PRIVATE-OUTSIDE-BYTES";
+    const target = join(directory, "frame_000001.png");
+    writeFileSync(target, "x".repeat(payload.length));
+    const outside = join(rendersDir, "private");
+    writeFileSync(outside, payload);
+    const response = await app.request("/render/raced/download");
+    expect(response.status).toBe(200);
+    const reader = response.body!.getReader();
+    await reader.read();
+    await reader.read();
+    rmSync(target);
+    symlinkSync(outside, target);
+    const received: Uint8Array[] = [];
+    let failure: unknown;
+    try {
+      for (;;) {
+        const next = await reader.read();
+        if (next.done) break;
+        received.push(next.value);
+      }
+    } catch (error) {
+      failure = error;
+    }
+    expect.soft(Buffer.concat(received).includes(Buffer.from(payload))).toBe(false);
+    expect(failure).toBeInstanceOf(Error);
+  });
+
   it.each(["posted", "listed"] as const)(
     "downloads a %s directory after progress expires without listing it again",
     async (source) => {
@@ -248,7 +280,8 @@ describe("directory (PNG-sequence) renders", () => {
         expect(new Set(rows.map((row) => row.id)).size).toBe(2);
         const fileId = String(rows.find((row) => row.filename === "intro.mp4")?.id);
         const directoryId = String(rows.find((row) => row.kind === "directory")?.id);
-        expect(fileId).toBe("intro");
+        expect(fileId).not.toBe("intro");
+        expect(directoryId).not.toBe("intro");
         expect(await listRenders(app)).toEqual(rows);
         await vi.advanceTimersByTimeAsync(elapsed);
 
@@ -327,9 +360,9 @@ describe("directory (PNG-sequence) renders", () => {
       const restarted = new Hono();
       registerRenderRoutes(restarted, adapter);
 
-      expect((await restarted.request(`/render/${alias}`, { method: "DELETE" })).status).toBe(404);
+      expect((await restarted.request(`/render/${alias}`, { method: "DELETE" })).status).toBe(200);
       expect(existsSync(join(rendersDir, alias, "frame_000000.png"))).toBe(true);
-      expect(existsSync(join(rendersDir, "intro", "frame_000000.png"))).toBe(true);
+      expect(existsSync(join(rendersDir, "intro", "frame_000000.png"))).toBe(false);
       expect(existsSync(join(rendersDir, "intro.mp4"))).toBe(true);
     });
   });
@@ -435,13 +468,13 @@ describe("directory (PNG-sequence) renders", () => {
       expect(readFileSync(join(rendersDir, "notes", "todo.txt"), "utf-8")).toBe("keep");
     });
 
-    it("treats an unrecorded same-stem pair as the file render", async () => {
+    it("refuses to guess ownership of an unrecorded same-stem pair", async () => {
       const { app, rendersDir } = fixture();
       writeFileSync(join(rendersDir, "intro.mp4"), "mp4");
       writeSequence(join(rendersDir, "intro"));
 
-      expect((await app.request("/render/intro", { method: "DELETE" })).status).toBe(200);
-      expect(existsSync(join(rendersDir, "intro.mp4"))).toBe(false);
+      expect((await app.request("/render/intro", { method: "DELETE" })).status).toBe(409);
+      expect(existsSync(join(rendersDir, "intro.mp4"))).toBe(true);
       expect(existsSync(join(rendersDir, "intro", "frame_000000.png"))).toBe(true);
     });
 
@@ -519,7 +552,7 @@ describe("directory (PNG-sequence) renders", () => {
           return;
         }
         await vi.advanceTimersByTimeAsync(elapsed);
-        expect((await app.request(`/render/${jobId}`, { method: "DELETE" })).status).toBe(200);
+        expect((await app.request(`/render/${jobId}`, { method: "DELETE" })).status).toBe(403);
         expect(existsSync(join(target, "frame_000000.png"))).toBe(true);
       },
     );

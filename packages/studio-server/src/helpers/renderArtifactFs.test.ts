@@ -39,9 +39,24 @@ describe("render artifact filesystem helpers", () => {
     mkdirSync(seq);
     writeFileSync(join(seq, "frame_000000.png"), "abc");
     writeFileSync(join(dir, "job.mp4"), "x");
-    expect(renderDirectoryMetadata(seq)).toEqual({ frameCount: 1, size: 3, audioSidecar: false });
+    expect(renderDirectoryMetadata(seq)).toEqual({
+      kind: "directory",
+      outputName: "job",
+      frameCount: 1,
+      size: 3,
+      audioSidecar: false,
+    });
     expect(renderDirectoryMetadata(join(dir, "job.mp4"))).toEqual({});
     expect(renderDirectoryMetadata(join(dir, "missing"))).toEqual({});
+    expect(renderDirectoryMetadata(seq, "file")).toEqual({});
+  });
+
+  it("retains explicit directory identity when a failed output was never published", () => {
+    const dir = root();
+    expect(renderDirectoryMetadata(join(dir, "failed"), "directory")).toEqual({
+      kind: "directory",
+      outputName: "failed",
+    });
   });
 
   it("removes a directory output recursively, a file output, and the sidecar; tolerates missing paths", () => {

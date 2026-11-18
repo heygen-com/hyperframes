@@ -536,8 +536,38 @@ describe("createStudioServer shutdown", () => {
     expect(state.kind).toBe("directory");
     await vi.waitFor(() => expect(state.status, state.error).toBe("complete"), { timeout: 5_000 });
     const meta = JSON.parse(readFileSync(join(rendersDir, "job-seq.meta.json"), "utf8"));
-    expect(meta).toMatchObject({ status: "complete", frameCount: 2, size: 6, audioSidecar: true });
+    expect(meta).toMatchObject({
+      status: "complete",
+      kind: "directory",
+      outputName: "job-seq",
+      frameCount: 2,
+      size: 6,
+      audioSidecar: true,
+    });
     expect(existsSync(join(outputPath, ".meta.json"))).toBe(false);
+  });
+
+  it("writes explicit directory identity when PNG rendering fails before publishing output", async () => {
+    producerState.executeRenderJob = async () => {
+      throw new Error("PNG failed");
+    };
+    const rendersDir = mkdtempSync(join(tmpdir(), "hf-png-failure-"));
+    dirs.push(rendersDir);
+    const outputPath = join(rendersDir, "failed-frames");
+    server = createStudioServer({ projectDir: tmpProject() });
+    const state = server.adapter.startRender({
+      ...startRenderOpts("failed-job", outputPath),
+      format: "png-sequence",
+    });
+    await vi.waitFor(() => expect(state.status).toBe("failed"), { timeout: 5_000 });
+    expect(
+      JSON.parse(readFileSync(join(rendersDir, "failed-job.meta.json"), "utf8")),
+    ).toMatchObject({
+      status: "failed",
+      kind: "directory",
+      outputName: "failed-frames",
+    });
+    expect(existsSync(outputPath)).toBe(false);
   });
 
   it("removes a committed PNG-sequence directory and its sidecar when cancel races completion", async () => {
@@ -571,6 +601,53 @@ describe("createStudioServer shutdown", () => {
     await vi.waitFor(() => expect(state.status).toBe("cancelled"), { timeout: 5_000 });
     expect(existsSync(outputPath)).toBe(false);
     expect(existsSync(join(rendersDir, "job-cancel.meta.json"))).toBe(false);
+  });
+
+  it("blocks family deletion through the CLI routes until cancelled producer work settles", async () => {
+    let finish!: () => void;
+    let aborted = false;
+    producerState.executeRenderJob = (_job, _dir, output, _progress, signal) => {
+      writeFileSync(output, "partial");
+      signal.addEventListener("abort", () => {
+        aborted = true;
+      });
+      return new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    };
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir });
+    const response = await server.app.request(`/api/projects/${basename(projectDir)}/render`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"format":"mp4"}',
+    });
+    expect(response.status).toBe(200);
+    const { jobId } = await response.json();
+    await vi.waitFor(() => expect(typeof finish).toBe("function"));
+    const mov = join(projectDir, "renders", `${jobId}.mov`);
+    writeFileSync(mov, "keep");
+    const history = await (
+      await server.app.request(`/api/projects/${basename(projectDir)}/renders`)
+    ).json();
+    const alias = history.renders.find((row: { filename: string }) =>
+      row.filename.endsWith(".mov"),
+    ).id;
+    const cancelling = server.app.request(`/api/render/${jobId}/cancel`, { method: "POST" });
+    try {
+      await vi.waitFor(() => expect(aborted).toBe(true));
+      expect((await server.app.request(`/api/render/${alias}`, { method: "DELETE" })).status).toBe(
+        409,
+      );
+      expect(readFileSync(mov, "utf8")).toBe("keep");
+    } finally {
+      finish();
+      await cancelling;
+    }
+    expect((await server.app.request(`/api/render/${alias}`, { method: "DELETE" })).status).toBe(
+      200,
+    );
+    expect(existsSync(mov)).toBe(false);
   });
 
   it("cancels an in-flight render's signal and waits for it before draining the browser pool", async () => {

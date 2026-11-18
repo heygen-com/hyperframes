@@ -1,4 +1,3 @@
-import { buildProjectApiPath } from "../../utils/projectRouting";
 import { memo, useCallback, useState } from "react";
 import { RenderQueueInfo } from "./RenderQueueInfo";
 import { RenderPreview } from "./RenderPreview";
@@ -22,11 +21,12 @@ interface RenderArtifactActions {
   detail: string;
 }
 
-function renderArtifactActions(job: RenderJob, fileSrc: string): RenderArtifactActions {
+function renderArtifactActions(job: RenderJob): RenderArtifactActions {
+  const downloadSrc = `/api/render/${encodeURIComponent(job.id)}/download`;
   if (job.kind !== "directory") {
     return {
       isDirectory: false,
-      downloadSrc: fileSrc,
+      downloadSrc,
       downloadName: job.filename,
       downloadLabel: "Download",
       detail: "",
@@ -34,8 +34,8 @@ function renderArtifactActions(job: RenderJob, fileSrc: string): RenderArtifactA
   }
   return {
     isDirectory: true,
-    downloadSrc: `/api/render/${encodeURIComponent(job.id)}/download`,
-    downloadName: `${job.id}.zip`,
+    downloadSrc,
+    downloadName: `${job.filename}.zip`,
     downloadLabel: "Download as ZIP",
     detail: job.frameCount === undefined ? "" : ` · ${job.frameCount} frames`,
   };
@@ -45,7 +45,6 @@ function renderArtifactActions(job: RenderJob, fileSrc: string): RenderArtifactA
 // fallow-ignore-next-line complexity
 export const RenderQueueItem = memo(function RenderQueueItem({
   job,
-  projectId,
   onDelete,
   onCancel,
 }: RenderQueueItemProps) {
@@ -53,16 +52,13 @@ export const RenderQueueItem = memo(function RenderQueueItem({
   const [videoReady, setVideoReady] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  // Direct file URL — serves from disk, survives server restarts
-  const fileSrc = buildProjectApiPath(projectId, `/renders/file/${job.filename}`);
-  const { isDirectory, downloadSrc, downloadName, downloadLabel, detail } = renderArtifactActions(
-    job,
-    fileSrc,
-  );
+  const viewSrc = `/api/render/${encodeURIComponent(job.id)}/view`;
+  const { isDirectory, downloadSrc, downloadName, downloadLabel, detail } =
+    renderArtifactActions(job);
 
   const handleOpen = useCallback(() => {
-    window.open(fileSrc, "_blank");
-  }, [fileSrc]);
+    window.open(viewSrc, "_blank");
+  }, [viewSrc]);
 
   const handleDownload = useCallback(
     (e: React.MouseEvent) => {
@@ -75,7 +71,6 @@ export const RenderQueueItem = memo(function RenderQueueItem({
     [downloadSrc, downloadName],
   );
 
-  const viewSrc = fileSrc;
   const isComplete = job.status === "complete";
   const canOpen = isComplete && !isDirectory;
   const isRendering = job.status === "rendering";

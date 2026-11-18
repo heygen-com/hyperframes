@@ -703,7 +703,6 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         progress: 0,
         outputPath: opts.outputPath,
         kind: opts.format === "png-sequence" ? "directory" : "file",
-        cancel: () => abortController.abort(),
       };
 
       // Run render asynchronously, mutating the state object
@@ -789,7 +788,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
               status: "complete",
               durationMs: Date.now() - startTime,
               ...(job.audioLoweredDb !== undefined ? { audioLoweredDb: job.audioLoweredDb } : {}),
-              ...renderDirectoryMetadata(opts.outputPath),
+              ...renderDirectoryMetadata(opts.outputPath, state.kind),
             }),
           );
           // Refreshed HERE, not just at render start: a render can run for
@@ -817,7 +816,13 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
             cpu.stop(),
           );
           try {
-            writeFileSync(metaPath, JSON.stringify({ status: "failed" }));
+            writeFileSync(
+              metaPath,
+              JSON.stringify({
+                status: "failed",
+                ...renderDirectoryMetadata(opts.outputPath, state.kind),
+              }),
+            );
           } catch {
             /* ignore */
           }
@@ -825,6 +830,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
           cpu.stop();
         }
       })();
+      state.cancel = async () => {
+        abortController.abort();
+        await run;
+      };
       inFlightRenders.set(abortController, run);
       const forget = () => void inFlightRenders.delete(abortController);
       run.then(forget, forget);

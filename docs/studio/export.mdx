@@ -33,10 +33,23 @@ one, and **Hide finished** to tidy the list without deleting files.
 
 A finished **PNG sequence** is a folder of numbered frames (`frame_000001.png`, `frame_000002.png`, …) plus an
 `audio.m4a` track when the composition has sound. Its row shows a **PNG** badge and the frame count instead of a
-video thumbnail. There is nothing to play in a new tab, so that control is hidden; **Download as ZIP** packs the
-folder into a single archive, even after progress tracking ends. **Delete** removes the folder and its metadata,
-and leaves a video of the same name alone. When a video and frame folder share a name, each row's download and
-delete controls apply only to that output.
+video thumbnail, with the count appearing when the render finishes, without reloading Studio. There is nothing
+to play in a new tab, so that control is hidden; **Download as ZIP** streams the numbered frames and optional
+audio into an archive named after the output folder. Downloads keep working after progress tracking ends and
+after restarting the server.
+
+**Delete** removes a frame folder and its metadata, leaving a video of the same name alone. Deleting a video
+removes its same-name MP4, WebM, MOV, and GIF variants and metadata, but not the frame folder. Cancel any running
+render in that video family before deleting it.
+
+If an older video and frame folder share a name, refresh render history before using their actions. Studio
+gives the rows separate, persistent identities and refuses an old action whose target is ambiguous rather
+than guessing. Ordinary folders without numbered PNG frames or metadata identifying that frame folder are
+not treated as renders.
+
+Moving or copying a project preserves its render files. At the new location, refresh render history to get
+new download and delete links. Old links do not transfer to the moved project or copy; if the original
+project is still registered, its links continue to act only on the original.
 
 Before sending: open the file itself, watch the start and the end, check captions, cuts and sound at the busiest
 moment, and give it a name that says which version it is. If a render fails, keep the error and see
