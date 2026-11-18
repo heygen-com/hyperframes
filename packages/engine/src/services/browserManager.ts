@@ -877,6 +877,7 @@ function createBrowserLaunchFingerprint(
 
 /** Test-only export for launch-argument/capture-mode agreement. */
 export const _createBrowserLaunchFingerprintForTests = createBrowserLaunchFingerprint;
+export const _publicOnlyNetworkForTests = publicOnlyNetwork;
 
 export async function acquireBrowser(
   chromeArgs: string[],
@@ -900,7 +901,7 @@ async function launchInsideSandbox(ppt: PuppeteerNode, options: LaunchOptions): 
 }
 
 async function publicOnlyNetwork(pageServerHost: string | undefined) {
-  const proxy = await startCaptureProxy(null, logRefusal);
+  const proxy = await startCaptureProxy(undefined, logRefusal);
   try {
     const userDataDir = await createPublicOnlyProfile("hf-render-profile-");
     return {
