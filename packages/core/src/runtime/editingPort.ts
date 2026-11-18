@@ -169,6 +169,7 @@ export const EDITING_REQUEST_KINDS = [
   "gsap-snapshot",
   "motion-path-home",
   "max-z-index",
+  "crop-lift",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -298,6 +299,10 @@ export interface EditingRequests {
   "gsap-snapshot": { params: NoParams; result: GsapSnapshot };
   "motion-path-home": { params: { selector: string }; result: MotionPathFrameHome };
   "max-z-index": { params: NoParams; result: { zIndex: number } };
+  "crop-lift": {
+    params: { handle: EditingElementHandle; lift: boolean };
+    result: { lifted: boolean; clipPath: string | null };
+  };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -501,6 +506,10 @@ const PARAM_PARSERS: {
       ? { selector: params.selector }
       : null,
   "max-z-index": noParams,
+  "crop-lift": (params) =>
+    hasKeys(params, "handle,lift") && isHandle(params.handle) && typeof params.lift === "boolean"
+      ? { handle: params.handle, lift: params.lift }
+      : null,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */

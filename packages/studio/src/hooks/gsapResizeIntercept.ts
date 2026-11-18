@@ -19,6 +19,7 @@ import {
 } from "../utils/elementGsap";
 import { usePlayerStore } from "../player/store/playerStore";
 import { readGsapProperty } from "./gsapRuntimeReaders";
+import { gestureStartLayout } from "../components/editor/previewGestureStartRead";
 import {
   commitStaticGsapPosition,
   commitStaticGsapSize,
@@ -321,8 +322,12 @@ export async function tryGsapResizeIntercept(
     // sent almost every element to the fallback below: a 630px chip scaled by
     // 630/200, landing over three times the size it was dropped at, and worse
     // on the next drag because the wrong scale then counted as its live one.
-    const cssW = originalBoxSize(el, STUDIO_ORIGINAL_BOX_WIDTH_ATTR, "width") ?? 200;
-    const cssH = originalBoxSize(el, STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, "height") ?? cssW;
+    // A sealed preview has no element here: its gesture started from the box the frame measured.
+    const started = selection.handle ? gestureStartLayout(selection.handle) : null;
+    const cssW =
+      originalBoxSize(el, STUDIO_ORIGINAL_BOX_WIDTH_ATTR, "width") ?? (started?.width || 200);
+    const cssH =
+      originalBoxSize(el, STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, "height") ?? (started?.height || cssW);
     // `size` is the draft's CSS box; on screen it is multiplied by the element's
     // LIVE scale (the draft divides the cursor delta by it — see
     // resolveDomEditResizeGesture). The committed keyframe REPLACES that live

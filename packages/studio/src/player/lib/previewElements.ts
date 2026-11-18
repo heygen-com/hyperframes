@@ -5,6 +5,7 @@
 import {
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
+  MAX_DRAFT_PX,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_VALUE,
   MAX_GEOMETRY_CHILDREN,
@@ -233,11 +234,17 @@ const isFlag = (value: unknown) => typeof value === "boolean";
 const isFiniteFields = (value: unknown, keys: string[]) =>
   isFields(value) && keys.every((key) => Number.isFinite(value[key]));
 
+const isLayout = (value: unknown) =>
+  isFields(value) &&
+  [value.width, value.height].every(
+    (side) => Number.isFinite(side) && (side as number) >= 0 && (side as number) <= MAX_DRAFT_PX,
+  );
+
 const readGestureStart = (value: unknown): EditingGestureStart | null => {
   if (!readGeometry(value) || !isFields(value)) return null;
   const { layout, move, gsap } = value;
   const valid = [
-    isFiniteFields(layout, ["width", "height"]),
+    isLayout(layout),
     move === null || isFiniteFields(move, ["a", "b", "c", "d"]),
     gsap === null || (isFields(gsap) && isFiniteFields(gsap, ["x", "y"]) && isFlag(gsap.moving)),
   ];

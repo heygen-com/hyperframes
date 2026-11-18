@@ -91,6 +91,7 @@ describe("createEditingPortClient", () => {
           "gsap-snapshot",
           "motion-path-home",
           "max-z-index",
+          "crop-lift",
         ],
       });
     } finally {
