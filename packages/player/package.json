@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/player",
-  "version": "0.8.190-hdr.1",
+  "version": "0.8.190-hdr.2",
   "description": "Embeddable web component for HyperFrames compositions",
   "repository": {
     "type": "git",
