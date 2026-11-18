@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Player, readPreviewErrorMessage, shouldShowCompositionLoadingOverlay } from "./Player";
 import { hasUnloadedAssets } from "./previewAssetWait";
+import { previewEditingClient } from "../lib/previewChannel";
 import { usePlayerStore } from "../store/playerStore";
 import { onPreviewDocumentLoaded } from "../sceneSwap";
 
@@ -125,6 +126,26 @@ describe("preview errors", () => {
 
     expect(() => act(() => root?.unmount())).not.toThrow();
     root = null;
+  });
+
+  // fails without the fix: a frame whose agent never answered kept its client, and its window listener held the
+  // retired frame, until a load that never comes.
+  it("disposes the frame's editing-port client when it unmounts", async () => {
+    const ref = vi.fn();
+    await mountPlayer({ ref } as Partial<PlayerProps>);
+    const client = previewEditingClient(ref.mock.calls[0]?.[0] as HTMLIFrameElement);
+
+    act(() => root?.unmount());
+    root = null;
+
+    const outcome = await Promise.race([
+      client.request("assets-unloaded", {}).then(
+        () => "answered",
+        (error: { code?: string }) => error.code,
+      ),
+      new Promise((resolve) => setTimeout(() => resolve("pending"), 50)),
+    ]);
+    expect(outcome).toBe("disposed");
   });
 
   it("leaves a callback ref alone on unmount, so a frame its owner made live since is kept", async () => {

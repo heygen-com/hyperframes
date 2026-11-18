@@ -8,7 +8,7 @@ import {
 } from "@hyperframes/core/runtime/editing-port";
 import type { ClipManifest, IframeWindow } from "./playbackTypes";
 
-const clients = new WeakMap<HTMLIFrameElement, EditingPortClient>();
+const clients = new WeakMap<HTMLIFrameElement, { client: EditingPortClient; retire: () => void }>();
 const loopStarts = new WeakMap<EditingPortClient, number | null>();
 
 /** A frame whose window refuses Studio's reads; one with no window has nothing to reach either way. */
@@ -23,18 +23,23 @@ export function previewFrameOpaque(iframe: HTMLIFrameElement): boolean {
   }
 }
 
-/** One client per frame load: the frame's next load disposes it. */
+/** One client per frame load: the frame's next load disposes it, or `retirePreviewEditingClient` when the frame goes. */
 export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClient {
   const open = clients.get(iframe);
-  if (open) return open;
+  if (open) return open.client;
   const client = createEditingPortClient({ iframe });
-  clients.set(iframe, client);
-  const onLoad = () => {
+  const retire = () => {
+    iframe.removeEventListener("load", retire);
     client.dispose();
-    if (clients.get(iframe) === client) clients.delete(iframe);
+    if (clients.get(iframe)?.client === client) clients.delete(iframe);
   };
-  iframe.addEventListener("load", onLoad, { once: true });
+  clients.set(iframe, { client, retire });
+  iframe.addEventListener("load", retire, { once: true });
   return client;
+}
+
+export function retirePreviewEditingClient(iframe: HTMLIFrameElement): void {
+  clients.get(iframe)?.retire();
 }
 
 export function setFrameLoopStart(iframe: HTMLIFrameElement, seconds: number | null): void {
