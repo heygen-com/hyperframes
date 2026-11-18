@@ -49,6 +49,10 @@ const fileTooLarge = (file: string, bytes: number) =>
 
 const limitText = `One render generates at most ${megabytes(MAX_EXPANDED_COMPOSITION_BYTES)}`;
 
+/** What remote script and stylesheet tags inlined into the page are charged as. */
+export const REMOTE_SCRIPTS = "remote scripts";
+export const REMOTE_STYLESHEETS = "remote stylesheets";
+
 function generatedTooLarge(file: string, bytes: number): string {
   if (file === "composition variables") {
     return (
@@ -60,6 +64,12 @@ function generatedTooLarge(file: string, bytes: number): string {
     return (
       `Variable-bound media sources add up to ${megabytes(bytes)}. ${limitText}. ` +
       "Use shorter URLs or bind fewer elements."
+    );
+  }
+  if (file === REMOTE_SCRIPTS || file === REMOTE_STYLESHEETS) {
+    return (
+      `Inlined ${file} add up to ${megabytes(bytes)}. ${limitText}. ` +
+      "Bundle scripts and fonts with the project, or link each one once."
     );
   }
   return (

@@ -394,6 +394,7 @@ export {
 } from "./utils/loopbackOnly.js";
 
 export { readWebGlVendorInfoFromCanvas } from "./utils/readWebGlVendorInfoFromCanvas.js";
+export { createConcurrencyLimit } from "./utils/concurrencyLimit.js";
 
 export {
   extractMediaMetadata,

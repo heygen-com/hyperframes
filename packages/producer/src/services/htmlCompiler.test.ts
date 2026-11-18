@@ -664,8 +664,8 @@ describe("inlineExternalScripts", () => {
         <script src="https://cdn.example.com/gsap.min.js"></script>
       </body></html>`;
       const result = await inlineExternalScripts(html);
-      // Both identical script tags should be fetched and replaced independently.
-      expect(fetchCount).toBe(2);
+      // The URL is fetched once and both tags are replaced.
+      expect(fetchCount).toBe(1);
       expect(
         result.match(/\/\* inlined: https:\/\/cdn\.example\.com\/gsap\.min\.js \*\//g)?.length,
       ).toBe(2);
