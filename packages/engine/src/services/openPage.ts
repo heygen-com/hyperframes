@@ -27,11 +27,8 @@ async function newLivePage(browser: Browser): Promise<Page | undefined> {
   }
 }
 
-/**
- * `browser.newPage()` that never returns a page whose tab closed during setup: puppeteer swallows that
- * close and resolves a page whose every call throws "Requesting main frame too early!". One more page
- * is opened only while the browser still runs; a browser that is gone is reported, never retried.
- */
+// `browser.newPage()`, minus the page puppeteer resolves when its tab closed during setup (no main frame).
+// One more page only while the browser runs; a browser that is gone is reported, never retried.
 export async function openPage(browser: Browser): Promise<Page> {
   const page =
     (await newLivePage(browser)) ?? (browser.connected ? await newLivePage(browser) : undefined);
