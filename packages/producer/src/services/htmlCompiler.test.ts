@@ -1486,7 +1486,9 @@ describe("system-primary font normalization", () => {
       if (url.href === FACE) return new Response(new Uint8Array(64));
       if (url.hostname !== "fonts.googleapis.com") throw new TypeError(`offline: ${url.href}`);
       const family = (url.searchParams.get("family") ?? "").split(":")[0];
-      return new Response(`@font-face { font-family: '${family}'; src: url(${FACE}) format('woff2'); }`);
+      return new Response(
+        `@font-face { font-family: '${family}'; src: url(${FACE}) format('woff2'); }`,
+      );
     }) as unknown as typeof fetch;
     restore = () => {
       _clearGoogleFontCssCacheForTests();
