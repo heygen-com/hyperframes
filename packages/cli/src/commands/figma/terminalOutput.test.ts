@@ -57,7 +57,8 @@ afterEach(() => {
 
 const RAW_CONTROLS = ["\u001b", "\u0007", "\r", "\u0085", "\u009b"];
 
-describe("figma terminal output", () => {
+// Windows refuses control characters in file and folder names, which these fixtures need.
+describe.skipIf(process.platform === "win32")("figma terminal output", () => {
   it("prints a reused manifest row's id, path and description with visible escapes", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-figma-asset-term-"));
     dirs.push(dir);
