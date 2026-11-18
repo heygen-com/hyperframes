@@ -71,12 +71,10 @@ export const TIMING_ATTRIBUTES = new Set([
 export type SavedTiming = Array<[string, Array<[string, string]>]>;
 type TimingPlan = Array<[Element, Array<[string, string]>]>;
 
-/** Each live element of `ownFile` with the saved timing it lacks; null when one is missing or two share a key. */
-export function planSavedTiming(
-  doc: Document,
-  ownFile: string | null,
-  timing: SavedTiming,
-): TimingPlan | null {
+type LiveTimed = { live: Map<string, Element>; rewritten: Set<string | null> };
+
+/** The live elements of `ownFile` by key; null when two share a key. */
+function liveTimedElements(doc: Document, ownFile: string | null): LiveTimed | null {
   const live = new Map<string, Element>();
   // The preview rewrites an inlined composition's own root, so the file's timing is not its own.
   const rewritten = new Set<string | null>();
@@ -87,6 +85,18 @@ export function planSavedTiming(
     if (live.has(key)) return null;
     live.set(key, el);
   }
+  return { live, rewritten };
+}
+
+/** Each live element of `ownFile` with the saved timing it lacks; null when one is missing or two share a key. */
+export function planSavedTiming(
+  doc: Document,
+  ownFile: string | null,
+  timing: SavedTiming,
+): TimingPlan | null {
+  const found = liveTimedElements(doc, ownFile);
+  if (!found) return null;
+  const { live, rewritten } = found;
   const plan: TimingPlan = [];
   for (const [key, attributes] of timing) {
     const el = live.get(key);
@@ -324,36 +334,137 @@ function runSuppressed(win: SoftReloadWindow, reload: () => void): boolean {
   }
 }
 
+type TimelineHandle = TweenLike & { kill?: () => void; clear?: () => void };
+
+function killTimelines(win: SoftReloadWindow, targetKeys: string[]): void {
+  const timelines = win.__timelines as Record<string, TimelineHandle> | undefined;
+  if (!timelines) return;
+  for (const key of targetKeys) {
+    const tl = timelines[key];
+    if (!tl) continue;
+    try {
+      // kill() keeps the children, and the finalize seek renders this timeline until the rebind swaps it.
+      tl.clear?.();
+      tl.kill?.();
+    } catch {}
+    delete timelines[key];
+  }
+}
+
+// clearProps flushes GSAP's transform cache, so from() tweens read no stale end values, but it
+// also clears the element's own style: save, clear, restore, then put back what the file authors.
+function resetTargetStyles(
+  win: SoftReloadWindow,
+  targets: Map<Element, Set<string>>,
+  authored: Map<Element, CSSStyleDeclaration | null>,
+): void {
+  const allTargets = [...targets.keys()];
+  if (allTargets.length === 0 || !win.gsap?.set) return;
+  // Another realm's nodes fail instanceof HTMLElement, so style access is duck-typed.
+  const saved = allTargets.map(
+    (el) => [el as HTMLElement, (el as HTMLElement).style.cssText] as const,
+  );
+  win.gsap.set(allTargets, { clearProps: "all" });
+  for (const [el, css] of saved) {
+    const s = el.style;
+    s.cssText = css;
+    const source = authored.get(el) ?? null;
+    restoreAuthoredStyle(s, source, targets.get(el)!);
+    // The saved cssText holds a mid-tween opacity, which a re-initialized tween would keep as its bound.
+    const opacity = source ? source.opacity : readStampedAuthoredOpacity(el);
+    if (opacity !== null) applyAuthoredInlineOpacity(s, opacity);
+  }
+}
+
+// Runs `ready` once the MotionPath plugin is in the frame, or `failed` when it cannot load.
+function whenMotionPathLoaded(
+  win: SoftReloadWindow,
+  doc: Document,
+  ready: () => void,
+  failed: () => void,
+): void {
+  // A load already in flight is the one to wait for; a second plugin script re-flashes the frame.
+  if (win.__hfMotionPathPluginLoading) {
+    const started = Date.now();
+    const poll = win.setInterval(() => {
+      if (win.MotionPathPlugin) {
+        win.clearInterval(poll);
+        ready();
+      } else if (!win.__hfMotionPathPluginLoading || Date.now() - started > 10000) {
+        win.clearInterval(poll);
+        failed();
+      }
+    }, 50);
+    return;
+  }
+  win.__hfMotionPathPluginLoading = true;
+  const pluginScript = doc.createElement("script");
+  pluginScript.src = previewMotionPathUrl(doc, win.gsap?.version);
+  pluginScript.onload = () => {
+    win.__hfMotionPathPluginLoading = false;
+    ready();
+  };
+  // Running the script without the plugin would leave a motionPath tween that cannot play.
+  pluginScript.onerror = () => {
+    win.__hfMotionPathPluginLoading = false;
+    failed();
+  };
+  doc.head.appendChild(pluginScript);
+}
+
+/** The timeline keys the script owns and the live scripts it replaces; null when which to replace is unclear. */
+function reloadScope(
+  win: SoftReloadWindow,
+  doc: Document,
+  script: string,
+): { targetKeys: string[]; staleScripts: HTMLScriptElement[] } | null {
+  if (!script || !win.gsap || !win.__hfForceTimelineRebind) return null;
+  // Each composition owns one timeline key; tearing down every timeline would revert the others.
+  const targetKeys = timelineKeys(script);
+  if (targetKeys.length === 0) return null;
+  const gsapScripts = findGsapScriptElements(doc);
+  if (gsapScripts.length === 0) return null;
+  const staleScripts = scriptsRegistering(gsapScripts, targetKeys);
+  // Several scripts and none registers these keys: which element to replace is ambiguous.
+  if (gsapScripts.length > 1 && staleScripts.length === 0) return null;
+  return { targetKeys, staleScripts };
+}
+
+/** Each reset element's authored style; null when one's file is not at hand. */
+function readAuthoredStyles(
+  doc: Document,
+  targets: Map<Element, Set<string>>,
+  input: SoftReloadInput,
+  ownFile: string | null,
+): Map<Element, CSSStyleDeclaration | null> | null {
+  const authored = new Map<Element, CSSStyleDeclaration | null>();
+  for (const el of targets.keys()) {
+    const text = input.authoredStyle(el, authoringFile(el), ownFile);
+    if (text === undefined) return null;
+    const probe = text === null ? null : doc.createElement("div");
+    probe?.setAttribute("style", text!);
+    authored.set(el, probe?.style ?? null);
+  }
+  return authored;
+}
+
 // Re-runs the script in place of the live one registering the same `__timelines` keys, tearing down
 // only those timelines. A promise only while it waits for the MotionPath plugin.
-// fallow-ignore-next-line complexity
 export function softReloadFrame(
   win: SoftReloadWindow,
   doc: Document,
   input: SoftReloadInput,
 ): SoftReloadResult | Promise<SoftReloadResult> {
   const { script } = input;
-  if (!script || !win.gsap || !win.__hfForceTimelineRebind) return "cannot-soft-reload";
-  // Each composition owns one timeline key; tearing down every timeline would revert the others.
-  const targetKeys = timelineKeys(script);
-  if (targetKeys.length === 0) return "cannot-soft-reload";
-  const gsapScripts = findGsapScriptElements(doc);
-  if (gsapScripts.length === 0) return "cannot-soft-reload";
-  const staleScripts = scriptsRegistering(gsapScripts, targetKeys);
-  // Several scripts and none registers these keys: which element to replace is ambiguous.
-  if (gsapScripts.length > 1 && staleScripts.length === 0) return "cannot-soft-reload";
+  const scope = reloadScope(win, doc, script);
+  if (!scope) return "cannot-soft-reload";
+  const { targetKeys, staleScripts } = scope;
   const currentTime = input.time ?? win.__player?.getTime?.() ?? 0;
 
   const targets = collectResetTargets(win, doc, targetKeys, input.sets);
   const ownFile = compositionFile(doc, targetKeys);
-  const authored = new Map<Element, CSSStyleDeclaration | null>();
-  for (const el of targets.keys()) {
-    const text = input.authoredStyle(el, authoringFile(el), ownFile);
-    if (text === undefined) return "cannot-soft-reload";
-    const probe = text === null ? null : doc.createElement("div");
-    probe?.setAttribute("style", text!);
-    authored.set(el, probe?.style ?? null);
-  }
+  const authored = readAuthoredStyles(doc, targets, input, ownFile);
+  if (!authored) return "cannot-soft-reload";
   const timing = input.timing ? planSavedTiming(doc, ownFile, input.timing) : [];
   if (timing === null) return "cannot-soft-reload";
 
@@ -361,94 +472,30 @@ export function softReloadFrame(
   let pending: Promise<SoftReloadResult> | null = null;
   let builtDom = false;
 
+  const executeScript = () => {
+    if (win.MotionPathPlugin && win.gsap?.registerPlugin)
+      win.gsap.registerPlugin(win.MotionPathPlugin);
+    const s = doc.createElement("script");
+    s.textContent = `(function(){${script}\n})();`;
+    const before = doc.body.querySelectorAll("*").length + 1;
+    doc.body.appendChild(s);
+    // A script that builds DOM builds it again on every run; only a full load starts from the file.
+    // Not seen: text-only writes, nodes put in the head or a shadow root, and nodes added later.
+    builtDom = doc.body.querySelectorAll("*").length > before;
+    finalizeSoftReload(win, currentTime);
+    deferred?.(builtDom ? "cannot-soft-reload" : "applied");
+  };
+
   const doReload = () => {
     applyTimingPlan(timing);
-    const timelines = win.__timelines as Record<
-      string,
-      TweenLike & { kill?: () => void; clear?: () => void }
-    >;
-    if (timelines) {
-      for (const key of targetKeys) {
-        const tl = timelines[key];
-        if (!tl) continue;
-        try {
-          // kill() keeps the children, and the finalize seek renders this timeline until the rebind swaps it.
-          tl.clear?.();
-          tl.kill?.();
-        } catch {}
-        delete timelines[key];
-      }
-    }
-
-    // clearProps flushes GSAP's transform cache, so from() tweens read no stale end values, but it
-    // also clears the element's own style: save, clear, restore, then put back what the file authors.
-    const allTargets = [...targets.keys()];
-    if (allTargets.length > 0 && win.gsap?.set) {
-      // Another realm's nodes fail instanceof HTMLElement, so style access is duck-typed.
-      const saved = allTargets.map(
-        (el) => [el as HTMLElement, (el as HTMLElement).style.cssText] as const,
-      );
-      win.gsap.set(allTargets, { clearProps: "all" });
-      for (const [el, css] of saved) {
-        const s = el.style;
-        s.cssText = css;
-        const source = authored.get(el) ?? null;
-        restoreAuthoredStyle(s, source, targets.get(el)!);
-        // The saved cssText holds a mid-tween opacity, which a re-initialized tween would keep as its bound.
-        const opacity = source ? source.opacity : readStampedAuthoredOpacity(el);
-        if (opacity !== null) applyAuthoredInlineOpacity(s, opacity);
-      }
-    }
+    killTimelines(win, targetKeys);
+    resetTargetStyles(win, targets, authored);
     forgetLiveSets(targets);
     for (const stale of staleScripts) stale.remove();
-
-    const executeScript = () => {
-      if (win.MotionPathPlugin && win.gsap?.registerPlugin)
-        win.gsap.registerPlugin(win.MotionPathPlugin);
-      const s = doc.createElement("script");
-      s.textContent = `(function(){${script}\n})();`;
-      const before = doc.body.querySelectorAll("*").length + 1;
-      doc.body.appendChild(s);
-      // A script that builds DOM builds it again on every run; only a full load starts from the file.
-      // Not seen: text-only writes, nodes put in the head or a shadow root, and nodes added later.
-      builtDom = doc.body.querySelectorAll("*").length > before;
-      finalizeSoftReload(win, currentTime);
-      deferred?.(builtDom ? "cannot-soft-reload" : "applied");
-    };
-
     const needsMotionPath = /motionPath\s*[:{]/.test(script);
-    if (!needsMotionPath || win.MotionPathPlugin || !win.gsap) {
-      executeScript();
-      return;
-    }
+    if (!needsMotionPath || win.MotionPathPlugin || !win.gsap) return executeScript();
     pending = new Promise<SoftReloadResult>((resolve) => (deferred = resolve));
-    // A load already in flight is the one to wait for; a second plugin script re-flashes the frame.
-    if (win.__hfMotionPathPluginLoading) {
-      const started = Date.now();
-      const poll = win.setInterval(() => {
-        if (win.MotionPathPlugin) {
-          win.clearInterval(poll);
-          executeScript();
-        } else if (!win.__hfMotionPathPluginLoading || Date.now() - started > 10000) {
-          win.clearInterval(poll);
-          deferred?.("cannot-soft-reload");
-        }
-      }, 50);
-      return;
-    }
-    win.__hfMotionPathPluginLoading = true;
-    const pluginScript = doc.createElement("script");
-    pluginScript.src = previewMotionPathUrl(doc, win.gsap.version);
-    pluginScript.onload = () => {
-      win.__hfMotionPathPluginLoading = false;
-      executeScript();
-    };
-    // Running the script without the plugin would leave a motionPath tween that cannot play.
-    pluginScript.onerror = () => {
-      win.__hfMotionPathPluginLoading = false;
-      deferred?.("cannot-soft-reload");
-    };
-    doc.head.appendChild(pluginScript);
+    whenMotionPathLoaded(win, doc, executeScript, () => deferred?.("cannot-soft-reload"));
   };
 
   if (!runSuppressed(win, doReload) || builtDom) return "cannot-soft-reload";

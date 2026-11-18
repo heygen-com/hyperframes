@@ -40,14 +40,20 @@ export function findAuthoredElement(doc: Document, live: Element): Element | nul
   return live.id ? findByAttribute(doc, "id", live.id) : null;
 }
 
+// Both keys an element's style is filed under: its hf-id and its id.
+function styleKeys(el: Element): string[] {
+  const hfId = el.getAttribute("data-hf-id");
+  return [hfId ? `hf:${hfId}` : "", el.id ? `#${el.id}` : ""].filter(Boolean);
+}
+
 export function authoredStyles(html: string): Array<[string, string]> {
   const styles = new Map<string, string>();
-  for (const root of searchRoots(parseSavedSource(html))) {
-    for (const el of root.querySelectorAll("[data-hf-id], [id]")) {
-      const hfId = el.getAttribute("data-hf-id");
-      for (const key of [hfId ? `hf:${hfId}` : "", el.id ? `#${el.id}` : ""]) {
-        if (key && !styles.has(key)) styles.set(key, el.getAttribute("style") ?? "");
-      }
+  const elements = searchRoots(parseSavedSource(html)).flatMap((root) => [
+    ...root.querySelectorAll("[data-hf-id], [id]"),
+  ]);
+  for (const el of elements) {
+    for (const key of styleKeys(el)) {
+      if (!styles.has(key)) styles.set(key, el.getAttribute("style") ?? "");
     }
   }
   return [...styles];

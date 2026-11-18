@@ -179,7 +179,7 @@ const outgoingScripts = (doc: ParentNode, scriptText: string): string[] =>
 const SOFT_RELOAD_RESULTS = new Set<unknown>(["applied", "verify-failed", "cannot-soft-reload"]);
 
 /** The frame's reply is data: anything but exactly `{ result }` with a known result counts as a refusal. */
-export function sealedSoftReloadResult(reply: unknown): SoftReloadResult {
+function sealedSoftReloadResult(reply: unknown): SoftReloadResult {
   if (typeof reply !== "object" || reply === null) return "cannot-soft-reload";
   const keys = Object.keys(reply);
   const { result } = reply as { result?: unknown };
