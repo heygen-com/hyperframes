@@ -147,6 +147,7 @@ async function syncTimingEditPreview(
     onAsyncFailure: reloadPreview,
     currentTimeOverride: currentTime(),
     authoredHtml: outcome.after,
+    previousHtml: outcome.before,
     nestedFiles,
   });
   if (result === "cannot-soft-reload") reloadPreview();

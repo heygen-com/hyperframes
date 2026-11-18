@@ -221,6 +221,7 @@ function softReloadOrEscalate(
   origin: "preview_sync" | "sdk_refresh",
   authoredHtml?: string,
   nestedFiles?: Map<string, string> | null,
+  previousHtml?: string,
 ): void {
   // Seek the rebuilt timeline to the studio's own authoritative scrub position,
   // not the iframe's raw `__player.getTime()` — see the comment in
@@ -230,6 +231,7 @@ function softReloadOrEscalate(
     onAsyncFailure: reloadPreview,
     currentTimeOverride: currentTime,
     authoredHtml,
+    previousHtml,
     nestedFiles,
   });
   if (result === "applied") return;
@@ -286,6 +288,7 @@ export function applyPreviewSync(
       "preview_sync",
       result.after ?? undefined,
       nestedFiles,
+      result.before,
     );
   } else {
     reloadPreview();

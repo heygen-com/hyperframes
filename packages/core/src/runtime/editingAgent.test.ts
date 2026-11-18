@@ -202,6 +202,7 @@ describe("installEditingAgent", () => {
           "edit-element",
           "gsap-set",
           "patch-tweens",
+          "soft-reload",
         ],
       },
     });
@@ -525,6 +526,31 @@ describe("installEditingAgent", () => {
       agent.dispose();
       expect(console.error).toBe(own);
     });
+  });
+
+  it("re-runs a sent script through the port, and refuses a request carrying anything extra", async () => {
+    const script = `var __timelines = {}; __timelines["main"] = 1;`;
+    document.body.innerHTML = `<div data-composition-id="main"></div><script>${script}</script>`;
+    const frame = window as unknown as Record<string, unknown>;
+    Object.assign(frame, { gsap: { set: () => {} }, __timelines: { main: {} } });
+    frame.__hfForceTimelineRebind = () => {};
+    const port = connectedPort();
+    const params = { script, time: 0, sets: [], authored: [] };
+
+    const extra = { ...params, keys: ["main"] };
+    expect(await ask(port, { v: 1, id: 1, kind: "soft-reload", params: extra })).toMatchObject({
+      id: 1,
+      ok: false,
+    });
+    expect(document.querySelector("script")?.textContent).toBe(script);
+    // The sent script registers on a local, so the frame reads its timeline empty for now.
+    expect(await ask(port, { v: 1, id: 2, kind: "soft-reload", params })).toMatchObject({
+      id: 2,
+      ok: true,
+      result: { result: "verify-failed" },
+    });
+    expect(document.querySelector("script")?.textContent).toBe(`(function(){${script}\n})();`);
+    for (const key of ["gsap", "__timelines", "__hfForceTimelineRebind"]) delete frame[key];
   });
 
   it("answers computed styles for the element a selector names", async () => {

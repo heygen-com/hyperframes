@@ -35,6 +35,19 @@ export function findAuthoredElement(doc: Document, live: Element): Element | nul
   return live.id ? findByAttribute(doc, "id", live.id) : null;
 }
 
+export function authoredStyles(html: string): Array<[string, string]> {
+  const styles = new Map<string, string>();
+  for (const root of searchRoots(parseSavedSource(html))) {
+    for (const el of root.querySelectorAll("[data-hf-id], [id]")) {
+      const hfId = el.getAttribute("data-hf-id");
+      for (const key of [hfId ? `hf:${hfId}` : "", el.id ? `#${el.id}` : ""]) {
+        if (key && !styles.has(key)) styles.set(key, el.getAttribute("style") ?? "");
+      }
+    }
+  }
+  return [...styles];
+}
+
 export function findAuthoredElementById(doc: Document, live: Element): Element | null {
   return live.id ? findByAttribute(doc, "id", live.id) : null;
 }

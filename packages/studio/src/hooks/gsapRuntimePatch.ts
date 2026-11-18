@@ -10,7 +10,6 @@ import {
   type PatchTarget,
   type RuntimeTweenChange,
 } from "@hyperframes/core/runtime/patch-tween";
-import { recordLiveSet } from "../utils/softReloadTargets";
 
 export type { RuntimeTweenChange, SetPatchProps } from "@hyperframes/core/runtime/patch-tween";
 
@@ -46,9 +45,7 @@ export function patchRuntimeTweenInPlace(
     const target = reachablePreview(iframe);
     if (change.kind !== "global-set")
       return patchTween(target, selector, change, compositionId, deferSeek);
-    const el = applyGlobalSet(target, selector, change.props);
-    if (el) recordLiveSet(el, { ...change.props });
-    return el !== null;
+    return applyGlobalSet(target, selector, change.props) !== null;
   } catch {
     return false;
   }
