@@ -216,6 +216,9 @@ export interface InlineSubCompositionsOptions {
    */
   resolveHtml: (srcPath: string) => string | null;
 
+  /** The project-relative file `resolveHtml` read for a src; asset paths rebase from its folder. */
+  resolveFilePath?: (srcPath: string) => string | null;
+
   /**
    * Parse an HTML string into a Document. The returned object must expose
    * standard DOM APIs (querySelector, querySelectorAll, body, head, etc.).
@@ -393,6 +396,7 @@ export function inlineSubCompositions(
 ): InlineSubCompositionsResult {
   const {
     resolveHtml,
+    resolveFilePath,
     parseHtml,
     hostIdentityMap,
     rewriteInlineStyles = false,
@@ -564,11 +568,14 @@ export function inlineSubCompositions(
       warnUnknownEnumValues(innerRoot, mergedVariables, variablesCompId);
     }
 
+    const filePath = resolveFilePath?.(src) ?? src;
+    const chargeRebase = chargeEmitted && ((bytes: number) => chargeEmitted(src, bytes));
+
     // `<head>` <link>/<script src> are hoisted into the ROOT document, so they
     // need the same directory rewrite the body's [src]/[href] pass applies —
     // without it even the documented `../` form escapes the project and 404s.
     const resolveSubAssetPath = (raw: string | null): string =>
-      rewriteAssetPath(src, (raw || "").trim(), assetExists);
+      rewriteAssetPath(filePath, (raw || "").trim(), assetExists, chargeRebase);
 
     // Scope one sub-composition <style> body. scopeRootSelectors keeps the
     // sub-comp's html/body/:root rules from clobbering the host document (they
@@ -577,7 +584,7 @@ export function inlineSubCompositions(
       const sheetKey = JSON.stringify([src, raw]);
       let css = sheetsWithAssetUrls.get(sheetKey);
       if (css === undefined) {
-        css = rewriteCssAssetUrls(raw, src, assetExists);
+        css = rewriteCssAssetUrls(raw, filePath, assetExists, chargeRebase);
         sheetsWithAssetUrls.set(sheetKey, css);
       }
       if (!scopeCompId) {
@@ -695,12 +702,13 @@ export function inlineSubCompositions(
       : contentDoc.querySelectorAll("[src], [href], [srcset]");
     rewriteAssetPaths(
       assetEls,
-      src,
+      filePath,
       (el: Element, attr: string) => el.getAttribute(attr),
       (el: Element, attr: string, val: string) => {
         el.setAttribute(attr, val);
       },
       assetExists,
+      chargeRebase,
     );
 
     if (rewriteInlineStyles) {
@@ -709,12 +717,13 @@ export function inlineSubCompositions(
         : contentDoc.querySelectorAll("[style]");
       rewriteInlineStyleAssetUrls(
         styledEls,
-        src,
+        filePath,
         (el: Element) => el.getAttribute("style"),
         (el: Element, val: string) => {
           el.setAttribute("style", val);
         },
         assetExists,
+        chargeRebase,
       );
     }
 

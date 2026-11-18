@@ -63,7 +63,7 @@ function generatedTooLarge(file: string, bytes: number): string {
     );
   }
   return (
-    `Scripts and styles generated for sub-composition mounts, ending at "${file}", add up to ` +
+    `Scripts, styles and rebased asset paths generated for compositions, ending at "${file}", add up to ` +
     `${megabytes(bytes)}. One render generates at most ` +
     `${megabytes(MAX_EXPANDED_COMPOSITION_BYTES)} for its mounts. Merge small inline scripts ` +
     "and style rules, keep data-composition-id values short, or mount scenes fewer times."
