@@ -106,7 +106,6 @@ export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<Cl
   return manifest as ClipManifest;
 }
 
-/** The runtime clip tree's child-to-parent links; the reply is frame data, so each pair is checked. */
 export async function previewClipParents(iframe: HTMLIFrameElement): Promise<Map<string, string>> {
   const snapshot = await previewRequest(iframe, "runtime-snapshot", {});
   const pairs: unknown = snapshot?.clipParents;

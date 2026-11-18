@@ -47,7 +47,6 @@ export function usePreviewFirstFrameTelemetry(previewSlots: PreviewIframeSlot[])
           ...readPreviewComplexity(doc),
           studio_version: getBrowserSystemMeta().studio_version,
         });
-      // A sealed frame is counted from its document copy; the paint time is the one measured here.
       if (previewFrameOpaque(iframe)) void previewDocumentCopy(iframe).then(report);
       else report(iframe.contentDocument);
     },
