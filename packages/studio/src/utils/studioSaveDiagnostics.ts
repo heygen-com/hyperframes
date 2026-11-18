@@ -262,7 +262,6 @@ function heldFileMessage(body: string, path: string | undefined): string | null 
   }
 }
 
-/** A refused save's own words with the server's status, as createStudioSaveHttpError ends its message. */
 export const withStatus = (words: string, response: Response) => `${words} (${response.status})`;
 
 export async function heldFileWordsOf(response: Response, path: string): Promise<string | null> {
