@@ -1,13 +1,16 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { _setDownloadFetchForTests } from "@hyperframes/engine";
+import { GSAP_VENDOR_DIR_ENV } from "./bundledScripts.js";
 import {
   compileForRender,
   inlineExternalScripts,
   localizeRemoteFontFaces,
   MAX_REMOTE_FETCHES,
+  REMOTE_FETCH_DEADLINE_MS,
 } from "./htmlCompiler.js";
 
 /** Answers each request after `holdMs` unless its signal aborts first; records both. */
@@ -51,7 +54,16 @@ function project(head: string): string {
   return dir;
 }
 
-afterEach(() => _setDownloadFetchForTests());
+const realVendorDir = process.env[GSAP_VENDOR_DIR_ENV];
+afterEach(() => {
+  _setDownloadFetchForTests();
+  vi.restoreAllMocks();
+  if (realVendorDir === undefined) delete process.env[GSAP_VENDOR_DIR_ENV];
+  else process.env[GSAP_VENDOR_DIR_ENV] = realVendorDir;
+});
+const deadlineStarts = () =>
+  vi.mocked(AbortSignal.timeout).mock.calls.filter(([ms]) => ms === REMOTE_FETCH_DEADLINE_MS)
+    .length;
 
 describe("remote downloads at compile time", () => {
   // fails without the fix: every distinct address was downloaded, however many.
@@ -60,6 +72,22 @@ describe("remote downloads at compile time", () => {
     await expect(
       inlineExternalScripts(scriptTags(urls(MAX_REMOTE_FETCHES + 1, "js"))),
     ).rejects.toThrow(`links ${MAX_REMOTE_FETCHES + 1} remote scripts`);
+    expect(seen.requests).toEqual([]);
+  });
+
+  // fails without the fix: the host's copy that fails its tag's integrity is downloaded but was not counted.
+  it("counts a bundled script whose integrity sends it to the network", async () => {
+    const vendor = mkdtempSync(join(tmpdir(), "hf-gsap-vendor-"));
+    writeFileSync(join(vendor, "gsap.min.js"), "var gsap = 1;");
+    process.env[GSAP_VENDOR_DIR_ENV] = vendor;
+    const seen = serve("void 0;");
+    const html = scriptTags(urls(MAX_REMOTE_FETCHES, "js")).replace(
+      "<body>",
+      `<body><script src="${gsapCdnDist()}gsap.min.js" integrity="sha384-YQ=="></script>`,
+    );
+    await expect(inlineExternalScripts(html)).rejects.toThrow(
+      `links ${MAX_REMOTE_FETCHES + 1} remote scripts`,
+    );
     expect(seen.requests).toEqual([]);
   });
 
@@ -101,5 +129,19 @@ describe("remote downloads at compile time", () => {
       compileForRender(dir, join(dir, "index.html"), dir, { abortSignal: cancel.signal }),
     ).rejects.toThrow("cancelled");
     expect(seen.aborted).toBe(1);
+  });
+
+  // fails without the fix: the shared deadline started when compile began, downloads or not.
+  it("starts the shared deadline with the first download, never for a page without one", async () => {
+    vi.spyOn(AbortSignal, "timeout");
+    let startsAtRequest = -1;
+    serve("void 0;", { onRequest: () => (startsAtRequest = deadlineStarts()) });
+    const local = project("");
+    await compileForRender(local, join(local, "index.html"), local);
+    expect(deadlineStarts()).toBe(0);
+
+    const remote = project('<script src="https://cdn.example.com/a.js"></script>');
+    await compileForRender(remote, join(remote, "index.html"), remote);
+    expect([startsAtRequest, deadlineStarts()]).toEqual([1, 1]);
   });
 });
