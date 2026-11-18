@@ -28,6 +28,11 @@ interface CompositionInfo {
 
 const NON_RENDERED_TAGS = new Set(["script", "style", "link", "meta", "template"]);
 
+function parseDimension(value: string | null | undefined, fallback: number): number {
+  const parsed = Number(value ?? "");
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 function countRenderableDescendants(root: Element): number {
   return Array.from(root.querySelectorAll("*")).filter(
     (el) => !NON_RENDERED_TAGS.has(el.tagName.toLowerCase()),
@@ -61,8 +66,8 @@ export function parseCompositions(html: string, baseDir: string): CompositionInf
 
   compositionDivs.forEach((div) => {
     const id = div.getAttribute("data-composition-id") ?? "unknown";
-    const width = parseInt(div.getAttribute("data-width") ?? "1920", 10);
-    const height = parseInt(div.getAttribute("data-height") ?? "1080", 10);
+    const width = parseDimension(div.getAttribute("data-width"), 1920);
+    const height = parseDimension(div.getAttribute("data-height"), 1080);
     const compositionSrc = div.getAttribute("data-composition-src");
 
     // If this references an external sub-composition, parse that file
@@ -131,8 +136,8 @@ export function parseSubComposition(
   const compDiv = searchDocument.querySelector("[data-composition-id]");
 
   const id = compDiv?.getAttribute("data-composition-id") ?? fallbackId;
-  const width = parseInt(compDiv?.getAttribute("data-width") ?? String(fallbackWidth), 10);
-  const height = parseInt(compDiv?.getAttribute("data-height") ?? String(fallbackHeight), 10);
+  const width = parseDimension(compDiv?.getAttribute("data-width"), fallbackWidth);
+  const height = parseDimension(compDiv?.getAttribute("data-height"), fallbackHeight);
 
   // Count timed elements inside the sub-composition
   const searchRoot = compDiv ?? searchDocument;
