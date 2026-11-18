@@ -477,29 +477,6 @@ describe("registerPreviewRoutes", () => {
     }
   });
 
-  it("serves the seek reapply only into a preview with Studio edits, last in its body, never a capture", async () => {
-    const projectDir = createProjectDir();
-    const page = (box: string) =>
-      writeFileSync(
-        join(projectDir, "index.html"),
-        `<!doctype html><html><head></head><body><div id="card"${box}></div></body></html>`,
-      );
-    const app = new Hono();
-    registerPreviewRoutes(app, createAdapter(projectDir));
-    const url = "http://localhost/projects/demo/preview";
-    const reapply = "//# sourceURL=hyperframes://position-seek-reapply</script>";
-
-    page(' data-hf-studio-box-size="true"');
-    const html = await (await app.request(url)).text();
-    expect(html).toContain(reapply);
-    expect(html.indexOf(reapply)).toBeGreaterThan(html.indexOf('<div id="card"'));
-    expect(await (await app.request(`${url}?${PREVIEW_CAPTURE_PARAM}=1`)).text()).not.toContain(
-      reapply,
-    );
-    page("");
-    expect(await (await app.request(url)).text()).not.toContain(reapply);
-  });
-
   it("injects Studio GSAP motion manifest runtime into project preview", async () => {
     const projectDir = createProjectDir();
     writeFileSync(

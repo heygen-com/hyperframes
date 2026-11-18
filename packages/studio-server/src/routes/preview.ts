@@ -70,10 +70,6 @@ import {
   createStudioMotionRenderBodyScript,
   STUDIO_MOTION_PATH,
 } from "../helpers/studioMotionRenderScript.js";
-import {
-  createSealedPreviewSeekReapplyScript,
-  htmlHasStudioPositionEdits,
-} from "../helpers/manualEditsRenderScript.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { settledFileTag } from "../helpers/fileVersion.js";
 import {
@@ -419,12 +415,7 @@ export function injectStudioPreviewAugmentations(
       )
     : withFallback;
   const withPlugin = injectMotionPathPluginIfNeeded(withMotionDependencies, options.gsapBaseUrl);
-  const augmented = studioMotion
-    ? injectStudioMotionScript(withPlugin, studioMotion.script)
-    : withPlugin;
-  if (options.capture || !htmlHasStudioPositionEdits(augmented)) return augmented;
-  const reapply = `<script>${createSealedPreviewSeekReapplyScript()}\n//# sourceURL=hyperframes://position-seek-reapply</script>`;
-  return insertBeforeCloseTag(augmented, "body", reapply) ?? `${augmented}${reapply}`;
+  return studioMotion ? injectStudioMotionScript(withPlugin, studioMotion.script) : withPlugin;
 }
 
 async function transformPreviewHtml(
