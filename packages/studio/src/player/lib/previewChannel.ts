@@ -54,7 +54,15 @@ export function setFrameLoopStart(iframe: HTMLIFrameElement, seconds: number | n
 
 export const AGENT_PROBE_MS = 1_000;
 
+const agents = new WeakMap<EditingPortClient, boolean>();
+
 async function agentConnected(client: EditingPortClient): Promise<boolean> {
+  const known = agents.get(client);
+  if (known !== undefined) return known;
+  client.ready.then(
+    () => agents.set(client, true),
+    () => agents.set(client, false),
+  );
   let timer: ReturnType<typeof setTimeout> | undefined;
   const probe = new Promise<boolean>(
     (resolve) => (timer = setTimeout(resolve, AGENT_PROBE_MS, false)),
@@ -67,6 +75,7 @@ async function agentConnected(client: EditingPortClient): Promise<boolean> {
     probe,
   ]);
   clearTimeout(timer);
+  if (!agents.has(client)) agents.set(client, connected);
   return connected;
 }
 
