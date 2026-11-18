@@ -2148,7 +2148,7 @@ async function embedLocalFontFaces(
     const dataUri = dataUriByPath.get(localPath);
     if (!dataUri) return source;
     const inlined = `url("${dataUri}")`;
-    if (budget.tryChargeGenerated(inlined.length - source.length)) return inlined;
+    if (budget.chargeGeneratedIfItFits(inlined.length - source.length)) return inlined;
     if (!warned) {
       warned = true;
       log.warn(
