@@ -1306,33 +1306,34 @@ class Engine {
     return this.commit(group, extra);
   }
 
-  /** The files `changes` would delete that a page it leaves in the project still names: an undo or a restore keeps
-   * them, so no page is left naming a file that is gone. */
   async stillNamed(changes: readonly (readonly [string, string | null])[]): Promise<Set<string>> {
     const deleting = changes.flatMap(([path, hash]) => (hash === null ? [path] : []));
     const named = new Set<string>();
     if (!deleting.length) return named;
-    const after = new Map(
-      [...this.tracked].map(([path, file]) => [path, file.hash as string | null]),
-    );
-    for (const [path, hash] of changes) after.set(path, hash);
-    for (const [page, hash] of after) {
-      if (hash === null || !this.studioWouldWrite(page) || !canNameFiles(page)) continue;
+    for (const [page, hash] of this.pagesLeftBy(changes)) {
       const text = await this.pageText(page, hash);
-      for (const path of deleting)
-        if (text !== null && fileNames(page, text, path)) named.add(path);
+      for (const path of deleting) if (fileNames(page, text, path)) named.add(path);
     }
     return named;
   }
 
-  /** A page's text at `hash`, from the history's copy, else the project's file; null when neither can be read. */
-  async pageText(page: string, hash: string): Promise<string | null> {
+  pagesLeftBy(changes: readonly (readonly [string, string | null])[]): [string, string][] {
+    const after = new Map(
+      [...this.tracked].map(([path, file]) => [path, file.hash as string | null]),
+    );
+    for (const [path, hash] of changes) after.set(path, hash);
+    return [...after].filter(
+      (entry): entry is [string, string] =>
+        entry[1] !== null && this.studioWouldWrite(entry[0]) && canNameFiles(entry[0]),
+    );
+  }
+
+  async pageText(page: string, hash: string): Promise<string> {
     try {
       if (this.blobs.has(hash)) return (await this.blobs.read(hash)).toString("utf-8");
       return readFileSync(join(this.dir, page), "utf-8");
     } catch {
-      // expected: a page that cannot be read names nothing the write must keep.
-      return null;
+      return "";
     }
   }
 
