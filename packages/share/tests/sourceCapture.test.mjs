@@ -329,3 +329,28 @@ test("scratch files and wildcard exclusions do not change the snapshot", async (
   await writeFile(join(root, "data.json"), "{}");
   assert.notEqual(await projectFingerprint(root), before);
 });
+
+test("editable source omits credential stores while Keynote, media and ordinary config files travel", async (t) => {
+  const root = await project({
+    "index.html": "page",
+    ".config/gh/hosts.yml": "fixture",
+    ".config/gcloud/state.db": "fixture",
+    "assets/.DOCKER/config.json": "{}",
+    ".gnupg/keys/data": "fixture",
+    ".kube/config": "fixture",
+    ".azure/settings": "fixture",
+    ".config/themes/colors.json": "{}",
+    "assets/deck.key": "slides",
+    ".media/video/clip.mp4": "clip",
+  });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  assert.deepEqual(
+    captured(await captureProject(root)).manifest.document.files.map(({ path }) => path),
+    [".config/themes/colors.json", ".media/video/clip.mp4", "assets/deck.key", "index.html"],
+  );
+  await symlink(".config/gh/hosts.yml", join(root, "notes.txt"));
+  assert.deepEqual(await captureProject(root), {
+    at: "problems",
+    problems: [{ path: "notes.txt", problem: "symlink" }],
+  });
+});

@@ -1,10 +1,18 @@
 {
-  "policy_version": "portable-source-v4",
+  "policy_version": "portable-source-v12",
   "manifest": {
     "format_version": 1,
     "entrypoint": "index.html",
-    "fields": ["format_version", "entrypoint", "files"],
-    "file_fields": ["path", "sha256", "size"],
+    "fields": [
+      "format_version",
+      "entrypoint",
+      "files"
+    ],
+    "file_fields": [
+      "path",
+      "sha256",
+      "size"
+    ],
     "sha256": "64 lowercase hex characters: the SHA-256 of the file's exact bytes",
     "size": "the file's byte length, an integer from 0 to 9007199254740991 (2^53 - 1, the largest integer every JSON client reads exactly)",
     "same_digest_same_size": "two entries with the same sha256 must have the same size",
@@ -23,16 +31,115 @@
     "table": "unicode-15.1.0.json",
     "assigned_only": "every code point must be assigned in Unicode 15.1; unassigned and future code points are refused",
     "normalization": "every path must already be NFC",
-    "comparison_key": "NFC(full_casefold(NFC(segment))), with default full case folding (CaseFolding.txt status C and F)"
+    "ignorable_code_points": [
+      [
+        "200C",
+        "200F"
+      ],
+      [
+        "202A",
+        "202E"
+      ],
+      [
+        "206A",
+        "206F"
+      ],
+      [
+        "FEFF",
+        "FEFF"
+      ]
+    ],
+    "ignorable": "code points HFS+ skips when it compares two names (Apple TN1150): zero-width non-joiner and joiner, directional marks, embeddings and overrides, deprecated format controls and the byte order mark, as inclusive [first, last] hex ranges. They stay legal in a path (an emoji ZWJ sequence, a Persian or Indic name with ZWNJ), but a segment's comparison key drops them: .git with U+200C after the g keys as .git, and two names that differ only by them collide",
+    "comparison_key": "NFC(full_casefold(NFC(segment with every ignorable_code_points character removed))), with default full case folding (CaseFolding.txt status C and F)"
   },
   "path": {
     "max_path_bytes": 1024,
     "max_segment_bytes": 240,
     "separator": "/",
     "forbidden_characters": "<>:\"|?*\\",
-    "reserved_segment_regex": "(?:con|prn|aux|nul|com[1-9\u00b9\u00b2\u00b3]|lpt[1-9\u00b9\u00b2\u00b3])(?:\\..*)?",
+    "reserved_segment_regex": "(?:con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\\..*)?",
     "reserved_segment_match": "full match against each segment's comparison key, so CON, Con.txt and nul.tar.gz are all reserved",
-    "canonical_spelling_roots": [".media", ".hyperframes"],
+    "canonical_spelling_roots": [
+      ".media",
+      ".hyperframes"
+    ],
+    "short_name_alias_names": [
+      ".agent",
+      ".agents",
+      ".aider.conf.yaml",
+      ".aider.conf.yml",
+      ".amazonq",
+      ".augment",
+      ".aws",
+      ".azure",
+      ".cache",
+      ".claude",
+      ".cline",
+      ".clinerules",
+      ".codex",
+      ".config",
+      ".continue",
+      ".continuerc.json",
+      ".crush",
+      ".crush.json",
+      ".cursor",
+      ".devcontainer",
+      ".devcontainer.json",
+      ".docker",
+      ".ds_store",
+      ".env",
+      ".envrc",
+      ".factory",
+      ".fleet",
+      ".gemini",
+      ".git",
+      ".git-credentials",
+      ".gitattributes",
+      ".gitconfig",
+      ".github",
+      ".gitmodules",
+      ".gitpod.yml",
+      ".gnupg",
+      ".grok",
+      ".hg",
+      ".hyperframes",
+      ".idea",
+      ".idx",
+      ".junie",
+      ".kilocode",
+      ".kiro",
+      ".kube",
+      ".lock",
+      ".mcp.json",
+      ".media",
+      ".netrc",
+      ".next",
+      ".npmrc",
+      ".opencode",
+      ".openhands",
+      ".parcel-cache",
+      ".pypirc",
+      ".qoder",
+      ".qwen",
+      ".roo",
+      ".ssh",
+      ".svn",
+      ".thumbnails",
+      ".trae",
+      ".transcode-cache",
+      ".turbo",
+      ".viral-clone",
+      ".vite",
+      ".vs",
+      ".vscode",
+      ".waveform-cache",
+      ".windsurf",
+      ".yarnrc",
+      ".yarnrc.yml",
+      ".zed"
+    ],
+    "short_name_alias_shape": "([^~]+)~[0-9]+(?:\\.[^.]{1,3})?",
+    "short_name_alias_match": "a segment is a Windows 8.3 short name of a listed name when its comparison key full-matches short_name_alias_shape and the captured stem is a prefix of that name without its leading dot, or of that name without its leading dot and without the dots before its extension, at least 2 characters long (the whole name when shorter) and at most 6, so GIT~1, git~12, CLAUDE~1, HYPERF~2 and AIDERC~1.YML (.aider.conf.yml) are refused. The names are the leading-dot names that canonical_spelling_roots and the reject rules spell out, except inside .hyperframes/, where every file not named is refused already, plus .github, whose hooks, copilot and agents folders are refused. Stored reads use stored_manifest.legacy_short_name_alias_names in place of these names. Short names of other names travel (photo~2.jpg, REPORT~1.TXT). Windows' hashed short names (two characters, four hex digits, ~N) are not covered: a Windows install refuses a folder whose name on disk differs from the path's",
     "checks": [
       {
         "code": "path_empty",
@@ -60,11 +167,11 @@
       },
       {
         "code": "path_empty_segment",
-        "rule": "no empty segment ('a//b', a trailing '/')"
+        "rule": "no empty segment ('a//b', a trailing '/'), and none made only of ignorable_code_points"
       },
       {
         "code": "path_dot_segment",
-        "rule": "no '.' or '..' segment"
+        "rule": "no '.' or '..' segment, also once its ignorable_code_points are removed"
       },
       {
         "code": "segment_too_long",
@@ -77,6 +184,10 @@
       {
         "code": "reserved_name",
         "rule": "no segment matches reserved_segment_regex"
+      },
+      {
+        "code": "segment_short_name",
+        "rule": "no segment is a Windows 8.3 short name of a short_name_alias_names entry (short_name_alias_match)"
       },
       {
         "code": "reserved_path_alias",
@@ -121,7 +232,7 @@
       "regex": "\\.media/manifest\\.jsonl",
       "client_action": "exclude",
       "server_action": "reject",
-      "basis": "Generated media metadata that the project does not use for preview or rendering"
+      "basis": "The media writer's ledger: preview and render never read it, and Cutroom rewrites it whole in another schema, so a pushed copy would be overwritten rather than kept"
     },
     {
       "id": "unfinished-writes",
@@ -139,10 +250,10 @@
     },
     {
       "id": "agent-client-state",
-      "regex": "(?:[^/]+/)*(?:\\.claude|\\.codex|\\.agents|\\.cursor|\\.vscode|\\.idea)(?:/.*)?",
+      "regex": "(?:[^/]+/)*(?:\\.claude|\\.codex|\\.agents|\\.agent|_agents|_agent|\\.qoder|\\.opencode|\\.grok|\\.cursor|\\.vscode|\\.idea|\\.gemini|\\.qwen|\\.kiro|\\.windsurf|\\.continue|\\.roo|\\.kilocode|\\.cline|\\.clinerules|\\.zed|\\.amazonq|\\.junie|\\.augment|\\.trae|\\.factory|\\.crush|\\.idx|\\.fleet|\\.openhands|\\.vs)(?:/.*)?",
       "client_action": "exclude",
       "server_action": "reject",
-      "basis": "Agent and IDE state at any depth; Desktop vendors .claude/skills into every project and regenerates it"
+      "basis": "Agent and IDE state at any depth, which agents and editors load MCP servers, hooks, tasks and settings from (Visual Studio its MCP servers from .vs/mcp.json); Desktop vendors .claude/skills into every project and regenerates it. Antigravity loads hooks and MCP servers from any of .agents, .agent, _agents and _agent"
     },
     {
       "id": "dependencies-and-git",
@@ -150,6 +261,20 @@
       "client_action": "exclude",
       "server_action": "reject",
       "basis": "Version control and installed dependencies at any depth"
+    },
+    {
+      "id": "git-directory-head",
+      "regex": "(?:[^/]+/)*head",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "A file named HEAD at any depth: git treats a folder holding HEAD with objects/ and refs/ (or a commondir file) as a git directory whatever the folder is called, and reads its config, hooks and info/attributes. Without HEAD no folder is one"
+    },
+    {
+      "id": "work-tree-config",
+      "regex": "(?:[^/]+/)*(?:\\.gitattributes|\\.gitmodules|\\.mcp\\.json|opencode\\.jsonc?|\\.?crush\\.json|\\.aider\\.conf\\.ya?ml|\\.gitpod\\.yml|\\.continuerc\\.json|\\.devcontainer(?:\\.json|/.*)?|\\.github/(?:hooks|copilot|agents)(?:/.*)?)",
+      "client_action": "exclude",
+      "server_action": "reject",
+      "basis": "Files in the work tree that name commands, at any depth: git reads .gitattributes and .gitmodules, an agent starts the servers .mcp.json, opencode.json and crush.json name and the lint and test commands .aider.conf.yml names, an editor runs the lifecycle commands in .devcontainer, Gitpod the tasks in .gitpod.yml and Continue the servers in .continuerc.json, and Copilot runs the hooks under .github/hooks and .github/copilot and the servers its .github/agents profiles name"
     },
     {
       "id": "build-caches",
@@ -174,7 +299,7 @@
     },
     {
       "id": "credential-files",
-      "regex": "(?:[^/]+/)*(?:\\.netrc|\\.pypirc|\\.git-credentials|[^/]*\\.(?:pem|p12|pfx)|id_rsa[^/]*|id_ed25519[^/]*|(?:\\.ssh|\\.aws)(?:/.*)?)",
+      "regex": "(?:[^/]+/)*(?:\\.netrc|_netrc|\\.pypirc|\\.git-credentials|\\.gitconfig|pip\\.ini|[^/]*\\.(?:pem|p12|pfx)|id_(?:rsa|dsa|ecdsa|ed25519)[^/]*|(?:\\.ssh|\\.aws|\\.gnupg|\\.docker|\\.kube|\\.azure|\\.config/(?:gcloud|gh))(?:/.*)?)",
       "client_action": "exclude",
       "server_action": "reject",
       "basis": "Credential files by name at any depth. *.key is deliberately absent: Keynote decks are plausible project sources"
@@ -296,26 +421,75 @@
     "project_json": "Root project.json is portable project content and is included. It is not sync identity: the owner workspace, composition, base snapshot, revision and receipts live outside the inventory, never in project.json.",
     "capture_preconditions": "Do not capture while .hyperframes/history-turn.json exists (an agent turn is open) or while .hyperframes/project.lock is held.",
     "render_outputs": "Leave out every path listed in .hyperframes/render-outputs.json: render outputs written outside renders/ are recorded there, and the server cannot know them.",
-    "complete_capture": "A file the client cannot read fails the capture; it never becomes a deletion. The exclusions above and the symlinks client_symlinks skips are the only files left out.",
-    "symlinks": "Symlinks and special files fail the capture, listing them; they are neither followed nor skipped, except the symlinks client_symlinks skips.",
+    "complete_capture": "A file the client cannot read fails the capture; it never becomes a deletion. The exclusions above, and the symlinks and special files client_symlinks leaves out while the base snapshot lists nothing at or below them, are the only files left out.",
+    "symlinks": "Symlinks and special files are read as client_symlinks says: the way the HyperFrames CLI's cloud render packs a project.",
     "empty_directories": "Empty directories are not represented. Pull never deletes a local empty directory."
   },
   "client_prefilter": {
-    "names": ["Icon\r"],
+    "names": [
+      "Icon\r"
+    ],
     "rule": "skip a file whose last segment is one of these before running any path check; macOS writes 'Icon\\r' for a folder with a custom icon, and the carriage return would otherwise fail the whole capture with path_invalid_character"
   },
   "client_symlinks": {
-    "default": "fail_capture",
-    "skip_prefixes": ["assets/podcast/"],
+    "default": "as_cloud_render",
+    "skip_prefixes": [
+      "assets/podcast/"
+    ],
     "match": "a symlink whose folded path (each segment replaced by its comparison key, as for rules) starts with a listed prefix, at any depth below it",
-    "rule": "skip such a symlink instead of failing the capture, and on Pull leave such a local symlink in place as local state; a regular file under the prefix is captured like any other, and every other symlink or special file fails the capture",
+    "rule": "skip such a symlink, and on Pull leave such a local symlink in place as local state; a regular file under the prefix is captured like any other",
+    "as_cloud_render": "every other symlink is read the way the HyperFrames CLI's cloud render packs a project: a link to a regular file is captured as that file, under the link's path, unless the file is outside the project and either in a private location (an env file, Git data, a hidden, system or home app-data folder) or reached by a link the project received from someone else; a link to a folder, a broken link, a link to such a private file and a special file are left out, but only while the base snapshot lists nothing at or below the path: once it does, each fails the capture instead (a broken link as unreadable), so a capture never becomes a deletion. Pull replaces a captured link with the file it receives, never writing through it",
     "basis": "Desktop's podcast intake links the original camera files, which live outside the project, under assets/podcast/, and the page plays the transcodes under .hyperframes/prepared-assets/podcast/; real files there, such as the joins under assets/podcast/joins/, travel normally"
   },
   "stored_manifest": {
     "legacy_rule_regexes": {
       "agent-client-state": "(?:[^/]+/)*(?:\\.claude|\\.agents|\\.cursor|\\.vscode|\\.idea)(?:/.*)?",
-      "nested-hyperframes-state": "(?!)"
+      "work-tree-config": "(?!)",
+      "git-directory-head": "(?!)",
+      "nested-hyperframes-state": "(?!)",
+      "credential-files": "(?:[^/]+/)*(?:\\.netrc|\\.pypirc|\\.git-credentials|[^/]*\\.(?:pem|p12|pfx)|id_rsa[^/]*|id_ed25519[^/]*|(?:\\.ssh|\\.aws)(?:/.*)?)"
     },
-    "rule": "Only stored snapshot reads use each listed rule's regex in place of its current one, to retain immutable manifest digests: agent-client-state its v3 regex, and nested-hyperframes-state, added after v4, none. New captures and uploads use the current rules. Clients never install excluded paths; the server never signs their download URLs."
+    "legacy_short_name_alias_names": [
+      ".agent",
+      ".agents",
+      ".aws",
+      ".cache",
+      ".claude",
+      ".codex",
+      ".cursor",
+      ".ds_store",
+      ".env",
+      ".envrc",
+      ".git",
+      ".git-credentials",
+      ".gitattributes",
+      ".gitmodules",
+      ".grok",
+      ".hg",
+      ".hyperframes",
+      ".idea",
+      ".lock",
+      ".mcp.json",
+      ".media",
+      ".netrc",
+      ".next",
+      ".npmrc",
+      ".opencode",
+      ".parcel-cache",
+      ".pypirc",
+      ".qoder",
+      ".ssh",
+      ".svn",
+      ".thumbnails",
+      ".transcode-cache",
+      ".turbo",
+      ".viral-clone",
+      ".vite",
+      ".vscode",
+      ".waveform-cache",
+      ".yarnrc",
+      ".yarnrc.yml"
+    ],
+    "rule": "Only stored snapshot reads use each listed rule's regex in place of its current one, and the v10 short_name_alias_names in place of the current ones, to retain immutable manifest digests: agent-client-state its v3 regex, and work-tree-config, added in v7, git-directory-head, added in v9, and nested-hyperframes-state, added in v10, none. The credential-files rule keeps its v11 regex. New captures and uploads use the current rules and short names. Clients never install, and the server never signs a download URL for, a path a current rule excludes or a segment that is a current short name."
   }
 }

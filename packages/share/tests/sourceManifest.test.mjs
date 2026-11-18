@@ -30,11 +30,11 @@ function refusal(run) {
   return null;
 }
 
-test("the vectors are portable-source-v4's, and there are vectors of every kind", () => {
-  assert.equal(vectors.policy_version, "portable-source-v4");
+test("the vectors are portable-source-v12's, and there are vectors of every kind", () => {
+  assert.equal(vectors.policy_version, "portable-source-v12");
   assert.deepEqual(
     [vectors.valid.length, vectors.invalid.length, vectors.limits.length, vectors.stored.length],
-    [11, 147, 5, 8],
+    [13, 231, 5, 8],
   );
 });
 

@@ -1,9 +1,9 @@
 // @ts-check
-// Validate snapshot paths in the order defined by the bundled portable-source-v4 policy.
+// Validate source manifests against the bundled sync contract.
 import { readContract } from "./contract.mjs";
-import { UNICODE_VERSION, allAssigned, comparisonKey, nfc } from "./unicode.mjs";
+import { UNICODE_VERSION, allAssigned, comparisonKey, nfc, withoutIgnorable } from "./unicode.mjs";
 
-const PATH_POLICY_VERSION = "portable-source-v4";
+const PATH_POLICY_VERSION = "portable-source-v12";
 
 /** @typedef {import("./types.js").PathRule} PathRule @typedef {import("./types.js").PolicyDocument} PolicyDocument */
 
@@ -26,6 +26,25 @@ const whole = (pattern) => new RegExp(`^(?:${pattern})$`, "su");
 /** @param {string} text */
 const escaped = (text) => text.replace(/[\\\]^-]/g, "\\$&");
 
+/** Every stem of a Windows 8.3 short name of `names`: a prefix of each name, its leading dot dropped, 2 to 6 long
+ * (the whole name when shorter), also with the dots before its extension dropped, as Windows shortens
+ * the name .aider.conf.yml to AIDERC~1.YML. @param {readonly string[]} names */
+function shortNameStems(names) {
+  /** @type {Set<string>} */
+  const stems = new Set();
+  for (const name of names) {
+    const bare = comparisonKey(name).replace(/^\./, "");
+    const dot = bare.lastIndexOf(".");
+    const base = dot > 0 ? bare.slice(0, dot).replaceAll(".", "") : bare;
+    for (const spelled of [bare, base]) {
+      const longest = Math.min(6, spelled.length);
+      for (let length = Math.min(2, longest); length <= longest; length++)
+        stems.add(spelled.slice(0, length));
+    }
+  }
+  return stems;
+}
+
 /** @param {PolicyDocument} document */
 function compile(document) {
   if (document.policy_version !== PATH_POLICY_VERSION)
@@ -40,6 +59,10 @@ function compile(document) {
     if ((rule.server_action === "allow") !== (rule.client_action === "include"))
       throw new Error(`path rule ${rule.id}: the server allows exactly what clients include`);
   const limits = document.path;
+  const legacy = document.stored_manifest.legacy_rule_regexes;
+  for (const id of Object.keys(legacy))
+    if (!document.rules.some((rule) => rule.id === id))
+      throw new Error(`path policy's stored_manifest names no rule ${id}`);
   return {
     limits,
     invalidCharacter: new RegExp(
@@ -47,26 +70,20 @@ function compile(document) {
       "u",
     ),
     reservedSegment: whole(limits.reserved_segment_regex),
+    shortNameShape: whole(limits.short_name_alias_shape),
+    shortNameStems: shortNameStems(limits.short_name_alias_names),
+    storedShortNameStems: shortNameStems(document.stored_manifest.legacy_short_name_alias_names),
     canonicalRoots: new Map(
       limits.canonical_spelling_roots.map((root) => [comparisonKey(root), root]),
     ),
     rules: document.rules.map((rule) => ({ rule, pattern: whole(rule.regex) })),
-    storedRules: storedRules(document),
+    storedRules: document.rules.map((rule) => ({
+      rule,
+      pattern: whole((Object.hasOwn(legacy, rule.id) && legacy[rule.id]) || rule.regex),
+    })),
     prefilter: new Set(document.client_prefilter.names),
     symlinkPrefixes: document.client_symlinks.skip_prefixes,
   };
-}
-
-/** Each rule the stored manifest section lists matches by its legacy regex in a stored snapshot read.
- * @param {PolicyDocument} document */
-function storedRules(document) {
-  const legacy = new Map(Object.entries(document.stored_manifest.legacy_rule_regexes));
-  const unknown = [...legacy.keys()].filter((id) => !document.rules.some((rule) => rule.id === id));
-  if (unknown.length) throw new Error(`path policy's stored_manifest names no rule ${unknown}`);
-  return document.rules.map((rule) => ({
-    rule,
-    pattern: whole(legacy.get(rule.id) ?? rule.regex),
-  }));
 }
 
 /** @type {ReturnType<typeof compile> | null} */
@@ -98,17 +115,26 @@ function checkSpelling(path) {
   if (path.startsWith("/")) throw new PathViolation("path_not_relative", path);
   return checkSegments(path, limits);
 }
+
 /** @param {string} path @param {PolicyDocument["path"]} limits */
 function checkSegments(path, limits) {
   const segments = path.split("/");
-  if (segments.some((segment) => !segment)) throw new PathViolation("path_empty_segment", path);
-  if (segments.some((segment) => segment === "." || segment === ".."))
+  const bare = segments.map(withoutIgnorable);
+  if (bare.some((segment) => !segment)) throw new PathViolation("path_empty_segment", path);
+  if (bare.some((segment) => segment === "." || segment === ".."))
     throw new PathViolation("path_dot_segment", path);
   if (segments.some((segment) => Buffer.byteLength(segment, "utf8") > limits.max_segment_bytes))
     throw new PathViolation("segment_too_long", path);
   if (segments.some((segment) => segment.endsWith(".") || segment.endsWith(" ")))
     throw new PathViolation("segment_trailing_dot_or_space", path);
   return segments;
+}
+
+/** Whether a segment's comparison key is a Windows 8.3 short name (GIT~1) of a name the policy refuses.
+ * @param {string} key @param {ReadonlySet<string>} [stems] */
+function isShortNameAlias(key, stems = policy().shortNameStems) {
+  const stem = policy().shortNameShape.exec(key)?.[1];
+  return stem !== undefined && stems.has(stem);
 }
 
 /** `path` unchanged when every client can store it and the policy lets it travel; throws PathViolation otherwise,
@@ -118,8 +144,12 @@ export function validatePath(path, stored = false) {
   const segments = checkSpelling(path);
   const keys = segments.map(comparisonKey);
   const { reservedSegment, canonicalRoots } = policy();
-  const rules = stored ? policy().storedRules : policy().rules;
+  const { rules, stems } = stored
+    ? { rules: policy().storedRules, stems: policy().storedShortNameStems }
+    : { rules: policy().rules, stems: policy().shortNameStems };
   if (keys.some((key) => reservedSegment.test(key))) throw new PathViolation("reserved_name", path);
+  if (keys.some((key) => isShortNameAlias(key, stems)))
+    throw new PathViolation("segment_short_name", path);
   const root = canonicalRoots.get(keys[0] ?? "");
   if (root !== undefined && segments[0] !== root)
     throw new PathViolation("reserved_path_alias", path);
@@ -166,7 +196,7 @@ function notePrefix(seen, path, { prefix, key, isFile }) {
 /** The registry's `client_prefilter`: a name (macOS's `Icon\r`) skipped before any path check. @param {string} name */
 export const prefiltered = (name) => policy().prefilter.has(name);
 
-/** The registry's `client_symlinks`: a link under `assets/podcast/` is skipped instead of failing the capture.
+/** The registry's `client_symlinks.skip_prefixes`: a link under `assets/podcast/` is skipped, never followed.
  * @param {string} path */
 export const skippedSymlink = (path) =>
   policy().symlinkPrefixes.some((prefix) => foldedPath(path).startsWith(prefix));
@@ -200,3 +230,12 @@ export function excludedFolder(dir) {
       return !(prefix.startsWith(`${folded}/`) || `${folded}/`.startsWith(prefix));
     });
 }
+
+/** Whether a segment of `path` is a Windows short name of a name the current policy refuses. @param {string} path */
+const hasShortNameAlias = (path) =>
+  path.split("/").some((segment) => isShortNameAlias(comparisonKey(segment)));
+
+/** Whether the current policy lets `path` reach a disk: a rule includes it and no segment is a current short name,
+ * which a stored read, holding the older names, may still list. @param {string} path */
+export const travels = (path) =>
+  classifyPath(path).client_action === "include" && !hasShortNameAlias(path);

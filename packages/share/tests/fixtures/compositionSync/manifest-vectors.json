@@ -1,6 +1,6 @@
 {
-  "policy_version": "portable-source-v4",
-  "about": "Golden vectors for the composition sync manifest. valid: build the canonical bytes from `manifest`; UTF-8 encoding `canonical` gives those bytes and `manifest_sha256` is their SHA-256. invalid: validating `manifest` fails with `error.code` (and `error.rule` for path-policy rules). limits: with `limits`, the first exceeded limit in the order file_count, file_size, project_size, manifest_size is `limit` (null: admitted). stored: base64 `body` is stored manifest bytes; reading them requires they are already canonical.",
+  "policy_version": "portable-source-v12",
+  "about": "Golden vectors for the composition sync manifest. Desktop Studio, Cutroom and the server each run all of them. valid: build the canonical bytes from `manifest`; UTF-8 encoding `canonical` gives those bytes and `manifest_sha256` is their SHA-256. invalid: validating `manifest` fails with `error.code` (and `error.rule` for path-policy rules). limits: with `limits`, the first exceeded limit in the order file_count, file_size, project_size, manifest_size is `limit` (null: admitted). stored: base64 `body` is stored manifest bytes; reading them requires they are already canonical.",
   "valid": [
     {
       "name": "minimal",
@@ -296,11 +296,6 @@
             "size": 10
           },
           {
-            "path": ".gitattributes",
-            "sha256": "618cd5b83d62060ba3d027e314a21ceaf75d36067ff820db126642944145393e",
-            "size": 14
-          },
-          {
             "path": ".hyperframesignore",
             "sha256": "4f7382fe2d1d64d27e88900b9997a85f9d9fa42062f04aab7426b03cabba7497",
             "size": 18
@@ -332,10 +327,10 @@
           }
         ]
       },
-      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\".gitattributes\",\"sha256\":\"618cd5b83d62060ba3d027e314a21ceaf75d36067ff820db126642944145393e\",\"size\":14},{\"path\":\".gitignore\",\"sha256\":\"bc37d034bad564583790a46f19d807abfe519c5671395fd494d8cce506c42947\",\"size\":10},{\"path\":\".hyperframes/brand-kit.json\",\"sha256\":\"dda44abb548e99aad3ec261c6b87c5f545eb09f8fb1b261d3c75a7cfc21bfa94\",\"size\":27},{\"path\":\".hyperframes/caption-skin.html\",\"sha256\":\"a2e2d9315c6a9e3437f752e69a8514d8c662f53a9ade33db2686fa9affaa97b2\",\"size\":30},{\"path\":\".hyperframes/studio-manual-edits.json\",\"sha256\":\"450ba94d0f2fbb1ac30cc5e1dcae043e2f7f970357984a6bdfaf2f2087904fe0\",\"size\":37},{\"path\":\".hyperframes/studio-motion.json\",\"sha256\":\"205f890f2a576608d6f009ef4738fc2b81df387329f2e20bdf67356c5365b55d\",\"size\":31},{\"path\":\".hyperframes/transcription.json\",\"sha256\":\"bc0b9ef4215d81d0ae7adabc471993f63ac70a24a693f4f91b4c18a103dd9ba1\",\"size\":31},{\"path\":\".hyperframes/transcripts/a.json\",\"sha256\":\"7ffb8ceda0a4b872cc4a9ba63bdd040a70631e3343157454a95206f2fc9f27cf\",\"size\":31},{\"path\":\".hyperframes/transcripts/nested/b.json\",\"sha256\":\"a5222ca2063d161da3e06294d2ab5c6c32d7692a1177bb0f79ddde4001deb47b\",\"size\":38},{\"path\":\".hyperframesignore\",\"sha256\":\"4f7382fe2d1d64d27e88900b9997a85f9d9fa42062f04aab7426b03cabba7497\",\"size\":18},{\"path\":\".media/CREDITS.md\",\"sha256\":\"4056dedc9ad51868f89af43f34035af851bb566f6d30f804e57551da7ec0dd9c\",\"size\":17},{\"path\":\".media/images/image_001.png\",\"sha256\":\"35037cf8cd8a2d3e2b20a04563ecba015e6404678af5631c0e9e3a50fec200de\",\"size\":27},{\"path\":\".media/index.md\",\"sha256\":\"8a925d0e3cc08cd0ed4601d0f94e8a781881d1b3034d07fe11cc02d296a2ad43\",\"size\":15},{\"path\":\".media/preferences.json\",\"sha256\":\"888316c0c00d9d6929423a311f302500134d74315226a6a78a7a73bf66b4ef58\",\"size\":23},{\"path\":\".media/video/unused-take.mp4\",\"sha256\":\"a3e29b7ba3f66207df6182ec09ed749df364378cf2cfb8cf589163a6cdac93e2\",\"size\":28},{\"path\":\"CLAUDE.md\",\"sha256\":\"6ebdb617a8104a7756d0cf36578ab01103dc9f07e4dc6feb751296b9c402faf7\",\"size\":9},{\"path\":\"deck.key\",\"sha256\":\"8e11a86cf1052f458f6766baba49f519b80b3eee7c35433debd93483515626d4\",\"size\":8},{\"path\":\"docs/node_modules.md\",\"sha256\":\"ef0612da92e8204f7277982d4d3ce82b4589d200192fcfa74371a5b80365d5ba\",\"size\":20},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"notes/TRANSCRIPTS/file.bin\",\"sha256\":\"0392523321b470965a29a3ec513f460128fe11513b1dc2e2396fe510d5e67b15\",\"size\":26},{\"path\":\"templates/env.example.md\",\"sha256\":\"bf8e2a33ac126e948ed744ea606beb8f150409bbfcea9fbdf3184a710d0d3bff\",\"size\":24}],\"format_version\":1}",
-      "manifest_sha256": "fef0aa616de293c3b89370e19a3df5839c9d99b862f7f0416b742b72d2986c36",
-      "file_count": 21,
-      "project_bytes": 474
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\".gitignore\",\"sha256\":\"bc37d034bad564583790a46f19d807abfe519c5671395fd494d8cce506c42947\",\"size\":10},{\"path\":\".hyperframes/brand-kit.json\",\"sha256\":\"dda44abb548e99aad3ec261c6b87c5f545eb09f8fb1b261d3c75a7cfc21bfa94\",\"size\":27},{\"path\":\".hyperframes/caption-skin.html\",\"sha256\":\"a2e2d9315c6a9e3437f752e69a8514d8c662f53a9ade33db2686fa9affaa97b2\",\"size\":30},{\"path\":\".hyperframes/studio-manual-edits.json\",\"sha256\":\"450ba94d0f2fbb1ac30cc5e1dcae043e2f7f970357984a6bdfaf2f2087904fe0\",\"size\":37},{\"path\":\".hyperframes/studio-motion.json\",\"sha256\":\"205f890f2a576608d6f009ef4738fc2b81df387329f2e20bdf67356c5365b55d\",\"size\":31},{\"path\":\".hyperframes/transcription.json\",\"sha256\":\"bc0b9ef4215d81d0ae7adabc471993f63ac70a24a693f4f91b4c18a103dd9ba1\",\"size\":31},{\"path\":\".hyperframes/transcripts/a.json\",\"sha256\":\"7ffb8ceda0a4b872cc4a9ba63bdd040a70631e3343157454a95206f2fc9f27cf\",\"size\":31},{\"path\":\".hyperframes/transcripts/nested/b.json\",\"sha256\":\"a5222ca2063d161da3e06294d2ab5c6c32d7692a1177bb0f79ddde4001deb47b\",\"size\":38},{\"path\":\".hyperframesignore\",\"sha256\":\"4f7382fe2d1d64d27e88900b9997a85f9d9fa42062f04aab7426b03cabba7497\",\"size\":18},{\"path\":\".media/CREDITS.md\",\"sha256\":\"4056dedc9ad51868f89af43f34035af851bb566f6d30f804e57551da7ec0dd9c\",\"size\":17},{\"path\":\".media/images/image_001.png\",\"sha256\":\"35037cf8cd8a2d3e2b20a04563ecba015e6404678af5631c0e9e3a50fec200de\",\"size\":27},{\"path\":\".media/index.md\",\"sha256\":\"8a925d0e3cc08cd0ed4601d0f94e8a781881d1b3034d07fe11cc02d296a2ad43\",\"size\":15},{\"path\":\".media/preferences.json\",\"sha256\":\"888316c0c00d9d6929423a311f302500134d74315226a6a78a7a73bf66b4ef58\",\"size\":23},{\"path\":\".media/video/unused-take.mp4\",\"sha256\":\"a3e29b7ba3f66207df6182ec09ed749df364378cf2cfb8cf589163a6cdac93e2\",\"size\":28},{\"path\":\"CLAUDE.md\",\"sha256\":\"6ebdb617a8104a7756d0cf36578ab01103dc9f07e4dc6feb751296b9c402faf7\",\"size\":9},{\"path\":\"deck.key\",\"sha256\":\"8e11a86cf1052f458f6766baba49f519b80b3eee7c35433debd93483515626d4\",\"size\":8},{\"path\":\"docs/node_modules.md\",\"sha256\":\"ef0612da92e8204f7277982d4d3ce82b4589d200192fcfa74371a5b80365d5ba\",\"size\":20},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"notes/TRANSCRIPTS/file.bin\",\"sha256\":\"0392523321b470965a29a3ec513f460128fe11513b1dc2e2396fe510d5e67b15\",\"size\":26},{\"path\":\"templates/env.example.md\",\"sha256\":\"bf8e2a33ac126e948ed744ea606beb8f150409bbfcea9fbdf3184a710d0d3bff\",\"size\":24}],\"format_version\":1}",
+      "manifest_sha256": "376dac8985415bfe84d9fbc3fb8086cc6a2cfa2a8b2d8c180a8a8a2c3fef8360",
+      "file_count": 20,
+      "project_bytes": 460
     },
     {
       "name": "podcast-prepared-media",
@@ -560,6 +555,114 @@
       "manifest_sha256": "de1efa6fe285757b315b4ea3ba2ef857b16fc7c95ca1bc5cdfa1e60bb78f955a",
       "file_count": 2,
       "project_bytes": 9007199254741001
+    },
+    {
+      "name": "ignorable-and-tilde-names-that-travel",
+      "description": "Ignorable code points that alias no refused name travel (an emoji ZWJ sequence, a Persian ZWNJ, a leading right-to-left mark), and so do tilde names that are not a short name of a refused name.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "family\ud83d\udc68\u200d\ud83d\udc69.png",
+            "sha256": "698b01f630a5600fc7e6159d5fa2b5c761da46d1cce15fdd531484f67d467a76",
+            "size": 21
+          },
+          {
+            "path": "\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645.txt",
+            "sha256": "1ae2f69549e4dce43a6279379ad5b2c893d6e33875ac335529680c6576ab9fb8",
+            "size": 21
+          },
+          {
+            "path": "photo~2.jpg",
+            "sha256": "b3101cfd745b4b2fc7223c4fbfd65d6804b6868c941a48df504938d038c5c701",
+            "size": 11
+          },
+          {
+            "path": "REPORT~1.TXT",
+            "sha256": "7d9ca27d794ca4424e98f015fde694178437f8ba61f6d1fa01c7feb7cf76b52d",
+            "size": 12
+          },
+          {
+            "path": "notes~draft.txt",
+            "sha256": "04e77ee68bf7d691c512f74040fce6e331d67db63614cef0cdc194f4df8c5d55",
+            "size": 15
+          },
+          {
+            "path": "a~1",
+            "sha256": "8f89ade691bd5d17fdcd10ee2de0ba0f0605c78b20c99e09703c0100c72f9a50",
+            "size": 3
+          },
+          {
+            "path": "scenes/\u200fintro.html",
+            "sha256": "716d8eded15dbc34fa5891249c20e4124c6739bc3b0b0163fb354b18e6572237",
+            "size": 20
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\"REPORT~1.TXT\",\"sha256\":\"7d9ca27d794ca4424e98f015fde694178437f8ba61f6d1fa01c7feb7cf76b52d\",\"size\":12},{\"path\":\"a~1\",\"sha256\":\"8f89ade691bd5d17fdcd10ee2de0ba0f0605c78b20c99e09703c0100c72f9a50\",\"size\":3},{\"path\":\"family\ud83d\udc68\u200d\ud83d\udc69.png\",\"sha256\":\"698b01f630a5600fc7e6159d5fa2b5c761da46d1cce15fdd531484f67d467a76\",\"size\":21},{\"path\":\"index.html\",\"sha256\":\"0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051\",\"size\":10},{\"path\":\"notes~draft.txt\",\"sha256\":\"04e77ee68bf7d691c512f74040fce6e331d67db63614cef0cdc194f4df8c5d55\",\"size\":15},{\"path\":\"photo~2.jpg\",\"sha256\":\"b3101cfd745b4b2fc7223c4fbfd65d6804b6868c941a48df504938d038c5c701\",\"size\":11},{\"path\":\"scenes/\u200fintro.html\",\"sha256\":\"716d8eded15dbc34fa5891249c20e4124c6739bc3b0b0163fb354b18e6572237\",\"size\":20},{\"path\":\"\u0645\u06cc\u200c\u062e\u0648\u0627\u0647\u0645.txt\",\"sha256\":\"1ae2f69549e4dce43a6279379ad5b2c893d6e33875ac335529680c6576ab9fb8\",\"size\":21}],\"format_version\":1}",
+      "manifest_sha256": "ac3814ee180b86beed561956ba8d9e250d5b7e2c9e84c9a3d9885fd57670841d",
+      "file_count": 8,
+      "project_bytes": 113
+    },
+    {
+      "name": "agent-config-look-alikes-that-travel",
+      "description": "Names beside the refused agent and editor folders travel: a dotfile that only starts like one, a file named like a refused folder, the same name without its dot, .github outside hooks, copilot and agents, and a tilde name that is not a short name.",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".gemini-notes.md",
+            "sha256": "444e0fffbd825e9610ff5b199485707a0c895339ae80c15cc8a8aee41b106fda",
+            "size": 6
+          },
+          {
+            "path": ".github/agents.md",
+            "sha256": "38700dfad5711976e2f7aeab31013f04aed8c83118a1ef892f6d23bdfe944602",
+            "size": 7
+          },
+          {
+            "path": ".github/workflows/ci.yml",
+            "sha256": "b602f7ad4316adfd9f3e5ca998773702a5db1a1f1599a14516f40101665fb6d2",
+            "size": 9
+          },
+          {
+            "path": "devcontainer.json",
+            "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+            "size": 3
+          },
+          {
+            "path": "gemini/settings.json",
+            "sha256": "ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356",
+            "size": 3
+          },
+          {
+            "path": "index.html",
+            "sha256": "1249db6aa735d011e95805686491f2a06d39bfd5b6fe2018d68e52aa17fbf956",
+            "size": 8
+          },
+          {
+            "path": "scenes/roo.png",
+            "sha256": "33d8344a7135c42aa3876706b908f95b702d83ff53e05e4aaff17c07bf67a98e",
+            "size": 4
+          },
+          {
+            "path": "zed~draft.txt",
+            "sha256": "7eb2ca55b87a4d45d66a63f76db11f9b4aa9106472a62b5865060f9fd8eadaaa",
+            "size": 6
+          }
+        ]
+      },
+      "canonical": "{\"entrypoint\":\"index.html\",\"files\":[{\"path\":\".gemini-notes.md\",\"sha256\":\"444e0fffbd825e9610ff5b199485707a0c895339ae80c15cc8a8aee41b106fda\",\"size\":6},{\"path\":\".github/agents.md\",\"sha256\":\"38700dfad5711976e2f7aeab31013f04aed8c83118a1ef892f6d23bdfe944602\",\"size\":7},{\"path\":\".github/workflows/ci.yml\",\"sha256\":\"b602f7ad4316adfd9f3e5ca998773702a5db1a1f1599a14516f40101665fb6d2\",\"size\":9},{\"path\":\"devcontainer.json\",\"sha256\":\"ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356\",\"size\":3},{\"path\":\"gemini/settings.json\",\"sha256\":\"ca3d163bab055381827226140568f3bef7eaac187cebd76878e0b63e9e442356\",\"size\":3},{\"path\":\"index.html\",\"sha256\":\"1249db6aa735d011e95805686491f2a06d39bfd5b6fe2018d68e52aa17fbf956\",\"size\":8},{\"path\":\"scenes/roo.png\",\"sha256\":\"33d8344a7135c42aa3876706b908f95b702d83ff53e05e4aaff17c07bf67a98e\",\"size\":4},{\"path\":\"zed~draft.txt\",\"sha256\":\"7eb2ca55b87a4d45d66a63f76db11f9b4aa9106472a62b5865060f9fd8eadaaa\",\"size\":6}],\"format_version\":1}",
+      "manifest_sha256": "713b816daf6a2141dfc6dad3dae2e2408d1572362050f80ec4da1fc4cfc52409",
+      "file_count": 8,
+      "project_bytes": 46
     }
   ],
   "invalid": [
@@ -3881,6 +3984,1953 @@
       "error": {
         "code": "excluded_path",
         "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "git-zwnj-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".g\u200cit/hooks/post-checkout",
+            "sha256": "ebb094226f7ae195518d183cc8c33485266bdaccf38efdb9bc0997c12d67ff5a",
+            "size": 27
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "dependencies-and-git"
+      }
+    },
+    {
+      "name": "git-rlo-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".git\u202e/config",
+            "sha256": "dec33ee234eb2e4cc84a214a80a4ccce82f143e438c0d30cda7d70bb93796c8a",
+            "size": 14
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "dependencies-and-git"
+      }
+    },
+    {
+      "name": "git-bom-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "scenes/\ufeff.git/HEAD",
+            "sha256": "32928326939fa4fc4b8bfe356112babc1a2dff1c5de7441b4aea253eb7807752",
+            "size": 19
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "dependencies-and-git"
+      }
+    },
+    {
+      "name": "claude-zwnj-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".cl\u200caude/settings.json",
+            "sha256": "e8c882b109671c34b8d2eda9eca0cb6760669b7c7186ba5874e8064a699d91f8",
+            "size": 24
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "claude-rlo-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".claude\u202e/settings.json",
+            "sha256": "617176df331becc0aa31840343f67d086266aeaf44c97a338145f02b612d5309",
+            "size": 24
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "claude-bom-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "\ufeff.claude/settings.json",
+            "sha256": "84c1414e603370b9ead01ff80ece9aba2839c8360281d1398157e503586a5b0d",
+            "size": 24
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "codex-zwj-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".co\u200ddex/config.toml",
+            "sha256": "163460d7c05701eec66daf9851c16a4d90480cdca1b9e05a0f622699e4728858",
+            "size": 21
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "agents-rlm-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".agents\u200f/skills/a.md",
+            "sha256": "5109098a9348f3cb4227a9ea375069723378e1e292b545daa5deb1e737baf7ea",
+            "size": 22
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "cursor-format-control-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".cur\u206asor/rules.md",
+            "sha256": "de017d67e0777202cc23423bea69d7afc82bfa8e14c1e11cf10c2ccb47199e91",
+            "size": 19
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "vscode-lre-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".vs\u202acode/settings.json",
+            "sha256": "1664800691e888f552bdf897c09d65aefb30080304d3965f62405377e2f462c3",
+            "size": 24
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "env-zwnj-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".e\u200cnv",
+            "sha256": "1918eaade37bda77e72f4b370264f5fd8ec0f8511b940c2ffbd2ce326caca9ef",
+            "size": 7
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "environment-secrets"
+      }
+    },
+    {
+      "name": "hyperframes-zwnj-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyper\u200cframes/sync/binding.json",
+            "sha256": "c7790a1800862eae93dfd785cd56fc9b7534fa0b8de3e8d86f2c31081c806057",
+            "size": 33
+          }
+        ]
+      },
+      "error": {
+        "code": "reserved_path_alias"
+      }
+    },
+    {
+      "name": "brand-kit-zwnj-alias",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": ".hyperframes/brand\u200c-kit.json",
+            "sha256": "2d26cbd492a9a636eea8dcce5e1317d301752b677d4241601b6b3d64ead2adb2",
+            "size": 30
+          }
+        ]
+      },
+      "error": {
+        "code": "reserved_path_alias",
+        "rule": "portable-brand-kit"
+      }
+    },
+    {
+      "name": "ignorable-collision",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "a\u200cb.txt",
+            "sha256": "3bdf863fcc39c7a587ad9d32b84161cae4e590a7b78e83d43a3c42318f53191d",
+            "size": 9
+          },
+          {
+            "path": "ab.txt",
+            "sha256": "47c1854e6dc3f10eeac245a1d3101c26d25ac8ce6006b4d4b5c5afb08d705c7d",
+            "size": 6
+          }
+        ]
+      },
+      "error": {
+        "code": "path_collision"
+      }
+    },
+    {
+      "name": "ignorable-only-segment",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "\u200c/.git/config",
+            "sha256": "9535b42f04b2a80ec69e491b349ab812c885f288c258631ce33969719d16256f",
+            "size": 15
+          }
+        ]
+      },
+      "error": {
+        "code": "path_empty_segment"
+      }
+    },
+    {
+      "name": "ignorable-dot-segment",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "..\u200c/a.txt",
+            "sha256": "2735101b705a202ee58931219ec5119cb64bed92c7808301ba3de1e18582b949",
+            "size": 11
+          }
+        ]
+      },
+      "error": {
+        "code": "path_dot_segment"
+      }
+    },
+    {
+      "name": "git-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "GIT~1/config",
+            "sha256": "1c0270cefe54b017098a5c0d7937a2960293c836bf971563d0023825376847d8",
+            "size": 12
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "git-short-name-two-digits",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "git~12",
+            "sha256": "55a832cd3aa93ef637e77bc6c10e9c53e90daa7112bcdee83ac8d7fdc46366a8",
+            "size": 6
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "claude-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "CLAUDE~1/settings.json",
+            "sha256": "5319853e91710f0c320d21a0a69a539fb70e11d5043e2e652510894f792530a2",
+            "size": 22
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "codex-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "CODEX~1/config.toml",
+            "sha256": "5579d9f7c3130e847e28f023723601880cab19191b9c15526ab9f168ce9e7d46",
+            "size": 19
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "work-tree-config-gitattributes",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".gitattributes",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "work-tree-config-gitmodules-nested",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "scenes/.gitmodules",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "work-tree-config-mcp-json",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".mcp.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "work-tree-config-folded",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "assets/.MCP.JSON",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "gitmodules-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "GITMOD~1",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "mcp-json-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "MCP~1.JSO",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "qoder-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".qoder/settings.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "agent-dir-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".agent/hooks.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "underscore-agents-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "_agents/mcp_config.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "underscore-agent-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "_agent/hooks.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "nested-underscore-agent-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "scenes/_agent/mcp_config.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "bare-git-directory-at-root",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "HEAD",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "config",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          },
+          {
+            "path": "index.html",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "size": 3
+          },
+          {
+            "path": "info/attributes",
+            "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "size": 4
+          },
+          {
+            "path": "objects/aa/bbbbbb",
+            "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "size": 5
+          },
+          {
+            "path": "refs/heads/main",
+            "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            "size": 6
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "git-directory-head"
+      }
+    },
+    {
+      "name": "nested-bare-git-directory",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "scenes/repo/HEAD",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          },
+          {
+            "path": "scenes/repo/config",
+            "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "size": 3
+          },
+          {
+            "path": "scenes/repo/objects/aa/bbbbbb",
+            "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+            "size": 4
+          },
+          {
+            "path": "scenes/repo/refs/heads/main",
+            "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "size": 5
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "git-directory-head"
+      }
+    },
+    {
+      "name": "git-head-any-case",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "assets/take/Head",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "git-directory-head"
+      }
+    },
+    {
+      "name": "opencode-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".opencode/plugin/x.ts",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "grok-agent-state-nested",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "scenes/.grok/settings.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "work-tree-config-opencode-json",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "opencode.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "work-tree-config-opencode-jsonc-nested",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "sub/opencode.jsonc",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "work-tree-config-github-hooks",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".github/hooks/hooks.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "work-tree-config-github-copilot",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".github/copilot/settings.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "qoder-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "QODER~1",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "opencode-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "OPENCO~1",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "agents-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "AGENTS~1",
+            "sha256": "a1b54f6c7a7cd8318bfe04a5bab978ab53047f4db3114d0293e6f179ea7370c5",
+            "size": 8
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "cursor-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "CURSOR~1",
+            "sha256": "9d0b02276d979487729c564b7da990cdf5867cef11a89b4b507898fc1996bc61",
+            "size": 8
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "vscode-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "VSCODE~1",
+            "sha256": "143f796811244d864b1c6e5400ef4bf7dd3726150d2b2a6c20b7e2912d585730",
+            "size": 8
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "env-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "ENV~1",
+            "sha256": "ae6d55ebad76816eb9080f17b14bf5af2448856ecf3837453bcf2e3fe3116572",
+            "size": 5
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "env-local-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "server/ENV~1.LOC",
+            "sha256": "0f221f6d8d7de9c6778d885bf5f9891793a39e77a9b944abbe142e560ae92f04",
+            "size": 16
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "hyperframes-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "HYPERF~1/x",
+            "sha256": "58dff341dda0ecf86e38047f42d85df25dbb847c7c6dac8a679bbd30b5918a29",
+            "size": 10
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "hyperframes-short-name-2",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "HYPERF~2",
+            "sha256": "e28d8cf3ae579424a65b0d75bfa61f2321cb5ac243000aae24123b9d8862679b",
+            "size": 8
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "short-name-behind-ignorable",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "0eb547304658805aad788d320f10bf1f292797b5e6d745a3bf617584da017051",
+            "size": 10
+          },
+          {
+            "path": "G\u200cIT~1/config",
+            "sha256": "b68a230975251ebbd5c0681dd3c19866e4bf209986b5d50999cad2b8c3378d4f",
+            "size": 15
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "nested-hyperframes-record",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "compositions/x/.hyperframes/agent-runs.jsonl",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "nested-hyperframes-state"
+      }
+    },
+    {
+      "name": "nested-hyperframes-studio-file-any-case",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "sub/.HyperFrames/studio-motion.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "nested-hyperframes-state"
+      }
+    },
+    {
+      "name": "hyperframes-inside-portable-subtree",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".hyperframes/transcripts/x/.hyperframes/a.json",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "nested-hyperframes-state"
+      }
+    },
+    {
+      "name": "gemini-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".gemini/settings.json",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "roo-agent-state-nested-folded",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "scenes/.Roo/mcp.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "kiro-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".kiro/settings/mcp.json",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "continue-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".continue/mcpServers/server.yaml",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "clinerules-file",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".clinerules",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "zed-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".zed/settings.json",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "work-tree-config-devcontainer",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".devcontainer/devcontainer.json",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "work-tree-config-devcontainer-json-nested",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "sub/.devcontainer.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "work-tree-config-github-agents",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".github/agents/editor.agent.md",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "work-tree-config-crush-json",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "crush.json",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "work-tree-config-aider-conf",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".aider.conf.yml",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "gemini-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "GEMINI~1/settings.json",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "github-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "GITHUB~1/agents/editor.agent.md",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "devcontainer-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "DEVCON~1/devcontainer.json",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "openhands-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".openhands/setup.sh",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "work-tree-config-gitpod",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".gitpod.yml",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "aider-conf-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "AIDERC~1.YML",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
+      }
+    },
+    {
+      "name": "visual-studio-agent-state",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": ".vs/mcp.json",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "index.html",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "agent-client-state"
+      }
+    },
+    {
+      "name": "work-tree-config-continuerc",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "scenes/.continuerc.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "work-tree-config"
+      }
+    },
+    {
+      "name": "credential-docker",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "nested/.DoCker/config.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-gh",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "boards/.config/gh/hosts.yml",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-gcloud",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".config/gcloud/credentials.db",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-gnupg",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".gnupg/data",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-kube",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".kube/config",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-azure",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".azure/cache.json",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-pip",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "pip.ini",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-gitconfig",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": ".gitconfig",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-netrc",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "_netrc",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-ecdsa",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "id_ecdsa.pub",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-dsa",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "id_dsa",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "excluded_path",
+        "rule": "credential-files"
+      }
+    },
+    {
+      "name": "credential-short-name",
+      "manifest": {
+        "format_version": 1,
+        "entrypoint": "index.html",
+        "files": [
+          {
+            "path": "index.html",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "size": 1
+          },
+          {
+            "path": "DOCKER~1/config",
+            "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "size": 2
+          }
+        ]
+      },
+      "error": {
+        "code": "segment_short_name"
       }
     }
   ],
