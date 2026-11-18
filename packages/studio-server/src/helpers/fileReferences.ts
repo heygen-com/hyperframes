@@ -364,9 +364,12 @@ export function referenceRewriter(
 export const canNameFiles = (file: string) =>
   /\.(html|css|js|jsx|ts|tsx|json|mjs|cjs|md|mdx)$/i.test(file);
 
-export const fileNames = (file: string, text: string, path: string) =>
-  canNameFiles(file) &&
-  referenceRewriter(path, `${path}\0`, false)(text, referenceSyntax(file)) !== text;
+export const fileNames = (
+  file: string,
+  text: string,
+  path: string,
+  existing: readonly string[] = [],
+) => referenceRewriter(path, `${path}\0`, false, existing)(text, referenceSyntax(file)) !== text;
 
 function occurrences(text: string, part: string): number[] {
   const at: number[] = [];
