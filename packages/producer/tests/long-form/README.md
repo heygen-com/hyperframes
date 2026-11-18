@@ -41,12 +41,13 @@ The Phase 0 mutation check is the same render with `PRODUCER_STREAMING_ENCODE_DU
 
 ### Interrupting the 2b run
 
-Kill on the manifest, not on a log line — the manifest is the resume contract:
+Use a fresh local cache for this gate and keep it set for the resumed run:
 
 ```sh
+export HYPERFRAMES_CACHE_DIR="$(mktemp -d)"
 HF_SEGMENTED_CAPTURE=true HF_SEGMENT_FRAMES=1500 node <repo>/packages/cli/dist/cli.js \
   render a-single --fps 30 -w 1 --quality draft -o a-single/renders/resumed.mp4 & RPID=$!
-until [ "$(python3 -c "import json,glob;f=glob.glob('a-single/renders/.hf-segments/*/segments.json');print(len(json.load(open(f[0]))['completed']) if f else 0)")" -ge 2 ]; do sleep 1; done
+until [ "$(python3 -c "import json,glob,os;f=glob.glob(os.path.join(os.environ['HYPERFRAMES_CACHE_DIR'],'segments/*/*/segments.json'));print(len(json.load(open(f[0]))['completed']) if f else 0)")" -ge 2 ]; do sleep 1; done
 kill -9 $RPID
 ```
 
@@ -143,14 +144,12 @@ have re-run it on a fresh screenshot session. Opting a specific composition into
 scratch and resume. Wiring the streaming path's failure classification into the
 segmented branch is the other follow-up before the R4 flip.
 
-### Operational note: `--resume` state lives in the project directory
+### Local resume cache
 
-Segments are written to `<project>/renders/.hf-segments/<planHash>/` rather than
-the ephemeral work directory, and they are deliberately left in place after a
-failed render because that is what `--resume` reads. A project that iterates on
-a long render grows by one segment directory per distinct plan hash until a run
-succeeds without `--keep-segments`, which removes its own hash directory. Stale
-hash directories from earlier settings are not swept.
+Each project path and render plan has its own directory under the local
+HyperFrames cache. Failed runs retain their checkpoints. A successful run
+removes its own directory unless you pass `--keep-segments`. Checkpoints from
+earlier settings stay in the cache until you remove them.
 
 ## PRINFRA-694 gate for the R3 flip
 

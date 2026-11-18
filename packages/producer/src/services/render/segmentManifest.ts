@@ -7,8 +7,12 @@
  * and every reused segment is re-validated on disk before it is skipped.
  */
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { ensurePrivateCacheDir, trustedCacheRoot } from "@hyperframes/core/cache-dir";
+import { isSafePath, realpath } from "@hyperframes/core/safe-path";
+import { isPathInside } from "@hyperframes/parsers/asset-paths";
+import { planSegments, segmentOutputPath } from "./segmentPlan.js";
 import { renameWithRetry } from "@hyperframes/engine";
 
 export interface SegmentManifestEntry {
@@ -84,8 +88,24 @@ export function computeSegmentPlanHash(input: SegmentPlanHashInput): string {
   return createHash("sha256").update(ordered.join(" ")).digest("hex").slice(0, 16);
 }
 
-export function segmentDirFor(projectRendersDir: string, planHash: string): string {
-  return join(projectRendersDir, ".hf-segments", planHash);
+export function segmentDirFor(projectDir: string, planHash: string): string {
+  const root = trustedCacheRoot();
+  const projectKey = createHash("sha256").update(realpath(projectDir)).digest("hex");
+  const parent = join(root, "segments", projectKey);
+  const dir = join(parent, planHash);
+  if (
+    isPathInside(root, projectDir) ||
+    isSafePath(projectDir, root) ||
+    isSafePath(projectDir, parent) ||
+    isSafePath(projectDir, dir)
+  ) {
+    throw new Error("Segmented capture requires HYPERFRAMES_CACHE_DIR outside the project.");
+  }
+  ensurePrivateCacheDir(parent, root);
+  if (!isSafePath(parent, dir) || lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    throw new Error("Invalid segment cache directory");
+  }
+  return dir;
 }
 
 function hasNumber(value: object, key: string): boolean {
@@ -123,8 +143,9 @@ function isManifest(value: unknown): value is SegmentManifest {
 
 export function readSegmentManifest(segmentDir: string): SegmentManifest | null {
   const path = join(segmentDir, MANIFEST_FILENAME);
-  if (!existsSync(path)) return null;
   try {
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    if (!stat?.isFile() || stat.nlink !== 1) return null;
     const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
     return isManifest(parsed) ? parsed : null;
   } catch {
@@ -174,17 +195,29 @@ export async function probeSegmentFrameCount(
  */
 export async function validateCompletedSegments(
   manifest: SegmentManifest,
-  expectedHash: string,
+  segmentDir: string,
+  plan: Pick<SegmentManifest, "planHash" | "segmentFrames" | "totalFrames">,
   probeFrames: (path: string) => Promise<number | null>,
 ): Promise<Set<number>> {
   const ok = new Set<number>();
-  if (manifest.planHash !== expectedHash) return ok;
+  if (
+    manifest.planHash !== plan.planHash ||
+    manifest.totalFrames !== plan.totalFrames ||
+    manifest.segmentFrames !== plan.segmentFrames
+  )
+    return ok;
+  const slices = planSegments(plan.totalFrames, plan.segmentFrames);
   for (const entry of manifest.completed) {
-    if (!existsSync(entry.path)) continue;
-    const size = statSync(entry.path).size;
-    if (size <= 0 || size !== entry.bytes) continue;
-    const frames = await probeFrames(entry.path);
-    if (frames !== entry.endFrame - entry.startFrame) continue;
+    if (!Number.isSafeInteger(entry.index)) continue;
+    const slice = slices[entry.index];
+    if (!slice || slice.startFrame !== entry.startFrame || slice.endFrame !== entry.endFrame)
+      continue;
+    const path = segmentOutputPath(segmentDir, slice.index);
+    if (entry.path !== path) continue;
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    if (!stat?.isFile() || stat.nlink !== 1 || stat.size <= 0 || stat.size !== entry.bytes)
+      continue;
+    if ((await probeFrames(path)) !== slice.endFrame - slice.startFrame) continue;
     ok.add(entry.index);
   }
   return ok;

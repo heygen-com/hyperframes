@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 /**
  * Segment planning for long-form capture (spec §5 Phase 2). A segment is a
  * half-open frame range captured into its own closed-GOP encoder process so
@@ -41,4 +43,8 @@ export function resolveSegmentFrames(env: NodeJS.ProcessEnv): number {
   const parsed = Number(raw);
   if (!Number.isInteger(parsed)) return DEFAULT_SEGMENT_FRAMES;
   return Math.max(MIN_SEGMENT_FRAMES, parsed);
+}
+
+export function segmentOutputPath(segmentDir: string, index: number): string {
+  return join(segmentDir, `segment_${String(index).padStart(5, "0")}.mp4`);
 }

@@ -1,7 +1,15 @@
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import {
+  cpSync,
+  symlinkSync,
+  linkSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  mkdirSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   computeSegmentPlanHash,
   probeSegmentFrameCount,
@@ -25,6 +33,9 @@ const hashInput: SegmentPlanHashInput = {
   preset: "ultrafast",
   quality: 28,
   bitrate: undefined,
+  maxBitrate: undefined,
+  bufferSize: undefined,
+  gopSize: undefined,
   pixelFormat: "yuv420p",
   imageFormat: "jpeg",
   useGpu: false,
@@ -133,9 +144,33 @@ describe("manifest io", () => {
     expect(readSegmentManifest(dir)).toBeNull();
   });
 
-  it("segmentDirFor nests under renders/.hf-segments", () => {
+  it("only finds checkpoints from the local cache for the same project", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    expect(segmentDirFor("/p/renders", "abc")).toBe(join("/p/renders", ".hf-segments", "abc"));
+    const project = join(dir, "project");
+    const copy = join(dir, "copy");
+    mkdirSync(project);
+    mkdirSync(copy);
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", join(dir, "cache-a"));
+    try {
+      const checkpoint = segmentDirFor(project, "abc");
+      const manifest: SegmentManifest = {
+        version: 1,
+        planHash: "abc",
+        totalFrames: 3,
+        segmentFrames: 3,
+        completed: [],
+      };
+      writeSegmentManifest(checkpoint, manifest);
+      expect(readSegmentManifest(segmentDirFor(project, "abc"))).toEqual(manifest);
+      expect(readSegmentManifest(segmentDirFor(copy, "abc"))).toBeNull();
+      cpSync(checkpoint, join(project, "renders", ".hf-segments", "abc"), { recursive: true });
+      vi.stubEnv("HYPERFRAMES_CACHE_DIR", join(dir, "cache-b"));
+      expect(readSegmentManifest(segmentDirFor(project, "abc"))).toBeNull();
+      vi.stubEnv("HYPERFRAMES_CACHE_DIR", join(project, "cache"));
+      expect(() => segmentDirFor(project, "abc")).toThrow("outside the project");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
@@ -169,7 +204,44 @@ describe("validateCompletedSegments", () => {
       ],
     };
     const probe = async (p: string) => (p === ok ? 3 : p === short ? 2 : null);
-    expect([...(await validateCompletedSegments(manifest, "h", probe))]).toEqual([0]);
+    expect([...(await validateCompletedSegments(manifest, dir, manifest, probe))]).toEqual([0]);
+  });
+
+  it("probes only the planned regular file at its exact path and slice", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    const paths = Array.from({ length: 8 }, (_, i) => join(dir, `segment_0000${i}.mp4`));
+    const entries = paths.map((path, index) => ({
+      index,
+      path,
+      bytes: 2,
+      startFrame: index * 3,
+      endFrame: (index + 1) * 3,
+      completedAt: "",
+    }));
+    const good = entries[0]!;
+    writeFileSync(good.path, "xx");
+    for (const entry of entries.slice(1, 4)) writeFileSync(entry.path, "xx");
+    entries[1]!.path = good.path;
+    entries[2]!.path = join(dir, "..", "outside.mp4");
+    entries[3]!.path = String.raw`\\other-host\share\unrelated.mp4`;
+    symlinkSync(good.path, entries[4]!.path);
+    mkdirSync(entries[5]!.path);
+    entries[6]!.startFrame++;
+    writeFileSync(entries[6]!.path, "xx");
+    // The last slice is outside the current plan.
+    writeFileSync(entries[7]!.path, "xx");
+    const manifest: SegmentManifest = {
+      version: 1,
+      planHash: "h",
+      totalFrames: 21,
+      segmentFrames: 3,
+      completed: entries,
+    };
+    const probe = vi.fn(async () => 3);
+    expect([...(await validateCompletedSegments(manifest, dir, manifest, probe))]).toEqual([0]);
+    expect(probe.mock.calls).toEqual([[good.path]]);
+    linkSync(good.path, join(dir, "second-name.mp4"));
+    expect((await validateCompletedSegments(manifest, dir, manifest, probe)).size).toBe(0);
   });
 
   it("rejects a segment whose size no longer matches the manifest", async () => {
@@ -187,7 +259,7 @@ describe("validateCompletedSegments", () => {
         { index: 0, startFrame: 0, endFrame: 3, path: truncated, bytes: 999, completedAt: "" },
       ],
     };
-    expect((await validateCompletedSegments(manifest, "h", async () => 3)).size).toBe(0);
+    expect((await validateCompletedSegments(manifest, dir, manifest, async () => 3)).size).toBe(0);
   });
 
   it("a resume whose segment files were removed after a join captures them again rather than failing", async () => {
@@ -213,7 +285,7 @@ describe("validateCompletedSegments", () => {
       probed += 1;
       return 3;
     };
-    expect((await validateCompletedSegments(manifest, "h", probe)).size).toBe(0);
+    expect((await validateCompletedSegments(manifest, dir, manifest, probe)).size).toBe(0);
     expect(probed).toBe(0);
   });
 
@@ -231,8 +303,17 @@ describe("validateCompletedSegments", () => {
       segmentFrames: 3,
       completed: [{ index: 0, startFrame: 0, endFrame: 3, path: good, bytes: 2, completedAt: "" }],
     };
-    expect((await validateCompletedSegments(manifest, "old", async () => 3)).size).toBe(1);
-    expect((await validateCompletedSegments(manifest, "new", async () => 3)).size).toBe(0);
+    expect((await validateCompletedSegments(manifest, dir, manifest, async () => 3)).size).toBe(1);
+    expect(
+      (
+        await validateCompletedSegments(
+          manifest,
+          dir,
+          { ...manifest, planHash: "new" },
+          async () => 3,
+        )
+      ).size,
+    ).toBe(0);
   });
 });
 

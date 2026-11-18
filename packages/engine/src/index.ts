@@ -202,6 +202,8 @@ export {
   buildEncoderArgs,
   encodeFramesFromDir,
   buildConcatArgs,
+  buildVideoConcatInputArgs,
+  writeVideoConcatList,
   concatVideoFiles,
   encodeFramesChunkedConcat,
   muxVideoWithAudio,

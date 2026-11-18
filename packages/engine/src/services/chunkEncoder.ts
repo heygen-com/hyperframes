@@ -6,6 +6,7 @@
  * Supports CPU (libx264) and GPU encoding.
  */
 
+import { randomUUID } from "node:crypto";
 import { frameSequencePath } from "./extractedFrameIndex.js";
 import {
   closeSync,
@@ -673,8 +674,26 @@ export async function encodeFramesFromDir(
   };
 }
 
+const VIDEO_DEMUXERS = "mov,matroska";
+
+export function buildVideoConcatInputArgs(listPath: string): string[] {
+  return [
+    "-xerror",
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-protocol_whitelist",
+    "file",
+    "-format_whitelist",
+    `concat,${VIDEO_DEMUXERS}`,
+    "-i",
+    listPath,
+  ];
+}
+
 export function buildConcatArgs(concatListPath: string, outputPath: string): string[] {
-  const args = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
+  const args = [...buildVideoConcatInputArgs(concatListPath), "-c", "copy"];
   // The concat demuxer does not carry per-input container metadata into the
   // output, so provenance is re-asserted on the concatenated file.
   appendRenderProvenanceArgs(args, outputPath);
@@ -682,18 +701,16 @@ export function buildConcatArgs(concatListPath: string, outputPath: string): str
   return args;
 }
 
-/**
- * Sequence rather than a timestamp: two lists written in the same millisecond
- * into one directory would otherwise collide, and a concat that reads another
- * render's list produces a silently wrong video rather than an error.
- */
-let concatListSeq = 0;
-
-function writeConcatList(dir: string, inputPaths: readonly string[]): string {
-  concatListSeq += 1;
-  const listPath = join(dir, `concat-list-${process.pid}-${concatListSeq}.txt`);
-  const body = inputPaths.map((p) => `file '${resolve(p).replace(/'/g, "'\\''")}'`).join("\n");
-  writeFileSync(listPath, body, "utf-8");
+export function writeVideoConcatList(dir: string, inputPaths: readonly string[]): string {
+  const listPath = join(dir, `concat-list-${randomUUID()}.txt`);
+  const entries = inputPaths.map((path) => {
+    const absolute = resolve(path);
+    if (/[\r\n]/.test(absolute) || absolute.includes("\0"))
+      throw new Error("Invalid line break or NUL in concat input path");
+    // Only the outer list may use concat. FFmpeg applies this option when opening each child.
+    return `file '${absolute.replace(/'/g, "'\\''")}'\noption format_whitelist ${VIDEO_DEMUXERS}`;
+  });
+  writeFileSync(listPath, entries.join("\n") + "\n", { flag: "wx", mode: 0o600 });
   return listPath;
 }
 
@@ -720,7 +737,7 @@ export async function concatVideoFiles(
   // get their own chunk directory but can share an output directory.
   // The list is left on disk deliberately: it is removed with the work dir,
   // and `--debug` keeps both so a bad concat can be reproduced from its list.
-  const listPath = writeConcatList(dirname(firstInput), inputPaths);
+  const listPath = writeVideoConcatList(dirname(firstInput), inputPaths);
   const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
   const result = await runFfmpeg(buildConcatArgs(listPath, outputPath), {
     signal,

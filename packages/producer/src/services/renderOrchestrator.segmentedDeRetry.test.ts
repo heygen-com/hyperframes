@@ -180,6 +180,9 @@ afterEach(() => {
 function render(resumeSegments = false): Promise<void> {
   const root = mkdtempSync(join(tmpdir(), "hf-segmented-de-retry-"));
   dirs.push(root);
+  const cache = mkdtempSync(join(tmpdir(), "hf-segment-cache-"));
+  dirs.push(cache);
+  vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
   writeFileSync(join(root, "index.html"), "<div></div>");
   const job = createRenderJob({
     fps: 30,

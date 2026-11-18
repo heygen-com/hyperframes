@@ -32,11 +32,12 @@ import {
   readdirSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import {
   appendRateCapArgs,
+  buildVideoConcatInputArgs,
+  writeVideoConcatList,
   appendRenderProvenanceArgs,
   describeFfmpegFailure,
   getEncoderPreset,
@@ -280,8 +281,19 @@ interface JoinContext {
 // container), so a single file is read directly; every write also sets output `-r`.
 function videoInputArgs(ctx: JoinContext, videoSources: readonly string[]): string[] {
   return videoSources.length === 1
-    ? ["-i", videoSources[0]!]
-    : concatDemuxerInput(videoSources, ctx.workDir, ctx.fpsArg);
+    ? [
+        "-protocol_whitelist",
+        "file",
+        "-format_whitelist",
+        ctx.format === "webm" ? "matroska" : "mov",
+        "-i",
+        videoSources[0]!,
+      ]
+    : [
+        "-r",
+        ctx.fpsArg,
+        ...buildVideoConcatInputArgs(writeVideoConcatList(ctx.workDir, videoSources)),
+      ];
 }
 
 export function cfrEncodeArgs(
@@ -352,7 +364,7 @@ async function writeJoined(
   const padTrimResult = await ctx.timed("audioMs", () =>
     padOrTrimAudioToVideoFrameCount({
       videoPath: videoSources[0]!,
-      probeVideoFrameInfo: () => probeJoinedFrameInfo(videoSources, ctx.fps, ctx.signal),
+      probeVideoFrameInfo: () => probeJoinedFrameInfo(videoSources, ctx),
       audioPath,
       outputPath: paddedAudioPath,
       signal: ctx.signal,
@@ -386,32 +398,20 @@ async function writeJoined(
   }
 }
 
-/** Concat-demuxer input args; `-r` keeps the demuxer from PTS-averaging the rate. */
-function concatDemuxerInput(
-  chunkPaths: readonly string[],
-  workDir: string,
-  fpsArg: string,
-): string[] {
-  // ffmpeg's concat list escapes a single quote as `'\''`.
-  const listPath = join(workDir, "concat-list.txt");
-  const body = chunkPaths.map((path) => `file '${path.replace(/'/g, "'\\''")}'`).join("\n");
-  writeFileSync(listPath, `${body}\n`, "utf-8");
-  return ["-r", fpsArg, "-f", "concat", "-safe", "0", "-i", listPath];
-}
-
 /** What a probe of the joined file would report: the chunks' frames at the plan's rate. */
 async function probeJoinedFrameInfo(
   videoPaths: readonly string[],
-  fps: { num: number; den: number },
-  signal: AbortSignal | undefined,
+  ctx: JoinContext,
 ): Promise<ProbeVideoFrameInfo> {
   const infos = await Promise.all(
-    videoPaths.map((path) => defaultProbeVideoFrameInfo(path, signal)),
+    videoPaths.map((path) =>
+      defaultProbeVideoFrameInfo(path, ctx.signal, ctx.format === "webm" ? "matroska" : "mov"),
+    ),
   );
   return {
     frameCount: infos.reduce((sum, info) => sum + info.frameCount, 0),
-    fpsNum: fps.num,
-    fpsDen: fps.den,
+    fpsNum: ctx.fps.num,
+    fpsDen: ctx.fps.den,
   };
 }
 

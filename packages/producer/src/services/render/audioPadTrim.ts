@@ -569,11 +569,15 @@ interface FfprobeOutput {
 export async function defaultProbeVideoFrameInfo(
   videoPath: string,
   signal?: AbortSignal,
+  container?: "mov" | "matroska",
 ): Promise<ProbeVideoFrameInfo> {
   // Try the container header (`nb_frames`) first — single moov atom read,
   // no decode. Closed-GOP, B-frame-free streams (the only ones we'll ever
   // ask to pad/trim) reliably set it. Fall back to `-count_packets` which
   // walks the packet stream when the header doesn't carry the count.
+  const inputArgs = container
+    ? ["-protocol_whitelist", "file", "-format_whitelist", container]
+    : [];
   const fastInfo = await runFfprobeJson<FfprobeOutput>(
     [
       "-v",
@@ -584,6 +588,7 @@ export async function defaultProbeVideoFrameInfo(
       "stream=nb_frames,r_frame_rate",
       "-of",
       "json",
+      ...inputArgs,
       "--",
       videoPath,
     ],
@@ -605,6 +610,7 @@ export async function defaultProbeVideoFrameInfo(
       "stream=nb_read_packets,r_frame_rate",
       "-of",
       "json",
+      ...inputArgs,
       "--",
       videoPath,
     ],

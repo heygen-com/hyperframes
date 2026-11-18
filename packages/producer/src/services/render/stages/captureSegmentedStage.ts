@@ -42,7 +42,7 @@ import { ensureFrameWritten } from "./captureHdrFrameShared.js";
 import { reportFrameProgress } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import type { SdrSegmentedCapturePlan } from "../capturePlan.js";
-import { planSegments, type SegmentSlice } from "../segmentPlan.js";
+import { planSegments, segmentOutputPath, type SegmentSlice } from "../segmentPlan.js";
 import type { SegmentVideoFrames, SegmentWorkerFrames } from "../segmentVideoFrames.js";
 import { createSegmentQueue } from "../segmentQueue.js";
 import { isTargetLossError } from "../segmentRecycle.js";
@@ -145,11 +145,6 @@ export type CaptureSegmentedStageResult =
     }
   /** The first segment's encoder could not spawn — caller replans to sdr_streaming. */
   | { success: false };
-
-/** Zero-padded so lexical order equals frame order in the concat list and on disk. */
-export function segmentOutputPath(segmentDir: string, index: number): string {
-  return join(segmentDir, `segment_${String(index).padStart(5, "0")}.mp4`);
-}
 
 /**
  * One closed-GOP encoder per segment. `gopSize` is the segment's own frame
@@ -272,6 +267,7 @@ async function captureSegmentToEncoder(
   segment: SegmentSlice,
 ): Promise<StreamingEncoderResult> {
   const segmentPath = segmentOutputPath(ctx.segmentDir, segment.index);
+  rmSync(segmentPath, { force: true });
   let encoder: StreamingEncoder;
   try {
     encoder = await ctx.spawnEncoder(

@@ -314,7 +314,9 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
       expect(dirname(chunkPath)).not.toBe(legacyDir);
       expect(dirname(list)).toBe(dirname(chunkPath));
       expect(dirname(dirname(list))).toBe(root);
-      expect(readFileSync(list, "utf8")).toBe(`file '${chunkPath.replace(/'/g, "'\\''")}'`);
+      expect(readFileSync(list, "utf8")).toBe(
+        `file '${chunkPath.replace(/'/g, "'\\''")}'\noption format_whitelist mov,matroska\n`,
+      );
     }
     expect(readFileSync(legacyList, "utf8")).toBe("another render's concat list");
   });
@@ -1919,11 +1921,16 @@ describe("buildEncoderArgs HDR color space", () => {
 describe("buildConcatArgs", () => {
   it("stream-copies the concat list and writes provenance before the output", () => {
     const args = buildConcatArgs("/w/concat-list.txt", "/w/video-only.mp4");
-    expect(args.slice(0, 8)).toEqual([
+    expect(args.slice(0, 13)).toEqual([
+      "-xerror",
       "-f",
       "concat",
       "-safe",
       "0",
+      "-protocol_whitelist",
+      "file",
+      "-format_whitelist",
+      "concat,mov,matroska",
       "-i",
       "/w/concat-list.txt",
       "-c",

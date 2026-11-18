@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getFfmpegBinary, getFfprobeBinary } from "../utils/ffmpegBinaries.js";
-import { concatVideoFiles, encodeFramesChunkedConcat } from "./chunkEncoder.js";
+import {
+  buildConcatArgs,
+  writeVideoConcatList,
+  concatVideoFiles,
+  encodeFramesChunkedConcat,
+} from "./chunkEncoder.js";
 import { validJpeg } from "./__fixtures__/jpeg.js";
 
 const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"]).status === 0;
@@ -57,6 +62,34 @@ describe.skipIf(!HAS_FFMPEG)("concat input paths", () => {
     expect(probe.status, probe.stderr).toBe(0);
     expect(probe.stdout.trim()).toBe("64,64,30/1,40");
   }, 30_000);
+
+  it("rejects a non-video demuxer even after a valid first segment", async () => {
+    const clip = join(root, "clip.mp4");
+    const made = spawnSync(getFfmpegBinary(), [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=size=32x32",
+      "-frames:v",
+      "1",
+      "-c:v",
+      "libx264",
+      clip,
+    ]);
+    expect(made.status, made.stderr.toString()).toBe(0);
+    const other = join(root, "second.mp4");
+    writeFileSync(other, "ffconcat version 1.0\n");
+    const list = writeVideoConcatList(root, [other]);
+    const rejected = spawnSync(getFfmpegBinary(), buildConcatArgs(list, join(root, "unused.mp4")), {
+      encoding: "utf8",
+    });
+    expect(rejected.status).not.toBe(0);
+    expect(rejected.stderr).toContain("not on whitelist");
+    const result = await concatVideoFiles([clip, other], join(root, "joined.mp4"));
+    expect(result).toMatchObject({ success: false, externalInterruption: false });
+  });
 
   it.each([true, false])(
     "preserves frames and order with mixed input paths, relative first: %s",
