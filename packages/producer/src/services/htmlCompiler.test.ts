@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { describe, expect, it, mock, beforeAll } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,6 +8,7 @@ import { runInThisContext } from "node:vm";
 import { parseHTML } from "linkedom";
 import { interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
 import { redactTelemetryString } from "@hyperframes/core";
+import { _clearGoogleFontCssCacheForTests } from "@hyperframes/core/fonts/embed";
 import { defaultLogger } from "../logger.js";
 import { NotMediaPayloadError, _setDownloadFetchForTests } from "@hyperframes/engine";
 import {
@@ -1472,6 +1473,30 @@ describe("detectShaderTransitionUsage", () => {
 });
 
 describe("system-primary font normalization", () => {
+  // Google Fonts answers from a stub and a fresh cache, so a cold cache never waits on the network.
+  const FACE = "https://fonts.gstatic.com/s/stub/face.woff2";
+  let restore = () => {};
+  beforeEach(() => {
+    const previousFetch = globalThis.fetch;
+    const previousCacheDir = process.env.HYPERFRAMES_FONT_CACHE_DIR;
+    process.env.HYPERFRAMES_FONT_CACHE_DIR = mkdtempSync(join(tmpdir(), "hf-font-cache-"));
+    _clearGoogleFontCssCacheForTests();
+    globalThis.fetch = (async (input: unknown) => {
+      const url = new URL(String(input));
+      if (url.href === FACE) return new Response(new Uint8Array(64));
+      if (url.hostname !== "fonts.googleapis.com") throw new TypeError(`offline: ${url.href}`);
+      const family = (url.searchParams.get("family") ?? "").split(":")[0];
+      return new Response(`@font-face { font-family: '${family}'; src: url(${FACE}) format('woff2'); }`);
+    }) as unknown as typeof fetch;
+    restore = () => {
+      _clearGoogleFontCssCacheForTests();
+      globalThis.fetch = previousFetch;
+      if (previousCacheDir === undefined) delete process.env.HYPERFRAMES_FONT_CACHE_DIR;
+      else process.env.HYPERFRAMES_FONT_CACHE_DIR = previousCacheDir;
+    };
+  });
+  afterEach(() => restore());
+
   it("promotes Inter before system/generic primary stacks before distributed plan validation", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-system-primary-font-"));
     writeFileSync(
