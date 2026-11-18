@@ -1075,15 +1075,19 @@ class Engine {
     if (group) await this.commit(group);
   }
 
+  keepsEmpty(extra: Partial<HistoryEntry>, keptFiles: boolean): boolean {
+    if (extra.undoes === undefined) return false;
+    return (
+      keptFiles || this.log.entries.find((entry) => entry.id === extra.undoes)?.files.length === 0
+    );
+  }
+
   async commit(
     group: Group,
     extra: Partial<HistoryEntry> = {},
     keptFiles = false,
   ): Promise<HistoryEntry | null> {
-    const undoesEmptied =
-      this.log.entries.find((entry) => entry.id === extra.undoes)?.files.length === 0;
-    const steppedPast = keptFiles && extra.undoes !== undefined;
-    if (!group.changes.size && !undoesEmptied && !steppedPast) return null;
+    if (!group.changes.size && !this.keepsEmpty(extra, keptFiles)) return null;
     const pending = this.pendingEntry(group);
     const endedAt = Math.max(pending.endedAt, this.log.entries.at(-1)?.endedAt ?? 0);
     const entry = keepTargetsOfItsFiles({ ...pending, endedAt, ...extra });
