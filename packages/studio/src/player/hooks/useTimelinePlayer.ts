@@ -44,6 +44,7 @@ import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { usePreviewQualityForwarding } from "./usePreviewQualityForwarding";
 import { timelineElementsChanged } from "./timelinePlayerSync";
 import { safeContentDocument } from "./timelineSyncHydration";
+import { gestureDocumentOf } from "../../components/editor/previewSelection";
 import { sceneSwapFor, supersededByNewerEdit, swapFreshly } from "../sceneSwap";
 
 export interface UseTimelinePlayerOptions {
@@ -502,8 +503,8 @@ export function useTimelinePlayer({
     // A newer edit, or anything replacing the live preview (a reload, a composition switch), wins.
     const isCurrent = () => gen === refreshGenRef.current && slot === previewGeneration();
     const swap = sceneSwapFor(iframe);
-    const swapWouldReplaceGestureNode =
-      !!iframe.contentDocument && isStudioManualEditGestureLiveIn(iframe.contentDocument);
+    const gestureDoc = gestureDocumentOf(iframe);
+    const swapWouldReplaceGestureNode = !!gestureDoc && isStudioManualEditGestureLiveIn(gestureDoc);
     if (!swap || isRefreshingRef.current || swapWouldReplaceGestureNode)
       return reloadWholeFilm(url.toString());
     swapFreshly(swap, url, isCurrent, cancel.signal, reloadWholeFilm);

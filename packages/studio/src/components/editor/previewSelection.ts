@@ -466,6 +466,11 @@ export async function findOpaqueTimelineElement(
 
 export const standInHandle = (element: Element) => standInHandles.get(element);
 
+export function gestureDocumentOf(iframe: HTMLIFrameElement | null): Document | null {
+  if (!iframe) return null;
+  return previewFrameOpaque(iframe) ? inert() : iframe.contentDocument;
+}
+
 export function elementWithin(container: HTMLElement, element: HTMLElement): boolean {
   const handle = standInHandles.get(container);
   if (handle === undefined) return container.contains(element);

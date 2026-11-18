@@ -41,6 +41,7 @@ import { BOX_SIZE_STYLE_PROPS } from "./manualEditsDomPatches";
 
 /* ── Gesture tracking ─────────────────────────────────────────────── */
 let studioManualEditGestureId = 0;
+const detachedStandInGestures = new WeakMap<Document, Set<Element>>();
 
 export type StudioGestureDraws = "move" | "resize" | "rotate" | "edit";
 const MOVE_DRAWS = ["translate", STUDIO_OFFSET_X_PROP, STUDIO_OFFSET_Y_PROP];
@@ -59,6 +60,10 @@ export function beginStudioManualEditGesture(
   studioManualEditGestureId += 1;
   const token = `gesture-${studioManualEditGestureId}:${draws}`;
   element.setAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR, token);
+  if (!element.isConnected) {
+    const doc = element.ownerDocument;
+    detachedStandInGestures.set(doc, (detachedStandInGestures.get(doc) ?? new Set()).add(element));
+  }
   if (at) element.setAttribute(STUDIO_EDIT_MOMENT_ATTR, JSON.stringify(at));
   else element.removeAttribute(STUDIO_EDIT_MOMENT_ATTR);
   return token;
@@ -72,11 +77,14 @@ export function endStudioManualEditGesture(element: HTMLElement, token?: string)
   element.removeAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR);
   element.removeAttribute(STUDIO_EDIT_MOMENT_ATTR);
   const doc = element.ownerDocument;
+  detachedStandInGestures.get(doc)?.delete(element);
   doc.dispatchEvent(new (doc.defaultView?.Event ?? Event)(GESTURE_ENDED));
 }
 
 export function isStudioManualEditGestureLiveIn(doc: Document): boolean {
-  return doc.querySelector(`[${STUDIO_MANUAL_EDIT_GESTURE_ATTR}]`) !== null;
+  if (doc.querySelector(`[${STUDIO_MANUAL_EDIT_GESTURE_ATTR}]`) !== null) return true;
+  const standIns = [...(detachedStandInGestures.get(doc) ?? [])];
+  return standIns.some((el) => el.hasAttribute(STUDIO_MANUAL_EDIT_GESTURE_ATTR));
 }
 
 /** Runs `run` once the last gesture in `doc` ends; the returned function stops waiting. */

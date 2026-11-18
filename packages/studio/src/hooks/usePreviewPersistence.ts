@@ -9,6 +9,7 @@ import {
   isStudioManualEditGestureLiveIn,
 } from "../components/editor/manualEditsDom";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
+import { gestureDocumentOf } from "../components/editor/previewSelection";
 import { markScenesStale } from "../player/sceneSwap";
 import {
   createDomEditSaveQueue,
@@ -221,7 +222,7 @@ export function usePreviewPersistence({
 
   // Undo never repaints under a live gesture; the preview reloads once the last one ends.
   const heldPreviewDoc = useCallback(() => {
-    const doc = previewIframeRef.current?.contentDocument;
+    const doc = gestureDocumentOf(previewIframeRef.current);
     return doc && isStudioManualEditGestureLiveIn(doc) ? doc : null;
   }, [previewIframeRef]);
 

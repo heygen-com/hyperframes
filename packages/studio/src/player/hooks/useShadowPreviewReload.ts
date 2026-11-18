@@ -9,6 +9,7 @@ import {
   studioManualEditSavesIn,
 } from "../../components/editor/manualEditsDom";
 import { refusedPreviewStatus } from "@hyperframes/core/studio-preview-mark";
+import { gestureDocumentOf } from "../../components/editor/previewSelection";
 import { logReload } from "../../utils/reloadDebug";
 import {
   useTimelineSyncCallbacks,
@@ -233,7 +234,7 @@ export function useShadowPreviewReload({
   );
 
   const gestureSavesOnScreen = useCallback(() => {
-    const liveDoc = iframeRef.current?.contentDocument;
+    const liveDoc = gestureDocumentOf(iframeRef.current);
     return liveDoc ? studioManualEditSavesIn(liveDoc) : 0;
   }, [iframeRef]);
 
@@ -256,7 +257,7 @@ export function useShadowPreviewReload({
   // shows the file before it: once that write has landed, a fresh one loads instead.
   const heldOrStale = useCallback(
     (gen: number) => {
-      const liveDoc = iframeRef.current?.contentDocument;
+      const liveDoc = gestureDocumentOf(iframeRef.current);
       if (liveDoc && isStudioManualEditGestureLiveIn(liveDoc))
         return waitThenRetry(gen, "gesture", (retry) =>
           afterStudioManualEditGestures(liveDoc, retry),
