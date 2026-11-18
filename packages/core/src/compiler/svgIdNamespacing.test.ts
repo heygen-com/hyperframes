@@ -519,6 +519,34 @@ it("reads a scope's size without walking its ids, however many styles ask", () =
   expect(lookups).toBeLessThan(500);
 });
 
+// fails without the fix: every attribute selector compared its name against the scope's whole alias list.
+it("rewrites attribute selectors in linear time however many fragment references the mount holds", () => {
+  const rewrite = (n: number) => {
+    const references = Array.from({ length: n }, (_, i) => ({
+      name: "href",
+      localName: "href",
+      namespaceURI: null,
+      before: `#g${i}`,
+      after: `#m--g${i}`,
+    }));
+    const css = Array.from({ length: n }, (_, i) => `[href="#g${i}"] { fill: red; }`).join("\n");
+    return rewriteSvgIdReferencesInCss(css, new Map(), references);
+  };
+  const work = (n: number) => {
+    const replace = vi.spyOn(String.prototype, "replace");
+    try {
+      rewrite(n);
+      return replace.mock.calls.length;
+    } finally {
+      replace.mockRestore();
+    }
+  };
+
+  expect(rewrite(8)).toContain(`:is([href="#g5"], [href="#m--g5"]) { fill: red; }`);
+  // About 2 when linear, about 4 when every selector walks every alias.
+  expect(work(800) / work(400)).toBeLessThan(2.6);
+});
+
 // fails without the fix: the whole namespace, however long, prefixed every renamed id.
 it("caps a long namespace's prefix, each mount's renamed ids still distinct", () => {
   const long = (end: string) => `${"x".repeat(5000)}${end}`;
