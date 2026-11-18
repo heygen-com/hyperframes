@@ -521,6 +521,23 @@ describe("openProjectHistory", () => {
     expect(history.list()).toHaveLength(1);
   });
 
+  // fails without the fix: a host's temporary page beside the film was recorded like the film's own files.
+  it("never records a path its ignores option names: not at open, in a change, or for a reader", async () => {
+    const ignores = (path: string) => path.endsWith(".hf-flat.html");
+    const { history, write, projectDir, historyRoot } = await project(
+      { "index.html": "A", "index.hf-flat.html": "x" },
+      { ignores },
+    );
+    const entry = await change(history, agent, "Turn", () => {
+      write("index.html", "B");
+      write("index.hf-flat.html", "y");
+    });
+    expect(entry.files.map((file) => file.path)).toEqual(["index.html"]);
+    expect(Object.keys(history.peek(entry.id)!)).toEqual(["index.html"]);
+    const reader = readProjectHistory({ projectDir, historyRoot, ignores });
+    expect(Object.keys(reader.peek(entry.id)!)).toEqual(["index.html"]);
+  });
+
   it("records a write nobody announced as one outside entry, and undo puts the bytes back as a new entry", async () => {
     const { history, write, read, projectDir } = await project(
       { "index.html": "<h1>Hello</h1>", "assets/logo.png": Buffer.from([1, 2, 3]) },
