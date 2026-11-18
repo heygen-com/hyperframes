@@ -11,7 +11,7 @@ on:
       - "packages/aws-lambda/image/**"
       - "packages/aws-lambda/hf-media-linux-aarch64.sha256"
       - "packages/aws-lambda/scripts/stage-arm64-image.ts"
-      # A @sparticuz/chromium bump or a ZIP layout change must re-stage the image.
+      # A dependency bump or a ZIP layout change must re-stage the image.
       - "packages/aws-lambda/package.json"
       - "packages/aws-lambda/scripts/build-zip.ts"
       - "packages/aws-lambda/scripts/runtimeLock.ts"

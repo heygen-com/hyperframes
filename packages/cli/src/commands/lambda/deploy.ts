@@ -51,8 +51,8 @@ export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
 
   if (resolved.videoArch === "arm64" && resolved.chromeSource !== "sparticuz") {
     throw new Error(
-      "[lambda deploy] The arm64 video image bundles sparticuz Chrome only. " +
-        "Pass --video-arch x86_64 to deploy with --chrome-source chrome-headless-shell.",
+      "[lambda deploy] The arm64 video image brings its own chrome-headless-shell and is built " +
+        "from the sparticuz handler ZIP. Pass --video-arch x86_64 to deploy with --chrome-source chrome-headless-shell.",
     );
   }
   const root = repoRoot();

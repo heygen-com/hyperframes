@@ -1,8 +1,7 @@
 // A handler mounted into the video image and invoked through its own Lambda bootstrap, which sets
-// AWS_EXECUTION_ENV as Lambda does: the bundled ffmpeg answers and arm64 Chrome renders, launched as
-// src/chromium.ts launches it.
+// AWS_EXECUTION_ENV as Lambda does: the bundled ffmpeg answers and the image's chrome-headless-shell
+// renders, found where src/chromium.ts finds it and launched with the engine's Lambda flags.
 import { execFileSync } from "node:child_process";
-import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 
 export const handler = async () => {
@@ -10,8 +9,8 @@ export const handler = async () => {
     encoding: "utf-8",
   }).split("\n")[0];
   const browser = await puppeteer.launch({
-    executablePath: await chromium.executablePath(),
-    args: chromium.args,
+    executablePath: process.env.HYPERFRAMES_LAMBDA_CHROME_PATH,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--no-zygote", "--disable-dev-shm-usage"],
   });
   try {
     const page = await browser.newPage();

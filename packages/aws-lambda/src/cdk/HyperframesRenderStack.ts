@@ -30,6 +30,7 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import * as tasks from "aws-cdk-lib/aws-stepfunctions-tasks";
 import { Construct } from "constructs";
+import { BUNDLED_SHELL_PATH } from "../chromium.js";
 import { CONTENT_STORE_PREFIX, CONTENT_STORE_RETENTION_DAYS } from "../contentStore.js";
 
 /** Construction-time props for {@link HyperframesRenderStack}. */
@@ -61,6 +62,17 @@ const DEFAULT_MEMORY_MB = 10240;
 const DEFAULT_TIMEOUT_SEC = 900;
 const DEFAULT_CHROME_SOURCE = "sparticuz";
 const DEFAULT_ALARM_THRESHOLD = 1000;
+
+/** The handler's Chrome source, and for the bundled shell, where build-zip.ts put it. */
+function chromeEnvironment(
+  source: NonNullable<HyperframesRenderStackProps["chromeSource"]>,
+): Record<string, string> {
+  if (source === "sparticuz") return { HYPERFRAMES_LAMBDA_CHROME_SOURCE: source };
+  return {
+    HYPERFRAMES_LAMBDA_CHROME_SOURCE: source,
+    HYPERFRAMES_LAMBDA_CHROME_PATH: BUNDLED_SHELL_PATH,
+  };
+}
 
 export class HyperframesRenderStack extends Construct {
   /** S3 bucket for plan tarballs, chunk outputs, and final renders. */
@@ -117,7 +129,7 @@ export class HyperframesRenderStack extends Construct {
       environment: {
         NODE_OPTIONS: "--enable-source-maps",
         TMPDIR: "/tmp",
-        HYPERFRAMES_LAMBDA_CHROME_SOURCE: chromeSource,
+        ...chromeEnvironment(chromeSource),
         HYPERFRAMES_RENDER_BUCKET: this.bucket.bucketName,
         HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY: String(props.reservedConcurrency ?? -1),
         HYPERFRAMES_STITCH_FUNCTION: `${projectName}-render`,
