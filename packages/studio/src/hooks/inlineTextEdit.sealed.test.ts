@@ -18,6 +18,12 @@ import { useInlineTextEdit, type InlineTextEditCommit } from "./useInlineTextEdi
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+const wake = vi.hoisted(() => vi.fn());
+vi.mock("../components/editor/overlayFrameLoop", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../components/editor/overlayFrameLoop")>()),
+  requestOverlayFrames: wake,
+}));
+
 const unmounts: Array<() => void> = [];
 afterEach(() => {
   unmounts.splice(0).forEach((unmount) => act(unmount));
@@ -144,6 +150,43 @@ function textCommits(
   return (element: HTMLElement, html: string) =>
     act(() => commits.handleDomRichTextCommit({ element, html, previousHtml: ORIGINAL }));
 }
+
+it("wakes the selection box as the frame's text grows, and stops watching when the edit ends", async () => {
+  const ports: MessagePort[] = [];
+  const { title, selection } = await sealedTitle(ports);
+  const studioPort = ports[0]!;
+  const sent = vi.spyOn(studioPort, "postMessage");
+  const watched = () =>
+    sent.mock.calls
+      .map(([message]) => message as { kind?: string; params?: { handles: string[] } })
+      .filter((message) => message.kind === "watch-geometry")
+      .map((message) => message.params!.handles);
+  const { controls } = inlineEditor();
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  await vi.waitFor(() => expect(watched()).toEqual([[selection.handle]]));
+  const grown = (width: number) => {
+    const rect = { x: 0, y: 0, width, height: 40 };
+    const box = {
+      rect,
+      angle: 0,
+      corners: null,
+      source: null,
+      clipPath: null,
+      visible: true,
+      members: null,
+    };
+    const data = { v: EDITING_PROTOCOL_VERSION, event: "geometry", at: 1, elements: [box] };
+    studioPort.onmessage?.(new MessageEvent("message", { data }));
+  };
+  wake.mockClear();
+  grown(100);
+  grown(100);
+  grown(140);
+  expect(wake).toHaveBeenCalledTimes(2);
+  act(() => controls().cancel());
+  await vi.waitFor(() => expect(watched().at(-1)).toEqual([]));
+});
 
 it("saves a sealed rich text commit and puts the frame's text back when the save fails", async () => {
   const { title, iframe, selection } = await sealedTitle();

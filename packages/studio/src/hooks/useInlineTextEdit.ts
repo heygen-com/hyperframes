@@ -8,6 +8,7 @@ import {
   countStudioManualEditSave,
 } from "../components/editor/manualEditsDom";
 import { previewStandIn } from "../components/editor/previewDrafts";
+import { requestOverlayFrames } from "../components/editor/overlayFrameLoop";
 import { previewEditingClient, previewRequest } from "../player/lib/previewChannel";
 import { caretRangeAt, takePlainTextOnly } from "@hyperframes/core/runtime/editing-port";
 
@@ -25,6 +26,22 @@ import { caretRangeAt, takePlainTextOnly } from "@hyperframes/core/runtime/editi
  * down the same way whichever way it ends. A session that failed to close
  * would leave the canvas unable to select anything.
  */
+
+/** Typing in a sealed frame raises no event in Studio, so its box wakes the selection overlay as it grows. */
+function followSealedTyping({ iframe, handle }: { iframe: HTMLIFrameElement; handle: string }) {
+  let last = "";
+  const stop = previewEditingClient(iframe).onGeometry(({ elements }) => {
+    const box = JSON.stringify(elements[0]?.rect ?? null);
+    if (box === last) return;
+    last = box;
+    requestOverlayFrames();
+  });
+  void previewRequest(iframe, "watch-geometry", { handles: [handle] });
+  return () => {
+    stop();
+    void previewRequest(iframe, "watch-geometry", { handles: [] });
+  };
+}
 
 /**
  * `true`, not `plaintext-only`.
@@ -243,12 +260,17 @@ export function useInlineTextEdit({
   useEffect(() => {
     const sealed = session?.sealed;
     if (!session || !sealed) return;
-    return previewEditingClient(sealed.iframe).onTextEditEnded((ended) => {
+    const stopFollowing = followSealedTyping(sealed);
+    const stopEnded = previewEditingClient(sealed.iframe).onTextEditEnded((ended) => {
       if (openRef.current !== session || ended.handle !== sealed.handle) return;
       teardown();
       if (ended.html !== null)
         void onCommit({ element: session.element, html: ended.html, previousHtml: ended.previous });
     });
+    return () => {
+      stopEnded();
+      stopFollowing();
+    };
   }, [session, teardown, onCommit]);
 
   // Read-only can be enabled while an edit is already open. Close that
