@@ -149,7 +149,6 @@ async function main(): Promise<void> {
 
   // 5. Compute the unzipped size BEFORE zipping so we fail loud when over budget.
   const unzippedBytes = directorySizeBytes(stagingDir);
-  console.log(`[build-zip] unzipped staging size: ${formatBytes(unzippedBytes)}`);
   if (unzippedBytes > opts.maxUnzippedBytes) {
     throw new Error(
       `[build-zip] unzipped bundle ${formatBytes(unzippedBytes)} exceeds limit ${formatBytes(
@@ -158,6 +157,10 @@ async function main(): Promise<void> {
         `Switch --source to the lighter option, or move Chrome to a Lambda Layer.`,
     );
   }
+  console.log(
+    `[build-zip] unzipped staging size: ${formatBytes(unzippedBytes)}, ` +
+      `${formatBytes(opts.maxUnzippedBytes - unzippedBytes)} under the limit`,
+  );
 
   // 6. Build the ZIP.
   const zipPath = join(distDir, "handler.zip");

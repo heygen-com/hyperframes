@@ -1,12 +1,22 @@
 #!/usr/bin/env bun
 // Stages /var/task for the arm64 video function image: the handler ZIP with its x86 ffmpeg swapped for the
-// native ffmpeg tree (image/Dockerfile's artifact) and its x86 sparticuz Chrome dropped. The image installs
-// its own chrome-headless-shell (image/Dockerfile's video target).
+// native ffmpeg tree (image/Dockerfile's artifact) and its x86 sparticuz Chrome dropped, keeping sparticuz's fonts.
+// The image installs its own chrome-headless-shell (image/Dockerfile's video target).
 //   bun packages/aws-lambda/scripts/stage-arm64-image.ts --ffmpeg=<hf-media tarball> [--zip=..] [--out=..]
 import { spawnSync } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { brotliDecompressSync } from "node:zlib";
 import { BUNDLED_SHELL_DIR } from "../src/chromium.js";
 
 export interface StageOptions {
@@ -50,8 +60,15 @@ export async function stageArm64Image(opts: StageOptions): Promise<string> {
   rmSync(join(task, "bin", "ffprobe"));
   run("tar", ["-xzf", opts.ffmpegTarball, "-C", task, "--strip-components=1"]);
   for (const bin of ["ffmpeg", "ffprobe"]) assertArm64Elf(join(task, "bin", bin));
+  const sparticuzBin = join(task, "node_modules", "@sparticuz", "chromium", "bin");
+  // Its fonts and fonts.conf, unpacked where @sparticuz/chromium unpacks them under /tmp, so text falls back alike.
+  const fontsTar = join(opts.outDir, "fonts.tar");
+  writeFileSync(fontsTar, brotliDecompressSync(readFileSync(join(sparticuzBin, "fonts.tar.br"))));
+  mkdirSync(join(task, "fonts"));
+  run("tar", ["-xf", fontsTar, "-C", join(task, "fonts")]);
+  rmSync(fontsTar);
   // x86 Chrome cannot run here; the image's HYPERFRAMES_LAMBDA_CHROME_SOURCE never loads it.
-  rmSync(join(task, "node_modules", "@sparticuz", "chromium", "bin"), { recursive: true });
+  rmSync(sparticuzBin, { recursive: true });
   return task;
 }
 

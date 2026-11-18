@@ -53,8 +53,9 @@ Parameters:
     Description: >-
       Which Chrome runtime the bundled ZIP was built with. Must match the
       `--source=` flag passed to `build-zip.ts`. The handler reads this
-      via the HYPERFRAMES_LAMBDA_CHROME_SOURCE env var at boot. The arm64
-      video image always runs its own chrome-headless-shell.
+      via the HYPERFRAMES_LAMBDA_CHROME_SOURCE env var at boot. A
+      chrome-headless-shell ZIP is over Lambda's unzipped limit today; the
+      arm64 video image always runs its own chrome-headless-shell.
 
   ChunkInvocationAlarmThreshold:
     Type: Number

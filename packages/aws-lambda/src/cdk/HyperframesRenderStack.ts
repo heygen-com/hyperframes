@@ -43,7 +43,7 @@ export interface HyperframesRenderStackProps {
   lambdaTimeoutSec?: number;
   /** Lambda reserved concurrency cap. `undefined` = unreserved (account default). */
   reservedConcurrency?: number;
-  /** Which Chrome runtime was bundled into the handler ZIP. Default `"sparticuz"`. */
+  /** Which Chrome runtime was bundled into the handler ZIP. Default `"sparticuz"`; a shell ZIP is over Lambda's limit. */
   chromeSource?: "sparticuz" | "chrome-headless-shell";
   /** Threshold for the runaway-invocations alarm. Default 1000 invocations/hour. */
   chunkInvocationAlarmThreshold?: number;

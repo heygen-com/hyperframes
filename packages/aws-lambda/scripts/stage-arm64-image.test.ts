@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { brotliCompressSync } from "node:zlib";
 import { BUNDLED_SHELL_DIR } from "../src/chromium.js";
 import { stageArm64Image } from "./stage-arm64-image.js";
 
@@ -36,6 +37,16 @@ function pack(cmd: string, args: string[], cwd: string): void {
   expect(spawnSync(cmd, args, { cwd }).status).toBe(0);
 }
 
+// @sparticuz/chromium's fonts.tar.br: fonts.conf beside a fonts/ folder.
+function sparticuzFonts(): Buffer {
+  const dir = tree({
+    "fonts.conf": "<fontconfig/>",
+    "fonts/Open_Sans/OpenSans-Regular.ttf": "ttf",
+  });
+  pack("tar", ["-cf", "fonts.tar", "fonts.conf", "fonts"], dir);
+  return brotliCompressSync(readFileSync(join(dir, "fonts.tar")));
+}
+
 function fixture(opts: { ffmpegMachine?: number; zipExtra?: Record<string, string> } = {}) {
   const zipDir = tree({
     "handler.mjs": "export const handler = () => {};",
@@ -43,6 +54,7 @@ function fixture(opts: { ffmpegMachine?: number; zipExtra?: Record<string, strin
     "bin/ffprobe": elf(X86_64),
     "node_modules/@sparticuz/chromium/package.json": JSON.stringify({ version: "148.0.0" }),
     "node_modules/@sparticuz/chromium/bin/chromium.br": "x64 chrome",
+    "node_modules/@sparticuz/chromium/bin/fonts.tar.br": sparticuzFonts(),
     ...opts.zipExtra,
   });
   pack("zip", ["-qr", "handler.zip", "."], zipDir);
@@ -61,13 +73,18 @@ function fixture(opts: { ffmpegMachine?: number; zipExtra?: Record<string, strin
 }
 
 describe("stageArm64Image", () => {
-  it("swaps the handler ZIP's x86 ffmpeg for the arm64 one and drops its x86 Chrome", async () => {
+  it("swaps the handler ZIP's x86 ffmpeg for the arm64 one and drops its x86 Chrome, not its fonts", async () => {
     const task = await stageArm64Image(fixture());
     expect(readFileSync(join(task, "bin/ffmpeg")).readUInt16LE(18)).toBe(AARCH64);
     expect(readFileSync(join(task, "bin/ffprobe")).readUInt16LE(18)).toBe(AARCH64);
     expect(readFileSync(join(task, "lib/libgnutls.so.30"), "utf-8")).toBe("gnutls");
     // The image installs its own chrome-headless-shell; the ZIP's x86 Chrome cannot run on arm64.
     expect(existsSync(join(task, "node_modules/@sparticuz/chromium/bin"))).toBe(false);
+    // Its fonts stay, where image/Dockerfile's FONTCONFIG_PATH points.
+    expect(readFileSync(join(task, "fonts/fonts.conf"), "utf-8")).toBe("<fontconfig/>");
+    expect(readFileSync(join(task, "fonts/fonts/Open_Sans/OpenSans-Regular.ttf"), "utf-8")).toBe(
+      "ttf",
+    );
     expect(readFileSync(join(task, "handler.mjs"), "utf-8")).toContain("handler");
   });
 
