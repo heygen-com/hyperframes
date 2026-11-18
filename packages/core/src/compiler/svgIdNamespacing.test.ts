@@ -497,6 +497,28 @@ it("looks up only the ids a stylesheet names", () => {
   expect(sets).toBeLessThan(20_000);
 });
 
+// fails without the fix: every read of a scope's size walked every id the scope renames.
+it("reads a scope's size without walking its ids, however many styles ask", () => {
+  const ids = Array.from({ length: 500 }, (_, index) => `c${index}`);
+  const defs = ids.map((id) => `<clipPath id="${id}"/><rect clip-path="url(#${id})"/>`).join("");
+  const { document, scopes } = scopedDocument([
+    { namespace: "a", html: `<svg>${defs}</svg>` },
+    { namespace: "b", html: `<svg>${defs}</svg>` },
+  ]);
+  const idMap = namespaceCollidingSvgIds(document, scopes)[1]!;
+  const has = vi.spyOn(Map.prototype, "has");
+  let lookups: number;
+  try {
+    for (let i = 0; i < 500; i += 1) rewriteSvgIdReferencesInCss(`.s${i} { color: red; }`, idMap);
+    lookups = has.mock.calls.length;
+  } finally {
+    has.mockRestore();
+  }
+
+  expect(idMap.size).toBe(500);
+  expect(lookups).toBeLessThan(500);
+});
+
 // fails without the fix: the whole namespace, however long, prefixed every renamed id.
 it("caps a long namespace's prefix, each mount's renamed ids still distinct", () => {
   const long = (end: string) => `${"x".repeat(5000)}${end}`;
