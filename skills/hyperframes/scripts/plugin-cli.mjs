@@ -22,7 +22,7 @@ const manifests = [
 // the oldest release the HyperFrames Desktop app ships, which has every protection for projects
 // received from someone else, so a pin copied from a project never runs a CLI without them.
 // Desktop's release checks read this line from the published package, so it stays a string literal.
-const CLI_FLOOR = "0.9.65";
+const CLI_FLOOR = "0.9.67";
 export const STANDALONE_CLI = `hyperframes@>=${CLI_FLOOR}`;
 
 const realOrResolved = (path) => {
