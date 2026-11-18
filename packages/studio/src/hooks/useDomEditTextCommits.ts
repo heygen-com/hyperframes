@@ -25,6 +25,9 @@ import {
   type DomEditCommitOutcome,
 } from "./domEditCommitRunner";
 import { commitDomStyles } from "./domStyleCommit";
+import { editSealedSelection } from "../components/editor/previewSelection";
+import { escapeHtmlText } from "../components/editor/domEditingLayers";
+import { afterSealedDraw, type PreviewElementEdit } from "../player/lib/previewElements";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 import type { InlineTextEditCommit } from "./useInlineTextEdit";
 import type { ResolveDomSelectionOptions } from "./useDomSelectionTypes";
@@ -166,6 +169,7 @@ export function useDomEditTextCommits({
       const doc = iframe?.contentDocument;
       let editedElement: HTMLElement | null = null;
       let previousInnerHtml: string | null = null;
+      let sealedEdit: PreviewElementEdit | null = null;
 
       return runReportedDomEditCommit({
         capture: () => {
@@ -176,7 +180,13 @@ export function useDomEditTextCommits({
           previousInnerHtml = el.innerHTML;
         },
         apply: () => {
-          if (!editedElement) return;
+          if (!editedElement) {
+            const html = textCommit.usesSerializedTextFields
+              ? textCommit.nextContent
+              : escapeHtmlText(value);
+            sealedEdit = editSealedSelection(iframe, selection, { html });
+            return;
+          }
           if (textCommit.usesSerializedTextFields) {
             editedElement.innerHTML = textCommit.nextContent;
           } else {
@@ -184,13 +194,16 @@ export function useDomEditTextCommits({
           }
         },
         persist: () =>
-          persistDomEditOperations(selection, textCommit.operations, {
-            label: "Edit text",
-            skipRefresh: true,
-            shouldSave: isLatestTextCommit,
-          }),
+          afterSealedDraw(sealedEdit, (drawn) =>
+            persistDomEditOperations(selection, textCommit.operations, {
+              label: "Edit text",
+              skipRefresh: drawn,
+              shouldSave: isLatestTextCommit,
+            }),
+          ),
         shouldRevert: () => isLatestTextCommit(),
         revert: () => {
+          sealedEdit?.restore();
           if (!editedElement || previousInnerHtml === null) return;
           editedElement.innerHTML = previousInnerHtml;
         },
@@ -198,13 +211,15 @@ export function useDomEditTextCommits({
           reportDomEditPersistFailure(selection, textCommit.operations, error, showToast),
         shouldResync: isLatestTextCommit,
         resync: () =>
-          resyncDomTextSelectionFromPreview(
-            doc,
-            selection,
-            activeCompPath,
-            buildDomSelectionFromTarget,
-            applyDomSelection,
-          ),
+          sealedEdit
+            ? refreshDomEditSelectionFromPreview(selection)
+            : resyncDomTextSelectionFromPreview(
+                doc,
+                selection,
+                activeCompPath,
+                buildDomSelectionFromTarget,
+                applyDomSelection,
+              ),
         onFinally: isLatestTextCommit.release,
       });
     },
@@ -214,6 +229,7 @@ export function useDomEditTextCommits({
       buildDomSelectionFromTarget,
       persistDomEditOperations,
       previewIframeRef,
+      refreshDomEditSelectionFromPreview,
       showToast,
     ],
   );
@@ -324,7 +340,7 @@ export function useDomEditTextCommits({
     async (
       selection: DomEditSelection,
       nextTextFields: DomEditTextField[],
-      options?: { importedFont?: ImportedFontAsset | null },
+      options?: { importedFont?: ImportedFontAsset | null; fontFamily?: boolean },
     ) => {
       const isLatestTextCommit = bumpDomEditCommitMapVersion(
         domTextCommitVersionRef.current,
@@ -340,6 +356,7 @@ export function useDomEditTextCommits({
       let editedElement: HTMLElement | null = null;
       let previousInnerHtml: string | null = null;
       const importedFont = options?.importedFont ?? null;
+      let sealedEdit: PreviewElementEdit | null = null;
 
       await runDomEditCommit({
         capture: () => {
@@ -350,7 +367,13 @@ export function useDomEditTextCommits({
           previousInnerHtml = el.innerHTML;
         },
         apply: () => {
-          if (!editedElement) return;
+          if (!editedElement) {
+            const html = textCommit.usesSerializedTextFields
+              ? textCommit.nextContent
+              : escapeHtmlText(textCommit.nextContent);
+            sealedEdit = editSealedSelection(iframe, selection, { html });
+            return;
+          }
           if (textCommit.usesSerializedTextFields) {
             editedElement.innerHTML = textCommit.nextContent;
           } else {
@@ -358,14 +381,18 @@ export function useDomEditTextCommits({
           }
         },
         persist: async () => {
-          await persistDomEditOperations(selection, textCommit.operations, {
-            label: "Edit text",
-            skipRefresh: true,
-            importedFont: importedFont ?? undefined,
-          });
+          await afterSealedDraw(sealedEdit, (drawn) =>
+            persistDomEditOperations(selection, textCommit.operations, {
+              label: "Edit text",
+              // A sealed frame takes no font link from Studio, so its reload loads the new font.
+              skipRefresh: drawn && !(sealedEdit && options?.fontFamily),
+              importedFont: importedFont ?? undefined,
+            }),
+          );
         },
         shouldRevert: () => isLatestTextCommit(),
         revert: () => {
+          sealedEdit?.restore();
           if (!editedElement || previousInnerHtml === null) return;
           editedElement.innerHTML = previousInnerHtml;
         },
@@ -373,13 +400,15 @@ export function useDomEditTextCommits({
           reportDomEditPersistFailure(selection, textCommit.operations, error, showToast),
         shouldResync: isLatestTextCommit,
         resync: () =>
-          resyncDomTextSelectionFromPreview(
-            doc,
-            selection,
-            activeCompPath,
-            buildDomSelectionFromTarget,
-            applyDomSelection,
-          ),
+          sealedEdit
+            ? refreshDomEditSelectionFromPreview(selection)
+            : resyncDomTextSelectionFromPreview(
+                doc,
+                selection,
+                activeCompPath,
+                buildDomSelectionFromTarget,
+                applyDomSelection,
+              ),
         onFinally: isLatestTextCommit.release,
       });
     },
@@ -389,6 +418,7 @@ export function useDomEditTextCommits({
       buildDomSelectionFromTarget,
       persistDomEditOperations,
       previewIframeRef,
+      refreshDomEditSelectionFromPreview,
       showToast,
     ],
   );
@@ -429,7 +459,10 @@ export function useDomEditTextCommits({
           : entry,
       );
 
-      await commitDomTextFields(domEditSelection, nextTextFields, { importedFont });
+      await commitDomTextFields(domEditSelection, nextTextFields, {
+        importedFont,
+        fontFamily: property === "font-family",
+      });
     },
     [
       commitDomTextFields,
