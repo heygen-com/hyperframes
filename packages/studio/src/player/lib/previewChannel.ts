@@ -23,7 +23,7 @@ export function previewFrameOpaque(iframe: HTMLIFrameElement): boolean {
   }
 }
 
-/** One client per frame load: the frame's next load disposes it, or `retirePreviewEditingClient` when the frame goes. */
+/** One client per frame load: its next load disposes it, or `retirePreviewEditingClient` when the frame goes. */
 export function previewEditingClient(iframe: HTMLIFrameElement): EditingPortClient {
   const open = clients.get(iframe);
   if (open) return open.client;
