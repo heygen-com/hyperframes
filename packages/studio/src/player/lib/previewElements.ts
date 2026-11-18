@@ -319,7 +319,7 @@ const isEditEntries = (value: unknown, priority = false): value is StyleEntry[] 
     (entry) =>
       Array.isArray(entry) &&
       isText(entry[0]) &&
-      isTextOrNull(entry[1]) &&
+      (entry[1] === null || isText(entry[1])) &&
       (entry.length === 2 || (priority && entry.length === 3 && entry[2] === "important")),
   );
 
