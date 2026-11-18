@@ -2,10 +2,7 @@
 
 import { act, createElement } from "react";
 import { afterEach, expect, it, vi } from "vitest";
-import {
-  findPreviewElementForSelection,
-  standInFor,
-} from "../components/editor/previewSelection";
+import { findPreviewElementForSelection, standInFor } from "../components/editor/previewSelection";
 import { useTimelineStackingSync } from "../player/components/useTimelineStackingSync";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 import { usePlayerStore, type TimelineElement } from "../player/store/playerStore";
@@ -59,6 +56,7 @@ function stackingSync(iframe: HTMLIFrameElement, commit: TimelineZIndexReorderCo
 it("reads a sealed preview's clip z-index for a lane drag", () => {
   const sync = stackingSync(sealedPreviewFrame().iframe, vi.fn());
   expect(sync().readClipZIndex(clip("back", 1, 1))).toBe(1);
+  expect(sync().readClipZIndex({ ...clip("back", 1, 1), zIndex: undefined })).toBeNaN();
 });
 
 it("saves the restack of a lane drag in a sealed preview", async () => {
