@@ -39,6 +39,7 @@ import {
   appendRateCapArgs,
   appendRenderProvenanceArgs,
   concatListInputArgs,
+  concatListText,
   describeFfmpegFailure,
   getEncoderPreset,
   MIXED_AUDIO_FILENAME,
@@ -393,10 +394,8 @@ function concatDemuxerInput(
   workDir: string,
   fpsArg: string,
 ): string[] {
-  // ffmpeg's concat list escapes a single quote as `'\''`.
   const listPath = join(workDir, "concat-list.txt");
-  const body = chunkPaths.map((path) => `file '${path.replace(/'/g, "'\\''")}'`).join("\n");
-  writeFileSync(listPath, `${body}\n`, "utf-8");
+  writeFileSync(listPath, concatListText(chunkPaths), "utf-8");
   return ["-r", fpsArg, ...concatListInputArgs(listPath)];
 }
 
