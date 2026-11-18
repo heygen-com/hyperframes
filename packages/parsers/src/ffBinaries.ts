@@ -296,6 +296,10 @@ export function _setDemuxerListingForTests(listing?: string): void {
   demuxerLists.clear();
 }
 
+export function localContainerInputArgs(container: "mov" | "matroska" | undefined): string[] {
+  return container ? ["-protocol_whitelist", "file", "-format_whitelist", container] : [];
+}
+
 export { assertLiteralMediaInput };
 
 /** Every demuxer `listingBinary` reports that opens nothing by itself and is not text art, for reading `input`; one that cannot be asked gets the self-contained list, and is asked again. */

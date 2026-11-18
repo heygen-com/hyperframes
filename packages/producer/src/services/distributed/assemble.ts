@@ -33,6 +33,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
+import { localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { basename, dirname, join } from "node:path";
 import {
   appendRateCapArgs,
@@ -282,10 +283,7 @@ interface JoinContext {
 function videoInputArgs(ctx: JoinContext, videoSources: readonly string[]): string[] {
   return videoSources.length === 1
     ? [
-        "-protocol_whitelist",
-        "file",
-        "-format_whitelist",
-        ctx.format === "webm" ? "matroska" : "mov",
+        ...localContainerInputArgs(ctx.format === "webm" ? "matroska" : "mov"),
         "-i",
         videoSources[0]!,
       ]
@@ -366,6 +364,7 @@ async function writeJoined(
       videoPath: videoSources[0]!,
       probeVideoFrameInfo: () => probeJoinedFrameInfo(videoSources, ctx),
       audioPath,
+      audioContainer: "mov",
       outputPath: paddedAudioPath,
       signal: ctx.signal,
       timeoutMs: ctx.timeout,
@@ -387,6 +386,7 @@ async function writeJoined(
       ctx.signal,
       {
         audioCodec: "aac",
+        audioContainer: "mov",
         ffmpegProcessTimeout: ctx.timeout,
         videoInputArgs: videoInputArgs(ctx, videoSources),
       },

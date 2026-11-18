@@ -265,6 +265,27 @@ function diskKb(path: string): number {
 describe("assemble()", () => {
   const TIMEOUT_MS = 30_000;
 
+  it("rejects a WAV file in place of the planned M4A sidecar", async () => {
+    if (!hasFfmpeg) return;
+    const { planDir, chunkPaths, audioPath } = buildAudioFixture();
+    const wav = spawnSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=1",
+      "-f",
+      "wav",
+      audioPath,
+    ]);
+    expect(wav.status).toBe(0);
+    const output = join(planDir, "audio-check.mp4");
+    await expect(assemble(planDir, chunkPaths, audioPath, output)).rejects.toThrow();
+    expect(existsSync(output)).toBe(false);
+  });
+
   it("rejects an input list in place of an encoded chunk", async () => {
     if (!hasFfmpeg) return;
     const chunks = [

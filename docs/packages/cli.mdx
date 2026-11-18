@@ -2149,7 +2149,12 @@ Run `--resume` from the same project location with the same render settings.
 Moving a project, changing its settings, or upgrading from a version that stored
 segments in the project starts a fresh capture. A failed render keeps its
 checkpoints. A successful render removes them unless you pass `--keep-segments`.
-If you set `HYPERFRAMES_CACHE_DIR`, choose a directory outside the project.
+After a successful render with the new version, you can delete the old
+`renders/.hf-segments/` directory to reclaim disk space. If you set
+`HYPERFRAMES_CACHE_DIR`, choose a private directory outside the project.
+Segmented and multi-chunk joins require FFmpeg 5.0 or later for per-file
+options in concat lists. If FFmpeg reports an unknown `option` directive,
+update the binary used for rendering.
 
 mp4 and mov only; png-sequence, gif, webm, HDR and shader-transition renders
 keep their existing routes.

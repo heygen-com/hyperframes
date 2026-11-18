@@ -17,7 +17,11 @@ import {
   readFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { ensurePrivateCacheDir, trustedCacheRoot } from "@hyperframes/core/cache-dir";
+import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
+  hyperframesCacheDir,
+} from "@hyperframes/core/cache-dir";
 import { isSafePath, realpath } from "@hyperframes/core/safe-path";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { planSegments, segmentOutputPath } from "./segmentPlan.js";
@@ -97,7 +101,7 @@ export function computeSegmentPlanHash(input: SegmentPlanHashInput): string {
 }
 
 export function segmentDirFor(projectDir: string, planHash: string): string {
-  const root = trustedCacheRoot();
+  const root = hyperframesCacheDir();
   const projectKey = createHash("sha256").update(realpath(projectDir)).digest("hex");
   const parent = join(root, "segments", projectKey);
   const dir = join(parent, planHash);
@@ -109,6 +113,7 @@ export function segmentDirFor(projectDir: string, planHash: string): string {
   ) {
     throw new Error("Segmented capture requires HYPERFRAMES_CACHE_DIR outside the project.");
   }
+  assertPrivateCachePath(root, root);
   ensurePrivateCacheDir(parent, root);
   if (!isSafePath(parent, dir) || lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) {
     throw new Error("Invalid segment cache directory");

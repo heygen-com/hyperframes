@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   cpSync,
   symlinkSync,
   linkSync,
@@ -130,7 +131,7 @@ describe("manifest io", () => {
   it("skips linked manifests even when they contain a valid checkpoint", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     const copy = join(dir, "copy");
-    mkdirSync(copy);
+    mkdirSync(copy, { mode: 0o700 });
     const manifest: SegmentManifest = {
       version: 1,
       planHash: "abc",
@@ -167,12 +168,27 @@ describe("manifest io", () => {
     expect(readSegmentManifest(dir)).toBeNull();
   });
 
+  it.skipIf(!process.getuid)("reports an explicitly configured writable cache", () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    const project = join(dir, "project");
+    const cache = join(dir, "shared-cache");
+    mkdirSync(project, { mode: 0o700 });
+    mkdirSync(cache);
+    chmodSync(cache, 0o770);
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    try {
+      expect(() => segmentDirFor(project, "abc")).toThrow("can be changed by another user account");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("only finds checkpoints from the local cache for the same project", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     const project = join(dir, "project");
     const copy = join(dir, "copy");
-    mkdirSync(project);
-    mkdirSync(copy);
+    mkdirSync(project, { mode: 0o700 });
+    mkdirSync(copy, { mode: 0o700 });
     vi.stubEnv("HYPERFRAMES_CACHE_DIR", join(dir, "cache-a"));
     try {
       const checkpoint = segmentDirFor(project, "abc");

@@ -6,6 +6,7 @@
  * Supports CPU (libx264) and GPU encoding.
  */
 
+import { localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { randomUUID } from "node:crypto";
 import { frameSequencePath } from "./extractedFrameIndex.js";
 import {
@@ -102,6 +103,7 @@ export interface MuxVideoWithAudioOptions extends Partial<
    * depend on the file extension alone.
    */
   audioCodec?: "aac";
+  audioContainer?: "mov";
   /** Replaces `-i <videoPath>` (which is then unused), e.g. with a concat-demuxer input. */
   videoInputArgs?: readonly string[];
   /**
@@ -124,7 +126,9 @@ async function shouldCopyAacSidecar(
   if (KNOWN_NON_AAC_AUDIO_EXTENSIONS.has(audioExtension)) return false;
 
   try {
-    const metadata = await extractAudioMetadata(audioPath);
+    const metadata = options?.audioContainer
+      ? await extractAudioMetadata(audioPath, { inputContainer: options.audioContainer })
+      : await extractAudioMetadata(audioPath);
     return metadata.audioCodec === "aac";
   } catch {
     // Preserve the pre-existing fallback for invalid or unprobeable sidecars:
@@ -902,7 +906,14 @@ export async function muxVideoWithAudio(
   const isWebm = outputExtension === ".webm";
   const isMov = outputExtension === ".mov";
   const shouldCopyAudio = isWebm ? false : await shouldCopyAacSidecar(audioPath, config);
-  const args = [...(config?.videoInputArgs ?? ["-i", videoPath]), "-i", audioPath, "-c:v", "copy"];
+  const args = [
+    ...(config?.videoInputArgs ?? ["-i", videoPath]),
+    ...localContainerInputArgs(config?.audioContainer),
+    "-i",
+    audioPath,
+    "-c:v",
+    "copy",
+  ];
 
   if (isWebm) {
     args.push("-c:a", "libopus", "-b:a", "128k");
