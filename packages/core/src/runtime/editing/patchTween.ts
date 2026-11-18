@@ -107,8 +107,59 @@ export interface ResolvedTween {
   timeline: PatchableTimeline;
 }
 
+const tweenDuration = (tween: PatchableTween) =>
+  typeof tween.duration === "function" ? tween.duration() : 0;
+
+const isKind = (tween: PatchableTween, kind: "keyframe" | "set") =>
+  tweenDuration(tween) > 0 === (kind === "keyframe");
+
+function playsNow(tween: PatchableTween, timeline: PatchableTimeline): boolean {
+  if (typeof timeline.time !== "function") return false;
+  const now = timeline.time();
+  const start = typeof tween.startTime === "function" ? tween.startTime() : 0;
+  return now >= start - 1e-3 && now <= start + tweenDuration(tween) + 1e-3;
+}
+
+const carriesChannels = (
+  vars: Record<string, unknown>,
+  kind: "keyframe" | "set",
+  channels: string[],
+) => (kind === "set" ? varsCarryChannel(vars, channels) : keyframeVarsCarryChannel(vars, channels));
+
+type WalkableTimeline = PatchableTimeline & { getChildren: (deep: boolean) => PatchableTween[] };
+
+function liveTimelines(
+  timelines: Record<string, PatchableTimeline>,
+  compositionId?: string,
+): WalkableTimeline[] {
+  const ids = compositionId ? [compositionId] : Object.keys(timelines);
+  return ids
+    .map((id) => timelines[id])
+    .filter((tl): tl is WalkableTimeline => typeof tl?.getChildren === "function");
+}
+
+type Candidate = {
+  tween: PatchableTween & { vars: Record<string, unknown> };
+  timeline: WalkableTimeline;
+};
+
+function candidatesFor(
+  target: PatchTarget,
+  selector: string,
+  kind: "keyframe" | "set",
+  compositionId?: string,
+): Candidate[] {
+  const targetEl = target.timelines ? target.document?.querySelector(selector) : null;
+  if (!target.timelines || !targetEl) return [];
+  const found: Candidate[] = [];
+  for (const timeline of liveTimelines(target.timelines, compositionId))
+    for (const tween of timeline.getChildren(true))
+      if (tween.vars && matchesElement(tween, targetEl) && isKind(tween, kind))
+        found.push({ tween: tween as Candidate["tween"], timeline });
+  return found;
+}
+
 /** The live tween on `selector`; `channels` keeps an {x,y} patch off a co-located rotation-only set. */
-// fallow-ignore-next-line complexity
 export function resolveTween(
   target: PatchTarget,
   selector: string,
@@ -116,43 +167,14 @@ export function resolveTween(
   compositionId?: string,
   channels?: string[],
 ): ResolvedTween | null {
-  const timelines = target.timelines;
-  if (!timelines) return null;
-  const targetEl = target.document?.querySelector(selector) ?? null;
-  if (!targetEl) return null;
-  const tlIds = compositionId
-    ? [compositionId]
-    : Object.keys(timelines).filter((k) => typeof timelines[k]?.getChildren === "function");
-  const wantChannels = channels && channels.length > 0 ? channels : null;
-
-  let first: ResolvedTween | null = null;
-  let channelMatch: ResolvedTween | null = null;
-  for (const tlId of tlIds) {
-    const timeline = timelines[tlId];
-    if (!timeline?.getChildren) continue;
-    const now = typeof timeline.time === "function" ? timeline.time() : null;
-    for (const tween of timeline.getChildren(true)) {
-      if (!tween.vars || !matchesElement(tween, targetEl)) continue;
-      const dur = typeof tween.duration === "function" ? tween.duration() : 0;
-      const isSet = !(dur > 0);
-      if (kind === "set" ? !isSet : isSet) continue;
-      if (wantChannels) {
-        const carries =
-          kind === "set"
-            ? varsCarryChannel(tween.vars, wantChannels)
-            : keyframeVarsCarryChannel(tween.vars, wantChannels);
-        if (carries) channelMatch ??= { tween, timeline };
-        else first ??= { tween, timeline };
-        continue;
-      }
-      first ??= { tween, timeline };
-      if (kind === "keyframe" && now != null) {
-        const start = typeof tween.startTime === "function" ? tween.startTime() : 0;
-        if (now >= start - 1e-3 && now <= start + dur + 1e-3) return { tween, timeline };
-      }
-    }
-  }
-  return channelMatch ?? first;
+  const found = candidatesFor(target, selector, kind, compositionId);
+  const preferred =
+    channels && channels.length > 0
+      ? found.find(({ tween }) => carriesChannels(tween.vars, kind, channels))
+      : kind === "keyframe"
+        ? found.find(({ tween, timeline }) => playsNow(tween, timeline))
+        : undefined;
+  return preferred ?? found[0] ?? null;
 }
 
 function finiteNumericProps(props: SetPatchProps): Record<string, number> | null {
@@ -231,21 +253,39 @@ function mergeKeyframeStep(
   return next;
 }
 
-// fallow-ignore-next-line complexity
-function rebuildKeyframeTween(tween: PatchableTween, pct: number, props: KeyframeStep): boolean {
-  const vars = tween.vars;
-  if (!vars || "motionPath" in vars) return false;
+type ReplaceableTween = PatchableTween & {
+  vars: Record<string, unknown>;
+  startTime: () => number;
+  kill: () => void;
+  parent: PatchableTimeline & { to: NonNullable<PatchableTimeline["to"]> };
+};
+
+const replaceable = (tween: PatchableTween): tween is ReplaceableTween =>
+  !!tween.vars &&
+  typeof tween.startTime === "function" &&
+  typeof tween.kill === "function" &&
+  typeof tween.parent?.to === "function";
+
+function keyframeObject(
+  vars: Record<string, unknown>,
+): Record<string, Record<string, number>> | null {
   const kf = vars.keyframes;
-  if (!kf || typeof kf !== "object" || Array.isArray(kf)) return false;
-  if (!Object.values(props).every((v) => typeof v === "number" && Number.isFinite(v))) return false;
-  const parent = tween.parent;
+  if ("motionPath" in vars || !kf || typeof kf !== "object" || Array.isArray(kf)) return null;
+  return kf as Record<string, Record<string, number>>;
+}
+
+const finiteStep = (props: KeyframeStep) =>
+  Object.values(props).every((v) => typeof v === "number" && Number.isFinite(v));
+
+function rebuildKeyframeTween(tween: PatchableTween, pct: number, props: KeyframeStep): boolean {
+  if (!replaceable(tween) || !finiteStep(props)) return false;
+  const kf = keyframeObject(tween.vars);
   const targets = tween.targets?.();
-  if (!parent?.to || !targets || targets.length === 0) return false;
-  if (typeof tween.startTime !== "function" || typeof tween.kill !== "function") return false;
-  const next = mergeKeyframeStep(kf as Record<string, Record<string, number>>, pct, props);
+  if (!kf || !targets || targets.length === 0) return false;
+  const next = mergeKeyframeStep(kf, pct, props);
   const position = tween.startTime();
   tween.kill();
-  parent.to(targets, { ...vars, keyframes: next }, position);
+  tween.parent.to(targets, { ...tween.vars, keyframes: next }, position);
   return true;
 }
 
@@ -347,29 +387,34 @@ function numericChannels(value: unknown): Record<string, number> | null {
   return ok && entries.length > 0 ? (value as Record<string, number>) : null;
 }
 
+const CHANGE_KEYS: Record<RuntimeTweenChange["kind"], string> = {
+  set: "kind,props",
+  "global-set": "kind,props",
+  "keyframe-rebuild": "kind,pct,props",
+  keyframes: "keyframes,kind",
+};
+
+function parseKeyframes(steps: unknown): RuntimeTweenChange | null {
+  if (!Array.isArray(steps) || steps.length === 0 || steps.length > MAX_KEYFRAME_STEPS) return null;
+  const parsed = steps.map(numericChannels);
+  return parsed.every(Boolean) ? { kind: "keyframes", keyframes: parsed as KeyframeStep[] } : null;
+}
+
+function parseRebuild(pct: unknown, value: unknown): RuntimeTweenChange | null {
+  const props = numericChannels(value);
+  const okPct = typeof pct === "number" && pct >= 0 && pct <= 100;
+  return props && okPct ? { kind: "keyframe-rebuild", pct, props } : null;
+}
+
 function parseChange(value: unknown): RuntimeTweenChange | null {
-  if (!isRecord(value)) return null;
-  const keys = Object.keys(value).sort().join();
-  if ((value.kind === "set" || value.kind === "global-set") && keys === "kind,props") {
-    const props = numericChannels(value.props);
-    return props ? { kind: value.kind, props } : null;
-  }
-  if (value.kind === "keyframe-rebuild" && keys === "kind,pct,props") {
-    const props = numericChannels(value.props);
-    const pct = value.pct;
-    const okPct = typeof pct === "number" && pct >= 0 && pct <= 100;
-    return props && okPct ? { kind: "keyframe-rebuild", pct, props } : null;
-  }
-  if (value.kind === "keyframes" && keys === "keyframes,kind") {
-    const steps = value.keyframes;
-    if (!Array.isArray(steps) || steps.length === 0 || steps.length > MAX_KEYFRAME_STEPS)
-      return null;
-    const parsed = steps.map(numericChannels);
-    return parsed.every(Boolean)
-      ? { kind: "keyframes", keyframes: parsed as KeyframeStep[] }
-      : null;
-  }
-  return null;
+  if (!isRecord(value) || typeof value.kind !== "string") return null;
+  const kind = value.kind as RuntimeTweenChange["kind"];
+  // An unknown kind, prototype names included, has no key list here, so it fails this match.
+  if (Object.keys(value).sort().join() !== CHANGE_KEYS[kind]) return null;
+  if (kind === "keyframes") return parseKeyframes(value.keyframes);
+  if (kind === "keyframe-rebuild") return parseRebuild(value.pct, value.props);
+  const props = numericChannels(value.props);
+  return props ? { kind, props } : null;
 }
 
 export function parsePatchTweens(params: unknown): PatchTweensParams | null {

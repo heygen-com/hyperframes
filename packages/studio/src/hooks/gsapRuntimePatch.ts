@@ -12,11 +12,7 @@ import {
 } from "@hyperframes/core/runtime/patch-tween";
 import { recordLiveSet } from "../utils/softReloadTargets";
 
-export type {
-  KeyframeStep,
-  RuntimeTweenChange,
-  SetPatchProps,
-} from "@hyperframes/core/runtime/patch-tween";
+export type { RuntimeTweenChange, SetPatchProps } from "@hyperframes/core/runtime/patch-tween";
 
 function reachablePreview(iframe: HTMLIFrameElement): PatchTarget {
   const win = iframe.contentWindow as

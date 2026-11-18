@@ -120,6 +120,9 @@ describe("patch-tweens parser", () => {
       { kind: "keyframe-rebuild", pct: 140, props: { y: 3 } },
       { kind: "set", props: { x: 1 }, extra: true },
       { kind: "run", props: { x: 1 } },
+      { kind: "toString", props: { x: 1 } },
+      { kind: "__proto__", props: { x: 1 } },
+      { kind: "constructor", props: { x: 1 } },
     ])
       expect(ok(change)).toBeNull();
     expect(parsePatchTweens({ patches: [], seek: true })).toBeNull();

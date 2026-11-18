@@ -260,30 +260,9 @@ export function applyPreviewSync(
   const patches = instantPatchesFor(options);
   const writtenWithoutPatch = patches.length === 0;
   let needsFallback = options.previewFallbackLatch?.pending === true || writtenWithoutPatch;
-  if (patches.length > 0 && iframe && previewFrameOpaque(iframe)) {
-    patchSealedPreview(iframe, patches, !options.deferPreviewSync, reloadPreview);
-    if (!needsFallback) return;
-  } else if (patches.length > 0) {
-    const deferSeek = options.deferPreviewSync === true;
-    const renderAt = lastTweenPatch(patches);
-    const missed = patches.find(
-      (patch, index) =>
-        !patchRuntimeTweenInPlace(
-          iframe,
-          patch.selector,
-          patch.change,
-          undefined,
-          deferSeek || index !== renderAt,
-        ),
-    );
-    if (missed) {
-      // The instant path couldn't patch in place — record the fallback so we can
-      // track how often the fast path misses before the soft/full reload below.
-      trackStudioEvent("gsap_instant_patch_fallback", { selector: missed.selector });
-      needsFallback = true;
-    }
-    // Patched in place — elements are already correct on screen; no reload needed
-    // unless an earlier deferred batch left one member unpatched.
+  if (patches.length > 0) {
+    if (!patchInstantly(iframe, patches, options, reloadPreview)) needsFallback = true;
+    // Patched in place: no reload unless an earlier deferred batch left one member unpatched.
     if (!needsFallback) return;
   }
   // Written, but the caller has more writes to make and will render after the last.
@@ -311,6 +290,40 @@ export function applyPreviewSync(
   } else {
     reloadPreview();
   }
+}
+
+/** A sealed preview patches itself (and reloads on its own if it must); a reachable one is patched here. */
+function patchInstantly(
+  iframe: HTMLIFrameElement | null,
+  patches: NonNullable<CommitMutationOptions["instantPatches"]>,
+  options: CommitMutationOptions,
+  reloadPreview: () => void,
+): boolean {
+  if (!iframe || !previewFrameOpaque(iframe))
+    return patchReachablePreview(iframe, patches, options.deferPreviewSync === true);
+  patchSealedPreview(iframe, patches, !options.deferPreviewSync, reloadPreview);
+  return true;
+}
+
+/** Patches a reachable preview's tweens in place, rendering once; `false` when one could not land. */
+function patchReachablePreview(
+  iframe: HTMLIFrameElement | null,
+  patches: NonNullable<CommitMutationOptions["instantPatches"]>,
+  deferSeek: boolean,
+): boolean {
+  const renderAt = lastTweenPatch(patches);
+  const missed = patches.find(
+    (patch, index) =>
+      !patchRuntimeTweenInPlace(
+        iframe,
+        patch.selector,
+        patch.change,
+        undefined,
+        deferSeek || index !== renderAt,
+      ),
+  );
+  if (missed) trackStudioEvent("gsap_instant_patch_fallback", { selector: missed.selector });
+  return missed === undefined;
 }
 
 function instantPatchesFor(
