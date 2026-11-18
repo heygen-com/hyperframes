@@ -115,6 +115,11 @@ describe("readPreviewElement", () => {
       described(1, { attributes: [[`data-${over}`, "1"]] }),
       described(1, { attributes: many as never }),
       described(1, { inlineStyles: { left: over } }),
+      described(1, { inlineStyles: { [`--${over}`]: "1" } }),
+      described(1, { source: { ...NO_SOURCE, file: over } }),
+      described(1, { source: { ...NO_SOURCE, compositionId: over } }),
+      described(1, { source: { ...NO_SOURCE, originalCompositionId: over } }),
+      described(1, { matchesBefore: [{ source: { ...NO_SOURCE, file: over }, count: 1 }] }),
       described(1, { text }),
       described(1, { children: [{ text }] }),
     ]) {

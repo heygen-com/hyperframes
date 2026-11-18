@@ -254,6 +254,28 @@ describe("element handles over the editing port", () => {
     expect(top!.parent).not.toBeNull();
   });
 
+  it("describes no element whose inherited source it would have to cut, and leaves out a style name it would", async () => {
+    const long = "x".repeat(MAX_ELEMENT_VALUE + 1);
+    document.body.innerHTML = `<div data-composition-file="${long}.html"><p class="t"></p></div>
+      <div data-composition-id="${long}"><p class="t"></p></div>
+      <div data-hf-original-composition-id="${long}" data-composition-id="c"><p class="t"></p></div>`;
+    for (const p of document.querySelectorAll("p")) expect(await describeOne(p)).toBeNull();
+    const { result } = await ask<never>("query", { selector: ".t" });
+    expect(result).toEqual({ matches: [], truncated: true });
+
+    document.body.innerHTML = `<div data-composition-file="${long}.html"><i class="u"></i></div><i class="u"></i>`;
+    const later = document.querySelectorAll("i")[1]!;
+    later.style.setProperty(`--${long}`, "1");
+    later.style.setProperty("left", "4px");
+    const described = await describeOne(later);
+    expect(described).toMatchObject({
+      selector: ".u",
+      matchesBefore: null,
+      inlineStyles: { left: "4px" },
+      truncated: true,
+    });
+  });
+
   it("answers a query with each match's handle and source, in document order", async () => {
     document.body.innerHTML = `<p class="t" id="a"></p>
       <div data-composition-file="cards.html"><p class="t" id="b"></p></div>`;

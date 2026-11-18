@@ -34,7 +34,6 @@ const isFields = (value: unknown): value is Fields =>
 const isHandle = (value: unknown) =>
   typeof value === "string" && EDITING_ELEMENT_HANDLE.test(value);
 const isText = (value: unknown) => typeof value === "string";
-const isTextOrNull = (value: unknown) => value === null || typeof value === "string";
 const isValue = (value: unknown) => isText(value) && (value as string).length <= MAX_ELEMENT_VALUE;
 const isLongText = (value: unknown) =>
   isText(value) && (value as string).length <= MAX_ELEMENT_TEXT;
@@ -45,12 +44,14 @@ const isCount = (value: unknown) => Number.isSafeInteger(value) && (value as num
 
 const isSource = (value: unknown): value is EditingElementSource =>
   isFields(value) &&
-  isTextOrNull(value.file) &&
-  isTextOrNull(value.compositionId) &&
-  isTextOrNull(value.originalCompositionId);
+  isValueOrNull(value.file) &&
+  isValueOrNull(value.compositionId) &&
+  isValueOrNull(value.originalCompositionId);
 
 const isStyles = (value: unknown) =>
-  isFields(value) && isEntries(Object.keys(value)) && Object.values(value).every(isValue);
+  isFields(value) &&
+  isEntries(Object.keys(value)) &&
+  Object.entries(value).every(([name, style]) => isValue(name) && isValue(style));
 
 function hasPlainFields(value: Fields): boolean {
   const { matchesBefore, attributes, children } = value;
