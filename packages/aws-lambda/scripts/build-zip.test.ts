@@ -1,9 +1,18 @@
 import { describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { managedChromeVersion } from "@hyperframes/engine/chrome-host-ceiling";
 import * as esbuild from "esbuild";
 import { BUNDLED_SHELL_DIR, BUNDLED_SHELL_PATH } from "../src/chromium.js";
 import { stageChromeHeadlessShell } from "./_chromeHeadlessShell.js";
@@ -79,10 +88,11 @@ describe("build-zip handler banner", () => {
 });
 
 describe("build-zip chrome-headless-shell staging", () => {
+  // @puppeteer/browsers' layout: chrome-headless-shell/linux-<version>/chrome-headless-shell-linux64/.
   function puppeteerCache(versions: Record<string, Record<string, string>>): string {
     const home = mkdtempSync(join(tmpdir(), "hf-shell-cache-"));
     for (const [version, files] of Object.entries(versions)) {
-      const folder = join(home, ".cache/puppeteer/chrome-headless-shell", version);
+      const folder = join(home, ".cache/puppeteer/chrome-headless-shell", `linux-${version}`);
       for (const [path, body] of Object.entries(files)) {
         const file = join(folder, "chrome-headless-shell-linux64", path);
         mkdirSync(dirname(file), { recursive: true });
@@ -91,11 +101,12 @@ describe("build-zip chrome-headless-shell staging", () => {
     }
     return home;
   }
+  const pinned = managedChromeVersion("linux");
 
-  it("stages the whole newest shell folder where the template and the CDK stack point", () => {
+  it("stages the whole pinned shell folder where the template and the CDK stack point", () => {
     const home = puppeteerCache({
-      "99.0.0.1": { "chrome-headless-shell": "old" },
-      "158.0.8127.36": {
+      "999.0.0.1": { "chrome-headless-shell": "newer" },
+      [pinned]: {
         "chrome-headless-shell": "exe",
         "icudtl.dat": "icu",
         "headless_lib_data.pak": "pak",
@@ -103,8 +114,19 @@ describe("build-zip chrome-headless-shell staging", () => {
       },
     });
     const staging = mkdtempSync(join(tmpdir(), "hf-shell-staging-"));
+    const checked: string[] = [];
     try {
-      expect(stageChromeHeadlessShell(staging, home)).toBe("158.0.8127.36");
+      const isPinned = (exe: string) => checked.push(exe) > 0;
+      expect(stageChromeHeadlessShell(staging, home, isPinned)).toBe(pinned);
+      expect(checked).toEqual([
+        join(
+          home,
+          ".cache/puppeteer/chrome-headless-shell",
+          `linux-${pinned}`,
+          "chrome-headless-shell-linux64",
+          "chrome-headless-shell",
+        ),
+      ]);
       const shell = join(staging, BUNDLED_SHELL_DIR);
       // Without icudtl.dat beside it the shell exits at launch, so the folder ships whole.
       expect(readFileSync(join(shell, "icudtl.dat"), "utf-8")).toBe("icu");
@@ -121,11 +143,29 @@ describe("build-zip chrome-headless-shell staging", () => {
     }
   });
 
-  it("names the install command when the cache is missing", () => {
-    const home = mkdtempSync(join(tmpdir(), "hf-shell-nocache-"));
+  it("refuses a cached folder that does not match the pinned digest", () => {
+    const home = puppeteerCache({
+      [pinned]: { "chrome-headless-shell": "tampered" },
+    });
+    const staging = mkdtempSync(join(tmpdir(), "hf-shell-staging-"));
+    try {
+      expect(() => stageChromeHeadlessShell(staging, home)).toThrow(/does not match the pinned/);
+      expect(existsSync(join(staging, BUNDLED_SHELL_DIR))).toBe(false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(staging, { recursive: true, force: true });
+    }
+  });
+
+  it("names the pinned install command when only another version is cached", () => {
+    const home = puppeteerCache({
+      "999.0.0.1": { "chrome-headless-shell": "newer" },
+    });
     try {
       expect(() => stageChromeHeadlessShell(home, home)).toThrow(
-        /@puppeteer\/browsers install chrome-headless-shell@/,
+        new RegExp(
+          `@puppeteer/browsers install chrome-headless-shell@${pinned.replaceAll(".", "\\.")} `,
+        ),
       );
     } finally {
       rmSync(home, { recursive: true, force: true });

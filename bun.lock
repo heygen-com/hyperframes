@@ -42,6 +42,7 @@
         "tar": "^7.5.22",
       },
       "devDependencies": {
+        "@hyperframes/engine": "workspace:*",
         "@types/node": "^25.0.10",
         "@types/tar": "^6.1.13",
         "aws-cdk-lib": "^2.130.0",

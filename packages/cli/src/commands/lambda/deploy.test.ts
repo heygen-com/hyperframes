@@ -54,13 +54,6 @@ describe("runDeploy", () => {
     expect(samDeploy).not.toHaveBeenCalled();
   });
 
-  it("outside a checkout, refuses a Chrome source the prebuilt handler does not bundle", async () => {
-    await expect(
-      runDeploy({ videoArch: "x86_64", chromeSource: "chrome-headless-shell" }),
-    ).rejects.toThrow(/needs a hyperframes checkout/);
-    expect(samDeploy).not.toHaveBeenCalled();
-  });
-
   it("with --video-arch x86_64, deploys the checkout's template with no video function", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-deploy-checkout-"));
     const samDir = join(dir, "examples", "aws-lambda");
@@ -144,13 +137,14 @@ describe("runDeploy", () => {
     });
   });
 
-  it.each([undefined, "arm64" as const])(
-    "refuses arm64 (--video-arch %s) with a handler ZIP the video image is not built from, naming x86_64",
+  it.each([undefined, "arm64" as const, "x86_64" as const])(
+    "refuses chrome-headless-shell (--video-arch %s) before building, since it cannot fit a ZIP function",
     async (videoArch) => {
       await expect(runDeploy({ videoArch, chromeSource: "chrome-headless-shell" })).rejects.toThrow(
-        /built from the sparticuz handler ZIP[\s\S]*--video-arch x86_64/,
+        /does not fit a Lambda ZIP function[\s\S]*arm64 video image/,
       );
       expect(pushVideoImage).not.toHaveBeenCalled();
+      expect(samDeploy).not.toHaveBeenCalled();
     },
   );
 });
