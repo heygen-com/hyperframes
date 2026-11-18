@@ -19,13 +19,15 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
@@ -660,16 +662,38 @@ async function fetchManifest(url: string): Promise<SkillsManifest> {
  * Returns null when git/network is unavailable so callers fall back to main.
  */
 async function remoteHeadSha(repoSlug: string): Promise<string | null> {
+  let noRepo: string | undefined;
   try {
+    // Pin both the working directory and repository so Git never discovers the project.
+    noRepo = mkdtempSync(join(tmpdir(), "hyperframes-git-"));
     const { stdout } = await execFileAsync(
       "git",
-      ["ls-remote", `https://github.com/${repoSlug}.git`, "refs/heads/main"],
-      { timeout: FETCH_TIMEOUT_MS, env: { ...process.env, GIT_TERMINAL_PROMPT: "0" } },
+      [
+        "-c",
+        "credential.helper=",
+        "ls-remote",
+        `https://github.com/${repoSlug}.git`,
+        "refs/heads/main",
+      ],
+      {
+        timeout: FETCH_TIMEOUT_MS,
+        cwd: noRepo,
+        env: {
+          ...process.env,
+          GIT_DIR: noRepo,
+          GIT_TERMINAL_PROMPT: "0",
+          GIT_ASKPASS: "",
+          GCM_INTERACTIVE: "never",
+        },
+        windowsHide: true,
+      },
     );
     const sha = stdout.split(/\s+/)[0]?.trim() ?? "";
     return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
   } catch {
     return null;
+  } finally {
+    if (noRepo) rmSync(noRepo, { recursive: true, force: true });
   }
 }
 
