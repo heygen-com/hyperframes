@@ -62,7 +62,9 @@ export function createShaderLoader(): ShaderLoaderElements {
   const markFrame = document.createElement("div");
   markFrame.className = "hfp-shader-loader-mark";
   markFrame.draggable = false;
-  markFrame.innerHTML = [
+  const markSlot = document.createElement("slot");
+  markSlot.name = "loading-mark";
+  markSlot.innerHTML = [
     '<svg width="78" height="78" viewBox="0 0 100 100" fill="none" aria-hidden="true" draggable="false">',
     `<path d="${MARK_LEFT}" fill="url(#hfp-shader-loader-grad-left)"/>`,
     `<path d="${MARK_RIGHT}" fill="url(#hfp-shader-loader-grad-right)"/>`,
@@ -83,7 +85,8 @@ export function createShaderLoader(): ShaderLoaderElements {
   sheen.className = "hfp-shader-loader-sheen";
   sheen.style.setProperty("mask-image", MARK_SHAPE_MASK);
   sheen.style.setProperty("-webkit-mask-image", MARK_SHAPE_MASK);
-  markFrame.appendChild(sheen);
+  markSlot.appendChild(sheen);
+  markFrame.appendChild(markSlot);
 
   const titleContainer = document.createElement("div");
   titleContainer.className = "hfp-shader-loader-title";

@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { type ControlsCallbacks, createControls } from "./controls";
-import { FULLSCREEN_ENTER_ICON, FULLSCREEN_EXIT_ICON } from "./styles";
+import {
+  FULLSCREEN_ENTER_ICON,
+  FULLSCREEN_EXIT_ICON,
+  PAUSE_ICON,
+  PLAY_ICON,
+  VOLUME_HIGH_ICON,
+  VOLUME_LOW_ICON,
+  VOLUME_MUTED_ICON,
+} from "./styles";
 
 function noopCallbacks(): ControlsCallbacks {
   return {
@@ -164,6 +172,199 @@ describe("createControls idle hide", () => {
     api.destroy();
     host.remove();
     vi.useRealTimers();
+  });
+});
+
+describe("createControls scrubbing", () => {
+  function setup() {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const calls: string[] = [];
+    const api = createControls(host, {
+      ...noopCallbacks(),
+      onPlay: () => {
+        calls.push("play");
+        api.updatePlaying(true);
+      },
+      onPause: () => {
+        calls.push("pause");
+        api.updatePlaying(false);
+      },
+      onSeek: (fraction) => calls.push(`seek ${fraction}`),
+      onScrubStart: () => calls.push("scrub start"),
+      onScrubEnd: () => calls.push("scrub end"),
+    });
+    const scrubber = host.querySelector<HTMLElement>(".hfp-scrubber")!;
+    scrubber.getBoundingClientRect = () => ({ left: 0, width: 100 }) as DOMRect;
+    const playButton = host.querySelector<HTMLElement>(".hfp-play-btn")!;
+    const teardown = () => {
+      api.destroy();
+      host.remove();
+    };
+    return { api, calls, scrubber, playButton, teardown };
+  }
+
+  it("holds a playing film while the scrubber is pressed and plays on at release", () => {
+    const { api, calls, scrubber, playButton, teardown } = setup();
+    api.updatePlaying(true);
+
+    scrubber.dispatchEvent(new MouseEvent("mousedown", { clientX: 20 }));
+    document.dispatchEvent(new MouseEvent("mousemove", { clientX: 70 }));
+
+    expect(calls).toEqual(["pause", "scrub start", "seek 0.2", "seek 0.7"]);
+    expect(playButton.classList.contains("hfp-playing")).toBe(true);
+
+    document.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(calls).toEqual(["pause", "scrub start", "seek 0.2", "seek 0.7", "scrub end", "play"]);
+    expect(playButton.classList.contains("hfp-playing")).toBe(true);
+    teardown();
+  });
+
+  it("leaves a paused film paused", () => {
+    const { calls, scrubber, playButton, teardown } = setup();
+
+    scrubber.dispatchEvent(new MouseEvent("mousedown", { clientX: 30 }));
+    document.dispatchEvent(new MouseEvent("mouseup"));
+
+    expect(calls).toEqual(["scrub start", "seek 0.3", "scrub end"]);
+    expect(playButton.classList.contains("hfp-playing")).toBe(false);
+    teardown();
+  });
+
+  it("plays on once after a touch scrub, without the tap replaying as mouse events", () => {
+    const { api, calls, scrubber, teardown } = setup();
+    api.updatePlaying(true);
+
+    const touch = new Touch({ identifier: 0, target: scrubber, clientX: 40 });
+    scrubber.dispatchEvent(new TouchEvent("touchstart", { touches: [touch] }));
+    const touchEnd = new TouchEvent("touchend", { cancelable: true });
+    document.dispatchEvent(touchEnd);
+
+    expect(calls).toEqual(["pause", "scrub start", "seek 0.4", "scrub end", "play"]);
+    expect(touchEnd.defaultPrevented).toBe(true);
+    teardown();
+  });
+
+  it("leaves taps elsewhere on the page alone", () => {
+    const { teardown } = setup();
+
+    const touchEnd = new TouchEvent("touchend", { cancelable: true });
+    document.dispatchEvent(touchEnd);
+
+    expect(touchEnd.defaultPrevented).toBe(false);
+    teardown();
+  });
+});
+
+describe("createControls page glyph slots", () => {
+  function setup(...glyphSlots: string[]) {
+    const host = document.createElement("div");
+    const glyphs = glyphSlots.map((name) => {
+      const glyph = document.createElement("span");
+      glyph.slot = name;
+      host.appendChild(glyph);
+      return glyph;
+    });
+    document.body.appendChild(host);
+    const shadow = host.attachShadow({ mode: "open" });
+    const api = createControls(shadow, noopCallbacks());
+    const cleanup = () => {
+      api.destroy();
+      host.remove();
+    };
+    return { shadow, api, glyphs, cleanup };
+  }
+
+  function slotAt(root: ParentNode, selector: string): HTMLSlotElement {
+    const slot = root.querySelector(selector);
+    if (!(slot instanceof HTMLSlotElement)) throw new Error(`no slot at ${selector}`);
+    return slot;
+  }
+
+  function onlyAssigned(slot: HTMLSlotElement): Element | undefined {
+    const assigned = slot.assignedElements();
+    return assigned.length === 1 ? assigned[0] : undefined;
+  }
+
+  function markup(html: string): string {
+    const parsed = document.createElement("div");
+    parsed.innerHTML = html;
+    return parsed.innerHTML;
+  }
+
+  it("shows today's glyphs in every named control slot when the page supplies none", () => {
+    const { shadow, api, cleanup } = setup();
+    const seen = new Map<string, HTMLSlotElement>();
+    const record = (selector: string) => {
+      const slot = slotAt(shadow, selector);
+      seen.set(slot.name, slot);
+    };
+    record(".hfp-ico-play slot");
+    record(".hfp-ico-pause slot");
+    record(".hfp-mute-btn slot");
+    api.updateVolume(0.2);
+    record(".hfp-mute-btn slot");
+    api.updateMuted(true);
+    record(".hfp-mute-btn slot");
+
+    const expected: Record<string, string> = {
+      "play-icon": PLAY_ICON,
+      "pause-icon": PAUSE_ICON,
+      "volume-high-icon": VOLUME_HIGH_ICON,
+      "volume-low-icon": VOLUME_LOW_ICON,
+      "volume-muted-icon": VOLUME_MUTED_ICON,
+    };
+    expect([...seen.keys()].sort()).toEqual(Object.keys(expected).sort());
+    for (const [name, icon] of Object.entries(expected)) {
+      const slot = seen.get(name);
+      expect(slot?.assignedElements()).toEqual([]);
+      expect(slot?.innerHTML).toBe(markup(icon));
+    }
+    cleanup();
+  });
+
+  it("puts the page's play and pause glyphs in the play button and still marks it playing", () => {
+    const {
+      shadow,
+      api,
+      glyphs: [play, pause],
+      cleanup,
+    } = setup("play-icon", "pause-icon");
+    const playSlot = slotAt(shadow, ".hfp-ico-play slot");
+
+    expect(onlyAssigned(playSlot)).toBe(play);
+    expect(onlyAssigned(slotAt(shadow, ".hfp-ico-pause slot"))).toBe(pause);
+
+    api.updatePlaying(true);
+    expect(playSlot.closest(".hfp-play-btn")?.classList.contains("hfp-playing")).toBe(true);
+    cleanup();
+  });
+
+  it("keeps the default volume glyphs the page left out and shows its own muted glyph", () => {
+    const {
+      shadow,
+      api,
+      glyphs: [muted],
+      cleanup,
+    } = setup("volume-muted-icon");
+    const muteSlot = () => slotAt(shadow, ".hfp-mute-btn slot");
+
+    expect(muteSlot().name).toBe("volume-high-icon");
+    expect(muteSlot().assignedElements()).toEqual([]);
+
+    api.updateVolume(0.2);
+    expect(muteSlot().name).toBe("volume-low-icon");
+    expect(muteSlot().assignedElements()).toEqual([]);
+
+    api.updateVolume(0);
+    expect(muteSlot().name).toBe("volume-low-icon");
+    expect(muteSlot().assignedElements()).toEqual([]);
+
+    api.updateMuted(true);
+    expect(muteSlot().name).toBe("volume-muted-icon");
+    expect(onlyAssigned(muteSlot())).toBe(muted);
+    cleanup();
   });
 });
 

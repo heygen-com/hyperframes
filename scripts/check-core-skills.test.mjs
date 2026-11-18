@@ -125,6 +125,18 @@ test("the launcher rules cover standalone installs and never send the agent to a
   assert.doesNotMatch(cli, /then use the wrapper/);
 });
 
+// fails without the fix: after a failed check the lifecycle reference sent the agent back to the
+// release the project's own package.json pinned.
+test("the project upgrade flow stops on a failed check instead of running the project's pin", () => {
+  const lifecycle = readFileSync(
+    new URL("../skills/hyperframes/references/skill-lifecycle.md", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(lifecycle, /continue with the original exact version/);
+  assert.match(lifecycle, /report the old version, the new version and the failure, and stop/);
+  assert.match(lifecycle, /unless the person asks for that release/);
+});
+
 test("reads the registered commands, quoted or not", () => {
   const source = `const commandLoaders = {\n  init: () => x,\n  "catch-up": () => y,\n};`;
   assert.deepEqual([...registeredCommands(source)], ["init", "catch-up"]);

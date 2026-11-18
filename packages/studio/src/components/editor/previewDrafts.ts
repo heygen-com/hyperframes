@@ -30,6 +30,8 @@ export function registerPreviewStandIn(
   standIns.set(standIn, { iframe, handle });
 }
 
+export const previewStandIn = (standIn: Element) => standIns.get(standIn);
+
 function queueFor(iframe: HTMLIFrameElement): Queue {
   let queue = queues.get(iframe);
   if (!queue) {

@@ -97,7 +97,11 @@ describe("printStalePinNotice", () => {
     const mismatch = writes.filter((w) => w.includes("This is hyperframes 0.7.71"));
     expect(mismatch.length).toBe(2);
     expect(mismatch[0]).toContain("--cli-version 0.9.66");
-    expect(mismatch[0]).toContain("start in your home folder, run npx hyperframes@0.9.66");
+    // fails without the fix: the notice told an agent to run the release the project's own
+    // package.json named, as if the project could choose the CLI.
+    expect(mismatch[0]).toContain("an agent runs the pinned release only when the person asks");
+    expect(mismatch[0]).not.toContain("to run the pinned release.");
+    expect(mismatch[0]).toContain("starting in your home folder, running npx hyperframes@0.9.66");
     expect(mismatch[0]).toContain("absolute path");
     expect(writes.join("")).not.toContain("upgrade --project");
   });

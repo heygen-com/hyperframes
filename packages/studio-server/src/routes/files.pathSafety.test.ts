@@ -279,6 +279,11 @@ describe("files other programs run or trust", () => {
     "run.\u017fh",
     "Make\ufb01le",
     "jest.config.json",
+    "binding.gyp",
+    "BINDING.GYP.",
+    "deps/common.gypi",
+    "server.js",
+    "Server.JS",
   ];
   const put = (app: Hono, path: string, headers: Record<string, string> = {}) =>
     app.request(fileUrl(path), { method: "PUT", headers, body: "planted" });
@@ -404,6 +409,34 @@ describe("files other programs run or trust", () => {
       );
       expect((await move(app, "sub/.hyperframes", "dist")).status).toBe(403);
     });
+  });
+
+  it("refuses the files a package manager runs without a script in package.json", async () => {
+    const { app, project } = fixture();
+    writeFileSync(join(project, "package.json"), '{"scripts":{"dev":"npx hyperframes preview"}}');
+    writeFileSync(join(project, "addon.gyp"), "{}");
+    for (const path of ["binding.gyp", "server.js", "server.js::$DATA", "deps/common.gypi "]) {
+      for (const method of ["POST", "PUT"]) {
+        const response = await app.request(fileUrl(path), { method, body: "content" });
+        expect(response.status).toBe(403);
+        expect(await response.json()).toMatchObject({ why: "protected_path" });
+      }
+    }
+    const rename = await app.request(fileUrl("inside.txt"), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ newPath: "Server.JS." }),
+    });
+    const duplicate = await app.request("http://localhost/projects/demo/duplicate-file", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "addon.gyp" }),
+    });
+    for (const response of [rename, duplicate]) {
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ why: "protected_path" });
+    }
+    expect(readdirSync(project).sort()).toEqual(["addon.gyp", "inside.txt", "package.json"]);
   });
 
   it("still writes compositions, stylesheets, script assets and uploads", async () => {
