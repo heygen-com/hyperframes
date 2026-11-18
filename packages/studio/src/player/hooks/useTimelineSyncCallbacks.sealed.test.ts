@@ -2,8 +2,8 @@
 
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, expect, it, vi } from "vitest";
-import type { TimelineElement } from "../store/playerStore";
+import { afterEach, expect, it, onTestFinished, vi } from "vitest";
+import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
 import { sealedPreviewFrame } from "../lib/sealedPreviewFrame.test-helpers";
 
@@ -68,4 +68,28 @@ it("binds a sealed preview's timeline row to its element, as an open preview doe
     sourceFile: "index.html",
     audioGroup: "voice",
   });
+});
+
+// fails without the fix: reading the frame's `__clipTree` threw, so a sealed scene's children and parents stayed empty.
+it("fills a sealed scene's children and the runtime's clip parents", async () => {
+  document.body.innerHTML = `<div data-composition-id="main" data-composition-file="index.html">
+    <div id="scene" data-composition-id="scene" data-composition-file="scene.html" data-start="0" data-duration="2">
+      <h1 id="title">Title</h1>
+    </div>
+  </div>`;
+  (window as unknown as { __clipTree: unknown }).__clipTree = {
+    roots: [{ id: "scene", parentId: null, children: [{ id: "cue", parentId: "scene", children: [] }] }],
+  };
+  onTestFinished(() => delete (window as unknown as { __clipTree?: unknown }).__clipTree);
+  usePlayerStore.getState().setClipParentMap(new Map());
+  usePlayerStore.getState().setDomClipChildren([]);
+  const { process } = processWith(sealedPreviewFrame().iframe);
+
+  process({
+    clips: [{ ...boxClip, id: "scene", label: "scene", kind: "composition", tagName: "div", compositionId: "scene" }],
+    durationInFrames: 60,
+  });
+
+  await vi.waitFor(() => expect(usePlayerStore.getState().clipParentMap.get("cue")).toBe("scene"));
+  expect(usePlayerStore.getState().domClipChildren.map((child) => child.id)).toContain("title");
 });
