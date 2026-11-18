@@ -588,6 +588,8 @@ function readHandoff(
 const onlyPort = (ports: readonly MessagePort[]): MessagePort | null =>
   ports.length === 1 ? (ports[0] ?? null) : null;
 
+const portsTaken = new WeakSet<MessagePort>();
+
 type Pending = {
   resolve: (result: unknown) => void;
   reject: (error: EditingPortError) => void;
@@ -653,7 +655,8 @@ export function createEditingPortClient(options: {
   const onWindowMessage = (event: MessageEvent<unknown>) => {
     const handoff = readHandoff(event, iframe.contentWindow);
     if (handoff === "ready") return connect();
-    if (!handoff) return;
+    if (!handoff || portsTaken.has(handoff)) return;
+    portsTaken.add(handoff);
     port = handoff;
     host.removeEventListener("message", onWindowMessage);
     port.onmessage = onReply;
