@@ -1,4 +1,4 @@
-import { globalInstallCwd, homeCliCommand } from "../utils/homeCliCommand.js";
+import { globalInstallLocation, homeCliCommand } from "../utils/homeCliCommand.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -146,7 +146,6 @@ function applyUpgrade(result: UpdateCheckResult, autoYes: boolean): void {
   runDetectedInstall(plan.invocation, plan.displayCmd, result.latest);
 }
 
-const HOME_UNAVAILABLE = "Cannot upgrade the CLI without a usable home directory.";
 const NPX_LATEST = homeCliCommand(updateChannel());
 
 /**
@@ -203,8 +202,10 @@ export function upgradeRunningCli(latest: string): CliUpgradeOutcome {
   if (!isSafeVersion(latest)) return { status: "failed", command: NPX_LATEST };
   const plan = upgradePlan(latest);
   if ("manual" in plan) return { status: "manual", command: plan.manual, reason: plan.reason };
-  const cwd = globalInstallCwd();
-  if (!cwd) return { status: "failed", command: plan.displayCmd, reason: HOME_UNAVAILABLE };
+  const location = globalInstallLocation();
+  if ("reason" in location)
+    return { status: "failed", command: plan.displayCmd, reason: location.reason };
+  const { cwd } = location;
   try {
     execFileSync(plan.invocation.bin, plan.invocation.args, {
       cwd,
@@ -333,9 +334,9 @@ export function runDetectedInstall(
   displayCmd: string,
   version: string,
 ): void {
-  const cwd = globalInstallCwd();
-  if (!cwd) {
-    clack.outro(c.dim(HOME_UNAVAILABLE));
+  const location = globalInstallLocation();
+  if ("reason" in location) {
+    clack.outro(c.dim(location.reason));
     setCommandExitCode(1);
     return;
   }
@@ -345,7 +346,11 @@ export function runDetectedInstall(
   try {
     // shell:false — version is provably safe per isSafeVersion above; keep the
     // no-shell call so future edits can't regress the injection surface.
-    execFileSync(invocation.bin, invocation.args, { cwd, stdio: "inherit", shell: false });
+    execFileSync(invocation.bin, invocation.args, {
+      cwd: location.cwd,
+      stdio: "inherit",
+      shell: false,
+    });
     clack.outro(c.success(`Upgraded to v${version}`));
   } catch {
     clack.outro(c.dim("Install failed. Retry from your home directory:"));

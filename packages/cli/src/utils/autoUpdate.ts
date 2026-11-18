@@ -26,7 +26,7 @@
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, openSync } from "node:fs";
 import { resolve } from "node:path";
-import { globalInstallCwd } from "./homeCliCommand.js";
+import { globalInstallLocation } from "./homeCliCommand.js";
 import { compareVersions } from "compare-versions";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { readConfig, writeConfig } from "../telemetry/config.js";
@@ -287,6 +287,14 @@ function backgroundInstaller(
 export function scheduleBackgroundInstall(latestVersion: string, currentVersion: string): boolean {
   if (isAutoInstallDisabled()) return false;
   if (!isSilentUpgrade(latestVersion, currentVersion)) return false;
+  const installer = backgroundInstaller(latestVersion);
+  if (!installer) return false;
+  const location = globalInstallLocation();
+  if ("reason" in location) {
+    // The rejected home may be shared or belong to another user, so avoid opening a log in it.
+    process.stderr.write(`  Skipping CLI auto-update: ${location.reason}\n`);
+    return false;
+  }
   if (!registeredAsRunning()) {
     log(
       `[skip] ${latestVersion}: this CLI is not on record as running, so an install could replace it mid-run`,
@@ -294,10 +302,6 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
     return false;
   }
 
-  const cwd = globalInstallCwd();
-  if (!cwd) return false;
-  const installer = backgroundInstaller(latestVersion);
-  if (!installer) return false;
   const { installCommand, invocation } = installer;
 
   const config = readConfig();
@@ -326,7 +330,7 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
   if (!writeConfig(config)) return false;
 
   try {
-    launchDetachedInstall(invocation, installCommand, latestVersion, cwd);
+    launchDetachedInstall(invocation, installCommand, latestVersion, location.cwd);
     return true;
   } catch (err) {
     log(`[error] spawn failed: ${String(err)}`);

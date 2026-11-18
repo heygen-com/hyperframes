@@ -132,6 +132,7 @@ beforeEach(() => {
     }),
   );
   for (const name of [
+    "npm_lifecycle_event",
     "HYPERFRAMES_PLUGIN_VERSION",
     "HYPERFRAMES_SKIP_SKILLS",
     "HYPERFRAMES_AGENT",
