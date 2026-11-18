@@ -25,10 +25,20 @@ export class CopyLockStalledError extends Error {
   }
 }
 
+type Sightings = Map<string, { mtimeMs: number; seenAt: number }>;
+
+function changedNoLaterThanFirstSeen(sightings: Sightings, file: string, mtimeMs: number): number {
+  const earlier = sightings.get(file);
+  const seenAt = earlier?.mtimeMs === mtimeMs ? earlier.seenAt : Date.now();
+  sightings.set(file, { mtimeMs, seenAt });
+  return Math.min(mtimeMs, seenAt);
+}
+
 function lastActivityMs(
   cachePath: string,
   lockPath: string,
   unguessablePieceName: string | undefined,
+  sightings: Sightings,
 ): number {
   const name = basename(cachePath);
   const isPiece = (file: string) =>
@@ -43,7 +53,7 @@ function lastActivityMs(
   for (const file of readdirSync(dirname(cachePath))) {
     if (!mine(file)) continue;
     const changed = statSync(join(dirname(cachePath), file), { throwIfNoEntry: false })?.mtimeMs;
-    newest = Math.max(newest, changed ?? 0);
+    newest = Math.max(newest, changedNoLaterThanFirstSeen(sightings, file, changed ?? 0));
   }
   return newest;
 }
@@ -88,6 +98,7 @@ export async function acquireCopyLock(
   unguessablePieceName?: string,
 ): Promise<(() => void) | null> {
   const lockPath = lockPathFor(cachePath);
+  const sightings: Sightings = new Map();
   for (;;) {
     signal.throwIfAborted();
     if (copyMade(cachePath)) return null;
@@ -102,7 +113,10 @@ export async function acquireCopyLock(
       if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }
     if (!ownerIsAlive(lockPath)) rmSync(lockPath, { force: true });
-    else if (Date.now() - lastActivityMs(cachePath, lockPath, unguessablePieceName) > stallMs)
+    else if (
+      Date.now() - lastActivityMs(cachePath, lockPath, unguessablePieceName, sightings) >
+      stallMs
+    )
       throw new CopyLockStalledError(basename(cachePath), stallMs);
     else await pause(POLL_MS, signal);
   }

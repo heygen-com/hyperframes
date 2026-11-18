@@ -30,6 +30,11 @@ import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { MotionPathFrameHome } from "./editing/motionPathHome";
 import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
 import { parsePatchTweens, type PatchTweensParams } from "./editing/patchTween";
+import {
+  parseSoftReload,
+  type SoftReloadParams,
+  type SoftReloadResult,
+} from "./editing/softReload";
 import type { EditingLayer } from "./editingLayers";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
@@ -180,6 +185,7 @@ export const EDITING_REQUEST_KINDS = [
   "edit-element",
   "gsap-set",
   "patch-tweens",
+  "soft-reload",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -316,6 +322,7 @@ export interface EditingRequests {
   "edit-element": { params: EditElementParams; result: EditElementResult };
   "gsap-set": { params: GsapSetParams; result: { applied: boolean } };
   "patch-tweens": { params: PatchTweensParams; result: { patched: boolean } };
+  "soft-reload": { params: SoftReloadParams; result: { result: SoftReloadResult } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -526,6 +533,7 @@ const PARAM_PARSERS: {
   "edit-element": parseEditElement,
   "gsap-set": parseGsapSet,
   "patch-tweens": parsePatchTweens,
+  "soft-reload": parseSoftReload,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
