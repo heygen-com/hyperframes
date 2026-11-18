@@ -13,9 +13,12 @@ export function createStudioManualEditsRenderBodyScript(
   return `(${studioManualEditsRenderRuntime.toString()})(${JSON.stringify(manifestContent)}, ${JSON.stringify(options.activeCompositionPath ?? null)});`;
 }
 
+const positionSeekReapplyCall = (followFrames: "true" | "false") =>
+  `(${studioPositionSeekReapplyRuntime.toString()})(${followFrames});`;
+
 /** A self-contained script that puts the page's committed Studio edits back after every seek. */
-export function createStudioPositionSeekReapplyScript(followFrames = false): string {
-  return `(${studioPositionSeekReapplyRuntime.toString()})(${followFrames});`;
+export function createStudioPositionSeekReapplyScript(): string {
+  return positionSeekReapplyCall("false");
 }
 
 const POSITION_EDIT_MARKS = [
@@ -29,7 +32,7 @@ export const htmlHasStudioPositionEdits = (html: string) =>
 
 /** The reapply for a preview frame Studio cannot script; Studio wraps one it can script itself. */
 export function createSealedPreviewSeekReapplyScript(): string {
-  return `(function(){try{if(window.parent===window||window.parent.document)return}catch(_){}${createStudioPositionSeekReapplyScript(true)}})();`;
+  return `(function(){try{if(window.parent===window||window.parent.document)return}catch(_){}${positionSeekReapplyCall("true")}})();`;
 }
 
 function studioPositionSeekReapplyRuntime(followFrames: boolean): void {
