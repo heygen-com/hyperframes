@@ -1,12 +1,6 @@
 import type { Hono } from "hono";
 
-// `play` and `present` serve project script from their own loopback origin, and HeyGen's sign-in
-// accepts any loopback port as the CLI's return address. A document this server commits with
-// `?code=…&state=…` in its address could be read by that script through a frame, a popup or a
-// redirect, so unknown paths and OAuth-return-shaped requests get a refusal that runs on an opaque
-// origin (CSP sandbox), cannot be framed and drops its opener. Kept local to play/present for now;
-// the preview server (SECOPS-2642 part 1) has its own fix.
-
+// Opaque origin, unframeable, opener dropped: same-origin project script cannot read a `?code=` return.
 const OAUTH_RETURN_PARAMS = ["code", "state"] as const;
 
 export const INERT_REFUSAL_HEADERS = {
