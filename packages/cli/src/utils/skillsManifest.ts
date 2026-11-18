@@ -17,8 +17,8 @@
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
@@ -636,7 +636,10 @@ async function fetchManifest(url: string): Promise<SkillsManifest> {
  */
 async function remoteHeadSha(repoSlug: string): Promise<string | null> {
   if (!REPO_SLUG_PATTERN.test(repoSlug)) return null;
+  let noRepo: string | undefined;
   try {
+    // Pin both the working directory and repository so Git never discovers the project.
+    noRepo = mkdtempSync(join(tmpdir(), "hyperframes-git-"));
     const { stdout } = await execFileAsync(
       "git",
       [
@@ -648,8 +651,10 @@ async function remoteHeadSha(repoSlug: string): Promise<string | null> {
       ],
       {
         timeout: FETCH_TIMEOUT_MS,
+        cwd: noRepo,
         env: {
           ...process.env,
+          GIT_DIR: noRepo,
           GIT_TERMINAL_PROMPT: "0",
           GIT_ASKPASS: "",
           GCM_INTERACTIVE: "never",
@@ -661,6 +666,8 @@ async function remoteHeadSha(repoSlug: string): Promise<string | null> {
     return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
   } catch {
     return null;
+  } finally {
+    if (noRepo) rmSync(noRepo, { recursive: true, force: true });
   }
 }
 
