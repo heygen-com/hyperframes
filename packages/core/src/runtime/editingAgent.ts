@@ -43,6 +43,7 @@ import { gsapSet } from "./editing/gsapSet";
 import { patchTweens } from "./editing/patchTween";
 import { softReload } from "./editing/softReload";
 import { holdScenes, markScenesStale, swapScenes } from "./editing/scenes";
+import { liveRetime } from "./editing/liveRetime";
 import {
   getLogicalOpacity,
   markedForStudio,
@@ -230,6 +231,7 @@ const HANDLERS: Handlers = {
   "hold-scenes": holdScenes,
   "mark-scenes-stale": markScenesStale,
   "swap-scenes": swapScenes,
+  "live-retime": liveRetime,
 };
 
 function serve(port: MessagePort): void {

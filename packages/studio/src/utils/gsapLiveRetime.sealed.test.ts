@@ -1,0 +1,65 @@
+// @vitest-environment happy-dom
+import { beforeEach, expect, it, vi } from "vitest";
+
+const { previewRequest } = vi.hoisted(() => ({ previewRequest: vi.fn() }));
+vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../player/lib/previewChannel")>()),
+  previewFrameOpaque: () => true,
+  previewRequest,
+}));
+
+import { moveLiveTweens } from "./gsapLiveRetime";
+
+const iframe = document.createElement("iframe");
+const script = (start: number) =>
+  [
+    "var tl = gsap.timeline({ paused: true });",
+    `tl.to("#a", { x: 100, duration: 1 }, ${start});`,
+    'window.__timelines["t"] = tl;',
+  ].join("\n");
+const file = (text: string) => `<div id="a"></div><script>${text}</script>`;
+
+beforeEach(() => previewRequest.mockReset());
+
+it("sends a sealed preview the move planned from the saved file before and after the edit", async () => {
+  previewRequest.mockResolvedValue({ result: "moved" });
+  const reload = vi.fn();
+
+  expect(await moveLiveTweens(iframe, script(1.5), 2, reload, file(script(0.5)))).toBe(true);
+
+  expect(previewRequest).toHaveBeenCalledExactlyOnceWith(iframe, "live-retime", {
+    key: "t",
+    after: script(1.5),
+    tweens: [
+      {
+        selector: "#a",
+        start: 1.5,
+        duration: 1,
+        wasStart: 0.5,
+        wasDuration: 1,
+        moved: true,
+        source: 0,
+      },
+    ],
+    time: 2,
+  });
+  expect(reload).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["moved nothing", { result: "unchanged" }, false, 0],
+  ["failed halfway", { result: "failed" }, true, 1],
+  ["does not answer", null, true, 1],
+  ["answers with an extra field", { result: "moved", after: "x()" }, true, 1],
+])("when the frame %s it re-runs or reloads instead", async (_l, reply, handled, reloads) => {
+  previewRequest.mockResolvedValue(reply);
+  const reload = vi.fn();
+
+  expect(await moveLiveTweens(iframe, script(1.5), 0, reload, file(script(0.5)))).toBe(handled);
+  expect(reload).toHaveBeenCalledTimes(reloads);
+});
+
+it("leaves it to a re-run, sending nothing, when the file before the edit is not known", async () => {
+  expect(await moveLiveTweens(iframe, script(1.5), 0, vi.fn())).toBe(false);
+  expect(previewRequest).not.toHaveBeenCalled();
+});

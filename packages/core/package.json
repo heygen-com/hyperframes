@@ -489,6 +489,12 @@
       "import": "./src/runtime/editing/scenes.ts",
       "types": "./src/runtime/editing/scenes.ts"
     },
+    "./runtime/live-retime": {
+      "bun": "./src/runtime/editing/liveRetime.ts",
+      "node": "./dist/runtime/editing/liveRetime.js",
+      "import": "./src/runtime/editing/liveRetime.ts",
+      "types": "./src/runtime/editing/liveRetime.ts"
+    },
     "./runtime/clip-window": {
       "bun": "./src/runtime/clipWindow.ts",
       "node": "./dist/runtime/clipWindow.js",
@@ -1012,6 +1018,10 @@
       "./runtime/scenes": {
         "import": "./dist/runtime/editing/scenes.js",
         "types": "./dist/runtime/editing/scenes.d.ts"
+      },
+      "./runtime/live-retime": {
+        "import": "./dist/runtime/editing/liveRetime.js",
+        "types": "./dist/runtime/editing/liveRetime.d.ts"
       },
       "./runtime/clip-window": {
         "import": "./dist/runtime/clipWindow.js",

@@ -44,6 +44,11 @@ import {
   type SwapScenesParams,
   type SwapScenesResult,
 } from "./editing/scenes";
+import {
+  parseLiveRetime,
+  type LiveRetimeParams,
+  type LiveRetimeResult,
+} from "./editing/liveRetime";
 import type { EditingLayer } from "./editingLayers";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
@@ -198,6 +203,7 @@ export const EDITING_REQUEST_KINDS = [
   "hold-scenes",
   "mark-scenes-stale",
   "swap-scenes",
+  "live-retime",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -338,6 +344,7 @@ export interface EditingRequests {
   "hold-scenes": { params: HoldScenesParams; result: { held: boolean } };
   "mark-scenes-stale": { params: MarkScenesStaleParams; result: { marked: true } };
   "swap-scenes": { params: SwapScenesParams; result: SwapScenesResult };
+  "live-retime": { params: LiveRetimeParams; result: { result: LiveRetimeResult } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -552,6 +559,7 @@ const PARAM_PARSERS: {
   "hold-scenes": parseHoldScenes,
   "mark-scenes-stale": parseMarkScenesStale,
   "swap-scenes": parseSwapScenes,
+  "live-retime": parseLiveRetime,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
