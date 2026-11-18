@@ -4,6 +4,7 @@ import { readTimelineDurationFromDocument } from "../lib/timelineElementHelpers"
 import type { PreviewIframeSlot } from "./useTimelineSyncCallbacks";
 import { trackPreviewFirstFrame } from "../../telemetry/events";
 import { getBrowserSystemMeta } from "../../telemetry/system";
+import { previewDocumentCopy, previewFrameOpaque } from "../lib/previewChannel";
 
 export function readPreviewComplexity(doc: Document | null | undefined): {
   clip_count: number;
@@ -38,13 +39,17 @@ export function usePreviewFirstFrameTelemetry(previewSlots: PreviewIframeSlot[])
       const reportKey = `${slot.role}:${slot.gen}:${loadId}`;
       if (reportedPaintsRef.current.has(reportKey)) return;
       reportedPaintsRef.current.add(reportKey);
-      const complexity = readPreviewComplexity(iframe.contentDocument);
-      trackPreviewFirstFrame({
-        duration_ms: Math.max(0, Math.round(performance.now() - startedAt)),
-        composition_seconds: readTimelineDurationFromDocument(iframe.contentDocument),
-        ...complexity,
-        studio_version: getBrowserSystemMeta().studio_version,
-      });
+      const durationMs = Math.max(0, Math.round(performance.now() - startedAt));
+      const report = (doc: Document | null) =>
+        trackPreviewFirstFrame({
+          duration_ms: durationMs,
+          composition_seconds: readTimelineDurationFromDocument(doc),
+          ...readPreviewComplexity(doc),
+          studio_version: getBrowserSystemMeta().studio_version,
+        });
+      // A sealed frame is counted from its document copy; the paint time is the one measured here.
+      if (previewFrameOpaque(iframe)) void previewDocumentCopy(iframe).then(report);
+      else report(iframe.contentDocument);
     },
     [],
   );
