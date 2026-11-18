@@ -1,4 +1,4 @@
-import { homeCliCommand } from "../utils/homeCliCommand.js";
+import { globalInstallCwd, homeCliCommand } from "../utils/homeCliCommand.js";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
@@ -146,6 +146,7 @@ function applyUpgrade(result: UpdateCheckResult, autoYes: boolean): void {
   runDetectedInstall(plan.invocation, plan.displayCmd, result.latest);
 }
 
+const HOME_UNAVAILABLE = "Cannot upgrade the CLI without a usable home directory.";
 const NPX_LATEST = homeCliCommand(updateChannel());
 
 /**
@@ -170,17 +171,19 @@ export type CliUpgradeOutcome =
   | { status: "unchanged"; version: string; command: string; reason: string }
   | { status: "unverified"; command: string; reason: string }
   | { status: "manual"; command: string; reason: string }
-  | { status: "failed"; command: string };
+  | { status: "failed"; command: string; reason?: string };
 
 /** The version Homebrew's linked `hyperframes` reports, or null when it cannot be read. */
-function brewInstalledVersion(): string | null {
+function brewInstalledVersion(cwd: string): string | null {
   try {
     const prefix = execFileSync("brew", ["--prefix", "hyperframes"], {
+      cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       shell: false,
     }).trim();
     const version = execFileSync(join(prefix, "bin", "hyperframes"), ["--version"], {
+      cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       shell: false,
@@ -200,8 +203,11 @@ export function upgradeRunningCli(latest: string): CliUpgradeOutcome {
   if (!isSafeVersion(latest)) return { status: "failed", command: NPX_LATEST };
   const plan = upgradePlan(latest);
   if ("manual" in plan) return { status: "manual", command: plan.manual, reason: plan.reason };
+  const cwd = globalInstallCwd();
+  if (!cwd) return { status: "failed", command: plan.displayCmd, reason: HOME_UNAVAILABLE };
   try {
     execFileSync(plan.invocation.bin, plan.invocation.args, {
+      cwd,
       stdio: ["inherit", 2, 2],
       shell: false,
     });
@@ -209,7 +215,7 @@ export function upgradeRunningCli(latest: string): CliUpgradeOutcome {
     return { status: "failed", command: plan.displayCmd };
   }
   // `brew upgrade` installs whatever the formula pins, which can lag npm, and exits 0 on a no-op.
-  const installed = plan.pinsVersion ? latest : brewInstalledVersion();
+  const installed = plan.pinsVersion ? latest : brewInstalledVersion(cwd);
   const command = plan.displayCmd;
   if (installed === null) {
     return { status: "unverified", command, reason: "the installed version could not be read" };
@@ -327,16 +333,22 @@ export function runDetectedInstall(
   displayCmd: string,
   version: string,
 ): void {
+  const cwd = globalInstallCwd();
+  if (!cwd) {
+    clack.outro(c.dim(HOME_UNAVAILABLE));
+    setCommandExitCode(1);
+    return;
+  }
   console.log();
   console.log(`   ${c.dim("Running:")} ${c.accent(displayCmd)}`);
   console.log();
   try {
     // shell:false — version is provably safe per isSafeVersion above; keep the
     // no-shell call so future edits can't regress the injection surface.
-    execFileSync(invocation.bin, invocation.args, { stdio: "inherit", shell: false });
+    execFileSync(invocation.bin, invocation.args, { cwd, stdio: "inherit", shell: false });
     clack.outro(c.success(`Upgraded to v${version}`));
   } catch {
-    clack.outro(c.dim("Install failed. Try running manually:"));
+    clack.outro(c.dim("Install failed. Retry from your home directory:"));
     console.log(`   ${c.accent(displayCmd)}`);
     setCommandExitCode(1);
   }

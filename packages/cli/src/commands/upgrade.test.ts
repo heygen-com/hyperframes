@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -10,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 describe("runDetectedInstall", () => {
   afterEach(() => {
     vi.doUnmock("node:child_process");
+    vi.doUnmock("node:os");
     vi.resetModules();
   });
 
@@ -27,9 +29,36 @@ describe("runDetectedInstall", () => {
 
     expect(execSpy).toHaveBeenCalledTimes(1);
     expect(execSpy).toHaveBeenCalledWith("bun", ["add", "-g", "hyperframes@1.2.3"], {
+      cwd: homedir(),
       stdio: "inherit",
       shell: false,
     });
+  });
+
+  it("fails both foreground installs without starting a manager when home is unavailable", async () => {
+    const execSpy = vi.fn();
+    vi.doMock("node:child_process", () => ({ execFileSync: execSpy }));
+    vi.doMock("node:os", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("node:os")>()),
+      homedir: () => ".",
+    }));
+
+    const { runDetectedInstall, upgradeRunningCli } = await import("./upgrade.js");
+    const { consumeCommandResult } = await import("../utils/commandResult.js");
+    const argv = process.argv;
+    try {
+      process.argv = [process.execPath, "/usr/local/lib/node_modules/hyperframes/dist/cli.js"];
+      expect(upgradeRunningCli("1.2.3").status).toBe("failed");
+      runDetectedInstall(
+        { bin: "npm", args: ["install", "-g", "hyperframes@1.2.3"] },
+        "npm install -g hyperframes@1.2.3",
+        "1.2.3",
+      );
+      expect(consumeCommandResult().exitCode).toBe(1);
+      expect(execSpy).not.toHaveBeenCalled();
+    } finally {
+      process.argv = argv;
+    }
   });
 
   it("sets a non-zero exit code when the install fails, without throwing", async () => {

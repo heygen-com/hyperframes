@@ -2409,6 +2409,9 @@ prompting, `--yes, -y` upgrades a detected global install (otherwise it prints
 the right `npx` command; an unattended run without `--yes` or `--check` exits 2),
 and `--project [dir]` rewrites
 `hyperframes@<version>` script pins in a project's `package.json`.
+Foreground and background CLI updates run the global package manager from your home directory.
+If the home directory is unavailable, the CLI skips background installation and an explicit global upgrade fails.
+
 `--check --json` returns:
 
 ```json
