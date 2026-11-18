@@ -131,6 +131,29 @@ describe("applyPreviewSync", () => {
     expect(reloadPreview).not.toHaveBeenCalled();
   });
 
+  it("renders on the last tween patch when the batch ends in a base value, which never renders", () => {
+    patchRuntimeTweenInPlace.mockReturnValue(true);
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result(),
+      {
+        label: "Move layers",
+        softReload: true,
+        instantPatches: [
+          { selector: "#a", change: { kind: "set" as const, props: { x: 1 } } },
+          { selector: "#b", change: { kind: "global-set" as const, props: { x: 2 } } },
+        ],
+      },
+      vi.fn(),
+    );
+
+    expect(patchRuntimeTweenInPlace.mock.calls.map((call) => [call[1], call[4]])).toEqual([
+      ["#a", false],
+      ["#b", true],
+    ]);
+  });
+
   it("applies both plural and singular patches when a caller supplies both", () => {
     patchRuntimeTweenInPlace.mockReturnValue(true);
 

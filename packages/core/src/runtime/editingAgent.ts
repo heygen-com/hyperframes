@@ -40,6 +40,7 @@ import { gsapSnapshot } from "./editing/gsapSnapshot";
 import { motionPathHome } from "./editing/motionPathHome";
 import { cropLift } from "./editing/cropLift";
 import { gsapSet } from "./editing/gsapSet";
+import { patchTweens } from "./editing/patchTween";
 import {
   getLogicalOpacity,
   markedForStudio,
@@ -222,6 +223,7 @@ const HANDLERS: Handlers = {
   "crop-lift": cropLift,
   "edit-element": editElement,
   "gsap-set": gsapSet,
+  "patch-tweens": patchTweens,
 };
 
 function serve(port: MessagePort): void {

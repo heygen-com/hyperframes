@@ -14,6 +14,7 @@ import { timeAtProgress } from "../utils/gsapKeyframeEases";
 import { readMotionPathTween } from "./gsapRuntimeMotionPath";
 import { roundTo3 } from "../utils/rounding";
 import { matchesElement, tweensTargeting } from "./gsapRuntimeTweenIndex";
+import { keyframeVarsCarryChannel } from "@hyperframes/core/runtime/patch-tween";
 import { withParsedStart } from "./gsapParsedTween";
 import { BOX_SIZE_STYLE_PROPS } from "../components/editor/manualEditsDomPatches";
 import { gsapRendersTransform } from "../components/editor/gsapAnimatesProperty";
@@ -98,7 +99,7 @@ function timelinesOf(iframe: HTMLIFrameElement | null): Record<string, RuntimeTi
   }
 }
 
-/** A sealed frame reads from its snapshot; resolveRuntimeTween patches, so it takes live tweens only. */
+/** A sealed frame reads from its snapshot. */
 function readableTimelines(iframe: HTMLIFrameElement | null) {
   return iframe && previewFrameOpaque(iframe) ? frameTimelines(iframe) : timelinesOf(iframe);
 }
@@ -160,129 +161,6 @@ function tweenTiming(tween: RuntimeTween): { start: number; duration: number } {
     start: Number.isFinite(rawStart) ? rawStart : 0,
     duration: Number.isFinite(rawDur) ? rawDur : 0,
   };
-}
-
-export interface ResolvedRuntimeTween {
-  /** The live GSAP tween targeting the selector. */
-  tween: RuntimeTween;
-  /** The composition timeline that owns it. */
-  timeline: RuntimeTimeline;
-}
-
-/**
- * Whether a tween's `vars` carry at least one of `channels` as an OWN property.
- * Used to disambiguate co-located `set`s: an element can have separate
- * `tl.set("#el",{x,y})` and `tl.set("#el",{rotation})` tweens, and a position
- * patch must land on the {x,y} set — never the rotation-only one.
- */
-function varsCarryChannel(vars: Record<string, unknown> | undefined, channels: string[]): boolean {
-  if (!vars) return false;
-  for (const ch of channels) {
-    if (Object.prototype.hasOwnProperty.call(vars, ch)) return true;
-  }
-  return false;
-}
-
-/**
- * Like `varsCarryChannel` but for a keyframe tween: the channels live inside the
- * keyframe steps (`vars.keyframes`), not as own props of `vars`. Handles the object
- * form (`{ "0%": {...} }`), the array form (`[{...}, ...]`) and the object-of-arrays form.
- */
-function keyframeVarsCarryChannel(
-  vars: Record<string, unknown> | undefined,
-  channels: string[],
-): boolean {
-  const kf = vars?.keyframes;
-  if (!kf || typeof kf !== "object") return false;
-  if (!Array.isArray(kf) && channels.some((ch) => Object.prototype.hasOwnProperty.call(kf, ch)))
-    return true;
-  const steps = Array.isArray(kf) ? kf : Object.values(kf);
-  return steps.some(
-    (step) =>
-      step != null &&
-      typeof step === "object" &&
-      channels.some((ch) => Object.prototype.hasOwnProperty.call(step, ch)),
-  );
-}
-
-/**
- * Resolve the live tween targeting `selector` using the SAME all-timelines scan
- * `readRuntimeKeyframes` uses, so read and write agree on "which tween". With
- * `kind: "keyframe"` it skips zero-duration `set`s and prefers the tween whose
- * range contains the playhead (matching the reader). With `kind: "set"` it picks
- * the zero-duration `set`/hold instead. Returns null when none matches.
- *
- * `channels` disambiguates co-located `set`s (CHANNEL-BLIND otherwise): when
- * provided with `kind: "set"`, a set carrying ONE of those channels wins, and a
- * set carrying ONLY disjoint channels is skipped (so patching {x,y} never lands
- * on a rotation-only set). With no channel-matching set, it falls back to the
- * first matching set (back-compat). `channels` is ignored for `kind: "keyframe"`.
- */
-// fallow-ignore-next-line complexity
-export function resolveRuntimeTween(
-  iframe: HTMLIFrameElement | null,
-  selector: string,
-  kind: "keyframe" | "set",
-  compositionId?: string,
-  channels?: string[],
-  // fallow-ignore-next-line code-duplication
-): ResolvedRuntimeTween | null {
-  const timelines = timelinesOf(iframe);
-  if (!timelines) return null;
-
-  let targetEl: Element | null = null;
-  try {
-    targetEl = iframe?.contentDocument?.querySelector(selector) ?? null;
-  } catch {
-    return null;
-  }
-  if (!targetEl) return null;
-
-  const tlIds = compositionId
-    ? [compositionId]
-    : Object.keys(timelines).filter((k) => typeof timelines[k]?.getChildren === "function");
-
-  // Channels disambiguate co-located tweens for BOTH kinds: a `set` carries them as
-  // own vars props, a keyframe tween carries them inside its keyframe steps. An
-  // element can have a rotation keyframe tween AND a position keyframe tween; a
-  // rotation edit must land on the former. The reader passes no channels, so its
-  // playhead-containment path below is unchanged.
-  const wantChannels = channels && channels.length > 0 ? channels : null;
-
-  let first: ResolvedRuntimeTween | null = null;
-  // fallow-ignore-next-line code-duplication
-  let channelMatch: ResolvedRuntimeTween | null = null;
-  for (const tlId of tlIds) {
-    const timeline = timelines[tlId];
-    if (!timeline?.getChildren) continue;
-    const now = typeof timeline.time === "function" ? timeline.time() : null;
-    for (const tween of timeline.getChildren(true)) {
-      if (!tween.vars || !matchesElement(tween, targetEl)) continue;
-      const dur = typeof tween.duration === "function" ? tween.duration() : 0;
-      const isSet = !(dur > 0);
-      if (kind === "set" ? !isSet : isSet) continue;
-      if (wantChannels) {
-        const carries =
-          kind === "set"
-            ? varsCarryChannel(tween.vars, wantChannels)
-            : keyframeVarsCarryChannel(tween.vars, wantChannels);
-        if (carries) {
-          if (channelMatch === null) channelMatch = { tween, timeline };
-        } else if (first === null) {
-          // A tween carrying only disjoint channels: remember as last-resort
-          // fallback, but never prefer it over a channel-matching one.
-          first = { tween, timeline };
-        }
-        continue;
-      }
-      if (first === null) first = { tween, timeline };
-      if (kind === "keyframe" && now != null) {
-        const start = typeof tween.startTime === "function" ? tween.startTime() : 0;
-        if (now >= start - 1e-3 && now <= start + dur + 1e-3) return { tween, timeline };
-      }
-    }
-  }
-  return channelMatch ?? first;
 }
 
 /** Whether a read carries at least one of `channels` as a keyframe property. */

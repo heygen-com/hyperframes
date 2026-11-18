@@ -1,7 +1,10 @@
 import { parseGsapScript } from "@hyperframes/parsers/gsap-parser";
 import { GSAP_BASE_URL_META, motionPathPluginUrl } from "@hyperframes/core/gsap-cdn";
 import { findAuthoredElement } from "./authoredSource";
-import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "./authoredOpacity";
+import {
+  applyAuthoredInlineOpacity,
+  readStampedAuthoredOpacity,
+} from "@hyperframes/core/color-grading";
 import {
   authoringFile,
   collectResetTargets,
