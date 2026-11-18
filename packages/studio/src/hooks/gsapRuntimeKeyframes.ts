@@ -19,7 +19,7 @@ import { withParsedStart } from "./gsapParsedTween";
 import { BOX_SIZE_STYLE_PROPS } from "../components/editor/manualEditsDomPatches";
 import { gsapRendersTransform } from "../components/editor/gsapAnimatesProperty";
 import { previewFrameOpaque } from "../player/lib/previewChannel";
-import { frameQuery, frameTimelines } from "./gsapFrameSnapshot";
+import { frameQuery, frameTarget, frameTimelines } from "./gsapFrameSnapshot";
 
 /**
  * A GSAP tween's `vars` object — intentionally open: it mixes channel values
@@ -275,6 +275,12 @@ export const POSITION_CHANNELS: string[] = [
 ];
 const MOVE_CHANNELS = [...POSITION_CHANNELS, "motionPath"];
 
+/** A sealed frame's tweens position its element: read off the frame's snapshot, matched by handle. */
+export function sealedGsapWritesPosition(iframe: HTMLIFrameElement, el: Element): boolean {
+  const target = frameTarget(iframe, el);
+  return !!target && timelinesWriteChannels(frameTimelines(iframe), target, MOVE_CHANNELS);
+}
+
 export const GSAP_TRANSFORM_KEYS = new Set(
   "x,y,z,scale,scaleX,scaleY,xPercent,yPercent,rotation,rotationX,rotationY,skewX,skewY,transformOrigin,svgOrigin,force3D,smoothOrigin,transformPerspective,translateX,translateY,translateZ,rotate,rotationZ,rotateZ,rotateX,rotateY".split(
     ",",
@@ -284,7 +290,15 @@ export const GSAP_TRANSFORM_KEYS = new Set(
 /** Whether a live timeline tween or hold writes any of `channels` on `el`. Sync, no fetch. */
 export function gsapWritesChannels(el: Element, channels: string[]): boolean {
   const win = el.ownerDocument.defaultView as { __timelines?: Record<string, RuntimeTimeline> };
-  return Object.values(win?.__timelines ?? {}).some((tl) =>
+  return timelinesWriteChannels(win?.__timelines ?? null, el, channels);
+}
+
+function timelinesWriteChannels(
+  timelines: Record<string, RuntimeTimeline> | null,
+  el: Element,
+  channels: string[],
+): boolean {
+  return Object.values(timelines ?? {}).some((tl) =>
     tweensTargeting(tl, el).some(
       (tween) =>
         !!tween.vars &&

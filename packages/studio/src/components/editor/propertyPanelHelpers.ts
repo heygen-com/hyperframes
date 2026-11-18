@@ -9,7 +9,13 @@ import {
   playbackStartAttributeForElement,
   readPlaybackStartAttributes,
 } from "../../player/lib/timelineElementHelpers";
-import { editsPlainCss, GSAP_TRANSFORM_KEYS } from "../../hooks/gsapRuntimeKeyframes";
+import {
+  editsPlainCss,
+  GSAP_TRANSFORM_KEYS,
+  sealedGsapWritesPosition,
+} from "../../hooks/gsapRuntimeKeyframes";
+import { getIframeGsap } from "../../hooks/gsapShared";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
 export type {
   BackgroundRemovalProgress,
@@ -485,18 +491,16 @@ export function readGsapRuntimeValuesForPanel(
 ): Record<string, number> | null {
   if (!gsapAnimId || gsapAnimations.length === 0) return null;
   const iframe = previewIframeRef?.current;
-  if (!iframe?.contentWindow) return null;
+  if (!iframe) return null;
   try {
-    const gsap = (
-      iframe.contentWindow as unknown as {
-        gsap?: { getProperty: (el: Element, prop: string) => number | string };
-      }
-    ).gsap;
-    if (!gsap?.getProperty) return null;
-    const el = findPreviewNode(iframe.contentDocument, element);
-    if (!el) return null;
+    const gsap = getIframeGsap(iframe);
+    const sealed = previewFrameOpaque(iframe);
+    const el = sealed ? element.element : findPreviewNode(iframe.contentDocument, element);
+    if (!gsap || !el) return null;
     const propKeys = collectPanelPropKeys(gsapAnimations);
-    const readsTransform = !editsPlainCss(el, "move");
+    const readsTransform = sealed
+      ? sealedGsapWritesPosition(iframe, el)
+      : !editsPlainCss(el, "move");
     const result: Record<string, number> = {};
     for (const prop of propKeys) {
       if (!readsTransform && GSAP_TRANSFORM_KEYS.has(prop)) continue;
