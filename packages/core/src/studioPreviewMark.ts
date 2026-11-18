@@ -1,3 +1,5 @@
+import { isWebKit } from "./runtime/mediaClock.js";
+
 export const STUDIO_PREVIEW_MARK_META = "hyperframes-studio-preview";
 export const PREVIEW_SEEK_HOLD_ATTR = "data-hf-preview-seek-hold";
 export const PREVIEW_VIDEO_FRAME_ATTR = "data-hf-preview-video-frame";
@@ -30,18 +32,19 @@ export function getLogicalOpacity(el: Element, computed: CSSStyleDeclaration): s
 export const PLAYER_FRAME_ATTR = "data-hf-player-frame";
 export const PLAYER_FRAME_NAME = "hyperframes-player";
 
+export function servedToStudio(doc: Document): boolean {
+  return doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null;
+}
+
 export function inPlayerFrame(doc: Document): boolean {
   const frame = doc.defaultView;
-  return (
-    frame?.name === PLAYER_FRAME_NAME ||
-    frame?.frameElement?.hasAttribute(PLAYER_FRAME_ATTR) === true
-  );
+  const marked = frame?.frameElement?.hasAttribute(PLAYER_FRAME_ATTR) === true;
+  if (servedToStudio(doc)) return isWebKit() && marked;
+  return marked || frame?.name === PLAYER_FRAME_NAME;
 }
 
 export function defersMediaIn(doc: Document): boolean {
-  return (
-    doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null || inPlayerFrame(doc)
-  );
+  return servedToStudio(doc) || inPlayerFrame(doc);
 }
 export function capturePageIn(doc: Document): boolean {
   return (

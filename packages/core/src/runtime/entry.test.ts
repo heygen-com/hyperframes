@@ -490,9 +490,9 @@ describe("runtime entry", () => {
       srcWrites.observe(now, { attributeFilter: ["src"] });
       window.__player?.seek(7.6);
       expect(armed(now, soon, later)).toEqual([false, false, true]);
-      // The two that left are released: now by setting its src again, soon (no src) by reloading empty.
+      // The two that left are reloaded empty with src dropped for the reload, ending any fetch in flight.
       expect([now.preload, soon.preload]).toEqual(["none", "none"]);
-      expect(loadsOf(now, soon, later)).toEqual([1, 2, 1]);
+      expect(loadsOf(now, soon, later)).toEqual([2, 2, 1]);
       expect(srcWrites.takeRecords()).toHaveLength(2);
       expect(now.getAttribute("src")).toBe("now.mp4");
     });
@@ -590,6 +590,45 @@ describe("runtime entry", () => {
         [true, true],
         [false, false],
       ]);
+    });
+
+    // An app that embeds Studio's preview re-reads the film after each edit, as the desktop app's script walks do.
+    it("in Studio's preview the player's named frame changes nothing about which clips load and are freed", async () => {
+      const decisions = async (frame: "named player frame" | "plain frame") => {
+        const log: string[] = [];
+        for (const starts of [
+          ["0", "3", "9"],
+          ["0", "3", "5", "9"],
+        ]) {
+          resetRuntimeGlobals();
+          vi.restoreAllMocks();
+          spyLoad();
+          if (frame === "named player frame") {
+            inPlayerFrame("chrome");
+            window.name = PLAYER_FRAME_NAME;
+          }
+          servePreview();
+          const root = mountRoot();
+          const clips = starts.map((start) => timed(root, "audio", start));
+          for (const clip of clips) clip.setAttribute("src", "/voice.wav");
+          const srcWrites = new MutationObserver(() => {});
+          for (const clip of clips) srcWrites.observe(clip, { attributeFilter: ["src"] });
+          await evaluateRuntime();
+          const step = (label: string) =>
+            log.push(
+              `${starts.length} clips, ${label}: preload ${clips.map((c) => c.preload)}, loads ${loadsOf(...clips)}, src writes ${srcWrites.takeRecords().map((r) => clips.indexOf(r.target as HTMLMediaElement))}`,
+            );
+          step("parsed");
+          for (const time of [3.5, 9.2, 5.1, 0.5]) {
+            window.__player?.seek(time);
+            step(`seek ${time}`);
+          }
+        }
+        return log;
+      };
+      const named = await decisions("named player frame");
+      expect(named.some((line) => /loads (\d,)*2/.test(line))).toBe(true);
+      expect(await decisions("plain frame")).toEqual(named);
     });
 
     it("in Studio's preview a clip 5 s ahead stays unloaded, as the look-ahead is 2 s", async () => {

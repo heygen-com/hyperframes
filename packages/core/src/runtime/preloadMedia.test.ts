@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mediaElementTime } from "./mediaClock";
 import { unproxiedSrc } from "./proxySrc";
+import { STUDIO_PREVIEW_MARK_META } from "../studioPreviewMark";
 import {
   deferMediaUntilDue,
   giveBackWhenDue,
@@ -123,6 +124,21 @@ describe("releasing a clip's download", () => {
     releaseMedia(video);
     expect(writes()).toBeGreaterThan(0);
     expect(video.load).not.toHaveBeenCalled();
+    expect(video.getAttribute("src")).toBe("a.mp4");
+  });
+
+  it("in Studio's preview reloads a src clip with its src dropped, then puts the src back, as before", () => {
+    const mark = document.head.appendChild(
+      Object.assign(document.createElement("meta"), { name: STUDIO_PREVIEW_MARK_META }),
+    );
+    const video = document.createElement("video");
+    video.setAttribute("src", "a.mp4");
+    const atLoad: (string | null)[] = [];
+    video.load = () => atLoad.push(video.getAttribute("src"));
+
+    releaseMedia(video);
+    mark.remove();
+    expect(atLoad).toEqual([null]);
     expect(video.getAttribute("src")).toBe("a.mp4");
   });
 
