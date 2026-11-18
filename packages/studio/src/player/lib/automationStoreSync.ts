@@ -32,6 +32,9 @@ import {
 import { elementVolume, parseStoredVolume } from "./storedVolume";
 import { previewDocumentCopy, previewFrameOpaque } from "./previewChannel";
 
+/** Every sync, live or sealed: a sealed read lands only if none ran after it began. */
+let syncs = 0;
+
 /**
  * Re-read every element's automation, FX-chain, fade and volume attributes from the preview
  * document, for a change that reached the DOM without going through this store.
@@ -68,6 +71,7 @@ function syncedFields(doc: Document, element: TimelineElement, node: Element) {
 }
 
 export function syncStoredAutomationFromPreview(doc: Document | null | undefined): void {
+  syncs += 1;
   if (!doc) return;
   const findNode = previewElementFinder(doc);
   usePlayerStore.setState((state) => {
@@ -87,15 +91,18 @@ export function syncStoredAutomationFromPreview(doc: Document | null | undefined
   });
 }
 
-let sealedSync = 0;
-
-/** `syncStoredAutomationFromPreview` for a preview frame; a sealed one is read off a copy, the latest read winning. */
+/**
+ * `syncStoredAutomationFromPreview` for a preview frame. A sealed one is read off a copy, which lands
+ * only if no other sync ran and the project is still the one read; a frame load drops the read itself.
+ */
 export function syncStoredAutomationFromFrame(iframe: HTMLIFrameElement | null | undefined): void {
   if (!iframe) return;
   if (!previewFrameOpaque(iframe)) return syncStoredAutomationFromPreview(iframe.contentDocument);
-  const read = ++sealedSync;
+  const read = ++syncs;
+  const project = usePlayerStore.getState().timelineProjectId;
   void previewDocumentCopy(iframe).then((doc) => {
-    if (read === sealedSync) syncStoredAutomationFromPreview(doc);
+    if (read === syncs && usePlayerStore.getState().timelineProjectId === project)
+      syncStoredAutomationFromPreview(doc);
   });
 }
 

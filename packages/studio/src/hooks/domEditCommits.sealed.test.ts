@@ -15,6 +15,7 @@ import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { commitDomStyles } from "./domStyleCommit";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 import { usePlayerStore } from "../player/store/playerStore";
+import { syncStoredAutomationFromFrame } from "../player/lib/automationStoreSync";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -169,6 +170,19 @@ describe("DOM edit commits in a sealed preview", () => {
       vi.fn(async () => undefined),
     );
     await act(() => commits.handleDomAttributeQuietCommit("volume", "0.25"));
+    await vi.waitFor(() => expect(usePlayerStore.getState().elements[0]?.volume).toBe(0.25));
+    usePlayerStore.getState().reset();
+  });
+
+  it("drops a sealed lane read when the frame loads before it answers", async () => {
+    const { iframe } = await sealedCard(`<audio id="card" data-volume="0.25"></audio>`);
+    const clip = { id: "card", key: "card", tag: "audio", start: 0, duration: 4, track: 1 };
+    usePlayerStore.setState({ elements: [{ ...clip, domId: "card", volume: 1 }] });
+    syncStoredAutomationFromFrame(iframe);
+    iframe.dispatchEvent(new Event("load"));
+    await settle();
+    expect(usePlayerStore.getState().elements[0]?.volume).toBe(1);
+    syncStoredAutomationFromFrame(iframe);
     await vi.waitFor(() => expect(usePlayerStore.getState().elements[0]?.volume).toBe(0.25));
     usePlayerStore.getState().reset();
   });
