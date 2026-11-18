@@ -104,7 +104,6 @@ export function endTextEdit(): void {
   close(false);
 }
 
-/** The caret position under a point, across the two APIs browsers expose. */
 export function caretRangeAt(doc: Document, at: Point): Range | null {
   const legacy = doc as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null };
   if (typeof legacy.caretRangeFromPoint === "function")
@@ -133,7 +132,6 @@ function placeCaret(element: Editable, at: Point | null): void {
   selection.addRange(range);
 }
 
-/** Paste and drop put in only the words, never markup; returns the release. */
 export function takePlainTextOnly(element: HTMLElement): () => void {
   const insertPlainText = (text: string | undefined) => {
     if (text) element.ownerDocument.execCommand("insertText", false, text);
