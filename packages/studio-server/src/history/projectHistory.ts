@@ -91,6 +91,8 @@ export interface ProjectHistoryOptions {
   onError?: (error: unknown) => void;
   /** How long an open waits for another process to close the same history (default 5 s). */
   ownerWaitMs?: number;
+  /** How long the first copy waits on one file before leaving it owed (default 10 s). */
+  firstCopyFileMs?: number;
   ownerUrl?: string;
   /** A CLI turn's window from an earlier open: writes since, within its idle limit, become the entry with its id. */
   closedWindow?: ClosedWindow;
@@ -221,6 +223,21 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
 type Copied = { hash: string } | "gone" | "changing";
+
+/** How long the first copy waits on one file: past it the file is owed and copied in the background later. */
+const FIRST_COPY_FILE_MS = 10_000;
+
+/** `copy`'s answer, or "changing" once `ms` pass. A read can't be cancelled, so the copy keeps its slot until its
+ * read ends: a drive that stops answering holds the slots, never more threads than they allow. */
+async function owedAfter(copy: Promise<Copied>, ms: number): Promise<Copied> {
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<Copied>((owed) => (timer = setTimeout(() => owed("changing"), ms)));
+  try {
+    return await Promise.race([copy, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 const ADOPT_RETRY_AT_MOST_MS = 30_000;
 
 /** Owed until a whole copy is recorded, the file is gone or history closes; retryNow waits for a fresh try. */
@@ -443,6 +460,8 @@ class Engine {
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   adopting = new Map<string, Adoption>();
+  /** Each path's latest copy: a later one reads after it ends, so a read stuck on the drive never gains a twin. */
+  reading = new Map<string, Promise<unknown>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
   stopHearing: (() => void) | undefined;
@@ -640,8 +659,14 @@ class Engine {
     const sweptAt = this.now();
     const files = await historyFiles(this.dir);
     const copied = files.filter((file) => file.size <= COPY_LATER_ABOVE_BYTES);
+    const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
     const hashes = await Promise.allSettled(
-      copied.map((file) => inFirstCopySlot(() => this.storeIfPresent(file.path))),
+      copied.map((file) =>
+        owedAfter(
+          inFirstCopySlot(() => this.storeIfPresent(file.path)),
+          waitMs,
+        ),
+      ),
     );
     // Nothing names these copies until the log below is written, so one look at the end covers the whole copy.
     if (this.whereFolder() !== "here") throw this.replaced();
@@ -839,7 +864,17 @@ class Engine {
   }
 
   /** The file's hash once copied in, or why there is none: gone, or still changing through every read. */
-  async storeIfPresent(path: string): Promise<Copied> {
+  storeIfPresent(path: string): Promise<Copied> {
+    const before = this.reading.get(path) ?? Promise.resolve();
+    // expected: the earlier copy's failure reached its own caller; this one only waits for it to end
+    const read = before.catch(() => {}).then(() => this.storeNow(path));
+    const turn = read.catch(() => {});
+    this.reading.set(path, turn);
+    void turn.then(() => this.reading.get(path) === turn && this.reading.delete(path));
+    return read;
+  }
+
+  async storeNow(path: string): Promise<Copied> {
     try {
       const abs = join(this.dir, path);
       const { size } = await stat(abs);

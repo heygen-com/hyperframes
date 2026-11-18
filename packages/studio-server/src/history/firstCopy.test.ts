@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
-  return { ...actual, writeFile: vi.fn(actual.writeFile) };
+  return { ...actual, writeFile: vi.fn(actual.writeFile), open: vi.fn(actual.open) };
 });
 
 import * as fsp from "node:fs/promises";
@@ -26,7 +26,7 @@ import { blobPath } from "./blobStore.js";
 import { START } from "./historyLog.js";
 import { openProjectHistory } from "./projectHistory.js";
 
-const { writeFile: realWriteFile } =
+const { writeFile: realWriteFile, open: realOpen } =
   await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
 const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const temps: string[] = [];
@@ -39,6 +39,7 @@ const closes: (() => Promise<void>)[] = [];
 
 afterEach(async () => {
   vi.mocked(fsp.writeFile).mockImplementation(realWriteFile);
+  vi.mocked(fsp.open).mockImplementation(realOpen);
   for (const close of closes.splice(0)) await close();
   for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -144,5 +145,30 @@ describe("a project's first history copy", () => {
 
     expect(most).toBeGreaterThan(1);
     expect(most).toBeLessThanOrEqual(4);
+  });
+
+  // fails without the fix: a file whose read never answered held the first copy, so the project never opened.
+  it("leaves a file whose read never answers owed past its deadline, and the open finishes", async () => {
+    const projectDir = projectOf(6, "stuck");
+    const stuck = join(projectDir, "parts", "p1.js");
+    const releases: (() => void)[] = [];
+    let stuckReads = 0;
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      if (String(args[0]) === stuck) {
+        stuckReads += 1;
+        await new Promise<void>((answer) => releases.push(answer));
+      }
+      return realOpen(...args);
+    });
+    const historyRoot = tempDir("hf-first-copy-root-");
+    try {
+      const history = await openProjectHistory({ projectDir, historyRoot, firstCopyFileMs: 100 });
+      closes.push(() => history.close());
+      expect(stuckReads).toBe(1);
+      const owed = JSON.parse(readFileSync(join(homeIn(historyRoot), "adopting.json"), "utf8"));
+      expect(owed).toContain("parts/p1.js");
+    } finally {
+      for (const answer of releases) answer();
+    }
   });
 });
