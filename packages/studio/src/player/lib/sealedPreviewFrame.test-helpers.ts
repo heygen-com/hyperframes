@@ -4,7 +4,7 @@ import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingA
 import { detachedFakeIframe } from "../hooks/timelinePlayerTestHarness";
 
 /** A browser's postMessage: delivered on a later task, to every listener present then. */
-export function postLater(init: MessageEventInit): void {
+function postLater(init: MessageEventInit): void {
   setTimeout(() => window.dispatchEvent(new MessageEvent("message", init)));
 }
 
