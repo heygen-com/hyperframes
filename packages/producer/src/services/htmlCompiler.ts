@@ -2263,11 +2263,9 @@ function rebaseDirectEntryAssetPaths(html: string, projectDir: string, htmlPath:
   return document.toString();
 }
 
-/** The longest value a variable may bind into a media `src`. */
 export const MAX_VARIABLE_MEDIA_SRC_BYTES = 8 * 1024;
-// ASCII control characters, tab and newline included. A plain space is allowed.
 // oxlint-disable-next-line no-control-regex
-const UNSAFE_MEDIA_SRC_CHARS = /[\u0000-\u001f\u007f]/;
+const MEDIA_SRC_CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
 
 /**
  * Point each `data-var-src` video/audio at the clip its variable names, so the length and sound read below
@@ -2291,10 +2289,8 @@ function bindVariableMediaSources(
     if (el.closest("[data-variable-values]")) continue;
     const bound = boundMediaSrc(el, values);
     if (bound === null) continue;
-    // A browser strips leading and trailing whitespace and control characters from a URL, so the
-    // runtime binds the trimmed value; compile-time probing must see the same one.
     const src = bound.trim();
-    if (src.length > MAX_VARIABLE_MEDIA_SRC_BYTES || UNSAFE_MEDIA_SRC_CHARS.test(src)) {
+    if (src.length > MAX_VARIABLE_MEDIA_SRC_BYTES || MEDIA_SRC_CONTROL_CHARS.test(src)) {
       log?.warn("[Compiler] Refused a variable media source that cannot be a URL", {
         length: src.length,
       });
@@ -2340,7 +2336,6 @@ export async function compileForRender(
   }
   assertCompositionFileSize(htmlPath, basename(htmlPath));
   const entryHtml = rebaseDirectEntryAssetPaths(readTextFile(htmlPath), projectDir, htmlPath);
-  // One budget for the whole render: variable media sources, variable styles and every mount share it.
   const budget = new CompositionExpansionBudget();
   const rawHtml = bindVariableMediaSources(
     normalizeCompositionSrcs(rewriteUnresolvableGsapToCdn(entryHtml, projectDir), projectDir),
