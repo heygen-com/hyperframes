@@ -13,7 +13,7 @@ import {
   type SoftReloadResult,
   type SoftReloadWindow,
 } from "@hyperframes/core/runtime/soft-reload";
-import { authoredStyles, findAuthoredElement } from "./authoredSource";
+import { authoredStyles, findAuthoredElement, savedTiming } from "./authoredSource";
 import { fileDocs, standaloneSets } from "./softReloadTargets";
 import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
 
@@ -108,6 +108,8 @@ export interface SoftReloadOptions {
   authoredHtml?: string;
   /** The same file before the write; a sealed preview needs it for what the outgoing script set. */
   previousHtml?: string;
+  /** A timing edit, whose saved timing a sealed preview takes along: no commit could patch it live. */
+  timingEdit?: boolean;
   /** Other composition files a reset element is written in, by path; null when one could not be read. */
   nestedFiles?: Map<string, string> | null;
 }
@@ -189,7 +191,13 @@ export function sealedSoftReloadResult(reply: unknown): SoftReloadResult {
 function softReloadSealed(
   iframe: HTMLIFrameElement,
   scriptText: string,
-  { authoredHtml, previousHtml, currentTimeOverride, onAsyncFailure }: SoftReloadOptions,
+  {
+    authoredHtml,
+    previousHtml,
+    currentTimeOverride,
+    onAsyncFailure,
+    timingEdit,
+  }: SoftReloadOptions,
 ): SoftReloadResult {
   if (authoredHtml === undefined || previousHtml === undefined || currentTimeOverride === undefined)
     return "cannot-soft-reload";
@@ -199,6 +207,7 @@ function softReloadSealed(
     time: currentTimeOverride,
     sets: standaloneSets(outgoingScripts(previous, scriptText)),
     authored: authoredStyles(authoredHtml),
+    timing: timingEdit ? savedTiming(authoredHtml) : [],
   }).then((reply) => {
     if (sealedSoftReloadResult(reply) === "cannot-soft-reload") onAsyncFailure?.();
   });

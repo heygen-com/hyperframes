@@ -9,6 +9,7 @@ const params = (over: Partial<SoftReloadParams> = {}): SoftReloadParams => ({
   time: 1.5,
   sets: [],
   authored: [],
+  timing: [],
   ...over,
 });
 
@@ -99,6 +100,48 @@ describe("soft-reload", () => {
   });
 });
 
+describe("soft-reload of a timing edit", () => {
+  const MARKUP = `<div data-composition-id="main" data-hf-id="root" data-duration="5"><div id="clip" data-start="1" data-duration="2" data-hf-autostamped></div></div>`;
+
+  it("puts the saved timing on the live clip and the film before the rebind derives its windows", async () => {
+    preview(MARKUP);
+    const clip = document.getElementById("clip")!;
+    const root = document.querySelector("[data-composition-id]")!;
+    const seen: Array<Array<string | null>> = [];
+    win.__hfForceTimelineRebind = () =>
+      seen.push([clip.getAttribute("data-start"), root.getAttribute("data-duration")]);
+
+    const timing: SoftReloadParams["timing"] = [
+      ["hf:root", [["data-duration", "8"]]],
+      [
+        "#clip",
+        [
+          ["data-start", "4"],
+          ["data-duration", "2"],
+        ],
+      ],
+    ];
+    expect(await softReload(params({ timing }))).toEqual({ result: "applied" });
+
+    expect(seen).toEqual([["4", "8"]]);
+    expect(clip.hasAttribute("data-hf-autostamped")).toBe(false);
+  });
+
+  it("changes nothing and refuses when a timed element of the saved file is not in the preview", async () => {
+    preview(MARKUP);
+    const clip = document.getElementById("clip")!;
+
+    const timing: SoftReloadParams["timing"] = [
+      ["#clip", [["data-start", "4"]]],
+      ["#gone", [["data-start", "1"]]],
+    ];
+    expect(await softReload(params({ timing }))).toEqual({ result: "cannot-soft-reload" });
+
+    expect(clip.getAttribute("data-start")).toBe("1");
+    expect(killed).not.toHaveBeenCalled();
+  });
+});
+
 describe("parseSoftReload", () => {
   it("accepts a bounded request", () => {
     const ok = params({ sets: [{ selector: "#a", props: ["width"] }], authored: [["hf:1", ""]] });
@@ -114,6 +157,8 @@ describe("parseSoftReload", () => {
     ["a set with an extra field", params({ sets: [{ selector: "#a", props: [], x: 1 } as never] })],
     ["an authored key of no known kind", params({ authored: [["a", ""]] })],
     ["an authored entry with three parts", params({ authored: [["#a", "", ""] as never] })],
+    ["a timing attribute that is not timing", params({ timing: [["#a", [["style", "x"]]]] })],
+    ["no timing field", { ...params(), timing: undefined }],
   ])("refuses %s", (_label, request) => {
     expect(parseSoftReload(request)).toBeNull();
   });

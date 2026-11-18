@@ -48,7 +48,8 @@ it("sends one request built only from the saved files: the saved script, its aut
       ["#b", ""],
     ]),
   );
-  expect(Object.keys(params).sort()).toEqual(["authored", "script", "sets", "time"]);
+  expect(Object.keys(params).sort()).toEqual(["authored", "script", "sets", "time", "timing"]);
+  expect(params.timing).toEqual([]);
 });
 
 it.each([

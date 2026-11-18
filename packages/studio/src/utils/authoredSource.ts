@@ -1,5 +1,10 @@
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import {
+  authoredKey,
+  TIMING_ATTRIBUTES,
+  type SavedTiming,
+} from "@hyperframes/core/runtime/soft-reload";
+import {
   PREVIEW_ONLY_ATTRS,
   PREVIEW_VIDEO_CANVAS_ATTR,
   STUDIO_PREVIEW_LAZY_ATTR,
@@ -46,6 +51,19 @@ export function authoredStyles(html: string): Array<[string, string]> {
     }
   }
   return [...styles];
+}
+
+export function savedTiming(html: string): SavedTiming {
+  const timing: SavedTiming = [];
+  for (const el of parseSavedSource(html).querySelectorAll("[data-hf-id], [id]")) {
+    const key = authoredKey(el);
+    const attributes = [...TIMING_ATTRIBUTES].flatMap((name): Array<[string, string]> => {
+      const value = el.getAttribute(name);
+      return value === null ? [] : [[name, value]];
+    });
+    if (key && attributes.length > 0) timing.push([key, attributes]);
+  }
+  return timing;
 }
 
 export function findAuthoredElementById(doc: Document, live: Element): Element | null {

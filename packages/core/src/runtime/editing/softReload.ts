@@ -4,6 +4,7 @@
 import { GSAP_BASE_URL_META, motionPathPluginUrl } from "../../gsapCdn";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { escapeCssString } from "../editingElement";
+import { applyAuthoredTiming } from "../../studioPreviewMark";
 
 type TweenLike = {
   targets?: () => unknown[];
@@ -51,7 +52,55 @@ export interface SoftReloadInput {
     file: string | null,
     ownFile: string | null,
   ) => string | null | undefined;
+  /** A sealed timing edit's saved timing, which a reachable preview's commit already patched live. */
+  timing?: SavedTiming;
 }
+
+/** The attributes the runtime derives clip windows and the film's length from. */
+export const TIMING_ATTRIBUTES = new Set([
+  "data-start",
+  "data-end",
+  "data-duration",
+  "data-track-index",
+  "data-media-start",
+  "data-playback-start",
+  "data-playback-rate",
+]);
+
+/** `[key, attributes]` per element of the saved file, keyed as `authoredKey` keys a live one. */
+export type SavedTiming = Array<[string, Array<[string, string]>]>;
+type TimingPlan = Array<[Element, Array<[string, string]>]>;
+
+/** Each live element of `ownFile` with the saved timing it lacks; null when one is missing or two share a key. */
+export function planSavedTiming(
+  doc: Document,
+  ownFile: string | null,
+  timing: SavedTiming,
+): TimingPlan | null {
+  const live = new Map<string, Element>();
+  // The preview rewrites an inlined composition's own root, so the file's timing is not its own.
+  const rewritten = new Set<string | null>();
+  for (const el of doc.querySelectorAll("[data-hf-id], [id]")) {
+    if (el.hasAttribute("data-hf-inner-root")) rewritten.add(authoredKey(el));
+    const key = authoringFile(el) === ownFile ? authoredKey(el) : null;
+    if (key === null || rewritten.has(key)) continue;
+    if (live.has(key)) return null;
+    live.set(key, el);
+  }
+  const plan: TimingPlan = [];
+  for (const [key, attributes] of timing) {
+    const el = live.get(key);
+    if (!el && rewritten.has(key)) continue;
+    if (!el) return null;
+    const changed = attributes.filter(([name, value]) => el.getAttribute(name) !== value);
+    if (changed.length > 0) plan.push([el, changed]);
+  }
+  return plan;
+}
+
+export const applyTimingPlan = (plan: TimingPlan): void => {
+  for (const [el, attributes] of plan) applyAuthoredTiming(el, attributes);
+};
 
 const NESTED_VARS = new Set(["css", "startAt", "keyframes"]);
 
@@ -305,12 +354,15 @@ export function softReloadFrame(
     probe?.setAttribute("style", text!);
     authored.set(el, probe?.style ?? null);
   }
+  const timing = input.timing ? planSavedTiming(doc, ownFile, input.timing) : [];
+  if (timing === null) return "cannot-soft-reload";
 
   let deferred: ((result: SoftReloadResult) => void) | null = null;
   let pending: Promise<SoftReloadResult> | null = null;
   let builtDom = false;
 
   const doReload = () => {
+    applyTimingPlan(timing);
     const timelines = win.__timelines as Record<
       string,
       TweenLike & { kill?: () => void; clear?: () => void }
@@ -411,6 +463,8 @@ const MAX_SELECTOR_LENGTH = 2_000;
 const MAX_AUTHORED = 10_000;
 const MAX_AUTHORED_KEY = 512;
 const MAX_AUTHORED_STYLE = 16_384;
+const MAX_TIMED = 10_000;
+const MAX_TIMING_VALUE = 64;
 
 export type SoftReloadParams = {
   script: string;
@@ -418,6 +472,8 @@ export type SoftReloadParams = {
   sets: StandaloneSet[];
   /** `[key, style]`: key `hf:<data-hf-id>` or `#<id>`, style the element's authored style text. */
   authored: Array<[string, string]>;
+  /** Empty unless a timing edit: the saved file's timing, applied before the re-run's rebind. */
+  timing: SavedTiming;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -441,17 +497,39 @@ const isAuthoredEntry = (entry: unknown): entry is [string, string] =>
   /^(hf:|#)./.test(entry[0]) &&
   boundedString(entry[1], MAX_AUTHORED_STYLE);
 
+const isTimingAttribute = (value: unknown): value is [string, string] =>
+  Array.isArray(value) &&
+  value.length === 2 &&
+  TIMING_ATTRIBUTES.has(value[0]) &&
+  boundedString(value[1], MAX_TIMING_VALUE);
+
+const isTimedEntry = (entry: unknown): entry is SavedTiming[number] =>
+  Array.isArray(entry) &&
+  entry.length === 2 &&
+  boundedString(entry[0], MAX_AUTHORED_KEY) &&
+  /^(hf:|#)./.test(entry[0]) &&
+  Array.isArray(entry[1]) &&
+  entry[1].length <= TIMING_ATTRIBUTES.size &&
+  entry[1].every(isTimingAttribute);
+
+export function parseSavedTiming(value: unknown): SavedTiming | null {
+  const ok = Array.isArray(value) && value.length <= MAX_TIMED && value.every(isTimedEntry);
+  return ok ? (value as SavedTiming) : null;
+}
+
 export function parseSoftReload(params: unknown): SoftReloadParams | null {
-  if (!isRecord(params) || Object.keys(params).sort().join() !== "authored,script,sets,time")
-    return null;
+  const fields = "authored,script,sets,time,timing";
+  if (!isRecord(params) || Object.keys(params).sort().join() !== fields) return null;
   const { script, time, sets, authored } = params;
+  const timing = parseSavedTiming(params.timing);
+  if (!timing) return null;
   if (!boundedString(script, MAX_SOFT_RELOAD_SCRIPT) || script.length === 0) return null;
   if (typeof time !== "number" || !Number.isFinite(time) || time < 0) return null;
   if (!Array.isArray(sets) || sets.length > MAX_SETS) return null;
   if (!Array.isArray(authored) || authored.length > MAX_AUTHORED) return null;
   const parsedSets = sets.map(parseSet);
   if (!parsedSets.every(Boolean) || !authored.every(isAuthoredEntry)) return null;
-  return { script, time, sets: parsedSets as StandaloneSet[], authored };
+  return { script, time, sets: parsedSets as StandaloneSet[], authored, timing };
 }
 
 /** The key Studio files an element's authored style under: its hf-id, else its id. */
@@ -468,6 +546,7 @@ export async function softReload(params: SoftReloadParams): Promise<{ result: So
     script: params.script,
     time: params.time,
     sets: params.sets,
+    timing: params.timing,
     authoredStyle: (el, file, ownFile) => {
       if (file !== ownFile) return undefined;
       const key = authoredKey(el);
