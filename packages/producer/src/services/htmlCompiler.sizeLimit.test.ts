@@ -294,7 +294,8 @@ describe("variable-driven composition styles and media sources", () => {
 
   it("refuses many media elements bound to one long value", async () => {
     const url = `https://example.com/${"a".repeat(MAX_VARIABLE_MEDIA_SRC_BYTES - 100)}.mp4`;
-    const videos = `<video data-var-src="clip"></video>`.repeat(4_200);
+    const copies = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / url.length) + 100;
+    const videos = `<video data-var-src="clip"></video>`.repeat(copies);
     const dir = project({ "index.html": withBody(videos), "scene.html": SCENE });
     const error = await compileForRender(dir, join(dir, "index.html"), dir, {
       variables: { clip: url },
@@ -357,6 +358,8 @@ describe("asset paths rebased from a composition's folder", () => {
   const scene = (count: number) =>
     `<template><div data-composition-id="scene"><img srcset="${candidates(count)}"></div></template>`;
   const deepFolder = Array.from({ length: 4 }, (_, i) => `${i}`.repeat(200)).join("/");
+  // Each "../x.png" rebases to about the parent folder's length, so this many add up past the limit.
+  const pastLimit = Math.ceil((1.1 * MAX_EXPANDED_COMPOSITION_BYTES) / dirname(deepFolder).length);
 
   function projectWith(files: Record<string, string>): string {
     const dir = mkdtempSync(join(tmpdir(), "hf-rebase-"));
@@ -383,7 +386,7 @@ describe("asset paths rebased from a composition's folder", () => {
   it("refuses a mount in a deep folder whose rebased references add up past the limit", async () => {
     const dir = projectWith({
       "index.html": ROOT.replace("scene.html", `${deepFolder}/scene.html`),
-      [`${deepFolder}/scene.html`]: scene(60_000),
+      [`${deepFolder}/scene.html`]: scene(pastLimit),
     });
     const error = await compileError(dir);
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
@@ -393,7 +396,7 @@ describe("asset paths rebased from a composition's folder", () => {
     const dir = projectWith({
       [`${deepFolder}/index.html`]: `<!doctype html><html><body>
   <div data-composition-id="root" data-width="1920" data-height="1080" data-duration="2">
-    <img srcset="${candidates(60_000)}">
+    <img srcset="${candidates(pastLimit)}">
   </div>
 </body></html>`,
     });
@@ -407,6 +410,7 @@ describe("asset paths rebased from a composition's folder", () => {
 describe("remote scripts and stylesheets inlined at compile time", () => {
   afterEach(() => _setDownloadFetchForTests());
   const MiB = 1024 * 1024;
+  const pastLimitMiB = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / MiB) + 8;
 
   /** Serves `body(url)` and records each request and the most requests open at once. */
   function serve(body: (url: string) => string) {
@@ -426,7 +430,9 @@ describe("remote scripts and stylesheets inlined at compile time", () => {
   it("fetches a repeated script once and refuses copies past the render's limit", async () => {
     const seen = serve(() => `/*${"x".repeat(MiB)}*/`);
     const url = "https://cdn.example.com/big.js";
-    const error = await inlineExternalScripts(scriptTags(Array(40).fill(url))).catch((e) => e);
+    const error = await inlineExternalScripts(scriptTags(Array(pastLimitMiB).fill(url))).catch(
+      (e) => e,
+    );
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
     expect(seen.requests).toEqual([url]);
   });
@@ -479,7 +485,7 @@ describe("remote scripts and stylesheets inlined at compile time", () => {
   ])("refuses %s remote font stylesheets that add up past the render's limit", async (_, url) => {
     const face = `@font-face { font-family: "F"; src: local("${"x".repeat(MiB)}"); }`;
     const seen = serve(() => face);
-    const urls = Array.from({ length: 40 }, (_, i) => url(i));
+    const urls = Array.from({ length: pastLimitMiB }, (_, i) => url(i));
     const error = await localizeRemoteFontFaces(
       linkTags(urls),
       mkdtempSync(join(tmpdir(), "hf-remote-sheet-")),
