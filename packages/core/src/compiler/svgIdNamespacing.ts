@@ -308,8 +308,8 @@ function buildIdCensus(document: SvgIdQueryable): IdCensus {
 }
 
 /** A namespaced id that is not already taken anywhere in the document. */
-function mintNamespacedId(namespace: string, originalId: string, usedIds: Set<string>): string {
-  const base = `${sanitizeNamespaceSegment(namespace)}--${originalId}`;
+function mintNamespacedId(prefix: string, originalId: string, usedIds: Set<string>): string {
+  const base = `${prefix}--${originalId}`;
   let candidate = base;
   for (let n = 2; usedIds.has(candidate); n += 1) candidate = `${base}-${n}`;
   usedIds.add(candidate);
@@ -339,10 +339,12 @@ function planRenames(
   scopeIndexByRenamable: ReadonlyMap<Element, number>,
 ): Map<string, string>[] {
   const idMaps = scopes.map(() => new Map<string, string>());
+  const prefixes: Array<string | undefined> = [];
   for (const [id, elements] of census.elementsById) {
     if (elements.length < 2) continue;
     for (const index of collisionScopes(id, elements, scopeIndexByRenamable)) {
-      idMaps[index]!.set(id, mintNamespacedId(scopes[index]!.namespace, id, census.usedIds));
+      prefixes[index] ??= sanitizeNamespaceSegment(scopes[index]!.namespace);
+      idMaps[index]!.set(id, mintNamespacedId(prefixes[index]!, id, census.usedIds));
     }
   }
   return idMaps;
