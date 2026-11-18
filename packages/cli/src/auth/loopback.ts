@@ -21,6 +21,10 @@ import { AddressInfo } from "node:net";
 import { terminalText } from "@hyperframes/core";
 import { connectedPage, failurePage } from "./callbackPage.js";
 
+// Shown for a callback from another sign-in, such as an older tab; the terminal keeps waiting.
+const STALE_SIGN_IN =
+  "This page is from a different sign-in. Your terminal is still waiting: finish signing in from the newest sign-in tab.";
+
 export interface LoopbackOptions {
   /** Expected `state` value — a callback without it is answered 400 and ignored. */
   state: string;
@@ -138,7 +142,7 @@ function handleRequest(
   const params = url.searchParams;
   const state = params.get("state");
   if (!state || !stateMatches(state, expectedState)) {
-    respond(res, 400, failurePage("invalid_state", "State parameter did not match."));
+    respond(res, 400, failurePage("invalid_state", STALE_SIGN_IN));
     return;
   }
 

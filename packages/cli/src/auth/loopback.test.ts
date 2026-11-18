@@ -54,7 +54,7 @@ describe("auth/loopback", () => {
 
     const res = await fetch(`${handle.redirectUri}?${query}`);
     expect(res.status).toBe(400);
-    expect(await res.text()).toContain("State parameter did not match.");
+    expect(await res.text()).toContain("Your terminal is still waiting");
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(settled).not.toHaveBeenCalled();
 
