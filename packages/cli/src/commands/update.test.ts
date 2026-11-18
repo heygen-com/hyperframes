@@ -4,6 +4,7 @@
 // only spawn, the config file, the manifest fetch/disk and the registry are stubbed.
 
 import { homeCliCommand } from "../utils/homeCliCommand.js";
+import { homedir } from "node:os";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -131,6 +132,7 @@ beforeEach(() => {
     }),
   );
   for (const name of [
+    "npm_lifecycle_event",
     "HYPERFRAMES_PLUGIN_VERSION",
     "HYPERFRAMES_SKIP_SKILLS",
     "HYPERFRAMES_AGENT",
@@ -261,7 +263,11 @@ describe("hyperframes update (install)", () => {
       expect(installs()).toHaveLength(1);
       expect(installs()[0]).toMatchObject({ command: bin, args });
       // The child's stdout goes to stderr: a --json stdout stays one parseable object.
-      expect(installs()[0]!.opts).toMatchObject({ shell: false, stdio: ["inherit", 2, 2] });
+      expect(installs()[0]!.opts).toMatchObject({
+        cwd: homedir(),
+        shell: false,
+        stdio: ["inherit", 2, 2],
+      });
       expect(skillsAdds()).toHaveLength(1);
       expect(skillsAdds()[0]!.args).toContain("https://github.com/heygen-com/hyperframes#v0.9.8");
       expect(json().updated).toMatchObject({
