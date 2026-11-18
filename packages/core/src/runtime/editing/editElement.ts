@@ -2,7 +2,7 @@
 // null removing one. The reply carries what each name held before, so a failed save can put it back.
 import { EDITING_ELEMENT_HANDLE, type EditingElementHandle } from "../editingElement";
 import { elementForHandle } from "../editingHandles";
-import { isStylableElement } from "../domRealm";
+import { isStylableElement, type StylableElement } from "../domRealm";
 
 export type ElementEditEntry = [name: string, value: string | null];
 export type StyleEditEntry = [name: string, value: string | null, priority?: "important"];
@@ -43,7 +43,7 @@ const TEXT_TAGS = new Set([
 const TEXT_ATTRIBUTES = new Set(["class", "id", "style", "title", "lang", "dir"]);
 
 /** Markup a text field writes: text in inline text tags, no URL, no handler. */
-export function isTextMarkup(html: string): boolean {
+function isTextMarkup(html: string): boolean {
   if (html.length > MAX_EDIT_VALUE) return false;
   const holder = document.createElement("template");
   holder.innerHTML = html;
@@ -90,39 +90,48 @@ export function parseEditElement(params: unknown): EditElementParams | null {
 
 const NOT_APPLIED: EditElementResult = { applied: false, styles: [], attributes: [] };
 
-/** Draws nothing it could not put back: `src` off media, a too-long value, or non-text markup. */
-export function editElement({
-  handle,
-  styles,
-  attributes,
-  html,
-}: EditElementParams): EditElementResult {
-  const element = elementForHandle(handle);
-  if (!isStylableElement(element)) return NOT_APPLIED;
+function refused(element: StylableElement, attributes: ElementEditEntry[], html?: string) {
+  if (attributes.some(([name]) => name === "src") && !MEDIA_TAGS.has(element.localName))
+    return true;
+  return html !== undefined && !(isTextMarkup(element.innerHTML) && isTextMarkup(html));
+}
+
+function valuesBefore(
+  element: StylableElement,
+  { styles, attributes, html }: EditElementParams,
+): EditElementResult {
   const style = element.style;
-  const media = MEDIA_TAGS.has(element.localName);
-  if (attributes.some(([name]) => name === "src") && !media) return NOT_APPLIED;
-  const markup = html === undefined ? undefined : element.innerHTML;
-  if (markup !== undefined && !(isTextMarkup(markup) && isTextMarkup(html!))) return NOT_APPLIED;
-  const before: EditElementResult = {
+  return {
     applied: true,
     styles: styles.map(([name]): StyleEditEntry => {
       const value = style.getPropertyValue(name) || null;
       return style.getPropertyPriority(name) ? [name, value, "important"] : [name, value];
     }),
     attributes: attributes.map(([name]): ElementEditEntry => [name, element.getAttribute(name)]),
-    ...(markup !== undefined && { html: markup }),
+    ...(html !== undefined && { html: element.innerHTML }),
   };
-  if (![...before.styles, ...before.attributes].every(([, value]) => isValue(value)))
-    return NOT_APPLIED;
+}
+
+function draw(element: StylableElement, { styles, attributes, html }: EditElementParams) {
   for (const [name, value, priority] of styles) {
-    if (value === null) style.removeProperty(name);
-    else style.setProperty(name, value, priority ?? "");
+    if (value === null) element.style.removeProperty(name);
+    else element.style.setProperty(name, value, priority ?? "");
   }
   for (const [name, value] of attributes) {
     if (value === null) element.removeAttribute(name);
     else element.setAttribute(name, value);
   }
   if (html !== undefined) element.innerHTML = html;
+}
+
+/** Draws nothing it could not put back: `src` off media, a too-long value, or non-text markup. */
+export function editElement(params: EditElementParams): EditElementResult {
+  const element = elementForHandle(params.handle);
+  if (!isStylableElement(element) || refused(element, params.attributes, params.html))
+    return NOT_APPLIED;
+  const before = valuesBefore(element, params);
+  if (![...before.styles, ...before.attributes].every(([, value]) => isValue(value)))
+    return NOT_APPLIED;
+  draw(element, params);
   return before;
 }

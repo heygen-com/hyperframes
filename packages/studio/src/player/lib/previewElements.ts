@@ -323,6 +323,23 @@ const isEditEntries = (value: unknown, priority = false): value is StyleEntry[] 
       (entry.length === 2 || (priority && entry.length === 3 && entry[2] === "important")),
   );
 
+type EditReply = { applied?: unknown; styles?: unknown; attributes?: unknown; html?: unknown };
+
+/** What the reply says the element held, kept to the names `owns`; null when nothing goes back. */
+function ownedPutBack(
+  before: EditReply | null | undefined,
+  owns: (part: string, name: string) => boolean,
+) {
+  if (!before?.applied || !isEditEntries(before.styles, true)) return null;
+  if (!isEditEntries(before.attributes)) return null;
+  const styles = before.styles.filter(([name]) => owns("style", name));
+  const attributes = before.attributes.filter(([name]) => owns("attr", name));
+  const html = typeof before.html === "string" && owns("html", "") ? before.html : undefined;
+  return styles.length || attributes.length || html !== undefined
+    ? { styles, attributes, html }
+    : null;
+}
+
 export interface PreviewElementEdit {
   drawn: Promise<boolean>;
   restore(names?: readonly string[]): void;
@@ -358,13 +375,8 @@ export function editPreviewElement(
       const owns = (part: string, name: string) =>
         (!names || names.includes(name)) && writers.get(key(part, name)) === self;
       void reply.then((before) => {
-        if (!before?.applied || !isEditEntries(before.styles, true)) return;
-        if (!isEditEntries(before.attributes)) return;
-        const styles = before.styles.filter(([name]) => owns("style", name));
-        const attributes = before.attributes.filter(([name]) => owns("attr", name));
-        const html = typeof before.html === "string" && owns("html", "") ? before.html : undefined;
-        if (styles.length || attributes.length || html !== undefined)
-          void send(styles, attributes, html);
+        const back = ownedPutBack(before, owns);
+        if (back) void send(back.styles, back.attributes, back.html);
       });
     },
   };
