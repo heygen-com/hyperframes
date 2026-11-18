@@ -1156,6 +1156,10 @@ setting `preview` uses:
 HYPERFRAMES_PREVIEW_ALLOWED_HOSTS=demo.tunnels.example hyperframes present
 ```
 
+Any path they have no page for, and any address carrying a `code` or `state`
+parameter, gets a plain-text `Not found` that cannot be framed or scripted, so a
+sign-in that returns to their port leaves nothing the project's own script can read.
+
 ### `publish`
 
 For new video reviews, use [`share`](#share). Legacy source publishing stays

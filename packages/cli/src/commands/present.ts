@@ -36,6 +36,7 @@ import {
 } from "../utils/compositionServer.js";
 import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
 import { escapeHtml } from "../utils/escapeHtml.js";
+import { refuseStrayRequestsInertly } from "../utils/strayRequestRefusal.js";
 
 export default defineCommand({
   meta: {
@@ -177,6 +178,7 @@ export async function buildPresentApp(
 ): Promise<Hono> {
   const { Hono } = await import("hono");
   const app = new Hono();
+  refuseStrayRequestsInertly(app);
   refuseUnknownHosts(app);
   refuseFramingByOtherSites(app);
 
