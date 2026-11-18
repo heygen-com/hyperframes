@@ -279,3 +279,30 @@ describe("downloads with the render-service setting off", () => {
     expect(mocks.resolve4).not.toHaveBeenCalled();
   });
 });
+
+describe("downloads on a render service with an egress proxy", () => {
+  beforeEach(() => vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true"));
+
+  it("with HYPERFRAMES_CAPTURE_PROXY set, tunnels to that egress proxy and resolves no names", async () => {
+    const tunnels: string[] = [];
+    const egress = createServer();
+    egress.on("connect", (request, socket) => {
+      tunnels.push(request.url ?? "");
+      socket.destroy();
+    });
+    await new Promise<void>((resolve) => egress.listen(0, "127.0.0.1", resolve));
+    try {
+      const { port } = egress.address() as AddressInfo;
+      vi.stubEnv("HYPERFRAMES_CAPTURE_PROXY", `http://127.0.0.1:${port}`);
+      routes["https://media.egress-only-cdn.com/a.png"] = { status: 200, body: BODY };
+      await expect(
+        downloadToTemp("https://media.egress-only-cdn.com/a.png", tempDir()),
+      ).rejects.toThrow();
+      expect(new Set(tunnels)).toEqual(new Set(["media.egress-only-cdn.com:443"]));
+      expect(mocks.resolve4).not.toHaveBeenCalled();
+      expect(received).toEqual([]);
+    } finally {
+      await new Promise((resolve) => egress.close(resolve));
+    }
+  });
+});
