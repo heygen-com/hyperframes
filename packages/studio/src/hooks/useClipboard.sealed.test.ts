@@ -1,0 +1,114 @@
+// @vitest-environment happy-dom
+import React, { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
+import { afterEach, expect, it, vi } from "vitest";
+import { useClipboard } from "./useClipboard";
+import { usePlayerStore, type TimelineElement } from "../player";
+import type { DomEditSelection } from "../components/editor/domEditing";
+import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const SAVED = `<!doctype html><html><body>
+<div data-composition-id="main" data-start="0" data-duration="10">
+<h1 id="title" class="clip" data-start="2" data-duration="3" data-track-index="0">Title</h1>
+</div></body></html>`;
+
+let root: Root | null = null;
+afterEach(() => {
+  act(() => root?.unmount());
+  root = null;
+  vi.unstubAllGlobals();
+  usePlayerStore.getState().reset();
+  document.body.innerHTML = "";
+});
+
+/** A sealed preview of SAVED, with the runtime's hide on the clip, and the saved file served. */
+function sealedClipboard(domSelection: DomEditSelection | null) {
+  const preview = new DOMParser().parseFromString(ensureHfIds(SAVED), "text/html");
+  document.body.innerHTML = preview.body.innerHTML;
+  document.getElementById("title")!.style.cssText = "visibility: hidden; display: none";
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ content: SAVED }))),
+  );
+  const { iframe } = sealedPreviewFrame();
+  const writes: string[] = [];
+  let api: ReturnType<typeof useClipboard> | null = null;
+  function Harness() {
+    api = useClipboard({
+      projectId: "p",
+      activeCompPath: "index.html",
+      domEditSelectionRef: { current: domSelection },
+      showToast: () => {},
+      writeProjectFile: async (_path: string, content: string) => void writes.push(content),
+      recordEdit: async () => {},
+      reloadPreview: () => {},
+      handleTimelineElementsDelete: async () => {},
+      handleDomEditElementDelete: async () => {},
+      previewIframeRef: { current: iframe },
+      waitForPendingDomEditSaves: () => Promise.resolve(),
+    });
+    return null;
+  }
+  root = createRoot(document.createElement("div"));
+  act(() => root?.render(React.createElement(Harness)));
+  return { clipboard: () => api as ReturnType<typeof useClipboard>, writes };
+}
+
+function selectTitleClip() {
+  const clip: TimelineElement = {
+    id: "title",
+    domId: "title",
+    tag: "h1",
+    start: 2,
+    duration: 3,
+    track: 0,
+    authoredTrack: 0,
+    sourceFile: "index.html",
+  };
+  usePlayerStore.setState({
+    elements: [clip],
+    selectedElementId: clip.id,
+    selectedElementIds: new Set([clip.id]),
+  });
+}
+
+it("duplicates a timeline clip from a sealed preview, as saved", async () => {
+  selectTitleClip();
+  const { clipboard, writes } = sealedClipboard(null);
+  expect(await clipboard().handleDuplicate()).toBe(true);
+  expect(writes[0]?.match(/>Title<\/h1>/g)).toHaveLength(2);
+  expect(writes[0]).not.toContain("display: none");
+});
+
+it("copies a timeline clip from a sealed preview, as saved", async () => {
+  selectTitleClip();
+  const { clipboard, writes } = sealedClipboard(null);
+  expect(clipboard().handleCopy()).toBe(true);
+  await clipboard().handlePaste();
+  expect(writes[0]).toContain(">Title</h1>");
+  expect(writes[0]).not.toContain("display: none");
+});
+
+it("copies a canvas selection from a sealed preview, as saved", async () => {
+  const selection = {
+    id: "title",
+    selector: "#title",
+    sourceFile: "index.html",
+  } as DomEditSelection;
+  const { clipboard, writes } = sealedClipboard(selection);
+  expect(clipboard().handleCopy()).toBe(true);
+  await clipboard().handlePaste();
+  expect(writes[0]).toContain(">Title</h1>");
+  expect(writes[0]).not.toContain("display: none");
+});
+
+it("leaves the clipboard as it was when a sealed preview lacks the element", async () => {
+  const selection = { id: "gone", selector: "#gone", sourceFile: "index.html" } as DomEditSelection;
+  const { clipboard, writes } = sealedClipboard(selection);
+  clipboard().handleCopy();
+  await clipboard().handlePaste();
+  expect(writes).toEqual([]);
+});

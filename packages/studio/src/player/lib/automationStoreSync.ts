@@ -30,6 +30,7 @@ import {
   resolveMediaElement,
 } from "./timelineElementHelpers";
 import { elementVolume, parseStoredVolume } from "./storedVolume";
+import { previewDocumentCopy, previewFrameOpaque } from "./previewChannel";
 
 /**
  * Re-read every element's automation, FX-chain, fade and volume attributes from the preview
@@ -83,6 +84,18 @@ export function syncStoredAutomationFromPreview(doc: Document | null | undefined
       return { ...element, ...fields };
     });
     return changed ? { elements } : {};
+  });
+}
+
+let sealedSync = 0;
+
+/** `syncStoredAutomationFromPreview` for a preview frame; a sealed one is read off a copy, the latest read winning. */
+export function syncStoredAutomationFromFrame(iframe: HTMLIFrameElement | null | undefined): void {
+  if (!iframe) return;
+  if (!previewFrameOpaque(iframe)) return syncStoredAutomationFromPreview(iframe.contentDocument);
+  const read = ++sealedSync;
+  void previewDocumentCopy(iframe).then((doc) => {
+    if (read === sealedSync) syncStoredAutomationFromPreview(doc);
   });
 }
 
