@@ -1,45 +1,22 @@
 #!/usr/bin/env bun
-// Stages /var/task for the arm64 video function image: the handler ZIP with its x86 ffmpeg and Chrome
-// swapped for the native ffmpeg tree (image/Dockerfile's artifact) and Sparticuz's arm64 Chrome pack.
+// Stages /var/task for the arm64 video function image: the handler ZIP with its x86 ffmpeg swapped for the
+// native ffmpeg tree (image/Dockerfile's artifact) and its x86 sparticuz Chrome dropped. The image installs
+// its own chrome-headless-shell (image/Dockerfile's video target).
 //   bun packages/aws-lambda/scripts/stage-arm64-image.ts --ffmpeg=<hf-media tarball> [--zip=..] [--out=..]
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import {
-  closeSync,
-  existsSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  readSync,
-  rmSync,
-} from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-
-// The npm package ships x64 Chrome only. Bumping @sparticuz/chromium fails here until its arm64 pack is pinned.
-export const CHROMIUM_ARM64_PACK_SHA256: Record<string, string> = {
-  "148.0.0": "c18a5241b0a460cba233fff3abccd6678ebdcf855b8548bb7c58240a477f5f0e",
-};
+import { BUNDLED_SHELL_DIR } from "../src/chromium.js";
 
 export interface StageOptions {
   handlerZip: string;
   ffmpegTarball: string;
   outDir: string;
-  fetchPack?: (url: string) => Promise<Uint8Array>;
-  packPins?: Record<string, string>;
 }
 
-async function fetchBytes(url: string): Promise<Uint8Array> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`[stage-arm64-image] GET ${url} answered ${res.status}`);
-  return new Uint8Array(await res.arrayBuffer());
-}
-
-function run(cmd: string, args: string[], input?: Uint8Array): void {
-  const result = spawnSync(cmd, args, {
-    stdio: [input ? "pipe" : "inherit", "inherit", "inherit"],
-    input,
-  });
+function run(cmd: string, args: string[]): void {
+  const result = spawnSync(cmd, args, { stdio: "inherit" });
   if (result.status !== 0) {
     throw new Error(`[stage-arm64-image] ${cmd} ${args.join(" ")} exited ${result.status}`);
   }
@@ -59,42 +36,22 @@ export function assertArm64Elf(path: string): void {
   }
 }
 
-async function stageChromiumArm64(chromiumDir: string, opts: StageOptions) {
-  const { version } = JSON.parse(readFileSync(join(chromiumDir, "package.json"), "utf-8")) as {
-    version: string;
-  };
-  // The URL is built from the pin table's own key, never from the version read off disk.
-  const [pinnedVersion, pinned] =
-    Object.entries(opts.packPins ?? CHROMIUM_ARM64_PACK_SHA256).find(([v]) => v === version) ?? [];
-  if (!pinnedVersion || !pinned) {
-    throw new Error(
-      `[stage-arm64-image] no arm64 Chrome pack pinned for @sparticuz/chromium ${version}; ` +
-        "add its sha256 to CHROMIUM_ARM64_PACK_SHA256",
-    );
-  }
-  const url = `https://github.com/Sparticuz/chromium/releases/download/v${pinnedVersion}/chromium-v${pinnedVersion}-pack.arm64.tar`;
-  const pack = await (opts.fetchPack ?? fetchBytes)(url);
-  const actual = createHash("sha256").update(pack).digest("hex");
-  if (actual !== pinned) {
-    throw new Error(`[stage-arm64-image] ${url} has sha256 ${actual}, pinned ${pinned}`);
-  }
-  // Only bytes that matched the pin reach tar, over stdin; the pack is never written to a file.
-  run("tar", ["-xf", "-", "-C", join(chromiumDir, "bin")], pack);
-}
-
 export async function stageArm64Image(opts: StageOptions): Promise<string> {
   const task = join(opts.outDir, "task");
   rmSync(opts.outDir, { recursive: true, force: true });
   mkdirSync(task, { recursive: true });
   run("unzip", ["-q", opts.handlerZip, "-d", task]);
-  if (existsSync(join(task, "bin", "chrome-headless-shell"))) {
-    throw new Error("[stage-arm64-image] the arm64 image bundles sparticuz Chrome only");
+  if (existsSync(join(task, BUNDLED_SHELL_DIR))) {
+    throw new Error(
+      "[stage-arm64-image] the arm64 image is built from the sparticuz handler ZIP; it installs its own chrome-headless-shell",
+    );
   }
   rmSync(join(task, "bin", "ffmpeg"));
   rmSync(join(task, "bin", "ffprobe"));
   run("tar", ["-xzf", opts.ffmpegTarball, "-C", task, "--strip-components=1"]);
   for (const bin of ["ffmpeg", "ffprobe"]) assertArm64Elf(join(task, "bin", bin));
-  await stageChromiumArm64(join(task, "node_modules", "@sparticuz", "chromium"), opts);
+  // x86 Chrome cannot run here; the image's HYPERFRAMES_LAMBDA_CHROME_SOURCE never loads it.
+  rmSync(join(task, "node_modules", "@sparticuz", "chromium", "bin"), { recursive: true });
   return task;
 }
 

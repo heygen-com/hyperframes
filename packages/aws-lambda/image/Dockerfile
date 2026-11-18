@@ -37,7 +37,26 @@ COPY --from=check /check.txt /hf-media-check.txt
 
 # The video function. /var/task comes from scripts/stage-arm64-image.ts as the `task` build context:
 #   docker buildx build --platform linux/arm64 --target video --build-context task=<out>/task packages/aws-lambda/image
-# Copy only, so any host builds it without emulation.
+# Its Chrome is Chrome for Testing's linux-arm64 chrome-headless-shell, the whole folder: the executable
+# alone finds no ICU data or .pak resources. The base has none of the shared libraries the shell links
+# and no fonts, so they come from the base's own repository; this RUN needs an arm64 host or emulation.
+# Bump the version and the archive's sha256 together, with the rest of the repo's pins.
 FROM ${BASE} AS video
+ARG CHROME_HEADLESS_SHELL_VERSION=158.0.8127.36
+ARG CHROME_HEADLESS_SHELL_SHA256=176ee5c55486c22de43128871189061365ea28e881fc96016fd18e7cb59437c8
+COPY fetch.sh /fetch.sh
+RUN . /fetch.sh && retry microdnf install -y --nodocs --setopt=install_weak_deps=0 --releasever=2023.12.20260914 \
+      alsa-lib at-spi2-atk at-spi2-core atk dbus-libs expat fontconfig libX11 libXcomposite libXdamage \
+      libXext libXfixes libXrandr libxcb libxkbcommon liberation-fonts mesa-libgbm nspr nss nss-util \
+      systemd-libs unzip && \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 600 -o /tmp/chs.zip \
+      "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_HEADLESS_SHELL_VERSION}/linux-arm64/chrome-headless-shell-linux-arm64.zip" && \
+    echo "${CHROME_HEADLESS_SHELL_SHA256}  /tmp/chs.zip" | sha256sum -c - && \
+    unzip -q /tmp/chs.zip -d /opt && rm /tmp/chs.zip /fetch.sh && \
+    microdnf remove -y unzip && microdnf clean all && \
+    /opt/chrome-headless-shell-linux-arm64/chrome-headless-shell --version | grep -F "${CHROME_HEADLESS_SHELL_VERSION}"
+# src/chromium.ts launches this executable.
+ENV HYPERFRAMES_LAMBDA_CHROME_SOURCE=chrome-headless-shell \
+    HYPERFRAMES_LAMBDA_CHROME_PATH=/opt/chrome-headless-shell-linux-arm64/chrome-headless-shell
 COPY --from=task / /var/task/
 CMD ["handler.handler"]

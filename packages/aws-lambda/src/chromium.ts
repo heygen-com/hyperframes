@@ -18,11 +18,12 @@
  *   2. A bundled `chrome-headless-shell` binary (fallback). If
  *      `@sparticuz/chromium`'s build ever drops `HeadlessExperimental`
  *      support, we fall back to the same `chrome-headless-shell` build
- *      the K8s deploy uses. The fallback raises the ZIP from ~70 MB
- *      Chrome to ~140 MB Chrome — still well under 250 MB.
+ *      the K8s deploy uses. The whole shell folder (~296 MB unzipped)
+ *      does not fit a ZIP function's 250 MiB limit; the arm64 container
+ *      image installs it instead.
  *
  * The runtime path is selected by the `HYPERFRAMES_LAMBDA_CHROME_SOURCE`
- * env var (set by `build-zip.ts`):
+ * env var (set by the SAM template, the CDK stack, or the arm64 image):
  *
  *   "sparticuz"          → use `@sparticuz/chromium.executablePath()`
  *   "chrome-headless-shell" → use `process.env.HYPERFRAMES_LAMBDA_CHROME_PATH`
@@ -37,6 +38,9 @@ import { existsSync } from "node:fs";
 /** Discriminator for the two supported Chrome sources. */
 export type ChromeSource = "sparticuz" | "chrome-headless-shell";
 
+export const BUNDLED_SHELL_DIR = "chrome-headless-shell-linux64";
+export const BUNDLED_SHELL_PATH = `/var/task/${BUNDLED_SHELL_DIR}/chrome-headless-shell`;
+
 /**
  * Thrown when the Chrome binary resolver can't produce a usable path.
  * The class name is the SFN `Retry: { ErrorEquals: [...] }` discriminator —
@@ -45,8 +49,7 @@ export type ChromeSource = "sparticuz" | "chrome-headless-shell";
 export class ChromeBinaryUnavailableError extends Error {
   // Lambda's runtime serializes the error envelope's `errorType` from
   // `err.name`; this class-field override sets it across the structured
-  // clone. Read indirectly; fallow can't follow.
-  // fallow-ignore-next-line unused-class-member
+  // clone.
   override readonly name = "ChromeBinaryUnavailableError";
   readonly source: ChromeSource;
   readonly resolvedPath: string | null;

@@ -145,10 +145,10 @@ describe("runDeploy", () => {
   });
 
   it.each([undefined, "arm64" as const])(
-    "refuses arm64 (--video-arch %s) with a Chrome source the video image does not bundle, naming x86_64",
+    "refuses arm64 (--video-arch %s) with a handler ZIP the video image is not built from, naming x86_64",
     async (videoArch) => {
       await expect(runDeploy({ videoArch, chromeSource: "chrome-headless-shell" })).rejects.toThrow(
-        /sparticuz Chrome only[\s\S]*--video-arch x86_64/,
+        /built from the sparticuz handler ZIP[\s\S]*--video-arch x86_64/,
       );
       expect(pushVideoImage).not.toHaveBeenCalled();
     },

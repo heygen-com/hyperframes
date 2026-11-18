@@ -31,8 +31,12 @@ import {
   CONTENT_STORE_REFRESH_AFTER_DAYS,
   CONTENT_STORE_RETENTION_DAYS,
 } from "../contentStore.js";
+import { BUNDLED_SHELL_PATH } from "../chromium.js";
 import { SITE_MANIFEST_INVALID } from "../siteManifest.js";
-import { HyperframesRenderStack } from "./HyperframesRenderStack.js";
+import {
+  HyperframesRenderStack,
+  type HyperframesRenderStackProps,
+} from "./HyperframesRenderStack.js";
 
 // CDK synth + Template.fromStack is slow on cold start in CI (~5-8s on
 // the first call). The default bun:test 5s timeout trips it on the
@@ -86,7 +90,10 @@ const EXPECTED_NON_RETRYABLE_ERRORS = new Set([
   "SITE_MANIFEST_INVALID",
 ]);
 
-function doSynth(reservedConcurrency?: number): {
+function doSynth(
+  reservedConcurrency?: number,
+  chromeSource?: HyperframesRenderStackProps["chromeSource"],
+): {
   template: Template;
   definition: { States: Record<string, unknown>; StartAt: string };
 } {
@@ -97,6 +104,7 @@ function doSynth(reservedConcurrency?: number): {
   new HyperframesRenderStack(stack, "Render", {
     handlerZipPath: join(zipDir, "handler.zip"),
     reservedConcurrency,
+    chromeSource,
   });
   const template = Template.fromStack(stack);
   const stateMachine = Object.values(
@@ -389,17 +397,59 @@ describe("HyperframesRenderStack — snapshot", () => {
     );
   });
 
-  it("gives the nested arm64 video function every environment variable the render function gets", () => {
+  it("gives the nested arm64 video function every environment variable the render function gets but its Chrome's", () => {
     const sam = readExampleTemplate("template.yaml");
+    // The image sets these for the chrome-headless-shell it installs; a function value would override them.
+    const imageOwned = ["HYPERFRAMES_LAMBDA_CHROME_SOURCE", "HYPERFRAMES_LAMBDA_CHROME_PATH"];
     const render = [
       ...envNames(sam, "Globals", "Function", "Environment", "Variables"),
       ...envNames(sam, "Resources", "RenderFunction", "Properties", "Environment", "Variables"),
-    ];
+    ].filter((name) => !imageOwned.includes(name));
     const video = readExampleTemplate("video-function.yaml");
     expect(
       envNames(video, "Resources", "Function", "Properties", "Environment", "Variables").sort(),
     ).toEqual([...new Set(render)].sort());
   });
+
+  it("points a chrome-headless-shell ZIP at its bundled shell, in CDK and SAM", () => {
+    const chromeEnv = (synthed: ReturnType<typeof doSynth>) => {
+      const fn = Object.values(synthed.template.findResources("AWS::Lambda::Function"))[0] as {
+        Properties: { Environment: { Variables: Record<string, unknown> } };
+      };
+      const vars = fn.Properties.Environment.Variables;
+      return [vars.HYPERFRAMES_LAMBDA_CHROME_SOURCE, vars.HYPERFRAMES_LAMBDA_CHROME_PATH];
+    };
+    expect(chromeEnv(SYNTHED)).toEqual(["sparticuz", undefined]);
+    expect(chromeEnv(doSynth(undefined, "chrome-headless-shell"))).toEqual([
+      "chrome-headless-shell",
+      BUNDLED_SHELL_PATH,
+    ]);
+
+    const globals = requireRecordProperty(
+      requireRecordProperty(
+        requireRecordProperty(readExampleTemplate("template.yaml"), "Globals", "SAM globals"),
+        "Function",
+        "SAM function globals",
+      ),
+      "Environment",
+      "SAM global environment",
+    ) as { Variables: Record<string, unknown> };
+    // The YAML parser drops the !If and !Ref tags and keeps [condition, then, else].
+    expect(globals.Variables.HYPERFRAMES_LAMBDA_CHROME_PATH).toEqual([
+      "BundlesChromeHeadlessShell",
+      BUNDLED_SHELL_PATH,
+      "AWS::NoValue",
+    ]);
+    const conditions = requireRecordProperty(
+      readExampleTemplate("template.yaml"),
+      "Conditions",
+      "SAM conditions",
+    );
+    expect(conditions.BundlesChromeHeadlessShell).toEqual([
+      "ChromeSource",
+      "chrome-headless-shell",
+    ]);
+  }, 30000);
 
   it("lets the render function abort the multipart uploads its S3 stitch starts", () => {
     const cdkPolicies = JSON.stringify(SYNTHED.template.findResources("AWS::IAM::Policy"));

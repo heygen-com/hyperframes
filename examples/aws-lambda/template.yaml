@@ -53,7 +53,8 @@ Parameters:
     Description: >-
       Which Chrome runtime the bundled ZIP was built with. Must match the
       `--source=` flag passed to `build-zip.ts`. The handler reads this
-      via the HYPERFRAMES_LAMBDA_CHROME_SOURCE env var at boot.
+      via the HYPERFRAMES_LAMBDA_CHROME_SOURCE env var at boot. The arm64
+      video image always runs its own chrome-headless-shell.
 
   ChunkInvocationAlarmThreshold:
     Type: Number
@@ -75,6 +76,7 @@ Parameters:
 Conditions:
   HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, -1]]
   HasVideoFunction: !Not [!Equals [!Ref VideoImageUri, ""]]
+  BundlesChromeHeadlessShell: !Equals [!Ref ChromeSource, chrome-headless-shell]
 
 Globals:
   Function:
@@ -94,6 +96,11 @@ Globals:
       Variables:
         NODE_OPTIONS: "--enable-source-maps"
         HYPERFRAMES_LAMBDA_CHROME_SOURCE: !Ref ChromeSource
+        # Where build-zip.ts --source=chrome-headless-shell puts the shell (BUNDLED_SHELL_PATH).
+        HYPERFRAMES_LAMBDA_CHROME_PATH: !If
+          - BundlesChromeHeadlessShell
+          - /var/task/chrome-headless-shell-linux64/chrome-headless-shell
+          - !Ref AWS::NoValue
 
 Resources:
   # ── S3 bucket for plan tarballs, chunk outputs, and final renders ───────
@@ -214,7 +221,6 @@ Resources:
         MemorySize: !Ref LambdaMemoryMb
         Timeout: !Ref LambdaTimeoutSec
         ReservedConcurrency: !Ref ReservedConcurrency
-        ChromeSource: !Ref ChromeSource
       Tags:
         - Key: Project
           Value: !Ref ProjectName
