@@ -28,7 +28,7 @@ If you need a classic `<script>` tag instead of ESM, use the explicit global bui
 
 The player loads the composition in a sandboxed iframe, auto-detects its dimensions and duration, and scales it responsively to fit the container.
 
-Add or remove `controls` at any time. When shown, the controls reflect the current playback state, position and speed.
+Add or remove `controls` at any time. When shown, the controls reflect the current playback state, position and speed. Clicking or dragging the scrubber keeps a playing film playing from the new spot, as a `<video>`'s own controls do, and leaves a paused film paused.
 
 The fullscreen button fills the screen with the whole player, controls included. It appears only where the page can go fullscreen, so not on iPhone Safari and not inside a cross-origin iframe without `allow="fullscreen"`. It follows every exit, including Esc. Set `disable-fullscreen` to hide it. A refused request fires the browser's `fullscreenerror` on the player.
 
@@ -147,10 +147,11 @@ const player = document.querySelector("hyperframes-player");
 // Playback
 player.play();
 player.pause();
-player.seek(2.5); // jump to 2.5 seconds
+player.seek(2.5); // jump to 2.5 seconds and pause there
+player.seek(2.5, { keepPlaying: true }); // jump, and keep playing if it was playing
 
 // Properties
-player.currentTime; // number (read/write)
+player.currentTime; // number (read/write); setting it jumps and pauses, like seek()
 player.duration; // number (read-only)
 player.paused; // boolean (read-only)
 player.ready; // boolean (read-only)
