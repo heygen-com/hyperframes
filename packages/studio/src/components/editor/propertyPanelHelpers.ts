@@ -12,7 +12,7 @@ import {
 import {
   editsPlainCss,
   GSAP_TRANSFORM_KEYS,
-  sealedGsapWritesPosition,
+  sealedGsapRendersTransform,
 } from "../../hooks/gsapRuntimeKeyframes";
 import { getIframeGsap } from "../../hooks/gsapShared";
 import { previewFrameOpaque } from "../../player/lib/previewChannel";
@@ -499,7 +499,7 @@ export function readGsapRuntimeValuesForPanel(
     if (!gsap || !el) return null;
     const propKeys = collectPanelPropKeys(gsapAnimations);
     const readsTransform = sealed
-      ? sealedGsapWritesPosition(iframe, el)
+      ? sealedGsapRendersTransform(iframe, el)
       : !editsPlainCss(el, "move");
     const result: Record<string, number> = {};
     for (const prop of propKeys) {

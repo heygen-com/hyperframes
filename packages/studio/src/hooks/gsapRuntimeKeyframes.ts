@@ -275,17 +275,18 @@ export const POSITION_CHANNELS: string[] = [
 ];
 const MOVE_CHANNELS = [...POSITION_CHANNELS, "motionPath"];
 
-/** A sealed frame's tweens position its element: read off the frame's snapshot, matched by handle. */
-export function sealedGsapWritesPosition(iframe: HTMLIFrameElement, el: Element): boolean {
-  const target = frameTarget(iframe, el);
-  return !!target && timelinesWriteChannels(frameTimelines(iframe), target, MOVE_CHANNELS);
-}
-
 export const GSAP_TRANSFORM_KEYS = new Set(
   "x,y,z,scale,scaleX,scaleY,xPercent,yPercent,rotation,rotationX,rotationY,skewX,skewY,transformOrigin,svgOrigin,force3D,smoothOrigin,transformPerspective,translateX,translateY,translateZ,rotate,rotationZ,rotateZ,rotateX,rotateY".split(
     ",",
   ),
 );
+const TRANSFORM_CHANNELS = [...MOVE_CHANNELS, ...GSAP_TRANSFORM_KEYS];
+
+/** Sealed `!editsPlainCss(el, "move")`: the frame snapshot's tweens move or transform `el`. */
+export function sealedGsapRendersTransform(iframe: HTMLIFrameElement, el: Element): boolean {
+  const target = frameTarget(iframe, el);
+  return !!target && timelinesWriteChannels(frameTimelines(iframe), target, TRANSFORM_CHANNELS);
+}
 
 /** Whether a live timeline tween or hold writes any of `channels` on `el`. Sync, no fetch. */
 export function gsapWritesChannels(el: Element, channels: string[]): boolean {

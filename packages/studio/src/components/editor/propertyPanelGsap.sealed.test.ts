@@ -55,3 +55,11 @@ it("leaves out GSAP's transform for a sealed layer its tweens do not move", asyn
   });
   expect(values).toEqual({ opacity: 0.5 });
 });
+
+it("shows a sealed layer's rotation and scale when its tweens only turn and grow it", async () => {
+  const { iframe, selection, animations } = await sealedBox(script("rotation: 90, scale: 2"));
+  const values = readGsapRuntimeValuesForPanel(animations[0]!.id, animations, selection, {
+    current: iframe,
+  });
+  expect(values).toMatchObject({ rotation: 45, scale: 1.5 });
+});
