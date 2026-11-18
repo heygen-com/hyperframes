@@ -45,6 +45,7 @@ export {
   createOwnedRenderDir,
   listAbandonedRenderDirs,
 } from "./services/render/renderDirOwner.js";
+export type { MissingPathFacts } from "./services/render/missingPath.js";
 export {
   RENDER_REQUEST_VERSION,
   createRenderRequest,
