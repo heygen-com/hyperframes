@@ -10,7 +10,6 @@ export type EditElementParams = {
   handle: EditingElementHandle;
   styles: StyleEditEntry[];
   attributes: ElementEditEntry[];
-  /** The element's new markup: text and inline text tags only. */
   html?: string;
 };
 export type EditElementResult = {
@@ -91,8 +90,7 @@ export function parseEditElement(params: unknown): EditElementParams | null {
 
 const NOT_APPLIED: EditElementResult = { applied: false, styles: [], attributes: [] };
 
-/** Draws nothing it could not put back: a `src` off media, a value too long to send back, or markup
- * that is not plain text markup on either side. */
+/** Draws nothing it could not put back: `src` off media, a too-long value, or non-text markup. */
 export function editElement({
   handle,
   styles,
