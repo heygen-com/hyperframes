@@ -87,6 +87,12 @@ export class CompositionExpansionBudget {
     });
   }
 
+  chargeGeneratedIfItFits(bytes: number): boolean {
+    if (this.generated + bytes > MAX_EXPANDED_COMPOSITION_BYTES) return false;
+    this.generated += bytes;
+    return true;
+  }
+
   charge(file: string, bytes: number): void {
     this.bytes += bytes;
     this.mounts += 1;
