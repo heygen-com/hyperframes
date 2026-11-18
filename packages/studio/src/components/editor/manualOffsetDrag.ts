@@ -330,8 +330,6 @@ export function createManualOffsetDragMember(input: {
   start?: PreviewGestureStart;
 }): ManualOffsetDragMemberResult {
   const { start, gesture } = input;
-  // A resize's member writes only the centre-pin offset, a position: the sealed start answers that, and the
-  // stand-in has no timelines of its own to ask.
   const plainTranslate = start
     ? !start.gsap
     : !!gesture && editsPlainCss(input.element, gesture === "resize" ? "resize" : "move");

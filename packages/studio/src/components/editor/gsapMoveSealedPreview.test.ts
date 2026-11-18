@@ -255,7 +255,8 @@ it("a resize in a sealed preview keeps the anchor of a layer its tween moves on 
   const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
   const standIn = standInFor(iframe, (await describePreviewElements(iframe, [handle]))![0]!);
   const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]);
-  const { rect, start } = (await measurePreviewGestureStart(iframe, overlay, [handle]))!.elements[0]!;
+  const { rect, start } = (await measurePreviewGestureStart(iframe, overlay, [handle]))!
+    .elements[0]!;
   const result = createManualOffsetDragMember({
     key: "box",
     selection: { ...makeSelection("box", standIn), id: "box", handle },
