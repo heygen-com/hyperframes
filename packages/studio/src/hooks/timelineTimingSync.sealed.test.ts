@@ -38,7 +38,8 @@ it("takes a sealed timing edit's saved clip and film timing to the frame with th
   await new Promise((resolve) => setTimeout(resolve, 0));
 
   const softReload = previewRequest.mock.calls.find(([, kind]) => kind === "soft-reload");
-  const timing = (softReload?.[2] as { timing: Array<[string, string[][]]> }).timing;
+  if (!softReload) throw new Error("no soft-reload request was sent");
+  const timing = (softReload[2] as { timing: Array<[string, string[][]]> }).timing;
   expect(timing.map(([, attributes]) => attributes)).toEqual([
     [["data-duration", "6"]],
     [
