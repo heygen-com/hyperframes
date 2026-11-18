@@ -49,7 +49,6 @@ import {
   type FolderIdentity,
 } from "./historyId.js";
 import { takeHistoryOwnership } from "./ownerLock.js";
-import { canNameFiles, fileNames } from "../helpers/fileReferences.js";
 import { writeHistoryState } from "./videoState.js";
 import {
   START,
@@ -1310,7 +1309,9 @@ class Engine {
     const deleting = changes.flatMap(([path, hash]) => (hash === null ? [path] : []));
     const named = new Set<string>();
     if (!deleting.length) return named;
+    const { canNameFiles, fileNames } = await import("../routes/files.js");
     for (const [page, hash] of this.pagesLeftBy(changes)) {
+      if (!canNameFiles(page)) continue;
       const text = await this.pageText(page, hash);
       for (const path of deleting) if (fileNames(page, text, path)) named.add(path);
     }
@@ -1323,8 +1324,7 @@ class Engine {
     );
     for (const [path, hash] of changes) after.set(path, hash);
     return [...after].filter(
-      (entry): entry is [string, string] =>
-        entry[1] !== null && this.studioWouldWrite(entry[0]) && canNameFiles(entry[0]),
+      (entry): entry is [string, string] => entry[1] !== null && this.studioWouldWrite(entry[0]),
     );
   }
 
