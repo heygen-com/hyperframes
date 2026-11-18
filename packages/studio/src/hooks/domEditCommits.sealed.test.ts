@@ -136,6 +136,17 @@ describe("DOM edit commits in a sealed preview", () => {
     expect(persist.mock.calls[0]?.[2]).toMatchObject({ skipRefresh: false });
   });
 
+  it("reloads when the frame refuses the edit", async () => {
+    const { card, iframe, selection } = await sealedCard(`<div id="card">Hi</div>`);
+    const persist = vi.fn<PersistDomEditOperations>(async () => undefined);
+    const tooLong = `"${"x".repeat(200_001)}"`;
+    await commitDomStyles(styleContext(iframe, persist), selection, {
+      "font-feature-settings": tooLong,
+    });
+    expect(persist.mock.calls[0]?.[2]).toMatchObject({ skipRefresh: false });
+    expect(card.style.fontFeatureSettings).toBe("");
+  });
+
   it("draws data and HTML attribute commits on the frame's element", async () => {
     const { card, iframe, selection } = await sealedCard(`<div id="card" data-volume="1">Hi</div>`);
     const persist = vi.fn<PersistDomEditOperations>(async () => undefined);
@@ -145,6 +156,24 @@ describe("DOM edit commits in a sealed preview", () => {
     await settle();
     expect(card.dataset.volume).toBe("0.25");
     expect(card.getAttribute("title")).toBe("Card");
+  });
+
+  it("never puts back a value over a newer edit that saved", async () => {
+    const { card, iframe, selection } = await sealedCard(
+      `<div id="card" title="original">Hi</div>`,
+    );
+    let saves = 0;
+    const persist = vi.fn<PersistDomEditOperations>(async () => {
+      if (saves++ === 0) throw new Error("disk full");
+    });
+    const commits = attributeCommits(iframe, selection, persist);
+    await act(async () => {
+      const first = commits.handleDomHtmlAttributeCommit("title", "first");
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      await Promise.all([first, commits.handleDomHtmlAttributeCommit("title", "second")]);
+    });
+    await settle();
+    expect(card.getAttribute("title")).toBe("second");
   });
 
   it("puts the frame's attributes back when a batch save fails", async () => {
