@@ -224,8 +224,12 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
   let version = 1;
   const previous = existsSync(dir) ? readRecipeJson(dir) : null;
   if (previous) {
-    version = (Number.isInteger(previous.version) ? previous.version : 1) + 1;
-    const archive = `${dir}@v${previous.version ?? 1}`;
+    // recipe.json travels with the project, so its version is untrusted text: anything but a
+    // positive integer could carry path segments into the archive path removed below.
+    const previousVersion =
+      Number.isSafeInteger(previous.version) && previous.version > 0 ? previous.version : 1;
+    version = previousVersion + 1;
+    const archive = `${dir}@v${previousVersion}`;
     rmSync(archive, { recursive: true, force: true });
     renameSync(dir, archive);
   }

@@ -318,6 +318,37 @@ test("re-freezing bumps the version and archives the old folder", () => {
   });
 });
 
+test("re-freezing never builds the archive path from a non-integer recipe.json version", () => {
+  for (const version of ["1/../../../../victim", "/../../../../victim", 1.5, -3, null]) {
+    withSandbox(({ project, root }) => {
+      const victim = join(root, "victim");
+      mkdirSync(victim, { recursive: true });
+      writeFileSync(join(victim, "keep.txt"), "outside the project");
+      const recipes = join(project, ".media/recipes");
+      mkdirSync(join(recipes, "promo"), { recursive: true });
+      // A received project can ship the folder the crafted path walks through.
+      mkdirSync(join(recipes, "promo@v1"), { recursive: true });
+      mkdirSync(join(recipes, "promo@v"), { recursive: true });
+      writeFileSync(
+        join(recipes, "promo/recipe.json"),
+        JSON.stringify({ name: "promo", version, workflow: "product-launch-video" }),
+      );
+
+      const frozen = freezeRecipe({
+        projectDir: project,
+        name: "promo",
+        workflow: "product-launch-video",
+      });
+
+      assert.equal(readFileSync(join(victim, "keep.txt"), "utf8"), "outside the project");
+      assert.ok(!existsSync(join(victim, "recipe.json")), `version ${JSON.stringify(version)}`);
+      assert.equal(frozen.version, 2);
+      const archived = JSON.parse(readFileSync(join(recipes, "promo@v1/recipe.json"), "utf8"));
+      assert.deepEqual(archived.version, version);
+    });
+  }
+});
+
 test("re-freezing without a brief does not import the previous version's brief", () => {
   withSandbox(({ project, root }) => {
     writeFileSync(join(project, "BRIEF.md"), BRIEF);
