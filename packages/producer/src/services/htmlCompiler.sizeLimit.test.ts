@@ -2,13 +2,19 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { parseHTML } from "linkedom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { _setDownloadFetchForTests } from "@hyperframes/engine";
 import {
   assertCompositionFileSize,
   MAX_COMPOSITION_HTML_BYTES,
   MAX_EXPANDED_COMPOSITION_BYTES,
 } from "./compositionSizeLimit.js";
-import { compileForRender, MAX_VARIABLE_MEDIA_SRC_BYTES } from "./htmlCompiler.js";
+import {
+  compileForRender,
+  inlineExternalScripts,
+  localizeRemoteFontFaces,
+  MAX_VARIABLE_MEDIA_SRC_BYTES,
+} from "./htmlCompiler.js";
 import { extractSafeRenderErrorCode } from "./safeRenderErrorCode.js";
 
 const ROOT = `<!doctype html>
@@ -395,5 +401,90 @@ describe("asset paths rebased from a composition's folder", () => {
       (e: unknown) => e,
     );
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+  });
+});
+
+describe("remote scripts and stylesheets inlined at compile time", () => {
+  afterEach(() => _setDownloadFetchForTests());
+  const MiB = 1024 * 1024;
+
+  /** Serves `body(url)` and records each request and the most requests open at once. */
+  function serve(body: (url: string) => string) {
+    const seen = { requests: [] as string[], open: 0, mostOpen: 0 };
+    _setDownloadFetchForTests(async (url: string) => {
+      seen.requests.push(url);
+      seen.mostOpen = Math.max(seen.mostOpen, ++seen.open);
+      await new Promise((resolve) => setImmediate(resolve));
+      seen.open -= 1;
+      return new Response(body(url));
+    });
+    return seen;
+  }
+  const scriptTags = (urls: string[]) =>
+    `<html><body>${urls.map((url) => `<script src="${url}"></script>`).join("")}</body></html>`;
+
+  it("fetches a repeated script once and refuses copies past the render's limit", async () => {
+    const seen = serve(() => `/*${"x".repeat(MiB)}*/`);
+    const url = "https://cdn.example.com/big.js";
+    const error = await inlineExternalScripts(scriptTags(Array(40).fill(url))).catch((e) => e);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(seen.requests).toEqual([url]);
+  });
+
+  it("downloads a few scripts at a time and stops the queued ones once over the limit", async () => {
+    const seen = serve(() => `/*${"x".repeat(8 * MiB)}*/`);
+    const urls = Array.from({ length: 20 }, (_, i) => `https://cdn.example.com/s${i}.js`);
+    const error = await inlineExternalScripts(scriptTags(urls)).catch((e) => e);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(seen.mostOpen).toBe(4);
+    expect(seen.requests.length).toBeLessThan(urls.length);
+  });
+
+  it("stops queued downloads once a script fails its integrity check", async () => {
+    const seen = serve(() => `/*${"x".repeat(MiB)}*/`);
+    const urls = Array.from({ length: 40 }, (_, i) => `https://cdn.example.com/i${i}.js`);
+    const html = scriptTags(urls).replaceAll("<script ", '<script integrity="sha384-YQ==" ');
+    await expect(inlineExternalScripts(html)).rejects.toThrow("integrity mismatch");
+    expect(seen.requests.length).toBeLessThan(urls.length);
+  });
+
+  it("still inlines a few ordinary scripts", async () => {
+    serve((url) => `window.loaded = ${JSON.stringify(url)};`);
+    const html = await inlineExternalScripts(
+      scriptTags(["https://cdn.example.com/a.js", "https://cdn.example.com/a.js"]),
+    );
+    expect(html.split('window.loaded = "https://cdn.example.com/a.js";').length - 1).toBe(2);
+  });
+
+  const linkTags = (urls: string[]) =>
+    urls.map((url) => `<link rel="stylesheet" href="${url}">`).join("\n");
+
+  it("inserts a remote stylesheet's text literally and fetches a repeated link once", async () => {
+    const family = "A$&$'$`$$B";
+    const seen = serve(() => `@font-face { font-family: "${family}"; src: local("${family}"); }`);
+    const url = "https://cdn.example.com/fonts.css";
+    const { html } = await localizeRemoteFontFaces(
+      `<p>before</p>\n${linkTags([url, url])}\n<p>after</p>`,
+      mkdtempSync(join(tmpdir(), "hf-remote-sheet-")),
+    );
+    expect(seen.requests).toEqual([url]);
+    expect(html.split(`font-family: "${family}"`).length - 1).toBe(2);
+    expect(html.split("<p>before</p>").length - 1).toBe(1);
+    expect(html.split("<p>after</p>").length - 1).toBe(1);
+  });
+
+  it.each([
+    ["distinct", (i: number) => `https://cdn.example.com/f${i}.css`],
+    ["repeated", () => "https://cdn.example.com/f.css"],
+  ])("refuses %s remote font stylesheets that add up past the render's limit", async (_, url) => {
+    const face = `@font-face { font-family: "F"; src: local("${"x".repeat(MiB)}"); }`;
+    const seen = serve(() => face);
+    const urls = Array.from({ length: 40 }, (_, i) => url(i));
+    const error = await localizeRemoteFontFaces(
+      linkTags(urls),
+      mkdtempSync(join(tmpdir(), "hf-remote-sheet-")),
+    ).catch((e) => e);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(seen.requests.length).toBeLessThan(urls.length);
   });
 });
