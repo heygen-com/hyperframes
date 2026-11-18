@@ -80,6 +80,40 @@ export function recordedSvgIds(references: readonly SvgReferenceAlias[]): Readon
   return aliasIndex(references).everyRecordedId;
 }
 
+type ParsedAttribute = NonNullable<ReturnType<typeof tokens.parseAttributeSelector>>;
+type Namespaces = ReadonlyMap<string, string | null>;
+
+const attributeOperators = {
+  "=": (before, value) => before === value,
+  "~=": (before, value) => before.split(/[ \t\r\n\f]+/).includes(value),
+  "|=": (before, value) => before === value || before.startsWith(value + "-"),
+  "^=": (before, value) => before.startsWith(value),
+  "$=": (before, value) => before.endsWith(value),
+  "*=": (before, value) => before.includes(value),
+} satisfies Record<ParsedAttribute["operator"], (before: string, value: string) => boolean>;
+
+function matchesValue(before: string, { operator, value, flag }: ParsedAttribute): boolean {
+  if (!value && operator !== "=" && operator !== "|=") return false;
+  const fold = flag?.toLowerCase() === "i" ? lower : (text: string) => text;
+  return attributeOperators[operator](fold(before), fold(value));
+}
+
+function aliasesFor(index: AliasIndex, parsed: ParsedAttribute, namespaces?: Namespaces) {
+  const { name, namespace, operator, value, flag } = parsed;
+  const forName = (namespace.kind === "none" ? index.byName : index.byLocalName).get(lower(name));
+  if (!forName) return [];
+  const sameValue =
+    flag?.toLowerCase() === "i"
+      ? forName.byLowercaseBefore.get(lower(value))
+      : forName.byBefore.get(value);
+  const uri = namespace.kind === "named" ? namespaces!.get(namespace.prefix) : null;
+  return ((operator === "=" ? sameValue : forName.all) ?? []).filter(
+    (alias) =>
+      (namespace.kind === "any" || alias.namespaceURI === uri) &&
+      matchesValue(alias.before, parsed),
+  );
+}
+
 /**
  * With `namespaces` (a live sheet's bindings) only prefixed attribute selectors are
  * rewritten; without it they stay as authored and everything else is rewritten.
@@ -88,45 +122,19 @@ export function rewriteSvgSelectors(
   selector: string,
   ids: readonly IdSelectorAlias[],
   references: readonly SvgReferenceAlias[],
-  namespaces?: ReadonlyMap<string, string | null>,
+  namespaces?: Namespaces,
 ): string {
-  type AttributeOperator = NonNullable<
-    ReturnType<typeof tokens.parseAttributeSelector>
-  >["operator"];
-  const attributeOperators = {
-    "=": (before, value) => before === value,
-    "~=": (before, value) => before.split(/[ \t\r\n\f]+/).includes(value),
-    "|=": (before, value) => before === value || before.startsWith(value + "-"),
-    "^=": (before, value) => before.startsWith(value),
-    "$=": (before, value) => before.endsWith(value),
-    "*=": (before, value) => before.includes(value),
-  } satisfies Record<AttributeOperator, (before: string, value: string) => boolean>;
-  const matchesValue = (before: string, value: string, operator: AttributeOperator): boolean => {
-    if (!value && operator !== "=" && operator !== "|=") return false;
-    return attributeOperators[operator](before, value);
-  };
   const index = aliasIndex(references);
   const rewriteAttribute = (predicate: string): string => {
     const parsed = tokens.parseAttributeSelector(predicate);
-    if (!parsed) return predicate;
-    const { name, rawName, namespace, operator, value, flag } = parsed;
-    if ((namespace.kind === "named") !== (namespaces !== undefined)) return predicate;
-    const folded = flag?.toLowerCase() === "i";
-    const fold = folded ? lower : (text: string) => text;
-    const forName = (namespace.kind === "none" ? index.byName : index.byLocalName).get(lower(name));
-    if (!forName) return predicate;
-    const byValue = folded
-      ? forName.byLowercaseBefore.get(lower(value))
-      : forName.byBefore.get(value);
-    const uri = namespace.kind === "named" ? namespaces!.get(namespace.prefix) : null;
-    const candidates = ((operator === "=" ? byValue : forName.all) ?? []).filter(
-      (reference) => namespace.kind === "any" || reference.namespaceURI === uri,
-    );
+    if (!parsed || (parsed.namespace.kind === "named") !== (namespaces !== undefined)) {
+      return predicate;
+    }
+    const { rawName, flag } = parsed;
     const alternatives = new Set([predicate]);
-    for (const reference of candidates) {
-      if (!matchesValue(fold(reference.before), fold(value), operator)) continue;
+    for (const alias of aliasesFor(index, parsed, namespaces)) {
       alternatives.add(
-        `[${rawName}="${tokens.escapeCssAttributeValue(reference.after)}"${flag ? ` ${flag}` : ""}]`,
+        `[${rawName}="${tokens.escapeCssAttributeValue(alias.after)}"${flag ? ` ${flag}` : ""}]`,
       );
     }
     return alternatives.size === 1 ? predicate : `:is(${[...alternatives].join(", ")})`;
