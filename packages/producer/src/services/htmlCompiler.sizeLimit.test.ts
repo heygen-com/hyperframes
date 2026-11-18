@@ -267,6 +267,23 @@ describe("variable-driven composition styles and media sources", () => {
       retryable: false,
       publicMetadata: { exceeded: "generated" },
     });
+    expect(String(error)).toContain("Composition variable styles add up to");
+    expect(String(error)).toContain("declare them on fewer elements");
+  });
+
+  it("refuses declarers inside a mounted sub-composition that repeat a long host value", async () => {
+    const declarer = `<div data-composition-variables='[{"id":"v","type":"string","default":"d"}]'></div>`;
+    const host = `data-variable-values='${JSON.stringify({ v: "x".repeat(1024 * 1024) })}'`;
+    const dir = project({
+      "index.html": ROOT.replace(
+        'data-composition-id="scene"',
+        `data-composition-id="scene" ${host}`,
+      ),
+      "scene.html": SCENE.replace("<h1>Scene</h1>", declarer.repeat(100)),
+    });
+    const error = await compileError(dir);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(error).toMatchObject({ owner: "user", publicMetadata: { exceeded: "generated" } });
   });
 
   it("refuses many media elements bound to one long value", async () => {
@@ -299,5 +316,6 @@ describe("variable-driven composition styles and media sources", () => {
     };
     expect(await srcFor(bad)).toBe("fallback.mp4");
     expect(await srcFor("https://example.com/my clip.mp4")).toBe("https://example.com/my clip.mp4");
+    expect(await srcFor("https://example.com/x.mp4\n")).toBe("https://example.com/x.mp4");
   });
 });

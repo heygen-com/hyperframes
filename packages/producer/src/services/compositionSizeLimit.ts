@@ -47,6 +47,29 @@ const fileTooLarge = (file: string, bytes: number) =>
     { bytes, limitBytes: MAX_COMPOSITION_HTML_BYTES },
   );
 
+const limitText = `One render generates at most ${megabytes(MAX_EXPANDED_COMPOSITION_BYTES)}`;
+
+function generatedTooLarge(file: string, bytes: number): string {
+  if (file === "composition variables") {
+    return (
+      `Composition variable styles add up to ${megabytes(bytes)}. ${limitText}. ` +
+      "Shorten the variable values or declare them on fewer elements."
+    );
+  }
+  if (file === "variable media sources") {
+    return (
+      `Variable-bound media sources add up to ${megabytes(bytes)}. ${limitText}. ` +
+      "Use shorter URLs or bind fewer elements."
+    );
+  }
+  return (
+    `Scripts and styles generated for sub-composition mounts, ending at "${file}", add up to ` +
+    `${megabytes(bytes)}. One render generates at most ` +
+    `${megabytes(MAX_EXPANDED_COMPOSITION_BYTES)} for its mounts. Merge small inline scripts ` +
+    "and style rules, keep data-composition-id values short, or mount scenes fewer times."
+  );
+}
+
 /** Adds up every mount a render inlines, and what it generates for them, and throws past a limit. */
 export class CompositionExpansionBudget {
   private bytes = 0;
@@ -57,13 +80,11 @@ export class CompositionExpansionBudget {
   chargeGenerated(file: string, bytes: number): void {
     this.generated += bytes;
     if (this.generated <= MAX_EXPANDED_COMPOSITION_BYTES) return;
-    throw new CompositionTooLargeError(
-      `Scripts and styles generated for sub-composition mounts, ending at "${file}", add up to ` +
-        `${megabytes(this.generated)}. One render generates at most ` +
-        `${megabytes(MAX_EXPANDED_COMPOSITION_BYTES)} for its mounts. Merge small inline scripts ` +
-        "and style rules, keep data-composition-id values short, or mount scenes fewer times.",
-      { bytes: this.generated, limitBytes: MAX_EXPANDED_COMPOSITION_BYTES, exceeded: "generated" },
-    );
+    throw new CompositionTooLargeError(generatedTooLarge(file, this.generated), {
+      bytes: this.generated,
+      limitBytes: MAX_EXPANDED_COMPOSITION_BYTES,
+      exceeded: "generated",
+    });
   }
 
   charge(file: string, bytes: number): void {

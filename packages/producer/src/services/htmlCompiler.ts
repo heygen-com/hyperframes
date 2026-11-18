@@ -2289,10 +2289,13 @@ function bindVariableMediaSources(
   let changed = false;
   for (const el of document.querySelectorAll("video[data-var-src], audio[data-var-src]")) {
     if (el.closest("[data-variable-values]")) continue;
-    const src = boundMediaSrc(el, values);
-    if (src === null) continue;
+    const bound = boundMediaSrc(el, values);
+    if (bound === null) continue;
+    // A browser strips leading and trailing whitespace and control characters from a URL, so the
+    // runtime binds the trimmed value; compile-time probing must see the same one.
+    const src = bound.trim();
     if (src.length > MAX_VARIABLE_MEDIA_SRC_BYTES || UNSAFE_MEDIA_SRC_CHARS.test(src)) {
-      log?.debug("[Compiler] Refused a variable media source that cannot be a URL", {
+      log?.warn("[Compiler] Refused a variable media source that cannot be a URL", {
         length: src.length,
       });
       continue;
