@@ -310,3 +310,69 @@ export async function previewLayers(
   if (typeof missingGroup !== "boolean") return null;
   return layers.every(isLayer) ? { layers, truncated, missingGroup } : null;
 }
+
+type EditEntry = [name: string, value: string | null];
+type StyleEntry = [name: string, value: string | null, priority?: "important"];
+const isEditEntries = (value: unknown, priority = false): value is StyleEntry[] =>
+  Array.isArray(value) &&
+  value.every(
+    (entry) =>
+      Array.isArray(entry) &&
+      isText(entry[0]) &&
+      (entry[1] === null || isText(entry[1])) &&
+      (entry.length === 2 || (priority && entry.length === 3 && entry[2] === "important")),
+  );
+
+export interface PreviewElementEdit {
+  drawn: Promise<boolean>;
+  restore(names?: readonly string[]): void;
+}
+
+/** Draws inline `styles` and `attributes` on the frame's element, null removing one. */
+const latestWriters = new WeakMap<HTMLIFrameElement, Map<string, symbol>>();
+
+export function editPreviewElement(
+  iframe: HTMLIFrameElement,
+  handle: string,
+  edit: { styles?: EditEntry[]; attributes?: EditEntry[] },
+): PreviewElementEdit {
+  const send = (styles: StyleEntry[], attributes: EditEntry[]) =>
+    previewRequest(iframe, "edit-element", { handle, styles, attributes });
+  const writers = latestWriters.get(iframe) ?? new Map<string, symbol>();
+  latestWriters.set(iframe, writers);
+  const self = Symbol("edit");
+  const key = (part: string, name: string) => `${handle} ${part} ${name}`;
+  for (const [name] of edit.styles ?? []) writers.set(key("style", name), self);
+  for (const [name] of edit.attributes ?? []) writers.set(key("attr", name), self);
+  const reply = send(edit.styles ?? [], edit.attributes ?? []);
+  return {
+    drawn: reply.then((before) => before?.applied === true),
+    restore(names) {
+      // Checked when the old values go back: a later edit of a name owns it by then.
+      const owns = (part: string, name: string) =>
+        (!names || names.includes(name)) && writers.get(key(part, name)) === self;
+      void reply.then((before) => {
+        if (!before?.applied || !isEditEntries(before.styles, true)) return;
+        if (!isEditEntries(before.attributes)) return;
+        const styles = before.styles.filter(([name]) => owns("style", name));
+        const attributes = before.attributes.filter(([name]) => owns("attr", name));
+        if (styles.length || attributes.length) void send(styles, attributes);
+      });
+    },
+  };
+}
+
+const SEALED_DRAW_WAIT_MS = 300;
+
+/** Saves a live edit at once; a sealed one once the frame says it drew it, else after the wait. */
+export function afterSealedDraw<T>(edit: PreviewElementEdit | null, save: (drawn: boolean) => T) {
+  if (!edit) return save(true);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<boolean>((resolve) => {
+    timer = setTimeout(resolve, SEALED_DRAW_WAIT_MS, false);
+  });
+  return Promise.race([edit.drawn, late]).then((drawn) => {
+    clearTimeout(timer);
+    return save(drawn);
+  });
+}
