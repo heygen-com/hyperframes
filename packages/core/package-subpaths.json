@@ -110,12 +110,6 @@
       "types": "./dist/envProxy.d.ts",
       "environments": ["bun", "node"]
     },
-    "./missing-path": {
-      "source": "./src/missingPath.ts",
-      "runtime": "./dist/missingPath.js",
-      "types": "./dist/missingPath.d.ts",
-      "environments": ["bun", "node"]
-    },
     "./rename-retry": {
       "source": "./src/renameWithRetry.ts",
       "runtime": "./dist/renameWithRetry.js",
