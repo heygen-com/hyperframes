@@ -1552,8 +1552,11 @@ export async function inlineExternalScripts(
 
   if (externalScripts.length === 0) return html;
   // The host's own copy needs no network; one that fails the tag's integrity metadata is downloaded instead.
+  // It is read once per address: repeated tags share those bytes, and each is still charged as it is placed.
+  const bundled = new Map<string, Uint8Array | null>();
   const local = externalScripts.map(({ el, src }) => {
-    const bytes = bundledScript(src);
+    if (!bundled.has(src)) bundled.set(src, bundledScript(src));
+    const bytes = bundled.get(src);
     return bytes && matchesScriptIntegrity(bytes, el.getAttribute("integrity") || "")
       ? bytes
       : null;
