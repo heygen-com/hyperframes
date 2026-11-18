@@ -585,6 +585,45 @@ test("recipe and stats output print control characters as visible escapes", () =
   }
 });
 
+test("argument errors and the similar-asset hint print control characters as visible escapes", () => {
+  setup();
+  try {
+    const record = makeRecord({ provenance: { prompt: "cached query", provider: "test" } });
+    appendRecord(tmp, record);
+    const filePath = join(tmp, record.path);
+    mkdirSync(join(filePath, ".."), { recursive: true });
+    writeFileSync(filePath, "cached audio");
+    const evil = "\x1b]52;c;aGk=\x07";
+    const shown = "\\x1b]52;c;aGk=\\x07";
+    const runs = [
+      ["unknown media type", "--type", `bgm${evil}`, "--intent", "x"],
+      ["unknown provider", "--type", "bgm", "--intent", "x", "--provider", `p${evil}`],
+      ["file not found", "--type", "bgm", "--from", join(tmp, `missing${evil}.wav`)],
+      ["no reusable global asset", "--type", "bgm", "--reuse", `ab${evil}`],
+      [
+        "similar cached asset",
+        "--type",
+        "bgm",
+        "--intent",
+        `cached query song${evil}`,
+        "--local-only",
+      ],
+    ];
+    for (const [line, ...args] of runs) {
+      const { stderr } = spawnResolve([...args, "--project", tmp]);
+      const printed = stderr.split("\n").find((l) => l.includes(line)) ?? "";
+      assert.ok(printed.includes(shown), `${line}\n${stderr}`);
+      for (const raw of ["\x07", "\x1b"])
+        assert.ok(
+          !stderr.includes(raw),
+          `no raw control character reaches the terminal: ${stderr}`,
+        );
+    }
+  } finally {
+    cleanup();
+  }
+});
+
 test("entity hit matches across icon/image (figma-imported brand marks)", () => {
   setup();
   const record = makeRecord({

@@ -250,7 +250,7 @@ if (args.analyze) {
   }
   const mediaPath = resolve(args.for);
   if (!existsSync(mediaPath)) {
-    console.error(`error: --for file not found: ${mediaPath}`);
+    console.error(terminalText(`error: --for file not found: ${mediaPath}`));
     process.exit(2);
   }
   let analysis;
@@ -265,7 +265,7 @@ if (args.analyze) {
   if (args.json) {
     console.log(JSON.stringify({ ok: true, type: "grade-analysis", ...analysis }));
   } else {
-    console.log(formatMeasuredNote(mediaPath, analysis.measured));
+    console.log(terminalText(formatMeasuredNote(mediaPath, analysis.measured)));
     console.log(`suggested adjust: ${JSON.stringify(analysis.adjust)}`);
   }
   process.exit(0);
@@ -320,7 +320,9 @@ if (!args.type || !args.intent || !args.intent.trim()) {
 }
 
 if (!listTypes().includes(args.type)) {
-  console.error(`error: unknown media type: ${args.type} (known: ${listTypes().join(", ")})`);
+  console.error(
+    terminalText(`error: unknown media type: ${args.type} (known: ${listTypes().join(", ")})`),
+  );
   process.exit(2);
 }
 
@@ -329,7 +331,9 @@ if (!listTypes().includes(args.type)) {
 // resolve`). Match rule mirrors runProviders (full name or dotted prefix).
 if (args.provider && !providerMatches(args.type, args.provider)) {
   console.error(
-    `error: unknown provider "${args.provider}" for type ${args.type} (available: ${providerNamesFor(args.type).join(", ")})`,
+    terminalText(
+      `error: unknown provider "${args.provider}" for type ${args.type} (available: ${providerNamesFor(args.type).join(", ")})`,
+    ),
   );
   process.exit(2);
 }
@@ -452,7 +456,9 @@ async function run() {
     const { similar } = listCandidates({ projectDir, type, intent, cap: CANDIDATE_CAP });
     if (similar > 0) {
       console.error(
-        `media-use: ${similar} similar cached asset${similar === 1 ? "" : "s"} already ${similar === 1 ? "exists" : "exist"} — run \`resolve --candidates --type ${type} --intent "${intent}"\` to review and reuse instead of fetching.`,
+        terminalText(
+          `media-use: ${similar} similar cached asset${similar === 1 ? "" : "s"} already ${similar === 1 ? "exists" : "exist"} — run \`resolve --candidates --type ${type} --intent "${intent}"\` to review and reuse instead of fetching.`,
+        ),
       );
     }
   } catch {
@@ -627,7 +633,7 @@ function mergeSmartAdjust(block) {
     ffmpegPath: ffmpegBinary(),
     ffprobePath: ffprobeBinary(),
   });
-  console.error(formatMeasuredNote(mediaPath, analysis.measured));
+  console.error(terminalText(formatMeasuredNote(mediaPath, analysis.measured)));
   return {
     ...block,
     adjust: {
@@ -904,18 +910,20 @@ async function ingest(src) {
   const isUrl = /^https?:\/\//i.test(src);
   if (isUrl && !isDirectMediaUrl(src)) {
     console.error(
-      `error: --from takes a direct public media URL or a local file; "${src}" is not a direct media link (no platform pages / yt-dlp)`,
+      terminalText(
+        `error: --from takes a direct public media URL or a local file; "${src}" is not a direct media link (no platform pages / yt-dlp)`,
+      ),
     );
     process.exit(2);
   }
   if (!isUrl && !existsSync(resolve(src))) {
-    console.error(`error: file not found: ${src}`);
+    console.error(terminalText(`error: file not found: ${src}`));
     process.exit(2);
   }
   // Refuse 0-byte input: an empty asset would register clean but fail at render
   // (freezeUrl already rejects empty responses; this covers local files).
   if (!isUrl && statSync(resolve(src)).size === 0) {
-    console.error(`error: refusing to ingest a 0-byte file: ${src}`);
+    console.error(terminalText(`error: refusing to ingest a 0-byte file: ${src}`));
     process.exit(2);
   }
   if (args.source && !AGENT_SOURCES.includes(args.source)) {
@@ -1275,13 +1283,17 @@ async function reuseGlobal(shaArg) {
   const rec = findGlobalBySha(shaArg);
   if (rec && rec.ambiguous) {
     console.error(
-      `error: sha prefix "${shaArg}" is ambiguous (${rec.count} matches) — use more characters`,
+      terminalText(
+        `error: sha prefix "${shaArg}" is ambiguous (${rec.count} matches) — use more characters`,
+      ),
     );
     process.exit(2);
   }
   if (!rec) {
     console.error(
-      `error: no reusable global asset matches sha "${shaArg}". --reuse takes a sha from \`resolve --candidates\`; to skip the caches, pass --provider <name> instead`,
+      terminalText(
+        `error: no reusable global asset matches sha "${shaArg}". --reuse takes a sha from \`resolve --candidates\`; to skip the caches, pass --provider <name> instead`,
+      ),
     );
     process.exit(1);
   }
@@ -1295,7 +1307,9 @@ async function reuseGlobal(shaArg) {
     localizeImportedRecord(importFromCache(rec, projectDir, id, localPath), localPath),
   );
   if (!imported) {
-    console.error(`error: cache entry for "${shaArg}" is incomplete or missing on disk`);
+    console.error(
+      terminalText(`error: cache entry for "${shaArg}" is incomplete or missing on disk`),
+    );
     process.exit(1);
   }
   // Distinguish an explicit agent reuse from an automatic normalize-exact hit.
