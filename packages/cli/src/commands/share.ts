@@ -11,6 +11,7 @@ import {
 } from "../share/service.js";
 import { shareError } from "../share/errors.js";
 import { jsonFailure } from "../utils/jsonError.js";
+import { parsePositiveIntegerArg } from "../utils/integerArg.js";
 import type { Example } from "./_examples.js";
 
 export const examples: Example[] = [
@@ -103,9 +104,8 @@ interface ShareArgs {
   "include-source"?: boolean;
 }
 function parseInput(args: ShareArgs): ShareAction {
-  const waitSeconds = Number(args["wait-seconds"]);
-  if (!Number.isInteger(waitSeconds) || waitSeconds < 1 || waitSeconds > 1800)
-    throw new CliUsageError("--wait-seconds must be an integer from 1 to 1800.");
+  const waitSeconds =
+    parsePositiveIntegerArg(args["wait-seconds"], "--wait-seconds", { max: 1800 }) ?? 300;
   if ([args.update, args.status, args.manage].filter(Boolean).length > 1)
     throw new CliUsageError("Choose only one of --update, --status or --manage.");
   const audience = requestedAudience(args);

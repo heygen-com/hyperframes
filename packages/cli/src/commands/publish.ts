@@ -2,6 +2,7 @@ import { assertLegacyPublishOwner, checkPublishTransition } from "../share/publi
 import { join, posix, relative, resolve } from "node:path";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { existsSync } from "node:fs";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import * as clack from "../ui/prompts.js";
 
@@ -131,7 +132,7 @@ export default defineCommand({
         console.log(c.error("  Aborting publish because the default index.html entry is blank."));
         if (candidate && posix.basename(candidate) === "index.html") {
           const candidateDir = posix.dirname(candidate);
-          const target = `<project>/${candidateDir}`;
+          const target = `<project>/${terminalText(candidateDir)}`;
           console.log(
             c.dim(
               `  Move or mount the authored file, or publish its directory directly: hyperframes publish ${target}. Only use the directory form when its assets are self-contained under that directory; otherwise mount it from the project root.`,
@@ -140,7 +141,7 @@ export default defineCommand({
         } else if (candidate) {
           console.log(
             c.dim(
-              `  Move or mount ${candidate} as a project index.html before publishing; publish accepts project directories, not individual HTML files.`,
+              `  Move or mount ${terminalText(candidate)} as a project index.html before publishing; publish accepts project directories, not individual HTML files.`,
             ),
           );
         }
@@ -310,10 +311,10 @@ export default defineCommand({
         credential,
       });
       publishSpinner.stop(c.success("Project published"));
-      for (const warning of leftOut) clack.log.warn(c.warn(warning));
+      for (const warning of leftOut) clack.log.warn(c.warn(terminalLines(warning)));
 
       console.log();
-      console.log(`  ${c.dim("Project")}              ${c.accent(published.title)}`);
+      console.log(`  ${c.dim("Project")}              ${c.accent(terminalText(published.title))}`);
       console.log(`  ${c.dim("Files")}                ${String(published.fileCount)}`);
       if (proxyBakeManifest) {
         console.log(
@@ -329,7 +330,7 @@ export default defineCommand({
       if (published.claimed) {
         // The server returns the same id on an in-place update, a fresh id on create.
         const updatedInPlace = published.projectId === requestedProjectId;
-        console.log(`  ${c.dim("URL")}                  ${c.accent(published.url)}`);
+        console.log(`  ${c.dim("URL")}                  ${c.accent(terminalText(published.url))}`);
         // The CLI only ever states what it ASKED for: no response field carries the project's
         // actual visibility. A re-publish without --public sends no visibility at all, so the
         // server keeps whatever the project already had — saying "Private" there would claim
@@ -398,7 +399,7 @@ export default defineCommand({
     } catch (err: unknown) {
       publishSpinner.stop(c.error("Publish failed"));
       console.error();
-      console.error(`  ${(err as Error).message}`);
+      console.error(`  ${terminalLines((err as Error).message)}`);
       console.error();
       setCommandExitCode(1);
       return;

@@ -64,7 +64,7 @@ test("a standalone install runs the newest CLI that moves into the project, and 
     cwd: "/work/project",
     npmCwd: "/home/person",
   });
-  assert.equal(STANDALONE_CLI, "hyperframes@>=0.9.64");
+  assert.equal(STANDALONE_CLI, "hyperframes@>=0.9.67");
   assert.equal(result.command, "npx");
   assert.equal(result.cwd, "/home/person");
   assert.deepEqual(result.args, ["--yes", STANDALONE_CLI, "skills", "update"]);
@@ -97,7 +97,7 @@ test("standalone release selection keeps npm in the home folder and passes only 
   };
   for (const [release, args] of [
     ["latest", ["upgrade", "--project", ".", "--check"]],
-    ["0.9.64+build-1", ["--version"]],
+    ["0.9.67+build-1", ["--version"]],
     ["1.0.0-rc.1", ["reverse", "start", "a b.mp4"]],
   ]) {
     const run = invocation(["--cli-version", release, ...args], options);
@@ -121,8 +121,8 @@ test("standalone release selection keeps npm in the home folder and passes only 
       /requires latest or an exact/,
     );
   }
-  for (const release of ["0.9.33", "0.9.64-rc.1+build"]) {
-    assert.throws(() => invocation(["--cli-version", release], options), /0\.9\.64 or newer/);
+  for (const release of ["0.9.33", "0.9.67-rc.1+build"]) {
+    assert.throws(() => invocation(["--cli-version", release], options), /0\.9\.67 or newer/);
   }
   assert.throws(
     () => invocation(["--cli-version", "latest"], { version: "1.2.3" }),
@@ -134,18 +134,20 @@ test("standalone release selection keeps npm in the home folder and passes only 
 // received project's package.json could start a CLI without the protections for received projects.
 test("a standalone selection older than the floor is refused, by flag or by environment", () => {
   const options = { version: null, platform: "linux", npmCwd: "/home/person", env: {} };
-  const tooOld = /lacks protections for received projects; this launcher runs 0\.9\.64 or newer/;
-  for (const release of ["0.9.34", "0.9.40", "0.9.63"]) {
+  const tooOld = /lacks protections for received projects; this launcher runs 0\.9\.67 or newer/;
+  for (const release of ["0.9.34", "0.9.65", "0.9.66"]) {
     assert.throws(() => invocation(["--cli-version", release, "check"], options), tooOld);
     const env = { HYPERFRAMES_STANDALONE_CLI_VERSION: release };
     assert.throws(() => invocation(["check"], { ...options, env }), tooOld);
     assert.throws(() => invocation(["--script", "helper.mjs"], { ...options, env }), tooOld);
   }
-  for (const release of ["latest", "0.9.64", "0.10.0"]) {
+  for (const release of ["latest", "0.9.67", "0.10.0"]) {
     const env = { HYPERFRAMES_STANDALONE_CLI_VERSION: release };
     const spec = `hyperframes@${release}`;
     assert.equal(invocation(["--cli-version", release, "check"], options).args[1], spec);
     assert.equal(invocation(["check"], { ...options, env }).args[1], spec);
+    const helper = invocation(["--script", "helper.mjs"], { ...options, env });
+    assert.equal(helper.env.HYPERFRAMES_STANDALONE_CLI_VERSION, release);
   }
 });
 
@@ -304,11 +306,11 @@ for (const [install, manifest, spec] of [
 }
 
 test("rejects a plugin release older than the first one this launcher runs", (t) => {
-  for (const version of ["0.9.33", "0.9.64-alpha.1", "0.8.99"]) {
+  for (const version of ["0.9.33", "0.9.66", "0.9.67-alpha.1", "0.8.99"]) {
     const { root } = fixture(t, "plugin.json", version);
-    assert.throws(() => pluginVersion(root), /this launcher runs 0\.9\.64 or newer/);
+    assert.throws(() => pluginVersion(root), /this launcher runs 0\.9\.67 or newer/);
   }
-  for (const version of ["0.9.64", "0.10.0", "1.0.0-beta.1"]) {
+  for (const version of ["0.9.67", "0.10.0", "1.0.0-beta.1"]) {
     const { root } = fixture(t, "plugin.json", version);
     assert.equal(pluginVersion(root), version);
   }

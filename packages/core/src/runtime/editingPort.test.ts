@@ -14,6 +14,16 @@ function fakeHost() {
   return { host: host as unknown as Window, deliver: (e: Partial<MessageEvent>) => listener?.(e) };
 }
 
+function hostReachingEveryListenerOfADispatch() {
+  const listeners = new Set<Listener>();
+  const host = {
+    addEventListener: (_type: string, fn: Listener) => listeners.add(fn),
+    removeEventListener: (_type: string, fn: Listener) => listeners.delete(fn),
+  };
+  const deliver = (e: Partial<MessageEvent>) => [...listeners].forEach((fn) => fn(e));
+  return { host: host as unknown as Window, deliver };
+}
+
 function previewFrame() {
   const iframe = document.createElement("iframe");
   document.body.appendChild(iframe);
@@ -92,8 +102,41 @@ describe("createEditingPortClient", () => {
           "motion-path-home",
           "max-z-index",
           "crop-lift",
+          "edit-element",
+          "gsap-set",
+          "patch-tweens",
+          "soft-reload",
+          "assets-unloaded",
         ],
       });
+    } finally {
+      agent.dispose();
+    }
+  });
+
+  it("gives two clients of one frame a port each, so both get their replies", async () => {
+    const { iframe, frame } = previewFrame();
+    const { host, deliver } = hostReachingEveryListenerOfADispatch();
+    const parent = document.body.appendChild(document.createElement("iframe")).contentWindow!;
+    parent.postMessage = ((data: unknown, _origin: string, transfer: MessagePort[]) => {
+      ports.push(...transfer);
+      setTimeout(() => deliver({ source: frame, data, ports: transfer }));
+    }) as Window["postMessage"];
+    frame.postMessage = ((data: unknown) =>
+      window.dispatchEvent(
+        new MessageEvent("message", { source: parent, data }),
+      )) as Window["postMessage"];
+    const agent = installMarkedEditingAgent(parent);
+    try {
+      const first = createEditingPortClient({ iframe, host, timeoutMs: 1_000 });
+      const second = createEditingPortClient({ iframe, host, timeoutMs: 1_000 });
+      clients.push(first, second);
+      await Promise.all([first.ready, second.ready]);
+      const [z, loop] = await Promise.all([
+        first.request("max-z-index", {}),
+        second.request("set-loop-start", { seconds: null }),
+      ]);
+      expect([z, loop]).toEqual([{ zIndex: 0 }, { applied: false }]);
     } finally {
       agent.dispose();
     }

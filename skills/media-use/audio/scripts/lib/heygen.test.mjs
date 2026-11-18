@@ -15,6 +15,7 @@ import {
   heygenMessage,
   loadEnvFromDir,
   noteProjectElevenLabsKey,
+  noteProjectProviderKey,
 } from "./heygen.mjs";
 
 const HEYGEN_ENV = [
@@ -708,15 +709,30 @@ test("loadEnvFromDir keeps a person's own .env Gemini key next to a shell servic
   );
 });
 
-test("loadEnvFromDir leaves out a project .env's Gemini key when the shell has the other Gemini API key", () => {
+test("loadEnvFromDir keeps a cloned project's .env Gemini key next to the shell's other Gemini API key", () => {
   withProviderProject(
     { shell: { GOOGLE_API_KEY: "own" }, env: "GEMINI_API_KEY=cloned\n" },
+    (project, notes) => {
+      loadEnvFromDir(project);
+      assert.equal(process.env.GEMINI_API_KEY, "cloned");
+      assert.deepEqual(notes, []);
+      noteProjectProviderKey("GEMINI_API_KEY", "speech goes to that key's Gemini account");
+      assert.deepEqual(notes, [
+        `[hyperframes] Using GEMINI_API_KEY from ${join(project, ".env")}, a project .env: speech goes to that key's Gemini account.\n`,
+      ]);
+    },
+  );
+});
+
+test("loadEnvFromDir leaves out a received .env's Gemini key when the shell has the other Gemini API key", () => {
+  withProviderProject(
+    { shell: { GOOGLE_API_KEY: "own" }, env: "GEMINI_API_KEY=received\n", received: true },
     (project, notes) => {
       loadEnvFromDir(project);
       assert.equal(process.env.GEMINI_API_KEY, undefined);
       assert.match(
         notes.join(""),
-        /ignoring GEMINI_API_KEY from a project \.env .*using your own GOOGLE_API_KEY/,
+        /ignoring GEMINI_API_KEY from a received project .*using your own GOOGLE_API_KEY/,
       );
     },
   );

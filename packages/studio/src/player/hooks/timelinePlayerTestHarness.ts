@@ -171,7 +171,8 @@ export function serveEditingRequests(
     };
     const handoff = { source: "hf-preview", type: "editing-port", v: 1 };
     const source = frame as unknown as Window;
-    window.dispatchEvent(new MessageEvent("message", { source, data: handoff, ports: [port2] }));
+    const init = { source, data: handoff, ports: [port2] };
+    setTimeout(() => window.dispatchEvent(new MessageEvent("message", init)));
   };
   return () => ports.forEach((port) => port.close());
 }

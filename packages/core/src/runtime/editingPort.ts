@@ -28,6 +28,13 @@ import type { EditingElementBox, EditingElementGeometry } from "./editingGeometr
 import type { EditingGestureStart } from "./editingGestureStart";
 import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { MotionPathFrameHome } from "./editing/motionPathHome";
+import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
+import { parsePatchTweens, type PatchTweensParams } from "./editing/patchTween";
+import {
+  parseSoftReload,
+  type SoftReloadParams,
+  type SoftReloadResult,
+} from "./editing/softReload";
 import type { EditingLayer } from "./editingLayers";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
@@ -60,6 +67,11 @@ import {
   parseSetAudioGroupAttribute,
   type SetAudioGroupAttributeParams,
 } from "./editing/setAudioGroupAttribute";
+import {
+  parseEditElement,
+  type EditElementParams,
+  type EditElementResult,
+} from "./editing/editElement";
 
 export {
   buildStableSelector,
@@ -170,6 +182,11 @@ export const EDITING_REQUEST_KINDS = [
   "motion-path-home",
   "max-z-index",
   "crop-lift",
+  "edit-element",
+  "gsap-set",
+  "patch-tweens",
+  "soft-reload",
+  "assets-unloaded",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -303,6 +320,11 @@ export interface EditingRequests {
     params: { handle: EditingElementHandle; lift: boolean };
     result: { lifted: boolean; clipPath: string | null };
   };
+  "edit-element": { params: EditElementParams; result: EditElementResult };
+  "gsap-set": { params: GsapSetParams; result: { applied: boolean } };
+  "patch-tweens": { params: PatchTweensParams; result: { patched: boolean } };
+  "soft-reload": { params: SoftReloadParams; result: { result: SoftReloadResult } };
+  "assets-unloaded": { params: NoParams; result: { unloaded: boolean } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -510,6 +532,11 @@ const PARAM_PARSERS: {
     hasKeys(params, "handle,lift") && isHandle(params.handle) && typeof params.lift === "boolean"
       ? { handle: params.handle, lift: params.lift }
       : null,
+  "edit-element": parseEditElement,
+  "gsap-set": parseGsapSet,
+  "patch-tweens": parsePatchTweens,
+  "soft-reload": parseSoftReload,
+  "assets-unloaded": noParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
@@ -588,6 +615,8 @@ function readHandoff(
 const onlyPort = (ports: readonly MessagePort[]): MessagePort | null =>
   ports.length === 1 ? (ports[0] ?? null) : null;
 
+const portsTaken = new WeakSet<MessagePort>();
+
 type Pending = {
   resolve: (result: unknown) => void;
   reject: (error: EditingPortError) => void;
@@ -653,7 +682,8 @@ export function createEditingPortClient(options: {
   const onWindowMessage = (event: MessageEvent<unknown>) => {
     const handoff = readHandoff(event, iframe.contentWindow);
     if (handoff === "ready") return connect();
-    if (!handoff) return;
+    if (!handoff || portsTaken.has(handoff)) return;
+    portsTaken.add(handoff);
     port = handoff;
     host.removeEventListener("message", onWindowMessage);
     port.onmessage = onReply;

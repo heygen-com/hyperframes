@@ -120,6 +120,16 @@ describe("previewEditingClient", () => {
     expect(Date.now() - started).toBeLessThan(AGENT_PROBE_MS + 500);
   });
 
+  it("answers a frame whose runtime never came at once, rather than after another probe", async () => {
+    const { iframe } = opaqueFrame();
+    const started = Date.now();
+    await previewSeekPainted(iframe, 15_000);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(AGENT_PROBE_MS - 50);
+    const again = Date.now();
+    await previewSeekPainted(iframe, 15_000);
+    expect(Date.now() - again).toBeLessThan(100);
+  });
+
   it("returns the runtime's manifest only when its reply has the manifest's shape", async () => {
     const manifest = { clips: [], durationInFrames: 30, scenes: [] };
     let reply: unknown = { clipManifest: manifest };

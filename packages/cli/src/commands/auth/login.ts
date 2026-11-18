@@ -49,6 +49,7 @@ import {
 } from "../../auth/index.js";
 import { telemetryIdentity } from "../../auth/telemetryIdentity.js";
 import { c } from "../../ui/colors.js";
+import { terminalLines } from "@hyperframes/core";
 
 const STDIN_TIMEOUT_MS = 30_000;
 // Smallest plausible length for a real API key. We don't validate the
@@ -215,7 +216,7 @@ async function runOAuthLogin(): Promise<void> {
     // (IdP misconfig, network) instead of lumping everything as flow_error.
     const timedOut = /timed out/i.test(message);
     trackAuthLoginFailed("oauth", timedOut ? "flow_timeout" : "flow_error");
-    console.error(c.error(`Sign-in failed: ${message}`));
+    console.error(c.error(`Sign-in failed: ${terminalLines(message)}`));
     if (timedOut) {
       console.error("Run `hyperframes auth login` again.");
     }

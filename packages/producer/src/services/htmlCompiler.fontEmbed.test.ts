@@ -1,49 +1,41 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { urlOccurrenceRe } from "./htmlCompiler.js";
+import { compileForRender } from "./htmlCompiler.js";
 
 /**
- * The embed step used `result.replaceAll(localPath, dataUri)` — a bare
- * substring rewrite over the whole compiled document. These pin the collision
- * that made unsafe: it is invisible in ordinary projects and easy to
- * reintroduce, because the naive form passes every test that uses one font.
+ * A whole-document substring rewrite of a font path also rewrote the tail of a longer path and the
+ * same text in a comment. These are invisible in a project with one font.
  */
 describe("font embed url() anchoring", () => {
-  const DATA_URI = "data:font/woff2;base64,AAAA";
-  const replace = (html: string, path: string) =>
-    html.replace(urlOccurrenceRe(path), `url("${DATA_URI}")`);
+  const fonts = {
+    "img/logo.ttf": "short",
+    "assets/img/logo.ttf": "long",
+    "fonts/x+y[1].ttf": "meta",
+  };
+  const dataUri = (text: string) =>
+    `url("data:font/ttf;base64,${Buffer.from(text).toString("base64")}")`;
 
-  it("rewrites the exact occurrence, quoted or bare", () => {
-    expect(replace(`src: url("fonts/x.ttf")`, "fonts/x.ttf")).toBe(`src: url("${DATA_URI}")`);
-    expect(replace(`src: url(fonts/x.ttf)`, "fonts/x.ttf")).toBe(`src: url("${DATA_URI}")`);
-    expect(replace(`src: url('fonts/x.ttf')`, "fonts/x.ttf")).toBe(`src: url("${DATA_URI}")`);
-  });
+  it("replaces each @font-face source with its own file and nothing else", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-font-anchor-"));
+    for (const [path, text] of Object.entries(fonts)) {
+      mkdirSync(dirname(join(dir, path)), { recursive: true });
+      writeFileSync(join(dir, path), text);
+    }
+    const faces = Object.keys(fonts)
+      .map((path, i) => `@font-face { font-family: "F${i}"; src: url("${path}"); }`)
+      .join("\n");
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><head><style>/* see img/logo.ttf */\n${faces}</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Text</div>
+</body></html>`,
+    );
 
-  it("does not corrupt a longer url whose tail matches the embedded path", () => {
-    // The reported corruption: embedding `fonts/x.ttf` rewrote the tail of an
-    // untouched absolute rule, producing `url("file:///abs/<data-uri>")`.
-    const html = `a { src: url("fonts/x.ttf") } b { src: url("file:///abs/fonts/x.ttf") }`;
-    const out = replace(html, "fonts/x.ttf");
-    expect(out).toContain(`a { src: url("${DATA_URI}") }`);
-    expect(out).toContain(`b { src: url("file:///abs/fonts/x.ttf") }`);
-  });
+    const { html } = await compileForRender(dir, join(dir, "index.html"), dir);
 
-  it("does not corrupt a sibling whose path is a suffix of another project path", () => {
-    // No file:// needed. Any two paths where one is a suffix of the other
-    // collide under a bare substring replace.
-    const html = `a { src: url("img/logo.ttf") } b { src: url("assets/img/logo.ttf") }`;
-    const out = replace(html, "img/logo.ttf");
-    expect(out).toContain(`a { src: url("${DATA_URI}") }`);
-    expect(out).toContain(`b { src: url("assets/img/logo.ttf") }`);
-  });
-
-  it("leaves the path alone outside a url() wrapper", () => {
-    const html = `/* see fonts/x.ttf for the source */ a { src: url("fonts/x.ttf") }`;
-    const out = replace(html, "fonts/x.ttf");
-    expect(out).toContain("/* see fonts/x.ttf for the source */");
-  });
-
-  it("treats regex metacharacters in a path literally", () => {
-    const html = `a { src: url("fonts/x+y(1).ttf") }`;
-    expect(replace(html, "fonts/x+y(1).ttf")).toBe(`a { src: url("${DATA_URI}") }`);
+    for (const text of Object.values(fonts)) expect(html).toContain(dataUri(text));
+    expect(html).toContain("/* see img/logo.ttf */");
   });
 });

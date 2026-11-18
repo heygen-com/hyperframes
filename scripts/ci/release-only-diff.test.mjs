@@ -236,6 +236,7 @@ test("every heavy workflow asks the release-only action, and the decision is use
     "player-perf",
     "player-safari",
     "lambda-arm64-image",
+    "lambda-handler-zip",
   ])
     assert.match(read(name), /uses: \.\/\.github\/actions\/release-only-diff/, name);
   const ci = read("ci");

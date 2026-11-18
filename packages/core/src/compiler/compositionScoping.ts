@@ -134,7 +134,7 @@ function scopeSelectorOnce(
       // sits nested inside the host and would inherit the effect twice.
       return compositionBoxSelector(scope);
     }
-    return selectorWithoutRootTiming.replace(compositionIdPattern, scope);
+    return selectorWithoutRootTiming.replace(compositionIdPattern, () => scope);
   }
   const leading = selectorWithoutRootTiming.match(/^\s*/)?.[0] ?? "";
   const trailing = selectorWithoutRootTiming.match(/\s*$/)?.[0] ?? "";
@@ -159,8 +159,8 @@ function normalizeCompositionRootSelector(
   const compAttr = String.raw`\[\s*data-composition-id\s*=\s*(?:"${quotedCompId}"|'${quotedCompId}')\s*\]`;
   const timingAttr = String.raw`\s*\[\s*data-(?:start|duration)\s*=\s*(?:"[^"]*"|'[^']*')\s*\]`;
   return selector
-    .replace(new RegExp(`${compAttr}(?:${timingAttr})+`, "g"), scope)
-    .replace(new RegExp(`(?:${timingAttr})+${compAttr}`, "g"), scope);
+    .replace(new RegExp(`${compAttr}(?:${timingAttr})+`, "g"), () => scope)
+    .replace(new RegExp(`(?:${timingAttr})+${compAttr}`, "g"), () => scope);
 }
 
 const GLOBAL_AT_RULES = new Set(["keyframes", "-webkit-keyframes", "font-face"]);
@@ -523,14 +523,15 @@ export function wrapScopedCompositionScript(
   var __hfAuthoredRootEntries = __hfAuthoredRootSelector
     ? [{ id: __hfAuthoredRootId, replacement: __hfAuthoredRootSelector }]
     : [];
+  var __hfRootSelectorText = function() { return __hfRootSelector; };
   var __hfNormalizeSelector = function(selector) {
     if (!__hfCompId || typeof selector !== "string") return selector;
     var normalized = selector
-      .replace(new RegExp(__hfRootSelectorPattern + '(?:' + __hfTimingSelectorPattern + ')+', 'g'), __hfRootSelector)
-      .replace(new RegExp('(?:' + __hfTimingSelectorPattern + ')+' + __hfRootSelectorPattern, 'g'), __hfRootSelector)
-      .replace(new RegExp(__hfRootSelectorPattern, 'g'), __hfRootSelector);
+      .replace(new RegExp(__hfRootSelectorPattern + '(?:' + __hfTimingSelectorPattern + ')+', 'g'), __hfRootSelectorText)
+      .replace(new RegExp('(?:' + __hfTimingSelectorPattern + ')+' + __hfRootSelectorPattern, 'g'), __hfRootSelectorText)
+      .replace(new RegExp(__hfRootSelectorPattern, 'g'), __hfRootSelectorText);
     if (__hfTimelineCompId !== __hfCompId) {
-      normalized = normalized.replace(new RegExp(__hfTimelineRootSelectorPattern, 'g'), __hfRootSelector);
+      normalized = normalized.replace(new RegExp(__hfTimelineRootSelectorPattern, 'g'), __hfRootSelectorText);
     }
     return window.__hfSvgSelectorAliases.rewrite(normalized, __hfAuthoredRootEntries);
   };
