@@ -146,6 +146,8 @@ test("a standalone selection older than the floor is refused, by flag or by envi
     const spec = `hyperframes@${release}`;
     assert.equal(invocation(["--cli-version", release, "check"], options).args[1], spec);
     assert.equal(invocation(["check"], { ...options, env }).args[1], spec);
+    const helper = invocation(["--script", "helper.mjs"], { ...options, env });
+    assert.equal(helper.env.HYPERFRAMES_STANDALONE_CLI_VERSION, release);
   }
 });
 
