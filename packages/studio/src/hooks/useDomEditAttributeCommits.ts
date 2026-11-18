@@ -15,7 +15,7 @@ import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSy
 import { HF_AUDIO_GROUP_ATTR, HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
 import { editSealedSelection } from "../components/editor/previewSelection";
-import type { PreviewElementEdit } from "../player/lib/previewElements";
+import { afterSealedDraw, type PreviewElementEdit } from "../player/lib/previewElements";
 
 // ── Types ──
 
@@ -188,12 +188,14 @@ export function useDomEditAttributeCommits({
         },
         persist: options.previewOnly
           ? async () => {}
-          : async () =>
-              persistDomEditOperations(domEditSelection, [op], {
-                label: options.label,
-                coalesceKey: commitKey,
-                skipRefresh: options.skipRefresh && ((await sealedEdit?.drawn) ?? true),
-              }),
+          : () =>
+              afterSealedDraw(sealedEdit, (drawn) =>
+                persistDomEditOperations(domEditSelection, [op], {
+                  label: options.label,
+                  coalesceKey: commitKey,
+                  skipRefresh: options.skipRefresh && drawn,
+                }),
+              ),
         shouldRevert: () => isLatestCommit(),
         revert: () => {
           sealedEdit?.restore();
@@ -289,13 +291,15 @@ export function useDomEditAttributeCommits({
             setOrRemovePreviewAttribute(captured.element, entry.fullAttr, entry.value);
           }
         },
-        persist: async () =>
-          persistDomEditOperations(selection, ops, {
-            label: options.label,
-            coalesceKey: commitKey,
-            skipRefresh: options.skipRefresh && ((await sealedEdit?.drawn) ?? true),
-            prepareContent: options.prepareContent,
-          }),
+        persist: () =>
+          afterSealedDraw(sealedEdit, (drawn) =>
+            persistDomEditOperations(selection, ops, {
+              label: options.label,
+              coalesceKey: commitKey,
+              skipRefresh: options.skipRefresh && drawn,
+              prepareContent: options.prepareContent,
+            }),
+          ),
         shouldRevert: (error) =>
           isLatestCommit() && !(error instanceof DomEditPersistPreparedWriteError),
         revert: () => {
@@ -453,14 +457,12 @@ export function useDomEditAttributeCommits({
           }
           setOrRemovePreviewAttribute(editedElement, attr, optimistic);
         },
-        persist: async () => {
-          await sealedEdit?.drawn;
-          return persistDomEditOperations(domEditSelection, [op], {
+        persist: () =>
+          persistDomEditOperations(domEditSelection, [op], {
             label: `Edit ${attr}`,
             coalesceKey: commitKey,
             skipRefresh: false,
-          });
-        },
+          }),
         shouldRevert: () => isLatestCommit(),
         revert: () => {
           sealedEdit?.restore();

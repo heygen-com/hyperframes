@@ -520,7 +520,6 @@ export async function findPointerTargets(
   return (described ?? []).filter((element) => element !== null);
 }
 
-/** A live edit on a selection in a frame Studio cannot script, sent to its runtime; null for any other. */
 export function editSealedSelection(
   iframe: HTMLIFrameElement | null | undefined,
   selection: DomEditSelection,

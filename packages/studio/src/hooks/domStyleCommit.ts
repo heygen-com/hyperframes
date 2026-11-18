@@ -14,7 +14,7 @@ import {
 } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import { editSealedSelection } from "../components/editor/previewSelection";
-import type { PreviewElementEdit } from "../player/lib/previewElements";
+import { afterSealedDraw, type PreviewElementEdit } from "../player/lib/previewElements";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
@@ -111,16 +111,15 @@ export async function commitDomStyles(
         if (importedFont) injectPreviewImportedFont(doc, importedFont);
       }
     },
-    persist: async () => {
-      const drawn = (await sealedEdit?.drawn) ?? true;
-      return persistDomEditOperations(selection, operations, {
-        label: "Edit layer style",
-        // Inline styles are already live, so a reload would only blank the preview. A sealed
-        // frame takes no font link from Studio, so its reload loads the saved font instead.
-        skipRefresh: drawn && !(sealedEdit && fontFamily !== undefined),
-        importedFont: importedFont ?? undefined,
-      });
-    },
+    persist: () =>
+      afterSealedDraw(sealedEdit, (drawn) =>
+        persistDomEditOperations(selection, operations, {
+          label: "Edit layer style",
+          // Live styles skip the reload; a sealed frame reloads to load a new font.
+          skipRefresh: drawn && !(sealedEdit && fontFamily !== undefined),
+          importedFont: importedFont ?? undefined,
+        }),
+      ),
     shouldRevert: ownsAny,
     revert: () => {
       sealedEdit?.restore(owned.filter(({ isLatest }) => isLatest()).map((o) => o.property));

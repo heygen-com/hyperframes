@@ -2,6 +2,7 @@
 // null removing one. The reply carries what each name held before, so a failed save can put it back.
 import { EDITING_ELEMENT_HANDLE, type EditingElementHandle } from "../editingElement";
 import { elementForHandle } from "../editingHandles";
+import { isStylableElement } from "../domRealm";
 
 export type ElementEditEntry = [name: string, value: string | null];
 export type EditElementParams = {
@@ -47,8 +48,7 @@ export function parseEditElement(params: unknown): EditElementParams | null {
 
 export function editElement({ handle, styles, attributes }: EditElementParams): EditElementResult {
   const element = elementForHandle(handle);
-  if (!(element instanceof HTMLElement) && !(element instanceof SVGElement))
-    return { applied: false, styles: [], attributes: [] };
+  if (!isStylableElement(element)) return { applied: false, styles: [], attributes: [] };
   const style = element.style;
   const before = {
     styles: styles.map(([name]): ElementEditEntry => [name, style.getPropertyValue(name) || null]),

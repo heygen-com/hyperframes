@@ -320,12 +320,7 @@ const isEditEntries = (value: unknown): value is EditEntry[] =>
   );
 
 export interface PreviewElementEdit {
-  /**
-   * False when the frame did not draw it: its element is gone, or the runtime did not answer. A save
-   * awaits it first, so a failed save's `restore` follows this edit at once, never a later edit.
-   */
   drawn: Promise<boolean>;
-  /** Puts back what the edit replaced, for `names` when given. */
   restore(names?: readonly string[]): void;
 }
 
@@ -351,4 +346,9 @@ export function editPreviewElement(
       });
     },
   };
+}
+
+/** Saves a live edit at once, and a sealed one once the frame says whether it drew it. */
+export function afterSealedDraw<T>(edit: PreviewElementEdit | null, save: (drawn: boolean) => T) {
+  return edit ? edit.drawn.then(save) : save(true);
 }
