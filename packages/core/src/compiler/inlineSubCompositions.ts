@@ -419,7 +419,7 @@ export function inlineSubCompositions(
   const moduleScripts: string[] = [];
   const externalLinks: ExternalLink[] = [];
   const variablesByComp: Record<string, Record<string, unknown>> = {};
-  const svgIdScopes: Array<SvgIdScope & { styleStart: number; styleEnd: number }> = [];
+  const svgIdScopes: Array<SvgIdScope & { src: string; styleStart: number; styleEnd: number }> = [];
   // A file mounted many times reads the same; only its scope, ids and variables differ per mount.
   // Each file is parsed once and only read; a mount edits its own copy.
   const parsed = new Map<string, Document>();
@@ -790,6 +790,7 @@ export function inlineSubCompositions(
     // scoping and script scoping already key on. Nested hosts are excluded
     // because each of them is recorded as its own scope when dequeued.
     svgIdScopes.push({
+      src,
       root: hostEl,
       namespace: runtimeCompId || scopeCompId,
       exclude: nested.hosts.map((nestedHost) => nestedHost.host),
@@ -808,26 +809,35 @@ export function inlineSubCompositions(
   // getElementById/media-id fixes.
   const hostRoots = svgIdScopes.map(({ root }) => root);
   const clips = sceneClipRoots(document, hostRoots);
-  const svgIdMaps = namespaceCollidingSvgIds(document, [
-    ...svgIdScopes.map(({ root, namespace, exclude, styleStart, styleEnd }) => ({
-      root,
-      namespace,
-      exclude,
-      cssTexts: styles.slice(styleStart, styleEnd).map((style) => style.css),
-    })),
-    {
-      root: document.documentElement,
-      namespace: "",
-      referenceTarget: "document",
-      exclude: [...hostRoots, ...clips],
-      cssTexts: rootStyles.map((style) => style.textContent ?? ""),
-    },
-    ...clips.map((root, index) => ({
-      root,
-      namespace: `clip-${index}`,
-      exclude: hostRoots.filter((host) => root.contains(host)),
-    })),
-  ]);
+  const svgIdMaps = namespaceCollidingSvgIds(
+    document,
+    [
+      ...svgIdScopes.map(({ root, namespace, exclude, styleStart, styleEnd }) => ({
+        root,
+        namespace,
+        exclude,
+        cssTexts: styles.slice(styleStart, styleEnd).map((style) => style.css),
+      })),
+      {
+        root: document.documentElement,
+        namespace: "",
+        referenceTarget: "document",
+        exclude: [...hostRoots, ...clips],
+        cssTexts: rootStyles.map((style) => style.textContent ?? ""),
+      },
+      ...clips.map((root, index) => ({
+        root,
+        namespace: `clip-${index}`,
+        exclude: hostRoots.filter((host) => root.contains(host)),
+      })),
+    ],
+    undefined,
+    chargeEmitted &&
+      ((index, bytes) => chargeEmitted(svgIdScopes[index]?.src ?? "the page", bytes)),
+  );
+  const chargeGrowth = (src: string, before: string, after: string) => {
+    if (after.length > before.length) chargeEmitted?.(src, after.length - before.length);
+  };
   svgIdMaps.slice(0, svgIdScopes.length).forEach((idMap, index) => {
     const { styleStart, styleEnd } = svgIdScopes[index]!;
     const references = readSvgReferenceAliases(
@@ -835,7 +845,9 @@ export function inlineSubCompositions(
       SVG_REFERENCE_ALIASES_ATTR,
     );
     for (let i = styleStart; i < styleEnd; i += 1) {
-      styles[i]!.css = rewriteSvgIdReferencesInCss(styles[i]!.css, idMap, references);
+      const rewritten = rewriteSvgIdReferencesInCss(styles[i]!.css, idMap, references);
+      chargeGrowth(svgIdScopes[index]!.src, styles[i]!.css, rewritten);
+      styles[i]!.css = rewritten;
     }
   });
 
@@ -844,11 +856,14 @@ export function inlineSubCompositions(
     SVG_REFERENCE_ALIASES_ATTR,
   );
   for (const style of rootStyles) {
-    style.textContent = rewriteSvgIdReferencesInCss(
-      style.textContent ?? "",
+    const css = style.textContent ?? "";
+    const rewritten = rewriteSvgIdReferencesInCss(
+      css,
       svgIdMaps[svgIdScopes.length]!,
       rootReferences,
     );
+    chargeGrowth("the page", css, rewritten);
+    style.textContent = rewritten;
   }
 
   return {
