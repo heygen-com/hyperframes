@@ -1,7 +1,7 @@
 // A release build of the CLI reads its skills at its own release tag.
 
 import { execFile } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -130,10 +130,20 @@ describe("checkSkills on a release build", () => {
     },
   );
 
-  it("compares a dev build against main", async () => {
-    serve({});
-    const res = await checkSkills({ cwd: root, home, canonical: true, cliVersion: "0.0.0-dev" });
-    expect(res.ref).toBe("main");
-    expect(fetchedUrls()).toEqual([`${RAW}/${git.mainSha}/${MANIFEST_FILE}`]);
-  });
+  it.each(["0.0.0-dev", "0.9.28-alpha.4"])(
+    "isolates the Git lookup against main for %s",
+    async (cliVersion) => {
+      serve({});
+      const res = await checkSkills({ cwd: root, home, canonical: true, cliVersion });
+      const options = vi.mocked(execFile).mock.lastCall?.[2] as {
+        cwd: string;
+        env: NodeJS.ProcessEnv;
+      };
+      expect(options.cwd).toMatch(/hyperframes-git-[^/\\]+$/);
+      expect(options.env.GIT_DIR).toBe(options.cwd);
+      expect(existsSync(options.cwd)).toBe(false);
+      expect(res.ref).toBe("main");
+      expect(fetchedUrls()).toEqual([`${RAW}/${git.mainSha}/${MANIFEST_FILE}`]);
+    },
+  );
 });
