@@ -93,6 +93,8 @@ function unguessablePiecePrefix(cacheDir: string, stem: string): string {
 }
 
 const CONCAT_TIMEOUT_MS = 2 * 60 * 1000;
+// On POSIX a folder name can hold a line break that would start a new list line; on Windows the working folder is part of the DLL search, so the cwd stays default there.
+const JOIN_FROM_CACHE_FOLDER = process.platform !== "win32";
 const FAILURE_CACHE_TTL_MS = 60 * 1000;
 export const PROXY_PENDING_RETRY_AFTER_SECONDS = 2;
 const ENVIRONMENT_FAILURE_TTL_MS = 5 * PROXY_PENDING_RETRY_AFTER_SECONDS * 1000;
@@ -397,8 +399,7 @@ function markCacheEntryUsed(cachePath: string): void {
     const now = new Date();
     utimesSync(cachePath, now, now);
   } catch {
-    // A concurrent cleanup may have removed a stale entry after existsSync;
-    // the normal miss path below will recreate it on the next request.
+    // A concurrent cleanup may have removed the entry; the next request's miss path recreates it.
   }
 }
 
@@ -658,7 +659,10 @@ async function encodeInChunks(
   try {
     writeFileSync(
       listPath,
-      pieces.map((piece) => `file '${basename(piece).replace(/'/g, "'\\''")}'\n`).join(""),
+      pieces
+        .map((piece) => (JOIN_FROM_CACHE_FOLDER ? basename(piece) : piece.replace(/\\/g, "/")))
+        .map((piece) => `file '${piece.replace(/'/g, "'\\''")}'\n`)
+        .join(""),
     );
     await concat(listPath, tempPath);
   } finally {
@@ -822,16 +826,19 @@ async function runFfmpeg(
       chunks,
       outputPath,
       encode,
-      (listPath, target) =>
-        spawnFfmpeg(
+      (listPath, target) => {
+        // ffmpeg resolves relative list entries against the list path, which breaks on '#' or '?' in a folder name.
+        const cwd = JOIN_FROM_CACHE_FOLDER ? dirname(listPath) : undefined;
+        return spawnFfmpeg(
           ffmpegPath,
-          concatArgs(basename(listPath), target, variant),
+          concatArgs(cwd ? basename(listPath) : listPath, target, variant),
           CONCAT_TIMEOUT_MS,
           signal,
           undefined,
           false,
-          dirname(listPath),
-        ),
+          cwd,
+        );
+      },
       signal,
       gate,
       (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
@@ -1005,8 +1012,7 @@ async function transcodeToCache(
       maintainProxyCache(cacheDir);
       return cachePath;
     } finally {
-      // No partial files: if anything above threw, remove whatever ffmpeg
-      // may have partially written under the temp name.
+      // No partial files: if anything above threw, remove what ffmpeg wrote under the temp name.
       if (existsSync(tempPath)) unlinkSync(tempPath);
       release();
     }

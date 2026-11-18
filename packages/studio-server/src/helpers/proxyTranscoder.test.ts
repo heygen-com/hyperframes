@@ -81,7 +81,7 @@ function createFakeProc(): FakeProc {
   return proc;
 }
 
-type SpawnOptions = { windowsHide?: boolean; signal?: AbortSignal };
+type SpawnOptions = { windowsHide?: boolean; signal?: AbortSignal; cwd?: string };
 type SpawnCall = { command: string; args: string[]; options?: SpawnOptions; proc: FakeProc };
 type SpawnImpl = (command: string, args: string[], options?: SpawnOptions) => FakeProc;
 
@@ -289,6 +289,30 @@ describe("resolveProxy on a long source", () => {
     ]);
   });
 
+  it.skipIf(process.platform === "win32")(
+    "runs the join from the cache folder and names the list there by its bare name",
+    async () => {
+      const { spawn, calls } = createSpawnSpy();
+      const { resolveProxy, getProxyCachePath } = await loadModule(
+        spawn,
+        FFMPEG_PATH,
+        false,
+        null,
+        undefined,
+        LONG_SECONDS,
+      );
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "long.mov");
+      writeFileSync(sourcePath, "source-bytes");
+      const result = resolveProxy(projectDir, sourcePath);
+      await answerAll(calls);
+      await result;
+      const joinCall = calls.at(-1)!;
+      expect(joinCall.options?.cwd).toBe(dirname(getProxyCachePath(projectDir, sourcePath)));
+      expect(joinCall.args[joinCall.args.indexOf("-i") + 1]).toMatch(/^[^/\\]+\.txt$/);
+    },
+  );
+
   it.skipIf(!realFfmpeg || !findFfBinary("ffprobe") || process.platform === "win32")(
     "joins only its own pieces when a folder above the project has line breaks and list lines in its name",
     async () => {
@@ -297,17 +321,17 @@ describe("resolveProxy on a long source", () => {
       vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
       const { resolveProxy } = await import("./proxyTranscoder.js");
       const base = realpathSync(tmpProject());
-      const clip = (path: string, seconds: number) =>
+      const clip = (path: string, colour: string, seconds: number) =>
         execFileSync(realFfmpeg!, [
-          ...["-v", "error", "-f", "lavfi", "-i", `testsrc2=s=32x32:r=2:d=${seconds}`],
+          ...["-v", "error", "-f", "lavfi", "-i", `color=c=${colour}:s=32x32:r=2:d=${seconds}`],
           ...["-c:v", "libx264", "-pix_fmt", "yuv420p", path],
         ]);
-      clip(join(base, "a.mp4"), 2);
-      clip(join(base, "other.mp4"), 2);
-      const projectDir = `${base}/a.mp4\nfile '${base}/other.mp4'\n#/project`;
+      clip(join(base, "a.mp4"), "blue", 2);
+      clip(join(base, "other.mp4"), "red", 2);
+      const projectDir = `${base}/a.mp4\nfile ${base}/other.mp4\n#/project`;
       mkdirSync(projectDir, { recursive: true });
       const sourcePath = join(projectDir, "long.mp4");
-      clip(sourcePath, LONG_SECONDS);
+      clip(sourcePath, "blue", LONG_SECONDS);
 
       const proxyPath = await resolveProxy(projectDir, sourcePath);
       const seconds = execFileSync(
@@ -316,6 +340,27 @@ describe("resolveProxy on a long source", () => {
         { encoding: "utf8" },
       );
       expect(Number(seconds)).toBeCloseTo(LONG_SECONDS, 0);
+      // Red frames carry a high V (red difference) average; the source and a.mp4 are blue.
+      const redness = execFileSync(
+        realFfmpeg!,
+        [
+          "-v",
+          "error",
+          "-i",
+          proxyPath,
+          "-vf",
+          "signalstats,metadata=print:file=-",
+          "-f",
+          "null",
+          "-",
+        ],
+        { encoding: "utf8" },
+      )
+        .split("\n")
+        .flatMap((line) => /VAVG=([\d.]+)/.exec(line)?.[1] ?? [])
+        .map(Number);
+      expect(redness.length).toBeGreaterThan(0);
+      expect(Math.max(...redness)).toBeLessThan(160);
     },
     60_000,
   );
