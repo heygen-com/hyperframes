@@ -3,12 +3,8 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  hasUnloadedAssets,
-  Player,
-  readPreviewErrorMessage,
-  shouldShowCompositionLoadingOverlay,
-} from "./Player";
+import { Player, readPreviewErrorMessage, shouldShowCompositionLoadingOverlay } from "./Player";
+import { hasUnloadedAssets } from "./previewAssetWait";
 import { usePlayerStore } from "../store/playerStore";
 import { onPreviewDocumentLoaded } from "../sceneSwap";
 

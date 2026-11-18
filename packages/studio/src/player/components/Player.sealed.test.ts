@@ -2,7 +2,7 @@
 
 import { afterEach, expect, it } from "vitest";
 import { sealedPreviewFrame } from "../lib/sealedPreviewFrame.test-helpers";
-import { previewStillLoading } from "./Player";
+import { previewStillLoading } from "./previewAssetWait";
 
 afterEach(() => {
   document.body.innerHTML = "";
