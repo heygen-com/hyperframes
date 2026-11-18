@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { formatFindingTimes } from "./checkFindings.js";
 export interface LayoutRect {
   left: number;
@@ -18,6 +19,7 @@ export type LayoutIssueCode =
   | "content_overlap"
   | "visibility_escapes_segment"
   | "text_occluded"
+  | "text_over_face"
   | "canvas_covered"
   | "video_alpha_unread"
   | "text_not_painted"
@@ -65,9 +67,10 @@ export interface LayoutIssue {
   rect: LayoutRect;
   containerRect?: LayoutRect;
   overflow?: LayoutOverflow;
-  /** `text_occluded` only (0-1): probe-grid share hit by an opaque occluder, or behind a
-   * transparent video the most covered word's share under its alpha (layout-audit.browser.js). */
+  /** 0-1. `text_occluded`: probe-grid share hit by an opaque occluder, or behind a transparent video
+   * the most covered word's share under its alpha. `text_over_face`: the share of `faceRect` covered. */
   coveredFraction?: number;
+  faceRect?: { x: number; y: number; width: number; height: number };
   /** `text_occluded` only: the global window the element's own clip is on screen. */
   lifetime?: { start: number; end: number };
   fixHint?: string;
@@ -157,15 +160,15 @@ export function formatLayoutIssue(issue: LayoutIssue): string {
   }
   const parts = [
     timeLabel,
-    issue.code,
-    issue.selector,
-    issue.containerSelector ? `inside ${issue.containerSelector}` : "",
+    terminalText(issue.code),
+    terminalText(issue.selector),
+    issue.containerSelector ? `inside ${terminalText(issue.containerSelector)}` : "",
     issue.overflow ? `overflowed ${formatOverflow(issue.overflow)}` : "",
-    issue.text ? quoteText(issue.text) : "",
+    issue.text ? terminalText(quoteText(issue.text)) : "",
   ].filter(Boolean);
 
-  const line = `${parts.join(" ")} — ${issue.message}`;
-  return issue.fixHint ? `${line}\n    Fix: ${issue.fixHint}` : line;
+  const line = `${parts.join(" ")} — ${terminalText(issue.message)}`;
+  return issue.fixHint ? `${line}\n    Fix: ${terminalText(issue.fixHint)}` : line;
 }
 
 export function dedupeLayoutIssues(issues: LayoutIssue[]): LayoutIssue[] {

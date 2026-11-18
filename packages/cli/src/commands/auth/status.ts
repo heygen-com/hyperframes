@@ -32,7 +32,7 @@ import {
 import { refreshIfNeeded } from "../../cloud/auth.js";
 import { getSystemMeta } from "../../telemetry/system.js";
 import { c } from "../../ui/colors.js";
-import { pageUrl, readPlan, type Plan } from "../../heygen/plan.js";
+import { MANAGE_LABEL, pageUrl, readPlan, type Plan } from "../../heygen/plan.js";
 import { resolveMusic, resolveVoice } from "../../audio/providers.js";
 import {
   buildUnconfiguredJson,
@@ -66,7 +66,7 @@ interface VerifiedStatus {
   apiError: string | null;
   /** The HyperFrames plan and credits, when the server (or the mock) answers. */
   plan?: Plan | null;
-  upgradeUrl?: string;
+  planUrl?: string;
 }
 
 /** True for credentials resolved from the HyperFrames store (not env). */
@@ -284,7 +284,7 @@ function persistedUserJson(u: StoredUserInfo | null): Record<string, unknown> | 
 async function printHumanStatus(s: VerifiedStatus): Promise<void> {
   const rows = collectStatusRows({
     ...s,
-    ...(s.plan?.plan === "none" ? { upgradeUrl: await pageUrl("plans") } : {}),
+    ...(s.plan ? { planUrl: await pageUrl(s.plan.plan === "none" ? "plans" : "manage") } : {}),
   });
   for (const [label, value] of rows) console.log(`${c.bold(label)} ${value}`);
 }
@@ -311,9 +311,10 @@ function collectStatusRows(s: VerifiedStatus): [string, string][] {
     rows.push([
       "HyperFrames:",
       plan.plan === "none"
-        ? `Free · Upgrade to Pro: ${s.upgradeUrl}${tag}`
+        ? `Free · Upgrade to Pro: ${s.planUrl}${tag}`
         : `${plan.plan} plan, ${plan.credits.toLocaleString("en-US")} credits${tag}`,
     ]);
+    if (plan.plan !== "none" && s.planUrl) rows.push([MANAGE_LABEL, s.planUrl]);
   }
   return rows;
 }

@@ -20,7 +20,13 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
-import { heygenAuthHeaders, heygenCredential, heygenJSON, heygenMessage } from "./heygen.mjs";
+import {
+  heygenAuthHeaders,
+  heygenCredential,
+  heygenJSON,
+  heygenMessage,
+  noteProjectElevenLabsKey,
+} from "./heygen.mjs";
 import { pythonInvocation } from "./python.mjs";
 import { synthesizeGemini } from "./gemini-tts.mjs";
 import { geminiConfigured } from "./gemini-auth.mjs";
@@ -51,9 +57,13 @@ export function pickProvider(userProvider) {
     if (userProvider === "heygen" && !heygenAvailable()) heygenAuthHeaders();
     if (userProvider === "elevenlabs" && !process.env.ELEVENLABS_API_KEY)
       throw new Error("provider=elevenlabs but $ELEVENLABS_API_KEY is not set");
+    if (userProvider === "elevenlabs") noteProjectElevenLabsKey();
     return userProvider;
   }
-  return heygenAvailable() ? "heygen" : elevenlabsAvailable() ? "elevenlabs" : "kokoro";
+  if (heygenAvailable()) return "heygen";
+  if (!elevenlabsAvailable()) return "kokoro";
+  noteProjectElevenLabsKey();
+  return "elevenlabs";
 }
 
 // ── voice resolution ──────────────────────────────────────────────────────────

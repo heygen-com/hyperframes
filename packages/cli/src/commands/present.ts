@@ -17,6 +17,7 @@ import { resolveProject, type ProjectDir } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { parsePort } from "../utils/port.js";
 import type { Hono } from "hono";
+import { terminalText } from "@hyperframes/core";
 import { requestSubPath } from "@hyperframes/studio-server";
 import {
   openBrowser,
@@ -27,9 +28,14 @@ import {
   resolvePlayerPath,
   resolveSlideshowPath,
   listenOnFreePort,
+  refuseUnknownHosts,
+  refuseFramingByOtherSites,
+  sandboxForAnotherSite,
+  scriptsAfterWorkersDropped,
   assetContentType,
 } from "../utils/compositionServer.js";
 import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
+import { escapeHtml } from "../utils/escapeHtml.js";
 
 export default defineCommand({
   meta: {
@@ -100,7 +106,7 @@ export default defineCommand({
     const islandMatch = slideshowIslandRegex("i").exec(indexHtml);
     if (!islandMatch?.[1]) {
       clack.log.error(
-        `No slideshow island found in ${project.indexPath}. ` +
+        `No slideshow island found in ${terminalText(project.indexPath)}. ` +
           `Add a <script type="application/hyperframes-slideshow+json"> block — see /hyperframes (slideshow).`,
       );
       setCommandExitCode(1);
@@ -113,38 +119,16 @@ export default defineCommand({
       JSON.parse(islandJson);
     } catch (err) {
       clack.log.error(
-        `Slideshow island in ${project.indexPath} is not valid JSON: ${(err as Error).message}`,
+        terminalText(
+          `Slideshow island in ${project.indexPath} is not valid JSON: ${(err as Error).message}`,
+        ),
       );
       setCommandExitCode(1);
       return;
     }
 
-    const { Hono } = await import("hono");
     const { createAdaptorServer } = await import("@hono/node-server");
-
-    const app = new Hono();
-
-    app.get("/player.js", (ctx) =>
-      ctx.body(readFileSync(playerPath, "utf-8"), 200, {
-        "Content-Type": "application/javascript",
-        "Cache-Control": "no-cache",
-      }),
-    );
-    app.get("/slideshow.js", (ctx) =>
-      ctx.body(readFileSync(slideshowPath, "utf-8"), 200, {
-        "Content-Type": "application/javascript",
-        "Cache-Control": "no-cache",
-      }),
-    );
-    // Serve composition files raw. Slideshow compositions self-drive their own
-    // timelines (no engine runtime injected) — the same model demo.html / the
-    // standalone harness use; injecting a runtime would leave the composition
-    // engine-paused and blank.
-    await registerPresentCompositionRoute(app, project);
-
-    // Both the presenter window and the audience window (opened by present() with
-    // ?mode=audience) load this same page; the component reads the mode from the URL.
-    app.get("/", (ctx) => ctx.html(buildPresentPage(project.name, islandJson)));
+    const app = await buildPresentApp(project, islandJson, { playerPath, slideshowPath });
 
     clack.intro(c.bold("hyperframes present"));
     const s = clack.spinner();
@@ -159,7 +143,7 @@ export default defineCommand({
     if (actualPort !== startPort) {
       console.log(`  ${c.warn(`Port ${startPort} is in use, using ${actualPort} instead`)}`);
     }
-    console.log(`  ${c.dim("Deck")}      ${c.accent(project.name)}`);
+    console.log(`  ${c.dim("Deck")}      ${c.accent(terminalText(project.name))}`);
     console.log(`  ${c.dim("Present")}   ${c.accent(url)}`);
     console.log();
     console.log(
@@ -186,13 +170,47 @@ export default defineCommand({
   },
 });
 
+export async function buildPresentApp(
+  project: ProjectDir,
+  islandJson: string,
+  bundles: { playerPath: string; slideshowPath: string },
+): Promise<Hono> {
+  const { Hono } = await import("hono");
+  const app = new Hono();
+  refuseUnknownHosts(app);
+  refuseFramingByOtherSites(app);
+
+  app.get("/player.js", (ctx) =>
+    ctx.body(readFileSync(bundles.playerPath, "utf-8"), 200, {
+      "Content-Type": "application/javascript",
+      "Cache-Control": "no-cache",
+    }),
+  );
+  app.get("/slideshow.js", (ctx) =>
+    ctx.body(readFileSync(bundles.slideshowPath, "utf-8"), 200, {
+      "Content-Type": "application/javascript",
+      "Cache-Control": "no-cache",
+    }),
+  );
+  // Serve composition files raw. Slideshow compositions self-drive their own
+  // timelines (no engine runtime injected) — the same model demo.html / the
+  // standalone harness use; injecting a runtime would leave the composition
+  // engine-paused and blank.
+  await registerPresentCompositionRoute(app, project);
+
+  // Both the presenter window and the audience window (opened by present() with
+  // ?mode=audience) load this same page; the component reads the mode from the URL.
+  app.get("/", (ctx) => ctx.html(buildPresentPage(project.name, islandJson)));
+  return app;
+}
+
 function buildPresentPage(projectName: string, islandJson: string): string {
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${escHtml(projectName)} — Presenter</title>
+    <title>${escapeHtml(projectName)} — Presenter</title>
     <script>
       // Retitle the audience tab so the two tabs are distinguishable in the
       // browser tab strip and in Meet's "Share a tab" picker.
@@ -206,8 +224,7 @@ function buildPresentPage(projectName: string, islandJson: string): string {
       hyperframes-slideshow { display: block; position: relative; width: 100vw; height: 100vh; }
       hyperframes-player { position: absolute; inset: 0; }
     </style>
-    <script src="/player.js"></script>
-    <script src="/slideshow.js"></script>
+    ${scriptsAfterWorkersDropped(["/player.js", "/slideshow.js"])}
   </head>
   <body>
     <hyperframes-slideshow tabindex="0" sound>
@@ -300,19 +317,12 @@ ${islandJson}
 </html>`;
 }
 
-function escHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 export async function registerPresentCompositionRoute(
   app: Hono,
   project: ProjectDir,
 ): Promise<void> {
   const { isSafePath } = await import("@hyperframes/core/studio-api");
+  sandboxForAnotherSite(app, "/composition/*");
   app.get("/composition/*", (ctx) => {
     const reqPath = requestSubPath(ctx.req.url, "composition");
     const filePath = resolve(project.dir, reqPath);

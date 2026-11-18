@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { HYPERFRAMES_BROWSER_MARKER_ARG } from "@hyperframes/core/browser-marker";
 import { runRenderSetupWorker } from "./cancellableProcess.js";
 import { terminateProcessTree, windowsProcessTreeKillArgs } from "./processTree.js";
+import { processReadArgs } from "./windowsProcesses.js";
 
 export { windowsProcessTreeKillArgs };
 
@@ -34,21 +35,12 @@ export function processIdentity(pid: number): string | null {
   if (!Number.isInteger(pid) || pid <= 0) return null;
   try {
     if (process.platform === "win32") {
-      const created = execFileSync(
-        "powershell.exe",
-        [
-          "-NoProfile",
-          "-NonInteractive",
-          "-Command",
-          `$p = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}' -ErrorAction SilentlyContinue; if ($p) { $p.CreationDate.ToFileTimeUtc() }`,
-        ],
-        {
-          encoding: "utf8",
-          timeout: 2000,
-          stdio: ["pipe", "pipe", "ignore"],
-          windowsHide: true,
-        },
-      ).trim();
+      const created = execFileSync("powershell.exe", processReadArgs("identity", pid), {
+        encoding: "utf8",
+        timeout: 2000,
+        stdio: ["pipe", "pipe", "ignore"],
+        windowsHide: true,
+      }).trim();
       return created ? `windows:${created}` : null;
     }
 
@@ -118,16 +110,12 @@ export function processAncestorSnapshot(pid: number): ProcessAncestor[] {
   if (!Number.isInteger(pid) || pid <= 0 || process.platform === "linux") return [];
   try {
     if (process.platform === "win32") {
-      const output = execFileSync(
-        "powershell.exe",
-        [
-          "-NoProfile",
-          "-NonInteractive",
-          "-Command",
-          'Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId) $($_.ParentProcessId) $($_.CreationDate.ToFileTimeUtc())" }',
-        ],
-        { encoding: "utf8", timeout: 2000, stdio: ["pipe", "pipe", "ignore"], windowsHide: true },
-      );
+      const output = execFileSync("powershell.exe", processReadArgs("table"), {
+        encoding: "utf8",
+        timeout: 2000,
+        stdio: ["pipe", "pipe", "ignore"],
+        windowsHide: true,
+      });
       const records = output
         .split(/\r?\n/)
         .map((line) => line.trim().split(/\s+/))
@@ -174,21 +162,12 @@ export function processParentPid(pid: number): number | null {
   try {
     const output =
       process.platform === "win32"
-        ? execFileSync(
-            "powershell.exe",
-            [
-              "-NoProfile",
-              "-NonInteractive",
-              "-Command",
-              `$p = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}' -ErrorAction SilentlyContinue; if ($p) { $p.ParentProcessId }`,
-            ],
-            {
-              encoding: "utf8",
-              timeout: 2000,
-              stdio: ["pipe", "pipe", "ignore"],
-              windowsHide: true,
-            },
-          )
+        ? execFileSync("powershell.exe", processReadArgs("parent", pid), {
+            encoding: "utf8",
+            timeout: 2000,
+            stdio: ["pipe", "pipe", "ignore"],
+            windowsHide: true,
+          })
         : execFileSync("ps", ["-o", "ppid=", "-p", String(pid)], {
             encoding: "utf8",
             timeout: 2000,

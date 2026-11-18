@@ -8,6 +8,7 @@ import { diag } from "../ui/diagnostics.js";
 import type { CapturePhaseProgress } from "../capture/types.js";
 import { parseCaptureDeadline } from "../capture/captureWatchdog.js";
 import { jsonFailure } from "../utils/jsonError.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { parseTimeoutMs } from "../utils/timeoutArg.js";
 
 const CAPTURE_PHASE_PREFIX = "HYPERFRAMES_CAPTURE_PHASE ";
@@ -130,11 +131,11 @@ export default defineCommand({
   },
   // fallow-ignore-next-line complexity
   async run({ args }) {
-    const { captureUpstreamProxy } = await import("../capture/upstreamProxy.js");
+    const { captureUpstreamProxy } = await import("@hyperframes/engine/public-network");
     try {
       captureUpstreamProxy();
     } catch (error) {
-      console.error(normalizeErrorMessage(error));
+      console.error(terminalLines(normalizeErrorMessage(error)));
       failCommand();
     }
 
@@ -161,7 +162,7 @@ export default defineCommand({
       try {
         url = resolveLocalCaptureTarget(localFile, localRoot).fileUrl;
       } catch (err) {
-        console.error(normalizeErrorMessage(err));
+        console.error(terminalLines(normalizeErrorMessage(err)));
         failCommand();
       }
     } else {
@@ -259,7 +260,7 @@ export default defineCommand({
                 done: "  Done",
               };
               const label = stages[stage] || `  ${stage}`;
-              console.log(detail ? `${label} ${detail}` : label);
+              console.log(terminalText(detail ? `${label} ${detail}` : label));
             },
       );
 
@@ -295,7 +296,9 @@ export default defineCommand({
         console.log();
         const icon = result.ok ? c.success("◇") : c.error("✗");
         const status = result.ok ? "Captured" : "Capture failed";
-        console.log(icon + `  ${status} ${c.bold(result.title)} → ${c.dim(outputDir)}`);
+        console.log(
+          icon + `  ${status} ${c.bold(terminalText(result.title))} → ${c.dim(outputDir)}`,
+        );
         console.log();
         console.log(`  ${c.dim("Screenshots:")} ${result.screenshots.length}`);
         console.log(`  ${c.dim("Assets:")} ${result.assets.length}`);
@@ -313,23 +316,25 @@ export default defineCommand({
         }
         console.log(`  ${c.dim("Sections:")} ${result.tokens.sections.length}`);
         console.log(
-          `  ${c.dim("Fonts:")} ${result.tokens.fonts
-            .map(function (f) {
-              return (
-                f.family +
-                " (" +
-                (f.variable && f.weightRange
-                  ? f.weightRange[0] + "-" + f.weightRange[1] + " variable"
-                  : f.weights.join(",")) +
-                ")"
-              );
-            })
-            .join(", ")}`,
+          `  ${c.dim("Fonts:")} ${terminalText(
+            result.tokens.fonts
+              .map(function (f) {
+                return (
+                  f.family +
+                  " (" +
+                  (f.variable && f.weightRange
+                    ? f.weightRange[0] + "-" + f.weightRange[1] + " variable"
+                    : f.weights.join(",")) +
+                  ")"
+                );
+              })
+              .join(", "),
+          )}`,
         );
         if (result.warnings.length > 0) {
           console.log();
           for (const w of result.warnings) {
-            console.log(`  ${c.warn("⚠")} ${w}`);
+            console.log(`  ${c.warn("⚠")} ${terminalLines(w)}`);
           }
         }
         console.log();
@@ -353,7 +358,7 @@ export default defineCommand({
       if (isJson) {
         console.log(JSON.stringify(jsonFailure("runtime_error", errMsg)));
       } else {
-        console.error(`\n  ✗ Capture failed: ${errMsg}\n`);
+        console.error(`\n  ✗ Capture failed: ${terminalLines(errMsg)}\n`);
       }
       scheduleCliExit(1);
       failCommand();

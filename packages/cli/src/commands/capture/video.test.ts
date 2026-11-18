@@ -206,3 +206,34 @@ describe("runVideoMode", () => {
     },
   );
 });
+
+describe("runVideoMode --list", () => {
+  it("prints manifest values with control characters escaped", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-video-list-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
+    mkdirSync(join(projectDir, "extracted"));
+    writeFileSync(
+      join(projectDir, "extracted", "video-manifest.json"),
+      JSON.stringify([
+        ENTRY(0, {
+          heading: `Launch${esc}[2J`,
+          url: `https://cdn.example.com/a${esc}]8;;https://x.test${String.fromCharCode(7)}.mp4`,
+        }),
+      ]),
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    onTestFinished(() => log.mockRestore());
+
+    await runVideoMode({ project: projectDir, list: true });
+
+    const printed = log.mock.calls
+      .map((call) => call.join(" "))
+      .join("\n")
+      .replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
+    expect(printed).not.toContain(esc);
+    expect(printed).toContain('heading: "Launch\\x1b[2J"');
+    expect(printed).toContain("a\\x1b]8;;https://x.test\\x07.mp4");
+  });
+});

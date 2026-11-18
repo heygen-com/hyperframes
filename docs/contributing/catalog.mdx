@@ -207,4 +207,6 @@ Include:
 
 External contributors should attach the preview MP4. A maintainer will publish
 the final Catalog media. HeyGen contributors can use
-`scripts/upload-docs-images.sh` after preview review.
+`scripts/upload-docs-images.sh` after preview review, from a checkout that holds
+only the regenerated media, not from a contributor's branch. The script publishes
+regular files only and stops if anything under `docs/images/` is a symbolic link.

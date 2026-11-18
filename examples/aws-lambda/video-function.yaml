@@ -17,8 +17,6 @@ Parameters:
     Type: Number
   ReservedConcurrency:
     Type: Number
-  ChromeSource:
-    Type: String
 
 Conditions:
   HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, -1]]
@@ -94,8 +92,8 @@ Resources:
         Mode: Active
       Environment:
         Variables:
+          # No HYPERFRAMES_LAMBDA_CHROME_SOURCE or _PATH: the image sets them for the Chrome it installs.
           NODE_OPTIONS: "--enable-source-maps"
-          HYPERFRAMES_LAMBDA_CHROME_SOURCE: !Ref ChromeSource
           TMPDIR: /tmp
           HYPERFRAMES_RENDER_BUCKET: !Ref RenderBucket
           HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY: !Ref ReservedConcurrency

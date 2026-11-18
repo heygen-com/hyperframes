@@ -20,6 +20,8 @@ interface Queue {
 const standIns = new WeakMap<Element, { iframe: HTMLIFrameElement; handle: string }>();
 const queues = new WeakMap<HTMLIFrameElement, Queue>();
 
+export const previewStandInHandle = (standIn: Element) => standIns.get(standIn)?.handle;
+
 export function registerPreviewStandIn(
   standIn: Element,
   iframe: HTMLIFrameElement,
@@ -27,6 +29,8 @@ export function registerPreviewStandIn(
 ): void {
   standIns.set(standIn, { iframe, handle });
 }
+
+export const previewStandIn = (standIn: Element) => standIns.get(standIn);
 
 function queueFor(iframe: HTMLIFrameElement): Queue {
   let queue = queues.get(iframe);

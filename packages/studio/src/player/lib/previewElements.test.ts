@@ -1,7 +1,12 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { EditingElementDescription } from "@hyperframes/core/runtime/editing-port";
+import {
+  MAX_ELEMENT_ENTRIES,
+  MAX_ELEMENT_TEXT,
+  MAX_ELEMENT_VALUE,
+  type EditingElementDescription,
+} from "@hyperframes/core/runtime/editing-port";
 import {
   describePreviewElements,
   previewElementSelectorIndex,
@@ -50,6 +55,7 @@ function described(n: number, extra: Partial<EditingElementDescription> = {}) {
     handle: h(n),
     parent: null,
     tag: "div",
+    label: "Text",
     id: null,
     selector: null,
     matchesBefore: null,
@@ -68,6 +74,8 @@ function described(n: number, extra: Partial<EditingElementDescription> = {}) {
 describe("readPreviewElement", () => {
   it("takes a description with the wire shape and refuses anything off it", () => {
     expect(readPreviewElement(described(1))).toEqual(described(1));
+    const { label: _label, ...fromAnOlderRuntime } = described(1);
+    expect(readPreviewElement(fromAnOlderRuntime)).toEqual(fromAnOlderRuntime);
     for (const bad of [
       null,
       [],
@@ -77,6 +85,7 @@ describe("readPreviewElement", () => {
       described(1, { handle: `${LOAD.toUpperCase()}:1` }),
       described(1, { parent: "x" }),
       described(1, { tag: 1 as never }),
+      described(1, { label: 1 as never }),
       described(1, { source: { file: 1 } as never }),
       described(1, { locked: "yes" as never }),
       described(1, { attributes: [["a"]] as never }),
@@ -85,6 +94,34 @@ describe("readPreviewElement", () => {
       described(1, { matchesBefore: [{ source: NO_SOURCE, count: -1 }] }),
       described(1, { rect: { x: Number.NaN, y: 0, width: 0, height: 0 } }),
       described(1, { truncated: undefined as never }),
+    ]) {
+      expect(readPreviewElement(bad)).toBeNull();
+    }
+  });
+
+  it("refuses a description longer anywhere than the runtime ever sends one", () => {
+    const value = "x".repeat(MAX_ELEMENT_VALUE);
+    const atLimit = described(1, { selector: value, id: value, attributes: [["src", value]] });
+    expect(readPreviewElement(atLimit)).toEqual(atLimit);
+    const over = `${value}x`;
+    const text = "y".repeat(MAX_ELEMENT_TEXT + 1);
+    const many = Array.from({ length: MAX_ELEMENT_ENTRIES + 1 }, (_, i) => [`data-${i}`, ""]);
+    for (const bad of [
+      described(1, { selector: over }),
+      described(1, { id: over }),
+      described(1, { tag: over }),
+      described(1, { label: over }),
+      described(1, { attributes: [["src", over]] }),
+      described(1, { attributes: [[`data-${over}`, "1"]] }),
+      described(1, { attributes: many as never }),
+      described(1, { inlineStyles: { left: over } }),
+      described(1, { inlineStyles: { [`--${over}`]: "1" } }),
+      described(1, { source: { ...NO_SOURCE, file: over } }),
+      described(1, { source: { ...NO_SOURCE, compositionId: over } }),
+      described(1, { source: { ...NO_SOURCE, originalCompositionId: over } }),
+      described(1, { matchesBefore: [{ source: { ...NO_SOURCE, file: over }, count: 1 }] }),
+      described(1, { text }),
+      described(1, { children: [{ text }] }),
     ]) {
       expect(readPreviewElement(bad)).toBeNull();
     }

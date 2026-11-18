@@ -1,11 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { readdirSync, renameSync, statSync } from "node:fs";
 import { lstat, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { isSafePath } from "../helpers/safePath.js";
 import { ID_PATH, isHistoryId, readId, readRecord } from "./historyId.js";
-import { HistoryBusyError, takeHistoryOwnership } from "./ownerLock.js";
+import {
+  HistoryBusyError,
+  readPlainFile,
+  replaceOwnFile,
+  takeHistoryOwnership,
+} from "./ownerLock.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** A gone project's history stays this long after its last use, so a moved project reopened in time keeps it. */
@@ -200,7 +205,7 @@ async function bytesIn(dir: string): Promise<number> {
 
 function prunedWithinADay(stamp: string, now: number): boolean {
   try {
-    const last = Number(readFileSync(stamp, "utf-8"));
+    const last = Number(readPlainFile(stamp) ?? "");
     return last <= now && now - last < DAY_MS;
   } catch {
     return false;
@@ -220,7 +225,7 @@ export function pruneGoneProjectHistoriesDaily(
   pruning.add(historyRoot);
   setImmediate(() => {
     pruneWithin(historyRoot, { now, onError, budgetMs, measure: false })
-      .then(({ finished }) => finished && writeFileSync(stamp, String(now)))
+      .then(({ finished }) => finished && replaceOwnFile(stamp, String(now)))
       .catch((error) => onError?.(error))
       .finally(() => pruning.delete(historyRoot));
   });

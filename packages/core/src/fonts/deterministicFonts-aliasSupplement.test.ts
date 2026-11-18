@@ -176,10 +176,10 @@ describe("aliased font-family supplementation", () => {
     expect(result).toContain("font-weight: 500;");
   });
 
-  it("collapses shared sources when Google interleaves subsets without text=", async () => {
+  it("collapses shared sources when Google interleaves subsets", async () => {
     const { injectDeterministicFontFaces } = await import("./deterministicFonts.js");
-    // Without `text=` Google orders the response weight-major, subset-minor,
-    // so the faces sharing one variable source are never adjacent.
+    // A weight-major, subset-minor response keeps the faces sharing one
+    // variable source apart; collapsing depends only on the response order.
     const latinUrl = "https://fonts.gstatic.com/s/inter/v1/inter-latin-variable.woff2";
     const latinExtUrl = "https://fonts.gstatic.com/s/inter/v1/inter-latinext-variable.woff2";
     const LATIN = "U+0000-00FF";
@@ -204,25 +204,16 @@ describe("aliased font-family supplementation", () => {
 
     const fetchImpl = (async (input: unknown) => {
       const url = String(input);
-      if (url.startsWith("https://fonts.googleapis.com/")) {
-        // The request must not carry `text=`, or Google would return one
-        // subset and the interleaving under test would not occur.
-        expect(new URL(url).searchParams.get("text")).toBeNull();
+      if (url.startsWith("https://fonts.googleapis.com/"))
         return new Response(css, { status: 200 });
-      }
       if (url === latinUrl) return new Response("LATIN_VARIABLE_BYTES", { status: 200 });
       if (url === latinExtUrl) return new Response("LATINEXT_VARIABLE_BYTES", { status: 200 });
       return new Response("", { status: 404 });
     }) as unknown as typeof fetch;
 
-    // Enough unique characters that extractGoogleFontsText exceeds its budget
-    // and returns undefined, which is what drops `text=` in production.
-    const manyUniqueChars = Array.from({ length: 400 }, (_, index) =>
-      String.fromCodePoint(0x4e00 + index),
-    ).join("");
     const html = `<!doctype html><html><head><style>
   h1 { font-family: "Noto Sans"; }
-</style></head><body><h1>${manyUniqueChars}</h1></body></html>`;
+</style></head><body><h1>Seconds</h1></body></html>`;
 
     const result = await injectDeterministicFontFaces(html, {
       allowSystemFontCapture: false,

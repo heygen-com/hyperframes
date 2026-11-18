@@ -3,16 +3,14 @@
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-// The frame's real runtime agent, serving the opaque frame from this document.
-import { installEditingAgent } from "../../../../core/src/runtime/editingAgent";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
-import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 import type { DomEditSelection } from "./domEditing";
 import { LayersPanel } from "./LayersPanel";
 import { announcePreviewDocumentLoaded } from "../../player/sceneSwap";
 import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
 import { standInFor } from "./previewSelection";
+import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
 installReactActEnvironment();
 
@@ -75,35 +73,12 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
-/** A frame Studio cannot read, whose runtime is the real editing agent over this document. */
-function opaqueFrame() {
-  const frame: Record<string, unknown> = {};
-  const iframe = detachedFakeIframe(frame);
-  Object.defineProperty(iframe, "contentDocument", { value: null });
-  Object.defineProperty(frame, "document", {
-    get: () => {
-      throw new DOMException("blocked", "SecurityError");
-    },
-  });
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
-      ),
-  } as unknown as Window;
-  const agent = installEditingAgent(parent);
-  frame.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
-  closers.push(() => agent.dispose());
-  return iframe;
-}
-
 it("lists an opaque frame's layers, selects a row, and drills into a group row", async () => {
   document.body.innerHTML = `<main data-composition-id="main">
     <div id="card"><h1 id="title">Hi</h1></div>
     <div id="pair" data-hf-group="pair"><i id="a"></i></div>
     <div id="host" data-composition-src="compositions/intro-card.html"></div></main>`;
-  const iframe = opaqueFrame();
+  const iframe = sealedPreviewFrame().iframe;
   mocks.previewIframeRef.current = iframe;
   usePreviewIframeStore.setState({ iframe });
   const host = document.createElement("div");
@@ -149,7 +124,7 @@ function renderPanel(iframe: HTMLIFrameElement) {
 it("leaves a drill-in whose group a reload took, rather than list the whole page under it", async () => {
   document.body.innerHTML = `<main data-composition-id="main">
     <div id="card"></div><div id="pair" data-hf-group="pair"><i id="a"></i></div></main>`;
-  const iframe = opaqueFrame();
+  const iframe = sealedPreviewFrame().iframe;
   const [pair] = (await queryPreviewElements(iframe, "#pair"))!.matches;
   const [described] = (await describePreviewElements(iframe, [pair!.handle]))!;
   mocks.activeGroupElement = standInFor(iframe, described!);
@@ -163,7 +138,7 @@ it("reads the layers once more when a refresh lands while a read is in flight", 
   document.body.innerHTML = `<main data-composition-id="main"><div id="card"></div></main>`;
   let release!: () => void;
   mocks.hold = new Promise<void>((resolve) => (release = resolve));
-  const iframe = opaqueFrame();
+  const iframe = sealedPreviewFrame().iframe;
   const rows = renderPanel(iframe);
   await vi.waitFor(() => expect(mocks.answered).toBe(1));
   // Past the panel's settle timer, so only the announced refresh can bring the new layer.

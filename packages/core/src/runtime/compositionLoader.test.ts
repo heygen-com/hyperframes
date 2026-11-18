@@ -437,6 +437,25 @@ describe("loadCompositions external hosts", () => {
     );
   });
 
+  it.each(["https://example.com/scene.png", "https://example.com/scene.mp4?x=.html", "scene"])(
+    "never fetches a data-composition-src that is not an .html file: %s",
+    async (src) => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-src", src);
+      document.body.appendChild(host);
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(new Response("<p>media as page</p>"));
+      const onDiagnostic = vi.fn();
+      await loadCompositions({ ...createLoaderParams(), onDiagnostic });
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(host.innerHTML).not.toContain("media as page");
+      expect(onDiagnostic).toHaveBeenCalledWith(
+        expect.objectContaining({ code: "external_composition_load_failed" }),
+      );
+    },
+  );
+
   it("calls onDiagnostic when HTTP response is not ok", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-src", "https://example.com/404.html");

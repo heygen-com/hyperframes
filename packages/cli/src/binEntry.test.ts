@@ -22,7 +22,7 @@ function runBin(handover: (project: string) => string | undefined) {
   copyFileSync(fileURLToPath(new URL("../bin/hyperframes.mjs", import.meta.url)), bin);
   writeFileSync(
     join(root, "pkg/dist/runtimeVersion.js"),
-    "export const runtimeVersionError = () => null;\n",
+    "export const runtimeVersionError = () => null;\nexport const runtimeVersionJson = () => null;\n",
   );
   writeFileSync(
     join(root, "pkg/dist/cli.js"),

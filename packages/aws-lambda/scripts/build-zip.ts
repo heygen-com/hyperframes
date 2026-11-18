@@ -8,7 +8,9 @@
  *   handler.mjs                — bundled entry, set as Lambda's Handler
  *   handler.mjs.map            — sourcemap (debugging aid; small)
  *   bin/ffmpeg                 — ffmpeg-static binary
- *   bin/chrome-headless-shell  — fallback Chrome (only when CHROME_SOURCE=shell)
+ *   chrome-headless-shell-linux64/
+ *                              — fallback Chrome, the whole shell folder (only
+ *                                with --source=chrome-headless-shell)
  *   node_modules/@sparticuz/chromium/
  *                              — primary Chrome (lives under node_modules so
  *                                runtime `import("@sparticuz/chromium")`
@@ -47,6 +49,8 @@ import {
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
+import { BUNDLED_SHELL_DIR } from "../src/chromium.js";
+import { stageChromeHeadlessShell } from "./_chromeHeadlessShell.js";
 import { formatBytes } from "./_formatBytes.js";
 import { HANDLER_BANNER } from "./_handlerBanner.js";
 import { RUNTIME_LOCK_DIR, assertRuntimeLockCurrent } from "./runtimeLock.js";
@@ -139,12 +143,12 @@ async function main(): Promise<void> {
 
   // 4. If we're on the chrome-headless-shell fallback, stage that binary.
   if (opts.source === "chrome-headless-shell") {
-    stageChromeHeadlessShell(stagingDir);
+    const version = stageChromeHeadlessShell(stagingDir);
+    console.log(`[build-zip] staged chrome-headless-shell (${version}) → ${BUNDLED_SHELL_DIR}/`);
   }
 
   // 5. Compute the unzipped size BEFORE zipping so we fail loud when over budget.
   const unzippedBytes = directorySizeBytes(stagingDir);
-  console.log(`[build-zip] unzipped staging size: ${formatBytes(unzippedBytes)}`);
   if (unzippedBytes > opts.maxUnzippedBytes) {
     throw new Error(
       `[build-zip] unzipped bundle ${formatBytes(unzippedBytes)} exceeds limit ${formatBytes(
@@ -153,6 +157,10 @@ async function main(): Promise<void> {
         `Switch --source to the lighter option, or move Chrome to a Lambda Layer.`,
     );
   }
+  console.log(
+    `[build-zip] unzipped staging size: ${formatBytes(unzippedBytes)}, ` +
+      `${formatBytes(opts.maxUnzippedBytes - unzippedBytes)} under the limit`,
+  );
 
   // 6. Build the ZIP.
   const zipPath = join(distDir, "handler.zip");
@@ -392,61 +400,6 @@ function stageFfmpeg(stagingDir: string): void {
   chmodSync(ffprobeDest, 0o755);
 
   console.log(`[build-zip] staged ffmpeg + ffprobe → bin/`);
-}
-
-function stageChromeHeadlessShell(stagingDir: string): void {
-  // The fallback path bundles the same chrome-headless-shell binary the
-  // K8s deploy uses. The binary is fetched via `@puppeteer/browsers` on
-  // first build into the host's `~/.cache/puppeteer/`; the build script
-  // re-uses that cache rather than redownloading.
-  const home = process.env.HOME ?? "/root";
-  const baseDir = join(home, ".cache", "puppeteer", "chrome-headless-shell");
-  if (!existsSync(baseDir)) {
-    throw new Error(
-      `[build-zip] chrome-headless-shell cache missing at ${baseDir}. Run\n` +
-        `  npx --yes @puppeteer/browsers install chrome-headless-shell@stable --path ${home}/.cache/puppeteer\n` +
-        `before --source=chrome-headless-shell.`,
-    );
-  }
-  // Sort by numeric semver descending. `sort().reverse()` is lexicographic,
-  // which silently picks "99.0.0" over "131.0.0" once Chrome ships
-  // three-digit majors that aren't strictly width-aligned. `compareSemver`
-  // returns negative/zero/positive on (a, b), so descending = `b - a`.
-  const versions = readdirSync(baseDir).sort((a, b) => compareSemver(b, a));
-  for (const v of versions) {
-    const candidate = join(baseDir, v, "chrome-headless-shell-linux64", "chrome-headless-shell");
-    if (existsSync(candidate)) {
-      const dest = join(stagingDir, "bin", "chrome-headless-shell");
-      mkdirSync(dirname(dest), { recursive: true });
-      cpSync(candidate, dest);
-      chmodSync(dest, 0o755);
-      console.log(`[build-zip] staged chrome-headless-shell (${v}) → bin/chrome-headless-shell`);
-      return;
-    }
-  }
-  throw new Error(`[build-zip] no linux64 chrome-headless-shell binary found under ${baseDir}.`);
-}
-
-/**
- * Compare two semver-shaped strings like "131.0.6778.108". Treats any
- * non-numeric directory name as `-Infinity` so it sorts to the bottom
- * (Puppeteer's cache layout sometimes includes `latest` or branch tags).
- * Used by `stageChromeHeadlessShell` to pick the newest cached Chrome
- * without tripping on the lexicographic "99 > 131" trap.
- */
-function compareSemver(a: string, b: string): number {
-  const partsA = a.split(".").map((s) => Number.parseInt(s, 10));
-  const partsB = b.split(".").map((s) => Number.parseInt(s, 10));
-  const len = Math.max(partsA.length, partsB.length);
-  for (let i = 0; i < len; i++) {
-    const ai = partsA[i] ?? 0;
-    const bi = partsB[i] ?? 0;
-    if (Number.isNaN(ai) && Number.isNaN(bi)) continue;
-    if (Number.isNaN(ai)) return -1;
-    if (Number.isNaN(bi)) return 1;
-    if (ai !== bi) return ai - bi;
-  }
-  return 0;
 }
 
 function zipDirectory(sourceDir: string, zipPath: string): void {

@@ -13,6 +13,7 @@ import {
   type AudioMetadata,
 } from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
+import { assetRootsRefusal } from "../utils/assetRoots.js";
 import { urlInputArgs } from "../utils/urlInput.js";
 import { clampAudioGain, clipGain } from "@hyperframes/core/audio-gain";
 import { clampFadesToDuration, readElementFades } from "@hyperframes/core/audio-fade";
@@ -69,6 +70,7 @@ import {
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
+  terminalText,
 } from "@hyperframes/core";
 import { readMasterFxChain, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
@@ -1432,6 +1434,8 @@ export async function processCompositionAudio(
     urlByAbsentLocalPath?: ReadonlyMap<string, string>;
     audioSidecarUrlByLocalPath?: ReadonlyMap<string, string>;
     keepEncoderInputAt?: string;
+    /** Folders a local source must be in; one outside them, or private there, is never opened. Unset allows any folder. */
+    assetRoots?: readonly string[];
   },
   compiledDir?: string,
 ): Promise<MixResult> {
@@ -1496,6 +1500,21 @@ export async function processCompositionAudio(
               audioSidecarUrl = config?.audioSidecarUrlByLocalPath?.get(srcPath);
               srcPath = remoteUrl;
               readInPlace = true;
+            } else {
+              const refusal = config?.assetRoots
+                ? assetRootsRefusal(srcPath, config.assetRoots)
+                : null;
+              if (refusal) {
+                failures.push({
+                  stage: "source",
+                  reason: "source_not_found",
+                  owner: "user",
+                  retryable: false,
+                  elementId: element.id,
+                  detail: boundedDetail(`Audio element ${element.id} source is ${refusal}`),
+                });
+                return;
+              }
             }
           }
 
@@ -1549,7 +1568,9 @@ export async function processCompositionAudio(
           // Fallback: if no duration was specified, probe the actual file
           if (element.end - element.start <= 0) {
             console.warn(
-              `[audioMixer] ${element.id} has no data-duration or data-end; its length is unknown, so it plays to the end of its source`,
+              terminalText(
+                `[audioMixer] ${element.id} has no data-duration or data-end; its length is unknown, so it plays to the end of its source`,
+              ),
             );
             let metadata;
             try {

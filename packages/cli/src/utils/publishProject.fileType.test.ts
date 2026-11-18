@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { LeftOutReference } from "./leftOutReference.js";
-import { OUTSIDE_FILE_EXTENSIONS } from "./outsideFileType.js";
+import { UPLOADED_OUTSIDE_FILE_EXTENSIONS } from "./outsideFileType.js";
 import { stagePublishFiles } from "./publishProject.js";
 
 const dirs: string[] = [];
@@ -71,7 +71,7 @@ describe("a file outside the project", () => {
     });
     expect(ext).toEqual([]);
     const tail =
-      "which is outside the project and is not an image, video, audio, font, CSS or JS file; it was left out of the upload. Move it into the project to include it.";
+      "which is outside the project and is not an image, video, audio, font or CSS file; it was left out of the upload. Move it into the project to include it.";
     expect(warnings.sort()).toEqual(
       [
         `index.html references ../shared/scene.json, ${tail}`,
@@ -96,6 +96,57 @@ describe("a file outside the project", () => {
     expect(leftOut).toHaveLength(3);
     const index = staged.get("index.html")!.toString("utf-8");
     expect(index).toContain(`src="../shared/scene.json"`);
+  });
+
+  it("is left out when it is a script or TypeScript source, with a warning", () => {
+    const { ext, warnings, leftOut } = stage({
+      "shared/lib.js": "export const key = 1;",
+      "shared/lib.mjs": "export const key = 1;",
+      "shared/config.ts": "export const key: number = 1;",
+      "shared/config.mts": "export const key: number = 1;",
+      "p/index.html": [
+        `<script src="../shared/lib.js"></script>`,
+        `<script type="module" src="../shared/lib.mjs"></script>`,
+        `<video src="../shared/config.ts"></video><link href="../shared/config.mts">`,
+      ].join(""),
+    });
+    expect(ext).toEqual([]);
+    expect(warnings.sort()).toEqual(
+      ["lib.js", "lib.mjs", "config.ts", "config.mts"]
+        .map(
+          (name) =>
+            `index.html references ../shared/${name}, which is outside the project and is not an image, video, audio, font or CSS file; it was left out of the upload. Move it into the project to include it.`,
+        )
+        .sort(),
+    );
+    expect(leftOut.map((one) => one.reason)).toEqual(Array(4).fill("file_type"));
+  });
+
+  it("is copied when a .ts or .mts file is a transport stream video", () => {
+    const packets = (size: number, offset: number) => {
+      const bytes = Buffer.alloc(size * 3);
+      for (let at = offset; at < bytes.length; at += size) bytes[at] = 0x47;
+      return bytes.toString("latin1");
+    };
+    const root = mkdtempSync(join(tmpdir(), "hf-file-type-"));
+    dirs.push(root);
+    mkdirSync(join(root, "shared"));
+    mkdirSync(join(root, "p"));
+    writeFileSync(join(root, "shared", "clip.ts"), Buffer.from(packets(188, 0), "latin1"));
+    writeFileSync(join(root, "shared", "cam.mts"), Buffer.from(packets(192, 4), "latin1"));
+    writeFileSync(
+      join(root, "p", "index.html"),
+      `<video src="../shared/clip.ts"></video><video src="../shared/cam.mts"></video>`,
+    );
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, "p"), Infinity, (warning) =>
+      warnings.push(warning),
+    );
+    expect([...staged.keys()].filter((key) => key.startsWith("_ext/")).sort()).toEqual([
+      "_ext/shared/cam.mts",
+      "_ext/shared/clip.ts",
+    ]);
+    expect(warnings).toEqual([]);
   });
 
   it("follows the same rule for CSS url() targets and @import", () => {
@@ -162,18 +213,19 @@ describe("a file outside the project", () => {
 });
 
 describe("the outside file types", () => {
-  it("are images, video, audio, fonts, CSS and JS, and nothing else", () => {
+  it("are images, video, audio, fonts and CSS, and nothing else", () => {
     for (const extension of [".png", ".avif", ".svg", ".bmp", ".tif", ".mp4", ".mov", ".webm"]) {
-      expect(OUTSIDE_FILE_EXTENSIONS).toContain(extension);
+      expect(UPLOADED_OUTSIDE_FILE_EXTENSIONS).toContain(extension);
     }
     for (const extension of [".avi", ".ogv", ".mp3", ".wav", ".aiff"]) {
-      expect(OUTSIDE_FILE_EXTENSIONS).toContain(extension);
+      expect(UPLOADED_OUTSIDE_FILE_EXTENSIONS).toContain(extension);
     }
-    for (const extension of [".woff", ".woff2", ".ttf", ".otf", ".css", ".js", ".mjs"]) {
-      expect(OUTSIDE_FILE_EXTENSIONS).toContain(extension);
+    for (const extension of [".woff", ".woff2", ".ttf", ".otf", ".css"]) {
+      expect(UPLOADED_OUTSIDE_FILE_EXTENSIONS).toContain(extension);
     }
-    for (const extension of [".json", ".html", ".txt", ".md", ".cube", ".pdf", ".key", ""]) {
-      expect(OUTSIDE_FILE_EXTENSIONS).not.toContain(extension);
+    const others = [".js", ".mjs", ".json", ".html", ".txt", ".md", ".cube", ".pdf", ".key", ""];
+    for (const extension of others) {
+      expect(UPLOADED_OUTSIDE_FILE_EXTENSIONS).not.toContain(extension);
     }
   });
 });

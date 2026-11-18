@@ -65,11 +65,31 @@ vi.mock("../../../producer/src/services/heifImagePrep.js", () => ({
     preparedImages: [],
   }),
 }));
+// Remote GIF sources: the stand-in download writes `body` and the GIF step records what it was handed.
+const remoteGif = vi.hoisted(() => ({
+  body: "GIF89a",
+  requested: [] as string[],
+  sourceAssets: undefined as Map<string, string> | undefined,
+}));
+vi.mock("../../../producer/src/utils/urlDownloader.js", () => ({
+  downloadToTemp: async (url: string, destDir: string) => {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    remoteGif.requested.push(url);
+    mkdirSync(destDir, { recursive: true });
+    const path = `${destDir}/download_${remoteGif.requested.length}.gif`;
+    writeFileSync(path, remoteGif.body);
+    return path;
+  },
+  writeUrlDownloadTelemetry: () => {},
+}));
 vi.mock("../../../producer/src/services/animatedGifPrep.js", () => ({
-  prepareAnimatedGifInputs: async (html: string, options: { outputDir: string }) => ({
-    ...(await imagePrep.convert(html, options)),
-    preparedGifs: [],
-  }),
+  prepareAnimatedGifInputs: async (
+    html: string,
+    options: { outputDir: string; sourceAssets?: Map<string, string> },
+  ) => {
+    remoteGif.sourceAssets = options.sourceAssets;
+    return { ...(await imagePrep.convert(html, options)), preparedGifs: [] };
+  },
 }));
 const engineState = vi.hoisted(() => ({
   acquireBrowser: async (..._args: unknown[]): Promise<unknown> => {
@@ -747,6 +767,42 @@ describe("Studio thumbnail capture", () => {
     expect(screenshot).toHaveBeenCalledTimes(1);
   });
 
+  // fails without the fix: the thumbnail browser launched with no page server, so with
+  // PRODUCER_RESTRICT_PAGE_NETWORK on its proxy refused the Studio's own preview and every thumbnail failed.
+  it("gives the thumbnail browser the preview's server, and a new browser for a preview on another host", async () => {
+    fakePageBrowser();
+    const launch = vi.spyOn(engineState, "acquireBrowser");
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir });
+    const at = (previewUrl: string) => ({ ...opts(dir), previewUrl });
+    await server.adapter.generateThumbnail?.(at("http://127.0.0.1:4100/api/projects/demo/preview"));
+    await server.adapter.generateThumbnail?.(at("http://127.0.0.1:4100/api/projects/demo/preview"));
+    await server.adapter.generateThumbnail?.(at("http://localhost:4200/api/projects/demo/preview"));
+    expect(
+      launch.mock.calls.map((call) => (call[1] as { pageServerUrl?: string }).pageServerUrl),
+    ).toEqual([
+      "http://127.0.0.1:4100/api/projects/demo/preview",
+      "http://localhost:4200/api/projects/demo/preview",
+    ]);
+  });
+
+  // fails without the fix: the direct host came from each preview URL, which a request's loopback Host header
+  // can name, so a request could open another local port to the thumbnail page and two spellings of one server
+  // closed each other's browser.
+  it("gives the thumbnail browser the server's own origin, whatever host a request named", async () => {
+    fakePageBrowser();
+    const launch = vi.spyOn(engineState, "acquireBrowser");
+    const dir = tmpProject();
+    server = createStudioServer({ projectDir: dir, origin: () => "http://127.0.0.1:4100" });
+    const at = (previewUrl: string) => ({ ...opts(dir), previewUrl });
+    await server.adapter.generateThumbnail?.(at("http://127.0.0.1:4100/api/projects/demo/preview"));
+    await server.adapter.generateThumbnail?.(at("http://localhost:4100/api/projects/demo/preview"));
+    await server.adapter.generateThumbnail?.(at("http://localhost:9999/api/projects/demo/preview"));
+    expect(
+      launch.mock.calls.map((call) => (call[1] as { pageServerUrl?: string }).pageServerUrl),
+    ).toEqual(["http://127.0.0.1:4100"]);
+  });
+
   it("undoes a row's isolation after its screenshot, since the page is reused", async () => {
     const { screenshot, evaluate } = fakePageBrowser();
     const dir = tmpProject();
@@ -769,7 +825,9 @@ describe("Studio thumbnail capture", () => {
       "http://localhost/api/projects/demo/preview?hf-capture=1",
     );
     expect(capture.headers.get("content-security-policy")).toBe("sandbox allow-scripts");
-    const preview = await server.app.request("http://localhost/api/projects/demo/preview");
+    const preview = await server.app.request("http://localhost/api/projects/demo/preview", {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+    });
     expect(preview.headers.get("content-security-policy")).toBeNull();
   });
 
@@ -1291,6 +1349,43 @@ describe("createStudioServer preview image preparation", () => {
 
     expect(prepared(projectDir)).toEqual(["heif", "gif"]);
   });
+
+  async function prepareRemoteGif(body: string, src: string) {
+    remoteGif.body = body;
+    remoteGif.requested = [];
+    remoteGif.sourceAssets = undefined;
+    const projectDir = tmpProject();
+    server = createStudioServer({ projectDir });
+    await server.adapter.transformPreviewHtml?.({
+      html: `<div data-composition-id="main"><img src="${src}"></div>`,
+      project: { id: "p", dir: projectDir },
+      activeCompositionPath: "index.html",
+    });
+    return projectDir;
+  }
+
+  it("hands a downloaded GIF to the GIF step", async () => {
+    await prepareRemoteGif("GIF89a-frames", "https://cdn.example.test/loop.gif?v=2");
+    expect(remoteGif.requested).toEqual(["https://cdn.example.test/loop.gif?v=2"]);
+    expect([...(remoteGif.sourceAssets?.keys() ?? [])]).toEqual([
+      "https://cdn.example.test/loop.gif?v=2",
+    ]);
+  });
+
+  it("discards a downloaded body that is not a GIF", async () => {
+    const projectDir = await prepareRemoteGif('{"secret":1}', "https://cdn.example.test/a.gif");
+    expect(remoteGif.sourceAssets?.size).toBe(0);
+    const downloads = join(projectDir, ".hyperframes", "prepared-assets", "downloads");
+    expect(readdirSync(downloads)).toEqual([]);
+  });
+
+  it.each(["https://intranet.example.test/api?.gif", "https://intranet.example.test/api#.gif"])(
+    "does not download %s, whose path does not end in .gif",
+    async (src) => {
+      await prepareRemoteGif("GIF89a", src);
+      expect(remoteGif.requested).toEqual([]);
+    },
+  );
 
   it.skipIf(process.platform === "win32")(
     "serves images unprepared when .hyperframes is a link, and writes nothing where it points",

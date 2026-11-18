@@ -11,6 +11,7 @@ import {
   useState,
   type RefObject,
 } from "react";
+import { flushSync } from "react-dom";
 import { Player } from "../../player";
 import { postFrameDisplayScale } from "../../player/lib/runtimeProtocol";
 import type { NLEContextValue } from "./NLEContext";
@@ -28,11 +29,7 @@ import {
 } from "./previewZoom";
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
 import { PreviewZoomOverlay, usePreviewZoomOverlay } from "./PreviewZoomOverlay";
-import {
-  PREVIEW_STAGE_INSET_PX,
-  resolvePreviewStageSize,
-  SHADOW_IFRAME_STYLE,
-} from "./previewStage";
+import { PREVIEW_STAGE_INSET_PX, resolvePreviewStageSize, shadowIframeStyle } from "./previewStage";
 import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 import { PreviewPoster, usePreviewPoster } from "./PreviewPoster";
 interface NLEPreviewProps extends Pick<
@@ -58,6 +55,7 @@ interface NLEPreviewProps extends Pick<
   /** Draws the picture edge to edge in this box, without Studio's inset band. */
   fillBox?: boolean;
   compositionSizeHint?: PreviewCompositionSize;
+  sandboxOrigin?: "opaque";
 }
 
 export function getPreviewPlayerKey({
@@ -92,6 +90,7 @@ export const NLEPreview = memo(function NLEPreview({
   onCompositionSizeChange,
   fillBox,
   compositionSizeHint,
+  sandboxOrigin,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -146,11 +145,10 @@ export const NLEPreview = memo(function NLEPreview({
     if (!viewport) return;
 
     const updateStageSize = () => {
-      const rect = viewport.getBoundingClientRect();
       setStageSize(
         resolvePreviewStageSize(
-          rect.width,
-          rect.height,
+          viewport.clientWidth,
+          viewport.clientHeight,
           compositionSize ??
             (hintWidth && hintHeight ? { width: hintWidth, height: hintHeight } : null),
           portrait,
@@ -161,7 +159,8 @@ export const NLEPreview = memo(function NLEPreview({
     };
 
     updateStageSize();
-    const observer = new ResizeObserver(updateStageSize);
+    const resizeBeforePaint = () => flushSync(updateStageSize);
+    const observer = new ResizeObserver(resizeBeforePaint);
     observer.observe(viewport);
     return () => observer.disconnect();
   }, [compositionSize, hintWidth, hintHeight, portrait, gutterPx, insetPx]);
@@ -180,6 +179,15 @@ export const NLEPreview = memo(function NLEPreview({
   useEffect(() => {
     onCompositionSizeChangeRef.current?.(compositionSize);
   }, [compositionSize]);
+
+  const showLive = poster.onLiveReadyToShowChange;
+  const onLiveReadyToShowChange = useCallback(
+    (ready: boolean) => {
+      showLive(ready);
+      if (ready) updateCompositionSizeFromPreview();
+    },
+    [showLive, updateCompositionSizeFromPreview],
+  );
 
   const setPreviewIframeRef = useCallback(
     (node: HTMLIFrameElement | null) => {
@@ -487,6 +495,7 @@ export const NLEPreview = memo(function NLEPreview({
                 onLoad={() => {}}
                 portrait={portrait}
                 suppressLoadingOverlay
+                sandboxOrigin={sandboxOrigin}
                 style={{ position: "absolute", inset: 0, zIndex: 0 }}
               />
             )}
@@ -503,12 +512,13 @@ export const NLEPreview = memo(function NLEPreview({
                     applyInitialZoom();
                   }}
                   onCompositionLoadingChange={onCompositionLoadingChange}
-                  onReadyToShowChange={poster.onLiveReadyToShowChange}
+                  onReadyToShowChange={onLiveReadyToShowChange}
                   onPreviewError={poster.onPreviewError}
                   onPainted={(details) => reportPreviewFirstFrame(slot, details)}
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
                   loadingUi={loadingUi}
+                  sandboxOrigin={sandboxOrigin}
                   style={
                     directUrl?.includes("/components/")
                       ? { position: "absolute", inset: 0, zIndex: 1 }
@@ -528,7 +538,8 @@ export const NLEPreview = memo(function NLEPreview({
                   portrait={portrait}
                   suppressLoadingOverlay
                   noLoadTimeout
-                  style={SHADOW_IFRAME_STYLE}
+                  sandboxOrigin={sandboxOrigin}
+                  style={shadowIframeStyle(sandboxOrigin)}
                 />
               ),
             )}

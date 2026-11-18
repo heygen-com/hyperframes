@@ -235,7 +235,7 @@ describe("bundleToSingleHtml", () => {
     }
   });
 
-  it("refuses the app's records only under the studio private-file policy", async () => {
+  it("refuses the app's records by default, and inlines them only when asked for git and env files alone", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head>
         <link rel="stylesheet" href=".hyperframes/handoff.css">
@@ -250,7 +250,10 @@ describe("bundleToSingleHtml", () => {
       expect(studio).toContain('href=".hyperframes/handoff.css"');
       expect(studio).toContain(".prepared { color: blue; }");
       const plain = await bundleToSingleHtml(dir);
-      expect(plain).toContain(".app-record { color: red; }");
+      expect(plain).not.toContain(".app-record");
+      expect(plain).toContain(".prepared { color: blue; }");
+      const narrow = await bundleToSingleHtml(dir, { privateFiles: "vcs-and-secrets" });
+      expect(narrow).toContain(".app-record { color: red; }");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -4301,5 +4304,34 @@ describe("emitRootCompositionVariableStyles — authored definitions", () => {
     const css = emitted(":root { --accent-dark: black; } .badge { color: var(--accent); }");
     expect(css).toContain("--accent: blue");
     expect(css).not.toContain("--accent-dark");
+  });
+});
+
+describe("emitRootCompositionVariableStyles — size budget", () => {
+  const DECLARER = `<div data-composition-variables='[{"id":"v","type":"string","default":"d"}]'></div>`;
+  const hostWith = (declarers: number, value: string) =>
+    `<!doctype html><html><head></head><body>` +
+    `<div data-variable-values='${JSON.stringify({ v: value })}'>${DECLARER.repeat(declarers)}</div>` +
+    `</body></html>`;
+
+  it("throws COMPOSITION_TOO_LARGE past the core limit and appends no style", () => {
+    // 100 rules of ~1 MiB each: just over 32 MiB in total.
+    const { document } = parseHTML(hostWith(100, "x".repeat(1024 * 1024)));
+    expect(() => emitRootCompositionVariableStyles(document)).toThrow(
+      expect.objectContaining({ code: "COMPOSITION_TOO_LARGE" }),
+    );
+    expect(document.querySelector("style[data-hf-composition-variables]")).toBeNull();
+  });
+
+  it("stops building rules when the caller's charge throws", () => {
+    const { document } = parseHTML(hostWith(5, "x"));
+    const chargeBytes = vi.fn(() => {
+      throw new Error("over budget");
+    });
+    expect(() => emitRootCompositionVariableStyles(document, {}, {}, { chargeBytes })).toThrow(
+      "over budget",
+    );
+    expect(chargeBytes).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("style[data-hf-composition-variables]")).toBeNull();
   });
 });

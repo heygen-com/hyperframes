@@ -17,7 +17,7 @@ import {
 } from "../utils/studioHelpers";
 import type { TimelineElement } from "../player";
 import { studioApiFetch } from "../utils/studioApiFetch";
-import { heldFileWordsOf } from "../utils/studioSaveDiagnostics";
+import { heldFileWordsOf, withStatus } from "../utils/studioSaveDiagnostics";
 
 interface UseGroupCommitsParams extends DomEditCommitBaseParams {
   /** Resync the SDK session after a server-side write (the wrapper/unwrap changes
@@ -148,7 +148,12 @@ async function commitStructuralMutation(
         const errBody = (await mutateResponse.json().catch(() => null)) as {
           error?: string;
         } | null;
-        throw new Error(errBody?.error ?? `Failed to ${label.toLowerCase()} in ${targetPath}`);
+        throw new Error(
+          withStatus(
+            errBody?.error ?? `Failed to ${label.toLowerCase()} in ${targetPath}`,
+            mutateResponse,
+          ),
+        );
       }
       result = (await mutateResponse.json()) as { content?: string; groupId?: string };
       return { disk: typeof result.content === "string" ? result.content : originalContent };

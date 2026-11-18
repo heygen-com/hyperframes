@@ -16,6 +16,7 @@ import { isSafePath } from "@hyperframes/core/safe-path";
 import {
   isCopiedOutsideFileType,
   isPrivateOutsideFile,
+  isUploadedOutsideFileType,
   type LeftOutReason,
   leftOutWarning,
   linksOutside,
@@ -80,20 +81,36 @@ export function escapesAssetRoot(path: string, assetRoot: string | undefined): b
   return assetRoot !== undefined && !isSafePath(assetRoot, path);
 }
 
+export interface OutsideFilePolicy {
+  /** The person passed --include-outside-files, so scripts outside the project run too. */
+  includeScripts?: boolean;
+}
+
 /** Why a trusted local render leaves out `path`, which leads outside `projectDir`, as publish does; null to bring it in. */
-export function outsideAssetRefusal(projectDir: string, path: string): LeftOutReason | null {
+export function outsideAssetRefusal(
+  projectDir: string,
+  path: string,
+  policy: OutsideFilePolicy = {},
+): LeftOutReason | null {
   if (!linksOutside(projectDir, path)) return null;
   if (isPrivateOutsideFile(projectDir, path)) return "blocklisted";
   const folder = statSync(path, { throwIfNoEntry: false })?.isDirectory();
-  return folder || isCopiedOutsideFileType(path) ? null : "file_type";
+  if (folder || isUploadedOutsideFileType(path)) return null;
+  if (!isCopiedOutsideFileType(path)) return "file_type";
+  return policy.includeScripts ? null : "script";
 }
 
 export const leftOutOfRender = (file: string, reference: string, reason: LeftOutReason): string =>
   leftOutWarning(file, reference, reason, "render");
 
 /** True, after a warning, when a trusted local render must not serve or copy `path`, a project file that leads outside. */
-export function refusesOutsideLink(projectDir: string, path: string, warn: (line: string) => void) {
-  const refusal = outsideAssetRefusal(projectDir, path);
+export function refusesOutsideLink(
+  projectDir: string,
+  path: string,
+  warn: (line: string) => void,
+  policy: OutsideFilePolicy = {},
+) {
+  const refusal = outsideAssetRefusal(projectDir, path, policy);
   if (!refusal) return false;
   const file = nodeRelative(projectDir, path).split(sep).join("/");
   warn(leftOutOfRender(file, realFilePath(path), refusal));

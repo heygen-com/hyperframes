@@ -34,6 +34,19 @@ import {
 export const DEFAULT_REGISTRY_URL =
   "https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry";
 
+/** Whether `registry` is the public registry or a folder in it, read the way a fetch reads it. */
+export function isPublicRegistry(registry: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(registry);
+  } catch {
+    return false;
+  }
+  if (url.username || url.password || url.search || url.hash) return false;
+  const href = url.href.replace(/\/+$/, "");
+  return href === DEFAULT_REGISTRY_URL || href.startsWith(`${DEFAULT_REGISTRY_URL}/`);
+}
+
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_MANIFEST_BYTES = 10 * 1024 * 1024;
 

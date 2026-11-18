@@ -6,7 +6,7 @@ import {
   formatCombo,
   matchCombo,
   parseCombo,
-} from "./studioCombo";
+} from "@hyperframes/core/key-combo";
 
 import { DEFAULT_STUDIO_KEYS, type StudioKeyAction, type StudioKeys } from "./studioKeyDefaults";
 
@@ -86,12 +86,13 @@ export function setStudioKeys(overrides: Partial<Record<StudioKeyAction, string>
 export const getStudioKeys = (): StudioKeys => current;
 export const getStudioKey = (action: StudioKeyAction): string => current[action];
 
-function subscribe(listener: () => void) {
+export function subscribeStudioKeys(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
-export const useStudioKeys = (): StudioKeys => useSyncExternalStore(subscribe, getStudioKeys);
+export const useStudioKeys = (): StudioKeys =>
+  useSyncExternalStore(subscribeStudioKeys, getStudioKeys);
 
 export function useShortcutSections(host?: readonly ShortcutSection[]): readonly ShortcutSection[] {
   const keys = useStudioKeys();

@@ -54,7 +54,15 @@ export function setFrameLoopStart(iframe: HTMLIFrameElement, seconds: number | n
 
 export const AGENT_PROBE_MS = 1_000;
 
+const agents = new WeakMap<EditingPortClient, boolean>();
+
 async function agentConnected(client: EditingPortClient): Promise<boolean> {
+  const known = agents.get(client);
+  if (known !== undefined) return known;
+  client.ready.then(
+    () => agents.set(client, true),
+    () => agents.set(client, false),
+  );
   let timer: ReturnType<typeof setTimeout> | undefined;
   const probe = new Promise<boolean>(
     (resolve) => (timer = setTimeout(resolve, AGENT_PROBE_MS, false)),
@@ -67,6 +75,7 @@ async function agentConnected(client: EditingPortClient): Promise<boolean> {
     probe,
   ]);
   clearTimeout(timer);
+  if (!agents.has(client)) agents.set(client, connected);
   return connected;
 }
 
@@ -97,6 +106,28 @@ export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<Cl
   return manifest as ClipManifest;
 }
 
+export async function previewClipParents(iframe: HTMLIFrameElement): Promise<Map<string, string>> {
+  const snapshot = await previewRequest(iframe, "runtime-snapshot", {});
+  const pairs: unknown = snapshot?.clipParents;
+  const parents = new Map<string, string>();
+  if (!Array.isArray(pairs)) return parents;
+  for (const pair of pairs) {
+    if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "string")
+      parents.set(pair[0], pair[1]);
+  }
+  return parents;
+}
+
+export async function previewConsoleErrors(
+  iframe: HTMLIFrameElement,
+  from: number,
+): Promise<{ errors: string[]; truncated: boolean } | null> {
+  const reply = await previewRequest(iframe, "console-errors", { from });
+  const errors: unknown = reply?.errors;
+  if (!Array.isArray(errors) || typeof reply?.truncated !== "boolean") return null;
+  return { errors: errors.map(String), truncated: reply.truncated };
+}
+
 /** The runtime's computed `properties` for the element `target` names; null when it has none. */
 export async function previewComputedStyles(
   iframe: HTMLIFrameElement,
@@ -113,4 +144,14 @@ export async function previewComputedStyles(
     if (typeof value === "string" && value) read[name] = value;
   }
   return read;
+}
+
+export async function previewDocumentCopy(iframe: HTMLIFrameElement): Promise<Document | null> {
+  const reply = await previewRequest(iframe, "document-markup", {});
+  if (typeof reply?.html !== "string" || typeof reply.baseURI !== "string") return null;
+  const doc = new DOMParser().parseFromString(reply.html, "text/html");
+  const base = doc.createElement("base");
+  base.setAttribute("href", reply.baseURI);
+  doc.head.prepend(base);
+  return doc;
 }

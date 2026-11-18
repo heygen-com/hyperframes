@@ -70,6 +70,8 @@ describe.skipIf(!chrome || !existsSync(chrome))("real browser local page capture
     writeFileSync(join(base, "secret.png"), "outside");
     symlinkSync(join(base, "secret.png"), join(site, "link.png"));
     writeFileSync(join(site, "logo.png"), "logo");
+    writeFileSync(join(site, "app.cjs"), "window.ranCjs = true;");
+    writeFileSync(join(site, "runner"), "window.ranBare = true;");
     writeFileSync(join(site, "font.woff2"), "font");
     writeFileSync(
       join(site, "style.css"),
@@ -79,6 +81,7 @@ describe.skipIf(!chrome || !existsSync(chrome))("real browser local page capture
     writeFileSync(
       join(site, "index.html"),
       `<html><head><link rel="stylesheet" href="style.css"></head><body>local fixture
+<script src="app.cjs"></script><script src="runner"></script>
 <img src="logo.png"><img src="../secret.png"><img src="link.png">
 <img src="${pathToFileURL(join(base, "secret.png")).href}">
 <img src="${remoteOrigin}/remote.png">
@@ -110,6 +113,12 @@ describe.skipIf(!chrome || !existsSync(chrome))("real browser local page capture
     try {
       await page.goto(local.url, { waitUntil: "networkidle0", timeout: 10_000 });
       expect(await page.$eval("body", (body) => body.textContent)).toContain("local fixture");
+      expect(
+        await page.evaluate(() => {
+          const ran = window as unknown as { ranCjs?: boolean; ranBare?: boolean };
+          return [ran.ranCjs, ran.ranBare];
+        }),
+      ).toEqual([true, true]);
       await page.evaluate(() => document.fonts.ready);
 
       expect(statuses.get(`${local.origin}/logo.png`)).toBe(200);

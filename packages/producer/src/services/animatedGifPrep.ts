@@ -4,7 +4,13 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync } f
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { parseHTML } from "linkedom";
 import { parseAnimatedGifMetadata, type AnimatedGifMetadata } from "@hyperframes/core";
-import { DEFAULT_VP9_CPU_USED, runFfmpeg, renameWithRetry } from "@hyperframes/engine";
+import {
+  DEFAULT_VP9_CPU_USED,
+  isPrivateUnderAssetRoots,
+  runFfmpeg,
+  renameWithRetry,
+  urlInputArgs,
+} from "@hyperframes/engine";
 import { namesAnotherNetworkRoot } from "@hyperframes/parsers/asset-resolution";
 import { isHttpUrl } from "../utils/urlDownloader.js";
 import { escapesAssetRoot, outsideAssetRefusal } from "../utils/paths.js";
@@ -33,7 +39,7 @@ export interface PrepareAnimatedGifInputsOptions {
   sourceAssets?: Map<string, string>;
   timeoutMs?: number;
   transcode?: (input: AnimatedGifTranscodeRequest) => Promise<void>;
-  assetRoot?: string;
+  allowOutsideFiles?: boolean;
 }
 
 export interface AnimatedGifTranscodeRequest {
@@ -83,7 +89,7 @@ export function resolveLocalImageSourcePath(
   src: string,
   options: Pick<
     PrepareAnimatedGifInputsOptions,
-    "projectDir" | "downloadDir" | "sourceAssets" | "assetRoot"
+    "projectDir" | "downloadDir" | "sourceAssets" | "allowOutsideFiles"
   >,
 ): string | null {
   const trimmed = src.trim();
@@ -98,21 +104,20 @@ export function resolveLocalImageSourcePath(
   if (mapped && existsSync(mapped)) return mapped;
   if (isHttpUrl(trimmed)) return null;
 
-  const protocolRelativeUrlOnShare =
-    basePath.startsWith("/") && namesAnotherNetworkRoot(options.projectDir, basePath);
   const projectRelative = basePath.startsWith("/") ? basePath.slice(1) : basePath;
   const candidates = [
-    ...(protocolRelativeUrlOnShare
-      ? []
-      : [isAbsolute(basePath) ? basePath : resolve(options.projectDir, projectRelative)]),
+    isAbsolute(basePath) ? basePath : resolve(options.projectDir, projectRelative),
     resolve(options.downloadDir, normalizedBase),
   ];
 
+  const assetRoot = options.allowOutsideFiles ? undefined : options.projectDir;
   const allowed = (candidate: string) =>
-    (!escapesAssetRoot(candidate, options.assetRoot) &&
+    !namesAnotherNetworkRoot(options.projectDir, candidate) &&
+    !isPrivateUnderAssetRoots(candidate, [options.projectDir, options.downloadDir]) &&
+    ((!escapesAssetRoot(candidate, assetRoot) &&
       outsideAssetRefusal(options.projectDir, candidate) !== "blocklisted") ||
-    !escapesAssetRoot(candidate, options.downloadDir);
-  return candidates.find((candidate) => existsSync(candidate) && allowed(candidate)) ?? null;
+      !escapesAssetRoot(candidate, options.downloadDir));
+  return candidates.find((candidate) => allowed(candidate) && existsSync(candidate)) ?? null;
 }
 
 function isUsableFile(path: string): boolean {
@@ -222,6 +227,7 @@ export function buildAnimatedGifTranscodeArgs(input: {
   args.push(
     "-ignore_loop",
     "1",
+    ...urlInputArgs(input.inputPath),
     "-i",
     input.inputPath,
     "-an",

@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
 import { describe, expect, it, vi } from "vitest";
-import { readTranslatePx, readTranslatePxLeavingPercent } from "./plainTranslate";
+import {
+  readTranslatePx,
+  readTranslatePxLeavingPercent,
+  rememberFrameTranslate,
+} from "./plainTranslate";
 
 function box(style: string): HTMLElement {
   const element = document.createElement("div");
@@ -93,5 +97,22 @@ describe("readTranslatePxLeavingPercent", () => {
     expect(readTranslatePxLeavingPercent(el)).toEqual({ x: 0, y: 0 });
     vi.restoreAllMocks();
     el.remove();
+  });
+
+  // fails without the fix: a sealed preview's stand-in has no window, so Add keyframe seeded 0,0 and the layer jumped.
+  it("seeds from the inline translate of a layer with no window, like a sealed preview's stand-in", () => {
+    const standIn = document.implementation.createHTMLDocument("").createElement("div");
+    standIn.style.setProperty("translate", "319.893px -75.508px");
+
+    expect(readTranslatePxLeavingPercent(standIn)).toEqual({ x: 319.893, y: -75.508 });
+  });
+
+  it("seeds a stand-in from the translate its frame renders, a stylesheet's included, until a move rewrites it", () => {
+    const standIn = document.implementation.createHTMLDocument("").createElement("div");
+    rememberFrameTranslate(standIn, { x: 40, y: 30 }, "40px 30px");
+
+    expect(readTranslatePxLeavingPercent(standIn)).toEqual({ x: 40, y: 30 });
+    standIn.style.setProperty("translate", "70px 10px");
+    expect(readTranslatePxLeavingPercent(standIn)).toEqual({ x: 70, y: 10 });
   });
 });

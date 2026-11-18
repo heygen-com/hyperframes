@@ -120,6 +120,16 @@ describe("previewEditingClient", () => {
     expect(Date.now() - started).toBeLessThan(AGENT_PROBE_MS + 500);
   });
 
+  it("answers a frame whose runtime never came at once, rather than after another probe", async () => {
+    const { iframe } = opaqueFrame();
+    const started = Date.now();
+    await previewSeekPainted(iframe, 15_000);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(AGENT_PROBE_MS - 50);
+    const again = Date.now();
+    await previewSeekPainted(iframe, 15_000);
+    expect(Date.now() - again).toBeLessThan(100);
+  });
+
   it("returns the runtime's manifest only when its reply has the manifest's shape", async () => {
     const manifest = { clips: [], durationInFrames: 30, scenes: [] };
     let reply: unknown = { clipManifest: manifest };
@@ -217,6 +227,19 @@ describe("bridge playback for a frame Studio cannot script", () => {
     expect(own.getTime()).toBe(0);
     fromFrame(frame, { type: "state", currentTime: 5, isPlaying: false }, location.origin);
     expect(own.getTime()).toBe(5);
+  });
+
+  it("accepts a frame its server sandboxed, which posts as null though its frame has no sandbox", () => {
+    const { iframe, frame } = opaqueFrame();
+    iframe.removeAttribute("sandbox");
+    iframe.setAttribute("src", "/api/projects/demo/preview");
+    watchPreviewFrame(iframe);
+    const adapter = bridgePlaybackAdapter(iframe)!;
+    fromFrame(frame, { type: "state", currentTime: 6, isPlaying: false }, "https://example.com");
+    fromFrame({}, { type: "state", currentTime: 7, isPlaying: false }, "null");
+    expect(adapter.getTime()).toBe(0);
+    fromFrame(frame, { type: "state", currentTime: 6, isPlaying: false }, "null");
+    expect(adapter.getTime()).toBe(6);
   });
 
   it.each([

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.47",
+  "version": "0.9.66",
   "description": "",
   "repository": {
     "type": "git",
@@ -86,11 +86,23 @@
       "import": "./src/chromeEnv.ts",
       "types": "./src/chromeEnv.ts"
     },
+    "./chrome-sandbox": {
+      "bun": "./src/chromeSandbox.ts",
+      "node": "./dist/chromeSandbox.js",
+      "import": "./src/chromeSandbox.ts",
+      "types": "./src/chromeSandbox.ts"
+    },
     "./atomic-file": {
       "bun": "./src/atomicFile.ts",
       "node": "./dist/atomicFile.js",
       "import": "./src/atomicFile.ts",
       "types": "./src/atomicFile.ts"
+    },
+    "./preview-proof": {
+      "bun": "./src/previewProof.ts",
+      "node": "./dist/previewProof.js",
+      "import": "./src/previewProof.ts",
+      "types": "./src/previewProof.ts"
     },
     "./cache-dir": {
       "bun": "./src/cacheDir.ts",
@@ -109,6 +121,12 @@
       "node": "./dist/envProxy.js",
       "import": "./src/envProxy.ts",
       "types": "./src/envProxy.ts"
+    },
+    "./missing-path": {
+      "bun": "./src/missingPath.ts",
+      "node": "./dist/missingPath.js",
+      "import": "./src/missingPath.ts",
+      "types": "./src/missingPath.ts"
     },
     "./rename-retry": {
       "bun": "./src/renameWithRetry.ts",
@@ -151,6 +169,18 @@
       "node": "./dist/compositionContract.js",
       "import": "./src/compositionContract.ts",
       "types": "./src/compositionContract.ts"
+    },
+    "./key-combo": {
+      "bun": "./src/keyCombo.ts",
+      "node": "./dist/keyCombo.js",
+      "import": "./src/keyCombo.ts",
+      "types": "./src/keyCombo.ts"
+    },
+    "./typing-target": {
+      "bun": "./src/typingTarget.ts",
+      "node": "./dist/typingTarget.js",
+      "import": "./src/typingTarget.ts",
+      "types": "./src/typingTarget.ts"
     },
     "./studio-preview-mark": {
       "bun": "./src/studioPreviewMark.ts",
@@ -696,9 +726,17 @@
         "import": "./dist/chromeEnv.js",
         "types": "./dist/chromeEnv.d.ts"
       },
+      "./chrome-sandbox": {
+        "import": "./dist/chromeSandbox.js",
+        "types": "./dist/chromeSandbox.d.ts"
+      },
       "./atomic-file": {
         "import": "./dist/atomicFile.js",
         "types": "./dist/atomicFile.d.ts"
+      },
+      "./preview-proof": {
+        "import": "./dist/previewProof.js",
+        "types": "./dist/previewProof.d.ts"
       },
       "./cache-dir": {
         "import": "./dist/cacheDir.js",
@@ -711,6 +749,10 @@
       "./env-proxy": {
         "import": "./dist/envProxy.js",
         "types": "./dist/envProxy.d.ts"
+      },
+      "./missing-path": {
+        "import": "./dist/missingPath.js",
+        "types": "./dist/missingPath.d.ts"
       },
       "./rename-retry": {
         "import": "./dist/renameWithRetry.js",
@@ -739,6 +781,14 @@
       "./composition-contract": {
         "import": "./dist/compositionContract.js",
         "types": "./dist/compositionContract.d.ts"
+      },
+      "./key-combo": {
+        "import": "./dist/keyCombo.js",
+        "types": "./dist/keyCombo.d.ts"
+      },
+      "./typing-target": {
+        "import": "./dist/typingTarget.js",
+        "types": "./dist/typingTarget.d.ts"
       },
       "./studio-preview-mark": {
         "import": "./dist/studioPreviewMark.js",

@@ -81,6 +81,16 @@ describe("pageUrl", () => {
     expect(await pageUrl("plans")).toBe("https://example.test/plans?from=cli&utm_source=cli");
   });
 
+  it("links the page that manages or cancels the plan, outside the app", async () => {
+    signedOut();
+    vi.stubEnv("HYPERFRAMES_BILLING_URL", "");
+    expect(await pageUrl("manage")).toBe(
+      "https://hyperframes.studio/billing?from=cli&utm_source=cli",
+    );
+    vi.stubEnv("HYPERFRAMES_BILLING_URL", "https://example.test/billing");
+    expect(await pageUrl("manage")).toBe("https://example.test/billing?from=cli&utm_source=cli");
+  });
+
   it("carries the workspace the sign-in is bound to on every link, read from account.get", async () => {
     signedInAs(SPACE);
     vi.stubEnv("HYPERFRAMES_PLANS_URL", "");

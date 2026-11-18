@@ -28,6 +28,7 @@ import { invalidateSkillsCache } from "../utils/skillsUpdateCheck.js";
 import { trackSkillsInstallSkipped } from "../telemetry/events.js";
 import type { Example } from "./_examples.js";
 import { failureMessage, jsonFailure } from "../utils/jsonError.js";
+import { projectCopyHint } from "../utils/projectCopyHint.js";
 
 export const examples: Example[] = [
   ["Install all HyperFrames skills", "hyperframes skills"],
@@ -205,24 +206,29 @@ function mirrorToInstalledAgents(): void {
 // best-effort report (one calm line; init carries on and still scaffolds).
 const SKILLS_TOOLING: ReadonlyArray<{
   has: () => boolean;
-  error: string;
+  error: () => string;
   // Low-cardinality tag for the skip telemetry event (e.g. "git_missing").
   reason: string;
   report: () => void;
 }> = [
   {
     has: hasNpx,
-    error: "npx not found. Install Node.js and retry.",
+    error: () => `npx not found. Install Node.js and retry.${projectCopyHint("npx")}`,
     reason: "npx_missing",
-    report: () => clack.log.error(c.error("npx not found. Install Node.js and retry.")),
+    report: () =>
+      clack.log.error(
+        c.error(`npx not found. Install Node.js and retry.${projectCopyHint("npx")}`),
+      ),
   },
   {
     has: hasGit,
-    error: "git not found. Install git and retry to add AI coding skills.",
+    error: () =>
+      `git not found. Install git and retry to add AI coding skills.${projectCopyHint("git")}`,
     reason: "git_missing",
     // Skip cleanly rather than letting the upstream clone dump a noisy
     // multi-line `spawn git ENOENT` / "Installation failed" abort.
-    report: () => console.log(c.dim("Skipping AI coding skills: git not available.")),
+    report: () =>
+      console.log(c.dim(`Skipping AI coding skills: git not available.${projectCopyHint("git")}`)),
   },
 ];
 
@@ -230,7 +236,7 @@ const SKILLS_TOOLING: ReadonlyArray<{
 function skillsToolingReady(strict: boolean): boolean {
   for (const tool of SKILLS_TOOLING) {
     if (tool.has()) continue;
-    if (strict) throw new Error(tool.error);
+    if (strict) throw new Error(tool.error());
     tool.report();
     // Surface the rare best-effort skip (init on a box missing git/npx); the
     // event respects the telemetry opt-out inside trackEvent.

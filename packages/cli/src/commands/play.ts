@@ -20,6 +20,7 @@ export const examples: Example[] = [
 ];
 import { resolve } from "node:path";
 import type { Hono } from "hono";
+import { terminalText } from "@hyperframes/core";
 import { requestSubPath } from "@hyperframes/studio-server";
 import * as clack from "../ui/prompts.js";
 import { c } from "../ui/colors.js";
@@ -36,6 +37,10 @@ import {
   resolveRuntimePath,
   resolvePlayerPath,
   listenOnFreePort,
+  refuseUnknownHosts,
+  sandboxForAnotherSite,
+  scriptsAfterWorkersDropped,
+  refuseProxyWorkForAnotherSite,
   injectRuntime,
   injectMediaCodecMap,
   buildRangeResponse,
@@ -43,6 +48,7 @@ import {
   assetContentType,
 } from "../utils/compositionServer.js";
 import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
+import { escapeHtml } from "../utils/escapeHtml.js";
 import {
   resolveProxy,
   ProxyCapacityError,
@@ -145,6 +151,7 @@ export default defineCommand({
     const { createAdaptorServer } = await import("@hono/node-server");
 
     const app = new Hono();
+    refuseUnknownHosts(app);
 
     // Serve the player JS
     app.get("/player.js", (ctx) =>
@@ -185,7 +192,7 @@ export default defineCommand({
     if (actualPort !== startPort) {
       console.log(`  ${c.warn(`Port ${startPort} is in use, using ${actualPort} instead`)}`);
     }
-    console.log(`  ${c.dim("Project")}   ${c.accent(project.name)}`);
+    console.log(`  ${c.dim("Project")}   ${c.accent(terminalText(project.name))}`);
     console.log(`  ${c.dim("Player")}    ${c.accent(url)}`);
     console.log();
     console.log(`  ${c.dim("Press Ctrl+C to stop")}`);
@@ -221,6 +228,8 @@ export async function registerCompositionRoute(
 ): Promise<void> {
   const { isSafePath } = await import("@hyperframes/core/studio-api");
 
+  sandboxForAnotherSite(app, "/composition/*");
+  refuseProxyWorkForAnotherSite(app, "/composition/*");
   // fallow-ignore-next-line complexity
   app.get("/composition/*", async (ctx) => {
     const reqPath = requestSubPath(ctx.req.url, "composition");
@@ -305,12 +314,13 @@ export async function registerCompositionRoute(
 }
 
 function buildPlayerPage(projectName: string): string {
+  const shownName = escapeHtml(projectName);
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${projectName} — HyperFrames Player</title>
+    <title>${shownName} — HyperFrames Player</title>
     <style>
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
@@ -335,8 +345,8 @@ function buildPlayerPage(projectName: string): string {
     <div class="player-wrap">
       <hyperframes-player src="/composition/index.html" controls muted></hyperframes-player>
     </div>
-    <div class="info">${projectName} — hyperframes play</div>
-    <script src="/player.js"></script>
+    <div class="info">${shownName} — hyperframes play</div>
+    ${scriptsAfterWorkersDropped(["/player.js"])}
   </body>
 </html>`;
 }

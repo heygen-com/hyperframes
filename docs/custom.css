@@ -347,6 +347,11 @@ samp {
   border-radius: 0;
   border-color: var(--hf-ui-border) !important;
   color: var(--hf-heading) !important;
+  /* The whole command stays on screen. A page's link can add values to it, and
+     a reader should see everything they are about to paste, not the start of a
+     line that scrolls. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /*

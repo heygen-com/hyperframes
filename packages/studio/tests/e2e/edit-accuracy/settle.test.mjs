@@ -8,11 +8,12 @@ import {
   heldStill,
   measureShown,
   networkBusy,
+  openStudio,
   seekBound,
   swapPending,
   unsettledBy,
 } from "./case.mjs";
-import { heldSize } from "./sequences.mjs";
+import { heldSize, keyedBy } from "./sequences.mjs";
 
 describe("settling on the shown preview", () => {
   const read = (pending, x = 0, frames = "a") => ({
@@ -53,6 +54,29 @@ describe("settling on the shown preview", () => {
     expect(await swapPending({ page: page(frame("/studio", false, true)), keys })).toBe(false);
   });
 
+  it("reads a preview that went away mid-read as holding nothing, not as an error", async () => {
+    const gone = {
+      url: () => "/preview/a?_t=1",
+      frameElement: async () => ({
+        evaluate: async () => {
+          throw new Error("Attempted to use detached Frame");
+        },
+      }),
+      $: async () => ({}),
+    };
+    expect(await swapPending({ page: page(gone), keys })).toBe(false);
+  });
+
+  it("reads a frame detached before the read as holding nothing: puppeteer throws that synchronously", async () => {
+    const detached = () => {
+      throw new Error("Attempted to use detached Frame");
+    };
+    const gone = { url: () => "/preview/a?_t=1", frameElement: detached, $: detached };
+    const hostGone = { ...frame("/preview/a?_t=1", false, true), $: detached };
+    expect(await swapPending({ page: page(gone), keys })).toBe(false);
+    expect(await swapPending({ page: page(hostGone), keys })).toBe(false);
+  });
+
   it("calls a swap pending while Studio says the preview is changing, with no hidden preview yet", async () => {
     const changing = (on) => ({ frames: () => [], evaluate: async () => on });
     expect(await swapPending({ page: changing(true), keys })).toBe(true);
@@ -63,6 +87,25 @@ describe("settling on the shown preview", () => {
   it("never waits on a swap in a case without keyframes, so its undo keeps main's timing", async () => {
     expect(await swapPending({ page: swapping })).toBe(false);
     expect(await swapPending({ page: swapping, keys: undefined, selector: "#other" })).toBe(false);
+  });
+});
+
+describe("a plain element that gains keyframes mid-sequence", () => {
+  const changing = { frames: () => [], evaluate: async () => true };
+  const plain = () => ({ A: { page: changing }, B: { page: changing } });
+
+  it("waits out Studio's swap from the step that writes its first keyframe", async () => {
+    const ctx = plain();
+    keyedBy(ctx, { do: "drag" }, { autokey: false });
+    expect(await swapPending(ctx.A), "a drag with auto-keyframe off writes none").toBe(false);
+    keyedBy(ctx, { do: "addkey" }, { autokey: false });
+    expect(await swapPending(ctx.A)).toBe(true);
+  });
+
+  it("keys the element a drag with auto-keyframe on moved, and only that one", async () => {
+    const ctx = plain();
+    keyedBy(ctx, { do: "drag", element: "B" }, { autokey: true });
+    expect([await swapPending(ctx.A), await swapPending(ctx.B)]).toEqual([false, true]);
   });
 });
 
@@ -166,6 +209,31 @@ describe("seeking to the playhead after a reload", () => {
     try {
       expect(await seekBound({ page, playhead: 2 })).toMatchObject({ playhead: 2, duration: 4 });
       expect(calls).toEqual(["studio_look", "studio_look", "studio_look", "studio_seek"]);
+    } finally {
+      delete globalThis.window;
+    }
+  });
+
+  it("waits in the page for Studio to report the composition loaded, and names its last report if it never does", async () => {
+    let loaded;
+    const page = {
+      waitForFunction: async (fn) => {
+        loaded = fn;
+        throw new Error("Waiting failed: 90000ms exceeded");
+      },
+      evaluate: async () => ({ ok: true, duration: 0, playhead: 0, sceneStatus: "loading" }),
+    };
+    await expect(openStudio({ page })).rejects.toThrow(
+      'studio never reported the composition loaded: last {"duration":0,"playhead":0,"scene":"loading"}',
+    );
+    let duration = 0;
+    globalThis.window = {};
+    try {
+      expect(await loaded(), "before Studio registers its tools").toBe(false);
+      window.__editBench = { has: () => true, call: async () => ({ ok: true, duration }) };
+      expect(await loaded(), "before the timeline bind").toBe(false);
+      duration = 4;
+      expect(await loaded()).toBe(true);
     } finally {
       delete globalThis.window;
     }

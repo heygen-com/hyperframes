@@ -185,7 +185,9 @@ function cliOutcomeLine(cli: UpdateOutcome["cli"]): string {
     case "manual":
       return c.warn(`CLI: run ${cli.command} (${cli.reason}).`);
     case "failed":
-      return c.error(`CLI upgrade failed. Run: ${cli.command}`);
+      return c.error(
+        cli.reason ?? `CLI upgrade failed. From your home directory, run: ${cli.command}`,
+      );
     default:
       return c.success("CLI is up to date.");
   }

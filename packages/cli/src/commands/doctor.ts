@@ -1,10 +1,10 @@
 // fallow-ignore-file complexity
 import { defineCommand } from "../utils/defineCommand.js";
-import { execSync } from "node:child_process";
+import { execFileSync, type ExecFileSyncOptions } from "node:child_process";
 import * as fs from "node:fs";
 import { existsSync } from "node:fs";
 import { platform } from "node:os";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { resolveExtractCacheDir } from "@hyperframes/engine";
 import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 import type { Example } from "./_examples.js";
@@ -62,22 +62,44 @@ export function ffmpegDoctorDetail(detail: string): string {
     : `${detail}; loudness numbers are only comparable on ${TESTED_FFMPEG_VERSION}`;
 }
 
-function checkDocker(): CheckResult {
+const DOCKER_INSTALL_HINT = "https://docs.docker.com/get-docker/";
+
+type RunFile = (file: string, args: string[], options: ExecFileSyncOptions) => string | Buffer;
+
+const findDocker = (): string | undefined => findTrustedExecutable("docker");
+
+function dockerInsideProject(cwd = process.cwd()): string | undefined {
+  const names = process.platform === "win32" ? ["docker.exe", "docker.cmd"] : ["docker"];
+  return names.map((name) => join(cwd, "node_modules", ".bin", name)).find(existsSync);
+}
+
+function dockerNotFound(): CheckResult {
+  const skipped = dockerInsideProject();
+  return {
+    ok: false,
+    detail: "Not found",
+    hint: skipped
+      ? `Skipped ${skipped}: the CLI only runs helper programs from folders outside the project. ${DOCKER_INSTALL_HINT}`
+      : DOCKER_INSTALL_HINT,
+  };
+}
+
+export function checkDocker(find = findDocker, run: RunFile = execFileSync): CheckResult {
+  const docker = find();
+  if (!docker) return dockerNotFound();
   try {
-    const version = execSync("docker --version", { encoding: "utf-8", timeout: 5000 }).trim();
-    return { ok: true, detail: version };
+    const version = run(docker, ["--version"], { encoding: "utf-8", timeout: 5000 });
+    return { ok: true, detail: version.toString().trim() };
   } catch {
-    return {
-      ok: false,
-      detail: "Not found",
-      hint: "https://docs.docker.com/get-docker/",
-    };
+    return dockerNotFound();
   }
 }
 
-function checkDockerRunning(): CheckResult {
+export function checkDockerRunning(find = findDocker, run: RunFile = execFileSync): CheckResult {
   try {
-    execSync("docker info", { stdio: "pipe", timeout: 5000 });
+    const docker = find();
+    if (!docker) throw new Error("docker not found");
+    run(docker, ["info"], { stdio: "pipe", timeout: 5000 });
     return { ok: true, detail: "Running" };
   } catch {
     return {
@@ -432,8 +454,8 @@ export default defineCommand({
       });
     }
     for (const check of [
-      { name: "Docker", run: checkDocker },
-      { name: "Docker running", run: checkDockerRunning },
+      { name: "Docker", run: () => checkDocker() },
+      { name: "Docker running", run: () => checkDockerRunning() },
     ]) {
       const result = await check.run();
       outcomes.push({

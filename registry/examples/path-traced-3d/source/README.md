@@ -9,6 +9,8 @@ files listed in `../registry-item.json`.
 `package-lock.json` into `../assets/vendor/three-path-tracer.min.js`, and copies the three
 licence files beside it.
 
+Run these build commands from this source directory in a trusted checkout of the HyperFrames repository. Installed projects already contain the bundle.
+
 ```sh
 npm ci
 npm run build

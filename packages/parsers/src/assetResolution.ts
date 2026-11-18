@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { isNonRelativeUrl } from "./assetPaths.js";
 import { decodeUrlPathVariants } from "./composition.js";
 import { decodedUrlPath } from "./utils/urlPath.js";
-import { rewriteAssetPath } from "./rewriteSubCompPaths.js";
+import { rewriteAssetPath, type AssetExists } from "./rewriteSubCompPaths.js";
 
 /** The subset of `node:path` that `isWithinProjectRoot` needs to run under
  * an injected platform (tests pass `path.win32` / `path.posix`). */
@@ -138,6 +138,14 @@ export function namesAnotherNetworkRoot(base: string, target: string): boolean {
   return /^[\\/]{2}/.test(root) && root.toLowerCase() !== parse(resolve(base)).root.toLowerCase();
 }
 
+/** `AssetExists` for a project on disk; a path outside it (a share, another drive) is missing, never looked at. */
+export function projectAssetExists(projectDir: string): AssetExists {
+  return (path) => {
+    const file = resolve(projectDir, path);
+    return isWithinProjectRoot(projectDir, file) && existsSync(file);
+  };
+}
+
 export function srcOnAnotherNetworkRoot(projectDir: string, src: string): boolean {
   const path = fileUrlAsPath(cleanAssetUrl(src));
   return isAbsolute(path) && namesAnotherNetworkRoot(projectDir, path);
@@ -235,7 +243,9 @@ export function resolveProjectRelativeSrc(
   const cleanSrc = fileUrlAsPath(cleanAssetUrl(src));
 
   // A leading slash is an origin-root URL served from the project root, unless the absolute path exists.
-  if (isAbsolute(cleanSrc) && existsSync(cleanSrc)) return cleanSrc;
+  if (isAbsolute(cleanSrc) && !namesAnotherNetworkRoot(baseDir, cleanSrc) && existsSync(cleanSrc)) {
+    return cleanSrc;
+  }
 
   const candidates = new Set<string>();
   for (const variant of decodeUrlPathVariants(cleanSrc)) {

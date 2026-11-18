@@ -39,8 +39,8 @@ afterEach(() => {
 const stack = {
   stackName: "Demo",
   region: "us-east-1",
-  bucketName: "b",
-  stateMachineArn: "s",
+  bucketName: "demo-bucket",
+  stateMachineArn: "arn:aws:states:us-east-1:123456789012:stateMachine:hf",
   functionName: "f",
   lambdaMemoryMb: 10240,
   deployedAt: "2026-01-01T00:00:00Z",

@@ -24,7 +24,7 @@ type InspectedWindow = Window & {
     query(query: RuntimeQuery): RuntimeResponse;
     timeline(request: TimelineRequest): TimelineRuntimeResult;
   };
-  __hfLiveInspection?: { generation: string; project: string };
+  __hfLiveInspection?: { generation: string };
   __hfHoldScenes?: (names: string[], holder?: string) => Promise<void>;
   __player?: {
     renderSeek(time: number, options: { exact: boolean }): void;

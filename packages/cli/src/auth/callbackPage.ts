@@ -1,5 +1,7 @@
 /** The page the browser lands on after sign-in: one design for the CLI's three endings. */
 
+import { escapeHtml } from "../utils/escapeHtml.js";
+
 const MARK_A =
   "M10.1851 57.8021L33.1145 73.8313C36.2202 75.9978 41.5173 73.5433 42.4816 69.4984L51.7611 30.4271C52.7253 26.3822 48.5802 23.9277 44.4602 26.0942L13.917 42.1235C6.96677 45.7676 4.97564 54.1579 10.1851 57.8021Z";
 const MARK_B =
@@ -36,15 +38,6 @@ function mark(width: number, height: number, id: string): string {
   const gradient = (suffix: string, x1: string, y1: string, x2: string, y2: string): string =>
     `<linearGradient id="${suffix}${id}" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"><stop offset="0" stop-color="#06E3FA"/><stop offset="1" stop-color="#4FDB5E"/></linearGradient>`;
   return `<svg viewBox="4 22 92 56" width="${width}" height="${height}" aria-hidden="true"><defs>${gradient("a", "48.57", "25", "44.78", "71.94")}${gradient("b", "54.83", "73.84", "72.1", "32.89")}</defs><path fill="url(#a${id})" d="${MARK_A}"/><path fill="url(#b${id})" d="${MARK_B}"/></svg>`;
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 function page(args: { ok: boolean; title: string; text: string; detail?: string }): string {

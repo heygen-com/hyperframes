@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { stagePublishFiles } from "./publishProject.js";
 import type { LeftOutReference } from "./leftOutReference.js";
+import { terminalText } from "@hyperframes/core";
 
 const dirs: string[] = [];
 afterEach(() => dirs.splice(0).forEach((dir) => rmSync(dir, { recursive: true, force: true })));
@@ -86,5 +87,28 @@ describe("each file an upload leaves out is also reported for a program", () => 
         levels_up: 1,
       },
     ]);
+  });
+});
+
+describe("a left-out warning", () => {
+  it("prints the reference without its control characters and reports it as written", () => {
+    const query = "?\u001b[2K\u001b[1A\u0007";
+    const { root, heard } = leftOutOf("p", {
+      ".ssh/id_ed25519": "KEY",
+      "p/index.html": `<img src="<root>/.ssh/id_ed25519${query}">`,
+    });
+    const reference = `${root}/.ssh/id_ed25519${query}`;
+    expect(heard).toHaveLength(1);
+    expect(heard[0]?.warning).toContain(`/.ssh/id_ed25519?\\x1b[2K\\x1b[1A\\x07,`);
+    expect(heard[0]?.warning).toBe(terminalText(heard[0]?.warning ?? ""));
+    expect(JSON.stringify(heard[0]?.reference)).toBe(
+      JSON.stringify({
+        file: "index.html",
+        reference,
+        path: "../.ssh/id_ed25519",
+        reason: "blocklisted",
+        levels_up: 1,
+      }),
+    );
   });
 });

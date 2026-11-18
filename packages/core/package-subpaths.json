@@ -74,10 +74,22 @@
       "types": "./dist/chromeEnv.d.ts",
       "environments": ["bun", "node"]
     },
+    "./chrome-sandbox": {
+      "source": "./src/chromeSandbox.ts",
+      "runtime": "./dist/chromeSandbox.js",
+      "types": "./dist/chromeSandbox.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./atomic-file": {
       "source": "./src/atomicFile.ts",
       "runtime": "./dist/atomicFile.js",
       "types": "./dist/atomicFile.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./preview-proof": {
+      "source": "./src/previewProof.ts",
+      "runtime": "./dist/previewProof.js",
+      "types": "./dist/previewProof.d.ts",
       "environments": ["bun", "node"]
     },
     "./cache-dir": {
@@ -96,6 +108,12 @@
       "source": "./src/envProxy.ts",
       "runtime": "./dist/envProxy.js",
       "types": "./dist/envProxy.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./missing-path": {
+      "source": "./src/missingPath.ts",
+      "runtime": "./dist/missingPath.js",
+      "types": "./dist/missingPath.d.ts",
       "environments": ["bun", "node"]
     },
     "./rename-retry": {
@@ -138,6 +156,18 @@
       "source": "./src/compositionContract.ts",
       "runtime": "./dist/compositionContract.js",
       "types": "./dist/compositionContract.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./key-combo": {
+      "source": "./src/keyCombo.ts",
+      "runtime": "./dist/keyCombo.js",
+      "types": "./dist/keyCombo.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./typing-target": {
+      "source": "./src/typingTarget.ts",
+      "runtime": "./dist/typingTarget.js",
+      "types": "./dist/typingTarget.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./studio-preview-mark": {

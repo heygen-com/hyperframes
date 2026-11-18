@@ -50,6 +50,8 @@ pre-commit:
       # `git ls-files` observes the staged index, so staged removals pass and
       # an accidental force-add fails before the commit is created.
       run: bun run check:tracked-artifacts
+    - name: committed-keys
+      run: bun run check:committed-keys
     - name: filesize
       # Scoped to packages/studio — the 600 LOC limit is a studio architecture
       # standard enforced as part of the App.tsx decomposition work. Player and
