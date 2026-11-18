@@ -14,6 +14,8 @@ import { bumpDomEditCommitMapVersion, runDomEditCommit } from "./domEditCommitRu
 import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
 import { HF_AUDIO_GROUP_ATTR, HF_AUDIO_GROUP_TAG } from "@hyperframes/core/audio-groups";
 import { invalidateGroupInfoCache } from "../player/lib/timelineGroupInfo";
+import { editSealedSelection } from "../components/editor/previewSelection";
+import type { PreviewElementEdit } from "../player/lib/previewElements";
 
 // ── Types ──
 
@@ -161,6 +163,7 @@ export function useDomEditAttributeCommits({
       const op: PatchOperation = { type: "attribute", property: attr, value };
       let editedElement: HTMLElement | null = null;
       let previousValue: string | null = null;
+      let sealedEdit: PreviewElementEdit | null = null;
 
       await runDomEditCommit({
         capture: () => {
@@ -175,20 +178,25 @@ export function useDomEditAttributeCommits({
           previousValue = captured.previousValue;
         },
         apply: () => {
-          if (!editedElement) return;
           const nextValue = value === null || value === "" ? null : value;
+          if (!editedElement) {
+            const attributes: Array<[string, string | null]> = [[fullAttr, nextValue]];
+            sealedEdit = editSealedSelection(iframe, domEditSelection, { attributes });
+            return;
+          }
           setOrRemovePreviewAttribute(editedElement, fullAttr, nextValue);
         },
         persist: options.previewOnly
           ? async () => {}
-          : () =>
+          : async () =>
               persistDomEditOperations(domEditSelection, [op], {
                 label: options.label,
                 coalesceKey: commitKey,
-                skipRefresh: options.skipRefresh,
+                skipRefresh: options.skipRefresh && ((await sealedEdit?.drawn) ?? true),
               }),
         shouldRevert: () => isLatestCommit(),
         revert: () => {
+          sealedEdit?.restore();
           if (!editedElement) return;
           setOrRemovePreviewAttribute(editedElement, fullAttr, previousValue);
         },
@@ -256,6 +264,7 @@ export function useDomEditAttributeCommits({
         commitKey,
       );
       let captured: CapturedMultiAttributeElement | null = null;
+      let sealedEdit: PreviewElementEdit | null = null;
       let landed = false;
 
       await runDomEditCommit({
@@ -268,21 +277,29 @@ export function useDomEditAttributeCommits({
           );
         },
         apply: () => {
-          if (!captured) return;
+          if (!captured) {
+            const attributes = entries.map(({ fullAttr, value }): [string, string | null] => [
+              fullAttr,
+              value,
+            ]);
+            sealedEdit = editSealedSelection(iframe, selection, { attributes });
+            return;
+          }
           for (const entry of entries) {
             setOrRemovePreviewAttribute(captured.element, entry.fullAttr, entry.value);
           }
         },
-        persist: () =>
+        persist: async () =>
           persistDomEditOperations(selection, ops, {
             label: options.label,
             coalesceKey: commitKey,
-            skipRefresh: options.skipRefresh,
+            skipRefresh: options.skipRefresh && ((await sealedEdit?.drawn) ?? true),
             prepareContent: options.prepareContent,
           }),
         shouldRevert: (error) =>
           isLatestCommit() && !(error instanceof DomEditPersistPreparedWriteError),
         revert: () => {
+          sealedEdit?.restore();
           if (!captured) return;
           for (const entry of entries) {
             setOrRemovePreviewAttribute(
@@ -413,6 +430,7 @@ export function useDomEditAttributeCommits({
       const op: PatchOperation = { type: "html-attribute", property: attr, value };
       let editedElement: HTMLElement | null = null;
       let previousValue: string | null = null;
+      let sealedEdit: PreviewElementEdit | null = null;
 
       await runDomEditCommit({
         capture: () => {
@@ -427,21 +445,25 @@ export function useDomEditAttributeCommits({
           previousValue = captured.previousValue;
         },
         apply: () => {
-          if (!editedElement) return;
-          setOrRemovePreviewAttribute(
-            editedElement,
-            attr,
-            resolveOptimisticAttributeValue(attr, value),
-          );
+          const optimistic = resolveOptimisticAttributeValue(attr, value);
+          if (!editedElement) {
+            const attributes: Array<[string, string | null]> = [[attr, optimistic]];
+            sealedEdit = editSealedSelection(iframe, domEditSelection, { attributes });
+            return;
+          }
+          setOrRemovePreviewAttribute(editedElement, attr, optimistic);
         },
-        persist: () =>
-          persistDomEditOperations(domEditSelection, [op], {
+        persist: async () => {
+          await sealedEdit?.drawn;
+          return persistDomEditOperations(domEditSelection, [op], {
             label: `Edit ${attr}`,
             coalesceKey: commitKey,
             skipRefresh: false,
-          }),
+          });
+        },
         shouldRevert: () => isLatestCommit(),
         revert: () => {
+          sealedEdit?.restore();
           if (!editedElement) return;
           setOrRemovePreviewAttribute(editedElement, attr, previousValue);
         },

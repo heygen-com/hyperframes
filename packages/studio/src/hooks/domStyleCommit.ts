@@ -13,6 +13,8 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
+import { editSealedSelection } from "../components/editor/previewSelection";
+import type { PreviewElementEdit } from "../player/lib/previewElements";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
@@ -86,6 +88,7 @@ export async function commitDomStyles(
   }
   let editedElement: HTMLElement | null = null;
   const previousInline = new Map<string, string>();
+  let sealedEdit: PreviewElementEdit | null = null;
 
   return runReportedDomEditCommit({
     capture: () => {
@@ -96,22 +99,31 @@ export async function commitDomStyles(
         previousInline.set(property, el.style.getPropertyValue(property));
     },
     apply: () => {
-      if (!editedElement) return;
+      if (!editedElement) {
+        sealedEdit = editSealedSelection(previewIframeRef.current, selection, {
+          styles: liveStyles,
+        });
+        return;
+      }
       for (const [property, value] of liveStyles) editedElement.style.setProperty(property, value);
       if (fontFamily !== undefined && doc) {
         injectPreviewGoogleFont(doc, fontFamily);
         if (importedFont) injectPreviewImportedFont(doc, importedFont);
       }
     },
-    persist: () =>
-      persistDomEditOperations(selection, operations, {
+    persist: async () => {
+      const drawn = (await sealedEdit?.drawn) ?? true;
+      return persistDomEditOperations(selection, operations, {
         label: "Edit layer style",
-        // Inline styles are already live, so a reload would only blank the preview.
-        skipRefresh: true,
+        // Inline styles are already live, so a reload would only blank the preview. A sealed
+        // frame takes no font link from Studio, so its reload loads the saved font instead.
+        skipRefresh: drawn && !(sealedEdit && fontFamily !== undefined),
         importedFont: importedFont ?? undefined,
-      }),
+      });
+    },
     shouldRevert: ownsAny,
     revert: () => {
+      sealedEdit?.restore(owned.filter(({ isLatest }) => isLatest()).map((o) => o.property));
       const el = editedElement;
       if (!el) return;
       // ponytail: background-image fit styles are not reverted here.

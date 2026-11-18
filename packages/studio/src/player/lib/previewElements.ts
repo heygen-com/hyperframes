@@ -310,3 +310,45 @@ export async function previewLayers(
   if (typeof missingGroup !== "boolean") return null;
   return layers.every(isLayer) ? { layers, truncated, missingGroup } : null;
 }
+
+type EditEntry = [name: string, value: string | null];
+const isEditEntries = (value: unknown): value is EditEntry[] =>
+  Array.isArray(value) &&
+  value.every(
+    (entry) =>
+      Array.isArray(entry) && entry.length === 2 && isText(entry[0]) && isTextOrNull(entry[1]),
+  );
+
+export interface PreviewElementEdit {
+  /**
+   * False when the frame did not draw it: its element is gone, or the runtime did not answer. A save
+   * awaits it first, so a failed save's `restore` follows this edit at once, never a later edit.
+   */
+  drawn: Promise<boolean>;
+  /** Puts back what the edit replaced, for `names` when given. */
+  restore(names?: readonly string[]): void;
+}
+
+/** Draws inline `styles` and `attributes` on the frame's element, null removing one. */
+export function editPreviewElement(
+  iframe: HTMLIFrameElement,
+  handle: string,
+  edit: { styles?: EditEntry[]; attributes?: EditEntry[] },
+): PreviewElementEdit {
+  const send = (styles: EditEntry[], attributes: EditEntry[]) =>
+    previewRequest(iframe, "edit-element", { handle, styles, attributes });
+  const reply = send(edit.styles ?? [], edit.attributes ?? []);
+  return {
+    drawn: reply.then((before) => before?.applied === true),
+    restore(names) {
+      const keep = (name: string) => !names || names.includes(name);
+      void reply.then((before) => {
+        if (!before?.applied || !isEditEntries(before.styles)) return;
+        if (!isEditEntries(before.attributes)) return;
+        const styles = before.styles.filter(([name]) => keep(name));
+        const attributes = before.attributes.filter(([name]) => keep(name));
+        if (styles.length || attributes.length) void send(styles, attributes);
+      });
+    },
+  };
+}
