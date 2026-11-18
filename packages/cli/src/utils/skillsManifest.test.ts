@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   chmodSync,
@@ -776,6 +777,13 @@ describe("checkSkills canonical bypass of the in-repo manifest shortcut", () => 
 
     const res = await checkSkills({ cwd: project, home, canonical: true });
     expect(res.skills.map((s) => s.name)).not.toContain("retired-skill");
+    const options = vi.mocked(execFile).mock.lastCall?.[2] as {
+      cwd: string;
+      env: NodeJS.ProcessEnv;
+    };
+    expect(options.cwd).toMatch(/hyperframes-git-[^/\\]+$/);
+    expect(options.env.GIT_DIR).toBe(options.cwd);
+    expect(existsSync(options.cwd)).toBe(false);
     expect(res.skills.map((s) => s.name)).toContain("kept");
   });
 
