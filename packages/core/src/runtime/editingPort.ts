@@ -28,6 +28,7 @@ import type { EditingElementBox, EditingElementGeometry } from "./editingGeometr
 import type { EditingGestureStart } from "./editingGestureStart";
 import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { MotionPathFrameHome } from "./editing/motionPathHome";
+import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
 import type { EditingLayer } from "./editingLayers";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
@@ -176,6 +177,7 @@ export const EDITING_REQUEST_KINDS = [
   "max-z-index",
   "crop-lift",
   "edit-element",
+  "gsap-set",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -310,6 +312,7 @@ export interface EditingRequests {
     result: { lifted: boolean; clipPath: string | null };
   };
   "edit-element": { params: EditElementParams; result: EditElementResult };
+  "gsap-set": { params: GsapSetParams; result: { applied: boolean } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -518,6 +521,7 @@ const PARAM_PARSERS: {
       ? { handle: params.handle, lift: params.lift }
       : null,
   "edit-element": parseEditElement,
+  "gsap-set": parseGsapSet,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
