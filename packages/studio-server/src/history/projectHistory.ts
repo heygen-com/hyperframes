@@ -49,7 +49,7 @@ import {
   type FolderIdentity,
 } from "./historyId.js";
 import { takeHistoryOwnership } from "./ownerLock.js";
-import { canNameFiles, fileNames } from "../routes/files.js";
+import { canNameFiles, fileNames } from "../helpers/fileReferences.js";
 import { writeHistoryState } from "./videoState.js";
 import {
   START,
