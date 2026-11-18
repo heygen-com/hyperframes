@@ -1,3 +1,4 @@
+import type { ExpectedOutputDimensions } from "../render/outputDimensions.js";
 import {
   REFERENCE_BACKGROUND_FIELD,
   referenceBackgroundResult,
@@ -49,6 +50,7 @@ import {
   fpsToNumber,
   HF_COLOR_GRADING_ATTR,
 } from "@hyperframes/core";
+import { isSafePath } from "@hyperframes/core/safe-path";
 import {
   type EngineConfig,
   type VideoFrameFormat,
@@ -63,6 +65,7 @@ import {
   declareProbeFactsUrl,
 } from "@hyperframes/engine";
 import { defaultLogger, type ProducerLogger } from "../../logger.js";
+import { refusesOutsideLink } from "../../utils/paths.js";
 import {
   applyRenderWarningPolicy,
   type RenderJob,
@@ -76,6 +79,7 @@ import {
   withChunkCaptureCost,
 } from "./chunkWeights.js";
 import { runAudioStage } from "../render/stages/audioStage.js";
+import { audioWorkDir } from "../render/shared.js";
 import { runCompileStage } from "../render/stages/compileStage.js";
 import {
   appendVideoAudioFromProbe,
@@ -308,6 +312,9 @@ export interface DistributedRenderConfig extends Pick<RenderRequestOptions, "pag
    * rather than mid-plan; the producer-side throw is the fallback.
    */
   variables?: Record<string, unknown>;
+  /** Fails with `VARIABLES_INVALID` before any frame if `variables` mismatch the page's declarations. Default off. */
+  strictVariables?: boolean;
+  expectedOutputDimensions?: ExpectedOutputDimensions;
 }
 
 /** Shared local representation consumed by both distributed plan transports. */
@@ -322,6 +329,9 @@ export interface LocalExecutionPlan extends Partial<ReferenceBackgroundResult> {
   format: DistributedFormat;
   ffmpegVersion: string;
   producerVersion: string;
+  /** Present when `strictVariables` was asked; true only if this producer honoured it. */
+  strictVariablesChecked?: boolean;
+  outputDimensionsChecked?: boolean;
 }
 
 export interface BuildLocalExecutionPlanOptions {
@@ -349,6 +359,9 @@ export interface BuildLocalExecutionPlanOptions {
   readonly sliceChunkAudio?: boolean;
   /** Leave the audio to {@link buildPlanAudio}; chunks render video only. mp4 without `cfr` only. */
   readonly deferAudio?: boolean;
+  /** Trusted local callers only; see CompileForRenderOptions. Never read from config. */
+  readonly allowOutsideProjectAssets?: boolean;
+  readonly includeOutsideScripts?: boolean;
 }
 
 export interface RemoteProjectFile {
@@ -384,6 +397,9 @@ export interface PlanResult extends Partial<ReferenceBackgroundResult> {
   format: DistributedFormat;
   ffmpegVersion: string;
   producerVersion: string;
+  /** Present when `strictVariables` was asked; true only if this producer honoured it. */
+  strictVariablesChecked?: boolean;
+  outputDimensionsChecked?: boolean;
 }
 
 /** Applies the same audio correctness policy used by the in-process renderer. */
@@ -1102,9 +1118,14 @@ export function resolveDistributedEngineConfig(config: DistributedRenderConfig):
   };
 }
 
+/** True when `rel`, a path relative to some root, is the root's parent, above it, or on another drive. */
+function leavesRoot(rel: string): boolean {
+  return rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+}
+
 function pathInside(root: string, path: string): string | null {
   const rel = relative(root, path);
-  return rel === "" || rel.startsWith("..") || isAbsolute(rel) ? null : rel;
+  return rel === "" || leavesRoot(rel) ? null : rel;
 }
 
 /**
@@ -1184,7 +1205,13 @@ async function compilePlanComposition(
   projectDir: string,
   config: DistributedRenderConfig,
   planDir: string,
-  options: Pick<BuildLocalExecutionPlanOptions, "executionPlanSizeLimitBytes" | "remoteFiles">,
+  options: Pick<
+    BuildLocalExecutionPlanOptions,
+    | "executionPlanSizeLimitBytes"
+    | "remoteFiles"
+    | "allowOutsideProjectAssets"
+    | "includeOutsideScripts"
+  >,
 ) {
   // Plan-time validation. Rejections here surface as typed errors with
   // non-retryable codes so workflow adapters don't waste retry budget on
@@ -1228,7 +1255,11 @@ async function compilePlanComposition(
     logger: config.logger,
     producerConfig: cfg,
     variables: config.variables,
+    strictVariables: config.strictVariables,
+    expectedOutputDimensions: config.expectedOutputDimensions,
     pageMotionBlur: config.pageMotionBlur,
+    allowOutsideProjectAssets: options.allowOutsideProjectAssets === true,
+    includeOutsideScripts: options.includeOutsideScripts === true,
   });
   const entryFile = config.entryFile ?? "index.html";
   const htmlPath = join(projectDir, entryFile);
@@ -1262,7 +1293,13 @@ async function compilePlanComposition(
       // so a parent directory of projectDir matching a skip name doesn't
       // false-positive every descendant.
       const rel = relative(projectDir, src);
-      if (rel === "" || rel.startsWith("..")) return true;
+      if (rel === "") return true;
+      if (leavesRoot(rel)) return false;
+      if (job.config.allowOutsideProjectAssets) {
+        const warn = (line: string) => log.warn(`[Plan] ${line}`);
+        const policy = { includeScripts: job.config.includeOutsideScripts };
+        if (refusesOutsideLink(projectDir, src, warn, policy)) return false;
+      } else if (!isSafePath(projectDir, src)) return false;
       const firstSegment = rel.split(sep, 1)[0];
       return firstSegment === undefined || !PLAN_PROJECT_DIR_SKIP_SEGMENTS.has(firstSegment);
     },
@@ -1392,6 +1429,7 @@ async function compilePlanComposition(
     logPlanStage(log, "reference_background", stageStarted);
   }
   compiled = probeResult.compiled;
+  job.strictVariablesChecked = probeResult.strictVariablesChecked;
   job.duration = probeResult.duration;
   job.totalFrames = probeResult.totalFrames;
   const totalFrames = probeResult.totalFrames;
@@ -1449,6 +1487,7 @@ function mixPlanAudio(c: PlanComposition, compiledDir: string) {
     compiledDir,
     urlByAbsentLocalPath: c.urlByAbsentLocalPath,
     audioSidecarUrlByLocalPath: c.audioSidecarUrlByLocalPath,
+    allowOutsideProjectAssets: c.job.config.allowOutsideProjectAssets,
     totalFrames: c.totalFrames,
     fps: c.job.config.fps,
     ffmpegProcessTimeout: c.cfg.ffmpegProcessTimeout,
@@ -1832,6 +1871,12 @@ export async function buildLocalExecutionPlan(
     format: config.format,
     ffmpegVersion,
     producerVersion,
+    ...(job.outputDimensionsChecked === undefined
+      ? {}
+      : { outputDimensionsChecked: job.outputDimensionsChecked }),
+    ...(job.strictVariablesChecked === undefined
+      ? {}
+      : { strictVariablesChecked: job.strictVariablesChecked }),
   };
 }
 
@@ -1852,7 +1897,12 @@ export async function buildPlanAudio(
   });
   try {
     let stageStarted = Date.now();
-    await appendVideoAudioFromProbe(c);
+    await appendVideoAudioFromProbe({
+      ...c,
+      downloadDir: audioWorkDir(c.workDir),
+      allowOutsideProjectAssets: c.job.config.allowOutsideProjectAssets,
+      signal: c.abortSignal,
+    });
     logPlanStage(c.log, "extract", stageStarted);
     stageStarted = Date.now();
     const mixed = await mixPlanAudio(c, c.compiledDir);
@@ -1878,7 +1928,10 @@ export async function plan(
   projectDir: string,
   config: DistributedRenderConfig,
   planDir: string,
-  options: Pick<BuildLocalExecutionPlanOptions, "chunksCarryAudio"> = {},
+  options: Pick<
+    BuildLocalExecutionPlanOptions,
+    "chunksCarryAudio" | "allowOutsideProjectAssets" | "includeOutsideScripts"
+  > = {},
 ): Promise<PlanResult> {
   const executionPlan = await buildLocalExecutionPlan(projectDir, config, planDir, options);
   return {
@@ -1894,5 +1947,11 @@ export async function plan(
     format: executionPlan.format,
     ffmpegVersion: executionPlan.ffmpegVersion,
     producerVersion: executionPlan.producerVersion,
+    ...(executionPlan.outputDimensionsChecked === undefined
+      ? {}
+      : { outputDimensionsChecked: executionPlan.outputDimensionsChecked }),
+    ...(executionPlan.strictVariablesChecked === undefined
+      ? {}
+      : { strictVariablesChecked: executionPlan.strictVariablesChecked }),
   };
 }

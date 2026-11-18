@@ -227,6 +227,26 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
+  // The player turns pointer events back on for its frame, so a reload's frame would take the live one's clicks.
+  it("keeps a reload's player out of clicks and focus until it is promoted, then gives them back", () => {
+    const { getApi, gen, root } = beginReload();
+    const shadow = makeShadowWithSpies();
+    const player = document.createElement("hyperframes-player");
+    player.attachShadow({ mode: "open" }).append(shadow.iframe);
+    document.body.append(player);
+
+    act(() => getApi().setShadowIframeNode(shadow.iframe));
+    expect(player.hasAttribute("inert")).toBe(true);
+
+    act(() => {
+      getApi().onShadowIframeLoad(gen);
+      getApi().onShadowReadyChange(gen, true);
+    });
+    expect(getApi().iframeRef.current).toBe(shadow.iframe);
+    expect(player.hasAttribute("inert")).toBe(false);
+    unmount(root);
+  });
+
   it("keeps a playing film playing through a reload, from where the live frame had reached", () => {
     const { getApi, root } = renderTimelinePlayerHarness();
     const { adapter: liveAdapter, win } = makeAdapterWindow();
@@ -530,6 +550,52 @@ describe("shadow reload readiness and failure", () => {
     expect(onPreviewReloadFailed).not.toHaveBeenCalled();
     act(() => void vi.advanceTimersByTime(1));
     expect(onPreviewReloadFailed).toHaveBeenCalledWith(expect.stringContaining("too long"));
+    unmount(root);
+  });
+
+  it("keeps a reload whose frame left the page, and promotes it once a new frame mounts", () => {
+    vi.useFakeTimers();
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, gen, live, root } = beginReload({ onPreviewReloadFailed });
+    const first = makeShadowWithSpies();
+    act(() => getApi().setShadowIframeNode(first.iframe));
+
+    // The pane holding the preview unmounts mid-reload: its Players remove their frames.
+    act(() => first.iframe.remove());
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS * 2));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    expect(getApi().iframeRef.current).toBe(live);
+
+    // The pane comes back: a new Player for the same slot mounts a new frame, which loads.
+    const again = makeShadowWithSpies();
+    act(() => {
+      getApi().setShadowIframeNode(again.iframe);
+      getApi().onShadowIframeLoad(gen);
+    });
+    act(() => getApi().onShadowReadyChange(gen, true));
+    expect(getApi().iframeRef.current).toBe(again.iframe);
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    unmount(root);
+  });
+
+  it("gives a frame that mounts again its full budgets, then drops it if it stays silent", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, live, root } = beginReload({ onPreviewReloadFailed });
+    const first = makeShadowWithSpies();
+    act(() => getApi().setShadowIframeNode(first.iframe));
+    act(() => void vi.advanceTimersByTime(SHADOW_READY_TIMEOUT_MS + 1000));
+    act(() => first.iframe.remove());
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+
+    act(() => getApi().setShadowIframeNode(makeShadowWithSpies().iframe));
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS - 1));
+    expect(onPreviewReloadFailed).not.toHaveBeenCalled();
+    act(() => void vi.advanceTimersByTime(1));
+    expect(onPreviewReloadFailed).toHaveBeenCalledWith(expect.stringContaining("too long"));
+    expect(getApi().iframeRef.current).toBe(live);
     unmount(root);
   });
 

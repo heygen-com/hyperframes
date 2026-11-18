@@ -7,9 +7,9 @@ import { Window } from "happy-dom";
 import type { Page } from "puppeteer-core";
 import { downloadAndRewriteFonts } from "./assetDownloader.js";
 import { extractHtml } from "./htmlExtractor.js";
-import { publicRequest } from "./publicNetwork.js";
+import { publicRequest } from "@hyperframes/engine/public-network";
 
-vi.mock("./publicNetwork.js", () => ({ publicRequest: vi.fn() }));
+vi.mock("@hyperframes/engine/public-network", () => ({ publicRequest: vi.fn() }));
 
 const FONT = readFileSync(
   new URL("../../../../docs/public/catalog/assets/a634cb9e7783af7e.woff2", import.meta.url),

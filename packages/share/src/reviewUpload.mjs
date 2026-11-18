@@ -18,6 +18,22 @@ export function fileSha256Base64(file) {
 
 /** @typedef {"sent" | "expired" | "refused" | "offline"} PutOutcome */
 
+/** @param {string} url */
+export function trustedUploadUrl(url) {
+  if (!URL.canParse(url)) return null;
+  const target = new URL(url);
+  const loopback = target.protocol === "http:" && target.hostname === "127.0.0.1";
+  if (
+    (target.protocol !== "https:" && !loopback) ||
+    target.username ||
+    target.password ||
+    target.hash ||
+    !reviewUploadOrigins().includes(target.origin)
+  )
+    return null;
+  return target;
+}
+
 /** Streams the file to the signed URL through main's fetch (the app's proxy), the server's headers as given plus
  * the length, and no bearer. Nothing sent or answered for `stallMs` ends it as offline, never "Uploading" forever.
  * @param {{ put_url: string, headers: Record<string, string> }} upload @param {string} file @param {number} size
@@ -29,22 +45,8 @@ export async function putFile(
   onSent,
   { stallMs = 60_000, fetchImpl = fetch } = {},
 ) {
-  let target;
-  try {
-    target = new URL(upload.put_url);
-  } catch {
-    return "refused";
-  }
-  const loopback = target.protocol === "http:" && target.hostname === "127.0.0.1";
-  if (
-    (target.protocol !== "https:" && !loopback) ||
-    target.username ||
-    target.password ||
-    target.hash ||
-    !reviewUploadOrigins().includes(target.origin)
-  ) {
-    return "refused";
-  }
+  const target = trustedUploadUrl(upload.put_url);
+  if (!target) return "refused";
   const stall = new AbortController();
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timer;

@@ -41,6 +41,7 @@ export {
   restoreStudioBoxSize,
   restoreStudioRotation,
   restoreStudioPathOffset,
+  restoreStudioPathOffsetStyles,
   clearStudioPathOffset,
   clearStudioRotation,
   clearStudioBoxSize,

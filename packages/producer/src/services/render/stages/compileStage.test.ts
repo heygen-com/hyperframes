@@ -30,6 +30,7 @@ import {
   type CompileStageResult,
 } from "./compileStage.js";
 import type { RenderJob } from "../../renderOrchestrator.js";
+import { MAX_COMPOSITION_HTML_BYTES } from "../../compositionSizeLimit.js";
 
 const noopLog = {
   error: () => {},
@@ -495,6 +496,13 @@ describe("resolveEntryHtmlPath", () => {
     expect(existsSync(join(fixture.workDir, "standalone-entry.html"))).toBe(false);
   });
 
+  it("refuses an entry file over the composition size limit before reading it", () => {
+    fixture = setupFixture(PLAIN_HTML);
+    const bigPath = join(fixture.workDir, "project", "big.html");
+    writeFileSync(bigPath, " ".repeat(MAX_COMPOSITION_HTML_BYTES + 1), "utf-8");
+    expect(() => resolve("big.html")).toThrow(/over the 16\.0 MB limit/);
+  });
+
   it("returns a non-template sub-composition file untouched", () => {
     fixture = setupFixture(PLAIN_HTML);
     const subPath = join(fixture.workDir, "project", "full.html");
@@ -605,5 +613,82 @@ describe("resolveEntryHtmlPath", () => {
     rmSync(fixture.htmlPath);
     writeFileSync(join(fixture.workDir, "project", "scene.html"), TEMPLATE);
     expect(() => resolve("scene.html")).toThrow(/requires a project index\.html/);
+  });
+});
+
+describe("runCompileStage — chromaSubsampling 444 drawElement gate", () => {
+  let fixture: CompileFixture | null = null;
+
+  afterEach(() => {
+    fixture?.cleanup();
+    fixture = null;
+  });
+
+  async function compileWithChroma(
+    chromaSubsampling: "420" | "444" | undefined,
+  ): Promise<{ result: CompileStageResult; cfg: EngineConfig }> {
+    fixture = setupFixture(PLAIN_HTML);
+    const cfg = createCfg({ useDrawElement: true });
+    const result = await runCompileStage({
+      projectDir: join(fixture.workDir, "project"),
+      workDir: fixture.workDir,
+      htmlPath: fixture.htmlPath,
+      entryFile: "index.html",
+      job: createJob(chromaSubsampling ? { chromaSubsampling } : {}),
+      cfg,
+      needsAlpha: false,
+      log: noopLog,
+      assertNotAborted: () => {},
+    });
+    return { result, cfg };
+  }
+
+  it("turns drawElement off for 4:4:4, whose lossless PNG frames it cannot capture", async () => {
+    const { result, cfg } = await compileWithChroma("444");
+    expect(cfg.useDrawElement).toBe(false);
+    expect(result.deCompileGate).toBe("chroma_444");
+  });
+
+  it("leaves drawElement on for the default and for explicit 4:2:0", async () => {
+    for (const chroma of [undefined, "420"] as const) {
+      const { result, cfg } = await compileWithChroma(chroma);
+      expect(cfg.useDrawElement).toBe(true);
+      expect(result.deCompileGate).toBeUndefined();
+      fixture?.cleanup();
+      fixture = null;
+    }
+  });
+});
+
+describe("compiled output dimension contract", () => {
+  it.each([
+    [1920, 1080, true],
+    [1280, 720, false],
+    [8000, 8000, false],
+  ])("checks actual HTML size %i by %i before capture", async (width, height, accepted) => {
+    const fixture = setupFixture(orientedHtml(width, height));
+    const job = createJob();
+    job.config.expectedOutputDimensions = { width: 1920, height: 1080 };
+    try {
+      const result = runCompileStage({
+        projectDir: join(fixture.workDir, "project"),
+        workDir: fixture.workDir,
+        entryFile: "index.html",
+        job,
+        cfg: createCfg(),
+        needsAlpha: false,
+        log: noopLog,
+        assertNotAborted: () => {},
+      });
+      if (accepted) {
+        await expect(result).resolves.toMatchObject({ outputWidth: 1920, outputHeight: 1080 });
+        expect(job.outputDimensionsChecked).toBe(true);
+      } else {
+        await expect(result).rejects.toMatchObject({ code: "OUTPUT_DIMENSIONS_MISMATCH" });
+        expect(job.outputDimensionsChecked).toBeUndefined();
+      }
+    } finally {
+      fixture.cleanup();
+    }
   });
 });

@@ -19,6 +19,7 @@ import {
 } from "@hyperframes/core/audio-gain";
 import type { StereoLevel } from "@hyperframes/core/runtime/levelTap";
 import { usePlayerStore } from "../../player";
+import { previewFrameOpaque, previewRequest } from "../../player/lib/previewChannel";
 import { clampNumber } from "../../utils/studioHelpers";
 import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
 import { EXPORT_PEAK_CEILING } from "../../utils/exportPeakCeiling";
@@ -135,6 +136,55 @@ function readHook(iframe: HTMLIFrameElement | null | undefined): AudioMeterHook 
   }
 }
 
+const isFields = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+const stereo = (value: unknown): StereoLevel | undefined =>
+  isFields(value) && Number.isFinite(value.l) && Number.isFinite(value.r)
+    ? { l: value.l as number, r: value.r as number }
+    : undefined;
+
+function meterLevels(value: unknown): Levels | undefined {
+  if (!isFields(value) || !isFields(value.groups)) return undefined;
+  const master = stereo(value.master);
+  if (!master) return undefined;
+  const groups = Object.entries(value.groups).flatMap(([id, level]) => {
+    const read = stereo(level);
+    return read ? [[id, read] as const] : [];
+  });
+  return { master, groups: Object.fromEntries(groups) };
+}
+
+/** Read interval for a sealed preview's taps: about 30 a second, near the analyser's own window. */
+const SEALED_METER_READ_MS = 33;
+
+function createSealedMeter() {
+  let frame: HTMLIFrameElement | null = null;
+  let levels: Levels | undefined;
+  let busy = false;
+  let askedAt = -Infinity;
+  const stop = () => {
+    if (frame) void previewRequest(frame, "audio-meter", { on: false });
+    frame = null;
+    levels = undefined;
+  };
+  const read = (iframe: HTMLIFrameElement, now: number): Levels | undefined => {
+    if (iframe !== frame) stop();
+    frame = iframe;
+    if (busy || now - askedAt < SEALED_METER_READ_MS) return levels;
+    busy = true;
+    askedAt = now;
+    void previewRequest(iframe, "audio-meter", { on: true })
+      .then((reply) => {
+        if (frame === iframe) levels = meterLevels(reply?.levels);
+      })
+      .finally(() => {
+        busy = false;
+      });
+    return levels;
+  };
+  return { read, stop };
+}
+
 /** 0 dB is bottom 100% plus 1px down, so the tick stays inside overflow-hidden.
  *  A calc() bottom does not stick as an inline style on Windows happy-dom. */
 function paintPeak(el: HTMLElement | null, peak: number): void {
@@ -218,10 +268,20 @@ function useMeterLoop(
     let active: AudioMeterHook | null = null;
     let last = performance.now();
     const state = new Map<string | null, Pair>();
+    const sealed = createSealedMeter();
+    const readLevels = (now: number): Levels | undefined => {
+      const iframe = previewIframeRef?.current;
+      if (iframe && previewFrameOpaque(iframe)) {
+        active = followMeterHook(active, null);
+        return sealed.read(iframe, now);
+      }
+      sealed.stop();
+      active = followMeterHook(active, readHook(iframe));
+      return active?.read();
+    };
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick);
-      active = followMeterHook(active, readHook(previewIframeRef?.current));
-      const levels = active?.read();
+      const levels = readLevels(now);
       const dt = now - last;
       last = now;
       evictGoneMeterState(state, new Set(stripsRef.current.map((s) => s.id)));
@@ -235,6 +295,7 @@ function useMeterLoop(
     raf = requestAnimationFrame(tick);
     return () => {
       cancelAnimationFrame(raf);
+      sealed.stop();
       try {
         active?.stop();
       } catch {

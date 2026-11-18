@@ -8,6 +8,7 @@ import {
   isPathInside,
   normalizeHfColorGrading,
   serializeHfColorGrading,
+  terminalLines,
 } from "@hyperframes/core";
 import {
   COLOR_GRADING_SOURCE_TAGS,
@@ -805,7 +806,7 @@ function printFailure(error: unknown, json: boolean): void {
     console.log(
       JSON.stringify(withMeta(jsonFailure(usage ? error.code : "runtime_error", message))),
     );
-  } else console.error(`${c.error("✗")} ${message}`);
+  } else console.error(`${c.error("✗")} ${terminalLines(message)}`);
   if (usage) failUsage();
   failCommand(1, error);
 }

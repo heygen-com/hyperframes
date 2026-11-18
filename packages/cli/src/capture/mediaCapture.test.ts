@@ -1,5 +1,5 @@
-import { publicRequest } from "./publicNetwork.js";
-vi.mock("./publicNetwork.js", () => ({ publicRequest: vi.fn() }));
+import { publicRequest } from "@hyperframes/engine/public-network";
+vi.mock("@hyperframes/engine/public-network", () => ({ publicRequest: vi.fn() }));
 import {
   existsSync,
   lstatSync,

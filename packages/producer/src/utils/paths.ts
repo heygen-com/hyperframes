@@ -5,13 +5,23 @@
 import {
   basename,
   join,
+  sep,
   resolve as nodeResolve,
   relative as nodeRelative,
   isAbsolute as nodeIsAbsolute,
 } from "node:path";
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
+import { isSafePath } from "@hyperframes/core/safe-path";
+import {
+  isCopiedOutsideFileType,
+  isPrivateOutsideFile,
+  isUploadedOutsideFileType,
+  type LeftOutReason,
+  leftOutWarning,
+  linksOutside,
+} from "@hyperframes/studio-server/outside-file";
+import { realFilePath } from "@hyperframes/studio-server/safe-path";
 
 export interface RenderPaths {
   absoluteProjectDir: string;
@@ -64,6 +74,47 @@ export function isPathInside(
   // is above the parent, and an absolute path when they live on different
   // drives/volumes (Windows) — none of which count as "inside".
   return rel !== "" && !LEADING_PARENT_SEGMENT_RE.test(rel) && !isPathAbsolute(rel);
+}
+
+/** True when `assetRoot` is set and `path`, symlinks resolved, leaves it. */
+export function escapesAssetRoot(path: string, assetRoot: string | undefined): boolean {
+  return assetRoot !== undefined && !isSafePath(assetRoot, path);
+}
+
+export interface OutsideFilePolicy {
+  /** The person passed --include-outside-files, so scripts outside the project run too. */
+  includeScripts?: boolean;
+}
+
+/** Why a trusted local render leaves out `path`, which leads outside `projectDir`, as publish does; null to bring it in. */
+export function outsideAssetRefusal(
+  projectDir: string,
+  path: string,
+  policy: OutsideFilePolicy = {},
+): LeftOutReason | null {
+  if (!linksOutside(projectDir, path)) return null;
+  if (isPrivateOutsideFile(projectDir, path)) return "blocklisted";
+  const folder = statSync(path, { throwIfNoEntry: false })?.isDirectory();
+  if (folder || isUploadedOutsideFileType(path)) return null;
+  if (!isCopiedOutsideFileType(path)) return "file_type";
+  return policy.includeScripts ? null : "script";
+}
+
+export const leftOutOfRender = (file: string, reference: string, reason: LeftOutReason): string =>
+  leftOutWarning(file, reference, reason, "render");
+
+/** True, after a warning, when a trusted local render must not serve or copy `path`, a project file that leads outside. */
+export function refusesOutsideLink(
+  projectDir: string,
+  path: string,
+  warn: (line: string) => void,
+  policy: OutsideFilePolicy = {},
+) {
+  const refusal = outsideAssetRefusal(projectDir, path, policy);
+  if (!refusal) return false;
+  const file = nodeRelative(projectDir, path).split(sep).join("/");
+  warn(leftOutOfRender(file, realFilePath(path), refusal));
+  return true;
 }
 
 /**
@@ -135,13 +186,4 @@ export function resolveRenderPaths(
   const absoluteOutputPath = nodeResolve(resolvedOutputPath);
 
   return { absoluteProjectDir, absoluteOutputPath };
-}
-
-/** The project file a data-composition-src names, as the preview reads it; null when it leaves the project. */
-export function resolveCompositionSrc(projectDir: string, src: string): string | null {
-  const rooted = (value: string) => nodeResolve(projectDir, value.replace(/^(?:\.?[\\/])+/, ""));
-  const decoded = rooted(decodedUrlPath(src));
-  if (!isPathInside(decoded, projectDir)) return null;
-  const raw = rooted(src);
-  return !existsSync(decoded) && isPathInside(raw, projectDir) && existsSync(raw) ? raw : decoded;
 }

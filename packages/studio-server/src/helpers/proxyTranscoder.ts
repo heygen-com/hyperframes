@@ -12,9 +12,10 @@ import {
 import os, { availableParallelism, tmpdir, totalmem } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
-import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
+import { findFfBinary, followFfmpegProgress } from "@hyperframes/parsers/ff-binaries";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import { ffmpegHasHdrFilters } from "./hdrFilters.js";
+import { mediaInputArgs, NOT_MEDIA } from "./mediaExtensions.js";
 import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
 import {
@@ -28,7 +29,7 @@ import {
 } from "./proxyCacheKey.js";
 import { acquireCopyLock, CopyLockStalledError } from "./proxyLock.js";
 import { PROXY_STILL_EXTENSION, PROXY_VARIANT_CONFIG, type ProxyVariant } from "./mediaCodecMap.js";
-import { mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
+import { isProjectCacheFile, mkdirWithinProject, realpath, realProjectRoot } from "./safePath.js";
 
 /**
  * Transcodes browser-hostile local video sources (HEVC, ProRes, ...) into a
@@ -118,6 +119,13 @@ export class ProxyCapacityError extends ProxyTranscodeError {
   }
 }
 
+export class StillPastEndError extends ProxyTranscodeError {
+  constructor() {
+    super("media still is past the end of the source", null, "");
+    this.name = "StillPastEndError";
+  }
+}
+
 export class ProxySourceOutsideProjectError extends ProxyTranscodeError {
   constructor() {
     super("media proxy source must be addressed through the project", null, "");
@@ -196,7 +204,9 @@ function getCanonicalProxyCachePath(
     CACHE_DIR_NAME,
     `${key}${PROXY_VARIANT_CONFIG[variant].extension}`,
   );
-  return existsSync(made) ? made : (readCopyIndex(fastIndexPath(made)) ?? made);
+  return isProjectCacheFile(source.projectDir, made)
+    ? made
+    : (readCopyIndex(source.projectDir, fastIndexPath(made)) ?? made);
 }
 
 /**
@@ -348,9 +358,11 @@ function forget(job: ProxyJob): void {
   if (inFlight.get(job.cachePath)?.job === job) inFlight.delete(job.cachePath);
 }
 
-function maintainProxyCache(cacheDir: string, staleTempMs?: number): void {
+function maintainProxyCache(cacheDir: string, staleTempMs?: number, justServed?: string): void {
+  const protectedPaths = new Set([...inFlight.keys(), ...stillsInFlight.keys()]);
+  if (justServed) protectedPaths.add(justServed);
   try {
-    cleanupProxyCache(cacheDir, { protectedPaths: new Set(inFlight.keys()), staleTempMs });
+    cleanupProxyCache(cacheDir, { protectedPaths, staleTempMs });
   } catch (error) {
     // Cache maintenance must never turn a playable preview into an error.
     console.warn(
@@ -559,10 +571,12 @@ function createPieceGate(size: number): PieceGate {
   };
 }
 
+type ChunkFiles = { projectDir: string; prefix: string };
+
 /** Copies a long source in pieces that stay in the cache, so a stopped copy continues from the first missing one. */
 async function encodeInChunks(
   ranges: ChunkRange[],
-  chunkPrefix: string,
+  chunks: ChunkFiles,
   tempPath: string,
   encode: EncodeFn,
   concat: (listPath: string, target: string) => Promise<void>,
@@ -571,8 +585,9 @@ async function encodeInChunks(
   onDone: (doneSeconds: number) => void = () => {},
 ): Promise<void> {
   const extension = extname(tempPath);
-  const pieces = ranges.map((_, index) => `${chunkPrefix}${index}${extension}`);
-  const pending = ranges.flatMap((_, index) => (existsSync(pieces[index]!) ? [] : [index]));
+  const pieces = ranges.map((_, index) => `${chunks.prefix}${index}${extension}`);
+  const madeAsPlainFile = (piece: string) => isProjectCacheFile(chunks.projectDir, piece);
+  const pending = ranges.flatMap((_, index) => (madeAsPlainFile(pieces[index]!) ? [] : [index]));
   let doneSeconds = 0;
   for (const [index, range] of ranges.entries()) {
     if (!pending.includes(index)) doneSeconds += range.lengthSeconds;
@@ -722,7 +737,7 @@ async function buildVideoFilter(
 async function runFfmpeg(
   sourcePath: string,
   outputPath: string,
-  chunkPrefix: string,
+  chunks: ChunkFiles,
   variant: ProxyVariant,
   box: PreviewProxyBox | undefined,
   limitSeconds: number | undefined,
@@ -731,6 +746,7 @@ async function runFfmpeg(
   isBackground: () => boolean = () => false,
 ): Promise<void> {
   const metadata = await probeMediaMetadata(sourcePath);
+  if (metadata.probeError === NOT_MEDIA) throw new ProxyTranscodeError(NOT_MEDIA, null, "");
   const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpegPath) {
     throw new FfmpegUnavailableError();
@@ -760,6 +776,7 @@ async function runFfmpeg(
         "-nostats",
         ...(range ? ["-ss", String(range.startSeconds)] : []),
         ...decoderArgs,
+        ...mediaInputArgs(sourcePath),
         "-i",
         sourcePath,
         ...streamArgs,
@@ -784,7 +801,7 @@ async function runFfmpeg(
     }
     await encodeInChunks(
       ranges,
-      chunkPrefix,
+      chunks,
       outputPath,
       encode,
       (listPath, target) =>
@@ -813,9 +830,6 @@ function concatArgs(listPath: string, target: string, variant: ProxyVariant): st
     target,
   ];
 }
-
-/** ffmpeg's `-progress` lines name the output time reached, in microseconds. */
-const OUT_TIME = /^out_time_(?:us|ms)=(\d+)$/;
 
 /** Runs ffmpeg and ends it when it makes no progress for `stallMs`; a slow encode that moves on is left to finish.
  * `onProgress` hears the seconds of output made so far (from `-progress pipe:1`). */
@@ -855,21 +869,12 @@ function spawnFfmpeg(
       timer.unref();
     };
     armStall();
-    let furthest = 0;
-    let lineTail = "";
-    proc.stdout?.on("data", (chunk: Buffer) => {
-      const lines = (lineTail + chunk.toString()).split("\n");
-      lineTail = lines.pop() ?? "";
-      for (const line of lines) {
-        const reached = OUT_TIME.exec(line.trim());
-        if (!reached) continue;
-        const seconds = Number(reached[1]) / 1e6;
-        if (seconds <= furthest) continue;
-        furthest = seconds;
+    if (proc.stdout) {
+      followFfmpegProgress(proc.stdout, (seconds) => {
         armStall();
         onProgress?.(seconds);
-      }
-    });
+      });
+    }
     let stderrTail = "";
     proc.stderr?.on("data", (chunk: Buffer) => {
       stderrTail = (stderrTail + chunk.toString()).slice(-STDERR_TAIL_MAX_CHARS);
@@ -920,7 +925,7 @@ async function transcodeToCache(
   await acquireSlot(job);
   try {
     // Another caller may have finished (or a pre-warm beat us) while queued.
-    if (existsSync(cachePath)) return cachePath;
+    if (isProjectCacheFile(projectDir, cachePath)) return cachePath;
 
     const cacheDir = dirname(cachePath);
     mkdirWithinProject(projectDir, cacheDir);
@@ -934,13 +939,15 @@ async function transcodeToCache(
         job.abandoned.signal,
       ),
     );
-    const sameContent = readCopyIndex(contentIndex);
+    const sameContent = readCopyIndex(projectDir, contentIndex);
     if (sameContent) {
       writeCopyIndex(fastIndexPath(cachePath), sameContent);
       return sameContent;
     }
+    const copyMade = (path: string) => isProjectCacheFile(projectDir, path);
     const release = await acquireCopyLock(
       cachePath,
+      copyMade,
       job.abandoned.signal,
       TRANSCODE_STALL_MS,
     ).catch((error: unknown) => {
@@ -948,17 +955,20 @@ async function transcodeToCache(
         ? new ProxyTranscodeError(error.message, null, "")
         : error;
     });
-    if (!release) return cachePath;
+    if (!release) {
+      if (copyMade(cachePath)) return cachePath;
+      throw new ProxyTranscodeError("the copy is not a plain file in the cache", null, "");
+    }
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
-      const chunkPrefix = join(
-        cacheDir,
-        `${CHUNK_PREFIX}${basename(cachePath, extname(cachePath))}-`,
-      );
+      const chunks = {
+        projectDir,
+        prefix: join(cacheDir, `${CHUNK_PREFIX}${basename(cachePath, extname(cachePath))}-`),
+      };
       await runFfmpeg(
         absoluteSourcePath,
         tempPath,
-        chunkPrefix,
+        chunks,
         variant,
         box,
         limitSeconds,
@@ -1036,7 +1046,7 @@ export async function resolveProxy(
   options.signal?.throwIfAborted();
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
   const cachePath = getCanonicalProxyCachePath(source, variant, box, options.limitSeconds);
-  if (existsSync(cachePath)) {
+  if (isProjectCacheFile(source.projectDir, cachePath)) {
     markCacheEntryUsed(cachePath);
     maintainProxyCache(dirname(cachePath));
     return cachePath;
@@ -1142,27 +1152,67 @@ export async function resolveProxies(
   return results;
 }
 
-const stillsInFlight = new Map<string, Promise<string>>();
+interface StillJob {
+  made: Promise<string>;
+  /** Requests still waiting; one without a signal never leaves, so its still is always made. */
+  waiters: number;
+  abandoned: AbortController;
+}
 
-/** One JPEG of the source at a time (to a tenth of a second), sized like the copy's box. */
+const stillsInFlight = new Map<string, StillJob>();
+
+/** One JPEG of the source at a time (to a tenth of a second), sized like the copy's box. A
+ * caller's `signal` detaches that caller; once no caller is left, the still's ffmpeg is ended. */
 export function resolveStill(
   projectDir: string,
   absoluteSourcePath: string,
   atSeconds: number,
   box?: PreviewProxyBox,
+  startUncachedStill: (make: () => Promise<string>) => Promise<string> = (make) => make(),
+  signal?: AbortSignal,
 ): Promise<string> {
+  if (signal?.aborted) return Promise.reject(signal.reason);
   const source = canonicalizeProxySource(projectDir, absoluteSourcePath);
   const at = Math.max(0, Math.round(atSeconds * 10) / 10);
   const key = fastCopyKey(source.sourcePath, PROXY_PARAMS_VERSION, `still@${at}`, box);
   const cachePath = join(source.projectDir, CACHE_DIR_NAME, `${key}${PROXY_STILL_EXTENSION}`);
-  if (existsSync(cachePath)) return Promise.resolve(cachePath);
-  const shared = stillsInFlight.get(cachePath);
-  if (shared) return shared;
-  const made = makeStill(source, at, box, cachePath).finally(() =>
-    stillsInFlight.delete(cachePath),
-  );
-  stillsInFlight.set(cachePath, made);
-  return made;
+  if (isProjectCacheFile(source.projectDir, cachePath)) {
+    markCacheEntryUsed(cachePath);
+    maintainProxyCache(dirname(cachePath), undefined, cachePath);
+    return Promise.resolve(cachePath);
+  }
+  let job = stillsInFlight.get(cachePath);
+  if (!job) {
+    const abandoned = new AbortController();
+    const made = startUncachedStill(() =>
+      makeStill(source, at, box, cachePath, abandoned.signal),
+    ).finally(() => forgetStill(cachePath, started));
+    const started: StillJob = { made, waiters: 0, abandoned };
+    stillsInFlight.set(cachePath, started);
+    job = started;
+  }
+  return waitForStill(job, cachePath, signal);
+}
+
+function forgetStill(cachePath: string, job: StillJob): void {
+  if (stillsInFlight.get(cachePath) === job) stillsInFlight.delete(cachePath);
+}
+
+function waitForStill(job: StillJob, cachePath: string, signal?: AbortSignal): Promise<string> {
+  job.waiters++;
+  if (!signal) return job.made;
+  return new Promise((resolveWait, rejectWait) => {
+    const leave = (): void => {
+      rejectWait(signal.reason);
+      if (--job.waiters > 0) return;
+      forgetStill(cachePath, job);
+      job.abandoned.abort();
+    };
+    signal.addEventListener("abort", leave, { once: true });
+    job.made
+      .finally(() => signal.removeEventListener("abort", leave))
+      .then(resolveWait, rejectWait);
+  });
 }
 
 async function makeStill(
@@ -1170,26 +1220,36 @@ async function makeStill(
   at: number,
   box: PreviewProxyBox | undefined,
   cachePath: string,
+  signal: AbortSignal,
 ): Promise<string> {
   const ffmpegPath = findFfBinary("ffmpeg", { configuredMustExist: true });
   if (!ffmpegPath) throw new FfmpegUnavailableError();
-  const filter = await buildVideoFilter(
-    ffmpegPath,
-    source.sourcePath,
-    await probeMediaMetadata(source.sourcePath),
-    false,
-    box,
-  );
+  const metadata = await probeMediaMetadata(source.sourcePath);
+  if (metadata.probeError === NOT_MEDIA) throw new ProxyTranscodeError(NOT_MEDIA, null, "");
+  if (metadata.durationSeconds !== undefined && at > metadata.durationSeconds) {
+    throw new StillPastEndError();
+  }
+  const filter = await buildVideoFilter(ffmpegPath, source.sourcePath, metadata, false, box);
   mkdirWithinProject(source.projectDir, dirname(cachePath));
   const tempPath = join(dirname(cachePath), `.tmp-${randomUUID()}-${basename(cachePath)}`);
   try {
-    const args = ["-y", "-ss", String(at), "-i", source.sourcePath, "-map", "0:V:0"];
+    const args = [
+      "-y",
+      "-ss",
+      String(at),
+      ...mediaInputArgs(source.sourcePath),
+      "-i",
+      source.sourcePath,
+      "-map",
+      "0:V:0",
+    ];
     args.push("-frames:v", "1", "-vf", filter, "-pix_fmt", "yuvj420p", "-q:v", "3", tempPath);
-    await spawnFfmpeg(ffmpegPath, args, TRANSCODE_STALL_MS, new AbortController().signal);
+    await spawnFfmpeg(ffmpegPath, args, TRANSCODE_STALL_MS, signal);
     renameSync(tempPath, cachePath);
   } finally {
     rmSync(tempPath, { force: true });
   }
+  maintainProxyCache(dirname(cachePath), undefined, cachePath);
   return cachePath;
 }
 

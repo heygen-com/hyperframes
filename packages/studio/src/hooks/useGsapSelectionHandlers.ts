@@ -9,6 +9,7 @@ import {
   trackStudioSaveFailure,
 } from "../utils/studioSaveDiagnostics";
 import { trackStudioEvent } from "../utils/studioTelemetry";
+import { selectionDataAttribute } from "../components/editor/previewSelection";
 import type { CommitMutationOptions } from "./gsapScriptCommitTypes";
 
 /**
@@ -243,7 +244,7 @@ export function useGsapSelectionHandlers({
         "add",
         `Add GSAP ${method} animation`,
       );
-      if (selection.element.hasAttribute("data-hf-studio-path-offset")) {
+      if (selectionDataAttribute(selection, "data-hf-studio-path-offset") !== null) {
         // The reset owns rollback and the position commit already owns user and
         // telemetry reporting. This is only the fire-and-forget UI boundary.
         void landed.then((didLand) => {

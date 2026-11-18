@@ -6,15 +6,16 @@
  * Videos are replaced with <img> elements during capture.
  */
 
+import { usableCpuCount } from "./systemMemory.js";
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
 import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
 import { basename, isAbsolute, join, normalize, relative, win32 } from "path";
-import { cpus } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { parseHTML } from "linkedom";
 import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
+import { assetRootsRefusal } from "../utils/assetRoots.js";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import {
   MEDIA_RENDER_ID_ATTR,
@@ -44,6 +45,7 @@ import {
   hdrToSdrToneMapFilter,
   parseFirstFrameColour,
   readsKeyframeTransfers,
+  terminalText,
 } from "@hyperframes/core";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import { isKnownInactiveTimelineWindow } from "./mediaTimelineWindow.js";
@@ -57,13 +59,19 @@ import {
   readMetadataCache,
   readStoredFinalFrame,
   resolvePlayableVideoDuration,
+  runFfprobe,
   videoStartOnMediaTimeline,
   writeMetadataCache,
   type MediaProbeCacheEntry,
   type VideoMetadata,
 } from "../utils/ffprobe.js";
 import { inputAlphaOpaqueWarning, probeInputAlphaPlane } from "../utils/alphaPlaneProbe.js";
-import { redactUrlQueriesInError, urlInputArgs } from "../utils/urlInput.js";
+import {
+  redactUrlQueriesInError,
+  selfContainedFormatArgs,
+  urlInputArgs,
+} from "../utils/urlInput.js";
+import { assertMediaPayload, NotMediaPayloadError } from "../utils/notMediaPayload.js";
 import {
   analyzeCompositionHdr,
   isHdrColorSpace as isHdrColorSpaceUtil,
@@ -83,15 +91,18 @@ import {
 } from "../utils/psnrFilterAvailability.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
+import { mediaIdPathSegment } from "../utils/mediaPathSegment.js";
 import {
   FRAME_FILENAME_PREFIX,
+  createPartialCacheEntryDir,
+  createPartialDir,
   gcExtractionCache,
   gcSweepDue,
   lookupCacheEntry,
-  partialCacheEntryDir,
   publishCacheEntry,
   readContentSha256,
   readKeyStat,
+  privateCacheRoot,
   rehydrateCacheEntry,
   touchCacheEntry,
   type CacheEntry,
@@ -309,10 +320,25 @@ export interface ExtractionOptions {
   /** Directories the caller rewrites on every render (downloaded media); their sources are cached by content. */
   contentKeyedDirs?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+  /** Folders a local source must be in; one outside them, or private there, is never opened. Unset allows any folder. */
+  assetRoots?: readonly string[];
   shownBox?: { width: number; height: number };
+  shownBoxes?: ReadonlyMap<string, { width: number; height: number }>;
 }
 
 const DOWNLOAD_SUBDIR = "_downloads";
+
+/** A downloaded video passes the not-media sniff, and on a render service opens only as a self-contained container, before anything reads it as media. */
+async function assertDownloadedVideoIsMedia(
+  path: string,
+  videoId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  await assertMediaPayload(path, videoId);
+  const formatLimit = selfContainedFormatArgs();
+  if (formatLimit.length === 0) return;
+  await runFfprobe(path, [...formatLimit, "-show_entries", "format=format_name"], signal);
+}
 
 export const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
 const GC_STALENESS_MS = 24 * 60 * 60 * 1000;
@@ -320,11 +346,15 @@ const SDR_TO_HDR_COLORSPACE_FILTER = "colorspace=all=bt2020:iall=bt709:range=tv"
 const HDR_TO_SDR_ZSCALE_TRANSFORM_KEY = "hdr2sdr-hable-srgb";
 const HDR_TO_SDR_VIDEOTOOLBOX_TRANSFORM_KEY = "hdr2sdr-videotoolbox-hdr";
 const SDR_CANVAS_PASSTHROUGH_FILTER = "setparams=color_primaries=bt709:color_trc=iec61966-2-1";
+function shownBoxKey(box: { width: number; height: number } | undefined): string | undefined {
+  return box && `shown-${Math.ceil(box.width)}x${Math.ceil(box.height)}`;
+}
+
 function halveToCoverScaleFilter(box: { width: number; height: number }): string {
   const fit = `max(${Math.ceil(box.width)}/iw\\,${Math.ceil(box.height)}/ih)`;
   const halvings = `floor(log(1/${fit})/log(2))`;
   const side = (dim: "iw" | "ih") =>
-    `if(lt(${fit}\\,0.5)\\,2*ceil(${dim}/pow(2\\,${halvings})/2)\\,${dim})`;
+    `if(lte(${fit}\\,0.5)\\,2*ceil(${dim}/pow(2\\,${halvings})/2)\\,${dim})`;
   return `scale=w=${side("iw")}:h=${side("ih")}:flags=area+accurate_rnd`;
 }
 
@@ -636,6 +666,14 @@ export function classifyVideoExtractionError(error: unknown): VideoSourceExtract
       "internal",
       false,
       "Video source download failed internally",
+      diagnostic,
+    );
+  }
+  if (error instanceof NotMediaPayloadError) {
+    return new VideoSourceExtractionError(
+      "invalid_media",
+      false,
+      "Video source is a text document, not media",
       diagnostic,
     );
   }
@@ -1050,7 +1088,7 @@ function undoTickRoundingOnTheSourceFrameGrid(
 }
 
 // Caps extraction ffmpeg runs across all clips; uncapped, dozens of clips starved each other into timeouts.
-const EXTRACTION_SLOTS = Math.max(1, Math.floor(cpus().length / 2));
+const EXTRACTION_SLOTS = Math.max(1, Math.floor(usableCpuCount() / 2));
 const inExtractionSlot = createConcurrencyLimit(EXTRACTION_SLOTS);
 const TAIL_PROBE_SLOTS = Math.max(1, Number(process.env.HF_TAIL_PROBE_SLOTS) || 16);
 const inTailProbeSlot = createConcurrencyLimit(TAIL_PROBE_SLOTS);
@@ -1317,7 +1355,7 @@ async function extractVideoFramesRangeUnredacted(
   const fps = fpsToNumber(normalizedFps);
   const ffmpegFps = fpsToFfmpegArg(normalizedFps);
 
-  const videoOutputDir = outputDirOverride ?? join(outputDir, videoId);
+  const videoOutputDir = outputDirOverride ?? join(outputDir, mediaIdPathSegment(videoId));
   if (!existsSync(videoOutputDir)) mkdirSync(videoOutputDir, { recursive: true });
 
   let metadata: VideoMetadata;
@@ -2148,8 +2186,6 @@ function sliceSupersetMember(
   configuredFps: FpsInput,
 ): ExtractedFrames {
   const { work } = member.miss;
-  rmSync(outputDir, { recursive: true, force: true });
-  mkdirSync(outputDir, { recursive: true });
 
   // Sample-time correctness: member frame k uses superset frame
   // offset_i + k, so its source time is
@@ -2168,7 +2204,11 @@ function sliceSupersetMember(
     linkOrCopyFrame(sourceFrame, join(outputDir, frameFileName(i + 1, work.format)));
   }
 
-  return extractedFramesFromDirectory(work, outputDir, work.videoPath, fps);
+  const sliced = extractedFramesFromDirectory(work, outputDir, work.videoPath, fps);
+  if (sliced.totalFrames !== frameCount) {
+    throw new Error(`superset slice holds ${sliced.totalFrames} frames, not ${frameCount}`);
+  }
+  return sliced;
 }
 
 export async function extractAllVideoFrames(
@@ -2235,6 +2275,17 @@ export async function extractAllVideoFrames(
         resolvedVideos.push({ video, videoPath: remoteUrl });
         continue;
       }
+      const roots = options.assetRoots;
+      const refusal = !isHttpUrl(videoPath) && roots ? assetRootsRefusal(videoPath, roots) : null;
+      if (refusal) {
+        errors.push({
+          videoId: video.id,
+          kind: "source_missing",
+          retryable: false,
+          error: `Video source is ${refusal}: ${video.src}`,
+        });
+        continue;
+      }
 
       if (isHttpUrl(videoPath)) {
         const downloadDir = join(options.outputDir, DOWNLOAD_SUBDIR);
@@ -2247,6 +2298,7 @@ export async function extractAllVideoFrames(
           () => recordTransientRetries(1),
           { onTelemetry: writeUrlDownloadTelemetry },
         );
+        await assertDownloadedVideoIsMedia(videoPath, video.id, signal);
       }
 
       if (!existsSync(videoPath)) {
@@ -2256,8 +2308,8 @@ export async function extractAllVideoFrames(
         if (!warnedSrcs.has(video.src)) {
           warnedSrcs.add(video.src);
           process.stderr.write(
-            `[hyperframes:render] WARNING: video src="${video.src}" ` +
-              `could not be resolved on disk (looked for ${videoPath}). ` +
+            `[hyperframes:render] WARNING: video src="${terminalText(video.src)}" ` +
+              `could not be resolved on disk (looked for ${terminalText(videoPath)}). ` +
               `The rendered output will show this video's first frame for the entire clip duration. ` +
               `If your <video> lives inside a sub-composition, prefer project-root-relative paths ` +
               `(e.g. src="assets/foo.mp4") over "../assets/foo.mp4".\n`,
@@ -2462,11 +2514,14 @@ export async function extractAllVideoFrames(
   let cacheRootDir: string | undefined;
   if (configuredCacheRootDir) {
     try {
-      mkdirSync(configuredCacheRootDir, { recursive: true });
-      cacheRootDir = configuredCacheRootDir;
+      cacheRootDir = privateCacheRoot(configuredCacheRootDir);
+      if (cacheRootDir) mkdirSync(cacheRootDir, { recursive: true });
     } catch {
+      cacheRootDir = undefined;
+    }
+    if (!cacheRootDir) {
       process.stderr.write(
-        `[hyperframes:render] WARNING: extraction cache dir ${configuredCacheRootDir} is not writable; caching disabled for this render\n`,
+        `[hyperframes:render] WARNING: extraction cache dir ${configuredCacheRootDir} is not a writable directory of this user; caching disabled for this render\n`,
       );
     }
   }
@@ -2496,6 +2551,7 @@ export async function extractAllVideoFrames(
       sdrToHdrTransfer: work.sdrToHdrTransfer,
       toneMapHdrToSdr: work.hdrToSdrTransformKey !== undefined,
       finalFrameOnly: work.finalFrameOnly,
+      shownBox: options.shownBoxes?.get(work.video.id) ?? options.shownBox,
     };
   }
 
@@ -2538,6 +2594,7 @@ export async function extractAllVideoFrames(
       work.sdrToHdrTransfer ? sdrToHdrTransformKey(work.sdrToHdrTransfer) : undefined,
       work.hdrToSdrTransformKey,
       work.finalFrameOnly ? "final-frame" : undefined,
+      shownBoxKey(options.shownBoxes?.get(work.video.id) ?? options.shownBox),
     ].filter((part): part is string => part !== undefined);
     const transform = transformParts.length > 0 ? transformParts.join("+") : undefined;
 
@@ -2571,7 +2628,7 @@ export async function extractAllVideoFrames(
   ): Promise<ExtractedFrames> {
     const { work, cacheTarget } = miss;
     if (!cacheTarget) {
-      const outputDir = join(options.outputDir, work.video.id);
+      const outputDir = join(options.outputDir, mediaIdPathSegment(work.video.id));
       const attempted = await runVideoExtractionWithRetry(
         () =>
           extractVideoFramesRange(
@@ -2595,9 +2652,7 @@ export async function extractAllVideoFrames(
       return attempted.result;
     }
 
-    const partialDir = partialCacheEntryDir(cacheTarget.entry);
-    rmSync(partialDir, { recursive: true, force: true });
-    mkdirSync(partialDir, { recursive: true });
+    let partialDir = createPartialCacheEntryDir(cacheTarget.entry);
     const attempted = await runVideoExtractionWithRetry(
       () =>
         extractVideoFramesRange(
@@ -2616,12 +2671,12 @@ export async function extractAllVideoFrames(
         onRetry: () => {
           recordTransientRetries(1);
           rmSync(partialDir, { recursive: true, force: true });
-          mkdirSync(partialDir, { recursive: true });
+          partialDir = createPartialCacheEntryDir(cacheTarget.entry);
         },
       },
     );
     const result = attempted.result;
-    const published = publishCacheEntry(cacheTarget.entry, partialDir);
+    const published = publishCacheEntry(cacheTarget.entry, partialDir, result.totalFrames);
     if (!published.published) {
       breakdown.cachePublishFailures += 1;
       return { ...result, ownedByLookup: false };
@@ -2650,7 +2705,7 @@ export async function extractAllVideoFrames(
     const tailFrames = Math.min(expectedFrames, Math.ceil(fps));
     if (expectedFrames <= tailFrames) return null;
     const deferred = (totalFrames: number): ExtractedFrames => {
-      const outputDir = join(options.outputDir, work.video.id);
+      const outputDir = join(options.outputDir, mediaIdPathSegment(work.video.id));
       mkdirSync(outputDir, { recursive: true });
       return {
         videoId: work.video.id,
@@ -2694,7 +2749,7 @@ export async function extractAllVideoFrames(
       const totalFrames = firstTailFrame + storedTailFrames;
       return totalFrames <= expectedFrames * 0.6 ? null : deferred(totalFrames);
     }
-    const probeDir = join(options.outputDir, `${work.video.id}.tail-probe`);
+    const probeDir = join(options.outputDir, `${mediaIdPathSegment(work.video.id)}.tail-probe`);
     try {
       const tail = await extractVideoFramesRange(
         work.videoPath,
@@ -2739,18 +2794,15 @@ export async function extractAllVideoFrames(
     const { miss } = member;
     const { work, cacheTarget } = miss;
     if (!cacheTarget) {
-      return sliceSupersetMember(
-        member,
-        superset,
-        join(options.outputDir, work.video.id),
-        fps,
-        configuredFps,
-      );
+      const outputDir = join(options.outputDir, mediaIdPathSegment(work.video.id));
+      rmSync(outputDir, { recursive: true, force: true });
+      mkdirSync(outputDir, { recursive: true });
+      return sliceSupersetMember(member, superset, outputDir, fps, configuredFps);
     }
 
-    const partialDir = partialCacheEntryDir(cacheTarget.entry);
+    const partialDir = createPartialCacheEntryDir(cacheTarget.entry);
     const sliced = sliceSupersetMember(member, superset, partialDir, fps, configuredFps);
-    const published = publishCacheEntry(cacheTarget.entry, partialDir);
+    const published = publishCacheEntry(cacheTarget.entry, partialDir, sliced.totalFrames);
     if (!published.published) {
       breakdown.cachePublishFailures += 1;
       return { ...sliced, ownedByLookup: false };
@@ -2767,15 +2819,11 @@ export async function extractAllVideoFrames(
     // members link into partial dirs under cacheRootDir, which is commonly a
     // different mount than the render's outputDir — extracting the superset
     // next to the cache keeps linkSync viable there (the EXDEV copyFileSync
-    // fallback would silently multiply disk usage per member). The
-    // `.partial-` name puts crashed leftovers under the GC's aged-partial
-    // sweep.
-    const tempDir = cacheRootDir
-      ? join(cacheRootDir, `${group.groupId}.partial-${process.pid}`)
-      : join(options.outputDir, group.groupId);
-
+    // fallback would silently multiply disk usage per member). Renders share the
+    // cache root and group ids, so each gets a new folder of its own.
+    let tempDir: string | undefined;
     try {
-      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = createPartialDir(cacheRootDir ?? options.outputDir, group.groupId);
       // A long union can fail even when each shorter
       // member range succeeds. Do not retry the optimization itself; preserve
       // the established grouped→direct fallback and apply bounded retries only
@@ -2819,7 +2867,7 @@ export async function extractAllVideoFrames(
       );
       return fallback;
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      if (tempDir) rmSync(tempDir, { recursive: true, force: true });
     }
   }
 

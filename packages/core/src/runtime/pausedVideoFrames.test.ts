@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
+  captureNativeVideoFrame,
   createPausedVideoFrames,
   getPausedVideoFrame,
   ownsPausedVideoTime,
@@ -266,4 +267,86 @@ it("does not retire an adopted decoded picture when its native snapshot lease en
   expect(getPausedVideoFrame(video)).toBe(snapshot);
   expect(ownsPausedVideoTime(video)).toBe(true);
   expect(video.currentTime).toBe(3);
+});
+
+const MAC_CHROME =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
+
+it("shows a paused frame with the look its video layer has, and the authored filter after it", async () => {
+  vi.stubGlobal("navigator", { userAgent: MAC_CHROME });
+  window.__HF_MEDIA_SOURCE_FACTS__ = {
+    "/original.webm": { width: 64, height: 36, bitDepth: 8, bitrate: 1 },
+  };
+  const { session, video, request } = fixture();
+  video.style.filter = "blur(2px)";
+  const batch = await session.prepare(request, new AbortController().signal);
+  batch!.present();
+  batch!.refresh();
+  expect(getPausedVideoFrame(video)!.style.filter).toMatch(
+    /^url\("?#__hf_native_video_look"?\) blur\(2px\)$/,
+  );
+  delete window.__HF_MEDIA_SOURCE_FACTS__;
+  vi.unstubAllGlobals();
+});
+
+it("leaves the paused frame of an HDR source as decoded", async () => {
+  vi.stubGlobal("navigator", { userAgent: MAC_CHROME });
+  window.__HF_MEDIA_SOURCE_FACTS__ = {
+    "/original.webm": { width: 64, height: 36, bitDepth: 10, bitrate: 1 },
+  };
+  const { session, video, request } = fixture();
+  const batch = await session.prepare(request, new AbortController().signal);
+  batch!.present();
+  batch!.refresh();
+  expect(getPausedVideoFrame(video)!.style.filter).not.toContain("__hf_native_video_look");
+  delete window.__HF_MEDIA_SOURCE_FACTS__;
+  vi.unstubAllGlobals();
+});
+
+it("leaves the paused frame of a source the scan did not report as it was decoded", async () => {
+  vi.stubGlobal("navigator", { userAgent: MAC_CHROME });
+  const { session, video, request } = fixture();
+  const batch = await session.prepare(request, new AbortController().signal);
+  batch!.present();
+  batch!.refresh();
+  expect(getPausedVideoFrame(video)!.style.filter).not.toContain("__hf_native_video_look");
+  vi.unstubAllGlobals();
+});
+
+// fails without the fix: drawImage(video) left each decoded frame in the renderer's image cache; a strip capture of a
+// 1080p film held 7.9 MB per seek there, never reused.
+it("draws a held picture through a VideoFrame closed after the draw, else from the video itself", () => {
+  const draws: Array<{ source: unknown; closed: boolean }> = [];
+  class FakeVideoFrame {
+    closed = false;
+    constructor(readonly video: HTMLVideoElement) {}
+    close() {
+      this.closed = true;
+    }
+  }
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage: (source: unknown) =>
+      draws.push({ source, closed: source instanceof FakeVideoFrame && source.closed }),
+  } as unknown as CanvasRenderingContext2D);
+  const video = document.createElement("video");
+  Object.defineProperty(video, "videoWidth", { value: 64 });
+  Object.defineProperty(video, "videoHeight", { value: 36 });
+  vi.stubGlobal("VideoFrame", FakeVideoFrame);
+  expect(captureNativeVideoFrame(video)?.width).toBe(64);
+  const [first] = draws;
+  const source = first?.source;
+  expect(source).toBeInstanceOf(FakeVideoFrame);
+  expect(first?.closed).toBe(false);
+  expect(source instanceof FakeVideoFrame && source.closed).toBe(true);
+  vi.stubGlobal(
+    "VideoFrame",
+    class {
+      constructor() {
+        throw new DOMException("tainted", "SecurityError");
+      }
+    },
+  );
+  expect(captureNativeVideoFrame(video)).not.toBeNull();
+  expect(draws[1]?.source).toBe(video);
+  vi.unstubAllGlobals();
 });

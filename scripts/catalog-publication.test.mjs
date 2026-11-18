@@ -116,6 +116,9 @@ const endpoint = args[1];
 const method = args[args.indexOf("--method") + 1];
 const body = args.includes("--input") ? JSON.parse(fs.readFileSync(0, "utf8")) : undefined;
 fs.appendFileSync(process.env.API_CALLS, JSON.stringify({ endpoint, method, body }) + "\\n");
+const mainAdvanced = () =>
+  process.env.MAIN_ADVANCES === "before" ||
+  (process.env.MAIN_ADVANCES === "after-commit" && fs.readFileSync(process.env.API_CALLS, "utf8").includes('"graphql"'));
 if (!process.env.PUBLISH_SUCCESS && (endpoint === "graphql" || method === "DELETE")) {
   console.error(endpoint === "graphql" ? "commit rejected" : "cleanup rejected");
   process.exit(1);
@@ -123,7 +126,7 @@ if (!process.env.PUBLISH_SUCCESS && (endpoint === "graphql" || method === "DELET
 if (endpoint === "graphql") console.log("c".repeat(40));
 else if (endpoint.includes("/runs?")) console.log(JSON.stringify({ workflow_runs: JSON.parse(process.env.WORKFLOW_RUNS || "[]") }));
 else if (endpoint.endsWith("/dispatches") && process.env.DISPATCH_FAIL) process.exit(1);
-else if (endpoint.endsWith("/ref/heads/main")) console.log(process.env.BASE);
+else if (endpoint.endsWith("/ref/heads/main")) console.log(mainAdvanced() ? "b".repeat(40) : process.env.BASE);
 else if (endpoint.includes("/matching-refs/")) console.log(process.env.NO_BRANCH ? "" : "refs/heads/bot/catalog-publish");
 else if (endpoint.includes("/ref/heads/bot/catalog-publish")) console.log("a".repeat(40));
 else if (endpoint.includes("/pulls?")) console.log(process.env.NO_OPEN_PR ? "" : "42");
@@ -188,6 +191,29 @@ test("reverting unpublished sources closes the obsolete PR and resets its branch
         body: { sha: fixture.base, force: true },
       },
     ],
+  );
+});
+
+test("a run that main overtook before it started ends clean and writes nothing", (t) => {
+  const fixture = publicationFixture(t, true, { MAIN_ADVANCES: "before" });
+  assert.match(fixture.run(), /^::notice::Main advanced during publication/m);
+  assert.deepEqual(
+    fixture.calls().filter((call) => call.method !== "GET"),
+    [],
+  );
+});
+
+test("a run that main overtook after its commits ends clean and leaves the publication alone", (t) => {
+  const fixture = publicationFixture(t, true, {
+    MAIN_ADVANCES: "after-commit",
+    PUBLISH_SUCCESS: "1",
+  });
+  assert.match(fixture.run(), /^::notice::Main advanced during publication/m);
+  const writes = fixture.calls().filter((call) => call.method !== "GET");
+  assert.equal(writes.at(-1).method, "DELETE");
+  assert.equal(
+    writes.some((call) => call.method === "PATCH" || call.endpoint.endsWith("/dispatches")),
+    false,
   );
 });
 

@@ -55,6 +55,8 @@ export interface SpaceDTO {
   last_used_at: string | null;
   /** The workspace this token is bound to; absent from servers before it. */
   bound?: boolean;
+  /** Whether this workspace can bind a synced storyboard to a review. */
+  storyboards?: boolean;
   /** Someone other than the calling user is a member; absent when the server could not count, or
    * predates it. */
   has_other_members?: boolean;

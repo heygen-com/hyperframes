@@ -61,17 +61,18 @@ jobs:
         with:
           engine: "true"
           headless-shell: "true"
-      - id: pin
-        if: matrix.flavour == 'pin'
+      # The workspace action installs the pinned shell; the stable leg fetches the current stable one.
+      - id: stable
+        if: matrix.flavour == 'stable'
         shell: bash
         run: |
-          dir="$RUNNER_TEMP/headless-shell-pin"
-          bunx @puppeteer/browsers@3.2.2 install chrome-headless-shell@153.0.8010.36 --path "$dir"
+          dir="$RUNNER_TEMP/headless-shell-stable"
+          bunx @puppeteer/browsers@3.2.2 install chrome-headless-shell@stable --path "$dir"
           echo "path=$(find "$dir" -type f -name chrome-headless-shell | head -n 1)" >> "$GITHUB_OUTPUT"
       - name: Run the generated compositions
         working-directory: packages/engine
         env:
-          HYPERFRAMES_BROWSER_PATH: ${{ matrix.flavour == 'pin' && steps.pin.outputs.path || steps.workspace.outputs.headless-shell-path }}
+          HYPERFRAMES_BROWSER_PATH: ${{ matrix.flavour == 'stable' && steps.stable.outputs.path || steps.workspace.outputs.headless-shell-path }}
           HF_BLUR_SEEDS: ${{ matrix.chunk.seeds }}
           HF_BLUR_FAILURES_FILE: ${{ github.workspace }}/blur-nightly-failures.json
           HF_BLUR_REQUIRED: "1"

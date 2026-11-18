@@ -11,6 +11,7 @@ import type { HdrAutoPromotion } from "@hyperframes/engine";
 import type { ComponentReport } from "@hyperframes/inspector/live";
 import type { PrelaunchedBrowser } from "../capture/captureCompositionFrame.js";
 import type { CheckPhase } from "./checkDeadline.js";
+import type { SafeZone } from "./safeZones.js";
 
 export interface CheckOptions {
   samples: number;
@@ -31,6 +32,7 @@ export interface CheckOptions {
   findingFrames?: boolean;
   inspect?: boolean;
   captionZone?: CaptionZoneOptions;
+  safeZones?: SafeZone[];
   frameCheck?: FrameCheckOptions;
   /** Opt-in layout-audit knobs (`--layout "proseCoverageFloor=0.05"`). Defaults stay in the browser audit. */
   layout?: LayoutOptions;
@@ -135,6 +137,7 @@ export interface ContrastCapture {
 export interface GeometryCandidateRequest {
   text: boolean;
   media: boolean;
+  blocks: boolean;
   tolerance: number;
 }
 
@@ -172,13 +175,33 @@ export interface CheckFindingInspection {
 }
 
 export interface CheckGeometryCandidate extends CheckAnchor {
-  kind: "text" | "media";
+  kind: "text" | "media" | "block";
   tag: string;
   text: string;
   rect: LayoutRect;
   elementRect: LayoutRect;
   overflow?: LayoutOverflow;
 }
+
+export interface TextOverVideoCandidate extends CheckAnchor {
+  text: string;
+  rect: LayoutRect;
+  wordRects: CheckBbox[];
+  video: {
+    selector: string;
+    file: string;
+    mediaTime: number;
+    box: CheckBbox;
+    frame: CheckBbox;
+    flipX: boolean;
+    flipY: boolean;
+  };
+}
+
+/** `candidates`: text-over-video samples examined. `faces`: distinct video frames a face was found in. */
+export type FaceCheck =
+  | { ran: true; candidates: number; faces: number; unreadVideos?: number }
+  | { ran: false; reason: string };
 
 /** One rotatable element's geometry at a single seeked sample, produced by
  * `__hyperframesRotationSample` (layout-audit.browser.js) and accumulated
@@ -291,6 +314,7 @@ export interface CheckAuditDriver {
    * geometry + resolved dial hub at the current seeked state, as a time-hoisted
    * frame envelope. */
   collectOffPivotRotationSample(time: number): Promise<OffPivotFrame>;
+  collectTextOverVideo?(time: number): Promise<TextOverVideoCandidate[]>;
   collectGeometryCandidates(
     time: number,
     request: GeometryCandidateRequest,
@@ -339,6 +363,7 @@ export interface CheckBrowserResult {
   transitionSamplesDropped: number;
   runtimeFindings: CheckFinding[];
   layoutIssues: AnchoredLayoutIssue[];
+  faceCheck?: FaceCheck;
   motionIssues: AnchoredLayoutIssue[];
   motionSampleCount: number;
   contrastSamples: number[];
@@ -380,6 +405,7 @@ export type RunAuditGrid = (
   enter?: (phase: CheckPhase) => void,
   report?: CheckProgress,
   keep?: (read: () => Partial<CheckBrowserResult>) => void,
+  stop?: AbortSignal,
 ) => Promise<CheckBrowserResult>;
 
 export interface CheckSection<T extends CheckFinding = CheckFinding> {
@@ -411,6 +437,7 @@ export interface CheckReport {
     tolerance: number;
     totalIssueCount: number;
     truncated: boolean;
+    faceCheck: FaceCheck;
   };
   motion: CheckSection & { enabled: boolean; specPath?: string; samples: number };
   contrast: CheckSection<CheckContrastFinding> & {
@@ -421,7 +448,11 @@ export interface CheckReport {
   };
   craft: CheckSection<CraftFinding> & { enabled: boolean; step: number; samples: number };
   audio: CheckSection;
-  hdr: { autoPromotion: HdrAutoPromotion | null; inspection: "available" | "unavailable" };
+  hdr: {
+    autoPromotion: HdrAutoPromotion | null;
+    inspection: "available" | "unavailable";
+    remoteNotInspected?: string[];
+  };
   snapshots: { enabled: boolean; files: string[]; times: number[]; findingFiles: string[] };
 }
 

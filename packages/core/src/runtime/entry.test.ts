@@ -67,7 +67,6 @@ function resetRuntimeGlobals(): void {
   window.__timelines = {};
   delete window.__player;
   delete window.__playerReady;
-  delete window.__HF_RELEASE_PASSED_MEDIA;
   delete window.__renderReady;
   delete window.__hfTimelinesBuilding;
   const win = window as {
@@ -512,6 +511,26 @@ describe("runtime entry", () => {
       expect(loadsOf(now, soon, later)).toEqual([2, 0, 0]);
     });
 
+    it("in a hidden capture page a clip with no authored length waits until due, and keeps its length once loaded", async () => {
+      spyLoad();
+      servePreview().setAttribute("content", STUDIO_PREVIEW_CAPTURE_MODE);
+      const clips = videos(mountRoot(), "0", "1.5", "9");
+      for (const clip of clips) clip.removeAttribute("data-duration");
+      const [now, soon, later] = clips;
+
+      await evaluateRuntime();
+      expect(armed(now!, soon!, later!)).toEqual([true, false, false]);
+      expect(loadsOf(now!, soon!, later!)).toEqual([1, 0, 0]);
+
+      Object.defineProperty(now!, "readyState", { value: 1 });
+      Object.defineProperty(now!, "duration", { value: 2 });
+      window.__player?.seek(9.4);
+      // The loaded clip is never reloaded, which would drop the length it is timed by; one with no length
+      // known that started before the playhead may still be on screen, so it loads.
+      expect(armed(now!, soon!, later!)).toEqual([true, true, true]);
+      expect(loadsOf(now!)).toEqual([1]);
+    });
+
     // Three takes of one file, each a picture and a sound, as an edit cut from a single source is.
     const takesOfOneFile = () => {
       const root = mountRoot();
@@ -713,27 +732,37 @@ describe("runtime entry", () => {
       expect(loadsOf(queued)).toEqual([1]);
     });
 
-    it.each([
-      [true, 2],
-      [false, 1],
-    ])(
-      "with a capture page flag %s, a fully buffered clip the playhead left is reloaded %s times",
-      async (flag, loadCount) => {
-        spyLoad();
-        servePreview();
-        window.__HF_RELEASE_PASSED_MEDIA = flag;
-        const [now, later] = videos(mountRoot(), "0", "9");
-        Object.defineProperty(now, "duration", { value: 5 });
-        Object.defineProperty(now, "buffered", {
-          value: { length: 1, start: () => 0, end: () => 5 },
-        });
+    it("frees a fully buffered clip the playhead has left, so it holds no decoder", async () => {
+      spyLoad();
+      servePreview();
+      const [now, later] = videos(mountRoot(), "0", "9");
+      Object.defineProperty(now, "duration", { value: 5 });
+      Object.defineProperty(now, "buffered", {
+        value: { length: 1, start: () => 0, end: () => 5 },
+      });
 
-        await evaluateRuntime();
-        window.__player?.seek(7.6);
-        expect(armed(now, later)).toEqual([false, true]);
-        expect(loadsOf(now)).toEqual([loadCount]);
-      },
-    );
+      await evaluateRuntime();
+      window.__player?.seek(7.6);
+      expect(armed(now, later)).toEqual([false, true]);
+      expect(loadsOf(now)).toEqual([2]);
+    });
+
+    it("keeps a fully buffered audio clip's buffer when the playhead leaves it", async () => {
+      spyLoad();
+      servePreview();
+      const root = mountRoot();
+      const now = timed(root, "audio", "0");
+      const later = timed(root, "audio", "9");
+      Object.defineProperty(now, "duration", { value: 5 });
+      Object.defineProperty(now, "buffered", {
+        value: { length: 1, start: () => 0, end: () => 5 },
+      });
+
+      await evaluateRuntime();
+      window.__player?.seek(7.6);
+      expect(armed(now, later)).toEqual([false, true]);
+      expect(loadsOf(now)).toEqual([1]);
+    });
 
     it("frees a clip the playhead has passed while it is still downloading, and keeps one that finished", async () => {
       spyLoad();
@@ -802,9 +831,11 @@ describe("runtime entry", () => {
       servePreview();
       const [, next] = videos(mountRoot(), "0", "5");
       next.setAttribute("data-media-start", "6");
-      Object.defineProperty(next, "readyState", { value: 4 });
+      let readyState = 0;
+      Object.defineProperty(next, "readyState", { get: () => readyState });
 
       await evaluateRuntime();
+      readyState = 4;
       window.__player?.seek(3.5);
       expect(next.currentTime).toBe(mediaElementTime(6));
       expect(next.paused).toBe(true);

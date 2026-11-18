@@ -201,6 +201,64 @@ describe("bundleToSingleHtml", () => {
     expect(reads).not.toContain(join(dir, "notes.md"));
   });
 
+  it("never inlines git metadata or env files, spelled directly or through a link", async () => {
+    const secret = "SECRET_TOKEN_VALUE";
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head>
+        <link rel="stylesheet" href=".env"><link rel="stylesheet" href="style.css">
+      </head><body>
+        <div data-composition-id="root" data-width="320" data-height="180" data-start="0" data-duration="2">
+          <img src=".git/config">
+          <div data-composition-id="intro" data-composition-src="scenes/intro.html" data-start="0" data-duration="1"></div>
+          <div data-composition-id="env" data-composition-src=".env.html" data-start="0" data-duration="1"></div>
+        </div>
+        <script src=".git/config"></script>
+        <script src="linked.js"></script>
+      </body></html>`,
+      "style.css": '@import ".env.local"; .a { color: red; }',
+      "scenes/intro.html": `<template><div data-composition-id="intro" data-width="320" data-height="180">
+        <p>intro</p><script src="../.env"></script></div></template>`,
+      ".env": `TOKEN=${secret}`,
+      ".env.local": `TOKEN=${secret}`,
+      ".env.html": `<template><div data-composition-id="env">${secret}</div></template>`,
+      ".git/config": `[remote "origin"] url = https://${secret}@example.com/repo.git`,
+    });
+    symlinkSync(join(dir, ".env"), join(dir, "linked.js"));
+    try {
+      const bundled = await bundleToSingleHtml(dir, { inlineAssets: true });
+      expect(bundled).not.toContain(secret);
+      expect(bundled).not.toContain(Buffer.from(`TOKEN=${secret}`).toString("base64"));
+      expect(bundled).toContain(".a { color: red; }");
+      expect(bundled).toContain("<p>intro</p>");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses the app's records by default, and inlines them only when asked for git and env files alone", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html><html><head>
+        <link rel="stylesheet" href=".hyperframes/handoff.css">
+        <link rel="stylesheet" href=".hyperframes/prepared-assets/fonts.css">
+      </head><body><div data-composition-id="root" data-width="320" data-height="180"></div></body></html>`,
+      ".hyperframes/handoff.css": ".app-record { color: red; }",
+      ".hyperframes/prepared-assets/fonts.css": ".prepared { color: blue; }",
+    });
+    try {
+      const studio = await bundleToSingleHtml(dir, { privateFiles: "studio" });
+      expect(studio).not.toContain(".app-record");
+      expect(studio).toContain('href=".hyperframes/handoff.css"');
+      expect(studio).toContain(".prepared { color: blue; }");
+      const plain = await bundleToSingleHtml(dir);
+      expect(plain).not.toContain(".app-record");
+      expect(plain).toContain(".prepared { color: blue; }");
+      const narrow = await bundleToSingleHtml(dir, { privateFiles: "vcs-and-secrets" });
+      expect(narrow).toContain(".app-record { color: red; }");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     [
       "UTF-16LE",
@@ -4246,5 +4304,34 @@ describe("emitRootCompositionVariableStyles — authored definitions", () => {
     const css = emitted(":root { --accent-dark: black; } .badge { color: var(--accent); }");
     expect(css).toContain("--accent: blue");
     expect(css).not.toContain("--accent-dark");
+  });
+});
+
+describe("emitRootCompositionVariableStyles — size budget", () => {
+  const DECLARER = `<div data-composition-variables='[{"id":"v","type":"string","default":"d"}]'></div>`;
+  const hostWith = (declarers: number, value: string) =>
+    `<!doctype html><html><head></head><body>` +
+    `<div data-variable-values='${JSON.stringify({ v: value })}'>${DECLARER.repeat(declarers)}</div>` +
+    `</body></html>`;
+
+  it("throws COMPOSITION_TOO_LARGE past the core limit and appends no style", () => {
+    // 100 rules of ~1 MiB each: just over 32 MiB in total.
+    const { document } = parseHTML(hostWith(100, "x".repeat(1024 * 1024)));
+    expect(() => emitRootCompositionVariableStyles(document)).toThrow(
+      expect.objectContaining({ code: "COMPOSITION_TOO_LARGE" }),
+    );
+    expect(document.querySelector("style[data-hf-composition-variables]")).toBeNull();
+  });
+
+  it("stops building rules when the caller's charge throws", () => {
+    const { document } = parseHTML(hostWith(5, "x"));
+    const chargeBytes = vi.fn(() => {
+      throw new Error("over budget");
+    });
+    expect(() => emitRootCompositionVariableStyles(document, {}, {}, { chargeBytes })).toThrow(
+      "over budget",
+    );
+    expect(chargeBytes).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("style[data-hf-composition-variables]")).toBeNull();
   });
 });

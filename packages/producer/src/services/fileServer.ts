@@ -10,7 +10,7 @@
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { settleOnBrowserSafePort } from "@hyperframes/engine";
+import { answerOwnLoopbackHostOnly, settleOnBrowserSafePort } from "@hyperframes/engine";
 import type { IncomingMessage } from "node:http";
 import {
   existsSync,
@@ -28,12 +28,20 @@ import { promisify } from "node:util";
 import { Readable } from "node:stream";
 import { join, extname, resolve, sep } from "node:path";
 import { injectScriptsAtHeadStart, injectScriptsIntoHtml } from "@hyperframes/core/compiler";
-import { fpsToNumber, type Fps } from "@hyperframes/core";
+import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import {
+  PREVIEW_FOR_ANOTHER_SITE_META,
+  serviceWorkerScriptFetch,
+} from "@hyperframes/core/studio-preview-mark";
+import { fpsToNumber, type Fps, terminalText } from "@hyperframes/core";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { openRangeEnd } from "@hyperframes/studio-server/media-range";
 import { getVerifiedHyperframeRuntimeSource } from "./hyperframeRuntimeLoader.js";
+import { servedPath } from "./servedPath.js";
 import { getHfEarlyStub } from "../generated/hf-early-stub-inline.js";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
+import { refusesOutsideLink } from "../utils/paths.js";
 
 const readFileAsync = promisify(readFile);
 
@@ -96,6 +104,7 @@ const MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
   ".mjs": "application/javascript; charset=utf-8",
+  ".cjs": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".cube": "text/plain; charset=utf-8",
   ".png": "image/png",
@@ -716,6 +725,9 @@ export interface FileServerOptions {
   fps?: Fps;
   /** Strip embedded runtime scripts from HTML before injection. Default: true. */
   stripEmbeddedRuntime?: boolean;
+  /** Serve project symlinks that lead outside projectDir, as local preview does. Default: false. */
+  allowOutsideProjectAssets?: boolean;
+  includeOutsideScripts?: boolean;
 }
 
 export interface FileServerHandle {
@@ -724,6 +736,8 @@ export interface FileServerHandle {
   close: () => void;
   addPreHeadScript: (script: string) => void;
 }
+
+const OFFER_NO_FRAMING_SITE_AN_EDITING_PORT = `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`;
 
 /**
  * Set before the Hyperframes runtime executes so render/probe pages can avoid
@@ -786,7 +800,14 @@ function openRegularFile(filePath: string) {
 }
 
 export function createFileServer(options: FileServerOptions): Promise<FileServerHandle> {
-  const { projectDir, compiledDir, port = 0, stripEmbeddedRuntime = true } = options;
+  const {
+    projectDir,
+    compiledDir,
+    port = 0,
+    stripEmbeddedRuntime = true,
+    allowOutsideProjectAssets = false,
+    includeOutsideScripts = false,
+  } = options;
 
   // HF_EARLY_STUB must run before *any* page script so libraries that write
   // to window.__hf during page-script execution (e.g. shader-transitions
@@ -804,40 +825,46 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
   const bodyScripts = options.bodyScripts ?? [buildRenderModeScript(options.fps), HF_BRIDGE_SCRIPT];
 
   const app = new Hono();
+  const warnLeftOut = (line: string) => console.warn(`[FileServer] ${terminalText(line)}`);
+  const outsidePolicy = { includeScripts: includeOutsideScripts };
+  let listeningPort = -1;
+
+  app.use(async function loadEachFileOnlyAsItsNamedType(c, next) {
+    await next();
+    c.res.headers.set("X-Content-Type-Options", "nosniff");
+  });
+  answerOwnLoopbackHostOnly(app, () => listeningPort);
+  app.use(async function refuseServiceWorkerScripts(c, next) {
+    const serviceWorker = c.req.header("service-worker");
+    if (!serviceWorkerScriptFetch({ serviceWorker, fetchDest: c.req.header("sec-fetch-dest") }))
+      return next();
+    return c.text("Forbidden", 403);
+  });
 
   app.get("/*", async (c) => {
     let requestPath = c.req.path;
     if (requestPath === "/") requestPath = "/index.html";
 
-    const relativePath = requestPath
-      .replace(/^\//, "")
-      .split("/")
-      .map((seg) => {
-        try {
-          return decodeURIComponent(seg);
-        } catch {
-          return seg;
-        }
-      })
-      .join("/");
+    const relativePath = servedPath(requestPath);
 
-    // Resolve against compiledDir first (preferred — overrides project files
-    // for compositions emitted by the build), then projectDir as fallback.
-    // Each candidate is rejected if `..` segments push it outside the
-    // intended root: `path.join` normalizes traversal but does not enforce
-    // containment, so a request like `GET /../etc/passwd` would otherwise
-    // be served straight off the filesystem. Keep this lexical so project
-    // symlinks to sibling asset directories behave like preview mode.
+    // compiledDir (the build's output) wins over projectDir. A candidate `..` pushes outside its root is
+    // rejected: `path.join` does not enforce containment, so `GET /../etc/passwd` would be served.
+    // compiledDir stays lexical: it links extracted frame directories in from the work directory.
     let file: ReturnType<typeof openRegularFile> = null;
     for (const root of compiledDir ? [compiledDir, projectDir] : [projectDir]) {
       const candidate = join(root, relativePath);
-      if (isPathInside(candidate, root)) file = openRegularFile(candidate);
+      const resolveSymlinks = !allowOutsideProjectAssets && root !== compiledDir;
+      if (!isPathInside(candidate, root, { resolveSymlinks })) continue;
+      if (isPrivateFileUnder(root, candidate, isStudioPrivatePath)) continue;
+      const checksLinks = allowOutsideProjectAssets && root !== compiledDir;
+      if (checksLinks && refusesOutsideLink(root, candidate, warnLeftOut, outsidePolicy)) continue;
+      file = openRegularFile(candidate);
       if (file) break;
     }
 
     if (!file) {
       if (!/favicon\.ico$/i.test(requestPath)) {
-        console.warn(`[FileServer] 404 Not Found: ${requestPath}`);
+        console.warn(`[FileServer] 404 Not Found: ${terminalText(requestPath)}`);
       }
       return c.text("Not found", 404);
     }
@@ -863,6 +890,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
         html = isIndex
           ? injectScriptsIntoHtml(html, headScripts, bodyScripts, stripEmbeddedRuntime)
           : html;
+        html = injectTagsAtHeadStart(html, OFFER_NO_FRAMING_SITE_AN_EDITING_PORT);
         return c.text(html, 200, { "Content-Type": contentType });
       }
 
@@ -962,6 +990,7 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       const bound =
         port === 0 ? settleOnBrowserSafePort(server, "127.0.0.1") : Promise.resolve(info.port);
       bound.then((boundPort) => {
+        listeningPort = boundPort;
         resolve({
           url: `http://localhost:${boundPort}`,
           port: boundPort,

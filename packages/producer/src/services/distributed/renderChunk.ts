@@ -36,7 +36,6 @@
 import { chunkGopFrames } from "../render/deliveryEncoder.js";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { cpus } from "node:os";
 import { join } from "node:path";
 import {
   assertSwiftShader,
@@ -59,6 +58,7 @@ import {
   readWebGlVendorInfoFromCanvas,
   resolveConfig,
   type ShownBox,
+  usableCpuCount,
 } from "@hyperframes/engine";
 import { defaultLogger } from "../../logger.js";
 import {
@@ -132,6 +132,7 @@ export {
   rebuildExtractedFramesFromPlanDir,
   RenderChunkValidationError,
 } from "./chunkFrames.js";
+import { noteStaticDedupActivity } from "../render/shared.js";
 
 const LEGACY_DISTRIBUTED_VP9_CPU_USED = 2;
 
@@ -749,6 +750,7 @@ export async function renderChunk(
         deferredVideos.filter((video) => remoteVideoIds.has(video.videoId)),
       ),
     });
+    captureOptions.onStaticDedupActivity = () => noteStaticDedupActivity(job);
 
     // Resolve worker count up-front. Sequential capture reuses the initialized
     // session below. Parallel BeginFrame capture pays one bounded preflight
@@ -1041,8 +1043,11 @@ export async function renderChunk(
           const captureSession = session;
           session = null;
           verifyStarted = Date.now();
-          overlap.current = canEncodeWhileCapturing(encodeInput, chunkWorkerCount, cpus().length)
-            ? encodeWhileCapturing(encodeInput, framesInChunk)
+          overlap.current = canEncodeWhileCapturing(encodeInput, chunkWorkerCount, usableCpuCount())
+            ? encodeWhileCapturing(encodeInput, framesInChunk, {
+                workerCount: chunkWorkerCount,
+                cpuCount: usableCpuCount(),
+              })
             : null;
           await observeRenderStage(
             new RenderObservabilityRecorder({ pipelineStartMs: start, log }),
@@ -1074,7 +1079,7 @@ export async function renderChunk(
                 verifyFirstSession:
                   forceScreenshot || !verifyInWorker ? undefined : verifyFirstWorker,
               }),
-            { stall: frameStallRule(job, framesInChunk) },
+            { stall: frameStallRule(job, framesInChunk, undefined) },
           ).catch(async (captureError: unknown) => {
             await overlap.current?.abort();
             overlap.current = null;

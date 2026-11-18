@@ -30,7 +30,12 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperframes/core";
-import { createFrameLookupTable, type ExtractedFrames, renameWithRetry } from "@hyperframes/engine";
+import {
+  createFrameLookupTable,
+  type ExtractedFrames,
+  mediaIdPathSegment,
+  renameWithRetry,
+} from "@hyperframes/engine";
 import {
   readPlanRemoteFiles,
   planFileSha256,
@@ -155,6 +160,10 @@ export interface PlanV2WithPublisherOptions {
   readonly remoteFiles?: BuildLocalExecutionPlanOptions["remoteFiles"];
   readonly chunksCarryAudio?: boolean;
   readonly deferAudio?: boolean;
+  readonly onPlanned?: (summary: {
+    readonly strictVariablesChecked?: boolean;
+    readonly outputDimensionsChecked?: boolean;
+  }) => void;
 }
 
 export interface PlanV2MaterializationResult {
@@ -276,7 +285,7 @@ function isExtractionCacheCompleteSentinelPath(path: string): boolean {
 
 function resolveExtractedVideoOutputDir(planDir: string, videoId: string): string {
   const videoRoot = resolve(planDir, "video-frames");
-  const outputDir = resolve(videoRoot, videoId);
+  const outputDir = resolve(videoRoot, mediaIdPathSegment(videoId));
   if (outputDir === videoRoot || !outputDir.startsWith(`${videoRoot}${sep}`)) {
     throw new PlanV2IntegrityError(`unsafe extracted video id: ${JSON.stringify(videoId)}`);
   }
@@ -767,7 +776,7 @@ export async function planV2WithPublisher(
   const stagingRoot = createStagingDir(options.stagingParentDir ?? tmpdir(), ".execution-plan-");
   const digests: PlanFileDigests = new Map();
   try {
-    await buildLocalExecutionPlan(projectDir, config, stagingRoot, {
+    const planned = await buildLocalExecutionPlan(projectDir, config, stagingRoot, {
       executionPlanSizeLimitBytes: Number.MAX_SAFE_INTEGER,
       deferVideoExtraction: true,
       remoteFiles: options.remoteFiles,
@@ -783,6 +792,10 @@ export async function planV2WithPublisher(
       chunksCarryAudio: options.chunksCarryAudio,
       sliceChunkAudio: true,
       deferAudio: options.deferAudio,
+    });
+    options.onPlanned?.({
+      strictVariablesChecked: planned.strictVariablesChecked,
+      outputDimensionsChecked: planned.outputDimensionsChecked,
     });
     return await publishExecutionPlan(stagingRoot, publisher, { digests, log: config.logger });
   } catch (error) {

@@ -837,6 +837,26 @@ describe("external file change coordinator", () => {
     });
   });
 
+  // Studio settles which composition is open just after load, while the draft's file stays the same.
+  it("keeps a restored draft when the open composition changes but the draft's file does not", async () => {
+    const { captured, rerender } = await mountCoordinator({
+      recoveryFilePath: "index.html",
+      loadConflictSnapshot: vi.fn(async () => ({
+        kind: "conflict" as const,
+        projectId: "project-a",
+        filePath: "index.html",
+        externalVersion: "v2",
+        externalContent: "external",
+        studioContent: "studio",
+        createdAt: 100,
+      })),
+    });
+    await vi.waitFor(() => expect(captured.handle?.blocked?.status).toBe("conflict"));
+
+    await rerender({ activeCompPath: null });
+    await vi.waitFor(() => expect(captured.handle?.blocked?.status).toBe("conflict"));
+  });
+
   it("retains the final local candidate when a drain fails", async () => {
     const failure = new Error("network unavailable");
     const persistFailureSnapshot = vi.fn(async () => undefined);

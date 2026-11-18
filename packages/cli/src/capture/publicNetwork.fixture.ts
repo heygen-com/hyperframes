@@ -42,7 +42,7 @@ if (exitAfterMs) {
     process.exit(0);
   }, exitAfterMs);
 }
-const { resolvePublicAddress } = await import("./publicNetwork.js");
+const { resolvePublicAddress } = await import("@hyperframes/engine/public-network");
 const outcome = await resolvePublicAddress("assets.capture-fixture.com").catch(
   (error: Error) => error.message,
 );

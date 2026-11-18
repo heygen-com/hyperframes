@@ -34,6 +34,7 @@ import {
   trackChildProcess,
   type AudioMetadata,
   type RunFfmpegResult,
+  withPublicOnlyProxy,
 } from "@hyperframes/engine";
 import { redactKnownPaths, redactTelemetryString } from "@hyperframes/core";
 import { measureTruePeakDbfs } from "./audioTruePeak.js";
@@ -686,7 +687,23 @@ export async function runFfprobeJson<T>(args: string[], signal?: AbortSignal): P
   if (!args.includes("--")) {
     throw new Error('[audioPadTrim] ffprobe args must terminate options with "--".');
   }
+  // With a restricted page network, a URL input not declared by the render reaches only public hosts.
+  const proxying = withPublicOnlyProxy(args, [args.indexOf("--") + 1]);
+  const routed = proxying && (await proxying);
+  try {
+    return await spawnFfprobeJson<T>(routed?.args ?? args, routed?.env, signal);
+  } finally {
+    await routed?.close();
+  }
+}
+
+async function spawnFfprobeJson<T>(
+  args: string[],
+  env: NodeJS.ProcessEnv | undefined,
+  signal?: AbortSignal,
+): Promise<T> {
   const proc = spawn(getFfprobeBinary(), args, {
+    ...(env && { env }),
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });

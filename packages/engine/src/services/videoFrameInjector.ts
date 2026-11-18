@@ -366,6 +366,22 @@ export async function measureVideoShownBoxes(
   videoIds: readonly string[],
   times: readonly number[],
 ): Promise<Map<string, ShownBox>> {
+  const ranges = await measureVideoShownBoxRanges(page, videoIds, times);
+  return new Map(Array.from(ranges, ([id, range]) => [id, range.largest]));
+}
+
+export interface ShownBoxRange {
+  largest: ShownBox;
+  /** The smallest box it is laid out at; equal to `largest` when the video never moves or resizes. */
+  smallest: ShownBox;
+}
+
+/** As `measureVideoShownBoxes`, with each video's smallest laid-out box beside its largest. */
+export async function measureVideoShownBoxRanges(
+  page: Page,
+  videoIds: readonly string[],
+  times: readonly number[],
+): Promise<Map<string, ShownBoxRange>> {
   if (videoIds.length === 0 || times.length === 0) return new Map();
   const boxes = await page.evaluate(
     async (
@@ -381,6 +397,7 @@ export async function measureVideoShownBoxes(
       const waitForSeek = (window as Window & { __hfWaitForSeekCompletion?: () => Promise<void> })
         .__hfWaitForSeekCompletion;
       const largest = new Map<string, ShownBox>();
+      const smallest = new Map<string, ShownBox>();
       const fullSize = new Set<string>();
       const gradedThroughGroup = (video: Element): boolean => {
         const groupId = video.getAttribute(groupAttr);
@@ -405,10 +422,18 @@ export async function measureVideoShownBoxes(
           return;
         }
         const rect = video.getBoundingClientRect();
+        const width = rect.width * window.devicePixelRatio;
+        const height = rect.height * window.devicePixelRatio;
         const box = largest.get(id) ?? { width: 0, height: 0 };
-        box.width = Math.max(box.width, rect.width * window.devicePixelRatio);
-        box.height = Math.max(box.height, rect.height * window.devicePixelRatio);
+        box.width = Math.max(box.width, width);
+        box.height = Math.max(box.height, height);
         largest.set(id, box);
+        // A video outside its own clip window is not laid out (0x0); that is not a smaller box.
+        if (width === 0 || height === 0) return;
+        const least = smallest.get(id) ?? { width, height };
+        least.width = Math.min(least.width, width);
+        least.height = Math.min(least.height, height);
+        smallest.set(id, least);
       };
       const pageHasCanvas = (): boolean =>
         Array.from(document.querySelectorAll("canvas")).some(
@@ -421,9 +446,12 @@ export async function measureVideoShownBoxes(
         if (pageHasCanvas()) return [];
         for (const id of ids) measure(id);
       }
-      return Array.from(largest).filter(
-        ([id, box]) => !fullSize.has(id) && box.width > 0 && box.height > 0,
-      );
+      return Array.from(largest)
+        .filter(([id, box]) => !fullSize.has(id) && box.width > 0 && box.height > 0)
+        .map(([id, box]): [string, { largest: ShownBox; smallest: ShownBox }] => [
+          id,
+          { largest: box, smallest: smallest.get(id) ?? box },
+        ]);
     },
     [...videoIds],
     [...times],

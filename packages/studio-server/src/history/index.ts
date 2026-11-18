@@ -19,7 +19,7 @@ export { reclaimUncopiedBlobs, type ReclaimedHistory } from "./reclaimUncopied.j
 export { isUncopiedMedia } from "./uncopied.js";
 export { HistoryBusyError } from "./ownerLock.js";
 export { onRestoredInPlace, type InPlaceOutcome } from "./blobStore.js";
-export { HistoryIdError } from "./historyId.js";
+export { HistoryIdError, isHistoryId } from "./historyId.js";
 export { historyCache } from "./historyCache.js";
 export {
   listProjectHistories,

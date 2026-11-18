@@ -64,12 +64,7 @@ export function useInlineTextEditing(
     if (!iframe) return null;
     // The same hit test the canvas uses to decide what was clicked; a plain
     // elementFromPoint only finds wrappers, since Studio suppresses pointer events.
-    return getPreviewTargetFromPointer(
-      iframe,
-      event.clientX,
-      event.clientY,
-      selectionRef.current?.compositionPath ?? null,
-    );
+    return getPreviewTargetFromPointer(iframe, event.clientX, event.clientY);
   };
 
   /** A point on Studio's canvas, in the scaled composition's coordinates. */

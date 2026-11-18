@@ -381,6 +381,41 @@ describe("snapshot contact sheet failures", () => {
     }
   });
 
+  // fails without the fix: a project .env's Gemini key described frames with no note.
+  it("notes once that --describe sends frames with a project .env's Gemini key", async () => {
+    vi.stubEnv("GEMINI_API_KEY", undefined);
+    vi.stubEnv("GOOGLE_API_KEY", undefined);
+    writeFileSync(join(project, ".env"), "GEMINI_API_KEY=project-key\n");
+    const generateContent = vi.fn(async (_request: unknown) => ({ text: "a described frame" }));
+    vi.doMock("../utils/optionalPackages.js", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("../utils/optionalPackages.js")>()),
+      loadInstalledSharp: () => null,
+      loadOptionalPackage: async () => ({
+        GoogleGenAI: class {
+          models = { generateContent };
+        },
+      }),
+    }));
+    const { loadProjectDotEnv } = await import("../utils/dotEnv.js");
+    loadProjectDotEnv(project, process.env, () => {});
+    const { default: command } = await import("./snapshot.js");
+
+    try {
+      await runCommand(command, {
+        rawArgs: [project, ...["--at", "0.5,1", "--no-end", "--describe", "true"]],
+      });
+
+      expect(generateContent).toHaveBeenCalledTimes(2);
+      expect(errorsBesideProgress()).toEqual([
+        [
+          `[hyperframes] Using GEMINI_API_KEY from ${join(project, ".env")}, a project .env: frames go to that key's Gemini account.`,
+        ],
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it.each([
     ["no --describe flag", [], null],
     ["--describe false", ["--describe", "false"], null],

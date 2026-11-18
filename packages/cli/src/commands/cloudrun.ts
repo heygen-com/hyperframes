@@ -14,7 +14,7 @@ import { CliUsageError, failCommand, failUsage } from "../utils/commandResult.js
  * `progress` don't need them re-passed every call.
  */
 
-import { spawnSync } from "node:child_process";
+import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -32,6 +32,7 @@ import { defaultCloudFps } from "../utils/compositionFps.js";
 import { DISTRIBUTED_FPS, type DistributedFps, isDistributedFps } from "@hyperframes/core";
 import { isMissingPackageError, missingPackageMessage } from "../utils/missingPackage.js";
 import { hyperframesConfigDir, seededConfigFile } from "../utils/configDir.js";
+import { projectCopyHint } from "../utils/projectCopyHint.js";
 
 export const examples: Example[] = [
   ["Deploy the Cloud Run render stack", "hyperframes cloudrun deploy --project my-gcp-project"],
@@ -158,6 +159,12 @@ export default defineCommand({
 
     // sites / render
     "site-id": { type: "string", description: "Explicit site id (overrides content hash)" },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Upload the files a link brings in from outside the project folder. Otherwise they are left out and named.",
+      default: false,
+    },
     width: { type: "string", description: "Render width in pixels" },
     height: { type: "string", description: "Render height in pixels" },
     fps: { type: "string", description: `Render fps (${DISTRIBUTED_FPS.join(" | ")})` },
@@ -306,14 +313,20 @@ function stripUndefined<T extends Record<string, unknown>>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v != null)) as Partial<T>;
 }
 
+function assertStarted(cmd: string, res: SpawnSyncReturns<unknown>): void {
+  if ((res.error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT") return;
+  throw new Error(`[cloudrun] \`${cmd}\` not found on PATH.${projectCopyHint(cmd)}`);
+}
 function run(cmd: string, cmdArgs: string[], opts: { cwd?: string } = {}): void {
   const res = spawnSync(cmd, cmdArgs, { stdio: "inherit", cwd: opts.cwd });
+  assertStarted(cmd, res);
   if (res.status !== 0) {
     throw new Error(`[cloudrun] \`${cmd} ${cmdArgs.join(" ")}\` exited with ${res.status}`);
   }
 }
 function capture(cmd: string, cmdArgs: string[], opts: { cwd?: string } = {}): string {
   const res = spawnSync(cmd, cmdArgs, { encoding: "utf8", cwd: opts.cwd });
+  assertStarted(cmd, res);
   if (res.status !== 0) {
     throw new Error(`[cloudrun] \`${cmd} ${cmdArgs.join(" ")}\` failed: ${res.stderr}`);
   }
@@ -505,6 +518,8 @@ async function runSites(args: Record<string, unknown>): Promise<void> {
     projectDir: resolve(projectDir),
     bucketName: state.bucketName,
     siteId: args["site-id"] as string | undefined,
+    includeOutsideFiles: args["include-outside-files"] === true,
+    onNotice: (message) => console.error(message),
   });
   if (args.json) {
     console.log(JSON.stringify(handle, null, 2));
@@ -555,6 +570,8 @@ async function runRender(args: Record<string, unknown>): Promise<void> {
   const { renderToCloudRun, getRenderProgress } = await loadCloudRunAdapter();
   const handle = await renderToCloudRun({
     projectDir: resolve(projectDir),
+    includeOutsideFiles: args["include-outside-files"] === true,
+    onNotice: (message) => console.error(message),
     config: config as Parameters<typeof renderToCloudRun>[0]["config"],
     bucketName: state.bucketName,
     projectId: state.projectId,
@@ -686,6 +703,8 @@ async function runRenderBatch(args: Record<string, unknown>): Promise<void> {
     projectDir: resolve(projectDir),
     bucketName: state.bucketName,
     siteId: args["site-id"] as string | undefined,
+    includeOutsideFiles: args["include-outside-files"] === true,
+    onNotice: (message) => console.error(message),
   });
 
   const results: Array<{ outputKey: string; executionName?: string; error?: string }> = [];

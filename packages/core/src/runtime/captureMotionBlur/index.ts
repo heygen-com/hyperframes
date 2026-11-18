@@ -38,7 +38,7 @@ import { swallow } from "../diagnostics";
 import { createCompositor, type MoverFrame } from "./composite";
 import { readMotionBlurSettings } from "../../motionBlurSettings";
 import { scanMovers, whileCallbacksMuted } from "./discover";
-import { createFilterTier } from "./filterTier";
+import { createFilterTier, FILTER_LIGHTER_LEVELS, setFilterPreviewQuality } from "./filterTier";
 import { compositionFingerprint, coverageSampler } from "./fingerprint";
 import { readMoverFrames, shutterTimes } from "./frames";
 import { createPoseReader } from "./pose";
@@ -783,6 +783,15 @@ export function paintCaptureMotionBlur(
   return done;
 }
 
+export function setMotionBlurPreviewQuality(level: number): void {
+  setFilterPreviewQuality(level);
+}
+
+export function motionBlurLighterLevels(): readonly number[] {
+  if (!instance || !onFallback || suspended) return [];
+  return instance.report().movers > 0 ? FILTER_LIGHTER_LEVELS : [];
+}
+
 /** True while a blurred frame is between its two captures: the page must hold still. */
 export function captureMotionBlurBusy(): boolean {
   return instance?.busy() ?? false;
@@ -817,16 +826,28 @@ function suspendCaptureMotionBlur(): void {
   instance?.suspend();
 }
 
-/** Test-only: drop module state between cases. */
-export function resetCaptureMotionBlurForTests(): void {
+export function teardownCaptureMotionBlur(): void {
   instance?.teardown();
   instance = null;
   activeHost = null;
   activeConfig = null;
   onFallback = false;
   suspended = false;
+  const w = window as CompositeWindow;
+  delete w.__hfMotionBlur;
+  if (ourResolver && w.__hf_page_composite_resolve === ourResolver) {
+    if (priorResolver) w.__hf_page_composite_resolve = priorResolver;
+    else delete w.__hf_page_composite_resolve;
+    w.__hf_page_composite_pending = false;
+  }
   priorResolver = null;
   ourResolver = null;
+}
+
+/** Test-only: drop module state between cases. */
+export function resetCaptureMotionBlurForTests(): void {
+  teardownCaptureMotionBlur();
+  setFilterPreviewQuality(1);
 }
 
 /** Test-only: judge the capture tier alone, without the filter fallback taking over. */

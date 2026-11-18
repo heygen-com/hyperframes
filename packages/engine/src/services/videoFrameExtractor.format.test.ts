@@ -1,6 +1,6 @@
 import { vi, afterAll, beforeAll, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import {
@@ -146,6 +146,21 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     const frame = result.extracted[0]!.framePaths.get(0)!;
     expect(frame.startsWith(outDir)).toBe(true);
     expect(existsSync(frame)).toBe(true);
+  });
+
+  it("keeps the frames of a video whose id has parent segments inside the output directory", async () => {
+    const outDir = join(FIXTURE_DIR, "id-path", "work", "frames");
+    mkdirSync(outDir, { recursive: true });
+    const result = await extractAllVideoFrames(
+      [{ ...fixtureVideo(), id: "../../escaped" }],
+      FIXTURE_DIR,
+      { fps: 1, outputDir: outDir },
+    );
+    expect(result.errors).toEqual([]);
+    const extracted = result.extracted[0]!;
+    expect(dirname(extracted.outputDir)).toBe(outDir);
+    expect(dirname(extracted.framePaths.get(0)!)).toBe(extracted.outputDir);
+    expect(existsSync(join(FIXTURE_DIR, "id-path", "escaped"))).toBe(false);
   });
 
   it("keeps the rightmost 8 columns of a 1080-wide (16n + 8) jpg extraction", async () => {
@@ -675,6 +690,65 @@ describe.skipIf(!HAS_FFMPEG)("video frame extraction format", () => {
     });
 
     expect(pngChunkTypes(result.framePaths.get(0)!)).not.toContain("sRGB");
+  }, 60_000);
+
+  it("extracts each video at its own shown box, and caches halved frames apart from full ones", async () => {
+    const cacheDir = mkdtempSync(join(tmpdir(), "hf-extract-shown-cache-"));
+    const size = (path: string) =>
+      spawnSync("ffprobe", [
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "csv=p=0",
+        "--",
+        path,
+      ])
+        .stdout.toString()
+        .trim();
+    const run = async (
+      name: string,
+      shownBoxes?: Map<string, { width: number; height: number }>,
+    ) => {
+      const outputDir = join(FIXTURE_DIR, name);
+      mkdirSync(outputDir, { recursive: true });
+      const result = await extractAllVideoFrames(
+        [fixtureVideo()],
+        FIXTURE_DIR,
+        { fps: 1, outputDir, shownBoxes },
+        undefined,
+        { extractCacheDir: cacheDir },
+      );
+      expect(result.errors).toEqual([]);
+      return {
+        size: size(result.extracted[0]!.framePaths.get(0)!),
+        hits: result.phaseBreakdown.cacheHits,
+      };
+    };
+    try {
+      const half = new Map([
+        ["ui", { width: UI_FIXTURE_WIDTH / 2, height: UI_FIXTURE_HEIGHT / 2 }],
+      ]);
+      expect(await run("shown-full")).toEqual({
+        size: `${UI_FIXTURE_WIDTH},${UI_FIXTURE_HEIGHT}`,
+        hits: 0,
+      });
+      expect(await run("shown-half", half)).toEqual({
+        size: `${UI_FIXTURE_WIDTH / 2},${UI_FIXTURE_HEIGHT / 2}`,
+        hits: 0,
+      });
+      expect(await run("shown-half-again", half)).toEqual({
+        size: `${UI_FIXTURE_WIDTH / 2},${UI_FIXTURE_HEIGHT / 2}`,
+        hits: 1,
+      });
+      expect(await run("shown-full-again")).toEqual({
+        size: `${UI_FIXTURE_WIDTH},${UI_FIXTURE_HEIGHT}`,
+        hits: 1,
+      });
+    } finally {
+      rmSync(cacheDir, { recursive: true, force: true });
+    }
   }, 60_000);
 
   it("keeps jpg and png extraction caches separate", async () => {

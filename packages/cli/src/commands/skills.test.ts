@@ -5,7 +5,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 async function commandExitCode(): Promise<number> {
@@ -22,6 +22,7 @@ type SpawnCall = {
   command: string;
   args: ReadonlyArray<string>;
   env: NodeJS.ProcessEnv | undefined;
+  cwd: string | undefined;
 };
 
 type ExecCall = {
@@ -56,8 +57,12 @@ vi.mock("node:child_process", () => ({
     return Buffer.from("11.0.0");
   }),
   spawn: vi.fn(
-    (command: string, args: ReadonlyArray<string>, opts?: { env?: NodeJS.ProcessEnv }) => {
-      state.spawnCalls.push({ command, args, env: opts?.env });
+    (
+      command: string,
+      args: ReadonlyArray<string>,
+      opts?: { env?: NodeJS.ProcessEnv; cwd?: string },
+    ) => {
+      state.spawnCalls.push({ command, args, env: opts?.env, cwd: opts?.cwd });
       const fake = new EventEmitter();
       setImmediate(() => fake.emit("close", state.spawnExitCode, null));
       return fake;
@@ -413,6 +418,15 @@ describe("hyperframes skills", () => {
 
     expect(result.installed).toEqual(["hyperframes-registry"]);
     expect(skillFlagValues(state.spawnCalls[0]?.args ?? [])).toEqual(["hyperframes-registry"]);
+  });
+
+  it("runs the global skills install from the home folder, not the project it was started in", async () => {
+    setPlatform("linux");
+    const { updateSkills } = await import("./skills.js");
+
+    await updateSkills({ onlyMissing: true, cwd: "/projects/cloned" });
+
+    expect(state.spawnCalls[0]?.cwd).toBe(homedir());
   });
 
   it("checks freshness against the canonical manifest, never a possibly-stale local one", async () => {

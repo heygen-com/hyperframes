@@ -691,6 +691,72 @@ describe("video extraction failure taxonomy and bounded retry", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(!HAS_FFMPEG)("refuses a text file that ffmpeg would draw as video", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-extract-text-art-"));
+    try {
+      writeFileSync(join(dir, "notes.nfo"), "API_TOKEN=not-for-the-frame\nhello\n");
+      const video = { id: "v1", src: "notes.nfo", start: 0, end: 1, mediaStart: 0, loop: false };
+      const extraction = extractAllVideoFrames([{ ...video, hasAudio: false }], dir, {
+        fps: 30,
+        outputDir: join(dir, "out"),
+        assetRoots: [dir],
+      });
+      await expect(extraction).rejects.toThrow(/text file, not a media container/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("warns about a missing source with control characters shown as visible escapes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-extract-missing-"));
+    const write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    try {
+      const src = "missing\x1b[2J\x07\x9b.mp4";
+      const video = { id: "v1", src, start: 0, end: 1, mediaStart: 0, loop: false };
+      const result = await extractAllVideoFrames([{ ...video, hasAudio: false }], dir, {
+        fps: 30,
+        outputDir: join(dir, "out"),
+        assetRoots: [dir],
+      });
+      expect(result.errors).toEqual([expect.objectContaining({ kind: "source_missing" })]);
+      const warning = write.mock.calls
+        .map(([chunk]) => String(chunk))
+        .find((chunk) => chunk.includes("could not be resolved on disk"));
+      expect(warning).toContain('src="missing\\x1b[2J\\x07\\x9b.mp4"');
+      for (const control of ["\u001b", "\u0007", "\u009b"]) expect(warning).not.toContain(control);
+    } finally {
+      write.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it.each([".git/clip.mp4", ".hyperframes/clip.mp4", ".ssh/clip.mp4"])(
+    "treats the private project file %s as a missing source",
+    async (src) => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-extract-private-"));
+      try {
+        mkdirSync(join(dir, src, ".."), { recursive: true });
+        writeFileSync(join(dir, src), "not for the render");
+        const video = { id: "v1", src, start: 0, end: 1, mediaStart: 0, loop: false };
+        const result = await extractAllVideoFrames([{ ...video, hasAudio: false }], dir, {
+          fps: 30,
+          outputDir: join(dir, "out"),
+          assetRoots: [dir],
+        });
+        expect(result.extracted).toEqual([]);
+        expect(result.errors).toEqual([
+          expect.objectContaining({
+            videoId: "v1",
+            kind: "source_missing",
+            error: `Video source is a private project file: ${src}`,
+          }),
+        ]);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 });
 
 // Codec-based alpha defaulting replaces tag-based detection (the

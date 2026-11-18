@@ -355,7 +355,7 @@ export {
   realProjectRoot,
   resolveWithinProject,
 } from "./safePath";
-export { isHyperframesProject, PROJECT_MARKER_FILES } from "./projectRule";
+export { isCompositionFolder, isHyperframesProject, PROJECT_MARKER_FILES } from "./projectRule";
 export type {
   HyperframePickerApi,
   HyperframePickerBoundingBox,
@@ -495,3 +495,4 @@ export {
   type MotionBlurFingerprint,
   type MotionBlurFingerprintField,
 } from "./motionBlurFingerprint.js";
+export { terminalLines, terminalText, terminalTextDeep } from "./terminalText.js";

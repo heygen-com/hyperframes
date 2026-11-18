@@ -1,4 +1,5 @@
 import type { StudioFileConflictError } from "./studioSaveDiagnostics";
+import { studioApiFetch } from "./studioApiFetch";
 
 interface ExternalRecoverySnapshotBase {
   projectId: string;
@@ -18,10 +19,6 @@ export interface ExternalConflictStorage {
   set(snapshot: ExternalConflictSnapshot): Promise<void>;
   delete(projectId: string, filePath: string): Promise<void>;
 }
-
-const DB_NAME = "hyperframes-studio-external-conflicts";
-const DB_VERSION = 1;
-const STORE_NAME = "file-conflicts";
 
 function key(projectId: string, filePath: string): string {
   return `${projectId}\0${filePath}`;
@@ -43,85 +40,46 @@ export function createMemoryExternalConflictStorage(): ExternalConflictStorage {
   };
 }
 
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (!globalThis.indexedDB) {
-      reject(new Error("IndexedDB is unavailable; conflict recovery snapshot was not saved"));
-      return;
-    }
-    const request = globalThis.indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-        request.result.createObjectStore(STORE_NAME);
-      }
+function draftUrl(projectId: string, filePath: string): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/recovery-drafts/${encodeURIComponent(filePath)}`;
+}
+
+async function draftRequest(
+  projectId: string,
+  filePath: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const res = await studioApiFetch(draftUrl(projectId, filePath), init);
+  if (!res.ok) throw new Error(`Recovery draft storage failed (${res.status})`);
+  return res;
+}
+
+/** Kept by the project's own server: an origin-wide browser store is shared with every project on the port. */
+const projectStorage: ExternalConflictStorage = {
+  async get(projectId, filePath) {
+    const { draft } = (await (await draftRequest(projectId, filePath)).json()) as {
+      draft: ExternalConflictSnapshot | null;
     };
-    request.onerror = () => reject(request.error ?? new Error("Failed to open conflict storage"));
-    request.onsuccess = () => resolve(request.result);
-  });
-}
+    return draft?.projectId === projectId && draft.filePath === filePath ? draft : null;
+  },
+  async set(snapshot) {
+    await draftRequest(snapshot.projectId, snapshot.filePath, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(snapshot),
+    });
+  },
+  async delete(projectId, filePath) {
+    await draftRequest(projectId, filePath, { method: "DELETE" });
+  },
+};
 
-function withStore<T>(
-  mode: IDBTransactionMode,
-  callback: (store: IDBObjectStore) => IDBRequest<T>,
-): Promise<T> {
-  return openDb().then(
-    (db) =>
-      new Promise<T>((resolve, reject) => {
-        const transaction = db.transaction(STORE_NAME, mode);
-        const request = callback(transaction.objectStore(STORE_NAME));
-        let result!: T;
-        request.onerror = () => reject(request.error ?? new Error("Conflict storage failed"));
-        request.onsuccess = () => {
-          result = request.result;
-        };
-        transaction.oncomplete = () => {
-          db.close();
-          resolve(result);
-        };
-        transaction.onerror = () => {
-          db.close();
-          reject(transaction.error ?? new Error("Conflict storage transaction failed"));
-        };
-        transaction.onabort = () => {
-          db.close();
-          reject(transaction.error ?? new Error("Conflict storage transaction was aborted"));
-        };
-      }),
-  );
-}
-
-function createIndexedDbExternalConflictStorage(): ExternalConflictStorage {
-  return {
-    async get(projectId, filePath) {
-      return (
-        (await withStore<ExternalConflictSnapshot | undefined>("readonly", (store) =>
-          store.get(key(projectId, filePath)),
-        )) ?? null
-      );
-    },
-    async set(snapshot) {
-      await withStore<IDBValidKey>("readwrite", (store) =>
-        store.put(snapshot, key(snapshot.projectId, snapshot.filePath)),
-      );
-    },
-    async delete(projectId, filePath) {
-      await withStore<undefined>("readwrite", (store) => store.delete(key(projectId, filePath)));
-    },
-  };
-}
-
-const indexedDbStorage = createIndexedDbExternalConflictStorage();
-
-/**
- * Persist a conflict before offering destructive recovery actions.
- * Callers must await this promise: rejection means the Studio draft was not saved durably and
- * must remain available in memory while the storage failure is surfaced to the user.
- */
+/** Saved before destructive recovery is offered; on a rejection the draft stays only in memory and the user is told. */
 export async function persistExternalConflictSnapshot(
   projectId: string,
   conflict: StudioFileConflictError,
 ): Promise<void> {
-  await indexedDbStorage.set({
+  await projectStorage.set({
     kind: "conflict",
     projectId,
     filePath: conflict.filePath,
@@ -132,11 +90,7 @@ export async function persistExternalConflictSnapshot(
   });
 }
 
-/**
- * Persist the final Studio candidate after its file write fails.
- * Callers must await this promise: rejection means the Studio draft was not saved durably and
- * must remain available in memory while the storage failure is surfaced to the user.
- */
+/** Studio's final candidate after its file write failed; awaited like persistExternalConflictSnapshot. */
 export async function persistExternalFailureSnapshot(
   projectId: string,
   filePath: string,
@@ -145,7 +99,7 @@ export async function persistExternalFailureSnapshot(
   externalContent: string | null,
   error: unknown,
 ): Promise<void> {
-  await indexedDbStorage.set({
+  await projectStorage.set({
     kind: "failed",
     projectId,
     filePath,
@@ -161,12 +115,12 @@ export async function loadExternalConflictSnapshot(
   projectId: string,
   filePath: string,
 ): Promise<ExternalConflictSnapshot | null> {
-  return indexedDbStorage.get(projectId, filePath);
+  return projectStorage.get(projectId, filePath);
 }
 
 export async function deleteExternalConflictSnapshot(
   projectId: string,
   filePath: string,
 ): Promise<void> {
-  await indexedDbStorage.delete(projectId, filePath);
+  await projectStorage.delete(projectId, filePath);
 }

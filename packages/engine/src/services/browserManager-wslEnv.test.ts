@@ -47,6 +47,7 @@ describe("WSL GPU without WAYLAND_DISPLAY", () => {
 
   beforeEach(() => {
     process.env.WAYLAND_DISPLAY = "wayland-0";
+    vi.stubEnv("PRODUCER_HEADLESS_SHELL_PATH", process.execPath);
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "log").mockImplementation(() => {});
   });
@@ -58,6 +59,7 @@ describe("WSL GPU without WAYLAND_DISPLAY", () => {
     _setPuppeteerForTests(undefined);
     if (savedWayland === undefined) delete process.env.WAYLAND_DISPLAY;
     else process.env.WAYLAND_DISPLAY = savedWayland;
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
   });
 
@@ -75,7 +77,7 @@ describe("WSL GPU without WAYLAND_DISPLAY", () => {
     await lease.release();
 
     const envs = launch.mock.calls.map(([options]) => options.env);
-    expect(envs[0]).toBeUndefined();
+    expect(envs[0]).toMatchObject({ WAYLAND_DISPLAY: "wayland-0" });
     expect(envs[1]).toMatchObject({ PATH: process.env.PATH });
     expect(envs[1]).not.toHaveProperty("WAYLAND_DISPLAY");
     expect(envs[2]).not.toHaveProperty("WAYLAND_DISPLAY");

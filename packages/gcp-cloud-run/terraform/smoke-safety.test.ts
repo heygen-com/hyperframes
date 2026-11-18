@@ -70,3 +70,19 @@ describe("GCP smoke ownership and protocol safety", () => {
     expect(cleanup).toContain("exit 7");
   });
 });
+
+describe("GCP render image", () => {
+  it("holds render pages to their project server and public addresses", () => {
+    expect(dockerfile).toMatch(/^ENV PRODUCER_RESTRICT_PAGE_NETWORK=true$/m);
+  });
+
+  it("lets a deployment turn the restriction off through Terraform, on by default", () => {
+    const main = readFileSync(join(import.meta.dir, "main.tf"), "utf-8");
+    const variables = readFileSync(join(import.meta.dir, "variables.tf"), "utf-8");
+    expect(main).toContain('name  = "PRODUCER_RESTRICT_PAGE_NETWORK"');
+    expect(main).toContain('value = var.restrict_page_network ? "true" : "false"');
+    expect(variables).toMatch(
+      /variable "restrict_page_network" \{\s*type\s*= bool[\s\S]*?default\s*= true\s*\}/,
+    );
+  });
+});

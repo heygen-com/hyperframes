@@ -1,3 +1,4 @@
+import { homeCliCommand } from "./homeCliCommand.js";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -96,6 +97,15 @@ async function noticeWith(opts: {
   return writes.join("");
 }
 
+describe("manual CLI update commands", () => {
+  it("starts npm in the home folder on both shell families", () => {
+    expect(homeCliCommand("beta", "update", "linux")).toBe("(cd ~ && npx hyperframes@beta update)");
+    expect(homeCliCommand("0.9.63", "", "win32")).toBe(
+      'powershell.exe -NoProfile -Command "Set-Location ~ -ErrorAction Stop; npx.cmd hyperframes@0.9.63"',
+    );
+  });
+});
+
 describe("printUpdateNotice — install-method-aware command", () => {
   afterEach(() => {
     vi.doUnmock("./env.js");
@@ -109,12 +119,12 @@ describe("printUpdateNotice — install-method-aware command", () => {
     const out = await noticeWith({ installerCommand: "brew upgrade hyperframes" });
     expect(out).toContain("Update available");
     expect(out).toContain("brew upgrade hyperframes");
-    expect(out).not.toContain("npx hyperframes@latest");
+    expect(out).not.toContain(homeCliCommand("latest"));
   });
 
   it("falls back to npx hyperframes@latest when the install method is skip/unknown", async () => {
     const out = await noticeWith({ installerCommand: null });
-    expect(out).toContain("npx hyperframes@latest");
+    expect(out).toContain(homeCliCommand("latest"));
   });
 
   it("is suppressed on a non-TTY stderr", async () => {
@@ -642,8 +652,8 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
       [
         "npx",
         undefined,
-        "npx hyperframes@latest update",
-        "npx hyperframes@latest update",
+        homeCliCommand("latest", "update"),
+        homeCliCommand("latest", "update"),
         "npx hyperframes update",
       ],
       [
@@ -663,8 +673,8 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
         ];
         for (const [config, command] of cases) {
           const mod = await loadNotice(config, channel, path);
-          expect(mod.withMeta({ ok: true })._meta.updateNotice).toMatch(
-            new RegExp(`run: ${command.replaceAll(".", "\\.")}$`),
+          expect(mod.withMeta({ ok: true })._meta.updateNotice?.endsWith(`run: ${command}`)).toBe(
+            true,
           );
         }
       },
@@ -697,7 +707,8 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
       vi.setSystemTime(new Date("2026-11-03T08:00:00Z"));
       const at = (h: number) =>
         new Date(Date.parse("2026-11-03T08:00:00Z") - h * 3_600_000).toISOString();
-      const mod = await loadNotice(behind({ lastUpdateCheck: at(1), lastSkillsCheck: at(1) }));
+      const config = behind({ lastUpdateCheck: at(1), lastSkillsCheck: at(1) });
+      const mod = await loadNotice(config);
 
       const first = mod.withMeta({ ok: true })._meta;
       expect(first.updateNotice).toEqual(expect.any(String));
@@ -711,6 +722,8 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
       expect(again.checkedAt).toEqual(expect.any(String));
 
       vi.setSystemTime(new Date("2026-11-04T08:30:00Z"));
+      config.lastUpdateCheck = new Date().toISOString();
+      config.lastSkillsCheck = new Date().toISOString();
       expect(mod.withMeta({ ok: true })._meta.updateNotice).toEqual(expect.any(String));
     });
 
@@ -772,7 +785,7 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
     expect(mod.cachedUpdateCheck().latest).toBe("0.9.6");
   });
 
-  it.each(["999.0.0", "999.0.0-beta.1+build.5"])(
+  it.each(["999.0.0", "999.0.0+build.5"])(
     "preserves safe cached version %s and the update-check result in metadata",
     async (latestVersion) => {
       const mod = await load({ latestVersion });

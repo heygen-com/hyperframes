@@ -751,6 +751,31 @@ const signedStagedS3Url =
   "https://s3.example.com/upload?X-Amz-SignedHeaders=content-length;content-type;host;x-amz-server-side-encryption";
 
 describe("publishProjectArchive", () => {
+  // fails without the fix: with no archive passed in, files from outside the project were uploaded unasked.
+  it("leaves files from outside the project out of an archive it builds itself", async () => {
+    const dir = makeProjectDir();
+    const outside = mkdtempSync(join(tmpdir(), "hf-outside-"));
+    const fetchMock = directFetch();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      writeFileSync(join(outside, "logo.png"), "png", "utf-8");
+      writeFileSync(join(dir, "index.html"), `<img src="${join(outside, "logo.png")}">`, "utf-8");
+      writeFileSync(join(dir, "styles.css"), "body {}", "utf-8");
+
+      await publishProjectArchive(dir);
+
+      const file = (fetchMock.mock.calls[1]![1].body as FormData).get("file") as File;
+      const entries = new AdmZip(Buffer.from(await file.arrayBuffer()))
+        .getEntries()
+        .map((entry) => entry.entryName);
+      expect(entries).toContain("styles.css");
+      expect(entries.filter((name) => name.includes("logo.png"))).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   it("takes the publish service from the environment under HYPERFRAMES_ENV=dev", () => {
     vi.stubEnv("HYPERFRAMES_ENV", "dev");
     expect(getPublishApiBaseUrl()).toBe("https://api2.heygen.com");
@@ -1558,6 +1583,14 @@ describe("createPublishArchive referenced dot-paths", () => {
   it("leaves out an unreferenced .env", () => {
     const dir = projectWith(`<video src="${clip}"></video>`, { [clip]: "v", ".env": "SECRET=1" });
     expect(names(dir)).not.toContain(".env");
+  });
+
+  it("leaves out an env file or a tool record even when the markup names it", () => {
+    const dir = projectWith(
+      `<link href=".env"><img src=".env.local"><a href=".hyperframes/history-turn.json">h</a>`,
+      { ".env": "SECRET=1", ".env.local": "SECRET=1", ".hyperframes/history-turn.json": "{}" },
+    );
+    expect(names(dir)).toEqual(["index.html"]);
   });
 });
 

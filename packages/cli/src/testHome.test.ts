@@ -33,12 +33,17 @@ describe("the CLI test run", () => {
     await fetchRegistryManifest(registry);
 
     const slug = registry.replace(/[^a-zA-Z0-9]/g, "_");
-    const cacheFile = (home: string) =>
-      join(home, ".hyperframes", "cache", `${slug}__registry.json`);
-    const leaked = existsSync(cacheFile(userInfo().homedir));
-    rmSync(cacheFile(userInfo().homedir), { force: true });
-    expect(existsSync(cacheFile(homedir()))).toBe(true);
-    expect(leaked).toBe(false);
+    const cacheFiles = (home: string): string[] => {
+      const dir = join(home, ".hyperframes", "cache");
+      if (!existsSync(dir)) return [];
+      return readdirSync(dir)
+        .filter((name) => name.startsWith(`${slug}-`) && name.endsWith("__registry.json"))
+        .map((name) => join(dir, name));
+    };
+    const leaked = cacheFiles(userInfo().homedir);
+    for (const file of leaked) rmSync(file, { force: true });
+    expect(cacheFiles(homedir())).toHaveLength(1);
+    expect(leaked).toEqual([]);
   });
 
   // A cold cache write from each spawned CLI held Windows runs past the spawn timeout (scripts/test-home.mjs).

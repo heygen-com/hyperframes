@@ -6,7 +6,9 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   truncateSync,
   utimesSync,
   writeFileSync,
@@ -82,6 +84,28 @@ describe("registerThumbnailRoutes", () => {
     await app.request("http://localhost/projects/demo/thumbnail/scenes%2Fb.html?t=6");
 
     expect(loaded).toEqual([`?${PREVIEW_CAPTURE_PARAM}=1`, `?${PREVIEW_CAPTURE_PARAM}=1`]);
+  });
+
+  it("loads the capture page under the project's frame token when given one", async () => {
+    const adapter = createAdapter();
+    await writeComposition(adapter, 1920, 1080);
+    const app = new Hono();
+    const token = "t".repeat(43);
+    registerThumbnailRoutes(app, adapter, (projectId) => (projectId === "demo" ? token : ""));
+    const loaded: string[] = [];
+    vi.mocked(adapter.generateThumbnail!).mockImplementation(async ({ previewUrl }) => {
+      const url = new URL(previewUrl);
+      loaded.push(url.pathname + url.search);
+      return Buffer.from("thumb");
+    });
+
+    await app.request("http://localhost/projects/demo/thumbnail/index.html?t=6");
+    await app.request("http://localhost/projects/demo/thumbnail/scenes%2Fb.html?t=6");
+
+    expect(loaded).toEqual([
+      `/api/projects/demo/preview/~${token}?${PREVIEW_CAPTURE_PARAM}=1`,
+      `/api/projects/demo/preview/~${token}/comp/scenes/b.html?${PREVIEW_CAPTURE_PARAM}=1`,
+    ]);
   });
 
   it("forwards selector queries to thumbnail generation", async () => {
@@ -595,5 +619,54 @@ describe("registerThumbnailRoutes", () => {
     expect(existsSync(expiredPath)).toBe(false);
     expect(existsSync(protectedPath)).toBe(true);
     expect(existsSync(overflowPath)).toBe(false);
+  });
+});
+
+describe.skipIf(process.platform === "win32")("a thumbnail cache entry the project ships", () => {
+  async function cachedThumbnail(): Promise<{
+    app: Hono;
+    dir: string;
+    entry: string;
+    url: string;
+  }> {
+    const adapter = createAdapter();
+    await writeComposition(adapter, 1920, 1080);
+    const project = await adapter.resolveProject("demo");
+    if (!project) throw new Error("missing project");
+    const app = new Hono();
+    registerThumbnailRoutes(app, adapter);
+    const url = "http://localhost/projects/demo/thumbnail/index.html?t=3";
+    expect(await (await app.request(url)).text()).toBe("thumb");
+    const [name] = readdirSync(join(project.dir, ".thumbnails"));
+    if (!name) throw new Error("nothing cached");
+    return { app, dir: project.dir, entry: join(project.dir, ".thumbnails", name), url };
+  }
+
+  function outsideDir(): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-thumbnail-outside-"));
+    tempProjectDirs.push(dir);
+    return dir;
+  }
+
+  it("is a miss when a link stands at the entry", async () => {
+    const { app, entry, url } = await cachedThumbnail();
+    const secret = join(outsideDir(), "id_rsa");
+    writeFileSync(secret, "PRIVATE KEY");
+    rmSync(entry);
+    symlinkSync(secret, entry);
+
+    const response = await app.request(`${url}&cached=1`);
+    expect(response.status).toBe(204);
+    expect(await response.text()).not.toContain("PRIVATE KEY");
+  });
+
+  it("is a miss when the cache folder is a link", async () => {
+    const { app, dir, url } = await cachedThumbnail();
+    const moved = join(outsideDir(), "thumbnails");
+    renameSync(join(dir, ".thumbnails"), moved);
+    symlinkSync(moved, join(dir, ".thumbnails"));
+
+    const response = await app.request(`${url}&cached=1`);
+    expect(response.status).toBe(204);
   });
 });

@@ -8,7 +8,7 @@ export const examples: Example[] = [
   ["List the clips the render hears, on the film's clock", "hyperframes info --media --json"],
 ];
 import { join } from "node:path";
-import { parseHtml, CANVAS_DIMENSIONS } from "@hyperframes/core";
+import { parseHtml, CANVAS_DIMENSIONS, terminalText } from "@hyperframes/core";
 import {
   findRootCompositionElement,
   readCompositionSize,
@@ -121,7 +121,7 @@ export default defineCommand({
       return;
     }
 
-    console.log(`${c.success("◇")}  ${c.accent(project.name)}`);
+    console.log(`${c.success("◇")}  ${c.accent(terminalText(project.name))}`);
     console.log(label("Resolution", resolution));
     console.log(label("Duration", `${duration.toFixed(1)}s`));
     console.log(label("Elements", `${parsed.elements.length}${typeStr ? ` (${typeStr})` : ""}`));
@@ -129,7 +129,9 @@ export default defineCommand({
     console.log(label("Size", formatBytes(size)));
     for (const clip of heard ?? []) {
       const until = clip.end > 0 ? `${clip.end.toFixed(2)}s` : "its end";
-      console.log(label("Heard", `${clip.src} ${clip.start.toFixed(2)}s to ${until}`));
+      console.log(
+        label("Heard", `${terminalText(clip.src)} ${clip.start.toFixed(2)}s to ${until}`),
+      );
     }
   },
 });

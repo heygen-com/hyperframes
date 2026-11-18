@@ -21,6 +21,8 @@ import {
   buildMotionPathObjectCode,
   mergePercentageKeyframes,
   plainPercentKey,
+  scriptJson,
+  tweenMethodCode,
 } from "./gsapSerialize.js";
 import {
   parseGsapScriptAcornForWrite,
@@ -57,19 +59,19 @@ type Node = any;
 // always number|string and use the shared serializeValue (recast parity).
 function valueToCode(value: unknown): string {
   if (typeof value === "string" && value.startsWith("__raw:")) return value.slice(6);
-  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "string") return scriptJson(value);
   if (typeof value === "number") return Number.isNaN(value) ? "0" : String(value);
   if (typeof value === "boolean") return String(value);
-  return JSON.stringify(value);
+  return scriptJson(value);
 }
 
 function safeKey(key: string): string {
-  return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : JSON.stringify(key);
+  return /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key) ? key : scriptJson(key);
 }
 
 // fallow-ignore-next-line complexity
 function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, "id">): string {
-  const selector = JSON.stringify(anim.targetSelector);
+  const selector = scriptJson(anim.targetSelector);
   const props: Record<string, number | string> = { ...anim.properties };
   if (anim.method !== "set" && anim.duration !== undefined) props.duration = anim.duration;
   if (anim.ease) props.ease = anim.ease;
@@ -99,7 +101,7 @@ function buildTweenStatementCode(timelineVar: string, anim: Omit<GsapAnimation, 
   if (anim.method === "set" && anim.global) {
     return `gsap.set(${selector}, ${objCode});`;
   }
-  return `${timelineVar}.${anim.method}(${selector}, ${objCode}, ${posCode});`;
+  return `${timelineVar}.${tweenMethodCode(anim.method)}(${selector}, ${objCode}, ${posCode});`;
 }
 
 // ── AST node helpers ─────────────────────────────────────────────────────────
@@ -528,7 +530,7 @@ export function copyAnimationsInScript(
   const parsed = parseGsapScriptAcornForWrite(script);
   if (!parsed) return script;
   const block = timelineBlock(parsed);
-  const target = JSON.stringify(toSelector);
+  const target = scriptJson(toSelector);
   const ms = new MagicString(script);
   const tweens: string[] = [];
   for (const { animation, call } of parsed.located) {
@@ -1290,7 +1292,7 @@ function convertArrayKeyframesToObject(script: string, target: Node): string {
   if (!timing) return script;
   const entries = els.map((el, i) => {
     const { duration: _duration, ...record } = records[i]!;
-    return `${JSON.stringify(plainPercentKey(timing.percentages[i]!))}: ${recordToCode(record)}`;
+    return `${scriptJson(plainPercentKey(timing.percentages[i]!))}: ${recordToCode(record)}`;
   });
   const ms = new MagicString(script);
   ms.overwrite(
@@ -1426,10 +1428,10 @@ function insertNewKeyframe(
     }
   }
   if (insertBeforeProp) {
-    ms.appendLeft(insertBeforeProp.start, `${JSON.stringify(pctKey)}: ${valueCode}, `);
+    ms.appendLeft(insertBeforeProp.start, `${scriptJson(pctKey)}: ${valueCode}, `);
   } else {
     const sep = allProps.length > 0 ? ", " : "";
-    ms.appendLeft(kfNode.end - 1, `${sep}${JSON.stringify(pctKey)}: ${valueCode}`);
+    ms.appendLeft(kfNode.end - 1, `${sep}${scriptJson(pctKey)}: ${valueCode}`);
   }
 }
 
@@ -1583,7 +1585,7 @@ export function moveKeyframeInScript(
     .filter((p: Node) => !pctProps.has(p))
     .map((p: Node) => src.slice(p.start, p.end));
   const body = [
-    ...entries.map((e) => `${JSON.stringify(plainPercentKey(e.pct))}: ${recordToCode(e.record)}`),
+    ...entries.map((e) => `${scriptJson(plainPercentKey(e.pct))}: ${recordToCode(e.record)}`),
     ...kept,
   ].join(", ");
   const ms = new MagicString(src);
@@ -1630,7 +1632,7 @@ export function resizeKeyframedTweenInScript(
 
   const ms = new MagicString(src);
   for (const { keyNode, to } of edits) {
-    ms.overwrite(keyNode.start, keyNode.end, JSON.stringify(plainPercentKey(to)));
+    ms.overwrite(keyNode.start, keyNode.end, scriptJson(plainPercentKey(to)));
   }
   overwritePosition(ms, target.call, newPosition);
   // Resizing is an explicit duration-authoring gesture. Promote GSAP's implicit
@@ -1829,7 +1831,7 @@ function buildKeyframeObjectCode(
     const props = Object.entries(kf.properties).map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`);
     if (kf.ease) props.push(`ease: ${valueToCode(kf.ease)}`);
     if (kf.auto) props.push(`_auto: 1`);
-    return `${JSON.stringify(plainPercentKey(kf.percentage))}: { ${props.join(", ")} }`;
+    return `${scriptJson(plainPercentKey(kf.percentage))}: { ${props.join(", ")} }`;
   });
   if (easeEach) entries.push(`easeEach: ${valueToCode(easeEach)}`);
   return `{ ${entries.join(", ")} }`;
@@ -1868,8 +1870,7 @@ export function materializeKeyframesFromScript(
 
   if (resolvedSelector) {
     const selectorArg = call.node.arguments[0];
-    if (selectorArg)
-      ms.overwrite(selectorArg.start, selectorArg.end, JSON.stringify(resolvedSelector));
+    if (selectorArg) ms.overwrite(selectorArg.start, selectorArg.end, scriptJson(resolvedSelector));
   }
 
   const kfProp = findPropertyNode(call.varsArg, "keyframes");
@@ -1933,7 +1934,7 @@ export function replaceTweenWithKeyframesInScript(
   if (edit.ease) parts.push(`ease: ${valueToCode(edit.ease)}`);
   if (animation.hasUnresolvedSelector || animation.targetSelector !== edit.targetSelector) {
     const selectorArg = call.node.arguments[0];
-    ms.overwrite(selectorArg.start, selectorArg.end, JSON.stringify(edit.targetSelector));
+    ms.overwrite(selectorArg.start, selectorArg.end, scriptJson(edit.targetSelector));
   }
   convertMethodToTo(ms, animation, call, call.varsArg);
   overwriteVarsArg(ms, call, `{ ${parts.join(", ")} }`);
@@ -1967,7 +1968,7 @@ export function addAnimationWithKeyframesToScript(
   const kfObjCode = buildKeyframeObjectCode(sorted, easeEach);
   const varParts = [`keyframes: ${kfObjCode}`, `duration: ${valueToCode(duration)}`];
   if (ease) varParts.push(`ease: ${valueToCode(ease)}`);
-  const stmtCode = `${parsed.timelineVar}.to(${JSON.stringify(targetSelector)}, { ${varParts.join(", ")} }, ${valueToCode(position)});`;
+  const stmtCode = `${parsed.timelineVar}.to(${scriptJson(targetSelector)}, { ${varParts.join(", ")} }, ${valueToCode(position)});`;
 
   const ms = new MagicString(script);
   ms.appendLeft(insertionPoint, "\n" + stmtCode);
@@ -2190,7 +2191,7 @@ export function addLabelToScript(script: string, name: string, position: number)
   if (insertionPoint === null) return script;
 
   const ms = new MagicString(script);
-  const labelCode = `${parsed.timelineVar}.addLabel(${JSON.stringify(name)}, ${valueToCode(position)});`;
+  const labelCode = `${parsed.timelineVar}.addLabel(${scriptJson(name)}, ${valueToCode(position)});`;
   ms.appendLeft(insertionPoint, "\n" + labelCode);
   return ms.toString();
 }
@@ -2516,7 +2517,7 @@ function updateAnimationSelectorInScript(
   const selectorArg = target.call.node.arguments?.[0];
   if (!selectorArg) return script;
   const ms = new MagicString(script);
-  ms.overwrite(selectorArg.start, selectorArg.end, JSON.stringify(newSelector));
+  ms.overwrite(selectorArg.start, selectorArg.end, scriptJson(newSelector));
   return ms.toString();
 }
 
@@ -2535,7 +2536,7 @@ function insertInheritedStateSetInScript(
   const props = Object.entries(properties)
     .map(([k, v]) => `${safeKey(k)}: ${valueToCode(v)}`)
     .join(", ");
-  const code = `${parsed.timelineVar}.set(${JSON.stringify(selector)}, { ${props} }, ${position});`;
+  const code = `${parsed.timelineVar}.set(${scriptJson(selector)}, { ${props} }, ${position});`;
   const ms = new MagicString(script);
   const tlDecl = findTimelineDeclarationStatement(parsed.ast, parsed.timelineVar);
   const firstLocated = parsed.located[0];
@@ -2975,11 +2976,11 @@ function buildUnrollReplacement(
   const duration = typeof animation.duration === "number" ? animation.duration : 8;
   const ease = typeof animation.ease === "string" ? animation.ease : "none";
   const pos = animation.position ?? 0;
-  const posCode = typeof pos === "number" ? String(pos) : JSON.stringify(pos);
+  const posCode = typeof pos === "number" ? String(pos) : scriptJson(pos);
   const calls = elements.map((el) => {
     const sorted = [...el.keyframes].sort((a, b) => a.percentage - b.percentage);
     const kfCode = buildKeyframeObjectCode(sorted, el.easeEach);
-    return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${valueToCode(ease)} }, ${posCode});`;
+    return `${timelineVar}.to(${scriptJson(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${valueToCode(ease)} }, ${posCode});`;
   });
   return calls.join("\n  ");
 }
@@ -2999,10 +3000,10 @@ function buildUnrollCallForElement(
   const duration = typeof animation.duration === "number" ? animation.duration : 8;
   const ease = typeof animation.ease === "string" ? animation.ease : "none";
   const pos = animation.position ?? 0;
-  const posCode = typeof pos === "number" ? String(pos) : JSON.stringify(pos);
+  const posCode = typeof pos === "number" ? String(pos) : scriptJson(pos);
   const sorted = [...el.keyframes].sort((a, b) => a.percentage - b.percentage);
   const kfCode = buildKeyframeObjectCode(sorted, el.easeEach);
-  return `${timelineVar}.to(${JSON.stringify(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${valueToCode(ease)} }, ${posCode});`;
+  return `${timelineVar}.to(${scriptJson(el.selector)}, { keyframes: ${kfCode}, duration: ${duration}, ease: ${valueToCode(ease)} }, ${posCode});`;
 }
 
 /** Sentinel: the unroll cannot safely reproduce the loop body — caller no-ops. */

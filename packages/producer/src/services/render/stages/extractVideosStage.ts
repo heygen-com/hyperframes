@@ -51,10 +51,17 @@ import {
   resolveFinalFrameExtractionWindow,
   resolveVideoExtractionWindow,
   isHttpUrl,
+  assetRootsRefusal,
+  assertPublicHttpsUrl,
+  downloadToTemp,
+  resolveRestrictPageNetwork,
+  isUrlNotPermittedError,
+  writeUrlDownloadTelemetry,
   resolveProjectRelativeSrc,
   runVideoExtractionWithRetry,
   safeVideoExtractionSourceIdentity,
   videoAudioId,
+  type ShownBox,
 } from "@hyperframes/engine";
 import {
   collectVideoMetadataHints,
@@ -72,6 +79,7 @@ import { resolveRenderFpsConfig } from "../../fileServer.js";
 import type { ProducerLogger } from "../../../logger.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import { rendersSdrOnly } from "../hdrMode.js";
+import { mediaAssetRoots } from "../../assetMediaType.js";
 import {
   compareExtractionFailureGroups,
   extractionFailureGroupIdentityKey,
@@ -97,8 +105,10 @@ export interface ExtractVideosStageInput {
    */
   materializeSymlinks?: boolean;
   deferRangeExtraction?: boolean;
+  shownBoxes?: ReadonlyMap<string, ShownBox>;
   skipFrameExtractionIds?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+  audioDownloadDir?: string;
   onProgress?: ProgressCallback;
 }
 
@@ -423,11 +433,16 @@ export async function runExtractVideosStage(
     assertNotAborted,
     materializeSymlinks,
     deferRangeExtraction,
+    shownBoxes,
     urlByAbsentLocalPath,
+    audioDownloadDir,
     skipFrameExtractionIds = [],
   } = input;
 
   const stage2Start = Date.now();
+  const assetRoots = job.config.allowOutsideProjectAssets
+    ? undefined
+    : mediaAssetRoots(projectDir, compiledDir);
   const extractionPolicy = resolveVideoExtractionPolicy();
   composition.videos = composition.videos.filter(
     (video) => !isVideoPastTimelineEnd(video, composition.duration),
@@ -460,7 +475,7 @@ export async function runExtractVideosStage(
         // origin-root URL — pre-checking would hand back `/assets/%E5%9B%BE1.png`
         // undecoded and re-open PRINFRA-349 for root-relative srcs.
         const videoPath = resolveProjectRelativeSrc(v.src, projectDir, compiledDir);
-        if (!existsSync(videoPath)) return null;
+        if (!opensLocally(videoPath, assetRoots)) return null;
         try {
           // Retries are separately opt-in from the failure gate. With the
           // default zero budget this remains the exact legacy single probe.
@@ -512,7 +527,7 @@ export async function runExtractVideosStage(
         // never enters nativeHdrImageIds and the composition silently renders
         // through the SDR fallback with wrong color (PRINFRA-349 symptom c).
         const imgPath = resolveProjectRelativeSrc(img.src, projectDir, compiledDir);
-        if (!existsSync(imgPath)) return null;
+        if (!opensLocally(imgPath, assetRoots)) return null;
         const colorSpace = await probeColorSpaceSafely(imgPath, log);
         if (isHdrColorSpace(colorSpace)) {
           nativeHdrImageIds.add(img.id);
@@ -526,7 +541,16 @@ export async function runExtractVideosStage(
   }
 
   if (skipFrameExtractionIds.length > 0) {
-    await appendVideoAudioFromProbe({ projectDir, compiledDir, composition, urlByAbsentLocalPath });
+    await appendVideoAudioFromProbe({
+      projectDir,
+      compiledDir,
+      composition,
+      urlByAbsentLocalPath,
+      downloadDir: audioDownloadDir,
+      allowOutsideProjectAssets: job.config.allowOutsideProjectAssets,
+      signal: abortSignal,
+      log,
+    });
     videoReadinessSkipIds = [...skipFrameExtractionIds];
   } else if (composition.videos.length > 0) {
     const totalVideos = composition.videos.length;
@@ -554,8 +578,10 @@ export async function runExtractVideosStage(
         maxTransientRetries: extractionPolicy.maxTransientRetries,
         collectProbeFailures: extractionPolicy.failureMode === "enforce",
         deferRangeExtraction,
+        shownBoxes,
         contentKeyedDirs: [join(compiledDir, REMOTE_MEDIA_SUBDIR)],
         urlByAbsentLocalPath,
+        assetRoots,
         onProgress: ({ planned = 0, done = 0 }) => {
           framesPlanned += planned;
           framesDone += done;
@@ -639,27 +665,77 @@ export function appendAutoDetectedVideoAudio(
   }
 }
 
-/**
- * The audio-only form of the extract stage: which videos carry sound takes a probe per source, not their frames.
- * Each video is moved to its extraction window first, as extraction does, so its sound lands where its picture does.
- */
-export async function appendVideoAudioFromProbe(input: {
+function isPublicHttpsUrl(url: string): boolean {
+  try {
+    assertPublicHttpsUrl(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+interface VideoAudioProbeInput {
   projectDir: string;
   compiledDir: string;
   composition: CompositionMetadata;
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
-}): Promise<void> {
-  const { projectDir, compiledDir, composition, urlByAbsentLocalPath } = input;
+  /** Where a composition URL is downloaded before probing on a render service: the mixer's work folder, so the mix reuses it. */
+  downloadDir?: string;
+  allowOutsideProjectAssets?: boolean;
+  signal?: AbortSignal;
+  log?: ProducerLogger;
+}
+
+function opensLocally(path: string, assetRoots: readonly string[] | undefined): boolean {
+  return existsSync(path) && (!assetRoots || assetRootsRefusal(path, assetRoots) === null);
+}
+
+function localProbeSource(src: string, input: VideoAudioProbeInput): string | null {
+  const path = resolveProjectRelativeSrc(src, input.projectDir, input.compiledDir);
+  const readFrom = input.urlByAbsentLocalPath?.get(path) ?? path;
+  const roots = input.allowOutsideProjectAssets
+    ? undefined
+    : mediaAssetRoots(input.projectDir, input.compiledDir);
+  return isHttpUrl(readFrom) || opensLocally(readFrom, roots) ? readFrom : null;
+}
+
+/** On a render service a composition URL is fetched under the download address rules and probed from that copy. */
+async function remoteProbeSource(
+  video: CompositionMetadata["videos"][number],
+  input: VideoAudioProbeInput,
+): Promise<string | null> {
+  if (!isPublicHttpsUrl(video.src)) return null;
+  if (!resolveRestrictPageNetwork()) return video.src;
+  if (!video.hasAudio || video.hidden) return null;
+  const downloadDir = input.downloadDir ?? join(input.compiledDir, REMOTE_MEDIA_SUBDIR);
+  try {
+    return await downloadToTemp(video.src, downloadDir, undefined, input.signal, undefined, {
+      onTelemetry: writeUrlDownloadTelemetry,
+    });
+  } catch (error) {
+    if (!isUrlNotPermittedError(error)) throw error;
+    input.log?.warn("Video sound skipped: its URL is outside the download address rules", {
+      videoId: video.id,
+    });
+    return null;
+  }
+}
+
+/**
+ * The audio-only form of the extract stage: which videos carry sound takes a probe per source, not their frames.
+ * Each video is moved to its extraction window first, as extraction does, so its sound lands where its picture does.
+ */
+export async function appendVideoAudioFromProbe(input: VideoAudioProbeInput): Promise<void> {
+  const { composition } = input;
   const videos = composition.videos.filter(
     (video) => !isVideoPastTimelineEnd(video, composition.duration),
   );
   const probed = await Promise.all(
     videos.map(async (video) => {
-      const path = isHttpUrl(video.src)
-        ? video.src
-        : resolveProjectRelativeSrc(video.src, projectDir, compiledDir);
-      const readFrom = urlByAbsentLocalPath?.get(path) ?? path;
-      if (!isHttpUrl(readFrom) && !existsSync(readFrom)) return null;
+      const readFrom = isHttpUrl(video.src)
+        ? await remoteProbeSource(video, input)
+        : localProbeSource(video.src, input);
+      if (readFrom === null) return null;
       const metadata = await extractMediaMetadata(readFrom);
       const window = await resolveFinalFrameExtractionWindow(
         readFrom,

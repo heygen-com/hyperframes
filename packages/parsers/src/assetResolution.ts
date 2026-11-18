@@ -1,9 +1,11 @@
 import { scanHtmlOpeningTags, decodeAuthoredAttribute } from "./htmlAttributeSpans.js";
 import { closeSync, constants, existsSync, fstatSync, openSync, readFileSync } from "node:fs";
-import { isAbsolute, join, posix, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, parse, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isNonRelativeUrl } from "./assetPaths.js";
 import { decodeUrlPathVariants } from "./composition.js";
-import { rewriteAssetPath } from "./rewriteSubCompPaths.js";
+import { decodedUrlPath } from "./utils/urlPath.js";
+import { rewriteAssetPath, type AssetExists } from "./rewriteSubCompPaths.js";
 
 /** The subset of `node:path` that `isWithinProjectRoot` needs to run under
  * an injected platform (tests pass `path.win32` / `path.posix`). */
@@ -122,12 +124,57 @@ export function resolveLocalAssetCandidates(projectDir: string, url: string): st
 
     const normalized = posix.normalize(projectRelative.replace(/\\/g, "/"));
     const clamped = normalized.replace(/^(\.\.\/)+/, "");
-    if (clamped && !clamped.startsWith("..")) {
-      addCandidate(candidates, resolve(projectRoot, clamped));
-    }
+    if (!clamped || clamped.startsWith("..")) continue;
+    const reanchored = resolve(projectRoot, clamped);
+    if (isWithinProjectRoot(projectRoot, reanchored)) addCandidate(candidates, reanchored);
   }
 
   return candidates;
+}
+
+// On Windows even a stat of a UNC or device path (\\host\share, \\?\, \\.\) connects to that host.
+export function namesAnotherNetworkRoot(base: string, target: string): boolean {
+  const root = parse(resolve(target)).root;
+  return /^[\\/]{2}/.test(root) && root.toLowerCase() !== parse(resolve(base)).root.toLowerCase();
+}
+
+/** `AssetExists` for a project on disk; a path outside it (a share, another drive) is missing, never looked at. */
+export function projectAssetExists(projectDir: string): AssetExists {
+  return (path) => {
+    const file = resolve(projectDir, path);
+    return isWithinProjectRoot(projectDir, file) && existsSync(file);
+  };
+}
+
+export function srcOnAnotherNetworkRoot(projectDir: string, src: string): boolean {
+  const path = fileUrlAsPath(cleanAssetUrl(src));
+  return isAbsolute(path) && namesAnotherNetworkRoot(projectDir, path);
+}
+
+const LEADING_PARENT_SEGMENT = /^\.\.(?:[\\/]|$)/;
+
+function staysInsideProject(projectDir: string, path: string): boolean {
+  const relativePath = relative(resolve(projectDir), path);
+  return !LEADING_PARENT_SEGMENT.test(relativePath) && !isAbsolute(relativePath);
+}
+
+/** The project file a data-composition-src names, as the preview reads it; null when it leaves the project. */
+export function resolveCompositionSrc(projectDir: string, src: string): string | null {
+  const rooted = (value: string) => resolve(projectDir, value.replace(/^(?:\.?[\\/])+/, ""));
+  const decoded = rooted(decodedUrlPath(src));
+  if (!staysInsideProject(projectDir, decoded)) return null;
+  const raw = rooted(src);
+  return !existsSync(decoded) && staysInsideProject(projectDir, raw) && existsSync(raw)
+    ? raw
+    : decoded;
+}
+
+// A Windows absolute src (C:\clip.mp4) that render copies in. A POSIX /x is a project URL; another share is skipped.
+export function localAbsoluteAssetFile(projectDir: string, src: string): string | null {
+  const path = cleanAssetUrl(src);
+  if (isNonRelativeUrl(path) || !isAbsolute(path)) return null;
+  const file = resolve(projectDir, path);
+  return !namesAnotherNetworkRoot(projectDir, file) && existsSync(file) ? file : null;
 }
 
 export function resolveExistingLocalAsset(
@@ -151,7 +198,10 @@ export function resolveAuthoredAssetFile(
   const rootRelative = cleanSrc.startsWith("/")
     ? cleanSrc
     : rewriteAssetPath(compositionFile, cleanSrc, (path) => existsSync(join(projectDir, path)));
-  return resolveExistingLocalAsset(projectDir, rootRelative)?.resolved ?? null;
+  return (
+    resolveExistingLocalAsset(projectDir, rootRelative)?.resolved ??
+    localAbsoluteAssetFile(projectDir, cleanSrc)
+  );
 }
 
 // Candidates for a variant whose join escaped the project root, re-anchored at the root.
@@ -193,7 +243,9 @@ export function resolveProjectRelativeSrc(
   const cleanSrc = fileUrlAsPath(cleanAssetUrl(src));
 
   // A leading slash is an origin-root URL served from the project root, unless the absolute path exists.
-  if (isAbsolute(cleanSrc) && existsSync(cleanSrc)) return cleanSrc;
+  if (isAbsolute(cleanSrc) && !namesAnotherNetworkRoot(baseDir, cleanSrc) && existsSync(cleanSrc)) {
+    return cleanSrc;
+  }
 
   const candidates = new Set<string>();
   for (const variant of decodeUrlPathVariants(cleanSrc)) {

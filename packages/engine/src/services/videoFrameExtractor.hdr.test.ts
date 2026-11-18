@@ -10,6 +10,7 @@ import {
   type ExtractionResult,
 } from "./videoFrameExtractor.js";
 import { extractVideoMetadata } from "../utils/ffprobe.js";
+import { getFfmpegBinary, getFfprobeBinary } from "../utils/ffmpegBinaries.js";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { SCHEMA_PREFIX } from "./extractionCache.js";
 
@@ -577,6 +578,9 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
     expect(zscale.errors).toEqual([]);
 
     const realPlatform = process.platform;
+    // The fresh modules look FFmpeg up as macOS would, which cannot walk a Windows PATH.
+    vi.stubEnv("HYPERFRAMES_FFMPEG_PATH", getFfmpegBinary());
+    vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", getFfprobeBinary());
     vi.resetModules();
     vi.doMock("../utils/psnrFilterAvailability.js", () => ({
       isFfmpegFilterAvailable: async () => false,
@@ -604,6 +608,7 @@ describe.skipIf(!HAS_ZSCALE)("forced-SDR HDR extraction", () => {
     } finally {
       stderr.mockRestore();
       Object.defineProperty(process, "platform", platform);
+      vi.unstubAllEnvs();
       vi.doUnmock("../utils/psnrFilterAvailability.js");
       vi.resetModules();
     }

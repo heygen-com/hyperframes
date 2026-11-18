@@ -25,6 +25,7 @@ import {
 import { usePlayerStore } from "../player/store/playerStore";
 import { thumbnailRevisionOf } from "../player/store/thumbnailSlice";
 import { effectiveThumbnailMode } from "../player/lib/thumbnailPolicy";
+import { fitsBeatAnalysis } from "../utils/timelineInspector";
 
 export function normalizeCompositionSrc(
   compSrc: string,
@@ -84,8 +85,9 @@ function renderAudioClip(
     ? buildProjectApiPath(pid, `/waveform/${encodedRelative}`)
     : undefined;
   const { start, end } = trimFractions(el);
+  const serverPeaksOrShortFile = waveformUrl !== undefined || fitsBeatAnalysis(el);
   const waveform = createElement(AudioWaveform, {
-    audioUrl,
+    audioUrl: serverPeaksOrShortFile ? audioUrl : "",
     waveformUrl,
     label: "",
     labelColor,

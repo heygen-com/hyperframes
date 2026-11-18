@@ -1,3 +1,4 @@
+import { terminalLines } from "@hyperframes/core";
 // What every `hyperframes measure <op>` shares: one JSON object on stdout (summaries, never per-frame arrays;
 // pictures as file paths), progress on stderr, and an error that says what to run instead.
 import { c } from "../ui/colors.js";
@@ -30,7 +31,8 @@ export async function runMeasure(work: () => object | Promise<object>): Promise<
         }),
       ),
     );
-    if (process.stdout.isTTY) console.error(`${c.error("✗")} ${normalizeErrorMessage(err)}`);
+    if (process.stdout.isTTY)
+      console.error(`${c.error("✗")} ${terminalLines(normalizeErrorMessage(err))}`);
     failCommand(1, err);
   }
 }

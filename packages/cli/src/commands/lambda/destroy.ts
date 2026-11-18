@@ -9,12 +9,14 @@
  * rather than re-implementing the empty-and-delete dance here.
  */
 
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { c } from "../../ui/colors.js";
 import { deleteStackOutputs, requireStack } from "./state.js";
 import { deleteEcrRepository, samDelete } from "./sam.js";
 import { repoRoot } from "./repoRoot.js";
+import { videoRepositoryName } from "./videoImage.js";
 
 export interface DestroyArgs {
   stackName: string;
@@ -29,19 +31,18 @@ export async function runDestroy(args: DestroyArgs): Promise<void> {
   // Mirror deploy.ts's AWS_PROFILE env fallback — `AWS_PROFILE=prod
   // hyperframes lambda destroy` should hit the same account `deploy`
   // did, not the default credentials chain.
-  samDelete({
-    samDir: root ? join(root, "examples", "aws-lambda") : tmpdir(),
-    stackName: stack.stackName,
-    region: stack.region,
-    awsProfile,
-  });
+  const samDir = root
+    ? join(root, "examples", "aws-lambda")
+    : mkdtempSync(join(tmpdir(), "hf-sam-"));
+  try {
+    samDelete({ samDir, stackName: stack.stackName, region: stack.region, awsProfile });
+  } finally {
+    if (!root) rmSync(samDir, { recursive: true, force: true });
+  }
   if (stack.videoRepository) {
-    console.log(c.dim(`→ Deleting ECR repository ${stack.videoRepository}`));
-    deleteEcrRepository({
-      repositoryName: stack.videoRepository,
-      region: stack.region,
-      awsProfile,
-    });
+    const repositoryName = videoRepositoryName(stack.stackName);
+    console.log(c.dim(`→ Deleting ECR repository ${repositoryName}`));
+    deleteEcrRepository({ repositoryName, region: stack.region, awsProfile });
   }
   deleteStackOutputs(args.stackName);
   console.log();

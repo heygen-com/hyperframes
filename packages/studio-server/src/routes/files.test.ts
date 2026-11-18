@@ -1852,6 +1852,30 @@ const tl = gsap.timeline({ paused: true });
     expect(readFileSync(join(projectDir, "comp.html"), "utf8")).toBe(FROMTO_COMP);
   });
 
+  it("keeps a saved ease that holds a script end tag inside the script", async () => {
+    const projectDir = createProjectDir();
+    writeHtml(projectDir, "comp.html", FROMTO_COMP);
+    const app = new Hono();
+    registerFileRoutes(app, createAdapter(projectDir));
+    const animation = await getFirstAnimation(app, "comp.html");
+    const scriptsBefore = parseHTML(FROMTO_COMP).document.querySelectorAll("script").length;
+
+    const response = await app.request("http://localhost/projects/demo/gsap-mutations/comp.html", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "update-meta",
+        animationId: animation.id,
+        updates: { ease: "none</script><script>window.injected = 1</script>" },
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const saved = readFileSync(join(projectDir, "comp.html"), "utf8");
+    expect(saved).not.toContain("</script><script>window.injected");
+    expect(parseHTML(saved).document.querySelectorAll("script")).toHaveLength(scriptsBefore);
+  });
+
   it("update-from-property updates a fromTo start value in place", async () => {
     const projectDir = createProjectDir();
     writeHtml(projectDir, "comp.html", FROMTO_COMP);

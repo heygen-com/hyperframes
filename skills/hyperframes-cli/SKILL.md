@@ -1,15 +1,15 @@
 ---
 name: hyperframes-cli
-description: The HyperFrames CLI by job - scaffold, check, look at frames, edit the timeline, preview, render locally or in the cloud, publish, project history - plus reading its JSON and recovering from build or render failures.
+description: HyperFrames CLI - scaffold, check frames, edit timelines, preview, render, share and project history; read JSON and recover from failures.
 ---
 
-**Plugin installs:** Inside a HyperFrames plugin, follow [plugin execution rules](../hyperframes/references/plugin-installation.md).
+**Running the CLI:** every `npx hyperframes <command>` here, the beacon included, means `node <SKILLS>/hyperframes/scripts/plugin-cli.mjs <command>` run in the project, where `<SKILLS>` holds this skill's folder ([rules](../hyperframes/references/plugin-installation.md)).
 
 **Usage beacon:** run `npx hyperframes events --skill=hyperframes-cli` once as this skill starts. It sends the skill's name with the CLI's usual telemetry (account-linked when signed in) and honours the opt-out.
 
 # HyperFrames CLI
 
-Run `npx hyperframes <command>` unless the project gives a wrapper; then use the wrapper. It needs Node.js 22+ and FFmpeg. Every command has `--help`; most take `--json`, and a failure prints `✗ …`, a `Fix:` line and exits non-zero.
+Run `npx hyperframes <command>` as above, never a project's own scripts or wrapper unless the person names that command. It needs Node.js 22+ and FFmpeg. Every command has `--help`; most take `--json`, and a failure prints `✗ …`, a `Fix:` line and exits non-zero.
 
 A `--json` result may carry `_meta.updateNotice`: a newer HyperFrames release is out. Pass it to the person once per conversation, in your own words, at a natural pause; updating is theirs to decide.
 
@@ -24,7 +24,7 @@ A `--json` result may carry `_meta.updateNotice`: a newer HyperFrames release is
 | Edit the timeline | `timeline` with `move`, `trim`, `split`, `set`, `duplicate`, `delete`, `apply`, `undo`, `ids` |
 | Reuse | `catalog`, `add` (`/hyperframes-registry`) |
 | Media and sound | `media-treatment`, `grade-compare`, `remove-background`, `tts`, `transcribe`, `beats`, `normalize-audio` (`/media-use`) |
-| Show and ship | `preview`, `present` (`/slideshow`), `render`, `publish`, `cloud`, `lambda`, `cloudrun` |
+| Show and ship | `preview`, `present` (`/slideshow`), `render`, `share`, `publish` (legacy), `cloud`, `lambda`, `cloudrun` |
 | Desktop app | `open`, `catch-up` |
 | Upkeep | `doctor`, `browser`, `upgrade`, `usage`, `clean`, `feedback` |
 
@@ -94,7 +94,7 @@ Read the row before running its command.
 | `lint`, `check`, motion sidecars, `snapshot` | `references/lint-validate-inspect.md` |
 | `compare`, `grade-compare`, `render --batch` | `references/compare-and-batch.md` |
 | `beats` | `references/beats.md` |
-| `preview`, `play`, `render`, `publish`, Studio context | `references/preview-render.md` |
+| `preview`, `play`, `render`, `share`, `publish` (legacy), Studio context | `references/preview-render.md` |
 | `doctor`, `browser` | `references/doctor-browser.md` |
 | `auth`, `cloud`, template variables | `references/cloud.md` |
 | `lambda`, `cloudrun` | `references/lambda.md`, `references/cloudrun.md` |

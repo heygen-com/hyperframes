@@ -322,6 +322,94 @@ describe("CLI lifecycle", () => {
     }
   });
 
+  // fails without the fix: a program driving the CLI read exit 1 with no words, so its reports named a routine line
+  // ("Browser: env") as the cause.
+  it("says what crashed before the command delivered, then exits 1", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const said = vi.spyOn(console, "error").mockImplementation(() => {});
+    const priorListeners = process.listeners("uncaughtException");
+    process.removeAllListeners("uncaughtException");
+    try {
+      mockInitCommand(() => {
+        process.emit("uncaughtException", new Error("EBADF: bad file descriptor, read"));
+      });
+      mockTelemetry({ trackCommandResult: vi.fn() });
+      process.argv = ["node", "cli.ts", "init"];
+      await import("./cli.js");
+      expect(saidOnStderr(said)).toContain("Error: EBADF: bad file descriptor, read");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      process.removeAllListeners("uncaughtException");
+      for (const listener of priorListeners) process.on("uncaughtException", listener);
+      said.mockRestore();
+      exitSpy.mockRestore();
+    }
+  });
+
+  it("says what an unhandled rejection was before the command delivered", async () => {
+    const said = vi.spyOn(console, "error").mockImplementation(() => {});
+    const priorListeners = process.listeners("unhandledRejection");
+    process.removeAllListeners("unhandledRejection");
+    try {
+      mockInitCommand(() => {
+        process.emit(
+          "unhandledRejection",
+          new Error("browser process would not stop"),
+          Promise.resolve(),
+        );
+      });
+      mockTelemetry({ trackCommandResult: vi.fn() });
+      process.argv = ["node", "cli.ts", "init"];
+      await import("./cli.js");
+      expect(saidOnStderr(said)).toContain("Error: browser process would not stop");
+    } finally {
+      process.removeAllListeners("unhandledRejection");
+      for (const listener of priorListeners) process.on("unhandledRejection", listener);
+      said.mockRestore();
+    }
+  });
+
+  it("a render ending non-zero with no failure shown says so, and reports where the failure was set", async () => {
+    const said = vi.spyOn(console, "error").mockImplementation(() => {});
+    const trackCliError = vi.fn();
+    try {
+      mockRenderCommand(async () => {
+        const { setCommandExitCode } = await import("./utils/commandResult.js");
+        setCommandExitCode(1);
+      });
+      mockTelemetry({ trackCommandResult: vi.fn(), trackCliError });
+      process.argv = ["node", "cli.ts", "render"];
+      await import("./cli.js");
+      expect(saidOnStderr(said)).toContain("The command ended with code 1 without saying why");
+      expect(trackCliError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          kind: "silent_exit",
+          stack_trace: expect.stringContaining("cli.lifecycle.test.ts"),
+        }),
+      );
+    } finally {
+      said.mockRestore();
+    }
+  });
+
+  it("a command that answers with a non-zero code is not called silent", async () => {
+    const said = vi.spyOn(console, "error").mockImplementation(() => {});
+    const trackCliError = vi.fn();
+    try {
+      mockInitCommand(async () => {
+        const { setCommandExitCode } = await import("./utils/commandResult.js");
+        setCommandExitCode(1);
+      });
+      mockTelemetry({ trackCommandResult: vi.fn(), trackCliError });
+      process.argv = ["node", "cli.ts", "init"];
+      await import("./cli.js");
+      expect(saidOnStderr(said)).not.toContain("without saying why");
+      expect(trackCliError).not.toHaveBeenCalled();
+    } finally {
+      said.mockRestore();
+    }
+  });
+
   it("exits 0 when a late uncaught exception follows a command that already delivered", async () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     const priorListeners = process.listeners("uncaughtException");
@@ -362,6 +450,27 @@ describe("CLI lifecycle", () => {
       expect(process.exitCode).not.toBe(0);
       expect(trackCommandResult).toHaveBeenCalledWith(expect.objectContaining({ success: false }));
     } finally {
+      exitSpy.mockRestore();
+    }
+  });
+
+  it("prints a thrown error's control characters as visible escapes and keeps its lines", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      mockInitCommand(() => {
+        throw new Error("Install failed: a\u001b]52;c;eA==\u0007\n  b\u009b");
+      });
+      mockTelemetry();
+
+      process.argv = ["node", "cli.ts", "init"];
+      await import("./cli.js");
+
+      const said = errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n");
+      expect(said).toContain("Install failed: a\\x1b]52;c;eA==\\x07\n  b\\x9b");
+      for (const control of ["\u001b]", "\u0007", "\u009b"]) expect(said).not.toContain(control);
+    } finally {
+      errorSpy.mockRestore();
       exitSpy.mockRestore();
     }
   });
@@ -411,7 +520,7 @@ describe("CLI lifecycle", () => {
 });
 
 describe("stale-skills notice under --json", () => {
-  it("prints on a --json run while the self-update notices stay off", async () => {
+  it("suppresses unrelated notices on a --json run", async () => {
     const printSkillsUpdateNotice = vi.fn();
     const printUpdateNotice = vi.fn();
     mockInitCommand(vi.fn());
@@ -431,7 +540,7 @@ describe("stale-skills notice under --json", () => {
     process.argv = ["node", "cli.ts", "init", "--json"];
     await import("./cli.js");
 
-    await vi.waitFor(() => expect(printSkillsUpdateNotice).toHaveBeenCalledTimes(1));
+    expect(printSkillsUpdateNotice).not.toHaveBeenCalled();
     expect(printUpdateNotice).not.toHaveBeenCalled();
   });
 });
@@ -468,6 +577,17 @@ async function runCli(args: string[]): Promise<Record<string, unknown>[]> {
     logSpy.mockRestore();
   }
   return sent;
+}
+
+function mockRenderCommand(run: () => void | Promise<void>): void {
+  vi.doMock("./commands/render.js", () => ({
+    default: { meta: { name: "render" }, args: {}, run },
+  }));
+}
+
+/** Everything the run wrote through console.error, colors and all, as one text. */
+function saidOnStderr(said: ReturnType<typeof vi.spyOn>): string {
+  return said.mock.calls.map((args: unknown[]) => args.join(" ")).join("\n");
 }
 
 function mockInitCommand(run: () => void | Promise<void>): void {

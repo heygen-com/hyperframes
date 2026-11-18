@@ -2,7 +2,8 @@
 // fallow-ignore-file code-duplication
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_CONFIG } from "@hyperframes/engine";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import os, { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -21,8 +22,10 @@ import {
   preResolveHostileMediaProxies,
   dropFailedProxyEchoes,
   runBrowserCheck,
+  servedProjectFile,
   collectSeekClock,
   mergeHelperDrafts,
+  parseLayoutIssue,
   samplingBrowserCount,
   RENDER_READY_WARNING_SUFFIX,
 } from "./checkBrowser.js";
@@ -1078,6 +1081,65 @@ it("elevates and deduplicates WebGPU validation warnings while preserving ordina
   );
 });
 
+// fails without the narrowing: every GL driver Performance note was hidden, not only the ReadPixels stall.
+it("hides only the ReadPixels stall check's own reads cause, not the film's other GL driver notes", async () => {
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  mountCanvasFixture();
+  const page = fakePage();
+  const stall = fakeConsoleMessage(
+    "warn",
+    "[.WebGL-0x2c84001d4800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+  );
+  const ordinaryWarning = fakeConsoleMessage("warn", "Optional caption font was not loaded");
+  const otherDriverNote = fakeConsoleMessage(
+    "warn",
+    "[.WebGL-0x2c84001d4800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): Program undefined behavior warning",
+  );
+  page.on = vi.fn(
+    (event: string, handler: (message: ReturnType<typeof fakeConsoleMessage>) => void) => {
+      if (event === "console") {
+        handler(stall);
+        handler(otherDriverNote);
+        handler(ordinaryWarning);
+      }
+    },
+  );
+  installSessionMock(page);
+
+  const result = await runBrowserCheck(
+    PROJECT,
+    { ...DEFAULT_CHECK_OPTIONS, samples: 1, contrast: false },
+    { kind: "none" },
+    runAuditGrid,
+  );
+
+  expect(
+    result.runtimeFindings.filter(({ code }) => code === "console_warning").map((f) => f.message),
+  ).toEqual([otherDriverNote.text(), ordinaryWarning.text()]);
+});
+
+describe("parseLayoutIssue", () => {
+  const rect = { left: 0, top: 0, right: 10, bottom: 10, width: 10, height: 10 };
+  const raw = (code: string) => ({
+    code,
+    severity: "error",
+    time: 1,
+    selector: "#title",
+    message: "clipped",
+    rect,
+  });
+
+  it("keeps an issue with a known code", () => {
+    expect(parseLayoutIssue(raw("clipped_text"))).toEqual([raw("clipped_text")]);
+  });
+
+  it("drops an issue whose code the audit never produces", () => {
+    expect(parseLayoutIssue(raw("clipped_text\u001b]52;c;Y2xpcA==\u0007"))).toEqual([]);
+    expect(parseLayoutIssue({ ...raw("clipped_text"), rect: "wide" })).toEqual([]);
+    expect(parseLayoutIssue("clipped_text")).toEqual([]);
+  });
+});
+
 describe("collectSeekClock", () => {
   afterEach(() => {
     Reflect.deleteProperty(window, "__timelines");
@@ -1315,6 +1377,67 @@ describe("mergeHelperDrafts", () => {
       end: Number.POSITIVE_INFINITY,
     };
     expect(mergeHelperDrafts(primary, helper)).toEqual(primary.drafts);
+  });
+});
+
+describe("servedProjectFile", () => {
+  const page = "http://127.0.0.1:4000/";
+  let root: string;
+  let projectDir: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "hf-served-file-"));
+    projectDir = join(root, "project");
+    mkdirSync(join(projectDir, "takes"), { recursive: true });
+    writeFileSync(join(projectDir, "takes", "my take.mp4"), "");
+    writeFileSync(join(root, "outside.mp4"), "");
+  });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it("resolves a page-origin source to its project file, proxied or not", () => {
+    const file = join(projectDir, "takes", "my take.mp4");
+    expect(servedProjectFile(`${page}takes/my%20take.mp4`, page, projectDir)).toBe(file);
+    expect(servedProjectFile(`${page}takes/my%20take.mp4?hf-proxy=h264`, page, projectDir)).toBe(
+      file,
+    );
+  });
+
+  it("gives no file for a remote source, a missing file or a path outside the project", () => {
+    const remote = "https://cdn.example.com/takes/my%20take.mp4";
+    expect(servedProjectFile(remote, page, projectDir)).toBeNull();
+    expect(servedProjectFile(`${page}takes/gone.mp4`, page, projectDir)).toBeNull();
+    expect(servedProjectFile(`${page}..%2Foutside.mp4`, page, projectDir)).toBeNull();
+    expect(servedProjectFile("", page, projectDir)).toBeNull();
+  });
+
+  it("gives no file for a private project file, by its name or through a link, or for what is not a file", () => {
+    const write = (path: string) => {
+      mkdirSync(join(projectDir, path, ".."), { recursive: true });
+      writeFileSync(join(projectDir, path), "");
+    };
+    for (const path of [".env", ".git/take.mp4", "takes/.hyperframes/take.mp4", "takes/id_rsa"])
+      write(path);
+    symlinkSync(join(projectDir, ".env"), join(projectDir, "takes", "env.mp4"));
+    mkdirSync(join(root, ".ssh"));
+    writeFileSync(join(root, ".ssh", "id_rsa"), "");
+    symlinkSync(join(root, ".ssh", "id_rsa"), join(projectDir, "takes", "key.mp4"));
+    mkdirSync(join(projectDir, "takes", "folder.mp4"));
+    for (const path of [
+      ".env",
+      ".git/take.mp4",
+      "takes/.hyperframes/take.mp4",
+      "takes/id_rsa",
+      "takes/env.mp4",
+      "takes/key.mp4",
+      "takes/folder.mp4",
+    ]) {
+      expect(servedProjectFile(`${page}${path}`, page, projectDir), path).toBeNull();
+    }
+  });
+
+  it.skipIf(process.platform === "win32")("gives no file for a named pipe", () => {
+    execFileSync("mkfifo", [join(projectDir, "takes", "pipe.mp4")]);
+    expect(servedProjectFile(`${page}takes/pipe.mp4`, page, projectDir)).toBeNull();
   });
 });
 

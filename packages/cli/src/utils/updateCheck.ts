@@ -1,3 +1,4 @@
+import { homeCliCommand } from "./homeCliCommand.js";
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { compareVersions } from "compare-versions";
@@ -20,7 +21,11 @@ import { isSafeVersion } from "./safeVersion.js";
 
 export { isSafeVersion } from "./safeVersion.js";
 
-const NPM_REGISTRY_URL = "https://registry.npmjs.org/hyperframes/latest";
+export function updateChannel(version = VERSION): string {
+  if (version === "0.0.0-dev") return "latest";
+  return version.match(/^\d+\.\d+\.\d+-([a-z][a-z0-9-]*)(?:\.|$)/i)?.[1] ?? "latest";
+}
+const npmRegistryUrl = () => `https://registry.npmjs.org/hyperframes/${updateChannel()}`;
 const CHECK_INTERVAL_MS = 2 * 60 * 60 * 1000;
 const SKILLS_COUNT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 3000;
@@ -70,14 +75,14 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
   if (!force && !updateCheckDue(config)) return fallbackResult(config.latestVersion);
 
   try {
-    if (!force && !(await hostAnswers(new URL(NPM_REGISTRY_URL).hostname))) {
+    if (!force && !(await hostAnswers(new URL(npmRegistryUrl()).hostname))) {
       return fallbackResult(config.latestVersion);
     }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     let data: { version?: unknown };
     try {
-      const res = await fetch(NPM_REGISTRY_URL, {
+      const res = await fetch(npmRegistryUrl(), {
         signal: controller.signal,
         headers: { Connection: "close" },
       });
@@ -92,7 +97,11 @@ export async function checkForUpdate(force?: boolean): Promise<UpdateCheckResult
     // data.version (e.g. "1.2.3; rm -rf /") must never be persisted. Reject it
     // and fall back to the last known-good version. Closes the injection class
     // for every consumer at one point.
-    if (typeof data.version !== "string" || !isSafeVersion(data.version)) {
+    if (
+      typeof data.version !== "string" ||
+      !isSafeVersion(data.version) ||
+      updateChannel(data.version) !== updateChannel()
+    ) {
       return fallbackResult(config.latestVersion);
     }
     const latest = data.version;
@@ -140,9 +149,11 @@ function fallbackResult(cachedLatest?: string): UpdateCheckResult {
 }
 
 const isSafeCache = (value: unknown): value is string =>
-  typeof value === "string" && isSafeVersion(value);
+  typeof value === "string" && isSafeVersion(value) && updateChannel(value) === updateChannel();
 
 function cachedVersionForThisInstall(value: unknown): string | undefined {
+  const checkedAt = readConfig().lastUpdateCheck;
+  if (checkedAt && Date.now() - Date.parse(checkedAt) >= CHECK_INTERVAL_MS) return undefined;
   return isSafeCache(value) && !isNewerSemver(VERSION, value) ? value : undefined;
 }
 
@@ -227,7 +238,7 @@ export function updateCommandForThisInstall(
     return projectNoticeCommand(install, cliBehind, skillsBehind, latest);
   }
   return install.channel === "npx" && cliBehind
-    ? "npx hyperframes@latest update"
+    ? homeCliCommand(updateChannel(), "update")
     : "npx hyperframes update";
 }
 
@@ -346,7 +357,7 @@ export function printUpdateNotice(): void {
   // the suppression + update-available gates, so it adds no cost to normal runs.
   const safeLatest = isSafeVersion(meta.latestVersion);
   const managerCommand = safeLatest ? detectInstaller().installCommand(meta.latestVersion) : null;
-  const command = managerCommand ?? "npx hyperframes@latest";
+  const command = managerCommand ?? homeCliCommand(updateChannel());
 
   process.stderr.write(
     `\n  Update available: ${meta.version} \u2192 ${meta.latestVersion}\n` +
@@ -378,9 +389,12 @@ export function printStalePinNotice(cwd: string = process.cwd()): void {
   // A CLI older than the pin (e.g. a stale npx cache) misjudges every run, so this is never throttled.
   const newerPins = pins.filter((v) => isNewerSemver(v, VERSION)).sort(compareVersions);
   if (newerPins.length > 0) {
+    const pin = newerPins.at(-1);
     process.stderr.write(
       `\n  This is hyperframes ${VERSION}, but this project pins hyperframes@${newerPins.join(", ")}.\n` +
-        `  Run it through the project's npm scripts, or npx hyperframes@${newerPins.at(-1)}.\n\n`,
+        `  A project's pin does not choose the CLI; an agent runs the pinned release only when the person asks for it.\n` +
+        `  To choose it, pass --cli-version ${pin} to the installed standalone skill launcher.\n` +
+        `  Without standalone skills, choose it by starting in your home folder, running npx hyperframes@${pin} with the desired command, and passing the project by absolute path.\n\n`,
     );
     return;
   }
@@ -404,6 +418,7 @@ export function printStalePinNotice(cwd: string = process.cwd()): void {
 
   process.stderr.write(
     `\n  This project pins hyperframes@${stale.join(", ")} (latest ${latest}).\n` +
-      `  Bump it: npx hyperframes@latest upgrade --project\n\n`,
+      `  Use the installed standalone skill launcher with --cli-version latest upgrade --project . to bump the pin.\n` +
+      `  Without standalone skills, run the latest CLI from your home folder and pass the absolute project path to upgrade --project.\n\n`,
   );
 }

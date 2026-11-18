@@ -17,6 +17,13 @@ import type { CaptureMotionBlurHost, Config, Report, Tier } from "./tier";
 const NS = "http://www.w3.org/2000/svg";
 /** Copies per mover; the softening along the motion closes the steps between them. */
 const COPIES = 32;
+export const FILTER_LIGHTER_LEVELS = [0.5, 0.25] as const;
+const previewCopiesAt = (level: number): number => (level >= 1 ? COPIES : level >= 0.5 ? 16 : 8);
+let previewCopies = COPIES;
+
+export function setFilterPreviewQuality(level: number): void {
+  if (level > 0) previewCopies = previewCopiesAt(level);
+}
 const PREVIEW_READS = 4;
 const RENDER_READS = 8;
 const FILTER_ID = "hf-mb";
@@ -42,15 +49,14 @@ function node<K extends keyof SVGElementTagNameMap>(
   return el;
 }
 
-/** 32 offset copies, averaged in pairs so 8-bit filter buffers do not band, then softened. */
-function buildLayer(defs: SVGDefsElement, index: number, el: HTMLElement): Layer {
-  const id = `${FILTER_ID}-${index}`;
+/** Offset copies (a power of two), averaged in pairs so 8-bit filter buffers do not band, then softened. */
+function buildLayer(defs: Element, id: string, el: HTMLElement, copies: number): Layer {
   const filter = node(defs, "filter", {
     id,
     "color-interpolation-filters": "sRGB",
     filterUnits: "userSpaceOnUse",
   });
-  const offsets = Array.from({ length: COPIES }, (_, k) =>
+  const offsets = Array.from({ length: copies }, (_, k) =>
     node(filter, "feOffset", { in: "SourceGraphic", result: `s${k}` }),
   );
   let level = offsets.map((_, k) => `s${k}`);
@@ -177,9 +183,10 @@ export function createFilterTier(
     for (const el of [...styled]) drop(el);
   }
 
-  function layerOf(el: HTMLElement): Layer {
-    let layer = layers.get(el);
-    if (layer) return layer;
+  function layerOf(el: HTMLElement, copies: number): Layer {
+    const kept = layers.get(el);
+    if (kept?.offsets.length === copies) return kept;
+    kept?.filter.remove();
     if (!defs) {
       defs = document.createElementNS(NS, "svg");
       defs.setAttribute("width", "0");
@@ -190,13 +197,14 @@ export function createFilterTier(
       node(defs, "defs", {});
       document.documentElement.append(defs);
     }
-    layer = buildLayer(defs.querySelector("defs") ?? defs, layers.size, el);
+    const id = kept?.filter.id ?? `${FILTER_ID}-${layers.size}`;
+    const layer = buildLayer(defs.querySelector("defs") ?? defs, id, el, copies);
     layers.set(el, layer);
     return layer;
   }
 
   function show(el: HTMLElement, plan: FilterPlan): void {
-    const layer = layerOf(el);
+    const layer = layerOf(el, plan.offsets.length);
     aim(layer, plan);
     const base = strip(el) || layer.css;
     el.style.filter = base ? `${base} ${layer.url}` : layer.url;
@@ -217,7 +225,7 @@ export function createFilterTier(
         t,
         reads: engineMode ? RENDER_READS : PREVIEW_READS,
         ...shutterTimes(config.shutterDeg, config.phaseDeg, host.fps),
-        taps: COPIES,
+        taps: engineMode ? COPIES : previewCopies,
         frameW: width,
         scene: root,
         frameH: height,

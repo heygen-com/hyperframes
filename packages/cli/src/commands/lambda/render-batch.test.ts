@@ -78,6 +78,21 @@ describe("runWithConcurrencyLimit", () => {
     expect(out).toEqual([]);
   });
 
+  it("after a rejection starts nothing new and settles only once started work has finished", async () => {
+    const started: number[] = [];
+    let slowDone = false;
+    const run = runWithConcurrencyLimit([1, 2, 3, 4], 2, async (n) => {
+      started.push(n);
+      if (n === 2) throw new Error("boom");
+      await new Promise((r) => setTimeout(r, 30));
+      slowDone = true;
+      return n;
+    });
+    await expect(run).rejects.toThrow(/boom/);
+    expect(started).toEqual([1, 2]);
+    expect(slowDone).toBe(true);
+  });
+
   it("propagates the first worker rejection", async () => {
     await expect(
       runWithConcurrencyLimit([1, 2, 3], 2, async (n) => {

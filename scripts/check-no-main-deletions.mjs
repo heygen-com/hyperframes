@@ -774,6 +774,14 @@ const PLAN_PARITY_HARNESS_FILES = [
 ];
 
 export const ALLOWED_DELETIONS = new Map([
+  [
+    "packages/cli/src/capture/fixtures/capture-fixture-key.pem",
+    "owner-directed removal of committed plaintext key material; capture integration tests generate ephemeral TLS fixtures in memory",
+  ],
+  [
+    "packages/cli/src/capture/fixtures/capture-fixture-certificate.pem",
+    "paired with the removed plaintext key; capture integration tests generate an ephemeral certificate in memory",
+  ],
   // Prompt Guide as six topic pages
   [
     "docs/prompting/anatomy.mdx",
@@ -2127,6 +2135,27 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/cli/src/commands/cloud/render.pageMotionBlur.test.ts",
     "tests for the removed cloud render --page-motion-blur flag; the hosted render API never accepted the field",
   ],
+  [
+    "packages/engine/src/services/pageNetworkPolicy.ts",
+    "replaced by the browser-wide public-only proxy every render browser launches behind on a restricted host",
+  ],
+  [
+    "packages/engine/src/services/pageNetworkPolicy.browser.test.ts",
+    "its cases moved to renderNetwork.browser.test.ts, which drives the browser-wide proxy through a real capture session",
+  ],
+  [
+    "packages/engine/src/services/frameCapture-pageNetwork.test.ts",
+    "pinned the removed per-page filter; browserManager.test.ts pins when a render browser goes behind the proxy",
+  ],
+  ...[
+    "packages/core/src/missingPath.ts",
+    "packages/producer/src/services/render/missingPath.ts",
+    "packages/producer/src/services/render/missingPath.test.ts",
+    "packages/producer/src/services/renderOrchestrator.missingPath.test.ts",
+  ].map((path) => [
+    path,
+    "the revert of #7955 removes the missing-path detail; it returns looking only inside folders the render owns",
+  ]),
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {

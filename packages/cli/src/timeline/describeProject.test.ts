@@ -219,6 +219,20 @@ describe("describeProject", () => {
     expect(row!.children).toEqual([]);
   });
 
+  it("prints ids and src values from the project with control characters escaped", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const index = project();
+    writeFileSync(
+      index,
+      `<div data-composition-id="m"><img id="logo${esc}[2J" src="logo${esc}]52;c;cA==${String.fromCharCode(7)}.png" data-start="0" data-duration="1"></div>`,
+    );
+    const text = formatTimeline(await describeProject(index));
+    expect(text).not.toContain(esc);
+    expect(text).toContain("logo\\x1b[2J");
+    expect(text).toContain("src=logo\\x1b]52;c;cA==\\x07.png");
+  });
+
   it("claims no duration source for a leaf with nothing authored and no children", async () => {
     const index = project();
     writeFileSync(index, `<div data-composition-id="m"><div id="bare" data-start="0"></div></div>`);

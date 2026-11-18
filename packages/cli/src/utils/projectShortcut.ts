@@ -24,6 +24,13 @@ export function openShortcutArgv(
   return [...argv.slice(0, at), "open", ...argv.slice(at)];
 }
 
+export function registryAliasArgv(argv: readonly string[]): readonly string[] {
+  const at = commandWordIndex(argv);
+  if (at < 0 || argv[at] !== "registry") return argv;
+  const words = argv[at + 1] === "search" ? at + 2 : at + 1;
+  return [...argv.slice(0, at), "catalog", ...argv.slice(words)];
+}
+
 export function measureProbeShortcutArgv(
   argv: readonly string[],
   ops: ReadonlySet<string>,

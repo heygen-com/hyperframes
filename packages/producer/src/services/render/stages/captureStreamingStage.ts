@@ -1085,7 +1085,7 @@ export async function runCaptureStreamingStage(
         const session = probeSession ?? (await openSession());
         captureBeyondViewport = session.options.captureBeyondViewport;
         if (probeSession) {
-          prepareCaptureSessionForReuse(session, framesDir, videoInjector);
+          await prepareCaptureSessionForReuse(session, framesDir, videoInjector);
           probeSession = null;
         }
         // The screenshot capture of today: same config with fast capture off. Its frames are not

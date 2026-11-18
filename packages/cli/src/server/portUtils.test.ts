@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:net";
+import { PREVIEW_NONCE_HEADER, previewProof } from "@hyperframes/core/preview-proof";
 import { spawn } from "node:child_process";
 import { resolve } from "node:path";
 import { createServer as createHttpServer, get, type Server as HttpServer } from "node:http";
@@ -50,9 +51,12 @@ function boundAddress(server: ServerType): string {
 }
 
 async function startConfigProbeServer(payload: Record<string, unknown>): Promise<number> {
-  const server = createHttpServer((_req, res) => {
+  const server = createHttpServer((req, res) => {
+    const nonce = req.headers[PREVIEW_NONCE_HEADER];
+    const endpoint = { address: req.socket.localAddress!, port: req.socket.localPort! };
+    const proof = previewProof(nonce, endpoint, payload);
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify(payload));
+    res.end(JSON.stringify({ ...payload, ...(proof && { proof }) }));
   });
   openHttpServers.push(server);
   await new Promise<void>((resolve, reject) => {

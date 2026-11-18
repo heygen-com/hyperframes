@@ -24,6 +24,7 @@ import {
   postRuntimeControlMessage,
 } from "../../player/lib/runtimeProtocol";
 import {
+  readSealedColorGradingStatus,
   useColorGradingPreviews,
   type ColorGradingCapturedFrame,
   type ColorGradingPresetPreviews,
@@ -31,6 +32,7 @@ import {
 } from "./useColorGradingPreviews";
 import { studioApiFetch } from "../../utils/studioApiFetch";
 import { authoredSrcPath } from "../../player/components/thumbnailUtils";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 
 export type { ColorGradingPresetPreviews, ColorGradingPreviewOptions };
 
@@ -279,8 +281,9 @@ export function useColorGradingController({
     [element.hfId, element.id, element.selector, element.selectorIndex],
   );
 
+  const statusReadRef = useRef(0);
   const refreshRuntimeStatus = useCallback(() => {
-    setRuntimeStatus(readRuntimeColorGradingStatus(previewIframeRef?.current, target));
+    refreshStatus(previewIframeRef?.current, target, statusReadRef, setRuntimeStatus);
   }, [previewIframeRef, target]);
 
   useEffect(() => {
@@ -567,4 +570,20 @@ export function useColorGradingController({
       });
     },
   };
+}
+
+function refreshStatus(
+  iframe: HTMLIFrameElement | null | undefined,
+  target: HfColorGradingTarget,
+  reads: { current: number },
+  apply: (status: RuntimeColorGradingStatus) => void,
+): void {
+  if (!iframe || !previewFrameOpaque(iframe)) {
+    apply(readRuntimeColorGradingStatus(iframe, target));
+    return;
+  }
+  const read = ++reads.current;
+  void readSealedColorGradingStatus(iframe, target).then((status) => {
+    if (read === reads.current) apply(status);
+  });
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Release step: writes the handler ZIP's pin (asset URL + sha256) and the SAM template into the
-// package, or with --video-image the arm64 video image's pin. A retried release run reuses the
-// asset already on the release.
+// package, or with --video-image the arm64 video image's pin. It always pins the file this run
+// built.
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

@@ -1,5 +1,6 @@
 import { MEDIA_ELEMENT_LEAD_SECONDS } from "./mediaClock";
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "../colorGrading";
+import { applyNativeVideoLook } from "./nativeVideoLook";
 import {
   installPausedVideoCallbacks,
   stagePausedVideoCallbacks,
@@ -79,9 +80,20 @@ export function captureNativeVideoFrame(video: HTMLVideoElement): HTMLCanvasElem
   canvas.height = video.videoHeight;
   const context = canvas.getContext("2d");
   if (!context) return null;
+  const frame = videoFrameOf(video);
   try {
-    context.drawImage(video, 0, 0);
+    context.drawImage(frame ?? video, 0, 0);
     return canvas;
+  } catch {
+    return null;
+  } finally {
+    frame?.close();
+  }
+}
+
+function videoFrameOf(video: HTMLVideoElement): VideoFrame | null {
+  try {
+    return new VideoFrame(video);
   } catch {
     return null;
   }
@@ -156,6 +168,7 @@ function refresh(entry: Presented): void {
     canvas.style.top = `${video.offsetTop}px`;
     canvas.style.margin = "0";
   }
+  applyNativeVideoLook(canvas, video, css.filter || "none");
   canvas.style.setProperty("pointer-events", "none", "important");
   canvas.style.setProperty("animation", "none", "important");
   canvas.style.setProperty("transition", "none", "important");

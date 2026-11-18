@@ -1,4 +1,5 @@
 // fallow-ignore-file complexity code-duplication
+import { usableCpuCount } from "./systemMemory.js";
 import { isSelfOrAncestorHidden, memberGroupKey, isMemberGroupHidden } from "./mediaHidden.js";
 import { closeSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } from "fs";
 import { renameWithRetry } from "@hyperframes/core/rename-retry";
@@ -12,6 +13,7 @@ import {
   type AudioMetadata,
 } from "../utils/ffprobe.js";
 import { isNotMediaPayload } from "../utils/notMediaPayload.js";
+import { assetRootsRefusal } from "../utils/assetRoots.js";
 import { urlInputArgs } from "../utils/urlInput.js";
 import { clampAudioGain, clipGain } from "@hyperframes/core/audio-gain";
 import { clampFadesToDuration, readElementFades } from "@hyperframes/core/audio-fade";
@@ -23,7 +25,6 @@ import {
 } from "../utils/urlDownloader.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { describeFfmpegFailure, runFfmpeg, type RunFfmpegResult } from "../utils/runFfmpeg.js";
-import { cpus } from "node:os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { encodeAac } from "./aacEncode.js";
 import { audioSubprocessEvidence } from "./audioFailureDiagnostic.js";
@@ -69,9 +70,11 @@ import {
   sourceTimeAt,
   timeAtSourceTime,
   type RateSpec,
+  terminalText,
 } from "@hyperframes/core";
 import { readMasterFxChain, resolveAudioGroups } from "@hyperframes/core/audio-groups";
 import { applyAudioFxChain, AudioFxRenderError } from "./audioFxRender.js";
+import { mediaIdPathSegment } from "../utils/mediaPathSegment.js";
 import type { AudioVolumeKeyframe } from "./audioMixer.types.js";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
 
@@ -209,7 +212,7 @@ function legacyFilterScriptOptionIsUnsupported(stderr: string): boolean {
  * than a piecewise-linear volume envelope needs.
  */
 // Caps the ffmpeg runs that prepare clips; all of a long mix's clips at once starved the host (200 clips, 200 ffmpeg).
-const inPrepareSlot = createConcurrencyLimit(Math.max(2, Math.floor(cpus().length / 2)));
+const inPrepareSlot = createConcurrencyLimit(Math.max(2, Math.floor(usableCpuCount() / 2)));
 // A clip read from a URL spends its time waiting on the network, so it needs no CPU-sized limit.
 const inRemotePrepareSlot = createConcurrencyLimit(16);
 
@@ -776,7 +779,8 @@ async function extractAudioSegment(
     }
   }
   const ffmpegStart = ffmpegSeekSeconds(metadata ?? {}, mediaStart);
-  const inputSeek = ffmpegStart >= (metadata?.latestStreamLeadSeconds ?? 0);
+  const inputSeek =
+    ffmpegStart >= (metadata?.latestStreamLeadSeconds ?? 0) && !metadata?.misstatedByteRate;
   const start = formatFilterNumber(ffmpegStart);
   const timestampTrim = inputSeek
     ? null
@@ -1430,6 +1434,8 @@ export async function processCompositionAudio(
     urlByAbsentLocalPath?: ReadonlyMap<string, string>;
     audioSidecarUrlByLocalPath?: ReadonlyMap<string, string>;
     keepEncoderInputAt?: string;
+    /** Folders a local source must be in; one outside them, or private there, is never opened. Unset allows any folder. */
+    assetRoots?: readonly string[];
   },
   compiledDir?: string,
 ): Promise<MixResult> {
@@ -1494,6 +1500,21 @@ export async function processCompositionAudio(
               audioSidecarUrl = config?.audioSidecarUrlByLocalPath?.get(srcPath);
               srcPath = remoteUrl;
               readInPlace = true;
+            } else {
+              const refusal = config?.assetRoots
+                ? assetRootsRefusal(srcPath, config.assetRoots)
+                : null;
+              if (refusal) {
+                failures.push({
+                  stage: "source",
+                  reason: "source_not_found",
+                  owner: "user",
+                  retryable: false,
+                  elementId: element.id,
+                  detail: boundedDetail(`Audio element ${element.id} source is ${refusal}`),
+                });
+                return;
+              }
             }
           }
 
@@ -1547,7 +1568,9 @@ export async function processCompositionAudio(
           // Fallback: if no duration was specified, probe the actual file
           if (element.end - element.start <= 0) {
             console.warn(
-              `[audioMixer] ${element.id} has no data-duration or data-end; its length is unknown, so it plays to the end of its source`,
+              terminalText(
+                `[audioMixer] ${element.id} has no data-duration or data-end; its length is unknown, so it plays to the end of its source`,
+              ),
             );
             let metadata;
             try {
@@ -1572,7 +1595,7 @@ export async function processCompositionAudio(
 
           let audioSrcPath = srcPath;
           if (element.type === "video") {
-            const extractedPath = join(workDir, `${element.id}-extracted.wav`);
+            const extractedPath = join(workDir, `${mediaIdPathSegment(element.id)}-extracted.wav`);
             const extractResult = await extractAudioSegment(
               srcPath,
               extractedPath,
@@ -1602,7 +1625,7 @@ export async function processCompositionAudio(
             }
             audioSrcPath = extractedPath;
           } else {
-            const trimmedPath = join(workDir, `${element.id}-trimmed.wav`);
+            const trimmedPath = join(workDir, `${mediaIdPathSegment(element.id)}-trimmed.wav`);
             const prepResult = await extractAudioSegment(
               srcPath,
               trimmedPath,
@@ -1671,7 +1694,7 @@ export async function processCompositionAudio(
             const fxResult = await applyAudioFxChain(
               audioSrcPath,
               chain,
-              join(workDir, `${element.id}-fx.wav`),
+              join(workDir, `${mediaIdPathSegment(element.id)}-fx.wav`),
               {
                 trackId: element.id,
                 signal: effectiveSignal,

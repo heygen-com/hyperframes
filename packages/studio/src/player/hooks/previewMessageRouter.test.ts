@@ -1,18 +1,34 @@
+// @vitest-environment happy-dom
+
 import { describe, expect, it, vi } from "vitest";
 import { usePlayerStore } from "../store/playerStore";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
+import { detachedFakeIframe } from "./timelinePlayerTestHarness";
+
+/** A preview frame and a post from its window, from the origin it loads at. */
+function previewFrame(frame: Record<string, unknown> = {}) {
+  const iframe = detachedFakeIframe(frame);
+  const post = (data: unknown) =>
+    new MessageEvent("message", {
+      source: frame as unknown as Window,
+      origin: window.location.origin,
+      data,
+    });
+  return { iframe, post };
+}
 
 function route(isPlaying: boolean) {
   const enrich = vi.fn();
+  const { iframe, post } = previewFrame();
   const handle = createPreviewMessageHandler({
-    iframeRef: { current: null },
+    iframeRef: { current: iframe },
     processTimelineMessageRef: { current: vi.fn() },
     enrichMissingCompositionsRef: { current: enrich },
     lastTimelineMessageRef: { current: 0 },
     getAdapter: () => null,
     syncTimelineElements: vi.fn(),
   });
-  handle(new MessageEvent("message", { data: { source: "hf-preview", type: "state", isPlaying } }));
+  handle(post({ source: "hf-preview", type: "state", isPlaying }));
   return enrich;
 }
 
@@ -29,20 +45,16 @@ describe("preview state messages while a scrub posts them", () => {
     try {
       vi.setSystemTime(10_000);
       const enrich = vi.fn();
+      const { iframe, post } = previewFrame();
       const handle = createPreviewMessageHandler({
-        iframeRef: { current: null },
+        iframeRef: { current: iframe },
         processTimelineMessageRef: { current: vi.fn() },
         enrichMissingCompositionsRef: { current: enrich },
         lastTimelineMessageRef: { current: 0 },
         getAdapter: () => null,
         syncTimelineElements: vi.fn(),
       });
-      const state = () =>
-        handle(
-          new MessageEvent("message", {
-            data: { source: "hf-preview", type: "state", isPlaying: false },
-          }),
-        );
+      const state = () => handle(post({ source: "hf-preview", type: "state", isPlaying: false }));
       state();
       vi.advanceTimersByTime(100);
       state();
@@ -58,8 +70,8 @@ describe("preview state messages while a scrub posts them", () => {
 });
 
 describe("preview quality messages", () => {
-  function routeMessage(data: unknown, frame?: { postMessage: (message: unknown) => void }) {
-    const iframe = frame ? ({ contentWindow: frame } as unknown as HTMLIFrameElement) : null;
+  function routeMessage(data: unknown, frame: Record<string, unknown> = {}) {
+    const { iframe, post } = previewFrame(frame);
     createPreviewMessageHandler({
       iframeRef: { current: iframe },
       processTimelineMessageRef: { current: vi.fn() },
@@ -67,7 +79,7 @@ describe("preview quality messages", () => {
       lastTimelineMessageRef: { current: 0 },
       getAdapter: () => null,
       syncTimelineElements: vi.fn(),
-    })(new MessageEvent("message", { data }));
+    })(post(data));
   }
 
   it("keeps what the preview says about its lighter copies, and clears it when it says none", () => {
@@ -180,5 +192,71 @@ describe("preview quality messages", () => {
       "*",
     );
     usePlayerStore.getState().setPreviewQuality(1);
+  });
+});
+
+describe("messages that do not come from the preview frame", () => {
+  const facts = {
+    sceneCount: 1,
+    mountedElementCount: 1,
+    durationSeconds: 1,
+    videos: [],
+    lighterAt: [],
+    copiesReady: true,
+  };
+  const report = { source: "hf-preview", type: "preview-facts", facts };
+
+  function deliver(iframe: HTMLIFrameElement | null, event: MessageEvent) {
+    usePlayerStore.getState().setPreviewFacts(null);
+    createPreviewMessageHandler({
+      iframeRef: { current: iframe },
+      processTimelineMessageRef: { current: vi.fn() },
+      enrichMissingCompositionsRef: { current: vi.fn() },
+      lastTimelineMessageRef: { current: 0 },
+      getAdapter: () => null,
+      syncTimelineElements: vi.fn(),
+    })(event);
+    return usePlayerStore.getState().previewFacts;
+  }
+
+  const from = (source: unknown, origin: string) =>
+    new MessageEvent("message", {
+      source: source as Window,
+      origin,
+      data: report,
+    });
+
+  it("ignores a report with no sender window", () => {
+    const { iframe } = previewFrame();
+    expect(deliver(iframe, from(null, window.location.origin))).toBeNull();
+  });
+
+  it("ignores a report that arrives before the preview frame exists", () => {
+    expect(deliver(null, from({}, window.location.origin))).toBeNull();
+  });
+
+  it("ignores a report from a window that is not the preview frame", () => {
+    const { iframe } = previewFrame();
+    expect(deliver(iframe, from({}, window.location.origin))).toBeNull();
+  });
+
+  it("ignores a report from the preview frame's window at an origin that frame cannot have", () => {
+    const frame = {};
+    const { iframe } = previewFrame(frame);
+    expect(deliver(iframe, from(frame, "https://another.example"))).toBeNull();
+  });
+
+  it("accepts a sealed preview frame's report only from its opaque origin", () => {
+    const frame = {};
+    const { iframe } = previewFrame(frame);
+    iframe.setAttribute("sandbox", "allow-scripts");
+    expect(deliver(iframe, from(frame, window.location.origin))).toBeNull();
+    expect(deliver(iframe, from(frame, "null"))).toEqual(facts);
+  });
+
+  it("accepts the preview frame's report from the origin it loads at", () => {
+    const frame = {};
+    const { iframe } = previewFrame(frame);
+    expect(deliver(iframe, from(frame, window.location.origin))).toEqual(facts);
   });
 });

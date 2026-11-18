@@ -17,6 +17,7 @@ import {
   MAX_VP9_CPU_USED,
   MIN_VP9_CPU_USED,
   isVideoFrameFormat,
+  type ChromaSubsampling,
   type ProresProfile,
   type VideoFrameFormat,
 } from "@hyperframes/engine";
@@ -94,6 +95,7 @@ export interface RenderCommandArgs {
   "buffer-size"?: string;
   "prores-profile"?: string;
   "vp9-cpu-used"?: string;
+  "chroma-subsampling"?: string;
   gpu?: boolean;
   "browser-gpu"?: boolean;
   quiet?: boolean;
@@ -102,6 +104,8 @@ export interface RenderCommandArgs {
   wait?: boolean;
   strict?: boolean;
   "strict-all"?: boolean;
+  "include-outside-files"?: boolean;
+  "refuse-outside-files"?: boolean;
   "lint-verbose"?: boolean;
   "max-concurrent-renders"?: string;
   variables?: string;
@@ -129,6 +133,7 @@ export interface RenderPlan {
   renderTarget: string;
   fps: Fps;
   quality: RenderQuality;
+  qualityPreset: keyof typeof QUALITY_ALIASES;
   authoringSkill?: string;
   invalidAuthoringSkill?: string;
   /** Which resolution step provided authoringSkill: an explicit --skill flag, or the project's own config. */
@@ -165,6 +170,8 @@ export interface RenderPlan {
   /** Segmented capture: keep the segment directory after success. */
   keepSegments: boolean;
   bestEffort: boolean;
+  includeOutsideScripts: boolean;
+  refuseOutsideFiles: boolean;
   waitForRenderSlot: boolean;
   batchJson: boolean;
   effectiveQuiet: boolean;
@@ -178,6 +185,7 @@ export interface RenderPlan {
   proresProfile?: ProresProfile;
   maxBitrate?: string;
   bufferSize?: string;
+  chromaSubsampling: ChromaSubsampling;
   hdrMode: HdrMode;
   pageSideCompositing: boolean;
   experimentalFastCapture: boolean;
@@ -290,6 +298,31 @@ function resolveHfEnvOverrides(): readonly string[] {
     .slice(0, MAX_REPORTED_ENV_OVERRIDES);
 }
 
+/** 4:4:4 needs SDR MP4 from the software encoder; the producer refuses other pairings too. */
+function parseChromaSubsamplingArg(
+  args: RenderCommandArgs,
+  format: RenderFormat,
+): ChromaSubsampling {
+  const raw = args["chroma-subsampling"] ?? "420";
+  if (raw !== "420" && raw !== "444") {
+    errorBox("Invalid chroma-subsampling", `Got "${raw}". Must be 420 or 444.`);
+    failUsage();
+  }
+  if (raw === "420") return raw;
+  const conflict =
+    format !== "mp4" ? `--format ${format}` : args.gpu ? "--gpu" : args.hdr ? "--hdr" : undefined;
+  if (conflict) {
+    errorBox(
+      "Unsupported 4:4:4 output",
+      `--chroma-subsampling 444 cannot be combined with ${conflict}. ` +
+        "4:4:4 needs SDR MP4 from the software encoder (libx264).",
+      `Drop ${conflict}, or drop --chroma-subsampling 444.`,
+    );
+    failUsage();
+  }
+  return raw;
+}
+
 /** Parse and validate command input into an immutable execution plan. */
 // fallow-ignore-next-line complexity
 export function createRenderPlan(args: RenderCommandArgs, now = new Date()): RenderPlan {
@@ -369,6 +402,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
   }
   const hlsSegmentSeconds =
     format === "hls" ? (hlsSegmentParse.value ?? DEFAULT_HLS_SEGMENT_SECONDS) : undefined;
+  const chromaSubsampling = parseChromaSubsamplingArg(args, format);
 
   const videoFrameFormatRaw = args["video-frame-format"] ?? "auto";
   if (!isVideoFrameFormat(videoFrameFormatRaw)) {
@@ -609,6 +643,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     renderTarget,
     fps,
     quality,
+    qualityPreset: qualityRaw as keyof typeof QUALITY_ALIASES,
     authoringSkill,
     invalidAuthoringSkill,
     authoringSkillSource,
@@ -640,6 +675,8 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     resumeSegments: args.resume ?? false,
     keepSegments: args["keep-segments"] ?? false,
     bestEffort: args["best-effort"] ?? true,
+    includeOutsideScripts: args["include-outside-files"] ?? false,
+    refuseOutsideFiles: args["refuse-outside-files"] ?? false,
     waitForRenderSlot: args.wait ?? true,
     batchJson,
     effectiveQuiet: quiet || batchJson,
@@ -650,6 +687,7 @@ export function createRenderPlan(args: RenderCommandArgs, now = new Date()): Ren
     videoBitrate,
     ...delivery,
     range,
+    chromaSubsampling,
     hdrMode: args.sdr ? "force-sdr" : args.hdr ? "force-hdr" : "auto",
     pageSideCompositing: args["page-side-compositing"] !== false,
     experimentalFastCapture: args["experimental-fast-capture"] === true,

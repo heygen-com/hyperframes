@@ -91,7 +91,8 @@
     return `${selectorFor(parent)} > ${element.tagName.toLowerCase()}:nth-of-type(${index})`;
   }
 
-  function uniqueSelectorFor(element) {
+  function uniqueSelectorFor(subject) {
+    const element = authoredElement(subject);
     const preferred = selectorFor(element);
     try {
       if (document.querySelectorAll(preferred).length === 1) return preferred;
@@ -124,6 +125,10 @@
 
   function hasAllowCaptionZoneFlag(element) {
     return !!authoredElement(element).closest("[data-layout-allow-caption-zone]");
+  }
+
+  function hasAllowSafeZoneFlag(element) {
+    return !!authoredElement(element).closest("[data-layout-allow-safe-zone]");
   }
 
   function hasTextClipOptOut(element) {
@@ -1289,11 +1294,14 @@
       if (tokens[0] === "top" || tokens[0] === "bottom") y = tokens[0];
       else x = tokens[0];
     } else {
+      // The first token that names no side is the horizontal one, even when it is the default "50%".
+      let xGiven = false;
       for (const token of tokens) {
         if (token === "top" || token === "bottom") y = token;
-        else if (token === "left" || token === "right") x = token;
-        else if (x === "50%") x = token;
-        else y = token;
+        else if (token === "left" || token === "right" || !xGiven) {
+          x = token;
+          xGiven = true;
+        } else y = token;
       }
     }
     return { x: objectPositionOffset(x, freeX), y: objectPositionOffset(y, freeY) };
@@ -1958,6 +1966,139 @@
       fixHint:
         "Give the text its own zone, raise its stacking order above the covering element, or mark intentional layering with data-layout-allow-occlusion.",
     };
+  }
+
+  // text_over_face: headless Chrome has no face detector, so the audit only reports which text is
+  // painted in front of which opaque video and where that video's frame lands; Node finds the
+  // faces in the file and judges the cover (utils/textOverFace.ts).
+  const FACE_PROBE_MAX_COLUMNS = 16;
+  let faceVideoKinds = new Map();
+  let textOverVideo = { time: Number.NaN, candidates: [] };
+
+  // Kept apart from videoAlphaFrames: a frame that cannot be read here is skipped, never reported
+  // as judged opaque.
+  function faceVideoKind(video) {
+    let kind = faceVideoKinds.get(video);
+    if (!kind) {
+      const frame = videoAlphaFrames.get(video) || readVideoAlphaFrame(video);
+      const cutout = frame.kind === "matte" && !hasOpaqueBackground(getComputedStyle(video));
+      kind = cutout ? "cutout" : frame.kind === "unread" ? "unread" : "opaque";
+      faceVideoKinds.set(video, kind);
+    }
+    return kind;
+  }
+
+  // The opaque video the text is painted directly in front of at (x, y). Null where something
+  // opaque above hides the text, where the text sits on an opaque panel, and where the video's
+  // frame cannot be read or mapped. A transparent cutout beneath the text is looked through to the
+  // video under it; text inside the box of one above it is text_occluded's to judge, because the
+  // cutout repaints its subject, face included, over the text.
+  function videoBeneathTextAt(element, x, y) {
+    let beneath = false;
+    for (const hit of document.elementsFromPoint(x, y)) {
+      if (!isForeignElement(element, hit)) {
+        beneath = true;
+        continue;
+      }
+      if (hasIgnoreFlag(hit)) continue;
+      const media = authoredElement(hit);
+      if (media.tagName === "VIDEO" && opacityChain(hit) >= OCCLUDING_ALPHA) {
+        const kind = faceVideoKind(media);
+        if (kind === "cutout" && beneath) continue;
+        if (kind === "cutout" || !beneath) return null;
+        return kind === "opaque" ? media : null;
+      }
+      if (isOpaqueOccluder(hit, x, y, element)) return null;
+    }
+    return null;
+  }
+
+  // The stretches of one word box in front of a video, probed in columns half a line high, so a
+  // word that runs off the video or under an opaque element counts only for the part in front.
+  function wordPiecesOverVideo(element, rect, add) {
+    const columns = Math.max(
+      1,
+      Math.min(FACE_PROBE_MAX_COLUMNS, Math.round((2 * rect.width) / rect.height)),
+    );
+    const step = rect.width / columns;
+    const y = rect.top + rect.height / 2;
+    let run = null;
+    for (let column = 0; column <= columns; column++) {
+      const video =
+        column < columns ? videoBeneathTextAt(element, rect.left + (column + 0.5) * step, y) : null;
+      if (run && run.video !== video) {
+        add(run.video, {
+          x: round(rect.left + run.from * step),
+          y: round(rect.top),
+          width: round((column - run.from) * step),
+          height: round(rect.height),
+        });
+        run = null;
+      }
+      if (video && !run) run = { video, from: column };
+    }
+  }
+
+  // Where the video's whole frame lands after object-fit and object-position (it can spill past
+  // the element's box, which crops it), and the part of the box the canvas shows.
+  function videoPlacement(video, rootRect) {
+    const mapping = paintedSourceMapping(video, video.videoWidth, video.videoHeight);
+    if (!mapping) return null;
+    const { rect, offsets, paintedWidth, paintedHeight } = mapping;
+    const left = Math.max(rect.left, rootRect.left);
+    const top = Math.max(rect.top, rootRect.top);
+    const right = Math.min(rect.right, rootRect.right);
+    const bottom = Math.min(rect.bottom, rootRect.bottom);
+    if (right <= left || bottom <= top) return null;
+    return {
+      selector: uniqueSelectorFor(video),
+      src: video.currentSrc || video.src || "",
+      mediaTime: video.currentTime,
+      box: {
+        x: round(left),
+        y: round(top),
+        width: round(right - left),
+        height: round(bottom - top),
+      },
+      frame: {
+        x: round(mapping.flipX ? rect.right - offsets.x - paintedWidth : rect.left + offsets.x),
+        y: round(mapping.flipY ? rect.bottom - offsets.y - paintedHeight : rect.top + offsets.y),
+        width: round(paintedWidth),
+        height: round(paintedHeight),
+      },
+      flipX: mapping.flipX,
+      flipY: mapping.flipY,
+    };
+  }
+
+  function textOverVideoCandidates(element, videoRects, rootRect) {
+    if (videoRects.length === 0 || typeof document.elementsFromPoint !== "function") return [];
+    if (authoredElement(element).closest("[data-layout-allow-on-face]")) return [];
+    if (opacityChain(element) < OCCLUDING_ALPHA) return [];
+    const textRect = textRectFor(element, true);
+    if (!textRect || !videoRects.some((rect) => intersectionArea(textRect, rect) > 0)) return [];
+    const piecesByVideo = new Map();
+    const add = (video, piece) => {
+      const pieces = piecesByVideo.get(video);
+      if (pieces) pieces.push(piece);
+      else piecesByVideo.set(video, [piece]);
+    };
+    for (const { rects } of wordClientRects(element)) {
+      for (const rect of rects) wordPiecesOverVideo(element, rect, add);
+    }
+    const candidates = [];
+    for (const [video, wordRects] of piecesByVideo) {
+      const placement = videoPlacement(video, rootRect);
+      if (!placement || !placement.src) continue;
+      candidates.push({
+        ...candidateAnchor(element),
+        text: textContentFor(element, true),
+        rect: textRect,
+        wordRects,
+        video: placement,
+      });
+    }
+    return candidates;
   }
 
   // canvas_covered: an opaque element over most of the canvas with every other painted clip beneath it.
@@ -2813,10 +2954,34 @@
     };
   }
 
+  const CAPTION_STAGES = '[data-composition-id="captions"], .caption-layer, #caption-stage';
+
+  // One box per reading block (a caption stage counts as one), so a line split into word spans is one finding.
+  function addTextToBlock(blocks, block, element) {
+    const rect = textRectFor(element, true);
+    if (!rect) return;
+    const entry = blocks.get(block) ?? { rects: [], texts: [] };
+    entry.rects.push(rect);
+    entry.texts.push(textContentFor(element, true));
+    blocks.set(block, entry);
+  }
+
+  function blockCandidates(blocks) {
+    return Array.from(blocks, ([block, entry]) => ({
+      kind: "block",
+      tag: block.tagName.toLowerCase(),
+      text: entry.texts.join(" "),
+      rect: unionRects(entry.rects),
+      elementRect: toRect(block.getBoundingClientRect()),
+      ...candidateAnchor(block),
+    }));
+  }
+
   window.__hyperframesGeometryCandidates = function collectGeometryCandidates(options) {
     const includeText = options?.text === true;
     const includeMedia = options?.media === true;
-    if (!includeText && !includeMedia) return [];
+    const includeBlocks = options?.blocks === true;
+    if (!includeText && !includeMedia && !includeBlocks) return [];
     const tolerance = typeof options?.tolerance === "number" ? options.tolerance : 2;
     const root =
       document.querySelector("[data-composition-id][data-width][data-height]") ||
@@ -2824,11 +2989,15 @@
       document.body;
     const rootRect = rootRectFor(root);
     const candidates = [];
+    const blocks = new Map();
     for (const element of Array.from(document.querySelectorAll("body *"))) {
-      if (element.closest('[data-composition-id="captions"], .caption-layer, #caption-stage')) {
-        continue;
-      }
+      const captionStage = element.closest(CAPTION_STAGES);
+      if (captionStage && !includeBlocks) continue;
       if (!isVisibleElement(element, 0.05, false)) continue;
+      if (includeBlocks && hasOwnTextCandidate(element, true) && !hasAllowSafeZoneFlag(element)) {
+        addTextToBlock(blocks, captionStage || readingBlock(element, root), element);
+      }
+      if (captionStage) continue;
       const elementRect = toRect(element.getBoundingClientRect());
       if (includeText && hasOwnTextCandidate(element, true) && !hasAllowCaptionZoneFlag(element)) {
         const rect = textRectFor(element, true);
@@ -2844,7 +3013,7 @@
         );
       }
     }
-    return candidates;
+    return candidates.concat(blockCandidates(blocks));
   };
 
   window.__hyperframesLayoutAudit = function auditLayout(options) {
@@ -2864,6 +3033,11 @@
     const issues = [];
     const matteResults = new Map();
     videoAlphaFrames = new Map();
+    faceVideoKinds = new Map();
+    const overVideo = [];
+    const videoRects = Array.from(root.querySelectorAll("video"), (video) =>
+      video.getBoundingClientRect(),
+    );
 
     const restoreHits = restoreHitTesting(root);
     try {
@@ -2880,6 +3054,7 @@
         }
         const invisible = invisibleTextIssue(element, time);
         if (invisible) issues.push(invisible);
+        overVideo.push(...textOverVideoCandidates(element, videoRects, rootRect));
       }
       const covered = canvasCoveredIssue(root, rootRect, elements, time);
       if (covered) issues.push(covered);
@@ -2897,7 +3072,14 @@
     issues.push(...canvasEdgeIssues(root, rootRect, time, tolerance));
     issues.push(...connectorDetachmentIssues(root, rootRect, time));
     issues.push(...connectorOrphanIssues(root, rootRect, time));
+    textOverVideo = { time, candidates: overVideo };
     return issues;
+  };
+
+  // What the audit call for this time found, collected in its pass: hit testing is restored there
+  // and each video's frame is read once.
+  window.__hyperframesTextOverVideo = function collectTextOverVideo(options) {
+    return options && options.time === textOverVideo.time ? textOverVideo.candidates : [];
   };
 
   // Reruns only the overlap detector (same threshold, no new surface) on a fine grid for the dense motion re-sampling pass.

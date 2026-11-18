@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import fs, { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from "node:fs/promises";
+import fs, { mkdtemp, mkdir, readFile, writeFile, rm, symlink, utimes } from "node:fs/promises";
 import { tmpdir, hostname } from "node:os";
 import { join } from "node:path";
 import { realpathSync } from "node:fs";
@@ -10,8 +10,10 @@ import { randomUUID } from "node:crypto";
 import {
   bindShareHost,
   shareForReview,
+  reviewClient,
   reviewRecord,
   addVersion,
+  pendingReviewExport,
   reviewVersion,
   refreshReviewExport,
   putFile,
@@ -95,6 +97,132 @@ test("a lost registration response retries the persisted operation and identity"
   assert.deepEqual(api.body[0], api.body[1]);
   assert.equal((await reviewRecord(dir)).projectId, "p1");
 });
+
+test("preparing a review can fail before opening and retry its saved registration", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  const read = api.share;
+  api.share = async () => ({ ...(await read()), access_mode: "private" });
+  const opened = [];
+  api.updateShare = async (id, body) => {
+    opened.push(id);
+    return { ...(await read()), access_mode: body.access_mode };
+  };
+  const request = { projectPath: dir, title: "Review", client: api, audience: "public" };
+  await assert.rejects(
+    shareForReview({
+      ...request,
+      beforeOpen: async (id) => {
+        assert.equal((await reviewRecord(dir)).projectId, id);
+        throw new Error("Content unavailable");
+      },
+    }),
+    /Content unavailable/,
+  );
+  assert.deepEqual(opened, []);
+  assert.equal((await reviewRecord(dir)).opened, false);
+  await shareForReview({
+    ...request,
+    beforeOpen: async (id) => {
+      assert.equal(id, "p1");
+      assert.deepEqual(opened, []);
+    },
+  });
+  assert.deepEqual(opened, ["p1"]);
+  assert.equal(api.calls(), 1);
+  assert.equal((await reviewRecord(dir)).opened, true);
+});
+
+test("an already-open link returns status without rerunning content preparation", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  const request = { projectPath: dir, title: "Review", client: api, audience: "public" };
+  const first = await shareForReview(request);
+  const again = await shareForReview({
+    ...request,
+    beforeOpen: async () => {
+      throw new Error("Content temporarily unavailable");
+    },
+  });
+  assert.deepEqual(again, first);
+  assert.equal(api.calls(), 1);
+});
+
+test("reopening a revoked link prepares content before enabling it and retries safely", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  const request = { projectPath: dir, title: "Review", client: api, audience: "public" };
+  await shareForReview(request);
+  const read = api.share;
+  api.share = async () => ({ ...(await read()), revoked: true, link_generation: 2 });
+  const events = [];
+  api.linkOn = async () => {
+    events.push("open");
+    return read();
+  };
+  await assert.rejects(
+    shareForReview({
+      ...request,
+      beforeOpen: async () => {
+        throw new Error("Content unavailable");
+      },
+    }),
+    /Content unavailable/,
+  );
+  assert.deepEqual(events, []);
+  await shareForReview({
+    ...request,
+    beforeOpen: async (id) => {
+      assert.equal(id, "p1");
+      events.push("prepare");
+    },
+  });
+  assert.deepEqual(events, ["prepare", "open"]);
+  assert.equal(api.calls(), 1);
+});
+
+test("a taken-down review does not prepare content or reopen its link", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  const read = api.share;
+  api.share = async () => ({
+    ...(await read()),
+    moderation_hold: true,
+    moderation_hold_kind: "takedown",
+    revoked: true,
+  });
+  const status = await shareForReview({
+    projectPath: dir,
+    title: "Review",
+    client: api,
+    beforeOpen: async () => assert.fail("A taken-down review cannot open"),
+  });
+  assert.equal(status.held, true);
+  assert.equal((await reviewRecord(dir)).opened, false);
+});
+
+test("storyboard reads and composition binding use the signed-in review routes", async () => {
+  const sent = [];
+  const api = reviewClient({
+    access: async () => ({ token: "t", heygen: "https://review.test", heygenApi: "" }),
+    fetchImpl: async (url, init) => {
+      assert.equal(new Headers(init.headers).get("authorization"), "Bearer t");
+      sent.push([init.method, new URL(url).pathname, new URL(url).search, init.body]);
+      return Response.json({ data: {} });
+    },
+  });
+  await api.storyboard("project/id");
+  await api.bindComposition("project/id", "composition");
+  assert.deepEqual(sent, [
+    ["GET", "/v1/hyperframes/projects/project%2Fid/storyboard", "", null],
+    [
+      "PUT",
+      "/v1/hyperframes/review-projects/project%2Fid/composition",
+      "",
+      '{"composition_id":"composition"}',
+    ],
+  ]);
+});
 test("corrupt identity fails instead of consuming a new share slot", async (t) => {
   const dir = await folder(t);
   await mkdir(join(dir, ".hyperframes"));
@@ -145,6 +273,45 @@ test("HTML stamps and generated render metadata do not dirty the shared source",
   assert.equal(await projectFingerprint(dir), before);
   await writeFile(join(dir, "index.html"), '<div data-hf-id="123">Changed</div>');
   assert.notEqual(await projectFingerprint(dir), before);
+});
+test("a host can accept a version that is still screening when it stops waiting", async (t) => {
+  const dir = await folder(t);
+  const api = client();
+  await shareForReview({ projectPath: dir, title: "Video", client: api, audience: "public" });
+  await writeFile(join(dir, ".hyperframes/video.mp4"), "video bytes");
+  bindShareHost({ projectFingerprint: async () => "rendered" });
+  t.after(() => bindShareHost({ projectFingerprint }));
+  let video = {
+    status: "screening",
+    screening_state: "held",
+    video_id: "vid",
+    version_id: "v1",
+    exported_at: "2026-11-04T00:00:00Z",
+  };
+  api.createExport = t.mock.fn(async () => video);
+  api.readExport = async () => video;
+  const onAdded = t.mock.fn();
+  const request = {
+    projectPath: dir,
+    title: "Video",
+    client: api,
+    probe: async () => ({ width: 1920, height: 1080, duration: 1 }),
+    open: () => false,
+    onAdded,
+  };
+
+  assert.ok(await addVersion(request));
+  assert.equal((await reviewVersion(dir)).held, true);
+  assert.equal(await addVersion({ ...request, allowPending: true }), null);
+  assert.equal((await pendingReviewExport(dir)).videoId, "vid");
+  assert.equal((await reviewVersion(dir)).failure, null);
+  assert.equal(onAdded.mock.callCount(), 0);
+  assert.equal(api.createExport.mock.callCount(), 1);
+
+  video = { ...video, status: "ready" };
+  await refreshReviewExport(dir, api);
+  assert.equal(await pendingReviewExport(dir), null);
+  assert.equal((await reviewVersion(dir)).last.current, true);
 });
 const moduleUrl = new URL("../src/index.mjs", import.meta.url).href;
 function child(script, args) {
@@ -232,13 +399,15 @@ test("status recovery settles distinct video/version IDs without a new upload", 
       },
     }),
   );
+  const saved = await readFile(file, "utf8");
+  let status = "upload_pending";
   let reads = 0;
   api.readExport = async (project, video) => {
     reads++;
     assert.equal(project, "p1");
     assert.equal(video, "video-id");
     return {
-      status: "ready",
+      status,
       video_id: video,
       version_id: "version-id",
       exported_at: "2026-11-04T00:00:00Z",
@@ -248,13 +417,17 @@ test("status recovery settles distinct video/version IDs without a new upload", 
   assert.equal(reads, 0);
   await refreshReviewExport(dir, api);
   assert.equal(reads, 1);
+  assert.equal(await readFile(file, "utf8"), saved);
+  status = "ready";
+  await refreshReviewExport(dir, api);
+  assert.equal(reads, 2);
   assert.equal(JSON.parse(await readFile(file, "utf8")).pending, null);
   assert.equal(
     (await reviewVersion(dir, { latestReadyVersionId: "version-id" })).last.current,
     true,
   );
   await refreshReviewExport(dir, api);
-  assert.equal(reads, 1);
+  assert.equal(reads, 2);
 });
 test("refuses an unconfigured review upload destination before sending the file", async (t) => {
   const dir = await folder(t);
@@ -335,8 +508,8 @@ test("linked media changes invalidate the rendered source and link cycles termin
   assert.notEqual(await projectFingerprint(dir), before);
 });
 
-for (const code of ["EPERM", "ENOTSUP", "EXDEV", "EINVAL", "EISDIR"]) {
-  test(`exclusive-create fallback serializes operations when hard links fail with ${code}`, async (t) => {
+for (const code of ["EPERM", "ENOTSUP", "EXDEV", "EINVAL", "EISDIR", "EACCES"]) {
+  test(`directory fallback serializes operations when hard links fail with ${code}`, async (t) => {
     const dir = await folder(t);
     t.mock.method(fs, "link", async () => {
       throw Object.assign(new Error("unsupported"), { code });
@@ -391,3 +564,143 @@ for (const name of ["review.json", "review-export.json", "review-switch.json"]) 
     assert.equal(await readFile(file, "utf8"), "");
   });
 }
+test("required source never silently degrades after preparation or a server mismatch", async (t) => {
+  const dir = await folder(t);
+  await mkdir(join(dir, ".hyperframes"));
+  await writeFile(join(dir, ".hyperframes/video.mp4"), "video");
+  bindShareHost({ projectFingerprint: async () => "rendered" });
+  t.after(() => bindShareHost({ projectFingerprint }));
+  let creates = 0;
+  const api = {
+    createExport: async () => {
+      creates++;
+      throw new Error("should not send");
+    },
+  };
+  const request = {
+    projectPath: dir,
+    title: "Video",
+    client: api,
+    projectId: "project",
+    requireSource: true,
+    probe: async () => ({ width: 100, height: 100, duration: 1 }),
+    filesForExport: async () => null,
+  };
+  assert.match(await addVersion(request), /Source changed/);
+  assert.equal(creates, 0);
+  const { ReviewFailed } = await import("../src/reviewClient.mjs");
+  api.createExport = async () => {
+    creates++;
+    throw new ReviewFailed(422, "snapshot_mismatch");
+  };
+  await addVersion({
+    ...request,
+    filesForExport: async () => ({
+      space_id: "space",
+      composition_id: "comp",
+      snapshot_id: "snap",
+    }),
+  });
+  assert.equal(creates, 1);
+});
+
+test("content fingerprints detect same-size changes with restored timestamps", async (t) => {
+  const dir = await folder(t);
+  const file = join(dir, "asset.txt");
+  const time = new Date("2026-11-01T00:00:00Z");
+  await writeFile(file, "first");
+  await utimes(file, time, time);
+  const metadata = await projectFingerprint(dir);
+  const content = await projectFingerprint(dir, { byContent: true });
+  await writeFile(file, "other");
+  await utimes(file, time, time);
+  assert.equal(await projectFingerprint(dir), metadata);
+  assert.notEqual(await projectFingerprint(dir, { byContent: true }), content);
+});
+
+test("a video-only retry never replays an unanswered source-bearing export", async (t) => {
+  const dir = await folder(t);
+  await mkdir(join(dir, ".hyperframes"));
+  await writeFile(join(dir, ".hyperframes/video.mp4"), "video bytes");
+  bindShareHost({ projectFingerprint: async () => "rendered" });
+  t.after(() => bindShareHost({ projectFingerprint }));
+  let creates = 0;
+  const request = {
+    projectPath: dir,
+    title: "Video",
+    client: {
+      createExport: async () => {
+        creates++;
+        throw new Error("lost response");
+      },
+    },
+    projectId: "project",
+    probe: async () => ({ width: 100, height: 100, duration: 1 }),
+    filesForExport: async () => ({
+      space_id: "space",
+      composition_id: "composition",
+      snapshot_id: "snapshot",
+    }),
+  };
+  await addVersion({ ...request, requireSource: true });
+  assert.match(
+    await addVersion({ ...request, omitSource: true }),
+    /pending upload includes source/,
+  );
+  assert.equal(creates, 1);
+});
+const lenient = { lenientIgnore: true };
+test("change detection keeps working when .hyperframesignore uses gitignore syntax", async (t) => {
+  for (const rule of ["/renders/", "**/*.mov", "!keep.mp4", "assets/*/raw-*.mp4", "a[bc].png"]) {
+    const dir = await folder(t);
+    await mkdir(join(dir, "assets"));
+    await writeFile(join(dir, "index.html"), "<div>Hello</div>");
+    await writeFile(join(dir, "assets/clip.mov"), "clip");
+    await writeFile(join(dir, ".hyperframesignore"), `${rule}\n`);
+    // The CLI's syntax is not this reader's: nothing is excluded beyond scratch, so a change still counts.
+    const files = await snapshotProject(dir, lenient);
+    assert.deepEqual([...files.keys()].sort(), ["assets/clip.mov", "index.html"], rule);
+    // snapshotFiles names every file asked for; an excluded one is keyed undefined.
+    assert.notEqual(
+      (await snapshotFiles(dir, ["assets/clip.mov"], lenient)).get("assets/clip.mov"),
+      undefined,
+      rule,
+    );
+    const before = await projectFingerprint(dir);
+    await writeFile(join(dir, "assets/clip.mov"), "edited clip");
+    assert.notEqual(await projectFingerprint(dir), before, rule);
+  }
+});
+test("change detection keeps working when .hyperframesignore is a link", async (t) => {
+  const dir = await folder(t);
+  await writeFile(join(dir, "index.html"), "<div>Hello</div>");
+  await symlink(join(dir, "index.html"), join(dir, ".hyperframesignore"));
+  assert.deepEqual([...(await snapshotProject(dir, lenient)).keys()], ["index.html"]);
+  await projectFingerprint(dir);
+});
+test("a snapshot that picks files to send refuses a .hyperframesignore it can't read", async (t) => {
+  const dir = await folder(t);
+  await writeFile(join(dir, "index.html"), "<div>Hello</div>");
+  await writeFile(join(dir, "private-notes.txt"), "private");
+  // One valid exclusion and one rule this reader refuses: the whole file is unreadable here.
+  await writeFile(join(dir, ".hyperframesignore"), "private-notes.txt\n/renders/\n");
+  await assert.rejects(snapshotProject(dir), { code: "invalid_source_ignore" });
+  await assert.rejects(snapshotFiles(dir, ["private-notes.txt"]), {
+    code: "invalid_source_ignore",
+  });
+  // Change detection still runs, and sees the file the valid line meant to exclude.
+  assert.equal((await snapshotProject(dir, lenient)).has("private-notes.txt"), true);
+  await rm(join(dir, ".hyperframesignore"));
+  await symlink(join(dir, "index.html"), join(dir, ".hyperframesignore"));
+  await assert.rejects(snapshotProject(dir), { code: "invalid_source_ignore" });
+});
+test("change detection still applies a .hyperframesignore it can read", async (t) => {
+  const dir = await folder(t);
+  await mkdir(join(dir, "assets"));
+  await writeFile(join(dir, "index.html"), "<div>Hello</div>");
+  await writeFile(join(dir, "assets/raw.mov"), "raw");
+  await writeFile(join(dir, "debug.log"), "log");
+  await writeFile(join(dir, ".hyperframesignore"), "assets/raw.mov\n");
+  for (const options of [undefined, lenient])
+    assert.deepEqual([...(await snapshotProject(dir, options)).keys()], ["index.html"]);
+});

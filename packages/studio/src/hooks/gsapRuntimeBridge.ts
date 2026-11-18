@@ -33,6 +33,7 @@ import { roundTo3 } from "../utils/rounding";
 import type { GsapDragCommitCallbacks } from "./gsapDragCommit";
 import { readDragStamp, type DragStamp } from "./draggedGsapPosition";
 import { editMoment } from "./editMoment";
+import { settleGsapSnapshot } from "./gsapFrameSnapshot";
 import type { EditMoment } from "../components/editor/manualEditsTypes";
 import { isInstantHold, selectorFromSelection, writeTargetSelector } from "./gsapShared";
 import {
@@ -261,6 +262,9 @@ export async function tryGsapDragIntercept(
   const stamp = options?.stamp ?? readDragStamp(selection.element);
   const moment = editMoment(stamp);
   const time = moment.time;
+  if (!(await settleGsapSnapshot(iframe)) && stamp.moving) {
+    return { status: "blocked", reason: "source-uneditable", detail: "frame-tweens-unreadable" };
+  }
   if (!options?.preflightPassed) {
     const preflight = await preflightGsapDragIntercept(
       selection,

@@ -898,6 +898,27 @@ describe("runCommit — instantPatch wiring", () => {
     expect(deps.reloadPreview).not.toHaveBeenCalled();
   });
 
+  it("files a gsap move under the layer it moved, by identity and by the name the person saw", async () => {
+    applySoftReload.mockReturnValue("applied");
+    mockFetchResult();
+    const deps = renderCommitHook();
+
+    await act(async () => {
+      await deps.api.commitMutation(
+        { ...selection, label: "Title" },
+        { x: 10 },
+        { label: "Move layer", softReload: true },
+      );
+    });
+
+    expect(deps.recordEdit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        label: "Move layer",
+        targets: [{ file: "index.html", id: "a", selector: "#a", name: "Title" }],
+      }),
+    );
+  });
+
   it("batch capability posts ordered mutations and finalizes the result once", async () => {
     applySoftReload.mockReturnValue("applied");
     mockFetchResult();

@@ -1,5 +1,7 @@
 # Eval: how to validate a translation end-to-end
 
+<!-- skill-scripts: relative-ok, runs inside a HyperFrames checkout -->
+
 Every translation should be measured. The skill ships a source linter and
 a tiered test corpus; the CLI's `diff` command scores the result. Together
 they gate translation quality.

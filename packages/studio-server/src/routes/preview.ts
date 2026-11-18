@@ -42,12 +42,19 @@ import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import {
   isPrivateProjectFile,
   isProjectRootMissing,
+  projectRelativePath,
   resolveWithinProject,
 } from "../helpers/safePath.js";
 import { getMimeType } from "../helpers/mime.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
 import { openRangeEnd } from "../helpers/mediaRange.js";
-import { buildSubCompositionHtml, hasBaseElement } from "../helpers/subComposition.js";
+import { hasBaseElement } from "../helpers/subComposition.js";
+import {
+  runOffThread,
+  SUB_COMPOSITION_DEADLINE_MS,
+  SubCompositionDeadlineError,
+  withinDeadline,
+} from "../helpers/subCompositionBuild.js";
 import { withRootImportMap } from "../helpers/rootImportMap.js";
 import { withRootPathsRelative } from "../helpers/rootPaths.js";
 import {
@@ -82,6 +89,7 @@ import {
   ProxyTranscodeError,
   ProxyWaitTimeoutError,
   PROXY_PENDING_RETRY_AFTER_SECONDS,
+  StillPastEndError,
 } from "../helpers/proxyTranscoder.js";
 import {
   decideMediaProxyEligibility,
@@ -101,8 +109,12 @@ import {
 } from "../helpers/mediaProxyPreview.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
 import { lazyPreviewImages } from "../helpers/lazyPreviewImages.js";
+import { corsProjectVideos } from "../helpers/captureVideos.js";
+import { createJobSlots, JobAbandonedError, JobQueueFullError } from "../helpers/jobSlots.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
+const runStillJob = createJobSlots(4, 16);
+
 function escapeGsapUrl(url: string): string {
   return url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
 }
@@ -151,7 +163,7 @@ function parseStudioMotionManifestContent(content: string): {
 }
 
 /** Preview hooks must install before authored head scripts register media consumers. */
-function withPreviewRuntime(html: string, runtimeUrl: string): string {
+export function withPreviewRuntime(html: string, runtimeUrl: string): string {
   const tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
   return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag, true);
 }
@@ -348,6 +360,7 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
 
 /** Captures screenshot right after a seek, so they get every image eager; media loads near the playhead. */
 export const PREVIEW_CAPTURE_PARAM = "hf-capture";
+export const PREVIEW_PROXY_PARAM = "hf-proxy";
 
 export function scriptJson(value: unknown): string {
   return JSON.stringify(value)
@@ -365,22 +378,22 @@ var name=e.error&&e.error.constructor&&e.error.constructor.name,path="";
 try{var url=e.filename&&new URL(e.filename,window.location.href);if(url&&url.origin===window.location.origin)path=url.pathname}catch(_){}
 kinds.push({name:known[name]===1?name:"other",origin:!path?"unknown":path===runtime?"runtime":path.indexOf("/api/projects/")===0?"project":"studio"})});})();</script>`;
 
-function injectStudioPreviewAugmentations(
+export function injectStudioPreviewAugmentations(
   html: string,
-  adapter: StudioApiAdapter,
+  runtimeUrl: string,
   signature: string,
   projectDir: string,
   activeCompositionPath: string,
-  options: { capture: boolean; gsapBaseUrl: string },
+  options: { capture: boolean; gsapBaseUrl: string; sandboxedCapture: boolean },
 ): string {
   const marked = options.capture
     ? injectTagsAtHeadStart(
-        html,
+        options.sandboxedCapture ? corsProjectVideos(html) : html,
         `<meta name="${STUDIO_PREVIEW_MARK_META}" content="${STUDIO_PREVIEW_CAPTURE_MODE}">`,
       )
     : injectTagsAtHeadStart(
         lazyPreviewImages(html),
-        `<meta name="${STUDIO_PREVIEW_MARK_META}">${earlyErrorsScript(adapter.runtimeUrl)}`,
+        `<meta name="${STUDIO_PREVIEW_MARK_META}">${earlyErrorsScript(runtimeUrl)}`,
       );
   const withFallback = injectGsapCdnFallback(
     injectProjectSignature(
@@ -432,13 +445,15 @@ function resolveProjectMainHtml(
   const blockHtmlPath = join(projectDir, `${projectId}.html`);
   recordPreviewRead(projectDir, indexPath);
   recordPreviewRead(projectDir, blockHtmlPath);
-  if (existsSync(indexPath)) {
+  const existsAndNotPrivate = (file: string) =>
+    existsSync(file) && !isPrivateProjectFile(projectDir, file);
+  if (existsAndNotPrivate(indexPath)) {
     return {
       html: readFileSync(indexPath, "utf-8"),
       compositionPath: "index.html",
     };
   }
-  if (existsSync(blockHtmlPath)) {
+  if (existsAndNotPrivate(blockHtmlPath)) {
     return {
       html: readFileSync(blockHtmlPath, "utf-8"),
       compositionPath: `${projectId}.html`,
@@ -481,7 +496,14 @@ function resolvePreviewGsapBaseUrl(adapter: PreviewApiAdapter): string {
   return normalizeGsapLocalRoot(adapter.gsapLocalRoot);
 }
 
-export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): void {
+export function registerPreviewRoutes(
+  api: Hono,
+  adapter: PreviewApiAdapter,
+  {
+    sandboxThumbnailCaptures = false,
+    subCompositionDeadlineMs,
+  }: { sandboxThumbnailCaptures?: boolean; subCompositionDeadlineMs?: number } = {},
+): void {
   const gsapBaseUrl = resolvePreviewGsapBaseUrl(adapter);
   const gsapEtagSalt = `:gsap:${createHash("sha1").update(gsapBaseUrl).digest("hex").slice(0, 12)}`;
   const previewCacheHeaders = (etag: string) => ({
@@ -520,6 +542,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       let bundled = await adapter.bundle(project.dir, {
         stampHfIds: true,
         onRead: (filePath) => recordPreviewRead(project.dir, filePath),
+        privateFiles: "studio",
       });
       let mainCompositionPath = "index.html";
       if (!bundled) {
@@ -535,11 +558,11 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       // Also covers elements the adapter injected; ids already present are kept.
       bundled = injectStudioPreviewAugmentations(
         ensureHfIds(await transformPreviewHtml(bundled, adapter, project, mainCompositionPath)),
-        adapter,
+        adapter.runtimeUrl,
         signature,
         project.dir,
         mainCompositionPath,
-        { capture, gsapBaseUrl },
+        { capture, gsapBaseUrl, sandboxedCapture: sandboxThumbnailCaptures },
       );
       if (previewVariables) bundled = injectPreviewVariables(bundled, previewVariables);
       bundled = await injectMediaCodecMap(
@@ -566,11 +589,11 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         );
         let fallbackAugmented = injectStudioPreviewAugmentations(
           await transformPreviewHtml(fallbackHtml, adapter, project, fallback.compositionPath),
-          adapter,
+          adapter.runtimeUrl,
           signature,
           project.dir,
           fallback.compositionPath,
-          { capture, gsapBaseUrl },
+          { capture, gsapBaseUrl, sandboxedCapture: sandboxThumbnailCaptures },
         );
         if (previewVariables) {
           fallbackAugmented = injectPreviewVariables(fallbackAugmented, previewVariables);
@@ -627,17 +650,6 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     return c.html(html, 200, previewCacheHeaders(etag));
   });
 
-  /** Ids minted from the raw file before the build rewrites attributes, so they match the source's;
-   * in memory only, since a write here reaches the watcher as an outside edit. null: the file vanished. */
-  function pinSubCompHfIds(compFile: string, compPath: string): string | undefined | null {
-    if (!/\.html?$/i.test(compPath)) return undefined;
-    try {
-      return ensureHfIds(readFileSync(compFile, "utf-8"));
-    } catch {
-      return null;
-    }
-  }
-
   // Sub-composition preview
   // fallow-ignore-next-line complexity
   api.get("/projects/:id/preview/comp/*", async (c) => {
@@ -649,14 +661,17 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const vars = previewVariablesFromRequest(c.req.query("variables"));
     if (vars.error !== undefined) return c.json({ error: vars.error }, 400);
     const previewVariables = vars.values;
-    const compPath = requestSubPath(c.req.url, "projects/:id/preview/comp");
-    const compFile = resolveWithinProject(project.dir, compPath);
+    const compFile = resolveWithinProject(
+      project.dir,
+      requestSubPath(c.req.url, "projects/:id/preview/comp"),
+    );
     if (compFile) recordPreviewRead(project.dir, compFile);
     // The sub-composition document takes its head from the root.
     recordPreviewRead(project.dir, "index.html");
     if (!compFile || !existsSync(compFile) || !statSync(compFile).isFile()) {
       return c.text("not found", 404);
     }
+    const compPath = projectRelativePath(project.dir, compFile);
 
     // "v2" salts the etag for the hf-id-pinning change below: a client holding
     // a pre-pin cached response (preview-only ids, unstamped disk file) must
@@ -672,29 +687,47 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
       });
     }
 
-    const stamped = pinSubCompHfIds(compFile, compPath);
-    if (stamped === null) return c.text("not found", 404); // file removed between stat and read
-
     const baseHref = previewBaseHref(project.id);
-    let html = buildSubCompositionHtml(
-      project.dir,
-      compPath,
-      adapter.runtimeUrl,
-      baseHref,
-      stamped,
-      gsapBaseUrl,
-    );
-    if (!html) return c.text("not found", 404);
-    html = withPreviewRuntime(withRootImportMap(html, baseHref), adapter.runtimeUrl);
-    recordPreviewReferences(project.dir, html);
-    html = ensureHfIds(await transformPreviewHtml(html, adapter, project, compPath));
-    html = injectStudioPreviewAugmentations(html, adapter, signature, project.dir, compPath, {
-      capture,
-      gsapBaseUrl,
-    });
-    if (previewVariables) html = injectPreviewVariables(html, previewVariables);
-    html = await injectMediaCodecMap(html, adapter, project.dir, compPath, mediaCodecProbeCache);
-    return c.html(html, 200, previewCacheHeaders(etag));
+    // A shared project's page can be anything: every pass that parses it runs on the build worker, and the request
+    // has one deadline, the host's transform and the media probes included.
+    const deadline = performance.now() + (subCompositionDeadlineMs ?? SUB_COMPOSITION_DEADLINE_MS);
+    const job = { projectDir: project.dir, compPath, runtimeUrl: adapter.runtimeUrl };
+    try {
+      const built = await runOffThread(
+        { kind: "build", ...job, compFile, baseHref, gsapBaseUrl },
+        deadline,
+        compPath,
+      );
+      if (!built) return c.text("not found", 404);
+      for (const path of built.references) recordPreviewRead(project.dir, path);
+      const transformed = await withinDeadline(
+        transformPreviewHtml(built.html, adapter, project, compPath),
+        deadline,
+        compPath,
+      );
+      const options = { capture, gsapBaseUrl, sandboxedCapture: sandboxThumbnailCaptures };
+      const finish = { kind: "finish" as const, ...job, html: transformed, signature, options };
+      const html = await runOffThread(
+        { ...finish, ...(previewVariables && { variables: previewVariables }) },
+        deadline,
+        compPath,
+      );
+      const probed = injectMediaCodecMap(
+        html,
+        adapter,
+        project.dir,
+        compPath,
+        mediaCodecProbeCache,
+      );
+      return c.html(
+        await withinDeadline(probed, deadline, compPath),
+        200,
+        previewCacheHeaders(etag),
+      );
+    } catch (error) {
+      if (error instanceof SubCompositionDeadlineError) return c.text(error.message, 503);
+      throw error;
+    }
   });
 
   // Static asset serving (with range request support for audio/video seeking)
@@ -725,7 +758,7 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     // only a video asset can be proxied, and only when auto-proxy is enabled
     // for this adapter/project. Checked BEFORE any transcode or 304 shortcut
     // so a bogus/disabled request never spawns ffmpeg.
-    const proxyParam = c.req.query("hf-proxy");
+    const proxyParam = c.req.query(PREVIEW_PROXY_PARAM);
     const boxParam = c.req.query(PREVIEW_PROXY_BOX_PARAM);
     const proxyBox = boxParam === undefined ? undefined : parsePreviewProxyBox(boxParam);
     const lightRequested = c.req.query(PREVIEW_PROXY_LIGHT_PARAM) !== undefined;
@@ -765,11 +798,21 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
         return c.text("not found", 404);
       }
       try {
-        const still = await resolveStill(project.dir, file, at, proxyBox);
+        const inSlot = (make: () => Promise<string>) => runStillJob(make, c.req.raw.signal);
+        const ask = () => resolveStill(project.dir, file, at, proxyBox, inSlot, c.req.raw.signal);
+        const still = await ask().catch((err) =>
+          err instanceof JobAbandonedError && !c.req.raw.signal.aborted
+            ? ask()
+            : Promise.reject(err),
+        );
         return new Response(readFileSync(still), {
           headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600" },
         });
       } catch (err) {
+        if (err instanceof JobQueueFullError) {
+          return c.text(err.message, 503, { "Retry-After": "5" });
+        }
+        if (err instanceof StillPastEndError) return c.text("not found", 404);
         if (isProjectRootMissing(err)) throw err;
         return c.text("media still failed", 502);
       }

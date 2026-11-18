@@ -126,7 +126,8 @@ npx hyperframes transcribe talk.mp4 --engine parakeet   # or --engine auto (defa
 
 VERIFIED on 24GB: accurate, ~3s (cached) for 8s audio. Parakeet covers 25
 European languages, English included. For other languages, or when parakeet-mlx is not
-installed, transcribe.mjs falls back to `hyperframes transcribe`, which uses the
+installed, transcribe.mjs falls back to `hyperframes transcribe` (the CLI handed over as
+`HYPERFRAMES_CLI_ENTRY`, see `references/audio.md`), which uses the
 CLI's Parakeet when `models install parakeet` has run and whisper.cpp (99
 languages) otherwise. `--engine parakeet|whisper` forces one, except that a
 `--language` other than English runs whisper whenever it is installed, since

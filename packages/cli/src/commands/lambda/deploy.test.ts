@@ -20,6 +20,7 @@ vi.mock("./state.js", () => ({
 }));
 vi.mock("./videoImage.js", () => ({
   pushVideoImage: vi.fn(async () => ({ imageUri: "repo@sha256:a", repositoryName: "hf-video" })),
+  videoRepositoryName: (stackName: string) => `${stackName}-video`,
 }));
 
 const { runDeploy } = await import("./deploy.js");
@@ -50,13 +51,6 @@ describe("runDeploy", () => {
     await expect(runDeploy()).rejects.toThrow(
       /no prebuilt Lambda handler is available[\s\S]*Docs:/,
     );
-    expect(samDeploy).not.toHaveBeenCalled();
-  });
-
-  it("outside a checkout, refuses a Chrome source the prebuilt handler does not bundle", async () => {
-    await expect(
-      runDeploy({ videoArch: "x86_64", chromeSource: "chrome-headless-shell" }),
-    ).rejects.toThrow(/needs a hyperframes checkout/);
     expect(samDeploy).not.toHaveBeenCalled();
   });
 
@@ -143,13 +137,14 @@ describe("runDeploy", () => {
     });
   });
 
-  it.each([undefined, "arm64" as const])(
-    "refuses arm64 (--video-arch %s) with a Chrome source the video image does not bundle, naming x86_64",
+  it.each([undefined, "arm64" as const, "x86_64" as const])(
+    "refuses chrome-headless-shell (--video-arch %s) before building, since it cannot fit a ZIP function",
     async (videoArch) => {
       await expect(runDeploy({ videoArch, chromeSource: "chrome-headless-shell" })).rejects.toThrow(
-        /sparticuz Chrome only[\s\S]*--video-arch x86_64/,
+        /does not fit a Lambda ZIP function[\s\S]*arm64 video image/,
       );
       expect(pushVideoImage).not.toHaveBeenCalled();
+      expect(samDeploy).not.toHaveBeenCalled();
     },
   );
 });

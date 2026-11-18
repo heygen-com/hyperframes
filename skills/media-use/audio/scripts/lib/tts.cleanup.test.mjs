@@ -95,8 +95,10 @@ if (["allocation", "write", "spawn-throw"].includes(mode)) {
   const result = await request();
   const label = provider === "elevenlabs" ? "elevenlabs (python)" : "kokoro (npx hyperframes tts)";
   if (["nonzero", "enoent", "no-output"].includes(mode)) {
+    // Kokoro runs the handed-over CLI with this Node, so a missing CLI file exits 1, not ENOENT.
+    const missing = provider === "kokoro" ? 1 : -1;
     const error = mode === "no-output" ? label + " produced no wav file" :
-      label + " exited with status " + (mode === "enoent" ? -1 : 7);
+      label + " exited with status " + (mode === "enoent" ? missing : 7);
     assert.deepEqual(result, { ok: false, words: null, error });
     assert.equal(fs.existsSync(wavAbs), false);
   } else {
@@ -120,11 +122,14 @@ function runCase(provider, mode) {
   try {
     for (const dir of ["home", "tmp", "bin", "project"]) mkdirSync(join(root, dir));
     if (mode !== "enoent") {
-      for (const name of ["npx", "python3"]) {
-        const executable = join(root, "bin", name);
-        writeFileSync(executable, stub);
-        chmodSync(executable, 0o755);
-      }
+      const python = join(root, "bin", "python3");
+      writeFileSync(python, stub);
+      chmodSync(python, 0o755);
+      // The handed-over CLI sees `tts <text file> ...`; the shared stub reads npx-style argv.
+      writeFileSync(
+        join(root, "bin", "cli.cjs"),
+        'process.argv.splice(2, 0, "hyperframes");\nrequire("./python3");\n',
+      );
     }
     const result = spawnSync(process.execPath, ["--input-type=module", "-e", exercise], {
       encoding: "utf8",
@@ -136,6 +141,7 @@ function runCase(provider, mode) {
         TMP: join(root, "tmp"),
         TEMP: join(root, "tmp"),
         PATH: join(root, "bin"),
+        HYPERFRAMES_CLI_ENTRY: join(root, "bin", "cli.cjs"),
         CASE_ROOT: root,
         CASE_PROVIDER: provider,
         CASE_MODE: mode,

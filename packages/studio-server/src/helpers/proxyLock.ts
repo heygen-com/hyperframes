@@ -1,6 +1,5 @@
 import {
   closeSync,
-  existsSync,
   openSync,
   readdirSync,
   readFileSync,
@@ -73,21 +72,22 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-/** The right to make the copy at `cachePath`; null once another process finished it; throws on a stalled live owner. */
+/** The right to make the copy at `cachePath`; null once `copyMade` holds; throws on a stalled live owner. */
 export async function acquireCopyLock(
   cachePath: string,
+  copyMade: (path: string) => boolean,
   signal: AbortSignal,
   stallMs: number,
 ): Promise<(() => void) | null> {
   const lockPath = lockPathFor(cachePath);
   for (;;) {
     signal.throwIfAborted();
-    if (existsSync(cachePath)) return null;
+    if (copyMade(cachePath)) return null;
     try {
       const fd = openSync(lockPath, "wx");
       writeSync(fd, String(process.pid));
       closeSync(fd);
-      if (!existsSync(cachePath)) return () => rmSync(lockPath, { force: true });
+      if (!copyMade(cachePath)) return () => rmSync(lockPath, { force: true });
       rmSync(lockPath, { force: true });
       return null;
     } catch (err) {

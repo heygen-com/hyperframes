@@ -10,6 +10,7 @@ import {
   type EngineConfig,
   type ExtractedFrames,
   type FrameLookupTable,
+  mediaIdPathSegment,
   type ShownBox,
 } from "@hyperframes/engine";
 import { resolveVideoCaptureBeyondViewport } from "../render/captureBeyondViewport.js";
@@ -85,7 +86,7 @@ export function rebuildExtractedFramesFromPlanDir(
 ): ExtractedFrames[] {
   const result: ExtractedFrames[] = [];
   for (const v of videos) {
-    const outputDir = join(planDir, "video-frames", v.videoId);
+    const outputDir = join(planDir, "video-frames", mediaIdPathSegment(v.videoId));
     if (!existsSync(outputDir)) {
       throw new Error(
         `[renderChunk] planDir missing extracted video frames for ${JSON.stringify(v.videoId)}: ` +

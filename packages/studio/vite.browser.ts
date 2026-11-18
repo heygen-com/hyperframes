@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { join, win32 as pathWin32 } from "node:path";
 import {
   getElementScreenshotClip,
+  grantCaptureLoads,
   thumbnailDeviceScaleFactor,
   type ScreenshotClip,
 } from "@hyperframes/studio-server";
@@ -227,6 +228,7 @@ async function prepareThumbnailPage(
     height: opts.height,
     deviceScaleFactor: thumbnailDeviceScaleFactor(opts),
   });
+  await grantCaptureLoads(await page.createCDPSession(), opts.previewUrl);
   await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
   await page.evaluate(() => {
     document.documentElement.style.background = "#1c2028";

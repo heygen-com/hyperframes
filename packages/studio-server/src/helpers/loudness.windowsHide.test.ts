@@ -24,6 +24,11 @@ vi.mock("node:child_process", async (importOriginal) => {
   return { ...actual, default: { ...actual, execFile: execFileMock }, execFile: execFileMock };
 });
 
+// A lane without FFmpeg still reaches the stubbed ffprobe.
+vi.mock("@hyperframes/parsers/ff-binaries", () => ({
+  findFfBinary: (name: string) => `/fake/${name}`,
+}));
+
 import { measureAudio } from "./loudness.js";
 
 describe("measureAudio child-process options", () => {
