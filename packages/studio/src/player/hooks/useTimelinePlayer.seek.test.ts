@@ -225,7 +225,7 @@ describe("useTimelinePlayer audio controls (#835)", () => {
       }),
       "*",
     );
-    expect(timeScale).toHaveBeenCalledWith(2);
+    expect(timeScale).not.toHaveBeenCalled();
 
     postMessage.mockClear();
 

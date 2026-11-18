@@ -27,7 +27,7 @@ export {
   shouldIgnorePlaybackShortcutTarget,
 } from "../lib/playbackShortcuts";
 
-import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
+import type { PlaybackAdapter } from "../lib/playbackTypes";
 import { setFrameLoopStart } from "../lib/previewChannel";
 import { releaseStaticSeekCache, type StaticSeekCacheEntry } from "../lib/playbackAdapter";
 import { mergeTimelineElementsPreservingDowngrades } from "../lib/timelineDOM";
@@ -180,20 +180,6 @@ export function useTimelinePlayer({
     const iframe = iframeRef.current;
     if (!iframe) return;
     setPreviewPlaybackRate(iframe, rate);
-    // Also set directly on GSAP timeline if accessible
-    try {
-      const win = iframe.contentWindow as IframeWindow | null;
-      if (win?.__timelines) {
-        for (const tl of Object.values(win.__timelines)) {
-          if (
-            tl &&
-            typeof (tl as unknown as { timeScale?: (v: number) => void }).timeScale === "function"
-          ) {
-            (tl as unknown as { timeScale: (v: number) => void }).timeScale(rate);
-          }
-        }
-      }
-    } catch {}
   }, []);
   const applyPreviewAudioState = useCallback(() => {
     const { audioMuted, audioVolume } = usePlayerStore.getState();
