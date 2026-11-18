@@ -283,11 +283,42 @@ describe("resolveProxy on a long source", () => {
       "-format_whitelist",
       "concat,mov,matroska",
       "-i",
-      expect.stringMatching(/pieces\.txt$/),
+      expect.stringMatching(/\.txt$/),
       "-c",
       "copy",
     ]);
   });
+
+  it.skipIf(!realFfmpeg || !findFfBinary("ffprobe") || process.platform === "win32")(
+    "joins only its own pieces when a folder above the project has line breaks and list lines in its name",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
+      const { resolveProxy } = await import("./proxyTranscoder.js");
+      const base = realpathSync(tmpProject());
+      const clip = (path: string, seconds: number) =>
+        execFileSync(realFfmpeg!, [
+          ...["-v", "error", "-f", "lavfi", "-i", `testsrc2=s=32x32:r=2:d=${seconds}`],
+          ...["-c:v", "libx264", "-pix_fmt", "yuv420p", path],
+        ]);
+      clip(join(base, "a.mp4"), 2);
+      clip(join(base, "other.mp4"), 2);
+      const projectDir = `${base}/a.mp4\nfile '${base}/other.mp4'\n#/project`;
+      mkdirSync(projectDir, { recursive: true });
+      const sourcePath = join(projectDir, "long.mp4");
+      clip(sourcePath, LONG_SECONDS);
+
+      const proxyPath = await resolveProxy(projectDir, sourcePath);
+      const seconds = execFileSync(
+        findFfBinary("ffprobe")!,
+        ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", proxyPath],
+        { encoding: "utf8" },
+      );
+      expect(Number(seconds)).toBeCloseTo(LONG_SECONDS, 0);
+    },
+    60_000,
+  );
 
   it("encodes every piece again when the project shipped pieces at the names it can predict", async () => {
     const { spawn, calls } = createSpawnSpy();

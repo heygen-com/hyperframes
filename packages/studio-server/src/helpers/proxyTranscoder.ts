@@ -1,15 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
-import {
-  existsSync,
-  mkdtempSync,
-  renameSync,
-  rmSync,
-  unlinkSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
-import os, { availableParallelism, tmpdir, totalmem } from "node:os";
+import { existsSync, renameSync, rmSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import os, { availableParallelism, totalmem } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
 import { previewToken } from "@hyperframes/core/preview-proof";
@@ -662,18 +654,15 @@ async function encodeInChunks(
     ),
   );
   if (failure !== undefined) throw failure;
-  const listDir = mkdtempSync(join(tmpdir(), "hf-proxy-join-"));
+  const listPath = join(dirname(tempPath), `${basename(tempPath, extension)}.txt`);
   try {
-    const listPath = join(listDir, "pieces.txt");
     writeFileSync(
       listPath,
-      pieces
-        .map((piece) => `file '${piece.replace(/\\/g, "/").replace(/'/g, "'\\''")}'\n`)
-        .join(""),
+      pieces.map((piece) => `file '${basename(piece).replace(/'/g, "'\\''")}'\n`).join(""),
     );
     await concat(listPath, tempPath);
   } finally {
-    rmSync(listDir, { recursive: true, force: true });
+    rmSync(listPath, { force: true });
   }
   for (const piece of pieces) if (existsSync(piece)) unlinkSync(piece);
 }
@@ -834,7 +823,15 @@ async function runFfmpeg(
       outputPath,
       encode,
       (listPath, target) =>
-        spawnFfmpeg(ffmpegPath, concatArgs(listPath, target, variant), CONCAT_TIMEOUT_MS, signal),
+        spawnFfmpeg(
+          ffmpegPath,
+          concatArgs(basename(listPath), target, variant),
+          CONCAT_TIMEOUT_MS,
+          signal,
+          undefined,
+          false,
+          dirname(listPath),
+        ),
       signal,
       gate,
       (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
@@ -872,10 +869,12 @@ function spawnFfmpeg(
   signal: AbortSignal,
   onProgress?: (encodedSeconds: number) => void,
   background = false,
+  cwd?: string,
 ): Promise<void> {
   return new Promise((resolvePromise, reject) => {
     signal.throwIfAborted();
     const proc = spawn(ffmpegPath, args, {
+      cwd,
       stdio: ["ignore", "pipe", "pipe"],
       killSignal: "SIGKILL",
       signal,
