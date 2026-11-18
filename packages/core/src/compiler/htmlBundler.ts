@@ -1602,13 +1602,15 @@ export function emitRootCompositionVariableStyles(
   document: Document,
   variablesByComp: Record<string, Record<string, unknown>> = {},
   overrides: Record<string, unknown> = {},
+  options: { chargeBytes?: (bytes: number) => void } = {},
 ): boolean {
+  const charge = options.chargeBytes ?? defaultVariableStyleCharge();
   const authoredDefines = authoredDefinesPredicate(document);
   const layerFor = makeVariableLayer(authoredDefines, overrides);
   const rules = [
-    ...hostScopedVariableRules(variablesByComp, overrides, authoredDefines),
-    ...rootDeclaredVariableRules(document, layerFor),
-    ...declarerVariableRules(document, layerFor),
+    ...hostScopedVariableRules(variablesByComp, overrides, authoredDefines, charge),
+    ...rootDeclaredVariableRules(document, layerFor, charge),
+    ...declarerVariableRules(document, layerFor, charge),
   ];
   if (rules.length === 0) return false;
   const style = document.createElement("style");
@@ -1616,6 +1618,32 @@ export function emitRootCompositionVariableStyles(
   style.textContent = rules.join("\n\n");
   document.head.appendChild(style);
   return true;
+}
+
+/** The most CSS the compile-time composition-variable rules may add up to when the caller sets no budget of its own. */
+export const MAX_COMPOSITION_VARIABLE_STYLE_BYTES = 32 * 1024 * 1024;
+
+class CompositionVariableStylesTooLargeError extends Error {
+  readonly code = "COMPOSITION_TOO_LARGE" as const;
+
+  constructor(bytes: number) {
+    super(
+      `Composition variable styles add up to ${(bytes / (1024 * 1024)).toFixed(1)} MB, over the ` +
+        `${MAX_COMPOSITION_VARIABLE_STYLE_BYTES / (1024 * 1024)} MB limit. Shorten the variable ` +
+        "values or declare them on fewer elements.",
+    );
+    this.name = "CompositionVariableStylesTooLargeError";
+  }
+}
+
+function defaultVariableStyleCharge(): (bytes: number) => void {
+  let total = 0;
+  return (bytes) => {
+    total += bytes;
+    if (total > MAX_COMPOSITION_VARIABLE_STYLE_BYTES) {
+      throw new CompositionVariableStylesTooLargeError(total);
+    }
+  };
 }
 
 type VariableLayer = (
@@ -1682,6 +1710,7 @@ function hostScopedVariableRules(
   variablesByComp: Record<string, Record<string, unknown>>,
   overrides: Record<string, unknown>,
   authoredDefines: (id: string) => boolean,
+  charge: (bytes: number) => void,
 ): string[] {
   const rules: string[] = [];
   for (const [compId, vars] of Object.entries(variablesByComp)) {
@@ -1696,15 +1725,23 @@ function hostScopedVariableRules(
       withOverrides,
       cssAttributeSelector("data-composition-id", compId),
     );
-    if (rule) rules.push(rule);
+    if (!rule) continue;
+    charge(rule.length);
+    rules.push(rule);
   }
   return rules;
 }
 
-function rootDeclaredVariableRules(document: Document, layerFor: VariableLayer): string[] {
+function rootDeclaredVariableRules(
+  document: Document,
+  layerFor: VariableLayer,
+  charge: (bytes: number) => void,
+): string[] {
   const htmlDeclared = readDeclaredDefaults(document.documentElement);
   const htmlRule = compositionVariablesCssBlock(layerFor(htmlDeclared, {}), ":root");
-  return htmlRule ? [htmlRule] : [];
+  if (!htmlRule) return [];
+  charge(htmlRule.length);
+  return [htmlRule];
 }
 
 /**
@@ -1714,20 +1751,32 @@ function rootDeclaredVariableRules(document: Document, layerFor: VariableLayer):
  * restyle instance B. The nearest ancestor host's data-variable-values
  * layer over the declared defaults (mirrors the runtime loader).
  */
-function declarerVariableRules(document: Document, layerFor: VariableLayer): string[] {
+function declarerVariableRules(
+  document: Document,
+  layerFor: VariableLayer,
+  charge: (bytes: number) => void,
+): string[] {
   const rules: string[] = [];
+  const hostValuesByEl = new Map<Element, Record<string, unknown>>();
   let markerSeq = 0;
   for (const el of [...document.querySelectorAll("[data-composition-variables]")]) {
     const declared = readDeclaredDefaults(el);
     const hostEl =
       typeof el.closest === "function" ? el.parentElement?.closest("[data-variable-values]") : null;
-    const hostValues = hostEl ? parseHostVariableValues(hostEl) : {};
+    let hostValues: Record<string, unknown> = {};
+    if (hostEl) {
+      const cached = hostValuesByEl.get(hostEl);
+      hostValues = cached ?? parseHostVariableValues(hostEl);
+      if (!cached) hostValuesByEl.set(hostEl, hostValues);
+    }
     const vars = layerFor(declared, hostValues);
     if (Object.keys(vars).length === 0) continue;
     markerSeq += 1;
     el.setAttribute("data-hf-var-scope", String(markerSeq));
     const rule = compositionVariablesCssBlock(vars, `[data-hf-var-scope="${markerSeq}"]`);
-    if (rule) rules.push(rule);
+    if (!rule) continue;
+    charge(rule.length);
+    rules.push(rule);
   }
   return rules;
 }

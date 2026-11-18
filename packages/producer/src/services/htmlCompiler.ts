@@ -1190,6 +1190,7 @@ function inlineSubCompositions(
   variableOverrides: Record<string, unknown>,
   assetRoot: string | undefined,
   outsideFiles: OutsideFilePolicy,
+  budget: CompositionExpansionBudget,
 ): { html: string; variablesByComp: Record<string, Record<string, unknown>> } {
   const { document } = parseHTML(html);
   const head = document.querySelector("head");
@@ -1205,11 +1206,11 @@ function inlineSubCompositions(
       document as unknown as Document,
       {},
       variableOverrides,
+      { chargeBytes: (bytes) => budget.chargeGenerated("composition variables", bytes) },
     );
     return { html: emitted ? document.toString() : html, variablesByComp: {} };
   }
 
-  const budget = new CompositionExpansionBudget();
   const readOnce = new Map<string, string | null>();
   const readMountHtml = (srcPath: string): string | null => {
     const filePath = resolveCompositionFile(projectDir, srcPath, assetRoot);
@@ -1378,6 +1379,7 @@ function inlineSubCompositions(
     document as unknown as Document,
     result.variablesByComp,
     variableOverrides,
+    { chargeBytes: (bytes) => budget.chargeGenerated("composition variables", bytes) },
   );
 
   // Inlining is what makes element ids ambiguous: each composition file is
@@ -2261,11 +2263,22 @@ function rebaseDirectEntryAssetPaths(html: string, projectDir: string, htmlPath:
   return document.toString();
 }
 
+/** The longest value a variable may bind into a media `src`. */
+export const MAX_VARIABLE_MEDIA_SRC_BYTES = 8 * 1024;
+// ASCII control characters, tab and newline included. A plain space is allowed.
+// oxlint-disable-next-line no-control-regex
+const UNSAFE_MEDIA_SRC_CHARS = /[\u0000-\u001f\u007f]/;
+
 /**
  * Point each `data-var-src` video/audio at the clip its variable names, so the length and sound read below
  * are the bound clip's. Media under a per-instance `data-variable-values` host keeps the browser's answer.
  */
-function bindVariableMediaSources(html: string, variables: Record<string, unknown>): string {
+function bindVariableMediaSources(
+  html: string,
+  variables: Record<string, unknown>,
+  budget: CompositionExpansionBudget,
+  log?: ProducerLogger,
+): string {
   if (!html.includes("data-var-src")) return html;
   const { document } = parseHTML(html);
   const declared: Record<string, unknown> = {};
@@ -2277,7 +2290,15 @@ function bindVariableMediaSources(html: string, variables: Record<string, unknow
   for (const el of document.querySelectorAll("video[data-var-src], audio[data-var-src]")) {
     if (el.closest("[data-variable-values]")) continue;
     const src = boundMediaSrc(el, values);
-    if (src === null || el.getAttribute("src") === src) continue;
+    if (src === null) continue;
+    if (src.length > MAX_VARIABLE_MEDIA_SRC_BYTES || UNSAFE_MEDIA_SRC_CHARS.test(src)) {
+      log?.debug("[Compiler] Refused a variable media source that cannot be a URL", {
+        length: src.length,
+      });
+      continue;
+    }
+    if (el.getAttribute("src") === src) continue;
+    budget.chargeGenerated("variable media sources", src.length);
     el.setAttribute("src", src);
     changed = true;
   }
@@ -2316,9 +2337,13 @@ export async function compileForRender(
   }
   assertCompositionFileSize(htmlPath, basename(htmlPath));
   const entryHtml = rebaseDirectEntryAssetPaths(readTextFile(htmlPath), projectDir, htmlPath);
+  // One budget for the whole render: variable media sources, variable styles and every mount share it.
+  const budget = new CompositionExpansionBudget();
   const rawHtml = bindVariableMediaSources(
     normalizeCompositionSrcs(rewriteUnresolvableGsapToCdn(entryHtml, projectDir), projectDir),
     options.variables ?? {},
+    budget,
+    options.log,
   );
 
   // Pre-flight: every data-composition-src reference must resolve to a
@@ -2369,6 +2394,7 @@ export async function compileForRender(
     options.variables ?? {},
     assetRoot,
     outsideFiles,
+    budget,
   );
 
   // Strip preload="none" from media elements — the renderer needs to load all

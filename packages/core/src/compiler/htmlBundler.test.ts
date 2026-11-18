@@ -4306,3 +4306,32 @@ describe("emitRootCompositionVariableStyles — authored definitions", () => {
     expect(css).not.toContain("--accent-dark");
   });
 });
+
+describe("emitRootCompositionVariableStyles — size budget", () => {
+  const DECLARER = `<div data-composition-variables='[{"id":"v","type":"string","default":"d"}]'></div>`;
+  const hostWith = (declarers: number, value: string) =>
+    `<!doctype html><html><head></head><body>` +
+    `<div data-variable-values='${JSON.stringify({ v: value })}'>${DECLARER.repeat(declarers)}</div>` +
+    `</body></html>`;
+
+  it("throws COMPOSITION_TOO_LARGE past the core limit and appends no style", () => {
+    // 100 rules of ~1 MiB each: just over 32 MiB in total.
+    const { document } = parseHTML(hostWith(100, "x".repeat(1024 * 1024)));
+    expect(() => emitRootCompositionVariableStyles(document)).toThrow(
+      expect.objectContaining({ code: "COMPOSITION_TOO_LARGE" }),
+    );
+    expect(document.querySelector("style[data-hf-composition-variables]")).toBeNull();
+  });
+
+  it("stops building rules when the caller's charge throws", () => {
+    const { document } = parseHTML(hostWith(5, "x"));
+    const chargeBytes = vi.fn(() => {
+      throw new Error("over budget");
+    });
+    expect(() => emitRootCompositionVariableStyles(document, {}, {}, { chargeBytes })).toThrow(
+      "over budget",
+    );
+    expect(chargeBytes).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("style[data-hf-composition-variables]")).toBeNull();
+  });
+});
