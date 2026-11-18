@@ -204,12 +204,18 @@ export function useShadowPreviewReload({
   const failShadow = useCallback(
     (gen: number, cause: string) => {
       if (gen !== shadowGenRef.current) return;
-      const waitingFor = !shadowPlayerReachable(shadowIframeRef.current)
-        ? "the page and its runtime to load"
-        : pendingCommitRef.current?.gen !== gen
-          ? "its timeline to be ready"
-          : "its loaders to clear";
-      const got = pageGotTo(shadowIframeRef.current);
+      const shadow = shadowIframeRef.current;
+      const sealed = shadow !== null && previewFrameOpaque(shadow);
+      const timelineIn = pendingCommitRef.current?.gen === gen;
+      const waitingFor =
+        !sealed && !shadowPlayerReachable(shadow)
+          ? "the page and its runtime to load"
+          : timelineIn
+            ? "its loaders to clear"
+            : sealed
+              ? "its runtime to report a timeline"
+              : "its timeline to be ready";
+      const got = sealed ? "" : pageGotTo(shadow);
       shadowGenRef.current += 1;
       const failedGen = shadowGenRef.current;
       stopPendingShadow();
