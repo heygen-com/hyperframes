@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Window } from "happy-dom";
 import {
+  createSealedPreviewSeekReapplyScript,
   createStudioManualEditsRenderBodyScript,
   createStudioPositionSeekReapplyScript,
 } from "./manualEditsRenderScript";
@@ -390,10 +391,11 @@ describe("createStudioPositionSeekReapplyScript", () => {
     timers: {
       setInterval?: typeof globalThis.setInterval;
       clearInterval?: typeof globalThis.clearInterval;
+      script?: string;
     } = {},
   ): void {
     Object.assign(window, { SyntaxError });
-    const script = createStudioPositionSeekReapplyScript();
+    const script = timers.script ?? createStudioPositionSeekReapplyScript();
     const execute = new Function(
       "window",
       "document",
@@ -416,6 +418,70 @@ describe("createStudioPositionSeekReapplyScript", () => {
       timers.clearInterval ?? globalThis.clearInterval,
     );
   }
+
+  /** A sized card whose seeks clear its size, as a GSAP width tween does. */
+  function sizedCard(window: Window) {
+    window.document.body.innerHTML = `
+      <div id="card"
+        data-hf-studio-box-size="true"
+        style="--hf-studio-width: 200px; --hf-studio-height: 100px; width: 200px; height: 100px">
+      </div>
+    `;
+    const card = window.document.getElementById("card") as unknown as HTMLElement;
+    return { card, clear: () => card.style.removeProperty("width") };
+  }
+
+  it("reapplies box-size after a preview seek, and again once a held seek lands", async () => {
+    const window = new Window();
+    const { card, clear } = sizedCard(window);
+    let land!: () => void;
+    const held = new Promise<void>((resolve) => (land = resolve)).then(clear);
+    const player = { seek: (_time: number) => (clear(), held) };
+    (window as unknown as { __player: typeof player }).__player = player;
+
+    runPositionScript(window);
+    void player.seek(1);
+    expect(card.style.getPropertyValue("width")).toBe("200px");
+    land();
+    await held;
+    await Promise.resolve();
+    expect(card.style.getPropertyValue("width")).toBe("200px");
+  });
+
+  it("hands every argument to the seek it wraps", () => {
+    const window = new Window();
+    sizedCard(window);
+    const calls: unknown[][] = [];
+    const hf = { seek: (...args: unknown[]) => void calls.push(args) };
+    (window as unknown as { __hf: typeof hf }).__hf = hf;
+
+    runPositionScript(window);
+    hf.seek(1, { suppressEvents: true });
+    expect(calls).toEqual([[1, { suppressEvents: true }]]);
+  });
+
+  it("runs in a preview only when Studio cannot script the frame", () => {
+    const wrapsIn = (parent: unknown) => {
+      const window = new Window();
+      sizedCard(window);
+      if (parent) Object.defineProperty(window, "parent", { value: parent });
+      const player = { seek: (_time: number) => undefined };
+      (window as unknown as { __player: typeof player }).__player = player;
+      runPositionScript(window, { script: createSealedPreviewSeekReapplyScript() });
+      return (
+        player.seek !== undefined &&
+        Object.hasOwn(player.seek, "__hfStudioPositionSeekReapplyWrapped")
+      );
+    };
+    const sealed = {
+      get document(): never {
+        throw new Error("SecurityError");
+      },
+    };
+    expect(wrapsIn(sealed)).toBe(true);
+    expect(wrapsIn({ document: {} })).toBe(false);
+    expect(wrapsIn(null)).toBe(false);
+  });
 
   it("reapplies box-size after seek", () => {
     const window = new Window();

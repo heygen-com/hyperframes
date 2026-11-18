@@ -13,14 +13,23 @@ export function createStudioManualEditsRenderBodyScript(
   return `(${studioManualEditsRenderRuntime.toString()})(${JSON.stringify(manifestContent)}, ${JSON.stringify(options.activeCompositionPath ?? null)});`;
 }
 
-/**
- * Returns a self-contained IIFE string that re-applies studio position edits
- * (translate, rotate) after every GSAP seek by querying data attributes baked
- * into the HTML. Works without a JSON manifest — positions are already inlined
- * as CSS custom properties on the elements.
- */
+/** A self-contained script that puts the page's committed Studio edits back after every seek. */
 export function createStudioPositionSeekReapplyScript(): string {
   return `(${studioPositionSeekReapplyRuntime.toString()})();`;
+}
+
+const POSITION_EDIT_MARKS = [
+  'data-hf-studio-path-offset="true"',
+  'data-hf-studio-box-size="true"',
+  'data-hf-studio-rotation="true"',
+  'data-hf-studio-motion="',
+];
+export const htmlHasStudioPositionEdits = (html: string) =>
+  POSITION_EDIT_MARKS.some((mark) => html.includes(mark));
+
+/** The reapply for a preview frame Studio cannot script; Studio wraps one it can script itself. */
+export function createSealedPreviewSeekReapplyScript(): string {
+  return `(function(){try{if(window.parent===window||window.parent.document)return}catch(_){}${createStudioPositionSeekReapplyScript()}})();`;
 }
 
 function studioPositionSeekReapplyRuntime(): void {
@@ -263,10 +272,10 @@ function studioPositionSeekReapplyRuntime(): void {
     __player?: Record<string, unknown>;
   };
 
-  const isWrapped = (fn: (time: number) => unknown): boolean =>
+  const isWrapped = (fn: (...args: never[]) => unknown): boolean =>
     Boolean((fn as unknown as Record<string, unknown>)[WRAPPED_PROP]);
 
-  const markWrapped = (fn: (time: number) => unknown): void => {
+  const markWrapped = (fn: (...args: never[]) => unknown): void => {
     try {
       Object.defineProperty(fn, WRAPPED_PROP, {
         configurable: false,
@@ -282,52 +291,46 @@ function studioPositionSeekReapplyRuntime(): void {
     }
   };
 
-  const wrapFn = (get: () => unknown, set: (fn: (time: number) => unknown) => void): boolean => {
-    const fn = get();
+  type Seek = (time: number, ...rest: unknown[]) => unknown;
+  // A preview's `__player.seek` can hold until images decode; its promise says when the frame landed.
+  type SeekSlot = [owner: "__hf" | "__player", key: string, landsLater: boolean];
+  const SEEKS: SeekSlot[] = [
+    ["__hf", "seek", false],
+    ["__player", "renderSeek", false],
+    ["__player", "seek", true],
+  ];
+
+  const wrapFn = ([owner, key, landsLater]: SeekSlot): boolean => {
+    const fn = runtimeWindow[owner]?.[key];
     if (typeof fn !== "function") return false;
-    const seek = fn as (time: number) => unknown;
+    const seek = fn as Seek;
     if (isWrapped(seek)) {
       reapplyAll();
       return true;
     }
-    const wrapped = function (this: unknown, time: number): unknown {
+    const wrapped = function (this: unknown, time: number, ...rest: unknown[]): unknown {
       lastSeekTime = typeof time === "number" && Number.isFinite(time) ? Math.max(0, time) : 0;
-      const result = seek.call(this, time);
+      const result = seek.call(this, time, ...rest);
       reapplyAll();
+      const landing = landsLater ? (result as PromiseLike<unknown> | undefined) : undefined;
+      if (typeof landing?.then === "function") landing.then(reapplyAll, () => undefined);
       return result;
     };
     markWrapped(wrapped);
-    set(wrapped);
+    const target = runtimeWindow[owner];
+    if (target) target[key] = wrapped;
     reapplyAll();
     return true;
   };
 
-  const wrapSeekFunctions = (): boolean => {
-    const a = wrapFn(
-      () => runtimeWindow.__hf?.["seek"],
-      (fn) => {
-        if (runtimeWindow.__hf) runtimeWindow.__hf["seek"] = fn;
-      },
-    );
-    const b = wrapFn(
-      () => runtimeWindow.__player?.["renderSeek"],
-      (fn) => {
-        if (runtimeWindow.__player) runtimeWindow.__player["renderSeek"] = fn;
-      },
-    );
-    return a || b;
-  };
+  const wrapSeekFunctions = (): boolean => SEEKS.map(wrapFn).some(Boolean);
 
-  const installSeekTrap = (
-    obj: Record<string, unknown> | undefined,
-    key: string,
-    getter: () => unknown,
-    setter: (fn: (time: number) => unknown) => void,
-  ): void => {
+  const installSeekTrap = (slot: SeekSlot): void => {
+    const obj = runtimeWindow[slot[0]];
     if (!obj) return;
     try {
-      let current = obj[key];
-      Object.defineProperty(obj, key, {
+      let current = obj[slot[1]];
+      Object.defineProperty(obj, slot[1], {
         configurable: true,
         enumerable: true,
         get() {
@@ -335,9 +338,7 @@ function studioPositionSeekReapplyRuntime(): void {
         },
         set(value: unknown) {
           current = value;
-          if (typeof value === "function" && !isWrapped(value as (time: number) => unknown)) {
-            wrapFn(getter, setter);
-          }
+          if (typeof value === "function" && !isWrapped(value as Seek)) wrapFn(slot);
         },
       });
     } catch {
@@ -352,22 +353,7 @@ function studioPositionSeekReapplyRuntime(): void {
   }
 
   wrapSeekFunctions();
-  installSeekTrap(
-    runtimeWindow.__hf,
-    "seek",
-    () => runtimeWindow.__hf?.["seek"],
-    (fn) => {
-      if (runtimeWindow.__hf) runtimeWindow.__hf["seek"] = fn;
-    },
-  );
-  installSeekTrap(
-    runtimeWindow.__player as Record<string, unknown> | undefined,
-    "renderSeek",
-    () => runtimeWindow.__player?.["renderSeek"],
-    (fn) => {
-      if (runtimeWindow.__player) runtimeWindow.__player["renderSeek"] = fn;
-    },
-  );
+  for (const slot of SEEKS) installSeekTrap(slot);
   let remaining = 120;
   const interval = setInterval(() => {
     wrapSeekFunctions();
