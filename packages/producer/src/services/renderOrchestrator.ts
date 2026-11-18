@@ -6036,7 +6036,7 @@ async function executeRenderPipeline(input: {
       hdrDiagnostics,
       observability: observabilitySummary,
       subTimelineWait: worstSubTimelineWaitOutcome(dedupPerfs),
-      missingPath: describeMissingPath(error, { cacheDir: cfg.extractCacheDir }),
+      missingPath: describeMissingPath(error, { cacheDir: cfg.extractCacheDir, workDir }),
     });
     publishRenderFailure(
       job,

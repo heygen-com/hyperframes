@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, relative, resolve, isAbsolute } from "node:path";
-import { missingPathOf } from "@hyperframes/core/missing-path";
+import { errnoMissingPathOf } from "@hyperframes/core/missing-path";
 
 /** What was gone around a missing path when the render failed, from closed lists only: never a path or a name. */
 export interface MissingPathFacts {
@@ -25,6 +25,7 @@ const SYNCED = /onedrive|dropbox|icloud|mobile documents|clouddocs|google ?drive
 interface Where {
   tempRoot: string;
   cacheDir?: string;
+  workDir?: string;
 }
 
 const inside = (path: string, folder: string) => {
@@ -83,18 +84,27 @@ function highestGone(path: string, where: Where, hops = 0): MissingPathFacts["sc
 const isSpawnFailure = (error: unknown) =>
   !!(error as NodeJS.ErrnoException | undefined)?.syscall?.startsWith("spawn");
 
+const ownedByRender = (path: string, where: Where) =>
+  [where.tempRoot, where.cacheDir, where.workDir].some((root) => root && inside(path, root));
+
 /** What was gone around the path a failed render's ENOENT names; undefined when it names none or the look fails.
- * Call it before the render's own cleanup runs. */
+ * Only the render's own folders are looked at, never a share; call it before the render's own cleanup runs. */
 export function describeMissingPath(
   error: unknown,
-  { cacheDir, tempRoot = tmpdir() }: { cacheDir?: string; tempRoot?: string } = {},
+  {
+    cacheDir,
+    workDir,
+    tempRoot = tmpdir(),
+  }: { cacheDir?: string; workDir?: string; tempRoot?: string } = {},
 ): MissingPathFacts | undefined {
   try {
-    const path = missingPathOf(error);
+    const path = errnoMissingPathOf(error);
     if (!path || isSpawnFailure(error)) return undefined;
-    const where = { tempRoot, cacheDir };
+    const where = { tempRoot, cacheDir, workDir };
     return {
-      scope: highestGone(path, where),
+      scope: ownedByRender(path, where)
+        ? highestGone(path, where)
+        : scopeOfGone(path, where, false),
       synced: SYNCED.test(path),
       root: rootOf(path, where),
     };
