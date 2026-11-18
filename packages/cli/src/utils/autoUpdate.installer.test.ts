@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -29,10 +30,17 @@ function setup(staleMs = 60_000) {
   mkdirSync(runningDir);
   const marker = join(dir, "installed");
   const script = installerScript({
+    cwd: dir,
     configFile: join(dir, "config.json"),
     version: "9.9.9",
     bin: process.execPath,
-    args: ["-e", `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "")`],
+    args: [
+      "-e",
+      `const fs = require("node:fs");
+       fs.writeFileSync(${JSON.stringify(marker)}, JSON.stringify({
+         cwd: process.cwd(), localConfig: fs.existsSync("bunfig.toml")
+       }));`,
+    ],
     runningDir,
     pollMs: 50,
     maxWaitMs: 60_000,
@@ -41,8 +49,8 @@ function setup(staleMs = 60_000) {
   return { dir, runningDir, marker, script };
 }
 
-function start(args: string[]): ChildProcess {
-  const child = spawn(process.execPath, args, { stdio: "ignore" });
+function start(args: string[], cwd?: string): ChildProcess {
+  const child = spawn(process.execPath, args, { cwd, stdio: "ignore" });
   children.push(child);
   return child;
 }
@@ -73,6 +81,20 @@ function registerCli(runningDir: string): ChildProcess {
   writeFileSync(join(runningDir, String(cli.pid)), "");
   return cli;
 }
+
+it("runs the manager in the selected home even when the installer starts in a project", async () => {
+  const { dir, marker, script } = setup();
+  const project = join(dir, "project");
+  mkdirSync(project);
+  writeFileSync(join(project, "bunfig.toml"), "[install]\nexact = true\n");
+
+  await exited(start(["-e", script], project));
+
+  expect(JSON.parse(readFileSync(marker, "utf8"))).toEqual({
+    cwd: realpathSync(dir),
+    localConfig: false,
+  });
+});
 
 it("never replaces package files while a CLI process is running, then installs once it exits", async () => {
   const { dir, runningDir, marker, script } = setup();

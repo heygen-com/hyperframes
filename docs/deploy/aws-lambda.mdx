@@ -104,7 +104,7 @@ The stack's bucket expires objects under `cas/sha256/` 30 days after they were l
 
 #### Upgrading from a version that deployed x86 only
 
-`lambda deploy` now runs the plan and the render chunks on an arm64 container-image function by default; audio and assemble stay on the x86 function. Redeploying an existing stack without `--video-arch` moves it to arm64 and adds the `<stack>-video` ECR repository. To keep a stack on x86, pass `--video-arch x86_64` on every deploy. `--chrome-source chrome-headless-shell` also needs `--video-arch x86_64`, because the arm64 image bundles sparticuz Chrome only.
+`lambda deploy` now runs the plan and the render chunks on an arm64 container-image function by default; audio and assemble stay on the x86 function. Redeploying an existing stack without `--video-arch` moves it to arm64 and adds the `<stack>-video` ECR repository. To keep a stack on x86, pass `--video-arch x86_64` on every deploy. `--chrome-source chrome-headless-shell` also needs `--video-arch x86_64`, because the arm64 image is built from the sparticuz handler ZIP. The arm64 image itself runs Chrome for Testing's linux-arm64 `chrome-headless-shell`, whatever `--chrome-source` says.
 
 #### Upgrading from a version before shared content storage
 

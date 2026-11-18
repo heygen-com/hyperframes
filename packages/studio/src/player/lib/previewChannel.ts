@@ -54,7 +54,15 @@ export function setFrameLoopStart(iframe: HTMLIFrameElement, seconds: number | n
 
 export const AGENT_PROBE_MS = 1_000;
 
+const agents = new WeakMap<EditingPortClient, boolean>();
+
 async function agentConnected(client: EditingPortClient): Promise<boolean> {
+  const known = agents.get(client);
+  if (known !== undefined) return known;
+  client.ready.then(
+    () => agents.set(client, true),
+    () => agents.set(client, false),
+  );
   let timer: ReturnType<typeof setTimeout> | undefined;
   const probe = new Promise<boolean>(
     (resolve) => (timer = setTimeout(resolve, AGENT_PROBE_MS, false)),
@@ -67,6 +75,7 @@ async function agentConnected(client: EditingPortClient): Promise<boolean> {
     probe,
   ]);
   clearTimeout(timer);
+  if (!agents.has(client)) agents.set(client, connected);
   return connected;
 }
 
@@ -95,6 +104,18 @@ export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<Cl
   if (!Array.isArray(clips) || typeof durationInFrames !== "number") return null;
   if (!Number.isFinite(durationInFrames)) return null;
   return manifest as ClipManifest;
+}
+
+export async function previewClipParents(iframe: HTMLIFrameElement): Promise<Map<string, string>> {
+  const snapshot = await previewRequest(iframe, "runtime-snapshot", {});
+  const pairs: unknown = snapshot?.clipParents;
+  const parents = new Map<string, string>();
+  if (!Array.isArray(pairs)) return parents;
+  for (const pair of pairs) {
+    if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "string")
+      parents.set(pair[0], pair[1]);
+  }
+  return parents;
 }
 
 export async function previewConsoleErrors(

@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.65",
+  "version": "0.9.67",
   "description": "",
   "repository": {
     "type": "git",
@@ -121,6 +121,12 @@
       "node": "./dist/envProxy.js",
       "import": "./src/envProxy.ts",
       "types": "./src/envProxy.ts"
+    },
+    "./missing-path": {
+      "bun": "./src/missingPath.ts",
+      "node": "./dist/missingPath.js",
+      "import": "./src/missingPath.ts",
+      "types": "./src/missingPath.ts"
     },
     "./rename-retry": {
       "bun": "./src/renameWithRetry.ts",
@@ -465,6 +471,12 @@
       "import": "./src/runtime/editingPort.ts",
       "types": "./src/runtime/editingPort.ts"
     },
+    "./runtime/patch-tween": {
+      "bun": "./src/runtime/editing/patchTween.ts",
+      "node": "./dist/runtime/editing/patchTween.js",
+      "import": "./src/runtime/editing/patchTween.ts",
+      "types": "./src/runtime/editing/patchTween.ts"
+    },
     "./runtime/clip-window": {
       "bun": "./src/runtime/clipWindow.ts",
       "node": "./dist/runtime/clipWindow.js",
@@ -744,6 +756,10 @@
         "import": "./dist/envProxy.js",
         "types": "./dist/envProxy.d.ts"
       },
+      "./missing-path": {
+        "import": "./dist/missingPath.js",
+        "types": "./dist/missingPath.d.ts"
+      },
       "./rename-retry": {
         "import": "./dist/renameWithRetry.js",
         "types": "./dist/renameWithRetry.d.ts"
@@ -972,6 +988,10 @@
       "./runtime/editing-port": {
         "import": "./dist/runtime/editingPort.js",
         "types": "./dist/runtime/editingPort.d.ts"
+      },
+      "./runtime/patch-tween": {
+        "import": "./dist/runtime/editing/patchTween.js",
+        "types": "./dist/runtime/editing/patchTween.d.ts"
       },
       "./runtime/clip-window": {
         "import": "./dist/runtime/clipWindow.js",

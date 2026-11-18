@@ -40,6 +40,8 @@ import {
   CANVAS_DIMENSIONS,
   checkOutputResolutionCompatibility,
   type CanvasResolution,
+  terminalLines,
+  terminalText,
 } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
@@ -629,7 +631,7 @@ export function parseAspectRatioFlag(raw: string | undefined): string | undefine
 
 function logDetection(asJson: boolean, message: string): void {
   if (asJson) return;
-  console.log(c.dim(`   ${message}`));
+  console.log(c.dim(`   ${terminalText(message)}`));
 }
 
 // fallow-ignore-next-line complexity
@@ -715,7 +717,7 @@ async function prepareLocalArchive(
   const project = resolveProject(source.dir);
   if (!asJson) {
     console.log("");
-    console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
+    console.log(`${c.accent("◆")}  Zipping ${c.accent(terminalText(project.name))}`);
   }
   const { fileMap, entryPath, leftOut, outsideFiles } = await stageAndReport(project, composition, {
     asJson,
@@ -767,8 +769,8 @@ function zipWithinUploadLimit(fileMap: Map<string, StagedFile>) {
 }
 
 function reportLeftOut(warning: string, reference: LeftOutReference, asJson: boolean): void {
-  if (!asJson) return console.log(c.warn(`   ${warning}`));
-  console.error(c.warn(`   ${warning}`));
+  if (!asJson) return console.log(c.warn(`   ${terminalLines(warning)}`));
+  console.error(c.warn(`   ${terminalLines(warning)}`));
   console.error(JSON.stringify({ event: "left_out", ...reference }));
 }
 
@@ -868,7 +870,7 @@ async function offloadMedia(
     for (const item of offloaded.filter((entry) => entry.kept_in_archive)) {
       console.log(
         c.dim(
-          `   ${item.path} also stays in the zip: a script builds its path in a way that cannot be rewritten`,
+          `   ${terminalText(item.path)} also stays in the zip: a script builds its path in a way that cannot be rewritten`,
         ),
       );
     }
@@ -894,7 +896,7 @@ export function assertArchiveFits(sizeBytes: number, largestFiles: ArchiveFileSu
   errorBox(
     "Project too large for cloud render",
     `The zip is ${formatBytes(sizeBytes)} after moving media to HeyGen assets, over the ${formatBytes(DIRECT_UPLOAD_LIMIT_BYTES)} upload limit. Largest files left in it:\n${largestFiles
-      .map((file) => `  ${formatBytes(file.size_bytes).padStart(9)}  ${file.path}`)
+      .map((file) => `  ${formatBytes(file.size_bytes).padStart(9)}  ${terminalText(file.path)}`)
       .join("\n")}`,
     "Exclude files the render does not need with .hyperframesignore.",
   );
@@ -947,7 +949,7 @@ function reportUploadProgress(name: string, asJson: boolean): (event: UploadProg
       const retry = attempt > 1 ? ` (try ${attempt}, from the first byte)` : "";
       console.log(
         c.dim(
-          `   ${name}: ${percent}% · ${formatBytes(sentBytes)} of ${formatBytes(totalBytes ?? 0)}${retry}`,
+          `   ${terminalText(name)}: ${percent}% · ${formatBytes(sentBytes)} of ${formatBytes(totalBytes ?? 0)}${retry}`,
         ),
       );
     }
@@ -965,13 +967,15 @@ function describeOffload(item: OffloadedMedia, dryRun: boolean): string {
         : dryRun
           ? "would upload"
           : "uploaded";
-  return `${formatBytes(item.size_bytes).padStart(9)}  ${item.path} · ${verb}`;
+  return `${formatBytes(item.size_bytes).padStart(9)}  ${terminalText(item.path)} · ${verb}`;
 }
 
 function reportLargestFiles(prepared: PreparedLocalArchive): void {
   console.log(c.dim("   Largest included files:"));
   for (const file of prepared.largestFiles) {
-    console.log(c.dim(`   ${formatBytes(file.size_bytes).padStart(9)}  ${file.path}`));
+    console.log(
+      c.dim(`   ${formatBytes(file.size_bytes).padStart(9)}  ${terminalText(file.path)}`),
+    );
   }
   console.log(c.dim("   Exclude verified-unneeded files with .hyperframesignore."));
 }

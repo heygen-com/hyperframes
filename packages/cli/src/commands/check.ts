@@ -1,4 +1,4 @@
-import { terminalText } from "@hyperframes/core";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { captureArtifactRevision } from "../utils/artifactCapture.js";
 import { pngDimensions } from "../utils/pngDimensions.js";
 import { randomUUID } from "node:crypto";
@@ -82,7 +82,9 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
     const capturing = captureArtifactRevision(project.dir).catch(warnNotRecorded);
     const id = randomUUID();
     console.error(
-      `[hyperframes] check: the report is saved to ${checkReportFile(project.dir, id)} when the check ends, unless a warning says it could not be saved`,
+      terminalText(
+        `[hyperframes] check: the report is saved to ${checkReportFile(project.dir, id)} when the check ends, unless a warning says it could not be saved`,
+      ),
     );
     const report = await runCheckPipeline(project, options);
     const images = (files: readonly string[]) => files.map((file) => resolve(project.dir, file));
@@ -106,7 +108,9 @@ const DEFAULT_COMMAND_DEPENDENCIES: CheckCommandDependencies = {
 };
 
 function warnNotRecorded(error: unknown): undefined {
-  console.warn(`${c.warn("⚠")}  Check report was not recorded: ${normalizeErrorMessage(error)}`);
+  console.warn(
+    `${c.warn("⚠")}  Check report was not recorded: ${terminalLines(normalizeErrorMessage(error))}`,
+  );
   return undefined;
 }
 
@@ -343,7 +347,7 @@ export function createCheckCommand(
         const options = parseCheckOptions(args);
         const project = dependencies.resolveProject(args.dir);
         if (!asJson) {
-          console.log(`${c.accent("◆")}  Checking ${c.accent(project.name)}`);
+          console.log(`${c.accent("◆")}  Checking ${c.accent(terminalText(project.name))}`);
         }
         if (args["prepare-media"] === true) {
           await runPrepareMedia(dependencies, project, options, asJson);
@@ -359,11 +363,13 @@ export function createCheckCommand(
         if (asJson) {
           console.log(JSON.stringify(dependencies.withMeta(report), null, 2));
           if (report.saved)
-            console.error(`[hyperframes] check: report saved to ${report.saved.report}`);
+            console.error(
+              terminalText(`[hyperframes] check: report saved to ${report.saved.report}`),
+            );
         } else {
           printHumanReport(report);
           if (report.saved) {
-            console.log(`Report: ${report.saved.report}`);
+            console.log(terminalText(`Report: ${report.saved.report}`));
             console.log(
               `Revision: ${report.saved.revision ?? "none"} (${report.saved.attribution})`,
             );
@@ -483,7 +489,7 @@ async function runPrepareMedia(
     console.log(
       `${mark}  Browser-playable copies: ${files.length - failed.length}/${files.length} ready`,
     );
-    for (const file of failed) console.log(`   ${file.file}: ${file.reason}`);
+    for (const file of failed) console.log(terminalLines(`   ${file.file}: ${file.reason}`));
   }
   setCommandExitCode(failed.length === 0 ? 0 : 1);
 }
@@ -883,12 +889,13 @@ function printSnapshotSection(report: CheckReport): void {
     console.log(`  ${c.dim("◇")} disabled`);
   } else {
     console.log(`  ${c.success("◇")} ${report.snapshots.files.length} PNG(s) saved`);
-    for (const file of report.snapshots.files) console.log(`    ${c.dim(file)}`);
+    for (const file of report.snapshots.files) console.log(`    ${c.dim(terminalText(file))}`);
     if (report.snapshots.findingFiles.length > 0) {
       console.log(
         `  ${c.success("◇")} ${report.snapshots.findingFiles.length} finding crop(s) saved`,
       );
-      for (const file of report.snapshots.findingFiles) console.log(`    ${c.dim(file)}`);
+      for (const file of report.snapshots.findingFiles)
+        console.log(`    ${c.dim(terminalText(file))}`);
     }
   }
 }

@@ -169,6 +169,7 @@ import {
 } from "./render/shared.js";
 import { frameCacheOptions } from "./render/frameCacheBudget.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
+import { describeMissingPath, type MissingPathFacts } from "./render/missingPath.js";
 import { publishRenderFailure } from "./render/renderEventPublisher.js";
 import { EncoderInterruptedError } from "./render/encoderInterruption.js";
 import { RenderExecutionContext } from "./render/renderExecutionContext.js";
@@ -205,6 +206,7 @@ import {
   probeSegmentFrameCount,
   readSegmentManifest,
   segmentDirFor,
+  segmentManifestKey,
   validateCompletedSegments,
   writeSegmentManifest,
   type SegmentManifest,
@@ -347,6 +349,7 @@ function summarizeExtractionObservability(
     vfrPreflightCount: phaseBreakdown?.vfrPreflightCount,
     cacheHits: phaseBreakdown?.cacheHits,
     cacheMisses: phaseBreakdown?.cacheMisses,
+    cachePublishFailures: phaseBreakdown?.cachePublishFailures,
     transientRetries: phaseBreakdown?.transientRetries,
     ...coverageGauges,
     authoredTimedClipCount,
@@ -840,6 +843,7 @@ export interface RenderJob extends Partial<ReferenceBackgroundResult> {
     observability?: RenderObservabilitySummary;
     /** Worst sub-composition timeline wait outcome across sessions captured before the failure. */
     subTimelineWait?: SubTimelineWaitOutcome;
+    missingPath?: MissingPathFacts;
   };
 }
 
@@ -3130,6 +3134,16 @@ export async function executeRenderJob(
   }
 }
 
+function loadResumeKeyOrWarn(resume: boolean, log: ProducerLogger): Buffer | null {
+  const key = segmentManifestKey();
+  if (resume && !key) {
+    log.warn(
+      "[Render] --resume: no preview token could be read or created, so every segment will be captured again",
+    );
+  }
+  return key;
+}
+
 async function executeRenderPipeline(input: {
   job: RenderJob;
   projectDir: string;
@@ -5098,6 +5112,7 @@ async function executeRenderPipeline(input: {
           captureQuality: captureOptions.quality,
         });
         const segmentDir = segmentDirFor(projectDir, segmentPlanHash);
+        const manifestKey = loadResumeKeyOrWarn(job.config.resumeSegments === true, log);
         const emptySegmentManifest = (): SegmentManifest => ({
           version: 1,
           planHash: segmentPlanHash,
@@ -5109,12 +5124,14 @@ async function executeRenderPipeline(input: {
         let completedSegments: ReadonlySet<number> = new Set<number>();
         const existing = job.config.resumeSegments ? readSegmentManifest(segmentDir) : null;
         if (existing) {
-          completedSegments = await validateCompletedSegments(
-            existing,
+          completedSegments = await validateCompletedSegments(existing, {
+            expectedHash: segmentPlanHash,
             segmentDir,
-            segmentManifest,
-            (path) => probeSegmentFrameCount(path, extractMediaMetadata),
-          );
+            totalFrames,
+            segmentFrames,
+            key: manifestKey,
+            probeFrames: (path) => probeSegmentFrameCount(path, extractMediaMetadata),
+          });
           segmentManifest.completed = existing.completed.filter((entry) =>
             completedSegments.has(entry.index),
           );
@@ -5179,7 +5196,7 @@ async function executeRenderPipeline(input: {
                     ...segmentManifest.completed.filter((e) => e.index !== entry.index),
                     { ...entry, completedAt: new Date().toISOString() },
                   ];
-                  writeSegmentManifest(segmentDir, segmentManifest);
+                  writeSegmentManifest(segmentDir, segmentManifest, manifestKey);
                 },
                 updateCaptureObservability,
               }),
@@ -6031,6 +6048,7 @@ async function executeRenderPipeline(input: {
       hdrDiagnostics,
       observability: observabilitySummary,
       subTimelineWait: worstSubTimelineWaitOutcome(dedupPerfs),
+      missingPath: describeMissingPath(error, { cacheDir: cfg.extractCacheDir, workDir }),
     });
     publishRenderFailure(
       job,

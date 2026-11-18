@@ -1604,3 +1604,17 @@ describe("wrapScopedCompositionScript — authored source delimiters", () => {
     expect(wrapped.replace(authored, "")).toContain("__timelines");
   });
 });
+
+// fails without the fix: the scope went to String.replace as the replacement, so $' and $` in an id expanded.
+it.each(["a$'b", "a$`b", "a$&b"])(
+  "scopes the id %s exactly as a plain id, its $ kept as text",
+  (id) => {
+    const css = (compId: string) =>
+      `[data-composition-id="${compId}"] .title { opacity: 0; }\n` +
+      `[data-composition-id="${compId}"][data-start="0"] { opacity: 1; }\n` +
+      `[data-duration="2"][data-composition-id="${compId}"] .card { color: red; }`;
+    const plain = scopeCssToComposition(css("aZZb"), "aZZb");
+
+    expect(scopeCssToComposition(css(id), id)).toBe(plain.split("aZZb").join(id));
+  },
+);

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdtempSync,
@@ -12,7 +12,12 @@ import {
 import os, { availableParallelism, tmpdir, totalmem } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
-import { findFfBinary, followFfmpegProgress } from "@hyperframes/parsers/ff-binaries";
+import { previewToken } from "@hyperframes/core/preview-proof";
+import {
+  concatListInputArgs,
+  findFfBinary,
+  followFfmpegProgress,
+} from "@hyperframes/parsers/ff-binaries";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import { ffmpegHasHdrFilters } from "./hdrFilters.js";
 import { mediaInputArgs, NOT_MEDIA } from "./mediaExtensions.js";
@@ -71,6 +76,30 @@ export const TRANSCODE_STALL_MS = boundedEnvInteger(
 /** A longer source is copied in pieces this long; a stopped copy keeps its finished pieces and loses at most one. */
 export const PROXY_CHUNK_SECONDS = 15;
 const CHUNK_PREFIX = ".part-";
+// Without a preview token, pieces are reused only within this process.
+const UNSIGNED_PIECE_SECRET = randomBytes(32).toString("hex");
+let warnedNoPieceToken = false;
+
+function pieceSecret(): string {
+  const token = previewToken();
+  if (token) return token;
+  if (!warnedNoPieceToken) {
+    warnedNoPieceToken = true;
+    console.warn(
+      "[media-proxy] no preview token could be read, so a stopped copy restarts from its first piece after Studio restarts",
+    );
+  }
+  return UNSIGNED_PIECE_SECRET;
+}
+
+function unguessablePiecePrefix(cacheDir: string, stem: string): string {
+  const tag = createHmac("sha256", pieceSecret())
+    .update(`proxy-piece\n${stem}`)
+    .digest("hex")
+    .slice(0, 32);
+  return join(cacheDir, `${CHUNK_PREFIX}${stem}-${tag}-`);
+}
+
 const CONCAT_TIMEOUT_MS = 2 * 60 * 1000;
 const FAILURE_CACHE_TTL_MS = 60 * 1000;
 export const PROXY_PENDING_RETRY_AFTER_SECONDS = 2;
@@ -818,12 +847,7 @@ async function runFfmpeg(
 function concatArgs(listPath: string, target: string, variant: ProxyVariant): string[] {
   return [
     "-y",
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    listPath,
+    ...concatListInputArgs(listPath),
     "-c",
     "copy",
     ...(variant === "h264" ? ["-movflags", "+faststart"] : []),
@@ -945,11 +969,16 @@ async function transcodeToCache(
       return sameContent;
     }
     const copyMade = (path: string) => isProjectCacheFile(projectDir, path);
+    const chunks = {
+      projectDir,
+      prefix: unguessablePiecePrefix(cacheDir, basename(cachePath, extname(cachePath))),
+    };
     const release = await acquireCopyLock(
       cachePath,
       copyMade,
       job.abandoned.signal,
       TRANSCODE_STALL_MS,
+      basename(chunks.prefix),
     ).catch((error: unknown) => {
       throw error instanceof CopyLockStalledError
         ? new ProxyTranscodeError(error.message, null, "")
@@ -961,10 +990,6 @@ async function transcodeToCache(
     }
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
-      const chunks = {
-        projectDir,
-        prefix: join(cacheDir, `${CHUNK_PREFIX}${basename(cachePath, extname(cachePath))}-`),
-      };
       await runFfmpeg(
         absoluteSourcePath,
         tempPath,

@@ -164,8 +164,10 @@ async function loadModule(
   codecName?: string,
   durationSeconds?: number,
   streams?: string[],
+  token: string | null = "a".repeat(64),
 ): Promise<typeof import("./proxyTranscoder.js")> {
   vi.resetModules();
+  vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => token }));
   vi.doMock("node:child_process", () => {
     const mocked = { spawn };
     return { ...mocked, default: mocked };
@@ -243,6 +245,157 @@ describe("resolveProxy on a long source", () => {
     expect(heard.at(-1)).toEqual({ doneSeconds: LONG_SECONDS, totalSeconds: LONG_SECONDS });
     expect(calls.at(-1)!.args).toEqual(expect.arrayContaining(["-f", "concat", "-c", "copy"]));
     expect(copiesIn(cacheDirectory)).toEqual([cachePath.split("/").at(-1)]);
+  });
+
+  const answerAll = async (calls: SpawnCall[]): Promise<void> => {
+    for (let answered = 0; ; answered = calls.length) {
+      await flush(50);
+      if (calls.length === answered) break;
+      calls.slice(answered).forEach((call) => succeed(call));
+    }
+  };
+
+  it("joins pieces through the shared concat input, which allows only local mp4, mov or webm files", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "long.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const result = resolveProxy(projectDir, sourcePath);
+    await answerAll(calls);
+    await result;
+    const joinArgs = calls.at(-1)!.args;
+    expect(joinArgs.slice(1, 14)).toEqual([
+      "-xerror",
+      "-protocol_whitelist",
+      "file",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-format_whitelist",
+      "concat,mov,matroska",
+      "-i",
+      expect.stringMatching(/pieces\.txt$/),
+      "-c",
+      "copy",
+    ]);
+  });
+
+  it("encodes every piece again when the project shipped pieces at the names it can predict", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, getProxyCachePath } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "long.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const stem = basename(getProxyCachePath(projectDir, sourcePath), ".mp4");
+    const cacheDirectory = join(projectDir, ".transcode-cache");
+    mkdirSync(cacheDirectory, { recursive: true });
+    for (const index of [0, 1, 2]) {
+      writeFileSync(join(cacheDirectory, `.part-${stem}-${index}.mp4`), "shipped-playlist");
+    }
+
+    const result = resolveProxy(projectDir, sourcePath);
+    await answerAll(calls);
+    await result;
+    expect(startsOf(calls)).toEqual(["0", String(PIECE_SECONDS), String(2 * PIECE_SECONDS)]);
+  });
+
+  it("continues its own stopped copy after a restart, but not pieces another user made", async () => {
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "long.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const stopAfterFirstPiece = async (token: string) => {
+      const { spawn, calls } = createSpawnSpy();
+      const mod = await loadModule(
+        spawn,
+        FFMPEG_PATH,
+        false,
+        null,
+        undefined,
+        LONG_SECONDS,
+        undefined,
+        token,
+      );
+      const run = mod.resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
+      await flush();
+      succeed(calls[0]!);
+      await flush(50);
+      calls[1]!.proc.emit("close", null, "SIGKILL");
+      expect(await run).toBeInstanceOf(Error);
+    };
+    const resumeStarts = async (token: string) => {
+      const { spawn, calls } = createSpawnSpy();
+      const mod = await loadModule(
+        spawn,
+        FFMPEG_PATH,
+        false,
+        null,
+        undefined,
+        LONG_SECONDS,
+        undefined,
+        token,
+      );
+      const run = mod.resolveProxy(projectDir, sourcePath);
+      await answerAll(calls);
+      await run;
+      return startsOf(calls);
+    };
+
+    await stopAfterFirstPiece("a".repeat(64));
+    expect(await resumeStarts("b".repeat(64))).toEqual([
+      "0",
+      String(PIECE_SECONDS),
+      String(2 * PIECE_SECONDS),
+    ]);
+    rmSync(join(projectDir, ".transcode-cache"), { recursive: true, force: true });
+    await stopAfterFirstPiece("a".repeat(64));
+    expect(await resumeStarts("a".repeat(64))).toEqual([
+      String(PIECE_SECONDS),
+      String(2 * PIECE_SECONDS),
+    ]);
+  });
+
+  it("warns once when no preview token can be read, and still makes the copy", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+      undefined,
+      null,
+    );
+    const projectDir = tmpProject();
+    for (const name of ["one.mov", "two.mov"]) {
+      const sourcePath = join(projectDir, name);
+      writeFileSync(sourcePath, `source-${name}`);
+      const result = resolveProxy(projectDir, sourcePath);
+      await answerAll(calls);
+      await result;
+    }
+    const tokenWarnings = warn.mock.calls.filter(([message]) =>
+      String(message).includes("no preview token"),
+    );
+    expect(tokenWarnings).toHaveLength(1);
+    warn.mockRestore();
   });
 
   it("copies only the first stretch when asked, as a copy of its own", async () => {

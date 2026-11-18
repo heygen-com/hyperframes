@@ -1156,6 +1156,10 @@ setting `preview` uses:
 HYPERFRAMES_PREVIEW_ALLOWED_HOSTS=demo.tunnels.example hyperframes present
 ```
 
+Any path they have no page for, and any address carrying a `code` or `state`
+parameter, gets a plain-text `Not found` that cannot be framed or scripted, so a
+sign-in that returns to their port leaves nothing the project's own script can read.
+
 ### `publish`
 
 For new video reviews, use [`share`](#share). Legacy source publishing stays
@@ -2156,6 +2160,16 @@ Segmented and multi-chunk joins require FFmpeg 5.0 or later for per-file
 options in concat lists. If FFmpeg reports an unknown `option` directive,
 update the binary used for rendering.
 
+`--resume` reuses only segments you finished on this machine. Their record is
+signed with a key derived from your per-user preview token, a private file in
+your home folder (`~/.local/state/hyperframes/auth`, or
+`%LOCALAPPDATA%\hyperframes` on Windows), so a `.hf-segments` folder copied
+from another machine or received inside a project is captured again. If that
+token cannot be read or created, for example in a read-only home folder,
+`--resume` warns and captures every segment again. Each reused segment must
+also match the size and SHA-256 recorded when it finished. Segments recorded by
+an older HyperFrames version are captured again once.
+
 mp4 and mov only; png-sequence, gif, webm, HDR and shader-transition renders
 keep their existing routes.
 
@@ -2414,6 +2428,10 @@ prompting, `--yes, -y` upgrades a detected global install (otherwise it prints
 the right `npx` command; an unattended run without `--yes` or `--check` exits 2),
 and `--project [dir]` rewrites
 `hyperframes@<version>` script pins in a project's `package.json`.
+Foreground and background CLI updates run the global package manager from your home directory.
+Run global CLI updates directly from your shell. An npm, pnpm, or Bun package script can pass project settings to its children, so the CLI skips self-installation in that context.
+On POSIX systems, the home directory must belong to the effective user and allow writes only by its owner. If `sudo` retains a different user's home, the update reports the ownership mismatch. A skipped background install reports its reason on stderr.
+
 `--check --json` returns:
 
 ```json
@@ -3071,8 +3089,8 @@ deploy:
 | `--profile`       | `AWS_PROFILE`                        | AWS profile name                                         |
 | `--concurrency`   | none                                 | Lambda reserved concurrency. Without it, a new stack reserves none and each render runs up to 90% of the account's unreserved concurrency; a redeploy keeps the stack's current reservation; `none` removes it |
 | `--memory`        | `10240`                              | Lambda memory in MB                                      |
-| `--chrome-source` | `sparticuz`                          | `sparticuz` or `chrome-headless-shell`                   |
-| `--video-arch`    | `arm64`                              | `arm64` runs the plan and the chunks on an arm64 container-image function, pushed to an ECR repository named `<stack>-video`; audio and assemble stay on x86. Needs `sparticuz`. `x86_64` runs everything on the x86 function |
+| `--chrome-source` | `sparticuz`                          | `sparticuz`. `chrome-headless-shell` is refused: it does not fit a ZIP function, and the arm64 video image already runs it |
+| `--video-arch`    | `arm64`                              | `arm64` runs the plan and the chunks on an arm64 container-image function, pushed to an ECR repository named `<stack>-video`; audio and assemble stay on x86. The image runs its own `chrome-headless-shell`. `x86_64` runs everything on the x86 function |
 | `--skip-build`    | off                                  | Reuse the existing `handler.zip`                         |
 | `--no-warm`       | warm                                 | Skip the one warm-up call to the video function after deploy, which loads its container image so the first render is not the one that waits for it |
 

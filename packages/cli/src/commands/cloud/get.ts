@@ -13,6 +13,7 @@ import { colorStatus } from "../../cloud/statusColor.js";
 import { withMeta } from "../../utils/updateCheck.js";
 import type { HyperframesRenderDetail } from "../../cloud/index.js";
 import { c } from "../../ui/colors.js";
+import { terminalTextDeep } from "@hyperframes/core";
 
 export default defineCommand({
   meta: { name: "get", description: "Fetch detail for one cloud render" },
@@ -36,7 +37,7 @@ export default defineCommand({
         console.log(JSON.stringify(withMeta({ render: detail }), null, 2));
         return;
       }
-      printHuman(detail);
+      printHuman(terminalTextDeep(detail));
     } catch (err) {
       reportApiError("Could not fetch render", err, {
         notFound: `No render found with id "${args.id}".`,

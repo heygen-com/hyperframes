@@ -65,6 +65,15 @@ const sameSource = (a: EditingElementSource, b: EditingElementSource) =>
   a.compositionId === b.compositionId &&
   a.originalCompositionId === b.originalCompositionId;
 
+/** The element's source when every field fits the port; null otherwise, since a cut path or id names another file. */
+function boundedSource(element: Element): EditingElementSource | null {
+  const source = readElementSource(element);
+  const fields = [source.file, source.compositionId, source.originalCompositionId];
+  return fields.every((field) => field === null || field.length <= MAX_ELEMENT_VALUE)
+    ? source
+    : null;
+}
+
 function matchesBefore(element: Element, selector: string | undefined) {
   if (!selector?.startsWith(".")) return null;
   const groups: Array<{ source: EditingElementSource; count: number }> = [];
@@ -76,7 +85,8 @@ function matchesBefore(element: Element, selector: string | undefined) {
   }
   for (const match of matches) {
     if (match === element) return groups;
-    const source = readElementSource(match);
+    const source = boundedSource(match);
+    if (!source) return null;
     const group = groups.find((entry) => sameSource(entry.source, source));
     if (group) group.count += 1;
     else if (groups.push({ source, count: 1 }) > MAX_SOURCE_GROUPS) return null;
@@ -105,14 +115,19 @@ function inlineStyles(element: Element, state: Cut): Record<string, string> {
   if (declared.length > MAX_ELEMENT_ENTRIES) state.truncated = true;
   for (let index = 0; index < Math.min(declared.length, MAX_ELEMENT_ENTRIES); index += 1) {
     const name = declared.item(index);
+    if (name.length > MAX_ELEMENT_VALUE) {
+      state.truncated = true;
+      continue;
+    }
     styles[name] = cut(declared.getPropertyValue(name), MAX_ELEMENT_VALUE, state, true);
   }
   return styles;
 }
 
 function attributes(element: Element, state: Cut): EditingElementDescription["attributes"] {
-  const kept = Array.from(element.attributes).filter((attribute) => attribute.name !== "style");
-  if (kept.length > MAX_ELEMENT_ENTRIES) state.truncated = true;
+  const named = Array.from(element.attributes).filter((attribute) => attribute.name !== "style");
+  const kept = named.filter((attribute) => attribute.name.length <= MAX_ELEMENT_VALUE);
+  if (kept.length < named.length || kept.length > MAX_ELEMENT_ENTRIES) state.truncated = true;
   return kept
     .slice(0, MAX_ELEMENT_ENTRIES)
     .map((attribute) => [attribute.name, cut(attribute.value, MAX_ELEMENT_VALUE, state, true)]);
@@ -137,22 +152,27 @@ export function elementHit(element: Element): EditingElementHit {
   const rect = element.getBoundingClientRect();
   return {
     handle: handleFor(element),
-    tag: element.tagName.toLowerCase(),
+    tag: element.tagName.toLowerCase().slice(0, MAX_ELEMENT_VALUE),
     rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
   };
 }
 
-function describeElement(element: Element): EditingElementDescription {
-  const selector = buildStableSelector(element);
+const whole = (value: string | undefined) =>
+  value && value.length <= MAX_ELEMENT_VALUE ? value : undefined;
+
+function describeElement(element: Element): EditingElementDescription | null {
+  const source = boundedSource(element);
+  if (!source) return null;
+  const selector = whole(buildStableSelector(element));
   const state: Cut = { truncated: false };
   return {
     ...elementHit(element),
-    label: buildElementLabel(element),
+    label: buildElementLabel(element).slice(0, MAX_ELEMENT_VALUE),
     parent: element.parentElement ? handleFor(element.parentElement) : null,
-    id: element.id || null,
+    id: whole(element.id) ?? null,
     selector: selector ?? null,
     matchesBefore: matchesBefore(element, selector),
-    source: readElementSource(element),
+    source,
     locked: element.closest("[data-timeline-locked]") !== null,
     attributes: attributes(element, state),
     inlineStyles: inlineStyles(element, state),
@@ -195,9 +215,12 @@ export function queryElements(selector: string): {
   truncated: boolean;
 } {
   const matches: EditingElementMatch[] = [];
+  let truncated = false;
   for (const element of document.querySelectorAll(selector)) {
     if (matches.length === MAX_QUERY_MATCHES) return { matches, truncated: true };
-    matches.push({ handle: handleFor(element), source: readElementSource(element) });
+    const source = boundedSource(element);
+    if (source) matches.push({ handle: handleFor(element), source });
+    else truncated = true;
   }
-  return { matches, truncated: false };
+  return { matches, truncated };
 }

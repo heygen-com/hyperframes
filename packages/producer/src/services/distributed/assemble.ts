@@ -37,9 +37,9 @@ import { localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { basename, dirname, join } from "node:path";
 import {
   appendRateCapArgs,
-  buildVideoConcatInputArgs,
   writeVideoConcatList,
   appendRenderProvenanceArgs,
+  concatListInputArgs,
   describeFfmpegFailure,
   getEncoderPreset,
   MIXED_AUDIO_FILENAME,
@@ -287,11 +287,7 @@ function videoInputArgs(ctx: JoinContext, videoSources: readonly string[]): stri
         "-i",
         videoSources[0]!,
       ]
-    : [
-        "-r",
-        ctx.fpsArg,
-        ...buildVideoConcatInputArgs(writeVideoConcatList(ctx.workDir, videoSources)),
-      ];
+    : ["-r", ctx.fpsArg, ...concatListInputArgs(writeVideoConcatList(ctx.workDir, videoSources))];
 }
 
 export function cfrEncodeArgs(

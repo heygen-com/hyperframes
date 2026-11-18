@@ -110,6 +110,12 @@
       "types": "./dist/envProxy.d.ts",
       "environments": ["bun", "node"]
     },
+    "./missing-path": {
+      "source": "./src/missingPath.ts",
+      "runtime": "./dist/missingPath.js",
+      "types": "./dist/missingPath.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./rename-retry": {
       "source": "./src/renameWithRetry.ts",
       "runtime": "./dist/renameWithRetry.js",
@@ -456,6 +462,12 @@
       "source": "./src/runtime/editingPort.ts",
       "runtime": "./dist/runtime/editingPort.js",
       "types": "./dist/runtime/editingPort.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/patch-tween": {
+      "source": "./src/runtime/editing/patchTween.ts",
+      "runtime": "./dist/runtime/editing/patchTween.js",
+      "types": "./dist/runtime/editing/patchTween.d.ts",
       "environments": ["browser", "bun", "node"]
     },
     "./runtime/clip-window": {

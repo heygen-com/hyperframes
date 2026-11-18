@@ -45,6 +45,7 @@ import type { SdrSegmentedCapturePlan } from "../capturePlan.js";
 import { planSegments, segmentOutputPath, type SegmentSlice } from "../segmentPlan.js";
 import type { SegmentVideoFrames, SegmentWorkerFrames } from "../segmentVideoFrames.js";
 import { createSegmentQueue } from "../segmentQueue.js";
+import { hashSegmentFile } from "../segmentManifest.js";
 import { isTargetLossError } from "../segmentRecycle.js";
 import {
   OPENING_CAPTURE_SESSION,
@@ -104,6 +105,7 @@ export interface CaptureSegmentedStageInput {
     endFrame: number;
     path: string;
     bytes: number;
+    sha256: string;
   }) => void;
   /** Parallel capture sessions pulling from one segment queue. Default 1. */
   workerCount?: number;
@@ -298,6 +300,7 @@ async function captureSegmentToEncoder(
       // Recorded so resume can prove the file on disk is the one that
       // finished; absent only in unit tests, whose fake encoder writes none.
       bytes: existsSync(segmentPath) ? statSync(segmentPath).size : 0,
+      sha256: existsSync(segmentPath) ? await hashSegmentFile(segmentPath) : "",
     });
     return encodeResult;
   } finally {

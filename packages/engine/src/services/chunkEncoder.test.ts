@@ -1923,12 +1923,12 @@ describe("buildConcatArgs", () => {
     const args = buildConcatArgs("/w/concat-list.txt", "/w/video-only.mp4");
     expect(args.slice(0, 13)).toEqual([
       "-xerror",
+      "-protocol_whitelist",
+      "file",
       "-f",
       "concat",
       "-safe",
       "0",
-      "-protocol_whitelist",
-      "file",
       "-format_whitelist",
       "concat,mov,matroska",
       "-i",

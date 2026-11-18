@@ -82,8 +82,8 @@ RUN case "$TARGETARCH" in \
 # HeadlessExperimental.beginFrame before the image can build. Chrome for Testing
 # publishes no linux arm64 headless shell and no checksums, so the sha256 below
 # was taken from the archive itself; bump the version and hash together.
-ARG CHROME_HEADLESS_SHELL_VERSION=152.0.7977.30
-ARG CHROME_HEADLESS_SHELL_SHA256_AMD64=1b150320178ecabe39726bcf3198ebb896ba2b7a07d870db1710914c42d55221
+ARG CHROME_HEADLESS_SHELL_VERSION=158.0.8127.36
+ARG CHROME_HEADLESS_SHELL_SHA256_AMD64=2d3a23017323c54fd457a678e4351f895c4076d8050e39d5aa6247f93448b73a
 RUN case "$TARGETARCH" in \
       amd64) CHS_SHA256="$CHROME_HEADLESS_SHELL_SHA256_AMD64" ;; \
       *) echo "no pinned chrome-headless-shell for TARGETARCH '$TARGETARCH'" >&2; exit 1 ;; \

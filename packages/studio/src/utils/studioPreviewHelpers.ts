@@ -4,6 +4,8 @@ import {
   pointerTarget,
   pointerTargets,
 } from "@hyperframes/core/runtime/editing-port";
+import { bridgePlaybackAdapter } from "../player/lib/bridgePlayback";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
 
 // One canvas hit-test for Studio and the runtime that answers it for a frame Studio cannot script.
 export { coversComposition };
@@ -73,6 +75,11 @@ function readPlaybackTime(target: object | null, key: string): number | null {
 }
 
 export function pauseStudioPreviewPlayback(iframe: HTMLIFrameElement | null): number | null {
+  if (iframe && previewFrameOpaque(iframe)) {
+    const bridge = bridgePlaybackAdapter(iframe);
+    bridge?.pause();
+    return bridge?.getTime() ?? null;
+  }
   const win = iframe?.contentWindow;
   if (!win) return null;
 

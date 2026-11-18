@@ -6,10 +6,11 @@
  * guard that: the plan hash covers everything that determines segment bytes,
  * and every reused segment is re-validated on disk before it is skipped.
  */
-import { createHash } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import {
   closeSync,
   constants,
+  createReadStream,
   fstatSync,
   lstatSync,
   mkdirSync,
@@ -24,7 +25,8 @@ import {
 } from "@hyperframes/core/cache-dir";
 import { isSafePath, realpath } from "@hyperframes/core/safe-path";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
-import { planSegments, segmentOutputPath } from "./segmentPlan.js";
+import { previewToken } from "@hyperframes/core/preview-proof";
+import { planSegments, segmentOutputPath, type SegmentSlice } from "./segmentPlan.js";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 
 export interface SegmentManifestEntry {
@@ -33,6 +35,8 @@ export interface SegmentManifestEntry {
   endFrame: number;
   path: string;
   bytes: number;
+  /** Hex SHA-256 of the segment file, taken when it finished. */
+  sha256: string;
   completedAt: string;
 }
 
@@ -42,6 +46,8 @@ export interface SegmentManifest {
   totalFrames: number;
   segmentFrames: number;
   completed: SegmentManifestEntry[];
+  /** HMAC by this user's manifest key; resume trusts no manifest without a valid one. */
+  mac?: string;
 }
 
 export interface SegmentPlanHashInput {
@@ -137,6 +143,7 @@ function isEntry(value: unknown): value is SegmentManifestEntry {
     hasNumber(value, "endFrame") &&
     hasString(value, "path") &&
     hasNumber(value, "bytes") &&
+    hasString(value, "sha256") &&
     hasString(value, "completedAt")
   );
 }
@@ -178,12 +185,53 @@ export function readSegmentManifest(segmentDir: string): SegmentManifest | null 
   }
 }
 
+/**
+ * The key that signs segment manifests, derived from this user's preview token, which lives in the
+ * user's home outside every project. Null when no token can be read or made; resume then reuses nothing.
+ */
+export function segmentManifestKey(token: string | null = previewToken()): Buffer | null {
+  return token ? createHmac("sha256", token).update("segment-manifest").digest() : null;
+}
+
+function manifestMac(manifest: SegmentManifest, key: Buffer): string {
+  const signed = [
+    manifest.planHash,
+    manifest.totalFrames,
+    manifest.segmentFrames,
+    manifest.completed.map((e) => [e.index, e.startFrame, e.endFrame, e.bytes, e.sha256]),
+  ];
+  return createHmac("sha256", key).update(JSON.stringify(signed)).digest("hex");
+}
+
+function signSegmentManifest(manifest: SegmentManifest, key: Buffer | null): SegmentManifest {
+  const { version, planHash, totalFrames, segmentFrames, completed } = manifest;
+  const unsigned: SegmentManifest = { version, planHash, totalFrames, segmentFrames, completed };
+  return key ? { ...unsigned, mac: manifestMac(unsigned, key) } : unsigned;
+}
+
+function hasValidMac(manifest: SegmentManifest, key: Buffer | null): boolean {
+  if (!key || typeof manifest.mac !== "string") return false;
+  const expected = Buffer.from(manifestMac(manifest, key), "hex");
+  const actual = Buffer.from(manifest.mac, "hex");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+export async function hashSegmentFile(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(path)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
 /** Atomic: write to a temp name, then rename over the manifest. */
-export function writeSegmentManifest(segmentDir: string, manifest: SegmentManifest): void {
+export function writeSegmentManifest(
+  segmentDir: string,
+  manifest: SegmentManifest,
+  key: Buffer | null,
+): void {
   mkdirSync(segmentDir, { recursive: true });
   replaceFileAtomically(
     join(segmentDir, MANIFEST_FILENAME),
-    JSON.stringify(manifest, null, 2),
+    JSON.stringify(signSegmentManifest(manifest, key), null, 2),
     0o600,
   );
 }
@@ -212,38 +260,65 @@ export async function probeSegmentFrameCount(
   }
 }
 
+export interface SegmentResumeCheck {
+  expectedHash: string;
+  segmentDir: string;
+  totalFrames: number;
+  segmentFrames: number;
+  key: Buffer | null;
+  probeFrames: (path: string) => Promise<number | null>;
+}
+
+function plannedSlice(
+  entry: SegmentManifestEntry,
+  plan: readonly SegmentSlice[],
+): SegmentSlice | undefined {
+  const slice = Number.isInteger(entry.index) ? plan[entry.index] : undefined;
+  if (!slice || slice.startFrame !== entry.startFrame || slice.endFrame !== entry.endFrame) {
+    return undefined;
+  }
+  return slice;
+}
+
+function isPlainFileOfSize(path: string, bytes: number): boolean {
+  const stat = lstatSync(path, { throwIfNoEntry: false });
+  return (
+    stat !== undefined && stat.isFile() && stat.nlink === 1 && stat.size > 0 && stat.size === bytes
+  );
+}
+
 /**
- * Indices safe to skip on resume. A segment counts only if the hash matches,
- * the file exists at the recorded size, and its frame count equals the slice
- * length. Anything else re-captures — the cost of re-capturing a good segment
- * is minutes; the cost of reusing a bad one is a silently wrong video.
+ * Indices safe to skip on resume. A segment counts only if this user's key
+ * signed the manifest, the plan hash matches, the entry matches a slice of
+ * this plan, and the file the join will read (the slice's own path in
+ * `segmentDir`, never the manifest's `path`) is a plain file at the recorded
+ * size and hash whose frame count equals the slice length. The hash is
+ * checked before the prober opens the file. Anything else re-captures:
+ * re-capturing a good segment costs minutes, reusing a bad one silently
+ * produces a wrong video.
  */
 export async function validateCompletedSegments(
   manifest: SegmentManifest,
-  segmentDir: string,
-  plan: Pick<SegmentManifest, "planHash" | "segmentFrames" | "totalFrames">,
-  probeFrames: (path: string) => Promise<number | null>,
+  check: SegmentResumeCheck,
 ): Promise<Set<number>> {
   const ok = new Set<number>();
   if (
-    manifest.planHash !== plan.planHash ||
-    manifest.totalFrames !== plan.totalFrames ||
-    manifest.segmentFrames !== plan.segmentFrames
+    manifest.totalFrames !== check.totalFrames ||
+    manifest.segmentFrames !== check.segmentFrames ||
+    manifest.planHash !== check.expectedHash ||
+    !hasValidMac(manifest, check.key)
   )
     return ok;
-  const slices = planSegments(plan.totalFrames, plan.segmentFrames);
+  const plan = planSegments(check.totalFrames, check.segmentFrames);
   for (const entry of manifest.completed) {
-    if (!Number.isSafeInteger(entry.index)) continue;
-    const slice = slices[entry.index];
-    if (!slice || slice.startFrame !== entry.startFrame || slice.endFrame !== entry.endFrame)
-      continue;
-    const path = segmentOutputPath(segmentDir, slice.index);
-    if (entry.path !== path) continue;
-    const stat = lstatSync(path, { throwIfNoEntry: false });
-    if (!stat?.isFile() || stat.nlink !== 1 || stat.size <= 0 || stat.size !== entry.bytes)
-      continue;
-    if ((await probeFrames(path)) !== slice.endFrame - slice.startFrame) continue;
-    ok.add(entry.index);
+    const slice = plannedSlice(entry, plan);
+    if (!slice) continue;
+    const path = segmentOutputPath(check.segmentDir, slice.index);
+    if (entry.path !== path || !isPlainFileOfSize(path, entry.bytes)) continue;
+    if ((await hashSegmentFile(path)) !== entry.sha256) continue;
+    const frames = await check.probeFrames(path);
+    if (frames !== slice.endFrame - slice.startFrame) continue;
+    ok.add(slice.index);
   }
   return ok;
 }

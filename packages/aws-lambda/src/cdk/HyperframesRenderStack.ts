@@ -42,7 +42,7 @@ export interface HyperframesRenderStackProps {
   lambdaTimeoutSec?: number;
   /** Lambda reserved concurrency cap. `undefined` = unreserved (account default). */
   reservedConcurrency?: number;
-  /** Which Chrome runtime was bundled into the handler ZIP. Default `"sparticuz"`. */
+  /** Which Chrome runtime was bundled into the handler ZIP. Only `"sparticuz"`: a shell ZIP is over Lambda's limit. */
   chromeSource?: "sparticuz" | "chrome-headless-shell";
   /** Threshold for the runaway-invocations alarm. Default 1000 invocations/hour. */
   chunkInvocationAlarmThreshold?: number;
@@ -62,6 +62,16 @@ const DEFAULT_TIMEOUT_SEC = 900;
 const DEFAULT_CHROME_SOURCE = "sparticuz";
 const DEFAULT_ALARM_THRESHOLD = 1000;
 
+function zipChromeSource(
+  source: NonNullable<HyperframesRenderStackProps["chromeSource"]>,
+): "sparticuz" {
+  if (source === "sparticuz") return source;
+  throw new Error(
+    "[HyperframesRenderStack] chromeSource chrome-headless-shell does not fit a Lambda ZIP function, so the " +
+      "handler ZIP ships @sparticuz/chromium. The arm64 video image runs chrome-headless-shell.",
+  );
+}
+
 export class HyperframesRenderStack extends Construct {
   /** S3 bucket for plan tarballs, chunk outputs, and final renders. */
   readonly bucket: s3.Bucket;
@@ -76,7 +86,7 @@ export class HyperframesRenderStack extends Construct {
     const projectName = props.projectName ?? "hyperframes";
     const memorySize = props.lambdaMemoryMb ?? DEFAULT_MEMORY_MB;
     const timeoutSec = props.lambdaTimeoutSec ?? DEFAULT_TIMEOUT_SEC;
-    const chromeSource = props.chromeSource ?? DEFAULT_CHROME_SOURCE;
+    const chromeSource = zipChromeSource(props.chromeSource ?? DEFAULT_CHROME_SOURCE);
     const alarmThreshold = props.chunkInvocationAlarmThreshold ?? DEFAULT_ALARM_THRESHOLD;
     const handlerZipPath = props.handlerZipPath ?? defaultHandlerZipPath();
 

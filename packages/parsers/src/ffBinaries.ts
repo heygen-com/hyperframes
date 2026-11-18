@@ -249,6 +249,26 @@ export function clearFfBinaryLookupCache(): void {
   skippedX86Binaries.clear();
 }
 
+/**
+ * Concat input for a list HyperFrames wrote: entries open only as local mov, matroska or concat
+ * files (an ffconcat entry is followed in safe mode), and `-xerror` fails at a refused entry.
+ */
+export function concatListInputArgs(concatListPath: string): string[] {
+  return [
+    "-xerror",
+    "-protocol_whitelist",
+    "file",
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-format_whitelist",
+    "concat,mov,matroska",
+    "-i",
+    concatListPath,
+  ];
+}
+
 /** What a render service lets a media input open: containers that name no other file. */
 export const SELF_CONTAINED_FORMATS =
   "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
