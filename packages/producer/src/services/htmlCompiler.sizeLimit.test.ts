@@ -1,6 +1,6 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { parseHTML } from "linkedom";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -343,5 +343,55 @@ describe("local font embedding", () => {
     expect(html.length).toBeLessThan(MAX_EXPANDED_COMPOSITION_BYTES + 64 * 1024);
     expect(html.split('url("big.ttf")').length - 1).toBe(8 - inlined + 1);
     expect(html).toContain('.mark { background: url("big.ttf"); }');
+
+describe("asset paths rebased from a composition's folder", () => {
+  const candidates = (count: number) => Array(count).fill("../x.png").join(", ");
+  const scene = (count: number) =>
+    `<template><div data-composition-id="scene"><img srcset="${candidates(count)}"></div></template>`;
+  const deepFolder = Array.from({ length: 4 }, (_, i) => `${i}`.repeat(200)).join("/");
+
+  function projectWith(files: Record<string, string>): string {
+    const dir = mkdtempSync(join(tmpdir(), "hf-rebase-"));
+    for (const [name, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, name)), { recursive: true });
+      writeFileSync(join(dir, name), text);
+    }
+    return dir;
+  }
+
+  it("rebases from the mounted file, not a query in its src", async () => {
+    const src = `scenes/a/scene.html?${"q/".repeat(20_000)}`;
+    const dir = projectWith({
+      "index.html": ROOT.replace(
+        'data-composition-src="scene.html"',
+        `data-composition-src="${src}"`,
+      ),
+      "scenes/a/scene.html": scene(200),
+    });
+    const { html } = await compileForRender(dir, join(dir, "index.html"), dir);
+    expect(html).toContain(`srcset="scenes/x.png, scenes/x.png`);
+  });
+
+  it("refuses a mount in a deep folder whose rebased references add up past the limit", async () => {
+    const dir = projectWith({
+      "index.html": ROOT.replace("scene.html", `${deepFolder}/scene.html`),
+      [`${deepFolder}/scene.html`]: scene(60_000),
+    });
+    const error = await compileError(dir);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+  });
+
+  it("refuses an entry file in a deep folder whose rebased references add up past the limit", async () => {
+    const dir = projectWith({
+      [`${deepFolder}/index.html`]: `<!doctype html><html><body>
+  <div data-composition-id="root" data-width="1920" data-height="1080" data-duration="2">
+    <img srcset="${candidates(60_000)}">
+  </div>
+</body></html>`,
+    });
+    const error = await compileForRender(dir, join(dir, deepFolder, "index.html"), dir).catch(
+      (e: unknown) => e,
+    );
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
   });
 });
