@@ -1,5 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
+
+const hashCalls = vi.hoisted(() => [] as string[]);
+vi.mock("../canary", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../canary")>();
+  return {
+    ...actual,
+    fnv1a32: (input: string) => {
+      hashCalls.push(input);
+      return actual.fnv1a32(input);
+    },
+  };
+});
 import {
   SVG_AUTHORED_ID_ATTR,
   namespaceCollidingSvgIds,
@@ -536,4 +548,20 @@ it("stops at the first charge the budget refuses", () => {
       throw new Error("too large");
     }),
   ).toThrow("too large");
+});
+
+// fails without the fix: every renamed id re-sanitized and re-hashed its mount's whole namespace.
+it("hashes a long namespace once per mount, not once per renamed id", () => {
+  const ids = Array.from({ length: 200 }, (_, index) => `c${index}`);
+  const defs = ids.map((id) => `<clipPath id="${id}"/><rect clip-path="url(#${id})"/>`).join("");
+  const { document, scopes } = scopedDocument([
+    { namespace: "a", html: `<svg>${defs}</svg>` },
+    { namespace: "x".repeat(5000), html: `<svg>${defs}</svg>` },
+  ]);
+  hashCalls.length = 0;
+
+  const idMaps = namespaceCollidingSvgIds(document, scopes);
+
+  expect(idMaps[1]!.size).toBe(200);
+  expect(hashCalls.length).toBe(1);
 });
