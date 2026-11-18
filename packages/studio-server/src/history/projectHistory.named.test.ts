@@ -114,6 +114,24 @@ describe("undo keeps a file a page still names", () => {
     expect(has("assets/song.mp3")).toBe(true);
   });
 
+  it.each([
+    ["compositions/scene.html", "song.mp3"],
+    ["compositions/act/scene.html", "../song.mp3"],
+    ["compositions/act/scene.html", "./../song.mp3"],
+  ])("a page at %s naming %s keeps compositions/song.mp3", async (page, src) => {
+    const { history, write, has } = await project({ "index.html": "<h1>Hi</h1>" });
+    write("compositions/song.mp3", "mp3");
+    await history.claim(you, "Uploaded", ["compositions/song.mp3"]);
+    write(
+      page,
+      `<template><div data-composition-id="scene"><audio src="${src}"></audio></div></template>`,
+    );
+    await history.claim(agent, "Music in a scene", [page]);
+
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(has("compositions/song.mp3")).toBe(true);
+  });
+
   it("a page naming a longer file that exists does not keep the shorter one", async () => {
     const { history, write, has } = await project({
       "index.html": '<img src="assets/a.png&backup.png">',
