@@ -252,6 +252,28 @@ it("the film waits for a playing video stuck waiting, even with the bytes buffer
   expect(states.at(-1)).toEqual({ isPlaying: true, buffering: true });
 });
 
+it("a hold reloads each clip on screen that has played at preload metadata, and waits for it too", () => {
+  const { music, voice, voiceReady, playFor } = playPodcast();
+  for (const el of [music, voice])
+    Object.defineProperty(el, "played", { get: () => ({ length: 1 }), configurable: true });
+  voiceReady.value = 4;
+  playFor(1);
+  const srcWrites = new MutationObserver(() => {});
+  srcWrites.observe(music, { attributeFilter: ["src"] });
+
+  voiceReady.value = 1;
+  playFor(0.5);
+  expect(srcWrites.takeRecords().length).toBeGreaterThan(0);
+  expect([music.preload, music.getAttribute("src")]).toEqual(["metadata", "/music.m4a"]);
+  const heldAt = window.__player!.getTime();
+  music.dispatchEvent(new Event("loadedmetadata"));
+  expect(music.currentTime).toBeCloseTo(heldAt, 1);
+
+  voiceReady.value = 4;
+  playFor(1);
+  expect(window.__player!.getTime()).toBeGreaterThan(heldAt + 0.9);
+});
+
 it("a hold for data does not reload a later clip", () => {
   const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
   const mark = document.createElement("meta");
@@ -273,7 +295,7 @@ it("a hold for data does not reload a later clip", () => {
   playFor(0.5);
 
   mark.remove();
-  expect(armed).toBe("auto");
+  expect(armed).toBe("metadata");
   expect(later.preload).toBe(armed);
   expect(load.mock.contexts.filter((el) => el === later).length).toBe(before);
 });
