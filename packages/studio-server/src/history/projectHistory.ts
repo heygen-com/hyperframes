@@ -1075,10 +1075,15 @@ class Engine {
     if (group) await this.commit(group);
   }
 
-  async commit(group: Group, extra: Partial<HistoryEntry> = {}): Promise<HistoryEntry | null> {
+  async commit(
+    group: Group,
+    extra: Partial<HistoryEntry> = {},
+    keptFiles = false,
+  ): Promise<HistoryEntry | null> {
     const undoesEmptied =
       this.log.entries.find((entry) => entry.id === extra.undoes)?.files.length === 0;
-    if (!group.changes.size && !undoesEmptied) return null;
+    const steppedPast = keptFiles && extra.undoes !== undefined;
+    if (!group.changes.size && !undoesEmptied && !steppedPast) return null;
     const pending = this.pendingEntry(group);
     const endedAt = Math.max(pending.endedAt, this.log.entries.at(-1)?.endedAt ?? 0);
     const entry = keepTargetsOfItsFiles({ ...pending, endedAt, ...extra });
@@ -1303,29 +1308,51 @@ class Engine {
     } finally {
       this.windows = this.windows.filter((open) => open !== group);
     }
-    return this.commit(group, extra);
+    return this.commit(group, extra, named.size > 0);
   }
 
   async stillNamed(changes: readonly (readonly [string, string | null])[]): Promise<Set<string>> {
     const deleting = changes.flatMap(([path, hash]) => (hash === null ? [path] : []));
     const named = new Set<string>();
     if (!deleting.length) return named;
-    for (const [page, hash] of this.pagesLeftBy(changes)) {
-      const text = await this.pageText(page, hash);
-      for (const path of deleting) if (fileNames(page, text, path)) named.add(path);
+    const after = this.filesAfter(changes);
+    const existing = [...after].flatMap(([path, hash]) => (hash === null ? [] : [path]));
+    let pages = this.pagesOf(after);
+    while (pages.length) {
+      const candidates = deleting.filter((path) => !named.has(path));
+      const rescued = await this.namedBy(pages, candidates, existing);
+      for (const path of rescued) named.add(path);
+      pages = this.pagesOf(new Map(rescued.map((path) => [path, this.tracked.get(path)!.hash])));
     }
     return named;
   }
 
-  pagesLeftBy(changes: readonly (readonly [string, string | null])[]): [string, string][] {
+  filesAfter(changes: readonly (readonly [string, string | null])[]): Map<string, string | null> {
     const after = new Map(
       [...this.tracked].map(([path, file]) => [path, file.hash as string | null]),
     );
     for (const [path, hash] of changes) after.set(path, hash);
-    return [...after].filter(
+    return after;
+  }
+
+  pagesOf(files: Map<string, string | null>): [string, string][] {
+    return [...files].filter(
       (entry): entry is [string, string] =>
         entry[1] !== null && this.studioWouldWrite(entry[0]) && canNameFiles(entry[0]),
     );
+  }
+
+  async namedBy(
+    pages: readonly [string, string][],
+    candidates: readonly string[],
+    existing: readonly string[],
+  ): Promise<string[]> {
+    const found = new Set<string>();
+    for (const [page, hash] of pages) {
+      const text = await this.pageText(page, hash);
+      for (const path of candidates) if (fileNames(page, text, path, existing)) found.add(path);
+    }
+    return [...found];
   }
 
   async pageText(page: string, hash: string): Promise<string> {
