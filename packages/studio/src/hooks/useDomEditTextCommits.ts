@@ -79,7 +79,6 @@ type TextResync = Pick<
   "buildDomSelectionFromTarget" | "applyDomSelection" | "refreshDomEditSelectionFromPreview"
 >;
 
-/** One text write's commit steps, on the live element or, sealed, on the frame's over its port. */
 function textWriteSteps(input: {
   iframe: HTMLIFrameElement | null;
   selection: DomEditSelection;
@@ -398,11 +397,11 @@ export function useDomEditTextCommits({
       await runDomEditCommit({
         ...write.steps,
         persist: async () => {
+          const sealedFontNeedsReload = Boolean(write.sealedEdit() && options?.fontFamily);
           await afterSealedDraw(write.sealedEdit(), (drawn) =>
             persistDomEditOperations(selection, textCommit.operations, {
               label: "Edit text",
-              // A sealed frame takes no font link from Studio, so its reload loads the new font.
-              skipRefresh: drawn && !(write.sealedEdit() && options?.fontFamily),
+              skipRefresh: drawn && !sealedFontNeedsReload,
               importedFont: importedFont ?? undefined,
             }),
           );

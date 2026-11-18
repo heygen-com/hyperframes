@@ -325,7 +325,6 @@ const isEditEntries = (value: unknown, priority = false): value is StyleEntry[] 
 
 type EditReply = Awaited<ReturnType<typeof previewRequest<"edit-element">>>;
 
-/** What the reply says the element held; null when it drew nothing. */
 function heldBefore(before: EditReply | null | undefined) {
   if (!before?.applied || !isEditEntries(before.styles, true)) return null;
   if (!isEditEntries(before.attributes)) return null;
@@ -333,7 +332,6 @@ function heldBefore(before: EditReply | null | undefined) {
   return { styles: before.styles, attributes: before.attributes, html };
 }
 
-/** The held values this edit still owns; null when none are left to put back. */
 function ownedPutBack(
   before: EditReply | null | undefined,
   owns: (part: string, name: string) => boolean,
