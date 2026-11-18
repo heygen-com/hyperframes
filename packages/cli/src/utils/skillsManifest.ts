@@ -21,6 +21,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } 
 import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
+import { isSkillsRepoMirrorPath } from "./skillsRepoMirror.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -496,9 +497,15 @@ export interface SkillLock {
   skills?: Record<string, LockEntry>;
 }
 
-/** Normalise a slug or git clone URL to a bare lowercase `owner/repo`. */
+// A filesystem path names no publisher: the upstream lock records the path it
+// installed from, which must read as unknown provenance, not as someone else.
+const LOCAL_PATH_SOURCE = /^(?:[a-zA-Z]:[\\/]|~[\\/]|\/|\.{1,2}[\\/]|file:)/;
+
+/** Normalise a slug or git clone URL to a bare lowercase `owner/repo`, or "" when unknown. */
 function repoSlug(s: string | undefined): string {
-  return (s ?? "")
+  const value = (s ?? "").trim();
+  if (!value || LOCAL_PATH_SOURCE.test(value)) return "";
+  return value
     .replace(/^git\+/, "")
     .replace(/^https?:\/\/github\.com\//, "")
     .replace(/\.git$/, "")
@@ -560,7 +567,16 @@ export function hyperframesSkillNames(opts: {
   home?: string;
 }): string[] {
   const lockPath = lockPathForScope(opts.scope, { cwd: opts.cwd, home: opts.home });
-  return skillsAttributedToSource(readSkillLock(lockPath), DEFAULT_REPO_SLUG);
+  const lock = readSkillLock(lockPath);
+  return [
+    ...new Set([
+      ...skillsAttributedToSource(lock, DEFAULT_REPO_SLUG),
+      // An install from our own sparse mirror records that cache path, not a URL.
+      ...Object.entries(lock?.skills ?? {})
+        .filter(([, entry]) => isSkillsRepoMirrorPath(entry.source))
+        .map(([name]) => name),
+    ]),
+  ];
 }
 
 export function foreignSkillNames(opts: {

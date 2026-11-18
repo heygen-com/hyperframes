@@ -24,6 +24,7 @@ import {
   type SkillsCheckResult,
 } from "../utils/skillsManifest.js";
 import { mirrorGlobalSkills } from "../utils/skillsMirror.js";
+import { ensureSkillsRepoMirror, publishedSkillNames } from "../utils/skillsRepoMirror.js";
 import { invalidateSkillsCache } from "../utils/skillsUpdateCheck.js";
 import { trackSkillsInstallSkipped } from "../telemetry/events.js";
 import type { Example } from "./_examples.js";
@@ -146,11 +147,16 @@ function skillSelectionArgs(selection: SkillSelection): string[] {
 // Pinned: a bare `npx skills` runs whatever upstream published last.
 const SKILLS_CLI = "skills@1.5.13";
 
-function runSkillsAdd(source: string, selection: SkillSelection): Promise<void> {
+// `localRepo` is the sparse skills mirror, already at the ref to install.
+function runSkillsAdd(
+  source: string,
+  selection: SkillSelection,
+  localRepo?: string,
+): Promise<void> {
   return spawnNpx([
     SKILLS_CLI,
     "add",
-    source,
+    localRepo ?? source,
     ...skillSelectionArgs(selection),
     ...GLOBAL_INSTALL_ARGS_TAIL,
   ]);
@@ -173,10 +179,11 @@ const SOURCES = [{ name: "HyperFrames", url: "https://github.com/heygen-com/hype
 // ~/.claude/skills, which is shared with the user's other Claude skills (gstack,
 // personal, company). No-op when nothing is attributed or the global store is
 // absent, so it's safe to run unconditionally after any install. Best-effort: a
-// mirror failure must not fail the install.
-function mirrorToInstalledAgents(): void {
+// mirror failure must not fail the install. `also` carries what this run
+// installed: a local-mirror install leaves no `owner/repo` provenance to find.
+function mirrorToInstalledAgents(also: readonly string[] = []): void {
   try {
-    const names = hyperframesSkillNames({ scope: "global" });
+    const names = [...new Set([...hyperframesSkillNames({ scope: "global" }), ...also])];
     if (names.length === 0) return;
     const { mirrored, skipped } = mirrorGlobalSkills({ skills: names });
     const n = mirrored.length;
@@ -270,22 +277,29 @@ async function installSkills(
   if (!skillsToolingReady(opts.strict ?? false)) return;
 
   const { ref } = opts;
+  const justInstalled: string[] = safeSelection === "*" ? [] : [...safeSelection];
   // stderr (via diag): installSkills runs on the `skills update --json` path before
   // its JSON envelope is written to stdout — progress here must not corrupt it.
   for (const source of SOURCES) {
     diag.notice();
     diag.notice(c.bold(`Installing ${source.name} skills...`));
     diag.notice();
+    const mirror = ensureSkillsRepoMirror({ url: source.url, ref });
     try {
-      await runSkillsAdd(ref === "main" ? source.url : `${source.url}#${ref}`, safeSelection);
+      await runSkillsAdd(
+        ref === "main" ? source.url : `${source.url}#${ref}`,
+        safeSelection,
+        mirror?.dir,
+      );
     } catch (err) {
       if (opts.strict) throw err instanceof Error ? err : new Error(String(err));
       // warn, not notice: this is a non-fatal skip after a caught install error.
       diag.warn(c.dim(`${source.name} skills skipped`));
     }
+    if (safeSelection === "*") justInstalled.push(...publishedSkillNames(mirror?.dir));
   }
 
-  mirrorToInstalledAgents();
+  mirrorToInstalledAgents(justInstalled);
 }
 
 // ── targeted install engine ───────────────────────────────────────────────────────────────────

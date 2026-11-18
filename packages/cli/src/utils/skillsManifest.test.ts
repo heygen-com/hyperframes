@@ -23,6 +23,7 @@ import {
   presentSkills,
   retiredSkillNotice,
   skillsAttributedToSource,
+  hyperframesSkillNames,
   type SkillsManifest,
   type SkillEntry,
 } from "./skillsManifest.js";
@@ -36,6 +37,9 @@ import {
 // is hoisted above these imports regardless of source position. Tests that need
 // ls-remote to answer queue their own `mockImplementationOnce`.
 vi.mock("node:child_process", () => ({
+  // skillsRepoMirror.ts is imported for lock attribution only (it never runs git
+  // here), so the synchronous stub just has to exist.
+  execFileSync: vi.fn(),
   execFile: vi.fn(
     (
       _cmd: string,
@@ -488,6 +492,50 @@ describe("skillsAttributedToSource", () => {
   });
 });
 
+describe("hyperframesSkillNames", () => {
+  let xdg: string | undefined;
+  beforeEach(() => {
+    xdg = process.env.XDG_STATE_HOME;
+    delete process.env.XDG_STATE_HOME;
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    if (xdg === undefined) delete process.env.XDG_STATE_HOME;
+    else process.env.XDG_STATE_HOME = xdg;
+  });
+
+  function writeLock(home: string, skills: Record<string, { source: string }>): void {
+    mkdirSync(join(home, ".agents"), { recursive: true });
+    writeFileSync(join(home, ".agents/.skill-lock.json"), JSON.stringify({ version: 3, skills }));
+  }
+
+  it("counts skills installed from the local skills mirror as HyperFrames' own", () => {
+    const home = join(root, "home");
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", join(root, "cache"));
+    const mirror = join(root, "cache", "skills-repo", "1");
+    writeLock(home, {
+      fromSlug: { source: "heygen-com/hyperframes" },
+      fromMirror: { source: mirror },
+      fromMirrorSkill: { source: join(mirror, "skills") },
+      personal: { source: "/Users/someone/my-own-skills" },
+      otherPublisher: { source: "greensock/gsap-skills" },
+    });
+
+    expect(hyperframesSkillNames({ scope: "global", home }).sort()).toEqual([
+      "fromMirror",
+      "fromMirrorSkill",
+      "fromSlug",
+    ]);
+  });
+
+  it("attributes nothing when the lock is absent", () => {
+    const home = join(root, "home-empty");
+    mkdirSync(home, { recursive: true });
+
+    expect(hyperframesSkillNames({ scope: "global", home })).toEqual([]);
+  });
+});
+
 describe("retiredSkillNotice", () => {
   it("says where a retired skill's knowledge lives", () => {
     expect(retiredSkillNotice("hyperframes-audio")).toContain("media-use");
@@ -577,6 +625,20 @@ describe("checkSkills foreign skills", () => {
 
   it("treats a skill with no lock entry as ours: provenance unknown, not foreign", async () => {
     const { opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
+
+    const res = await checkSkills(opts);
+
+    expect(res.foreign).toEqual([]);
+    expect(res.skills.find((s) => s.name === "alpha")?.status).toBe("outdated");
+  });
+
+  // The upstream skills CLI records a local checkout path as `source` when it
+  // installs from disk. That is missing provenance, not another publisher —
+  // otherwise a local install (e.g. HyperFrames' own sparse skills mirror)
+  // would be silently frozen out of every check and refresh.
+  it("does not call a skill installed from a local path foreign", async () => {
+    const { home, opts } = setup({ source: "test", skills: { alpha: { hash: "x", files: 1 } } });
+    writeGlobalLock(home, { alpha: { source: "/Users/someone/checkouts/hyperframes" } });
 
     const res = await checkSkills(opts);
 
