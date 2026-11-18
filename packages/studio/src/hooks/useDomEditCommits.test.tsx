@@ -896,6 +896,7 @@ describe("useDomEditCommits rich-text persist handling", () => {
       expect(rendered.showToast).toHaveBeenCalledWith(
         expect.stringMatching(/Couldn't save "Hero title"/),
         "error",
+        "unresolvable",
       );
     } finally {
       warnSpy.mockRestore();
@@ -957,6 +958,7 @@ describe("useDomEditCommits style persist handling", () => {
       expect(rendered.showToast).toHaveBeenCalledWith(
         expect.stringMatching(/Couldn't save "Hero title": Couldn't find this element/),
         "error",
+        "unresolvable",
       );
       expect(element.style.getPropertyValue("color")).toBe("red");
       expect(trackStudioEvent).toHaveBeenCalledWith(
@@ -1039,6 +1041,7 @@ describe("useDomEditCommits style persist handling", () => {
       expect(rendered.showToast).toHaveBeenCalledWith(
         'Couldn\'t save "Hero title": network down',
         "error",
+        "network",
       );
       expect(element.style.getPropertyValue("color")).toBe("red");
     } finally {
@@ -1316,6 +1319,7 @@ describe("useDomEditCommits style persist handling", () => {
       expect(rendered.showToast).toHaveBeenCalledWith(
         expect.stringContaining("Failed to read index.html (503)"),
         "error",
+        "http",
       );
     } finally {
       cleanup();
@@ -1494,6 +1498,7 @@ describe("useDomEditCommits style persist handling", () => {
       expect(rendered.showToast).toHaveBeenCalledWith(
         'Couldn\'t save "Hero title": network down',
         "error",
+        "network",
       );
       expect(element.textContent).toBe("Card");
       expect(rendered.recordEdit).not.toHaveBeenCalled();
@@ -1525,6 +1530,7 @@ describe("useDomEditCommits attribute persist handling", () => {
       expect(rendered.showToast).toHaveBeenCalledWith(
         expect.stringMatching(/Couldn't save "Hero title": Couldn't find this element/),
         "error",
+        "unresolvable",
       );
       expect(element.getAttribute("data-volume")).toBeNull();
     } finally {
@@ -1547,6 +1553,7 @@ describe("useDomEditCommits attribute persist handling", () => {
       expect(rendered.showToast).toHaveBeenCalledWith(
         'Couldn\'t save "Hero title": network down',
         "error",
+        "network",
       );
       expect(element.getAttribute("data-volume")).toBe("0.5");
     } finally {
@@ -1651,6 +1658,7 @@ describe("useDomEditCommits attribute persist handling", () => {
       expect(rendered.showToast).toHaveBeenCalledWith(
         'Couldn\'t save "Hero title": network down',
         "error",
+        "network",
       );
       expect(element.getAttribute("muted")).toBeNull();
     } finally {
