@@ -631,7 +631,7 @@ export function parseAspectRatioFlag(raw: string | undefined): string | undefine
 
 function logDetection(asJson: boolean, message: string): void {
   if (asJson) return;
-  console.log(c.dim(`   ${message}`));
+  console.log(c.dim(`   ${terminalText(message)}`));
 }
 
 // fallow-ignore-next-line complexity
@@ -730,7 +730,8 @@ async function prepareLocalArchive(
     entryPath,
     fileMap,
   });
-  if (swappedFonts.length > 0 && !asJson) console.log(c.dim(describeSwappedFonts(swappedFonts)));
+  if (swappedFonts.length > 0 && !asJson)
+    console.log(c.dim(describeSwappedFonts(swappedFonts.map(terminalText))));
   const offloaded = await offloadMedia(project, fileMap, entryPath, asJson, upload, variablesText);
 
   const { archive, sizeBytes } = zipWithinUploadLimit(fileMap);
@@ -870,7 +871,7 @@ async function offloadMedia(
     for (const item of offloaded.filter((entry) => entry.kept_in_archive)) {
       console.log(
         c.dim(
-          `   ${item.path} also stays in the zip: a script builds its path in a way that cannot be rewritten`,
+          `   ${terminalText(item.path)} also stays in the zip: a script builds its path in a way that cannot be rewritten`,
         ),
       );
     }
@@ -967,13 +968,15 @@ function describeOffload(item: OffloadedMedia, dryRun: boolean): string {
         : dryRun
           ? "would upload"
           : "uploaded";
-  return `${formatBytes(item.size_bytes).padStart(9)}  ${item.path} · ${verb}`;
+  return `${formatBytes(item.size_bytes).padStart(9)}  ${terminalText(item.path)} · ${verb}`;
 }
 
 function reportLargestFiles(prepared: PreparedLocalArchive): void {
   console.log(c.dim("   Largest included files:"));
   for (const file of prepared.largestFiles) {
-    console.log(c.dim(`   ${formatBytes(file.size_bytes).padStart(9)}  ${file.path}`));
+    console.log(
+      c.dim(`   ${formatBytes(file.size_bytes).padStart(9)}  ${terminalText(file.path)}`),
+    );
   }
   console.log(c.dim("   Exclude verified-unneeded files with .hyperframesignore."));
 }
