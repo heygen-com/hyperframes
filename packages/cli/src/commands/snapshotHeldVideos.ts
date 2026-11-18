@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { parseHTML } from "linkedom";
 import { MEDIA_RENDER_ID_ATTR } from "@hyperframes/core";
+import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { isNotMediaPayload, type CaptureVideoMetadataHint } from "@hyperframes/engine";
 import { mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import { findFFprobe } from "../browser/ffmpeg.js";
@@ -22,7 +23,7 @@ export function localVideos(html: string): { id: string; src: string }[] {
 
 export const localVideoRenderIds = (html: string): string[] => localVideos(html).map((v) => v.id);
 
-/** The project file a page URL names, or null when it is remote or outside the project. */
+/** The project file a page URL names, or null when it is remote, outside the project or private. */
 export function projectLocalFile(projectDir: string, src: string): string | null {
   try {
     const path = decodeURIComponent(new URL(src, "http://project.invalid/").pathname).replace(
@@ -31,7 +32,8 @@ export function projectLocalFile(projectDir: string, src: string): string | null
     );
     const file = resolve(projectDir, path);
     const rel = relative(projectDir, file);
-    return !rel.startsWith("..") && !isAbsolute(rel) && existsSync(file) ? file : null;
+    const inside = !rel.startsWith("..") && !isAbsolute(rel) && existsSync(file);
+    return inside && !isPrivateFileUnder(projectDir, file, isStudioPrivatePath) ? file : null;
   } catch {
     return null;
   }
@@ -47,7 +49,7 @@ export async function projectVideoFile(
 
 const PROBE_TIMEOUT_MS = 30_000;
 
-async function readableAsMediaWithinProbeLimit(path: string): Promise<boolean> {
+export async function readableAsMediaWithinProbeLimit(path: string): Promise<boolean> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<boolean>((done) => {
     timer = setTimeout(() => done(false), PROBE_TIMEOUT_MS);
@@ -113,7 +115,7 @@ export function probeHeldVideo(
         [
           "-v",
           "error",
-          ...mediaInputFormatArgs(ffprobe),
+          ...mediaInputFormatArgs(ffprobe, path),
           "-select_streams",
           "v:0",
           "-show_entries",

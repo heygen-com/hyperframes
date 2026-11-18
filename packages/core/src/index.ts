@@ -495,4 +495,4 @@ export {
   type MotionBlurFingerprint,
   type MotionBlurFingerprintField,
 } from "./motionBlurFingerprint.js";
-export { terminalText } from "./terminalText.js";
+export { terminalLines, terminalText, terminalTextDeep } from "./terminalText.js";

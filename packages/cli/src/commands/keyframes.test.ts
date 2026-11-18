@@ -18,6 +18,7 @@ import {
   collectCompositions,
   collectShotSelectors,
   resolveScope,
+  singleFileStage,
   surfaceComposition,
 } from "./keyframes.js";
 import { ensureShotOutputDir } from "./motionShot.js";
@@ -60,6 +61,41 @@ describe("keyframes JSON output", () => {
   });
 });
 
+describe("keyframes human output", () => {
+  it("prints selectors, values and keyframe text from the project with control characters escaped", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const bel = String.fromCharCode(7);
+    const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-human-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const source = join(dir, "index.html");
+    writeFileSync(
+      source,
+      wrap(
+        `const tl = gsap.timeline({ paused: true }); tl.to("#dot${esc}[2J", { x: "40px${esc}]52;c;cA==${bel}", duration: 1 }, 0); window.__timelines = { main: tl };`,
+      ).replace(
+        "</body>",
+        `<style>@keyframes pulse { from { content: "a${esc}[1A"; } to { opacity: 1; } } #dot { animation: pulse 1s; }</style></body>`,
+      ),
+    );
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    onTestFinished(() => log.mockRestore());
+
+    await runCommand(keyframesCommand, { rawArgs: [source, "--runtime", "all"] });
+
+    const colors = new RegExp(`${esc}\\[[0-9;]*m`, "g");
+    const output = log.mock.calls
+      .map((args) => args.join(" "))
+      .join("\n")
+      .replace(colors, "");
+    expect(output).not.toContain(esc);
+    expect(output).not.toContain(bel);
+    expect(output).toContain("#dot\\x1b[2J");
+    expect(output).toContain("40px\\x1b]52;c;cA==\\x07");
+    expect(output).toContain("a\\x1b[1A");
+  });
+});
+
 describe("keyframes direct composition scope", () => {
   it("keeps the project root and passes the nested HTML entry to --shot", () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-target-"));
@@ -74,6 +110,47 @@ describe("keyframes direct composition scope", () => {
 
     expect(scope.projectDir).toBe(projectDir);
     expect(scope.entryFile).toBe("compositions/scene.html");
+    expect(scope.singleFile).toBe(scenePath);
+  });
+});
+
+describe("keyframes --shot on a bare HTML file", () => {
+  const scene = `<template id="scene-template"><div data-composition-id="scene"></div></template>`;
+  const mountingIndex = wrap("").replace(
+    '<div id="dot" class="clip"></div>',
+    '<div data-composition-id="scene" data-composition-src="compositions/scene.html"></div>',
+  );
+
+  function project(index: string) {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-keyframes-stage-"));
+    onTestFinished(() => rmSync(projectDir, { recursive: true, force: true }));
+    mkdirSync(join(projectDir, "compositions"));
+    writeFileSync(join(projectDir, "index.html"), index);
+    return projectDir;
+  }
+
+  it("stages a scene its project mounts from the project, so the scene keeps its shell", async () => {
+    const projectDir = project(mountingIndex);
+    const scenePath = join(projectDir, "compositions", "scene.html");
+    writeFileSync(scenePath, scene);
+
+    expect(await singleFileStage(scenePath, projectDir)).toEqual({
+      root: projectDir,
+      entries: [join(projectDir, "index.html"), scenePath],
+      entryFile: "compositions/scene.html",
+    });
+  });
+
+  it("stages any other file from its own folder, even under a folder holding index.html", async () => {
+    const projectDir = project(wrap(""));
+    const sentPath = join(projectDir, "compositions", "sent.html");
+    writeFileSync(sentPath, scene);
+
+    expect(await singleFileStage(sentPath, projectDir)).toEqual({
+      root: join(projectDir, "compositions"),
+      entries: [sentPath],
+      entryFile: "sent.html",
+    });
   });
 });
 
@@ -498,6 +575,75 @@ describe("keyframes project compositions", () => {
       );
 
       expect(collectCompositions(join(project, "index.html"))).toHaveLength(1);
+    },
+  );
+});
+
+describe("keyframes text output", () => {
+  const printed = async (html: string, extra: string[], file = "index.html") => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-keyframes-text-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const source = join(dir, file);
+    writeFileSync(source, html);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    onTestFinished(() => log.mockRestore());
+    await runCommand(keyframesCommand, { rawArgs: [source, ...extra] });
+    return log.mock.calls.map((args) => args.join(" ")).join("\n");
+  };
+
+  // fails without the fix: a tween target or CSS rule from the project reached the terminal with its control bytes.
+  it.each([
+    [
+      "a GSAP tween target",
+      wrap(`
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#dot\u001b]52;c;cGF5\u0007", { x: 10, duration: 1 });
+        window.__timelines = [tl];
+      `),
+      [],
+      "\\x1b]52;c;cGF5\\x07",
+    ],
+    [
+      "a GSAP tween property name",
+      wrap(`
+        const tl = gsap.timeline({ paused: true });
+        tl.to("#dot", { "\u001b]52;c;cGF5\u0007": 1, duration: 1 });
+        window.__timelines = [tl];
+      `),
+      [],
+      "\\x1b]52;c;cGF5\\x07",
+    ],
+    [
+      "a CSS keyframes rule",
+      `<!doctype html><html><head><style>
+        .dot { animation: rise 1s both; }
+        @keyframes rise { 0% { content: "\u001b[2J\u0007"; } 100% { opacity: 1; } }
+      </style></head><body><div class="dot"></div></body></html>`,
+      ["--runtime", "css"],
+      "\\x1b[2J\\x07",
+    ],
+  ])(
+    "prints %s with its control characters as visible escapes",
+    async (_what, html, extra, escaped) => {
+      const output = await printed(html, extra);
+      expect(output).toContain(escaped);
+      expect(output).not.toContain("\u001b");
+      expect(output).not.toContain("\u0007");
+    },
+  );
+
+  // Windows file names cannot hold control characters.
+  it.skipIf(process.platform === "win32")(
+    "prints a file name with control characters as visible escapes",
+    async () => {
+      const output = await printed(
+        `<!doctype html><html><body></body></html>`,
+        [],
+        "a\u001b]0;x\u0007.html",
+      );
+      expect(output).toContain("a\\x1b]0;x\\x07.html");
+      expect(output).not.toContain("\u001b");
+      expect(output).not.toContain("\u0007");
     },
   );
 });

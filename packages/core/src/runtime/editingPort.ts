@@ -9,6 +9,13 @@
  * otherwise takes straight off the frame's window, which an opaque-origin
  * preview does not allow.
  */
+import { parseRestoreAttributes, type RestoreAttributesParams } from "./editing/restoreAttributes";
+import {
+  geometryEvent,
+  parseWatchGeometry,
+  type EditingGeometryEvent,
+  type WatchGeometryParams,
+} from "./editing/watchGeometry";
 import {
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
@@ -19,10 +26,40 @@ import {
 } from "./editingElement";
 import type { EditingElementBox, EditingElementGeometry } from "./editingGeometry";
 import type { EditingGestureStart } from "./editingGestureStart";
+import type { GsapSnapshot } from "./editing/gsapSnapshot";
+import type { MotionPathFrameHome } from "./editing/motionPathHome";
 import type { EditingLayer } from "./editingLayers";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { parseCombo } from "../keyCombo";
+import {
+  captionWordsParams,
+  type CaptionWordBox,
+  type CaptionWordsParams,
+} from "./editing/captionWords";
+import {
+  captionTransformParams,
+  type CaptionTransformParams,
+  type CaptionWordState,
+} from "./editing/captionTransform";
+import {
+  parseColorGradingStatusParams,
+  type ColorGradingStatusRequest,
+} from "./editing/color-grading-status";
+import {
+  parseColorGradingPreviewsParams,
+  type ColorGradingPreviewsRequest,
+} from "./editing/color-grading-previews";
+import {
+  parseColorGradingPlaybackParams,
+  type ColorGradingPlaybackRequest,
+} from "./editing/color-grading-playback";
+import { parseAssignAudioGroup, type AssignAudioGroupParams } from "./editing/assignAudioGroup";
+import { parseAudioMeter, type AudioMeterLevels } from "./editing/audioMeter";
+import {
+  parseSetAudioGroupAttribute,
+  type SetAudioGroupAttributeParams,
+} from "./editing/setAudioGroupAttribute";
 
 export {
   buildStableSelector,
@@ -60,6 +97,15 @@ export {
   type ElementTransformSnapshot,
 } from "./editingGeometry";
 export type { EditingGestureStart } from "./editingGestureStart";
+export { MAX_CAPTION_TRANSFORM } from "./editing/captionTransform";
+export {
+  MAX_SNAPSHOT_CHANNELS,
+  MAX_SNAPSHOT_FIELDS,
+  MAX_SNAPSHOT_TARGETS,
+  MAX_SNAPSHOT_TEXT,
+  MAX_SNAPSHOT_TWEENS,
+  MAX_VARS_DEPTH,
+} from "./editing/gsapSnapshotLimits";
 export {
   compositionPoint,
   coversComposition,
@@ -109,6 +155,20 @@ export const EDITING_REQUEST_KINDS = [
   "gesture-start",
   "console-errors",
   "watch-keys",
+  "restore-attributes",
+  "caption-words",
+  "caption-transform",
+  "color-grading-status",
+  "color-grading-previews",
+  "color-grading-playback",
+  "watch-geometry",
+  "audio-meter",
+  "document-markup",
+  "set-audio-group-attribute",
+  "assign-audio-group",
+  "gsap-snapshot",
+  "motion-path-home",
+  "max-z-index",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -217,6 +277,27 @@ export interface EditingRequests {
   /** The frame cancels these combos outside the elements that own keys, and forwards them and their
    * keyups to this port; an empty list stops. */
   "watch-keys": { params: { combos: string[] }; result: { watching: number } };
+  "restore-attributes": { params: RestoreAttributesParams; result: { applied: boolean } };
+  /** Boxes of the words of visible caption groups; a group written as plain text is split into word spans. */
+  "caption-words": { params: CaptionWordsParams; result: { boxes: CaptionWordBox[] } };
+  "caption-transform": { params: CaptionTransformParams; result: { words: CaptionWordState[] } };
+  "color-grading-status": ColorGradingStatusRequest;
+  "color-grading-previews": ColorGradingPreviewsRequest;
+  "color-grading-playback": ColorGradingPlaybackRequest;
+  "watch-geometry": { params: WatchGeometryParams; result: { watching: number } };
+  "audio-meter": { params: { on: boolean }; result: { levels: AudioMeterLevels | null } };
+  "document-markup": { params: NoParams; result: { html: string; baseURI: string } };
+  "set-audio-group-attribute": {
+    params: SetAudioGroupAttributeParams;
+    result: { applied: boolean };
+  };
+  "assign-audio-group": {
+    params: AssignAudioGroupParams;
+    result: { previous: Array<string | null>; changed: boolean };
+  };
+  "gsap-snapshot": { params: NoParams; result: GsapSnapshot };
+  "motion-path-home": { params: { selector: string }; result: MotionPathFrameHome };
+  "max-z-index": { params: NoParams; result: { zIndex: number } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -403,6 +484,23 @@ const PARAM_PARSERS: {
   "console-errors": (params) =>
     hasKeys(params, "from") && isOffset(params.from) ? { from: params.from } : null,
   "watch-keys": comboList,
+  "restore-attributes": parseRestoreAttributes,
+  "caption-words": captionWordsParams,
+  "caption-transform": captionTransformParams,
+  "color-grading-status": parseColorGradingStatusParams,
+  "color-grading-previews": parseColorGradingPreviewsParams,
+  "color-grading-playback": parseColorGradingPlaybackParams,
+  "watch-geometry": parseWatchGeometry,
+  "audio-meter": parseAudioMeter,
+  "document-markup": noParams,
+  "set-audio-group-attribute": parseSetAudioGroupAttribute,
+  "assign-audio-group": parseAssignAudioGroup,
+  "gsap-snapshot": noParams,
+  "motion-path-home": (params) =>
+    hasKeys(params, "selector") && isSelector(params.selector)
+      ? { selector: params.selector }
+      : null,
+  "max-z-index": noParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
@@ -442,6 +540,7 @@ export interface EditingPortClient {
   ): Promise<EditingResult<K>>;
   /** Calls `listener` with each key the frame forwards for `watch-keys`; returns the unsubscribe. */
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
+  onGeometry(listener: (event: EditingGeometryEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
   dispose(): void;
 }
@@ -499,6 +598,8 @@ export function createEditingPortClient(options: {
   const { iframe, timeoutMs = 5_000, host = window } = options;
   const pending = new Map<number, Pending>();
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
+  const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
+  let watchedGeometry = false;
   let port: MessagePort | null = null;
   let disposed = false;
   let lastId = 0;
@@ -518,12 +619,17 @@ export function createEditingPortClient(options: {
     if ("error" in outcome) entry.reject(outcome.error);
     else entry.resolve(outcome.result);
   };
+  const onPush = (data: Record<string, unknown>) => {
+    const key = data.v === EDITING_PROTOCOL_VERSION && data.event === "key" && keyEvent(data.key);
+    if (key) return keyListeners.forEach((listener) => listener(key));
+    const geometry = geometryEvent(data, EDITING_PROTOCOL_VERSION);
+    if (geometry) geometryListeners.forEach((listener) => listener(geometry));
+  };
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
     if (!isPlainRecord(data)) return;
     if (typeof data.id === "number") return settle(data.id, replyOutcome(data));
-    const key = data.v === EDITING_PROTOCOL_VERSION && data.event === "key" && keyEvent(data.key);
-    if (key) for (const listener of keyListeners) listener(key);
+    onPush(data);
   };
   const connect = () => {
     try {
@@ -552,6 +658,7 @@ export function createEditingPortClient(options: {
     request(kind, params, requestOptions) {
       if (disposed) return Promise.reject(new EditingPortError("disposed", "client disposed"));
       const id = ++lastId;
+      if (kind === "watch-geometry") watchedGeometry = true;
       const limit = requestOptions?.timeoutMs ?? timeoutMs;
       const result = new Promise<unknown>((resolve, reject) => {
         const timer = wallSetTimeout(
@@ -576,11 +683,20 @@ export function createEditingPortClient(options: {
       keyListeners.add(listener);
       return () => keyListeners.delete(listener);
     },
+    onGeometry(listener) {
+      geometryListeners.add(listener);
+      return () => geometryListeners.delete(listener);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       keyListeners.clear();
+      geometryListeners.clear();
       host.removeEventListener("message", onWindowMessage);
+      if (watchedGeometry) {
+        const stop = { kind: "watch-geometry", params: { handles: [] } };
+        port?.postMessage({ v: EDITING_PROTOCOL_VERSION, id: ++lastId, ...stop });
+      }
       port?.close();
       rejectReady(new EditingPortError("disposed", "client disposed"));
       for (const id of [...pending.keys()]) {
@@ -589,3 +705,5 @@ export function createEditingPortClient(options: {
     },
   };
 }
+
+export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";

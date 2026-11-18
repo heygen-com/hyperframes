@@ -100,6 +100,7 @@ import {
   lintProject,
 } from "../utils/lintProject.js";
 import { formatLintFindings } from "../utils/lintFormat.js";
+import { geminiKeyName, noteProjectProviderKey } from "../utils/dotEnv.js";
 import { normalizeErrorMessage, atStep } from "../utils/errorMessage.js";
 import { describeSharpLoadFailure } from "../utils/sharpLoadFailure.js";
 import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
@@ -413,7 +414,11 @@ export function containingSourceFrameIndex(timestamps: readonly number[], time: 
   return index;
 }
 
-class FrameExtractError extends Error {}
+class FrameExtractError extends Error {
+  constructor(message: string) {
+    super(terminalText(message));
+  }
+}
 
 const lastLine = (text: string) => text.trim().split("\n").at(-1) ?? "";
 
@@ -493,7 +498,7 @@ export async function probeContainingSourceFrameSeek(
       const { stdout } = await runCancellableProcess(
         ffprobe,
         [
-          ...["-v", "error", ...mediaInputFormatArgs(ffprobe)],
+          ...["-v", "error", ...mediaInputFormatArgs(ffprobe, videoPath)],
           ...["-select_streams", "v:0", "-read_intervals", readIntervals],
           ...["-show_entries", entries, "-of", "json", "--", videoPath],
         ],
@@ -618,7 +623,13 @@ async function probeSeekLanding(
     const { stdout } = await runCancellableProcess(
       ffmpeg,
       [
-        ...["-v", "error", "-copyts", "-noaccurate_seek", ...mediaInputFormatArgs(ffmpeg)],
+        ...[
+          "-v",
+          "error",
+          "-copyts",
+          "-noaccurate_seek",
+          ...mediaInputFormatArgs(ffmpeg, videoPath),
+        ],
         ...["-ss", String(seek), "-i", videoPath],
         ...["-map", "0:v:0", "-c", "copy", "-frames:v", "1", "-f", "framecrc", "-"],
       ],
@@ -679,7 +690,7 @@ async function frameColour(
   const read = (args: string[]) =>
     runFfmpegOnce(
       ffmpegPath,
-      [...mediaInputFormatArgs(ffmpegPath), ...args],
+      [...mediaInputFormatArgs(ffmpegPath, videoPath), ...args],
       FFMPEG_EXTRACT_TIMEOUT_MS,
     );
   const probe = await read(firstFrameColourArgs(videoPath));
@@ -733,7 +744,7 @@ export async function extractVideoFrameToBuffer(
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
       if (seek.seek !== undefined) args.push("-ss", String(seek.seek));
-      args.push(...mediaInputFormatArgs(ffmpegPath), "-i", videoPath, "-map", "0:v:0");
+      args.push(...mediaInputFormatArgs(ffmpegPath, videoPath), "-i", videoPath, "-map", "0:v:0");
       const filters = frameFilters(seek.select, displayedPixels, metadata, toneMapFilter);
       if (filters.length > 0) args.push("-vf", filters.join(","));
       args.push("-frames:v", "1", "-q:v", "2", "-y", outPath);
@@ -794,7 +805,13 @@ export async function decodeFramesInOnePass(
       const filters = [selectFirstFrameAfterEach(byTime.map(([offset]) => offset)), ...rest];
       const args = ["-hide_banner", "-loglevel", "error"];
       if (useVp9AlphaDecoder) args.push("-c:v", "libvpx-vp9");
-      args.push(...mediaInputFormatArgs(ffmpegPath), "-ss", String(start), "-i", videoPath);
+      args.push(
+        ...mediaInputFormatArgs(ffmpegPath, videoPath),
+        "-ss",
+        String(start),
+        "-i",
+        videoPath,
+      );
       args.push("-map", "0:v:0", "-vf", filters.join(","));
       args.push("-fps_mode", "passthrough", "-frames:v", String(byTime.length));
       args.push("-q:v", "2", "-y", join(tmp, "%d.png"));
@@ -1663,7 +1680,9 @@ export async function selfClosedMediaWarning(source: string): Promise<string | n
 }
 
 function warnSnapshotsNotRecorded(error: unknown): undefined {
-  console.warn(`   ${c.warn("⚠")} Snapshots were not recorded: ${normalizeErrorMessage(error)}`);
+  console.warn(
+    `   ${c.warn("⚠")} Snapshots were not recorded: ${terminalText(normalizeErrorMessage(error))}`,
+  );
   return undefined;
 }
 
@@ -1795,7 +1814,7 @@ export default defineCommand({
     },
     frames: {
       type: "string",
-      description: "Number of evenly-spaced frames to capture (default: 5)",
+      description: "Number of evenly-spaced frames to capture",
       default: "5",
     },
     at: {
@@ -1815,7 +1834,7 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: `Ms to wait for the composition to become render-ready, and for each still's seek to settle, up to 170 s (default: ${RENDER_READY_TIMEOUT_MS})`,
+      description: `Ms to wait for the composition to become render-ready, and for each still's seek to settle, up to 170 s`,
       default: String(RENDER_READY_TIMEOUT_MS),
     },
     angle: {
@@ -1826,7 +1845,7 @@ export default defineCommand({
     end: {
       type: "boolean",
       description:
-        "Always include a readable end-of-timeline frame (default: true). Pass --no-end to capture only your exact --at times.",
+        "Always include a readable end-of-timeline frame. Pass --no-end to capture only your exact --at times.",
       default: true,
     },
     keep: {
@@ -1842,7 +1861,7 @@ export default defineCommand({
     },
     "zoom-scale": {
       type: "string",
-      description: "Device-scale-factor density for --zoom crops (default: 3)",
+      description: "Device-scale-factor density for --zoom crops",
       default: "3",
     },
     against: {
@@ -2064,6 +2083,10 @@ export default defineCommand({
             if (!geminiKey) {
               log(`   ${c.dim("--describe: GEMINI_API_KEY or GOOGLE_API_KEY not set, skipping")}`);
             } else if (paths.length > 0) {
+              await noteProjectProviderKey(
+                geminiKeyName(),
+                "frames go to that key's Gemini account",
+              );
               log(`   ${c.dim("Describing frames with Gemini vision...")}`);
               const { GoogleGenAI } = await loadOptionalPackage("@google/genai", "--describe");
               const ai = new GoogleGenAI({ apiKey: geminiKey });

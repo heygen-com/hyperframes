@@ -13,7 +13,10 @@ import { join, extname } from "node:path";
 import { hostname as machineName, networkInterfaces } from "node:os";
 import { injectScriptsIntoHtml } from "@hyperframes/core/compiler";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
-import { PREVIEW_FOR_ANOTHER_SITE_META } from "@hyperframes/core/studio-preview-mark";
+import {
+  PREVIEW_FOR_ANOTHER_SITE_META,
+  serviceWorkerScriptFetch,
+} from "@hyperframes/core/studio-preview-mark";
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { answerOwnLoopbackHostOnly } from "../utils/loopbackOnly.js";
@@ -165,6 +168,13 @@ export function createFileServer(options: FileServerOptions): Promise<FileServer
       return c.text("Forbidden: unknown host", 403);
     });
   }
+
+  app.use(async function refuseServiceWorkerScripts(c, next) {
+    const serviceWorker = c.req.header("service-worker");
+    if (!serviceWorkerScriptFetch({ serviceWorker, fetchDest: c.req.header("sec-fetch-dest") }))
+      return next();
+    return c.text("Forbidden", 403);
+  });
 
   app.get("/*", (c) => {
     let requestPath = c.req.path;

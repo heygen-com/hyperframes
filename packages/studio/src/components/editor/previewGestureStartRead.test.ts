@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // The frame's real runtime agent, serving the opaque frame from this document.
-import { installEditingAgent } from "../../../../core/src/runtime/editingAgent";
+import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
 import { makeSelection } from "../../hooks/domSelectionTestHarness";
 import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
@@ -15,7 +15,6 @@ import {
   createManualOffsetDragMember,
   restoreManualOffsetDragMembers,
 } from "./manualOffsetDrag";
-import { MOVING_LAYER_UNREADABLE } from "./plainTranslate";
 import { measurePreviewGestureStart, type PreviewGestureStart } from "./previewGestureStartRead";
 import { standInFor } from "./previewSelection";
 import { collectSnapContext } from "./snapTargetCollection";
@@ -100,7 +99,7 @@ function opaqueFrame() {
         new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
       ),
   } as unknown as Window;
-  const agent = installEditingAgent(parent);
+  const agent = installMarkedEditingAgent(parent);
   frame.postMessage = (data: unknown) =>
     window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
   closers.push(() => agent.dispose());
@@ -240,16 +239,6 @@ describe("starting a gesture from what an opaque frame read", () => {
     expect([g.actualWidth, g.actualHeight]).toEqual([200, 100]);
     expect(g.snapContext).toBe(SNAP);
     restoreManualOffsetDragMembers(g.pathOffsetMember ? [g.pathOffsetMember] : []);
-  });
-
-  it("refuses a drag of a layer a tween moves, which this preview cannot save yet", () => {
-    const element = document.createElement("div");
-    const selection = makeSelection("card", element);
-    const opts = gestureOpts(selection);
-    const moving = { ...START, gsap: { x: 0, y: 0, moving: true } };
-    expect(startGesture("drag", press(), opts, { start: moving })).toBe(false);
-    expect(opts.onBlockedMoveRef.current).toHaveBeenCalledWith(selection, MOVING_LAYER_UNREADABLE);
-    expect(opts.gestureRef.current).toBeNull();
   });
 
   it("drags a group from each member's GSAP position, snapping with the targets it read", () => {

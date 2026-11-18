@@ -26,6 +26,13 @@ const formatsOf = (args: string[]) => args[args.indexOf("-format_whitelist") + 1
 describe("urlInputArgs", () => {
   afterEach(() => _setDemuxerListingForTests());
 
+  it("refuses a local path that ffmpeg would read as a pattern of other files", () => {
+    _setDemuxerListingForTests(LISTING);
+    expect(() => urlInputArgs("/job/.x%d/decoy%d.png")).toThrow(/pattern of other files/);
+    expect(() => urlInputArgs("/job/clip%%.mp4", { tool: "ffprobe" })).toThrow(/pattern/);
+    expect(formatsOf(urlInputArgs("/job/clip 100% done.mp4"))).toContain("mov");
+  });
+
   const caBundles = ["/nonexistent.crt", import.meta.filename];
   const verifyAndReconnect = [
     "-tls_verify",
@@ -59,16 +66,18 @@ describe("urlInputArgs", () => {
   });
 
   it.each(["true", "1", " TRUE\n"])(
-    "limits what an https input may open to HTTPS on a render service (%j)",
+    "on a render service, reads an https input the render did not declare only through the public-only proxy (%j)",
     (flag) => {
       vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", flag);
       try {
         expect(urlInputArgs(signed, { tool: "ffprobe", caBundles })).toEqual([
           ...verifyAndReconnect,
           "-protocol_whitelist",
-          "https,tls,tcp",
+          "http,https,tls,tcp,httpproxy",
           "-format_whitelist",
           expect.any(String),
+          "-http_proxy",
+          "http://127.0.0.1:9",
         ]);
       } finally {
         vi.unstubAllEnvs();

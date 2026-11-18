@@ -3,6 +3,7 @@
 // the upgrade argv and the skills install run for real per install channel;
 // only spawn, the config file, the manifest fetch/disk and the registry are stubbed.
 
+import { homeCliCommand } from "../utils/homeCliCommand.js";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -215,7 +216,7 @@ describe("hyperframes update --check", () => {
     ["pnpm", ENTRIES.pnpm, "pnpm add -g hyperframes@0.9.8"],
     ["bun", ENTRIES.bun, "bun add -g hyperframes@0.9.8"],
     ["brew", ENTRIES.brew, "brew upgrade hyperframes"],
-    ["npx", ENTRIES.npx, "npx hyperframes@latest"],
+    ["npx", ENTRIES.npx, homeCliCommand("latest")],
     ["project", ENTRIES.project, "npm install hyperframes@0.9.8"],
   ])("names the %s install and the command that updates it", async (channel, entry, command) => {
     await runUpdate(entry, { check: true, json: true });
@@ -271,7 +272,7 @@ describe("hyperframes update (install)", () => {
   );
 
   it.each([
-    ["npx", ENTRIES.npx, "npx hyperframes@latest"],
+    ["npx", ENTRIES.npx, homeCliCommand("latest")],
     // The project's manager moves its dependency, as `--check` names it.
     ["project", ENTRIES.project, "npm install hyperframes@0.9.8"],
   ])(

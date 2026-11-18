@@ -1,4 +1,8 @@
 import {
+  isExpectedOutputDimensions,
+  type ExpectedOutputDimensions,
+} from "./services/render/outputDimensions.js";
+import {
   PRORES_PROFILE_NAMES,
   isVideoFrameFormat,
   resolveConfig,
@@ -69,6 +73,7 @@ export interface RenderRequestOptions {
   pageMotionBlur?: RenderConfig["pageMotionBlur"];
   variables?: Record<string, unknown>;
   strictVariables?: boolean;
+  expectedOutputDimensions?: ExpectedOutputDimensions;
   outputResolution?: CanvasResolution;
   outputResolutionAspectAgnostic?: boolean;
   engineConfig: EngineConfig;
@@ -214,6 +219,14 @@ function assertRequestOptionScalars(options: Record<string, unknown>): void {
 
 function assertRequestOptionObjects(options: Record<string, unknown>): void {
   validateEngineConfigSnapshot(options.engineConfig);
+  if (
+    options.expectedOutputDimensions !== undefined &&
+    !isExpectedOutputDimensions(options.expectedOutputDimensions)
+  ) {
+    throw new Error(
+      "Render request expectedOutputDimensions must contain positive integer width and height",
+    );
+  }
   if (options.variables !== undefined && !isPlainObject(options.variables)) {
     throw new Error("Render request variables must be a JSON object");
   }
@@ -285,7 +298,11 @@ export function createRenderRequest(input: CreateRenderRequestInput): RenderRequ
 
 export function renderConfigFromRequest(
   request: RenderRequest,
-  runtime: { logger?: ProducerLogger; allowOutsideProjectAssets?: boolean } = {},
+  runtime: {
+    logger?: ProducerLogger;
+    allowOutsideProjectAssets?: boolean;
+    includeOutsideScripts?: boolean;
+  } = {},
 ): RenderConfig {
   const { engineConfig, distributed: _distributed, ...options } = request.options;
   return {
@@ -293,6 +310,7 @@ export function renderConfigFromRequest(
     producerConfig: engineConfig,
     logger: runtime.logger,
     allowOutsideProjectAssets: runtime.allowOutsideProjectAssets === true,
+    includeOutsideScripts: runtime.includeOutsideScripts === true,
   };
 }
 
@@ -356,6 +374,7 @@ export function distributedConfigFromRequest(
     planDirSizeLimitBytes: distributed.planDirSizeLimitBytes,
     variables: options.variables,
     strictVariables: options.strictVariables,
+    expectedOutputDimensions: options.expectedOutputDimensions,
   };
 }
 
@@ -407,6 +426,7 @@ export function renderRequestFromDistributedConfig(input: {
     ...optionalProperty("entryFile", config.entryFile),
     ...optionalProperty("variables", config.variables),
     ...optionalProperty("strictVariables", config.strictVariables),
+    ...optionalProperty("expectedOutputDimensions", config.expectedOutputDimensions),
   } satisfies CreateRenderRequestInput["options"];
   return createRenderRequest({
     projectDir: input.projectDir,

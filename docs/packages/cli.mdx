@@ -113,6 +113,18 @@ machine-readable `code` and, when there is a next step, a `hint`:
 Some commands add their own fields next to `error`, such as `findings` from
 `lint` or `reason` and `fix` from a refused `timeline` edit.
 
+A failure with no code of its own is `runtime_error`, or `usage_error` for a bad
+command line. These causes have their own, so a script can branch without reading
+`message`:
+
+| `code` | Cause |
+| --- | --- |
+| `chrome_not_found` | `render` found no Chrome to use, or could not install one |
+| `ffmpeg_not_found` | `render` found no FFmpeg |
+| `ffprobe_not_found` | `render` found no FFprobe |
+| `render_locked` | `render --no-wait` while another render holds this account's slot |
+| `node_version_unsupported` | The CLI was started on a Node.js older than 22 |
+
 **The project `.env`.** The `.env` in the current directory sets only the CLI's own
 settings: `HEYGEN_API_KEY`, `HYPERFRAMES_API_KEY`, `ELEVENLABS_API_KEY`, `FIGMA_TOKEN`, and the
 vision keys, models, Vertex settings and timeout, and the telemetry opt-outs `HYPERFRAMES_NO_TELEMETRY` and `DO_NOT_TRACK`. A variable already in your environment wins. Any
@@ -391,6 +403,15 @@ For AI image descriptions, set `GEMINI_API_KEY` in a `.env` file
 (~$0.001/image), or `OPENROUTER_API_KEY` to route any vision model through
 [OpenRouter](https://openrouter.ai) — it wins if both are set, and
 `HYPERFRAMES_OPENROUTER_MODEL` overrides the model.
+
+A project's `.env` never replaces a vision credential you set in your shell:
+when your shell holds a complete credential for another vision provider,
+capture ignores the `.env` vision key, with a note naming the file.
+Model and timeout settings in the `.env` still apply. A received project's
+`.env` (one its received-files record lists) also gives way to your own
+project's `.env`, for every command. When capture or `snapshot --describe` uses
+a vision key from a project's `.env`, a note naming the file prints before the
+first request.
 
 #### Local HTML files
 
@@ -1162,6 +1183,7 @@ npx hyperframes publish --space <space-id>
 | `--update <url-or-id>`   | Update an existing project in place. Requires sign-in.             |
 | `--space <space-id>`     | Publish into a shared team space. Requires sign-in.                |
 | `--proxy` / `--no-proxy` | Bake H.264 proxies for browser-hostile codecs, or skip them        |
+| `--include-outside-files` | Upload files from outside the project folder without asking. Otherwise they need your approval, and `--yes` leaves them out |
 
 `publish` zips the project, uploads it, and prints a URL that resolves to stored
 content — so it keeps working after the CLI exits. No local server stays alive,
@@ -1363,6 +1385,25 @@ rotated, skewed or 3D-transformed video, or a frame that reads back fully
 transparent. A fully transparent frame is treated as unread on purpose, since a
 failed draw looks the same; mark text that sits under a cutout before its subject
 enters with `data-layout-allow-occlusion`.
+
+Text painted in front of an opaque `<video>` is judged against the faces in the
+frame that video shows at the sample. `text_over_face` is an info finding when
+the words cover 5% or more of a face; `coveredFraction` is the share of the face
+covered and `faceRect` is the face in canvas pixels. It is never more than info,
+so it never fails `--strict`: the detector can take texture for a face. The
+faces are found in the video file itself, with the detector
+[`measure face`](#measure) uses, so only a video served from the project is
+looked at. That detector's first use downloads OpenCV; when the download has not
+answered within 30 seconds the check goes on without this pass and `faceCheck`
+says why. A rotated video and a frame not yet
+decoded are skipped, a transparent cutout between the text and the take is looked
+through, and text behind a cutout stays `text_occluded`'s to judge. Mark an
+intended overlap with `data-layout-allow-on-face` on the text or an ancestor.
+`layout.faceCheck` in the JSON says whether the pass looked, so no finding reads
+apart from no look: `{ "ran": true, "candidates": 3, "faces": 2 }` counts the
+text-over-video samples examined and the distinct video frames a face was found
+in (`unreadVideos` is added when some files could not be read), and
+`{ "ran": false, "reason": "..." }` says why it could not.
 
 `canvas_covered` is an error when an opaque element spanning the canvas sits above
 every other visible clip (shape, image, video or text) for most of the film, so the
@@ -1593,6 +1634,13 @@ npx hyperframes keyframes [dir] --selector "#card" --shot card-motion.png
 Use `--ghost` for motion that happens *inside* a canvas, where the marker onion
 has nothing to draw.
 
+With a single `.html` file, `--shot` serves only the files that file's markup,
+stylesheets and sub-compositions name in its own folder, and only the types a
+composition loads. A scene that its project's `index.html` mounts is served from
+the project instead. Files the page builds names for in script are not served,
+and the command prints a line naming any file it left out. Pass the project
+folder to keep everything.
+
 ### `compare` and `grade-compare`
 
 `compare` renders two or more independent variants into one labelled PNG.
@@ -1609,6 +1657,12 @@ npx hyperframes compare ./variant-a ./variant-b --labels "A,B"
 | `--cols`    | Grid columns (default: a sqrt heuristic, max 4)    |
 | `--timeout` | Render-ready timeout per variant in ms; must be a positive integer (default 5000) |
 | `--json`    | Machine-readable results                           |
+
+A variant can also be a single `.html` file. Then only the files its markup,
+stylesheets and sub-compositions name in its own folder are served, and only the
+types a composition loads. Files the page builds names for in script are not
+served, and the command prints a line naming any file it left out. Pass a
+project folder to keep everything.
 
 `grade-compare` does the same for colour: candidate grades or LUTs applied to
 one reference frame.
@@ -1691,7 +1745,12 @@ npx hyperframes measure face ref.mp4 --start 1 --end 2.5
 | `energy`     | How much two clips move, and whether at the same moments                                |
 | `look`       | Brightness, contrast, saturation and warmth, alone or against another video             |
 | `face`       | The face's size and position over a window                                              |
+| `hands`      | Where a hand's palm, index fingertip or pinch is in each frame of a stretch             |
 | `sync`       | The lag between mouth motion and the voice                                              |
+
+In `cuts`, a shot that returns to an earlier camera setup after at least one other shot (a wide take, a close-up
+cut into it, the wide take again) carries `continues`: the index in `shots` of the shot it resumes, so one take can
+feed both. A shot that resumes nothing has no `continues`.
 
 ### `diff`
 
@@ -1712,6 +1771,7 @@ npx hyperframes diff original.mp4 renders/final.mp4 --segments segments.md --sbs
 | `--offset`                                | Compare the original at t with yours at t + offset seconds           |
 | `--segments`                              | A verdict per `## S01 · a–b s` segment of a file                     |
 | `--drawn`                                 | Score one drawn element's box `x,y,w,h[,a-b]` by itself (repeatable) |
+| `--hide`                                  | Score a project's layer (a CSS selector) by what it adds             |
 | `--min-mean` / `--min-p05` / `--min-cell` | The SSIM bars to pass                                                |
 | `--sbs`                                   | Also write an original-beside-yours video                            |
 | `--out`                                   | Folder for the sheet and log (default `.hyperframes/diff/<yours>`)   |
@@ -1725,6 +1785,17 @@ says when frames were left out. `frames.tsv` keeps the original's time in `t`;
 yours' time is t + offset. The sound keeps its own offset measurement, the
 duration is reported as not measured, and the JSON result echoes `offset`. An
 offset that leaves no overlap is refused with a fix.
+
+`--hide ".cap"` captures a project folder a second time with that layer hidden.
+Where the two captures differ is the layer's footprint, and over it each moment
+scores `benefit = 1 − MAE(original, with) / MAE(original, without)`: 1 matches the
+original, 0 is no better than leaving the layer out, and below 0 is worse. Each
+moment also fits where the original's copy of the layer sits and how large it is
+(±40 px, 80–120%) and says it as an instruction, such as `move down 10 px, make it
+15% smaller`. The benefit is relative to how well the backdrop matches, so compare
+moments within one run. Where leaving the layer out already matches the original
+(footage that carries the original's own captions), the moment is not scored. The
+result's `layer` reports the moments; it does not change `pass`.
 
 ## Edit from the command line
 
@@ -1850,6 +1921,11 @@ lists the newer entries. Run it again with `--just-this` to put back only that
 entry's files over the newer edits, or `--back-to-before` to go back to before
 it, undoing the newer entries too.
 
+`undo` and `restore` put back only files that Studio itself may write. Package
+and lock files, tool and agent configuration, scripts that `package.json` runs,
+and hidden or private files keep their current content. Change those in your
+editor.
+
 ## Render to a file
 
 ### `render`
@@ -1924,10 +2000,33 @@ How it uses the machine, and when it gives up:
 | `--wait` / `--no-wait`                                   | on                                         | One local render at a time per user account: wait while another runs, or fail at once. Env: `HYPERFRAMES_RENDER_LOCK=off` renders side by side. |
 | `--strict` / `--strict-all`                              | off                                        | Fail on lint errors, or on errors and warnings                                                                     |
 | `--strict-variables`                                     | off                                        | Fail rather than warn on an undeclared or mistyped variable key                                                    |
+| `--include-outside-files`                                | off                                        | Also run `.js` and `.mjs` scripts the project references from outside its folder. See the note below.            |
+| `--refuse-outside-files`                                 | off                                        | Leave out every file the project references from outside its folder. See the note below.                          |
 | `--batch-concurrency` / `--batch-fail-fast`              | `1` / off                                  | Batch rows at once, and whether the first failure stops the rest                                                   |
 | `--debug`                                                | off                                        | Keep intermediates and write diagnostics under the Producer `.debug` directory                                     |
 | `--quiet`                                                | off                                        | Less output                                                                                                        |
 | `--skill`                                                | —                                          | Record which authoring workflow started this render, in usage telemetry                                            |
+
+A local render brings in images, video, audio, fonts and CSS that the project
+references from outside its folder. It leaves out scripts from outside the
+folder, warning with each one's name, because a script runs in the render's
+browser and can read and send anything the render can reach. Move a script you
+trust into the project, or pass `--include-outside-files` to run it where it is.
+A composition that needs the left-out script stops with a script-load error.
+
+A received-files record lists the files in a folder that came from someone
+else. When a record in the project, or in a folder above it, lists anything but
+media, fonts and images, the render leaves out every file from outside the
+project folder and warns with each one's name. When you delete a listed file in
+Studio that is not media, a font or an image by its first bytes, its line stays,
+and so does the old line of such a file you rename to a media name. Whatever is
+later written in its place still counts as received, and the warning says the
+file is gone. To clear it, take the line out of the received-files record that
+lists it, which is the project's `.hyperframes/received-files.json` or one in a
+folder above or inside the project.
+A `--docker` render makes this check on your machine, where the folders above the project are visible, and passes
+`--refuse-outside-files` into the container, so it leaves out the same files a
+local render would.
 
 Renders started side by side starve each other of CPU and GPU until frames stop
 landing, so a second local or `--docker` render from the same user account waits
@@ -1944,7 +2043,8 @@ the slot. Do not share `HYPERFRAMES_CACHE_DIR` between accounts: it holds the
 browser, packages and helpers each account runs. HyperFrames never
 runs a cached one that another account can write: it installs its own copy,
 under `~/.cache/hyperframes` when another account can write the cache folder
-itself. A render whose process died frees its slot on its own. `--workers` is
+itself (a shared folder such as `/tmp` included), and stops with an error rather
+than install into a folder inside it that another account owns. A render whose process died frees its slot on its own. `--workers` is
 unaffected: it sets the parallelism inside the one render that runs.
 
 Low-memory detection reads **host** RAM, not cgroup or container limits, so
@@ -2772,14 +2872,61 @@ same share as the project is copied like any other. To include such a
 file, move it into the project folder. Under `--json`, the result lists those
 as `left_out`, each with the `file` that points at it, the `reference` as
 written, its `path` from the project folder, the `reason` (`blocklisted`,
-`received`, `file_type`, `private` or `network_share`) and `levels_up`, how many folders above the project
+`received`, `file_type`, `private`, `network_share` or `not_approved`) and `levels_up`, how many folders above the project
 it is. A full run also prints each as a `{"event":"left_out",…}`
 line on stderr, so a wrapper can ask with `--dry-run --json` before uploading
 and still hear about each one during the run.
 
-Before uploading, the command also names every file it carries from outside the
-project folder: each file a composition points at, and each project file that is
-a link to a file outside the project. It prints the list and carries on. Under
+Which files came in with an imported project is kept in the project's
+`.hyperframes/received-files.json`. A project without that file is read as
+having received nothing, which suits projects you made yourself. An app that
+imports projects for you can tell the CLI more by pointing
+`HYPERFRAMES_RECEIVED_STATE_FILE` at a JSON file it keeps:
+
+```json
+{
+  "projects": [
+    { "path": "/Users/me/projects/shared", "dev": "16777230", "ino": "4521", "received": "expected" },
+    { "path": "/Users/me/projects/draft", "received": "all" }
+  ]
+}
+```
+
+- `"expected"`: the project must carry the record. If it is missing, every file
+  counts as received, and the CLI does not start a new record in its place.
+- `"all"`: every file in the project counts as received, whatever its record
+  lists.
+- `dev` and `ino` are optional. When given, they also match the project folder
+  after it is renamed or moved on the same disk.
+- The state applies to the project, its subfolders, and any folder that holds it.
+- If the variable is set but the file is missing or cannot be parsed, every file
+  counts as received.
+- The app can keep its own copy of an `"expected"` project's record in
+  `received-records/<sha256 of path>.json` beside the state file, as
+  `{ "project": "<path>", "files": [...] }` with `path` exactly as the state file
+  names it. A file that copy lists still counts as received while something is at
+  its path, even if the project's record no longer lists it. For a project found
+  only by `dev` and `ino`, the copy's `"identity"` must be
+  `"<dev>:<ino>:<birth time in ns>"` of the project folder; a copy with another
+  identity counts every file as received. A copy that names another project,
+  has `"files": null` or `"doubted": true`, or is a link, larger than 16 MB or
+  unreadable also counts every file as received.
+- A file the copy lists that is no longer at its path is not added back. When
+  the app restores lost entries to a project's record, it uses the same rule, so
+  a received file that is renamed after its record entry is removed is judged by
+  the project's record alone.
+
+A file from outside the project folder that would be copied (each file a
+composition points at, and each project file that is a link to a file outside
+the project) is uploaded only when you approve it. Run in a terminal, the
+command lists those files and asks, defaulting to no. A yes is remembered for
+that project in `~/.hyperframes/outside-files.json`, never in the project. Under
+`--json` or `--dry-run`, or when nobody can answer, they are left out with the
+`not_approved` reason and a warning naming each one. `--include-outside-files`
+uploads them without asking; `hyperframes publish` and `hyperframes feedback
+--file-issue` take the same flag and ask the same way unless given `--yes`.
+
+Before uploading, the command names every outside file it carries. Under
 `--json`, the result lists them as `outside_files`, with the same `file`,
 `reference`, `path` and `levels_up` fields, and each is printed as a
 `{"event":"outside_file",…}` line on stderr. For a project link, `file` and
@@ -2801,6 +2948,7 @@ Render parameters mirror local `hyperframes render` where they overlap:
 | `--title`              | —                           | Free-text label echoed back in detail responses                                                                                                  |
 | `--output` / `-o`      | `renders/<render_id>.<ext>` | Where the downloaded video lands                                                                                                                 |
 | `--dry-run`            | off                         | Build and inspect the zip without authenticating, uploading, or rendering                                                                        |
+| `--include-outside-files` | off                      | Upload files from outside the project folder without asking. Otherwise only approved ones go                                                     |
 
 Lifecycle and control:
 
@@ -2929,6 +3077,7 @@ And these drive `render` and `render-batch`:
 | ----------------------- | ----------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `--width`, `--height`   | required                            | Render dimensions in pixels                                                                                       |
 | `--site-id`             | content hash                        | Reuse an uploaded site instead of uploading again                                                                  |
+| `--include-outside-files` | off                               | Upload the files a link brings in from outside the project folder. Without it they are left out and named         |
 | `--fps`                 | `30`                                | `24`, `25`, `30`, or `60`                                                                                         |
 | `--format`              | `mp4`                               | `mp4`, `mov`, `webm`, or `png-sequence`                                                                           |
 | `--codec`               | `h264`                              | `h264` or `h265`, MP4 only                                                                                        |
@@ -2980,6 +3129,10 @@ hyperframes lambda sites create ./my-project
 
 hyperframes lambda render ./my-project --site-id=abc1234deadbeef0 --width 1920 --height 1080
 ```
+
+A file or folder that a symlink brings in from outside the project is left out
+of the upload, and a notice names each one. Pass `--include-outside-files` (or
+`includeOutsideFiles: true` to the SDK's `deploySite`) to upload them too.
 
 ### `lambda render <projectDir>`
 

@@ -1726,6 +1726,7 @@ function reportWithFindings(overrides: Partial<CheckReport> = {}): CheckReport {
       tolerance: 2,
       totalIssueCount: 0,
       truncated: false,
+      faceCheck: { ran: true, candidates: 0, faces: 0 },
     },
     motion: { ...emptySection(), enabled: false, samples: 0 },
     contrast: { ...emptySection(), enabled: true, samples: [], checked: 0, passed: 0 },
@@ -2007,6 +2008,50 @@ describe("check pipeline", () => {
     const said = log.mock.calls.map((call) => String(call[0])).join("\n");
     expect(said).toContain("the lint error above leaves no composition to load");
     expect(said).not.toContain("Browser session never ran");
+  });
+
+  it("marks a contrast finding by its severity and quotes the text it judged", async () => {
+    const finding = (severity: "error" | "warning", text: string): CheckContrastFinding => ({
+      ...checkFindingOf("contrast_aa_failure", severity, { x: 0, y: 0, width: 10, height: 10 }),
+      selector: "div > div:nth-of-type(35) > div:nth-of-type(3)",
+      text,
+      fg: "rgb(110,110,110)",
+      bg: "rgb(30,30,30)",
+      ratio: 2.39,
+      requiredRatio: 3,
+      suggestedColor: "rgb(219,108,80)",
+      large: true,
+    });
+    const report = reportWithFindings({
+      contrast: {
+        ...emptySection([
+          finding("warning", "passing through"),
+          finding("error", "held on screen"),
+        ]),
+        errorCount: 1,
+        warningCount: 1,
+        enabled: true,
+        samples: [1],
+        checked: 2,
+        passed: 0,
+      },
+    });
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const command = createCheckCommand({
+      resolveProject: () => PROJECT,
+      runPipeline: vi.fn(async () => report),
+      prepareMedia: vi.fn(async () => []),
+      withMeta: (value) => value,
+    });
+
+    await runViaCli(command, { rawArgs: [] });
+
+    const lines = log.mock.calls.map((call) => String(call[0]));
+    const lineOf = (text: string) => lines.find((line) => line.includes(`"${text}"`)) ?? "";
+    expect(lineOf("passing through")).toContain("⚠");
+    expect(lineOf("passing through")).not.toContain("✗");
+    expect(lineOf("held on screen")).toContain("✗");
+    expect(lineOf("held on screen")).toContain("2.39:1 (need 3:1");
   });
 
   describe("remembers the newest check for hyperframes feedback", () => {
@@ -4328,6 +4373,33 @@ it("applies transition sample limits within the requested range", async () => {
   });
   expect(report.layout.transitionSamples).toEqual([7.8, 8]);
   expect(report.layout.transitionSamplesDropped).toBe(3);
+});
+
+describe("layout.faceCheck", () => {
+  it("says the face pass ran when no text was in front of a video", async () => {
+    const { report } = await runScenario(fakeDriver({ collectTextOverVideo: async () => [] }));
+    expect(report.layout.faceCheck).toEqual({ ran: true, candidates: 0, faces: 0 });
+  });
+
+  it("says why when the pass could not look", async () => {
+    const { report } = await runScenario(fakeDriver());
+    expect(report.layout.faceCheck).toEqual({
+      ran: false,
+      reason: "this check driver does not report text over video",
+    });
+  });
+
+  it("is present with a reason when the browser never ran", async () => {
+    const { deps } = dependencies(fakeDriver());
+    deps.runBrowserCheck = async () => {
+      throw new Error("Chrome did not start");
+    };
+    const report = await runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
+    expect(report.layout.faceCheck).toEqual({
+      ran: false,
+      reason: "the check stopped before looking for faces under text",
+    });
+  });
 });
 
 describe("check cache", () => {

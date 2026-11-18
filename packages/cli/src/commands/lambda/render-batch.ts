@@ -62,6 +62,7 @@ export interface RenderBatchArgs extends DeliveryFlagValues {
    * separate `sites create` step (CI / cross-machine).
    */
   siteId?: string;
+  includeOutsideFiles?: boolean;
   /** Composition config — fps/width/height/format required, rest optional. */
   fps: DistributedFps;
   width: number;
@@ -229,7 +230,8 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
   // Deploy the site once and reuse it across every entry. --site-id and
   // --dry-run both skip the deploy via a synthesised handle.
   let siteHandle: SiteHandle;
-  const { assertStackReadsSites, deploySite, siteHandleFromId } = await loadSDK();
+  const { assertStackReadsSites, deploySite, parseStateMachineArn, siteHandleFromId } =
+    await loadSDK();
   if (!args.dryRun) {
     await assertStackReadsSites({ stateMachineArn: stack.stateMachineArn, region: stack.region });
   }
@@ -241,7 +243,9 @@ export async function runRenderBatch(args: RenderBatchArgs): Promise<void> {
     siteHandle = await deploySite({
       projectDir,
       bucketName: stack.bucketName,
+      expectedBucketOwner: parseStateMachineArn(stack.stateMachineArn).account,
       region: stack.region,
+      includeOutsideFiles: args.includeOutsideFiles,
       onNotice: (message) => console.error(c.dim(message)),
     });
     if (!args.json) {

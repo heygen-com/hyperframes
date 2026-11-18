@@ -36,11 +36,16 @@ import {
   browserProxyArgs,
   createPublicOnlyProfile,
   logRefusal,
+  pageServerDirectHost,
   startCaptureProxy,
 } from "./publicNetwork/captureProxy.js";
 import { removeTreeBestEffortAsync } from "@hyperframes/core/remove-tree";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
-import { chromeSandboxArgs, launchWithChromeSandboxFallback } from "./chromeSandbox.js";
+import {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  launchWithChromeSandboxFallback,
+} from "@hyperframes/core/chrome-sandbox";
 import { describeWslGpuAccess, detectWsl, type WslHostFacts } from "./wslHost.js";
 import {
   BrowserLeasePool,
@@ -108,6 +113,7 @@ interface GpuProbeOptions {
   platform?: NodeJS.Platform;
   probeLifecycle?: GpuProbeLifecycle;
   wslHost?: WslHostFacts;
+  sandbox?: boolean;
 }
 
 const GPU_PROBE_TIMEOUT_MS = 15_000;
@@ -124,19 +130,21 @@ async function probeHardwareWebGlInfo(
 ): Promise<WebGlProbeInfo> {
   let probeBrowser: Browser | undefined;
   try {
-    const launchOptions: LaunchOptions = {
-      ...ownedLaunchOptions(),
-      headless: true,
-      args: withHyperframesBrowserMarker(options.args),
-      defaultViewport: { width: 64, height: 64 },
-      executablePath: options.executablePath,
-      env: buildChromeLaunchEnv(options.env),
-      timeout: options.browserTimeout,
-      waitForInitialPage: false,
-    };
-    probeBrowser = options.probeLifecycle
-      ? await options.probeLifecycle.launch(ppt, launchOptions)
-      : await ppt.launch(launchOptions);
+    probeBrowser = await launchWithChromeSandboxFallback(options.args, (args) => {
+      const launchOptions: LaunchOptions = {
+        ...ownedLaunchOptions(),
+        headless: true,
+        args: withHyperframesBrowserMarker(args),
+        defaultViewport: { width: 64, height: 64 },
+        executablePath: options.executablePath,
+        env: buildChromeLaunchEnv(options.env),
+        timeout: options.browserTimeout,
+        waitForInitialPage: false,
+      };
+      return options.probeLifecycle
+        ? options.probeLifecycle.launch(ppt, launchOptions)
+        : ppt.launch(launchOptions);
+    });
     return await rejectAfter(
       readWebGlInfo(probeBrowser),
       GPU_PROBE_TIMEOUT_MS,
@@ -569,10 +577,9 @@ async function getPuppeteerOrNull(): Promise<PuppeteerNode | null> {
   }
 }
 
-function getHardwareGpuProbeArgs(platform: NodeJS.Platform): string[] {
+function getHardwareGpuProbeArgs(platform: NodeJS.Platform, sandbox: boolean): string[] {
   return [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
+    ...chromeSandboxArgs(sandbox),
     "--disable-dev-shm-usage",
     "--enable-webgl",
     "--ignore-gpu-blocklist",
@@ -622,7 +629,10 @@ async function probeWebGlMode(
 ): Promise<GpuProbeOutcome> {
   try {
     const info = await probeHardwareWebGlInfo(ppt, {
-      args: getHardwareGpuProbeArgs(options.platform ?? process.platform),
+      args: getHardwareGpuProbeArgs(
+        options.platform ?? process.platform,
+        options.sandbox ?? chromeSandboxEnabled(),
+      ),
       browserTimeout: options.browserTimeout ?? DEFAULT_CONFIG.browserTimeout,
       executablePath: launchableBrowserPath({ chromePath: options.chromePath }),
       probeLifecycle: options.probeLifecycle,
@@ -858,7 +868,8 @@ function createBrowserLaunchFingerprint(
     requestedCaptureMode,
     publicOnly: resolveRestrictPageNetwork()
       ? {
-          pageServerHost: launchConfig.pageServerUrl && new URL(launchConfig.pageServerUrl).host,
+          pageServerHost:
+            launchConfig.pageServerUrl && pageServerDirectHost(launchConfig.pageServerUrl),
         }
       : undefined,
   };

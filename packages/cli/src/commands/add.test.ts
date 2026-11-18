@@ -606,6 +606,24 @@ describe("add command run() — several names", () => {
     expect(existsSync(join(dir, "compositions", "deprecated-block.html"))).toBe(true);
   });
 
+  it("prints a deprecation note from the registry with control characters escaped", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const note = DEPRECATED_BLOCK_ITEM.deprecated;
+    DEPRECATED_BLOCK_ITEM.deprecated = `gone${esc}]52;c;cA==${String.fromCharCode(7)}`;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await runWrapped(["deprecated-block", "--dir", dir, "--no-clipboard"]);
+    } finally {
+      DEPRECATED_BLOCK_ITEM.deprecated = note;
+    }
+
+    const printed = warn.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(printed).toContain("is deprecated: gone\\x1b]52;c;cA==\\x07");
+  });
+
   it("keeps the installs that worked when one name is unknown, and fails the call", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
 

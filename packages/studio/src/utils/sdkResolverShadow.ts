@@ -255,20 +255,23 @@ import { recordAttempt } from "./sdkResolverAttempts";
 
 // ─── Telemetry ────────────────────────────────────────────────────────────────
 
-// Redact all user-content values before telemetry: style values and text both
-// carry user data. Keep only the length so we can detect truncation without
-// leaking the actual bytes.
+// User content leaves as its length only (style values, text, error words); the selector-built
+// animationId goes too, as the event's own animationId is shaped.
 function redactValue(value: string | null | undefined): string | null | undefined {
   if (value == null) return value;
   return `[redacted len=${value.length}]`;
 }
 
-function redactMismatches(mismatches: SdkResolverMismatch[]): SdkResolverMismatch[] {
-  return mismatches.map((m) => ({
-    ...m,
-    expected: redactValue(m.expected),
-    actual: redactValue(m.actual),
-  }));
+function redactMismatches(mismatches: SdkResolverMismatch[]): string {
+  return JSON.stringify(
+    mismatches.map((m) => ({
+      ...m,
+      expected: redactValue(m.expected),
+      actual: redactValue(m.actual),
+      error: redactValue(m.error),
+      animationId: undefined,
+    })),
+  );
 }
 
 /**
@@ -303,7 +306,7 @@ function reportEmptySession(session: Composition, opLabel: string): boolean {
       sessionEmpty: true,
       sessionElementCount: 0,
       mismatchCount: 1,
-      mismatches: JSON.stringify([{ kind: "session_empty" } satisfies SdkResolverMismatch]),
+      mismatches: redactMismatches([{ kind: "session_empty" } satisfies SdkResolverMismatch]),
     });
   }
   return true;
@@ -372,7 +375,7 @@ export function runResolverShadow(
       // attribute count came back 0 — see the sourceHfIdCount comment above.
       ...(strictCount === 0 ? { sourceLooseMatchOnly: true } : {}),
       mismatchCount: mismatches.length,
-      mismatches: JSON.stringify(redactMismatches(mismatches)),
+      mismatches: redactMismatches(mismatches),
     });
   } catch {
     // never propagate from the shadow path
@@ -457,7 +460,7 @@ export async function recordResolverParity(
       // fail-open without the suppression/count checks" from "no reader wired".
       ...(sourceReadFailed ? { sourceReadFailed: true } : {}),
       mismatchCount: 1,
-      mismatches: JSON.stringify([
+      mismatches: redactMismatches([
         { kind: "element_not_found", hfId } satisfies SdkResolverMismatch,
       ]),
     });
@@ -566,9 +569,7 @@ export async function recordAnimationResolverParity(
       ...(diskChecked ? { diskChecked: true } : {}),
       ...(sourceReadFailed ? { sourceReadFailed: true } : {}),
       mismatchCount: 1,
-      mismatches: JSON.stringify([
-        { kind: "animation_not_found", animationId } satisfies SdkResolverMismatch,
-      ]),
+      mismatches: redactMismatches([{ kind: "animation_not_found" } satisfies SdkResolverMismatch]),
     });
   } catch {
     // never propagate from the shadow path

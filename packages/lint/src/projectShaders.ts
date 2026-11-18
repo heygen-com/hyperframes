@@ -2,9 +2,9 @@ import { realpathSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import {
   isWithinProjectRoot,
-  readProjectFile,
   resolveExistingLocalAsset,
 } from "@hyperframes/parsers/asset-resolution";
+import { readLinkedProjectFile } from "./linkedFile";
 import { shaderDomainOffsets } from "./shaderDomains";
 import { shaderDomainWarning } from "./rules/shaders";
 import { sourcePosition } from "./sourceCoordinates";
@@ -60,7 +60,7 @@ export function lintProjectShaderScripts(
   const files = new Set(sources.flatMap((source) => linkedScripts(projectDir, source)));
   const findings: HyperframeLintFinding[] = [];
   for (const file of files) {
-    const read = readProjectFile(file);
+    const read = readLinkedProjectFile(projectDir, file);
     if (read.kind !== "file") continue;
     for (const offset of shaderDomainOffsets(read.text)) {
       findings.push({

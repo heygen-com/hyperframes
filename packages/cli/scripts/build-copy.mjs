@@ -215,6 +215,9 @@ async function main() {
   const inspectorRuntime = join(REPO_ROOT, "packages", "inspector", "dist", "inspection.js");
   cpSync(inspectorRuntime, join(DIST, "inspection.js"));
 
+  // Windows process reads run this file with -File (utils/windowsProcesses.ts), found beside the bundled chunks.
+  cpSync(join(CLI_ROOT, "src", "utils", "processes.ps1"), join(DIST, "processes.ps1"));
+
   copyGsapVendorFiles();
 
   copyMdFiles(join(CLI_ROOT, "src", "docs"), join(DIST, "docs"));

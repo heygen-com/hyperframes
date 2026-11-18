@@ -199,7 +199,7 @@ const CHECK_COMMAND_ARGS = {
   },
   samples: {
     type: "string",
-    description: "Number of midpoint samples across the duration (default: 9)",
+    description: "Number of midpoint samples across the duration",
     default: "9",
   },
   range: {
@@ -229,17 +229,17 @@ const CHECK_COMMAND_ARGS = {
   },
   "max-issues": {
     type: "string",
-    description: "Maximum issues to print or return after static collapse (default: 80)",
+    description: "Maximum issues to print or return after static collapse",
     default: "80",
   },
   "collapse-static": {
     type: "boolean",
-    description: "Collapse repeated static issues across samples (default: true)",
+    description: "Collapse repeated static issues across samples",
     default: true,
   },
   tolerance: {
     type: "string",
-    description: "Allowed pixel overflow before reporting an issue (default: 2)",
+    description: "Allowed pixel overflow before reporting an issue",
     default: "2",
   },
   budget: {
@@ -416,7 +416,7 @@ function reportCheckFailure(
     const code = usage ? error.code : "runtime_error";
     console.log(JSON.stringify(addMeta(jsonFailure(code, message)), null, 2));
   } else {
-    console.error(`${c.error("✗")} Check failed: ${message}`);
+    console.error(`${c.error("✗")} Check failed: ${terminalText(message)}`);
   }
   if (usage) failUsage();
   setCommandExitCode(1);
@@ -855,8 +855,9 @@ function printContrastSection(report: CheckReport): void {
     return;
   }
   for (const finding of section.findings) {
+    const text = finding.text ? ` ${c.dim(`"${terminalText(finding.text)}"`)}` : "";
     console.log(
-      `  ${c.error("✗")} ${terminalText(finding.selector)} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, ${formatFindingTimes(finding)})`,
+      `  ${findingIcon(finding)} ${terminalText(finding.selector)}${text} ${finding.ratio}:1 (need ${finding.requiredRatio}:1, ${formatFindingTimes(finding)})`,
     );
     const source = `Try ${terminalText(finding.suggestedColor)}; source ${terminalText(finding.sourceFile)}`;
     console.log(`    ${c.dim(source)}`);

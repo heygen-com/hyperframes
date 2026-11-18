@@ -222,6 +222,11 @@ export function stripPreloadNone(html: string): string {
   });
 }
 
+export function hasClosedMediaTag(text: string): boolean {
+  const open = /<(?:video|audio)\b/i.exec(text);
+  return open !== null && text.includes(">", open.index + open[0].length);
+}
+
 // For <img> only a real `src` counts, never `data-src` or `data-*-src` (lazy-loader placeholders
 // whose URL is not what Chrome paints). `srcset` never counts, since `\s*=` must follow `src`.
 const REMOTE_SRC_TAGS = {

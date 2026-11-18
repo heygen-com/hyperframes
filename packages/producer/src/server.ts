@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * @hyperframes/producer — Public Server
  *
@@ -13,6 +14,10 @@
  *   GET  /outputs/:token — download rendered MP4
  */
 
+import {
+  isExpectedOutputDimensions,
+  type ExpectedOutputDimensions,
+} from "./services/render/outputDimensions.js";
 import {
   existsSync,
   mkdirSync,
@@ -131,6 +136,7 @@ interface RenderInput {
   variables?: Record<string, unknown>;
   /** Fails with `VARIABLES_INVALID` before any frame if `variables` mismatch the page's declarations. Default off. */
   strictVariables?: boolean;
+  expectedOutputDimensions?: ExpectedOutputDimensions;
   /**
    * Output resolution preset (e.g. `landscape-4k`). Drives the same
    * `resolveDeviceScaleFactor` supersampling path the local CLI uses — Chrome
@@ -293,6 +299,9 @@ export function parseRenderOptions(body: Record<string, unknown>): Omit<RenderIn
     outputDynamicRange,
     variables,
     strictVariables,
+    expectedOutputDimensions: isExpectedOutputDimensions(body.expectedOutputDimensions)
+      ? body.expectedOutputDimensions
+      : undefined,
     outputResolution,
     outputResolutionAspectAgnostic,
     videoFrameFormat,
@@ -361,6 +370,7 @@ function buildRenderJobConfig(input: RenderInput, outputPath: string, log: Produ
       entryFile: input.entryFile,
       variables: input.variables,
       strictVariables: input.strictVariables,
+      expectedOutputDimensions: input.expectedOutputDimensions,
       outputResolution: input.outputResolution,
       outputResolutionAspectAgnostic: input.outputResolutionAspectAgnostic,
       videoFrameFormat: input.videoFrameFormat,
@@ -447,6 +457,12 @@ function validateRenderOverrides(body: Record<string, unknown>): string | undefi
   }
   if (body.variables !== undefined && !isPlainObject(body.variables)) {
     return 'variables must be a JSON object keyed by variable id (e.g. {"title":"Hello"})';
+  }
+  if (
+    body.expectedOutputDimensions !== undefined &&
+    !isExpectedOutputDimensions(body.expectedOutputDimensions)
+  ) {
+    return "expectedOutputDimensions must contain positive integer width and height";
   }
   if (body.strictVariables !== undefined && typeof body.strictVariables !== "boolean") {
     return "strictVariables must be a boolean";
@@ -941,6 +957,9 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
         warnings: job.warnings,
         perf: policy ? publicPerfSummary(job) : (job.perfSummary ?? null),
         ...strictVariablesResult(job),
+        ...(job.outputDimensionsChecked === undefined
+          ? {}
+          : { outputDimensionsChecked: job.outputDimensionsChecked }),
       });
     } catch (error) {
       const durationMs = Date.now() - t0;
@@ -1045,6 +1064,9 @@ export function createRenderHandlers(options: HandlerOptions = {}): RenderHandle
             perf: policy ? publicPerfSummary(job) : (job.perfSummary ?? null),
             producerVersion: readProducerVersion(),
             ...strictVariablesResult(job),
+            ...(job.outputDimensionsChecked === undefined
+              ? {}
+              : { outputDimensionsChecked: job.outputDimensionsChecked }),
           }),
         });
       } catch (error) {

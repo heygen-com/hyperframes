@@ -693,6 +693,43 @@ describe("resuming across runs", () => {
     expect(readdirSync(dir)).toEqual(["model.onnx"]);
   });
 
+  it("checks a file already at dest under the lock, and replaces it when the check refuses", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hyperframes-download-"));
+    tempDirs.push(dir);
+    const dest = join(dir, "model.onnx");
+    writeFileSync(dest, "stale");
+    mockGet.mockImplementation(rangedHost("hello", '"v1"', []));
+    const locked: boolean[] = [];
+    const keep = async (path: string) => {
+      locked.push(readdirSync(dir).includes("model.onnx.lock"));
+      return readFileSync(path, "utf8") === "hello";
+    };
+
+    await downloadFile(url, dest, { keepExisting: keep });
+    expect(readFileSync(dest, "utf8")).toBe("hello");
+    await downloadFile(url, dest, { keepExisting: keep });
+
+    expect(mockGet).toHaveBeenCalledTimes(1);
+    expect(locked).toEqual([true, true]);
+  });
+
+  it("removes a refused file at dest when the fresh download is refused too", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hyperframes-download-"));
+    tempDirs.push(dir);
+    const dest = join(dir, "model.onnx");
+    writeFileSync(dest, "stale");
+    mockGet.mockImplementation(rangedHost("hello", '"v1"', []));
+
+    await expect(
+      downloadFile(url, dest, {
+        keepExisting: async () => false,
+        verify: async () => Promise.reject(new Error("bad sha")),
+      }),
+    ).rejects.toThrow("bad sha");
+
+    expect(readdirSync(dir)).toEqual([]);
+  });
+
   it("discards a finished file its check refuses", async () => {
     const { dir, dest } = stoppedRun("hel", '"v1"');
     mockGet.mockImplementation(rangedHost("hello", '"v1"', []));

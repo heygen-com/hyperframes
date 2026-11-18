@@ -1,6 +1,7 @@
 import { wallSetTimeout } from "./wallClock";
 import { swallow } from "./diagnostics";
 import { isStylableElement } from "./domRealm";
+import { servedToAnotherSite, type PreviewTarget } from "../studioPreviewMark";
 import type { HfColorGradingTarget } from "../colorGrading";
 import type { RuntimeBridgeControlMessage, RuntimeOutboundMessage } from "./types";
 import {
@@ -39,6 +40,7 @@ type BridgeDeps = {
   onSetCopiesAhead?: (on: boolean) => void;
   onRetryPreviewCopies?: () => void;
   onRequestPreviewFacts?: () => void;
+  onScrubAudio?: (target: PreviewTarget | null, time: number | null, volume: number) => void;
   getCanonicalFps: () => number;
 };
 
@@ -48,7 +50,28 @@ export function setRuntimeProtocolFps(fps: number): void {
   runtimeProtocolFps = Number.isFinite(fps) && fps > 0 ? fps : 30;
 }
 
+// Another site framing the page learns only how playback stands: the timeline and the picker describe the composition.
+const ANOTHER_SITE_SEES = new Set<string>(["ready", "state", "stage-size"]);
+const ANOTHER_SITE_DRIVES = new Set<string>([
+  "play",
+  "pause",
+  "stop-media",
+  "seek",
+  "tick",
+  "set-muted",
+  "set-volume",
+  "set-media-output-muted",
+  "set-playback-rate",
+  "set-idle-heartbeat",
+  "set-display-scale",
+]);
+
+let markedForAnotherSite = false;
+const forAnotherSite = (): boolean =>
+  (markedForAnotherSite ||= typeof document !== "undefined" && servedToAnotherSite(document));
+
 export function postRuntimeMessage(payload: RuntimeOutboundMessage): void {
+  if (forAnotherSite() && !ANOTHER_SITE_SEES.has(payload.type)) return;
   try {
     window.parent.postMessage({ ...payload, ...runtimeProtocolMetadata(runtimeProtocolFps) }, "*");
   } catch (err) {
@@ -94,6 +117,26 @@ function isGradingTarget(value: unknown): value is HfColorGradingTarget | string
     isOptionalBoundedString(target.selector) &&
     (target.selectorIndex == null || isFiniteNumber(target.selectorIndex))
   );
+}
+
+function isScrubTarget(value: unknown): value is PreviewTarget | null {
+  if (value === null) return true;
+  if (typeof value !== "object" || Array.isArray(value)) return false;
+  const target = value as Record<string, unknown>;
+  return (
+    isBoundedString(target.id) &&
+    isOptionalBoundedString(target.hfId) &&
+    isOptionalBoundedString(target.domId) &&
+    isOptionalBoundedString(target.sourceFile)
+  );
+}
+
+function dispatchScrubAudio(data: BridgeControlData, deps: BridgeDeps): void {
+  const target = data.target ?? null;
+  if (!isScrubTarget(target)) return;
+  if (data.time === null) return deps.onScrubAudio?.(target, null, 0);
+  if (!isFiniteNumber(data.time) || !isFiniteNumber(data.volume)) return;
+  deps.onScrubAudio?.(target, Math.max(0, data.time), Math.max(0, Math.min(1, data.volume)));
 }
 
 function dispatchColorGrading(
@@ -162,6 +205,7 @@ const CONTROL_HANDLERS = new Map<string, ControlHandler>(
     "enable-pick-mode": (_d, deps) => deps.onEnablePickMode(),
     "disable-pick-mode": (_d, deps) => deps.onDisablePickMode(),
     "flash-elements": (data) => handleFlashElements(data),
+    "scrub-audio": dispatchScrubAudio,
     "set-runtime-data": (data, deps) => {
       if (typeof data.channel === "string")
         deps.onSetRuntimeData?.(data.channel, data.payload, data.requestId);
@@ -215,6 +259,10 @@ function handleFlashElements(data: BridgeControlData): void {
   flashElements(selectors, duration);
 }
 
+function isActionTakenHere(action: unknown): action is string {
+  return typeof action === "string" && (!forAnotherSite() || ANOTHER_SITE_DRIVES.has(action));
+}
+
 export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEvent) => void {
   const handler = (event: MessageEvent) => {
     if (event.source !== window.parent && event.source !== window) return;
@@ -222,7 +270,7 @@ export function installRuntimeControlBridge(deps: BridgeDeps): (event: MessageEv
     if (!data || data.source !== "hf-parent" || data.type !== "control") return;
     if (rejectUnsupportedProtocol(data)) return;
     const action = data.action;
-    if (typeof action !== "string") return;
+    if (!isActionTakenHere(action)) return;
     const fn = CONTROL_HANDLERS.get(action);
     if (fn) fn(data, deps);
   };

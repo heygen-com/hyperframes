@@ -88,6 +88,17 @@ function sandboxStartFailure(error: unknown): boolean {
   );
 }
 
+export function startsWithChromeSandboxFallback(
+  args: readonly string[],
+  starts: (args: string[]) => boolean,
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (starts([...args])) return true;
+  const sandboxed = platform === "linux" && !args.includes("--no-sandbox");
+  return sandboxed && env.HYPERFRAMES_CHROME_SANDBOX !== "1" && starts(withoutChromeSandbox(args));
+}
+
 /**
  * A sandboxed Linux launch Chrome refuses at startup is retried once without the sandbox.
  * The sandbox stays off for the process once Chrome names it as the cause, or after a second

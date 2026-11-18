@@ -256,6 +256,56 @@ describe("prepareAnimatedGifInputs", () => {
     expect(calls[0]?.args).toContain("2");
   });
 
+  it("reads no GIF outside the project unless the caller allows outside files", async () => {
+    const root = makeProject();
+    const projectDir = join(root, "project");
+    const outside = join(root, "Downloads", "reaction.gif");
+    mkdirSync(projectDir);
+    mkdirSync(dirname(outside));
+    writeFileSync(outside, gif([...frame(10), ...frame(10)], 0));
+    const html = `<img data-start="0" data-duration="1" src="../Downloads/reaction.gif"><img data-start="0" data-duration="1" src="${outside}">`;
+    const calls: AnimatedGifTranscodeRequest[] = [];
+    const options = {
+      projectDir,
+      downloadDir: join(projectDir, "downloads"),
+      transcode: async (request: AnimatedGifTranscodeRequest) => {
+        calls.push(request);
+        writeFileSync(request.outputPath, "webm");
+      },
+    };
+
+    for (const src of ["../Downloads/reaction.gif", outside]) {
+      expect(resolveLocalImageSourcePath(src, options)).toBeNull();
+    }
+    const contained = await prepareAnimatedGifInputs(html, options);
+    expect(contained.html).toBe(html);
+    expect(calls).toHaveLength(0);
+
+    const trusted = await prepareAnimatedGifInputs(html, { ...options, allowOutsideFiles: true });
+    expect(trusted.preparedGifs).toHaveLength(2);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("reads a remote GIF that Studio saved in the private downloads folder", async () => {
+    const projectDir = makeProject();
+    const downloadDir = join(projectDir, ".hyperframes", "prepared-assets", "downloads");
+    const sourceUrl = "https://cdn.example.com/loop.gif";
+    const sourcePath = join(downloadDir, "download_0123456789ab.gif");
+    mkdirSync(downloadDir, { recursive: true });
+    writeFileSync(sourcePath, gif([...frame(10), ...frame(10)], 0));
+    const options = { projectDir, downloadDir, sourceAssets: new Map([[sourceUrl, sourcePath]]) };
+    try {
+      expect(resolveLocalImageSourcePath(sourceUrl, options)).toBe(sourcePath);
+      const result = await prepareAnimatedGifInputs(
+        `<img data-start="0" data-duration="2" src="${sourceUrl}" />`,
+        { ...options, transcode: async (request) => writeFileSync(request.outputPath, "webm") },
+      );
+      expect(result.preparedGifs[0]?.sourceSrc).toBe(sourceUrl);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("uses source asset mappings for remote GIF URLs", async () => {
     const projectDir = makeProject();
     const sourceUrl = "https://cdn.example.com/reaction.gif";

@@ -19,6 +19,7 @@ import {
 import { getFreeDiskMb } from "../telemetry/system.js";
 import { runCancellableProcess } from "../utils/cancellableProcess.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { processReadArgs } from "../utils/windowsProcesses.js";
 
 export type EnvironmentCheckLevel = "ok" | "warn" | "error";
 
@@ -28,6 +29,7 @@ export interface EnvironmentCheckOutcome {
   detail: string;
   level: EnvironmentCheckLevel;
   title?: string;
+  code?: string;
   hint?: string;
   path?: string;
   /** Major version parsed from the tool's own `-version`/`--version` output, when available. */
@@ -126,6 +128,7 @@ async function checkFFmpeg(signal?: AbortSignal): Promise<EnvironmentCheckOutcom
       ok: false,
       level: "error",
       title: "FFmpeg not found",
+      code: "ffmpeg_not_found",
       detail: missingConfigured,
       hint: getFFmpegInstallHint(),
     };
@@ -163,6 +166,7 @@ async function checkFFmpeg(signal?: AbortSignal): Promise<EnvironmentCheckOutcom
     ok: false,
     level: "error",
     title: "FFmpeg not found",
+    code: "ffmpeg_not_found",
     // Second sentence dropped: "the render cannot proceed" is already said by
     // the error this accompanies, and in Studio by the disabled Export button.
     detail: "FFmpeg is required to encode video.",
@@ -178,6 +182,7 @@ async function checkFFprobe(signal?: AbortSignal): Promise<EnvironmentCheckOutco
       ok: false,
       level: "error",
       title: "FFprobe not found",
+      code: "ffprobe_not_found",
       detail: missingConfigured,
       hint: getFFmpegInstallHint(),
     };
@@ -194,6 +199,7 @@ async function checkFFprobe(signal?: AbortSignal): Promise<EnvironmentCheckOutco
     ok: false,
     level: "error",
     title: "FFprobe not found",
+    code: "ffprobe_not_found",
     detail:
       "FFprobe is required to probe media assets. It ships with FFmpeg but was not found on PATH.",
     hint: getFFmpegInstallHint(),
@@ -276,18 +282,8 @@ async function windowsChromeVersionMajor(
   try {
     const { stdout } = await runCancellableProcess(
       "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        "(Get-Item -LiteralPath $env:HF_CHROME).VersionInfo.ProductVersion",
-      ],
-      {
-        signal,
-        timeoutMs: 10_000,
-        maxBufferBytes: 4 * 1024,
-        env: { ...process.env, HF_CHROME: executablePath },
-      },
+      processReadArgs("version", executablePath),
+      { signal, timeoutMs: 10_000, maxBufferBytes: 4 * 1024 },
     );
     return extractMajorVersion(stdout);
   } catch {
@@ -354,6 +350,7 @@ async function checkChrome(
       ok: false,
       level: "error",
       title: "Chrome not found",
+      code: "chrome_not_found",
       detail: `Chrome binary not found at "${browserPath}".`,
       hint: "Run: npx hyperframes browser ensure",
     };
@@ -394,6 +391,7 @@ async function checkChrome(
     ok: false,
     level: "error",
     title: "Chrome not found",
+    code: "chrome_not_found",
     detail: failure ?? "Chrome Headless Shell is required for local rendering.",
     hint: "Run: npx hyperframes browser ensure",
   };

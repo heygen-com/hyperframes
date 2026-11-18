@@ -117,6 +117,7 @@ export { ImageThumbnail } from "./player/components/ImageThumbnail";
 export type { ImageThumbnailProps } from "./player/components/ImageThumbnail";
 export { useRenderClipContent } from "./hooks/useRenderClipContent";
 export { useThumbnailStill } from "./hooks/useThumbnailStill";
+export { fetchParsedAnimations, getAnimationsForElement } from "./hooks/useGsapTweenCache";
 export type { ThumbnailStill, UseThumbnailStillOptions } from "./hooks/useThumbnailStill";
 export type { UseRenderClipContentOptions } from "./hooks/useRenderClipContent";
 export type { ThumbnailPriority } from "./player/lib/thumbnailScheduler";

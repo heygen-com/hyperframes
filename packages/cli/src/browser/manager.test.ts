@@ -22,6 +22,7 @@
  * `HOME` cache.
  */
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -145,10 +146,22 @@ function installFsMocks({
   mockedPaths = paths;
   const mtimes = new Map([...existing].map((p) => [p, initialMtimeMs]));
   const contents = new Map<string, string>();
+  const directories = new Set([CACHE_ROOT, HF_CACHE]);
+  for (const path of paths) {
+    for (let parent = dirname(path); parent !== dirname(parent); parent = dirname(parent))
+      directories.add(parent);
+  }
+  for (const directory of directories) {
+    if ([...paths].some((path) => path.startsWith(directory + sep))) paths.add(directory);
+  }
   vi.doMock("node:fs", () => ({
     existsSync: (p: string) => paths.has(p),
     readdirSync: (p: string) => {
-      const entries = dirs?.[p];
+      const entries =
+        dirs?.[p] ??
+        (directories.has(p)
+          ? [...paths].filter((path) => dirname(path) === p).map((path) => basename(path))
+          : undefined);
       if (!entries) {
         const err = new Error(`ENOENT: readdirSync mock had no entry for ${p}`);
         (err as NodeJS.ErrnoException).code = "ENOENT";
@@ -163,6 +176,7 @@ function installFsMocks({
         throw err;
       }
       paths.add(p);
+      directories.add(p);
       mtimes.set(p, Date.now());
     },
     rmSync: (p: string) => {
@@ -210,9 +224,10 @@ function installFsMocks({
             uid: otherAccounts?.has(p) ? 4242 : (process.getuid?.() ?? 0),
             mode: 0o755,
             isSymbolicLink: () => false,
-            isDirectory: () => false,
+            isDirectory: () => directories.has(p),
           }
         : undefined,
+    realpathSync: (p: string) => p,
     chmodSync: () => {},
     utimesSync: (p: string, _atime: Date, mtime: Date) => {
       if (touchError) throw touchError;
@@ -553,10 +568,7 @@ describe("findBrowser — cache resolution", () => {
     expect(paths.has(redownloadedBinary)).toBe(true);
   });
 
-  it.skipIf(!process.getuid).each([
-    ["the binary", HF_BINARY],
-    ["a folder above it", HF_CACHE],
-  ])(
+  it.skipIf(!process.getuid).each([["the binary", HF_BINARY]])(
     "re-downloads instead of launching a cached build when another account owns %s",
     async (_what, foreign) => {
       const redownloadedBinary = join(HF_CACHE, "chrome-headless-shell", "redownloaded");
@@ -584,6 +596,33 @@ describe("findBrowser — cache resolution", () => {
       });
       expect(warnSpy).toHaveBeenCalledWith(
         expect.stringContaining(`writable by another account at ${HF_BINARY}`),
+      );
+    },
+  );
+
+  it.skipIf(!process.getuid)(
+    "neither launches nor installs into a chrome folder another account owns",
+    async () => {
+      installFsMocks({
+        existing: new Set([HF_CACHE, HF_BINARY]),
+        otherAccounts: new Set([HF_CACHE]),
+      });
+      installPuppeteerBrowsersMock({
+        installedInHfCache: [
+          {
+            browser: "chrome-headless-shell",
+            executablePath: HF_BINARY,
+            buildId: CHROME_VERSION,
+          },
+        ],
+        installResult: { executablePath: join(HF_CACHE, "chrome-headless-shell", "redownloaded") },
+      });
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { findBrowser } = await import("./manager.js");
+
+      await expect(findBrowser()).rejects.toThrow(
+        `${HF_CACHE} can be changed by another user account`,
       );
     },
   );
@@ -697,6 +736,37 @@ describe("findBrowser — cache resolution", () => {
       rmSync(home, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(process.platform === "win32")(
+    "replaces a cached browser with a writable sibling library",
+    async () => {
+      const home = useRealCacheHome();
+      installPuppeteerBrowsersMock({
+        installImpl: async ({ cacheDir, buildId }) =>
+          writeStagedInstall(cacheDir, buildId, "fresh"),
+      });
+      try {
+        const { ensureBrowser } = await import("./manager.js");
+        const cached = await ensureBrowser({ force: true });
+        const library = join(dirname(cached.executablePath), "libEGL.so");
+        writeFileSync(library, "library");
+        chmodSync(library, 0o666);
+        const { getInstalledBrowsers } = await import("@puppeteer/browsers");
+        vi.mocked(getInstalledBrowsers).mockResolvedValue([
+          {
+            browser: "chrome-headless-shell",
+            buildId: CHROME_VERSION,
+            platform: "linux",
+            executablePath: cached.executablePath,
+          } as never,
+        ]);
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        expect((await ensureBrowser({ preferManagedChrome: true })).source).toBe("download");
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("restores the previous version when the staged install cannot be moved in", async () => {
     const home = useRealCacheHome();

@@ -10,7 +10,6 @@ import {
   openSync,
   readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -1235,7 +1234,7 @@ describe("built preview reuse", () => {
         app,
         createAdapter(projectDir, {
           bundle,
-          previewDocuments: createPreviewDocumentStore(projectDir, salt),
+          previewDocuments: createPreviewDocumentStore(projectDir, salt, "secret"),
         } as Partial<StudioApiAdapter>),
       );
       const html = await (await app.request("http://localhost/projects/demo/preview")).text();
@@ -1258,7 +1257,7 @@ describe("built preview reuse", () => {
         app,
         createAdapter(projectDir, {
           bundle,
-          previewDocuments: createPreviewDocumentStore(projectDir, "build-a"),
+          previewDocuments: createPreviewDocumentStore(projectDir, "build-a", "secret"),
         } as Partial<StudioApiAdapter>),
       );
       for (const path of paths) await app.request(`http://localhost/projects/demo/${path}`);
@@ -1695,10 +1694,14 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
           "",
         );
       });
-    const { waitForProxy, ProxyWaitTimeoutError, PROXY_PENDING_RETRY_AFTER_SECONDS } =
-      await vi.importActual<typeof import("../helpers/proxyTranscoder.js")>(
-        "../helpers/proxyTranscoder.js",
-      );
+    const {
+      waitForProxy,
+      ProxyWaitTimeoutError,
+      PROXY_PENDING_RETRY_AFTER_SECONDS,
+      StillPastEndError,
+    } = await vi.importActual<typeof import("../helpers/proxyTranscoder.js")>(
+      "../helpers/proxyTranscoder.js",
+    );
     vi.doMock("../helpers/proxyTranscoder.js", () => ({
       resolveProxy,
       resolveStill:
@@ -1713,6 +1716,7 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       retryProxyCopy: (_dir: string, file: string) => void opts.retried?.push(file),
       ProxyTranscodeError: FakeProxyTranscodeError,
       ProxyCapacityError: FakeProxyCapacityError,
+      StillPastEndError,
       PROXY_PARAMS_VERSION: "v1",
       getProxyCachePath: () => "",
     }));
@@ -1953,6 +1957,24 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       expect(resolveStillMock).toHaveBeenCalledTimes(1);
     });
 
+    it("answers a still past the end of the video with a 404", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveStillImpl: async () => {
+          const { StillPastEndError } = await import("../helpers/proxyTranscoder.js");
+          throw new StillPastEndError();
+        },
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+
+      const res = await app.request(
+        "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=9999",
+      );
+      expect(res.status).toBe(404);
+    });
+
     it("makes at most four new stills at once, and serves a finished still without waiting", async () => {
       const projectDir = createProjectDir();
       writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
@@ -1985,20 +2007,59 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       register(app, createAdapter(projectDir));
       const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=";
 
-      const made = Array.from({ length: 40 }, (_, i) => app.request(`${url}${i}`));
+      const made = Array.from({ length: 20 }, (_, i) => app.request(`${url}${i}`));
       await vi.waitFor(() => expect(finishers).toHaveLength(4));
       const finished = await app.request(`${url}99`);
       expect(finished.status).toBe(200);
       expect(finishers).toHaveLength(4);
 
       let ended = 0;
-      while (ended < 40) {
+      while (ended < 20) {
         await vi.waitFor(() => expect(finishers.length).toBeGreaterThan(0));
         finishers.shift()?.();
         ended++;
       }
       for (const res of await Promise.all(made)) expect(res.status).toBe(200);
       expect(mostRunning).toBe(4);
+    });
+
+    it("turns a still away with a 503 once four are being made and sixteen wait", async () => {
+      const projectDir = createProjectDir();
+      writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
+      const stillPath = join(projectDir, "still.jpg");
+      writeFileSync(stillPath, "jpegbytes");
+      const finishers: Array<() => void> = [];
+      const resolveStillMock = vi.fn(
+        async (
+          _dir: string,
+          _file: string,
+          _at: number,
+          _box?: { width: number; height: number },
+          startUncachedStill?: (make: () => Promise<string>) => Promise<string>,
+        ) =>
+          startUncachedStill!(async () => {
+            await new Promise<void>((resolve) => finishers.push(resolve));
+            return stillPath;
+          }),
+      );
+      const { registerPreviewRoutes: register } = await loadPreviewModule({
+        resolveStillImpl: resolveStillMock,
+      });
+      const app = new Hono();
+      register(app, createAdapter(projectDir));
+      const url = "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=";
+
+      const accepted = Array.from({ length: 20 }, (_, i) => app.request(`${url}${i}`));
+      await vi.waitFor(() => expect(resolveStillMock).toHaveBeenCalledTimes(20));
+      const turnedAway = await app.request(`${url}20`);
+      expect(turnedAway.status).toBe(503);
+      expect(turnedAway.headers.get("Retry-After")).toBe("5");
+
+      for (let ended = 0; ended < 20; ended++) {
+        await vi.waitFor(() => expect(finishers.length).toBeGreaterThan(0));
+        finishers.shift()?.();
+      }
+      for (const res of await Promise.all(accepted)) expect(res.status).toBe(200);
     });
 
     it("makes a still again for a request that shared a waiter whose client left", async () => {
@@ -2977,56 +3038,6 @@ describe("hf-proxy codec probe", () => {
     return { proxy, probeMediaMetadata };
   }
 
-  it("answers that the project folder is gone when it is renamed while a proxy is requested", async () => {
-    const projectDir = createProjectDir();
-    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
-    vi.resetModules();
-    vi.doMock("../helpers/mediaMetadata.js", async () => ({
-      ...(await vi.importActual<typeof import("../helpers/mediaMetadata.js")>(
-        "../helpers/mediaMetadata.js",
-      )),
-      probeMediaMetadata: async () => {
-        tempDirs.push(`${projectDir}-renamed`);
-        renameSync(projectDir, `${projectDir}-renamed`);
-        return { kind: "video" as const, color: { codecName: "hevc", pixelFormat: "yuv420p" } };
-      },
-    }));
-    const { createStudioApi: create } = await import("../createStudioApi.js");
-    const api = create(createAdapter(projectDir));
-
-    const response = await api.request(
-      "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
-    );
-
-    expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ why: "project_dir_missing" });
-  });
-
-  it("answers that the project folder is gone when a rename makes the codec probe fail", async () => {
-    const projectDir = createProjectDir();
-    writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
-    vi.resetModules();
-    vi.doMock("../helpers/mediaMetadata.js", async () => ({
-      ...(await vi.importActual<typeof import("../helpers/mediaMetadata.js")>(
-        "../helpers/mediaMetadata.js",
-      )),
-      probeMediaMetadata: async () => {
-        tempDirs.push(`${projectDir}-renamed`);
-        renameSync(projectDir, `${projectDir}-renamed`);
-        return { kind: "video" as const, color: {}, probeError: "ffprobe failed" };
-      },
-    }));
-    const { createStudioApi: create } = await import("../createStudioApi.js");
-    const api = create(createAdapter(projectDir));
-
-    const response = await api.request(
-      "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
-    );
-
-    expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ why: "project_dir_missing" });
-  });
-
   it("runs ffprobe once for repeated proxy requests of the same unchanged clip", async () => {
     const projectDir = createProjectDir();
     writeFileSync(join(projectDir, "clip.mp4"), "original-hevc-bytes");
@@ -3171,8 +3182,12 @@ describe("the desktop app's private folder", () => {
       ".aws/credentials",
       "id_ed25519",
       "cert.pem",
+      ".dev.vars",
+      ".vault-token",
+      ".cargo/credentials.toml",
+      "infra/terraform.tfstate",
     ];
-    for (const folder of [".claude", ".aws"])
+    for (const folder of [".claude", ".aws", ".cargo", "infra"])
       mkdirSync(join(projectDir, folder), { recursive: true });
     for (const file of credentials) writeFileSync(join(projectDir, file), "secret");
     const app = new Hono();
@@ -3330,7 +3345,7 @@ describe("GSAP mirror configuration", () => {
     );
     const overrides = {
       bundle,
-      previewDocuments: createPreviewDocumentStore(projectDir, "same-build"),
+      previewDocuments: createPreviewDocumentStore(projectDir, "same-build", "secret"),
     };
     const first = appForMirror(projectDir, mirror, overrides);
     const root = await first.request(previewUrl);

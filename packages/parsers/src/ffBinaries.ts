@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
+import type { Readable } from "node:stream";
 import { isTrustedExecutablePath, trustedPathDirs } from "./trustedExecutable.js";
 
 /**
@@ -26,6 +27,7 @@ export {
   pathEntries,
   trustedPathDirs,
 } from "./trustedExecutable.js";
+import { assertLiteralMediaInput } from "./literalMediaInput.js";
 
 export const FFMPEG_PATH_ENV = "HYPERFRAMES_FFMPEG_PATH";
 export const FFPROBE_PATH_ENV = "HYPERFRAMES_FFPROBE_PATH";
@@ -268,6 +270,8 @@ const PATH_OPENING_DEMUXERS = new Set([
   "lavfi",
 ]);
 
+const TEXT_ART_DEMUXERS = new Set(["tty", "bin", "xbin", "idf", "adf"]);
+
 /** A `-format_whitelist` value from a `-demuxers` listing; undefined when no row parses. */
 function demuxersFromListing(listing: string): string | undefined {
   const row = /Is a device/.test(listing) ? /^ D[E ]([d ]) (\S+)/ : /^ D[E ]() (\S+)/;
@@ -276,7 +280,8 @@ function demuxersFromListing(listing: string): string | undefined {
     const match = row.exec(line);
     if (!match || match[1] === "d") continue;
     const aliases = match[2]!.split(",");
-    if (aliases.some((alias) => PATH_OPENING_DEMUXERS.has(alias))) continue;
+    if (aliases.some((alias) => PATH_OPENING_DEMUXERS.has(alias) || TEXT_ART_DEMUXERS.has(alias)))
+      continue;
     for (const alias of aliases) names.add(alias);
   }
   return names.size > 0 ? [...names].join(",") : undefined;
@@ -291,8 +296,11 @@ export function _setDemuxerListingForTests(listing?: string): void {
   demuxerLists.clear();
 }
 
-/** Every demuxer `listingBinary` reports that opens nothing by itself; one that cannot be asked gets the self-contained list, and is asked again. */
-export function mediaInputFormatArgs(listingBinary: string): string[] {
+export { assertLiteralMediaInput };
+
+/** Every demuxer `listingBinary` reports that opens nothing by itself and is not text art, for reading `input`; one that cannot be asked gets the self-contained list, and is asked again. */
+export function mediaInputFormatArgs(listingBinary: string, input: string): string[] {
+  assertLiteralMediaInput(input);
   let formats = demuxerLists.get(listingBinary);
   if (formats === undefined) {
     try {
@@ -312,4 +320,24 @@ export function mediaInputFormatArgs(listingBinary: string): string[] {
     demuxerLists.set(listingBinary, formats);
   }
   return ["-format_whitelist", formats];
+}
+
+const OUT_TIME = /^out_time_(?:us|ms)=(\d+)$/;
+
+/** Hears the furthest output time, in seconds, that ffmpeg's `-progress pipe:1` lines on `stream` report. */
+export function followFfmpegProgress(stream: Readable, onSeconds: (seconds: number) => void): void {
+  let furthest = 0;
+  let lineTail = "";
+  stream.on("data", (chunk: Buffer) => {
+    const lines = (lineTail + chunk.toString()).split("\n");
+    lineTail = lines.pop() ?? "";
+    for (const line of lines) {
+      const reached = OUT_TIME.exec(line.trim());
+      if (!reached) continue;
+      const seconds = Number(reached[1]) / 1e6;
+      if (seconds <= furthest) continue;
+      furthest = seconds;
+      onSeconds(seconds);
+    }
+  });
 }

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
+  errorBox,
   formatBytes,
   formatDuration,
   formatRenderPipelineDetail,
@@ -195,5 +196,31 @@ describe("formatBytes", () => {
     expect(formatBytes(1536)).toBe("1.5 KB");
     expect(formatBytes(1_048_575)).toBe("1.0 MB");
     expect(formatBytes(1_048_576)).toBe("1.0 MB");
+  });
+});
+
+describe("errorBox", () => {
+  it("prints control characters in its title, hint and suggestion as visible escapes", () => {
+    const said: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      said.push(args.map(String).join(" "));
+    });
+    try {
+      errorBox(
+        "Load \u001b]0;t\u0007",
+        "page threw \u001b[2J\u009b\nsecond line",
+        "run \u001b[9;9H",
+      );
+    } finally {
+      spy.mockRestore();
+    }
+    const text = said.join("\n");
+    expect(text).toContain("Load \\x1b]0;t\\x07");
+    expect(text).toContain("page threw \\x1b[2J\\x9b");
+    expect(text).toContain("   second line");
+    expect(text).toContain("run \\x1b[9;9H");
+    for (const control of ["\u001b]", "\u0007", "\u009b", "\u001b[2J", "\u001b[9;9H"]) {
+      expect(text).not.toContain(control);
+    }
   });
 });

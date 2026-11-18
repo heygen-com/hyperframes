@@ -44,6 +44,7 @@ import {
   pinWritableWithinProject,
   resolveWithinProject,
   resolveWritableWithinProject,
+  toolTrustedFileWithin,
   walkDir,
 } from "../helpers/safePath.js";
 import { backupPathForResponse, snapshotBeforeWrite } from "../helpers/backupJournal.js";
@@ -122,6 +123,7 @@ import {
   hasCompositionOutsideTemplates,
   insertBeforeCloseTag,
 } from "@hyperframes/core/compiler/html-document";
+import { fetchAgain } from "../helpers/fetchAgain.js";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
 
@@ -2749,8 +2751,10 @@ async function processUploadedFiles(
 
     // The collision suffix chooses a different path; validate that destination
     // too, including dangling symlinks that existsSync treats as absent.
-    if (!isSafePath(projectDir, finalPath) || !isWritableProjectFile(projectDir, finalPath))
+    if (!isSafePath(projectDir, finalPath) || !isWritableProjectFile(projectDir, finalPath)) {
+      skipped.push(name);
       continue;
+    }
 
     const buffer = Buffer.from(await value.arrayBuffer());
     const validation = validateUploadedMediaBuffer(finalName, buffer);
@@ -2823,7 +2827,7 @@ function keptForReplay(request: Request): () => Request {
 async function sendAgainOnceFree(api: Hono, replay: () => Request): Promise<Response | null> {
   for (const ms of HELD_EDIT_WAITS) {
     await new Promise((resolve) => setTimeout(resolve, ms));
-    const again = await api.fetch(replay());
+    const again = await fetchAgain(api, replay());
     if (!again.headers.has(HELD)) return again;
   }
   return null;
@@ -3067,6 +3071,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if ("error" in res) return res.error;
 
     const stat = statSync(res.absPath);
+    if (stat.isDirectory() && toolTrustedFileWithin(res.project.dir, res.absPath)) {
+      return c.json({ error: "forbidden", why: "protected_path" }, 403);
+    }
     const backup = snapshotBeforeWrite(res.project.dir, res.absPath);
     if (backup.error) return c.json({ error: `backup failed: ${backup.error}` }, 500);
     if (stat.isDirectory()) {
@@ -3766,6 +3773,9 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     const isDirectory = statSync(res.absPath, { throwIfNoEntry: false })?.isDirectory() ?? false;
+    if (isDirectory && toolTrustedFileWithin(res.project.dir, res.absPath)) {
+      return c.json({ error: "forbidden", why: "protected_path" }, 403);
+    }
     ensureDir(res.project.dir, newAbs);
     renameSync(res.absPath, newAbs);
 

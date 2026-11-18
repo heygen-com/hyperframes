@@ -23,6 +23,11 @@ import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
 import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
 import type { Page, Browser, PuppeteerNode } from "puppeteer-core";
 import { resolveFullChromePath, ownedLaunchOptions } from "./browserManager.js";
+import {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  launchWithChromeSandboxFallback,
+} from "@hyperframes/core/chrome-sandbox";
 
 // ── PQ (SMPTE 2084) OETF ─────────────────────────────────────────────────────
 
@@ -247,13 +252,16 @@ export async function launchHdrBrowser(
     );
   }
 
-  const browser = await ppt.launch({
-    ...ownedLaunchOptions(),
-    headless: false,
-    executablePath: chromePath,
-    env: buildChromeLaunchEnv(),
-    args: withHyperframesBrowserMarker(buildHdrChromeArgs(width, height)),
-  });
+  const launcher = ppt;
+  const browser = await launchWithChromeSandboxFallback(buildHdrChromeArgs(width, height), (args) =>
+    launcher.launch({
+      ...ownedLaunchOptions(),
+      headless: false,
+      executablePath: chromePath,
+      env: buildChromeLaunchEnv(),
+      args: withHyperframesBrowserMarker(args),
+    }),
+  );
 
   const page = await browser.newPage();
   await page.setViewport({ width, height });
@@ -261,11 +269,14 @@ export async function launchHdrBrowser(
   return { browser, page };
 }
 
-export function buildHdrChromeArgs(width: number, height: number): string[] {
+export function buildHdrChromeArgs(
+  width: number,
+  height: number,
+  sandbox = chromeSandboxEnabled(),
+): string[] {
   return [
     "--enable-unsafe-webgpu",
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
+    ...chromeSandboxArgs(sandbox),
     "--window-position=-10000,-10000",
     `--window-size=${width},${height}`,
     "--disable-background-timer-throttling",
@@ -276,7 +287,6 @@ export function buildHdrChromeArgs(width: number, height: number): string[] {
     "--disable-component-update",
     "--disable-default-apps",
     "--disable-sync",
-    "--no-zygote",
     "--force-gpu-mem-available-mb=4096",
     "--autoplay-policy=no-user-gesture-required",
   ];

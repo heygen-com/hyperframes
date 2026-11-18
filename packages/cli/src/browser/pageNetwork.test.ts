@@ -75,6 +75,21 @@ describe("launchWithPageNetwork", () => {
     await expect.poll(() => existsSync(seen!.userDataDir!)).toBe(false);
   });
 
+  // fails without the fix: a page server on the default port gave a bypass entry with no port, which admits
+  // every port on that host.
+  it("names the page server's port in the bypass entry even when the URL leaves it out", async () => {
+    process.env.PRODUCER_RESTRICT_PAGE_NETWORK = "true";
+    let seen: PageNetworkLaunch | undefined;
+    const fake = fakeBrowser();
+    await launchWithPageNetwork("http://localhost/index.html", async (network) => {
+      seen = network;
+      return fake.browser;
+    });
+    expect(seen?.args).toContain("--proxy-bypass-list=<-loopback>;localhost:80");
+    fake.disconnect();
+    await expect.poll(() => existsSync(seen!.userDataDir!)).toBe(false);
+  });
+
   it("refuses to launch a restricted browser before the page has a URL", async () => {
     process.env.PRODUCER_RESTRICT_PAGE_NETWORK = "true";
     let launched = false;

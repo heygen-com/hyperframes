@@ -15,6 +15,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { S3Client } from "@aws-sdk/client-s3";
+import { pinBucketOwner } from "./bucketOwner.js";
 import { CONTENT_STORE_RETENTION_DAYS, audioSidecarUri, probeFactsUri } from "../contentStore.js";
 import {
   buildAudioSidecar,
@@ -63,6 +64,8 @@ export interface DeploySiteOptions {
   siteId?: string;
   /** Called with a line a user should see, such as audio sidecars skipped for want of ffmpeg. */
   onNotice?: (message: string) => void;
+  includeOutsideFiles?: boolean;
+  expectedBucketOwner?: string;
   /** Injection seam for tests. Production callers leave unset. */
   s3?: S3Client;
 }
@@ -155,11 +158,12 @@ async function tarballSite(site: SiteHandle, s3: S3Client, bucket: string): Prom
 
 /** Upload `projectDir`'s files to the content store and write the site manifest. */
 export async function deploySite(opts: DeploySiteOptions): Promise<SiteHandle> {
-  const s3 = opts.s3 ?? new S3Client({ region: opts.region });
+  const client = opts.s3 ?? new S3Client({ region: opts.region });
+  const s3 = opts.expectedBucketOwner ? pinBucketOwner(client, opts.expectedBucketOwner) : client;
   if (!statSync(opts.projectDir).isDirectory()) {
     throw new Error(`[deploySite] projectDir is not a directory: ${opts.projectDir}`);
   }
-  const files = listSiteFilesForUpload(opts.projectDir, opts.onNotice);
+  const files = listSiteFilesForUpload(opts.projectDir, opts.onNotice, opts.includeOutsideFiles);
   const siteId = opts.siteId ?? hashProjectDir(opts.projectDir, files);
   const projectS3Uri = siteManifestUri(opts.bucketName, siteId);
 

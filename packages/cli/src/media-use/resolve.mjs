@@ -69,6 +69,8 @@ import {
   scoreMatch,
 } from "./lib/sfx-provider.mjs";
 import { writeSfxCredit } from "./lib/openverse.mjs";
+import { terminalText } from "./lib/terminal-text.mjs";
+import { discardPrivateOutput } from "./lib/private-output.mjs";
 import { mediaVectorRows, rankMediaRowsWithVectors } from "./lib/local-media-search.mjs";
 
 const INGEST_TYPES = listTypes();
@@ -179,7 +181,7 @@ if (args.adopt) {
     console.log("no new assets to adopt (assets/ empty or already registered)");
   } else {
     console.log(`adopted ${adopted.length} asset${adopted.length === 1 ? "" : "s"} from assets/`);
-    for (const r of adopted) console.log(`  ${r.id} → ${r.path} (${r.type})`);
+    for (const r of adopted) console.log(terminalText(`  ${r.id} → ${r.path} (${r.type})`));
   }
   process.exit(0);
 }
@@ -280,11 +282,14 @@ if (type === "recipe") {
       console.log(JSON.stringify({ ok: true, ...used }));
     } else {
       console.log(
-        `resolved recipe ${used.recipe.name} (v${used.recipe.version}, ${used.recipe.workflow})`,
+        terminalText(
+          `resolved recipe ${used.recipe.name} (v${used.recipe.version}, ${used.recipe.workflow})`,
+        ),
       );
-      console.log(`  frame spec → ${used.frameSpecPath} (copied over)`);
-      console.log(`  storyboard skeleton → ${used.skeletonPath}`);
-      if (used.briefSkeletonPath) console.log(`  brief skeleton → ${used.briefSkeletonPath}`);
+      console.log(terminalText(`  frame spec → ${used.frameSpecPath} (copied over)`));
+      console.log(terminalText(`  storyboard skeleton → ${used.skeletonPath}`));
+      if (used.briefSkeletonPath)
+        console.log(terminalText(`  brief skeleton → ${used.briefSkeletonPath}`));
     }
     process.exit(0);
   } catch (err) {
@@ -553,18 +558,16 @@ async function run() {
         }),
       );
     } else {
-      console.error(`error: ${msg}`);
+      console.error(terminalText(`error: ${msg}`));
     }
     process.exit(1);
   }
 
   // 5. freeze and register atomically.
   const ext = searchResult.ext || extFromUrl(searchResult.url || "") || defaultExt(type);
-  const { id, localPath, fullPath } = await withReservedFile(
-    projectDir,
-    type,
-    ext,
-    async (reservation) => {
+  let reserved;
+  try {
+    reserved = await withReservedFile(projectDir, type, ext, async (reservation) => {
       if (searchResult.localPath) {
         freezeLocalFile(searchResult.localPath, reservation.fullPath);
       } else if (searchResult.url) {
@@ -573,8 +576,12 @@ async function run() {
         throw new Error("provider returned no url or localPath");
       }
       return reservation;
-    },
-  );
+    });
+  } finally {
+    // A local generator's private output folder is not needed once the file is in the project.
+    if (searchResult.localPath) discardPrivateOutput(searchResult.localPath);
+  }
+  const { id, localPath, fullPath } = reserved;
 
   const record = {
     id,
@@ -671,7 +678,7 @@ function exitError(message, status = 1) {
   if (args.json) {
     console.log(JSON.stringify({ ok: false, error: message }));
   } else {
-    console.error(`error: ${message}`);
+    console.error(terminalText(`error: ${message}`));
   }
   process.exit(status);
 }
@@ -743,7 +750,7 @@ async function colorMiss(type, intent) {
   if (args.json) {
     console.log(JSON.stringify({ ok: false, error: msg }));
   } else {
-    console.error(`error: ${msg}`);
+    console.error(terminalText(`error: ${msg}`));
   }
   process.exit(1);
 }
@@ -1184,8 +1191,8 @@ function printStats(report) {
     return;
   }
   for (const [type, misses] of entries) {
-    console.log(`  ${type}:`);
-    for (const miss of misses) console.log(`    ${miss.count}  ${miss.intent}`);
+    console.log(terminalText(`  ${type}:`));
+    for (const miss of misses) console.log(terminalText(`    ${miss.count}  ${miss.intent}`));
   }
 }
 
@@ -1196,7 +1203,7 @@ function printMap(label, values) {
     console.log("  none");
     return;
   }
-  for (const [key, value] of entries) console.log(`  ${key}: ${value}`);
+  for (const [key, value] of entries) console.log(terminalText(`  ${key}: ${value}`));
 }
 
 function ffDoctorCheck(name, binary) {
@@ -1280,7 +1287,7 @@ async function reuseGlobal(shaArg) {
   }
   // Do not import an asset under the wrong type.
   if (!typesMatch(rec.type, type)) {
-    console.error(`error: sha "${shaArg}" is a ${rec.type} asset, not ${type}`);
+    console.error(terminalText(`error: sha "${shaArg}" is a ${rec.type} asset, not ${type}`));
     process.exit(2);
   }
   const ext = extname(rec.cached_path || "") || defaultExt(type);
@@ -1308,7 +1315,9 @@ function warnLowConfidence(record, match) {
         ? `found by its file name, resolved earlier for "${match.resolved_for}"`
         : `found by its file name, sharing ${match.matched_words.length} of ${match.intent_words} words`;
   console.error(
-    `media-use: low-confidence match for "${intent}": ${record.description || record.path} (${why}). Listen before placing it, or resolve again with other words.`,
+    terminalText(
+      `media-use: low-confidence match for "${intent}": ${record.description || record.path} (${why}). Listen before placing it, or resolve again with other words.`,
+    ),
   );
 }
 
@@ -1367,7 +1376,7 @@ async function result(record, source, match = recordedMatch(record)) {
     );
   } else {
     const meta = formatMeta(record, source);
-    console.log(`resolved ${record.id} → ${record.path || "inline"} (${meta})`);
+    console.log(terminalText(`resolved ${record.id} → ${record.path || "inline"} (${meta})`));
   }
 }
 
@@ -1399,7 +1408,7 @@ run().catch((err) => {
   if (args.json) {
     console.log(JSON.stringify({ ok: false, error: err.message }));
   } else {
-    console.error(`error: ${err.message}`);
+    console.error(terminalText(`error: ${err.message}`));
   }
   process.exit(1);
 });
