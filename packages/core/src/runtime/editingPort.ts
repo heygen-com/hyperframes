@@ -29,6 +29,7 @@ import type { EditingGestureStart } from "./editingGestureStart";
 import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { MotionPathFrameHome } from "./editing/motionPathHome";
 import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
+import { parsePatchTweens, type PatchTweensParams } from "./editing/patchTween";
 import type { EditingLayer } from "./editingLayers";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
@@ -178,6 +179,7 @@ export const EDITING_REQUEST_KINDS = [
   "crop-lift",
   "edit-element",
   "gsap-set",
+  "patch-tweens",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -313,6 +315,7 @@ export interface EditingRequests {
   };
   "edit-element": { params: EditElementParams; result: EditElementResult };
   "gsap-set": { params: GsapSetParams; result: { applied: boolean } };
+  "patch-tweens": { params: PatchTweensParams; result: { patched: boolean } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -522,6 +525,7 @@ const PARAM_PARSERS: {
       : null,
   "edit-element": parseEditElement,
   "gsap-set": parseGsapSet,
+  "patch-tweens": parsePatchTweens,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */

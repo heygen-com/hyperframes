@@ -24,7 +24,8 @@ import {
 } from "../utils/studioSaveDiagnostics";
 import type { CutoverDeps } from "../utils/sdkCutover";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
-import { patchRuntimeTweenInPlace } from "./gsapRuntimePatch";
+import { patchRuntimeTweenInPlace, type RuntimeTweenChange } from "./gsapRuntimePatch";
+import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
 import { createKeyedSerializer } from "./serializeByKey";
 import {
   GsapMutationHttpError,
@@ -257,7 +258,10 @@ export function applyPreviewSync(
   const patches = instantPatchesFor(options);
   const writtenWithoutPatch = patches.length === 0;
   let needsFallback = options.previewFallbackLatch?.pending === true || writtenWithoutPatch;
-  if (patches.length > 0) {
+  if (patches.length > 0 && iframe && previewFrameOpaque(iframe)) {
+    patchSealedPreview(iframe, patches, !options.deferPreviewSync, reloadPreview);
+    if (!needsFallback) return;
+  } else if (patches.length > 0) {
     const deferSeek = options.deferPreviewSync === true;
     const missed = patches.find(
       (patch, index) =>
@@ -304,6 +308,39 @@ export function applyPreviewSync(
   } else {
     reloadPreview();
   }
+}
+
+const definedChannels = <T extends object>(props: T): T =>
+  Object.fromEntries(Object.entries(props).filter(([, v]) => v !== undefined)) as T;
+
+function wireChange(change: RuntimeTweenChange): RuntimeTweenChange {
+  switch (change.kind) {
+    case "keyframes":
+      return { ...change, keyframes: change.keyframes.map(definedChannels) };
+    case "keyframe-rebuild":
+      return { ...change, props: definedChannels(change.props) };
+    default:
+      return { ...change, props: definedChannels(change.props) };
+  }
+}
+
+const wirePatch = ({ selector, change }: { selector: string; change: RuntimeTweenChange }) => ({
+  selector,
+  change: wireChange(change),
+});
+
+/** A sealed preview patches its own tweens; a refusal, or no answer, reloads it. */
+function patchSealedPreview(
+  iframe: HTMLIFrameElement,
+  patches: ReturnType<typeof instantPatchesFor>,
+  seek: boolean,
+  reloadPreview: () => void,
+): void {
+  void previewRequest(iframe, "patch-tweens", { patches: patches.map(wirePatch), seek }).then(
+    (reply) => {
+      if (!reply?.patched) reloadPreview();
+    },
+  );
 }
 
 function instantPatchesFor(

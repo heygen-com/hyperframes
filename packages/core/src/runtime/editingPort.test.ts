@@ -104,6 +104,7 @@ describe("createEditingPortClient", () => {
           "crop-lift",
           "edit-element",
           "gsap-set",
+          "patch-tweens",
         ],
       });
     } finally {

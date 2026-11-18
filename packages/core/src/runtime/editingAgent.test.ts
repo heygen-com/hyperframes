@@ -201,6 +201,7 @@ describe("installEditingAgent", () => {
           "crop-lift",
           "edit-element",
           "gsap-set",
+          "patch-tweens",
         ],
       },
     });
