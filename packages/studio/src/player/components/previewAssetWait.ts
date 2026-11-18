@@ -19,15 +19,6 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
   }
 }
 
-/** The same question for either frame: a sealed one answers over its editing port. */
-export async function previewStillLoading(
-  iframe: HTMLIFrameElement,
-  lastResult: boolean,
-): Promise<boolean> {
-  if (!previewFrameOpaque(iframe)) return hasUnloadedAssets(iframe, lastResult);
-  return (await askAssetsUnloaded(iframe)) ?? lastResult;
-}
-
 /** "checking": not ready yet, but no overlay, until a sealed frame first answers. */
 export type AssetWaitState = boolean | "checking";
 
@@ -38,49 +29,52 @@ interface AssetWait {
   setLoading: (state: AssetWaitState) => void;
 }
 
-/** Keeps the asset overlay up while the preview's media cannot play through, for at most 10 s. */
+const POLL_MS = 100;
+const MAX_POLLS = 100;
+
+/** Keeps the asset overlay up while the preview's media cannot play through, for at most 10 s. A sealed frame that
+ *  gives no answer (its port not up yet, or replaced by the load) is asked again, never taken as ready. */
 export function waitForPreviewAssets(iframe: HTMLIFrameElement, wait: AssetWait): void {
   if (wait.refresh) {
     wait.setLoading(false);
     return;
   }
-  const poll = (first: boolean) => {
-    let lastUnloaded = first;
-    if (!lastUnloaded) {
-      wait.setLoading(false);
-      return;
-    }
-    wait.setLoading(true);
-    let attempts = 0;
-    let asking = false;
-    const finish = () => {
-      if (lastUnloaded) {
-        console.debug(
-          "[studio] asset readiness poll hit the 10s cap, continuing with unloaded assets",
-        );
-      }
-      if (wait.pollRef.current) clearInterval(wait.pollRef.current);
-      wait.pollRef.current = null;
-      wait.setLoading(false);
-    };
-    wait.pollRef.current = setInterval(() => {
-      attempts += 1;
-      if (attempts > 100) return finish();
-      if (asking) return;
-      asking = true;
-      void previewStillLoading(iframe, lastUnloaded).then((unloaded) => {
-        asking = false;
-        lastUnloaded = unloaded;
-        if (wait.isCurrent() && !lastUnloaded) finish();
-      });
-    }, 100);
+  const sealed = previewFrameOpaque(iframe);
+  let state: AssetWaitState = sealed ? "checking" : hasUnloadedAssets(iframe, false);
+  wait.setLoading(state);
+  if (state === false) return;
+
+  let polls = 0;
+  let asking = false;
+  const handle = setInterval(() => tick(), POLL_MS);
+  wait.pollRef.current = handle;
+  const live = () => wait.pollRef.current === handle && wait.isCurrent();
+  const stop = () => {
+    clearInterval(handle);
+    wait.pollRef.current = null;
+    wait.setLoading(false);
   };
-  if (!previewFrameOpaque(iframe)) {
-    poll(hasUnloadedAssets(iframe, false));
-    return;
-  }
-  wait.setLoading("checking");
-  void previewStillLoading(iframe, false).then((first) => {
-    if (wait.isCurrent()) poll(first);
-  });
+  const ask = async (): Promise<boolean | null> =>
+    sealed ? askAssetsUnloaded(iframe) : hasUnloadedAssets(iframe, state === true);
+  const tick = () => {
+    if (!live()) return clearInterval(handle);
+    polls += 1;
+    if (polls > MAX_POLLS) {
+      console.debug(
+        "[studio] asset readiness poll hit the 10s cap, continuing with unloaded assets",
+      );
+      return stop();
+    }
+    if (asking) return;
+    asking = true;
+    void ask().then((unloaded) => {
+      asking = false;
+      if (!live() || unloaded === null) return;
+      if (!unloaded) return stop();
+      if (state === true) return;
+      state = true;
+      wait.setLoading(true);
+    });
+  };
+  if (sealed) tick();
 }
