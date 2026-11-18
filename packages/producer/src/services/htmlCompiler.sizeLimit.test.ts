@@ -319,3 +319,29 @@ describe("variable-driven composition styles and media sources", () => {
     expect(await srcFor("https://example.com/x.mp4\n")).toBe("https://example.com/x.mp4");
   });
 });
+
+describe("local font embedding", () => {
+  const LARGEST_INLINED_FONT_BYTES = 5 * 1024 * 1024;
+  const faces = (count: number) =>
+    Array.from(
+      { length: count },
+      (_, i) => `@font-face { font-family: "F${i}"; src: url("big.ttf"); }`,
+    ).join("\n");
+
+  it("inlines a font that many rules name only while the page stays within the limit", async () => {
+    const dir = project({
+      "index.html": ROOT.replace(
+        "<html>",
+        `<html><head><style>${faces(8)}\n.mark { background: url("big.ttf"); }</style></head>`,
+      ),
+      "scene.html": SCENE,
+    });
+    writeFileSync(join(dir, "big.ttf"), Buffer.alloc(LARGEST_INLINED_FONT_BYTES, 1));
+    const { html } = await compileForRender(dir, join(dir, "index.html"), dir);
+    const inlined = html.split("data:font/ttf;base64,").length - 1;
+    expect(inlined).toBeGreaterThan(0);
+    expect(html.length).toBeLessThan(MAX_EXPANDED_COMPOSITION_BYTES + 64 * 1024);
+    expect(html.split('url("big.ttf")').length - 1).toBe(8 - inlined + 1);
+    expect(html).toContain('.mark { background: url("big.ttf"); }');
+  });
+});
