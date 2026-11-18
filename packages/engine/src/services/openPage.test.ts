@@ -18,11 +18,15 @@ function tabSession(closedDuringSetup: boolean) {
     id: () => "S",
     target: () => target,
     connection: () => ({ on() {}, off() {} }),
-    parentSession: () => Object.assign(new EventEmitter(), { target: () => target, send: async () => ({}) }),
+    parentSession: () =>
+      Object.assign(new EventEmitter(), { target: () => target, send: async () => ({}) }),
     send: async (method: string) => {
       if (method !== "Page.getFrameTree") return {};
-      if (closedDuringSetup) throw new TargetCloseError("Protocol error (Page.getFrameTree): Target closed");
-      return { frameTree: { frame: { id: "T", loaderId: "L", url: "about:blank" }, childFrames: [] } };
+      if (closedDuringSetup)
+        throw new TargetCloseError("Protocol error (Page.getFrameTree): Target closed");
+      return {
+        frameTree: { frame: { id: "T", loaderId: "L", url: "about:blank" }, childFrames: [] },
+      };
     },
   });
   return { session, target };
@@ -35,7 +39,10 @@ async function cdpPage(closedDuringSetup: boolean): Promise<Page> {
   return (await CdpPage._create(session as never, target as never, null, () => undefined)) as Page;
 }
 
-function browserWith(pages: Array<() => Promise<Page>>, state: { connected: boolean; exitCode?: number }) {
+function browserWith(
+  pages: Array<() => Promise<Page>>,
+  state: { connected: boolean; exitCode?: number },
+) {
   const opened: Page[] = [];
   const browser = {
     get connected() {
