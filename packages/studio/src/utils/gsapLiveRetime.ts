@@ -127,6 +127,20 @@ function sealedRetimeResult(reply: unknown): LiveRetimeResult {
 /** The edited file as saved before and after the edit. */
 type SavedFiles = { before?: string; after?: string };
 
+/** A `retime` plan from the file as saved before the edit; null when no single script there owns the timeline. */
+function planFromSavedFile(
+  scriptText: string,
+  savedBefore: string,
+): Extract<LiveRetimePlan, { kind: "retime" }> | null {
+  const [key] = timelineKeys(scriptText);
+  if (!key) return null;
+  const previous = new DOMParser().parseFromString(savedBefore, "text/html");
+  const [before, ...extra] = scriptsRegistering(findGsapScriptElements(previous), [key]);
+  if (!before || extra.length > 0) return null;
+  const plan = planLiveRetime(before.textContent ?? "", scriptText);
+  return plan.kind === "retime" ? plan : null;
+}
+
 // Planned from the saved files alone; the frame checks its timeline matches the plan before moving anything.
 async function moveSealedLiveTweens(
   iframe: HTMLIFrameElement,
@@ -135,13 +149,9 @@ async function moveSealedLiveTweens(
   reloadPreview: () => void,
   files: SavedFiles,
 ): Promise<boolean> {
-  const [key] = timelineKeys(scriptText);
-  if (files.before === undefined || files.after === undefined || !key) return false;
-  const previous = new DOMParser().parseFromString(files.before, "text/html");
-  const [before, ...extra] = scriptsRegistering(findGsapScriptElements(previous), [key]);
-  if (!before || extra.length > 0) return false;
-  const plan = planLiveRetime(before.textContent ?? "", scriptText);
-  if (plan.kind !== "retime") return false;
+  if (files.before === undefined || files.after === undefined) return false;
+  const plan = planFromSavedFile(scriptText, files.before);
+  if (!plan) return false;
   const { key: planKey, after, tweens } = plan;
   const reply = await previewRequest(iframe, "live-retime", {
     key: planKey,

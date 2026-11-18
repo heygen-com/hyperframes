@@ -206,16 +206,24 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const finite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 
+const okSelector = (selector: unknown): boolean =>
+  typeof selector === "string" && selector.length > 0 && selector.length <= MAX_SELECTOR;
+const okSource = (source: unknown): boolean =>
+  Number.isInteger(source) && (source as number) >= 0;
+
+function okTimes({ start, duration, wasStart, wasDuration }: Record<string, unknown>): boolean {
+  if (![start, duration, wasStart, wasDuration].every(finite)) return false;
+  return (duration as number) >= 0 && (wasDuration as number) >= 0;
+}
+
 function parseTiming(value: unknown): TweenTiming | null {
   if (!isRecord(value) || Object.keys(value).sort().join() !== TIMING_FIELDS) return null;
-  const { selector, start, duration, wasStart, wasDuration, moved, source } = value;
-  const okSelector =
-    typeof selector === "string" && selector.length > 0 && selector.length <= MAX_SELECTOR;
-  const okTimes = [start, duration, wasStart, wasDuration].every(finite);
-  const okLengths = (duration as number) >= 0 && (wasDuration as number) >= 0;
-  const okSource = Number.isInteger(source) && (source as number) >= 0;
-  if (!okSelector || !okTimes || !okLengths || !okSource || typeof moved !== "boolean") return null;
-  return value as unknown as TweenTiming;
+  const ok =
+    okSelector(value.selector) &&
+    okTimes(value) &&
+    okSource(value.source) &&
+    typeof value.moved === "boolean";
+  return ok ? (value as unknown as TweenTiming) : null;
 }
 
 export function parseLiveRetime(params: unknown): LiveRetimeParams | null {
