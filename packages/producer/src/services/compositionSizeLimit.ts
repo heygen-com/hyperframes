@@ -49,7 +49,6 @@ const fileTooLarge = (file: string, bytes: number) =>
 
 const limitText = `One render generates at most ${megabytes(MAX_EXPANDED_COMPOSITION_BYTES)}`;
 
-/** What remote script and stylesheet tags inlined into the page are charged as. */
 export const REMOTE_SCRIPTS = "remote scripts";
 export const REMOTE_STYLESHEETS = "remote stylesheets";
 
