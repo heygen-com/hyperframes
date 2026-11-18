@@ -483,6 +483,12 @@
       "import": "./src/runtime/editing/softReload.ts",
       "types": "./src/runtime/editing/softReload.ts"
     },
+    "./runtime/scenes": {
+      "bun": "./src/runtime/editing/scenes.ts",
+      "node": "./dist/runtime/editing/scenes.js",
+      "import": "./src/runtime/editing/scenes.ts",
+      "types": "./src/runtime/editing/scenes.ts"
+    },
     "./runtime/clip-window": {
       "bun": "./src/runtime/clipWindow.ts",
       "node": "./dist/runtime/clipWindow.js",
@@ -1002,6 +1008,10 @@
       "./runtime/soft-reload": {
         "import": "./dist/runtime/editing/softReload.js",
         "types": "./dist/runtime/editing/softReload.d.ts"
+      },
+      "./runtime/scenes": {
+        "import": "./dist/runtime/editing/scenes.js",
+        "types": "./dist/runtime/editing/scenes.d.ts"
       },
       "./runtime/clip-window": {
         "import": "./dist/runtime/clipWindow.js",

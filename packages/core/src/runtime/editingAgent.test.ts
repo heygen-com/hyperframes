@@ -203,6 +203,9 @@ describe("installEditingAgent", () => {
           "gsap-set",
           "patch-tweens",
           "soft-reload",
+          "hold-scenes",
+          "mark-scenes-stale",
+          "swap-scenes",
         ],
       },
     });
@@ -551,6 +554,35 @@ describe("installEditingAgent", () => {
     });
     expect(document.querySelector("script")?.textContent).toBe(`(function(){${script}\n})();`);
     for (const key of ["gsap", "__timelines", "__hfForceTimelineRebind"]) delete frame[key];
+  });
+
+  it("holds and swaps scenes through the port, and refuses a hold carrying anything extra", async () => {
+    const hold = vi.fn(async () => {});
+    window.__hfHoldScenes = hold;
+    window.__hfSwapScenes = async () => {
+      throw new Error("no scene changed");
+    };
+    const port = connectedPort();
+
+    const extra = { names: ["intro"], holder: "frame" };
+    expect(await ask(port, { v: 1, id: 1, kind: "hold-scenes", params: extra })).toMatchObject({
+      ok: false,
+    });
+    expect(hold).not.toHaveBeenCalled();
+    const held = await ask(port, {
+      v: 1,
+      id: 2,
+      kind: "hold-scenes",
+      params: { names: ["intro"] },
+    });
+    expect(held).toMatchObject({ ok: true, result: { held: true } });
+    const swap = { html: "<p></p>", timeoutMs: 1000 };
+    expect(await ask(port, { v: 1, id: 3, kind: "swap-scenes", params: swap })).toMatchObject({
+      ok: true,
+      result: { swapped: false, reason: "Error: no scene changed" },
+    });
+    delete window.__hfHoldScenes;
+    delete window.__hfSwapScenes;
   });
 
   it("answers computed styles for the element a selector names", async () => {
