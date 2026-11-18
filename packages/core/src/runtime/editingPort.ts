@@ -27,6 +27,7 @@ import {
 import type { EditingElementBox, EditingElementGeometry } from "./editingGeometry";
 import type { EditingGestureStart } from "./editingGestureStart";
 import type { GsapSnapshot } from "./editing/gsapSnapshot";
+import type { MotionPathFrameHome } from "./editing/motionPathHome";
 import type { EditingLayer } from "./editingLayers";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
@@ -166,6 +167,8 @@ export const EDITING_REQUEST_KINDS = [
   "set-audio-group-attribute",
   "assign-audio-group",
   "gsap-snapshot",
+  "motion-path-home",
+  "max-z-index",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -293,6 +296,8 @@ export interface EditingRequests {
     result: { previous: Array<string | null>; changed: boolean };
   };
   "gsap-snapshot": { params: NoParams; result: GsapSnapshot };
+  "motion-path-home": { params: { selector: string }; result: MotionPathFrameHome };
+  "max-z-index": { params: NoParams; result: { zIndex: number } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -491,6 +496,11 @@ const PARAM_PARSERS: {
   "set-audio-group-attribute": parseSetAudioGroupAttribute,
   "assign-audio-group": parseAssignAudioGroup,
   "gsap-snapshot": noParams,
+  "motion-path-home": (params) =>
+    hasKeys(params, "selector") && isSelector(params.selector)
+      ? { selector: params.selector }
+      : null,
+  "max-z-index": noParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
@@ -695,3 +705,5 @@ export function createEditingPortClient(options: {
     },
   };
 }
+
+export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";

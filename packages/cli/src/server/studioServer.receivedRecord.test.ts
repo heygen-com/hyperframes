@@ -56,6 +56,17 @@ function caseInsensitiveDisk(): boolean {
   }
 }
 
+/** Whether a name in composed Unicode reaches a file named in decomposed Unicode, as on macOS and Windows. */
+function unicodeFormsFolded(): boolean {
+  const probe = mkdtempSync(join(tmpdir(), "hf-unicode-probe-"));
+  try {
+    writeFileSync(join(probe, "caf\u00e9"), "");
+    return existsSync(join(probe, "cafe\u0301"));
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+}
+
 function write(path: string, text: string | Buffer): void {
   mkdirSync(join(path, ".."), { recursive: true });
   writeFileSync(path, text);
@@ -379,6 +390,88 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     },
   );
 
+  it.runIf(caseInsensitiveDisk())(
+    "refuses a rename that changes only the letter case on a disk that folds case, keeping the line",
+    async () => {
+      const { projectDir, app } = studio();
+      withRecord(projectDir);
+      expect((await move(app, "scenes/intro.html", "scenes/Intro.html")).status).toBe(409);
+      expect(listed(projectDir)).toEqual(["scenes/intro.html", "scenes/logo.png"]);
+      expect(allowed(projectDir)).toBe(false);
+    },
+  );
+
+  it.skipIf(caseInsensitiveDisk())(
+    "lists a received page under its new name after a rename that changes only its letter case",
+    async () => {
+      const { projectDir, app } = studio();
+      withRecord(projectDir);
+      expect((await move(app, "scenes/intro.html", "scenes/Intro.html")).status).toBe(200);
+      expect(listed(projectDir)).toEqual(["scenes/Intro.html", "scenes/logo.png"]);
+      expect(allowed(projectDir)).toBe(false);
+    },
+  );
+
+  it.skipIf(unicodeFormsFolded())(
+    "lists a received page under its new name after a rename from composed to decomposed Unicode",
+    async () => {
+      const { projectDir, app } = studio();
+      withRecord(projectDir);
+      write(join(projectDir, "scenes", "caf\u00e9.html"), `<img src="../../outside/pic.png">`);
+      write(record(projectDir), JSON.stringify({ files: ["scenes/caf\u00e9.html"] }));
+      expect((await move(app, "scenes/caf\u00e9.html", "scenes/cafe\u0301.html")).status).toBe(200);
+      expect(listed(projectDir)).toEqual(["scenes/cafe\u0301.html"]);
+      expect(allowed(projectDir)).toBe(false);
+    },
+  );
+
+  it.skipIf(unicodeFormsFolded())(
+    "keeps a received page listed when a file named like it in another Unicode form is renamed",
+    async () => {
+      const { projectDir, app } = studio();
+      withRecord(projectDir);
+      write(join(projectDir, "scenes", "caf\u00e9.html"), `<img src="../../outside/pic.png">`);
+      write(join(projectDir, "scenes", "cafe\u0301.html"), "<p></p>");
+      write(record(projectDir), JSON.stringify({ files: ["scenes/caf\u00e9.html"] }));
+      expect((await move(app, "scenes/cafe\u0301.html", "scenes/draft.html")).status).toBe(200);
+      expect(listed(projectDir)).toEqual(["scenes/caf\u00e9.html", "scenes/draft.html"]);
+    },
+  );
+
+  it.skipIf(caseInsensitiveDisk())(
+    "lists a received page under its new name when that name differs only in letter case from another listed file",
+    async () => {
+      const { projectDir, app } = studio();
+      withRecord(projectDir);
+      write(join(projectDir, "scenes", "Opening.html"), "<p>other</p>");
+      write(
+        record(projectDir),
+        JSON.stringify({ files: ["scenes/Opening.html", "scenes/intro.html"] }),
+      );
+      expect((await move(app, "scenes/intro.html", "scenes/opening.html")).status).toBe(200);
+      expect(listed(projectDir)).toEqual(["scenes/Opening.html", "scenes/opening.html"]);
+      expect(allowed(projectDir)).toBe(false);
+    },
+  );
+
+  it.skipIf(caseInsensitiveDisk())(
+    "keeps refusing outside files after a received page is renamed in another letter case, deleted and made again",
+    async () => {
+      const { projectDir, app } = studio();
+      withRecord(projectDir);
+      expect((await move(app, "scenes/intro.html", "scenes/Intro.html")).status).toBe(200);
+      const page = fileUrl("scenes/Intro.html");
+      expect((await app.request(page, { method: "DELETE" })).status).toBe(200);
+      const made = await app.request(page, {
+        method: "PUT",
+        headers: { "If-None-Match": "*" },
+        body: `<img src="../../outside/pic.png"><p>new</p>`,
+      });
+      expect(made.ok).toBe(true);
+      expect(allowed(projectDir)).toBe(false);
+    },
+  );
+
   it("answers other requests while it waits for the record's lock, then refuses the rename", async () => {
     const { projectDir, app } = studio();
     withRecord(projectDir);
@@ -563,13 +656,13 @@ describe("a Studio rename, move or delete in a project with a received-files rec
     expect(receivedFiles(projectDir).gone).toBe("scenes/intro.html");
   });
 
-  it("moves a line its record spells in decomposed Unicode", async () => {
+  it("moves a line its record spells in decomposed Unicode, spelled as the move spells it", async () => {
     const { projectDir, app } = studio();
     const folder = "cafe\u0301";
     write(join(projectDir, folder, "intro.html"), "<p></p>");
     write(record(projectDir), JSON.stringify({ files: [`${folder}/intro.html`] }));
     expect((await move(app, folder, `parts/${folder}`)).status).toBe(200);
-    expect(listed(projectDir)).toEqual(["parts/caf\u00e9/intro.html"]);
+    expect(listed(projectDir)).toEqual([`parts/${folder}/intro.html`]);
     expect(receivedFiles(projectDir)("parts/caf\u00e9/intro.html")).toBe(true);
   });
 });

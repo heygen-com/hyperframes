@@ -1,5 +1,9 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { findFFprobe } from "../browser/ffmpeg.js";
 import type { CheckBbox, TextOverVideoCandidate } from "./checkTypes.js";
 import {
   FACE_COVER_REPORT,
@@ -9,6 +13,34 @@ import {
   textOverFaceIssue,
   type FaceFinder,
 } from "./textOverFace.js";
+
+const spawned = vi.hoisted(() => [] as string[]);
+// A run with the 30 s limit that names this file fails the way execFileSync reports a run its timeout stopped.
+const stalled = vi.hoisted(() => ({ file: "" }));
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  const recorded =
+    <T extends (...args: never[]) => unknown>(run: T) =>
+    (...args: Parameters<T>) => {
+      spawned.push(String(args[0]));
+      return run(...args);
+    };
+  const execFileSync = ((...args: Parameters<typeof actual.execFileSync>) => {
+    if (stalled.file && args[1]?.includes(stalled.file) && args[2]?.timeout === 30_000)
+      throw Object.assign(new Error(`spawnSync ${args[0]} ETIMEDOUT`), {
+        code: "ETIMEDOUT",
+        signal: "SIGTERM",
+      });
+    return actual.execFileSync(...args);
+  }) as typeof actual.execFileSync;
+  return {
+    ...actual,
+    execFile: recorded(actual.execFile),
+    execFileSync: recorded(execFileSync),
+    spawn: recorded(actual.spawn),
+    spawnSync: recorded(actual.spawnSync),
+  };
+});
 
 const box = (x: number, y: number, width: number, height: number): CheckBbox => ({
   x,
@@ -291,5 +323,73 @@ describe("findTextOverFace", () => {
     );
     expect(issues).toHaveLength(1);
     expect(faceCheck).toEqual({ ran: true, candidates: 2, faces: 1, unreadVideos: 1 });
+  });
+});
+
+describe("findTextOverFace on a shipped playlist", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([
+    [
+      "take.m3u8",
+      "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\n../../outside.ts\n#EXT-X-ENDLIST\n",
+    ],
+    ["take.ffconcat", "ffconcat version 1.0\nfile ../../outside.mp4\n"],
+  ])(
+    "refuses %s naming a file outside the project before any ffprobe or ffmpeg runs",
+    async (name, list) => {
+      const root = mkdtempSync(join(tmpdir(), "hf-face-playlist-"));
+      try {
+        mkdirSync(join(root, "project", "takes"), { recursive: true });
+        writeFileSync(join(root, "outside.ts"), "");
+        writeFileSync(join(root, "outside.mp4"), "");
+        const file = join(root, "project", "takes", name);
+        writeFileSync(file, list);
+        vi.spyOn(console, "error").mockImplementation(() => undefined);
+        spawned.length = 0;
+
+        const { faceCheck } = await findTextOverFace([
+          candidate({ video: { ...candidate().video, file } }),
+        ]);
+
+        expect(faceCheck).toMatchObject({
+          ran: false,
+          reason: expect.stringContaining("is not media"),
+        });
+        expect(spawned).toEqual([]);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+describe.skipIf(!findFFprobe())("findTextOverFace on a source the time limit stops", () => {
+  afterEach(() => {
+    stalled.file = "";
+    vi.restoreAllMocks();
+  });
+
+  it("says the probe stopped after 30 s", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-face-stalled-"));
+    try {
+      const file = join(dir, "take.mp4");
+      // An MP4's first bytes, so the file reads as media.
+      writeFileSync(file, Buffer.from("000000186674797069736f6d", "hex"));
+      const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      stalled.file = file;
+
+      const { faceCheck } = await findTextOverFace([
+        candidate({ video: { ...candidate().video, file } }),
+      ]);
+
+      const reason = `ffprobe cannot read ${file}: stopped after 30 s`;
+      expect(faceCheck).toEqual({ ran: false, reason });
+      expect(errors).toHaveBeenCalledWith(
+        `[hyperframes] check: text over a face was not looked for in 1 of 1 video(s): ${reason}`,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -71,6 +71,73 @@ test("a standalone install runs the newest CLI that moves into the project, and 
   assert.deepEqual(result.env, { PATH: "/bin", HYPERFRAMES_PLUGIN_CWD: "/work/project" });
 });
 
+test("manifest pins and standalone selectors use the same exact release syntax", (t) => {
+  const { root } = fixture(t);
+  for (const version of ["1.0.0-rc.1+build.2", "01.2.3", "1.0.0-01", "1.0.0-rc..1"]) {
+    writeFileSync(join(root, "plugin.json"), JSON.stringify({ name: "hyperframes", version }));
+    const select = () =>
+      invocation(["--cli-version", version, "--version"], { version: null, platform: "linux" });
+    if (version === "1.0.0-rc.1+build.2") {
+      assert.equal(pluginVersion(root), version);
+      assert.ok(select().args.includes(`hyperframes@${version}`));
+    } else {
+      assert.throws(() => pluginVersion(root), /Invalid HyperFrames plugin release/);
+      assert.throws(select, /exact HyperFrames version/);
+    }
+  }
+});
+
+test("standalone release selection keeps npm in the home folder and passes only CLI arguments", () => {
+  const options = {
+    version: null,
+    platform: "linux",
+    cwd: "/project",
+    npmCwd: "/home/person",
+    env: {},
+  };
+  for (const [release, args] of [
+    ["latest", ["upgrade", "--project", ".", "--check"]],
+    ["0.9.34+build-1", ["--version"]],
+    ["1.0.0-rc.1", ["reverse", "start", "a b.mp4"]],
+  ]) {
+    const run = invocation(["--cli-version", release, ...args], options);
+    assert.equal(run.cwd, options.npmCwd);
+    assert.deepEqual(run.args, ["--yes", `hyperframes@${release}`, ...args]);
+    assert.deepEqual(run.env, { HYPERFRAMES_PLUGIN_CWD: options.cwd });
+  }
+  for (const release of [
+    undefined,
+    "",
+    "beta",
+    "^1.2.3",
+    "./cli",
+    "--version",
+    "1.2.3-01",
+    "01.2.3",
+    "1.2.3+",
+  ]) {
+    assert.throws(
+      () => invocation(["--cli-version", release], options),
+      /requires latest or an exact/,
+    );
+  }
+  for (const release of ["0.9.33", "0.9.34-rc.1+build"]) {
+    assert.throws(() => invocation(["--cli-version", release], options), /0.9.34 or newer/);
+  }
+  assert.throws(
+    () => invocation(["--cli-version", "latest"], { version: "1.2.3" }),
+    /plugin manager/,
+  );
+});
+
+test("a standalone helper passes its selected release to its own CLI calls", () => {
+  const options = { version: null, platform: "linux", npmCwd: "/home/person", env: {} };
+  const helper = invocation(["--cli-version", "1.2.3", "--script", "helper.mjs"], options);
+  assert.deepEqual(helper.args, ["helper.mjs"]);
+  const nested = invocation(["--version"], { ...options, env: helper.env });
+  assert.deepEqual(nested.args, ["--yes", "hyperframes@1.2.3", "--version"]);
+});
+
 test("pins CLI, suppresses standalone refresh, preserves unrelated environment", () => {
   const result = invocation(["init", "project with spaces", "--non-interactive"], {
     version: "1.2.3",

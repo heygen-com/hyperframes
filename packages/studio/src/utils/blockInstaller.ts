@@ -13,20 +13,11 @@ import { serializeStudioFileMutation } from "./studioFileMutationCoordinator";
 import { extendRootDurationInSource } from "./rootDuration";
 import { deriveTimelineStoreKeyForDomId } from "../player/lib/timelineElementHelpers";
 import { studioApiFetch } from "./studioApiFetch";
+import { previewRequest } from "../player/lib/previewChannel";
 
-function getMaxZIndexFromIframe(iframe: HTMLIFrameElement | null): number {
-  try {
-    const doc = iframe?.contentDocument;
-    if (!doc) return 0;
-    let max = 0;
-    for (const el of doc.body.querySelectorAll("*")) {
-      const z = parseInt(getComputedStyle(el).zIndex, 10);
-      if (Number.isFinite(z) && z > max) max = z;
-    }
-    return max;
-  } catch {
-    return 0;
-  }
+async function previewMaxZIndex(iframe: HTMLIFrameElement | null): Promise<number> {
+  const zIndex = iframe ? (await previewRequest(iframe, "max-z-index", {}))?.zIndex : undefined;
+  return Number.isSafeInteger(zIndex) && (zIndex as number) >= 0 ? (zIndex as number) : 0;
 }
 
 interface AddBlockOptions {
@@ -214,6 +205,7 @@ export async function addBlockToProject(
       timelineElements: relevantElements,
       currentTime: opts.currentTime ?? 0,
     });
+    const zIndex = (await previewMaxZIndex(opts.previewIframe ?? null)) + 1;
     let hostId = "";
     const insertHost = (originalContent: string) => {
       const { width, height } = resolveTimelineAssetCompositionSize(originalContent);
@@ -228,7 +220,7 @@ export async function addBlockToProject(
         height,
         left: visualPosition ? Math.round(visualPosition.left) : 0,
         top: visualPosition ? Math.round(visualPosition.top) : 0,
-        zIndex: getMaxZIndexFromIframe(opts.previewIframe ?? null) + 1,
+        zIndex,
       });
       return extendRootDurationInSource(
         insertTimelineAssetIntoSource(originalContent, subComposition),

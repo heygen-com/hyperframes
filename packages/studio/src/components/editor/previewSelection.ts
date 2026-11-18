@@ -357,6 +357,7 @@ export async function resolvePreviewSelection(
   rememberFrameTranslate(
     element,
     translatePx(styles.translate ?? "none", (p) => styles[p] ?? ""),
+    styles.translate ?? "none",
   );
   const computedStyles = Object.fromEntries(
     CURATED_STYLE_PROPERTIES.flatMap((p) => (p in styles ? [[p, styles[p]!]] : [])),

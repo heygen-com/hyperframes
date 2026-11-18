@@ -97,6 +97,19 @@ export interface StudioSelectionResponse {
   updatedAt: string | null;
 }
 
+export type StudioRefusalWhy =
+  | "nul"
+  | "outside_project"
+  | "protected_path"
+  | "another_site"
+  | "cross_origin_write"
+  | "other";
+
+export interface StudioRefusal {
+  route: string;
+  why: StudioRefusalWhy;
+}
+
 /**
  * Adapter interface — injected by each consumer to handle host-specific behavior.
  * The shared API module calls these methods; each host (vite dev, CLI embedded)
@@ -145,6 +158,9 @@ export interface StudioApiAdapter {
 
   /** URL to the hyperframe runtime JS (injected into preview HTML). */
   runtimeUrl: string;
+
+  /** Hears each 403 as the endpoint's route pattern and the server's reason code (`other` if none); never a path. */
+  onRefusal?: (refusal: StudioRefusal) => void;
 
   gsapLocalRoot?: `/${string}`;
 
