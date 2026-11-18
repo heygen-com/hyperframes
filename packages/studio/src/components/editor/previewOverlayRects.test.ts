@@ -3,8 +3,6 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-// The frame's real runtime agent, serving the opaque frame from this document.
-import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
 import { makeSelection, installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 import { queryPreviewElements } from "../../player/lib/previewElements";
@@ -14,6 +12,7 @@ import { orientedGroupAwareOverlayRect, type OverlayRect } from "./domEditOverla
 import type { UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures";
 import { createPreviewGestureStarts } from "./previewGestureStarts";
 import { useDomEditOverlayRects } from "./useDomEditOverlayRects";
+import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
 const frames = vi.hoisted(() => new Set<() => void>());
 vi.mock("./overlayFrameLoop", () => ({
@@ -117,24 +116,8 @@ function liveFrame() {
 
 /** A frame Studio cannot read, whose runtime is the real editing agent over this document. */
 function opaqueFrame() {
-  const frame: Record<string, unknown> = {};
-  const iframe = sized(detachedFakeIframe(frame), [100, 50, 960, 540]) as HTMLIFrameElement;
-  Object.defineProperty(iframe, "contentDocument", { value: null });
-  Object.defineProperty(frame, "document", {
-    get: () => {
-      throw new DOMException("blocked", "SecurityError");
-    },
-  });
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
-      ),
-  } as unknown as Window;
-  const agent = installMarkedEditingAgent(parent);
-  frame.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
-  closers.push(() => agent.dispose());
+  const { iframe: sealed, frame } = sealedPreviewFrame();
+  const iframe = sized(sealed, [100, 50, 960, 540]) as HTMLIFrameElement;
   // The size the runtime posts for its composition, as Studio mirrors it.
   watchPreviewFrame(iframe);
   window.dispatchEvent(
