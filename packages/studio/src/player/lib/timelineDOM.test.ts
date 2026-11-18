@@ -313,6 +313,37 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
     expect(element.link).toBe("lk-1");
     expect(element.syncOrigin).toBe("lk-1");
   });
+
+  it("names a sealed preview's files by their project path, not the frame's passing token", () => {
+    const token = "A".repeat(43);
+    const preview = "http://127.0.0.1:4000/api/projects/p1/preview";
+    const clip = (kind: "element" | "composition", tagName: string) => ({
+      id: tagName,
+      label: tagName,
+      kind,
+      tagName,
+      start: 0,
+      duration: 5,
+      track: 0,
+      compositionId: kind === "composition" ? "intro" : null,
+      parentCompositionId: null,
+      compositionSrc:
+        kind === "composition" ? `${preview}/~${token}/compositions/intro.html` : null,
+      assetUrl: kind === "element" ? `${preview}/~${token}/assets/a%20b.mp4?t=1` : null,
+    });
+
+    const video = createTimelineElementFromManifestClip({
+      clip: clip("element", "video"),
+      fallbackIndex: 0,
+    });
+    const scene = createTimelineElementFromManifestClip({
+      clip: clip("composition", "div"),
+      fallbackIndex: 1,
+    });
+
+    expect(video.src).toBe(`${preview}/assets/a%20b.mp4?t=1`);
+    expect(scene.compositionSrc).toBe(`${preview}/compositions/intro.html`);
+  });
 });
 
 describe("a sealed preview's text rows", () => {
