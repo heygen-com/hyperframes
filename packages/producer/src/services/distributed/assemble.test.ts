@@ -396,7 +396,8 @@ describe("assemble()", () => {
         { index: 1, startFrame: 5, endFrame: 10 },
       ];
       const planDir = buildPlanDir("mp4", chunks, 10, false);
-      const folder = join(planDir, "chunks\nfile '/etc/hosts'\n#");
+      if (process.platform === "win32") return; // Windows paths cannot hold a line break
+      const folder = join(planDir, "chunks\nfile 'other.mov'\n#");
       mkdirSync(folder);
       const chunkPaths = ["0.mp4", "1.mp4"].map((name) => join(folder, name));
       for (const path of chunkPaths) writeFileSync(path, "not a video");

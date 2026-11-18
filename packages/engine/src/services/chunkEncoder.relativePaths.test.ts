@@ -136,24 +136,29 @@ describe.skipIf(!HAS_FFMPEG)("concat input formats", () => {
   }
 
   // fails without the fix: the line break ended the entry and ffmpeg read the rest as list lines.
-  it("refuses inputs whose folder name holds a line break, before writing a list", async () => {
-    const folder = join(root, "proj\nfile '/etc/hosts'\n#");
-    mkdirSync(folder);
-    makeClip(join(folder, "a.mp4"), 2);
-    makeClip(join(folder, "b.mp4"), 2);
+  // Windows paths cannot hold a line break.
+  it.skipIf(process.platform === "win32")(
+    "refuses inputs whose folder name holds a line break, before writing a list",
+    async () => {
+      const folder = join(root, "proj\nfile 'other.mov'\n#");
+      mkdirSync(folder);
+      makeClip(join(folder, "a.mp4"), 2);
+      makeClip(join(folder, "b.mp4"), 2);
 
-    const result = await concatVideoFiles(
-      [join(folder, "a.mp4"), join(folder, "b.mp4")],
-      join(root, "joined.mp4"),
-    );
+      const result = await concatVideoFiles(
+        [join(folder, "a.mp4"), join(folder, "b.mp4")],
+        join(root, "joined.mp4"),
+      );
 
-    expect(result).toEqual({
-      success: false,
-      error: expect.stringContaining("control character"),
-      externalInterruption: false,
-    });
-    expect(readdirSync(folder).filter((name) => name.startsWith("concat-list-"))).toEqual([]);
-  }, 30_000);
+      expect(result).toEqual({
+        success: false,
+        error: expect.stringContaining("control character"),
+        externalInterruption: false,
+      });
+      expect(readdirSync(folder).filter((name) => name.startsWith("concat-list-"))).toEqual([]);
+    },
+    30_000,
+  );
 
   function frameCount(path: string): string {
     const probe = spawnSync(
