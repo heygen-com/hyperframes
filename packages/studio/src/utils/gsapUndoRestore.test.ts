@@ -19,7 +19,7 @@ import {
   diffSoftReloadableRestore,
   showRestoreInPlace,
 } from "./gsapUndoRestore";
-import { recordLiveSet } from "./softReloadTargets";
+import { recordLiveSet } from "@hyperframes/core/runtime/soft-reload";
 import { applyPatch } from "./sourcePatcher";
 import { beginStudioManualEditGesture } from "../components/editor/manualEdits";
 import { studioManualEditSavesIn } from "../components/editor/manualEditsDom";
