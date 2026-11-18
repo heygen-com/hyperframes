@@ -87,14 +87,15 @@ function close(keep: boolean): { html: string | null; previous: string } | null 
   session = null;
   open.stop();
   const { element } = open;
-  if (!element.isConnected) return { html: null, previous: open.original };
-  const html = keep ? keptMarkup(element) : null;
+  const html = keep && element.isConnected ? keptMarkup(element) : null;
   if (html === null) element.innerHTML = open.original;
   element.removeAttribute("contenteditable");
   element.style.outline = open.outline;
   element.style.outlineOffset = open.outlineOffset;
-  clearSelectionWithin(element);
-  element.blur();
+  if (element.isConnected) {
+    clearSelectionWithin(element);
+    element.blur();
+  }
   return { html, previous: open.original };
 }
 
@@ -209,7 +210,7 @@ export function textEdit(
   version: number,
 ): TextEditResult {
   if (params.action === "start") return start(params.handle, params.caret, port, version);
-  if (session?.handle !== params.handle) return NOTHING;
+  if (session?.handle !== params.handle || session.port !== port) return NOTHING;
   const ended = close(params.keep);
   return ended ? { applied: true, ...ended } : NOTHING;
 }

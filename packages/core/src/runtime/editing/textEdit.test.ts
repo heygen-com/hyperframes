@@ -8,6 +8,7 @@ const HANDLE = "0123456789abcdef:1";
 
 afterEach(() => {
   endTextEdit();
+  parent = port();
   document.body.innerHTML = "";
 });
 
@@ -19,9 +20,11 @@ function page(markup = "Hello <b>world</b>") {
 
 const port = () =>
   ({ postMessage: vi.fn() }) as unknown as MessagePort & { postMessage: ReturnType<typeof vi.fn> };
-const start = (handle: string, on = port()) =>
+let parent = port();
+const start = (handle: string, on: MessagePort = parent) =>
   textEdit({ handle, action: "start", caret: null }, on, V);
-const end = (handle: string, keep: boolean) => textEdit({ handle, action: "end", keep }, port(), V);
+const end = (handle: string, keep: boolean, on: MessagePort = parent) =>
+  textEdit({ handle, action: "end", keep }, on, V);
 const key = (element: Element, init: KeyboardEventInit) =>
   element.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
 
@@ -150,6 +153,27 @@ describe("text-edit", () => {
       expect.objectContaining({ html: null, previous: "Hello <b>world</b>" }),
     );
     expect(element.innerHTML).toBe("Hello <b>world</b>");
+  });
+
+  it("puts back a removed element's original, so putting the element back shows no draft", async () => {
+    const { element, handle } = page();
+    start(handle);
+    element.textContent = "unsaved";
+    element.remove();
+    await new Promise((resolve) => setTimeout(resolve));
+    document.body.append(element);
+    expect(element.innerHTML).toBe("Hello <b>world</b>");
+    expect(element.hasAttribute("contenteditable")).toBe(false);
+    expect(element.style.outline).toBe("1px dotted red");
+  });
+
+  it("lets only the port that started a session end it", () => {
+    const { element, handle } = page();
+    start(handle);
+    element.textContent = "draft";
+    expect(end(handle, true, port())).toEqual({ applied: false, html: null, previous: null });
+    expect(element.getAttribute("contenteditable")).toBe("true");
+    expect(end(handle, true)).toMatchObject({ applied: true, html: "draft" });
   });
 
   it("takes paste and drop as plain text only", () => {
