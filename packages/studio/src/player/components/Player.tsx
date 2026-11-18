@@ -1,6 +1,6 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { forwardRef, useEffect, useRef, useState } from "react";
-import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readiness";
+import { previewAssetsUnloaded } from "@hyperframes/core/runtime/lottie-readiness";
 import { installAcceleratedCanvasTracker } from "@hyperframes/core/page-motion-blur";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
@@ -10,6 +10,10 @@ import { announcePreviewDocumentLoaded } from "../sceneSwap";
 import type { IframeWindow } from "../lib/playbackTypes";
 import { watchPreviewFrame } from "../lib/bridgePlayback";
 import { previewUnderFrameToken } from "../lib/frameToken";
+import {
+  previewAssetsUnloaded as askAssetsUnloaded,
+  previewFrameOpaque,
+} from "../lib/previewChannel";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
 // `typeof window` guard. Kicking it here rather than in the mount effect puts
@@ -53,9 +57,6 @@ interface HyperframesPlayerElement extends HTMLElement {
   painted?: boolean;
 }
 
-const MEDIA_HAVE_FUTURE_DATA = 3;
-const MEDIA_NETWORK_NO_SOURCE = 3;
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -98,15 +99,6 @@ function enableInteractiveIframe(player: HyperframesPlayerElement): void {
 const studioDraws = (wait: boolean, loadingUi: PlayerProps["loadingUi"]) =>
   wait && loadingUi !== "host";
 
-function isPreviewMediaElement(el: Element): el is HTMLMediaElement {
-  const tagName = el.tagName.toLowerCase();
-  return tagName === "video" || tagName === "audio";
-}
-
-// Assets are considered ready when every `<video>`/`<audio>` has enough data
-// to play through without buffering, and every registered Lottie animation has
-// finished loading.
-//
 // Returns whichever value was returned last on cross-origin / transient DOM
 // races so a brief access failure (e.g. an iframe that just swapped src)
 // doesn't flicker the overlay state — we keep showing whatever was most
@@ -116,29 +108,19 @@ export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean
     const win = iframe.contentWindow as unknown as (Window & { __hfLottie?: unknown[] }) | null;
     const doc = iframe.contentDocument;
     if (!win || !doc) return lastResult;
-
-    for (const el of doc.querySelectorAll("video, audio")) {
-      if (
-        isPreviewMediaElement(el) &&
-        !el.error &&
-        el.networkState !== MEDIA_NETWORK_NO_SOURCE &&
-        el.readyState < MEDIA_HAVE_FUTURE_DATA
-      ) {
-        return true;
-      }
-    }
-
-    const lotties = win.__hfLottie;
-    if (lotties?.length) {
-      for (const anim of lotties) {
-        if (!isLottieAnimationLoaded(anim)) return true;
-      }
-    }
-
-    return false;
+    return previewAssetsUnloaded(doc, win.__hfLottie);
   } catch {
     return lastResult;
   }
+}
+
+/** The same question for either frame: a sealed one answers over its editing port. */
+export async function previewStillLoading(
+  iframe: HTMLIFrameElement,
+  lastResult: boolean,
+): Promise<boolean> {
+  if (!previewFrameOpaque(iframe)) return hasUnloadedAssets(iframe, lastResult);
+  return (await askAssetsUnloaded(iframe)) ?? lastResult;
 }
 
 async function playerSrc(previewSource: string, opaque: boolean): Promise<string> {
@@ -307,28 +289,45 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // cold video or a broken asset can legitimately exceed 10 s on a
           // slow network.
           if (assetPollRef.current) clearInterval(assetPollRef.current);
-          const isContentRefresh = loadCountRef.current > 1;
-          let lastUnloaded = isContentRefresh ? false : hasUnloadedAssets(iframe, false);
-          if (lastUnloaded) {
+          assetPollRef.current = null;
+          const load = loadCountRef.current;
+          const current = () => loadCountRef.current === load;
+          if (load > 1) {
+            setAssetsLoading(false);
+            return;
+          }
+          void previewStillLoading(iframe, false).then((first) => {
+            if (!current()) return;
+            let lastUnloaded = first;
+            if (!lastUnloaded) {
+              setAssetsLoading(false);
+              return;
+            }
             setAssetsLoading(true);
             let attempts = 0;
+            let asking = false;
+            const finish = () => {
+              if (lastUnloaded) {
+                console.debug(
+                  "[studio] asset readiness poll hit the 10s cap, continuing with unloaded assets",
+                );
+              }
+              if (assetPollRef.current) clearInterval(assetPollRef.current);
+              assetPollRef.current = null;
+              setAssetsLoading(false);
+            };
             assetPollRef.current = setInterval(() => {
               attempts += 1;
-              lastUnloaded = hasUnloadedAssets(iframe, lastUnloaded);
-              if (!lastUnloaded || attempts > 100) {
-                if (lastUnloaded && attempts > 100) {
-                  console.debug(
-                    "[studio] asset readiness poll hit the 10s cap, continuing with unloaded assets",
-                  );
-                }
-                if (assetPollRef.current) clearInterval(assetPollRef.current);
-                assetPollRef.current = null;
-                setAssetsLoading(false);
-              }
+              if (attempts > 100) return finish();
+              if (asking) return;
+              asking = true;
+              void previewStillLoading(iframe, lastUnloaded).then((unloaded) => {
+                asking = false;
+                lastUnloaded = unloaded;
+                if (current() && !lastUnloaded) finish();
+              });
             }, 100);
-          } else {
-            setAssetsLoading(false);
-          }
+          });
         };
 
         // Attach lifecycle listeners before assigning src or connecting the

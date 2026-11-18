@@ -146,6 +146,11 @@ export async function previewComputedStyles(
   return read;
 }
 
+export async function previewAssetsUnloaded(iframe: HTMLIFrameElement): Promise<boolean | null> {
+  const reply = await previewRequest(iframe, "assets-unloaded", {});
+  return typeof reply?.unloaded === "boolean" ? reply.unloaded : null;
+}
+
 export async function previewDocumentCopy(iframe: HTMLIFrameElement): Promise<Document | null> {
   const reply = await previewRequest(iframe, "document-markup", {});
   if (typeof reply?.html !== "string" || typeof reply.baseURI !== "string") return null;

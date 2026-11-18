@@ -106,6 +106,7 @@ describe("createEditingPortClient", () => {
           "gsap-set",
           "patch-tweens",
           "soft-reload",
+          "assets-unloaded",
         ],
       });
     } finally {
