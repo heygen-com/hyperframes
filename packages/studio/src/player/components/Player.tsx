@@ -177,6 +177,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     onPreviewErrorRef.current = onPreviewError;
     const [loaded, setLoaded] = useState(false);
     const [assetsLoading, setAssetsLoading] = useState(false);
+    const [assetsChecking, setAssetsChecking] = useState(false);
     const [assetOverlayVisible, setAssetOverlayVisible] = useState(false);
     const [assetOverlayFading, setAssetOverlayFading] = useState(false);
     const [assetWaitLong, setAssetWaitLong] = useState(false);
@@ -293,11 +294,11 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           const load = loadCountRef.current;
           const current = () => loadCountRef.current === load;
           if (load > 1) {
+            setAssetsChecking(false);
             setAssetsLoading(false);
             return;
           }
-          void previewStillLoading(iframe, false).then((first) => {
-            if (!current()) return;
+          const poll = (first: boolean) => {
             let lastUnloaded = first;
             if (!lastUnloaded) {
               setAssetsLoading(false);
@@ -327,6 +328,17 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
                 if (current() && !lastUnloaded) finish();
               });
             }, 100);
+          };
+          if (!previewFrameOpaque(iframe)) {
+            poll(hasUnloadedAssets(iframe, false));
+            return;
+          }
+          // Not ready until the sealed frame has answered, without showing the overlay for a frame with no media.
+          setAssetsChecking(true);
+          void previewStillLoading(iframe, false).then((first) => {
+            if (!current()) return;
+            setAssetsChecking(false);
+            poll(first);
           });
         };
 
@@ -450,12 +462,13 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         clearInterval(assetPollRef.current);
         assetPollRef.current = null;
       }
+      setAssetsChecking(false);
       setAssetsLoading(false);
     };
 
     const firstFrameShown =
       loaded && painted && !compositionLoading && !shaderTransitionLoading && !previewError;
-    const readyToShow = firstFrameShown && !assetsLoading;
+    const readyToShow = firstFrameShown && !assetsLoading && !assetsChecking;
     // Work waiting on the boot starts at the first frame, while media still buffers.
     useEffect(() => {
       if (firstFrameShown) usePlayerStore.getState().markPreviewBooted();
