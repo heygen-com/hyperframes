@@ -123,6 +123,59 @@ export async function previewStillLoading(
   return (await askAssetsUnloaded(iframe)) ?? lastResult;
 }
 
+interface AssetWait {
+  pollRef: { current: ReturnType<typeof setInterval> | null };
+  isCurrent: () => boolean;
+  setLoading: (loading: boolean) => void;
+  setChecking: (checking: boolean) => void;
+}
+
+/** Keeps the asset overlay up while the preview's media cannot play through, for at most 10 s. */
+function waitForPreviewAssets(iframe: HTMLIFrameElement, wait: AssetWait): void {
+  const poll = (first: boolean) => {
+    let lastUnloaded = first;
+    if (!lastUnloaded) {
+      wait.setLoading(false);
+      return;
+    }
+    wait.setLoading(true);
+    let attempts = 0;
+    let asking = false;
+    const finish = () => {
+      if (lastUnloaded) {
+        console.debug(
+          "[studio] asset readiness poll hit the 10s cap, continuing with unloaded assets",
+        );
+      }
+      if (wait.pollRef.current) clearInterval(wait.pollRef.current);
+      wait.pollRef.current = null;
+      wait.setLoading(false);
+    };
+    wait.pollRef.current = setInterval(() => {
+      attempts += 1;
+      if (attempts > 100) return finish();
+      if (asking) return;
+      asking = true;
+      void previewStillLoading(iframe, lastUnloaded).then((unloaded) => {
+        asking = false;
+        lastUnloaded = unloaded;
+        if (wait.isCurrent() && !lastUnloaded) finish();
+      });
+    }, 100);
+  };
+  if (!previewFrameOpaque(iframe)) {
+    poll(hasUnloadedAssets(iframe, false));
+    return;
+  }
+  // Not ready until the sealed frame has answered, without showing the overlay for a frame with no media.
+  wait.setChecking(true);
+  void previewStillLoading(iframe, false).then((first) => {
+    if (!wait.isCurrent()) return;
+    wait.setChecking(false);
+    poll(first);
+  });
+}
+
 async function playerSrc(previewSource: string, opaque: boolean): Promise<string> {
   const url = new URL(previewSource, window.location.origin);
   applyPreviewVariablesToUrl(url);
@@ -292,53 +345,16 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
           const load = loadCountRef.current;
-          const current = () => loadCountRef.current === load;
           if (load > 1) {
             setAssetsChecking(false);
             setAssetsLoading(false);
             return;
           }
-          const poll = (first: boolean) => {
-            let lastUnloaded = first;
-            if (!lastUnloaded) {
-              setAssetsLoading(false);
-              return;
-            }
-            setAssetsLoading(true);
-            let attempts = 0;
-            let asking = false;
-            const finish = () => {
-              if (lastUnloaded) {
-                console.debug(
-                  "[studio] asset readiness poll hit the 10s cap, continuing with unloaded assets",
-                );
-              }
-              if (assetPollRef.current) clearInterval(assetPollRef.current);
-              assetPollRef.current = null;
-              setAssetsLoading(false);
-            };
-            assetPollRef.current = setInterval(() => {
-              attempts += 1;
-              if (attempts > 100) return finish();
-              if (asking) return;
-              asking = true;
-              void previewStillLoading(iframe, lastUnloaded).then((unloaded) => {
-                asking = false;
-                lastUnloaded = unloaded;
-                if (current() && !lastUnloaded) finish();
-              });
-            }, 100);
-          };
-          if (!previewFrameOpaque(iframe)) {
-            poll(hasUnloadedAssets(iframe, false));
-            return;
-          }
-          // Not ready until the sealed frame has answered, without showing the overlay for a frame with no media.
-          setAssetsChecking(true);
-          void previewStillLoading(iframe, false).then((first) => {
-            if (!current()) return;
-            setAssetsChecking(false);
-            poll(first);
+          waitForPreviewAssets(iframe, {
+            pollRef: assetPollRef,
+            isCurrent: () => loadCountRef.current === load,
+            setLoading: setAssetsLoading,
+            setChecking: setAssetsChecking,
           });
         };
 
