@@ -78,7 +78,9 @@ it("fills a sealed scene's children and the runtime's clip parents", async () =>
     </div>
   </div>`;
   (window as unknown as { __clipTree: unknown }).__clipTree = {
-    roots: [{ id: "scene", parentId: null, children: [{ id: "cue", parentId: "scene", children: [] }] }],
+    roots: [
+      { id: "scene", parentId: null, children: [{ id: "cue", parentId: "scene", children: [] }] },
+    ],
   };
   onTestFinished(() => delete (window as unknown as { __clipTree?: unknown }).__clipTree);
   usePlayerStore.getState().setClipParentMap(new Map());
@@ -86,7 +88,16 @@ it("fills a sealed scene's children and the runtime's clip parents", async () =>
   const { process } = processWith(sealedPreviewFrame().iframe);
 
   process({
-    clips: [{ ...boxClip, id: "scene", label: "scene", kind: "composition", tagName: "div", compositionId: "scene" }],
+    clips: [
+      {
+        ...boxClip,
+        id: "scene",
+        label: "scene",
+        kind: "composition",
+        tagName: "div",
+        compositionId: "scene",
+      },
+    ],
     durationInFrames: 60,
   });
 

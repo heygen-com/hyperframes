@@ -106,6 +106,19 @@ export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<Cl
   return manifest as ClipManifest;
 }
 
+/** The runtime clip tree's child-to-parent links; the reply is frame data, so each pair is checked. */
+export async function previewClipParents(iframe: HTMLIFrameElement): Promise<Map<string, string>> {
+  const snapshot = await previewRequest(iframe, "runtime-snapshot", {});
+  const pairs: unknown = snapshot?.clipParents;
+  const parents = new Map<string, string>();
+  if (!Array.isArray(pairs)) return parents;
+  for (const pair of pairs) {
+    if (Array.isArray(pair) && typeof pair[0] === "string" && typeof pair[1] === "string")
+      parents.set(pair[0], pair[1]);
+  }
+  return parents;
+}
+
 export async function previewConsoleErrors(
   iframe: HTMLIFrameElement,
   from: number,
