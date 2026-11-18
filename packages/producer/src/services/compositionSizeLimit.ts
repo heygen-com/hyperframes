@@ -15,7 +15,7 @@ const megabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
  * What one render may inline across every sub-composition mount. Each file is checked on its own
  * above, but a few small files that mount each other many times assemble a page far larger.
  */
-export const MAX_EXPANDED_COMPOSITION_BYTES = 2 * MAX_COMPOSITION_HTML_BYTES;
+export const MAX_EXPANDED_COMPOSITION_BYTES = 4 * MAX_COMPOSITION_HTML_BYTES;
 const MAX_COMPOSITION_MOUNTS = 10_000;
 
 class CompositionTooLargeError extends Error {
