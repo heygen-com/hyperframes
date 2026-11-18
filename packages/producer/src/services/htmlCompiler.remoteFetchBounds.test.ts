@@ -17,12 +17,14 @@ function serve(body: string, { holdMs = 0, onRequest = () => {} } = {}) {
     seen.requests.push(url);
     onRequest();
     await new Promise<void>((resolve) => {
-      const timer = setTimeout(resolve, holdMs);
-      init?.signal?.addEventListener("abort", () => {
+      const stop = () => {
         clearTimeout(timer);
         seen.aborted += 1;
         resolve();
-      });
+      };
+      const timer = setTimeout(resolve, holdMs);
+      if (init?.signal?.aborted) stop();
+      else init?.signal?.addEventListener("abort", stop);
     });
     init?.signal?.throwIfAborted();
     return new Response(body);

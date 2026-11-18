@@ -13,6 +13,7 @@ import {
   compileForRender,
   inlineExternalScripts,
   localizeRemoteFontFaces,
+  MAX_REMOTE_FETCHES,
   MAX_VARIABLE_MEDIA_SRC_BYTES,
 } from "./htmlCompiler.js";
 import { extractSafeRenderErrorCode } from "./safeRenderErrorCode.js";
@@ -442,7 +443,10 @@ describe("remote scripts and stylesheets inlined at compile time", () => {
 
   it("stops queued downloads once a script fails its integrity check", async () => {
     const seen = serve(() => `/*${"x".repeat(MiB)}*/`);
-    const urls = Array.from({ length: 40 }, (_, i) => `https://cdn.example.com/i${i}.js`);
+    const urls = Array.from(
+      { length: MAX_REMOTE_FETCHES },
+      (_, i) => `https://cdn.example.com/i${i}.js`,
+    );
     const html = scriptTags(urls).replaceAll("<script ", '<script integrity="sha384-YQ==" ');
     await expect(inlineExternalScripts(html)).rejects.toThrow("integrity mismatch");
     expect(seen.requests.length).toBeLessThan(urls.length);
@@ -477,9 +481,9 @@ describe("remote scripts and stylesheets inlined at compile time", () => {
     ["distinct", (i: number) => `https://cdn.example.com/f${i}.css`],
     ["repeated", () => "https://cdn.example.com/f.css"],
   ])("refuses %s remote font stylesheets that add up past the render's limit", async (_, url) => {
-    const face = `@font-face { font-family: "F"; src: local("${"x".repeat(MiB)}"); }`;
+    const face = `@font-face { font-family: "F"; src: local("${"x".repeat(1.5 * MiB)}"); }`;
     const seen = serve(() => face);
-    const urls = Array.from({ length: 40 }, (_, i) => url(i));
+    const urls = Array.from({ length: MAX_REMOTE_FETCHES }, (_, i) => url(i));
     const error = await localizeRemoteFontFaces(
       linkTags(urls),
       mkdtempSync(join(tmpdir(), "hf-remote-sheet-")),
