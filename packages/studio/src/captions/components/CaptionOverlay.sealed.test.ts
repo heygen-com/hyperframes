@@ -57,7 +57,7 @@ function opaqueFrame() {
     };
     return end as unknown as MessagePort;
   };
-  const { iframe } = sealedPreviewFrame({ port: tap });
+  const { iframe } = sealedPreviewFrame({ wrapHandedOverPort: tap });
   iframe.style.width = "1920px";
   iframe.getBoundingClientRect = () => new DOMRect(0, 0, 1920, 1080);
   /** Keeps the answers to the requests `match` picks; the returned call hands them to Studio. */

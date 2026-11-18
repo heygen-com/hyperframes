@@ -14,9 +14,8 @@ export interface SealedPreviewFrame {
   frame: Record<string, unknown>;
 }
 
-/** `port` wraps each port the runtime hands over, for a test that holds or inspects replies. */
 export function sealedPreviewFrame(
-  options: { port?: (port: MessagePort) => MessagePort } = {},
+  options: { wrapHandedOverPort?: (port: MessagePort) => MessagePort } = {},
 ): SealedPreviewFrame {
   const target: Record<string, unknown> = {};
   const frame = new Proxy(target, {
@@ -27,7 +26,7 @@ export function sealedPreviewFrame(
   });
   const iframe = detachedFakeIframe(frame);
   Object.defineProperty(iframe, "contentDocument", { value: null });
-  const wrap = options.port ?? ((port: MessagePort) => port);
+  const wrap = options.wrapHandedOverPort ?? ((port: MessagePort) => port);
   const parent = {
     postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
       postLater({ source: frame as unknown as Window, data, ports: ports.map(wrap) }),
