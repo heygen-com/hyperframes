@@ -89,7 +89,10 @@ describe("remote downloads at compile time", () => {
     ["a font stylesheet", '<link rel="stylesheet" href="https://cdn.example.com/a.css">', FONT_CSS],
   ])("stops a compile whose render is cancelled while it downloads %s", async (_, head, body) => {
     const cancel = new AbortController();
-    const seen = serve(body, { holdMs: 2_000, onRequest: () => cancel.abort(new Error("cancelled")) });
+    const seen = serve(body, {
+      holdMs: 2_000,
+      onRequest: () => cancel.abort(new Error("cancelled")),
+    });
     const dir = project(head);
 
     await expect(
