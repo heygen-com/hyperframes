@@ -208,8 +208,7 @@ const finite = (value: unknown): value is number =>
 
 const okSelector = (selector: unknown): boolean =>
   typeof selector === "string" && selector.length > 0 && selector.length <= MAX_SELECTOR;
-const okSource = (source: unknown): boolean =>
-  Number.isInteger(source) && (source as number) >= 0;
+const okSource = (source: unknown): boolean => Number.isInteger(source) && (source as number) >= 0;
 
 function okTimes({ start, duration, wasStart, wasDuration }: Record<string, unknown>): boolean {
   if (![start, duration, wasStart, wasDuration].every(finite)) return false;
