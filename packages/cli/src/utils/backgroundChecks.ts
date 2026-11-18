@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readConfig, readConfigFresh, writeConfig } from "../telemetry/config.js";
@@ -31,7 +32,8 @@ export function launchBackgroundChecks(): void {
   // Next to the bundled cli.js; from source (dev mode) no check is ever due.
   const worker = join(dirname(fileURLToPath(import.meta.url)), "backgroundChecksWorker.js");
   try {
-    const child = spawn(process.execPath, [worker, ...due], {
+    const child = spawn(process.execPath, [worker, process.cwd(), ...due], {
+      cwd: homedir(),
       detached: true,
       stdio: "ignore",
       windowsHide: true,

@@ -38,12 +38,12 @@ function cacheFresh(lastSkillsCheck: string | undefined, now: number): boolean {
 }
 
 /** Run the real check and persist the result to the cache. Skipped when DNS does not answer. */
-export async function refreshSkillsCache(): Promise<void> {
+export async function refreshSkillsCache(projectDir?: string): Promise<void> {
   if (!(await hostAnswers("github.com"))) return;
   // `canonical: true` so this nudge's counts agree with `updateSkills`'s
   // source of truth — otherwise a stale in-repo skills-manifest.json (e.g.
   // inside a hyperframes checkout) can produce a false-positive count here.
-  const result = await checkSkills({ canonical: true });
+  const result = await checkSkills({ cwd: projectDir, canonical: true });
   // Only record a meaningful check when skills were actually found.
   if (result.location) {
     // Fresh read: this runs in a background child, beside the command's own config writes.

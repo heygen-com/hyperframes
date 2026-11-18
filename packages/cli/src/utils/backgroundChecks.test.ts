@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -26,7 +27,7 @@ const { launchBackgroundChecks } = await import("./backgroundChecks.js");
 /** The checks handed to the child, or null when none was spawned. */
 function spawnedChecks(): string[] | null {
   const call = spawn.mock.calls[0] as unknown as [string, string[]] | undefined;
-  return call ? call[1].slice(1) : null;
+  return call ? call[1].slice(2) : null;
 }
 
 /** tsup entry name -> source file, as the package build declares them. */
@@ -58,7 +59,7 @@ describe("launchBackgroundChecks", () => {
   it("runs both stale checks in one detached child the parent does not wait for", () => {
     launchBackgroundChecks();
     expect(spawn).toHaveBeenCalledTimes(1);
-    const [execPath, , opts] = spawn.mock.calls[0] as unknown as [
+    const [execPath, args, opts] = spawn.mock.calls[0] as unknown as [
       string,
       string[],
       Record<string, unknown>,
@@ -66,6 +67,8 @@ describe("launchBackgroundChecks", () => {
     expect(execPath).toBe(process.execPath);
     expect(spawnedChecks()).toEqual(["update", "skills"]);
     expect(opts).toMatchObject({ detached: true, stdio: "ignore", windowsHide: true });
+    expect(opts.cwd).toBe(homedir());
+    expect(args[1]).toBe(process.cwd());
     expect(child.unref).toHaveBeenCalled();
     expect(child.on).toHaveBeenCalledWith("error", expect.any(Function));
   });
