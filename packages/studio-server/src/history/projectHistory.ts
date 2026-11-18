@@ -12,7 +12,7 @@ import {
   realpathSync,
   rmSync,
 } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import {
@@ -1354,9 +1354,18 @@ class Engine {
     const found = new Set<string>();
     for (const [page, hash] of pages) {
       const text = await this.pageText(page, hash);
-      for (const path of candidates) if (fileNames(page, text, path, existing)) found.add(path);
+      for (const path of candidates)
+        if (this.pageNames(page, text, path, existing)) found.add(path);
     }
     return [...found];
+  }
+
+  pageNames(page: string, text: string, path: string, existing: readonly string[]): boolean {
+    if (fileNames(page, text, path, existing)) return true;
+    const folder = posix.dirname(page);
+    if (folder === ".") return false;
+    const from = (file: string) => posix.relative(folder, file);
+    return fileNames(page, text, from(path), existing.map(from));
   }
 
   async pageText(page: string, hash: string): Promise<string> {
