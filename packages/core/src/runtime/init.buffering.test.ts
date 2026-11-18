@@ -120,6 +120,15 @@ it("a clip that gets no data for 8 s stops holding the film, which plays on with
   expect(states.slice(resumedStates).some((s) => s.buffering)).toBe(false);
 });
 
+it("a stuck clip stops holding the film when ticks come a second apart, as in a hidden tab", () => {
+  const { states, step } = playPodcast(0, "video");
+
+  for (let s = 0; s < 10; s++) step(1100);
+  step(1000 / 60);
+
+  expect(states.at(-1)).toEqual({ isPlaying: true, buffering: false });
+});
+
 it("a clip that starves again after playing is waited for again", () => {
   const { voiceReady, states, playFor } = playPodcast(0, "video", "", 30);
   playFor(9);

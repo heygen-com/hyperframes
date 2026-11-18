@@ -6184,8 +6184,7 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const STOP_HOLDING_FOR_A_CLIP_WITHOUT_NEW_DATA_MS = 8000;
-  const SAME_HOLD_IF_CHECKED_WITHIN_MS = 1000;
-  type HoldWithoutData = { src: string; buffered: number; sinceMs: number; checkedMs: number };
+  type HoldWithoutData = { src: string; buffered: number; sinceMs: number; checkedTick: number };
   const holdsWithoutData = new WeakMap<HTMLMediaElement, HoldWithoutData>();
   const stoppedReceivingData = (el: HTMLMediaElement): boolean => {
     const now = performance.now();
@@ -6193,16 +6192,21 @@ export function initSandboxRuntimeModular(): void {
     for (let i = 0; i < el.buffered.length; i++)
       buffered += el.buffered.end(i) - el.buffered.start(i);
     const hold = holdsWithoutData.get(el);
-    const sameHold =
+    const heldLastTick =
       hold !== undefined &&
       hold.src === el.currentSrc &&
       buffered <= hold.buffered &&
-      now - hold.checkedMs <= SAME_HOLD_IF_CHECKED_WITHIN_MS;
-    if (!sameHold) {
-      holdsWithoutData.set(el, { src: el.currentSrc, buffered, sinceMs: now, checkedMs: now });
+      hold.checkedTick >= transportTickCount - 1;
+    if (!heldLastTick) {
+      holdsWithoutData.set(el, {
+        src: el.currentSrc,
+        buffered,
+        sinceMs: now,
+        checkedTick: transportTickCount,
+      });
       return false;
     }
-    hold.checkedMs = now;
+    hold.checkedTick = transportTickCount;
     return now - hold.sinceMs > STOP_HOLDING_FOR_A_CLIP_WITHOUT_NEW_DATA_MS;
   };
 
