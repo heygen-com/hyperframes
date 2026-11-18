@@ -498,6 +498,28 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
+  // fails without the fix: a timeline accepted but not yet committed (restore seek still painting) was reported as none.
+  it("names the restore seek when a shadow's timeline arrived but its seek never painted", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, gen, root } = beginReload({ onPreviewReloadFailed });
+    const shadow = makeShadowWithSpies();
+    Object.assign(shadow.iframe.contentWindow!, {
+      __hfWaitForSeekCompletion: () => new Promise<void>(() => {}),
+    });
+    act(() => {
+      getApi().setShadowIframeNode(shadow.iframe);
+      getApi().onShadowIframeLoad(gen);
+    });
+
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+
+    const [message] = onPreviewReloadFailed.mock.calls[0]!;
+    expect(message).toContain("still waiting for its restore seek to paint");
+    unmount(root);
+  });
+
   it("names the loaders when a shadow with a ready timeline never clears them", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});

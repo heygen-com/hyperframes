@@ -137,6 +137,7 @@ export function useShadowPreviewReload({
   // Invalidation counter, separate from the live slot's key: bumping it never remounts the live Player.
   const shadowGenRef = useRef(0);
   const pendingCommitRef = useRef<{ gen: number; commit: () => void } | null>(null);
+  const acceptedTimelineGenRef = useRef<number | null>(null);
   const visuallyReadyGenRef = useRef<number | null>(null);
   const onPromotedRef = useRef(onPromoted);
   onPromotedRef.current = onPromoted;
@@ -198,6 +199,7 @@ export function useShadowPreviewReload({
     cancelPendingLoadRef.current();
     stopHoldRef.current();
     pendingCommitRef.current = null;
+    acceptedTimelineGenRef.current = null;
     visuallyReadyGenRef.current = null;
   }, []);
 
@@ -206,15 +208,16 @@ export function useShadowPreviewReload({
       if (gen !== shadowGenRef.current) return;
       const shadow = shadowIframeRef.current;
       const sealed = shadow !== null && previewFrameOpaque(shadow);
-      const timelineIn = pendingCommitRef.current?.gen === gen;
       const waitingFor =
         !sealed && !shadowPlayerReachable(shadow)
           ? "the page and its runtime to load"
-          : timelineIn
+          : pendingCommitRef.current?.gen === gen
             ? "its loaders to clear"
-            : sealed
-              ? "its runtime to report a timeline"
-              : "its timeline to be ready";
+            : acceptedTimelineGenRef.current === gen
+              ? "its restore seek to paint"
+              : sealed
+                ? "its runtime to report a timeline"
+                : "its timeline to be ready";
       const got = sealed ? "" : pageGotTo(shadow);
       shadowGenRef.current += 1;
       const failedGen = shadowGenRef.current;
@@ -334,6 +337,7 @@ export function useShadowPreviewReload({
   const markAdapterReady = useCallback(
     (iframe: HTMLIFrameElement | null, gen: number | undefined, commit: () => void) => {
       if (gen == null || gen !== shadowGenRef.current) return;
+      acceptedTimelineGenRef.current = gen;
       const register = () => {
         if (gen !== shadowGenRef.current) return;
         pendingCommitRef.current = { gen, commit };
