@@ -1505,7 +1505,7 @@ const MAX_CONCURRENT_SCRIPT_FETCHES = 4;
 /** Distinct remote addresses one compile downloads, per kind (scripts, font stylesheets). */
 export const MAX_REMOTE_FETCHES = 32;
 /** All of a compile's remote downloads share this much time; what is still pending then counts as failed. */
-const REMOTE_FETCH_DEADLINE_MS = 60_000;
+export const REMOTE_FETCH_DEADLINE_MS = 60_000;
 
 function assertRemoteFetchCount(kind: string, count: number): void {
   if (count > MAX_REMOTE_FETCHES) {
