@@ -14,6 +14,72 @@ interface IdSelectorAlias {
   replacement: string;
 }
 
+const lower = (text: string) => text.replace(/[A-Z]/g, (char) => char.toLowerCase());
+
+interface AttributeAliases {
+  all: SvgReferenceAlias[];
+  byBefore: Map<string, SvgReferenceAlias[]>;
+  byLowercaseBefore: Map<string, SvgReferenceAlias[]>;
+}
+
+interface AliasIndex {
+  everyRecordedId: Set<string>;
+  renamedIdAlternatives: Map<string, string>;
+  byName: Map<string, AttributeAliases>;
+  byLocalName: Map<string, AttributeAliases>;
+}
+
+// A scope's alias list is read once and then only passed around, so its index is built once per list.
+const aliasIndexes = new WeakMap<readonly SvgReferenceAlias[], AliasIndex>();
+
+function aliasIndex(references: readonly SvgReferenceAlias[]): AliasIndex {
+  let index = aliasIndexes.get(references);
+  if (index) return index;
+  index = {
+    everyRecordedId: new Set(),
+    renamedIdAlternatives: new Map(),
+    byName: new Map(),
+    byLocalName: new Map(),
+  };
+  const ids = new Map<string, Set<string>>();
+  const add = (map: Map<string, AttributeAliases>, name: string, alias: SvgReferenceAlias) => {
+    let entry = map.get(lower(name));
+    if (!entry)
+      map.set(
+        lower(name),
+        (entry = { all: [], byBefore: new Map(), byLowercaseBefore: new Map() }),
+      );
+    entry.all.push(alias);
+    for (const [values, key] of [
+      [entry.byBefore, alias.before],
+      [entry.byLowercaseBefore, lower(alias.before)],
+    ] as const) {
+      const same = values.get(key);
+      if (same) same.push(alias);
+      else values.set(key, [alias]);
+    }
+  };
+  for (const alias of references) {
+    if (alias.name === "id") index.everyRecordedId.add(alias.before);
+    if (alias.before === alias.after) continue;
+    add(index.byName, alias.name, alias);
+    add(index.byLocalName, alias.localName, alias);
+    if (alias.name !== "id") continue;
+    let targets = ids.get(alias.before);
+    if (!targets)
+      ids.set(alias.before, (targets = new Set([`#${tokens.escapeCssIdentifier(alias.before)}`])));
+    targets.add(`#${tokens.escapeCssIdentifier(alias.after)}`);
+  }
+  for (const [id, targets] of ids)
+    index.renamedIdAlternatives.set(id, `:is(${[...targets].join(", ")})`);
+  aliasIndexes.set(references, index);
+  return index;
+}
+
+export function recordedSvgIds(references: readonly SvgReferenceAlias[]): ReadonlySet<string> {
+  return aliasIndex(references).everyRecordedId;
+}
+
 /**
  * With `namespaces` (a live sheet's bindings) only prefixed attribute selectors are
  * rewritten; without it they stay as authored and everything else is rewritten.
@@ -39,22 +105,23 @@ export function rewriteSvgSelectors(
     if (!value && operator !== "=" && operator !== "|=") return false;
     return attributeOperators[operator](before, value);
   };
-  const lower = (text: string) => text.replace(/[A-Z]/g, (char) => char.toLowerCase());
+  const index = aliasIndex(references);
   const rewriteAttribute = (predicate: string): string => {
     const parsed = tokens.parseAttributeSelector(predicate);
     if (!parsed) return predicate;
     const { name, rawName, namespace, operator, value, flag } = parsed;
     if ((namespace.kind === "named") !== (namespaces !== undefined)) return predicate;
-    const fold = flag?.toLowerCase() === "i" ? lower : (text: string) => text;
-    const attributeName = lower(name);
-    const candidates = references.filter((reference) => {
-      const actualName = namespace.kind === "none" ? reference.name : reference.localName;
-      const uri = namespace.kind === "named" ? namespaces!.get(namespace.prefix) : null;
-      return (
-        (namespace.kind === "any" || reference.namespaceURI === uri) &&
-        lower(actualName) === attributeName
-      );
-    });
+    const folded = flag?.toLowerCase() === "i";
+    const fold = folded ? lower : (text: string) => text;
+    const forName = (namespace.kind === "none" ? index.byName : index.byLocalName).get(lower(name));
+    if (!forName) return predicate;
+    const byValue = folded
+      ? forName.byLowercaseBefore.get(lower(value))
+      : forName.byBefore.get(value);
+    const uri = namespace.kind === "named" ? namespaces!.get(namespace.prefix) : null;
+    const candidates = ((operator === "=" ? byValue : forName.all) ?? []).filter(
+      (reference) => namespace.kind === "any" || reference.namespaceURI === uri,
+    );
     const alternatives = new Set([predicate]);
     for (const reference of candidates) {
       if (!matchesValue(fold(reference.before), fold(value), operator)) continue;
@@ -66,27 +133,13 @@ export function rewriteSvgSelectors(
   };
   if (namespaces) return tokens.replaceSelectorAttributeTokens(selector, rewriteAttribute);
   const replacements = new Map(ids.map(({ id, replacement }) => [id, replacement]));
-  const targets = new Map<string, Set<string>>();
-  for (const reference of references) {
-    if (
-      reference.name !== "id" ||
-      reference.before === reference.after ||
-      replacements.has(reference.before)
-    )
-      continue;
-    let alternatives = targets.get(reference.before);
-    if (!alternatives) {
-      alternatives = new Set([`#${tokens.escapeCssIdentifier(reference.before)}`]);
-      targets.set(reference.before, alternatives);
-    }
-    alternatives.add(`#${tokens.escapeCssIdentifier(reference.after)}`);
-  }
-  for (const [id, alternatives] of targets)
-    replacements.set(id, `:is(${[...alternatives].join(", ")})`);
+  const namedIds = tokens
+    .selectorIdTokens(selector)
+    .filter((id) => replacements.has(id) || index.renamedIdAlternatives.has(id));
   const rewrittenIds = tokens.replaceSelectorIdTokens(
     selector,
-    [...replacements.keys()],
-    (id) => replacements.get(id)!,
+    namedIds,
+    (id) => replacements.get(id) ?? index.renamedIdAlternatives.get(id)!,
   );
   return tokens.replaceSelectorAttributeTokens(rewrittenIds, rewriteAttribute);
 }
