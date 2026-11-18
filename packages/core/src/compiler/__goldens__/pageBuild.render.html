@@ -312,7 +312,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         let u = ne(e, a.end);
         return u ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: o, value: a.value, flag: u.flag } : null;
       }
-      function E(e, n) {
+      function x(e, n) {
         return e.replace(W, (t) => t.startsWith("[") ? n(t) : t);
       }
       var re = "data-hf-svg-reference-aliases";
@@ -322,14 +322,14 @@ window.__timelines.main = gsap.timeline({ paused: true });
           if (!r) return s;
           let { name: l, rawName: g, namespace: m, operator: b, value: D, flag: w } = r;
           if (m.kind === "named" != (i !== void 0)) return s;
-          let x = w?.toLowerCase() === "i" ? u : (S) => S, L = u(l), P = t.filter((S) => {
+          let E = w?.toLowerCase() === "i" ? u : (S) => S, L = u(l), P = t.filter((S) => {
             let V = m.kind === "none" ? S.name : S.localName, U = m.kind === "named" ? i.get(m.prefix) : null;
             return (m.kind === "any" || S.namespaceURI === U) && u(V) === L;
           }), v = /* @__PURE__ */ new Set([s]);
-          for (let S of P) a(x(S.before), x(D), b) && v.add(`[${g}="${N(S.after)}"${w ? ` ${w}` : ""}]`);
+          for (let S of P) a(E(S.before), E(D), b) && v.add(`[${g}="${N(S.after)}"${w ? ` ${w}` : ""}]`);
           return v.size === 1 ? s : `:is(${[...v].join(", ")})`;
         };
-        if (i) return E(e, d);
+        if (i) return x(e, d);
         let p = new Map(n.map(({ id: s, replacement: r }) => [s, r])), f = /* @__PURE__ */ new Map();
         for (let s of t) {
           if (s.name !== "id" || s.before === s.after || p.has(s.before)) continue;
@@ -338,7 +338,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         for (let [s, r] of f) p.set(s, `:is(${[...r].join(", ")})`);
         let c = q(e, [...p.keys()], (s) => p.get(s));
-        return E(c, d);
+        return x(c, d);
       }
       function se(e, n, t = true) {
         let i = [], a = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((d) => d.getAttribute(n)), u = e.getAttribute?.(n);
@@ -864,7 +864,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         let u = ne(e, a.end);
         return u ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: o, value: a.value, flag: u.flag } : null;
       }
-      function E(e, n) {
+      function x(e, n) {
         return e.replace(W, (t) => t.startsWith("[") ? n(t) : t);
       }
       var re = "data-hf-svg-reference-aliases";
@@ -874,14 +874,14 @@ window.__timelines.main = gsap.timeline({ paused: true });
           if (!r) return s;
           let { name: l, rawName: g, namespace: m, operator: b, value: D, flag: w } = r;
           if (m.kind === "named" != (i !== void 0)) return s;
-          let x = w?.toLowerCase() === "i" ? u : (S) => S, L = u(l), P = t.filter((S) => {
+          let E = w?.toLowerCase() === "i" ? u : (S) => S, L = u(l), P = t.filter((S) => {
             let V = m.kind === "none" ? S.name : S.localName, U = m.kind === "named" ? i.get(m.prefix) : null;
             return (m.kind === "any" || S.namespaceURI === U) && u(V) === L;
           }), v = /* @__PURE__ */ new Set([s]);
-          for (let S of P) a(x(S.before), x(D), b) && v.add(`[${g}="${N(S.after)}"${w ? ` ${w}` : ""}]`);
+          for (let S of P) a(E(S.before), E(D), b) && v.add(`[${g}="${N(S.after)}"${w ? ` ${w}` : ""}]`);
           return v.size === 1 ? s : `:is(${[...v].join(", ")})`;
         };
-        if (i) return E(e, d);
+        if (i) return x(e, d);
         let p = new Map(n.map(({ id: s, replacement: r }) => [s, r])), f = /* @__PURE__ */ new Map();
         for (let s of t) {
           if (s.name !== "id" || s.before === s.after || p.has(s.before)) continue;
@@ -890,7 +890,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         for (let [s, r] of f) p.set(s, `:is(${[...r].join(", ")})`);
         let c = q(e, [...p.keys()], (s) => p.get(s));
-        return E(c, d);
+        return x(c, d);
       }
       function se(e, n, t = true) {
         let i = [], a = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((d) => d.getAttribute(n)), u = e.getAttribute?.(n);
@@ -1416,7 +1416,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         let u = ne(e, a.end);
         return u ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: o, value: a.value, flag: u.flag } : null;
       }
-      function E(e, n) {
+      function x(e, n) {
         return e.replace(W, (t) => t.startsWith("[") ? n(t) : t);
       }
       var re = "data-hf-svg-reference-aliases";
@@ -1426,14 +1426,14 @@ window.__timelines.main = gsap.timeline({ paused: true });
           if (!r) return s;
           let { name: l, rawName: g, namespace: m, operator: b, value: D, flag: w } = r;
           if (m.kind === "named" != (i !== void 0)) return s;
-          let x = w?.toLowerCase() === "i" ? u : (S) => S, L = u(l), P = t.filter((S) => {
+          let E = w?.toLowerCase() === "i" ? u : (S) => S, L = u(l), P = t.filter((S) => {
             let V = m.kind === "none" ? S.name : S.localName, U = m.kind === "named" ? i.get(m.prefix) : null;
             return (m.kind === "any" || S.namespaceURI === U) && u(V) === L;
           }), v = /* @__PURE__ */ new Set([s]);
-          for (let S of P) a(x(S.before), x(D), b) && v.add(`[${g}="${N(S.after)}"${w ? ` ${w}` : ""}]`);
+          for (let S of P) a(E(S.before), E(D), b) && v.add(`[${g}="${N(S.after)}"${w ? ` ${w}` : ""}]`);
           return v.size === 1 ? s : `:is(${[...v].join(", ")})`;
         };
-        if (i) return E(e, d);
+        if (i) return x(e, d);
         let p = new Map(n.map(({ id: s, replacement: r }) => [s, r])), f = /* @__PURE__ */ new Map();
         for (let s of t) {
           if (s.name !== "id" || s.before === s.after || p.has(s.before)) continue;
@@ -1442,7 +1442,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         for (let [s, r] of f) p.set(s, `:is(${[...r].join(", ")})`);
         let c = q(e, [...p.keys()], (s) => p.get(s));
-        return E(c, d);
+        return x(c, d);
       }
       function se(e, n, t = true) {
         let i = [], a = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((d) => d.getAttribute(n)), u = e.getAttribute?.(n);
