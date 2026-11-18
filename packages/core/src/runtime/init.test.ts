@@ -5945,6 +5945,22 @@ describe("initSandboxRuntimeModular", () => {
       expect(logo.style.width).toBe("340px");
     });
 
+    it("leaves a video with no size of its own at its file's size while its file loads", () => {
+      const root = makeRoot();
+      const clip = document.createElement("video");
+      clip.setAttribute("data-start", "0");
+      clip.setAttribute("data-duration", "5");
+      root.appendChild(clip);
+      // A video waiting for its source measures 0px; once loaded it takes its file's size, as a render draws it.
+      modelBrowserLayout(clip, { width: "0px", height: "0px" });
+
+      window.__timelines = { main: createMockTimeline(10) };
+      initSandboxRuntimeModular();
+
+      expect(clip.style.width).toBe("");
+      expect(clip.style.height).toBe("");
+    });
+
     it("puts back an author's display:none !important after measuring the clip", () => {
       const root = makeRoot();
       const card = document.createElement("div");
