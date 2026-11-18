@@ -1,6 +1,15 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { EventEmitter } from "node:events";
-import { createServer, type IncomingHttpHeaders, type Server } from "node:http";
+import { execFileSync } from "node:child_process";
+import {
+  createServer,
+  type IncomingHttpHeaders,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from "node:http";
+import { createServer as createHttpsServer } from "node:https";
+import { getCACertificates, setDefaultCACertificates } from "node:tls";
 import { connect, isIP, type AddressInfo, type LookupFunction } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -70,15 +79,17 @@ let received: Array<{ url: string; headers: IncomingHttpHeaders }> = [];
 const BODY = "\u0000\u0001asset-bytes";
 let server: Server;
 
+function serveRoute(req: IncomingMessage, res: ServerResponse): void {
+  const url = `https://${req.headers.host}${req.url}`;
+  received.push({ url, headers: req.headers });
+  const found = routes[url];
+  if (found === "drop") return void req.socket.destroy();
+  if (!found) return void res.writeHead(599).end();
+  res.writeHead(found.status, found.headers).end(found.body ?? "");
+}
+
 beforeAll(async () => {
-  server = createServer((req, res) => {
-    const url = `https://${req.headers.host}${req.url}`;
-    received.push({ url, headers: req.headers });
-    const found = routes[url];
-    if (found === "drop") return req.socket.destroy();
-    if (!found) return res.writeHead(599).end();
-    res.writeHead(found.status, found.headers).end(found.body ?? "");
-  });
+  server = createServer(serveRoute);
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   mocks.serverPort = (server.address() as AddressInfo).port;
 });
@@ -280,29 +291,120 @@ describe("downloads with the render-service setting off", () => {
   });
 });
 
-describe("downloads on a render service with an egress proxy", () => {
-  beforeEach(() => vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true"));
+describe("downloads on a render service through the egress proxy in HYPERFRAMES_CAPTURE_PROXY", () => {
+  const HOST = "cdn.egress-assets.com";
+  const tunnels: string[] = [];
+  const defaultCAs = getCACertificates("default");
+  let origin: Server;
+  let egress: Server;
 
-  it("with HYPERFRAMES_CAPTURE_PROXY set, tunnels to that egress proxy and resolves no names", async () => {
-    const tunnels: string[] = [];
-    const egress = createServer();
-    egress.on("connect", (request, socket) => {
+  beforeAll(async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-egress-tls-"));
+    dirs.push(dir);
+    execFileSync(
+      "openssl",
+      [
+        ...["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1", "-nodes"],
+        ...["-keyout", join(dir, "key.pem"), "-out", join(dir, "cert.pem"), "-days", "1"],
+        ...["-subj", `/CN=${HOST}`, "-addext", `subjectAltName=DNS:${HOST}`],
+      ],
+      { stdio: "ignore" },
+    );
+    const cert = readFileSync(join(dir, "cert.pem"), "utf8");
+    setDefaultCACertificates([...defaultCAs, cert]);
+    origin = createHttpsServer({ key: readFileSync(join(dir, "key.pem")), cert }, serveRoute);
+    await new Promise<void>((resolve) => origin.listen(0, "127.0.0.1", resolve));
+    const originPort = (origin.address() as AddressInfo).port;
+    egress = createServer();
+    egress.on("connect", (request, client) => {
       tunnels.push(request.url ?? "");
-      socket.destroy();
+      const upstream = connect(originPort, "127.0.0.1", () => {
+        client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+        upstream.pipe(client).pipe(upstream);
+      });
+      upstream.on("error", () => client.destroy());
+      client.on("error", () => upstream.destroy());
     });
     await new Promise<void>((resolve) => egress.listen(0, "127.0.0.1", resolve));
-    try {
-      const { port } = egress.address() as AddressInfo;
-      vi.stubEnv("HYPERFRAMES_CAPTURE_PROXY", `http://127.0.0.1:${port}`);
-      routes["https://media.egress-only-cdn.com/a.png"] = { status: 200, body: BODY };
-      await expect(
-        downloadToTemp("https://media.egress-only-cdn.com/a.png", tempDir()),
-      ).rejects.toThrow();
-      expect(new Set(tunnels)).toEqual(new Set(["media.egress-only-cdn.com:443"]));
-      expect(mocks.resolve4).not.toHaveBeenCalled();
-      expect(received).toEqual([]);
-    } finally {
-      await new Promise((resolve) => egress.close(resolve));
-    }
+  });
+  afterAll(async () => {
+    setDefaultCACertificates(defaultCAs);
+    egress.closeAllConnections();
+    origin.closeAllConnections();
+    await Promise.all([egress, origin].map((s) => new Promise((resolve) => s.close(resolve))));
+  });
+  beforeEach(() => {
+    tunnels.length = 0;
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
+    vi.stubEnv(
+      "HYPERFRAMES_CAPTURE_PROXY",
+      `http://127.0.0.1:${(egress.address() as AddressInfo).port}`,
+    );
+  });
+
+  it("downloads by hostname through the proxy, with the usual headers, resolving no names", async () => {
+    routes[`https://${HOST}/a.png`] = { status: 200, body: BODY };
+    const path = await downloadToTemp(`https://${HOST}/a.png`, tempDir());
+    expect(readFileSync(path, "utf8")).toBe(BODY);
+    expect(tunnels).toEqual([`${HOST}:443`]);
+    expect(received[0]?.headers["user-agent"]).toBeTruthy();
+    expect(received[0]?.headers.accept).toBe("*/*");
+    expect(mocks.resolve4).not.toHaveBeenCalled();
+    expect(mocks.lookup).not.toHaveBeenCalled();
+  });
+
+  it("unpacks a gzip text response", async () => {
+    routes[`https://${HOST}/app.js`] = {
+      status: 200,
+      headers: { "content-encoding": "gzip" },
+      body: gzipSync("console.log('hello');"),
+    };
+    await expect(fetchPublicHttpsText(`https://${HOST}/app.js`, { maxBytes: 1024 })).resolves.toBe(
+      "console.log('hello');",
+    );
+  });
+
+  it("stops a gzip text response whose unpacked size passes the cap", async () => {
+    routes[`https://${HOST}/bomb.js`] = {
+      status: 200,
+      headers: { "content-encoding": "gzip" },
+      body: gzipSync(Buffer.alloc(8 * 1024 * 1024)),
+    };
+    await expect(
+      fetchPublicHttpsText(`https://${HOST}/bomb.js`, { maxBytes: 64 * 1024 }),
+    ).rejects.toMatchObject({ kind: "length_mismatch", retryable: false });
+  });
+
+  it("refuses a compressed asset download", async () => {
+    routes[`https://${HOST}/z.png`] = {
+      status: 200,
+      headers: { "content-encoding": "gzip" },
+      body: gzipSync(BODY),
+    };
+    await expect(downloadToTemp(`https://${HOST}/z.png`, tempDir())).rejects.toMatchObject({
+      kind: "http_rejected",
+      retryable: false,
+    });
+  });
+
+  it("retries a 5xx like any 5xx", async () => {
+    routes[`https://${HOST}/busy.png`] = { status: 503, body: "busy" };
+    await expect(downloadToTemp(`https://${HOST}/busy.png`, tempDir())).rejects.toMatchObject({
+      kind: "http_transient",
+      retryable: true,
+    });
+    expect(received).toHaveLength(2);
+  });
+
+  it("still refuses a redirect to a local-looking name before contacting the proxy", async () => {
+    routes[`https://${HOST}/hop.png`] = {
+      status: 302,
+      headers: { location: "https://metadata.internal/b.png" },
+    };
+    await expect(downloadToTemp(`https://${HOST}/hop.png`, tempDir())).rejects.toMatchObject({
+      kind: "http_rejected",
+      message: "Download redirect target is not permitted",
+    });
+    expect(received.map((request) => request.url)).toEqual([`https://${HOST}/hop.png`]);
   });
 });

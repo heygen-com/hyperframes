@@ -25,10 +25,12 @@ import { resolveRestrictPageNetwork } from "../config.js";
 import {
   assertPublicHostname,
   NonPublicHostError,
-  publicRequest,
   resolvePublicAddress,
 } from "../services/publicNetwork/publicNetwork.js";
-import { captureUpstreamProxy } from "../services/publicNetwork/upstreamProxy.js";
+import {
+  captureUpstreamProxy,
+  type UpstreamProxy,
+} from "../services/publicNetwork/upstreamProxy.js";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
@@ -511,6 +513,23 @@ function undiciTransport(lookup: LookupFunction): Promise<DownloadFetch> {
   return transport;
 }
 
+const proxyTransports = new Map<string, Promise<DownloadFetch>>();
+
+function egressProxyTransport(proxy: UpstreamProxy): Promise<DownloadFetch> {
+  const uri = `http://${proxy.host.includes(":") ? `[${proxy.host}]` : proxy.host}:${proxy.port}`;
+  const key = `${uri} ${proxy.authorization ?? ""}`;
+  let transport = proxyTransports.get(key);
+  if (!transport) {
+    transport = importUndiciPackageEvenUnderBun().then(({ ProxyAgent, fetch: undiciFetch }) => {
+      const dispatcher = new ProxyAgent({ uri, token: proxy.authorization });
+      return (target, options) =>
+        undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
+    });
+    proxyTransports.set(key, transport);
+  }
+  return transport;
+}
+
 const UNRESOLVED_HOST_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "EAI_FAIL"]);
 
 /** Behind an env proxy, refuses a host this machine resolves to a non-public address; the proxy resolves the rest. */
@@ -535,7 +554,8 @@ function assertProxiedHostResolvesPublic(url: string, signal?: AbortSignal | nul
 
 const fetchPublic: DownloadFetch = async (url, init) => {
   if (resolveRestrictPageNetwork()) {
-    if (captureUpstreamProxy()) return publicRequest(url, init);
+    const upstream = captureUpstreamProxy();
+    if (upstream) return (await egressProxyTransport(upstream))(url, init);
     return (await undiciTransport(capturePolicyLookup))(url, init);
   }
   if (fetchGoesThroughEnvProxy()) {
