@@ -191,7 +191,7 @@ describe("insertCompositionIntoSource", () => {
     expect(insert("scenes/c.html")).toContain('data-composition-src="scenes/c.html"');
   });
 
-  // fails without the fix: a source naming its own scene from the root was checked from its folder and refused as missing.
+  // fails without the fix: a source naming its own scene from the root was refused as missing.
   it("follows a source's own scenes from the project root", () => {
     const dir = project();
     writeFixture(dir);
