@@ -2010,6 +2010,7 @@ function handleRenderError(
     errorName: error instanceof Error ? error.name : "unknown",
     failedStageCode: normalizeStageCode(failedStage || "pipeline"),
     missingPathKind: missingPathKind(error),
+    missingPath: job?.errorDetails?.missingPath,
     ...renderJobObservabilityTelemetryPayload(job),
     ...getMemorySnapshot(),
     ...cpu.stop(),

@@ -122,6 +122,12 @@
       "import": "./src/envProxy.ts",
       "types": "./src/envProxy.ts"
     },
+    "./missing-path": {
+      "bun": "./src/missingPath.ts",
+      "node": "./dist/missingPath.js",
+      "import": "./src/missingPath.ts",
+      "types": "./src/missingPath.ts"
+    },
     "./rename-retry": {
       "bun": "./src/renameWithRetry.ts",
       "node": "./dist/renameWithRetry.js",
@@ -743,6 +749,10 @@
       "./env-proxy": {
         "import": "./dist/envProxy.js",
         "types": "./dist/envProxy.d.ts"
+      },
+      "./missing-path": {
+        "import": "./dist/missingPath.js",
+        "types": "./dist/missingPath.d.ts"
       },
       "./rename-retry": {
         "import": "./dist/renameWithRetry.js",

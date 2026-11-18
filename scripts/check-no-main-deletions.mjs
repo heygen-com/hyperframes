@@ -2147,15 +2147,6 @@ export const ALLOWED_DELETIONS = new Map([
     "packages/engine/src/services/frameCapture-pageNetwork.test.ts",
     "pinned the removed per-page filter; browserManager.test.ts pins when a render browser goes behind the proxy",
   ],
-  ...[
-    "packages/core/src/missingPath.ts",
-    "packages/producer/src/services/render/missingPath.ts",
-    "packages/producer/src/services/render/missingPath.test.ts",
-    "packages/producer/src/services/renderOrchestrator.missingPath.test.ts",
-  ].map((path) => [
-    path,
-    "the revert of #7955 removes the missing-path detail; it returns looking only inside folders the render owns",
-  ]),
 ]);
 
 export function parseBase(argv, fallback = "origin/main") {
