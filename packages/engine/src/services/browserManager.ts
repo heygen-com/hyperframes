@@ -18,6 +18,7 @@ import {
 } from "./sandboxLaunch.js";
 import { scanHtmlOpeningTags } from "@hyperframes/parsers/html-attribute-spans";
 import type { Browser, LaunchOptions, Page, PuppeteerNode } from "puppeteer-core";
+import { openPage } from "./openPage.js";
 import { execFileSync } from "child_process";
 import { existsSync, readdirSync } from "fs";
 import { join } from "path";
@@ -159,7 +160,7 @@ async function probeHardwareWebGlInfo(
 }
 
 async function readWebGlInfo(browser: Browser): Promise<WebGlProbeInfo> {
-  const page = await browser.newPage();
+  const page = await openPage(browser);
   return await page.evaluate(() => {
     const unavailable = { hasWebGL: false, vendor: "", renderer: "" };
     const c = document.createElement("canvas");
@@ -429,7 +430,7 @@ async function probeBeginFrameSupport(
   let page;
   let result: BeginFrameProbeResult;
   try {
-    page = await awaitBeforeDeadline(browser.newPage(), deadline, "newPage");
+    page = await awaitBeforeDeadline(openPage(browser), deadline, "newPage");
     // `browser.newPage()` resolves before a cold renderer has necessarily
     // submitted its first surface. Cloud Run exposed this as a false
     // "unsupported Chromium" result: probing the untouched about:blank
