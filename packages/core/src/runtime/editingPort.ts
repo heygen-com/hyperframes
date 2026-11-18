@@ -746,4 +746,4 @@ export function createEditingPortClient(options: {
 }
 
 export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";
-export type { TextEditEndedEvent } from "./editing/textEdit";
+export { caretRangeAt, takePlainTextOnly, type TextEditEndedEvent } from "./editing/textEdit";

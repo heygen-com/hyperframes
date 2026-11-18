@@ -5,15 +5,20 @@ import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext"
 import { useInlineTextEdit } from "../../hooks/useInlineTextEdit";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
 import {
   canEditElementTextInline,
-  canEditTextInline,
+  canEditSealedTextInline,
+  canOpenTextInline,
   isDoublePress,
   type PressMark,
 } from "./domEditInlineText";
 import type { DomEditSelection } from "./domEditingTypes";
 
 type KeyChord = Pick<KeyboardEvent, "key" | "shiftKey" | "ctrlKey" | "metaKey" | "altKey">;
+
+const isPlainEnter = (event: KeyChord) =>
+  event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey;
 
 /**
  * The canvas' side of editing text where it sits.
@@ -62,6 +67,8 @@ export function useInlineTextEditing(
   const elementUnderPress = (event: { clientX: number; clientY: number }) => {
     const iframe = actions?.previewIframeRef?.current;
     if (!iframe) return null;
+    // A sealed frame cannot be hit-tested from here; its first press already selected the element.
+    if (previewFrameOpaque(iframe)) return selectionRef.current?.element ?? null;
     // The same hit test the canvas uses to decide what was clicked; a plain
     // elementFromPoint only finds wrappers, since Studio suppresses pointer events.
     return getPreviewTargetFromPointer(iframe, event.clientX, event.clientY);
@@ -81,11 +88,9 @@ export function useInlineTextEditing(
   // and is the dependable way in: a double press has to survive the canvas'
   // gesture machinery, while this is one key on a selection that has settled.
   const handleKeyDown = (event: KeyChord) => {
-    if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
-      return false;
+    if (!isPlainEnter(event) || inlineText.session) return false;
     const target = selectionRef.current;
-    if (inlineText.session || !target || !canEditTextInline(target)) return false;
-    return inlineText.start(target.element);
+    return Boolean(target && canOpenTextInline(target) && inlineText.start(target.element));
   };
   const handleKeyDownRef = useRef(handleKeyDown);
   handleKeyDownRef.current = handleKeyDown;
@@ -103,16 +108,18 @@ export function useInlineTextEditing(
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [enterFromWindow]);
 
+  // Both script the frame's element and selection, which a sealed session keeps in the frame.
+  const liveSession = inlineText.session?.sealed ? null : inlineText.session;
   return {
     editing: inlineText.session !== null,
     toolbar: (
       <>
         <InlineTextToolbar
-          session={inlineText.session}
+          session={liveSession}
           iframe={actions?.previewIframeRef?.current ?? null}
         />
         <InlineTextCaret
-          session={inlineText.session}
+          session={liveSession}
           iframe={actions?.previewIframeRef?.current ?? null}
         />
       </>
@@ -125,8 +132,11 @@ export function useInlineTextEditing(
       const paired = isDoublePress(lastPressRef.current, press);
       lastPressRef.current = press;
 
-      if (!paired) return false;
-      if (!element || !canEditElementTextInline(element)) return false;
+      if (!paired || !element) return false;
+      const selection = selectionRef.current;
+      if (selection?.handle && selection.element === element)
+        return canEditSealedTextInline(selection) && inlineText.start(element);
+      if (!canEditElementTextInline(element)) return false;
       // The caret opens where the press landed, which means mapping the point
       // out of Studio's coordinates and into the composition's own.
       return inlineText.start(element, compositionPoint(event));

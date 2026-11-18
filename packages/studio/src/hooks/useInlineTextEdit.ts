@@ -7,6 +7,9 @@ import {
   endStudioManualEditGesture,
   countStudioManualEditSave,
 } from "../components/editor/manualEditsDom";
+import { previewStandIn } from "../components/editor/previewDrafts";
+import { previewEditingClient, previewRequest } from "../player/lib/previewChannel";
+import { caretRangeAt, takePlainTextOnly } from "@hyperframes/core/runtime/editing-port";
 
 /**
  * Editing an element's text where it sits, in the composition itself.
@@ -51,6 +54,8 @@ export interface InlineTextEditSession {
   outlineOffset: string;
   /** Holds the preview on screen while the edit is open. */
   gesture?: string;
+  /** A sealed preview's stand-in: the frame runs the edit, reached through its editing port. */
+  sealed?: { iframe: HTMLIFrameElement; handle: string };
 }
 
 /** The live markup to persist and the session snapshot to restore on failure. */
@@ -114,8 +119,9 @@ export function useInlineTextEdit({
       framesRef.current = null;
     }
     openRef.current = null;
-    endStudioManualEditGesture(open.element, open.gesture);
     setSession(null);
+    if (open.sealed) return open;
+    endStudioManualEditGesture(open.element, open.gesture);
     // An element removed from the document mid-session is not an error, it is
     // just nothing left to clean up.
     if (open.element.isConnected) {
@@ -135,6 +141,21 @@ export function useInlineTextEdit({
   const start = useCallback(
     (element: HTMLElement, caretAt?: { x: number; y: number }): boolean => {
       if (openRef.current || readOnly) return false;
+      const sealed = previewStandIn(element);
+      if (sealed) {
+        const open = { element, original: "", outline: "", outlineOffset: "", sealed };
+        openRef.current = open;
+        setSession(open);
+        onPause?.();
+        sealed.iframe.focus();
+        const params = { handle: sealed.handle, action: "start" as const, caret: null };
+        void previewRequest(sealed.iframe, "text-edit", params).then((reply) => {
+          if (openRef.current !== open) return;
+          if (reply?.applied) open.original = reply.previous ?? "";
+          else teardown();
+        });
+        return true;
+      }
 
       const open = {
         element,
@@ -168,12 +189,29 @@ export function useInlineTextEdit({
       framesRef.current = raf ?? null;
       return true;
     },
-    [onPause, readOnly],
+    [onPause, readOnly, teardown],
+  );
+
+  const endSealed = useCallback(
+    (open: InlineTextEditSession, keep: boolean) => {
+      const sealed = open.sealed!;
+      const params = { handle: sealed.handle, action: "end" as const, keep };
+      const ended = previewRequest(sealed.iframe, "text-edit", params).then((reply) => {
+        if (!keep || !reply?.applied || reply.html === null || reply.previous === null) return;
+        return onCommit({ element: open.element, html: reply.html, previousHtml: reply.previous });
+      });
+      trackStudioPendingEdit(ended);
+    },
+    [onCommit],
   );
 
   const commit = useCallback(() => {
     const open = openRef.current;
     if (!open) return;
+    if (open.sealed) {
+      teardown();
+      return endSealed(open, true);
+    }
     // Sanitised here, in the element, so the preview shows exactly what will be
     // saved rather than something the server will quietly cut down.
     sanitizeRichTextChildren(open.element);
@@ -188,14 +226,30 @@ export function useInlineTextEdit({
       return onCommit({ element: open.element, html, previousHtml: open.original });
     };
     save(countStudioManualEditSave(open.element, commitText));
-  }, [onCommit, teardown]);
+  }, [onCommit, teardown, endSealed]);
 
   const cancel = useCallback(() => {
     const open = openRef.current;
     if (!open) return;
+    if (open.sealed) {
+      teardown();
+      return endSealed(open, false);
+    }
     if (open.element.isConnected) open.element.innerHTML = open.original;
     teardown();
-  }, [teardown]);
+  }, [teardown, endSealed]);
+
+  // A sealed frame ends the edit itself on Enter, Escape or a press elsewhere, and says what it kept.
+  useEffect(() => {
+    const sealed = session?.sealed;
+    if (!session || !sealed) return;
+    return previewEditingClient(sealed.iframe).onTextEditEnded((ended) => {
+      if (openRef.current !== session || ended.handle !== sealed.handle) return;
+      teardown();
+      if (ended.html !== null)
+        void onCommit({ element: session.element, html: ended.html, previousHtml: ended.previous });
+    });
+  }, [session, teardown, onCommit]);
 
   // Read-only can be enabled while an edit is already open. Close that
   // session as a cancellation so the preview cannot keep committing through
@@ -208,7 +262,7 @@ export function useInlineTextEdit({
   // the preview's own document, so a listener on Studio's would never see them.
   useEffect(() => {
     const element = session?.element;
-    if (!element) return;
+    if (!element || session.sealed) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       // Shift+Enter is a line break in a multi-line element, and is left alone.
@@ -227,37 +281,15 @@ export function useInlineTextEdit({
     const onBlur = () => commit();
     // Nothing here for double or triple click: the browser already takes the
     // word on two and the whole text on three, which is what a text field does
-    // everywhere else. Overriding the double click to take everything cost the
-    // word selection and gained nothing the triple click did not already do.
-    // Dropping `plaintext-only` means the browser would otherwise paste a whole
-    // web page's markup straight in. What arrives is the words.
-    const insertPlainText = (text: string) => {
-      if (text) element.ownerDocument.execCommand("insertText", false, text);
-    };
-    const onPaste = (event: ClipboardEvent) => {
-      event.preventDefault();
-      insertPlainText(event.clipboardData?.getData("text/plain") ?? "");
-    };
-    // `contenteditable="true"` accepts dragged HTML as eagerly as pasted HTML.
-    // Keep the drop path on the same plain-text rail as paste so markup cannot
-    // execute in the same-origin preview before commit-time sanitisation.
-    const onDragOver = (event: DragEvent) => event.preventDefault();
-    const onDrop = (event: DragEvent) => {
-      event.preventDefault();
-      insertPlainText(event.dataTransfer?.getData("text/plain") ?? "");
-    };
-
+    // everywhere else. Dropping `plaintext-only` means paste and drop would otherwise
+    // put a whole web page's markup straight in; what arrives is the words.
+    const releasePlainText = takePlainTextOnly(element);
     element.addEventListener("keydown", onKeyDown);
     element.addEventListener("blur", onBlur);
-    element.addEventListener("paste", onPaste);
-    element.addEventListener("dragover", onDragOver);
-    element.addEventListener("drop", onDrop);
     return () => {
+      releasePlainText();
       element.removeEventListener("keydown", onKeyDown);
       element.removeEventListener("blur", onBlur);
-      element.removeEventListener("paste", onPaste);
-      element.removeEventListener("dragover", onDragOver);
-      element.removeEventListener("drop", onDrop);
     };
   }, [session, commit]);
 
@@ -289,25 +321,6 @@ function placeCaret(element: HTMLElement, at?: { x: number; y: number }): void {
     return;
   }
   placeCaretAtEnd(element);
-}
-
-/** The caret position under a point, across the two APIs browsers expose. */
-function caretRangeAt(doc: Document, at: { x: number; y: number }): Range | null {
-  const legacy = doc as Document & {
-    caretRangeFromPoint?: (x: number, y: number) => Range | null;
-  };
-  if (typeof legacy.caretRangeFromPoint === "function") {
-    return legacy.caretRangeFromPoint(at.x, at.y);
-  }
-  const standard = doc as Document & {
-    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
-  };
-  const position = standard.caretPositionFromPoint?.(at.x, at.y);
-  if (!position) return null;
-  const range = doc.createRange();
-  range.setStart(position.offsetNode, position.offset);
-  range.collapse(true);
-  return range;
 }
 
 /**

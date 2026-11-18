@@ -44,6 +44,17 @@ export function canEditTextInline(selection: DomEditSelection | null): boolean {
  * first colour change. What counts as formatting is the sanitiser's allowlist,
  * so the editor and the thing that writes the file agree on it.
  */
+/** `canEditElementTextInline` for a sealed preview's selection: the frame refuses markup that is not text. */
+export function canEditSealedTextInline(selection: DomEditSelection | null): boolean {
+  if (!selection?.handle || selection.isCompositionHost) return false;
+  if (selection.isInsideLockedComposition) return false;
+  return !["BODY", "HTML"].includes(selection.tagName.toUpperCase());
+}
+
+/** The gate an edit opens through on a selection, live or sealed. */
+export const canOpenTextInline = (selection: DomEditSelection | null): boolean =>
+  selection?.handle ? canEditSealedTextInline(selection) : canEditTextInline(selection);
+
 export function canEditElementTextInline(element: HTMLElement | null): boolean {
   if (!element) return false;
   const tag = element.tagName;

@@ -14,7 +14,11 @@ import {
 } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
-import { canEditElementTextInline } from "../components/editor/domEditInlineText";
+import {
+  canEditElementTextInline,
+  canEditSealedTextInline,
+} from "../components/editor/domEditInlineText";
+import { previewStandIn } from "../components/editor/previewDrafts";
 import { buildNextDomTextFields, planDomTextCommit } from "./domEditTextCommitPlan";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
@@ -27,7 +31,11 @@ import {
 import { commitDomStyles } from "./domStyleCommit";
 import { editSealedSelection } from "../components/editor/previewSelection";
 import { escapeHtmlText } from "../components/editor/domEditingLayers";
-import { afterSealedDraw, type PreviewElementEdit } from "../player/lib/previewElements";
+import {
+  afterSealedDraw,
+  editPreviewElement,
+  type PreviewElementEdit,
+} from "../player/lib/previewElements";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 import type { InlineTextEditCommit } from "./useInlineTextEdit";
 import type { ResolveDomSelectionOptions } from "./useDomSelectionTypes";
@@ -130,6 +138,30 @@ function textWriteSteps(input: {
     onFinally: isLatest.release,
   };
   return { steps, sealedEdit: () => sealedEdit };
+}
+
+const NOT_FOUND = "this text was not found in the composition's source";
+// The same gate that let the edit open, not the design panel's field rule: an element
+// whose text holds a line break has no fields, and editing in place rewrites its markup.
+const NOT_EDITABLE = "this text can't be edited in place";
+
+/** A sealed edit opens on the selection's stand-in, which only that selection resolves. */
+function sealedInlineTextSelection(element: HTMLElement, current: DomEditSelection | null) {
+  if (current?.element !== element) return NOT_FOUND;
+  return canEditSealedTextInline(current) ? current : NOT_EDITABLE;
+}
+
+/** The edited node, not the current selection: a press can open an edit on a child of what is selected. */
+async function liveInlineTextSelection(
+  element: HTMLElement,
+  doc: Document | null | undefined,
+  build: UseDomEditTextCommitsParams["buildDomSelectionFromTarget"],
+): Promise<DomEditSelection | string> {
+  if (!doc || !element.isConnected || element.ownerDocument !== doc)
+    return "the text's element is gone from the preview";
+  const selection = await build(element, { exactTarget: true, skipSourceProbe: true });
+  if (selection?.element !== element) return NOT_FOUND;
+  return canCommitInlineTextSelection(selection, element) ? selection : NOT_EDITABLE;
 }
 
 // ── Hook ──
@@ -281,8 +313,11 @@ export function useDomEditTextCommits({
    */
   const handleDomRichTextCommit = useCallback(
     async ({ element, html, previousHtml }: InlineTextEditCommit) => {
+      const sealed = previewStandIn(element);
       const putBack = () => {
-        if (element.isConnected && element.innerHTML === html) element.innerHTML = previousHtml;
+        if (sealed) void editPreviewElement(sealed.iframe, sealed.handle, { html: previousHtml });
+        else if (element.isConnected && element.innerHTML === html)
+          element.innerHTML = previousHtml;
       };
       if (latestReadOnlyPreviewRef.current) return putBack();
       const refuse = (reason: string) => {
@@ -290,24 +325,11 @@ export function useDomEditTextCommits({
         showToast(`Couldn't save the text edit: ${reason}`, "error");
         putBack();
       };
-      // The edited node, not the current selection: a press can open an edit on a child of what
-      // is selected, and a host can clear the selection before the edit closes.
       const doc = previewIframeRef.current?.contentDocument;
-      if (!doc || !element.isConnected || element.ownerDocument !== doc) {
-        return refuse("the text's element is gone from the preview");
-      }
-      const selection = await buildDomSelectionFromTarget(element, {
-        exactTarget: true,
-        skipSourceProbe: true,
-      });
-      if (selection?.element !== element) {
-        return refuse("this text was not found in the composition's source");
-      }
-      // The same gate that let the edit open, not the design panel's field rule: an element
-      // whose text holds a line break has no fields, and editing in place rewrites its markup.
-      if (!canCommitInlineTextSelection(selection, element)) {
-        return refuse("this text can't be edited in place");
-      }
+      const selection = sealed
+        ? sealedInlineTextSelection(element, latestSelectionRef.current)
+        : await liveInlineTextSelection(element, doc, buildDomSelectionFromTarget);
+      if (typeof selection === "string") return refuse(selection);
       const isLatestTextCommit = bumpDomEditCommitMapVersion(
         domTextCommitVersionRef.current,
         getDomEditTargetKey(selection),
@@ -318,6 +340,7 @@ export function useDomEditTextCommits({
       await runDomEditCommit({
         capture: () => {},
         apply: () => {
+          if (sealed) return;
           // Idempotent: the caret put this there. Assigned anyway so a commit
           // raised from anywhere but the element itself still lands.
           element.innerHTML = html;
@@ -333,6 +356,7 @@ export function useDomEditTextCommits({
         },
         shouldRevert: () => isLatestTextCommit(),
         revert: () => {
+          if (sealed) return putBack();
           // An external actor that changed the live node while the request was
           // in flight owns its new value; only roll back the value we submitted.
           if (element.isConnected && element.innerHTML === appliedHtml) {
@@ -343,13 +367,15 @@ export function useDomEditTextCommits({
         // Re-select only what is still selected: the selection may have moved on, or a host cleared it.
         shouldResync: () => isLatestTextCommit() && latestSelectionRef.current?.element === element,
         resync: () =>
-          resyncDomTextSelectionFromPreview(
-            doc,
-            selection,
-            activeCompPath,
-            buildDomSelectionFromTarget,
-            applyDomSelection,
-          ),
+          sealed
+            ? refreshDomEditSelectionFromPreview(selection)
+            : resyncDomTextSelectionFromPreview(
+                doc,
+                selection,
+                activeCompPath,
+                buildDomSelectionFromTarget,
+                applyDomSelection,
+              ),
         onFinally: isLatestTextCommit.release,
       });
     },
@@ -359,6 +385,7 @@ export function useDomEditTextCommits({
       buildDomSelectionFromTarget,
       persistDomEditOperations,
       previewIframeRef,
+      refreshDomEditSelectionFromPreview,
       showToast,
     ],
   );
