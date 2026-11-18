@@ -5,7 +5,6 @@ import { type SubTimelineWaitOutcome } from "@hyperframes/engine";
 import type { HdrDiagnostics, RenderJob } from "../renderOrchestrator.js";
 import { normalizeErrorMessage } from "../../utils/errorMessage.js";
 import type { RenderObservabilitySummary } from "./observability.js";
-import type { MissingPathFacts } from "./missingPath.js";
 
 /**
  * Build the `RenderJob.errorDetails` shape downstream consumers (SSE,
@@ -19,7 +18,6 @@ export function buildRenderErrorDetails(input: {
   hdrDiagnostics: HdrDiagnostics;
   observability?: RenderObservabilitySummary;
   subTimelineWait?: SubTimelineWaitOutcome;
-  missingPath?: MissingPathFacts;
 }): NonNullable<RenderJob["errorDetails"]> {
   const errorMessage = normalizeErrorMessage(input.error);
   const errorStack = input.error instanceof Error ? input.error.stack : undefined;
@@ -38,6 +36,5 @@ export function buildRenderErrorDetails(input: {
         : undefined,
     observability: input.observability,
     subTimelineWait: input.subTimelineWait,
-    missingPath: input.missingPath,
   };
 }

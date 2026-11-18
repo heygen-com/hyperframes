@@ -690,24 +690,6 @@ describe("render telemetry events", () => {
     expect(props.hf_env_overrides).toEqual(["HF_DE_VERIFY", "HYPERFRAMES_FONT_CACHE_DIR"]);
   });
 
-  it("sends only the closed-list missing-path facts on render_error", () => {
-    trackRenderError({
-      fps: 30,
-      quality: "draft",
-      docker: false,
-      missingPath: { scope: "cache_entry", synced: true, root: "system_temp" },
-    });
-    const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;
-    expect(props).toMatchObject({
-      missing_path_scope: "cache_entry",
-      missing_path_synced: true,
-      missing_path_root: "system_temp",
-    });
-    expect(Object.values(props).filter((v) => typeof v === "string" && /[\\/]/.test(v))).toEqual(
-      [],
-    );
-  });
-
   it("reports an empty array, not an absent field, when no override was resolved", () => {
     trackRenderError({ fps: 30, quality: "draft", docker: false });
     const props = trackEvent.mock.calls[0]?.[1] as Record<string, unknown>;

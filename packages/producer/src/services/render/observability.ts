@@ -224,7 +224,6 @@ export interface RenderExtractionObservability {
   vfrPreflightCount?: number;
   cacheHits?: number;
   cacheMisses?: number;
-  cachePublishFailures?: number;
   /** Per-source transient download/metadata/FFmpeg retries performed during extraction. */
   transientRetries?: number;
   /**
