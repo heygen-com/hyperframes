@@ -38,9 +38,7 @@ import { existsSync } from "node:fs";
 /** Discriminator for the two supported Chrome sources. */
 export type ChromeSource = "sparticuz" | "chrome-headless-shell";
 
-/** Where `build-zip.ts --source=chrome-headless-shell` puts the whole shell folder, under /var/task. */
 export const BUNDLED_SHELL_DIR = "chrome-headless-shell-linux64";
-/** That shell's executable on Lambda: the SAM template and the CDK stack set HYPERFRAMES_LAMBDA_CHROME_PATH to it. */
 export const BUNDLED_SHELL_PATH = `/var/task/${BUNDLED_SHELL_DIR}/chrome-headless-shell`;
 
 /**
