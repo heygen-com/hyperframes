@@ -343,6 +343,8 @@ describe("local font embedding", () => {
     expect(html.length).toBeLessThan(MAX_EXPANDED_COMPOSITION_BYTES + 64 * 1024);
     expect(html.split('url("big.ttf")').length - 1).toBe(8 - inlined + 1);
     expect(html).toContain('.mark { background: url("big.ttf"); }');
+  });
+});
 
 describe("asset paths rebased from a composition's folder", () => {
   const candidates = (count: number) => Array(count).fill("../x.png").join(", ");
