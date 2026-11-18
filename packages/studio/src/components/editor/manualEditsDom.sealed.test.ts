@@ -13,7 +13,7 @@ import {
   endStudioManualEditGesture,
   isStudioManualEditGestureLiveIn,
   studioManualEditSavesIn,
-} from "./manualEditsDom";
+} from "./manualEditGesture";
 import { gestureDocumentOf } from "./previewSelection";
 
 const iframe = document.createElement("iframe");

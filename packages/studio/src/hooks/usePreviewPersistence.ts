@@ -7,7 +7,7 @@ import {
 import {
   afterStudioManualEditGestures,
   isStudioManualEditGestureLiveIn,
-} from "../components/editor/manualEditsDom";
+} from "../components/editor/manualEditGesture";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { gestureDocumentOf } from "../components/editor/previewSelection";
 import { markScenesStale } from "../player/sceneSwap";

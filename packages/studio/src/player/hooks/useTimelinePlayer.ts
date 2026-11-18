@@ -39,7 +39,7 @@ import { hasTimelinePerformanceFixtureLease } from "../lib/timelinePerformanceFi
 import { applyCachedSourceDurations, probeMissingSourceDurations } from "../lib/mediaProbe";
 import { shouldResumeForwardPlaybackAfterSeek, shouldStopAfterSeek } from "../lib/playbackSeek";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
-import { isStudioManualEditGestureLiveIn } from "../../components/editor/manualEditsDom";
+import { isStudioManualEditGestureLiveIn } from "../../components/editor/manualEditGesture";
 import { createPreviewMessageHandler } from "./previewMessageRouter";
 import { usePreviewQualityForwarding } from "./usePreviewQualityForwarding";
 import { timelineElementsChanged } from "./timelinePlayerSync";

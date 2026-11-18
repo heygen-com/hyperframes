@@ -7,7 +7,7 @@ import {
   afterStudioManualEditGestures,
   isStudioManualEditGestureLiveIn,
   studioManualEditSavesIn,
-} from "../../components/editor/manualEditsDom";
+} from "../../components/editor/manualEditGesture";
 import { refusedPreviewStatus } from "@hyperframes/core/studio-preview-mark";
 import { gestureDocumentOf } from "../../components/editor/previewSelection";
 import { logReload } from "../../utils/reloadDebug";

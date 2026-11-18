@@ -18,7 +18,10 @@ import { markScenesStale } from "../player/sceneSwap";
 import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
 import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
 import { STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR } from "../components/editor/manualEditsTypes";
-import { countStudioPreviewChange, studioGestureDraws } from "../components/editor/manualEditsDom";
+import {
+  countStudioPreviewChange,
+  studioGestureDraws,
+} from "../components/editor/manualEditGesture";
 
 type PreviewWindow = Window & {
   __player?: { seek?: (t: number) => void };
