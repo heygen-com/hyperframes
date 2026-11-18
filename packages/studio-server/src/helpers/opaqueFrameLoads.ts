@@ -1,9 +1,21 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Context, Hono, Next } from "hono";
+import { getMimeType } from "./mime.js";
+import { fetchAgain } from "./fetchAgain.js";
+import {
+  isProxyWait,
+  PREVIEW_EXPOSED_HEADERS,
+  PROXY_WAIT_ALLOWED_HEADERS,
+} from "./captureLoads.js";
 
-const GRANTED_LOADS = new Map([
-  ["font", { path: /\.(woff2?|ttf|otf)$/i, type: /^font\// }],
-  ["script", { path: /\.m?js$/i, type: /^text\/javascript\b/ }],
+const ANY_FILE_THE_PREVIEW_SERVES = /./;
+const GRANTED_TYPES = new Map([
+  ["font", /^font\//],
+  ["script", /^text\/javascript\b/],
+  ["image", /^image\//],
+  ["video", /^video\//],
+  ["audio", /^audio\//],
+  ["empty", ANY_FILE_THE_PREVIEW_SERVES],
 ]);
 const TOKEN_SEGMENT = /^~([\w-]{43})$/;
 
@@ -16,10 +28,10 @@ interface OpaqueFrameLoad {
 }
 
 function opaqueFrameLoadGranted(load: OpaqueFrameLoad): boolean {
-  const grant = load.origin === "null" ? GRANTED_LOADS.get(load.dest ?? "") : undefined;
-  if (!grant?.path.test(load.pathname)) return false;
+  const type = load.origin === "null" ? GRANTED_TYPES.get(load.dest ?? "") : undefined;
+  if (!type?.test(getMimeType(load.pathname))) return false;
   const keepsStoredContentType = load.status === 304;
-  return keepsStoredContentType || grant.type.test(load.contentType ?? "");
+  return keepsStoredContentType || type.test(load.contentType ?? "");
 }
 
 export function createFrameTokens() {
@@ -49,10 +61,24 @@ function tokenPathHeaders(c: Context, res: Response, pathname: string): Headers 
   if (granted) {
     headers.set("Access-Control-Allow-Origin", "null");
     headers.set("X-Content-Type-Options", "nosniff");
+    headers.set("Access-Control-Expose-Headers", PREVIEW_EXPOSED_HEADERS);
     headers.append("Vary", "Origin");
   }
   return headers;
 }
+
+const answersProxyPreflight = (c: Context, url: URL) =>
+  c.req.method === "OPTIONS" &&
+  c.req.header("origin") === "null" &&
+  c.req.header("access-control-request-method") === "GET" &&
+  isProxyWait(url);
+
+const PROXY_PREFLIGHT_ANSWER = {
+  "Access-Control-Allow-Origin": "null",
+  "Access-Control-Allow-Methods": "GET",
+  "Access-Control-Allow-Headers": PROXY_WAIT_ALLOWED_HEADERS,
+  Vary: "Origin",
+};
 
 async function underToken(res: Response, headers: Headers, projectId: string, token: string) {
   if (res.status !== 200 || !headers.get("content-type")?.startsWith("text/html"))
@@ -62,6 +88,10 @@ async function underToken(res: Response, headers: Headers, projectId: string, to
   const html = (await res.text()).replaceAll(base, `${base}~${token}/`);
   return new Response(html, { status: res.status, headers });
 }
+
+const frameTokenLoads = new WeakSet<Request>();
+
+export const loadedThroughFrameToken = (request: Request) => frameTokenLoads.has(request);
 
 // Every opaque frame sends `Origin: null`, so the grant goes only to `preview/~<token>/` paths, which only the
 // Studio's own pages can learn. The token path serves the plain path's response, its document re-based under the token.
@@ -79,8 +109,11 @@ export function serveTokenPreviewPaths(
     if (!projectId || !tokens.matches(projectId, token)) return c.text("not found", 404);
     segments.splice(4, 1);
     url.pathname = segments.join("/");
+    if (answersProxyPreflight(c, url))
+      return new Response(null, { status: 204, headers: PROXY_PREFLIGHT_ANSWER });
     const req = new Request(url, { method: c.req.method, headers: c.req.raw.headers });
-    const res = await api.fetch(req);
+    frameTokenLoads.add(req);
+    const res = await fetchAgain(api, req);
     return underToken(res, tokenPathHeaders(c, res, url.pathname), projectId, token);
   };
 }

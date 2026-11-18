@@ -160,7 +160,10 @@ export interface PlanV2WithPublisherOptions {
   readonly remoteFiles?: BuildLocalExecutionPlanOptions["remoteFiles"];
   readonly chunksCarryAudio?: boolean;
   readonly deferAudio?: boolean;
-  readonly onPlanned?: (summary: { readonly strictVariablesChecked?: boolean }) => void;
+  readonly onPlanned?: (summary: {
+    readonly strictVariablesChecked?: boolean;
+    readonly outputDimensionsChecked?: boolean;
+  }) => void;
 }
 
 export interface PlanV2MaterializationResult {
@@ -790,7 +793,10 @@ export async function planV2WithPublisher(
       sliceChunkAudio: true,
       deferAudio: options.deferAudio,
     });
-    options.onPlanned?.({ strictVariablesChecked: planned.strictVariablesChecked });
+    options.onPlanned?.({
+      strictVariablesChecked: planned.strictVariablesChecked,
+      outputDimensionsChecked: planned.outputDimensionsChecked,
+    });
     return await publishExecutionPlan(stagingRoot, publisher, { digests, log: config.logger });
   } catch (error) {
     try {

@@ -37,7 +37,7 @@ export default defineCommand({
     confirm: {
       type: "boolean",
       description:
-        "Prompt before deleting (default: true). Pass `--no-confirm` to skip — required for scripts and --json.",
+        "Prompt before deleting. Pass `--no-confirm` to skip — required for scripts and --json.",
       default: true,
     },
   },

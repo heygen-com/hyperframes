@@ -15,6 +15,7 @@ import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
 import { readTimelineDurationFromDocument } from "../lib/timelineDOM";
 import { buildMissingCompositionElements } from "../lib/timelineIframeHelpers";
 import { acceptedRuntimeMessageFps } from "../lib/runtimeProtocol";
+import { previewDocumentCopy, previewFrameOpaque } from "../lib/previewChannel";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import {
   buildTimelineElementsFromClips,
@@ -111,6 +112,10 @@ export function planShadowReload(
   return live ? [live, { gen: nextGen, role: "shadow", url }] : [{ gen: nextGen, role: "live" }];
 }
 
+export function planShadowAlone(nextGen: number, url: string): PreviewIframeSlot[] {
+  return [{ gen: nextGen, role: "shadow", url }];
+}
+
 /** Drop any pending shadow; the live slot (and its key) is untouched. */
 export function planShadowDiscard(slots: PreviewIframeSlot[]): PreviewIframeSlot[] {
   return slots.filter((slot) => slot.role === "live");
@@ -167,19 +172,13 @@ export function useTimelineSyncCallbacks({
   hostOwnsDeadline,
 }: UseTimelineSyncCallbacksParams) {
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
-  const processTimelineMessage = useCallback(
-    (data: RuntimeTimelineMessage) => {
-      if (!data.clips) return;
-
-      usePlayerStore.getState().setClipManifest(data.clips);
-
+  const applyTimelineMessage = useCallback(
+    (data: RuntimeTimelineMessage, iframeDoc: Document | null) => {
       // Show root-level clips: no parentCompositionId, OR parent is a "phantom wrapper"
       const clipCompositionIds = new Set(data.clips.map((c) => c.compositionId).filter(Boolean));
       const filtered = data.clips.filter(
         (clip) => !clip.parentCompositionId || !clipCompositionIds.has(clip.parentCompositionId),
       );
-      const iframeDoc = safeContentDocument(iframeRef.current);
-
       try {
         const parentMap = clipTreeParentMap(iframeRef.current?.contentWindow ?? null);
         const domClipChildren = collectSubCompositionDomChildren(iframeDoc, data.clips, parentMap);
@@ -213,6 +212,26 @@ export function useTimelineSyncCallbacks({
       );
     },
     [iframeRef, syncTimelineElements],
+  );
+
+  const timelineReads = useRef(0);
+  const processTimelineMessage = useCallback(
+    (data: RuntimeTimelineMessage) => {
+      if (!data.clips) return;
+      usePlayerStore.getState().setClipManifest(data.clips);
+      const iframe = iframeRef.current;
+      const read = ++timelineReads.current;
+      if (!iframe || !previewFrameOpaque(iframe)) {
+        applyTimelineMessage(data, safeContentDocument(iframe));
+        return;
+      }
+      // A sealed frame's rows bind to a copy of its document from the editing port; the newest read wins.
+      void previewDocumentCopy(iframe).then((doc) => {
+        if (read === timelineReads.current && iframeRef.current === iframe)
+          applyTimelineMessage(data, doc);
+      });
+    },
+    [iframeRef, applyTimelineMessage],
   );
 
   const enrichMissingCompositions = useCallback(() => {

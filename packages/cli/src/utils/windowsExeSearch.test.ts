@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, isAbsolute, join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,6 +79,37 @@ describe("searchOnlyTrustedFolders", () => {
     },
   );
 
+  // fails without the fix: the project root's node_modules/.bin that npx adds stayed on PATH when
+  // the CLI ran from a subfolder, because only folders inside the working directory were dropped.
+  it.each(["linux", "darwin", "win32"] as const)(
+    "drops the project root's node_modules/.bin when run from a subfolder, on %s",
+    (platform) => {
+      const { project, outside } = inProject();
+      const sub = join(project, "video");
+      mkdirSync(join(sub, "node_modules", ".bin"), { recursive: true });
+      // The temp folder is home, so a marker in a folder above it cannot move the project root.
+      vi.stubEnv("HOME", dirname(project));
+      vi.stubEnv("USERPROFILE", dirname(project));
+      onTestFinished(() => {
+        vi.unstubAllEnvs();
+      });
+      vi.spyOn(process, "cwd").mockReturnValue(sub);
+      const separator = platform === "win32" ? win32.delimiter : delimiter;
+      const env: NodeJS.ProcessEnv = {
+        PATH: [
+          join(sub, "node_modules", ".bin"),
+          join(project, "node_modules", ".bin"),
+          join(dirname(project), "node_modules", ".bin"),
+          outside[0],
+        ].join(separator),
+      };
+
+      searchOnlyTrustedFolders(env, platform);
+
+      expect(env.PATH).toBe(outside[0]);
+    },
+  );
+
   it("finds the PATH key whatever its case, as Windows spells it Path", () => {
     const { project, outside } = inProject();
     const env: NodeJS.ProcessEnv = { Path: [project, outside[0], "."].join(win32.delimiter) };
@@ -90,46 +130,6 @@ describe("searchOnlyTrustedFolders", () => {
     );
   });
 
-  it("keeps the Windows system folders when started from inside System32", () => {
-    vi.spyOn(process, "cwd").mockReturnValue("C:\\Windows\\System32");
-    onTestFinished(() => {
-      vi.restoreAllMocks();
-    });
-    const env: NodeJS.ProcessEnv = {
-      SystemRoot: "C:\\Windows",
-      Path: [
-        "C:\\Windows\\system32",
-        ".",
-        "C:\\Windows",
-        "C:/Windows/System32/Wbem/",
-        "C:\\Windows\\System32\\evil",
-        "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\",
-      ].join(win32.delimiter),
-    };
-
-    expect(withOnlyTrustedPathFolders(env, "win32").Path).toBe(
-      [
-        "C:\\Windows\\system32",
-        "C:\\Windows",
-        "C:/Windows/System32/Wbem/",
-        "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\",
-      ].join(win32.delimiter),
-    );
-  });
-
-  it("takes the system folders from SystemRoot", () => {
-    vi.spyOn(process, "cwd").mockReturnValue("C:\\Windows\\System32");
-    onTestFinished(() => {
-      vi.restoreAllMocks();
-    });
-    const env: NodeJS.ProcessEnv = {
-      SYSTEMROOT: "D:\\WinNT",
-      Path: ["C:\\Windows\\System32", "D:\\WinNT\\System32"].join(win32.delimiter),
-    };
-
-    expect(withOnlyTrustedPathFolders(env, "win32").Path).toBe("D:\\WinNT\\System32");
-  });
-
   it("never leaves an empty PATH, which would mean the working directory", () => {
     const { project } = inProject();
     const env: NodeJS.ProcessEnv = { PATH: ["", ".", project].join(delimiter) };
@@ -141,6 +141,33 @@ describe("searchOnlyTrustedFolders", () => {
     expect(existsSync(env.PATH ?? "")).toBe(false);
     expect(env.PATH?.startsWith(project)).toBe(false);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "a helper started by bare name never runs a same-named file from the project folder",
+    () => {
+      const { project, outside } = inProject();
+      const marker = join(outside[1]!, "ran");
+      mkdirSync(join(project, "bin"));
+      for (const dir of [project, join(project, "bin")]) {
+        writeFileSync(join(dir, "hf-planted-helper"), `#!/bin/sh\necho ran > "${marker}"\n`, {
+          mode: 0o755,
+        });
+      }
+      const raw: NodeJS.ProcessEnv = { PATH: [".", "", "bin", outside[0]].join(delimiter) };
+      const run = (env: NodeJS.ProcessEnv) =>
+        spawnSync("hf-planted-helper", [], { cwd: project, env, stdio: "ignore" });
+
+      expect(run(raw).status).toBe(0);
+      expect(existsSync(marker)).toBe(true);
+      rmSync(marker);
+
+      const env = { ...raw };
+      searchOnlyTrustedFolders(env, process.platform);
+
+      expect((run(env).error as NodeJS.ErrnoException | undefined)?.code).toBe("ENOENT");
+      expect(existsSync(marker)).toBe(false);
+    },
+  );
 
   it("adds no PATH when there was none", () => {
     inProject();

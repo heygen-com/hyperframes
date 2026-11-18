@@ -68,12 +68,13 @@ function trickle(
 function pacedBody(chunk: Uint8Array, count: number, everyMs: number) {
   let sent = 0;
   let waiting = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   const body = new ReadableStream<Uint8Array>(
     {
       pull(controller) {
         waiting = true;
         return new Promise<void>((resolve) => {
-          setTimeout(() => {
+          timer = setTimeout(() => {
             waiting = false;
             controller.enqueue(chunk);
             sent += 1;
@@ -81,6 +82,9 @@ function pacedBody(chunk: Uint8Array, count: number, everyMs: number) {
             resolve();
           }, everyMs);
         });
+      },
+      cancel() {
+        clearTimeout(timer);
       },
     },
     { highWaterMark: 0 },
@@ -176,8 +180,9 @@ describe("downloadToTemp's timeout", () => {
   });
 
   it("cuts a 1 KiB/s trickle that declares a huge Content-Length and removes the partial", async () => {
+    vi.stubEnv("HYPERFRAMES_DOWNLOAD_MIN_FREE_BYTES", "0");
     const { fetchMock, outcome, dir } = await startDownload(() =>
-      trickle(["x".repeat(1024)], 1_000, { contentLength: 10 * 1024 ** 3, then: "repeat" }),
+      trickle(["x".repeat(1024)], 1_000, { contentLength: 6 * 1024 ** 3, then: "repeat" }),
     );
     await advanceSeconds(60);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -208,6 +213,26 @@ describe("downloadToTemp's timeout", () => {
     expect(statSync(outcome.path!).size).toBe(chunk.length * seconds);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   }, 120_000);
+
+  it("stops a steady sized download above the floor at the absolute deadline without retrying", async () => {
+    vi.stubEnv("HYPERFRAMES_MAX_DOWNLOAD_MS", "120000");
+    const chunk = new Uint8Array(40 * 1024).fill(0x78);
+    const paced = pacedBody(chunk, 10_000, 1_000);
+    const { fetchMock, outcome, dir } = await startDownload(() => paced.response);
+    for (let s = 0; s < 200 && !("error" in outcome); s += 1) {
+      await waitForRealIo(paced.readerWaiting);
+      await vi.advanceTimersByTimeAsync(1_000);
+    }
+    await waitForRealIo(() => "error" in outcome);
+
+    expect(outcome.error).toMatchObject({
+      kind: "timeout",
+      retryable: false,
+      message: "Download exceeded the 120s time limit",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(readdirSync(dir)).toEqual([]);
+  }, 60_000);
 
   it("cuts a body with no Content-Length at the fixed 300 s cap even while it streams", async () => {
     disableThroughputFloor();

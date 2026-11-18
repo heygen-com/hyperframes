@@ -6,6 +6,7 @@ import {
   ManifestInvalid,
   parseCanonicalManifest,
   parseManifest,
+  parseStoredManifest,
 } from "../src/sources/manifest.mjs";
 import { overLimit, V1_LIMITS } from "../src/sources/limits.mjs";
 import { excludedFolder, skippedSymlink } from "../src/sources/pathPolicy.mjs";
@@ -119,6 +120,30 @@ test("a capture skips only folders no included file can be under", () => {
   assert.equal(excludedFolder(".hyperframes/prepared-assets"), false);
   assert.equal(excludedFolder("assets"), false);
   assert.equal(excludedFolder("assets/renders"), false);
+});
+
+test("an upload refuses a .hyperframes folder below the root; a stored snapshot still reads one", () => {
+  const blob = { sha256: "0".repeat(64), size: 0 };
+  const manifest = (path) => ({
+    format_version: 1,
+    entrypoint: "index.html",
+    files: [
+      { path: "index.html", ...blob },
+      { path, ...blob },
+    ].sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path))),
+  });
+  const error = refusal(() => parseManifest(manifest("sub/.hyperframes/agent-runs.jsonl")));
+  assert.equal(error?.code, "excluded_path");
+  assert.equal(error?.violations[0]?.rule, "nested-hyperframes-state");
+  assert.equal(parseManifest(manifest(".hyperframes/studio-motion.json")).document.files.length, 2);
+  assert.equal(
+    refusal(() => parseManifest(manifest(".hyperframes/agent-runs.jsonl")))?.violations[0]?.rule,
+    "known-hyperframes-state",
+  );
+  const stored = parseStoredManifest(manifest("sub/.hyperframes/agent-runs.jsonl"));
+  assert.equal(stored.document.files.length, 2);
+  assert.equal(excludedFolder("sub/.hyperframes"), true);
+  assert.equal(excludedFolder(".hyperframes/transcripts/x/.hyperframes"), true);
 });
 
 test("only links under assets/podcast/, in any spelling, are skipped", () => {

@@ -1,4 +1,5 @@
 import { join, resolve } from "node:path";
+import { terminalText } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import type {
   AnalysisQuality,
@@ -205,7 +206,9 @@ async function read(files: string[], flags: AudioFlags) {
     console.log(JSON.stringify(withMeta(result)));
     return;
   }
-  console.log(`${formatRead(result.analysis, range)}\n\nwhole recording: ${result.textPath}`);
+  console.log(
+    `${formatRead(result.analysis, range)}\n\nwhole recording: ${terminalText(result.textPath)}`,
+  );
 }
 
 export default defineCommand({

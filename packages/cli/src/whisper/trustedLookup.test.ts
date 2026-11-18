@@ -1,6 +1,6 @@
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { join, win32 } from "node:path";
 import { afterEach, expect, it, onTestFinished, vi } from "vitest";
 
 const originalPlatform = process.platform;
@@ -33,11 +33,11 @@ it("on Windows, never takes whisper-cli or parakeet-mlx from the working directo
   const { findParakeet } = await import("./parakeet.js");
   Object.defineProperty(process, "platform", { value: "win32", configurable: true });
 
-  vi.stubEnv("PATH", [project, ".", ""].join(delimiter));
+  vi.stubEnv("PATH", [project, ".", ""].join(win32.delimiter));
   expect(findWhisper()).toBeUndefined();
   expect(findParakeet()).toBeUndefined();
 
-  vi.stubEnv("PATH", [project, tools].join(delimiter));
+  vi.stubEnv("PATH", [project, tools].join(win32.delimiter));
   expect(findWhisper()).toEqual({
     executablePath: join(tools, "whisper-cli.exe"),
     source: "system",

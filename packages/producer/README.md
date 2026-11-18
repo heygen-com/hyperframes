@@ -8,7 +8,7 @@ Full HTML-to-video rendering pipeline: capture frames with Chrome's BeginFrame A
 npm install @hyperframes/producer
 ```
 
-**Requirements:** Node.js >= 22, Chrome/Chromium (auto-downloaded), FFmpeg
+**Requirements:** Node.js >= 22, FFmpeg, and the pinned `chrome-headless-shell`: run `npx hyperframes browser ensure` once, or name a browser in `PRODUCER_HEADLESS_SHELL_PATH`. A cached browser is used only when its files match the pinned build. HDR capture needs a full Chrome named in `HYPERFRAMES_BROWSER_PATH`.
 
 ## Usage
 
@@ -44,6 +44,17 @@ own domain at the server cannot start renders or lint. If browsers reach the ser
 through a proxy name, list that name in `allowedHosts` or in the comma-separated
 `PRODUCER_ALLOWED_HOSTS` variable. Requests without those headers, such as curl or
 another service, are unaffected.
+
+The server listens on `127.0.0.1` unless you pass `hostname` or set `PRODUCER_HOST`. To
+listen on any other address, also set `authToken` or `PRODUCER_AUTH_TOKEN`. Every route
+except `/health` then requires `Authorization: Bearer <token>`, and the server refuses to
+start without one. A request's `projectDir` must resolve, symlinks included, inside
+`projectsDir` (`PRODUCER_PROJECTS_DIR`, default: the working directory). Its `entryFile`
+must stay inside that project, and `outputPath` must be inside `rendersDir`
+(`PRODUCER_RENDERS_DIR`, default `/tmp`). `debug: true` is refused unless you set
+`allowDebug` or `PRODUCER_ALLOW_DEBUG=1`. `createProducerApp` applies these path and
+debug checks by default. `createRenderHandlers`, for mounting the handlers inside your own
+trusted service, applies them only with `confineRequests: true`.
 
 Both HTTP routes accept optional `pageMotionBlur: "off"` to disable authored page
 motion blur. Omit it to preserve the composition's behavior. Other explicit values

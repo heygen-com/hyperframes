@@ -11,24 +11,27 @@ vi.mock("puppeteer-core", () => ({
   default: {
     launch: async () => ({
       close: async () => {},
-      newPage: async () => ({
-        setViewport: async () => {},
-        goto: async (url: string) => {
-          pages.push(url);
-          await fetch(url);
-        },
-        waitForFunction: async () => {},
-        evaluate: async () => {},
-        content: async () => "",
+      createBrowserContext: async () => ({
         close: async () => {},
+        newPage: async () => ({
+          setViewport: async () => {},
+          goto: async (url: string) => {
+            pages.push(url);
+            await fetch(url);
+          },
+          waitForFunction: async () => {},
+          evaluate: async () => {},
+          content: async () => "",
+          close: async () => {},
+        }),
       }),
     }),
   },
 }));
 
-function statusFor(url: string, host: string): Promise<number> {
+function statusFor(url: string, host: string, more: Record<string, string> = {}): Promise<number> {
   return new Promise((resolve, reject) => {
-    request(url, { headers: { host } }, (res) => {
+    request(url, { headers: { host, ...more } }, (res) => {
       res.resume();
       resolve(res.statusCode ?? 0);
     })
@@ -55,6 +58,12 @@ it("serves the preview page to its own browser and refuses a foreign Host", asyn
 
     expect(await statusFor(`${origin}/`, `127.0.0.1:${port}`)).toBe(200);
     expect(await statusFor(`${origin}/notes.txt`, `localhost:${port}`)).toBe(200);
+    // fails without the fix: the inspected page could make a project file its origin's service worker.
+    const own = `127.0.0.1:${port}`;
+    expect(await statusFor(`${origin}/notes.txt`, own, { "service-worker": "script" })).toBe(403);
+    expect(await statusFor(`${origin}/notes.txt`, own, { "sec-fetch-dest": "serviceworker" })).toBe(
+      403,
+    );
     for (const path of ["/", "/__hf-runtime.js", "/notes.txt"]) {
       expect(await statusFor(`${origin}${path}`, `attacker.example:${port}`)).toBe(403);
     }

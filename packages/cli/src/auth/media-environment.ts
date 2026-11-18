@@ -63,6 +63,7 @@ export async function withMediaAuthEnvironment<T>(run: (env: NodeJS.ProcessEnv) 
       );
     } else if (credential?.type === "api_key") {
       env.HEYGEN_API_KEY = credential.key;
+      delete env.HYPERFRAMES_API_KEY;
       delete env.HEYGEN_ACCESS_TOKEN;
     } else {
       delete env.HEYGEN_ACCESS_TOKEN;

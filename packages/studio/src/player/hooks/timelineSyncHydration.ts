@@ -419,15 +419,10 @@ export interface HydrateTimelineFromPreviewInput {
  * cross-origin or mid-navigation frame, and none of them is worth failing the
  * adapter's initialisation over.
  */
-function normalizePreviewDom(
-  doc: Document | null,
-  iframeWin: IframeWindow | null,
-  attachIframeShortcutListeners: () => void,
-): void {
+function normalizePreviewDom(doc: Document | null, iframeWin: IframeWindow | null): void {
   if (!doc || !iframeWin) return;
   normalizePreviewViewport(doc, iframeWin);
   autoHealMissingCompositionIds(doc);
-  attachIframeShortcutListeners();
 }
 
 /** Hand the runtime's own clip manifest to the timeline, if it published one. */
@@ -444,7 +439,8 @@ export function hydrateTimelineFromPreview(input: HydrateTimelineFromPreviewInpu
   try {
     const doc = safeContentDocument(iframe);
     const iframeWin = (iframe?.contentWindow as IframeWindow | null) ?? null;
-    normalizePreviewDom(doc, iframeWin, input.attachIframeShortcutListeners);
+    normalizePreviewDom(doc, iframeWin);
+    input.attachIframeShortcutListeners();
     applyRuntimeClipManifest(iframeWin, input.processTimelineMessage);
     input.enrichMissingCompositions();
     input.applyPreviewAudioState();

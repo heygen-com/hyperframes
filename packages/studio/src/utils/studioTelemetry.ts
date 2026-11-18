@@ -5,6 +5,7 @@ import { canaryEventProperties } from "../telemetry/canary";
 import { agentRuntimeProperty } from "../telemetry/agentRuntime";
 import { tabIdProperty } from "../telemetry/tabId";
 import { studioApiFetch } from "./studioApiFetch";
+import { shapeEventProperties } from "../telemetry/eventShape";
 
 // PostHog public ingest key — write-only, safe to ship in the client bundle
 const POSTHOG_API_KEY = "phc_zjjbX0PnWxERXrMHhkEJWj9A9BhGVLRReICgsfTMmpx";
@@ -120,7 +121,11 @@ export function trackStudioEvent(event: string, properties: EventProperties = {}
     // Canary assignments on every event, matching the CLI and the newer
     // studio client — "every telemetry event carries the assignment" has to
     // include this path or a cohort breakdown silently omits `studio:*`.
-    properties: { ...getSessionProperties(), ...canaryEventProperties(), ...properties },
+    properties: {
+      ...canaryEventProperties(),
+      ...shapeEventProperties(`studio:${event}`, properties),
+      ...getSessionProperties(),
+    },
     timestamp: new Date().toISOString(),
   });
 

@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import {
   type PathLike,
   chmodSync,
@@ -10,7 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, join, resolve, win32 } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 type FfBinariesModule = typeof import("./ffBinaries.js");
@@ -239,7 +240,7 @@ describe("findFfBinary", () => {
     skipped = {};
     vi.stubEnv("HYPERFRAMES_FFMPEG_PATH", "");
     vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", "");
-    process.env.PATH = pathDirs.join(delimiter);
+    process.env.PATH = pathDirs.join(process.platform === "win32" ? win32.delimiter : delimiter);
     vi.spyOn(process, "cwd").mockReturnValue(project);
     vi.resetModules();
     vi.doMock("node:fs", async (importOriginal) => {
@@ -475,5 +476,151 @@ describe("isX86OnlyMachO", () => {
     expect(isX86OnlyMachO(fixture([0xca, 0xfe, 0xba, 0xbe, 0x00, 0x00, 0x00, 0x02]))).toBe(false);
     expect(isX86OnlyMachO(fixture([0x23, 0x21, 0x2f, 0x62, 0x69, 0x6e, 0x2f, 0x73]))).toBe(false);
     expect(isX86OnlyMachO("/nonexistent/ffprobe")).toBe(false);
+  });
+});
+
+describe("mediaInputFormatArgs", () => {
+  const formatsOf = (args: string[]) => args[args.indexOf("-format_whitelist") + 1]!.split(",");
+
+  afterEach(async () => (await importFresh())._setDemuxerListingForTests());
+
+  it("reads an ffmpeg 4 listing, which has no device column", async () => {
+    const { _setDemuxerListingForTests, mediaInputFormatArgs } = await importFresh();
+    _setDemuxerListingForTests(
+      [
+        "File formats:",
+        " D. = Demuxing supported",
+        " .E = Muxing supported",
+        " --",
+        " D  3dostr          3DO STR",
+        " D  dash            Dynamic Adaptive Streaming over HTTP",
+        " D  mov,mp4,m4a     QuickTime / MOV",
+      ].join("\n"),
+    );
+    expect(formatsOf(mediaInputFormatArgs("/ffprobe", "clip.mp4"))).toEqual([
+      "3dostr",
+      "mov",
+      "mp4",
+      "m4a",
+    ]);
+  });
+
+  it("leaves out the demuxers that draw a text file as a picture", async () => {
+    const { _setDemuxerListingForTests, mediaInputFormatArgs } = await importFresh();
+    _setDemuxerListingForTests(
+      [
+        " D  adf             Artworx Data Format",
+        " D  bin             Binary text",
+        " D  idf             iCE Draw File",
+        " D  mov,mp4,m4a     QuickTime / MOV",
+        " D  tty             Tele-typewriter",
+        " D  xbin            eXtended BINary text (XBIN)",
+      ].join("\n"),
+    );
+    expect(formatsOf(mediaInputFormatArgs("/ffmpeg", "clip.mp4"))).toEqual(["mov", "mp4", "m4a"]);
+  });
+
+  it("keeps the installed ffmpeg from decoding a text file into a frame", async () => {
+    vi.resetModules();
+    vi.doUnmock("node:fs");
+    vi.doUnmock("node:child_process");
+    const { findFfBinary, mediaInputFormatArgs } = await importFresh();
+    const ffmpeg = findFfBinary("ffmpeg");
+    if (!ffmpeg) return;
+    const dir = mkdtempSync(join(tmpdir(), "hf-text-art-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const note = join(dir, "note.asc");
+    writeFileSync(note, "API_KEY=not-a-video\nsecond line\n");
+    const frame = join(dir, "frame.png");
+    const args = ["-v", "error", "-y", ...mediaInputFormatArgs(ffmpeg, note), "-i", note];
+    spawnSync(ffmpeg, [...args, "-frames:v", "1", frame]);
+    expect(existsSync(frame)).toBe(false);
+  });
+
+  it.skipIf(process.platform === "win32")("asks a binary that failed once again", async () => {
+    const { mediaInputFormatArgs, SELF_CONTAINED_FORMATS } = await importFresh();
+    const dir = mkdtempSync(join(tmpdir(), "hf-demuxers-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const binary = join(dir, "ffprobe");
+    writeFileSync(
+      binary,
+      `#!/bin/sh\nif [ -e "${dir}/ran" ]; then echo ' D  wav  WAV'; else touch "${dir}/ran"; exit 1; fi\n`,
+    );
+    chmodSync(binary, 0o755);
+    expect(mediaInputFormatArgs(binary, "a.wav")).toEqual([
+      "-format_whitelist",
+      SELF_CONTAINED_FORMATS,
+    ]);
+    expect(mediaInputFormatArgs(binary, "a.wav")).toEqual(["-format_whitelist", "wav"]);
+  });
+});
+
+describe("assertLiteralMediaInput", () => {
+  it("refuses a local path ffmpeg's image2 demuxer would read as a pattern of other files", async () => {
+    const { assertLiteralMediaInput } = await importFresh();
+    for (const path of [
+      "/job/decoy%d.png",
+      "/job/frame%03d.jpg",
+      "/job/%%/still.png",
+      "/job/x%*/still.png",
+      "/job/x%[ab]/still.png",
+      "/job/x%{a,b}/still.png",
+      "file:/job/decoy%d.png",
+    ]) {
+      expect(() => assertLiteralMediaInput(path), path).toThrow(/pattern of other files/);
+    }
+  });
+
+  it("also refuses a harmless name that looks like a pattern, such as a %20 before a d", async () => {
+    const { assertLiteralMediaInput } = await importFresh();
+    expect(() => assertLiteralMediaInput("/job/My%20demo.mp4")).toThrow(
+      /Rename the file or folder/,
+    );
+    expect(() => assertLiteralMediaInput("/job/a%2d/clip.mp4")).toThrow(
+      /Rename the file or folder/,
+    );
+  });
+
+  it("reads other percent signs, and URLs, as written", async () => {
+    const { assertLiteralMediaInput } = await importFresh();
+    for (const path of [
+      "/job/clip 100% done.mp4",
+      "/job/My%20Video.mp4",
+      "/job/a%2D.png",
+      "C:\\job\\clip.mp4",
+      "https://cdn.example/a%2d.png",
+    ]) {
+      expect(() => assertLiteralMediaInput(path), path).not.toThrow();
+    }
+  });
+
+  it("stops the installed ffmpeg from reaching images next to a placeholder", async () => {
+    vi.resetModules();
+    vi.doUnmock("node:fs");
+    vi.doUnmock("node:child_process");
+    const { findFfBinary, mediaInputFormatArgs } = await importFresh();
+    const ffmpeg = findFfBinary("ffmpeg");
+    if (!ffmpeg) return;
+    const dir = mkdtempSync(join(tmpdir(), "hf-image2-pattern-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const decoy = join(dir, "decoy1.png");
+    spawnSync(ffmpeg, [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=red:s=16x16",
+      "-frames:v",
+      "1",
+      decoy,
+    ]);
+    if (!existsSync(decoy)) return;
+    const pattern = join(dir, "decoy%d.png");
+    const frame = join(dir, "frame.png");
+    // Without the check, ffmpeg opens decoy1.png through the pattern; no file is named decoy%d.png.
+    spawnSync(ffmpeg, ["-v", "error", "-y", "-i", pattern, "-frames:v", "1", frame]);
+    expect(existsSync(frame)).toBe(true);
+    expect(() => mediaInputFormatArgs(ffmpeg, pattern)).toThrow(/pattern of other files/);
   });
 });

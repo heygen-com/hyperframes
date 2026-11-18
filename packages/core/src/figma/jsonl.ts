@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { terminalText } from "../terminalText";
 
 /** Parse a .jsonl file into values, skipping blank/malformed lines. */
 export function readJsonlValues(path: string): unknown[] {
@@ -12,7 +13,9 @@ export function readJsonlValues(path: string): unknown[] {
     } catch {
       // ponytail: skip malformed lines (partial write from a crash), but say
       // so — a silent skip reads as "no record found" downstream.
-      console.warn(`skipping malformed jsonl line in ${path}: ${trimmed.slice(0, 40)}…`);
+      console.warn(
+        terminalText(`skipping malformed jsonl line in ${path}: ${trimmed.slice(0, 40)}…`),
+      );
     }
   }
   return out;

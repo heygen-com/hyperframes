@@ -36,6 +36,10 @@ import {
   resolveRuntimePath,
   resolvePlayerPath,
   listenOnFreePort,
+  refuseUnknownHosts,
+  sandboxForAnotherSite,
+  scriptsAfterWorkersDropped,
+  refuseProxyWorkForAnotherSite,
   injectRuntime,
   injectMediaCodecMap,
   buildRangeResponse,
@@ -145,6 +149,7 @@ export default defineCommand({
     const { createAdaptorServer } = await import("@hono/node-server");
 
     const app = new Hono();
+    refuseUnknownHosts(app);
 
     // Serve the player JS
     app.get("/player.js", (ctx) =>
@@ -221,6 +226,8 @@ export async function registerCompositionRoute(
 ): Promise<void> {
   const { isSafePath } = await import("@hyperframes/core/studio-api");
 
+  sandboxForAnotherSite(app, "/composition/*");
+  refuseProxyWorkForAnotherSite(app, "/composition/*");
   // fallow-ignore-next-line complexity
   app.get("/composition/*", async (ctx) => {
     const reqPath = requestSubPath(ctx.req.url, "composition");
@@ -336,7 +343,7 @@ function buildPlayerPage(projectName: string): string {
       <hyperframes-player src="/composition/index.html" controls muted></hyperframes-player>
     </div>
     <div class="info">${projectName} — hyperframes play</div>
-    <script src="/player.js"></script>
+    ${scriptsAfterWorkersDropped(["/player.js"])}
   </body>
 </html>`;
 }

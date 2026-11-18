@@ -5,6 +5,7 @@
 import {
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
+  MAX_DRAFT_PX,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_VALUE,
   MAX_GEOMETRY_CHILDREN,
@@ -27,9 +28,9 @@ export type PreviewElement = EditingElementDescription & { readonly [checked]: t
 export type PreviewElementHit = EditingElementHit & { readonly [checked]: true };
 
 type Fields = Record<string, unknown>;
-const isFields = (value: unknown): value is Fields =>
+export const isFields = (value: unknown): value is Fields =>
   typeof value === "object" && value !== null && !Array.isArray(value);
-const isHandle = (value: unknown) =>
+export const isHandle = (value: unknown) =>
   typeof value === "string" && EDITING_ELEMENT_HANDLE.test(value);
 const isText = (value: unknown) => typeof value === "string";
 const isTextOrNull = (value: unknown) => value === null || typeof value === "string";
@@ -70,6 +71,7 @@ function readHit(value: unknown): PreviewElementHit | null {
 export function readPreviewElement(value: unknown): PreviewElement | null {
   if (!readHit(value) || !isFields(value)) return null;
   if (value.parent !== null && !isHandle(value.parent)) return null;
+  if (value.label !== undefined && !isText(value.label)) return null;
   if (!isTextOrNull(value.id) || !isTextOrNull(value.selector)) return null;
   if (!isSource(value.source) || typeof value.locked !== "boolean") return null;
   if (!isTextRecord(value.inlineStyles) || !isText(value.text)) return null;
@@ -232,11 +234,17 @@ const isFlag = (value: unknown) => typeof value === "boolean";
 const isFiniteFields = (value: unknown, keys: string[]) =>
   isFields(value) && keys.every((key) => Number.isFinite(value[key]));
 
+const isLayout = (value: unknown) =>
+  isFields(value) &&
+  [value.width, value.height].every(
+    (side) => Number.isFinite(side) && (side as number) >= 0 && (side as number) <= MAX_DRAFT_PX,
+  );
+
 const readGestureStart = (value: unknown): EditingGestureStart | null => {
   if (!readGeometry(value) || !isFields(value)) return null;
   const { layout, move, gsap } = value;
   const valid = [
-    isFiniteFields(layout, ["width", "height"]),
+    isLayout(layout),
     move === null || isFiniteFields(move, ["a", "b", "c", "d"]),
     gsap === null || (isFields(gsap) && isFiniteFields(gsap, ["x", "y"]) && isFlag(gsap.moving)),
   ];

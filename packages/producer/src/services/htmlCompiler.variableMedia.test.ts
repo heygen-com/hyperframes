@@ -40,6 +40,22 @@ describe("compileForRender variable-bound media", () => {
       join(projectDir, "index.html"),
       `<!doctype html><html><body><main data-composition-id="root" data-start="0" data-duration="60" data-width="16" data-height="16"><div data-composition-id="clip" data-composition-src="compositions/clip.html" data-start="0" data-duration="60" data-width="16" data-height="16" data-variable-values='{"src":"assets/clip.mp4"}'></div></main></body></html>`,
     );
+    // A full-document sub-composition declares the default on its own <html>,
+    // which inlining drops; only __hfVariablesByComp still carries it.
+    writeFileSync(
+      join(projectDir, "compositions", "card.html"),
+      `<!doctype html><html data-composition-variables='[{"id":"src","type":"string","default":"assets/clip.mp4"}]'><body><div data-composition-id="card" data-width="16" data-height="16"><video id="v" muted src="../assets/placeholder.mp4" data-var-src="src" data-start="0" data-duration="60" data-track-index="0"></video></div></body></html>`,
+    );
+    writeFileSync(
+      join(projectDir, "index-declared-default.html"),
+      `<!doctype html><html><body><main data-composition-id="root" data-start="0" data-duration="60" data-width="16" data-height="16"><div data-composition-id="card" data-composition-src="compositions/card.html" data-start="0" data-duration="60" data-width="16" data-height="16"></div></main></body></html>`,
+    );
+    // Same mount with no authored data-composition-id: the flattened inner
+    // root keeps the sub-composition's own id, which keys its table entry.
+    writeFileSync(
+      join(projectDir, "index-anonymous-host.html"),
+      `<!doctype html><html><body><main data-composition-id="root" data-start="0" data-duration="60" data-width="16" data-height="16"><div data-composition-src="compositions/card.html" data-start="0" data-duration="60" data-width="16" data-height="16"></div></main></body></html>`,
+    );
   });
 
   afterAll(() => rmSync(projectDir, { recursive: true, force: true }));
@@ -51,7 +67,27 @@ describe("compileForRender variable-bound media", () => {
 
     // Compile reads the authored 3 s placeholder; only the browser knows the mount binds the 13 s clip.
     expect(compiled.videos.map((video) => video.src)).toEqual(["assets/placeholder.mp4"]);
-    expect(hasVariableBoundMedia(compiled.html, undefined)).toBe(true);
+    expect(hasVariableBoundMedia(compiled.html, undefined, compiled.variablesByComp)).toBe(true);
+  });
+
+  it("probes a clip bound to its sub-composition's own declared default", async () => {
+    const entry = join(projectDir, "index-declared-default.html");
+    const options = { allowSystemFontCapture: false };
+    const compiled = await compileForRender(projectDir, entry, projectDir, options);
+
+    expect(compiled.videos.map((video) => video.src)).toEqual(["assets/placeholder.mp4"]);
+    expect(compiled.variablesByComp).toEqual({ card: { src: "assets/clip.mp4" } });
+    expect(hasVariableBoundMedia(compiled.html, undefined, compiled.variablesByComp)).toBe(true);
+  });
+
+  it("probes an anonymous mount whose default lives in the sub-composition's table entry", async () => {
+    const entry = join(projectDir, "index-anonymous-host.html");
+    const options = { allowSystemFontCapture: false };
+    const compiled = await compileForRender(projectDir, entry, projectDir, options);
+
+    expect(compiled.videos.map((video) => video.src)).toEqual(["assets/placeholder.mp4"]);
+    expect(compiled.variablesByComp).toEqual({ card: { src: "assets/clip.mp4" } });
+    expect(hasVariableBoundMedia(compiled.html, undefined, compiled.variablesByComp)).toBe(true);
   });
 
   it("reads the length and the one sound lane from the clip a variable binds", async () => {

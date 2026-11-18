@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -387,6 +388,22 @@ describe("outside references in files that came in with an imported project", ()
     );
   });
 
+  it("leaves out the outside reference of a listed file renamed outside Studio", () => {
+    const { root, ext, warnings } = stageReceived(
+      { "index.html": "<html></html>", "scene.html": `<img src="../shared/logo.png">` },
+      { files: ["index.html", "scene.html"] },
+    );
+    expect(ext).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    renameSync(join(root, "p", "scene.html"), join(root, "p", "opening.html"));
+    const after: string[] = [];
+    const staged = stagePublishFiles(join(root, "p"), Infinity, (w) => after.push(w));
+    expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([]);
+    expect(after).toEqual([
+      "opening.html references ../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload. scene.html is listed as received but is gone, so every page, stylesheet, script and SVG counts as received. To clear this, put the file back, or take its line out of .hyperframes/received-files.json once you know where its content went.",
+    ]);
+  });
+
   it("still copies the same reference from a file the person wrote", () => {
     const { ext, warnings } = stageReceived(
       {
@@ -444,6 +461,36 @@ describe("outside references in files that came in with an imported project", ()
     ]);
   });
 
+  it("keeps the project's record when the staged subfolder carries its own record listing nothing", () => {
+    const { root } = stageReceived(
+      {
+        "index.html": "<html></html>",
+        "sub/index.html": `<img src="../../shared/logo.png">`,
+        "sub/.hyperframes/received-files.json": JSON.stringify({ files: [] }),
+      },
+      { files: ["index.html", "sub/index.html", "sub/.hyperframes/received-files.json"] },
+    );
+    const warnings: string[] = [];
+    const staged = stagePublishFiles(join(root, "p", "sub"), Infinity, (w) => warnings.push(w));
+    expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([]);
+    expect(warnings).toEqual([
+      "index.html references ../../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload.",
+    ]);
+  });
+
+  it("counts a file a nested record lists even when the project's record does not", () => {
+    const { root } = stageReceived(
+      {
+        "index.html": "<html></html>",
+        "sub/index.html": `<img src="../../shared/logo.png">`,
+        "sub/.hyperframes/received-files.json": JSON.stringify({ files: ["index.html"] }),
+      },
+      { files: ["index.html"] },
+    );
+    const staged = stagePublishFiles(join(root, "p", "sub"), Infinity);
+    expect([...staged.keys()].filter((key) => key.startsWith("_ext/"))).toEqual([]);
+  });
+
   it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     "skips a parent folder whose state it cannot read, and still copies the person's reference",
     () => {
@@ -483,9 +530,24 @@ describe("outside references in files that came in with an imported project", ()
       { files: ["index.html", "Assets/a.html"] },
     );
     const caseInsensitive = existsSync(join(root, "p", "ASSETS", "a.html"));
-    expect(ext).toEqual(caseInsensitive ? [] : ["_ext/shared/logo.png"]);
-    expect(warnings).toHaveLength(caseInsensitive ? 1 : 0);
+    expect(ext).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    const gone = "Assets/a.html is listed as received but is gone";
+    if (caseInsensitive) expect(warnings[0]).not.toContain(gone);
+    else expect(warnings[0]).toContain(gone);
   });
+
+  it("says so when the project has too many folders to search for records", () => {
+    const { root } = stageReceived({ "index.html": "<html></html>" }, { files: ["index.html"] });
+    writeFileSync(join(root, "p", "mine.html"), `<img src="../shared/logo.png">`);
+    for (let i = 0; i <= 20_000; i++)
+      mkdirSync(join(root, "p", "many", `d${i}`), { recursive: true });
+    const warnings: string[] = [];
+    stagePublishFiles(join(root, "p"), Infinity, (w) => warnings.push(w));
+    expect(warnings).toEqual([
+      "mine.html references ../shared/logo.png, which leads outside the project and came in with an imported project; it was left out of the upload. The project has too many folders to search them all for received-files records, so every file counts as received.",
+    ]);
+  }, 30_000);
 
   it("treats every file as received when the record cannot be read", () => {
     const { ext, warnings } = stageReceived(

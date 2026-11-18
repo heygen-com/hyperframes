@@ -97,6 +97,16 @@ export async function previewClipManifest(iframe: HTMLIFrameElement): Promise<Cl
   return manifest as ClipManifest;
 }
 
+export async function previewConsoleErrors(
+  iframe: HTMLIFrameElement,
+  from: number,
+): Promise<{ errors: string[]; truncated: boolean } | null> {
+  const reply = await previewRequest(iframe, "console-errors", { from });
+  const errors: unknown = reply?.errors;
+  if (!Array.isArray(errors) || typeof reply?.truncated !== "boolean") return null;
+  return { errors: errors.map(String), truncated: reply.truncated };
+}
+
 /** The runtime's computed `properties` for the element `target` names; null when it has none. */
 export async function previewComputedStyles(
   iframe: HTMLIFrameElement,
@@ -113,4 +123,14 @@ export async function previewComputedStyles(
     if (typeof value === "string" && value) read[name] = value;
   }
   return read;
+}
+
+export async function previewDocumentCopy(iframe: HTMLIFrameElement): Promise<Document | null> {
+  const reply = await previewRequest(iframe, "document-markup", {});
+  if (typeof reply?.html !== "string" || typeof reply.baseURI !== "string") return null;
+  const doc = new DOMParser().parseFromString(reply.html, "text/html");
+  const base = doc.createElement("base");
+  base.setAttribute("href", reply.baseURI);
+  doc.head.prepend(base);
+  return doc;
 }

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installEditingAgent } from "./editingAgent";
+import { installMarkedEditingAgent } from "./editingAgent.test-helpers";
 import { trackedHandleCount } from "./editingHandles";
 import {
   EDITING_ELEMENT_HANDLE,
@@ -46,7 +46,7 @@ describe("element handles over the editing port", () => {
     const parent = iframe.contentWindow!;
     const handoff = vi.fn();
     parent.postMessage = handoff as unknown as Window["postMessage"];
-    agent = installEditingAgent(parent);
+    agent = installMarkedEditingAgent(parent);
     window.dispatchEvent(new MessageEvent("message", { source: parent, data: CONNECT }));
     port = (handoff.mock.calls[0]![2] as MessagePort[])[0]!;
   });
@@ -77,6 +77,7 @@ describe("element handles over the editing port", () => {
       handle: top!.handle,
       parent: below!.handle,
       tag: "p",
+      label: "Hi there",
       id: null,
       selector: ".title",
       matchesBefore: [],
@@ -96,6 +97,12 @@ describe("element handles over the editing port", () => {
     expect(root).toMatchObject({ tag: "div", selector: '[data-composition-id="card__hf1"]' });
     expect(root!.matchesBefore).toBeNull();
     expect(JSON.parse(JSON.stringify(described))).toEqual(described);
+  });
+
+  it("names an element by its rendered text, never its script or style source", async () => {
+    document.body.innerHTML = `<div><style>.card{color:red}</style><script>window.x=1</script>Card title</div>`;
+    const described = await describeOne(document.querySelector("div")!);
+    expect(described).toMatchObject({ label: "Card title", text: "Card title" });
   });
 
   it("keeps an element's handle for the page load, answering null only while it is detached", async () => {

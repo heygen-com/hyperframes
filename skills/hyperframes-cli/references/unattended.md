@@ -9,12 +9,12 @@ With no version, `npx` asks the registry for the latest release on every run and
 - Two runs that start together race in npm's cache (`_cacache` for the fetch, `_npx` for the install). One can fail with `EEXIST` or `ENOTEMPTY` while the other is still writing; a retry succeeds, because by then the install is in place.
 - A new release changes what the same command renders, silently.
 
-## Use the project's scripts, or pin
+## Pin the release
 
-- A scaffolded project (`hyperframes init`) already ships `npm run dev|check|render|publish`; each is `npx --yes hyperframes@X.Y.Z`, pinned to the version that created the project. Jobs run those.
-- Outside a project, pin the same way: `npx --yes hyperframes@X.Y.Z`. To skip the fetch and the cache race altogether, install once — `npm i hyperframes@X.Y.Z` then `node_modules/.bin/hyperframes <command>`, or `npm i -g hyperframes@X.Y.Z` then `hyperframes <command>`.
+- From a skill, run the CLI through the launcher with an exact release: `node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version <exact-version> <command>` ([rules](../../hyperframes/references/plugin-installation.md)). Take the version from the person or from `--cli-version latest --version`, never from the project's own files.
+- A scaffolded project (`hyperframes init`) ships `npm run dev|check|render|publish`, each pinned (`npx …hyperframes@<version>…`) to the release that created the project. A job the person owns runs those, or installs once — `npm i hyperframes@<version>` then `node_modules/.bin/hyperframes <command>`, or `npm i -g hyperframes@<version>` then `hyperframes <command>` — and skips the fetch and the cache race altogether.
 
-Interactive sessions float on purpose: `update` moves an `npx` user to `npx hyperframes@latest`, and the reverse-any-video skill runs `npx -y hyperframes@latest` when the installed CLI is behind. That is a person's call at a terminal. An unattended job pins.
+Interactive sessions float on purpose: `update` moves an `npx` user to the latest release, and the reverse-any-video skill moves to `--cli-version latest` when the installed CLI is behind. That is a person's call at a terminal. An unattended job pins.
 
 ## Verify the output before anything consumes it
 

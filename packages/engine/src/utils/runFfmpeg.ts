@@ -6,8 +6,10 @@
  * that appears across audioMixer and chunkEncoder into a single helper.
  */
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { spawn, type ChildProcess } from "child_process";
 import { getFfmpegBinary } from "./ffmpegBinaries.js";
+import { ffmpegInputIndexes, withPublicOnlyProxy } from "./urlInput.js";
 import { trackChildProcess } from "./processTracker.js";
 import {
   ManagedChildProcess,
@@ -159,12 +161,12 @@ export function describeFfmpegFailure(
     : error;
 }
 
-function spawnFfmpeg(args: string[]): ChildProcess {
+function spawnFfmpeg(args: string[], env?: NodeJS.ProcessEnv): ChildProcess {
   // windowsHide: ffmpeg/ffprobe are console-subsystem binaries, so without
   // this Node opens a visible console window per spawn on Windows. A render
   // shells out dozens of times across parallel workers, which flashes a burst
   // of windows across the user's desktop. No-op on macOS and Linux.
-  const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true });
+  const ffmpeg = spawn(getFfmpegBinary(), args, { windowsHide: true, ...(env && { env }) });
   trackChildProcess(ffmpeg);
   return ffmpeg;
 }
@@ -199,23 +201,40 @@ const ABORTED_BEFORE_START: RunFfmpegResult = {
   terminationReason: "abort",
 };
 
+const progressListener = new AsyncLocalStorage<() => void>();
+
+/** Runs `work` with `onProgress` called each time an FFmpeg it starts writes a higher frame count or output time. */
+export function withFfmpegProgress<T>(onProgress: () => void, work: () => Promise<T>): Promise<T> {
+  return progressListener.run(onProgress, work);
+}
+
 export async function runFfmpeg(args: string[], opts?: RunFfmpegOptions): Promise<RunFfmpegResult> {
   if (opts?.signal?.aborted) return { ...ABORTED_BEFORE_START };
+  const onProgress = progressListener.getStore();
+  // With a restricted page network, a URL input not declared by the render reaches only public hosts.
+  const proxying = withPublicOnlyProxy(args, ffmpegInputIndexes(args));
+  const routed = proxying && (await proxying);
   let framesWritten = 0;
   let secondsWritten = 0;
+  let managed: ManagedChildProcess | undefined;
   const readStats = ffmpegStatsReader(({ frames = 0, seconds = 0 }) => {
     if (frames <= framesWritten && seconds <= secondsWritten) return;
     framesWritten = Math.max(frames, framesWritten);
     secondsWritten = Math.max(seconds, secondsWritten);
-    managed.markActivity();
+    managed?.markActivity();
+    onProgress?.();
   });
-  const managed = new ManagedChildProcess(spawnFfmpeg(args), {
-    signal: opts?.signal,
-    inactivityTimeoutMs: opts?.timeout ?? DEFAULT_TIMEOUT,
-    onStderr: (chunk) => {
-      readStats(chunk);
-      opts?.onStderr?.(chunk);
-    },
-  });
-  return toResult(await managed.wait());
+  try {
+    managed = new ManagedChildProcess(spawnFfmpeg(routed?.args ?? args, routed?.env), {
+      signal: opts?.signal,
+      inactivityTimeoutMs: opts?.timeout ?? DEFAULT_TIMEOUT,
+      onStderr: (chunk) => {
+        readStats(chunk);
+        opts?.onStderr?.(chunk);
+      },
+    });
+    return toResult(await managed.wait());
+  } finally {
+    await routed?.close();
+  }
 }

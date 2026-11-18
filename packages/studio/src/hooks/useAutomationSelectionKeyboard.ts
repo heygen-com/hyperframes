@@ -31,7 +31,7 @@ import {
   type HfAutomationLane,
 } from "@hyperframes/core/audio-automation";
 import { clampNumber } from "../utils/studioHelpers";
-import { isTypingTarget } from "../utils/typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 import { matchesKey } from "../player/components/studioShortcuts";
 import type { AutomationSelection } from "../player/store/automationSelectionSlice";
 import type {

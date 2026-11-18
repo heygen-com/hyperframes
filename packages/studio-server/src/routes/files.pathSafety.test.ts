@@ -259,6 +259,207 @@ describe("file route containment", () => {
   });
 });
 
+describe("files other programs run or trust", () => {
+  const TRUSTED = [
+    "package.json",
+    "Package.JSON",
+    "hyperframes.json",
+    "pnpm-lock.yaml",
+    "tsconfig.json",
+    "vite.config.ts",
+    "AGENTS.md",
+    "compositions/CLAUDE.md",
+    "deep/nested/GEMINI.md",
+    "scripts/postinstall.sh",
+    "tools/run.py",
+    "PACKAG~1.JSO",
+    "package.json.",
+    "AGENT\u017f.md",
+    "package.j\u017fon",
+    "run.\u017fh",
+    "Make\ufb01le",
+    "jest.config.json",
+    "binding.gyp",
+    "BINDING.GYP.",
+    "deps/common.gypi",
+    "server.js",
+    "Server.JS",
+  ];
+  const put = (app: Hono, path: string, headers: Record<string, string> = {}) =>
+    app.request(fileUrl(path), { method: "PUT", headers, body: "planted" });
+
+  it.each(TRUSTED)("never creates, renames onto or duplicates onto %s", async (path) => {
+    const { app, project } = fixture();
+    expect((await put(app, path, { "If-None-Match": "*" })).status).toBe(403);
+    expect((await app.request(fileUrl(path), { method: "POST", body: "planted" })).status).toBe(
+      403,
+    );
+    const rename = await app.request(fileUrl("inside.txt"), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ newPath: path }),
+    });
+    expect(rename.status).toBe(403);
+    expect(existsSync(join(project, path))).toBe(false);
+    expect(readFileSync(join(project, "inside.txt"), "utf8")).toBe("inside");
+    const name = path.split("/").at(-1)!;
+    const uploaded = await upload(app, "", name);
+    expect(uploaded.status).toBe(201);
+    // The route reads a multipart file name as Latin-1, so only an ASCII name arrives as written.
+    if (/^[\x20-\x7e]+$/.test(name)) expect((await uploaded.json()).skipped).toContain(name);
+    expect(existsSync(join(project, name))).toBe(false);
+  });
+
+  it("never overwrites, deletes or renames the project's own package.json or AGENTS.md", async () => {
+    const { app, project } = fixture();
+    writeFileSync(join(project, "package.json"), '{"name":"mine"}');
+    mkdirSync(join(project, "docs"));
+    writeFileSync(join(project, "docs", "AGENTS.md"), "mine");
+    const read = await app.request(fileUrl("package.json"));
+    expect(read.status).toBe(200);
+    const overwrite = await put(app, "package.json", {
+      "If-Match": fileContentVersion('{"name":"mine"}'),
+    });
+    expect(overwrite.status).toBe(403);
+    expect((await app.request(fileUrl("package.json"), { method: "DELETE" })).status).toBe(403);
+    const moveAway = await app.request(fileUrl("docs/AGENTS.md"), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ newPath: "docs/notes.md" }),
+    });
+    expect(moveAway.status).toBe(403);
+    expect(readFileSync(join(project, "package.json"), "utf8")).toBe('{"name":"mine"}');
+    expect(readFileSync(join(project, "docs", "AGENTS.md"), "utf8")).toBe("mine");
+  });
+
+  it("refuses to delete or move a folder that holds one, and still does both for an ordinary folder", async () => {
+    const { app, project } = fixture();
+    mkdirSync(join(project, "tools", "bin"), { recursive: true });
+    writeFileSync(join(project, "tools", "bin", "setup.sh"), "echo mine");
+    writeFileSync(join(project, "tools", "readme.txt"), "mine");
+    expect((await app.request(fileUrl("tools"), { method: "DELETE" })).status).toBe(403);
+    const move = await app.request(fileUrl("tools"), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ newPath: "elsewhere" }),
+    });
+    expect(move.status).toBe(403);
+    expect(readFileSync(join(project, "tools", "bin", "setup.sh"), "utf8")).toBe("echo mine");
+
+    for (const kept of ["vendor/lib/node_modules", "vendor/.git"]) {
+      mkdirSync(join(project, kept), { recursive: true });
+      expect((await app.request(fileUrl("vendor"), { method: "DELETE" })).status).toBe(403);
+      rmSync(join(project, kept), { recursive: true });
+    }
+
+    mkdirSync(join(project, "scenes"));
+    writeFileSync(join(project, "scenes", "a.html"), "<div></div>");
+    const moved = await app.request(fileUrl("scenes"), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ newPath: "compositions" }),
+    });
+    expect(moved.status).toBe(200);
+    expect((await app.request(fileUrl("compositions"), { method: "DELETE" })).status).toBe(200);
+    expect(existsSync(join(project, "compositions"))).toBe(false);
+  });
+
+  describe("a folder holding a received-files record", () => {
+    const record = (project: string, folder: string, files: string[]) => {
+      mkdirSync(join(project, folder, ".hyperframes"), { recursive: true });
+      writeFileSync(
+        join(project, folder, ".hyperframes", "received-files.json"),
+        JSON.stringify({ files }),
+      );
+    };
+    const move = (app: Hono, from: string, newPath: string) =>
+      app.request(fileUrl(from), {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ newPath }),
+      });
+
+    it("deletes or moves a folder whose record lists a file outside it", async () => {
+      const { app, project } = fixture();
+      mkdirSync(join(project, "sub"));
+      writeFileSync(join(project, "sub", "page.html"), "<div></div>");
+      record(project, "sub/notes", ["../page.html"]);
+      expect((await move(app, "sub/notes", "sub/kept")).status).toBe(200);
+      expect((await app.request(fileUrl("sub/kept"), { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(join(project, "sub", "page.html"))).toBe(true);
+    });
+
+    it("deletes or moves a received folder whose record lists only its own files", async () => {
+      const { app, project } = fixture();
+      mkdirSync(join(project, "sub"));
+      writeFileSync(join(project, "sub", "page.html"), "<div></div>");
+      record(project, "sub", ["page.html", "gone.html"]);
+      expect((await move(app, "sub", "dist")).status).toBe(200);
+      expect(existsSync(join(project, "dist", ".hyperframes", "received-files.json"))).toBe(true);
+      expect((await app.request(fileUrl("dist"), { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(join(project, "dist"))).toBe(false);
+    });
+
+    it("refuses a delete or move whose target is a records folder", async () => {
+      const { app, project } = fixture();
+      writeFileSync(join(project, "page.html"), "<div></div>");
+      record(project, "sub", ["page.html"]);
+      expect((await app.request(fileUrl("sub/.hyperframes"), { method: "DELETE" })).status).toBe(
+        403,
+      );
+      expect((await move(app, "sub/.hyperframes", "dist")).status).toBe(403);
+    });
+  });
+
+  it("refuses the files a package manager runs without a script in package.json", async () => {
+    const { app, project } = fixture();
+    writeFileSync(join(project, "package.json"), '{"scripts":{"dev":"npx hyperframes preview"}}');
+    writeFileSync(join(project, "addon.gyp"), "{}");
+    for (const path of ["binding.gyp", "server.js", "server.js::$DATA", "deps/common.gypi "]) {
+      for (const method of ["POST", "PUT"]) {
+        const response = await app.request(fileUrl(path), { method, body: "content" });
+        expect(response.status).toBe(403);
+        expect(await response.json()).toMatchObject({ why: "protected_path" });
+      }
+    }
+    const rename = await app.request(fileUrl("inside.txt"), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ newPath: "Server.JS." }),
+    });
+    const duplicate = await app.request("http://localhost/projects/demo/duplicate-file", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "addon.gyp" }),
+    });
+    for (const response of [rename, duplicate]) {
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ why: "protected_path" });
+    }
+    expect(readdirSync(project).sort()).toEqual(["addon.gyp", "inside.txt", "package.json"]);
+  });
+
+  it("still writes compositions, stylesheets, script assets and uploads", async () => {
+    const { app, project } = fixture();
+    for (const path of [
+      "index.html",
+      "compositions/scene.html",
+      "assets/style.css",
+      "assets/scene.js",
+      "lib/helpers.mjs",
+      "assets/data.json",
+      "notes.md",
+    ]) {
+      expect((await put(app, path, { "If-None-Match": "*" })).status).toBe(200);
+      expect(readFileSync(join(project, path), "utf8")).toBe("planted");
+    }
+    expect((await upload(app, "assets")).status).toBe(201);
+    expect(readFileSync(join(project, "assets", "upload.txt"), "utf8")).toBe("upload bytes");
+    expect((await upload(app, "assets", "take~2.txt")).status).toBe(201);
+    expect(readFileSync(join(project, "assets", "take~2.txt"), "utf8")).toBe("upload bytes");
+  });
+});
+
 describe("resolveProjectPath why", () => {
   // The CLI host's `resolveProject` is static — it answers with this project
   // for as long as the server runs, even after its folder is renamed or
@@ -741,6 +942,30 @@ describe("the desktop app's private files", () => {
     );
     const viaLink = await app.request("/projects/p/files/link.json");
     expect(await viaLink.text()).not.toContain("secret");
+  });
+
+  it("include credentials and tool state, which the file routes never serve", async () => {
+    const { app, project } = fixture();
+    const credentials = [
+      ".npmrc",
+      ".mcp.json",
+      ".claude/x.json",
+      ".aws/credentials",
+      "id_ed25519",
+      "cert.pem",
+      ".dev.vars",
+      ".vault-token",
+      ".cargo/credentials.toml",
+      "infra/terraform.tfstate",
+    ];
+    for (const folder of [".claude", ".aws", ".cargo", "infra"]) mkdirSync(join(project, folder));
+    for (const file of credentials) writeFileSync(join(project, file), "secret");
+    for (const path of credentials) {
+      const res = await app.request(`/projects/p/files/${path}`);
+      expect([403, 404]).toContain(res.status);
+      expect(await res.text()).not.toContain("secret");
+    }
+    expect((await app.request("/projects/p/files/inside.txt")).status).toBe(200);
   });
 
   it("can't be reached by renaming their folder", async () => {

@@ -121,6 +121,15 @@ describe("installItem", () => {
     "index.html",
     "src/index.js",
     "scripts\\postinstall.js",
+    "lib/package.json",
+    "compositions/pnpm-lock.yaml",
+    "lib/tsconfig.json",
+    "lib/vite.config.ts",
+    "compositions/Makefile",
+    "lib/AGENTS.md::$DATA",
+    "lib/binding.gyp",
+    "assets/common.gypi",
+    "compositions/server.js",
   ])("refuses the install target %s before writing anything", async (planted) => {
     const dir = project();
     const hostile = { ...item, files: [{ ...item.files[0]!, target: planted }] };
@@ -201,6 +210,24 @@ describe("installItem", () => {
     expect(existsSync(join(dir, "package.json"))).toBe(true);
     expect(existsSync(join(dir, ".gitignore"))).toBe(true);
   });
+
+  it.each(["binding.gyp", "server.js"])(
+    "refuses an example's %s, which a package manager runs on its own",
+    async (name) => {
+      const dir = project();
+      const example = {
+        ...item,
+        type: "hyperframes:example",
+        dimensions: { width: 1920, height: 1080 },
+        duration: 10,
+        files: [{ path: name, target: name, type: "hyperframes:asset" }],
+      } as unknown as RegistryItem;
+      await expect(installItem(example, { destDir: dir, force: true })).rejects.toThrow(
+        /Unsafe target/,
+      );
+      expect(readdirSync(dir)).toEqual([]);
+    },
+  );
 
   it("preserves directory symlinks whose destination stays inside the project", async () => {
     const dir = project();

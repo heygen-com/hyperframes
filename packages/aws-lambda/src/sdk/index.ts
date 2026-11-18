@@ -8,6 +8,7 @@
  * AWS-SDK only — safe to load in any Node environment.
  */
 
+export { parseStateMachineArn, pinBucketOwner } from "./bucketOwner.js";
 export {
   deploySite,
   type DeploySiteOptions,

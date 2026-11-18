@@ -1,11 +1,23 @@
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { lstatSync, readdirSync, type Dirent } from "node:fs";
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  type Dirent,
+  type Stats,
+} from "node:fs";
 import {
   isStudioPrivatePath,
   mkdirWithinProject,
   projectPathSegments,
   realpath,
   resolveWithinProject as resolveInProject,
+  toolTrustedFileKind,
 } from "@hyperframes/core/safe-path";
 import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
 
@@ -56,9 +68,9 @@ export function isPrivateProjectFile(projectDir: string, filePath: string): bool
 
 const WRITABLE_HIDDEN_FOLDERS = new Set([".hyperframes", ".media"]);
 
-/** Writes refuse the project folder, node_modules, and hidden paths but Studio's records and the media ledger. */
+/** Writes refuse the project folder, node_modules, hidden paths but Studio's records, and `toolTrustedFileKind` files. */
 export function isWritableProjectPath(relPath: string): boolean {
-  if (!relPath || isPrivateProjectPath(relPath)) return false;
+  if (!relPath || isPrivateProjectPath(relPath) || toolTrustedFileKind(relPath)) return false;
   const segments = projectPathSegments(relPath);
   return segments.every(
     (segment, at) =>
@@ -69,7 +81,104 @@ export function isWritableProjectPath(relPath: string): boolean {
 }
 
 export function isWritableProjectFile(projectDir: string, filePath: string): boolean {
-  return projectRelatives(projectDir, filePath).every(isWritableProjectPath);
+  return projectRelatives(projectDir, filePath).every((path) =>
+    isWritableInProject(projectDir, path),
+  );
+}
+
+/** `isWritableProjectPath`, and not a script the project's package.json runs. */
+export function isWritableInProject(projectDir: string, relPath: string): boolean {
+  return isWritableProjectPath(relPath) && !scriptsPackageRuns(projectDir).has(foldedPath(relPath));
+}
+
+// A word in package.json that names a JavaScript or TypeScript file: `node server.js`, `tsx ./scripts/build.ts`.
+const SCRIPT_FILE = /\.[cm]?[jt]sx?$/;
+const SHELL_WORD_BREAKS = /[\s;&|()<>"'`=,]+/;
+const NO_SCRIPTS: ReadonlySet<string> = new Set();
+const packageScripts = new Map<string, { stat: string; files: ReadonlySet<string> }>();
+
+const foldedPath = (path: string): string =>
+  projectPathSegments(path)
+    .filter((segment) => segment !== "" && segment !== ".")
+    .join("/");
+
+/**
+ * The script files the project's package.json runs (its `main`, `bin` and every script file its scripts name), folded
+ * as `projectPathSegments` folds. npm, node or a tool runs these with the developer's rights.
+ */
+function scriptsPackageRuns(projectDir: string): ReadonlySet<string> {
+  const path = join(projectDir, "package.json");
+  const stat = statSync(path, { throwIfNoEntry: false });
+  if (!stat?.isFile()) return NO_SCRIPTS;
+  const key = `${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+  const cached = packageScripts.get(path);
+  if (cached?.stat === key) return cached.files;
+  const files = scriptFilesNamedBy(readPackageJson(path));
+  packageScripts.set(path, { stat: key, files });
+  return files;
+}
+
+function readPackageJson(path: string): unknown {
+  try {
+    return JSON.parse(readFileSync(path, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+function scriptFilesNamedBy(pkg: unknown): ReadonlySet<string> {
+  if (!pkg || typeof pkg !== "object") return NO_SCRIPTS;
+  const { main, bin, scripts }: { main?: unknown; bin?: unknown; scripts?: unknown } = pkg;
+  const words = [main, ...valuesOf(bin), ...valuesOf(scripts)].flatMap((value) =>
+    typeof value === "string" ? value.split(SHELL_WORD_BREAKS) : [],
+  );
+  const files = words.filter(
+    (word) => SCRIPT_FILE.test(word) && !word.split(/[\\/]/).includes(".."),
+  );
+  return new Set(files.map(foldedPath));
+}
+
+const valuesOf = (value: unknown): unknown[] =>
+  typeof value === "string"
+    ? [value]
+    : value && typeof value === "object"
+      ? Object.values(value)
+      : [];
+
+/**
+ * The first `toolTrustedFileKind` file, `node_modules` or `.git` below `dir`, which a delete or move of the folder
+ * would take along. Links are not followed.
+ */
+export function toolTrustedFileWithin(projectDir: string, dir: string): string | null {
+  return protectedEntryWithin(dir, projectRelativePath(projectDir, dir));
+}
+
+const PROTECTED_FOLDERS = new Set(["node_modules", ".git"]);
+
+function protectedEntryWithin(dir: string, rel: string): string | null {
+  const entries = folderEntries(dir);
+  if (!entries) return rel || ".";
+  for (const entry of entries) {
+    const found = protectedEntry(dir, entry, rel ? `${rel}/${entry.name}` : entry.name);
+    if (found) return found;
+  }
+  return null;
+}
+
+function protectedEntry(dir: string, entry: Dirent, at: string): string | null {
+  if (!entry.isDirectory()) return toolTrustedFileKind(at) ? at : null;
+  if (toolTrustedFileKind(at) || PROTECTED_FOLDERS.has(projectPathSegments(entry.name)[0] ?? ""))
+    return at;
+  return protectedEntryWithin(join(dir, entry.name), at);
+}
+
+function folderEntries(dir: string): Dirent[] | null {
+  try {
+    return readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    if (UNREADABLE_DIR_CODES.has((err as NodeJS.ErrnoException).code ?? "")) return null;
+    throw err;
+  }
 }
 
 export function resolveWritableWithinProject(base: string, relativePath: string): string | null {
@@ -115,6 +224,47 @@ export function isLinkFreeWithinProject(root: string, dir: string): boolean {
   return true;
 }
 
+/** A file Studio keeps under the project, such as a cache entry: a plain file, reached with no link from `root` down. */
+export function isProjectCacheFile(root: string, file: string): boolean {
+  if (!isLinkFreeWithinProject(root, dirname(file))) return false;
+  const stat = lstatSync(file, { throwIfNoEntry: false });
+  return stat !== undefined && isPlainFileWithOneName(stat);
+}
+
+const isPlainFileWithOneName = (stat: Stats) => stat.isFile() && stat.nlink === 1;
+
+const NO_FOLLOW_READ =
+  constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
+
+const sameFile = (a: Stats | undefined, b: Stats) =>
+  a !== undefined && !a.isSymbolicLink() && a.dev === b.dev && a.ino === b.ino;
+
+/** `isProjectCacheFile`'s bytes, opened without following a link, or null; a hard link or one over `maxBytes` is a miss too. */
+export function readProjectCacheFile(root: string, file: string, maxBytes: number): Buffer | null {
+  if (!isLinkFreeWithinProject(root, dirname(file))) return null;
+  let fd: number;
+  try {
+    fd = openSync(file, NO_FOLLOW_READ);
+  } catch {
+    return null;
+  }
+  try {
+    const stat = fstatSync(fd);
+    if (!isPlainFileWithOneName(stat) || stat.size > maxBytes) return null;
+    // Without O_NOFOLLOW (Windows) the open followed a link, so the name must still be this plain file.
+    if (
+      constants.O_NOFOLLOW === undefined &&
+      !sameFile(lstatSync(file, { throwIfNoEntry: false }), stat)
+    )
+      return null;
+    return readFileSync(fd);
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /** `mkdirWithinProject` for the tool's own caches and records: a link on the way would put their files outside the project. */
 export function mkdirOwnedWithinProject(root: string, dir: string): void {
   if (!isLinkFreeWithinProject(root, dir)) throw new Error(`A link stands in for a folder: ${dir}`);
@@ -130,7 +280,8 @@ const IGNORE_DIRS = new Set([
 ]);
 
 function shouldIgnoreDir(rel: string): boolean {
-  return rel === ".hyperframes/backup";
+  const segments = projectPathSegments(rel);
+  return segments.at(-1) === "backup" && segments.at(-2) === ".hyperframes";
 }
 
 /**

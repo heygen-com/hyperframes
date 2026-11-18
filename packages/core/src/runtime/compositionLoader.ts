@@ -1,3 +1,4 @@
+import { rawCssUrlMatches, replaceMatches } from "@hyperframes/parsers/css-url-scans";
 import { findSceneTemplate } from "@hyperframes/parsers/sub-composition-validity";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
@@ -75,7 +76,6 @@ type PendingScript =
 
 const EXTERNAL_SCRIPT_LOAD_TIMEOUT_MS = 8000;
 const BARE_RELATIVE_PATH_RE = /^(?![a-zA-Z][a-zA-Z\d+\-.]*:)(?!\/\/)(?!\/)(?!\.\.?\/).+/;
-const CSS_URL_RE = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
 const PATH_ATTRS = ["src", "href"] as const;
 
 /**
@@ -129,7 +129,7 @@ function rewriteRuntimeAssetPath(value: string, compositionUrl: URL | null): str
 
 function rewriteRuntimeCssAssetUrls(cssText: string, compositionUrl: URL | null): string {
   if (!compositionUrl || !cssText) return cssText;
-  return cssText.replace(CSS_URL_RE, (full, quote: string, rawUrl: string) => {
+  return replaceMatches(cssText, rawCssUrlMatches(cssText), (full, quote, rawUrl) => {
     const rewritten = rewriteRuntimeAssetPath(rawUrl || "", compositionUrl);
     if (rewritten === rawUrl) return full;
     return `url(${quote || ""}${rewritten}${quote || ""})`;
@@ -488,7 +488,9 @@ async function mountCompositionContent(params: {
   // `querySelector('[data-composition-id="..."]')`.
   const scriptScopeCompositionId = plan.scriptCompositionId;
   // No fallback to the authored id: an anonymous host has no runtime id, and
-  // the compiler emits no runtime scope selector and no variable table for one.
+  // the compiler emits no runtime scope selector for one. (Its declared
+  // defaults are keyed by the authored id its restored wrapper carries — see
+  // inlineSubCompositions — which is also the scope variableScope.ts resolves.)
   const runtimeScopeCompositionId = params.runtimeCompositionId || null;
   const authoredRootId = plan.authoredRootId;
   const runtimeScopeSelector = runtimeScopeCompositionId
@@ -792,6 +794,9 @@ async function mountExternalCompositions(
             parseDimensionPx: params.parseDimensionPx,
             onDiagnostic: params.onDiagnostic,
           });
+        }
+        if (!compositionUrl || !/\.html?$/i.test(compositionUrl.pathname)) {
+          throw new Error("data-composition-src must name an .html file");
         }
         const response = await fetch(src);
         if (!response.ok) {

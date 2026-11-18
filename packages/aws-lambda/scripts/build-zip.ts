@@ -404,7 +404,7 @@ function stageChromeHeadlessShell(stagingDir: string): void {
   if (!existsSync(baseDir)) {
     throw new Error(
       `[build-zip] chrome-headless-shell cache missing at ${baseDir}. Run\n` +
-        `  npx --yes @puppeteer/browsers install chrome-headless-shell@stable --path ${home}/.cache/puppeteer\n` +
+        `  npx --yes @puppeteer/browsers install chrome-headless-shell@158.0.8127.36 --path ${home}/.cache/puppeteer\n` +
         `before --source=chrome-headless-shell.`,
     );
   }

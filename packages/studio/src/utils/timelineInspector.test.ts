@@ -5,7 +5,9 @@ import {
   isAudioDomElement,
   isAudioTimelineElement,
   isMusicSourceElement,
+  fitsBeatAnalysis,
   isMusicTrack,
+  MAX_BEAT_SOURCE_SECONDS,
   resolveBeatSourceTrack,
 } from "./timelineInspector";
 import type { TimelineElement } from "../player";
@@ -15,12 +17,28 @@ function el(
   overrides: Partial<
     Pick<
       TimelineElement,
-      "tag" | "src" | "id" | "domId" | "timelineRole" | "duration" | "hasAudio" | "muted"
+      | "tag"
+      | "src"
+      | "id"
+      | "domId"
+      | "timelineRole"
+      | "duration"
+      | "sourceDuration"
+      | "hasAudio"
+      | "muted"
     >
   >,
 ): Pick<
   TimelineElement,
-  "tag" | "src" | "id" | "domId" | "timelineRole" | "duration" | "hasAudio" | "muted"
+  | "tag"
+  | "src"
+  | "id"
+  | "domId"
+  | "timelineRole"
+  | "duration"
+  | "sourceDuration"
+  | "hasAudio"
+  | "muted"
 > {
   return {
     tag: "audio",
@@ -29,6 +47,7 @@ function el(
     domId: "el-1",
     timelineRole: undefined,
     duration: 10,
+    sourceDuration: 120,
     ...overrides,
   };
 }
@@ -127,6 +146,22 @@ describe("resolveBeatSourceTrack", () => {
     expect(resolveBeatSourceTrack([sfx, vo])).toBeNull();
   });
 
+  it("falls back to a song over a longer clip whose file's length is not known yet", () => {
+    const unread = el({ id: "unread", domId: "unread", duration: 300, sourceDuration: undefined });
+    const song = el({ id: "song", domId: "song", duration: 180, sourceDuration: 180 });
+    expect(resolveBeatSourceTrack([unread, song])!.element).toBe(song);
+    const looped = el({ id: "loop", domId: "loop", duration: 1200, sourceDuration: 180 });
+    expect(resolveBeatSourceTrack([looped])!.element).toBe(looped);
+  });
+
+  it("never falls back to a clip, or a clip's file, longer than a song", () => {
+    const talk = el({ id: "talk", domId: "talk", duration: 3720, sourceDuration: 3720 });
+    const excerpt = el({ id: "cut", domId: "cut", duration: 180, sourceDuration: 3720 });
+    expect(resolveBeatSourceTrack([talk, excerpt])).toBeNull();
+    const song = el({ id: "song", domId: "song", duration: 200, sourceDuration: 200 });
+    expect(resolveBeatSourceTrack([talk, song])!.element).toBe(song);
+  });
+
   it("returns isFallback=true for an untagged clip with a non-music id", () => {
     const clip = el({ id: "my_audio_file", domId: "my_audio_file", timelineRole: undefined });
     const result = resolveBeatSourceTrack([clip]);
@@ -182,5 +217,17 @@ describe("beat source from a video with sound", () => {
     const long = el({ ...talk, id: "b", duration: 9 });
     const muted = el({ ...talk, id: "c", duration: 20, muted: true });
     expect(resolveBeatSourceTrack([short, long, muted])?.element).toBe(long);
+  });
+});
+
+describe("fitsBeatAnalysis", () => {
+  it("fits a file whose length is known and no longer than a song, however long its clip runs", () => {
+    expect(fitsBeatAnalysis({ sourceDuration: 180 })).toBe(true);
+    expect(fitsBeatAnalysis({ sourceDuration: MAX_BEAT_SOURCE_SECONDS })).toBe(true);
+  });
+
+  it("refuses a file past the cap and a file whose length is unknown", () => {
+    expect(fitsBeatAnalysis({ sourceDuration: 3720 })).toBe(false);
+    expect(fitsBeatAnalysis({})).toBe(false);
   });
 });

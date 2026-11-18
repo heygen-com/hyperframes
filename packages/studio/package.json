@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/studio",
-  "version": "0.9.52",
+  "version": "0.9.65",
   "description": "",
   "repository": {
     "type": "git",
@@ -116,7 +116,7 @@
     "@hyperframes/shader-transitions": "workspace:*",
     "@hyperframes/studio-server": "workspace:*",
     "@lezer/highlight": "^1.2.3",
-    "@mcp-b/global": "^5.0.1",
+    "@mcp-b/global": "^6.1.0",
     "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-virtual": "^3.14.13",
     "acorn": "^8.17.0",

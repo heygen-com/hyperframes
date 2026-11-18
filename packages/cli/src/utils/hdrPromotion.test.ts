@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { VideoColorSpace } from "@hyperframes/engine";
 import { resolveProjectRelativeSrc } from "@hyperframes/engine";
-import { inspectHdrAutoPromotion } from "./hdrPromotion.js";
+import { inspectHdrAutoPromotion, remoteMediaNotInspected } from "./hdrPromotion.js";
 
 const PROJECT = { dir: "/project", name: "hdr-check", indexPath: "/project/index.html" };
 const HDR: VideoColorSpace = {
@@ -70,21 +70,32 @@ describe("inspectHdrAutoPromotion", () => {
     expect(extractMetadata).toHaveBeenCalledWith(assetPath);
   });
 
-  it("reports an active remote HDR video from the bundled render media", async () => {
-    const remote = "https://media.example/remote-hdr.mp4?token=secret";
+  it("does not probe a remote video or image, and names it as not inspected", async () => {
     const extractMetadata = vi.fn(async () => metadata(HDR));
+    const media = bundledMedia(
+      ["https://media.example/remote-hdr.mp4?token=secret"],
+      ["http://user:pass@127.0.0.1:8080/hdr.png"],
+    );
 
-    await expect(
-      inspectHdrAutoPromotion(PROJECT, bundledMedia([remote], []), extractMetadata),
-    ).resolves.toEqual({
-      triggeringAsset: "https://media.example/remote-hdr.mp4",
-      output: { colorSpace: "BT.2020", codec: "HEVC Main10" },
-    });
-    expect(extractMetadata).toHaveBeenCalledWith(remote);
+    await expect(inspectHdrAutoPromotion(PROJECT, media, extractMetadata)).resolves.toBeNull();
+    expect(extractMetadata).not.toHaveBeenCalled();
+    expect(remoteMediaNotInspected(media)).toEqual([
+      "https://media.example/remote-hdr.mp4",
+      "http://127.0.0.1:8080/hdr.png",
+    ]);
+  });
+
+  it("names no remote source when graded media keeps the render SDR", () => {
+    expect(
+      remoteMediaNotInspected({
+        videos: [{ src: "https://media.example/remote-hdr.mp4", hasAudio: false }],
+        images: [{ src: "assets/look.png", graded: true }],
+      }),
+    ).toEqual([]);
   });
 
   it("uses the first HDR video before an HDR image and still inspects images", async () => {
-    const firstVideo = "https://media.example/first-hdr-video.mp4?token=secret";
+    const firstVideo = "assets/first-hdr-video.mp4";
     const image = "assets/fallback-hdr-image.png";
     const extractMetadata = vi.fn(async (src: string) =>
       metadata(src.replaceAll("\\", "/").endsWith("/assets/sdr.mp4") ? SDR : HDR),
@@ -96,11 +107,13 @@ describe("inspectHdrAutoPromotion", () => {
         bundledMedia(["assets/sdr.mp4", firstVideo], [image]),
         extractMetadata,
       ),
-    ).resolves.toMatchObject({ triggeringAsset: "https://media.example/first-hdr-video.mp4" });
+    ).resolves.toMatchObject({ triggeringAsset: "assets/first-hdr-video.mp4" });
     expect(extractMetadata).toHaveBeenCalledWith(
       resolveProjectRelativeSrc("assets/sdr.mp4", PROJECT.dir, PROJECT.dir),
     );
-    expect(extractMetadata).toHaveBeenCalledWith(firstVideo);
+    expect(extractMetadata).toHaveBeenCalledWith(
+      resolveProjectRelativeSrc(firstVideo, PROJECT.dir, PROJECT.dir),
+    );
     expect(extractMetadata).toHaveBeenCalledWith(
       resolveProjectRelativeSrc("assets/fallback-hdr-image.png", PROJECT.dir, PROJECT.dir),
     );

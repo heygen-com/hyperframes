@@ -16,7 +16,7 @@ import {
   MenuSeparator,
 } from "./Menu";
 import { Popover } from "./Popover";
-import { isTypingTarget } from "../../utils/typingTarget";
+import { isTypingTarget } from "@hyperframes/core/typing-target";
 import { shouldIgnorePlaybackShortcutTarget } from "../../player/lib/playbackShortcuts";
 import { cleanupMounted, mountHost as render } from "./mountHost.testHelpers";
 
@@ -369,6 +369,83 @@ describe("Popover", () => {
     await settle();
     const arrow = one("[role=dialog] svg", "arrow").parentElement!;
     expect(arrow.getAttribute("data-side")).toBe("bottom");
+  });
+});
+
+// fails without the fix: Escape in a modal opened from a popover's row closed the popover and cancelled the key, so the
+// modal stayed open over a page with no popover (a paywall opened from a picker row).
+describe("Escape goes to the topmost open layer", () => {
+  /** A modal opened above the popup, as a paywall from a picker row is: outside the popup, focus inside it. */
+  function modalAbove(): HTMLButtonElement {
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    const close = document.createElement("button");
+    dialog.append(close);
+    document.body.append(dialog);
+    act(() => close.focus());
+    return close;
+  }
+  /** Escape at `target`, and whether anything cancelled it. */
+  function escapeAt(target: Element): boolean {
+    const event = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    });
+    act(() => void target.dispatchEvent(event));
+    return event.defaultPrevented;
+  }
+
+  it("leaves a Popover open and the key uncancelled when the modal above it has focus; its own Escape still closes it", async () => {
+    render(
+      <Popover trigger={<button data-testid="trigger">Pickers</button>} aria-label="Pickers">
+        <button>Ultra</button>
+      </Popover>,
+    );
+    act(() => trigger().click());
+    await settle();
+    const close = modalAbove();
+    expect(escapeAt(close), "the modal's Escape is left to the modal").toBe(false);
+    await settle();
+    expect(document.querySelector('[aria-label="Pickers"]')).not.toBeNull();
+    close.parentElement!.remove();
+
+    escapeAt(one('[aria-label="Pickers"] button', "popover row"));
+    await settle();
+    expect(document.querySelector('[aria-label="Pickers"]')).toBeNull();
+  });
+
+  it("leaves a Menu open under a modal above it", async () => {
+    render(
+      <Menu trigger={<button data-testid="trigger">Model</button>} aria-label="Model">
+        <MenuItem>Ultra</MenuItem>
+      </Menu>,
+    );
+    act(() => trigger().click());
+    await settle();
+    expect(escapeAt(modalAbove())).toBe(false);
+    await settle();
+    expect(document.querySelector('[role="menu"]')).not.toBeNull();
+  });
+
+  it("closes a Popover opened from inside a dialog on Escape there: that dialog is under it, not above", async () => {
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("open", "");
+    document.body.append(dialog);
+    const host = render(
+      <Popover trigger={<button data-testid="trigger">Speed</button>} aria-label="Speed">
+        <span>1x</span>
+      </Popover>,
+    );
+    dialog.append(host);
+    act(() => trigger().click());
+    await settle();
+    escapeAt(trigger());
+    await settle();
+    expect(document.querySelector('[aria-label="Speed"]')).toBeNull();
+    dialog.remove();
   });
 });
 

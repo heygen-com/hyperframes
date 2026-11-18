@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
-import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
+import { MEDIA_INPUT_ARGS, mediaInputArgs } from "./mediaExtensions.js";
 
 const ffmpeg = findFfBinary("ffmpeg");
 const ffprobe = findFfBinary("ffprobe");
@@ -64,5 +64,12 @@ describe.skipIf(!ffmpeg || !ffprobe)("MEDIA_INPUT_ARGS with a real ffprobe", () 
     const result = probe(join(dir, name));
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/not on whitelist/);
+  });
+});
+
+describe("mediaInputArgs", () => {
+  it("refuses a path ffmpeg would read as a pattern of other files", () => {
+    expect(() => mediaInputArgs(join(dir, "decoy%d.png"))).toThrow(/pattern of other files/);
+    expect(mediaInputArgs(join(dir, "clip 100% done.mp4"))).toEqual(MEDIA_INPUT_ARGS);
   });
 });

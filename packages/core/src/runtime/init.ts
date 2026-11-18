@@ -39,6 +39,7 @@ import { createPreviewSeek } from "./previewSeek";
 import { createPausedVideoFrames, releasePausedVideoFrame } from "./pausedVideoFrames";
 import { copiesReady } from "./previewCopies";
 import { installRuntimeControlBridge, postRuntimeMessage, setRuntimeProtocolFps } from "./bridge";
+import { createScrubAudio } from "./scrubAudio";
 import { installEditingAgent } from "./editingAgent";
 import { instantTolerance } from "../clipFacts";
 import { isClipVisibleAt, isInClipWindow } from "./clipWindow";
@@ -147,6 +148,7 @@ import {
 } from "./timeline";
 import { findRootCompositionElement, parseLayoutDimension } from "./compositionDimension";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
+import { sceneCssUrlMatches } from "@hyperframes/parsers/css-url-scans";
 import {
   LOOP_INFLATED_TIMELINE_SECONDS,
   MIN_VALID_TIMELINE_DURATION_SECONDS,
@@ -193,6 +195,7 @@ import {
   paintCaptureMotionBlur,
   releaseCaptureMotionBlurFrame,
   setMotionBlurPreviewQuality,
+  teardownCaptureMotionBlur,
 } from "./captureMotionBlur";
 import { TransportClock } from "./clock";
 import { WebAudioTransport } from "./webAudioTransport";
@@ -3110,10 +3113,12 @@ export function initSandboxRuntimeModular(): void {
   };
   // Where Studio's loop wraps to (window.__hf.setLoopStart); null when it does not loop.
   let loopStartSeconds: number | null = null;
-  // A clip with no authored length loads as in a render: a reload would drop the duration it is
-  // timed by.
+  // An unauthored length stays loaded (a reload drops it); on a capture page an unloaded one waits
+  // until due, or a thousand such clips run the renderer out of memory.
   const inPreloadWindow = (el: HTMLMediaElement) =>
-    mediaDeferred && el.hasAttribute("data-start") && lengthIsAuthored(el);
+    mediaDeferred &&
+    el.hasAttribute("data-start") &&
+    (lengthIsAuthored(el) || (!loadsAhead && el.readyState === HTMLMediaElement.HAVE_NOTHING));
 
   // Media on screen or due within the look-ahead loads; the rest stops holding a connection to
   // the origin that also serves Studio's thumbnails.
@@ -4286,8 +4291,7 @@ export function initSandboxRuntimeModular(): void {
   const sceneUrls = (parts: Element[]): Set<string> => {
     const urls = new Set<string>();
     const addCssUrls = (css: string | null) => {
-      for (const m of (css ?? "").matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)|@import\s+(['"])(.*?)\3/gi))
-        urls.add(m[2] ?? m[4]!);
+      for (const { parts: m } of sceneCssUrlMatches(css ?? "")) urls.add(m[2] ?? m[4]!);
       for (const set of (css ?? "").matchAll(/image-set\((?:[^()]|\([^()]*\))*\)/gi))
         for (const m of set[0].matchAll(/(['"])(.*?)\1/g)) urls.add(m[2]!);
     };
@@ -6179,6 +6183,33 @@ export function initSandboxRuntimeModular(): void {
     return false;
   };
 
+  const STOP_HOLDING_FOR_A_CLIP_WITHOUT_NEW_DATA_MS = 8000;
+  type HoldWithoutData = { src: string; buffered: number; sinceMs: number; checkedTick: number };
+  const holdsWithoutData = new WeakMap<HTMLMediaElement, HoldWithoutData>();
+  const stoppedReceivingData = (el: HTMLMediaElement): boolean => {
+    const now = performance.now();
+    let buffered = 0;
+    for (let i = 0; i < el.buffered.length; i++)
+      buffered += el.buffered.end(i) - el.buffered.start(i);
+    const hold = holdsWithoutData.get(el);
+    const heldLastTick =
+      hold !== undefined &&
+      hold.src === el.currentSrc &&
+      buffered <= hold.buffered &&
+      hold.checkedTick >= transportTickCount - 1;
+    if (!heldLastTick) {
+      holdsWithoutData.set(el, {
+        src: el.currentSrc,
+        buffered,
+        sinceMs: now,
+        checkedTick: transportTickCount,
+      });
+      return false;
+    }
+    hold.checkedTick = transportTickCount;
+    return now - hold.sinceMs > STOP_HOLDING_FOR_A_CLIP_WITHOUT_NEW_DATA_MS;
+  };
+
   const mediaNotReadyAt = (t: number, ready = hasDataAhead): HTMLMediaElement[] =>
     state.nativeMediaSyncDisabled
       ? []
@@ -6187,6 +6218,7 @@ export function initSandboxRuntimeModular(): void {
             ({ el, start, end }) =>
               isInClipWindow(t, start, end) &&
               !ready(el) &&
+              !stoppedReceivingData(el) &&
               isPlayableTrack(el) &&
               !stillStandsIn(el) &&
               !pausedFrames.retained(el) &&
@@ -6602,6 +6634,8 @@ export function initSandboxRuntimeModular(): void {
   // The runtime's external control surface only goes live once all of its
   // dependencies exist, so a load-time seek / set-playback-rate can never reach
   // a not-yet-initialized helper (the 'before initialization' TDZ this fixes).
+  const scrubAudio = createScrubAudio({ lease: leasePausedMedia, release: releasePausedMedia });
+  registerRuntimeCleanup(scrubAudio.stop);
   state.controlBridgeHandler = installRuntimeControlBridge({
     onPlay: () => {
       player.play();
@@ -6708,6 +6742,7 @@ export function initSandboxRuntimeModular(): void {
       setPreviewRasterScale(scale);
       noteDisplayScale(scale);
     },
+    onScrubAudio: scrubAudio.scrub,
     onRequestPreviewFacts: () =>
       postRuntimeMessage({
         source: "hf-preview",
@@ -6817,6 +6852,11 @@ export function initSandboxRuntimeModular(): void {
       state.beforeUnloadHandler = null;
     }
     picker.disablePickMode();
+    try {
+      teardownCaptureMotionBlur();
+    } catch (err) {
+      swallow("runtime.init.site17", err);
+    }
     for (const adapter of state.deterministicAdapters) {
       if (!adapter || typeof adapter.revert !== "function") continue;
       try {

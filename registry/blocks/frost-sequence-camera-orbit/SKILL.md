@@ -32,6 +32,8 @@ Composition id: `frost-sequence-rig`. Duration 22.5 s at 30 fps, 1920×1080.
 
 ## Install
 
+For install and render commands, expand `npx hyperframes` to `node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs"` in the project directory. Use the absolute path to your installed HyperFrames skills for `<SKILLS>`. If the launcher is missing, ask for the skill before proceeding.
+
 Install with `npx hyperframes add frost-sequence-camera-orbit`; by default the files above land under `compositions/frost-sequence-camera-orbit/`. Then mount the block from the host `index.html`:
 
 ```html
@@ -49,7 +51,7 @@ Install with `npx hyperframes add frost-sequence-camera-orbit`; by default the f
 Render with custom values by targeting the composition file directly:
 
 ```sh
-npx --yes hyperframes@0.8.12 render 'compositions/frost-sequence-camera-orbit/frost-sequence-camera-orbit.html' --variables '{"headline1":"Hard to|break.","headline2":"Easy to|remember."}'
+npx hyperframes render 'compositions/frost-sequence-camera-orbit/frost-sequence-camera-orbit.html' --variables '{"headline1":"Hard to|break.","headline2":"Easy to|remember."}'
 ```
 
 ## Variables

@@ -6,9 +6,22 @@ import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { getMimeType, openRangeEnd } from "@hyperframes/studio-server";
+import { getMimeType, openRangeEnd, refuseServiceWorkerScripts } from "@hyperframes/studio-server";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import {
+  PREVIEW_FOR_ANOTHER_SITE_META,
+  dropServiceWorkers,
+} from "@hyperframes/core/studio-preview-mark";
+import {
+  PREVIEW_ALLOWED_HOSTS_ENV,
+  previewAllowedHostsFromEnv,
+  documentFromAnotherSite,
+  proxyWorkFromAnotherSite,
+  wildcardBindHostAllowed,
+} from "@hyperframes/studio-server/request-identity";
+import { SAME_ORIGIN_FRAMING_HEADERS } from "@hyperframes/engine";
+import type { Context, Hono } from "hono";
 
 /**
  * `window.__HF_MEDIA_CODEC_MAP__` injection + proxy pre-warm for HTML served
@@ -176,6 +189,91 @@ export function buildRangeResponse(
 }
 
 /**
+ * The server listens on every interface, so every route answers only loopback,
+ * this machine's own addresses and names, or a host named in
+ * HYPERFRAMES_PREVIEW_ALLOWED_HOSTS. A browser cannot forge Host, which keeps a
+ * rebound page name from reading project files.
+ */
+export function refuseUnknownHosts(app: Hono): void {
+  const allowedHosts = previewAllowedHostsFromEnv();
+  app.use(async function refuseUnknownHost(c, next) {
+    const host = c.req.header("host") ?? new URL(c.req.url).host;
+    if (wildcardBindHostAllowed(host, allowedHosts)) return next();
+    return c.json(
+      {
+        error:
+          `forbidden: host "${host}" is not allowed. ` +
+          `Set ${PREVIEW_ALLOWED_HOSTS_ENV}=${host} to allow it ` +
+          `(comma separated for several hosts).`,
+      },
+      403,
+    );
+  });
+}
+
+function withoutValidators(request: Request): Request {
+  const headers = new Headers(request.headers);
+  headers.delete("if-none-match");
+  headers.delete("if-modified-since");
+  return new Request(request, { headers });
+}
+
+async function markDocumentForAnotherSite(c: Context): Promise<void> {
+  if (c.res.status !== 200 || !c.res.headers.get("content-type")?.startsWith("text/html")) return;
+  const headers = new Headers(c.res.headers);
+  headers.delete("content-length");
+  headers.delete("etag");
+  const marked = injectTagsAtHeadStart(
+    await c.res.text(),
+    `<meta name="${PREVIEW_FOR_ANOTHER_SITE_META}">`,
+  );
+  c.res = undefined;
+  c.res = new Response(marked, { status: 200, headers });
+}
+
+/** Files under `path` that another site loads come back sandboxed, and documents marked so their runtime offers that site no editing port. */
+export function sandboxForAnotherSite(app: Hono, path: string): void {
+  app.use(path, refuseServiceWorkerScripts);
+  app.use(path, async function sandboxAnotherSiteLoad(c, next) {
+    const anotherSite = documentFromAnotherSite({
+      fetchSite: c.req.header("sec-fetch-site"),
+      host: c.req.header("host") ?? new URL(c.req.url).host,
+      referer: c.req.header("referer"),
+    });
+    if (anotherSite) c.req.raw = withoutValidators(c.req.raw);
+    await next();
+    c.header("Vary", "Sec-Fetch-Site, Referer", { append: true });
+    if (!anotherSite) return;
+    c.header("Content-Security-Policy", "sandbox allow-scripts");
+    await markDocumentForAnotherSite(c);
+  });
+}
+
+/** A `?hf-proxy=` copy runs ffmpeg on this machine, so another site may not ask for one. */
+export function refuseProxyWorkForAnotherSite(app: Hono, path: string): void {
+  app.use(path, async function refuseAnotherSiteProxyWork(c, next) {
+    const anotherSite = proxyWorkFromAnotherSite({
+      fetchSite: c.req.header("sec-fetch-site"),
+      host: c.req.header("host") ?? new URL(c.req.url).host,
+      referer: c.req.header("referer"),
+    });
+    if (anotherSite && c.req.query("hf-proxy") !== undefined)
+      return c.text("Forbidden: media proxy requested by another site", 403);
+    await next();
+  });
+}
+
+/** The runtime hands an editing port to its parent frame, so only this server's own pages may frame what it serves. */
+export function refuseFramingByOtherSites(app: Hono): void {
+  app.use(async function sameOriginFramingOnly(c, next) {
+    await next();
+    for (const [name, value] of Object.entries(SAME_ORIGIN_FRAMING_HEADERS)) {
+      c.res.headers.append(name, value);
+    }
+  });
+}
+
+/**
  * Bind `server` to the first free port at or after `startPort` (scanning up to
  * 10 ports). Returns the bound port. Rejects if all candidates are in use or on
  * a non-EADDRINUSE error.
@@ -204,4 +302,15 @@ export async function listenOnFreePort(server: PortBindable, startPort: number):
     }
   }
   throw new Error(`No free port found in [${startPort}, ${startPort + 9}]`);
+}
+
+export function scriptsAfterWorkersDropped(srcs: readonly string[]): string {
+  const add =
+    'var s=document.createElement("script");s.src=src;s.async=false;document.head.append(s)';
+  const list = JSON.stringify(srcs).replace(
+    /[<>/\u2028\u2029]/g,
+    (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+  );
+  const load = `function(){${list}.forEach(function(src){${add}})}`;
+  return `<script>(${dropServiceWorkers.toString()})().then(${load});</script>`;
 }

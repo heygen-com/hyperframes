@@ -1,5 +1,9 @@
 export { createStudioApi, type StudioApiOptions } from "./createStudioApi.js";
 export {
+  refuseServiceWorkerScripts,
+  serviceWorkerScriptFetch,
+} from "./helpers/serviceWorkerScripts.js";
+export {
   PREVIEW_ALLOWED_HOSTS_ENV,
   previewAllowedHostsFromEnv,
 } from "./helpers/requestIdentity.js";
@@ -17,6 +21,8 @@ export { cleanupProxyCache } from "./helpers/proxyCache.js";
 export { CACHE_DIR_NAME as PROXY_CACHE_DIR_NAME } from "./helpers/proxyTranscoder.js";
 export type {
   StudioApiAdapter,
+  StudioRefusal,
+  StudioRefusalWhy,
   ResolvedProject,
   RenderJobState,
   MediaProcessingJobState,

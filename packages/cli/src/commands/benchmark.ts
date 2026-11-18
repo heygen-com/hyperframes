@@ -12,6 +12,7 @@ export const examples: Example[] = [
 import { join } from "node:path";
 import { resolveProject } from "../utils/project.js";
 import { loadProducer } from "../utils/producer.js";
+import { outsideAssetsAllowed } from "../utils/receivedRender.js";
 import { c } from "../ui/colors.js";
 import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
 import * as clack from "../ui/prompts.js";
@@ -106,6 +107,9 @@ export default defineCommand({
     }
 
     // ── Run benchmarks ───────────────────────────────────────────────────
+    const allowOutsideProjectAssets = outsideAssetsAllowed(project.dir, undefined, (line) =>
+      console.warn(c.warn(`  ${line}`)),
+    );
     const results: ConfigResult[] = [];
 
     for (const config of DEFAULT_CONFIGS) {
@@ -128,7 +132,7 @@ export default defineCommand({
             fps: config.fps,
             quality: config.quality,
             workers: config.workers,
-            allowOutsideProjectAssets: true,
+            allowOutsideProjectAssets,
           });
           await producer.executeRenderJob(job, project.dir, outputPath);
           const elapsedMs = Date.now() - startTime;

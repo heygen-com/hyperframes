@@ -3,13 +3,18 @@ import { usePlayerStore } from "../player";
 import type { TimelineElement } from "../player";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
-import { isTypingTarget, ownsPlainKeys } from "../utils/typingTarget";
+import { isTypingTarget, ownsPlainKeys } from "@hyperframes/core/typing-target";
 import { isEditableTarget } from "../utils/timelineDiscovery";
 import { shouldIgnoreHistoryShortcut } from "../utils/studioHelpers";
 import { canSplitElement } from "../utils/timelineElementSplit";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { razorClaimsKey } from "../player/lib/playbackShortcuts";
-import { getStudioKeys, keyHint, matchesKey } from "../player/components/studioShortcuts";
+import {
+  getStudioKeys,
+  keyHint,
+  matchesKey,
+  type StudioKeyAction,
+} from "../player/components/studioShortcuts";
 import { zoomTimelineToSelectedClips } from "../player/components/timelineZoomInput";
 import { openAudioGainDialog } from "../player/components/audioGainDialogStore";
 import type { LinkShortcutCallbacks } from "./linkShortcuts";
@@ -118,6 +123,38 @@ function dispatchClipboardKey(event: KeyboardEvent, cb: HotkeyCallbacks): boolea
   }
   return true;
 }
+
+/** Every action the dispatchers here and dispatchLinkShortcut answer: what a sealed preview forwards to them. */
+export const APP_HOTKEY_ACTIONS = [
+  "undo",
+  "redo",
+  "redoAlt",
+  "tabCompositions",
+  "tabAssets",
+  "group",
+  "ungroup",
+  "copy",
+  "paste",
+  "cut",
+  "duplicate",
+  "zoomSelection",
+  "fullscreen",
+  "split",
+  "audioGain",
+  "razorTool",
+  "selectTool",
+  "selectLeftward",
+  "selectRightward",
+  "cancel",
+  "deleteSelected",
+  "deleteSelectedAlt",
+  "resetKeyframes",
+  "record",
+  "linkToggle",
+  "detachAudio",
+  "deleteLinked",
+  "deleteLinkedAlt",
+] as const satisfies readonly StudioKeyAction[];
 
 /** Exported for tests: the shortcuts that act on the editor, each read as a combo at event time. */
 export function dispatchModifierKey(

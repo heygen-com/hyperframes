@@ -19,7 +19,7 @@ import {
 import { scanHtmlOpeningTags } from "@hyperframes/parsers/html-attribute-spans";
 import type { Browser, LaunchOptions, Page, PuppeteerNode } from "puppeteer-core";
 import { execFileSync } from "child_process";
-import { existsSync, readdirSync, statSync } from "fs";
+import { existsSync, readdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import {
@@ -28,6 +28,7 @@ import {
   compareBrowserVersionsDescending,
   exceedsChromeCeiling,
   isManagedChromeDir,
+  isPinnedHeadlessShell,
   pickSharedShell,
 } from "./chromeHostCeiling.js";
 import { DEFAULT_CONFIG, resolveRestrictPageNetwork, type EngineConfig } from "../config.js";
@@ -35,11 +36,16 @@ import {
   browserProxyArgs,
   createPublicOnlyProfile,
   logRefusal,
+  pageServerDirectHost,
   startCaptureProxy,
 } from "./publicNetwork/captureProxy.js";
 import { removeTreeBestEffortAsync } from "@hyperframes/core/remove-tree";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
-import { chromeSandboxArgs, launchWithChromeSandboxFallback } from "./chromeSandbox.js";
+import {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  launchWithChromeSandboxFallback,
+} from "@hyperframes/core/chrome-sandbox";
 import { describeWslGpuAccess, detectWsl, type WslHostFacts } from "./wslHost.js";
 import {
   BrowserLeasePool,
@@ -55,7 +61,7 @@ export type {
   BrowserPoolState,
   CaptureMode,
 } from "./browserLeasePool.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { foreignWritablePath, trustedCacheRoot } from "@hyperframes/core/cache-dir";
 import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 
 let _puppeteer: PuppeteerNode | undefined;
@@ -90,16 +96,9 @@ function isSoftwareWebGlRenderer(rendererInfo: string): boolean {
   return SOFTWARE_WEBGL_RENDERER_TOKENS.some((token) => renderer.includes(token));
 }
 
-async function getPuppeteer(): Promise<PuppeteerNode> {
+async function getPuppeteerCore(): Promise<PuppeteerNode> {
   if (_puppeteer) return _puppeteer;
-  try {
-    const mod = await import("puppeteer" as string);
-    _puppeteer = mod.default;
-  } catch {
-    const mod = await import("puppeteer-core");
-    _puppeteer = mod.default;
-  }
-  if (!_puppeteer) throw new Error("Neither puppeteer nor puppeteer-core found");
+  _puppeteer = (await import("puppeteer-core")).default;
   return _puppeteer;
 }
 
@@ -114,6 +113,7 @@ interface GpuProbeOptions {
   platform?: NodeJS.Platform;
   probeLifecycle?: GpuProbeLifecycle;
   wslHost?: WslHostFacts;
+  sandbox?: boolean;
 }
 
 const GPU_PROBE_TIMEOUT_MS = 15_000;
@@ -130,19 +130,21 @@ async function probeHardwareWebGlInfo(
 ): Promise<WebGlProbeInfo> {
   let probeBrowser: Browser | undefined;
   try {
-    const launchOptions: LaunchOptions = {
-      ...ownedLaunchOptions(),
-      headless: true,
-      args: withHyperframesBrowserMarker(options.args),
-      defaultViewport: { width: 64, height: 64 },
-      executablePath: options.executablePath,
-      env: buildChromeLaunchEnv(options.env),
-      timeout: options.browserTimeout,
-      waitForInitialPage: false,
-    };
-    probeBrowser = options.probeLifecycle
-      ? await options.probeLifecycle.launch(ppt, launchOptions)
-      : await ppt.launch(launchOptions);
+    probeBrowser = await launchWithChromeSandboxFallback(options.args, (args) => {
+      const launchOptions: LaunchOptions = {
+        ...ownedLaunchOptions(),
+        headless: true,
+        args: withHyperframesBrowserMarker(args),
+        defaultViewport: { width: 64, height: 64 },
+        executablePath: options.executablePath,
+        env: buildChromeLaunchEnv(options.env),
+        timeout: options.browserTimeout,
+        waitForInitialPage: false,
+      };
+      return options.probeLifecycle
+        ? options.probeLifecycle.launch(ppt, launchOptions)
+        : ppt.launch(launchOptions);
+    });
     return await rejectAfter(
       readWebGlInfo(probeBrowser),
       GPU_PROBE_TIMEOUT_MS,
@@ -211,15 +213,6 @@ function cachedHeadlessShellExecutable(
   return CACHED_HEADLESS_SHELL_EXECUTABLES[`${hostPlatform}/${hostArch}`];
 }
 
-function isNonEmptyFile(path: string): boolean {
-  try {
-    const stat = statSync(path, { throwIfNoEntry: false });
-    return stat?.isFile() === true && stat.size > 0;
-  } catch {
-    return false;
-  }
-}
-
 function findCachedHeadlessShell(baseDir: string): string | undefined {
   if (!existsSync(baseDir)) return undefined;
   const executable = cachedHeadlessShellExecutable();
@@ -230,7 +223,7 @@ function findCachedHeadlessShell(baseDir: string): string | undefined {
     for (const version of versions) {
       if (exceedsChromeCeiling(version, ceiling)) continue;
       const binary = join(baseDir, version, ...executable);
-      if (isNonEmptyFile(binary)) return binary;
+      if (isPinnedHeadlessShell(binary)) return binary;
     }
   } catch {
     // Ignore unreadable cache directories and continue browser discovery.
@@ -244,7 +237,7 @@ function findSharedHeadlessShell(baseDir: string): string | undefined {
   try {
     return pickSharedShell(readdirSync(baseDir), (version) => {
       const binary = join(baseDir, version, ...executable);
-      return isNonEmptyFile(binary) ? binary : undefined;
+      return isPinnedHeadlessShell(binary) ? binary : undefined;
     });
   } catch {
     return undefined;
@@ -257,17 +250,13 @@ function findManagedHeadlessShell(baseDir: string): string | undefined {
   try {
     const version = readdirSync(baseDir).find(isManagedChromeDir);
     const binary = version && join(baseDir, version, ...executable);
-    return binary && isNonEmptyFile(binary) ? binary : undefined;
+    return binary && isPinnedHeadlessShell(binary) ? binary : undefined;
   } catch {
     return undefined;
   }
 }
 
-/**
- * Resolve chrome-headless-shell binary for deterministic BeginFrame rendering.
- * Checks config.chromePath, then PRODUCER_HEADLESS_SHELL_PATH env var,
- * then the CLI browser override, HyperFrames' managed cache, and Puppeteer's cache.
- */
+/** The headless shell to render with: config.chromePath, a browser env var, else a pinned build from either cache. */
 export function resolveHeadlessShellPath(
   config?: Partial<Pick<EngineConfig, "chromePath">>,
 ): string | undefined {
@@ -284,52 +273,32 @@ export function resolveHeadlessShellPath(
     }
     return fromEnv.path;
   }
-  const ours = hyperframesCacheDir("chrome", "chrome-headless-shell");
+  const root = trustedCacheRoot();
+  const ours = join(root, "chrome", "chrome-headless-shell");
   const shared = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
+  const trusted = (binary: string | undefined) =>
+    binary && !foreignWritablePath(binary, root) ? binary : undefined;
   return (
-    findManagedHeadlessShell(ours) ??
+    trusted(findManagedHeadlessShell(ours)) ??
     findSharedHeadlessShell(shared) ??
-    findCachedHeadlessShell(ours)
+    trusted(findCachedHeadlessShell(ours))
   );
 }
 
-/** Full Chrome for Testing in Puppeteer's cache (`@puppeteer/browsers install chrome@...`), newest first. */
+/** The browser a render starts: a verified cached build or one the caller or the environment names. */
+function launchableBrowserPath(config?: Partial<Pick<EngineConfig, "chromePath">>): string {
+  const path = resolveHeadlessShellPath(config);
+  if (path) return path;
+  throw new Error(
+    "[BrowserManager] No verified browser to render with. Run `npx hyperframes browser ensure`, " +
+      "or name one in PRODUCER_HEADLESS_SHELL_PATH.",
+  );
+}
+
+/** The full Chrome HDR capture starts: only one the environment names, as no full Chrome build is pinned. */
 export function resolveFullChromePath(): string | undefined {
-  const baseDir = join(homedir(), ".cache", "puppeteer", "chrome");
-  let versions: string[];
-  try {
-    versions = readdirSync(baseDir).sort(compareBrowserVersionsDescending);
-  } catch {
-    return undefined;
-  }
-  for (const version of versions) {
-    const candidates = [
-      join(
-        baseDir,
-        version,
-        "chrome-mac-arm64",
-        "Google Chrome for Testing.app",
-        "Contents",
-        "MacOS",
-        "Google Chrome for Testing",
-      ),
-      join(
-        baseDir,
-        version,
-        "chrome-mac-x64",
-        "Google Chrome for Testing.app",
-        "Contents",
-        "MacOS",
-        "Google Chrome for Testing",
-      ),
-      join(baseDir, version, "chrome-linux64", "chrome"),
-      join(baseDir, version, "chrome-win64", "chrome.exe"),
-    ];
-    for (const binary of candidates) {
-      if (existsSync(binary)) return binary;
-    }
-  }
-  return undefined;
+  const named = browserPathFromEnv();
+  return named && existsSync(named.path) ? named.path : undefined;
 }
 
 // Preserve the producer-era export so re-export shims keep the same public API.
@@ -602,16 +571,15 @@ export function _resetAutoBrowserGpuModeCacheForTests(): void {
 
 async function getPuppeteerOrNull(): Promise<PuppeteerNode | null> {
   try {
-    return await getPuppeteer();
+    return await getPuppeteerCore();
   } catch {
     return null;
   }
 }
 
-function getHardwareGpuProbeArgs(platform: NodeJS.Platform): string[] {
+function getHardwareGpuProbeArgs(platform: NodeJS.Platform, sandbox: boolean): string[] {
   return [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
+    ...chromeSandboxArgs(sandbox),
     "--disable-dev-shm-usage",
     "--enable-webgl",
     "--ignore-gpu-blocklist",
@@ -661,9 +629,12 @@ async function probeWebGlMode(
 ): Promise<GpuProbeOutcome> {
   try {
     const info = await probeHardwareWebGlInfo(ppt, {
-      args: getHardwareGpuProbeArgs(options.platform ?? process.platform),
+      args: getHardwareGpuProbeArgs(
+        options.platform ?? process.platform,
+        options.sandbox ?? chromeSandboxEnabled(),
+      ),
       browserTimeout: options.browserTimeout ?? DEFAULT_CONFIG.browserTimeout,
-      executablePath: options.chromePath ?? resolveHeadlessShellPath({}),
+      executablePath: launchableBrowserPath({ chromePath: options.chromePath }),
       probeLifecycle: options.probeLifecycle,
       env,
     });
@@ -874,7 +845,7 @@ function createBrowserLaunchFingerprint(
     forceScreenshot: DEFAULT_CONFIG.forceScreenshot,
     ...config,
   };
-  const headlessShell = resolveHeadlessShellPath(launchConfig);
+  const headlessShell = launchableBrowserPath(launchConfig);
   // The launch arguments are the authoritative capture-mode contract.
   // A caller can pass `forceScreenshot:false` while a later safety clamp
   // deliberately omits BeginFrame control flags. Inferring solely from the
@@ -897,7 +868,8 @@ function createBrowserLaunchFingerprint(
     requestedCaptureMode,
     publicOnly: resolveRestrictPageNetwork()
       ? {
-          pageServerHost: launchConfig.pageServerUrl && new URL(launchConfig.pageServerUrl).host,
+          pageServerHost:
+            launchConfig.pageServerUrl && pageServerDirectHost(launchConfig.pageServerUrl),
         }
       : undefined,
   };
@@ -949,7 +921,7 @@ async function publicOnlyNetwork(pageServerHost: string | undefined) {
 async function launchBrowser(
   fingerprint: Readonly<BrowserLaunchFingerprint>,
 ): Promise<{ browser: Browser; captureMode: CaptureMode }> {
-  const ppt = await getPuppeteer();
+  const ppt = await getPuppeteerCore();
   const env = launchEnv(fingerprint);
   let captureMode = fingerprint.requestedCaptureMode;
   let browser: Browser | undefined;
@@ -1188,10 +1160,7 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
     ? "software"
     : (config?.browserGpuMode ?? DEFAULT_CONFIG.browserGpuMode);
   const softwareWebGpu = usesSoftwareWebGpu(options.requiresWebGpu, config);
-  // Chrome flags tuned for headless rendering performance. The set below is a
-  // fairly standard "headless-for-capture" configuration — similar profiles
-  // appear in Puppeteer's defaults, Playwright, Remotion, and Chrome's own
-  // headless-shell guidance.
+  // Headless capture flags, a profile close to Puppeteer's defaults, Playwright's and Remotion's.
   const chromeArgs = [
     ...chromeSandboxArgs(options.sandbox),
     "--disable-dev-shm-usage",

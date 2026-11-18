@@ -125,3 +125,52 @@ describe("regenerateIndex", () => {
     expect(ours).toBe(theirs);
   });
 });
+
+describe("generateIndexContent with line breaks and control characters in a row", () => {
+  const BROKEN_ROWS = [
+    { ...IMAGE_ROW, id: "image_009\r\n", description: "first line\nsecond line\r\n  third" },
+    { ...ICON_ROW, path: ".media/images/\nicon.svg", description: "\n" },
+    {
+      ...IMAGE_ROW,
+      id: "image_010",
+      description: "a\u2028b\u2029c\u0085d\u000be\u000cf",
+    },
+    {
+      ...IMAGE_ROW,
+      id: "image_011\u0000",
+      description: "red\u001b[31m\u0007 bell\u007f\u009b\ttab",
+    },
+  ];
+
+  it("keeps each row on one line", () => {
+    const lines = generateIndexContent(BROKEN_ROWS)
+      .trimEnd()
+      .split(/\r\n|[\n\r\v\f\u0085\u2028\u2029]/);
+    // Title, blank line, column heading, then one line per row.
+    expect(lines).toHaveLength(3 + BROKEN_ROWS.length);
+    expect(lines[3]).toContain("first line second line third");
+    expect(lines[5]).toContain("a b c d e f");
+  });
+
+  it("shows other control characters as visible escapes and keeps tabs", () => {
+    const content = generateIndexContent(BROKEN_ROWS);
+    const controls = [...content].filter((ch) => {
+      const code = ch.charCodeAt(0);
+      return (code < 0x20 && code !== 0x09 && code !== 0x0a) || (code >= 0x7f && code <= 0x9f);
+    });
+    expect(controls).toEqual([]);
+    expect(content).toContain("image_011\\x00");
+    expect(content).toContain("red\\x1b[31m\\x07 bell\\x7f\\x9b\ttab");
+  });
+
+  it("matches media-use's index-gen output byte-for-byte", () => {
+    const script = `
+      import { generateIndexContent } from ${JSON.stringify(genUrl)};
+      process.stdout.write(generateIndexContent(${JSON.stringify(BROKEN_ROWS)}));
+    `;
+    const theirs = execFileSync("node", ["--input-type=module", "-e", script], {
+      encoding: "utf8",
+    });
+    expect(generateIndexContent(BROKEN_ROWS)).toBe(theirs);
+  });
+});

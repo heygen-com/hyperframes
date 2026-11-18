@@ -21,7 +21,8 @@ import {
   isCompositionVariable,
   isSafeMediaUrl,
 } from "@hyperframes/parsers/composition";
-import { COMPOSITION_ATTRIBUTES, readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { rawCssUrlMatches } from "@hyperframes/parsers/css-url-scans";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import {
   readAuthoredDurationSeconds,
@@ -37,7 +38,7 @@ import {
 const INSPECTION_VIEWPORT_CAP = 4096;
 
 const MAX_COMPOSITION_LINES = 300;
-const MAX_TIMED_ELEMENTS_PER_TRACK = 3;
+const MAX_TIMED_ELEMENTS_PER_FILE = 3;
 const TRACK_DENSITY_EXEMPT_TAGS = new Set(["audio", "script", "style", "video"]);
 const CAPTION_CUE_TOKEN =
   /^(?:caption(?:[-_](?:group|word|line|block|cue|text))?|subtitle(?:[-_](?:group|line|cue|text))?|cg-.+)$/i;
@@ -132,11 +133,8 @@ function isCompositionRootOrMount(rawTag: string): boolean {
 // rules that consume this — the helper just yields raw URL values.
 function extractCssUrlReferences(css: string): string[] {
   const out: string[] = [];
-  const noComments = replaceBlockComments(css, "");
-  const urlPattern = /\burl\(\s*(["']?)([^)"']+)\1\s*\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = urlPattern.exec(noComments)) !== null) {
-    const raw = (m[2] ?? "").trim();
+  for (const { parts } of rawCssUrlMatches(replaceBlockComments(css, ""))) {
+    const raw = (parts[2] ?? "").trim();
     if (raw) out.push(raw);
   }
   return out;
@@ -1029,35 +1027,28 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   },
 
   // timeline_track_too_dense
-  // fallow-ignore-next-line complexity
+  // Counted per file, so moving clips to other lanes never silences it.
   ({ tags, options }) => {
-    const trackCounts = new Map<string, number>();
-    for (const tag of tags) {
-      if (TRACK_DENSITY_EXEMPT_TAGS.has(tag.name)) continue;
-      if (isCaptionCue(tag)) continue;
-      if (isCompositionRootOrMount(tag.raw)) continue;
-      if (!readAttr(tag.raw, "data-start")) continue;
+    const count = tags.filter(
+      (tag) =>
+        !TRACK_DENSITY_EXEMPT_TAGS.has(tag.name) &&
+        !isCaptionCue(tag) &&
+        !isCompositionRootOrMount(tag.raw) &&
+        readAttr(tag.raw, "data-start"),
+    ).length;
+    if (count <= MAX_TIMED_ELEMENTS_PER_FILE) return [];
 
-      const track = readAttr(tag.raw, COMPOSITION_ATTRIBUTES.trackIndex);
-      if (!track) continue;
-      trackCounts.set(track, (trackCounts.get(track) ?? 0) + 1);
-    }
-
-    const findings: HyperframeLintFinding[] = [];
-    for (const [track, count] of trackCounts) {
-      if (count <= MAX_TIMED_ELEMENTS_PER_TRACK) continue;
-      const splitTarget = options.isSubComposition
-        ? "Move coherent scene groups into smaller .html files"
-        : "Move coherent scene groups into separate .html files under compositions/";
-      findings.push({
+    const splitTarget = options.isSubComposition
+      ? "Move coherent scene groups into smaller .html files"
+      : "Move coherent scene groups into separate .html files under compositions/";
+    return [
+      {
         code: "timeline_track_too_dense",
         severity: "warning",
-        message: `Track ${track} has ${count} timed elements in this HTML file. Smaller sub-compositions keep timelines easier to read, iterate on, and diff.`,
+        message: `This HTML file has ${count} timed elements. Smaller sub-compositions keep timelines easier to read, iterate on, and diff.`,
         fixHint: `${splitTarget} and mount them from the parent with data-composition-src so the timeline stays easier to inspect, revise, and validate.`,
-      });
-    }
-
-    return findings;
+      },
+    ];
   },
 
   // deprecated_data_layer + deprecated_data_end
@@ -1470,11 +1461,11 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
     const timed = tags
       .filter((tag) => tag.index !== rootTag.index && readAttr(tag.raw, "data-start") !== null)
       .map((tag) => {
-        const start = Number(readAttr(tag.raw, "data-start")) || 0;
-        const dur = Number(readAttr(tag.raw, "data-duration"));
-        const end = Number.isFinite(dur) && dur > 0 ? start + dur : Infinity;
-        return { tag, start, end };
-      });
+        const timing = readTagTiming(tag.raw);
+        if (timing.start === null) return null;
+        return { tag, start: timing.start, end: timing.end ?? Infinity };
+      })
+      .filter((row): row is { tag: OpenTag; start: number; end: number } => row !== null);
 
     // `tags` is a flat list (no nesting depth), so a timed element nested
     // *inside* a candidate slot is treated as a tail-covering sibling rather
@@ -1984,15 +1975,15 @@ function deriveDurationFromClips(tags: OpenTag[], rootTag: OpenTag) {
   const clipEnds: Array<number | null> = [];
   for (const tag of tags) {
     if (tag === rootTag) continue;
-    const startRaw = readAttr(tag.raw, "data-start");
-    if (startRaw === null) continue;
-    const start = Number(startRaw);
-    // A reference start ("intro+2") is resolved by the runtime; here it is a clip of unknown end.
-    if (!Number.isFinite(start)) {
+    const getAttr = (name: string) => readAttr(tag.raw, name);
+    if (getAttr("data-start") === null) continue;
+    const timing = readTagTiming(tag.raw);
+    // A reference start is resolved by the runtime; here it is a clip of unknown end.
+    if (timing.start === null) {
       clipEnds.push(null);
       continue;
     }
-    const getAttr = (name: string) => readAttr(tag.raw, name);
+    const start = timing.start;
     const authored = readAuthoredDurationSeconds(getAttr, start);
     if (CLIP_MEDIA_TAGS.has(tag.name)) {
       const { seconds } = resolveMediaDuration({

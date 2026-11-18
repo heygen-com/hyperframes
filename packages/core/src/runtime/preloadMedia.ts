@@ -10,7 +10,7 @@ import {
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { readMediaRenderId } from "./renderFrameSibling";
 import { defersMedia } from "./timedClipHide";
-import { inPlayerFrame } from "../studioPreviewMark";
+import { capturePageIn, inPlayerFrame } from "../studioPreviewMark";
 import { swallow } from "./diagnostics";
 import { isWebKit, mediaElementTime } from "./mediaClock";
 
@@ -216,7 +216,7 @@ export function deferMediaUntilDue(): void {
   if (!defersMedia()) return;
   const defer = (el: Element, startInFilm: (el: Element) => number, parsedEarly = false) => {
     const start = parseStrictFiniteTimingNumber(el.getAttribute("data-start"));
-    if (start == null || !lengthIsAuthored(el)) return;
+    if (start == null || (!lengthIsAuthored(el) && !capturePageIn(document))) return;
     const media = el as HTMLMediaElement;
     const authoredPreload = media.preload;
     const later = startInFilm(el) > 0;

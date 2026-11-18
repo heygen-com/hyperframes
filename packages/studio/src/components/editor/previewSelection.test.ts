@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EDITING_ELEMENT_HANDLE, MAX_ELEMENT_TEXT } from "@hyperframes/core/runtime/editing-port";
 // The frame's real runtime agent, serving the opaque frame from this document.
-import { installEditingAgent } from "../../../../core/src/runtime/editingAgent";
+import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
 import {
   findElementForSelection,
   findElementForTimelineElement,
@@ -13,6 +13,7 @@ import {
   type DomEditSelection,
 } from "./domEditing";
 import { setCompositionSourceMap } from "./domEditingDom";
+import { dropElementCropLift, liftElementCrop, readElementCropInsets } from "./domEditOverlayCrop";
 import { domEditSelectionToFacts } from "./domEditingLayers";
 import {
   findPreviewElementForSelection,
@@ -68,7 +69,7 @@ function opaqueFrame(): HTMLIFrameElement {
         new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
       ),
   } as unknown as Window;
-  const agent = installEditingAgent(parent);
+  const agent = installMarkedEditingAgent(parent);
   frame.postMessage = (data: unknown) =>
     window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
   closers.push(() => agent.dispose());
@@ -477,5 +478,36 @@ describe("useDomSelection on an opaque frame", () => {
     }
     expect(hook().domEditSelection!.id).toBe("scene");
     expect(hook().domEditGroupSelections.map((s) => s.id)).toEqual(["scene"]);
+  });
+});
+
+describe("an opaque frame selection's crop", () => {
+  it("reads the clip-path the frame renders, as a scriptable frame's does", async () => {
+    document.body.innerHTML = FIXTURE;
+    const plain = document.querySelector<HTMLElement>("#plain")!;
+    plain.style.clipPath = "inset(10px 20px 30px 40px)";
+    const { live, remote } = await bothPaths(plain);
+
+    expect(readElementCropInsets(remote!.element)).toEqual(readElementCropInsets(live!.element));
+    expect(readElementCropInsets(remote!.element)).toMatchObject({
+      top: 10,
+      right: 20,
+      bottom: 30,
+      left: 40,
+    });
+  });
+
+  it("shows the element uncropped in the frame while selected, and crops it again after", async () => {
+    document.body.innerHTML = FIXTURE;
+    const plain = document.querySelector<HTMLElement>("#plain")!;
+    plain.style.clipPath = "inset(10px 20px 30px 40px)";
+    const { remote } = await bothPaths(plain);
+    const shown = () => window.getComputedStyle(plain).clipPath;
+
+    liftElementCrop(remote!.element);
+    await vi.waitFor(() => expect(shown()).toBe("none"));
+    expect(readElementCropInsets(remote!.element)).toMatchObject({ top: 10, left: 40 });
+    dropElementCropLift(remote!.element);
+    await vi.waitFor(() => expect(shown()).toBe("inset(10px 20px 30px 40px)"));
   });
 });

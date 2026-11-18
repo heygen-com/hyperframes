@@ -14,6 +14,8 @@ import {
   auditClipDurations,
   extractCompositionErrorsFromLint,
   navigationTimeoutHint,
+  emitFailureReport,
+  printValidationResult,
   projectPathOfUrl,
   raceMediaReady,
   shouldIgnoreRequestFailure,
@@ -402,5 +404,53 @@ describe("projectPathOfUrl", () => {
     expect(projectPathOfUrl("http://127.0.0.1:4000/assets/50%25%20off.png")).toBe(
       "assets/50% off.png",
     );
+  });
+});
+
+describe("validate text report", () => {
+  // fails without the fix: page console messages and contrast findings reached the terminal with raw control bytes.
+  it("prints page messages and contrast findings with control characters as visible escapes", () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const planted = "\u001b]52;c;cGF5\u0007";
+      printValidationResult(
+        {
+          errors: [{ level: "error", text: `boom${planted}`, line: 3 }],
+          warnings: [{ level: "warning", text: `careful${planted}` }],
+          contrast: [
+            {
+              time: 1,
+              selector: `#title${planted}`,
+              text: `Hello${planted}`,
+              ratio: 1.2,
+              wcagAA: false,
+              large: false,
+              fg: "#777",
+              bg: "#888",
+            },
+          ],
+        },
+        false,
+      );
+      const output = log.mock.calls.map((args) => args.join(" ")).join("\n");
+      expect(output.split("\\x1b]52;c;cGF5\\x07").length - 1).toBe(4);
+      expect(output).not.toContain("\u001b");
+      expect(output).not.toContain("\u0007");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("prints a failure message with control characters as visible escapes", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      emitFailureReport("page crashed\u001b]52;c;cGF5\u0007", false);
+      const output = error.mock.calls.map((args) => args.join(" ")).join("\n");
+      expect(output).toContain("page crashed\\x1b]52;c;cGF5\\x07");
+      expect(output).not.toContain("\u001b");
+      expect(output).not.toContain("\u0007");
+    } finally {
+      error.mockRestore();
+    }
   });
 });

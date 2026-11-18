@@ -33,6 +33,7 @@ export interface DownloadOptions {
   signal?: AbortSignal;
   /** Checks the finished file before it replaces `dest`; a throw discards it. */
   verify?: (path: string) => Promise<void>;
+  keepExisting?: (path: string) => Promise<boolean>;
 }
 
 /** Every redirect a host may reasonably answer with, not just the two we saw first. */
@@ -425,6 +426,18 @@ async function downloadToPart(url: string, dest: string, options: DownloadOption
   await publishPart(part, dest, options);
 }
 
+async function keepsDest(
+  dest: string,
+  waited: boolean,
+  options: DownloadOptions,
+): Promise<boolean> {
+  if (!existsSync(dest)) return false;
+  if (!options.keepExisting) return waited;
+  if (await options.keepExisting(dest)) return true;
+  removePartialFile(dest);
+  return false;
+}
+
 /**
  * Some networks drop every connection at the same byte, so a retry resumes from the partial file.
  * The partial file and its validator survive a stopped run, so the next run resumes it too.
@@ -437,7 +450,7 @@ export async function downloadFile(
   const lock = `${dest}.lock`;
   const { owner, waited } = await acquireLock(lock, options.signal);
   try {
-    if (!(waited && existsSync(dest))) await downloadToPart(url, dest, options);
+    if (!(await keepsDest(dest, waited, options))) await downloadToPart(url, dest, options);
   } finally {
     heldLocks.delete(owner);
     if (readLock(lock) === owner) removePartialFile(lock);

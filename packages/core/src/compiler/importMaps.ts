@@ -1,3 +1,5 @@
+import { terminalText } from "../terminalText";
+
 type SpecifierMap = Record<string, string | null>;
 
 /** The subset of an import map a composition can declare. */
@@ -65,7 +67,9 @@ function mergeEntries(into: SpecifierMap, from: SpecifierMap | undefined, where:
       });
     } else if (into[specifier] !== url) {
       console.warn(
-        `[HyperFrames] import map conflict for "${specifier}"${where}: keeping ${into[specifier]}, ignoring ${url}.`,
+        terminalText(
+          `[HyperFrames] import map conflict for "${specifier}"${where}: keeping ${into[specifier]}, ignoring ${url}.`,
+        ),
       );
     }
   }

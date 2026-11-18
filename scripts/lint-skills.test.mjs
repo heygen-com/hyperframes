@@ -11,7 +11,14 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { headingSlugs, lintDocRefs, lintFrontmatter, lintRegistryItemRefs } from "./lint-skills.ts";
+import {
+  headingSlugs,
+  lintDocRefs,
+  lintFrontmatter,
+  lintRegistryItemRefs,
+  lintRelativeScriptRuns,
+  lintVersionedCliRuns,
+} from "./lint-skills.ts";
 
 const wrap = (frontmatter) => `---\n${frontmatter}\n---\n\n# body\n`;
 
@@ -336,4 +343,74 @@ test("heading slugs: GitHub-style lowercasing, punctuation strip, dedupe", () =>
     "# Hello, World!\n## `code` & Stuff\n## Hello, World!\n```\n# not a heading\n```\n",
   );
   assert.deepEqual([...slugs], ["hello-world", "code--stuff", "hello-world-1"]);
+});
+
+// ---------------------------------------------------------------------------
+// Helper scripts run by a working-directory-relative path
+// ---------------------------------------------------------------------------
+
+const fenced = (body) => "# Doc\n\n```bash\n" + body + "\n```\n";
+
+test("relative scripts: a cwd-relative helper path in a code block is flagged", () => {
+  const violations = lintRelativeScriptRuns(
+    fenced("node skills/media-use/audio/scripts/heygen-tts.mjs a.txt -o a.wav"),
+  );
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].line, 4);
+  assert.match(violations[0].message, /skills\/media-use\/audio\/scripts\/heygen-tts\.mjs/);
+});
+
+test("relative scripts: other interpreters, bare names and ./ paths are flagged", () => {
+  for (const body of [
+    "python3 scripts/lint_source.py ./src",
+    "bash ./scripts/run.sh",
+    "npx tsx scripts/generate.ts",
+    "cd out && node locate.mjs overlay",
+  ]) {
+    assert.equal(lintRelativeScriptRuns(fenced(body)).length, 1, body);
+  }
+});
+
+test("relative scripts: an inline code span in prose is checked too", () => {
+  const violations = lintRelativeScriptRuns("Run `python3 tools/voice.py --silent` first.\n");
+  assert.equal(violations.length, 1);
+  assert.equal(violations[0].line, 1);
+});
+
+test("relative scripts: skill-anchored, variable and absolute paths pass", () => {
+  for (const body of [
+    "node <SKILL_DIR>/audio/scripts/heygen-tts.mjs a.txt",
+    'node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" list',
+    'node "$SKILL_DIR/scripts/x.mjs"',
+    "node /opt/tools/x.mjs",
+    "node ~/tools/x.mjs",
+    "node -e 'console.log(1)'",
+    "npx hyperframes render",
+  ]) {
+    assert.deepEqual(lintRelativeScriptRuns(fenced(body)), [], body);
+  }
+});
+
+test("relative scripts: a script named in prose without an interpreter is not flagged", () => {
+  assert.deepEqual(lintRelativeScriptRuns("`scripts/locate.mjs` narrows it with a grid.\n"), []);
+});
+
+test("relative scripts: a marker with a reason opts the doc out", () => {
+  const body = fenced("npx tsx scripts/generate.ts");
+  const marked = "<!-- skill-scripts: relative-ok, runs inside a HyperFrames checkout -->\n" + body;
+  assert.deepEqual(lintRelativeScriptRuns(marked), []);
+  const noReason = "<!-- skill-scripts: relative-ok -->\n" + body;
+  assert.equal(lintRelativeScriptRuns(noReason).length, 1);
+});
+
+test("versioned CLI examples use the installed launcher", () => {
+  for (const prefix of ["npx", "npx -y", "npx --yes", "npm exec --", "bunx"]) {
+    assert.equal(lintVersionedCliRuns(`Run \`${prefix} hyperframes@latest --version\`.`).length, 1);
+  }
+  assert.deepEqual(
+    lintVersionedCliRuns(
+      'Run `node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version latest --version`.',
+    ),
+    [],
+  );
 });

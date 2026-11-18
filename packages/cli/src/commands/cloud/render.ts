@@ -63,8 +63,19 @@ import {
   validateVariablesAgainstProject,
 } from "../../utils/variables.js";
 import { withMeta } from "../../utils/updateCheck.js";
-import type { LeftOutReference, OnLeftOut } from "../../utils/leftOutReference.js";
+import {
+  type LeftOutReference,
+  type OnLeftOut,
+  type OnOutsideFile,
+  type OutsideFileReference,
+  outsideFilesNotice,
+} from "../../utils/leftOutReference.js";
 import { trackUploadLeftOut } from "../../telemetry/uploadLeftOut.js";
+import { isUnattended } from "../../utils/attendedTerminal.js";
+import {
+  confirmOutsideFiles,
+  stageWithOutsideFileApproval,
+} from "../../utils/outsideFileApproval.js";
 import type { Example } from "../_examples.js";
 
 import {
@@ -109,6 +120,7 @@ const VALID_RESOLUTION = ["1080p", "4k"] as const;
 const VALID_ASPECT_RATIO = ["16:9", "9:16", "1:1"] as const;
 // Mirrors the binary-byte max_bytes contract used by direct asset uploads.
 const DIRECT_UPLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
+const ZIP_BUDGET_BYTES_WITH_ROOM_FOR_ZIP_RECORDS = Math.floor(DIRECT_UPLOAD_LIMIT_BYTES * 0.95);
 const ARCHIVE_DIAGNOSTIC_THRESHOLD_BYTES = 150 * 1024 * 1024;
 const LARGEST_FILE_COUNT = 10;
 
@@ -203,7 +215,7 @@ export default defineCommand({
     wait: {
       type: "boolean",
       description:
-        "Poll until completion and download the video (default: true). Pass `--no-wait` for fire-and-forget — submits and exits with the render_id.",
+        "Poll until completion and download the video. Pass `--no-wait` for fire-and-forget — submits and exits with the render_id.",
       default: true,
     },
     output: {
@@ -227,6 +239,12 @@ export default defineCommand({
     "dry-run": {
       type: "boolean",
       description: "Build and inspect the project zip without authenticating or uploading",
+      default: false,
+    },
+    "include-outside-files": {
+      type: "boolean",
+      description:
+        "Upload the files the project uses from outside its folder without asking. Otherwise they are left out unless you approve them.",
       default: false,
     },
     "idempotency-key": {
@@ -278,9 +296,13 @@ export default defineCommand({
       resolution,
     );
 
+    const includeOutsideFiles = args["include-outside-files"] === true;
     if (args["dry-run"]) {
       if (project.kind !== "dir") throw new Error("Dry-run project must be a local directory");
-      reportDryRun(await prepareLocalArchive(project, args.composition, asJson), asJson);
+      reportDryRun(
+        await prepareLocalArchive(project, args.composition, asJson, includeOutsideFiles),
+        asJson,
+      );
       return;
     }
 
@@ -299,6 +321,7 @@ export default defineCommand({
             project,
             args.composition,
             asJson,
+            includeOutsideFiles,
             (file) =>
               uploadAssetViaDirectUpload({
                 client,
@@ -341,6 +364,7 @@ export default defineCommand({
               render: { render_id: renderId, status: "queued" as const },
               swapped_fonts: preparedArchive?.swappedFonts ?? [],
               left_out: preparedArchive?.leftOut ?? [],
+              outside_files: preparedArchive?.outsideFiles ?? [],
             }),
             null,
             2,
@@ -388,6 +412,7 @@ export default defineCommand({
             bytes_written: downloadResult.bytes,
             swapped_fonts: preparedArchive?.swappedFonts ?? [],
             left_out: preparedArchive?.leftOut ?? [],
+            outside_files: preparedArchive?.outsideFiles ?? [],
           }),
           null,
           2,
@@ -669,6 +694,7 @@ interface PreparedLocalArchive {
   offloaded: OffloadedMedia[];
   swappedFonts: string[];
   leftOut: LeftOutReference[];
+  outsideFiles: OutsideFileReference[];
 }
 
 function summarizeLargestFiles(fileMap: Map<string, StagedFile>): ArchiveFileSummary[] {
@@ -682,6 +708,7 @@ async function prepareLocalArchive(
   source: ProjectInputSource,
   composition: string | undefined,
   asJson: boolean,
+  includeOutsideFiles: boolean,
   upload?: OffloadOptions["upload"],
   variablesText?: string,
 ): Promise<PreparedLocalArchive> {
@@ -690,13 +717,11 @@ async function prepareLocalArchive(
     console.log("");
     console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
   }
-  const leftOut: LeftOutReference[] = [];
-  const { fileMap, entryPath } = stageProjectFiles(
-    project,
-    composition,
-    warnAndListLeftOut(leftOut, asJson),
-  );
-  trackUploadLeftOut("cloud_render", leftOut, !upload);
+  const { fileMap, entryPath, leftOut, outsideFiles } = await stageAndReport(project, composition, {
+    asJson,
+    dryRun: !upload,
+    includeOutsideFiles,
+  });
   const swappedFonts = await embedSystemFonts({
     dir: project.dir,
     entryFile: composition,
@@ -706,15 +731,7 @@ async function prepareLocalArchive(
   if (swappedFonts.length > 0 && !asJson) console.log(c.dim(describeSwappedFonts(swappedFonts)));
   const offloaded = await offloadMedia(project, fileMap, entryPath, asJson, upload, variablesText);
 
-  // Media left on disk barely compresses: past the limit, its size is the report and nothing is read.
-  const onDiskBytes = [...fileMap.values()]
-    .filter((file) => !Buffer.isBuffer(file))
-    .reduce((sum, file) => sum + stagedSize(file), 0);
-  const archive =
-    onDiskBytes > DIRECT_UPLOAD_LIMIT_BYTES
-      ? undefined
-      : zipPublishFileMap(new Map([...fileMap].map(([path, file]) => [path, readStaged(file)])));
-  const sizeBytes = archive?.buffer.byteLength ?? onDiskBytes;
+  const { archive, sizeBytes } = zipWithinUploadLimit(fileMap);
   if (!asJson) {
     console.log(c.dim(`   ${fileMap.size} files · ${formatBytes(sizeBytes)}`));
   }
@@ -728,6 +745,7 @@ async function prepareLocalArchive(
     offloaded,
     swappedFonts,
     leftOut,
+    outsideFiles,
   };
   if (upload) assertArchiveFits(sizeBytes, largestFiles);
   if (!asJson && sizeBytes >= ARCHIVE_DIAGNOSTIC_THRESHOLD_BYTES) {
@@ -736,27 +754,79 @@ async function prepareLocalArchive(
   return prepared;
 }
 
-function warnAndListLeftOut(leftOut: LeftOutReference[], asJson: boolean): OnLeftOut {
-  return (warning, reference) => {
-    leftOut.push(reference);
-    if (!asJson) return console.log(c.warn(`   ${warning}`));
-    console.error(c.warn(`   ${warning}`));
-    console.error(JSON.stringify({ event: "left_out", ...reference }));
-  };
+// Media left on disk barely compresses: past the limit, its size is the report and nothing is read.
+function zipWithinUploadLimit(fileMap: Map<string, StagedFile>) {
+  const onDiskBytes = [...fileMap.values()]
+    .filter((file) => !Buffer.isBuffer(file))
+    .reduce((sum, file) => sum + stagedSize(file), 0);
+  const archive =
+    onDiskBytes > DIRECT_UPLOAD_LIMIT_BYTES
+      ? undefined
+      : zipPublishFileMap(new Map([...fileMap].map(([path, file]) => [path, readStaged(file)])));
+  return { archive, sizeBytes: archive?.buffer.byteLength ?? onDiskBytes };
 }
+
+function reportLeftOut(warning: string, reference: LeftOutReference, asJson: boolean): void {
+  if (!asJson) return console.log(c.warn(`   ${warning}`));
+  console.error(c.warn(`   ${warning}`));
+  console.error(JSON.stringify({ event: "left_out", ...reference }));
+}
+
+/** Asks about unapproved outside files only on a real upload a person watches; otherwise they stay out. */
+async function stageAndReport(
+  project: ProjectDir,
+  composition: string | undefined,
+  options: { asJson: boolean; dryRun: boolean; includeOutsideFiles: boolean },
+) {
+  const { asJson, dryRun } = options;
+  const { staged, outsideFiles } = await stageWithOutsideFileApproval(
+    project.dir,
+    {
+      includeAll: options.includeOutsideFiles,
+      ask: asJson || dryRun || isUnattended() ? undefined : confirmOutsideFiles,
+    },
+    (onOutsideFile) => {
+      const warnings: { warning: string; reference: LeftOutReference }[] = [];
+      const onLeftOut: OnLeftOut = (warning, reference) => warnings.push({ warning, reference });
+      return { ...stageProjectFiles(project, composition, onLeftOut, onOutsideFile), warnings };
+    },
+  );
+  for (const { warning, reference } of staged.warnings) reportLeftOut(warning, reference, asJson);
+  const leftOut = staged.warnings.map(({ reference }) => reference);
+  trackUploadLeftOut("cloud_render", leftOut, dryRun);
+  listOutsideFiles(outsideFiles, asJson);
+  return { fileMap: staged.fileMap, entryPath: staged.entryPath, leftOut, outsideFiles };
+}
+
+function listOutsideFiles(outsideFiles: OutsideFileReference[], asJson: boolean): void {
+  if (outsideFiles.length === 0) return;
+  if (!asJson) return console.log(c.dim(indentLines(outsideFilesNotice(outsideFiles))));
+  for (const reference of outsideFiles) {
+    console.error(JSON.stringify({ event: "outside_file", ...reference }));
+  }
+}
+
+const indentLines = (text: string) => text.replace(/^/gm, "   ");
 
 function stageProjectFiles(
   project: ProjectDir,
   composition: string | undefined,
   onLeftOut: OnLeftOut,
+  onOutsideFile: OnOutsideFile,
 ): { fileMap: Map<string, StagedFile>; entryPath: string } {
   try {
-    const fileMap = stagePublishFiles(project.dir, OFFLOAD_MIN_BYTES, onLeftOut);
     const entryPath = archiveKey(
       relative(project.dir, resolvePath(project.dir, composition ?? "index.html")).replaceAll(
         "\\",
         "/",
       ),
+    );
+    const fileMap = stagePublishFiles(
+      project.dir,
+      OFFLOAD_MIN_BYTES,
+      onLeftOut,
+      onOutsideFile,
+      entryPath,
     );
     if (!fileMap.has(entryPath)) {
       throw new Error(
@@ -786,8 +856,10 @@ async function offloadMedia(
       upload,
       entryPath,
       variablesText,
+      zipBudgetBytes: ZIP_BUDGET_BYTES_WITH_ROOM_FOR_ZIP_RECORDS,
       onFile: (item) =>
         (asJson ? console.error : console.log)(c.dim(`   ${describeOffload(item, !upload)}`)),
+      onReencodeProgress: asJson ? reencodeProgressLines() : undefined,
     });
   } catch (err) {
     reportApiError("Media upload failed", err);
@@ -827,6 +899,32 @@ export function assertArchiveFits(sizeBytes: number, largestFiles: ArchiveFileSu
     "Exclude files the render does not need with .hyperframesignore.",
   );
   failCommand();
+}
+
+/** Under --json, a line on stderr per whole percent a re-encode makes (per second when its length is unknown),
+ * so a caller can tell a long encode from a dead one. */
+export function reencodeProgressLines(
+  now: () => number = Date.now,
+): NonNullable<OffloadOptions["onReencodeProgress"]> {
+  let last = { path: "", percent: -1, at: 0 };
+  return ({ path, doneSeconds, totalSeconds }) => {
+    const percent = totalSeconds
+      ? Math.min(100, Math.floor((doneSeconds / totalSeconds) * 100))
+      : null;
+    const at = now();
+    const same = path === last.path;
+    if (same && (percent === null ? at - last.at < 1000 : percent === last.percent)) return;
+    last = { path, percent: percent ?? -1, at };
+    console.error(
+      JSON.stringify({
+        event: "reencode_progress",
+        file: path,
+        percent,
+        done_seconds: Math.round(doneSeconds * 10) / 10,
+        total_seconds: totalSeconds === null ? null : Math.round(totalSeconds * 10) / 10,
+      }),
+    );
+  };
 }
 
 /** A line per PUT progress event: JSON on stderr under --json, so a caller can tell a slow upload from a dead one. */
@@ -894,6 +992,7 @@ function reportDryRun(prepared: PreparedLocalArchive, asJson: boolean): void {
             offloaded_media: prepared.offloaded,
             swapped_fonts: prepared.swappedFonts,
             left_out: prepared.leftOut,
+            outside_files: prepared.outsideFiles,
           },
         }),
         null,

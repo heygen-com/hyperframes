@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { dirname } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { ltxVideoGenerate } from "./ltx-video-provider.mjs";
 
 const fittingSpecs = { availableRamMB: 20000, gpu: { present: true } };
@@ -89,8 +90,8 @@ test("successful generation returns the generated MP4 result", async () => {
 
   assert.ok(result);
   assert.equal(calls.length, 2);
-  assert.equal(dirname(result.localPath), tmpdir());
-  assert.match(result.localPath, /media-use-ltx-\d+-\d+\.mp4$/);
+  assert.equal(dirname(dirname(result.localPath)), tmpdir());
+  assert.match(result.localPath, /media-use-ltx-[^/\\]+[/\\]output\.mp4$/);
   assert.deepEqual(result, {
     localPath: result.localPath,
     ext: ".mp4",
@@ -101,6 +102,21 @@ test("successful generation returns the generated MP4 result", async () => {
       provenance: { prompt: intent },
     },
   });
+});
+
+// fails without the fix: the runner started in the project, and it reads a model id such as
+// dgrauet/ltx-2.3-mlx-q4 as a folder when the working directory has one.
+test("the runner starts in the home folder, so a project folder named like the model is never read", async () => {
+  const calls = [];
+  await ltxVideoGenerate(
+    "waves",
+    { specs: fittingSpecs },
+    (...call) => calls.push(call),
+    () => true,
+  );
+  const [, argv, opts] = calls[1];
+  assert.match(argv.join(" "), /--model dgrauet\//);
+  assert.equal(opts.cwd, homedir());
 });
 
 test("generate failure returns null instead of throwing", async (t) => {
@@ -278,6 +294,7 @@ test("every tier failing discards every partial, one per attempt", async (t) => 
   assert.equal(result, null);
   assert.equal(attempted.length, 2, "both tiers attempted");
   assert.deepEqual(unlinked, attempted, "nothing is left behind on the all-fail path");
+  for (const path of attempted) assert.equal(existsSync(dirname(path)), false, path);
 });
 
 test("a successful generation is never discarded", async () => {

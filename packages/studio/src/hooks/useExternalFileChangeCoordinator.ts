@@ -248,7 +248,7 @@ export function useExternalFileChangeCoordinator({
     return () => {
       cancelled = true;
     };
-  }, [loadConflictSnapshot, projectId, recoveryFilePath, setBlocked]);
+  }, [loadConflictSnapshot, projectId, activeCompPath, recoveryFilePath, setBlocked]);
 
   // What a settled change owes: thumbnails (unless its own write's echo brings them), then reloads.
   const deliverOwed = useCallback(

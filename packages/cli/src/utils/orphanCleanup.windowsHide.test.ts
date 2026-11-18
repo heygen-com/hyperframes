@@ -16,10 +16,10 @@ describe("Windows orphan-cleanup child-process options", () => {
     Object.defineProperty(process, "platform", { value: "win32", configurable: true });
     execFileSyncMock.mockImplementation((command: string, args: string[]) => {
       if (command === "taskkill") return Buffer.alloc(0);
-      const script = args.at(-1) ?? "";
-      if (script.includes("CreationDate")) return "123456\n";
-      if (script.includes("ProcessId = 400")) return "300\n";
-      if (script.includes("ProcessId = 300")) return "200\n";
+      const [read, pid] = args.slice(-2);
+      if (read === "identity") return "123456\n";
+      if (read === "parent" && pid === "400") return "300\n";
+      if (read === "parent" && pid === "300") return "200\n";
       return "1\n";
     });
   });
@@ -41,8 +41,7 @@ describe("Windows orphan-cleanup child-process options", () => {
 
   it("captures the complete Windows ancestor chain with one hidden PowerShell lookup", () => {
     execFileSyncMock.mockImplementation((_command: string, args: string[]) => {
-      const script = args.at(-1) ?? "";
-      if (script.includes("Get-CimInstance Win32_Process |")) {
+      if (args.includes("table")) {
         return "400 300 444\n300 200 333\n200 1 222\n";
       }
       return "";

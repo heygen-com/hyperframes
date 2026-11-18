@@ -67,6 +67,16 @@ describe("capture browser transport lifecycle", () => {
     await session.close();
   });
 
+  // fails without the fix: a local page server on its scheme's default port gave a bypass entry with no port, which
+  // Chrome takes as every port on that host.
+  it("names a local page server's default port in its bypass entry", async () => {
+    const session = await launchCaptureBrowser({ ...options, localOrigin: "http://localhost" });
+    expect(mocks.launch.mock.calls[0]?.[1].args).toContain(
+      "--proxy-bypass-list=<-loopback>;localhost:80",
+    );
+    await session.close();
+  });
+
   // A profile directory the OS refuses to empty stands in for Windows' locked Chrome lockfile.
   it.runIf(process.platform !== "win32" && process.getuid?.() !== 0)(
     "finishes a close whose profile directory cannot be removed, with a warning",

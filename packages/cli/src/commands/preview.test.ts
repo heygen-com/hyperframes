@@ -28,6 +28,7 @@ import {
   previewLaunchMode,
   previewLaunchModeError,
   previewPortError,
+  stopBackgroundCommand,
   publicPreviewPid,
   previewViteArgs,
   reportPreviewShutdown,
@@ -152,6 +153,7 @@ describe("preview --status reporting", () => {
           projectDir: "/tmp/preview-unverified",
           projectName: "scanned-project",
           version: "test",
+          proven: true,
         },
       ],
       listManaged: async () => [{ pid: null, port: 32600, projectDir: "/tmp/preview-unverified" }],
@@ -852,5 +854,25 @@ describe("preview inside a host app's agent run", () => {
     const payload = JSON.parse(printed);
     expect(payload).toMatchObject({ ok: false, error: { code: "host-app-owns-preview" } });
     expect(killOrphanedProcesses).not.toHaveBeenCalled();
+  });
+});
+
+describe("stopBackgroundCommand", () => {
+  it("spells the project folder so pasting the stop line runs nothing else", () => {
+    expect(stopBackgroundCommand("/work/my film", "darwin")).toBe(
+      'hyperframes preview "/work/my film" --stop',
+    );
+    expect(stopBackgroundCommand("/work/$(touch x)", "darwin")).toBe(
+      "hyperframes preview '/work/$(touch x)' --stop",
+    );
+    expect(stopBackgroundCommand("C:\\Users\\Bob\\film", "win32")).toBe(
+      'hyperframes preview "C:\\Users\\Bob\\film" --stop',
+    );
+    expect(stopBackgroundCommand("C:\\work\\$(calc)", "win32")).toBe(
+      "hyperframes preview --stop from the project folder",
+    );
+    expect(stopBackgroundCommand("C:\\work\\$(calc)&calc", "win32")).toBe(
+      "hyperframes preview --stop from the project folder",
+    );
   });
 });

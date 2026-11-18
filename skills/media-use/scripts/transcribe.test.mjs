@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -17,6 +18,65 @@ import { fileURLToPath } from "node:url";
 // The stub stands in for the `hyperframes` CLI the caller hands over in HYPERFRAMES_CLI_ENTRY,
 // run as `transcribe <in> --dir <dir> ...`: it records its args, writes the CLI's flat array and
 // prints the CLI's --json line naming `cliEngine`.
+// fails without the fix: parakeet-mlx started in the project, and it reads the default model id
+// mlx-community/parakeet-tdt-0.6b-v3 as a folder when the working directory has one.
+test(
+  "parakeet-mlx starts in the home folder; a ./ model path still means the caller's folder",
+  { skip: process.platform === "win32" ? "the stand-in runner is an sh script" : false },
+  () => {
+    const root = mkdtempSync(join(tmpdir(), "media-use-parakeet-cwd-"));
+    try {
+      const home = join(root, "home");
+      const project = join(root, "project");
+      mkdirSync(home);
+      mkdirSync(join(project, "mlx-community", "parakeet-tdt-0.6b-v3"), { recursive: true });
+      const runner = join(root, "parakeet-mlx");
+      const record = join(root, "record");
+      writeFileSync(
+        runner,
+        `#!/bin/sh\nprintf '%s\\n' "$PWD" "$3" > "${record}"\n` +
+          `printf '{"text":"a","sentences":[]}' > "$7/in.json"\n`,
+      );
+      chmodSync(runner, 0o755);
+      writeFileSync(join(project, "in.wav"), "");
+      const script = fileURLToPath(new URL("./transcribe.mjs", import.meta.url));
+      const run = (extra = [], parakeet = runner) => {
+        execFileSync(
+          process.execPath,
+          [script, "--input", "in.wav", "--engine", "parakeet", ...extra],
+          {
+            cwd: project,
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              HOME: home,
+              HYPERFRAMES_PARAKEET: parakeet,
+              HYPERFRAMES_MEDIA_HOME: join(root, "media"),
+              HYPERFRAMES_NO_TELEMETRY: "1",
+            },
+          },
+        );
+        return readFileSync(record, "utf8").trimEnd().split("\n");
+      };
+      assert.deepEqual(run(), [realpathSync(home), "mlx-community/parakeet-tdt-0.6b-v3"]);
+      assert.deepEqual(run(["--model", "./models/mine"]), [
+        realpathSync(home),
+        join(realpathSync(project), "models", "mine"),
+      ]);
+      // A runner override written relative to the project still names the project's copy.
+      writeFileSync(join(project, "parakeet-mlx"), readFileSync(runner));
+      chmodSync(join(project, "parakeet-mlx"), 0o755);
+      rmSync(runner);
+      assert.deepEqual(run([], "./parakeet-mlx"), [
+        realpathSync(home),
+        "mlx-community/parakeet-tdt-0.6b-v3",
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
 function runScript(engine, cliEngine) {
   const root = mkdtempSync(join(tmpdir(), "media-use-transcribe-"));
   try {

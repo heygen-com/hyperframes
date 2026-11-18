@@ -7,7 +7,8 @@
  * point at custom registries or reshape their project layout.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { join, resolve } from "node:path";
 import { DEFAULT_REGISTRY_URL } from "../registry/index.js";
 import { normalizeSkillSlug } from "../telemetry/skill.js";
@@ -200,8 +201,7 @@ export function writeProjectConfig(
   projectDir: string,
   config: ProjectConfig = DEFAULT_PROJECT_CONFIG,
 ): void {
-  const path = projectConfigPath(projectDir);
-  writeFileSync(path, JSON.stringify(config, null, 2) + "\n", "utf-8");
+  replaceFileAtomically(projectConfigPath(projectDir), JSON.stringify(config, null, 2) + "\n");
 }
 
 /** Create `hyperframes.json` without replacing an existing file or following a symlink. */
@@ -244,10 +244,13 @@ function isJsonObject(value: unknown): value is Record<string, unknown> {
 /** Write a patched config back with the file's own indentation and byte order mark. */
 function rewriteConfig(path: string, text: string, parsed: Record<string, unknown>): void {
   const indent = /\n([ \t]+)"/.exec(text)?.[1] ?? "  ";
-  writeFileSync(
+  const stats = lstatSync(path);
+  if (!stats.isFile())
+    throw new Error(`${path} is a link or not a plain file, so it is left alone`);
+  replaceFileAtomically(
     path,
     (text.startsWith("\uFEFF") ? "\uFEFF" : "") + JSON.stringify(parsed, null, indent) + "\n",
-    "utf-8",
+    stats.mode & 0o777,
   );
 }
 

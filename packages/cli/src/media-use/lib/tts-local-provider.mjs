@@ -1,8 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { ffprobeBinary } from "./ff-binaries.mjs";
+import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
 import { resolveSpawnCommand } from "../../audio/scripts/lib/tts.mjs";
 
 // Local voiceover via the packaged Kokoro-82M TTS (the `hyperframes tts` CLI),
@@ -41,7 +40,7 @@ export async function localTtsGenerate(
   pathExists = existsSync,
 ) {
   const ffprobe = ffprobeBinary();
-  const outPath = join(tmpdir(), `media-use-kokoro-${process.pid}-${Date.now()}.wav`);
+  const outPath = privateOutputPath("kokoro", ".wav");
   const argv = ["hyperframes", "tts", intent, "--output", outPath];
   if (ctx?.voice) argv.push("--voice", ctx.voice);
   if (ctx?.lang && ctx.lang !== "en") argv.push("--lang", ctx.lang);
@@ -59,6 +58,7 @@ export async function localTtsGenerate(
     );
   } catch (err) {
     console.error(`media-use: local voice not enabled (kokoro). ${err.message}`);
+    discardPrivateOutput(outPath);
     return null;
   }
   if (!resolved) {
@@ -68,6 +68,7 @@ export async function localTtsGenerate(
       "media-use: local voice not enabled (kokoro). Cannot run npx on Windows: " +
         "npm's npx-cli.js was not found (install npm with Node, or run via npx/npm run so npm_execpath is set).",
     );
+    discardPrivateOutput(outPath);
     return null;
   }
   try {
@@ -82,9 +83,13 @@ export async function localTtsGenerate(
       ? "install for free on-device voice: pip install kokoro-onnx soundfile (or set HYPERFRAMES_PYTHON to a venv that has it)"
       : out.slice(-200) || err.message;
     console.error(`media-use: local voice not enabled (kokoro). ${hint}`);
+    discardPrivateOutput(outPath);
     return null;
   }
-  if (!existsSync(outPath) || statSync(outPath).size === 0) return null;
+  if (!existsSync(outPath) || statSync(outPath).size === 0) {
+    discardPrivateOutput(outPath);
+    return null;
+  }
   return {
     localPath: outPath,
     ext: ".wav",
