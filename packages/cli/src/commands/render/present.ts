@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
-import { fpsToFfmpegArg } from "@hyperframes/core";
+import { fpsToFfmpegArg, terminalText } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import type { RenderPlan } from "./plan.js";
 
@@ -34,7 +34,10 @@ function presentRenderSummary(plan: RenderPlan): void {
   const nameLabel = plan.entryFile ? `${plan.project.name}/${plan.entryFile}` : plan.project.name;
   console.log("");
   console.log(
-    c.accent("\u25C6") + "  Rendering " + c.accent(nameLabel) + c.dim(" \u2192 " + plan.outputPath),
+    c.accent("\u25C6") +
+      "  Rendering " +
+      c.accent(terminalText(nameLabel)) +
+      c.dim(" \u2192 " + terminalText(plan.outputPath)),
   );
   console.log(
     c.dim(`   ${fpsToFfmpegArg(plan.fps)}fps \u00B7 ${qualityLabel(plan)} \u00B7 ${workerLabel}`),

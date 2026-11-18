@@ -40,6 +40,8 @@ import {
   CANVAS_DIMENSIONS,
   checkOutputResolutionCompatibility,
   type CanvasResolution,
+  terminalLines,
+  terminalText,
 } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { errorBox, formatBytes, formatDuration } from "../../ui/format.js";
@@ -715,7 +717,7 @@ async function prepareLocalArchive(
   const project = resolveProject(source.dir);
   if (!asJson) {
     console.log("");
-    console.log(`${c.accent("◆")}  Zipping ${c.accent(project.name)}`);
+    console.log(`${c.accent("◆")}  Zipping ${c.accent(terminalText(project.name))}`);
   }
   const { fileMap, entryPath, leftOut, outsideFiles } = await stageAndReport(project, composition, {
     asJson,
@@ -767,8 +769,8 @@ function zipWithinUploadLimit(fileMap: Map<string, StagedFile>) {
 }
 
 function reportLeftOut(warning: string, reference: LeftOutReference, asJson: boolean): void {
-  if (!asJson) return console.log(c.warn(`   ${warning}`));
-  console.error(c.warn(`   ${warning}`));
+  if (!asJson) return console.log(c.warn(`   ${terminalLines(warning)}`));
+  console.error(c.warn(`   ${terminalLines(warning)}`));
   console.error(JSON.stringify({ event: "left_out", ...reference }));
 }
 
@@ -947,7 +949,7 @@ function reportUploadProgress(name: string, asJson: boolean): (event: UploadProg
       const retry = attempt > 1 ? ` (try ${attempt}, from the first byte)` : "";
       console.log(
         c.dim(
-          `   ${name}: ${percent}% · ${formatBytes(sentBytes)} of ${formatBytes(totalBytes ?? 0)}${retry}`,
+          `   ${terminalText(name)}: ${percent}% · ${formatBytes(sentBytes)} of ${formatBytes(totalBytes ?? 0)}${retry}`,
         ),
       );
     }

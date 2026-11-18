@@ -4,6 +4,7 @@ import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { c } from "../ui/colors.js";
+import { terminalText } from "@hyperframes/core";
 import { errorBox } from "../ui/format.js";
 import { normalizeErrorMessage as errorMessage } from "../utils/errorMessage.js";
 import type { ReferenceBackground, ReferenceBackgroundResult } from "@hyperframes/producer";
@@ -365,7 +366,7 @@ async function renderBatchRow(
   manifestRow.startedAt = new Date().toISOString();
   writeManifest(manifest);
   if (!options.quiet && !options.json) {
-    console.log(c.dim(`Batch row ${row.index}: ${row.outputPath}`));
+    console.log(c.dim(terminalText(`Batch row ${row.index}: ${row.outputPath}`)));
   }
 
   try {
@@ -465,7 +466,7 @@ export async function runBatchRender(options: RunBatchRenderOptions): Promise<Ba
           )
         : c.success(`Batch complete: ${manifest.completed} completed.`),
     );
-    console.log(c.dim(`Manifest: ${manifest.manifestPath}`));
+    console.log(c.dim(terminalText(`Manifest: ${manifest.manifestPath}`)));
   }
 
   return manifest;

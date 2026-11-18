@@ -197,14 +197,16 @@ export default defineCommand({
     }
 
     if (compositions.length === 0) {
-      console.log(`${c.success("◇")}  ${c.accent(project.name)} — no compositions found`);
+      console.log(
+        `${c.success("◇")}  ${c.accent(terminalText(project.name))} — no compositions found`,
+      );
       return;
     }
 
     const compositionLabel =
       compositions.length === 1 ? "1 composition" : `${compositions.length} compositions`;
     console.log(
-      `${c.success("◇")}  ${c.accent(project.name)} ${c.dim("—")} ${c.dim(compositionLabel)}`,
+      `${c.success("◇")}  ${c.accent(terminalText(project.name))} ${c.dim("—")} ${c.dim(compositionLabel)}`,
     );
     console.log();
 

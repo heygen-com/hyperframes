@@ -2227,11 +2227,11 @@ function printRenderComplete(input: {
     playlistDirectory: input.format === "hls",
   });
   console.log("");
-  console.log(c.success("\u25C7") + "  " + c.accent(outputPath));
+  console.log(c.success("\u25C7") + "  " + c.accent(terminalText(outputPath)));
   console.log("   " + c.bold(fileSize) + c.dim(" \u00B7 " + detail));
   if (perf) printRenderPipeline(perf, input.requestedGpuMode);
   const hint = input.desktopHint ? desktopHint(input.projectDir) : null;
-  if (hint) console.log("   " + c.dim(hint));
+  if (hint) console.log("   " + c.dim(terminalText(hint)));
 }
 
 function printRenderPipeline(

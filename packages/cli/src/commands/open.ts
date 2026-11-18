@@ -1,6 +1,7 @@
 import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { setCommandExitCode } from "../utils/commandResult.js";
 import {
   desktopInstalled,
@@ -91,16 +92,18 @@ function printPreview(preview: PreviewBeforeOpen, opened: boolean): void {
   if (preview.state !== "left-running" || !opened) return;
   console.log(
     preview.error
-      ? `${c.warn("◇")}  Couldn't stop this project's preview (port ${preview.port}): ${preview.error}`
+      ? `${c.warn("◇")}  Couldn't stop this project's preview (port ${preview.port}): ${terminalLines(preview.error)}`
       : `${c.warn("◇")}  A preview of this project is running (port ${preview.port}), and the app's edits wait until it stops.`,
   );
   const stop = preview.stopCommand ?? `${preview.stopCommandFromProject} from the project folder`;
-  console.log(`   Stop it with: ${c.accent(stop)}`);
+  console.log(`   Stop it with: ${c.accent(terminalText(stop))}`);
 }
 
 function printResult(project: ProjectDir, result: DesktopOpenResult): void {
   if (result.opened) {
-    console.log(`${c.success("◇")}  Opening ${c.accent(project.name)} in ${result.app}`);
+    console.log(
+      `${c.success("◇")}  Opening ${c.accent(terminalText(project.name))} in ${result.app}`,
+    );
     if (result.handedOver) {
       const agent = { claude: "Claude Code", codex: "Codex", grok: "Grok" }[
         result.handedOver.engine
