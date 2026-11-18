@@ -49,6 +49,7 @@ import {
   type FolderIdentity,
 } from "./historyId.js";
 import { takeHistoryOwnership } from "./ownerLock.js";
+import { canNameFiles, fileNames } from "../routes/files.js";
 import { writeHistoryState } from "./videoState.js";
 import {
   START,
@@ -1267,11 +1268,13 @@ class Engine {
     extra: Partial<HistoryEntry>,
   ): Promise<HistoryEntry | null> {
     this.assertWritable();
-    const changes = [...target]
-      .filter(
-        ([path, hash]) =>
-          this.studioWouldWrite(path) && (this.tracked.get(path)?.hash ?? null) !== hash,
-      )
+    const wanted = [...target].filter(
+      ([path, hash]) =>
+        this.studioWouldWrite(path) && (this.tracked.get(path)?.hash ?? null) !== hash,
+    );
+    const named = await this.stillNamed(wanted);
+    const changes = wanted
+      .filter(([path, hash]) => hash !== null || !named.has(path))
       .sort(([, a], [, b]) => Number(a !== null) - Number(b !== null));
     const setAsideByDeletesFirst = new Set(
       changes.filter(([, hash]) => hash === null).map(([path]) => this.tracked.get(path)?.hash),
@@ -1301,6 +1304,36 @@ class Engine {
       this.windows = this.windows.filter((open) => open !== group);
     }
     return this.commit(group, extra);
+  }
+
+  /** The files `changes` would delete that a page it leaves in the project still names: an undo or a restore keeps
+   * them, so no page is left naming a file that is gone. */
+  async stillNamed(changes: readonly (readonly [string, string | null])[]): Promise<Set<string>> {
+    const deleting = changes.flatMap(([path, hash]) => (hash === null ? [path] : []));
+    const named = new Set<string>();
+    if (!deleting.length) return named;
+    const after = new Map(
+      [...this.tracked].map(([path, file]) => [path, file.hash as string | null]),
+    );
+    for (const [path, hash] of changes) after.set(path, hash);
+    for (const [page, hash] of after) {
+      if (hash === null || !this.studioWouldWrite(page) || !canNameFiles(page)) continue;
+      const text = await this.pageText(page, hash);
+      for (const path of deleting)
+        if (text !== null && fileNames(page, text, path)) named.add(path);
+    }
+    return named;
+  }
+
+  /** A page's text at `hash`, from the history's copy, else the project's file; null when neither can be read. */
+  async pageText(page: string, hash: string): Promise<string | null> {
+    try {
+      if (this.blobs.has(hash)) return (await this.blobs.read(hash)).toString("utf-8");
+      return readFileSync(join(this.dir, page), "utf-8");
+    } catch {
+      // expected: a page that cannot be read names nothing the write must keep.
+      return null;
+    }
   }
 
   /** Writes one project file (null deletes it), first leaving the running operation's receipt for its echo. */

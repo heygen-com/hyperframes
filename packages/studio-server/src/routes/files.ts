@@ -1021,6 +1021,15 @@ export function referenceRewriter(
   };
 }
 
+/** Whether a project file can name another: the files a rename rewrites references in. */
+export const canNameFiles = (file: string) =>
+  /\.(html|css|js|jsx|ts|tsx|json|mjs|cjs|md|mdx)$/i.test(file);
+
+/** Whether `file`, holding `text`, names the project file at `path`, as a rename of `path` would read it. */
+export const fileNames = (file: string, text: string, path: string) =>
+  canNameFiles(file) &&
+  referenceRewriter(path, `${path}\0`, false)(text, referenceSyntax(file)) !== text;
+
 function occurrences(text: string, part: string): number[] {
   const at: number[] = [];
   for (let i = text.indexOf(part); i >= 0; i = text.indexOf(part, i + 1)) at.push(i);
@@ -1062,9 +1071,7 @@ function updateReferences(
   newPath: string,
   isDirectory: boolean,
 ): number {
-  const textFiles = walkFiles(projectDir, (name) =>
-    /\.(html|css|js|jsx|ts|tsx|json|mjs|cjs|md|mdx)$/i.test(name),
-  );
+  const textFiles = walkFiles(projectDir, canNameFiles);
 
   const rewrite = referenceRewriter(oldPath, newPath, isDirectory, projectPaths(projectDir));
   let updatedCount = 0;
