@@ -60,7 +60,7 @@ function rootOf(path: string, where: Where): MissingPathFacts["root"] {
   return "other";
 }
 
-/** A dangling link on the way, read through to its target only when that target is in the temp root or the cache folder. */
+/** A dangling link on the way: read through only when its target is in the temp root or cache folder. */
 function goneThroughLink(link: string, where: Where, hops: number): MissingPathFacts["scope"] {
   const target = resolve(dirname(link), readlinkSync(link).replace(/^\\\\\?\\/, ""));
   return rootOf(target, where) !== "other" && hops < MAX_LINK_HOPS
