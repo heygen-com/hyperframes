@@ -8,7 +8,7 @@ import {
   MAX_COMPOSITION_HTML_BYTES,
   MAX_EXPANDED_COMPOSITION_BYTES,
 } from "./compositionSizeLimit.js";
-import { compileForRender } from "./htmlCompiler.js";
+import { compileForRender, MAX_VARIABLE_MEDIA_SRC_BYTES } from "./htmlCompiler.js";
 import { extractSafeRenderErrorCode } from "./safeRenderErrorCode.js";
 
 const ROOT = `<!doctype html>
@@ -248,4 +248,74 @@ describe("composition expansion budget", () => {
       }
     },
   );
+});
+
+describe("variable-driven composition styles and media sources", () => {
+  const withBody = (body: string) =>
+    ROOT.replace("<html>", "<html><head></head>").replace("</body>", `${body}</body>`);
+
+  it("refuses declarers that each repeat a long host value, with no sub-compositions to mount", async () => {
+    const declarer = `<div data-composition-variables='[{"id":"v","type":"string","default":"d"}]'></div>`;
+    const host = `<div data-variable-values='${JSON.stringify({ v: "x".repeat(1024 * 1024) })}'>${declarer.repeat(100)}</div>`;
+    const dir = project({
+      "index.html": withBody(host).replace(/<div data-composition-id="scene"[^>]*><\/div>/, ""),
+    });
+    const error = await compileError(dir);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(error).toMatchObject({
+      owner: "user",
+      retryable: false,
+      publicMetadata: { exceeded: "generated" },
+    });
+    expect(String(error)).toContain("Composition variable styles add up to");
+    expect(String(error)).toContain("declare them on fewer elements");
+  });
+
+  it("refuses declarers inside a mounted sub-composition that repeat a long host value", async () => {
+    const declarer = `<div data-composition-variables='[{"id":"v","type":"string","default":"d"}]'></div>`;
+    const host = `data-variable-values='${JSON.stringify({ v: "x".repeat(1024 * 1024) })}'`;
+    const dir = project({
+      "index.html": ROOT.replace(
+        'data-composition-id="scene"',
+        `data-composition-id="scene" ${host}`,
+      ),
+      "scene.html": SCENE.replace("<h1>Scene</h1>", declarer.repeat(100)),
+    });
+    const error = await compileError(dir);
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(error).toMatchObject({ owner: "user", publicMetadata: { exceeded: "generated" } });
+  });
+
+  it("refuses many media elements bound to one long value", async () => {
+    const url = `https://example.com/${"a".repeat(MAX_VARIABLE_MEDIA_SRC_BYTES - 100)}.mp4`;
+    const videos = `<video data-var-src="clip"></video>`.repeat(4_200);
+    const dir = project({ "index.html": withBody(videos), "scene.html": SCENE });
+    const error = await compileForRender(dir, join(dir, "index.html"), dir, {
+      variables: { clip: url },
+    }).then(
+      () => undefined,
+      (e: unknown) => e,
+    );
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(error).toMatchObject({ publicMetadata: { exceeded: "generated" } });
+  });
+
+  it.each([
+    ["longer than 8 KiB", `https://example.com/${"a".repeat(MAX_VARIABLE_MEDIA_SRC_BYTES)}.mp4`],
+    ["holding a control character", "https://example.com/a\nb.mp4"],
+  ])("leaves src unchanged for a bound value %s, and binds a normal one", async (_, bad) => {
+    const dir = project({
+      "index.html": withBody(`<video id="v1" data-var-src="clip" src="fallback.mp4"></video>`),
+      "scene.html": SCENE,
+    });
+    const srcFor = async (clip: string) => {
+      const compiled = await compileForRender(dir, join(dir, "index.html"), dir, {
+        variables: { clip },
+      });
+      return parseHTML(compiled.html).document.getElementById("v1")?.getAttribute("src");
+    };
+    expect(await srcFor(bad)).toBe("fallback.mp4");
+    expect(await srcFor("https://example.com/my clip.mp4")).toBe("https://example.com/my clip.mp4");
+    expect(await srcFor("https://example.com/x.mp4\n")).toBe("https://example.com/x.mp4");
+  });
 });
