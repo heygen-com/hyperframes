@@ -5913,6 +5913,8 @@ export function initSandboxRuntimeModular(): void {
         swallow("runtime.init.transport.adapter", err);
       }
     }
+    window.__hf = window.__hf || {};
+    window.__hf.redraws = (window.__hf.redraws ?? 0) + 1;
     return pageAnimations;
   }
 

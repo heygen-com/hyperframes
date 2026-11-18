@@ -451,7 +451,9 @@ describe("createStudioPositionSeekReapplyScript", () => {
     const frames: Array<() => void> = [];
     const player = { time: 0, getTime: () => player.time };
     const main = { at: 0, totalTime: () => main.at };
+    const hf = { redraws: 0 };
     Object.assign(window, {
+      __hf: hf,
       __player: player,
       __timelines: { main },
       requestAnimationFrame: (callback: () => void) => frames.push(callback),
@@ -459,7 +461,7 @@ describe("createStudioPositionSeekReapplyScript", () => {
     });
     runPositionScript(window, { script: createSealedPreviewSeekReapplyScript() });
     const drawFrame = () => frames.splice(0).forEach((callback) => callback());
-    return { card, clear, player, main, frames, drawFrame };
+    return { card, clear, player, main, hf, frames, drawFrame };
   }
   const SEALED = {
     get document(): never {
@@ -475,6 +477,15 @@ describe("createStudioPositionSeekReapplyScript", () => {
     drawFrame();
     expect(card.style.getPropertyValue("width")).toBe("200px");
     main.at = 2.5;
+    clear();
+    drawFrame();
+    expect(card.style.getPropertyValue("width")).toBe("200px");
+  });
+
+  it("puts a sealed preview's edits back after the runtime redraws at the time it already shows", () => {
+    const { card, clear, hf, drawFrame } = sealedPreview(SEALED);
+    drawFrame();
+    hf.redraws += 1;
     clear();
     drawFrame();
     expect(card.style.getPropertyValue("width")).toBe("200px");

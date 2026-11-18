@@ -83,6 +83,8 @@ declare global {
       setPausedVideoFrameProvider?: (provider: PausedVideoFrameProvider | null) => void;
       /** Where Studio's loop wraps to while it plays, or null: the clips due there stay loaded. */
       setLoopStart?: (seconds: number | null) => void;
+      /** Completed redraws of the page at a time, same-time ones included; a sealed preview's edit reapply follows it. */
+      redraws?: number;
       /** Read-only level taps for the Studio meters: nothing exists until
        *  `start()`, and `stop()` removes every tap. Peaks are linear per channel. */
       audioMeter?: {

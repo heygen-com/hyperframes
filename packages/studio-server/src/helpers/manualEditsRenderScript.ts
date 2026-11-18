@@ -363,7 +363,7 @@ function studioPositionSeekReapplyRuntime(followFrames: boolean): void {
     const time = readNumber(runtimeWindow.__player, "getTime");
     const timelines = (runtimeWindow as { __timelines?: Record<string, Record<string, unknown>> })
       .__timelines;
-    let key = String(time);
+    let key = time + "," + String(runtimeWindow.__hf?.["redraws"]);
     for (const id in timelines)
       if (id !== MOTION_TL_KEY) key += "," + readNumber(timelines[id], "totalTime");
     if (key !== drawnKey) {
