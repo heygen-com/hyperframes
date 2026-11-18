@@ -431,23 +431,6 @@ describe("createStudioPositionSeekReapplyScript", () => {
     return { card, clear: () => card.style.removeProperty("width") };
   }
 
-  it("reapplies box-size after a preview seek, and again once a held seek lands", async () => {
-    const window = new Window();
-    const { card, clear } = sizedCard(window);
-    let land!: () => void;
-    const held = new Promise<void>((resolve) => (land = resolve)).then(clear);
-    const player = { seek: (_time: number) => (clear(), held) };
-    (window as unknown as { __player: typeof player }).__player = player;
-
-    runPositionScript(window);
-    void player.seek(1);
-    expect(card.style.getPropertyValue("width")).toBe("200px");
-    land();
-    await held;
-    await Promise.resolve();
-    expect(card.style.getPropertyValue("width")).toBe("200px");
-  });
-
   it("hands every argument to the seek it wraps", () => {
     const window = new Window();
     sizedCard(window);
@@ -460,27 +443,57 @@ describe("createStudioPositionSeekReapplyScript", () => {
     expect(calls).toEqual([[1, { suppressEvents: true }]]);
   });
 
-  it("runs in a preview only when Studio cannot script the frame", () => {
-    const wrapsIn = (parent: unknown) => {
-      const window = new Window();
-      sizedCard(window);
-      if (parent) Object.defineProperty(window, "parent", { value: parent });
-      const player = { seek: (_time: number) => undefined };
-      (window as unknown as { __player: typeof player }).__player = player;
-      runPositionScript(window, { script: createSealedPreviewSeekReapplyScript() });
-      return (
-        player.seek !== undefined &&
-        Object.hasOwn(player.seek, "__hfStudioPositionSeekReapplyWrapped")
-      );
-    };
-    const sealed = {
-      get document(): never {
-        throw new Error("SecurityError");
-      },
-    };
-    expect(wrapsIn(sealed)).toBe(true);
-    expect(wrapsIn({ document: {} })).toBe(false);
-    expect(wrapsIn(null)).toBe(false);
+  /** The sealed preview script in a frame whose parent is `parent`; frames run when `drawFrame` is called. */
+  function sealedPreview(parent: unknown) {
+    const window = new Window();
+    const { card, clear } = sizedCard(window);
+    if (parent) Object.defineProperty(window, "parent", { value: parent });
+    const frames: Array<() => void> = [];
+    const player = { time: 0, getTime: () => player.time };
+    const main = { at: 0, totalTime: () => main.at };
+    Object.assign(window, {
+      __player: player,
+      __timelines: { main },
+      requestAnimationFrame: (callback: () => void) => frames.push(callback),
+      setTimeout: (callback: () => void) => callback(),
+    });
+    runPositionScript(window, { script: createSealedPreviewSeekReapplyScript() });
+    const drawFrame = () => frames.splice(0).forEach((callback) => callback());
+    return { card, clear, player, main, frames, drawFrame };
+  }
+  const SEALED = {
+    get document(): never {
+      throw new Error("SecurityError");
+    },
+  };
+
+  it("puts a sealed preview's edits back on the frame its player or a timeline moved, whatever moved it", () => {
+    const { card, clear, player, main, drawFrame } = sealedPreview(SEALED);
+    drawFrame();
+    player.time = 2;
+    clear();
+    drawFrame();
+    expect(card.style.getPropertyValue("width")).toBe("200px");
+    main.at = 2.5;
+    clear();
+    drawFrame();
+    expect(card.style.getPropertyValue("width")).toBe("200px");
+  });
+
+  it("does no work on a frame where nothing moved, so a paused preview leaves a gesture's draft alone", () => {
+    const { card, clear, drawFrame } = sealedPreview(SEALED);
+    drawFrame();
+    clear();
+    card.style.setProperty("width", "260px");
+    drawFrame();
+    drawFrame();
+    expect(card.style.getPropertyValue("width")).toBe("260px");
+  });
+
+  it("follows no frames in a preview Studio can script, nor in a page with no parent", () => {
+    expect(sealedPreview({ document: {} }).frames).toHaveLength(0);
+    expect(sealedPreview(null).frames).toHaveLength(0);
+    expect(sealedPreview(SEALED).frames).toHaveLength(1);
   });
 
   it("reapplies box-size after seek", () => {

@@ -14,8 +14,8 @@ export function createStudioManualEditsRenderBodyScript(
 }
 
 /** A self-contained script that puts the page's committed Studio edits back after every seek. */
-export function createStudioPositionSeekReapplyScript(): string {
-  return `(${studioPositionSeekReapplyRuntime.toString()})();`;
+export function createStudioPositionSeekReapplyScript(followFrames = false): string {
+  return `(${studioPositionSeekReapplyRuntime.toString()})(${followFrames});`;
 }
 
 const POSITION_EDIT_MARKS = [
@@ -29,10 +29,10 @@ export const htmlHasStudioPositionEdits = (html: string) =>
 
 /** The reapply for a preview frame Studio cannot script; Studio wraps one it can script itself. */
 export function createSealedPreviewSeekReapplyScript(): string {
-  return `(function(){try{if(window.parent===window||window.parent.document)return}catch(_){}${createStudioPositionSeekReapplyScript()}})();`;
+  return `(function(){try{if(window.parent===window||window.parent.document)return}catch(_){}${createStudioPositionSeekReapplyScript(true)}})();`;
 }
 
-function studioPositionSeekReapplyRuntime(): void {
+function studioPositionSeekReapplyRuntime(followFrames: boolean): void {
   const OFFSET_X_PROP = "--hf-studio-offset-x";
   const OFFSET_Y_PROP = "--hf-studio-offset-y";
   const WIDTH_PROP = "--hf-studio-width";
@@ -292,15 +292,13 @@ function studioPositionSeekReapplyRuntime(): void {
   };
 
   type Seek = (time: number, ...rest: unknown[]) => unknown;
-  // A preview's `__player.seek` can hold until images decode; its promise says when the frame landed.
-  type SeekSlot = [owner: "__hf" | "__player", key: string, landsLater: boolean];
+  type SeekSlot = [owner: "__hf" | "__player", key: string];
   const SEEKS: SeekSlot[] = [
-    ["__hf", "seek", false],
-    ["__player", "renderSeek", false],
-    ["__player", "seek", true],
+    ["__hf", "seek"],
+    ["__player", "renderSeek"],
   ];
 
-  const wrapFn = ([owner, key, landsLater]: SeekSlot): boolean => {
+  const wrapFn = ([owner, key]: SeekSlot): boolean => {
     const fn = runtimeWindow[owner]?.[key];
     if (typeof fn !== "function") return false;
     const seek = fn as Seek;
@@ -312,8 +310,6 @@ function studioPositionSeekReapplyRuntime(): void {
       lastSeekTime = typeof time === "number" && Number.isFinite(time) ? Math.max(0, time) : 0;
       const result = seek.call(this, time, ...rest);
       reapplyAll();
-      const landing = landsLater ? (result as PromiseLike<unknown> | undefined) : undefined;
-      if (typeof landing?.then === "function") landing.then(reapplyAll, () => undefined);
       return result;
     };
     markWrapped(wrapped);
@@ -354,6 +350,28 @@ function studioPositionSeekReapplyRuntime(): void {
 
   wrapSeekFunctions();
   for (const slot of SEEKS) installSeekTrap(slot);
+  // A sealed preview seeks and plays past every hook above: reapply on each frame where time moved.
+  const readNumber = (owner: Record<string, unknown> | undefined, key: string): number => {
+    const fn = owner?.[key];
+    return typeof fn === "function" ? Number(fn.call(owner)) : Number.NaN;
+  };
+  let drawnKey = "";
+  const followFrame = (): void => {
+    const time = readNumber(runtimeWindow.__player, "getTime");
+    const timelines = (runtimeWindow as { __timelines?: Record<string, Record<string, unknown>> })
+      .__timelines;
+    let key = String(time);
+    for (const id in timelines)
+      if (id !== MOTION_TL_KEY) key += "," + readNumber(timelines[id], "totalTime");
+    if (key !== drawnKey) {
+      drawnKey = key;
+      lastSeekTime = Number.isFinite(time) ? Math.max(0, time) : lastSeekTime;
+      reapplyAll();
+    }
+    // Asked for after this paint, so the next frame runs it after the runtime's own tick.
+    window.setTimeout(() => window.requestAnimationFrame(followFrame), 0);
+  };
+  if (followFrames) window.requestAnimationFrame(followFrame);
   let remaining = 120;
   const interval = setInterval(() => {
     wrapSeekFunctions();
