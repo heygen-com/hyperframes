@@ -249,23 +249,6 @@ export function clearFfBinaryLookupCache(): void {
   skippedX86Binaries.clear();
 }
 
-const holdsControlCharacter = (text: string) =>
-  [...text].some((char) => char < " " || char === "\u007f");
-
-/** One `file` entry per path; a control character (a line break starts a list line) is refused. */
-export function concatListText(paths: readonly string[]): string {
-  return paths
-    .map((path) => {
-      if (holdsControlCharacter(path)) {
-        throw new Error(
-          `A file to join holds a control character in its path: ${JSON.stringify(path)}`,
-        );
-      }
-      return `file '${path.replace(/'/g, "'\\''")}'\n`;
-    })
-    .join("");
-}
-
 /**
  * Concat input for a list HyperFrames wrote: entries open only as local mov, matroska or concat
  * files (an ffconcat entry is followed in safe mode), and `-xerror` fails at a refused entry.

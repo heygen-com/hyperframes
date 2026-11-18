@@ -7,7 +7,6 @@ import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
 import { previewToken } from "@hyperframes/core/preview-proof";
 import {
   concatListInputArgs,
-  concatListText,
   findFfBinary,
   followFfmpegProgress,
 } from "@hyperframes/parsers/ff-binaries";
@@ -660,11 +659,10 @@ async function encodeInChunks(
   try {
     writeFileSync(
       listPath,
-      concatListText(
-        pieces.map((piece) =>
-          JOIN_FROM_CACHE_FOLDER ? basename(piece) : piece.replace(/\\/g, "/"),
-        ),
-      ),
+      pieces
+        .map((piece) => (JOIN_FROM_CACHE_FOLDER ? basename(piece) : piece.replace(/\\/g, "/")))
+        .map((piece) => `file '${piece.replace(/'/g, "'\\''")}'\n`)
+        .join(""),
     );
     await concat(listPath, tempPath);
   } finally {
