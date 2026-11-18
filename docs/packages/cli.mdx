@@ -2409,6 +2409,10 @@ prompting, `--yes, -y` upgrades a detected global install (otherwise it prints
 the right `npx` command; an unattended run without `--yes` or `--check` exits 2),
 and `--project [dir]` rewrites
 `hyperframes@<version>` script pins in a project's `package.json`.
+Foreground and background CLI updates run the global package manager from your home directory.
+Run global CLI updates directly from your shell. An npm, pnpm, or Bun package script can pass project settings to its children, so the CLI skips self-installation in that context.
+On POSIX systems, the home directory must belong to the effective user and allow writes only by its owner. If `sudo` retains a different user's home, the update reports the ownership mismatch. A skipped background install reports its reason on stderr.
+
 `--check --json` returns:
 
 ```json
