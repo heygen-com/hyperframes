@@ -14,38 +14,52 @@ try {
   await page.waitForFunction(() => (window.__sandboxProbeResults?.length ?? 0) >= 1);
   assert.equal(
     await page.evaluate(() => window.__sandboxProbeResults?.at(-1)),
-    true,
-    "the default trusted sandbox should allow same-origin parent access",
+    false,
+    "a default player must seal the composition away from the embedding page",
   );
 
   await page.evaluate(() => {
-    document.querySelector("hyperframes-player")?.setAttribute("sandbox-origin", "opaque");
+    const player = document.querySelector("hyperframes-player");
+    player?.setAttribute("sandbox-origin", "same-origin");
   });
   await page.waitForFunction(() => (window.__sandboxProbeResults?.length ?? 0) >= 2);
   assert.equal(
     await page.evaluate(() => window.__sandboxProbeResults?.at(-1)),
-    false,
-    "switching a live player to opaque must reload into an isolated origin",
+    true,
+    "sandbox-origin=same-origin must reload into the page's origin",
   );
 
   await page.evaluate(() => {
-    document.querySelector("hyperframes-player")?.setAttribute("sandbox-origin", "opaqu");
+    const player = document.querySelector("hyperframes-player");
+    player?.setAttribute("sandbox-origin", "Same-Origin");
   });
   await page.waitForFunction(() => (window.__sandboxProbeResults?.length ?? 0) >= 3);
   assert.equal(
     await page.evaluate(() => window.__sandboxProbeResults?.at(-1)),
     false,
-    "an unrecognized non-null policy must remain isolated",
+    "any other sandbox-origin value must reload sealed",
   );
 
   await page.evaluate(() => {
-    document.querySelector("hyperframes-player")?.removeAttribute("sandbox-origin");
+    const player = document.querySelector("hyperframes-player");
+    player?.setAttribute("sandbox-origin", "same-origin");
   });
   await page.waitForFunction(() => (window.__sandboxProbeResults?.length ?? 0) >= 4);
   assert.equal(
     await page.evaluate(() => window.__sandboxProbeResults?.at(-1)),
     true,
-    "removing the policy must reload into the documented trusted mode",
+    "returning to same-origin must reload into the page's origin",
+  );
+
+  await page.evaluate(() => {
+    const player = document.querySelector("hyperframes-player");
+    player?.removeAttribute("sandbox-origin");
+  });
+  await page.waitForFunction(() => (window.__sandboxProbeResults?.length ?? 0) >= 5);
+  assert.equal(
+    await page.evaluate(() => window.__sandboxProbeResults?.at(-1)),
+    false,
+    "removing sandbox-origin must reload sealed",
   );
 } finally {
   await browser.close();

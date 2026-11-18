@@ -33,7 +33,7 @@ const file = (p: string, type: string) =>
 const HOST = `<!doctype html><meta charset="utf-8">
 <style>body{margin:0;background:#000}hyperframes-player{width:360px;height:640px;display:block}button{font-size:28px}</style>
 <button id="go">Play</button>
-<hyperframes-player id="p" src="/comp.html" width="720" height="1280"></hyperframes-player>
+<hyperframes-player id="p" sandbox-origin="same-origin" src="/comp.html" width="720" height="1280"></hyperframes-player>
 <script>
   var p = document.getElementById("p"), samples = [], t0 = 0, done = false, seeks = 0;
   function finish() {

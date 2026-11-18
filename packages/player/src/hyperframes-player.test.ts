@@ -1686,7 +1686,7 @@ describe("HyperframesPlayer srcdoc attribute", () => {
   });
 
   it("falls back to the pinned runtime for a foreign-origin runtime source", () => {
-    // A srcdoc frame inherits the embedder's origin under the default `allow-same-origin`,
+    // A trusted srcdoc frame (`sandbox-origin="same-origin"`) inherits the embedder's origin,
     // so an attacker-controlled host would be script execution in the embedding page.
     const player = document.createElement("hyperframes-player") as PlayerInternal;
     player.setAttribute("runtime-src", "https://evil.example.com/hyperframe.runtime.iife.js");
@@ -3874,7 +3874,7 @@ describe("HyperframesPlayer retained runtime data", () => {
     player.setRuntimeData("captions", { words: ["offline"] });
     expect(runtimeCalls()).toHaveLength(0);
     expect(player.iframeElement.sandbox.contains("allow-scripts")).toBe(true);
-    expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
+    expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(false);
     expect(player.iframeElement.sandbox.contains("allow-top-navigation")).toBe(false);
   });
 
@@ -3882,20 +3882,25 @@ describe("HyperframesPlayer retained runtime data", () => {
     expect(player.iframeElement.referrerPolicy).toBe("same-origin");
   });
 
-  it("supports an opaque-origin sandbox for hosts that do not need direct iframe DOM access", () => {
-    player.setAttribute("sandbox-origin", "opaque");
-    expect(player.iframeElement.sandbox.contains("allow-scripts")).toBe(true);
+  it("shares the page's origin only with sandbox-origin=same-origin", () => {
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(false);
+
+    player.setAttribute("sandbox-origin", "same-origin");
+    expect(player.iframeElement.sandbox.contains("allow-scripts")).toBe(true);
+    expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
     expect(player.iframeElement.sandbox.contains("allow-top-navigation")).toBe(false);
 
     player.removeAttribute("sandbox-origin");
-    expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
-  });
-
-  it("treats every non-null sandbox-origin value as restrictive", () => {
-    player.setAttribute("sandbox-origin", "opaqu");
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(false);
   });
+
+  it.each(["opaque", "", "opaqu", "Same-Origin", "same-origin "])(
+    "keeps the composition sealed for sandbox-origin=%j",
+    (value) => {
+      player.setAttribute("sandbox-origin", value);
+      expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(false);
+    },
+  );
 
   it("rejects payloads that structuredClone cannot transfer", () => {
     expect(() => player.setRuntimeData("captions", () => undefined)).toThrow();

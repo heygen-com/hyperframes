@@ -257,7 +257,7 @@ describe("a host's sandbox origin", () => {
     const fetch = vi.spyOn(globalThis, "fetch");
     const { player } = await mountPlayer();
     await settle();
-    expect(player.hasAttribute("sandbox-origin")).toBe(false);
+    expect(player.getAttribute("sandbox-origin")).toBe("same-origin");
     expect(player.getAttribute("src")).toBe("/api/projects/demo/preview");
     expect(fetch).not.toHaveBeenCalled();
   });

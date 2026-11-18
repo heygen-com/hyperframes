@@ -224,7 +224,7 @@ function buildPresentPage(projectName: string, islandJson: string): string {
   </head>
   <body>
     <hyperframes-slideshow tabindex="0" sound>
-      <hyperframes-player interactive src="/composition/index.html"></hyperframes-player>
+      <hyperframes-player interactive sandbox-origin="same-origin" src="/composition/index.html"></hyperframes-player>
       <script type="application/hyperframes-slideshow+json">
 ${islandJson}
       </script>

@@ -163,7 +163,7 @@ export function runtimeSrcFromElement(el: Element): string {
   if (!configured) return RUNTIME_CDN_URL;
   try {
     const url = new URL(configured, document.baseURI);
-    // A srcdoc frame runs with `allow-same-origin` by default, so it inherits the embedder's
+    // A trusted srcdoc frame (`sandbox-origin="same-origin"`) inherits the embedder's
     // origin. An unrestricted host here would therefore be arbitrary script execution in the
     // embedding page, reachable through a prop bag since React spreads unknown props onto
     // custom elements. Loopback and same-origin cover the local rig this exists for; a foreign

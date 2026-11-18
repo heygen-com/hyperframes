@@ -44,6 +44,7 @@ import {
 const MIN_PLAYBACK_RATE = 0.1;
 const MAX_PLAYBACK_RATE = 5;
 const SANDBOX_ORIGIN_ATTR = "sandbox-origin";
+const TRUSTED_SANDBOX_ORIGIN = "same-origin";
 const RUNTIME_DATA_DELIVERY_TIMEOUT_MS = 10_000;
 // Bounds how long the player waits on a same-origin composition's readiness
 // inputs (media, compute, paint-and-idle) before playing anyway — a stuck
@@ -374,12 +375,10 @@ class HyperframesPlayer extends HTMLElement {
   }
 
   private _applySandboxOriginPolicy(reloadActiveDocument = false): void {
-    if (this.hasAttribute(SANDBOX_ORIGIN_ATTR)) {
-      this.iframe.sandbox.remove("allow-same-origin");
-    } else {
-      this.iframe.sandbox.add("allow-same-origin");
-    }
-    if (reloadActiveDocument) this._reloadForSandboxOriginPolicy();
+    const trusted = this.getAttribute(SANDBOX_ORIGIN_ATTR) === TRUSTED_SANDBOX_ORIGIN;
+    const changed = this.iframe.sandbox.contains("allow-same-origin") !== trusted;
+    this.iframe.sandbox.toggle("allow-same-origin", trusted);
+    if (reloadActiveDocument && changed) this._reloadForSandboxOriginPolicy();
   }
 
   private _reloadForSandboxOriginPolicy(): void {

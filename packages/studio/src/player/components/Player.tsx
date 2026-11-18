@@ -342,7 +342,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.addEventListener("error", handleError);
 
         // Sealed before the ref (useTimelinePlayer's bridge) sees the frame, never unsealed: a host may seal it too.
-        if (opaque) player.toggleAttribute("sandbox-origin", true);
+        player.setAttribute("sandbox-origin", opaque ? "opaque" : "same-origin");
         if (typeof ref === "function") {
           ref(iframe);
         } else if (ref) {
