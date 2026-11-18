@@ -64,6 +64,9 @@ it("keeps a shadow reload whose runtime boots after 8 s, and its player comes re
 // fails without the fix: the live player kept its own 8 s deadline and a sealed film that came up later had errored.
 it("hands the live preview's load deadline to a host that owns it, so a sealed film booting after 8 s comes ready", async () => {
   await import("@hyperframes/player");
+  const frameToken = vi
+    .spyOn(globalThis, "fetch")
+    .mockResolvedValue({ ok: true, json: async () => ({ token: "T".repeat(43) }) } as Response);
   vi.useFakeTimers();
   const host = document.createElement("div");
   document.body.append(host);
@@ -84,6 +87,7 @@ it("hands the live preview's load deadline to a host that owns it, so a sealed f
         noLoadTimeout: true,
       }),
     );
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
   });
 
   const live = host.querySelector<
@@ -106,5 +110,7 @@ it("hands the live preview's load deadline to a host that owns it, so a sealed f
   });
   expect(errors).toEqual([]);
   expect(live.ready).toBe(true);
+  expect(live.hasAttribute("sandbox-origin")).toBe(true);
   act(() => root.unmount());
+  frameToken.mockRestore();
 });
