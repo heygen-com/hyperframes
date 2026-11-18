@@ -1,8 +1,25 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { describeMissingPath } from "./missingPath.js";
+
+const touched = vi.hoisted(() => [] as string[]);
+vi.mock("node:fs", async (importOriginal) => {
+  const real = await importOriginal<typeof import("node:fs")>();
+  const recorded =
+    <A extends unknown[], R>(call: (path: string, ...rest: A) => R) =>
+    (path: string, ...rest: A) => {
+      touched.push(String(path));
+      return call(path, ...rest);
+    };
+  return {
+    ...real,
+    existsSync: recorded(real.existsSync),
+    lstatSync: recorded(real.lstatSync as (path: string) => ReturnType<typeof real.lstatSync>),
+    readlinkSync: recorded(real.readlinkSync as (path: string) => string),
+  };
+});
 
 const roots: string[] = [];
 afterEach(() => {
@@ -143,6 +160,48 @@ describe("describeMissingPath", () => {
     expect(
       describeMissingPath(enoent("//attacker.example/share/x.jpg"), { tempRoot: temp }),
     ).toEqual(there);
+  });
+
+  /** The error Node raises reading `path`. */
+  const readError = (path: string) => {
+    try {
+      readFileSync(path);
+    } catch (error) {
+      return error;
+    }
+    throw new Error(`${path} exists`);
+  };
+  const under = (path: string, folder: string) => !relative(folder, path).startsWith("..");
+
+  it("never looks past a link out of the render's folders, so what is beyond cannot change the facts", () => {
+    const { temp, work } = layout();
+    const outside = mkdtempSync(join(tmpdir(), "hf-outside-"));
+    roots.push(outside);
+    mkdirSync(join(outside, "present"));
+    symlinkSync(outside, join(work, "out"), process.platform === "win32" ? "junction" : "dir");
+    touched.length = 0;
+    const present = describeMissingPath(readError(join(work, "out", "present", "x.jpg")), {
+      tempRoot: temp,
+    });
+    const absent = describeMissingPath(readError(join(work, "out", "absent", "x.jpg")), {
+      tempRoot: temp,
+    });
+    expect(present?.scope).toBe("link_target");
+    expect(absent).toEqual(present);
+    expect(touched.filter((path) => path.startsWith(outside) || !under(path, temp))).toEqual([]);
+  });
+
+  it("names a missing work folder outside the temp root without looking above it", () => {
+    const parent = mkdtempSync(join(tmpdir(), "hf-work-parent-"));
+    roots.push(parent);
+    const workDir = join(parent, "work");
+    const where = { tempRoot: join(tmpdir(), "not-here"), workDir };
+    const error = readError(join(workDir, "frame.jpg"));
+    touched.length = 0;
+    expect(describeMissingPath(error, where)?.scope).toBe("work_dir");
+    rmSync(parent, { recursive: true, force: true });
+    expect(describeMissingPath(error, where)?.scope).toBe("work_dir");
+    expect(touched.filter((path) => !under(path, workDir))).toEqual([]);
   });
 
   it("looks inside the render's work folder when it is outside the temp root", () => {
