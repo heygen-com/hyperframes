@@ -140,6 +140,19 @@ describe("soft-reload of a timing edit", () => {
     expect(clip.getAttribute("data-start")).toBe("1");
     expect(killed).not.toHaveBeenCalled();
   });
+
+  it("times the saved file's clip even when a nested file's root repeats its per-file id", async () => {
+    preview(
+      `<div data-composition-file="main.html"><div data-composition-id="main" data-hf-id="root">` +
+        `<div data-composition-file="card.html"><div data-composition-id="card" data-hf-inner-root data-hf-id="shared"></div></div>` +
+        `<div id="clip" data-hf-id="shared" data-start="1" data-duration="2"></div></div></div>`,
+    );
+
+    const timing: SoftReloadParams["timing"] = [["hf:shared", [["data-start", "4"]]]];
+    expect(await softReload(params({ timing }))).toEqual({ result: "applied" });
+
+    expect(document.getElementById("clip")!.getAttribute("data-start")).toBe("4");
+  });
 });
 
 describe("parseSoftReload", () => {

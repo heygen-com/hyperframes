@@ -71,17 +71,18 @@ export const TIMING_ATTRIBUTES = new Set([
 export type SavedTiming = Array<[string, Array<[string, string]>]>;
 type TimingPlan = Array<[Element, Array<[string, string]>]>;
 
-type LiveTimed = { live: Map<string, Element>; rewritten: Set<string | null> };
+type LiveTimed = { live: Map<string, Element>; rewritten: Set<string> };
 
 /** The live elements of `ownFile` by key; null when two share a key. */
 function liveTimedElements(doc: Document, ownFile: string | null): LiveTimed | null {
   const live = new Map<string, Element>();
   // The preview rewrites an inlined composition's own root, so the file's timing is not its own.
-  const rewritten = new Set<string | null>();
+  const rewritten = new Set<string>();
   for (const el of doc.querySelectorAll("[data-hf-id], [id]")) {
-    if (el.hasAttribute("data-hf-inner-root")) rewritten.add(authoredKey(el));
     const key = authoringFile(el) === ownFile ? authoredKey(el) : null;
-    if (key === null || rewritten.has(key)) continue;
+    if (key === null) continue;
+    if (el.hasAttribute("data-hf-inner-root")) rewritten.add(key);
+    if (rewritten.has(key)) continue;
     if (live.has(key)) return null;
     live.set(key, el);
   }
