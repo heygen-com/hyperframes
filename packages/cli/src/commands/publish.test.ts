@@ -136,6 +136,23 @@ describe("publish default-entry preflight", () => {
     expect(output).toContain("publish accepts project directories, not individual HTML files");
   });
 
+  // Windows refuses control characters in file names.
+  it.skipIf(process.platform === "win32")(
+    "prints the suggested composition path with control characters as visible escapes",
+    async () => {
+      const esc = String.fromCharCode(27);
+      const withoutColors = (text: string) =>
+        text.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
+      const nested = await runEntryMismatch(`compositions/a${esc}]0;x\x07b/index.html`);
+      const standalone = await runEntryMismatch(`compositions/c${esc}]0;x\x07d.html`);
+
+      expect(withoutColors(nested)).not.toContain(esc);
+      expect(nested).toContain("hyperframes publish <project>/compositions/a\\x1b]0;x\\x07b");
+      expect(withoutColors(standalone)).not.toContain(esc);
+      expect(standalone).toContain("Move or mount compositions/c\\x1b]0;x\\x07d.html");
+    },
+  );
+
   it("prints the full finding on a default-entry-mismatch abort even without --lint-verbose", async () => {
     const output = await runEntryMismatch("compositions/brand/index.html");
 
@@ -288,6 +305,31 @@ describe("publish visibility messaging", () => {
       expect(output).toContain("film\\x1b]0;x\\x07");
       expect(output).toContain("project-id\\x1b[2J");
     } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it("prints a publish failure with control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    const project = mkdtempSync(join(tmpdir(), "hf-publish-failure-"));
+    writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
+    publishState.publish.mockReset();
+    publishState.publish.mockRejectedValue(new Error(`Could not read a${esc}[2Jb.png\r\nsecond`));
+    const lines: string[] = [];
+    const error = vi.spyOn(console, "error").mockImplementation((...parts: unknown[]) => {
+      lines.push(parts.map(String).join(" "));
+    });
+    try {
+      await captureLog(() =>
+        publishCommand.run?.({ args: { dir: project, yes: true, proxy: false } } as never),
+      );
+      consumeCommandResult();
+      const printed = lines.join("\n");
+
+      expect(printed).not.toContain(esc);
+      expect(printed).toContain("Could not read a\\x1b[2Jb.png\\x0d\nsecond");
+    } finally {
+      error.mockRestore();
       rmSync(project, { recursive: true, force: true });
     }
   });
