@@ -77,7 +77,9 @@ describe("prepareLiveInspection page stamp", () => {
     expect(first.html).toContain(`"generation":"${first.generation}"`);
     expect(first.html).toContain('<h1 id="t">Hi</h1>');
     expect(first.html).toContain("window.__scene = 1;");
-    expect(first.html.replace(/<script>[\s\S]*?<\/script>/, "")).toBe(bundled);
+    const start = first.html.indexOf("<script>");
+    const end = first.html.indexOf("</script>", start) + "</script>".length;
+    expect(first.html.slice(0, start) + first.html.slice(end)).toBe(bundled);
   });
 
   it("still refuses a stale source version or a page without a head", async () => {
