@@ -390,6 +390,22 @@ describe("validateCompletedSegments", () => {
     expect(probed).toBe(0);
   });
 
+  it.skipIf(!process.getuid || process.getuid() === 0)(
+    "recaptures an unreadable segment and still validates the next checkpoint",
+    async () => {
+      dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+      const unreadable = segmentOutputPath(dir, 0);
+      const readable = segmentOutputPath(dir, 1);
+      writeFileSync(unreadable, "xx");
+      writeFileSync(readable, "xx");
+      const manifest = manifestOf([entry(0), entry(1)]);
+      chmodSync(unreadable, 0o000);
+      const probe = vi.fn(async (_path: string) => 3);
+      expect([...(await validateCompletedSegments(manifest, check(6, probe)))]).toEqual([1]);
+      expect(probe.mock.calls).toEqual([[readable]]);
+    },
+  );
+
   it("hashes a segment file's contents", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     writeFileSync(segmentOutputPath(dir, 0), "xx");

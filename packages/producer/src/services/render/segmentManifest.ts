@@ -280,11 +280,17 @@ function plannedSlice(
   return slice;
 }
 
-function isPlainFileOfSize(path: string, bytes: number): boolean {
-  const stat = lstatSync(path, { throwIfNoEntry: false });
-  return (
-    stat !== undefined && stat.isFile() && stat.nlink === 1 && stat.size > 0 && stat.size === bytes
-  );
+async function matchesSegmentFile(path: string, entry: SegmentManifestEntry): Promise<boolean> {
+  try {
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    if (!stat?.isFile() || stat.nlink !== 1 || stat.size <= 0 || stat.size !== entry.bytes) {
+      return false;
+    }
+    return (await hashSegmentFile(path)) === entry.sha256;
+  } catch {
+    // A checkpoint can disappear or become unreadable before hashing finishes.
+    return false;
+  }
 }
 
 /**
@@ -314,8 +320,7 @@ export async function validateCompletedSegments(
     const slice = plannedSlice(entry, plan);
     if (!slice) continue;
     const path = segmentOutputPath(check.segmentDir, slice.index);
-    if (entry.path !== path || !isPlainFileOfSize(path, entry.bytes)) continue;
-    if ((await hashSegmentFile(path)) !== entry.sha256) continue;
+    if (entry.path !== path || !(await matchesSegmentFile(path, entry))) continue;
     const frames = await check.probeFrames(path);
     if (frames !== slice.endFrame - slice.startFrame) continue;
     ok.add(slice.index);
