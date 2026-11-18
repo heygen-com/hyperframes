@@ -624,3 +624,20 @@ describe("assertLiteralMediaInput", () => {
     expect(() => mediaInputFormatArgs(ffmpeg, pattern)).toThrow(/pattern of other files/);
   });
 });
+
+describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)("concatListInputArgs", () => {
+  it("refuses a listed entry that is not a local file", async () => {
+    const { concatListInputArgs } = await importFresh();
+    const dir = mkdtempSync(join(tmpdir(), "hf-concat-list-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const list = join(dir, "list.txt");
+    writeFileSync(list, "file 'data:video/mp4;base64,AAAA'\n");
+    const run = spawnSync(
+      "ffmpeg",
+      ["-v", "error", ...concatListInputArgs(list), "-c", "copy", "-y", join(dir, "out.mp4")],
+      { encoding: "utf8" },
+    );
+    expect(run.status).not.toBe(0);
+    expect(run.stderr).toContain("not on whitelist 'file'");
+  });
+});

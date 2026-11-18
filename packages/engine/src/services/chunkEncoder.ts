@@ -50,6 +50,7 @@ import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { concatListInputArgs } from "@hyperframes/parsers/ff-binaries";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -674,7 +675,7 @@ export async function encodeFramesFromDir(
 }
 
 export function buildConcatArgs(concatListPath: string, outputPath: string): string[] {
-  const args = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
+  const args = [...concatListInputArgs(concatListPath), "-c", "copy"];
   // The concat demuxer does not carry per-input container metadata into the
   // output, so provenance is re-asserted on the concatenated file.
   appendRenderProvenanceArgs(args, outputPath);

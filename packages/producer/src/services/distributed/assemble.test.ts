@@ -936,6 +936,31 @@ describe("assemble()", () => {
   );
 
   it(
+    "refuses a chunk that is a playlist of other files",
+    async () => {
+      if (!hasFfmpeg) return;
+      const chunks: ChunkSliceJson[] = [
+        { index: 0, startFrame: 0, endFrame: 5 },
+        { index: 1, startFrame: 5, endFrame: 10 },
+      ];
+      const planDir = buildPlanDir("mp4", chunks, 10, false);
+      makeMp4Chunk(join(planDir, "elsewhere.mp4"), 5);
+      const playlist = join(planDir, "chunk-0.m3u8");
+      writeFileSync(
+        playlist,
+        "#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nelsewhere.mp4\n#EXT-X-ENDLIST\n",
+      );
+      const chunkB = join(planDir, "chunk-1.mp4");
+      makeMp4Chunk(chunkB, 5);
+
+      await expect(
+        assemble(planDir, [playlist, chunkB], null, join(planDir, "output.mp4")),
+      ).rejects.toThrow();
+    },
+    TIMEOUT_MS,
+  );
+
+  it(
     "stops ffmpeg at FFMPEG_PROCESS_TIMEOUT_MS and says it timed out",
     async () => {
       if (!hasFfmpeg) return;
