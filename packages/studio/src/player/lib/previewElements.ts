@@ -316,7 +316,6 @@ export async function previewLayers(
 const isSibling = (value: unknown): value is EditingStackingSibling =>
   isFields(value) && isHandle(value.handle) && Number.isSafeInteger(value.zIndex);
 
-/** `handle`'s painting siblings in DOM order, itself among them once; null when the frame cannot say. */
 export async function previewStackingSiblings(iframe: HTMLIFrameElement, handle: string) {
   const reply = await previewRequest(iframe, "stacking-family", { handle });
   const family: unknown = reply?.family;
