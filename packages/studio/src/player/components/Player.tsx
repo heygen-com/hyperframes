@@ -9,7 +9,7 @@ import { announcePreviewDocumentLoaded } from "../sceneSwap";
 import type { IframeWindow } from "../lib/playbackTypes";
 import { watchPreviewFrame } from "../lib/bridgePlayback";
 import { previewUnderFrameToken } from "../lib/frameToken";
-import { waitForPreviewAssets } from "./previewAssetWait";
+import { type AssetWaitState, waitForPreviewAssets } from "./previewAssetWait";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
 // `typeof window` guard. Kicking it here rather than in the mount effect puts
@@ -148,8 +148,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const onPreviewErrorRef = useRef(onPreviewError);
     onPreviewErrorRef.current = onPreviewError;
     const [loaded, setLoaded] = useState(false);
-    const [assetsLoading, setAssetsLoading] = useState(false);
-    const [assetsChecking, setAssetsChecking] = useState(false);
+    const [assetsLoading, setAssetsLoading] = useState<AssetWaitState>(false);
     const [assetOverlayVisible, setAssetOverlayVisible] = useState(false);
     const [assetOverlayFading, setAssetOverlayFading] = useState(false);
     const [assetWaitLong, setAssetWaitLong] = useState(false);
@@ -269,7 +268,6 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
             pollRef: assetPollRef,
             isCurrent: () => loadCountRef.current === load,
             setLoading: setAssetsLoading,
-            setChecking: setAssetsChecking,
           });
         };
 
@@ -353,7 +351,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     // Surface a "Continue anyway" escape hatch once the asset wait drags on.
     // eslint-disable-next-line no-restricted-syntax
     useEffect(() => {
-      if (!assetsLoading) {
+      if (assetsLoading !== true) {
         setAssetWaitLong(false);
         return;
       }
@@ -367,7 +365,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         assetFadeRef.current = null;
       }
 
-      if (assetsLoading) {
+      if (assetsLoading === true) {
         setAssetOverlayVisible(true);
         setAssetOverlayFading(false);
         return;
@@ -393,13 +391,12 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         clearInterval(assetPollRef.current);
         assetPollRef.current = null;
       }
-      setAssetsChecking(false);
       setAssetsLoading(false);
     };
 
     const firstFrameShown =
       loaded && painted && !compositionLoading && !shaderTransitionLoading && !previewError;
-    const readyToShow = firstFrameShown && !assetsLoading && !assetsChecking;
+    const readyToShow = firstFrameShown && !assetsLoading;
     // Work waiting on the boot starts at the first frame, while media still buffers.
     useEffect(() => {
       if (firstFrameShown) usePlayerStore.getState().markPreviewBooted();

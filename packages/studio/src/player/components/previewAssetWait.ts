@@ -28,18 +28,19 @@ export async function previewStillLoading(
   return (await askAssetsUnloaded(iframe)) ?? lastResult;
 }
 
+/** "checking": not ready yet, but no overlay, until a sealed frame first answers. */
+export type AssetWaitState = boolean | "checking";
+
 interface AssetWait {
   refresh: boolean;
   pollRef: { current: ReturnType<typeof setInterval> | null };
   isCurrent: () => boolean;
-  setLoading: (loading: boolean) => void;
-  setChecking: (checking: boolean) => void;
+  setLoading: (state: AssetWaitState) => void;
 }
 
 /** Keeps the asset overlay up while the preview's media cannot play through, for at most 10 s. */
 export function waitForPreviewAssets(iframe: HTMLIFrameElement, wait: AssetWait): void {
   if (wait.refresh) {
-    wait.setChecking(false);
     wait.setLoading(false);
     return;
   }
@@ -78,11 +79,8 @@ export function waitForPreviewAssets(iframe: HTMLIFrameElement, wait: AssetWait)
     poll(hasUnloadedAssets(iframe, false));
     return;
   }
-  // Not ready until the sealed frame has answered, without showing the overlay for a frame with no media.
-  wait.setChecking(true);
+  wait.setLoading("checking");
   void previewStillLoading(iframe, false).then((first) => {
-    if (!wait.isCurrent()) return;
-    wait.setChecking(false);
-    poll(first);
+    if (wait.isCurrent()) poll(first);
   });
 }
