@@ -1524,35 +1524,47 @@ export async function inlineExternalScripts(
   const mirror = operatorGsapMirror();
   const limit = createConcurrencyLimit(MAX_CONCURRENT_SCRIPT_FETCHES);
   const stop = new AbortController();
+  const fail = (error: unknown): never => {
+    stop.abort(error);
+    throw error;
+  };
+  const charge = (bytes: number) => {
+    try {
+      budget.chargeGenerated(REMOTE_SCRIPTS, bytes);
+    } catch (error) {
+      fail(error);
+    }
+  };
+  // A download is charged as it arrives, so bodies held for later tags are counted too.
   const fetches = new Map<string, Promise<Uint8Array>>();
   const fetchOnce = (src: string) => {
     let bytes = fetches.get(src);
     if (!bytes) {
-      bytes = limit(
-        () =>
-          stop.signal.aborted ? Promise.reject(stop.signal.reason) : downloadScript(src, mirror),
-        stop.signal,
-      );
+      bytes = limit(async () => {
+        if (stop.signal.aborted) throw stop.signal.reason;
+        const downloaded = await downloadScript(src, mirror);
+        charge(downloaded.byteLength);
+        return downloaded;
+      }, stop.signal);
       fetches.set(src, bytes);
     }
     return bytes;
   };
+  const placed = new Set<string>();
   const downloads = await Promise.allSettled(
     externalScripts.map(async ({ el, src }) => {
       const integrity = el.getAttribute("integrity") || "";
       // The host's own copy needs no network; one that fails the tag's integrity metadata is not used.
       let bytes = bundledScript(src);
-      if (!bytes || !matchesScriptIntegrity(bytes, integrity)) {
+      if (bytes && matchesScriptIntegrity(bytes, integrity)) {
+        charge(bytes.byteLength);
+      } else {
         bytes = await fetchOnce(src);
         if (!matchesScriptIntegrity(bytes, integrity)) {
-          throw new ScriptIntegrityError(`Subresource integrity mismatch for ${src}`);
+          fail(new ScriptIntegrityError(`Subresource integrity mismatch for ${src}`));
         }
-      }
-      try {
-        budget.chargeGenerated(REMOTE_SCRIPTS, bytes.byteLength);
-      } catch (error) {
-        stop.abort(error);
-        throw error;
+        if (placed.has(src)) charge(bytes.byteLength);
+        placed.add(src);
       }
       return { src, text: new TextDecoder().decode(bytes) };
     }),

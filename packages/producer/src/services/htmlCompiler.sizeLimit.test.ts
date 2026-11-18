@@ -440,6 +440,14 @@ describe("remote scripts and stylesheets inlined at compile time", () => {
     expect(seen.requests.length).toBeLessThan(urls.length);
   });
 
+  it("stops queued downloads once a script fails its integrity check", async () => {
+    const seen = serve(() => `/*${"x".repeat(MiB)}*/`);
+    const urls = Array.from({ length: 40 }, (_, i) => `https://cdn.example.com/i${i}.js`);
+    const html = scriptTags(urls).replaceAll("<script ", '<script integrity="sha384-YQ==" ');
+    await expect(inlineExternalScripts(html)).rejects.toThrow("integrity mismatch");
+    expect(seen.requests.length).toBeLessThan(urls.length);
+  });
+
   it("still inlines a few ordinary scripts", async () => {
     serve((url) => `window.loaded = ${JSON.stringify(url)};`);
     const html = await inlineExternalScripts(
