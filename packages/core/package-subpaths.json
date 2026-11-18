@@ -464,6 +464,12 @@
       "types": "./dist/runtime/editingPort.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/patch-tween": {
+      "source": "./src/runtime/editing/patchTween.ts",
+      "runtime": "./dist/runtime/editing/patchTween.js",
+      "types": "./dist/runtime/editing/patchTween.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/clip-window": {
       "source": "./src/runtime/clipWindow.ts",
       "runtime": "./dist/runtime/clipWindow.js",

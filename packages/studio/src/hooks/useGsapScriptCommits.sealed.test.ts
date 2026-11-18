@@ -67,6 +67,28 @@ it("keeps the preview when the frame patched every tween, and reloads it when it
   expect(kept).not.toHaveBeenCalled();
 });
 
+it("reloads a group once, after its last write, when the frame refused an earlier member", async () => {
+  const member = (selector: string) => ({
+    selector,
+    change: { kind: "set" as const, props: { x: 1 } },
+  });
+  const reloadPreview = vi.fn();
+  previewRequest.mockResolvedValueOnce({ patched: false }).mockResolvedValueOnce({ patched: true });
+
+  applyPreviewSync(
+    iframe,
+    result,
+    { label: "move", deferPreviewSync: true, instantPatch: member("#a") },
+    reloadPreview,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(reloadPreview).not.toHaveBeenCalled();
+
+  applyPreviewSync(iframe, result, { label: "move", instantPatch: member("#b") }, reloadPreview);
+
+  await vi.waitFor(() => expect(reloadPreview).toHaveBeenCalledOnce());
+});
+
 it("leaves the render to the group's last write", () => {
   previewRequest.mockResolvedValue({ patched: true });
 

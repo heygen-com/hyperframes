@@ -563,6 +563,36 @@ describe("installEditingAgent", () => {
     );
   });
 
+  it("patches a set tween through the port, and refuses a patch with an unknown field", async () => {
+    document.body.innerHTML = `<div id="box"></div>`;
+    const set = {
+      vars: { x: 0 },
+      targets: () => [document.getElementById("box")],
+      duration: () => 0,
+    };
+    Object.assign(window, { __timelines: { main: { getChildren: () => [set], time: () => 0 } } });
+    const port = connectedPort();
+    const patch = { selector: "#box", change: { kind: "set", props: { x: 12 } } };
+
+    const applied = await ask(port, {
+      v: 1,
+      id: 1,
+      kind: "patch-tweens",
+      params: { patches: [patch], seek: true },
+    });
+    const refused = await ask(port, {
+      v: 1,
+      id: 2,
+      kind: "patch-tweens",
+      params: { patches: [{ ...patch, script: "x" }], seek: true },
+    });
+
+    expect(applied).toMatchObject({ id: 1, ok: true, result: { patched: true } });
+    expect(set.vars.x).toBe(12);
+    expect(refused).toMatchObject({ id: 2, ok: false, error: { code: "invalid-params" } });
+    Reflect.deleteProperty(window, "__timelines");
+  });
+
   it("replies failed when a handler rejects or its result cannot be cloned", async () => {
     window.__hfWaitForSeekCompletion = () => Promise.reject(new Error("seek lost"));
     const port = connectedPort();

@@ -323,6 +323,13 @@ const MAX_PATCHES = 64;
 const MAX_KEYFRAME_STEPS = 64;
 const MAX_SELECTOR_LENGTH = 2_000;
 
+/** A base value never renders, so a batch renders on its last tween patch, whatever follows it. */
+export function lastTweenPatch(patches: ReadonlyArray<{ change: RuntimeTweenChange }>): number {
+  for (let i = patches.length - 1; i >= 0; i--)
+    if (patches[i]!.change.kind !== "global-set") return i;
+  return -1;
+}
+
 export type PatchTweensParams = {
   patches: Array<{ selector: string; change: RuntimeTweenChange }>;
   seek: boolean;
@@ -396,11 +403,11 @@ export function patchTweens({ patches, seek }: PatchTweensParams): { patched: bo
     gsap: win.gsap,
     player: win.__player,
   };
+  const renderAt = lastTweenPatch(patches);
   const missed = patches.find(({ selector, change }, index) => {
-    const last = index === patches.length - 1;
-    return change.kind === "global-set"
-      ? applyGlobalSet(target, selector, change.props) === null
-      : !patchTween(target, selector, change, undefined, !(seek && last));
+    if (change.kind === "global-set")
+      return applyGlobalSet(target, selector, change.props) === null;
+    return !patchTween(target, selector, change, undefined, !(seek && index === renderAt));
   });
   return { patched: missed === undefined };
 }

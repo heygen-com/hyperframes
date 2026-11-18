@@ -25,6 +25,7 @@ import {
 import type { CutoverDeps } from "../utils/sdkCutover";
 import { updateKeyframeCacheFromParsed } from "./gsapKeyframeCacheHelpers";
 import { patchRuntimeTweenInPlace, type RuntimeTweenChange } from "./gsapRuntimePatch";
+import { lastTweenPatch } from "@hyperframes/core/runtime/patch-tween";
 import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
 import { createKeyedSerializer } from "./serializeByKey";
 import {
@@ -263,6 +264,7 @@ export function applyPreviewSync(
     if (!needsFallback) return;
   } else if (patches.length > 0) {
     const deferSeek = options.deferPreviewSync === true;
+    const renderAt = lastTweenPatch(patches);
     const missed = patches.find(
       (patch, index) =>
         !patchRuntimeTweenInPlace(
@@ -270,7 +272,7 @@ export function applyPreviewSync(
           patch.selector,
           patch.change,
           undefined,
-          deferSeek || index < patches.length - 1,
+          deferSeek || index !== renderAt,
         ),
     );
     if (missed) {
@@ -329,18 +331,27 @@ const wirePatch = ({ selector, change }: { selector: string; change: RuntimeTwee
   change: wireChange(change),
 });
 
-/** A sealed preview patches its own tweens; a refusal, or no answer, reloads it. */
+const sealedGroupPatched = new WeakMap<HTMLIFrameElement, Promise<boolean>>();
+
+/** A sealed preview patches its own tweens; a refusal, or no answer, reloads it once after the group's last write. */
 function patchSealedPreview(
   iframe: HTMLIFrameElement,
   patches: ReturnType<typeof instantPatchesFor>,
-  seek: boolean,
+  lastWrite: boolean,
   reloadPreview: () => void,
 ): void {
-  void previewRequest(iframe, "patch-tweens", { patches: patches.map(wirePatch), seek }).then(
-    (reply) => {
-      if (!reply?.patched) reloadPreview();
-    },
-  );
+  const request = { patches: patches.map(wirePatch), seek: lastWrite };
+  const patched = previewRequest(iframe, "patch-tweens", request).then((r) => r?.patched === true);
+  const earlier = sealedGroupPatched.get(iframe) ?? Promise.resolve(true);
+  const group = Promise.all([earlier, patched]).then(([a, b]) => a && b);
+  if (!lastWrite) {
+    sealedGroupPatched.set(iframe, group);
+    return;
+  }
+  sealedGroupPatched.delete(iframe);
+  void group.then((all) => {
+    if (!all) reloadPreview();
+  });
 }
 
 function instantPatchesFor(

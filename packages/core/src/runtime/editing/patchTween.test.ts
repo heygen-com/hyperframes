@@ -67,6 +67,23 @@ describe("patch-tweens in the frame", () => {
     expect(tweens[1]!.vars.x).toBe(0);
   });
 
+  it("renders a patched set even when the batch ends in a base value", () => {
+    const { tweens, seek } = frameWithSets({ target: "a", x: 0 });
+    Object.assign(window, { gsap: { set: vi.fn() } });
+
+    const reply = patchTweens({
+      patches: [
+        { selector: "#a", change: { kind: "set", props: { x: 10 } } },
+        { selector: "#b", change: { kind: "global-set", props: { rotation: 45 } } },
+      ],
+      seek: true,
+    });
+
+    expect(reply).toEqual({ patched: true });
+    expect(tweens[0]!.vars.x).toBe(10);
+    expect(seek).toHaveBeenCalledExactlyOnceWith(2);
+  });
+
   it("applies a base value with the frame's own GSAP", () => {
     frameWithSets();
     const set = vi.fn();
