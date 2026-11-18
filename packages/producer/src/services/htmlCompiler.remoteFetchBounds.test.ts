@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { gsapCdnDist } from "@hyperframes/core/gsap-cdn";
 import { _setDownloadFetchForTests } from "@hyperframes/engine";
-import { GSAP_VENDOR_DIR_ENV } from "./bundledScripts.js";
+import { bundledScript, GSAP_VENDOR_DIR_ENV } from "./bundledScripts.js";
 import {
   compileForRender,
   inlineExternalScripts,
@@ -12,6 +12,12 @@ import {
   MAX_REMOTE_FETCHES,
   REMOTE_FETCH_DEADLINE_MS,
 } from "./htmlCompiler.js";
+
+// The real loader, counted: how many times a compile reads the host's own copy.
+vi.mock("./bundledScripts.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./bundledScripts.js")>();
+  return { ...real, bundledScript: vi.fn(real.bundledScript) };
+});
 
 /** Answers each request after `holdMs` unless its signal aborts first; records both. */
 function serve(body: string, { holdMs = 0, onRequest = () => {} } = {}) {
@@ -89,6 +95,20 @@ describe("remote downloads at compile time", () => {
       `links ${MAX_REMOTE_FETCHES + 1} remote scripts`,
     );
     expect(seen.requests).toEqual([]);
+  });
+
+  // fails without the fix: each tag read and held its own copy of the host's bytes before any charge.
+  it("reads the host's copy of a script once however many tags name it", async () => {
+    const vendor = mkdtempSync(join(tmpdir(), "hf-gsap-vendor-"));
+    writeFileSync(join(vendor, "gsap.min.js"), "var gsap = 1;");
+    process.env[GSAP_VENDOR_DIR_ENV] = vendor;
+    vi.mocked(bundledScript).mockClear();
+    const tag = `<script src="${gsapCdnDist()}gsap.min.js"></script>`;
+
+    const inlined = await inlineExternalScripts(`<html><body>${tag.repeat(5)}</body></html>`);
+
+    expect(vi.mocked(bundledScript)).toHaveBeenCalledTimes(1);
+    expect(inlined.match(/var gsap = 1;/g)).toHaveLength(5);
   });
 
   // fails without the fix: every distinct stylesheet was downloaded, however many.
