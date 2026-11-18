@@ -58,6 +58,7 @@ import { audioMeter } from "./editing/audioMeter";
 import { documentMarkup } from "./editing/documentMarkup";
 import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 import { editElement } from "./editing/editElement";
+import { endTextEdit, textEdit } from "./editing/textEdit";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -220,6 +221,7 @@ const HANDLERS: Handlers = {
   "max-z-index": () => maxZIndex(),
   "crop-lift": cropLift,
   "edit-element": editElement,
+  "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
 };
 
 function serve(port: MessagePort): void {
@@ -300,6 +302,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       keyWatches.clear();
       listenForKeys(false);
       stopWatchingGeometry();
+      endTextEdit();
     },
   };
 }

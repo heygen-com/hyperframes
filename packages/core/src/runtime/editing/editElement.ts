@@ -43,7 +43,7 @@ const TEXT_TAGS = new Set([
 const TEXT_ATTRIBUTES = new Set(["class", "id", "style", "title", "lang", "dir"]);
 
 /** Markup a text field writes: text in inline text tags, no URL, no handler. */
-function isTextMarkup(html: string): boolean {
+export function isTextMarkup(html: string): boolean {
   if (html.length > MAX_EDIT_VALUE) return false;
   const holder = document.createElement("template");
   holder.innerHTML = html;

@@ -65,6 +65,13 @@ import {
   type EditElementParams,
   type EditElementResult,
 } from "./editing/editElement";
+import {
+  parseTextEdit,
+  textEditEndedEvent,
+  type TextEditEndedEvent,
+  type TextEditParams,
+  type TextEditResult,
+} from "./editing/textEdit";
 
 export {
   buildStableSelector,
@@ -176,6 +183,7 @@ export const EDITING_REQUEST_KINDS = [
   "max-z-index",
   "crop-lift",
   "edit-element",
+  "text-edit",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -310,6 +318,7 @@ export interface EditingRequests {
     result: { lifted: boolean; clipPath: string | null };
   };
   "edit-element": { params: EditElementParams; result: EditElementResult };
+  "text-edit": { params: TextEditParams; result: TextEditResult };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -518,6 +527,7 @@ const PARAM_PARSERS: {
       ? { handle: params.handle, lift: params.lift }
       : null,
   "edit-element": parseEditElement,
+  "text-edit": parseTextEdit,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */
@@ -558,6 +568,7 @@ export interface EditingPortClient {
   /** Calls `listener` with each key the frame forwards for `watch-keys`; returns the unsubscribe. */
   onKey(listener: (key: EditingKeyEvent) => void): () => void;
   onGeometry(listener: (event: EditingGeometryEvent) => void): () => void;
+  onTextEditEnded(listener: (event: TextEditEndedEvent) => void): () => void;
   /** Rejects every pending request with `disposed` and closes the port. */
   dispose(): void;
 }
@@ -618,6 +629,7 @@ export function createEditingPortClient(options: {
   const pending = new Map<number, Pending>();
   const keyListeners = new Set<(key: EditingKeyEvent) => void>();
   const geometryListeners = new Set<(event: EditingGeometryEvent) => void>();
+  const textEditListeners = new Set<(event: TextEditEndedEvent) => void>();
   let watchedGeometry = false;
   let port: MessagePort | null = null;
   let disposed = false;
@@ -642,7 +654,9 @@ export function createEditingPortClient(options: {
     const key = data.v === EDITING_PROTOCOL_VERSION && data.event === "key" && keyEvent(data.key);
     if (key) return keyListeners.forEach((listener) => listener(key));
     const geometry = geometryEvent(data, EDITING_PROTOCOL_VERSION);
-    if (geometry) geometryListeners.forEach((listener) => listener(geometry));
+    if (geometry) return geometryListeners.forEach((listener) => listener(geometry));
+    const ended = textEditEndedEvent(data, EDITING_PROTOCOL_VERSION);
+    if (ended) textEditListeners.forEach((listener) => listener(ended));
   };
   const onReply = (event: MessageEvent<unknown>) => {
     const data = event.data;
@@ -707,11 +721,16 @@ export function createEditingPortClient(options: {
       geometryListeners.add(listener);
       return () => geometryListeners.delete(listener);
     },
+    onTextEditEnded(listener) {
+      textEditListeners.add(listener);
+      return () => textEditListeners.delete(listener);
+    },
     dispose() {
       if (disposed) return;
       disposed = true;
       keyListeners.clear();
       geometryListeners.clear();
+      textEditListeners.clear();
       host.removeEventListener("message", onWindowMessage);
       if (watchedGeometry) {
         const stop = { kind: "watch-geometry", params: { handles: [] } };
@@ -727,3 +746,4 @@ export function createEditingPortClient(options: {
 }
 
 export { elementHome, transformWDivisor, type MotionPathHome } from "./editing/motionPathHome";
+export type { TextEditEndedEvent } from "./editing/textEdit";
