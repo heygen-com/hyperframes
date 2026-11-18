@@ -2,9 +2,14 @@
 // Studio plans the move from the saved scripts; the frame checks its timeline matches the plan first.
 import { RUNTIME_FILLER } from "../protocol";
 import {
+  applyTimingPlan,
+  compositionFile,
   finalizeSoftReload,
   findGsapScriptElements,
+  parseSavedTiming,
+  planSavedTiming,
   scriptsRegistering,
+  type SavedTiming,
   type SoftReloadWindow,
 } from "./softReload";
 
@@ -185,7 +190,8 @@ export function retimeLiveTweens(
   return true;
 }
 
-export type LiveRetimeParams = RetimePlan & { time: number };
+/** `timing`: the saved file's clip and film timing, which no commit could patch into a sealed frame. */
+export type LiveRetimeParams = RetimePlan & { time: number; timing: SavedTiming };
 /** "unchanged": nothing moved, so only a re-run syncs it; "failed": the preview may be half-moved. */
 export type LiveRetimeResult = "moved" | "unchanged" | "failed";
 
@@ -213,7 +219,7 @@ function parseTiming(value: unknown): TweenTiming | null {
 }
 
 export function parseLiveRetime(params: unknown): LiveRetimeParams | null {
-  if (!isRecord(params) || Object.keys(params).sort().join() !== "after,key,time,tweens")
+  if (!isRecord(params) || Object.keys(params).sort().join() !== "after,key,time,timing,tweens")
     return null;
   const { key, after, time, tweens } = params;
   if (typeof key !== "string" || key.length === 0 || key.length > MAX_KEY) return null;
@@ -221,7 +227,9 @@ export function parseLiveRetime(params: unknown): LiveRetimeParams | null {
   if (!finite(time) || time < 0) return null;
   if (!Array.isArray(tweens) || tweens.length === 0 || tweens.length > MAX_TWEENS) return null;
   const parsed = tweens.map(parseTiming);
-  return parsed.every(Boolean) ? { key, after, time, tweens: parsed as TweenTiming[] } : null;
+  const timing = parseSavedTiming(params.timing);
+  if (!timing || !parsed.every(Boolean)) return null;
+  return { key, after, time, tweens: parsed as TweenTiming[], timing };
 }
 
 /** The frame moving its own tweens to the plan Studio made from the saved scripts, then re-seeking. */
@@ -229,10 +237,15 @@ export function liveRetime(params: LiveRetimeParams): { result: LiveRetimeResult
   const win = window as SoftReloadWindow;
   const [script, ...extra] = scriptsRegistering(findGsapScriptElements(document), [params.key]);
   if (!script || extra.length > 0) return { result: "unchanged" };
+  const timing = planSavedTiming(document, compositionFile(document, [params.key]), params.timing);
+  if (!timing) return { result: "failed" };
   try {
     if (!retimeLiveTweens(win, script, params)) return { result: "unchanged" };
     if (!win.__hfForceTimelineRebind) return { result: "failed" };
-    const finalize = () => finalizeSoftReload(win, params.time);
+    const finalize = () => {
+      applyTimingPlan(timing);
+      finalizeSoftReload(win, params.time);
+    };
     if (win.__hfSuppressSceneMutations) win.__hfSuppressSceneMutations(finalize);
     else finalize();
     return { result: "moved" };

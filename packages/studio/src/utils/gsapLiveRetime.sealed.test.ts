@@ -18,6 +18,10 @@ const script = (start: number) =>
     'window.__timelines["t"] = tl;',
   ].join("\n");
 const file = (text: string) => `<div id="a"></div><script>${text}</script>`;
+const files = {
+  before: file(script(0.5)),
+  after: file(script(1.5)).replace('id="a"', 'id="a" data-start="1.5"'),
+};
 
 beforeEach(() => previewRequest.mockReset());
 
@@ -25,7 +29,7 @@ it("sends a sealed preview the move planned from the saved file before and after
   previewRequest.mockResolvedValue({ result: "moved" });
   const reload = vi.fn();
 
-  expect(await moveLiveTweens(iframe, script(1.5), 2, reload, file(script(0.5)))).toBe(true);
+  expect(await moveLiveTweens(iframe, script(1.5), 2, reload, files)).toBe(true);
 
   expect(previewRequest).toHaveBeenCalledExactlyOnceWith(iframe, "live-retime", {
     key: "t",
@@ -42,6 +46,7 @@ it("sends a sealed preview the move planned from the saved file before and after
       },
     ],
     time: 2,
+    timing: [[expect.any(String), [["data-start", "1.5"]]]],
   });
   expect(reload).not.toHaveBeenCalled();
 });
@@ -55,11 +60,11 @@ it.each([
   previewRequest.mockResolvedValue(reply);
   const reload = vi.fn();
 
-  expect(await moveLiveTweens(iframe, script(1.5), 0, reload, file(script(0.5)))).toBe(handled);
+  expect(await moveLiveTweens(iframe, script(1.5), 0, reload, files)).toBe(handled);
   expect(reload).toHaveBeenCalledTimes(reloads);
 });
 
 it("leaves it to a re-run, sending nothing, when the file before the edit is not known", async () => {
-  expect(await moveLiveTweens(iframe, script(1.5), 0, vi.fn())).toBe(false);
+  expect(await moveLiveTweens(iframe, script(1.5), 0, vi.fn(), { after: files.after })).toBe(false);
   expect(previewRequest).not.toHaveBeenCalled();
 });

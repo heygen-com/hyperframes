@@ -13,6 +13,7 @@ import {
   timelineKeys,
 } from "./gsapSoftReload";
 import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
+import { savedTiming } from "./authoredSource";
 
 /**
  * How a saved script differs from the live one: `retime` when only tween starts and lengths moved
@@ -123,17 +124,20 @@ function sealedRetimeResult(reply: unknown): LiveRetimeResult {
   return RETIME_RESULTS.has(result) ? (result as LiveRetimeResult) : "failed";
 }
 
+/** The edited file as saved before and after the edit. */
+type SavedFiles = { before?: string; after?: string };
+
 // Planned from the saved files alone; the frame checks its timeline matches the plan before moving anything.
 async function moveSealedLiveTweens(
   iframe: HTMLIFrameElement,
   scriptText: string,
   currentTime: number,
   reloadPreview: () => void,
-  previousHtml: string | undefined,
+  files: SavedFiles,
 ): Promise<boolean> {
   const [key] = timelineKeys(scriptText);
-  if (previousHtml === undefined || !key) return false;
-  const previous = new DOMParser().parseFromString(previousHtml, "text/html");
+  if (files.before === undefined || files.after === undefined || !key) return false;
+  const previous = new DOMParser().parseFromString(files.before, "text/html");
   const [before, ...extra] = scriptsRegistering(findGsapScriptElements(previous), [key]);
   if (!before || extra.length > 0) return false;
   const plan = planLiveRetime(before.textContent ?? "", scriptText);
@@ -144,6 +148,7 @@ async function moveSealedLiveTweens(
     after,
     tweens,
     time: currentTime,
+    timing: savedTiming(files.after),
   });
   const result = sealedRetimeResult(reply);
   if (result === "unchanged") return false;
@@ -157,10 +162,10 @@ export function moveLiveTweens(
   scriptText: string,
   currentTime: number,
   reloadPreview: () => void,
-  previousHtml?: string,
+  files: SavedFiles = {},
 ): boolean | Promise<boolean> {
   if (previewFrameOpaque(iframe))
-    return moveSealedLiveTweens(iframe, scriptText, currentTime, reloadPreview, previousHtml);
+    return moveSealedLiveTweens(iframe, scriptText, currentTime, reloadPreview, files);
   const plan = planLiveRetimeFromPreview(iframe, scriptText);
   if (plan.kind !== "retime") return false;
   try {

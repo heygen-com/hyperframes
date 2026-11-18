@@ -137,8 +137,7 @@ async function syncTimingEditPreview(
     reloadPreview();
     return;
   }
-  if (await moveLiveTweens(iframe, scriptText, currentTime(), reloadPreview, outcome.before))
-    return;
+  if (await moveLiveTweens(iframe, scriptText, currentTime(), reloadPreview, outcome)) return;
   const nestedFiles = await settleNestedReads(
     projectId
       ? readNestedFiles(iframe, scriptText, (path) => readFileContent(projectId, path))

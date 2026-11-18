@@ -589,7 +589,8 @@ describe("installEditingAgent", () => {
   it("answers a live retime through the port, and refuses one carrying anything extra", async () => {
     const port = connectedPort();
     const tween = { selector: "#a", start: 1, duration: 1, wasStart: 0, wasDuration: 1 };
-    const plan = { key: "t", after: "x", time: 0, tweens: [{ ...tween, moved: true, source: 0 }] };
+    const tweens = [{ ...tween, moved: true, source: 0 }];
+    const plan = { key: "t", after: "x", time: 0, tweens, timing: [] };
 
     const extra = { ...plan, script: "x" };
     expect(await ask(port, { v: 1, id: 1, kind: "live-retime", params: extra })).toMatchObject({
