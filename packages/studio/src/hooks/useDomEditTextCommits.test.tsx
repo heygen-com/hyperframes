@@ -135,7 +135,7 @@ describe("useDomEditTextCommits", () => {
     const base = commitParams({
       previewIframeRef: { current: iframe },
       domEditSelection: selectionFor(element),
-      buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) => selectionFor(target)),
+      buildDomSelectionFromTarget: vi.fn(async (target) => selectionFor(target as HTMLElement)),
       persistDomEditOperations: persist,
       showToast,
       ...overrides(element.ownerDocument),
@@ -202,8 +202,8 @@ describe("useDomEditTextCommits", () => {
         (doc) => ({
           domEditSelection: selected ? selectionFor(doc.getElementById(selected)!) : null,
           applyDomSelection,
-          buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) => ({
-            ...selectionFor(target),
+          buildDomSelectionFromTarget: vi.fn(async (target) => ({
+            ...selectionFor(target as HTMLElement),
             label: "Resolved from the edited element",
           })),
         }),

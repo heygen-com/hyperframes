@@ -6,8 +6,10 @@ import { afterEach, expect, it, vi } from "vitest";
 import { EDITING_PROTOCOL_VERSION } from "@hyperframes/core/runtime/editing-port";
 import {
   findPreviewElementForSelection,
+  resolveFoundSelection,
   resolvePreviewSelection,
 } from "../components/editor/previewSelection";
+import type { DomEditSelection } from "../components/editor/domEditing";
 import { canEditSealedTextInline } from "../components/editor/domEditInlineText";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
@@ -25,23 +27,20 @@ afterEach(() => {
 const PATH = "index.html";
 const ORIGINAL = "Hello <b>world</b>";
 
+const OPTIONS = { activeCompositionPath: PATH, isMasterView: false, skipSourceProbe: true };
+
+async function select(iframe: HTMLIFrameElement, id: string) {
+  const found = await findPreviewElementForSelection(iframe, { id, sourceFile: PATH }, PATH);
+  return (await resolvePreviewSelection(iframe, found!, OPTIONS))!;
+}
+
 async function sealedTitle(ports: MessagePort[] = []) {
   document.body.innerHTML = `<h1 id="title">${ORIGINAL}</h1><p id="other">x</p>`;
   const title = document.getElementById("title")!;
   const { iframe } = sealedPreviewFrame({
     wrapHandedOverPort: (port) => (ports.push(port), port),
   });
-  const found = await findPreviewElementForSelection(
-    iframe,
-    { id: "title", sourceFile: PATH },
-    PATH,
-  );
-  const selection = await resolvePreviewSelection(iframe, found!, {
-    activeCompositionPath: PATH,
-    isMasterView: false,
-    skipSourceProbe: true,
-  });
-  return { title, iframe, selection: selection! };
+  return { title, iframe, selection: await select(iframe, "title") };
 }
 
 function mount(render: () => void) {
@@ -121,37 +120,52 @@ it("ignores an ended edit for another element", async () => {
   expect(controls().session).not.toBeNull();
 });
 
-it("saves a sealed rich text commit and puts the frame's text back when the save fails", async () => {
-  const { title, iframe, selection } = await sealedTitle();
-  const persist = vi.fn<PersistDomEditOperations>(async () => {
-    throw new Error("disk full");
-  });
+function textCommits(
+  iframe: HTMLIFrameElement,
+  current: DomEditSelection | null,
+  persist: PersistDomEditOperations,
+) {
   let commits!: ReturnType<typeof useDomEditTextCommits>;
   mount(() => {
     commits = useDomEditTextCommits({
       activeCompPath: PATH,
       previewIframeRef: { current: iframe },
       showToast: vi.fn(),
-      domEditSelection: selection,
+      domEditSelection: current,
       applyDomSelection: vi.fn(),
       refreshDomEditSelectionFromPreview: vi.fn(),
-      buildDomSelectionFromTarget: vi.fn(async () => null),
+      buildDomSelectionFromTarget: (target, options) =>
+        resolveFoundSelection(iframe, target, { ...OPTIONS, ...options }),
       persistDomEditOperations: persist,
       resolveImportedFontAsset: () => null,
       readOnlyPreview: false,
     });
   });
+  return (element: HTMLElement, html: string) =>
+    act(() => commits.handleDomRichTextCommit({ element, html, previousHtml: ORIGINAL }));
+}
+
+it("saves a sealed rich text commit and puts the frame's text back when the save fails", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  const persist = vi.fn<PersistDomEditOperations>(async () => {
+    throw new Error("disk full");
+  });
   title.innerHTML = "Typed";
-  await act(() =>
-    commits.handleDomRichTextCommit({
-      element: selection.element,
-      html: "Typed",
-      previousHtml: ORIGINAL,
-    }),
-  );
+  await textCommits(iframe, selection, persist)(selection.element, "Typed");
   expect(persist).toHaveBeenCalledOnce();
   expect(persist.mock.calls[0]![1]).toEqual([expect.objectContaining({ type: "rich-text" })]);
   await vi.waitFor(() => expect(title.innerHTML).toBe(ORIGINAL));
+});
+
+it("saves a sealed edit whose selection was cleared or moved before the frame's reply", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  for (const current of [null, await select(iframe, "other")]) {
+    const persist = vi.fn<PersistDomEditOperations>(async () => undefined);
+    title.innerHTML = "Typed";
+    await textCommits(iframe, current, persist)(selection.element, "Typed");
+    expect(persist).toHaveBeenCalledOnce();
+    expect(persist.mock.calls[0]![0].element).toBe(selection.element);
+  }
 });
 
 it("opens a sealed text edit on a plain element, never on a host, a locked one or the page", async () => {

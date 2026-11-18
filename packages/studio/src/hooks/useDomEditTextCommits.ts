@@ -33,12 +33,13 @@ import { editSealedSelection } from "../components/editor/previewSelection";
 import { escapeHtmlText } from "../components/editor/domEditingLayers";
 import {
   afterSealedDraw,
+  describePreviewElements,
   editPreviewElement,
   type PreviewElementEdit,
 } from "../player/lib/previewElements";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 import type { InlineTextEditCommit } from "./useInlineTextEdit";
-import type { ResolveDomSelectionOptions } from "./useDomSelectionTypes";
+import type { UseDomSelectionReturn } from "./useDomSelectionTypes";
 
 // ── Types ──
 
@@ -52,10 +53,7 @@ export interface UseDomEditTextCommitsParams {
     options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
   ) => void;
   refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => void;
-  buildDomSelectionFromTarget: (
-    target: HTMLElement,
-    options?: ResolveDomSelectionOptions,
-  ) => Promise<DomEditSelection | null>;
+  buildDomSelectionFromTarget: UseDomSelectionReturn["buildDomSelectionFromTarget"];
   persistDomEditOperations: PersistDomEditOperations;
   resolveImportedFontAsset: (fontFamilyValue: string) => ImportedFontAsset | null;
   readOnlyPreview: boolean;
@@ -141,14 +139,22 @@ function textWriteSteps(input: {
 }
 
 const NOT_FOUND = "this text was not found in the composition's source";
+const GONE = "the text's element is gone from the preview";
 // The same gate that let the edit open, not the design panel's field rule: an element
 // whose text holds a line break has no fields, and editing in place rewrites its markup.
 const NOT_EDITABLE = "this text can't be edited in place";
 
-/** A sealed edit opens on the selection's stand-in, which only that selection resolves. */
-function sealedInlineTextSelection(element: HTMLElement, current: DomEditSelection | null) {
-  if (current?.element !== element) return NOT_FOUND;
-  return canEditSealedTextInline(current) ? current : NOT_EDITABLE;
+/** The edited stand-in's own selection: the frame's reply can land after a click moved or cleared the current one. */
+async function sealedInlineTextSelection(
+  element: HTMLElement,
+  sealed: { iframe: HTMLIFrameElement; handle: string },
+  build: UseDomEditTextCommitsParams["buildDomSelectionFromTarget"],
+): Promise<DomEditSelection | string> {
+  const [described] = (await describePreviewElements(sealed.iframe, [sealed.handle])) ?? [];
+  if (!described) return GONE;
+  const selection = await build(described, { exactTarget: true, skipSourceProbe: true });
+  if (selection?.element !== element) return NOT_FOUND;
+  return canEditSealedTextInline(selection) ? selection : NOT_EDITABLE;
 }
 
 /** The edited node, not the current selection: a press can open an edit on a child of what is selected. */
@@ -157,8 +163,7 @@ async function liveInlineTextSelection(
   doc: Document | null | undefined,
   build: UseDomEditTextCommitsParams["buildDomSelectionFromTarget"],
 ): Promise<DomEditSelection | string> {
-  if (!doc || !element.isConnected || element.ownerDocument !== doc)
-    return "the text's element is gone from the preview";
+  if (!doc || !element.isConnected || element.ownerDocument !== doc) return GONE;
   const selection = await build(element, { exactTarget: true, skipSourceProbe: true });
   if (selection?.element !== element) return NOT_FOUND;
   return canCommitInlineTextSelection(selection, element) ? selection : NOT_EDITABLE;
@@ -327,7 +332,7 @@ export function useDomEditTextCommits({
       };
       const doc = previewIframeRef.current?.contentDocument;
       const selection = sealed
-        ? sealedInlineTextSelection(element, latestSelectionRef.current)
+        ? await sealedInlineTextSelection(element, sealed, buildDomSelectionFromTarget)
         : await liveInlineTextSelection(element, doc, buildDomSelectionFromTarget);
       if (typeof selection === "string") return refuse(selection);
       const isLatestTextCommit = bumpDomEditCommitMapVersion(

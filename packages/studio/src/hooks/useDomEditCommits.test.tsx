@@ -228,7 +228,7 @@ function renderDomEditCommits(
       applyDomSelection: vi.fn(),
       clearDomSelection: vi.fn(),
       refreshDomEditSelectionFromPreview: vi.fn(),
-      buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) =>
+      buildDomSelectionFromTarget: vi.fn(async (target) =>
         target === selection.element ? selection : null,
       ),
       onTrySdkPersist: options.onTrySdkPersist,
