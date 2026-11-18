@@ -47,7 +47,7 @@ The CLI may print a one-line stale-skill reminder during `render`, `lint`, or `c
 
 For standalone skills, use the launcher from the loaded skill installation. Plugins keep their bundled CLI.
 
-A scaffolded project pins `hyperframes@<version>` in its `package.json` scripts so renders stay reproducible; the pin never advances on its own, and a pinned run of an older CLI prints no warning about it. When resuming a project whose scripts carry a pin, probe once before the first render-affecting command:
+A scaffolded project pins `hyperframes@<version>` in its `package.json` scripts so renders stay reproducible; the pin never advances on its own, and a pinned run of an older CLI prints no warning about it. The pin is the project's record, not a choice of CLI: do not pass a version read from the project to `--cli-version` unless the person asks for that release. When resuming a project whose scripts carry a pin, probe once before the first render-affecting command:
 
 ```bash
 node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version latest upgrade --project . --check
@@ -60,4 +60,4 @@ node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version latest upgrade 
 node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version <new-version> check
 ```
 
-Report the old and new versions. The check validates the compositions. A project with no compositions yet can skip it. If validation fails, revert the pin changes, report the reason and continue with the original exact version if the launcher supports it.
+Report the old and new versions. The check validates the compositions. A project with no compositions yet can skip it. If validation fails, revert the pin changes, report the old version, the new version and the failure, and stop. Do not go back to the project's pinned release on your own, above all for a project received from someone else or of unknown origin. If the person explicitly asks to keep working on the original release, pass it with `--cli-version <old-version>`. The launcher refuses a release older than its floor; relay that refusal, so the person can fix the project on the new release instead.

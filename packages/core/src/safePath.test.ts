@@ -423,6 +423,17 @@ describe("toolTrustedFileKind", () => {
     ["hooks/pre-commit.fish", "program"],
     ["NODEMON.JSON.", "tool-config"],
     ["Docker\ufb01le.dev", "tool-config"],
+    ["binding.gyp", "tool-config"],
+    ["BINDING.GYP. ", "tool-config"],
+    ["binding.gyp::$DATA", "tool-config"],
+    ["BINDIN~1.GYP", "tool-config"],
+    ["addon.gyp", "tool-config"],
+    ["deps/common.gypi", "tool-config"],
+    ["server.js", "program"],
+    ["Server.JS.", "program"],
+    ["server.js::$DATA", "program"],
+    ["sub/server.js", "program"],
+    ["SERVER~1.JS", "short-name"],
   ] as const)("names %s %s", (path, kind) => {
     expect(toolTrustedFileKind(path)).toBe(kind);
   });
@@ -453,6 +464,8 @@ describe("toolTrustedFileKind", () => {
     "assets/compose.svg",
     "config.toml",
     "assets/script.js",
+    "assets/webserver.js",
+    "assets/server.json",
   ])("leaves %s to the other rules", (path) => {
     expect(toolTrustedFileKind(path)).toBeNull();
   });

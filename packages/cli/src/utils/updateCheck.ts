@@ -389,10 +389,12 @@ export function printStalePinNotice(cwd: string = process.cwd()): void {
   // A CLI older than the pin (e.g. a stale npx cache) misjudges every run, so this is never throttled.
   const newerPins = pins.filter((v) => isNewerSemver(v, VERSION)).sort(compareVersions);
   if (newerPins.length > 0) {
+    const pin = newerPins.at(-1);
     process.stderr.write(
       `\n  This is hyperframes ${VERSION}, but this project pins hyperframes@${newerPins.join(", ")}.\n` +
-        `  Use the installed standalone skill launcher with --cli-version ${newerPins.at(-1)} to run the pinned release.\n` +
-        `  Without standalone skills, start in your home folder, run npx hyperframes@${newerPins.at(-1)} with the desired command, and pass the project by absolute path.\n\n`,
+        `  A project's pin does not choose the CLI; an agent runs the pinned release only when the person asks for it.\n` +
+        `  To choose it, pass --cli-version ${pin} to the installed standalone skill launcher.\n` +
+        `  Without standalone skills, choose it by starting in your home folder, running npx hyperframes@${pin} with the desired command, and passing the project by absolute path.\n\n`,
     );
     return;
   }

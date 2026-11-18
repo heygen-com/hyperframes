@@ -641,6 +641,12 @@ function ensureDir(projectDir: string, filePath: string) {
   mkdirWithinProject(projectDir, dirname(filePath));
 }
 
+function forbiddenWriteTarget(c: RouteContext, projectDir: string, path: string) {
+  return resolveWithinProject(projectDir, path)
+    ? c.json({ error: "forbidden", why: "protected_path" }, 403)
+    : c.json({ error: "forbidden" }, 403);
+}
+
 /**
  * Generate a copy name: foo.html → foo (copy).html → foo (copy 2).html
  */
@@ -3765,9 +3771,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     }
 
     const newAbs = resolveWritableWithinProject(res.project.dir, newPath);
-    if (!newAbs) {
-      return c.json({ error: "forbidden" }, 403);
-    }
+    if (!newAbs) return forbiddenWriteTarget(c, res.project.dir, newPath);
     if (existsSync(newAbs)) {
       return c.json({ error: "already exists" }, 409);
     }
@@ -3803,9 +3807,7 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
 
     const copyPath = generateCopyPath(project.dir, body.path);
     const destAbs = resolveWritableWithinProject(project.dir, copyPath);
-    if (!destAbs) {
-      return c.json({ error: "forbidden" }, 403);
-    }
+    if (!destAbs) return forbiddenWriteTarget(c, project.dir, copyPath);
 
     ensureDir(project.dir, destAbs);
     try {
