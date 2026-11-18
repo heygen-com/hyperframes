@@ -1502,10 +1502,20 @@ async function downloadScript(
 }
 
 const MAX_CONCURRENT_SCRIPT_FETCHES = 4;
-/** Distinct remote addresses one compile downloads, per kind (scripts, font stylesheets). */
+/**
+ * Distinct remote addresses one compile downloads, per kind: scripts, and non-Google stylesheets (counted before
+ * their contents are read, so a stylesheet with no font rules counts too).
+ */
 export const MAX_REMOTE_FETCHES = 32;
-/** All of a compile's remote downloads share this much time; what is still pending then counts as failed. */
+/**
+ * The script and stylesheet inliners' downloads share this much time, from the first one; what is still pending then
+ * counts as failed. Fonts and other assets keep their own per-request limits.
+ */
 export const REMOTE_FETCH_DEADLINE_MS = 60_000;
+/** A signal, or a getter that starts one when the first download asks for it. */
+type FetchSignal = AbortSignal | (() => AbortSignal);
+const fetchSignalOf = (signal: FetchSignal | undefined) =>
+  typeof signal === "function" ? signal() : signal;
 
 function assertRemoteFetchCount(kind: string, count: number): void {
   if (count > MAX_REMOTE_FETCHES) {
@@ -1525,7 +1535,7 @@ function assertRemoteFetchCount(kind: string, count: number): void {
 export async function inlineExternalScripts(
   html: string,
   budget = new CompositionExpansionBudget(),
-  signal?: AbortSignal,
+  signal?: FetchSignal,
 ): Promise<string> {
   const fullHtml = ensureFullDocument(html);
   const wrappedFragment = fullHtml !== html;
@@ -1541,15 +1551,21 @@ export async function inlineExternalScripts(
   }
 
   if (externalScripts.length === 0) return html;
-  assertRemoteFetchCount(
-    "scripts",
-    new Set(externalScripts.map(({ src }) => src).filter((src) => !bundledScript(src))).size,
-  );
+  // The host's own copy needs no network; one that fails the tag's integrity metadata is downloaded instead.
+  const local = externalScripts.map(({ el, src }) => {
+    const bytes = bundledScript(src);
+    return bytes && matchesScriptIntegrity(bytes, el.getAttribute("integrity") || "")
+      ? bytes
+      : null;
+  });
+  const remote = new Set(externalScripts.filter((_, i) => !local[i]).map(({ src }) => src));
+  assertRemoteFetchCount("scripts", remote.size);
 
   const mirror = operatorGsapMirror();
   const limit = createConcurrencyLimit(MAX_CONCURRENT_SCRIPT_FETCHES);
   const stop = new AbortController();
-  const fetchSignal = signal ? AbortSignal.any([stop.signal, signal]) : stop.signal;
+  const shared = remote.size > 0 ? fetchSignalOf(signal) : undefined;
+  const fetchSignal = shared ? AbortSignal.any([stop.signal, shared]) : stop.signal;
   const fail = (error: unknown): never => {
     stop.abort(error);
     throw error;
@@ -1578,11 +1594,10 @@ export async function inlineExternalScripts(
   };
   const placed = new Set<string>();
   const downloads = await Promise.allSettled(
-    externalScripts.map(async ({ el, src }) => {
+    externalScripts.map(async ({ el, src }, i) => {
       const integrity = el.getAttribute("integrity") || "";
-      // The host's own copy needs no network; one that fails the tag's integrity metadata is not used.
-      let bytes = bundledScript(src);
-      if (bytes && matchesScriptIntegrity(bytes, integrity)) {
+      let bytes = local[i];
+      if (bytes) {
         charge(bytes.byteLength);
       } else {
         bytes = await fetchOnce(src);
@@ -2000,7 +2015,7 @@ function remoteFontStylesheetHref(tag: string): string | undefined {
 async function inlineExternalFontStylesheets(
   html: string,
   budget = new CompositionExpansionBudget(),
-  signal?: AbortSignal,
+  signal?: FetchSignal,
 ): Promise<string> {
   const hrefs = new Set<string>();
   for (const { parts } of stylesheetLinkMatches(html)) {
@@ -2013,7 +2028,8 @@ async function inlineExternalFontStylesheets(
   // Each sheet is fetched once, a few at a time, and only its font rules are kept, charged as they arrive.
   const limit = createConcurrencyLimit(MAX_CONCURRENT_SCRIPT_FETCHES);
   const stop = new AbortController();
-  const fetchSignal = signal ? AbortSignal.any([stop.signal, signal]) : stop.signal;
+  const shared = fetchSignalOf(signal);
+  const fetchSignal = shared ? AbortSignal.any([stop.signal, shared]) : stop.signal;
   const inlineByHref = new Map<string, string>();
   const inlineSheet = async (href: string) => {
     const css = await fetchExternalStylesheetCss(href, fetchSignal);
@@ -2535,10 +2551,12 @@ export async function compileForRender(
   const usesThreeDTransforms = detectThreeDTransformUsage(sanitizedHtml);
   const hasAncestorBackgroundImage = detectAncestorBackgroundImage(sanitizedHtml);
 
-  const remoteFetches = AbortSignal.any([
-    AbortSignal.timeout(REMOTE_FETCH_DEADLINE_MS),
-    ...(options.abortSignal ? [options.abortSignal] : []),
-  ]);
+  let deadline: AbortSignal | undefined;
+  const remoteFetches = () =>
+    (deadline ??= AbortSignal.any([
+      AbortSignal.timeout(REMOTE_FETCH_DEADLINE_MS),
+      ...(options.abortSignal ? [options.abortSignal] : []),
+    ]));
   // Remote font stylesheets join the page first, or the font check below cannot see them.
   const fontSheetHtml = await inlineExternalFontStylesheets(
     promoteCssImportsToLinkTags(sanitizedHtml),
