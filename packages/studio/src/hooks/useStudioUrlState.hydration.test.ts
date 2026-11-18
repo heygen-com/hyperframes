@@ -61,4 +61,30 @@ describe("restoring a selection from the URL", () => {
     expect(members).toBeUndefined();
     expect(buildDomSelection).not.toHaveBeenCalled();
   });
+
+  it("waits for a group member the frame cannot answer for yet, rather than dropping it", async () => {
+    const a = document.createElement("div");
+    const built = { id: "a" } as never;
+    const members = await resolveUrlSelections({
+      find: async (target) => (target.id === "a" ? a : undefined),
+      selection: { id: "a", sourceFile: "index.html" } as never,
+      group: [{ id: "b" }],
+      isCurrent: () => true,
+      buildDomSelection: async () => built,
+    });
+    expect(members).toBeUndefined();
+  });
+
+  it("omits a group member the frame confirms is gone", async () => {
+    const a = document.createElement("div");
+    const built = { id: "a" } as never;
+    const members = await resolveUrlSelections({
+      find: async (target) => (target.id === "a" ? a : null),
+      selection: { id: "a", sourceFile: "index.html" } as never,
+      group: [{ id: "b" }],
+      isCurrent: () => true,
+      buildDomSelection: async () => built,
+    });
+    expect(members).toEqual([built]);
+  });
 });

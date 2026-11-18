@@ -7,6 +7,7 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import { findSelectionElement } from "../components/editor/previewSelection";
 import { mountReactHarness } from "./domSelectionTestHarness";
 import { useStudioUrlState } from "./useStudioUrlState";
+import type { StudioUrlSelectionState } from "../utils/studioUrlState";
 
 vi.mock("../components/editor/previewSelection", () => ({ findSelectionElement: vi.fn() }));
 
@@ -14,11 +15,16 @@ vi.mock("../components/editor/previewSelection", () => ({ findSelectionElement: 
 
 const find = vi.mocked(findSelectionElement);
 const applyDomSelection = vi.fn();
+const applyMarqueeSelection = vi.fn();
 const element = document.createElement("div");
 const built = { element, id: "s0", sourceFile: "index.html" } as unknown as DomEditSelection;
 let root: Root | null = null;
 
-function Harness() {
+function Harness({
+  selection = { sourceFile: "index.html", id: "s0" },
+}: {
+  selection?: StudioUrlSelectionState;
+}) {
   useStudioUrlState({
     projectId: "proj",
     activeCompPath: null,
@@ -32,7 +38,7 @@ function Harness() {
     activeCompPathHydrated: true,
     domEditSelection: null,
     domEditGroupSelections: [],
-    applyMarqueeSelection: vi.fn(),
+    applyMarqueeSelection,
     buildDomSelectionFromTarget: async () => built,
     applyDomSelection,
     setRightPanelTab: vi.fn(),
@@ -43,7 +49,7 @@ function Harness() {
       rightPanelTab: null,
       rightCollapsed: null,
       timelineVisible: null,
-      selection: { sourceFile: "index.html", id: "s0" },
+      selection,
     },
   });
   return null;
@@ -114,5 +120,22 @@ describe("useStudioUrlState selection retry", () => {
     await flush();
     expect(applyDomSelection).toHaveBeenCalledWith(built, { revealPanel: false });
     expect(window.location.hash).not.toContain("selId=s0");
+  });
+
+  it("keeps a linked group member the frame answers for only on a later try", async () => {
+    const member = document.createElement("div");
+    let memberTries = 0;
+    find.mockImplementation(async (_iframe, target) => {
+      if (target.id !== "s1") return element;
+      memberTries += 1;
+      return memberTries > 1 ? member : undefined;
+    });
+    root = mountReactHarness(
+      <Harness selection={{ sourceFile: "index.html", id: "s0", group: [{ id: "s1" }] }} />,
+    );
+    await flush();
+    await flush();
+    expect(memberTries).toBe(2);
+    expect(applyMarqueeSelection).toHaveBeenCalledWith([built, built], "replace");
   });
 });

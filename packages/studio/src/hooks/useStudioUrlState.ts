@@ -152,6 +152,8 @@ export async function resolveUrlSelections({
   for (const member of group) {
     const element = await find(urlLookupTarget(member, selection.sourceFile ?? ""));
     if (!isCurrent()) return null;
+    // A member the frame cannot answer for yet is not missing: the whole lookup waits for it.
+    if (element === undefined) return undefined;
     const resolved = await buildOptionalDomSelection(element, buildDomSelection);
     if (!isCurrent()) return null;
     if (resolved) members.push(resolved);
