@@ -730,8 +730,7 @@ async function prepareLocalArchive(
     entryPath,
     fileMap,
   });
-  if (swappedFonts.length > 0 && !asJson)
-    console.log(c.dim(describeSwappedFonts(swappedFonts.map(terminalText))));
+  if (swappedFonts.length > 0 && !asJson) console.log(c.dim(describeSwappedFonts(swappedFonts)));
   const offloaded = await offloadMedia(project, fileMap, entryPath, asJson, upload, variablesText);
 
   const { archive, sizeBytes } = zipWithinUploadLimit(fileMap);
@@ -897,7 +896,7 @@ export function assertArchiveFits(sizeBytes: number, largestFiles: ArchiveFileSu
   errorBox(
     "Project too large for cloud render",
     `The zip is ${formatBytes(sizeBytes)} after moving media to HeyGen assets, over the ${formatBytes(DIRECT_UPLOAD_LIMIT_BYTES)} upload limit. Largest files left in it:\n${largestFiles
-      .map((file) => `  ${formatBytes(file.size_bytes).padStart(9)}  ${file.path}`)
+      .map((file) => `  ${formatBytes(file.size_bytes).padStart(9)}  ${terminalText(file.path)}`)
       .join("\n")}`,
     "Exclude files the render does not need with .hyperframesignore.",
   );
