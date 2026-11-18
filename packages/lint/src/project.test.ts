@@ -1680,6 +1680,69 @@ describe("references that leave the project", () => {
   });
 });
 
+describe("linked private project files", () => {
+  const PRIVATE = [".env", ".npmrc", ".git/config", "cert.pem", ".hyperframes/app-history.jsonl"];
+
+  it.each(PRIVATE)("never quotes %s, whatever kind of link names it", async (path) => {
+    const project = makeProject("");
+    mkdirSync(dirname(join(project, path)), { recursive: true });
+    writeFileSync(join(project, path), "TOP-SECRET-VALUE not json {#main{}");
+    writeFileSync(
+      join(project, "index.html"),
+      validHtml().replace(
+        "</body>",
+        `<script type="importmap" src="${path}"></script>\n<link rel="stylesheet" href="${path}">\n` +
+          `<script src="${path}"></script>\n<div data-composition-src="${path}"></div>\n</body>`,
+      ),
+    );
+    expect(JSON.stringify(await lintProject(project))).not.toContain("TOP-SECRET-VALUE");
+  });
+
+  // The kind check alone lets these through: they are JSON, as an import map is.
+  it.each([".git/m.json", ".mcp.json", ".hyperframes/share.json"])(
+    "never reads %s as an import map",
+    async (path) => {
+      const project = makeProject("");
+      mkdirSync(dirname(join(project, path)), { recursive: true });
+      writeFileSync(join(project, path), "TOP-SECRET-VALUE not json");
+      writeFileSync(
+        join(project, "index.html"),
+        validHtml().replace("</body>", `<script type="importmap" src="${path}"></script></body>`),
+      );
+      expect(JSON.stringify(await lintProject(project))).not.toContain("TOP-SECRET-VALUE");
+    },
+  );
+
+  it("lints no composition in a hidden folder, and refuses a private entry", async () => {
+    const project = makeProject(validHtml(), {
+      ".cache/stale.html": "<div>TOP-SECRET-VALUE</div>",
+    });
+    expect(
+      JSON.stringify(await lintProject(project, undefined, {}, { includeUnmounted: true })),
+    ).not.toContain(".cache");
+    await expect(
+      lintProject(project, join(project, "compositions/.cache/stale.html")),
+    ).rejects.toThrow("private project file");
+  });
+
+  it("reads a linked file only when it is the kind its link names", async () => {
+    const project = makeProject("");
+    writeFileSync(join(project, "notes.txt"), "TOP-SECRET-VALUE not json {#main{}");
+    writeFileSync(join(project, "map.json"), "TOP-SECRET-MAP not json");
+    writeFileSync(
+      join(project, "index.html"),
+      validHtml().replace(
+        "</body>",
+        `<link rel="stylesheet" href="notes.txt">\n<script type="importmap" src="notes.txt"></script>\n` +
+          `<script type="importmap" src="map.json"></script>\n</body>`,
+      ),
+    );
+    const linted = JSON.stringify(await lintProject(project));
+    expect(linted).not.toContain("TOP-SECRET-VALUE");
+    expect(linted, "an import map file is still checked").toContain("TOP-SECRET-MAP");
+  });
+});
+
 describe("missing_timeline_registry with a script outside the project", () => {
   const rootWithScript = (src: string) => `<html><body>
   <div data-composition-id="main" data-width="1920" data-height="1080" data-start="0" data-duration="10"></div>

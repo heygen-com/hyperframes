@@ -30,7 +30,9 @@ const {
   resolveLocalAssetCandidates,
   resolveProjectRelativeSrc,
   srcOnAnotherNetworkRoot,
+  projectAssetExists,
 } = await import("./assetResolution.js");
+const { rewriteAssetPath } = await import("./rewriteSubCompPaths.js");
 const { resolve } = await import("node:path");
 
 const PROJECT = "C:\\project";
@@ -104,6 +106,46 @@ describe("resolveCompositionSrc under Windows rules", () => {
       "C:\\project\\attacker.example\\share\\x.html",
     );
     expect(touched.every(insideProject)).toBe(true);
+  });
+});
+
+describe("projectAssetExists under Windows rules", () => {
+  it.each([
+    "\\\\attacker.example\\share/img.png",
+    "//attacker.example/share/img.png",
+    "/\\attacker.example\\share\\img.png",
+    "\\\\?\\UNC\\attacker.example\\share\\img.png",
+    "\\\\.\\pipe\\x",
+    "D:/media/img.png",
+    "C:\\Users\\me\\img.png",
+    "\\Users\\me\\img.png",
+    "..\\img.png",
+    "scenes\\..\\..\\img.png",
+  ])("reports %s missing without touching the disk, even when it is there", (path) => {
+    present.clear();
+    present.add(resolve(PROJECT, path));
+    touched.length = 0;
+    expect(projectAssetExists(PROJECT)(path)).toBe(false);
+    expect(touched).toEqual([]);
+  });
+
+  it("finds a file inside the project", () => {
+    present.clear();
+    present.add("C:\\project\\scenes\\img.png");
+    touched.length = 0;
+    expect(projectAssetExists(PROJECT)("scenes/img.png")).toBe(true);
+    expect(touched).toEqual(["C:\\project\\scenes\\img.png"]);
+  });
+
+  it("never stats a UNC-looking scene's sibling asset on that share", () => {
+    present.clear();
+    present.add("\\\\attacker.example\\share\\img.png");
+    touched.length = 0;
+    const exists = projectAssetExists(PROJECT);
+    expect(rewriteAssetPath("\\\\attacker.example\\share/scene.html", "img.png", exists)).toBe(
+      "img.png",
+    );
+    expect(touched).toEqual([]);
   });
 });
 

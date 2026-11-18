@@ -2,16 +2,16 @@
  * Regenerate .media/index.md — the agent-readable inventory table — after a
  * figma import, exactly the way media-use does after a resolve. Both writers
  * regenerate the SAME file from the manifest's current rows (all writers'), so the
- * output format AND row selection here must stay byte-identical with
- * skills/media-use/scripts/lib/index-gen.mjs — including rendering every
- * JSON-parseable row (no shape filtering), or the file would flip-flop
+ * output format AND row selection (every JSON-parseable row, no shape filtering) must stay
+ * byte-identical with skills/media-use/scripts/lib/index-gen.mjs, or the file would flip-flop
  * depending on which writer ran last.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
+import { replaceFileAtomically } from "../atomicFile";
+import { terminalText } from "../terminalText";
 import { readJsonlValues } from "./jsonl";
-import { manifestPath, mediaDir } from "./manifest";
+import { manifestPath, mediaDir, ownMediaDir } from "./manifest";
 
 type IndexRow = Record<string, unknown>;
 
@@ -23,8 +23,14 @@ export function indexPath(projectDir: string): string {
   return join(mediaDir(projectDir), "index.md");
 }
 
+const LINE_BREAKS = /\s*[\r\n\v\f\u0085\u2028\u2029]+\s*/g;
+
+function singleLineCell(value: unknown): string {
+  return terminalText(String(value ?? "").replace(LINE_BREAKS, " "));
+}
+
 function pad(str: unknown, len: number): string {
-  return String(str ?? "").padEnd(len);
+  return singleLineCell(str).padEnd(len);
 }
 
 function formatDur(r: IndexRow): string {
@@ -38,10 +44,6 @@ function formatDims(r: IndexRow): string {
   return "—";
 }
 
-function len(value: unknown): number {
-  return String(value ?? "").length;
-}
-
 export function generateIndexContent(records: IndexRow[]): string {
   const count = records.length;
   const header = `# .media · ${count} asset${count === 1 ? "" : "s"}\n`;
@@ -49,11 +51,11 @@ export function generateIndexContent(records: IndexRow[]): string {
 
   const cols = { id: 4, type: 5, dur: 4, dims: 5, path: 5 };
   for (const r of records) {
-    cols.id = Math.max(cols.id, len(r.id));
-    cols.type = Math.max(cols.type, len(r.type));
+    cols.id = Math.max(cols.id, singleLineCell(r.id).length);
+    cols.type = Math.max(cols.type, singleLineCell(r.type).length);
     cols.dur = Math.max(cols.dur, formatDur(r).length);
     cols.dims = Math.max(cols.dims, formatDims(r).length);
-    cols.path = Math.max(cols.path, len(r.path));
+    cols.path = Math.max(cols.path, singleLineCell(r.path).length);
   }
 
   const heading =
@@ -72,7 +74,7 @@ export function generateIndexContent(records: IndexRow[]): string {
         pad(formatDur(r), cols.dur + 2) +
         pad(formatDims(r), cols.dims + 2) +
         pad(r.path, cols.path + 2) +
-        String(r.description ?? ""),
+        singleLineCell(r.description),
     );
   }
   return lines.join("\n") + "\n";
@@ -84,8 +86,7 @@ export function regenerateIndex(projectDir: string): string {
   const last = new Map(rows.map((row, index) => [row.path, index]));
   const records = rows.filter((row, index) => !row.path || last.get(row.path) === index);
   const content = generateIndexContent(records);
-  const p = indexPath(projectDir);
-  mkdirSync(dirname(p), { recursive: true });
-  writeFileSync(p, content);
+  ownMediaDir(projectDir);
+  replaceFileAtomically(indexPath(projectDir), content);
   return content;
 }

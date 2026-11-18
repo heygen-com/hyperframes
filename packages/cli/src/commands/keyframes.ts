@@ -1,6 +1,7 @@
 import { terminalText, terminalTextDeep } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { isWithinProjectRoot, readProjectFile } from "@hyperframes/parsers/asset-resolution";
 import { resolve, dirname, basename, join, relative, sep } from "node:path";
 import {
@@ -12,6 +13,7 @@ import type { Example } from "./_examples.js";
 import { c } from "../ui/colors.js";
 import { ensureDOMParser } from "../utils/dom.js";
 import { resolveProject } from "../utils/project.js";
+import { leftOutNotice, stageReferencedFiles } from "../utils/stageReferencedFiles.js";
 import { withMeta } from "../utils/updateCheck.js";
 
 export const examples: Example[] = [
@@ -750,7 +752,7 @@ export function collectCompositions(indexPath: string): SurfacedComposition[] {
 function fmtProps(props: Record<string, number | string>): string {
   return Object.entries(props)
     .filter(([k]) => k !== "ease")
-    .map(([k, v]) => `${k}:${v}`)
+    .map(([k, v]) => terminalText(`${k}:${v}`))
     .join(" ");
 }
 
@@ -762,18 +764,25 @@ function printTween(t: SurfacedTween): void {
   const timing = c.dim(
     `@${formatSeconds(t.start)}→${formatSeconds(t.end)} (${formatSeconds(t.duration)})`,
   );
-  const group = t.group ? c.dim(` ${t.group}`) : "";
-  console.log(`  ${c.accent(t.target)}${group}  ${c.dim(t.method)}/${t.shape}  ${timing}`);
+  const group = t.group ? c.dim(` ${terminalText(t.group)}`) : "";
+  console.log(
+    `  ${c.accent(terminalText(t.target))}${group}  ${c.dim(terminalText(t.method))}/${t.shape}  ${timing}`,
+  );
   if (t.shape === "motionPath") {
     console.log(c.dim(`    motionPath arc (${t.keyframes.length} stops)`));
   } else {
     const kfLine = t.keyframes.map((k) => `${k.pct}% {${fmtProps(k.properties)}}`).join("  ");
     console.log(`    ${c.dim(kfLine)}`);
   }
-  if (t.unresolved.length) console.log(c.dim(`    unresolved: ${t.unresolved.join(", ")}`));
+  if (t.unresolved.length)
+    console.log(c.dim(`    unresolved: ${terminalText(t.unresolved.join(", "))}`));
   if (t.composedWith?.length) {
     for (const a of t.composedWith) {
-      console.log(c.dim(`    ↑ composed with ${c.accent(a.selector)}${c.dim(": " + a.summary)}`));
+      console.log(
+        c.dim(
+          `    ↑ composed with ${c.accent(terminalText(a.selector))}${c.dim(": " + terminalText(a.summary))}`,
+        ),
+      );
     }
   }
   console.log();
@@ -784,7 +793,7 @@ function printTrace(tr: SurfacedTrace): void {
   const end = Math.max(...tr.strokes.flatMap((s) => (s.end === null ? [] : [s.end])));
   const n = tr.strokes.length;
   console.log(
-    `  ${c.accent(tr.target)}${c.dim(" position")}  ${c.dim("trace")}  ${c.dim(`${n} strokes`)} ${c.dim(`@${start}s→${end}s`)}`,
+    `  ${c.accent(terminalText(tr.target))}${c.dim(" position")}  ${c.dim("trace")}  ${c.dim(`${n} strokes`)} ${c.dim(`@${start}s→${end}s`)}`,
   );
   tr.strokes.forEach((s, i) => {
     const kfLine = s.keyframes.map((k) => `${k.pct}% {${fmtProps(k.properties)}}`).join("  ");
@@ -889,42 +898,90 @@ function printOnionShotSaved(saved: string, elementCount: number): void {
 async function runOnionShot(
   comps: SurfacedComposition[],
   allComps: SurfacedComposition[],
-  projectDir: string | undefined,
-  entryFile: string | undefined,
+  scope: ShotScope,
   args: ShotArgs & { selector?: string },
 ): Promise<boolean> {
-  const { captureMotionPathShot } = await import("./motionShot.js");
   // With --selector, sample from the FULL animated set and let the browser scope
   // to the selector (or its animated descendants when the selector is a static
   // wrapper like `.clip`). Without it, only the (already-filtered) comps qualify.
   const requests = collectShotSelectors(args.selector ? allComps : comps);
-  const guardError = onionShotGuardError(projectDir, requests, args.ghost ?? false);
+  const guardError = onionShotGuardError(scope.projectDir, requests, args.ghost ?? false);
   if (guardError) {
     console.log(c.dim(guardError));
     return true;
   }
-  const saved = await captureMotionPathShot(projectDir!, requests, resolve(args.shot!), {
-    ...onionShotOptions(args),
-    entryFile,
-  });
+  const saved = await captureOnionShot(scope, requests, args);
   printOnionShotSaved(saved, requests.length);
   return false;
 }
 
+async function captureOnionShot(
+  scope: ShotScope,
+  requests: Array<{ selector: string }>,
+  args: ShotArgs & { selector?: string },
+): Promise<string> {
+  const { captureMotionPathShot, ensureShotOutputDir } = await import("./motionShot.js");
+  const outPath = resolve(args.shot!);
+  const options = onionShotOptions(args);
+  if (!scope.singleFile) {
+    return captureMotionPathShot(scope.projectDir!, requests, outPath, {
+      ...options,
+      entryFile: scope.entryFile,
+    });
+  }
+  ensureShotOutputDir(outPath, scope.singleFile);
+  const stage = await singleFileStage(scope.singleFile, scope.projectDir!);
+  const stagedDir = mkdtempSync(join(tmpdir(), "hf-keyframes-shot-"));
+  try {
+    const notice = leftOutNotice(
+      `keyframes --shot ${stage.entryFile}`,
+      stageReferencedFiles(stage.root, stage.entries, stagedDir),
+    );
+    if (notice) console.warn(c.dim(notice));
+    return await captureMotionPathShot(stagedDir, requests, outPath, {
+      ...options,
+      entryFile: stage.entryFile,
+    });
+  } finally {
+    rmSync(stagedDir, { recursive: true, force: true });
+  }
+}
+
+export async function singleFileStage(file: string, projectDir: string) {
+  const { extractStandaloneEntryFromIndex, isTemplateEntry } =
+    await import("@hyperframes/core/compiler");
+  const index = join(projectDir, "index.html");
+  const entryFile = relative(projectDir, file).split(sep).join("/");
+  const scene = readFileSync(file, "utf8");
+  const mounted =
+    file !== index &&
+    existsSync(index) &&
+    isTemplateEntry(scene) &&
+    extractStandaloneEntryFromIndex(readFileSync(index, "utf8"), entryFile, scene) !== null;
+  return mounted
+    ? { root: projectDir, entries: [index, file], entryFile }
+    : { root: dirname(file), entries: [file], entryFile: basename(file) };
+}
+
+interface ShotScope {
+  projectDir: string | undefined;
+  entryFile: string | undefined;
+  singleFile?: string;
+}
+
 // Resolve the command target (a project dir or a single .html) into surfaced
 // compositions, applying the optional --selector filter.
-export function resolveScope(args: { target?: string; selector?: string }): {
+export function resolveScope(args: { target?: string; selector?: string }): ShotScope & {
   comps: SurfacedComposition[];
   allComps: SurfacedComposition[];
   projectName: string;
-  projectDir: string | undefined;
-  entryFile: string | undefined;
 } {
   const raw = args.target?.trim();
   let comps: SurfacedComposition[];
   let projectName: string;
   let projectDir: string | undefined;
   let entryFile: string | undefined;
+  let singleFile: string | undefined;
   const entry = raw?.endsWith(".html") ? readProjectFile(raw) : undefined;
   if (raw && entry?.kind === "file") {
     const entryPath = resolve(raw);
@@ -932,6 +989,7 @@ export function resolveScope(args: { target?: string; selector?: string }): {
     projectName = basename(entryPath);
     projectDir = findProjectRoot(entryPath);
     entryFile = relative(projectDir, entryPath).split(sep).join("/");
+    singleFile = entryPath;
   } else {
     const project = resolveProject(raw);
     comps = collectCompositions(project.indexPath);
@@ -961,7 +1019,7 @@ export function resolveScope(args: { target?: string; selector?: string }): {
           cmp.anime.length > 0,
       );
   }
-  return { comps, allComps, projectName, projectDir, entryFile };
+  return { comps, allComps, projectName, projectDir, entryFile, singleFile };
 }
 
 function findProjectRoot(entryPath: string): string {
@@ -1009,20 +1067,24 @@ function printComposition(cmp: SurfacedComposition): void {
 
 function printCssKeyframes(cssKeyframes: SurfacedCssKeyframes): void {
   const selectors = cssKeyframes.selectors.length
-    ? cssKeyframes.selectors.join(", ")
+    ? terminalText(cssKeyframes.selectors.join(", "))
     : "(no selector found)";
   console.log(
-    `  ${c.accent(`@keyframes ${cssKeyframes.name}`)}${c.dim(" css")}  ${c.dim(selectors)}`,
+    `  ${c.accent(`@keyframes ${terminalText(cssKeyframes.name)}`)}${c.dim(" css")}  ${c.dim(selectors)}`,
   );
   for (const stop of cssKeyframes.keyframes) {
-    console.log(`    ${c.dim(`${stop.selector} {${stop.declarations.join("; ")}}`)}`);
+    console.log(`    ${c.dim(terminalText(`${stop.selector} {${stop.declarations.join("; ")}}`))}`);
   }
   console.log();
 }
 
 function printAnime(anime: SurfacedAnimeAnimation): void {
-  const targets = anime.targets.length ? anime.targets.join(", ") : "(targets not parsed)";
-  const durations = anime.durations.length ? ` duration ${anime.durations.join(",")}` : "";
+  const targets = anime.targets.length
+    ? terminalText(anime.targets.join(", "))
+    : "(targets not parsed)";
+  const durations = anime.durations.length
+    ? ` duration ${terminalText(anime.durations.join(","))}`
+    : "";
   const registered = anime.registered ? "registered" : "not registered";
   console.log(
     `  ${c.accent(`anime.${anime.kind}`)}${c.dim(` ${registered}`)}  ${c.dim(`${targets}${durations}`)}`,
@@ -1105,12 +1167,13 @@ function createKeyframesCommand(options: Partial<KeyframesCommandOptions> = {}) 
     async run({ args }) {
       ensureDOMParser();
       const runtime = normalizeRuntime(args.runtime, commandOptions.defaultRuntime);
-      const { comps: rawComps, allComps, projectName, projectDir, entryFile } = resolveScope(args);
+      const scope = resolveScope(args);
+      const { comps: rawComps, allComps, projectName } = scope;
       const comps = filterCompositionsByRuntime(rawComps, runtime);
 
       // --shot: 3D onion-skin self-verify screenshot. Returns true when the command
       // should stop (guard failure) so run() stays small.
-      if (args.shot && (await runOnionShot(comps, allComps, projectDir, entryFile, args))) return;
+      if (args.shot && (await runOnionShot(comps, allComps, scope, args))) return;
 
       if (args.json) {
         console.log(

@@ -108,21 +108,14 @@ describe("initial media preload", () => {
 });
 
 describe("releasing a clip's download", () => {
-  const srcWrites = (el: Element) => {
-    const observer = new MutationObserver(() => {});
-    observer.observe(el, { attributeFilter: ["src"] });
-    return () => observer.takeRecords().length;
-  };
-
-  it("reloads a src clip by setting its src again, not by load(), after which Firefox fetches metadata whatever the preload", () => {
+  it("reloads a src clip with its src dropped, then puts the src back", () => {
     const video = document.createElement("video");
     video.setAttribute("src", "a.mp4");
-    video.load = vi.fn();
-    const writes = srcWrites(video);
+    const atLoad: (string | null)[] = [];
+    video.load = () => atLoad.push(video.getAttribute("src"));
 
     releaseMedia(video);
-    expect(writes()).toBeGreaterThan(0);
-    expect(video.load).not.toHaveBeenCalled();
+    expect(atLoad).toEqual([null]);
     expect(video.getAttribute("src")).toBe("a.mp4");
   });
 
@@ -134,11 +127,9 @@ describe("releasing a clip's download", () => {
       value: { length: 1, start: () => 0, end: () => 6.67 },
     });
     video.load = vi.fn();
-    const writes = srcWrites(video);
 
     releaseMedia(video);
     expect(video.load).not.toHaveBeenCalled();
-    expect(writes()).toBe(0);
     expect(video.getAttribute("src")).toBe("a.mp4");
   });
 
@@ -150,10 +141,9 @@ describe("releasing a clip's download", () => {
       value: { length: 1, start: () => 0, end: () => 6.67 },
     });
     video.load = vi.fn();
-    const writes = srcWrites(video);
 
     releaseMedia(video, true);
-    expect(writes()).toBeGreaterThan(0);
+    expect(video.load).toHaveBeenCalledTimes(1);
     expect(video.getAttribute("src")).toBe("a.mp4");
   });
 
@@ -168,10 +158,9 @@ describe("releasing a clip's download", () => {
       value: { length: 1, start: () => from, end: () => to },
     });
     video.load = vi.fn();
-    const writes = srcWrites(video);
 
     releaseMedia(video);
-    expect(writes()).toBeGreaterThan(0);
+    expect(video.load).toHaveBeenCalledTimes(1);
   });
 
   it("leaves a clip on <source> children, their order and its markup untouched", () => {

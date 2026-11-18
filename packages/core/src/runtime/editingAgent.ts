@@ -32,16 +32,31 @@ import { elementGeometry } from "./editingGeometry";
 import { pointerTargetsAt } from "./editingTargets";
 import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
+import { restoreAttributes } from "./editing/restoreAttributes";
+import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
+import { maxZIndex } from "./editing/maxZIndex";
 import { gestureStart } from "./editingGestureStart";
+import { gsapSnapshot } from "./editing/gsapSnapshot";
+import { motionPathHome } from "./editing/motionPathHome";
+import { cropLift } from "./editing/cropLift";
 import {
   getLogicalOpacity,
+  markedForStudio,
   previewConsoleErrorText,
-  servedToAnotherSite,
   STUDIO_PREVIEW_ERRORS,
 } from "../studioPreviewMark";
 import { MAX_QUERY_MATCHES } from "./editingElement";
 import { matchCombo, parseCombo, type Combo } from "../keyCombo";
 import { shouldIgnorePlaybackShortcutTarget } from "../typingTarget";
+import { captionWords } from "./editing/captionWords";
+import { captionTransform } from "./editing/captionTransform";
+import { colorGradingStatus } from "./editing/color-grading-status";
+import { colorGradingPreviews } from "./editing/color-grading-previews";
+import { colorGradingPlayback } from "./editing/color-grading-playback";
+import { assignAudioGroup } from "./editing/assignAudioGroup";
+import { audioMeter } from "./editing/audioMeter";
+import { documentMarkup } from "./editing/documentMarkup";
+import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -188,6 +203,21 @@ const HANDLERS: Handlers = {
     return { errors, truncated: from + errors.length < seen.length };
   },
   "watch-keys": ({ combos }, port) => watchKeys(port, combos),
+  "restore-attributes": (params) => restoreAttributes(params),
+  "caption-words": captionWords,
+  "caption-transform": captionTransform,
+  "color-grading-status": colorGradingStatus,
+  "color-grading-previews": colorGradingPreviews,
+  "color-grading-playback": colorGradingPlayback,
+  "watch-geometry": (params, port) => watchGeometry(port, params, EDITING_PROTOCOL_VERSION),
+  "audio-meter": (params) => audioMeter(params, window.__hf?.audioMeter),
+  "document-markup": documentMarkup,
+  "set-audio-group-attribute": setAudioGroupAttribute,
+  "assign-audio-group": (params) => assignAudioGroup(params, elementForHandle),
+  "gsap-snapshot": () => gsapSnapshot(),
+  "motion-path-home": ({ selector }) => motionPathHome(selector),
+  "max-z-index": () => maxZIndex(),
+  "crop-lift": cropLift,
 };
 
 function serve(port: MessagePort): void {
@@ -239,7 +269,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     const data = event.data;
     if (!isPlainRecord(data) || data.source !== "hf-parent" || data.type !== EDITING_CONNECT)
       return;
-    if (data.v !== EDITING_PROTOCOL_VERSION || servedToAnotherSite(document)) return;
+    if (data.v !== EDITING_PROTOCOL_VERSION || !markedForStudio(document)) return;
     const channel = new MessageChannel();
     const port = channel.port1;
     ports.add(port);
@@ -267,6 +297,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       consoleWatch = null;
       keyWatches.clear();
       listenForKeys(false);
+      stopWatchingGeometry();
     },
   };
 }

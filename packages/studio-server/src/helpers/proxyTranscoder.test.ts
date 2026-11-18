@@ -170,7 +170,8 @@ async function loadModule(
     const mocked = { spawn };
     return { ...mocked, default: mocked };
   });
-  vi.doMock("@hyperframes/parsers/ff-binaries", () => ({
+  vi.doMock("@hyperframes/parsers/ff-binaries", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@hyperframes/parsers/ff-binaries")>()),
     findFfBinary: () => ffmpegPath,
   }));
   vi.doMock("./mediaMetadata.js", () => ({
@@ -596,6 +597,31 @@ describe("resolveProxy", () => {
     expect(result).toBe(cachePath);
     expect(calls).toHaveLength(0);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "makes the copy again when a link stands at its name, and never returns the link's target",
+    async () => {
+      const { spawn, calls } = createSpawnSpy();
+      const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "video.mov");
+      writeFileSync(sourcePath, "source-bytes");
+      const outside = join(tmpProject(), "id_rsa");
+      writeFileSync(outside, "PRIVATE KEY");
+      const cachePath = getProxyCachePath(projectDir, sourcePath);
+      mkdirSync(dirname(cachePath), { recursive: true });
+      symlinkSync(outside, cachePath);
+
+      const resultPromise = resolveProxy(projectDir, sourcePath);
+      await flush();
+      expect(calls).toHaveLength(1);
+      succeed(calls[0]!);
+      const result = await resultPromise;
+
+      expect(readFileSync(result, "utf8")).toBe("fake-h264-bytes");
+      expect(readFileSync(outside, "utf8")).toBe("PRIVATE KEY");
+    },
+  );
 
   it("tone-maps HDR input before emitting browser-safe BT.709", async () => {
     const { spawn, calls } = createSpawnSpy();
@@ -1776,7 +1802,10 @@ describe("resolveProxy", () => {
       const mocked = { spawn };
       return { ...mocked, default: mocked };
     });
-    vi.doMock("@hyperframes/parsers/ff-binaries", () => ({ findFfBinary: ffmpegPath }));
+    vi.doMock("@hyperframes/parsers/ff-binaries", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@hyperframes/parsers/ff-binaries")>()),
+      findFfBinary: ffmpegPath,
+    }));
     vi.doMock("./mediaMetadata.js", () => ({
       probeMediaMetadata: () =>
         new Promise((resolveProbe) => setTimeout(resolveProbe, 5)).then(probe),
@@ -2134,6 +2163,24 @@ describe("resolveStill", () => {
       expect(exitSignal).toBe("SIGKILL");
     },
   );
+
+  it("starts no ffmpeg for a still past the end of the source", async () => {
+    const spy = createSpawnSpy();
+    const { resolveStill, StillPastEndError } = await loadModule(
+      spy.spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      2,
+    );
+    const projectDir = tmpProject();
+    const clip = join(projectDir, "clip.mp4");
+    writeFileSync(clip, "clip");
+
+    await expect(resolveStill(projectDir, clip, 2.5)).rejects.toBeInstanceOf(StillPastEndError);
+    expect(spy.calls).toHaveLength(0);
+  });
 
   it("starts no ffmpeg for a request that already left", async () => {
     const { calls, ask } = await stillSetup();

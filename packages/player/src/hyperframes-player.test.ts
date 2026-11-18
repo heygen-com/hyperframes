@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { mediaElementTime } from "@hyperframes/core/runtime/media-clock";
-import { PLAYER_FRAME_NAME } from "@hyperframes/core/studio-preview-mark";
 import { formatTime, formatSpeed, SPEED_PRESETS } from "./controls.js";
 
 // Install a stubbed contentDocument getter on the given iframe element. The
@@ -694,6 +693,60 @@ describe("HyperframesPlayer adoptedStyleSheets", () => {
     document.body.appendChild(player);
 
     expect(player.shadowRoot?.querySelector("style")).toBeNull();
+  });
+});
+
+describe("HyperframesPlayer page glyph slots", () => {
+  function slotAt(root: ParentNode | null, selector: string): HTMLSlotElement {
+    const slot = root?.querySelector(selector);
+    if (!(slot instanceof HTMLSlotElement)) throw new Error(`no slot at ${selector}`);
+    return slot;
+  }
+
+  function onlyAssigned(slot: HTMLSlotElement): Element | undefined {
+    const assigned = slot.assignedElements();
+    return assigned.length === 1 ? assigned[0] : undefined;
+  }
+
+  beforeEach(async () => {
+    await import("./hyperframes-player.js");
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("keeps the page's play glyph in the controls after they are rebuilt or the player moves", () => {
+    const player = document.createElement("hyperframes-player");
+    player.setAttribute("controls", "");
+    const glyph = document.createElement("span");
+    glyph.slot = "play-icon";
+    player.appendChild(glyph);
+    document.body.appendChild(player);
+    const expectGlyphShown = () => {
+      expect(glyph.parentElement).toBe(player);
+      expect(onlyAssigned(slotAt(player.shadowRoot, ".hfp-ico-play slot"))).toBe(glyph);
+    };
+
+    expectGlyphShown();
+
+    player.removeAttribute("controls");
+    player.setAttribute("controls", "");
+    expectGlyphShown();
+
+    player.remove();
+    document.body.appendChild(player);
+    expectGlyphShown();
+  });
+
+  it("shows the page's loading mark in the loader card", () => {
+    const player = document.createElement("hyperframes-player");
+    const mark = document.createElement("img");
+    mark.slot = "loading-mark";
+    player.appendChild(mark);
+    document.body.appendChild(player);
+
+    expect(onlyAssigned(slotAt(player.shadowRoot, ".hfp-shader-loader-mark slot"))).toBe(mark);
   });
 });
 
@@ -3837,11 +3890,6 @@ describe("HyperframesPlayer retained runtime data", () => {
 
     player.removeAttribute("sandbox-origin");
     expect(player.iframeElement.sandbox.contains("allow-same-origin")).toBe(true);
-  });
-
-  it("names its frame, the one mark a composition in an opaque sandbox can still read", () => {
-    player.setAttribute("sandbox-origin", "opaque");
-    expect(player.iframeElement.name).toBe(PLAYER_FRAME_NAME);
   });
 
   it("treats every non-null sandbox-origin value as restrictive", () => {

@@ -70,10 +70,11 @@ if (rootVersionRequested) {
 
 // The working directory is project data: load only the settings a project `.env` may supply,
 // before browser selection can observe the environment.
-const { loadProjectDotEnv } = await import("./utils/dotEnv.js");
+const { loadProjectDotEnv, yieldReceivedProviderKeys } = await import("./utils/dotEnv.js");
 const captureEnv = argv[commandWordIndex(argv)] === "capture";
 if (!captureEnv || process.env.HYPERFRAMES_NO_CAPTURE_DOTENV !== "1") {
   loadProjectDotEnv(process.cwd(), process.env, (line) => console.error(line));
+  await yieldReceivedProviderKeys((line) => console.error(line));
 }
 
 // ── Lazy imports ────────────────────────────────────────────────────────────
@@ -95,6 +96,7 @@ import { closestMatch, closestNames, commandRedirect, fileHint } from "./utils/d
 import { errorBox } from "./ui/format.js";
 import { failureShown, jsonErrorBody, watchOutput, writeJsonFailure } from "./utils/jsonError.js";
 import { isDevMode } from "./utils/env.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import {
   CliResultSignal,
   CliRuntimeError,
@@ -397,7 +399,7 @@ function printNotices(): void {
     _printStalePinNotice?.();
   }
   _printSkillsUpdateNotice?.();
-  if (_appHistoryNotice) process.stderr.write(`◇  ${_appHistoryNotice}\n`);
+  if (_appHistoryNotice) process.stderr.write(`◇  ${terminalText(_appHistoryNotice)}\n`);
 }
 
 registerRootExitRequester((exitCode) => {
@@ -475,7 +477,7 @@ function reportPostRenderTerminationEvent(
   error: Error,
 ): void {
   process.stderr.write(
-    `  [hyperframes] Late ${label} (the command already delivered its result): ${error.message}\n`,
+    `  [hyperframes] Late ${label} (the command already delivered its result): ${terminalText(error.message)}\n`,
   );
   emitCliErrorEvent(kind, error);
 }
@@ -704,7 +706,7 @@ async function executeCli(): Promise<void> {
       const usage = error instanceof CliUsageError && !error.result.presented;
       if (usage && !error.hint) await showRequestedUsage(console.error);
       if (!typed || !error.result.presented) {
-        console.error(error instanceof Error ? error.message : String(error));
+        console.error(terminalLines(error instanceof Error ? error.message : String(error)));
       }
       if (usage && error.hint) console.error(error.hint);
     }

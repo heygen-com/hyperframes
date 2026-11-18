@@ -1,10 +1,12 @@
 // @vitest-environment happy-dom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 // The frame's real runtime agent, serving the opaque frame from this document.
-import { installEditingAgent } from "../../../../core/src/runtime/editingAgent";
+import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
 import { makeSelection } from "../../hooks/domSelectionTestHarness";
 import { computeDraggedGsapPosition } from "../../hooks/draggedGsapPosition";
+import { tryGsapResizeIntercept } from "../../hooks/gsapResizeIntercept";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
 import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
@@ -15,8 +17,11 @@ import {
   createManualOffsetDragMember,
   restoreManualOffsetDragMembers,
 } from "./manualOffsetDrag";
-import { MOVING_LAYER_UNREADABLE } from "./plainTranslate";
-import { measurePreviewGestureStart, type PreviewGestureStart } from "./previewGestureStartRead";
+import {
+  gestureStartLayout,
+  measurePreviewGestureStart,
+  type PreviewGestureStart,
+} from "./previewGestureStartRead";
 import { standInFor } from "./previewSelection";
 import { collectSnapContext } from "./snapTargetCollection";
 
@@ -100,7 +105,7 @@ function opaqueFrame() {
         new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
       ),
   } as unknown as Window;
-  const agent = installEditingAgent(parent);
+  const agent = installMarkedEditingAgent(parent);
   frame.postMessage = (data: unknown) =>
     window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
   closers.push(() => agent.dispose());
@@ -242,16 +247,6 @@ describe("starting a gesture from what an opaque frame read", () => {
     restoreManualOffsetDragMembers(g.pathOffsetMember ? [g.pathOffsetMember] : []);
   });
 
-  it("refuses a drag of a layer a tween moves, which this preview cannot save yet", () => {
-    const element = document.createElement("div");
-    const selection = makeSelection("card", element);
-    const opts = gestureOpts(selection);
-    const moving = { ...START, gsap: { x: 0, y: 0, moving: true } };
-    expect(startGesture("drag", press(), opts, { start: moving })).toBe(false);
-    expect(opts.onBlockedMoveRef.current).toHaveBeenCalledWith(selection, MOVING_LAYER_UNREADABLE);
-    expect(opts.gestureRef.current).toBeNull();
-  });
-
   it("drags a group from each member's GSAP position, snapping with the targets it read", () => {
     const items = ["a", "b"].map((key, i) => {
       const element = document.createElement("div");
@@ -275,5 +270,54 @@ describe("starting a gesture from what an opaque frame read", () => {
       [false, 200],
     ]);
     restoreManualOffsetDragMembers(g.members);
+  });
+});
+
+describe("a resize in a preview Studio cannot script", () => {
+  it.each([-5, 1e-9, 1e9])("keeps no start box for a frame-reported width of %s", async (width) => {
+    const iframe = opaqueFrame();
+    Object.defineProperty(document.querySelector("#last"), "offsetWidth", {
+      value: width,
+      configurable: true,
+    });
+    const handle = (await queryPreviewElements(iframe, "#last"))!.matches[0]!.handle;
+    await measurePreviewGestureStart(iframe, overlayEl(), [handle]);
+    expect(gestureStartLayout(handle)).toBeNull();
+  });
+
+  it("scales from the box its gesture started from, not a 200 px fallback", async () => {
+    const iframe = opaqueFrame();
+    const handle = (await queryPreviewElements(iframe, "#last"))!.matches[0]!.handle;
+    const standIn = standInFor(iframe, (await describePreviewElements(iframe, [handle]))![0]!);
+    await measurePreviewGestureStart(iframe, overlayEl(), [handle]);
+    const scaleKeys = {
+      id: "#last-scale",
+      targetSelector: "#last",
+      propertyGroup: "scale",
+      method: "to",
+      properties: { scale: 1 },
+      position: 0,
+      resolvedStart: 0,
+      duration: 1,
+      keyframes: {
+        keyframes: [
+          { percentage: 0, properties: { scale: 1 } },
+          { percentage: 100, properties: { scale: 1 } },
+        ],
+      },
+    } as unknown as GsapAnimation;
+    const commitMutation = vi.fn();
+
+    await tryGsapResizeIntercept(
+      { ...makeSelection("last", standIn), handle },
+      { width: 240, height: 120 },
+      [scaleKeys],
+      iframe,
+      commitMutation,
+    );
+
+    const scales = JSON.stringify(commitMutation.mock.calls.map((call) => call[1]));
+    // It measured 120 x 60 at the press, so 240 x 120 is a scale of 2; the 200 px fallback gave 1.2.
+    expect(scales).toMatch(/"scale":2\b/);
   });
 });

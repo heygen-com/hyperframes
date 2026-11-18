@@ -27,10 +27,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
       <button
         type="button"
         onClick={() => {
-          trackStudioEvent("navigation", {
-            action: "back",
-            target: stack[stack.length - 2]?.label,
-          });
+          trackStudioEvent("navigation", { action: "back", level: stack.length - 2 });
           onNavigate(stack.length - 2);
         }}
         className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm text-xs text-text-3 hover:text-text-0 hover:bg-hover active:scale-[0.98] transition-colors"
@@ -52,7 +49,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
               <button
                 type="button"
                 onClick={() => {
-                  trackStudioEvent("navigation", { action: "breadcrumb", target: level.label });
+                  trackStudioEvent("navigation", { action: "breadcrumb", level: i });
                   onNavigate(i);
                 }}
                 className="text-xs text-text-3 hover:text-text-1 transition-colors"

@@ -1,8 +1,10 @@
 import { currentRecords, indexPath, ownMediaDir, replaceFile } from "./manifest.mjs";
+import { terminalText } from "./terminal-text.mjs";
 
-// One table cell: a line break in a record would start a new line of the index, so it becomes a space.
+const LINE_BREAKS = /\s*[\r\n\v\f\u0085\u2028\u2029]+\s*/g;
+
 function cell(value) {
-  return String(value ?? "").replace(/\s*[\r\n]+\s*/g, " ");
+  return terminalText(String(value ?? "").replace(LINE_BREAKS, " "));
 }
 
 function pad(str, len) {

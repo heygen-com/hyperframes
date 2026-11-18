@@ -35,6 +35,8 @@ vi.mock("node:fs", async () => {
   return { ...fs, ...overrides, default: { ...fs, ...overrides } };
 });
 
+vi.mock("../utils/receivedRender.js", () => ({ outsideAssetsAllowed: () => true }));
+
 const { createStudioServer } = await import("./studioServer.js");
 const { cleanupStudioServerRoot, makeStudioServerRoot } =
   await import("./studioServerTestFixture.js");

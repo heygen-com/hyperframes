@@ -211,6 +211,14 @@ function previewOwner(route: (path: string) => string): Owner {
   };
 }
 
+async function relistWrites(projectDir: string, entry: HistoryEntry | null): Promise<void> {
+  if (!entry?.files.length) return;
+  const { relistHistoryWrites } = await import("./receivedRecordFollow.js");
+  await relistHistoryWrites(projectDir, entry).catch((error: unknown) =>
+    console.warn(`Could not update the received-files record: ${String(error)}`),
+  );
+}
+
 async function directOwner(
   projectDir: string,
   ownerWaitMs = historyDeps.ownerWaitMs,
@@ -243,8 +251,16 @@ async function directOwner(
       list: async () => history.list(),
       peek: async (point) => history.peek(point),
       blob: (hash) => history.readBlob(hash),
-      undo: (id, who, mode) => history.undo(id, { who, ...(mode && { mode }) }),
-      restore: (point, who) => history.restore(point, who),
+      undo: async (id, who, mode) => {
+        const undone = await history.undo(id, { who, ...(mode && { mode }) });
+        if (undone.ok) await relistWrites(projectDir, undone.entry);
+        return undone;
+      },
+      restore: async (point, who) => {
+        const restored = await history.restore(point, who);
+        await relistWrites(projectDir, restored);
+        return restored;
+      },
       pin: async (id, pinned) => history.pin(id, pinned),
       // Opening filed every earlier write; the turn's own writes are filed to it when the next open passes it.
       begin: async () => ({ id: randomUUID(), startedAt: historyDeps.now() }),

@@ -72,6 +72,7 @@ import {
   STUDIO_WIDTH_PROP,
 } from "./manualEditsTypes";
 import { rememberFrameTranslate, TRANSLATE_PX_PROPERTIES, translatePx } from "./plainTranslate";
+import { rememberFrameClipPath } from "./domEditOverlayCrop";
 
 let inertDocument: Document | undefined;
 const inert = () => (inertDocument ??= document.implementation.createHTMLDocument(""));
@@ -354,9 +355,15 @@ export async function resolvePreviewSelection(
   ]);
   if (!styles) return null;
   // The stand-in has no box to size a % or em against: a move starts from what the frame renders.
+  rememberFrameClipPath(
+    element,
+    current.inlineStyles["clip-path"] ?? "",
+    styles["clip-path"] ?? "",
+  );
   rememberFrameTranslate(
     element,
     translatePx(styles.translate ?? "none", (p) => styles[p] ?? ""),
+    styles.translate ?? "none",
   );
   const computedStyles = Object.fromEntries(
     CURATED_STYLE_PROPERTIES.flatMap((p) => (p in styles ? [[p, styles[p]!]] : [])),

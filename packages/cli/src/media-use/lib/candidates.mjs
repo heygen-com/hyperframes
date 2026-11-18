@@ -8,6 +8,7 @@
 import { currentRecords } from "./manifest.mjs";
 import { readGlobalManifest } from "./cache.mjs";
 import { tokenOverlap, typesMatch } from "./match.mjs";
+import { terminalText } from "./terminal-text.mjs";
 
 export const CANDIDATE_CAP = 8;
 
@@ -78,8 +79,8 @@ export function formatCandidates(candidates, { truncated, total } = {}) {
     const handle =
       c.scope === "global" ? `--reuse ${String(c.sha).slice(0, 16)}` : c.path || `manifest:${c.id}`;
     const m = meta(c);
-    lines.push(`  [${c.scope}] ${c.description}${m ? ` (${m})` : ""}`);
-    lines.push(`          ${handle}`);
+    lines.push(terminalText(`  [${c.scope}] ${c.description}${m ? ` (${m})` : ""}`));
+    lines.push(terminalText(`          ${handle}`));
   }
   if (truncated && total) {
     lines.push("");

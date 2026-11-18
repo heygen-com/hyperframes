@@ -1,10 +1,12 @@
 // OpenCV for the measuring tools that need it (template tracking, optical flow, faces), as opencv.js: one WebAssembly
 // file that gives every machine the same numbers. It is not shipped in the CLI; the first use downloads it and the
 // Haar face models, pinned by size and sha256, into ~/.cache/hyperframes/opencv/<version>/.
-import { mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { readFileSync, renameSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
   foreignWritablePath,
   sealCacheInstall,
   trustedCacheRoot,
@@ -123,19 +125,22 @@ const isCv = (v: unknown): v is Cv =>
 
 /** Every pinned file present and verified; the missing ones fetched. */
 // fallow-ignore-next-line complexity
-async function ensureOpenCv(onStatus?: (message: string) => void): Promise<void> {
+async function ensureOpenCv(
+  onStatus?: (message: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
   const missing: Pinned[] = [];
   for (const f of FILES) {
     const file = join(OPENCV_DIR, f.name);
     if (foreignWritablePath(file, CODE_ROOT) || !(await verifies(file, f))) missing.push(f);
   }
   if (!missing.length) return;
-  mkdirSync(OPENCV_DIR, { recursive: true, mode: 0o700 });
+  ensurePrivateCacheDir(OPENCV_DIR, CODE_ROOT);
   for (const f of missing) {
     onStatus?.(`Downloading ${f.name} (${Math.round(f.bytes / 1e5) / 10} MB, once)...`);
     const temp = join(OPENCV_DIR, `${f.name}.part-${process.pid}`);
     try {
-      await downloadToFile(f.url, temp);
+      await downloadToFile(f.url, temp, { signal });
       if (!(await verifies(temp, f)))
         throw new Fix(
           `${f.name} did not match its pinned size and sha256`,
@@ -153,14 +158,18 @@ async function ensureOpenCv(onStatus?: (message: string) => void): Promise<void>
     }
   }
   sealCacheInstall(OPENCV_DIR, CODE_ROOT);
+  for (const f of FILES) assertPrivateCachePath(join(OPENCV_DIR, f.name), CODE_ROOT);
 }
 
 let loaded: Promise<Cv> | null = null;
 
 /** opencv.js, ready to call, with the face models in its file system. Loaded once per process. */
-export function loadOpenCv(onStatus?: (message: string) => void): Promise<Cv> {
+export function loadOpenCv(
+  onStatus?: (message: string) => void,
+  signal?: AbortSignal,
+): Promise<Cv> {
   loaded ??= (async () => {
-    await ensureOpenCv(onStatus);
+    await ensureOpenCv(onStatus, signal);
     const mod: unknown = createRequire(import.meta.url)(join(OPENCV_DIR, "opencv.js"));
     if (typeof mod !== "object" || mod === null) throw new Error("opencv.js did not load");
     // Wait on its init hook, never on the module: it is a thenable that does not settle under await.

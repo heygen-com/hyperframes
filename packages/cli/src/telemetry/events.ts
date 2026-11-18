@@ -385,6 +385,7 @@ export function trackRenderComplete(
     staticDedupEnabled?: boolean;
     staticDedupArmed?: boolean;
     staticDedupSkipReason?: string;
+    staticDedupIneligibleCause?: string;
     staticDedupPredictedFrames?: number;
     staticDedupReusedFrames?: number;
     // BeginFrame no-damage reuse outcome (Linux/Docker lastFrameCache — the BF
@@ -543,6 +544,7 @@ export function trackRenderComplete(
       static_dedup_enabled: props.staticDedupEnabled,
       static_dedup_armed: props.staticDedupArmed,
       static_dedup_skip_reason: props.staticDedupSkipReason,
+      static_dedup_ineligible_cause: props.staticDedupIneligibleCause,
       static_dedup_predicted_frames: props.staticDedupPredictedFrames,
       static_dedup_reused_frames: props.staticDedupReusedFrames,
       begin_frame_no_damage_frames: props.beginFrameNoDamageFrames,
@@ -1023,8 +1025,14 @@ export type ReverseUnrecordedCause =
 export function trackReverseStartUnrecorded(props: {
   cause: ReverseUnrecordedCause;
   status?: number;
+  /** An error status only: whether HeyGen's API wrote the body, or something between (a proxy, a firewall). */
+  heygenBody?: boolean;
 }): void {
-  trackEvent("cli_reverse_start_unrecorded", { cause: props.cause, status: props.status });
+  trackEvent("cli_reverse_start_unrecorded", {
+    cause: props.cause,
+    status: props.status,
+    heygen_body: props.heygenBody,
+  });
 }
 
 export function trackSkillCommandRan(props: {

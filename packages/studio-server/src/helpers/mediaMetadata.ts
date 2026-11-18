@@ -11,7 +11,7 @@ import {
   type ToneMapFrameColour,
 } from "@hyperframes/core";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
-import { MEDIA_INPUT_ARGS, NOT_MEDIA, startsAsMediaPlaylist } from "./mediaExtensions.js";
+import { mediaInputArgs, NOT_MEDIA, startsAsMediaPlaylist } from "./mediaExtensions.js";
 import { videoStreamHasAlpha } from "@hyperframes/parsers/media-alpha";
 import { decodableAudioStream, type FfprobeStreamCodec } from "@hyperframes/parsers/media-streams";
 
@@ -204,7 +204,7 @@ export async function probeFirstFrameColour(
   if (!ffmpegPath) return {};
   const result = await runner(
     ffmpegPath,
-    [...MEDIA_INPUT_ARGS, ...firstFrameColourArgs(filePath)],
+    [...mediaInputArgs(filePath), ...firstFrameColourArgs(filePath)],
     {
       timeout: 15_000,
       maxBuffer: 1024 * 1024,
@@ -214,7 +214,7 @@ export async function probeFirstFrameColour(
   if (result.status !== 0 || !readsKeyframeTransfers(first)) return first;
   const keyframes = await runner(
     ffmpegPath,
-    [...MEDIA_INPUT_ARGS, ...keyframeTransferArgs(filePath, codec)],
+    [...mediaInputArgs(filePath), ...keyframeTransferArgs(filePath, codec)],
     {
       timeout: 30_000,
       maxBuffer: 8 * 1024 * 1024,
@@ -332,7 +332,7 @@ export async function probeAudioTrack(
       "stream=codec_type,codec_name,channels",
       "-of",
       "json",
-      ...MEDIA_INPUT_ARGS,
+      ...mediaInputArgs(filePath),
       "--",
       filePath,
     ],
@@ -375,7 +375,7 @@ export async function probeMediaMetadata(
       "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate,r_frame_rate,avg_frame_rate:stream_disposition:stream_tags=alpha_mode:format=duration,bit_rate",
       "-of",
       "json",
-      ...MEDIA_INPUT_ARGS,
+      ...mediaInputArgs(filePath),
       "--",
       filePath,
     ],

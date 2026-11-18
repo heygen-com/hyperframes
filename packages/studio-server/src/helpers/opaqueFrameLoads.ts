@@ -1,6 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Context, Hono, Next } from "hono";
 import { getMimeType } from "./mime.js";
+import { fetchAgain } from "./fetchAgain.js";
 import {
   isProxyWait,
   PREVIEW_EXPOSED_HEADERS,
@@ -88,6 +89,10 @@ async function underToken(res: Response, headers: Headers, projectId: string, to
   return new Response(html, { status: res.status, headers });
 }
 
+const frameTokenLoads = new WeakSet<Request>();
+
+export const loadedThroughFrameToken = (request: Request) => frameTokenLoads.has(request);
+
 // Every opaque frame sends `Origin: null`, so the grant goes only to `preview/~<token>/` paths, which only the
 // Studio's own pages can learn. The token path serves the plain path's response, its document re-based under the token.
 export function serveTokenPreviewPaths(
@@ -107,7 +112,8 @@ export function serveTokenPreviewPaths(
     if (answersProxyPreflight(c, url))
       return new Response(null, { status: 204, headers: PROXY_PREFLIGHT_ANSWER });
     const req = new Request(url, { method: c.req.method, headers: c.req.raw.headers });
-    const res = await api.fetch(req);
+    frameTokenLoads.add(req);
+    const res = await fetchAgain(api, req);
     return underToken(res, tokenPathHeaders(c, res, url.pathname), projectId, token);
   };
 }

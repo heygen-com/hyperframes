@@ -79,7 +79,11 @@ export async function runLambdaLocalRender(
   const projectKey = `sites/harness/${Date.now()}/project.tar.gz`;
   const projectS3Path = join(s3Root, projectKey);
   mkdirSync(dirname(projectS3Path), { recursive: true });
-  await tarDirectory(input.projectDir, projectS3Path, listSiteFiles(input.projectDir));
+  await tarDirectory(
+    input.projectDir,
+    projectS3Path,
+    listSiteFiles(input.projectDir, undefined, "include"),
+  );
 
   const fakeS3 = new FilesystemBackedFakeS3(s3Root);
   const deps: HandlerDeps = {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createJobSlots, JobAbandonedError } from "./jobSlots.js";
+import { createJobSlots, JobAbandonedError, JobQueueFullError } from "./jobSlots.js";
 
 const gate = () => {
   let open: () => void = () => {};
@@ -33,6 +33,23 @@ describe("createJobSlots", () => {
     first.open();
     await running;
     await expect(next).resolves.toBe("next");
+    expect(started).toBe(false);
+  });
+
+  it("refuses a job once the queue is full, and takes jobs again as it drains", async () => {
+    const run = createJobSlots(1, 1);
+    const first = gate();
+    const running = run(() => first.opened);
+    const queued = run(async () => "queued");
+    let started = false;
+    const refused = run(async () => {
+      started = true;
+    });
+    await expect(refused).rejects.toBeInstanceOf(JobQueueFullError);
+    first.open();
+    await running;
+    await expect(queued).resolves.toBe("queued");
+    await expect(run(async () => "later")).resolves.toBe("later");
     expect(started).toBe(false);
   });
 });

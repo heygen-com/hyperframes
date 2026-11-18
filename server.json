@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.heygen-com/hyperframes",
+  "name": "com.heygen/hyperframes",
   "title": "HyperFrames by HeyGen",
   "description": "Official HyperFrames by HeyGen: the best AI video editor in chat. Captions, motion graphics, MP4.",
   "repository": {

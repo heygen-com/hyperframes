@@ -50,6 +50,9 @@ export interface RenderToCloudRunOptions {
   projectDir?: string;
   /** Re-use an existing `deploySite` upload (skips tar+GCS upload). */
   siteHandle?: SiteHandle;
+  /** Passed to {@link deploySite} when this call uploads the project, with its left-out notices. */
+  includeOutsideFiles?: boolean;
+  onNotice?: (message: string) => void;
   /** Validated `SerializableDistributedRenderConfig` (no logger / abortSignal). */
   config: SerializableDistributedRenderConfig;
   /** GCS bucket from the Terraform output (`render_bucket_name`). */
@@ -146,6 +149,8 @@ export async function renderToCloudRun(opts: RenderToCloudRunOptions): Promise<R
     (await deploySite({
       projectDir: opts.projectDir as string,
       bucketName: opts.bucketName,
+      onNotice: opts.onNotice,
+      includeOutsideFiles: opts.includeOutsideFiles,
       storage: opts.storage,
     }));
 

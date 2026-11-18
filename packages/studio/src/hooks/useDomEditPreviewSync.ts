@@ -9,6 +9,7 @@ import { reapplyPositionEditsAfterSeek } from "../components/editor/manualEdits"
 import { useDockLayoutStore } from "../components/dock/dockLayoutStore";
 import type { PatchTarget } from "../utils/sourcePatcher";
 import { onPreviewContentReplaced } from "../player/sceneSwap";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
 
 interface UseDomEditPreviewSyncParams {
   previewIframe: HTMLIFrameElement | null;
@@ -57,9 +58,8 @@ export function useDomEditPreviewSync({
       } catch {
         return;
       }
-      if (!doc) return;
-
-      reapplyPositionEditsAfterSeek(doc);
+      if (doc) reapplyPositionEditsAfterSeek(doc);
+      else if (!previewFrameOpaque(previewIframe)) return;
       await refreshDomEditSelectionFromPreview(currentSelection, previewIframe);
     };
 

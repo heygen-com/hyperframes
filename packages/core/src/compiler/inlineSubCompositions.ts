@@ -306,6 +306,11 @@ export interface InlineSubCompositionsOptions {
   /** Tag each top-level host with `data-hf-scene` and report every part's scene, for preview swaps. */
   tagScenes?: boolean;
   readProjectScript?: (path: string) => string | null;
+  /**
+   * Told the size of each script and stylesheet generated for a mount: each wrapped script once
+   * built, and each scoped sheet rule by rule as `scopeCssToComposition` reports it. May throw.
+   */
+  chargeEmitted?: (srcPath: string, bytes: number) => void;
 }
 
 export interface ExternalLink {
@@ -401,6 +406,7 @@ export function inlineSubCompositions(
     assetExists,
     tagScenes = false,
     readProjectScript,
+    chargeEmitted,
   } = options;
 
   const rootStyles = [...document.querySelectorAll("style")];
@@ -574,12 +580,15 @@ export function inlineSubCompositions(
         css = rewriteCssAssetUrls(raw, src, assetExists);
         sheetsWithAssetUrls.set(sheetKey, css);
       }
-      return scopeCompId
-        ? scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
-            compoundAuthoredRoot: compoundAuthoredRoot === true,
-            scopeRootSelectors: true,
-          })
-        : css;
+      if (!scopeCompId) {
+        chargeEmitted?.(src, css.length);
+        return css;
+      }
+      return scopeCssToComposition(css, scopeCompId, runtimeScope || undefined, authoredRootId, {
+        compoundAuthoredRoot: compoundAuthoredRoot === true,
+        scopeRootSelectors: true,
+        ...(chargeEmitted ? { charge: (bytes: number) => chargeEmitted(src, bytes) } : {}),
+      });
     };
 
     // <link> hoisting is unconditional. A templated sub-composition's webfont
@@ -647,9 +656,9 @@ export function inlineSubCompositions(
         const prelude = scriptCompositionId
           ? scopedModulePrelude(runtimeCompId || scopeCompId || scriptCompositionId, src)
           : "";
-        moduleScripts.push(
-          `${prelude}${AUTHORED_SOURCE_BEGIN}\n${scriptEl.textContent || ""}\n${AUTHORED_SOURCE_END}`,
-        );
+        const moduleScript = `${prelude}${AUTHORED_SOURCE_BEGIN}\n${scriptEl.textContent || ""}\n${AUTHORED_SOURCE_END}`;
+        chargeEmitted?.(src, moduleScript.length);
+        moduleScripts.push(moduleScript);
       } else if (externalSrc) {
         if (!externalScriptSrcs.includes(externalSrc)) {
           externalScriptSrcs.push(externalSrc);
@@ -672,6 +681,7 @@ export function inlineSubCompositions(
               src,
             )
           : wrapInlineScriptWithErrorBoundary(scriptEl.textContent || "", scriptErrorLabel);
+        chargeEmitted?.(src, wrappedScript.length);
         scripts.push(wrappedScript);
         scriptItems.push({ kind: "inline", content: wrappedScript, ...(scene ? { scene } : {}) });
       }

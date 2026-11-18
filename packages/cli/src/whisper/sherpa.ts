@@ -1,8 +1,8 @@
 import { execFile, spawn, type ExecFileException } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, renameSync, rmSync, statSync } from "node:fs";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
-import { join } from "node:path";
+import { ensurePrivateCacheDir, hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { downloadToFile } from "../cloud/download.js";
@@ -243,6 +243,7 @@ export async function installSherpaRuntime({
 } = {}): Promise<{ installed: boolean; runtimePath: string }> {
   const present = await selectRuntime(dir, cliUrl, 60_000, signal);
   if (present.status === "ready") return { installed: false, runtimePath: present.path };
+  ensurePrivateCacheDir(dirname(dir), dirname(dir));
   // install() keeps any dir holding the runtime manifest, so a broken one goes first.
   rmSync(dir, { recursive: true, force: true });
   const native = sherpaPlatformPackage();

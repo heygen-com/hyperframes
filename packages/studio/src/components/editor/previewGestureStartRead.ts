@@ -20,6 +20,10 @@ export interface PreviewGestureStarts {
   snap: SnapContext;
 }
 
+const startLayouts = new Map<string, PreviewGestureStart["layout"]>();
+
+export const gestureStartLayout = (handle: string) => startLayouts.get(handle) ?? null;
+
 /** Everything a gesture on `handles` reads from the frame, in one request; null when it cannot answer. */
 export async function measurePreviewGestureStart(
   iframe: HTMLIFrameElement,
@@ -27,6 +31,11 @@ export async function measurePreviewGestureStart(
   handles: string[],
 ): Promise<PreviewGestureStarts | null> {
   const reply = await previewGestureStart(iframe, handles);
+  startLayouts.clear();
+  reply?.elements.forEach((start, i) => {
+    const { width = 0, height = 0 } = start?.layout ?? {};
+    if (width >= 1 && height >= 1) startLayouts.set(handles[i]!, { width, height });
+  });
   const scale = reply && computeOverlayRootScale(overlayEl, iframe, null);
   if (!reply || !scale) return null;
   const { iframeRect, overlayRect, rootScaleX: sx, rootScaleY: sy } = scale;

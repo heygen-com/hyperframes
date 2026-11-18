@@ -315,7 +315,9 @@ const previewFrames = (page) =>
 async function hiddenTarget(page, selector = "#target") {
   for (const f of page.frames().filter((f) => f.url().includes("/preview"))) {
     const host = await f.frameElement().catch(() => null);
-    const shown = await host?.evaluate((e) => e.checkVisibility({ visibilityProperty: true }));
+    const shown = await host
+      ?.evaluate((e) => e.checkVisibility({ visibilityProperty: true }))
+      .catch(() => null);
     if (shown === false && (await f.$(selector).catch(() => null))) return true;
   }
   return false;

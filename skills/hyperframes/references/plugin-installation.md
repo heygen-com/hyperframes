@@ -20,7 +20,16 @@ launcher.
 
 ## Standalone skill installs
 
-Without a plugin manifest, the launcher runs the newest published CLI. The person installs and
+Without a plugin manifest, the launcher runs the newest compatible published CLI. To select a
+release, put `--cli-version latest` or `--cli-version <exact-version>` before the command.
+Take an exact version from the person, from the version an upgrade moves the pins to, or from
+`--cli-version latest --version`. Never take it from the project's own files: a `package.json`
+pin does not choose the CLI unless the person asks for that release. The launcher refuses a release older than its floor, the oldest one with the
+protections for received projects, and its error names the floor.
+Use the launcher from the loaded skill installation for commands shown in CLI output, too.
+For example, run `node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version latest --version`
+to read the current release. If the installed launcher lacks this option, ask the person to update
+their skills. The person installs and
 updates standalone skills with `npx hyperframes skills update`.
 
 ## Plugin installs
@@ -40,7 +49,7 @@ when all three of these hold:
 
 Otherwise the skills are a standalone install, and the launcher ignores any manifest there.
 Ignore it too, and follow the standalone rules above. The launcher refuses a manifest that
-pins a release older than 0.9.34.
+pins a release older than its floor.
 
 For a plugin installation, these rules also apply in every skill and reference:
 
