@@ -200,6 +200,7 @@ describe("installEditingAgent", () => {
           "max-z-index",
           "crop-lift",
           "edit-element",
+          "stacking-family",
         ],
       },
     });

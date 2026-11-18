@@ -39,6 +39,7 @@ import { gestureStart } from "./editingGestureStart";
 import { gsapSnapshot } from "./editing/gsapSnapshot";
 import { motionPathHome } from "./editing/motionPathHome";
 import { cropLift } from "./editing/cropLift";
+import { stackingFamily } from "./editingLayers";
 import {
   getLogicalOpacity,
   markedForStudio,
@@ -220,6 +221,7 @@ const HANDLERS: Handlers = {
   "max-z-index": () => maxZIndex(),
   "crop-lift": cropLift,
   "edit-element": editElement,
+  "stacking-family": stackingFamily,
 };
 
 function serve(port: MessagePort): void {
