@@ -125,4 +125,34 @@ describe("describeMissingPath", () => {
     const spawn = Object.assign(enoent("ffmpeg"), { syscall: "spawn ffmpeg" });
     expect(describeMissingPath(spawn)).toBeUndefined();
   });
+
+  it("never looks at a path that only the error's text names, as page-written text can", () => {
+    const { temp, linkedFrame } = layout();
+    const written = new Error(`Composition failed to start: ENOENT, open '${linkedFrame}'`);
+    expect(describeMissingPath(written, { tempRoot: temp })).toBeUndefined();
+  });
+
+  it("names a path outside the render's folders from its text, so it cannot tell whether one exists", () => {
+    const { temp } = layout();
+    const outside = mkdtempSync(join(tmpdir(), "hf-outside-"));
+    roots.push(outside);
+    const there = describeMissingPath(enoent(join(outside, "x.jpg")), { tempRoot: temp });
+    const gone = describeMissingPath(enoent(join(outside, "gone", "x.jpg")), { tempRoot: temp });
+    expect(there).toEqual({ scope: "other", synced: false, root: "other" });
+    expect(gone).toEqual(there);
+    expect(
+      describeMissingPath(enoent("//attacker.example/share/x.jpg"), { tempRoot: temp }),
+    ).toEqual(there);
+  });
+
+  it("looks inside the render's work folder when it is outside the temp root", () => {
+    const work = mkdtempSync(join(tmpdir(), "hf-work-elsewhere-"));
+    roots.push(work);
+    expect(
+      describeMissingPath(enoent(join(work, "x.jpg")), {
+        tempRoot: join(tmpdir(), "not-here"),
+        workDir: work,
+      })?.scope,
+    ).toBe("file");
+  });
 });
