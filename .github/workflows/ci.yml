@@ -20,13 +20,10 @@ on:
         type: boolean
         default: false
   pull_request:
-    # `edited` is required so the workflow re-fires when a PR's base ref is
-    # set back to `main` after a Graphite stack restack momentarily flips
-    # the base off of `main`. Without it, `pull_request` triggers are not
-    # re-evaluated on `base_ref_changed`, leaving required checks skipped
-    # for that head SHA forever.
+    # Any base, so a PR stacked on another PR's branch runs the same checks. `edited` re-fires
+    # them when a restack changes the base: `pull_request` triggers are not re-evaluated on
+    # `base_ref_changed`, which would leave required checks skipped for that head SHA.
     types: [opened, synchronize, reopened, edited]
-    branches: [main]
   push:
     branches: [main]
 
