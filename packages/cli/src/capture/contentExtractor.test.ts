@@ -854,6 +854,69 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
     vi.unstubAllGlobals();
   });
 
+  // fails without the fix: a project and an access token alone captioned nothing.
+  it("authenticates with a short-lived access token, holding no key", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("GEMINI_API_KEY", "");
+    vi.stubEnv("HYPERFRAMES_VERTEX_PROJECT_ID", "prefab-kit-000000");
+    vi.stubEnv("HYPERFRAMES_VERTEX_SERVICE_ACCOUNT", "");
+    vi.stubEnv("HYPERFRAMES_VERTEX_ACCESS_TOKEN", "ya29.synthetic-token");
+    generateContentMock.mockResolvedValue({ text: "A dark blue product screenshot." });
+
+    const captions = await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(captions).toEqual({ "hero.png": "A dark blue product screenshot." });
+    expect(clientOptions).toHaveLength(1);
+    expect(clientOptions[0]).toMatchObject({
+      vertexai: true,
+      project: "prefab-kit-000000",
+      location: "us-central1",
+    });
+    const auth = (clientOptions[0] as { googleAuthOptions: Record<string, unknown> })
+      .googleAuthOptions;
+    expect(auth).not.toHaveProperty("credentials");
+    const client = auth.authClient as { getRequestHeaders: () => Promise<Headers> };
+    const headers = await client.getRequestHeaders();
+    expect(headers.get("authorization")).toBe("Bearer ya29.synthetic-token");
+  });
+
+  // fails without the fix: the service account was used even when a token was given.
+  it("uses the access token, not the service account, when both are set", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vertexEnv();
+    vi.stubEnv("HYPERFRAMES_VERTEX_ACCESS_TOKEN", "ya29.synthetic-token");
+    generateContentMock.mockResolvedValue({ text: "A caption." });
+
+    await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(clientOptions).toHaveLength(1);
+    const auth = (clientOptions[0] as { googleAuthOptions: Record<string, unknown> })
+      .googleAuthOptions;
+    expect(auth).not.toHaveProperty("credentials");
+    expect(auth).toHaveProperty("authClient");
+  });
+
+  it("skips captioning when the access token is malformed, without echoing it", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("GEMINI_API_KEY", "");
+    vi.stubEnv("HYPERFRAMES_VERTEX_PROJECT_ID", "prefab-kit-000000");
+    vi.stubEnv("HYPERFRAMES_VERTEX_ACCESS_TOKEN", "ya29.half\r\nX-Extra: super-secret-material");
+
+    const warnings: string[] = [];
+    const captions = await captionImagesWithGemini(dir, () => {}, warnings);
+
+    expect(captions).toEqual({});
+    expect(clientOptions).toHaveLength(0);
+    expect(generateContentMock).not.toHaveBeenCalled();
+    expect(warnings.join(" ")).toContain("not an access token");
+    expect(warnings.join(" ")).not.toContain("super-secret-material");
+  });
+
   it("needs both halves of the credential before it will use Vertex", async () => {
     const dir = makeProjectWithImages();
     dirs.push(dir);

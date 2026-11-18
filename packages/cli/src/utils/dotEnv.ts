@@ -171,9 +171,10 @@ export async function yieldReceivedProviderKeys(warn: (line: string) => void): P
   }
 }
 
-// Capture's vision credentials in the order it picks them; the Vertex one is usable only with both parts set.
+// Capture's vision credentials in the order it picks them; a Vertex one is usable only with both parts set.
 const VISION_CREDENTIALS: readonly (readonly string[])[] = [
   ["OPENROUTER_API_KEY"],
+  ["HYPERFRAMES_VERTEX_PROJECT_ID", "HYPERFRAMES_VERTEX_ACCESS_TOKEN"],
   ["HYPERFRAMES_VERTEX_PROJECT_ID", "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT"],
   ["GEMINI_API_KEY"],
   ["GOOGLE_API_KEY"],
