@@ -32,7 +32,7 @@ import {
 import { elementVolume, parseStoredVolume } from "./storedVolume";
 import { previewDocumentCopy, previewFrameOpaque } from "./previewChannel";
 
-/** Every sync, live or sealed: a sealed read lands only if none ran after it began. */
+/** Every sync and saved-value write: a sealed read lands only if none ran after it began. */
 let syncs = 0;
 
 /**
@@ -93,7 +93,7 @@ export function syncStoredAutomationFromPreview(doc: Document | null | undefined
 
 /**
  * `syncStoredAutomationFromPreview` for a preview frame. A sealed one is read off a copy, which lands
- * only if no other sync ran and the project is still the one read; a frame load drops the read itself.
+ * only if no other sync or saved write ran and the project is the one read; a frame load drops the read.
  */
 export function syncStoredAutomationFromFrame(iframe: HTMLIFrameElement | null | undefined): void {
   if (!iframe) return;
@@ -126,6 +126,7 @@ export function syncStoredElementAttribute(
 ): void {
   const fields = STORED_FIELD[attr]?.(value);
   if (!fields) return;
+  syncs += 1;
   const key = getTimelineElementIdentity(target);
   const same = (element: TimelineElement) =>
     (Object.keys(fields) as (keyof TimelineElement)[]).every((k) => element[k] === fields[k]);

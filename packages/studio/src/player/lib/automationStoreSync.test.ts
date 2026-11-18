@@ -216,6 +216,14 @@ describe("syncStoredAutomationFromFrame", () => {
     expect(volume()).toBe(0.8);
   });
 
+  it("drops a sealed read once the timeline saved a newer value", async () => {
+    syncStoredAutomationFromFrame(frame(true));
+    syncStoredElementAttribute(el(), "data-volume", "0.8");
+    copies[0]!(previewWith({ "data-volume": "0.2" }));
+    await settle();
+    expect(volume()).toBe(0.8);
+  });
+
   it("drops a sealed read once another project is open", async () => {
     syncStoredAutomationFromFrame(frame(true));
     usePlayerStore.setState({ timelineProjectId: "b" });

@@ -563,8 +563,9 @@ export function useClipboard({
   const handleCut = useCallback(async (): Promise<boolean> => {
     const selected = getSelectedElements();
     const domSelection = domEditSelectionRef.current;
+    const pid = projectIdRef.current;
     const copied = copyToClipboard();
-    if (!copied || !(await copied)) return false;
+    if (!copied || !(await copied) || projectIdRef.current !== pid) return false;
 
     if (selected.length > 0) {
       // One call for the whole selection, not one per element: the batched

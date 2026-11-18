@@ -37,10 +37,11 @@ function sealedClipboard(domSelection: DomEditSelection | null) {
   const { iframe } = sealedPreviewFrame();
   const writes: string[] = [];
   const deleted: string[] = [];
+  const view = { projectId: "p" };
   let api: ReturnType<typeof useClipboard> | null = null;
   function Harness() {
     api = useClipboard({
-      projectId: "p",
+      projectId: view.projectId,
       activeCompPath: "index.html",
       domEditSelectionRef: { current: domSelection },
       showToast: () => {},
@@ -57,7 +58,11 @@ function sealedClipboard(domSelection: DomEditSelection | null) {
   }
   root = createRoot(document.createElement("div"));
   act(() => root?.render(React.createElement(Harness)));
-  return { clipboard: () => api as ReturnType<typeof useClipboard>, writes, deleted };
+  const openProject = (projectId: string) => {
+    view.projectId = projectId;
+    act(() => root?.render(React.createElement(Harness)));
+  };
+  return { clipboard: () => api as ReturnType<typeof useClipboard>, writes, deleted, openProject };
 }
 
 const clipOf = (id: string, tag: string, start: number, track: number): TimelineElement => ({
@@ -134,4 +139,13 @@ it("cuts, and duplicates, the clip selected when the key was pressed, not one se
   expect(await duplicate).toBe(true);
   expect(writes[1]?.match(/>Title<\/h1>/g)).toHaveLength(2);
   expect(writes[1]?.match(/>Other<\/h2>/g)).toHaveLength(1);
+});
+
+it("deletes nothing when another project opened while a sealed cut waited", async () => {
+  selectTitleClip();
+  const { clipboard, deleted, openProject } = sealedClipboard(null);
+  const cut = clipboard().handleCut();
+  openProject("q");
+  expect(await cut).toBe(false);
+  expect(deleted).toEqual([]);
 });
