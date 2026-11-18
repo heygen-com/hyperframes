@@ -169,6 +169,7 @@ import {
 } from "./render/shared.js";
 import { frameCacheOptions } from "./render/frameCacheBudget.js";
 import { buildRenderErrorDetails } from "./render/cleanup.js";
+import { describeMissingPath, type MissingPathFacts } from "./render/missingPath.js";
 import { publishRenderFailure } from "./render/renderEventPublisher.js";
 import { EncoderInterruptedError } from "./render/encoderInterruption.js";
 import { RenderExecutionContext } from "./render/renderExecutionContext.js";
@@ -347,6 +348,7 @@ function summarizeExtractionObservability(
     vfrPreflightCount: phaseBreakdown?.vfrPreflightCount,
     cacheHits: phaseBreakdown?.cacheHits,
     cacheMisses: phaseBreakdown?.cacheMisses,
+    cachePublishFailures: phaseBreakdown?.cachePublishFailures,
     transientRetries: phaseBreakdown?.transientRetries,
     ...coverageGauges,
     authoredTimedClipCount,
@@ -840,6 +842,7 @@ export interface RenderJob extends Partial<ReferenceBackgroundResult> {
     observability?: RenderObservabilitySummary;
     /** Worst sub-composition timeline wait outcome across sessions captured before the failure. */
     subTimelineWait?: SubTimelineWaitOutcome;
+    missingPath?: MissingPathFacts;
   };
 }
 
@@ -6033,6 +6036,7 @@ async function executeRenderPipeline(input: {
       hdrDiagnostics,
       observability: observabilitySummary,
       subTimelineWait: worstSubTimelineWaitOutcome(dedupPerfs),
+      missingPath: describeMissingPath(error, { cacheDir: cfg.extractCacheDir }),
     });
     publishRenderFailure(
       job,
