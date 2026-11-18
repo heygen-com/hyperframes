@@ -224,11 +224,8 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
 
 type Copied = { hash: string } | "gone" | "changing";
 
-/** How long the first copy waits on one file: past it the file is owed and copied in the background later. */
 const FIRST_COPY_FILE_MS = 10_000;
 
-/** `copy`'s answer, or "changing" once `ms` pass. A read can't be cancelled, so the copy keeps its slot until its
- * read ends: a drive that stops answering holds the slots, never more threads than they allow. */
 async function owedAfter(copy: Promise<Copied>, ms: number): Promise<Copied> {
   let timer: NodeJS.Timeout | undefined;
   const late = new Promise<Copied>((owed) => (timer = setTimeout(() => owed("changing"), ms)));
@@ -460,7 +457,6 @@ class Engine {
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   adopting = new Map<string, Adoption>();
-  /** Each path's latest copy: a later one reads after it ends, so a read stuck on the drive never gains a twin. */
   reading = new Map<string, Promise<unknown>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
@@ -866,7 +862,6 @@ class Engine {
   /** The file's hash once copied in, or why there is none: gone, or still changing through every read. */
   storeIfPresent(path: string): Promise<Copied> {
     const before = this.reading.get(path) ?? Promise.resolve();
-    // expected: the earlier copy's failure reached its own caller; this one only waits for it to end
     const read = before.catch(() => {}).then(() => this.storeNow(path));
     const turn = read.catch(() => {});
     this.reading.set(path, turn);
