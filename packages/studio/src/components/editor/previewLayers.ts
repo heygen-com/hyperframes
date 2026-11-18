@@ -3,10 +3,10 @@ import { MAX_DESCRIBE_HANDLES, type EditingLayer } from "@hyperframes/core/runti
 import {
   describePreviewElements,
   previewLayers,
+  previewStackingSiblings,
   queryPreviewElements,
   type PreviewElement,
 } from "../../player/lib/previewElements";
-import { previewRequest } from "../../player/lib/previewChannel";
 import type { Rect } from "../../utils/marqueeGeometry";
 import { coversComposition } from "../../utils/studioPreviewHelpers";
 import type { RenderEntry } from "./canvasContextMenuZOrder";
@@ -107,7 +107,7 @@ export async function previewStackingFamily(
   handle: string,
   path: string | null,
 ) {
-  const reply = await previewRequest(iframe, "stacking-family", { handle });
+  const reply = await previewStackingSiblings(iframe, handle);
   const siblings = reply?.family;
   const described =
     siblings &&
