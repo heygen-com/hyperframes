@@ -365,7 +365,10 @@ export function editPreviewElement(
 const SEALED_DRAW_WAIT_MS = 300;
 
 /** Saves a live edit at once; a sealed one once the frame says it drew it, else after the wait. */
-export function afterSealedDraw<T>(edit: PreviewElementEdit | null, save: (drawn: boolean) => T) {
+export function afterSealedDraw<T>(
+  edit: Pick<PreviewElementEdit, "drawn"> | null,
+  save: (drawn: boolean) => T,
+) {
   if (!edit) return save(true);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<boolean>((resolve) => {
