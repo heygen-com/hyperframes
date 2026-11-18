@@ -159,6 +159,123 @@ export async function resolveUrlSelections({
   return members;
 }
 
+interface UrlSelectionLookup extends ResolveUrlSelectionsParams {
+  apply: (members: DomEditSelection[]) => void;
+  settle: () => void;
+  retry: (next: () => void) => void;
+}
+
+function lookUpUrlSelection(lookup: UrlSelectionLookup, triesLeft = URL_SELECTION_TRIES): void {
+  void resolveUrlSelections(lookup).then((members) => {
+    if (members === undefined && triesLeft > 1) {
+      lookup.retry(() => lookUpUrlSelection(lookup, triesLeft - 1));
+      return;
+    }
+    if (members) lookup.apply(members);
+    lookup.settle();
+  });
+}
+
+function applyUrlMembers(
+  members: DomEditSelection[],
+  grouped: boolean,
+  applyDomSelection: (
+    selection: DomEditSelection | null,
+    options: { revealPanel: boolean },
+  ) => void,
+  applyMarqueeSelection: (selections: DomEditSelection[], mode: MarqueeSelectionMode) => void,
+): void {
+  const primary = members[0];
+  if (!primary) return applyDomSelection(null, { revealPanel: false });
+  if (!grouped) return applyDomSelection(primary, { revealPanel: false });
+  // Missing group members are dropped without failing the rest.
+  applyMarqueeSelection(members, "replace");
+}
+
+// One URL-selection lookup at a time: a newer one replaces the older, which ends then.
+interface UrlLookupState {
+  applySeq: number;
+  retryTimer: ReturnType<typeof setTimeout> | undefined;
+  pendingSettle: (() => void) | undefined;
+  hydrating: boolean;
+}
+
+function useUrlLookupState(): UrlLookupState {
+  const state = useRef<UrlLookupState>({
+    applySeq: 0,
+    retryTimer: undefined,
+    pendingSettle: undefined,
+    hydrating: false,
+  }).current;
+  useEffect(() => () => clearTimeout(state.retryTimer), [state]);
+  return state;
+}
+
+function endOnce(state: UrlLookupState, onSettled?: () => void): () => void {
+  let ended = false;
+  const settle = () => {
+    if (ended) return;
+    ended = true;
+    if (state.pendingSettle === settle) state.pendingSettle = undefined;
+    onSettled?.();
+  };
+  return settle;
+}
+
+interface UrlSelectionHost {
+  iframe: HTMLIFrameElement | null;
+  activeCompPath: string | null;
+  lookup: UrlLookupState;
+  buildDomSelection: ResolveUrlSelectionsParams["buildDomSelection"];
+  applyDomSelection: (
+    selection: DomEditSelection | null,
+    options: { revealPanel: boolean },
+  ) => void;
+  applyMarqueeSelection: (selections: DomEditSelection[], mode: MarqueeSelectionMode) => void;
+}
+
+// Resolve a URL selection in the preview, sealed or not, and apply it. False when there is no preview yet; a frame
+// that cannot answer yet is asked again on a timer. onSettled runs once the lookup ends, however it ends.
+function startUrlSelection(
+  host: UrlSelectionHost,
+  selection: StudioUrlSelectionState | null,
+  onSettled?: () => void,
+): boolean {
+  const { iframe } = host;
+  if (selection && !iframe) return false;
+  const { lookup } = host;
+  clearTimeout(lookup.retryTimer);
+  const applySeq = ++lookup.applySeq;
+  lookup.pendingSettle?.();
+  const settle = endOnce(lookup, onSettled);
+  lookup.pendingSettle = settle;
+  if (!selection || !iframe) {
+    host.applyDomSelection(null, { revealPanel: false });
+    settle();
+    return true;
+  }
+  const group = selection.group ?? [];
+  lookUpUrlSelection({
+    find: (target) => findSelectionElement(iframe, target, host.activeCompPath),
+    selection,
+    group,
+    isCurrent: () => applySeq === lookup.applySeq,
+    buildDomSelection: host.buildDomSelection,
+    apply: (members) =>
+      applyUrlMembers(
+        members,
+        group.length > 0,
+        host.applyDomSelection,
+        host.applyMarqueeSelection,
+      ),
+    settle,
+    retry: (next) => {
+      lookup.retryTimer = setTimeout(next, URL_SELECTION_RETRY_MS);
+    },
+  });
+  return true;
+}
+
 export function useStudioUrlState({
   projectId,
   activeCompPath,
@@ -188,11 +305,7 @@ export function useStudioUrlState({
   const [selectionHydrated, setSelectionHydrated] = useState(initialState.selection == null);
   const pendingSelectionRef = useRef(initialState.selection);
   const stableTimeRef = useRef<number | null>(initialState.currentTime);
-  const selectionApplySeqRef = useRef(0);
-  const selectionRetryRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const selectionLookupRef = useRef(false);
-  const settleLookupRef = useRef<(() => void) | undefined>(undefined);
-  useEffect(() => () => clearTimeout(selectionRetryRef.current), []);
+  const urlLookup = useUrlLookupState();
 
   const buildUrlState = useCallback(
     (): StudioUrlState => ({
@@ -208,64 +321,28 @@ export function useStudioUrlState({
     [activeCompPath, domEditGroupSelections, domEditSelection, rightCollapsed, rightPanelTab],
   );
 
-  // Resolve a URL selection in the preview, sealed or not, and apply it. Shared by the initial
-  // hydration effect and the hashchange handler. False when there is no preview yet; a frame that
-  // cannot answer yet is asked again on a timer. onSettled runs once the lookup ends, however it ends.
+  // Shared by the initial hydration effect and the hashchange handler.
   const applyUrlSelection = useCallback(
-    (selection: StudioUrlSelectionState | null, onSettled?: () => void): boolean => {
-      const iframe = previewIframeRef.current;
-      if (selection && !iframe) return false;
-      clearTimeout(selectionRetryRef.current);
-      const applySeq = ++selectionApplySeqRef.current;
-      let ended = false;
-      const settle = () => {
-        if (ended) return;
-        ended = true;
-        if (settleLookupRef.current === settle) settleLookupRef.current = undefined;
-        onSettled?.();
-      };
-      settleLookupRef.current?.();
-      settleLookupRef.current = settle;
-      if (!selection || !iframe) {
-        applyDomSelection(null, { revealPanel: false });
-        settle();
-        return true;
-      }
-      const group = selection.group ?? [];
-      const attempt = (triesLeft: number) =>
-        void resolveUrlSelections({
-          find: (target) => findSelectionElement(iframe, target, activeCompPath),
-          selection,
-          group,
-          isCurrent: () => applySeq === selectionApplySeqRef.current,
+    (selection: StudioUrlSelectionState | null, onSettled?: () => void): boolean =>
+      startUrlSelection(
+        {
+          iframe: previewIframeRef.current,
+          activeCompPath,
+          lookup: urlLookup,
           buildDomSelection: buildDomSelectionFromTarget,
-        }).then((members) => {
-          if (members === undefined && triesLeft > 1) {
-            selectionRetryRef.current = setTimeout(
-              () => attempt(triesLeft - 1),
-              URL_SELECTION_RETRY_MS,
-            );
-            return;
-          }
-          if (members) applyResolved(members);
-          settle();
-        });
-      const applyResolved = (members: DomEditSelection[]) => {
-        const primary = members[0];
-        if (!primary) return applyDomSelection(null, { revealPanel: false });
-        if (group.length === 0) return applyDomSelection(primary, { revealPanel: false });
-        // Missing group members are dropped without failing the rest.
-        applyMarqueeSelection(members, "replace");
-      };
-      attempt(URL_SELECTION_TRIES);
-      return true;
-    },
+          applyDomSelection,
+          applyMarqueeSelection,
+        },
+        selection,
+        onSettled,
+      ),
     [
       activeCompPath,
       applyDomSelection,
       applyMarqueeSelection,
       buildDomSelectionFromTarget,
       previewIframeRef,
+      urlLookup,
     ],
   );
 
@@ -291,7 +368,7 @@ export function useStudioUrlState({
   const selectionHydrationTime = selectionHydrated ? 0 : currentTime;
   useEffect(() => {
     if (!projectId || hydratedSelectionRef.current || compositionLoading) return;
-    if (!hydratedSeekRef.current || selectionLookupRef.current) return;
+    if (!hydratedSeekRef.current || urlLookup.hydrating) return;
     const targetTime = initialState.currentTime;
     if (targetTime != null && Math.abs(selectionHydrationTime - stableTimeRef.current!) > 0.05) {
       return;
@@ -308,11 +385,11 @@ export function useStudioUrlState({
     }
     // Hydration ends with the lookup, so the URL keeps the selection; no preview yet: a later tick retries.
     const settled = () => {
-      selectionLookupRef.current = false;
+      urlLookup.hydrating = false;
       markHydrated();
       pendingSelectionRef.current = null;
     };
-    selectionLookupRef.current = applyUrlSelection(pendingSelection, settled);
+    urlLookup.hydrating = applyUrlSelection(pendingSelection, settled);
   }, [
     applyUrlSelection,
     compositionLoading,
@@ -320,6 +397,7 @@ export function useStudioUrlState({
     initialState.currentTime,
     projectId,
     refreshKey,
+    urlLookup,
   ]);
 
   useEffect(() => {
