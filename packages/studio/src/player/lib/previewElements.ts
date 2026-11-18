@@ -323,21 +323,28 @@ const isEditEntries = (value: unknown, priority = false): value is StyleEntry[] 
       (entry.length === 2 || (priority && entry.length === 3 && entry[2] === "important")),
   );
 
-type EditReply = { applied?: unknown; styles?: unknown; attributes?: unknown; html?: unknown };
+type EditReply = Awaited<ReturnType<typeof previewRequest<"edit-element">>>;
 
-/** What the reply says the element held, kept to the names `owns`; null when nothing goes back. */
+/** What the reply says the element held; null when it drew nothing. */
+function heldBefore(before: EditReply | null | undefined) {
+  if (!before?.applied || !isEditEntries(before.styles, true)) return null;
+  if (!isEditEntries(before.attributes)) return null;
+  const html = typeof before.html === "string" ? before.html : undefined;
+  return { styles: before.styles, attributes: before.attributes, html };
+}
+
+/** The held values this edit still owns; null when none are left to put back. */
 function ownedPutBack(
   before: EditReply | null | undefined,
   owns: (part: string, name: string) => boolean,
 ) {
-  if (!before?.applied || !isEditEntries(before.styles, true)) return null;
-  if (!isEditEntries(before.attributes)) return null;
-  const styles = before.styles.filter(([name]) => owns("style", name));
-  const attributes = before.attributes.filter(([name]) => owns("attr", name));
-  const html = typeof before.html === "string" && owns("html", "") ? before.html : undefined;
-  return styles.length || attributes.length || html !== undefined
-    ? { styles, attributes, html }
-    : null;
+  const held = heldBefore(before);
+  if (!held) return null;
+  const styles = held.styles.filter(([name]) => owns("style", name));
+  const attributes = held.attributes.filter(([name]) => owns("attr", name));
+  const html = owns("html", "") ? held.html : undefined;
+  const any = styles.length > 0 || attributes.length > 0 || html !== undefined;
+  return any ? { styles, attributes, html } : null;
 }
 
 export interface PreviewElementEdit {

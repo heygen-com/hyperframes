@@ -80,19 +80,22 @@ type TextResync = Pick<
 >;
 
 /** One text write's commit steps, on the live element or, sealed, on the frame's over its port. */
-function textWriteSteps(
-  iframe: HTMLIFrameElement | null,
-  selection: DomEditSelection,
-  activeCompPath: string | null,
-  textCommit: ReturnType<typeof planDomTextCommit>,
-  text: string,
-) {
+function textWriteSteps(input: {
+  iframe: HTMLIFrameElement | null;
+  selection: DomEditSelection;
+  activeCompPath: string | null;
+  textCommit: ReturnType<typeof planDomTextCommit>;
+  text: string;
+  isLatest: ReturnType<typeof bumpDomEditCommitMapVersion>;
+  showToast: UseDomEditTextCommitsParams["showToast"];
+  resync: TextResync;
+}) {
+  const { iframe, selection, activeCompPath, textCommit, text, isLatest } = input;
   const doc = iframe?.contentDocument;
   let editedElement: HTMLElement | null = null;
   let previousInnerHtml: string | null = null;
   let sealedEdit: PreviewElementEdit | null = null;
-  return {
-    sealedEdit: () => sealedEdit,
+  const steps = {
     capture: () => {
       const el = doc ? findElementForSelection(doc, selection, activeCompPath) : null;
       if (!el) return;
@@ -107,21 +110,27 @@ function textWriteSteps(
       } else if (serialized) editedElement.innerHTML = textCommit.nextContent;
       else editedElement.textContent = text;
     },
+    shouldRevert: () => isLatest(),
     revert: () => {
       sealedEdit?.restore();
       if (editedElement && previousInnerHtml !== null) editedElement.innerHTML = previousInnerHtml;
     },
-    resync: (params: TextResync) =>
+    onError: (error: unknown) =>
+      reportDomEditPersistFailure(selection, textCommit.operations, error, input.showToast),
+    shouldResync: isLatest,
+    resync: () =>
       sealedEdit
-        ? params.refreshDomEditSelectionFromPreview(selection)
+        ? input.resync.refreshDomEditSelectionFromPreview(selection)
         : resyncDomTextSelectionFromPreview(
             doc,
             selection,
             activeCompPath,
-            params.buildDomSelectionFromTarget,
-            params.applyDomSelection,
+            input.resync.buildDomSelectionFromTarget,
+            input.resync.applyDomSelection,
           ),
+    onFinally: isLatest.release,
   };
+  return { steps, sealedEdit: () => sealedEdit };
 }
 
 // ── Hook ──
@@ -215,17 +224,23 @@ export function useDomEditTextCommits({
       );
       const nextTextFields = buildNextDomTextFields(selection.textFields, value, fieldKey);
       const textCommit = planDomTextCommit(selection.textFields, nextTextFields, value);
-      const write = textWriteSteps(
-        previewIframeRef.current,
+      const write = textWriteSteps({
+        iframe: previewIframeRef.current,
         selection,
         activeCompPath,
         textCommit,
-        value,
-      );
+        text: value,
+        isLatest: isLatestTextCommit,
+        showToast,
+        resync: {
+          buildDomSelectionFromTarget,
+          applyDomSelection,
+          refreshDomEditSelectionFromPreview,
+        },
+      });
 
       return runReportedDomEditCommit({
-        capture: write.capture,
-        apply: write.apply,
+        ...write.steps,
         persist: () =>
           afterSealedDraw(write.sealedEdit(), (drawn) =>
             persistDomEditOperations(selection, textCommit.operations, {
@@ -234,18 +249,6 @@ export function useDomEditTextCommits({
               shouldSave: isLatestTextCommit,
             }),
           ),
-        shouldRevert: () => isLatestTextCommit(),
-        revert: write.revert,
-        onError: (error) =>
-          reportDomEditPersistFailure(selection, textCommit.operations, error, showToast),
-        shouldResync: isLatestTextCommit,
-        resync: () =>
-          write.resync({
-            buildDomSelectionFromTarget,
-            applyDomSelection,
-            refreshDomEditSelectionFromPreview,
-          }),
-        onFinally: isLatestTextCommit.release,
       });
     },
     [
@@ -377,17 +380,23 @@ export function useDomEditTextCommits({
         nextTextFields[0]?.value ?? "",
       );
       const importedFont = options?.importedFont ?? null;
-      const write = textWriteSteps(
-        previewIframeRef.current,
+      const write = textWriteSteps({
+        iframe: previewIframeRef.current,
         selection,
         activeCompPath,
         textCommit,
-        textCommit.nextContent,
-      );
+        text: textCommit.nextContent,
+        isLatest: isLatestTextCommit,
+        showToast,
+        resync: {
+          buildDomSelectionFromTarget,
+          applyDomSelection,
+          refreshDomEditSelectionFromPreview,
+        },
+      });
 
       await runDomEditCommit({
-        capture: write.capture,
-        apply: write.apply,
+        ...write.steps,
         persist: async () => {
           await afterSealedDraw(write.sealedEdit(), (drawn) =>
             persistDomEditOperations(selection, textCommit.operations, {
@@ -398,18 +407,6 @@ export function useDomEditTextCommits({
             }),
           );
         },
-        shouldRevert: () => isLatestTextCommit(),
-        revert: write.revert,
-        onError: (error) =>
-          reportDomEditPersistFailure(selection, textCommit.operations, error, showToast),
-        shouldResync: isLatestTextCommit,
-        resync: () =>
-          write.resync({
-            buildDomSelectionFromTarget,
-            applyDomSelection,
-            refreshDomEditSelectionFromPreview,
-          }),
-        onFinally: isLatestTextCommit.release,
       });
     },
     [
