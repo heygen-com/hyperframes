@@ -230,6 +230,11 @@ address a name resolves to and connects to the address it checked. A refused req
 fails like any other unreachable asset. Leave it unset for local renders that load
 assets from your own machine or network.
 
+Where the only way out is an egress proxy, set `HYPERFRAMES_CAPTURE_PROXY` to its
+`http://` URL, as for `capture`. The local proxy then sends every browser request to
+it by hostname, and the egress proxy must refuse private and internal destinations
+itself.
+
 The setting accepts `true`, `1`, `yes` or `on` to turn the restriction on and `false`, `0`,
 `no` or `off` to leave it off, in any letter case. Any other value turns it on and logs a
 warning, so a misspelled value never leaves a render service open.

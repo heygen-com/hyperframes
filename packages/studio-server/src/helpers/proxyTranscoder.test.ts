@@ -81,7 +81,7 @@ function createFakeProc(): FakeProc {
   return proc;
 }
 
-type SpawnOptions = { windowsHide?: boolean; signal?: AbortSignal };
+type SpawnOptions = { windowsHide?: boolean; signal?: AbortSignal; cwd?: string };
 type SpawnCall = { command: string; args: string[]; options?: SpawnOptions; proc: FakeProc };
 type SpawnImpl = (command: string, args: string[], options?: SpawnOptions) => FakeProc;
 
@@ -283,11 +283,87 @@ describe("resolveProxy on a long source", () => {
       "-format_whitelist",
       "concat,mov,matroska",
       "-i",
-      expect.stringMatching(/pieces\.txt$/),
+      expect.stringMatching(/\.txt$/),
       "-c",
       "copy",
     ]);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "runs the join from the cache folder and names the list there by its bare name",
+    async () => {
+      const { spawn, calls } = createSpawnSpy();
+      const { resolveProxy, getProxyCachePath } = await loadModule(
+        spawn,
+        FFMPEG_PATH,
+        false,
+        null,
+        undefined,
+        LONG_SECONDS,
+      );
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "long.mov");
+      writeFileSync(sourcePath, "source-bytes");
+      const result = resolveProxy(projectDir, sourcePath);
+      await answerAll(calls);
+      await result;
+      const joinCall = calls.at(-1)!;
+      expect(joinCall.options?.cwd).toBe(dirname(getProxyCachePath(projectDir, sourcePath)));
+      expect(joinCall.args[joinCall.args.indexOf("-i") + 1]).toMatch(/^[^/\\]+\.txt$/);
+    },
+  );
+
+  it.skipIf(!realFfmpeg || !findFfBinary("ffprobe") || process.platform === "win32")(
+    "joins only its own pieces when a folder above the project has line breaks and list lines in its name",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
+      const { resolveProxy } = await import("./proxyTranscoder.js");
+      const base = realpathSync(tmpProject());
+      const clip = (path: string, colour: string, seconds: number) =>
+        execFileSync(realFfmpeg!, [
+          ...["-v", "error", "-f", "lavfi", "-i", `color=c=${colour}:s=32x32:r=2:d=${seconds}`],
+          ...["-c:v", "libx264", "-pix_fmt", "yuv420p", path],
+        ]);
+      clip(join(base, "a.mp4"), "blue", 2);
+      clip(join(base, "other.mp4"), "red", 2);
+      const projectDir = `${base}/a.mp4\nfile ${base}/other.mp4\n#/project`;
+      mkdirSync(projectDir, { recursive: true });
+      const sourcePath = join(projectDir, "long.mp4");
+      clip(sourcePath, "blue", LONG_SECONDS);
+
+      const proxyPath = await resolveProxy(projectDir, sourcePath);
+      const seconds = execFileSync(
+        findFfBinary("ffprobe")!,
+        ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", proxyPath],
+        { encoding: "utf8" },
+      );
+      expect(Number(seconds)).toBeCloseTo(LONG_SECONDS, 0);
+      // Red frames carry a high V (red difference) average; the source and a.mp4 are blue.
+      const redness = execFileSync(
+        realFfmpeg!,
+        [
+          "-v",
+          "error",
+          "-i",
+          proxyPath,
+          "-vf",
+          "signalstats,metadata=print:file=-",
+          "-f",
+          "null",
+          "-",
+        ],
+        { encoding: "utf8" },
+      )
+        .split("\n")
+        .flatMap((line) => /VAVG=([\d.]+)/.exec(line)?.[1] ?? [])
+        .map(Number);
+      expect(redness.length).toBeGreaterThan(0);
+      expect(Math.max(...redness)).toBeLessThan(160);
+    },
+    60_000,
+  );
 
   it("encodes every piece again when the project shipped pieces at the names it can predict", async () => {
     const { spawn, calls } = createSpawnSpy();
@@ -2146,6 +2222,45 @@ describe("resolveProxy", () => {
 
       await expect(result).resolves.toBe(cachePath);
       expect(existsSync(lockPath)).toBe(false);
+    });
+
+    it("gives up on a lock dated ahead of the clock within the stall window, and frees its slot", async () => {
+      vi.useFakeTimers();
+      process.env.HYPERFRAMES_PROXY_MAX_CONCURRENCY = "1";
+      const { spawn, calls } = createSpawnSpy();
+      const { resolveProxy, getProxyCachePath, TRANSCODE_STALL_MS } = await loadModule(
+        spawn,
+        FFMPEG_PATH,
+      );
+      const projectDir = tmpProject();
+      const lockedSource = join(projectDir, "locked.mov");
+      const otherSource = join(projectDir, "other.mov");
+      writeFileSync(lockedSource, "locked-bytes");
+      writeFileSync(otherSource, "other-bytes");
+      const cachePath = getProxyCachePath(projectDir, lockedSource);
+      mkdirSync(dirname(cachePath), { recursive: true });
+      const nextYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      for (const name of [`.lock-${basename(cachePath)}`, `.tmp-1234-${basename(cachePath)}`]) {
+        writeFileSync(join(dirname(cachePath), name), String(process.pid));
+        utimesSync(join(dirname(cachePath), name), nextYear, nextYear);
+      }
+
+      try {
+        const locked = resolveProxy(projectDir, lockedSource).catch((error: unknown) => error);
+        const other = resolveProxy(projectDir, otherSource);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(calls).toHaveLength(0);
+        await vi.advanceTimersByTimeAsync(TRANSCODE_STALL_MS + 1_000);
+
+        expect(await locked).toEqual(
+          expect.objectContaining({ message: expect.stringMatching(/no progress/) }),
+        );
+        expect(calls).toHaveLength(1);
+        succeed(calls[0]!);
+        await expect(other).resolves.toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

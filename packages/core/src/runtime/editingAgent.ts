@@ -41,6 +41,7 @@ import { motionPathHome } from "./editing/motionPathHome";
 import { cropLift } from "./editing/cropLift";
 import { gsapSet } from "./editing/gsapSet";
 import { patchTweens } from "./editing/patchTween";
+import { softReload } from "./editing/softReload";
 import {
   getLogicalOpacity,
   markedForStudio,
@@ -224,6 +225,7 @@ const HANDLERS: Handlers = {
   "edit-element": editElement,
   "gsap-set": gsapSet,
   "patch-tweens": patchTweens,
+  "soft-reload": softReload,
 };
 
 function serve(port: MessagePort): void {
