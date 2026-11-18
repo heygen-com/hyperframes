@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlayerStore } from "../player";
-import { findElementForSelection, type DomEditSelection } from "../components/editor/domEditing";
+import type { DomEditSelection } from "../components/editor/domEditing";
+import type { SelectionLookupTarget } from "../components/editor/domEditSelectionRules";
+import { findSelectionElement } from "../components/editor/previewSelection";
+import type { PreviewElement } from "../player/lib/previewElements";
 import type { MarqueeSelectionMode } from "../utils/marqueeGeometry";
 import { clampNumber, type RightPanelTab } from "../utils/studioHelpers";
 import { parseProjectIdFromHash } from "../utils/projectRouting";
@@ -27,7 +30,7 @@ interface UseStudioUrlStateParams {
   domEditGroupSelections: DomEditSelection[];
   applyMarqueeSelection: (selections: DomEditSelection[], mode: MarqueeSelectionMode) => void;
   buildDomSelectionFromTarget: (
-    target: HTMLElement,
+    target: HTMLElement | PreviewElement,
     options?: { preferClipAncestor?: boolean; skipSourceProbe?: boolean },
   ) => Promise<DomEditSelection | null>;
   applyDomSelection: (
@@ -92,36 +95,30 @@ function replaceHash(nextHash: string) {
   window.history.replaceState(null, "", nextHash);
 }
 
+type UrlSelectionFound = HTMLElement | PreviewElement | null | undefined;
+
 interface ResolveUrlSelectionsParams {
-  doc: Document;
-  primaryElement: HTMLElement;
+  find: (target: SelectionLookupTarget) => Promise<UrlSelectionFound>;
   selection: StudioUrlSelectionState;
   group: StudioUrlSelectionTarget[];
-  activeCompPath: string | null;
   isCurrent: () => boolean;
   buildDomSelection: UseStudioUrlStateParams["buildDomSelectionFromTarget"];
 }
 
-function findUrlSelectionElement(
-  doc: Document,
+function urlLookupTarget(
   target: StudioUrlSelectionTarget,
   fallbackSourceFile: string,
-  activeCompPath: string | null,
-): HTMLElement | null {
-  return findElementForSelection(
-    doc,
-    {
-      sourceFile: target.sourceFile ?? fallbackSourceFile,
-      id: target.id,
-      selector: target.selector,
-      selectorIndex: target.selectorIndex,
-    },
-    activeCompPath,
-  );
+): SelectionLookupTarget {
+  return {
+    sourceFile: target.sourceFile ?? fallbackSourceFile,
+    id: target.id,
+    selector: target.selector,
+    selectorIndex: target.selectorIndex,
+  };
 }
 
 async function buildOptionalDomSelection(
-  element: HTMLElement | null,
+  element: HTMLElement | PreviewElement | null | undefined,
   buildDomSelection: UseStudioUrlStateParams["buildDomSelectionFromTarget"],
 ): Promise<DomEditSelection | null> {
   if (!element) return null;
@@ -135,25 +132,22 @@ async function buildOptionalDomSelection(
 }
 
 export async function resolveUrlSelections({
-  doc,
-  primaryElement,
+  find,
   selection,
   group,
-  activeCompPath,
   isCurrent,
   buildDomSelection,
-}: ResolveUrlSelectionsParams): Promise<DomEditSelection[] | null> {
-  const primary = await buildDomSelection(primaryElement, { preferClipAncestor: false });
+}: ResolveUrlSelectionsParams): Promise<DomEditSelection[] | null | undefined> {
+  const found = await find(urlLookupTarget(selection, ""));
+  if (!isCurrent()) return null;
+  if (found === undefined) return undefined;
+  const primary = found && (await buildDomSelection(found, { preferClipAncestor: false }));
   if (!isCurrent()) return null;
   if (!primary) return [];
   const members = [primary];
   for (const member of group) {
-    const element = findUrlSelectionElement(
-      doc,
-      member,
-      selection.sourceFile ?? "",
-      activeCompPath,
-    );
+    const element = await find(urlLookupTarget(member, selection.sourceFile ?? ""));
+    if (!isCurrent()) return null;
     const resolved = await buildOptionalDomSelection(element, buildDomSelection);
     if (!isCurrent()) return null;
     if (resolved) members.push(resolved);
@@ -206,48 +200,27 @@ export function useStudioUrlState({
     [activeCompPath, domEditGroupSelections, domEditSelection, rightCollapsed, rightPanelTab],
   );
 
-  // Resolve a URL selection to a live element and apply it. Shared by the initial
-  // hydration effect and the external-navigation (hashchange) handler. Returns
-  // false ONLY when the iframe document isn't ready yet (caller should retry);
-  // a missing element or null selection clears the selection and returns true.
+  // Resolve a URL selection in the preview, sealed or not, and apply it. Shared by the initial
+  // hydration effect and the hashchange handler. False when there is no preview yet; a frame
+  // that cannot answer yet calls onNotReady; a missing element or null selection clears it.
   const applyUrlSelection = useCallback(
-    (selection: StudioUrlSelectionState | null): boolean => {
+    (selection: StudioUrlSelectionState | null, onNotReady?: () => void): boolean => {
       const applySeq = ++selectionApplySeqRef.current;
       if (!selection) {
         applyDomSelection(null, { revealPanel: false });
         return true;
       }
-      let doc: Document | null = null;
-      try {
-        doc = previewIframeRef.current?.contentDocument ?? null;
-      } catch {
-        return false;
-      }
-      if (!doc) return false;
-      const element = findElementForSelection(
-        doc,
-        {
-          sourceFile: selection.sourceFile ?? "",
-          id: selection.id,
-          selector: selection.selector,
-          selectorIndex: selection.selectorIndex,
-        },
-        activeCompPath,
-      );
-      if (!element) {
-        applyDomSelection(null, { revealPanel: false });
-        return true;
-      }
+      const iframe = previewIframeRef.current;
+      if (!iframe) return false;
       const group = selection.group ?? [];
       void resolveUrlSelections({
-        doc,
-        primaryElement: element,
+        find: (target) => findSelectionElement(iframe, target, activeCompPath),
         selection,
         group,
-        activeCompPath,
         isCurrent: () => applySeq === selectionApplySeqRef.current,
         buildDomSelection: buildDomSelectionFromTarget,
       }).then((members) => {
+        if (members === undefined) return onNotReady?.();
         if (!members) return;
         const primary = members[0];
         if (!primary) return applyDomSelection(null, { revealPanel: false });
@@ -303,8 +276,13 @@ export function useStudioUrlState({
       markHydrated();
       return;
     }
-    // Doc not ready yet → leave hydration pending so a later tick retries.
-    if (!applyUrlSelection(pendingSelection)) return;
+    // A frame that cannot answer yet leaves hydration pending, so a later tick retries.
+    const retryLater = () => {
+      hydratedSelectionRef.current = false;
+      pendingSelectionRef.current = pendingSelection;
+      setSelectionHydrated(false);
+    };
+    if (!applyUrlSelection(pendingSelection, retryLater)) return;
     markHydrated();
     pendingSelectionRef.current = null;
   }, [

@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import type { DomEditSelection } from "../components/editor/domEditing";
+import type { PreviewElement } from "../player/lib/previewElements";
 import type { SelectElementOptions, TimelineElement } from "../player";
 import type { RightPanelTab } from "../utils/studioHelpers";
 import type { MarqueeSelectionMode } from "../utils/marqueeGeometry";
@@ -73,7 +74,7 @@ export interface UseDomSelectionReturn {
   ) => void;
   clearDomSelection: () => void;
   buildDomSelectionFromTarget: (
-    target: HTMLElement,
+    target: HTMLElement | PreviewElement,
     options?: ResolveDomSelectionOptions,
   ) => Promise<DomEditSelection | null>;
   resolveDomSelectionFromPreviewPoint: (

@@ -24,16 +24,41 @@ describe("restoring a selection from the URL", () => {
     );
 
     await resolveUrlSelections({
-      doc,
-      primaryElement: doc.getElementById("a") as HTMLElement,
+      find: async (target) => (target.id ? doc.getElementById(target.id) : doc.getElementById("a")),
       selection: { sourceFile: "index.html" } as never,
       group: ids.slice(1).map((id) => ({ id, sourceFile: "index.html" })) as never,
-      activeCompPath: "index.html",
       isCurrent: () => true,
       buildDomSelection,
     });
 
     expect(probed[0]).toBeUndefined();
     expect(probed.slice(1)).toEqual([true, true, true]);
+  });
+
+  it("restores a sealed preview's selection from the frame's description of it", async () => {
+    const described = { handle: "0123456789abcdef:1", id: "a" } as never;
+    const buildDomSelection = vi.fn(async (target: unknown) => ({ target }) as never);
+    const members = await resolveUrlSelections({
+      find: async () => described,
+      selection: { id: "a", sourceFile: "index.html" } as never,
+      group: [],
+      isCurrent: () => true,
+      buildDomSelection,
+    });
+    expect(buildDomSelection).toHaveBeenCalledWith(described, { preferClipAncestor: false });
+    expect(members).toEqual([{ target: described }]);
+  });
+
+  it("answers undefined while the frame cannot answer, so the caller retries", async () => {
+    const buildDomSelection = vi.fn();
+    const members = await resolveUrlSelections({
+      find: async () => undefined,
+      selection: { id: "a", sourceFile: "index.html" } as never,
+      group: [],
+      isCurrent: () => true,
+      buildDomSelection,
+    });
+    expect(members).toBeUndefined();
+    expect(buildDomSelection).not.toHaveBeenCalled();
   });
 });
