@@ -1,7 +1,7 @@
 {
   "@hyperframes/aws-lambda": {
-    "packed": 80500,
-    "unpacked": 290508
+    "packed": 82000,
+    "unpacked": 298000
   },
   "@hyperframes/cli": {
     "packed": 8577627,

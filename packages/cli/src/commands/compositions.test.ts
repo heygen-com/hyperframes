@@ -1,9 +1,9 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 import { ensureDOMParser } from "../utils/dom.js";
-import { parseCompositions, parseSubComposition } from "./compositions.js";
+import compositions, { parseCompositions, parseSubComposition } from "./compositions.js";
 
 describe("parseCompositions", () => {
   beforeEach(() => {
@@ -145,4 +145,37 @@ describe("parseSubComposition", () => {
       rmSync(baseDir, { recursive: true, force: true });
     }
   });
+});
+
+describe("compositions on a terminal", () => {
+  // Windows refuses control characters in folder names.
+  it.skipIf(process.platform === "win32")(
+    "prints a folder name with control characters as visible escapes",
+    async () => {
+      // Built rather than written: a literal control character in the source is a lint error.
+      const esc = String.fromCharCode(27);
+      const parent = mkdtempSync(join(tmpdir(), "hf-compositions-"));
+      const dir = join(parent, `video${esc}]0;x${String.fromCharCode(7)}${esc}[2J`);
+      mkdirSync(dir);
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      try {
+        for (const html of ["<div></div>", '<div data-composition-id="main"></div>']) {
+          writeFileSync(join(dir, "index.html"), html);
+          log.mockClear();
+          await compositions.run?.({
+            args: { _: [], dir, json: false },
+            rawArgs: [],
+            cmd: compositions,
+          });
+          const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+          expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+          expect(human).toContain("video\\x1b]0;x\\x07\\x1b[2J");
+        }
+      } finally {
+        log.mockRestore();
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+  );
 });

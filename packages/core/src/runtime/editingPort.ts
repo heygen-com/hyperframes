@@ -60,6 +60,11 @@ import {
   parseSetAudioGroupAttribute,
   type SetAudioGroupAttributeParams,
 } from "./editing/setAudioGroupAttribute";
+import {
+  parseEditElement,
+  type EditElementParams,
+  type EditElementResult,
+} from "./editing/editElement";
 
 export {
   buildStableSelector,
@@ -170,6 +175,7 @@ export const EDITING_REQUEST_KINDS = [
   "motion-path-home",
   "max-z-index",
   "crop-lift",
+  "edit-element",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -303,6 +309,7 @@ export interface EditingRequests {
     params: { handle: EditingElementHandle; lift: boolean };
     result: { lifted: boolean; clipPath: string | null };
   };
+  "edit-element": { params: EditElementParams; result: EditElementResult };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -510,6 +517,7 @@ const PARAM_PARSERS: {
     hasKeys(params, "handle,lift") && isHandle(params.handle) && typeof params.lift === "boolean"
       ? { handle: params.handle, lift: params.lift }
       : null,
+  "edit-element": parseEditElement,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */

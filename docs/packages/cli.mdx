@@ -3070,8 +3070,8 @@ deploy:
 | `--profile`       | `AWS_PROFILE`                        | AWS profile name                                         |
 | `--concurrency`   | none                                 | Lambda reserved concurrency. Without it, a new stack reserves none and each render runs up to 90% of the account's unreserved concurrency; a redeploy keeps the stack's current reservation; `none` removes it |
 | `--memory`        | `10240`                              | Lambda memory in MB                                      |
-| `--chrome-source` | `sparticuz`                          | `sparticuz` or `chrome-headless-shell`                   |
-| `--video-arch`    | `arm64`                              | `arm64` runs the plan and the chunks on an arm64 container-image function, pushed to an ECR repository named `<stack>-video`; audio and assemble stay on x86. Needs `sparticuz`. `x86_64` runs everything on the x86 function |
+| `--chrome-source` | `sparticuz`                          | `sparticuz`. `chrome-headless-shell` is refused: it does not fit a ZIP function, and the arm64 video image already runs it |
+| `--video-arch`    | `arm64`                              | `arm64` runs the plan and the chunks on an arm64 container-image function, pushed to an ECR repository named `<stack>-video`; audio and assemble stay on x86. The image runs its own `chrome-headless-shell`. `x86_64` runs everything on the x86 function |
 | `--skip-build`    | off                                  | Reuse the existing `handler.zip`                         |
 | `--no-warm`       | warm                                 | Skip the one warm-up call to the video function after deploy, which loads its container image so the first render is not the one that waits for it |
 

@@ -16,6 +16,7 @@ import {
   detachedFakeIframe,
   serveEditingRequests,
 } from "../player/hooks/timelinePlayerTestHarness";
+import { previewRequest } from "../player/lib/previewChannel";
 
 vi.mock("../utils/studioTelemetry", () => ({ trackStudioEvent: vi.fn() }));
 
@@ -205,6 +206,7 @@ describe("preview iframe hotkey forwarding", () => {
         serveEditingRequests(
           frame,
           (kind, params) => {
+            if (kind === "max-z-index") return { zIndex: 7 };
             if (kind !== "watch-keys") return null;
             watched.push((params as { combos: string[] }).combos);
             return { watching: watched.at(-1)!.length };
@@ -229,6 +231,18 @@ describe("preview iframe hotkey forwarding", () => {
         });
       return { iframe, watched, ports, keyDown, hasFocus };
     }
+
+    it("leaves Studio's own reads of the preview answered while it forwards keys", async () => {
+      root = mountReactHarness(<Harness />);
+      const { iframe, watched } = sealedFrame();
+      let read: Promise<unknown> | undefined;
+      act(() => {
+        sync?.(iframe);
+        read = previewRequest(iframe, "max-z-index", {}, 1_000);
+      });
+      await vi.waitFor(() => expect(watched).toHaveLength(1));
+      await expect(read).resolves.toEqual({ zIndex: 7 });
+    });
 
     it("deletes the selection on a Delete pressed inside the preview", async () => {
       root = mountReactHarness(<Harness />);

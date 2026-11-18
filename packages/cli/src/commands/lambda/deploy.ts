@@ -49,10 +49,10 @@ export async function runDeploy(args: Partial<DeployArgs> = {}): Promise<void> {
     warm: args.warm ?? true,
   };
 
-  if (resolved.videoArch === "arm64" && resolved.chromeSource !== "sparticuz") {
+  if (resolved.chromeSource !== "sparticuz") {
     throw new Error(
-      "[lambda deploy] The arm64 video image bundles sparticuz Chrome only. " +
-        "Pass --video-arch x86_64 to deploy with --chrome-source chrome-headless-shell.",
+      "[lambda deploy] chrome-headless-shell does not fit a Lambda ZIP function, so the handler ZIP " +
+        "ships @sparticuz/chromium. The arm64 video image (--video-arch arm64, the default) runs chrome-headless-shell.",
     );
   }
   const root = repoRoot();
@@ -147,14 +147,7 @@ function warmVideoFunction(functionName: string | undefined, args: DeployArgs): 
 
 /** Checkout: build the ZIP from source. Otherwise: stage the adapter's pinned prebuilt ZIP. */
 async function prepareSamDir(root: string | undefined, args: DeployArgs): Promise<string> {
-  if (!root) {
-    if (args.chromeSource !== "sparticuz") {
-      throw new Error(
-        "[lambda deploy] The prebuilt handler bundles sparticuz Chrome; --chrome-source=chrome-headless-shell needs a hyperframes checkout.",
-      );
-    }
-    return stagePrebuiltHandler();
-  }
+  if (!root) return stagePrebuiltHandler();
   const samDir = dirname(locateSamTemplate(root));
   if (!args.skipBuild) {
     console.log(c.dim("→ Building handler ZIP"));

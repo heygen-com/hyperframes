@@ -17,6 +17,7 @@ import { resolveProject, type ProjectDir } from "../utils/project.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { parsePort } from "../utils/port.js";
 import type { Hono } from "hono";
+import { terminalText } from "@hyperframes/core";
 import { requestSubPath } from "@hyperframes/studio-server";
 import {
   openBrowser,
@@ -34,6 +35,7 @@ import {
   assetContentType,
 } from "../utils/compositionServer.js";
 import { isPrivateCompositionFile } from "../utils/privateProjectFile.js";
+import { escapeHtml } from "../utils/escapeHtml.js";
 
 export default defineCommand({
   meta: {
@@ -104,7 +106,7 @@ export default defineCommand({
     const islandMatch = slideshowIslandRegex("i").exec(indexHtml);
     if (!islandMatch?.[1]) {
       clack.log.error(
-        `No slideshow island found in ${project.indexPath}. ` +
+        `No slideshow island found in ${terminalText(project.indexPath)}. ` +
           `Add a <script type="application/hyperframes-slideshow+json"> block — see /hyperframes (slideshow).`,
       );
       setCommandExitCode(1);
@@ -117,7 +119,9 @@ export default defineCommand({
       JSON.parse(islandJson);
     } catch (err) {
       clack.log.error(
-        `Slideshow island in ${project.indexPath} is not valid JSON: ${(err as Error).message}`,
+        terminalText(
+          `Slideshow island in ${project.indexPath} is not valid JSON: ${(err as Error).message}`,
+        ),
       );
       setCommandExitCode(1);
       return;
@@ -139,7 +143,7 @@ export default defineCommand({
     if (actualPort !== startPort) {
       console.log(`  ${c.warn(`Port ${startPort} is in use, using ${actualPort} instead`)}`);
     }
-    console.log(`  ${c.dim("Deck")}      ${c.accent(project.name)}`);
+    console.log(`  ${c.dim("Deck")}      ${c.accent(terminalText(project.name))}`);
     console.log(`  ${c.dim("Present")}   ${c.accent(url)}`);
     console.log();
     console.log(
@@ -206,7 +210,7 @@ function buildPresentPage(projectName: string, islandJson: string): string {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${escHtml(projectName)} — Presenter</title>
+    <title>${escapeHtml(projectName)} — Presenter</title>
     <script>
       // Retitle the audience tab so the two tabs are distinguishable in the
       // browser tab strip and in Meet's "Share a tab" picker.
@@ -311,14 +315,6 @@ ${islandJson}
     </script>
   </body>
 </html>`;
-}
-
-function escHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 export async function registerPresentCompositionRoute(

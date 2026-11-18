@@ -17,7 +17,7 @@ import { c } from "../ui/colors.js";
 import { formatBytes, formatDuration, errorBox } from "../ui/format.js";
 import * as clack from "../ui/prompts.js";
 import { withMeta } from "../utils/updateCheck.js";
-import { fpsToFfmpegArg } from "@hyperframes/core";
+import { fpsToFfmpegArg, terminalText } from "@hyperframes/core";
 
 interface BenchmarkConfig {
   label: string;
@@ -100,7 +100,7 @@ export default defineCommand({
       console.log(
         c.accent("\u25C6") +
           "  Benchmarking " +
-          c.accent(project.name) +
+          c.accent(terminalText(project.name)) +
           c.dim(` (${runsPerConfig} runs each)`),
       );
       console.log("");

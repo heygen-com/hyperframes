@@ -892,6 +892,29 @@ describe("renderLocal browser GPU config", () => {
     expect(producerState.loggerLevels).toEqual(["warn", "info", "debug"]);
   });
 
+  it("prints an output path with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await renderLocal(PROJECT_DIR, `/tmp/video${esc}]0;x${String.fromCharCode(7)}.mp4`, {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: false,
+      });
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+      expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+      expect(human).toContain("/tmp/video\\x1b]0;x\\x07.mp4");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   it("passes an explicit software override for --no-browser-gpu even when env requests hardware", async () => {
     setEnv("PRODUCER_BROWSER_GPU_MODE", "hardware");
 

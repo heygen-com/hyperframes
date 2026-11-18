@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   rewriteAssetPath,
+  rewriteAssetPaths,
   rewriteCssAssetUrls,
   rewriteInlineStyleAssetUrls,
 } from "./rewriteSubCompPaths.js";
@@ -128,5 +129,37 @@ describe("rewriteAssetPath", () => {
         "_shared.css",
       );
     });
+  });
+});
+
+describe("rebasing charge", () => {
+  it("reports what each rebased reference adds, for every rewrite path", () => {
+    const added: number[] = [];
+    const charge = (bytes: number) => added.push(bytes);
+    rewriteAssetPath("scenes/a/scene.html", "../logo.png", undefined, charge);
+    rewriteCssAssetUrls(
+      "a { background: url(../bg.png) }",
+      "scenes/a/scene.html",
+      undefined,
+      charge,
+    );
+    const el = { srcset: "../x.png 1x, ../y.png 2x", style: "background: url(../s.png)" };
+    rewriteAssetPaths(
+      [el],
+      "scenes/a/scene.html",
+      (e, attr) => (attr === "srcset" ? e.srcset : null),
+      () => {},
+      undefined,
+      charge,
+    );
+    rewriteInlineStyleAssetUrls(
+      [el],
+      "scenes/a/scene.html",
+      (e) => e.style,
+      () => {},
+      undefined,
+      charge,
+    );
+    expect(added).toEqual([4, 4, 4, 4, 4]);
   });
 });

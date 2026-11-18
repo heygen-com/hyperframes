@@ -49,7 +49,13 @@ function runCreateReleaseTag(cwd, version) {
 test("stable publishing has one reviewed immutable event path", () => {
   // fails without the fix: a merged release PR's event ran as refs/pull/N/merge, a ref the publish environment refuses.
   assert.deepEqual(config.on, { push: { branches: ["main"], tags: ["v*-*"] } });
-  for (const name of ["lambda-arm64-ffmpeg", "lambda-handler-zip", "pack", "publish"]) {
+  for (const name of [
+    "lambda-arm64-ffmpeg",
+    "lambda-handler-zip",
+    "lambda-video-image",
+    "pack",
+    "publish",
+  ]) {
     const job = config.jobs[name];
     assert.ok(job.needs.includes("release-source"), `${name} needs release-source`);
     assert.equal(normalizeExpression(job.if), "needs.release-source.outputs.sha != ''", name);
@@ -896,6 +902,25 @@ test("the Lambda ffmpeg ships only when it matches its committed digest", () => 
   );
 });
 
+test("the Lambda video image builds on ARM, and pack ships only the digest that job built", () => {
+  // fails without the fix: pack built the arm64 image on an x86 runner, which cannot run the video stage's microdnf.
+  const image = config.jobs["lambda-video-image"];
+  assert.equal(image["runs-on"], "ubuntu-24.04-arm");
+  assert.deepEqual(image.permissions, { contents: "read" });
+  const build = stepOf(image, "Build Lambda video image");
+  assert.match(build.run, /--platform linux\/arm64 --target video/);
+  assert.equal(build.env.EXPECTED_ZIP_SHA256, "${{ needs.lambda-handler-zip.outputs.sha256 }}");
+  assert.equal(image.outputs.sha256, "${{ steps.image.outputs.sha256 }}");
+
+  assert.ok(
+    !pack.steps.some((step) => /docker buildx build/.test(step.run ?? "")),
+    "pack builds no image",
+  );
+  const pin = stepOf(pack, "Pin Lambda video image");
+  assert.equal(pin.env.EXPECTED_SHA256, "${{ needs.lambda-video-image.outputs.sha256 }}");
+  assert.match(pin.run, /pin-handler-zip\.ts --video-image$/m);
+});
+
 test("the release installs no tool restored from the shared cache", () => {
   const steps = Object.values(config.jobs).flatMap((job) => job.steps ?? []);
   const bun = steps.filter((step) => step.uses?.startsWith("oven-sh/setup-bun@"));
@@ -1054,9 +1079,14 @@ test("a tag publishes only a commit already on main, next or alpha, before any j
   for (const name of ["lambda-arm64-ffmpeg", "lambda-handler-zip"]) {
     assert.deepEqual(config.jobs[name].needs, ["release-source"], name);
   }
-  assert.deepEqual([...pack.needs].sort(), [
+  assert.deepEqual([...config.jobs["lambda-video-image"].needs].sort(), [
     "lambda-arm64-ffmpeg",
     "lambda-handler-zip",
+    "release-source",
+  ]);
+  assert.deepEqual([...pack.needs].sort(), [
+    "lambda-handler-zip",
+    "lambda-video-image",
     "release-source",
   ]);
   const step = stepOf(source, "Check the tagged commit is on main, next or alpha");
