@@ -42,6 +42,7 @@ import {
   canCanvasNudgeTargets,
   resolveCanvasNudgeDelta,
 } from "./domEditNudge";
+import { selectionElementLive } from "./previewSelection";
 
 interface NudgeSession {
   members: ManualOffsetDragMember[];
@@ -126,7 +127,7 @@ function resolveSingleNudgeTarget(
   sel: DomEditSelection | null,
   rect: OverlayRect | null,
 ): NudgeTarget[] | null {
-  if (!sel || !rect || !sel.capabilities.canApplyManualOffset || !sel.element.isConnected) {
+  if (!sel || !rect || !sel.capabilities.canApplyManualOffset || !selectionElementLive(sel)) {
     return null;
   }
   return [{ key: sel.id ?? sel.selector ?? sel.label, selection: sel, element: sel.element, rect }];

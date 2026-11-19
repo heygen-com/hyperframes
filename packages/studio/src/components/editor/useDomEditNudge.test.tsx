@@ -388,6 +388,15 @@ describe("useDomEditNudge pauses playback before it snapshots the timelines", ()
     expect(element.hasAttribute("data-hf-drag-paused-timelines")).toBe(false);
   });
 
+  it("starts a nudge on a sealed preview's selection, whose stand-in is never connected", () => {
+    const standIn = document.createElement("div");
+    mount({ ...makeSelection("Dot", standIn), handle: "e1" });
+
+    act(() => dispatchArrowRight());
+
+    expect(pause).toHaveBeenCalledOnce();
+  });
+
   it("leaves playback alone when no layer can move", () => {
     mount(null);
 
