@@ -1281,17 +1281,16 @@ it("charges the bytes SVG id renaming adds to the mount that grew", () => {
   );
 });
 
-// fails without the fix: nested templates were walked per copy, linkedom copied each to read it, and SVG ones threw.
+// fails without the fix: nested templates were walked per copy, linkedom copied each, and SVG ones rescanned.
 describe("dropAuthoredSvgReferenceAliases", () => {
   const planted = `data-hf-svg-reference-aliases="[]"`;
   const nested = (depth: number): string =>
     depth === 0
       ? `<i ${planted}></i>`
       : `<template><b ${planted}></b>${nested(depth - 1)}</template>`;
-  const owner = (node: object): object => {
+  const owner = (node: object, key: string): object => {
     let proto: object = node;
-    while (!Object.prototype.hasOwnProperty.call(proto, "querySelectorAll"))
-      proto = Object.getPrototypeOf(proto);
+    while (!Object.prototype.hasOwnProperty.call(proto, key)) proto = Object.getPrototypeOf(proto);
     return proto;
   };
   const doms: Array<[string, (html: string) => { document: Document; serialize: () => string }]> = [
@@ -1331,21 +1330,27 @@ describe("dropAuthoredSvgReferenceAliases", () => {
       `<!doctype html><html><body>${body(depth)}</body></html>`,
     );
     const probe = document.createElement("template");
-    const owners = new Set([owner(document), owner(probe), owner(probe.content)]);
-    const spies = [...owners].map((proto) => vi.spyOn(proto as Element, "querySelectorAll"));
-    let contentOwner: object = probe;
-    while (!Object.getOwnPropertyDescriptor(contentOwner, "content")) {
-      contentOwner = Object.getPrototypeOf(contentOwner);
-    }
-    const contentReads = vi.spyOn(contentOwner as HTMLTemplateElement, "content", "get");
+    const nodes = [document, probe, probe.content];
+    const ownersOf = (key: string) => [...new Set(nodes.map((node) => owner(node, key)))];
+    const spies = [
+      ...ownersOf("querySelectorAll").map((proto) =>
+        vi.spyOn(proto as Element, "querySelectorAll"),
+      ),
+      ...ownersOf("children").map((proto) => vi.spyOn(proto as Element, "children", "get")),
+    ];
+    const contentReads = vi.spyOn(owner(probe, "content") as HTMLTemplateElement, "content", "get");
 
     expect(dropAuthoredSvgReferenceAliases(document)).toBe(true);
-    const calls = spies.reduce((sum, spy) => sum + spy.mock.calls.length, 0);
+    const processed = spies.reduce(
+      (sum, spy) =>
+        sum + spy.mock.results.reduce((n, result) => n + (result.value?.length ?? 0), 0),
+      0,
+    );
     const reads = contentReads.mock.calls.length;
     spies.forEach((spy) => spy.mockRestore());
     contentReads.mockRestore();
 
-    expect(calls).toBeLessThan(4 * depth);
+    expect(processed).toBeLessThan(4 * depth);
     expect(reads).toBeLessThanOrEqual(dom === "linkedom" || page !== "HTML templates" ? 0 : depth);
     expect(serialize()).not.toContain("data-hf-svg-reference-aliases");
   });
