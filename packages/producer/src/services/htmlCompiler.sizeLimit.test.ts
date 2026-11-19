@@ -350,22 +350,30 @@ describe("local font embedding", () => {
       (_, i) => `@font-face { font-family: "F${i}"; src: url("big.ttf"); }`,
     ).join("\n");
 
-  it("inlines a font that many rules name only while the page stays within the limit", async () => {
-    const dir = project({
-      "index.html": ROOT.replace(
-        "<html>",
-        `<html><head><style>${faces(8)}\n.mark { background: url("big.ttf"); }</style></head>`,
-      ),
-      "scene.html": SCENE,
-    });
-    writeFileSync(join(dir, "big.ttf"), Buffer.alloc(LARGEST_INLINED_FONT_BYTES, 1));
-    const { html } = await compileForRender(dir, join(dir, "index.html"), dir);
-    const inlined = html.split("data:font/ttf;base64,").length - 1;
-    expect(inlined).toBeGreaterThan(0);
-    expect(html.length).toBeLessThan(MAX_EXPANDED_COMPOSITION_BYTES + 64 * 1024);
-    expect(html.split('url("big.ttf")').length - 1).toBe(8 - inlined + 1);
-    expect(html).toContain('.mark { background: url("big.ttf"); }');
-  });
+  // Compiles a page at the full limit, so it gets more than the default time.
+  it(
+    "inlines a font that many rules name only while the page stays within the limit",
+    { timeout: 30_000 },
+    async () => {
+      const dataUriChars = Math.ceil(LARGEST_INLINED_FONT_BYTES / 3) * 4;
+      const rules = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / dataUriChars) + 2;
+      const dir = project({
+        "index.html": ROOT.replace(
+          "<html>",
+          `<html><head><style>${faces(rules)}\n.mark { background: url("big.ttf"); }</style></head>`,
+        ),
+        "scene.html": SCENE,
+      });
+      writeFileSync(join(dir, "big.ttf"), Buffer.alloc(LARGEST_INLINED_FONT_BYTES, 1));
+      const { html } = await compileForRender(dir, join(dir, "index.html"), dir);
+      const inlined = html.split("data:font/ttf;base64,").length - 1;
+      expect(inlined).toBeGreaterThan(0);
+      expect(inlined).toBeLessThan(rules);
+      expect(html.length).toBeLessThan(MAX_EXPANDED_COMPOSITION_BYTES + 64 * 1024);
+      expect(html.split('url("big.ttf")').length - 1).toBe(rules - inlined + 1);
+      expect(html).toContain('.mark { background: url("big.ttf"); }');
+    },
+  );
 });
 
 describe("asset paths rebased from a composition's folder", () => {
