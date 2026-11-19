@@ -10,6 +10,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  appendFileSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -285,5 +286,97 @@ describe("a project's first history copy", () => {
     } finally {
       for (const answer of stalls) answer();
     }
+  });
+
+  it("keeps an in-budget edit while a late first copy waits to be adopted", async () => {
+    const projectDir = projectOf(2, "budget");
+    const late = join(projectDir, "parts", "p1.js");
+    writeFileSync(late, "x".repeat(768));
+    const original = readFileSync(late);
+    const edited = Buffer.from("<html>budget edited</html>");
+    const holds = new Map<Buffer, { held: number; release: () => void; gate: Promise<void> }>();
+    for (const bytes of [original, edited]) {
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      holds.set(bytes, { held: 0, release, gate });
+    }
+    vi.mocked(fsp.writeFile).mockImplementation(
+      async (...args: Parameters<typeof realWriteFile>) => {
+        const [path, bytes] = args;
+        const hold = [...holds].find(
+          ([held]) =>
+            String(path).includes("incoming-") && Buffer.isBuffer(bytes) && bytes.equals(held),
+        )?.[1];
+        if (hold) {
+          hold.held += 1;
+          await hold.gate;
+        }
+        return realWriteFile(...args);
+      },
+    );
+    const historyRoot = tempDir("hf-first-copy-root-");
+    const history = await openProjectHistory({
+      projectDir,
+      historyRoot,
+      firstCopyFileMs: 50,
+      quietMs: 30,
+      budgetBytes: 128,
+    });
+    closes.push(() => history.close());
+    writeFileSync(join(projectDir, "index.html"), edited);
+    const sweep = history.checkpoint();
+    await vi.waitFor(() => expect(holds.get(edited)!.held).toBe(1));
+    holds.get(original)!.release();
+    const blobs = join(homeIn(historyRoot), "blobs");
+    await vi.waitFor(() => expect(existsSync(blobPath(blobs, sha256(original)))).toBe(true));
+    holds.get(edited)!.release();
+    await sweep;
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["parts/p1.js"]), {
+      timeout: 10_000,
+    });
+    expect(history.list().flatMap((entry) => entry.files.map((file) => file.path))).toContain(
+      "index.html",
+    );
+  });
+
+  it("reads files whose first copy kept changing a few at a time", async () => {
+    const projectDir = projectOf(12, "fan");
+    const opens = new Map<string, number>();
+    let waiting = 0;
+    let most = 0;
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      const path = String(args[0]);
+      if (!path.includes("/parts/")) return realOpen(...args);
+      const count = (opens.get(path) ?? 0) + 1;
+      opens.set(path, count);
+      // Each of a first copy's three reads sees the file change under it; the read after that is a fresh one.
+      if (count > 3) {
+        most = Math.max(most, ++waiting);
+        await gate;
+        waiting -= 1;
+        return realOpen(...args);
+      }
+      const handle = await realOpen(...args);
+      const readFile = handle.readFile.bind(handle);
+      handle.readFile = (async (...options: Parameters<typeof readFile>) => {
+        const bytes = await readFile(...options);
+        appendFileSync(path, "// saved while read\n");
+        return bytes;
+      }) as typeof handle.readFile;
+      return handle;
+    });
+    const history = await open(projectDir, tempDir("hf-first-copy-root-"));
+    await vi.waitFor(() => expect(waiting).toBe(4));
+    release();
+    await vi.waitFor(
+      () =>
+        expect(
+          Object.keys(history.peek(START) ?? {}).filter((path) => path.startsWith("parts/")),
+        ).toHaveLength(12),
+      { timeout: 10_000 },
+    );
+    expect(most).toBe(4);
   });
 });

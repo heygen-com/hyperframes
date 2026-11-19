@@ -457,7 +457,7 @@ class Engine {
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   adopting = new Map<string, Adoption>();
-  lateFirstCopiesKeptFromPruning = new Map<string, string>();
+  baselineAwaitingAdoption = new Map<string, string>();
   reading = new Map<string, Promise<unknown>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
@@ -671,8 +671,7 @@ class Engine {
         late.set(file.path, copies[i]!);
         copies[i]!.then(
           (copy) =>
-            typeof copy === "object" &&
-            this.lateFirstCopiesKeptFromPruning.set(file.path, copy.hash),
+            typeof copy === "object" && this.baselineAwaitingAdoption.set(file.path, copy.hash),
           () => {},
         );
       } else if (result.value !== "gone")
@@ -725,7 +724,7 @@ class Engine {
       asked = [];
       const tried = await this.tryAdopting(file, sweptAt, late);
       late = undefined;
-      this.lateFirstCopiesKeptFromPruning.delete(file.path);
+      this.baselineAwaitingAdoption.delete(file.path);
       for (const answer of served) answer();
       return tried === "over";
     };
@@ -762,7 +761,8 @@ class Engine {
       if (this.whereFolder() !== "here") return "over";
       const first = await late?.catch(() => undefined);
       const fromOpen = typeof first === "object";
-      const copied = fromOpen ? first : await this.storeIfPresent(file.path);
+      const read = () => this.storeIfPresent(file.path);
+      const copied = fromOpen ? first : await (late ? inFirstCopySlot(read) : read());
       return await this.queue(async () => {
         // Still named for the next open until recorded, so a failed record is never logged as added.
         if ((await this.recordAdopted(file, sweptAt, copied)) === "changing") return "changing";
@@ -1156,7 +1156,8 @@ class Engine {
   /** Stored bytes beyond what the current files need: a project larger than the budget still keeps its history. */
   historyBytes(): number {
     let current = 0;
-    for (const hash of new Set([...this.tracked.values()].map((file) => file.hash)))
+    const baseline = [...this.tracked.values()].map((file) => file.hash);
+    for (const hash of new Set([...baseline, ...this.baselineAwaitingAdoption.values()]))
       current += this.blobs.size(hash);
     return this.blobs.bytes() - current;
   }
@@ -1169,7 +1170,7 @@ class Engine {
         new Set([
           ...referencedHashes(this.log, this.manifest()),
           ...this.pendingHashes(),
-          ...this.lateFirstCopiesKeptFromPruning.values(),
+          ...this.baselineAwaitingAdoption.values(),
           ...[...this.overwritten.values()].flatMap((byAfter) => [...byAfter.values()]),
         ]),
       );
