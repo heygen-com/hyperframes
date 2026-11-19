@@ -1,5 +1,5 @@
 import { acceleratedCanvasTrackerSource } from "../pageMotionBlur.js";
-import { findSceneTemplate } from "@hyperframes/parsers/sub-composition-validity";
+import { findSceneTemplate, templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { parseHTML } from "linkedom";
 
 export const RUNTIME_BOOTSTRAP_ATTR = "data-hyperframes-preview-runtime";
@@ -27,10 +27,9 @@ export function locateSceneRoot(html: string): SceneRootLookup {
   const { document } = parseHTML(html);
   const liveRoot = document.querySelector("[data-composition-id]") as Element | null;
   const templates = Array.from(document.querySelectorAll("template"));
+  const scene = findSceneTemplate(templates);
   const sceneRoot =
-    (findSceneTemplate(templates)?.content.querySelector(
-      "[data-composition-id]",
-    ) as Element | null) ?? null;
+    (scene && templateContent(scene)?.querySelector("[data-composition-id]")) ?? null;
   return {
     root: sceneRoot,
     hasTemplate: templates.length > 0,

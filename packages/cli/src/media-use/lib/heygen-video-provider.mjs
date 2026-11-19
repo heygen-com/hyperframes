@@ -11,6 +11,7 @@ import {
   reportHeygenFailure,
   runHeygenJson,
 } from "./heygen-cli.mjs";
+import { terminalText } from "./terminal-text.mjs";
 
 export const AVATAR_VIDEO_SIGNIN_MESSAGE = `media-use: avatar video is free for new API users — sign in: ${HEYGEN_AUTH_COMMAND}`;
 
@@ -123,7 +124,7 @@ export async function heygenVideoGenerate(intent, ctx) {
         // Preserve the download failure if temporary-directory cleanup fails.
       }
     }
-    console.error(`media-use: heygen video download failed: ${err.message}`);
+    console.error(terminalText(`media-use: heygen video download failed: ${err.message}`));
     return null;
   }
 

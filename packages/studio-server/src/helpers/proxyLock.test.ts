@@ -79,6 +79,35 @@ describe("acquireCopyLock", () => {
     await expect(within(waiting, 3_000)).rejects.toThrow(CopyLockStalledError);
   });
 
+  it("gives up within the stall window on a live owner whose lock and temp file are dated ahead of the clock", async () => {
+    const cachePath = staleLock("e.mp4");
+    const nextYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    for (const name of [".lock-e.mp4", ".tmp-1234-e.mp4"]) {
+      writeFileSync(join(dir, name), String(process.pid));
+      utimesSync(join(dir, name), nextYear, nextYear);
+    }
+
+    const waiting = acquireCopyLock(cachePath, () => false, new AbortController().signal, 300);
+
+    await expect(within(waiting, 3_000)).rejects.toThrow(CopyLockStalledError);
+  });
+
+  it("keeps waiting for an owner still writing beside a temp file dated ahead of the clock", async () => {
+    const cachePath = staleLock("f.mp4");
+    const nextYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    writeFileSync(join(dir, ".tmp-9999-f.mp4"), "x");
+    utimesSync(join(dir, ".tmp-9999-f.mp4"), nextYear, nextYear);
+    const writing = setInterval(() => writeFileSync(join(dir, ".tmp-1234-f.mp4"), "x"), 100);
+    const abort = new AbortController();
+
+    const waiting = acquireCopyLock(cachePath, () => false, abort.signal, 600);
+    setTimeout(() => abort.abort(new Error("stopped")), 1_500);
+
+    await expect(within(waiting, 3_000).finally(() => clearInterval(writing))).rejects.toThrow(
+      "stopped",
+    );
+  });
+
   it("keeps waiting while the owner's temp file is still changing", async () => {
     const cachePath = staleLock("b.mp4");
     writeFileSync(join(dir, ".tmp-1234-b.mp4"), "x");

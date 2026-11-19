@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.67",
+  "version": "0.9.71",
   "description": "",
   "repository": {
     "type": "git",
@@ -476,6 +476,12 @@
       "node": "./dist/runtime/editing/patchTween.js",
       "import": "./src/runtime/editing/patchTween.ts",
       "types": "./src/runtime/editing/patchTween.ts"
+    },
+    "./runtime/soft-reload": {
+      "bun": "./src/runtime/editing/softReload.ts",
+      "node": "./dist/runtime/editing/softReload.js",
+      "import": "./src/runtime/editing/softReload.ts",
+      "types": "./src/runtime/editing/softReload.ts"
     },
     "./runtime/clip-window": {
       "bun": "./src/runtime/clipWindow.ts",
@@ -992,6 +998,10 @@
       "./runtime/patch-tween": {
         "import": "./dist/runtime/editing/patchTween.js",
         "types": "./dist/runtime/editing/patchTween.d.ts"
+      },
+      "./runtime/soft-reload": {
+        "import": "./dist/runtime/editing/softReload.js",
+        "types": "./dist/runtime/editing/softReload.d.ts"
       },
       "./runtime/clip-window": {
         "import": "./dist/runtime/clipWindow.js",
