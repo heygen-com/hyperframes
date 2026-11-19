@@ -657,6 +657,31 @@ describe("rewriteSvgIdReferencesInCss charges its growth while it builds", () =>
     expect(charged).toBeLessThan(limit + 200);
   });
 
+  it("stops within one id rename of the budget", () => {
+    const css = Array.from({ length: 2000 }, (_, i) => `#clip .r${i} { fill: red; }`).join("\n");
+    const idMap = new Map([["clip", `clip-${"x".repeat(200)}`]]);
+    let charged = 0;
+    const charge = (bytes: number) => {
+      charged += bytes;
+      if (charged > limit) throw new Error("over budget");
+    };
+    expect(() => rewriteSvgIdReferencesInCss(css, idMap, [], charge)).toThrow("over budget");
+    expect(charged).toBeLessThan(limit + 500);
+  });
+
+  it.each([
+    [`.x,[href="#a"],\n\n    .b { fill: red; }`, new Map()],
+    [`.x,#clip,\n\n    .b { fill: red; }`, new Map([["clip", "m--clip"]])],
+    [`[href="#a"] #clip { fill: url(#clip); }`, new Map([["clip", "m--clip"]])],
+  ])("charges exactly the growth of %j", (css, idMap) => {
+    let charged = 0;
+    const rewritten = rewriteSvgIdReferencesInCss(css, idMap, references.slice(0, 2), (bytes) => {
+      charged += bytes;
+    });
+    expect(rewritten).not.toBe(css);
+    expect(charged).toBe(Math.max(0, rewritten.length - css.length));
+  });
+
   it("charges nothing for a sheet it leaves as it is", () => {
     const charge = vi.fn();
     expect(

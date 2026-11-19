@@ -849,28 +849,18 @@ export function inlineSubCompositions(
     chargeEmitted &&
       ((index, bytes) => chargeEmitted(svgIdScopes[index]?.src ?? "the page", bytes)),
   );
-  // Alias alternatives are charged as they are built; the rest of the growth once the sheet exists.
   const rewriteCss = (
     src: string,
     css: string,
     idMap: SvgIdMap,
     references: readonly SvgReferenceAlias[],
-  ) => {
-    let charged = 0;
-    const rewritten = rewriteSvgIdReferencesInCss(
+  ) =>
+    rewriteSvgIdReferencesInCss(
       css,
       idMap,
       references,
-      chargeEmitted &&
-        ((bytes) => {
-          charged += bytes;
-          chargeEmitted(src, bytes);
-        }),
+      chargeEmitted && ((bytes) => chargeEmitted(src, bytes)),
     );
-    const rest = rewritten.length - css.length - charged;
-    if (rest > 0) chargeEmitted?.(src, rest);
-    return rewritten;
-  };
   svgIdMaps.slice(0, svgIdScopes.length).forEach((idMap, index) => {
     const { styleStart, styleEnd } = svgIdScopes[index]!;
     const references = readSvgReferenceAliases(
