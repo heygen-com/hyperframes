@@ -13,6 +13,7 @@ import { escapeCssIdentifier, selectorIdTokens } from "./selectorIdTokens";
 import {
   SVG_REFERENCE_ALIASES_ATTR,
   readSvgReferenceAliases,
+  recordedSvgIds,
   rewriteSvgSelectors,
   type SvgReferenceAlias,
 } from "./svgSelectorAliases";
@@ -547,9 +548,7 @@ export function rewriteSvgIdReferencesInCss(
     return css;
   }
   let mutated = false;
-  const recordedIds = new Set(
-    references.filter((alias) => alias.name === ID_ATTR).map((alias) => alias.before),
-  );
+  const recordedIds = recordedSvgIds(references);
   const idsNamedBy = (selector: string) =>
     selectorIdTokens(selector).flatMap((id) => {
       const renamed = recordedIds.has(id) ? undefined : idMap.get(id);
