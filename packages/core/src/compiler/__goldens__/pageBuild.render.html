@@ -209,29 +209,29 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return t === n ? null : { value: r, end: t };
       }
-      var R = 45;
+      var k = 45;
       function E(e) {
         return e >= 48 && e <= 57;
       }
       function V(e) {
-        return e >= 128 || e === R || e === 95 || E(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
+        return e >= 128 || e === k || e === 95 || E(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
       }
       function D(e, n) {
         let t = e.charCodeAt(n);
-        return t >= 1 && t <= 31 || t === 127 ? true : E(t) ? n === 0 || n === 1 && e.charCodeAt(0) === R : false;
+        return t >= 1 && t <= 31 || t === 127 ? true : E(t) ? n === 0 || n === 1 && e.charCodeAt(0) === k : false;
       }
       function v(e) {
         let n = "";
         for (let t = 0; t < e.length; t += 1) {
           let r = e.charCodeAt(t), s = e[t];
-          r === 0 ? n += "\uFFFD" : D(e, t) ? n += `\\${r.toString(16)} ` : t === 0 && e.length === 1 && r === R ? n += `\\${s}` : V(r) ? n += s : n += `\\${s}`;
+          r === 0 ? n += "\uFFFD" : D(e, t) ? n += `\\${r.toString(16)} ` : t === 0 && e.length === 1 && r === k ? n += `\\${s}` : V(r) ? n += s : n += `\\${s}`;
         }
         return n;
       }
-      var M = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
-      function T(e) {
+      var T = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
+      function M(e) {
         let n = new Array(e.length).fill(true);
-        for (let t of e.matchAll(M)) {
+        for (let t of e.matchAll(T)) {
           let r = t.index;
           n.fill(false, r, r + t[0].length);
         }
@@ -240,7 +240,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
       function _(e) {
         let n = [];
         if (!e.includes("#")) return n;
-        let t = T(e);
+        let t = M(e);
         for (let r = 0; r < e.length; r += 1) {
           if (!t[r] || e[r] !== "#") continue;
           let s = A(e, r + 1);
@@ -250,10 +250,10 @@ window.__timelines.main = gsap.timeline({ paused: true });
       }
       function $(e, n, t) {
         if (n.length === 0 || !e.includes("#")) return e;
-        let r = new Set(n), s = T(e), i = "", l = 0;
-        for (; l < e.length; ) {
-          let c = s[l] && e[l] === "#" ? A(e, l + 1) : null;
-          c && r.has(c.value) ? (i += t(c.value), l = c.end) : (i += e[l], l += 1);
+        let r = new Set(n), s = M(e), i = "", u = 0;
+        for (; u < e.length; ) {
+          let c = s[u] && e[u] === "#" ? A(e, u + 1) : null;
+          c && r.has(c.value) ? (i += t(c.value, e.slice(u, c.end)), u = c.end) : (i += e[u], u += 1);
         }
         return i;
       }
@@ -276,7 +276,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return n;
       }
-      function k(e) {
+      function R(e) {
         return Array.from(e, (n) => {
           let t = n.charCodeAt(0);
           return t === 0 ? "\uFFFD" : t < 32 || t === 127 ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
@@ -320,20 +320,20 @@ window.__timelines.main = gsap.timeline({ paused: true });
         if (!s) return null;
         let i = J(e, h(e, t + s.length));
         if (!i) return null;
-        let l = Q(e, i.end);
-        return l ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: s, value: i.value, flag: l.flag } : null;
+        let u = Q(e, i.end);
+        return u ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: s, value: i.value, flag: u.flag } : null;
       }
       function I(e, n) {
-        return e.replace(M, (t) => t.startsWith("[") ? n(t) : t);
+        return e.replace(T, (t) => t.startsWith("[") ? n(t) : t);
       }
       var Y = "data-hf-svg-reference-aliases", b = (e) => e.replace(/[A-Z]/g, (n) => n.toLowerCase()), W = /* @__PURE__ */ new WeakMap();
       function Z(e) {
         let n = W.get(e);
         if (n) return n;
         n = { everyRecordedId: /* @__PURE__ */ new Set(), renamedIdAlternatives: /* @__PURE__ */ new Map(), byName: /* @__PURE__ */ new Map(), byLocalName: /* @__PURE__ */ new Map() };
-        let t = /* @__PURE__ */ new Map(), r = (i, l, c) => {
-          let g = i.get(b(l));
-          g || i.set(b(l), g = { all: [], byBefore: /* @__PURE__ */ new Map(), byLowercaseBefore: /* @__PURE__ */ new Map() }), g.all.push(c);
+        let t = /* @__PURE__ */ new Map(), r = (i, u, c) => {
+          let g = i.get(b(u));
+          g || i.set(b(u), g = { all: [], byBefore: /* @__PURE__ */ new Map(), byLowercaseBefore: /* @__PURE__ */ new Map() }), g.all.push(c);
           for (let [d, o] of [[g.byBefore, c.before], [g.byLowercaseBefore, b(c.before)]]) {
             let a = d.get(o);
             a ? a.push(c) : d.set(o, [c]);
@@ -341,12 +341,12 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }, s = /* @__PURE__ */ new Set();
         for (let i of e) {
           if (i.name === "id" && n.everyRecordedId.add(i.before), i.before === i.after) continue;
-          let l = JSON.stringify([i.name, i.localName, i.namespaceURI, i.before, i.after]);
-          if (s.has(l) || (s.add(l), r(n.byName, i.name, i), r(n.byLocalName, i.localName, i), i.name !== "id")) continue;
+          let u = JSON.stringify([i.name, i.localName, i.namespaceURI, i.before, i.after]);
+          if (s.has(u) || (s.add(u), r(n.byName, i.name, i), r(n.byLocalName, i.localName, i), i.name !== "id")) continue;
           let c = t.get(i.before);
           c || t.set(i.before, c = /* @__PURE__ */ new Set([`#${v(i.before)}`])), c.add(`#${v(i.after)}`);
         }
-        for (let [i, l] of t) n.renamedIdAlternatives.set(i, `:is(${[...l].join(", ")})`);
+        for (let [i, u] of t) n.renamedIdAlternatives.set(i, `:is(${[...u].join(", ")})`);
         return W.set(e, n), n;
       }
       var K = { "=": (e, n) => e === n, "~=": (e, n) => e.split(/[ \t\r\n\f]+/).includes(n), "|=": (e, n) => e === n || e.startsWith(n + "-"), "^=": (e, n) => e.startsWith(n), "$=": (e, n) => e.endsWith(n), "*=": (e, n) => e.includes(n) };
@@ -356,32 +356,32 @@ window.__timelines.main = gsap.timeline({ paused: true });
         return K[n](s(e), s(t));
       }
       function ne(e, n, t) {
-        let { name: r, namespace: s, operator: i, value: l, flag: c } = n, g = (s.kind === "none" ? e.byName : e.byLocalName).get(b(r));
+        let { name: r, namespace: s, operator: i, value: u, flag: c } = n, g = (s.kind === "none" ? e.byName : e.byLocalName).get(b(r));
         if (!g) return [];
-        let d = c?.toLowerCase() === "i" ? g.byLowercaseBefore.get(b(l)) : g.byBefore.get(l), o = s.kind === "named" ? t.get(s.prefix) : null;
+        let d = c?.toLowerCase() === "i" ? g.byLowercaseBefore.get(b(u)) : g.byBefore.get(u), o = s.kind === "named" ? t.get(s.prefix) : null;
         return ((i === "=" ? d : g.all) ?? []).filter((a) => (s.kind === "any" || a.namespaceURI === o) && ee(a.before, n));
       }
       function P(e, n, t, r, s) {
-        let i = Z(t), l = (o) => {
+        let i = Z(t), u = (o) => {
           let a = L(o);
           if (!a || a.namespace.kind === "named" != (r !== void 0)) return o;
-          let { rawName: u, flag: f } = a, p = /* @__PURE__ */ new Set([o]);
+          let { rawName: l, flag: f } = a, p = /* @__PURE__ */ new Set([o]);
           for (let m of ne(i, a, r)) {
-            let S = `[${u}="${k(m.after)}"${f ? ` ${f}` : ""}]`;
+            let S = `[${l}="${R(m.after)}"${f ? ` ${f}` : ""}]`;
             p.has(S) || (s?.(S.length + (p.size === 1 ? 7 : 2)), p.add(S));
           }
           return p.size === 1 ? o : `:is(${[...p].join(", ")})`;
         };
-        if (r) return I(e, l);
-        let c = new Map(n.map(({ id: o, replacement: a }) => [o, a])), g = _(e).filter((o) => c.has(o) || i.renamedIdAlternatives.has(o)), d = $(e, g, (o) => {
-          let a = c.get(o) ?? i.renamedIdAlternatives.get(o);
-          return s?.(a.length - o.length - 1), a;
+        if (r) return I(e, u);
+        let c = new Map(n.map(({ id: o, replacement: a }) => [o, a])), g = _(e).filter((o) => c.has(o) || i.renamedIdAlternatives.has(o)), d = $(e, g, (o, a) => {
+          let l = c.get(o) ?? i.renamedIdAlternatives.get(o);
+          return s?.(l.length - a.length), l;
         });
-        return I(d, l);
+        return I(d, u);
       }
       function te(e, n, t = true) {
-        let r = [], i = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((c) => c.getAttribute(n)), l = e.getAttribute?.(n);
-        l && i.unshift(l);
+        let r = [], i = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((c) => c.getAttribute(n)), u = e.getAttribute?.(n);
+        u && i.unshift(u);
         for (let c of i) {
           let g;
           try {
@@ -393,8 +393,8 @@ window.__timelines.main = gsap.timeline({ paused: true });
           let d = g;
           for (let o of d) {
             if (!re(o)) continue;
-            let { name: a, localName: u, namespaceURI: f, before: p, after: m } = o;
-            r.push({ name: a, localName: u, namespaceURI: f, before: p, after: m });
+            let { name: a, localName: l, namespaceURI: f, before: p, after: m } = o;
+            r.push({ name: a, localName: l, namespaceURI: f, before: p, after: m });
           }
         }
         return r;
@@ -405,13 +405,13 @@ window.__timelines.main = gsap.timeline({ paused: true });
         return typeof n == "string" && typeof t == "string" && (r === null || typeof r == "string") && typeof s == "string" && typeof i == "string";
       }
       function se(e) {
-        let n = [], t = [], r = false, s, i = /* @__PURE__ */ new WeakMap(), l = (d, o) => {
+        let n = [], t = [], r = false, s, i = /* @__PURE__ */ new WeakMap(), u = (d, o) => {
           for (let a of d) {
             if ("selectorText" in a) {
-              let u = a, f = i.get(u), p = u.selectorText, m = f?.applied === p ? f.authored : p, S = P(m, [], t, o);
-              S !== p && (u.selectorText = S), S === m ? i.delete(u) : i.set(u, { authored: m, applied: u.selectorText });
+              let l = a, f = i.get(l), p = l.selectorText, m = f?.applied === p ? f.authored : p, S = P(m, [], t, o);
+              S !== p && (l.selectorText = S), S === m ? i.delete(l) : i.set(l, { authored: m, applied: l.selectorText });
             }
-            "cssRules" in a && l(a.cssRules, o);
+            "cssRules" in a && u(a.cssRules, o);
           }
         }, c = () => {
           if (t.length) for (let d of e.document.styleSheets) {
@@ -422,41 +422,41 @@ window.__timelines.main = gsap.timeline({ paused: true });
               continue;
             }
             let a = /* @__PURE__ */ new Map();
-            for (let u of o) {
-              if (!("namespaceURI" in u)) continue;
-              let { prefix: f, namespaceURI: p } = u;
+            for (let l of o) {
+              if (!("namespaceURI" in l)) continue;
+              let { prefix: f, namespaceURI: p } = l;
               f && a.set(f, p || null);
             }
-            a.size && l(o, a);
+            a.size && u(o, a);
           }
         }, g = { rewrite: (d, o = []) => {
           if (typeof d != "string" || !d.includes("#") && !d.includes("[")) return d;
           let a = P(d, o.length ? [...o, ...n] : n, t);
           if (a !== d) {
             if (!s) {
-              let u = e.document.createElement("div");
-              s = u.matches.bind(u);
+              let l = e.document.createElement("div");
+              s = l.matches.bind(l);
             }
             s(d);
           }
           return a;
         }, refresh() {
-          t = te(e.document, Y).filter((u) => u.before !== u.after);
-          let d = new Set(t.filter((u) => u.name === "id").map((u) => u.before)), o = /* @__PURE__ */ new Set();
+          t = te(e.document, Y).filter((l) => l.before !== l.after);
+          let d = new Set(t.filter((l) => l.name === "id").map((l) => l.before)), o = /* @__PURE__ */ new Set();
           n = [];
-          for (let u of e.document.querySelectorAll("[data-hf-authored-id][id]")) {
-            let f = u.getAttribute("data-hf-authored-id");
-            if (!f || f === u.id || o.has(f) || d.has(f)) continue;
+          for (let l of e.document.querySelectorAll("[data-hf-authored-id][id]")) {
+            let f = l.getAttribute("data-hf-authored-id");
+            if (!f || f === l.id || o.has(f) || d.has(f)) continue;
             o.add(f);
-            let p = k(f);
+            let p = R(f);
             n.push({ id: f, replacement: `:is(#${v(f)}, [data-hf-authored-id="${p}"])` });
           }
           if (c(), r || !n.length && !t.length) return;
           let a = e.Element.prototype;
-          a.querySelector = new Proxy(a.querySelector, { apply(u, f, p) {
-            return Reflect.apply(u, f, [g.rewrite(p[0])]);
-          } }), a.querySelectorAll = new Proxy(a.querySelectorAll, { apply(u, f, p) {
-            return Reflect.apply(u, f, [g.rewrite(p[0])]);
+          a.querySelector = new Proxy(a.querySelector, { apply(l, f, p) {
+            return Reflect.apply(l, f, [g.rewrite(p[0])]);
+          } }), a.querySelectorAll = new Proxy(a.querySelectorAll, { apply(l, f, p) {
+            return Reflect.apply(l, f, [g.rewrite(p[0])]);
           } }), r = true;
         } };
         e.__hfSvgSelectorAliases = g, g.refresh();
@@ -800,29 +800,29 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return t === n ? null : { value: r, end: t };
       }
-      var R = 45;
+      var k = 45;
       function E(e) {
         return e >= 48 && e <= 57;
       }
       function V(e) {
-        return e >= 128 || e === R || e === 95 || E(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
+        return e >= 128 || e === k || e === 95 || E(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
       }
       function D(e, n) {
         let t = e.charCodeAt(n);
-        return t >= 1 && t <= 31 || t === 127 ? true : E(t) ? n === 0 || n === 1 && e.charCodeAt(0) === R : false;
+        return t >= 1 && t <= 31 || t === 127 ? true : E(t) ? n === 0 || n === 1 && e.charCodeAt(0) === k : false;
       }
       function v(e) {
         let n = "";
         for (let t = 0; t < e.length; t += 1) {
           let r = e.charCodeAt(t), s = e[t];
-          r === 0 ? n += "\uFFFD" : D(e, t) ? n += `\\${r.toString(16)} ` : t === 0 && e.length === 1 && r === R ? n += `\\${s}` : V(r) ? n += s : n += `\\${s}`;
+          r === 0 ? n += "\uFFFD" : D(e, t) ? n += `\\${r.toString(16)} ` : t === 0 && e.length === 1 && r === k ? n += `\\${s}` : V(r) ? n += s : n += `\\${s}`;
         }
         return n;
       }
-      var M = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
-      function T(e) {
+      var T = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
+      function M(e) {
         let n = new Array(e.length).fill(true);
-        for (let t of e.matchAll(M)) {
+        for (let t of e.matchAll(T)) {
           let r = t.index;
           n.fill(false, r, r + t[0].length);
         }
@@ -831,7 +831,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
       function _(e) {
         let n = [];
         if (!e.includes("#")) return n;
-        let t = T(e);
+        let t = M(e);
         for (let r = 0; r < e.length; r += 1) {
           if (!t[r] || e[r] !== "#") continue;
           let s = A(e, r + 1);
@@ -841,10 +841,10 @@ window.__timelines.main = gsap.timeline({ paused: true });
       }
       function $(e, n, t) {
         if (n.length === 0 || !e.includes("#")) return e;
-        let r = new Set(n), s = T(e), i = "", l = 0;
-        for (; l < e.length; ) {
-          let c = s[l] && e[l] === "#" ? A(e, l + 1) : null;
-          c && r.has(c.value) ? (i += t(c.value), l = c.end) : (i += e[l], l += 1);
+        let r = new Set(n), s = M(e), i = "", u = 0;
+        for (; u < e.length; ) {
+          let c = s[u] && e[u] === "#" ? A(e, u + 1) : null;
+          c && r.has(c.value) ? (i += t(c.value, e.slice(u, c.end)), u = c.end) : (i += e[u], u += 1);
         }
         return i;
       }
@@ -867,7 +867,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return n;
       }
-      function k(e) {
+      function R(e) {
         return Array.from(e, (n) => {
           let t = n.charCodeAt(0);
           return t === 0 ? "\uFFFD" : t < 32 || t === 127 ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
@@ -911,20 +911,20 @@ window.__timelines.main = gsap.timeline({ paused: true });
         if (!s) return null;
         let i = J(e, h(e, t + s.length));
         if (!i) return null;
-        let l = Q(e, i.end);
-        return l ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: s, value: i.value, flag: l.flag } : null;
+        let u = Q(e, i.end);
+        return u ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: s, value: i.value, flag: u.flag } : null;
       }
       function I(e, n) {
-        return e.replace(M, (t) => t.startsWith("[") ? n(t) : t);
+        return e.replace(T, (t) => t.startsWith("[") ? n(t) : t);
       }
       var Y = "data-hf-svg-reference-aliases", b = (e) => e.replace(/[A-Z]/g, (n) => n.toLowerCase()), W = /* @__PURE__ */ new WeakMap();
       function Z(e) {
         let n = W.get(e);
         if (n) return n;
         n = { everyRecordedId: /* @__PURE__ */ new Set(), renamedIdAlternatives: /* @__PURE__ */ new Map(), byName: /* @__PURE__ */ new Map(), byLocalName: /* @__PURE__ */ new Map() };
-        let t = /* @__PURE__ */ new Map(), r = (i, l, c) => {
-          let g = i.get(b(l));
-          g || i.set(b(l), g = { all: [], byBefore: /* @__PURE__ */ new Map(), byLowercaseBefore: /* @__PURE__ */ new Map() }), g.all.push(c);
+        let t = /* @__PURE__ */ new Map(), r = (i, u, c) => {
+          let g = i.get(b(u));
+          g || i.set(b(u), g = { all: [], byBefore: /* @__PURE__ */ new Map(), byLowercaseBefore: /* @__PURE__ */ new Map() }), g.all.push(c);
           for (let [d, o] of [[g.byBefore, c.before], [g.byLowercaseBefore, b(c.before)]]) {
             let a = d.get(o);
             a ? a.push(c) : d.set(o, [c]);
@@ -932,12 +932,12 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }, s = /* @__PURE__ */ new Set();
         for (let i of e) {
           if (i.name === "id" && n.everyRecordedId.add(i.before), i.before === i.after) continue;
-          let l = JSON.stringify([i.name, i.localName, i.namespaceURI, i.before, i.after]);
-          if (s.has(l) || (s.add(l), r(n.byName, i.name, i), r(n.byLocalName, i.localName, i), i.name !== "id")) continue;
+          let u = JSON.stringify([i.name, i.localName, i.namespaceURI, i.before, i.after]);
+          if (s.has(u) || (s.add(u), r(n.byName, i.name, i), r(n.byLocalName, i.localName, i), i.name !== "id")) continue;
           let c = t.get(i.before);
           c || t.set(i.before, c = /* @__PURE__ */ new Set([`#${v(i.before)}`])), c.add(`#${v(i.after)}`);
         }
-        for (let [i, l] of t) n.renamedIdAlternatives.set(i, `:is(${[...l].join(", ")})`);
+        for (let [i, u] of t) n.renamedIdAlternatives.set(i, `:is(${[...u].join(", ")})`);
         return W.set(e, n), n;
       }
       var K = { "=": (e, n) => e === n, "~=": (e, n) => e.split(/[ \t\r\n\f]+/).includes(n), "|=": (e, n) => e === n || e.startsWith(n + "-"), "^=": (e, n) => e.startsWith(n), "$=": (e, n) => e.endsWith(n), "*=": (e, n) => e.includes(n) };
@@ -947,32 +947,32 @@ window.__timelines.main = gsap.timeline({ paused: true });
         return K[n](s(e), s(t));
       }
       function ne(e, n, t) {
-        let { name: r, namespace: s, operator: i, value: l, flag: c } = n, g = (s.kind === "none" ? e.byName : e.byLocalName).get(b(r));
+        let { name: r, namespace: s, operator: i, value: u, flag: c } = n, g = (s.kind === "none" ? e.byName : e.byLocalName).get(b(r));
         if (!g) return [];
-        let d = c?.toLowerCase() === "i" ? g.byLowercaseBefore.get(b(l)) : g.byBefore.get(l), o = s.kind === "named" ? t.get(s.prefix) : null;
+        let d = c?.toLowerCase() === "i" ? g.byLowercaseBefore.get(b(u)) : g.byBefore.get(u), o = s.kind === "named" ? t.get(s.prefix) : null;
         return ((i === "=" ? d : g.all) ?? []).filter((a) => (s.kind === "any" || a.namespaceURI === o) && ee(a.before, n));
       }
       function P(e, n, t, r, s) {
-        let i = Z(t), l = (o) => {
+        let i = Z(t), u = (o) => {
           let a = L(o);
           if (!a || a.namespace.kind === "named" != (r !== void 0)) return o;
-          let { rawName: u, flag: f } = a, p = /* @__PURE__ */ new Set([o]);
+          let { rawName: l, flag: f } = a, p = /* @__PURE__ */ new Set([o]);
           for (let m of ne(i, a, r)) {
-            let S = `[${u}="${k(m.after)}"${f ? ` ${f}` : ""}]`;
+            let S = `[${l}="${R(m.after)}"${f ? ` ${f}` : ""}]`;
             p.has(S) || (s?.(S.length + (p.size === 1 ? 7 : 2)), p.add(S));
           }
           return p.size === 1 ? o : `:is(${[...p].join(", ")})`;
         };
-        if (r) return I(e, l);
-        let c = new Map(n.map(({ id: o, replacement: a }) => [o, a])), g = _(e).filter((o) => c.has(o) || i.renamedIdAlternatives.has(o)), d = $(e, g, (o) => {
-          let a = c.get(o) ?? i.renamedIdAlternatives.get(o);
-          return s?.(a.length - o.length - 1), a;
+        if (r) return I(e, u);
+        let c = new Map(n.map(({ id: o, replacement: a }) => [o, a])), g = _(e).filter((o) => c.has(o) || i.renamedIdAlternatives.has(o)), d = $(e, g, (o, a) => {
+          let l = c.get(o) ?? i.renamedIdAlternatives.get(o);
+          return s?.(l.length - a.length), l;
         });
-        return I(d, l);
+        return I(d, u);
       }
       function te(e, n, t = true) {
-        let r = [], i = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((c) => c.getAttribute(n)), l = e.getAttribute?.(n);
-        l && i.unshift(l);
+        let r = [], i = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((c) => c.getAttribute(n)), u = e.getAttribute?.(n);
+        u && i.unshift(u);
         for (let c of i) {
           let g;
           try {
@@ -984,8 +984,8 @@ window.__timelines.main = gsap.timeline({ paused: true });
           let d = g;
           for (let o of d) {
             if (!re(o)) continue;
-            let { name: a, localName: u, namespaceURI: f, before: p, after: m } = o;
-            r.push({ name: a, localName: u, namespaceURI: f, before: p, after: m });
+            let { name: a, localName: l, namespaceURI: f, before: p, after: m } = o;
+            r.push({ name: a, localName: l, namespaceURI: f, before: p, after: m });
           }
         }
         return r;
@@ -996,13 +996,13 @@ window.__timelines.main = gsap.timeline({ paused: true });
         return typeof n == "string" && typeof t == "string" && (r === null || typeof r == "string") && typeof s == "string" && typeof i == "string";
       }
       function se(e) {
-        let n = [], t = [], r = false, s, i = /* @__PURE__ */ new WeakMap(), l = (d, o) => {
+        let n = [], t = [], r = false, s, i = /* @__PURE__ */ new WeakMap(), u = (d, o) => {
           for (let a of d) {
             if ("selectorText" in a) {
-              let u = a, f = i.get(u), p = u.selectorText, m = f?.applied === p ? f.authored : p, S = P(m, [], t, o);
-              S !== p && (u.selectorText = S), S === m ? i.delete(u) : i.set(u, { authored: m, applied: u.selectorText });
+              let l = a, f = i.get(l), p = l.selectorText, m = f?.applied === p ? f.authored : p, S = P(m, [], t, o);
+              S !== p && (l.selectorText = S), S === m ? i.delete(l) : i.set(l, { authored: m, applied: l.selectorText });
             }
-            "cssRules" in a && l(a.cssRules, o);
+            "cssRules" in a && u(a.cssRules, o);
           }
         }, c = () => {
           if (t.length) for (let d of e.document.styleSheets) {
@@ -1013,41 +1013,41 @@ window.__timelines.main = gsap.timeline({ paused: true });
               continue;
             }
             let a = /* @__PURE__ */ new Map();
-            for (let u of o) {
-              if (!("namespaceURI" in u)) continue;
-              let { prefix: f, namespaceURI: p } = u;
+            for (let l of o) {
+              if (!("namespaceURI" in l)) continue;
+              let { prefix: f, namespaceURI: p } = l;
               f && a.set(f, p || null);
             }
-            a.size && l(o, a);
+            a.size && u(o, a);
           }
         }, g = { rewrite: (d, o = []) => {
           if (typeof d != "string" || !d.includes("#") && !d.includes("[")) return d;
           let a = P(d, o.length ? [...o, ...n] : n, t);
           if (a !== d) {
             if (!s) {
-              let u = e.document.createElement("div");
-              s = u.matches.bind(u);
+              let l = e.document.createElement("div");
+              s = l.matches.bind(l);
             }
             s(d);
           }
           return a;
         }, refresh() {
-          t = te(e.document, Y).filter((u) => u.before !== u.after);
-          let d = new Set(t.filter((u) => u.name === "id").map((u) => u.before)), o = /* @__PURE__ */ new Set();
+          t = te(e.document, Y).filter((l) => l.before !== l.after);
+          let d = new Set(t.filter((l) => l.name === "id").map((l) => l.before)), o = /* @__PURE__ */ new Set();
           n = [];
-          for (let u of e.document.querySelectorAll("[data-hf-authored-id][id]")) {
-            let f = u.getAttribute("data-hf-authored-id");
-            if (!f || f === u.id || o.has(f) || d.has(f)) continue;
+          for (let l of e.document.querySelectorAll("[data-hf-authored-id][id]")) {
+            let f = l.getAttribute("data-hf-authored-id");
+            if (!f || f === l.id || o.has(f) || d.has(f)) continue;
             o.add(f);
-            let p = k(f);
+            let p = R(f);
             n.push({ id: f, replacement: `:is(#${v(f)}, [data-hf-authored-id="${p}"])` });
           }
           if (c(), r || !n.length && !t.length) return;
           let a = e.Element.prototype;
-          a.querySelector = new Proxy(a.querySelector, { apply(u, f, p) {
-            return Reflect.apply(u, f, [g.rewrite(p[0])]);
-          } }), a.querySelectorAll = new Proxy(a.querySelectorAll, { apply(u, f, p) {
-            return Reflect.apply(u, f, [g.rewrite(p[0])]);
+          a.querySelector = new Proxy(a.querySelector, { apply(l, f, p) {
+            return Reflect.apply(l, f, [g.rewrite(p[0])]);
+          } }), a.querySelectorAll = new Proxy(a.querySelectorAll, { apply(l, f, p) {
+            return Reflect.apply(l, f, [g.rewrite(p[0])]);
           } }), r = true;
         } };
         e.__hfSvgSelectorAliases = g, g.refresh();
@@ -1391,29 +1391,29 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return t === n ? null : { value: r, end: t };
       }
-      var R = 45;
+      var k = 45;
       function E(e) {
         return e >= 48 && e <= 57;
       }
       function V(e) {
-        return e >= 128 || e === R || e === 95 || E(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
+        return e >= 128 || e === k || e === 95 || E(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
       }
       function D(e, n) {
         let t = e.charCodeAt(n);
-        return t >= 1 && t <= 31 || t === 127 ? true : E(t) ? n === 0 || n === 1 && e.charCodeAt(0) === R : false;
+        return t >= 1 && t <= 31 || t === 127 ? true : E(t) ? n === 0 || n === 1 && e.charCodeAt(0) === k : false;
       }
       function v(e) {
         let n = "";
         for (let t = 0; t < e.length; t += 1) {
           let r = e.charCodeAt(t), s = e[t];
-          r === 0 ? n += "\uFFFD" : D(e, t) ? n += `\\${r.toString(16)} ` : t === 0 && e.length === 1 && r === R ? n += `\\${s}` : V(r) ? n += s : n += `\\${s}`;
+          r === 0 ? n += "\uFFFD" : D(e, t) ? n += `\\${r.toString(16)} ` : t === 0 && e.length === 1 && r === k ? n += `\\${s}` : V(r) ? n += s : n += `\\${s}`;
         }
         return n;
       }
-      var M = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
-      function T(e) {
+      var T = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
+      function M(e) {
         let n = new Array(e.length).fill(true);
-        for (let t of e.matchAll(M)) {
+        for (let t of e.matchAll(T)) {
           let r = t.index;
           n.fill(false, r, r + t[0].length);
         }
@@ -1422,7 +1422,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
       function _(e) {
         let n = [];
         if (!e.includes("#")) return n;
-        let t = T(e);
+        let t = M(e);
         for (let r = 0; r < e.length; r += 1) {
           if (!t[r] || e[r] !== "#") continue;
           let s = A(e, r + 1);
@@ -1432,10 +1432,10 @@ window.__timelines.main = gsap.timeline({ paused: true });
       }
       function $(e, n, t) {
         if (n.length === 0 || !e.includes("#")) return e;
-        let r = new Set(n), s = T(e), i = "", l = 0;
-        for (; l < e.length; ) {
-          let c = s[l] && e[l] === "#" ? A(e, l + 1) : null;
-          c && r.has(c.value) ? (i += t(c.value), l = c.end) : (i += e[l], l += 1);
+        let r = new Set(n), s = M(e), i = "", u = 0;
+        for (; u < e.length; ) {
+          let c = s[u] && e[u] === "#" ? A(e, u + 1) : null;
+          c && r.has(c.value) ? (i += t(c.value, e.slice(u, c.end)), u = c.end) : (i += e[u], u += 1);
         }
         return i;
       }
@@ -1458,7 +1458,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return n;
       }
-      function k(e) {
+      function R(e) {
         return Array.from(e, (n) => {
           let t = n.charCodeAt(0);
           return t === 0 ? "\uFFFD" : t < 32 || t === 127 ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
@@ -1502,20 +1502,20 @@ window.__timelines.main = gsap.timeline({ paused: true });
         if (!s) return null;
         let i = J(e, h(e, t + s.length));
         if (!i) return null;
-        let l = Q(e, i.end);
-        return l ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: s, value: i.value, flag: l.flag } : null;
+        let u = Q(e, i.end);
+        return u ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: s, value: i.value, flag: u.flag } : null;
       }
       function I(e, n) {
-        return e.replace(M, (t) => t.startsWith("[") ? n(t) : t);
+        return e.replace(T, (t) => t.startsWith("[") ? n(t) : t);
       }
       var Y = "data-hf-svg-reference-aliases", b = (e) => e.replace(/[A-Z]/g, (n) => n.toLowerCase()), W = /* @__PURE__ */ new WeakMap();
       function Z(e) {
         let n = W.get(e);
         if (n) return n;
         n = { everyRecordedId: /* @__PURE__ */ new Set(), renamedIdAlternatives: /* @__PURE__ */ new Map(), byName: /* @__PURE__ */ new Map(), byLocalName: /* @__PURE__ */ new Map() };
-        let t = /* @__PURE__ */ new Map(), r = (i, l, c) => {
-          let g = i.get(b(l));
-          g || i.set(b(l), g = { all: [], byBefore: /* @__PURE__ */ new Map(), byLowercaseBefore: /* @__PURE__ */ new Map() }), g.all.push(c);
+        let t = /* @__PURE__ */ new Map(), r = (i, u, c) => {
+          let g = i.get(b(u));
+          g || i.set(b(u), g = { all: [], byBefore: /* @__PURE__ */ new Map(), byLowercaseBefore: /* @__PURE__ */ new Map() }), g.all.push(c);
           for (let [d, o] of [[g.byBefore, c.before], [g.byLowercaseBefore, b(c.before)]]) {
             let a = d.get(o);
             a ? a.push(c) : d.set(o, [c]);
@@ -1523,12 +1523,12 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }, s = /* @__PURE__ */ new Set();
         for (let i of e) {
           if (i.name === "id" && n.everyRecordedId.add(i.before), i.before === i.after) continue;
-          let l = JSON.stringify([i.name, i.localName, i.namespaceURI, i.before, i.after]);
-          if (s.has(l) || (s.add(l), r(n.byName, i.name, i), r(n.byLocalName, i.localName, i), i.name !== "id")) continue;
+          let u = JSON.stringify([i.name, i.localName, i.namespaceURI, i.before, i.after]);
+          if (s.has(u) || (s.add(u), r(n.byName, i.name, i), r(n.byLocalName, i.localName, i), i.name !== "id")) continue;
           let c = t.get(i.before);
           c || t.set(i.before, c = /* @__PURE__ */ new Set([`#${v(i.before)}`])), c.add(`#${v(i.after)}`);
         }
-        for (let [i, l] of t) n.renamedIdAlternatives.set(i, `:is(${[...l].join(", ")})`);
+        for (let [i, u] of t) n.renamedIdAlternatives.set(i, `:is(${[...u].join(", ")})`);
         return W.set(e, n), n;
       }
       var K = { "=": (e, n) => e === n, "~=": (e, n) => e.split(/[ \t\r\n\f]+/).includes(n), "|=": (e, n) => e === n || e.startsWith(n + "-"), "^=": (e, n) => e.startsWith(n), "$=": (e, n) => e.endsWith(n), "*=": (e, n) => e.includes(n) };
@@ -1538,32 +1538,32 @@ window.__timelines.main = gsap.timeline({ paused: true });
         return K[n](s(e), s(t));
       }
       function ne(e, n, t) {
-        let { name: r, namespace: s, operator: i, value: l, flag: c } = n, g = (s.kind === "none" ? e.byName : e.byLocalName).get(b(r));
+        let { name: r, namespace: s, operator: i, value: u, flag: c } = n, g = (s.kind === "none" ? e.byName : e.byLocalName).get(b(r));
         if (!g) return [];
-        let d = c?.toLowerCase() === "i" ? g.byLowercaseBefore.get(b(l)) : g.byBefore.get(l), o = s.kind === "named" ? t.get(s.prefix) : null;
+        let d = c?.toLowerCase() === "i" ? g.byLowercaseBefore.get(b(u)) : g.byBefore.get(u), o = s.kind === "named" ? t.get(s.prefix) : null;
         return ((i === "=" ? d : g.all) ?? []).filter((a) => (s.kind === "any" || a.namespaceURI === o) && ee(a.before, n));
       }
       function P(e, n, t, r, s) {
-        let i = Z(t), l = (o) => {
+        let i = Z(t), u = (o) => {
           let a = L(o);
           if (!a || a.namespace.kind === "named" != (r !== void 0)) return o;
-          let { rawName: u, flag: f } = a, p = /* @__PURE__ */ new Set([o]);
+          let { rawName: l, flag: f } = a, p = /* @__PURE__ */ new Set([o]);
           for (let m of ne(i, a, r)) {
-            let S = `[${u}="${k(m.after)}"${f ? ` ${f}` : ""}]`;
+            let S = `[${l}="${R(m.after)}"${f ? ` ${f}` : ""}]`;
             p.has(S) || (s?.(S.length + (p.size === 1 ? 7 : 2)), p.add(S));
           }
           return p.size === 1 ? o : `:is(${[...p].join(", ")})`;
         };
-        if (r) return I(e, l);
-        let c = new Map(n.map(({ id: o, replacement: a }) => [o, a])), g = _(e).filter((o) => c.has(o) || i.renamedIdAlternatives.has(o)), d = $(e, g, (o) => {
-          let a = c.get(o) ?? i.renamedIdAlternatives.get(o);
-          return s?.(a.length - o.length - 1), a;
+        if (r) return I(e, u);
+        let c = new Map(n.map(({ id: o, replacement: a }) => [o, a])), g = _(e).filter((o) => c.has(o) || i.renamedIdAlternatives.has(o)), d = $(e, g, (o, a) => {
+          let l = c.get(o) ?? i.renamedIdAlternatives.get(o);
+          return s?.(l.length - a.length), l;
         });
-        return I(d, l);
+        return I(d, u);
       }
       function te(e, n, t = true) {
-        let r = [], i = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((c) => c.getAttribute(n)), l = e.getAttribute?.(n);
-        l && i.unshift(l);
+        let r = [], i = (t ? [...e.querySelectorAll(`[${n}]`)] : []).map((c) => c.getAttribute(n)), u = e.getAttribute?.(n);
+        u && i.unshift(u);
         for (let c of i) {
           let g;
           try {
@@ -1575,8 +1575,8 @@ window.__timelines.main = gsap.timeline({ paused: true });
           let d = g;
           for (let o of d) {
             if (!re(o)) continue;
-            let { name: a, localName: u, namespaceURI: f, before: p, after: m } = o;
-            r.push({ name: a, localName: u, namespaceURI: f, before: p, after: m });
+            let { name: a, localName: l, namespaceURI: f, before: p, after: m } = o;
+            r.push({ name: a, localName: l, namespaceURI: f, before: p, after: m });
           }
         }
         return r;
@@ -1587,13 +1587,13 @@ window.__timelines.main = gsap.timeline({ paused: true });
         return typeof n == "string" && typeof t == "string" && (r === null || typeof r == "string") && typeof s == "string" && typeof i == "string";
       }
       function se(e) {
-        let n = [], t = [], r = false, s, i = /* @__PURE__ */ new WeakMap(), l = (d, o) => {
+        let n = [], t = [], r = false, s, i = /* @__PURE__ */ new WeakMap(), u = (d, o) => {
           for (let a of d) {
             if ("selectorText" in a) {
-              let u = a, f = i.get(u), p = u.selectorText, m = f?.applied === p ? f.authored : p, S = P(m, [], t, o);
-              S !== p && (u.selectorText = S), S === m ? i.delete(u) : i.set(u, { authored: m, applied: u.selectorText });
+              let l = a, f = i.get(l), p = l.selectorText, m = f?.applied === p ? f.authored : p, S = P(m, [], t, o);
+              S !== p && (l.selectorText = S), S === m ? i.delete(l) : i.set(l, { authored: m, applied: l.selectorText });
             }
-            "cssRules" in a && l(a.cssRules, o);
+            "cssRules" in a && u(a.cssRules, o);
           }
         }, c = () => {
           if (t.length) for (let d of e.document.styleSheets) {
@@ -1604,41 +1604,41 @@ window.__timelines.main = gsap.timeline({ paused: true });
               continue;
             }
             let a = /* @__PURE__ */ new Map();
-            for (let u of o) {
-              if (!("namespaceURI" in u)) continue;
-              let { prefix: f, namespaceURI: p } = u;
+            for (let l of o) {
+              if (!("namespaceURI" in l)) continue;
+              let { prefix: f, namespaceURI: p } = l;
               f && a.set(f, p || null);
             }
-            a.size && l(o, a);
+            a.size && u(o, a);
           }
         }, g = { rewrite: (d, o = []) => {
           if (typeof d != "string" || !d.includes("#") && !d.includes("[")) return d;
           let a = P(d, o.length ? [...o, ...n] : n, t);
           if (a !== d) {
             if (!s) {
-              let u = e.document.createElement("div");
-              s = u.matches.bind(u);
+              let l = e.document.createElement("div");
+              s = l.matches.bind(l);
             }
             s(d);
           }
           return a;
         }, refresh() {
-          t = te(e.document, Y).filter((u) => u.before !== u.after);
-          let d = new Set(t.filter((u) => u.name === "id").map((u) => u.before)), o = /* @__PURE__ */ new Set();
+          t = te(e.document, Y).filter((l) => l.before !== l.after);
+          let d = new Set(t.filter((l) => l.name === "id").map((l) => l.before)), o = /* @__PURE__ */ new Set();
           n = [];
-          for (let u of e.document.querySelectorAll("[data-hf-authored-id][id]")) {
-            let f = u.getAttribute("data-hf-authored-id");
-            if (!f || f === u.id || o.has(f) || d.has(f)) continue;
+          for (let l of e.document.querySelectorAll("[data-hf-authored-id][id]")) {
+            let f = l.getAttribute("data-hf-authored-id");
+            if (!f || f === l.id || o.has(f) || d.has(f)) continue;
             o.add(f);
-            let p = k(f);
+            let p = R(f);
             n.push({ id: f, replacement: `:is(#${v(f)}, [data-hf-authored-id="${p}"])` });
           }
           if (c(), r || !n.length && !t.length) return;
           let a = e.Element.prototype;
-          a.querySelector = new Proxy(a.querySelector, { apply(u, f, p) {
-            return Reflect.apply(u, f, [g.rewrite(p[0])]);
-          } }), a.querySelectorAll = new Proxy(a.querySelectorAll, { apply(u, f, p) {
-            return Reflect.apply(u, f, [g.rewrite(p[0])]);
+          a.querySelector = new Proxy(a.querySelector, { apply(l, f, p) {
+            return Reflect.apply(l, f, [g.rewrite(p[0])]);
+          } }), a.querySelectorAll = new Proxy(a.querySelectorAll, { apply(l, f, p) {
+            return Reflect.apply(l, f, [g.rewrite(p[0])]);
           } }), r = true;
         } };
         e.__hfSvgSelectorAliases = g, g.refresh();
