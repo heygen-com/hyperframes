@@ -1,5 +1,9 @@
 import type { ExpectedOutputDimensions } from "./render/outputDimensions.js";
-import { audioFailureDiagnostics, usableCpuCount } from "@hyperframes/engine";
+import {
+  DISABLE_FRAME_RATE_LIMIT_FLAG,
+  audioFailureDiagnostics,
+  usableCpuCount,
+} from "@hyperframes/engine";
 // fallow-ignore-file unused-type circular-dependency code-duplication complexity
 /**
  * Render Orchestrator Service
@@ -3008,14 +3012,15 @@ export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
   return args.usePageSideCompositing ? true : args.forceScreenshot;
 }
 
-/** Parallel capture opens its own browsers. A probe launched before the film's script-inserted video was found
- * runs without the frame-rate limit that video needs. */
+/** Parallel capture opens its own browsers. A probe launched without the frame-rate limit, before the film's
+ * script-inserted video was found, cannot capture that video. */
 export function shouldCloseProbeBeforeCapture(
-  probe: { options: { injectsVideoFrames?: boolean } },
+  probe: { browserLease?: { fingerprint: { args: readonly string[] } } },
   workerCount: number,
   injectsVideoFrames: boolean,
 ): boolean {
-  return workerCount > 1 || (probe.options.injectsVideoFrames === false && injectsVideoFrames);
+  const unlimited = probe.browserLease?.fingerprint.args.includes(DISABLE_FRAME_RATE_LIMIT_FLAG);
+  return workerCount > 1 || (injectsVideoFrames && unlimited === true);
 }
 
 export function shouldDiscardProbeSessionForPageSideCompositing(args: {

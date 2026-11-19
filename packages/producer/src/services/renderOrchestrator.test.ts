@@ -1706,20 +1706,22 @@ describe("pageInstallsShaderCompositor", () => {
 });
 
 describe("shouldCloseProbeBeforeCapture", () => {
-  const probe = (injectsVideoFrames?: boolean) => ({ options: { injectsVideoFrames } });
+  const launchedWith = (...args: string[]) => ({ browserLease: { fingerprint: { args } } });
+  const unlimited = launchedWith("--disable-partial-raster", "--disable-frame-rate-limit");
+  const limited = launchedWith("--disable-partial-raster");
 
-  it("closes a probe launched for a film without video once video is found in it", () => {
-    expect(shouldCloseProbeBeforeCapture(probe(false), 1, true)).toBe(true);
+  it("closes a probe launched without the frame-rate limit once video is found", () => {
+    expect(shouldCloseProbeBeforeCapture(unlimited, 1, true)).toBe(true);
   });
 
-  it("keeps a probe whose launch fits the capture", () => {
-    expect(shouldCloseProbeBeforeCapture(probe(false), 1, false)).toBe(false);
-    expect(shouldCloseProbeBeforeCapture(probe(true), 1, true)).toBe(false);
-    expect(shouldCloseProbeBeforeCapture(probe(undefined), 1, true)).toBe(false);
+  it("reuses the probe when its launch flags fit the capture", () => {
+    expect(shouldCloseProbeBeforeCapture(limited, 1, true)).toBe(false);
+    expect(shouldCloseProbeBeforeCapture(unlimited, 1, false)).toBe(false);
+    expect(shouldCloseProbeBeforeCapture({}, 1, true)).toBe(false);
   });
 
   it("closes the probe for parallel capture, which opens its own browsers", () => {
-    expect(shouldCloseProbeBeforeCapture(probe(true), 2, true)).toBe(true);
+    expect(shouldCloseProbeBeforeCapture(limited, 2, false)).toBe(true);
   });
 });
 

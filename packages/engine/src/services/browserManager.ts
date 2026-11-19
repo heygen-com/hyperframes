@@ -1156,9 +1156,11 @@ export function usesSoftwareWebGpu(
   );
 }
 
+export const DISABLE_FRAME_RATE_LIMIT_FLAG = "--disable-frame-rate-limit";
+
 function frameRateLimitArgs(platform: NodeJS.Platform, injectsVideoFrames?: boolean): string[] {
   return platform === "darwin" && injectsVideoFrames === false
-    ? ["--disable-frame-rate-limit"]
+    ? [DISABLE_FRAME_RATE_LIMIT_FLAG]
     : [];
 }
 
