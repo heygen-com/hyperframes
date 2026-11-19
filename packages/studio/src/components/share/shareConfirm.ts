@@ -16,9 +16,12 @@ export function shareConfirmMessage(
     (item) => item.id === (share.spaceId ?? (linked ? null : spaceId)),
   );
   const lines = (...parts: string[]) => parts.filter(Boolean).join("\n");
+  const ask = (question: string, body: string) => (body ? `${question}\n\n${body}` : question);
   const details = (...parts: string[]) =>
     lines(
-      share.reviewId ? `Review: ${quoted(share.reviewTitle ?? "Untitled review")}` : "",
+      share.reviewId
+        ? `Review: ${share.reviewTitle ? quoted(share.reviewTitle) : "(title not available)"}`
+        : "",
       share.url ? `Link: ${share.url}` : "",
       space ? `Workspace: ${space.name}` : "",
       ...parts,
@@ -31,40 +34,32 @@ export function shareConfirmMessage(
       : "";
   switch (action.action) {
     case "share":
-      return lines(
+      return ask(
         linked
           ? "This folder is already linked to an existing review. Sharing adds this video to it and sets who can open it. If you didn't share this project before, cancel: it may have come with a folder someone sent you."
           : "Create a share link for this project?",
-        "",
         details(who(action.audience), files),
       );
     case "update":
-      return lines(
+      return ask(
         firstUpload(snapshot)
           ? "Create the share link for this review?"
           : "Upload this project as a new version of this shared review?",
-        "",
         details(who(share.audience ?? undefined), files),
       );
     case "access":
-      return lines(
+      return ask(
         "Change who can open this shared review?",
-        "",
         details(
           share.audience ? `Now: ${audienceLabel(share.audience)}` : "",
           action.audience ? `After: ${audienceLabel(action.audience)}` : "",
         ),
       );
     case "on":
-      return lines(
-        "Turn this review's link back on?",
-        "",
-        details(who(share.audience ?? undefined)),
-      );
+      return ask("Turn this review's link back on?", details(who(share.audience ?? undefined)));
     case "off":
-      return lines(
+      return ask(
         "Turn off this link? Everyone using the link loses access. Comments are kept.",
-        "",
         details(),
       );
     case "login":
