@@ -128,6 +128,29 @@ describe("prepareAnimatedGifInputs", () => {
     },
   );
 
+  it("forwards the compile abort signal to the transcode", async () => {
+    const projectDir = makeProject();
+    try {
+      writeFileSync(join(projectDir, "sticker.gif"), gif([...frame(5), ...frame(15)], 0));
+      const controller = new AbortController();
+      const calls: AnimatedGifTranscodeRequest[] = [];
+
+      await prepareAnimatedGifInputs('<img data-start="0" data-duration="2" src="sticker.gif" />', {
+        projectDir,
+        downloadDir: projectDir,
+        signal: controller.signal,
+        transcode: async (request) => {
+          calls.push(request);
+          writeFileSync(request.outputPath, "webm");
+        },
+      });
+
+      expect(calls[0]?.signal).toBe(controller.signal);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   it("rewrites animated GIF images to muted looped videos", async () => {
     const projectDir = makeProject();
     writeFileSync(join(projectDir, "sticker.gif"), gif([...frame(5), ...frame(15)], 0));
