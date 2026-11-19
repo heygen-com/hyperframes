@@ -3,6 +3,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { hyperframesConfigDir } from "../utils/configDir.js";
+import { release, tryAcquire } from "../utils/projectLock.js";
 import type { HyperframesCloudClient } from "./_gen/client.js";
 import type { CompletedPart, MultipartUploadPlan } from "./_gen/types.js";
 import {
@@ -36,39 +37,16 @@ function readSaved(file: string): SavedUpload | undefined {
   }
 }
 
-/** The saved upload's release while this sender holds it; nothing when another live sender does, so it sends alone. */
 export function claimSaved(file: string): (() => void) | undefined {
   const lock = `${file}.lock`;
-  for (let tries = 0; tries < 2; tries += 1) {
-    try {
-      mkdirSync(dirname(lock), { recursive: true, mode: 0o700 });
-      writeFileSync(lock, String(process.pid), { flag: "wx", mode: 0o600 });
-      return () => rmSync(lock, { force: true });
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST" || alive(lockHolder(lock)))
-        return undefined;
-      rmSync(lock, { force: true });
-    }
-  }
-  return undefined;
-}
-
-function lockHolder(lock: string): number {
+  const holder = { pid: process.pid, command: "cloud upload", startedAt: Date.now() };
   try {
-    return Number(readFileSync(lock, "utf8"));
+    mkdirSync(dirname(lock), { recursive: true, mode: 0o700 });
+    if (!tryAcquire(lock, holder)) return undefined;
   } catch {
-    return Number.NaN;
+    return undefined;
   }
-}
-
-function alive(pid: number): boolean {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "EPERM";
-  }
+  return () => release(lock, holder);
 }
 
 export function forgetSaved(file: string): void {
