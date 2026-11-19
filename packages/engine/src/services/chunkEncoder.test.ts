@@ -314,7 +314,7 @@ describe("encodeFramesChunkedConcat ffmpegEncodeTimeout", () => {
       expect(dirname(chunkPath)).not.toBe(legacyDir);
       expect(dirname(list)).toBe(dirname(chunkPath));
       expect(dirname(dirname(list))).toBe(root);
-      expect(readFileSync(list, "utf8")).toBe(`file '${chunkPath.replace(/'/g, "'\\''")}'`);
+      expect(readFileSync(list, "utf8")).toBe(`file '${chunkPath.replace(/'/g, "'\\''")}'\n`);
     }
     expect(readFileSync(legacyList, "utf8")).toBe("another render's concat list");
   });

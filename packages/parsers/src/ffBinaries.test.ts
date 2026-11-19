@@ -641,3 +641,21 @@ describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)("concatListInput
     expect(run.stderr).toContain("not on whitelist 'file'");
   });
 });
+
+describe("concatListText", () => {
+  // fails without the fix: every list writer escaped only the single quote, so a line break started a new list line.
+  it("writes one quoted entry per path and refuses a path holding a control character", async () => {
+    const { concatListText } = await importFresh();
+    expect(concatListText(["/a/it's.mp4", "/b/c.mp4"])).toBe(
+      "file '/a/it'\\''s.mp4'\nfile '/b/c.mp4'\n",
+    );
+    for (const path of [
+      "/p\nfile '/etc/x.mov'\n#/c.mp4",
+      "/p\r/c.mp4",
+      "/p\u0000/c.mp4",
+      "/p\u007f/c.mp4",
+    ]) {
+      expect(() => concatListText([path])).toThrow("control character");
+    }
+  });
+});
