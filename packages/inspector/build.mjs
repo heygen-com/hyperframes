@@ -4,7 +4,7 @@ import { copyFileSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
-import { firstCharacterThatMakesPagesTwoByte } from "../../scripts/page-script-one-byte.mjs";
+import { firstCharacterThatMakesPagesTwoByte } from "../core/scripts/page-script-one-byte.mjs";
 import { rewriteRelativeImportExtensions } from "../../scripts/rewrite-relative-import-extensions.mjs";
 
 const at = (path) => fileURLToPath(new URL(path, import.meta.url));

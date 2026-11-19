@@ -9,7 +9,7 @@ import {
 } from "../src/inline-scripts/hyperframe";
 import { RUNTIME_ESBUILD_DEFINE } from "../src/inline-scripts/hyperframesRuntime.engine";
 import { writeGeneratedFile } from "./writeGeneratedFile.js";
-import { firstCharacterThatMakesPagesTwoByte } from "../../../scripts/page-script-one-byte.mjs";
+import { firstCharacterThatMakesPagesTwoByte } from "./page-script-one-byte.mjs";
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const distDir = resolve(thisDir, "../dist");
