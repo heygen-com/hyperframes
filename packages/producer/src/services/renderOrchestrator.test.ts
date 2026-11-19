@@ -40,6 +40,7 @@ import {
   pageInstallsShaderCompositor,
   resolveCaptureForceScreenshotForPageSideCompositing,
   resolveRenderWorkDirPrefix,
+  shouldCloseProbeBeforeCapture,
   shouldDiscardProbeSessionForPageSideCompositing,
   resolveInversionRetryPlan,
   resolveParallelRouterRetryPlan,
@@ -1701,6 +1702,24 @@ describe("pageInstallsShaderCompositor", () => {
       "page never ready",
     );
     expect(hooks.closeCaptureSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("shouldCloseProbeBeforeCapture", () => {
+  const probe = (injectsVideoFrames?: boolean) => ({ options: { injectsVideoFrames } });
+
+  it("closes a probe launched for a film without video once video is found in it", () => {
+    expect(shouldCloseProbeBeforeCapture(probe(false), 1, true)).toBe(true);
+  });
+
+  it("keeps a probe whose launch fits the capture", () => {
+    expect(shouldCloseProbeBeforeCapture(probe(false), 1, false)).toBe(false);
+    expect(shouldCloseProbeBeforeCapture(probe(true), 1, true)).toBe(false);
+    expect(shouldCloseProbeBeforeCapture(probe(undefined), 1, true)).toBe(false);
+  });
+
+  it("closes the probe for parallel capture, which opens its own browsers", () => {
+    expect(shouldCloseProbeBeforeCapture(probe(true), 2, true)).toBe(true);
   });
 });
 

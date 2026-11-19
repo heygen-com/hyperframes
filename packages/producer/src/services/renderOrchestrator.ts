@@ -3008,6 +3008,16 @@ export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
   return args.usePageSideCompositing ? true : args.forceScreenshot;
 }
 
+/** Parallel capture opens its own browsers. A probe launched before the film's script-inserted video was found
+ * runs without the frame-rate limit that video needs. */
+export function shouldCloseProbeBeforeCapture(
+  probe: { options: { injectsVideoFrames?: boolean } },
+  workerCount: number,
+  injectsVideoFrames: boolean,
+): boolean {
+  return workerCount > 1 || (probe.options.injectsVideoFrames === false && injectsVideoFrames);
+}
+
 export function shouldDiscardProbeSessionForPageSideCompositing(args: {
   hasProbeSession: boolean;
   usePageSideCompositing: boolean;
@@ -4662,7 +4672,10 @@ async function executeRenderPipeline(input: {
       updateCaptureObservability({ captureParallelStream: "eligible_off" });
     }
 
-    if (workerCount > 1 && probeSession) {
+    if (
+      probeSession &&
+      shouldCloseProbeBeforeCapture(probeSession, workerCount, captureSurface.injectsVideoFrames)
+    ) {
       lastBrowserConsole = probeSession.browserConsoleBuffer;
       await closeCaptureSession(probeSession);
       probeSession = null;
