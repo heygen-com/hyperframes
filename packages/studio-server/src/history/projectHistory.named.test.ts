@@ -191,6 +191,8 @@ describe("a step over files an undo kept", () => {
   async function keptThenRevised() {
     const opened = await project({ "index.html": "<h1>Hi</h1>" });
     const { history, write } = opened;
+    write("index.html", "<h1>Hello</h1>");
+    await history.claim(you, "Edited title", ["index.html"]);
     write("assets/notes.txt", "first");
     await history.claim(you, "Uploaded", ["assets/notes.txt"]);
     write("compositions/notes.html", NOTES);
@@ -207,10 +209,15 @@ describe("a step over files an undo kept", () => {
     expect(await history.step("forward", you)).toMatchObject({ ok: false });
     expect(read("assets/notes.txt")).toBe("revised");
     const undid = history.list().find((entry) => entry.label === "Undid: Uploaded")!;
-    expect(await history.undo(undid.id, { who: you, mode: "keep-later-edits" })).toMatchObject({
+    expect(await history.undo(undid.id, { who: you, mode: "keep-later-edits" })).toEqual({
       ok: true,
+      entry: null,
     });
     expect(read("assets/notes.txt")).toBe("revised");
+    // fails without the fix: an empty redo put the upload back on top, so Cmd+Z hit the same conflict again.
+    expect(history.next("back", you)?.label).toBe("Edited title");
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(read("index.html")).toBe("<h1>Hi</h1>");
   });
 
   it("the same later edit stops the redo after the project is reopened", async () => {
