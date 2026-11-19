@@ -7,8 +7,10 @@ import {
   findPreviewElementForSelection,
   standInFor,
 } from "../../components/editor/previewSelection";
-import { previewFrameOpaque } from "../lib/previewChannel";
-import { readEffectiveZIndex } from "../../components/editor/canvasContextMenuZOrder";
+import type { SelectionLookupTarget } from "../../components/editor/domEditSelectionRules";
+import { previewComputedStyles, previewFrameOpaque } from "../lib/previewChannel";
+import { parseZIndex, readEffectiveZIndex } from "../../components/editor/canvasContextMenuZOrder";
+import { readLayerRevealPriorZ } from "../lib/timelineElementHelpers";
 import type { StackingPatch } from "./timelineStackingSync";
 import type { TimelineZIndexReorderCommit } from "../../hooks/useTimelineEditingTypes";
 
@@ -68,13 +70,13 @@ export function useTimelineStackingSync({
   // clip instead. NaN (rather than null) keeps the return assignable to the
   // `(el) => number` reader contract the drag hook / commit deps declare.
   const readClipZIndex = useCallback(
-    (el: TimelineElement): number => {
-      // A sealed frame's z-index is the store's, read from inline styles and kept by every z save.
-      if (sealedFrame()) return el.zIndex ?? Number.NaN;
+    (el: TimelineElement): number | Promise<number> => {
+      const iframe = sealedFrame();
+      if (iframe) return readSealedZIndex(iframe, lookupOf(el), zSyncActiveCompPath);
       const node = resolveIframeElement(el);
       return node ? readEffectiveZIndex(node) : Number.NaN;
     },
-    [resolveIframeElement, sealedFrame],
+    [resolveIframeElement, sealedFrame, lookupOf, zSyncActiveCompPath],
   );
 
   const applyStackingPatches = useCallback(
@@ -131,4 +133,18 @@ export function useTimelineStackingSync({
   const zSyncEnabled = Boolean(handleDomZIndexReorderCommit && zSyncPreviewIframeRef);
 
   return { readClipZIndex, applyStackingPatches, zSyncEnabled };
+}
+
+/** The frame's effective z-index when the gesture runs: a stylesheet's value, or one an earlier gesture saved. */
+async function readSealedZIndex(
+  iframe: HTMLIFrameElement,
+  lookup: SelectionLookupTarget,
+  activeCompPath: string | null,
+): Promise<number> {
+  const found = await findPreviewElementForSelection(iframe, lookup, activeCompPath);
+  if (!found) return Number.NaN;
+  const prior = readLayerRevealPriorZ(standInFor(iframe, found));
+  if (prior != null) return prior;
+  const styles = await previewComputedStyles(iframe, found, ["z-index"]);
+  return styles ? parseZIndex(styles["z-index"]) : Number.NaN;
 }
