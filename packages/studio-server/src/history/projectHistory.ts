@@ -1075,19 +1075,16 @@ class Engine {
     if (group) await this.commit(group);
   }
 
-  keepsEmpty(extra: Partial<HistoryEntry>, keptFiles: boolean): boolean {
+  keepsEmpty(extra: Partial<HistoryEntry>): boolean {
     if (extra.undoes === undefined) return false;
     return (
-      keptFiles || this.log.entries.find((entry) => entry.id === extra.undoes)?.files.length === 0
+      extra.keptInPlace !== undefined ||
+      this.log.entries.find((entry) => entry.id === extra.undoes)?.files.length === 0
     );
   }
 
-  async commit(
-    group: Group,
-    extra: Partial<HistoryEntry> = {},
-    keptFiles = false,
-  ): Promise<HistoryEntry | null> {
-    if (!group.changes.size && !this.keepsEmpty(extra, keptFiles)) return null;
+  async commit(group: Group, extra: Partial<HistoryEntry> = {}): Promise<HistoryEntry | null> {
+    if (!group.changes.size && !this.keepsEmpty(extra)) return null;
     const pending = this.pendingEntry(group);
     const endedAt = Math.max(pending.endedAt, this.log.entries.at(-1)?.endedAt ?? 0);
     const entry = keepTargetsOfItsFiles({ ...pending, endedAt, ...extra });
@@ -1312,7 +1309,9 @@ class Engine {
     } finally {
       this.windows = this.windows.filter((open) => open !== group);
     }
-    return this.commit(group, extra, named.size > 0);
+    const leftInPlace = [...named].map((path) => [path, this.tracked.get(path)!.hash]);
+    const kept = { ...extra.keptInPlace, ...Object.fromEntries(leftInPlace) };
+    return this.commit(group, { ...extra, ...(Object.keys(kept).length && { keptInPlace: kept }) });
   }
 
   async stillNamed(changes: readonly (readonly [string, string | null])[]): Promise<Set<string>> {
@@ -1425,17 +1424,45 @@ class Engine {
         .filter((file) => mode !== "keep-later-edits" || !changed.includes(file))
         .map((file) => [file.path, file.before]),
     );
+    for (const [path, after] of this.keptTargets(entry)) target.set(path, after);
+    const kept = this.keptByRedo(entry);
     return {
       ok: true,
       entry: await this.writeAs(who, this.undoLabel(entry), target, {
         undoes: id,
         ...(entry.targets && { targets: entry.targets }),
+        ...(Object.keys(kept).length && { keptInPlace: kept }),
       }),
     };
   }
 
+  /** Redoing an undo that kept files: each kept path goes back to what the entry it undid made of it. */
+  keptTargets(entry: HistoryEntry): [string, string | null][] {
+    const original =
+      entry.keptInPlace && entry.undoes
+        ? this.log.entries.find((e) => e.id === entry.undoes)
+        : undefined;
+    return Object.keys(entry.keptInPlace ?? {}).flatMap((path) => {
+      const file = original?.files.find((change) => change.path === path);
+      return file ? [[path, file.after] as [string, string | null]] : [];
+    });
+  }
+
+  /** What the redo now in effect of `entry` left in place of its changes, path to hash; empty when none kept any. */
+  keptByRedo(entry: HistoryEntry): Record<string, string> {
+    const undone = undoneIds(this.log.entries);
+    const undoOf = (id: string | undefined) => this.log.entries.find((e) => e.id === id)?.undoes;
+    const redo = [...this.log.entries]
+      .reverse()
+      .find((e) => e.keptInPlace && !undone.has(e.id) && undoOf(e.undoes) === entry.id);
+    return redo?.keptInPlace ?? {};
+  }
+
   movedOn(entry: HistoryEntry): HistoryFileChange[] {
-    return entry.files.filter((file) => (this.tracked.get(file.path)?.hash ?? null) !== file.after);
+    const kept = this.keptByRedo(entry);
+    return entry.files.filter(
+      (file) => (this.tracked.get(file.path)?.hash ?? null) !== (kept[file.path] ?? file.after),
+    );
   }
 
   next(direction: "back" | "forward", who: HistoryWho): HistoryEntry | undefined {
@@ -1453,7 +1480,10 @@ class Engine {
       this.log.entries,
       direction,
       (entry) =>
-        writes(entry.files.map((file) => file.path)) &&
+        writes([
+          ...entry.files.map((file) => file.path),
+          ...Object.keys(entry.keptInPlace ?? {}),
+        ]) &&
         (mine(entry.who) || (everyone && !ofOpenTurn(entry))),
     );
   }
