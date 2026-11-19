@@ -719,10 +719,11 @@ class Engine {
   ): Adoption {
     let asked: Array<() => void> = [];
     let wake = () => {};
+    const owedFromOpen = late !== undefined;
     const tryOnce = async () => {
       const served = asked;
       asked = [];
-      const tried = await this.tryAdopting(file, sweptAt, late);
+      const tried = await this.tryAdopting(file, sweptAt, late, owedFromOpen);
       late = undefined;
       this.baselineAwaitingAdoption.delete(file.path);
       for (const answer of served) answer();
@@ -756,13 +757,15 @@ class Engine {
     file: ListedFile,
     sweptAt: number,
     late?: Promise<Copied>,
+    owedFromOpen = false,
   ): Promise<"over" | "changing"> {
     try {
       if (this.whereFolder() !== "here") return "over";
       const first = await late?.catch(() => undefined);
       const fromOpen = typeof first === "object";
       const read = () => this.storeIfPresent(file.path);
-      const copied = fromOpen ? first : await (late ? inFirstCopySlot(read) : read());
+      const copied = fromOpen ? first : await (owedFromOpen ? inFirstCopySlot(read) : read());
+      if (typeof copied === "object") this.baselineAwaitingAdoption.set(file.path, copied.hash);
       return await this.queue(async () => {
         // Still named for the next open until recorded, so a failed record is never logged as added.
         if ((await this.recordAdopted(file, sweptAt, copied)) === "changing") return "changing";
@@ -780,10 +783,9 @@ class Engine {
 
   async recordAdopted(file: ListedFile, sweptAt: number, first: Copied): Promise<Copied> {
     if (typeof first === "string" || this.whereFolder() !== "here") return first;
-    // A prune that ran while this copy waited for the queue may have taken its bytes.
-    const kept = this.blobs.has(first.hash) || isUncopied(file.path, file.size);
-    const copied = kept ? first : await this.storeIfPresent(file.path);
-    if (typeof copied === "string") return copied;
+    // Bytes gone from the store are read again on the next try, outside the history queue.
+    if (!this.blobs.has(first.hash) && !isUncopied(file.path, file.size)) return "changing";
+    const copied = first;
     const { hash } = copied;
     const change = { path: file.path, before: null, after: hash };
     const found = this.overwrittenBy(change, undefined, new Set());

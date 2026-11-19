@@ -14,7 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
@@ -339,8 +339,10 @@ describe("a project's first history copy", () => {
     );
   });
 
-  it("reads files whose first copy kept changing a few at a time", async () => {
+  // Each of the first `changing` reads of a file sees it change under it; every read after that is a fresh one.
+  async function freshReadsAtOnce(changing: number) {
     const projectDir = projectOf(12, "fan");
+    const parts = join(projectDir, "parts") + sep;
     const opens = new Map<string, number>();
     let waiting = 0;
     let most = 0;
@@ -348,11 +350,10 @@ describe("a project's first history copy", () => {
     const gate = new Promise<void>((resolve) => (release = resolve));
     vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
       const path = String(args[0]);
-      if (!path.includes("/parts/")) return realOpen(...args);
+      if (!path.startsWith(parts)) return realOpen(...args);
       const count = (opens.get(path) ?? 0) + 1;
       opens.set(path, count);
-      // Each of a first copy's three reads sees the file change under it; the read after that is a fresh one.
-      if (count > 3) {
+      if (count > changing) {
         most = Math.max(most, ++waiting);
         await gate;
         waiting -= 1;
@@ -367,16 +368,102 @@ describe("a project's first history copy", () => {
       }) as typeof handle.readFile;
       return handle;
     });
-    const history = await open(projectDir, tempDir("hf-first-copy-root-"));
-    await vi.waitFor(() => expect(waiting).toBe(4));
-    release();
-    await vi.waitFor(
-      () =>
-        expect(
-          Object.keys(history.peek(START) ?? {}).filter((path) => path.startsWith("parts/")),
-        ).toHaveLength(12),
-      { timeout: 10_000 },
+    try {
+      const history = await open(projectDir, tempDir("hf-first-copy-root-"));
+      await vi.waitFor(() => expect(waiting).toBe(4), { timeout: 10_000 });
+      release();
+      await vi.waitFor(
+        () =>
+          expect(
+            Object.keys(history.peek(START) ?? {}).filter((path) => path.startsWith("parts/")),
+          ).toHaveLength(12),
+        { timeout: 20_000 },
+      );
+      return most;
+    } finally {
+      release();
+    }
+  }
+
+  it("reads files whose first copy kept changing a few at a time", async () => {
+    expect(await freshReadsAtOnce(3)).toBe(4);
+  });
+
+  it("keeps later rereads of those files a few at a time too", async () => {
+    expect(await freshReadsAtOnce(6)).toBe(4);
+  }, 30_000);
+
+  it("keeps a reread copy from pruning while it waits to be adopted", async () => {
+    const projectDir = projectOf(2, "reread");
+    const late = join(projectDir, "parts", "p1.js");
+    const edited = Buffer.from("<html>reread edited</html>");
+    const saved = Buffer.from("// saved after the reread\n");
+    let reads = 0;
+    let letReread = () => {};
+    const rereadGate = new Promise<void>((resolve) => (letReread = resolve));
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      const path = String(args[0]);
+      if (path === late && ++reads === 4) await rereadGate;
+      const handle = await realOpen(...args);
+      if (path !== late || reads > 3) return handle;
+      const readFile = handle.readFile.bind(handle);
+      handle.readFile = (async (...options: Parameters<typeof readFile>) => {
+        const bytes = await readFile(...options);
+        appendFileSync(path, "// saved while read\n");
+        return bytes;
+      }) as typeof handle.readFile;
+      return handle;
+    });
+    const holds = new Map<Buffer, { held: number; release: () => void; gate: Promise<void> }>();
+    for (const bytes of [edited, saved]) {
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      holds.set(bytes, { held: 0, release, gate });
+    }
+    vi.mocked(fsp.writeFile).mockImplementation(
+      async (...args: Parameters<typeof realWriteFile>) => {
+        const [path, bytes] = args;
+        const hold = [...holds].find(
+          ([held]) =>
+            String(path).includes("incoming-") && Buffer.isBuffer(bytes) && bytes.equals(held),
+        )?.[1];
+        if (hold) {
+          hold.held += 1;
+          await hold.gate;
+        }
+        return realWriteFile(...args);
+      },
     );
-    expect(most).toBe(4);
+    const historyRoot = tempDir("hf-first-copy-root-");
+    try {
+      const history = await openProjectHistory({
+        projectDir,
+        historyRoot,
+        quietMs: 30,
+        budgetBytes: 1,
+      });
+      closes.push(() => history.close());
+      // A sweep holds the history's queue while it stores the edited index; the reread lands meanwhile.
+      writeFileSync(join(projectDir, "index.html"), edited);
+      const sweep = history.checkpoint();
+      await vi.waitFor(() => expect(holds.get(edited)!.held).toBe(1));
+      const reread = readFileSync(late);
+      letReread();
+      const blobs = join(homeIn(historyRoot), "blobs");
+      await vi.waitFor(() => expect(existsSync(blobPath(blobs, sha256(reread)))).toBe(true), {
+        timeout: 10_000,
+      });
+      writeFileSync(late, saved);
+      holds.get(edited)!.release();
+      await sweep;
+      // Read START before the sweep that takes in the edit: a 1-byte budget folds that change into START.
+      await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["parts/p1.js"]), {
+        timeout: 10_000,
+      });
+      expect(history.peek(START)!["parts/p1.js"]).toBe(sha256(reread));
+    } finally {
+      letReread();
+      for (const { release } of holds.values()) release();
+    }
   });
 });
