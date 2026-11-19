@@ -658,4 +658,12 @@ describe("concatListText", () => {
       expect(() => concatListText([path])).toThrow("control character");
     }
   });
+
+  // fails without the fix: a tab inside the quotes is read fine by ffmpeg, but the writer refused it.
+  it("keeps a tab or DEL in a path, which do not end a list line", async () => {
+    const { concatListText } = await importFresh();
+    expect(concatListText(["/out\tdir/c.mp4", "/p\u007f/c.mp4"])).toBe(
+      "file '/out\tdir/c.mp4'\nfile '/p\u007f/c.mp4'\n",
+    );
+  });
 });
