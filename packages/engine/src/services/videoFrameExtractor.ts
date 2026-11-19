@@ -8,8 +8,9 @@
 
 import { usableCpuCount } from "./systemMemory.js";
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
-import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, rmSync } from "fs";
 import { basename, isAbsolute, join, normalize, relative, win32 } from "path";
+import { tmpdir } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { parseHTML } from "linkedom";
 import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
@@ -1338,6 +1339,37 @@ export async function buildVideoLayerInput(
   };
 }
 
+/**
+ * ffmpeg could not input-seek because the container's sync-sample index has no keyframe at or
+ * before the seek point. Seen on MP4s muxed by VLC whose `stss` leaves out the first IDR: every
+ * seek before the next listed keyframe fails, so the range comes back empty, while browsers
+ * (which ignore `stss`) play the file normally.
+ */
+const SEEK_INDEX_MISSING = /Cannot find an index entry before timestamp|could not seek to position/;
+
+/**
+ * A stream copy of the video (and audio) into a fresh MOV. Same packets, no re-encode; the
+ * muxer writes the sync-sample index from the packets' own keyframe flags, so input seeks work.
+ */
+async function streamCopyWithRebuiltSeekIndex(
+  videoPath: string,
+  signal: AbortSignal | undefined,
+  timeout: number,
+): Promise<{ dir: string; path: string } | undefined> {
+  const dir = mkdtempSync(join(tmpdir(), "hf-seek-index-"));
+  const path = join(dir, "source.mov");
+  const result = await runFfmpeg(
+    [
+      ...urlInputArgs(videoPath),
+      ...["-i", videoPath, "-map", "0:v:0", "-map", "0:a?", "-c", "copy", "-y", path],
+    ],
+    { signal, timeout },
+  );
+  if (result.success && existsSync(path)) return { dir, path };
+  rmSync(dir, { recursive: true, force: true });
+  return undefined;
+}
+
 async function extractVideoFramesRangeUnredacted(
   videoPath: string,
   videoId: string,
@@ -1348,6 +1380,8 @@ async function extractVideoFramesRangeUnredacted(
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
   /** Frames go straight here, with no per-videoId subdir (the cache layer's keyed entry). */
   outputDirOverride?: string,
+  /** Set on the retry against a stream copy whose seek index ffmpeg rebuilt, so it runs once. */
+  seekIndexRebuilt = false,
 ): Promise<ExtractedFrames> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const { outputDir, quality = 95 } = options;
@@ -1526,6 +1560,35 @@ async function extractVideoFramesRangeUnredacted(
   const videoToolboxWasOptional = decodeWithVideoToolbox && !keepsHdrForChrome;
   if (ffmpegExitedFailing && videoToolboxWasOptional && !DISK_FULL.test(processResult.stderr))
     processResult = await extract([]);
+  // A failed seek leaves the window empty (or, for a JPEG encoder that opens at EOF, exits
+  // non-zero), whichever way ffmpeg exits; read its own message rather than the exit code.
+  if (
+    processResult.terminationReason === "exit" &&
+    !seekIndexRebuilt &&
+    SEEK_INDEX_MISSING.test(processResult.stderr)
+  ) {
+    const rebuilt = await streamCopyWithRebuiltSeekIndex(videoPath, signal, ffmpegProcessTimeout);
+    if (rebuilt) {
+      for (const stale of framePathsFromDirectory(videoOutputDir, format, true).values())
+        rmSync(stale, { force: true });
+      try {
+        const frames = await extractVideoFramesRangeUnredacted(
+          rebuilt.path,
+          videoId,
+          startTime,
+          duration,
+          options,
+          signal,
+          config,
+          outputDirOverride,
+          true,
+        );
+        return { ...frames, srcPath: videoPath };
+      } finally {
+        rmSync(rebuilt.dir, { recursive: true, force: true });
+      }
+    }
+  }
   if (processResult.failureReason === "external_interruption") {
     throw new VideoSourceExtractionError(
       "external_interruption",
