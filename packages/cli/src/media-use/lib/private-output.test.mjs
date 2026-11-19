@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
@@ -54,3 +62,46 @@ test("discarding leaves any file a generator does not own", (t) => {
   assert.equal(existsSync(lookalike), true);
   assert.equal(existsSync(otherTool), true);
 });
+
+test("discarding leaves a folder named like a generator's that this run did not make", (t) => {
+  const planted = join(
+    removeAfter(t, mkdtempSync(join(tmpdir(), "media-use-codex-"))),
+    "output.png",
+  );
+  writeFileSync(planted, "x");
+  discardPrivateOutput(planted);
+  assert.equal(existsSync(planted), true);
+});
+
+test(
+  "a temp setting that ends in extra slashes still gets its folder removed",
+  { skip: process.platform === "win32" },
+  (t) => {
+    const base = removeAfter(t, mkdtempSync(join(tmpdir(), "slashed-temp-")));
+    const previous = process.env.TMPDIR;
+    t.after(() => {
+      if (previous === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = previous;
+    });
+    process.env.TMPDIR = `${base}//`;
+    const out = privateOutputPath("ltx", ".mp4");
+    writeFileSync(out, "video");
+    discardPrivateOutput(out);
+    assert.equal(existsSync(dirname(out)), false);
+  },
+);
+
+test(
+  "a folder that cannot be removed does not make discarding throw",
+  { skip: process.platform === "win32" },
+  (t) => {
+    const out = privateOutputPath("mflux", ".png");
+    t.after(() => {
+      chmodSync(dirname(out), 0o700);
+      rmSync(dirname(out), { recursive: true, force: true });
+    });
+    writeFileSync(out, "image");
+    chmodSync(dirname(out), 0o500);
+    assert.doesNotThrow(() => discardPrivateOutput(out));
+  },
+);

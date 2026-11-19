@@ -1802,7 +1802,15 @@ test("a local generator's private output folder is gone once the file is in the 
       "kokoro.local",
       "--json",
     ],
-    { env: { HOME: tmp, TMPDIR: privateTmp, HYPERFRAMES_CLI_ENTRY: entry } },
+    {
+      env: {
+        HOME: tmp,
+        TMPDIR: privateTmp,
+        TEMP: privateTmp,
+        TMP: privateTmp,
+        HYPERFRAMES_CLI_ENTRY: entry,
+      },
+    },
   );
   assert.equal(result.status, 0, result.stderr);
   const parsed = JSON.parse(result.stdout);
