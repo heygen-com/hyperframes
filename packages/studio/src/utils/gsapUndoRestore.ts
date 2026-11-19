@@ -12,6 +12,7 @@ import {
   timelineKeys,
 } from "./gsapSoftReload";
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
 import { STUDIO_EDIT_ATTRS } from "../components/editor/manualEditsSeekReapply";
 import { markScenesStale } from "../player/sceneSwap";
@@ -68,7 +69,8 @@ function parseRestoreSource(html: string): Document {
   for (const template of Array.from(doc.querySelectorAll("template")).filter(
     isCompositionTemplate,
   )) {
-    template.replaceWith(template.content);
+    const content = templateContent(template);
+    if (content) template.replaceWith(content);
   }
   return doc;
 }

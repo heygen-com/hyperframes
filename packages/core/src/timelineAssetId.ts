@@ -1,4 +1,5 @@
 import { decodedUrlPath } from "@hyperframes/parsers";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 
 function trimIdUnderscores(value: string): string {
   let start = 0;
@@ -24,9 +25,7 @@ export function buildTimelineAssetId(assetPath: string, existingIds: Iterable<st
 
 function referenceChildren(element: Element): Iterable<Element> {
   if (element.children.length > 0) return element.children;
-  if (element.tagName.toLowerCase() !== "template") return [];
-  const content = (element as HTMLTemplateElement).content;
-  return content ? content.children : [];
+  return templateContent(element)?.children ?? [];
 }
 
 function documentElements(document: Document): Element[] {

@@ -14,6 +14,7 @@ import {
   compileForRender,
   inlineExternalScripts,
   localizeRemoteFontFaces,
+  MAX_REMOTE_FETCHES,
   MAX_VARIABLE_MEDIA_SRC_BYTES,
 } from "./htmlCompiler.js";
 import { extractSafeRenderErrorCode } from "./safeRenderErrorCode.js";
@@ -349,22 +350,30 @@ describe("local font embedding", () => {
       (_, i) => `@font-face { font-family: "F${i}"; src: url("big.ttf"); }`,
     ).join("\n");
 
-  it("inlines a font that many rules name only while the page stays within the limit", async () => {
-    const dir = project({
-      "index.html": ROOT.replace(
-        "<html>",
-        `<html><head><style>${faces(8)}\n.mark { background: url("big.ttf"); }</style></head>`,
-      ),
-      "scene.html": SCENE,
-    });
-    writeFileSync(join(dir, "big.ttf"), Buffer.alloc(LARGEST_INLINED_FONT_BYTES, 1));
-    const { html } = await compileForRender(dir, join(dir, "index.html"), dir);
-    const inlined = html.split("data:font/ttf;base64,").length - 1;
-    expect(inlined).toBeGreaterThan(0);
-    expect(html.length).toBeLessThan(MAX_EXPANDED_COMPOSITION_BYTES + 64 * 1024);
-    expect(html.split('url("big.ttf")').length - 1).toBe(8 - inlined + 1);
-    expect(html).toContain('.mark { background: url("big.ttf"); }');
-  });
+  // Compiles a page at the full limit, so it gets more than the default time.
+  it(
+    "inlines a font that many rules name only while the page stays within the limit",
+    { timeout: 30_000 },
+    async () => {
+      const dataUriChars = Math.ceil(LARGEST_INLINED_FONT_BYTES / 3) * 4;
+      const rules = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / dataUriChars) + 2;
+      const dir = project({
+        "index.html": ROOT.replace(
+          "<html>",
+          `<html><head><style>${faces(rules)}\n.mark { background: url("big.ttf"); }</style></head>`,
+        ),
+        "scene.html": SCENE,
+      });
+      writeFileSync(join(dir, "big.ttf"), Buffer.alloc(LARGEST_INLINED_FONT_BYTES, 1));
+      const { html } = await compileForRender(dir, join(dir, "index.html"), dir);
+      const inlined = html.split("data:font/ttf;base64,").length - 1;
+      expect(inlined).toBeGreaterThan(0);
+      expect(inlined).toBeLessThan(rules);
+      expect(html.length).toBeLessThan(MAX_EXPANDED_COMPOSITION_BYTES + 64 * 1024);
+      expect(html.split('url("big.ttf")').length - 1).toBe(rules - inlined + 1);
+      expect(html).toContain('.mark { background: url("big.ttf"); }');
+    },
+  );
 });
 
 describe("asset paths rebased from a composition's folder", () => {
@@ -462,7 +471,10 @@ describe("remote scripts and stylesheets inlined at compile time", () => {
 
   it("stops queued downloads once a script fails its integrity check", async () => {
     const seen = serve(() => `/*${"x".repeat(MiB)}*/`);
-    const urls = Array.from({ length: 40 }, (_, i) => `https://cdn.example.com/i${i}.js`);
+    const urls = Array.from(
+      { length: MAX_REMOTE_FETCHES },
+      (_, i) => `https://cdn.example.com/i${i}.js`,
+    );
     const html = scriptTags(urls).replaceAll("<script ", '<script integrity="sha384-YQ==" ');
     await expect(inlineExternalScripts(html)).rejects.toThrow("integrity mismatch");
     expect(seen.requests.length).toBeLessThan(urls.length);
@@ -493,18 +505,16 @@ describe("remote scripts and stylesheets inlined at compile time", () => {
     expect(html.split("<p>after</p>").length - 1).toBe(1);
   });
 
-  it.each([
-    ["distinct", (i: number) => `https://cdn.example.com/f${i}.css`],
-    ["repeated", () => "https://cdn.example.com/f.css"],
-  ])("refuses %s remote font stylesheets that add up past the render's limit", async (_, url) => {
+  // Distinct sheets cannot get there: at most MAX_REMOTE_FETCHES are downloaded, each at most 2 MiB.
+  it("refuses a repeated remote font stylesheet whose copies add up past the render's limit", async () => {
     const face = `@font-face { font-family: "F"; src: local("${"x".repeat(MiB)}"); }`;
     const seen = serve(() => face);
-    const urls = Array.from({ length: pastLimitMiB }, (_, i) => url(i));
+    const urls = Array(pastLimitMiB).fill("https://cdn.example.com/f.css");
     const error = await localizeRemoteFontFaces(
       linkTags(urls),
       mkdtempSync(join(tmpdir(), "hf-remote-sheet-")),
     ).catch((e) => e);
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
-    expect(seen.requests.length).toBeLessThan(urls.length);
+    expect(seen.requests).toHaveLength(1);
   });
 });

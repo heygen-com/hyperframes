@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
+import { firstHtmlTemplate } from "@hyperframes/parsers/sub-composition-validity";
 import {
   rewriteAssetPaths,
   rewriteCssAssetUrls,
@@ -160,10 +161,16 @@ function extractFullDocumentParts(
  * renders blank. `querySelector("template")` only ever matches a real element
  * node, so comment text can't fool it.
  */
-function extractTemplateInnerHtml(rawComp: string): string | null {
+function extractTemplate(
+  rawComp: string,
+): { innerHtml: string; compositionId: string | null } | null {
   const { document: doc } = parseHTML(rawComp);
-  const template = doc.querySelector("template");
-  return template ? template.innerHTML : null;
+  const template = firstHtmlTemplate(doc.querySelectorAll("template"));
+  if (!template) return null;
+  return {
+    innerHtml: template.innerHTML,
+    compositionId: template.getAttribute("data-composition-id"),
+  };
 }
 
 /** Attribute values read from the DOM are decoded — re-escape on rebuild or
@@ -207,19 +214,7 @@ const NON_RENDERED_TAGS = new Set(["SCRIPT", "STYLE", "LINK", "META", "TEMPLATE"
  * element (e.g. the id is authored on the root div), so compositions that
  * already render correctly are untouched.
  */
-function promoteTemplateCompositionId(rawComp: string, body: Element): void {
-  // Two-step match instead of one `[^>]*\s…` regex: the single-pattern form
-  // backtracks polynomially on crafted input (CodeQL js/polynomial-redos).
-  // Step 1 grabs each <template …> open tag (linear); step 2 finds the attr
-  // within that short tag text.
-  let templateCompositionId: string | undefined;
-  for (const tag of rawComp.matchAll(/<template\b[^>]*/gi)) {
-    const id = /\bdata-composition-id\s*=\s*["']([^"']+)["']/i.exec(tag[0] ?? "")?.[1];
-    if (id) {
-      templateCompositionId = id;
-      break;
-    }
-  }
+function promoteTemplateCompositionId(templateCompositionId: string | null, body: Element): void {
   if (!templateCompositionId) return;
   if (body.querySelector("[data-composition-id]")) return;
 
@@ -335,16 +330,16 @@ export function buildSubCompositionHtml(
   let htmlAttrs = "";
   let bodyAttrs = "";
 
-  const templateInner = extractTemplateInnerHtml(rawComp);
+  const template = extractTemplate(rawComp);
 
-  if (templateInner != null) {
+  if (template) {
     const { document: contentDoc } = parseHTML(
-      `<!DOCTYPE html><html><head></head><body>${templateInner}</body></html>`,
+      `<!DOCTYPE html><html><head></head><body>${template.innerHtml}</body></html>`,
     );
     rewriteRelativePaths(contentDoc, compPath, projectDir);
     fixDigitLeadingIdSelectors(contentDoc);
-    promoteTemplateCompositionId(rawComp, contentDoc.body);
-    rewrittenContent = contentDoc.body.innerHTML || templateInner;
+    promoteTemplateCompositionId(template.compositionId, contentDoc.body);
+    rewrittenContent = contentDoc.body.innerHTML || template.innerHtml;
   } else if (isFullHtmlDocument(rawComp)) {
     const parts = extractFullDocumentParts(rawComp, compPath, projectDir);
     compHeadContent = parts.headContent;

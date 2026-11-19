@@ -496,6 +496,20 @@ describe("media rules", () => {
     );
   });
 
+  it("video_audio_double_source still fires when the video starts negative", async () => {
+    const html = `
+<html><body>
+  <div id="root" data-composition-id="c1" data-width="1920" data-height="1080">
+    <video id="v" data-start="-5" data-duration="3" data-has-audio="true" src="clip.mp4" playsinline></video>
+    <audio id="a" data-start="0" data-duration="2" src="clip.mp4"></audio>
+  </div>
+  <script>window.__timelines = window.__timelines || {}; window.__timelines["c1"] = gsap.timeline({ paused: true });</script>
+</body></html>`;
+    const result = await lintHyperframeHtml(html);
+    const codes = result.findings.map((f) => f.code);
+    expect(codes).toContain("video_audio_double_source");
+  });
+
   it("video_audio_double_source suggests removing the <audio> first", async () => {
     const html = `
 <html><body>

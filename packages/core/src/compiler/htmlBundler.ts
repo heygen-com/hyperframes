@@ -86,6 +86,7 @@ import {
 } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
+import { isHtmlTemplate, templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 import { assignMediaRenderIds } from "./mediaRenderIds";
 import { terminalText } from "../terminalText.js";
@@ -550,6 +551,11 @@ function getBundledHostCompositionIdentity(host: Element): BundledHostCompositio
   };
 }
 
+function hasInlineTemplate(document: Document, compositionId: string): boolean {
+  const template = document.getElementById(`${compositionId}-template`);
+  return !!template && isHtmlTemplate(template);
+}
+
 function getBundledTrackedCompositionHosts(document: Document): Element[] {
   const hosts = Array.from(
     document.querySelectorAll<Element>("[data-composition-src], [data-composition-id]"),
@@ -558,7 +564,7 @@ function getBundledTrackedCompositionHosts(document: Document): Element[] {
     if (host.hasAttribute("data-composition-src")) return true;
     const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
     if (!authoredCompositionId) return false;
-    return !!document.getElementById(`${authoredCompositionId}-template`);
+    return hasInlineTemplate(document, authoredCompositionId);
   });
 }
 
@@ -566,7 +572,7 @@ function shouldAssignBundledRuntimeCompositionId(host: Element, document: Docume
   if (host.hasAttribute("data-composition-src")) return true;
   const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
   if (!authoredCompositionId) return false;
-  if (!document.getElementById(`${authoredCompositionId}-template`)) return false;
+  if (!hasInlineTemplate(document, authoredCompositionId)) return false;
   return host.children.length === 0;
 }
 
@@ -1182,7 +1188,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     ? [
         ...document.querySelectorAll(`script:not([${RUNTIME_BOOTSTRAP_ATTR}])`),
         ...[...document.querySelectorAll("template")].flatMap((t) => [
-          ...(t as HTMLTemplateElement).content.querySelectorAll("script"),
+          ...(templateContent(t)?.querySelectorAll("script") ?? []),
         ]),
       ].map((el) => {
         const src = el.getAttribute("src");
@@ -1294,6 +1300,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     (host) => !host.hasAttribute("data-composition-src"),
   );
   for (const templateEl of [...document.querySelectorAll("template[id]")]) {
+    if (!isHtmlTemplate(templateEl)) continue;
     const templateId = templateEl.getAttribute("id") || "";
     const match = templateId.match(/^(.+)-template$/);
     if (!match) continue;

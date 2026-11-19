@@ -59,21 +59,41 @@ export interface ParsableDocumentLike {
 }
 
 export interface SceneTemplateLike {
-  content: { querySelector(selector: string): unknown };
+  localName: string;
+}
+
+/** Whether `el` is an HTML `<template>`; an SVG `template` has no content. Reads no content, which linkedom copies. */
+export function isHtmlTemplate(el: SceneTemplateLike): boolean {
+  return el.localName === "template" && "content" in el;
+}
+
+export function templateContent(el: SceneTemplateLike): DocumentFragment | null {
+  return isHtmlTemplate(el) ? ((el as { content?: DocumentFragment }).content ?? null) : null;
+}
+
+export function firstHtmlTemplate<T extends SceneTemplateLike>(
+  templates: ArrayLike<T>,
+): T | undefined {
+  return Array.from(templates).find(isHtmlTemplate);
+}
+
+export function firstTemplateContent(root: ParentNode): DocumentFragment | null {
+  const template = firstHtmlTemplate(root.querySelectorAll("template"));
+  return template ? templateContent(template) : null;
 }
 
 export function findSceneTemplate<T extends SceneTemplateLike>(
   templates: ArrayLike<T>,
 ): T | undefined {
   return Array.from(templates).find(
-    (template) => template.content.querySelector("[data-composition-id]") != null,
+    (template) => templateContent(template)?.querySelector("[data-composition-id]") != null,
   );
 }
 
 /** Resolve authored content without invoking linkedom's synthetic body getter. */
 export function resolveSubCompositionContent(html: string, document: ParsableDocumentLike) {
   const templates = Array.from(document.querySelectorAll("template"));
-  const template = findSceneTemplate(templates) ?? templates[0];
+  const template = findSceneTemplate(templates) ?? firstHtmlTemplate(templates);
   if (template) return { contentHtml: template.innerHTML ?? "", hasTemplate: true };
 
   const body = document.querySelector("body");
