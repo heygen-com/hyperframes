@@ -165,18 +165,114 @@ export function escapeCssIdentifier(value: string): string {
   return result;
 }
 
-/**
- * A full attribute-selector bracket (`[data-x="a"]`, quotes optional, `]`
- * inside a quoted value tolerated) or a bare quoted string. Either is a
- * region where a literal `#` is never an id-selector prefix — the CSS parser
- * itself never looks for one there — so `markUnguardedOffsets` below can
- * find every such region with one pass of `matchAll` instead of a hand-rolled
- * character-by-character state machine. Inside the bracket alternative, bare
- * characters exclude the quote marks so each position matches exactly one
- * branch (no ambiguous backtracking).
- */
-const GUARDED_SELECTOR_SEGMENT_RE =
-  /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
+const NO_MATCH = -1;
+const UNKNOWN = -2;
+const HEX_DIGIT = /[0-9a-fA-F]/;
+const ESCAPE_SPACE = /[ \t\r\n\f]/;
+
+/** Regions of `selector` where `#` is never an id prefix: a closed comment, an escape, a closed quoted string, or a
+ * whole attribute bracket. Each opener's closer is memoized, so an unclosed opener costs one read: linear on any input. */
+function guardedSelectorSegments(selector: string): Array<readonly [number, number]> {
+  const n = selector.length;
+  // commentClose[i]: where the first "*/" at or after i starts.
+  const commentClose = new Int32Array(n + 2).fill(NO_MATCH);
+  for (let i = n - 2; i >= 0; i -= 1) {
+    commentClose[i] = selector[i] === "*" && selector[i + 1] === "/" ? i : commentClose[i + 1]!;
+  }
+  const commentEnd = (start: number): number => {
+    const close = commentClose[start + 2]!;
+    return close === NO_MATCH ? NO_MATCH : close + 2;
+  };
+  // Each walk reads from i to its closer, steps 1 or 2 at a time; its answer is memoized for every
+  // position it passed, so a later walk from any of them stops at once.
+  const walk = (
+    memo: Int32Array,
+    from: number,
+    step: (i: number) => number | readonly [number],
+  ) => {
+    const passed: number[] = [];
+    let i = from;
+    let found: number;
+    for (;;) {
+      if (i >= n) {
+        found = NO_MATCH;
+        break;
+      }
+      if (memo[i] !== UNKNOWN) {
+        found = memo[i]!;
+        break;
+      }
+      passed.push(i);
+      const next = step(i);
+      if (typeof next !== "number") {
+        found = next[0];
+        break;
+      }
+      i = next;
+    }
+    for (const at of passed) memo[at] = found;
+    return found;
+  };
+  const quoteClose = { '"': new Int32Array(n).fill(UNKNOWN), "'": new Int32Array(n).fill(UNKNOWN) };
+  // Index of the quote that closes a string whose body starts at `from`, or NO_MATCH.
+  const closeQuote = (quote: '"' | "'", from: number) =>
+    walk(quoteClose[quote], from, (i) => {
+      if (selector[i] === quote) return [i];
+      if (selector[i] === "\\") return i + 1 < n ? i + 2 : [NO_MATCH];
+      return i + 1;
+    });
+  const bracketClose = new Int32Array(n).fill(UNKNOWN);
+  // Index of the `]` that closes a bracket whose body starts at `from`, or NO_MATCH.
+  const closeBracket = (from: number) =>
+    walk(bracketClose, from, (i) => {
+      const char = selector[i];
+      if (char === "]") return [i];
+      if (char === "/" && selector[i + 1] === "*") {
+        const end = commentEnd(i);
+        return end === NO_MATCH ? [NO_MATCH] : end;
+      }
+      if (char === '"' || char === "'") {
+        const close = closeQuote(char, i + 1);
+        return close === NO_MATCH ? [NO_MATCH] : close + 1;
+      }
+      if (char === "\\") return i + 1 < n ? i + 2 : [NO_MATCH];
+      return i + 1;
+    });
+  const escapeEnd = (start: number): number => {
+    if (start + 1 >= n) return NO_MATCH;
+    let end = start + 1;
+    while (end < n && end - start <= 6 && HEX_DIGIT.test(selector[end]!)) end += 1;
+    if (end === start + 1) return start + 2;
+    if (selector[end] === "\r" && selector[end + 1] === "\n") return end + 2;
+    return end < n && ESCAPE_SPACE.test(selector[end]!) ? end + 1 : end;
+  };
+  const segmentEnd = (start: number): number => {
+    const char = selector[start];
+    if (char === "/") return selector[start + 1] === "*" ? commentEnd(start) : NO_MATCH;
+    if (char === "\\") return escapeEnd(start);
+    if (char === '"' || char === "'") {
+      const close = closeQuote(char, start + 1);
+      return close === NO_MATCH ? NO_MATCH : close + 1;
+    }
+    if (char === "[") {
+      const close = closeBracket(start + 1);
+      return close === NO_MATCH ? NO_MATCH : close + 1;
+    }
+    return NO_MATCH;
+  };
+
+  const segments: Array<readonly [number, number]> = [];
+  for (let start = 0; start < n; ) {
+    const end = segmentEnd(start);
+    if (end === NO_MATCH) {
+      start += 1;
+    } else {
+      segments.push([start, end]);
+      start = end;
+    }
+  }
+  return segments;
+}
 
 /**
  * `mask[i]` is `true` when `selector[i]` sits outside both a quoted string
@@ -185,10 +281,7 @@ const GUARDED_SELECTOR_SEGMENT_RE =
  */
 function markUnguardedOffsets(selector: string): boolean[] {
   const mask = new Array<boolean>(selector.length).fill(true);
-  for (const match of selector.matchAll(GUARDED_SELECTOR_SEGMENT_RE)) {
-    const start = match.index;
-    mask.fill(false, start, start + match[0].length);
-  }
+  for (const [start, end] of guardedSelectorSegments(selector)) mask.fill(false, start, end);
   return mask;
 }
 
@@ -359,7 +452,12 @@ export function replaceSelectorAttributeTokens(
   selector: string,
   rewrite: (predicate: string) => string,
 ): string {
-  return selector.replace(GUARDED_SELECTOR_SEGMENT_RE, (segment) =>
-    segment.startsWith("[") ? rewrite(segment) : segment,
-  );
+  let result = "";
+  let copied = 0;
+  for (const [start, end] of guardedSelectorSegments(selector)) {
+    if (selector[start] !== "[") continue;
+    result += selector.slice(copied, start) + rewrite(selector.slice(start, end));
+    copied = end;
+  }
+  return result + selector.slice(copied);
 }
