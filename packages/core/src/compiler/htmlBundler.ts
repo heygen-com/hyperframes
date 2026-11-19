@@ -551,6 +551,11 @@ function getBundledHostCompositionIdentity(host: Element): BundledHostCompositio
   };
 }
 
+function hasInlineTemplate(document: Document, compositionId: string): boolean {
+  const template = document.getElementById(`${compositionId}-template`);
+  return !!template && isHtmlTemplate(template);
+}
+
 function getBundledTrackedCompositionHosts(document: Document): Element[] {
   const hosts = Array.from(
     document.querySelectorAll<Element>("[data-composition-src], [data-composition-id]"),
@@ -559,7 +564,7 @@ function getBundledTrackedCompositionHosts(document: Document): Element[] {
     if (host.hasAttribute("data-composition-src")) return true;
     const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
     if (!authoredCompositionId) return false;
-    return !!document.getElementById(`${authoredCompositionId}-template`);
+    return hasInlineTemplate(document, authoredCompositionId);
   });
 }
 
@@ -567,7 +572,7 @@ function shouldAssignBundledRuntimeCompositionId(host: Element, document: Docume
   if (host.hasAttribute("data-composition-src")) return true;
   const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
   if (!authoredCompositionId) return false;
-  if (!document.getElementById(`${authoredCompositionId}-template`)) return false;
+  if (!hasInlineTemplate(document, authoredCompositionId)) return false;
   return host.children.length === 0;
 }
 
