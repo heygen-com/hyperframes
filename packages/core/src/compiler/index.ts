@@ -126,4 +126,5 @@ export {
 } from "./mediaRenderIds";
 
 export { ensureExternalScriptTag } from "./externalScripts";
+export { dropAuthoredSvgReferenceAliases } from "./svgSelectorAliases";
 export { emitMountedModuleScripts } from "./importMaps";

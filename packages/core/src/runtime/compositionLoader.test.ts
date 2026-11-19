@@ -1467,6 +1467,25 @@ describe("loadCompositions inline templates", () => {
     expect(host.querySelector("p")?.textContent).toBe("Logo content");
   });
 
+  // fails without the fix: an SVG element named template with the matching id counted as the host's template.
+  it("leaves hosts alone when only an SVG element named template matches their id", async () => {
+    document.body.innerHTML = `<svg><template id="card-template"><g></g></template></svg>`;
+    const hosts = [0, 1].map(() => {
+      const host = document.createElement("div");
+      host.setAttribute("data-composition-id", "card");
+      return document.body.appendChild(host);
+    });
+
+    await loadFixture();
+
+    expect(
+      hosts.map((host) => [host.getAttribute("data-composition-id"), host.children.length]),
+    ).toEqual([
+      ["card", 0],
+      ["card", 0],
+    ]);
+  });
+
   it("does nothing when no matching template exists", async () => {
     const host = document.createElement("div");
     host.setAttribute("data-composition-id", "no-template");
