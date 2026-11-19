@@ -420,12 +420,10 @@ For AI image descriptions, set `GEMINI_API_KEY` in a `.env` file
 [OpenRouter](https://openrouter.ai) — it wins if both are set, and
 `HYPERFRAMES_OPENROUTER_MODEL` overrides the model.
 
-A project's `.env` never replaces a vision credential you set in your shell:
-when your shell holds a complete credential for another vision provider,
-capture ignores the `.env` vision key, with a note naming the file.
-Model and timeout settings in the `.env` still apply. A received project's
-`.env` (one its received-files record lists) also gives way to your own
-project's `.env`, for every command. When capture or `snapshot --describe` uses
+A received project's `.env` (one its received-files record lists) never
+replaces a vision or Gemini credential you set in your shell or your own
+project's `.env`: its competing keys are ignored, with a note naming the file.
+Keys in your own or a cloned project's `.env` are used as set. When capture or `snapshot --describe` uses
 a vision key from a project's `.env`, a note naming the file prints before the
 first request.
 
@@ -1171,6 +1169,10 @@ setting `preview` uses:
 ```bash
 HYPERFRAMES_PREVIEW_ALLOWED_HOSTS=demo.tunnels.example hyperframes present
 ```
+
+Any path they have no page for, and any address carrying a `code` or `state`
+parameter, gets a plain-text `Not found` that cannot be framed or scripted, so a
+sign-in that returns to their port leaves nothing the project's own script can read.
 
 ### `publish`
 
@@ -2167,6 +2169,16 @@ mismatched encodes. The directory is deleted after a successful render unless
 `--keep-segments`, and deliberately kept after a failure, because that is what
 `--resume` reads next time.
 
+`--resume` reuses only segments you finished on this machine. Their record is
+signed with a key derived from your per-user preview token, a private file in
+your home folder (`~/.local/state/hyperframes/auth`, or
+`%LOCALAPPDATA%\hyperframes` on Windows), so a `.hf-segments` folder copied
+from another machine or received inside a project is captured again. If that
+token cannot be read or created, for example in a read-only home folder,
+`--resume` warns and captures every segment again. Each reused segment must
+also match the size and SHA-256 recorded when it finished. Segments recorded by
+an older HyperFrames version are captured again once.
+
 mp4 and mov only; png-sequence, gif, webm, HDR and shader-transition renders
 keep their existing routes.
 
@@ -3086,8 +3098,8 @@ deploy:
 | `--profile`       | `AWS_PROFILE`                        | AWS profile name                                         |
 | `--concurrency`   | none                                 | Lambda reserved concurrency. Without it, a new stack reserves none and each render runs up to 90% of the account's unreserved concurrency; a redeploy keeps the stack's current reservation; `none` removes it |
 | `--memory`        | `10240`                              | Lambda memory in MB                                      |
-| `--chrome-source` | `sparticuz`                          | `sparticuz` or `chrome-headless-shell`                   |
-| `--video-arch`    | `arm64`                              | `arm64` runs the plan and the chunks on an arm64 container-image function, pushed to an ECR repository named `<stack>-video`; audio and assemble stay on x86. Needs `sparticuz`. `x86_64` runs everything on the x86 function |
+| `--chrome-source` | `sparticuz`                          | `sparticuz`. `chrome-headless-shell` is refused: it does not fit a ZIP function, and the arm64 video image already runs it |
+| `--video-arch`    | `arm64`                              | `arm64` runs the plan and the chunks on an arm64 container-image function, pushed to an ECR repository named `<stack>-video`; audio and assemble stay on x86. The image runs its own `chrome-headless-shell`. `x86_64` runs everything on the x86 function |
 | `--skip-build`    | off                                  | Reuse the existing `handler.zip`                         |
 | `--no-warm`       | warm                                 | Skip the one warm-up call to the video function after deploy, which loads its container image so the first render is not the one that waits for it |
 

@@ -262,6 +262,8 @@ function heldFileMessage(body: string, path: string | undefined): string | null 
   }
 }
 
+export const withStatus = (words: string, response: Response) => `${words} (${response.status})`;
+
 export async function heldFileWordsOf(response: Response, path: string): Promise<string | null> {
   return heldFileMessage(
     await response

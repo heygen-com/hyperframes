@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { runCommand } from "citty";
 import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -104,7 +105,25 @@ vi.mock("@hyperframes/studio-server/media-proxy-preview", () => ({
   ),
 }));
 
-const { registerCompositionRoute } = await import("./play.js");
+const server = vi.hoisted(() => ({
+  fetch: undefined as ((request: Request) => Response | Promise<Response>) | undefined,
+}));
+vi.mock("@hono/node-server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hono/node-server")>()),
+  createAdaptorServer: (options: { fetch: (request: Request) => Response | Promise<Response> }) => {
+    server.fetch = options.fetch;
+    return {};
+  },
+}));
+vi.mock("../utils/compositionServer.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/compositionServer.js")>()),
+  resolveRuntimePath: () => "/unused-runtime.js",
+  resolvePlayerPath: () => "/unused-player.js",
+  listenOnFreePort: async () => 3003,
+}));
+
+const { default: play, buildPlayApp, registerCompositionRoute } = await import("./play.js");
+const { INERT_REFUSAL_HEADERS } = await import("../utils/strayRequestRefusal.js");
 
 let dir: string | undefined;
 
@@ -559,5 +578,73 @@ describe("a composition document another site loads", () => {
     });
     expect(await own.text()).not.toContain(MARK);
     for (const res of [bare, own]) expect(res.headers.get("Vary")).toBe("Sec-Fetch-Site, Referer");
+  });
+});
+
+// Windows refuses control characters in folder names.
+it.skipIf(process.platform === "win32")(
+  "shows a folder name with control characters as visible escapes and as HTML text",
+  async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    dir = mkdtempSync(join(tmpdir(), "hf-play-test-"));
+    const project = join(dir, `video<b>${esc}]0;x${String.fromCharCode(7)}${esc}[2J`);
+    mkdirSync(project);
+    writeFileSync(join(project, "index.html"), "<html></html>");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      void runCommand(play, { rawArgs: [project, "--no-open"] });
+      await vi.waitFor(() => expect(log.mock.calls.flat().join("\n")).toContain("Project"));
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      const page = await (await server.fetch!(new Request("http://localhost:3003/"))).text();
+
+      expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+      expect(human).toContain("video<b>\\x1b]0;x\\x07\\x1b[2J");
+      expect(page).not.toContain("video<b>");
+      expect(page).toContain("<title>video&lt;b&gt;");
+    } finally {
+      log.mockRestore();
+    }
+  },
+);
+describe("a request the play server has no page for", () => {
+  async function playApp() {
+    const project = tmpProject();
+    writeFileSync(join(project.dir, "index.html"), "<html><head></head><body></body></html>");
+    writeFileSync(join(project.dir, "player.js"), "");
+    writeFileSync(join(project.dir, "runtime.js"), "");
+    return buildPlayApp(project, false, {
+      playerPath: join(project.dir, "player.js"),
+      runtimePath: join(project.dir, "runtime.js"),
+    });
+  }
+
+  // fails without the fix: these were a 404 document on the play page's own origin, readable by
+  // composition script in a frame or popup, or (for `/` and composition files) the page itself.
+  it.each([
+    "/oauth/callback?code=c0de&state=st4te",
+    "/callback?code=c0de&state=st4te",
+    "/?code=c0de&state=st4te",
+    "/composition/index.html?code=c0de",
+    "/no-such-page",
+    "/composition/missing.html",
+  ])("gets an inert plain-text refusal: %s", async (path) => {
+    const app = await playApp();
+    const res = await app.request(path, { headers: { "Sec-Fetch-Site": "cross-site" } });
+    expect(res.status).toBe(404);
+    expect(Object.fromEntries(res.headers)).toEqual(
+      Object.fromEntries(
+        Object.entries(INERT_REFUSAL_HEADERS).map(([name, value]) => [name.toLowerCase(), value]),
+      ),
+    );
+    expect(await res.text()).toBe("Not found");
+  });
+
+  it("leaves the player page and its bundles as they were", async () => {
+    const app = await playApp();
+    for (const path of ["/", "/player.js", "/runtime.js", "/composition/index.html"]) {
+      const res = await app.request(path, { headers: { "Sec-Fetch-Site": "same-origin" } });
+      expect(res.status).toBe(200);
+    }
   });
 });

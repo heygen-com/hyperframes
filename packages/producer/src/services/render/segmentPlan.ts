@@ -1,8 +1,9 @@
 /**
- * Segment planning for long-form capture (spec §5 Phase 2). A segment is a
- * half-open frame range captured into its own closed-GOP encoder process so
- * a crash costs one segment, not the render, and scratch is encoded video.
+ * Segment planning for long-form capture (spec §5 Phase 2). Each segment is a half-open frame
+ * range with its own closed-GOP encoder, so a crash costs one segment and scratch is encoded video.
  */
+import { join } from "node:path";
+
 export interface SegmentSlice {
   index: number;
   startFrame: number;
@@ -33,6 +34,11 @@ export function planSegments(totalFrames: number, segmentFrames: number): Segmen
     });
   }
   return slices;
+}
+
+/** Zero-padded so lexical order equals frame order in the concat list and on disk. */
+export function segmentOutputPath(segmentDir: string, index: number): string {
+  return join(segmentDir, `segment_${String(index).padStart(5, "0")}.mp4`);
 }
 
 export function resolveSegmentFrames(env: NodeJS.ProcessEnv): number {

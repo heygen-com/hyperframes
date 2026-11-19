@@ -3,25 +3,22 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-// The frame's real runtime agent, serving the opaque frame from this document.
-import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
 import { usePlayerStore, type TimelineElement } from "../../player";
 import { ClipMenuAudioItems } from "../../player/components/clipMenuAudioItems";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 import { TimelineEditProvider } from "../../contexts/TimelineEditContext";
 import { createAudioGroupAndAssignMembers } from "../../hooks/timelineAudioGroupCreate";
 import { mintGroupId } from "../editor/useFxCarveGrouping";
-import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
 import { useAudioMetersVisible } from "../../utils/audioMeterVisibility";
 import { useSetAudioGroupAttribute } from "../../hooks/timelineAudioGroupVolume";
 import { previewDocumentCopy } from "../../player/lib/previewChannel";
 import { AudioMeterStrip } from "./AudioMeterStrip";
+import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
 type MeterWindow = Window & { __hf?: Record<string, unknown> };
 
-const closers: Array<() => void> = [];
 const roots: Root[] = [];
 let frames: FrameRequestCallback[] = [];
 const tick = () => {
@@ -38,36 +35,12 @@ beforeEach(() => {
 });
 afterEach(() => {
   act(() => roots.splice(0).forEach((root) => root.unmount()));
-  closers.splice(0).forEach((close) => close());
   delete (window as MeterWindow).__hf;
   vi.unstubAllGlobals();
   usePlayerStore.getState().reset();
   usePreviewIframeStore.setState({ iframe: null });
   document.body.innerHTML = "";
 });
-
-/** A frame Studio cannot read, whose runtime is the real editing agent over this document. */
-function opaqueFrame() {
-  const frame: Record<string, unknown> = {};
-  const iframe = detachedFakeIframe(frame);
-  Object.defineProperty(iframe, "contentDocument", { value: null });
-  Object.defineProperty(frame, "document", {
-    get: () => {
-      throw new DOMException("blocked", "SecurityError");
-    },
-  });
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
-      ),
-  } as unknown as Window;
-  const agent = installMarkedEditingAgent(parent);
-  frame.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
-  closers.push(() => agent.dispose());
-  return iframe;
-}
 
 const member = (domId: string): TimelineElement => ({
   id: domId,
@@ -112,7 +85,7 @@ it("meter moves + group volume sealed", async () => {
   };
   (window as MeterWindow).__hf = { audioMeter: meter };
   usePlayerStore.getState().setElements([member("voice-1")]);
-  const iframe = opaqueFrame();
+  const iframe = sealedPreviewFrame().iframe;
 
   const host = document.createElement("div");
   document.body.append(host);
@@ -168,7 +141,7 @@ it("groups clips in a sealed preview, and unwinds the preview when the save fail
   document.body.innerHTML = `<main data-composition-id="root">
     <audio id="voice-1" data-audio-group="old"></audio><audio id="voice-2"></audio>
   </main>`;
-  const iframe = opaqueFrame();
+  const iframe = sealedPreviewFrame().iframe;
   const files = new Map([["index.html", document.body.innerHTML]]);
   stubProjectFiles(files);
   const elements = ["voice-1", "voice-2"].map((domId) => ({
@@ -210,7 +183,7 @@ it("groups clips in a sealed preview, and unwinds the preview when the save fail
 
 it("reads a sealed preview's groups and ids off an inert copy", async () => {
   document.body.innerHTML = `<audio id="voiceover"></audio><audio id="music" src="bed.wav"></audio>`;
-  const copy = await previewDocumentCopy(opaqueFrame());
+  const copy = await previewDocumentCopy(sealedPreviewFrame().iframe);
   expect(copy).not.toBeNull();
   expect(copy).not.toBe(document);
   expect(mintGroupId(copy!)).toBe("voiceover-2");
@@ -222,7 +195,7 @@ it("offers Duck under voice for a bed in a sealed preview", async () => {
     <audio id="music" src="bed.wav" data-start="0" data-duration="10"></audio>
     <audio id="voiceover" src="vo.wav" data-start="1" data-duration="2"></audio>
   </main>`;
-  const iframe = opaqueFrame();
+  const iframe = sealedPreviewFrame().iframe;
   usePreviewIframeStore.setState({ iframe });
   usePlayerStore.getState().beginTimelineSession("project-1");
   const bed: TimelineElement = {

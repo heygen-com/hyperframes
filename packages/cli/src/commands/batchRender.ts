@@ -4,6 +4,7 @@ import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { c } from "../ui/colors.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { errorBox } from "../ui/format.js";
 import { normalizeErrorMessage as errorMessage } from "../utils/errorMessage.js";
 import type { ReferenceBackground, ReferenceBackgroundResult } from "@hyperframes/producer";
@@ -365,7 +366,7 @@ async function renderBatchRow(
   manifestRow.startedAt = new Date().toISOString();
   writeManifest(manifest);
   if (!options.quiet && !options.json) {
-    console.log(c.dim(`Batch row ${row.index}: ${row.outputPath}`));
+    console.log(c.dim(terminalText(`Batch row ${row.index}: ${row.outputPath}`)));
   }
 
   try {
@@ -384,7 +385,7 @@ async function renderBatchRow(
     manifestRow.completedAt = new Date().toISOString();
     writeManifest(manifest);
     if (!options.quiet && !options.json) {
-      console.log(c.error(`  Row ${row.index} failed: ${manifestRow.error}`));
+      console.log(c.error(`  Row ${row.index} failed: ${terminalLines(manifestRow.error)}`));
     }
     return false;
   }
@@ -415,7 +416,7 @@ export async function runBatchRender(options: RunBatchRenderOptions): Promise<Ba
     console.log(
       c.accent("◆") +
         `  Batch rendering ${options.prepared.rows.length} rows` +
-        c.dim(` → ${options.prepared.manifestPath}`),
+        c.dim(` → ${terminalText(options.prepared.manifestPath)}`),
     );
     console.log(c.dim(`   batch concurrency: ${options.concurrency}`));
     console.log("");
@@ -465,7 +466,7 @@ export async function runBatchRender(options: RunBatchRenderOptions): Promise<Ba
           )
         : c.success(`Batch complete: ${manifest.completed} completed.`),
     );
-    console.log(c.dim(`Manifest: ${manifest.manifestPath}`));
+    console.log(c.dim(terminalText(`Manifest: ${manifest.manifestPath}`)));
   }
 
   return manifest;

@@ -15,7 +15,7 @@ const megabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
  * What one render may inline across every sub-composition mount. Each file is checked on its own
  * above, but a few small files that mount each other many times assemble a page far larger.
  */
-export const MAX_EXPANDED_COMPOSITION_BYTES = 2 * MAX_COMPOSITION_HTML_BYTES;
+export const MAX_EXPANDED_COMPOSITION_BYTES = 4 * MAX_COMPOSITION_HTML_BYTES;
 const MAX_COMPOSITION_MOUNTS = 10_000;
 
 class CompositionTooLargeError extends Error {
@@ -49,6 +49,9 @@ const fileTooLarge = (file: string, bytes: number) =>
 
 const limitText = `One render generates at most ${megabytes(MAX_EXPANDED_COMPOSITION_BYTES)}`;
 
+export const REMOTE_SCRIPTS = "remote scripts";
+export const REMOTE_STYLESHEETS = "remote stylesheets";
+
 function generatedTooLarge(file: string, bytes: number): string {
   if (file === "composition variables") {
     return (
@@ -62,8 +65,14 @@ function generatedTooLarge(file: string, bytes: number): string {
       "Use shorter URLs or bind fewer elements."
     );
   }
+  if (file === REMOTE_SCRIPTS || file === REMOTE_STYLESHEETS) {
+    return (
+      `Inlined ${file} add up to ${megabytes(bytes)}. ${limitText}. ` +
+      "Bundle scripts and fonts with the project, or link each one once."
+    );
+  }
   return (
-    `Scripts and styles generated for sub-composition mounts, ending at "${file}", add up to ` +
+    `Scripts, styles and rebased asset paths generated for compositions, ending at "${file}", add up to ` +
     `${megabytes(bytes)}. One render generates at most ` +
     `${megabytes(MAX_EXPANDED_COMPOSITION_BYTES)} for its mounts. Merge small inline scripts ` +
     "and style rules, keep data-composition-id values short, or mount scenes fewer times."
@@ -85,6 +94,12 @@ export class CompositionExpansionBudget {
       limitBytes: MAX_EXPANDED_COMPOSITION_BYTES,
       exceeded: "generated",
     });
+  }
+
+  chargeGeneratedIfItFits(bytes: number): boolean {
+    if (this.generated + bytes > MAX_EXPANDED_COMPOSITION_BYTES) return false;
+    this.generated += bytes;
+    return true;
   }
 
   charge(file: string, bytes: number): void {

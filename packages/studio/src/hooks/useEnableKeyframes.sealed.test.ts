@@ -2,45 +2,18 @@
 
 import { afterEach, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
-// The frame's real runtime agent, serving the opaque frame from this document as Studio's marked preview page.
-import { installMarkedEditingAgent } from "../../../core/src/runtime/editingAgent.test-helpers";
-import { detachedFakeIframe } from "../player/hooks/timelinePlayerTestHarness";
 import { describePreviewElements, queryPreviewElements } from "../player/lib/previewElements";
 import { usePlayerStore } from "../player/store/playerStore";
 import { standInFor } from "../components/editor/previewSelection";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { applyKeyframeAtPlayhead, type EnableKeyframesSession } from "./useEnableKeyframes";
+import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 
-const closers: Array<() => void> = [];
 afterEach(() => {
-  closers.splice(0).forEach((close) => close());
   usePlayerStore.setState({ currentTime: 0, isPlaying: false });
   document.body.innerHTML = "";
   for (const name of ["gsap", "__timelines", "__player"]) Reflect.deleteProperty(window, name);
 });
-
-/** A frame Studio cannot read, whose runtime is the real editing agent over this document. */
-function opaqueFrame() {
-  const frame: Record<string, unknown> = {};
-  const iframe = detachedFakeIframe(frame);
-  Object.defineProperty(iframe, "contentDocument", { value: null });
-  Object.defineProperty(frame, "document", {
-    get: () => {
-      throw new DOMException("blocked", "SecurityError");
-    },
-  });
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
-      ),
-  } as unknown as Window;
-  const agent = installMarkedEditingAgent(parent);
-  frame.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
-  closers.push(() => agent.dispose());
-  return iframe;
-}
 
 /** The frame's GSAP: one keyframed tween moving #box, paused half way where GSAP has it at 120, 40. */
 function frameGsapAt(seconds: number) {
@@ -81,7 +54,7 @@ it("adds a keyframe at the playhead with the sealed preview's GSAP values there"
   document.body.innerHTML = `<main data-composition-id="main"><div id="box"></div></main>`;
   frameGsapAt(0.5);
   usePlayerStore.setState({ currentTime: 0.5, isPlaying: false });
-  const iframe = opaqueFrame();
+  const iframe = sealedPreviewFrame().iframe;
   const [match] = (await queryPreviewElements(iframe, "#box"))!.matches;
   const [described] = (await describePreviewElements(iframe, [match!.handle]))!;
   const sel = { id: "box", selector: "#box", element: standInFor(iframe, described!) };

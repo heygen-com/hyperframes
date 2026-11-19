@@ -121,7 +121,7 @@ export default defineCommand({
       return;
     }
 
-    console.log(`${c.success("◇")}  ${c.accent(project.name)}`);
+    console.log(`${c.success("◇")}  ${c.accent(terminalText(project.name))}`);
     console.log(label("Resolution", resolution));
     console.log(label("Duration", `${duration.toFixed(1)}s`));
     console.log(label("Elements", `${parsed.elements.length}${typeStr ? ` (${typeStr})` : ""}`));

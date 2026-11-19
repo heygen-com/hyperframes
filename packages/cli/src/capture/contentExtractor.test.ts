@@ -8,7 +8,7 @@ import {
   type VisionCaptionOutcome,
 } from "./contentExtractor.js";
 import { loadOptionalPackage } from "../utils/optionalPackages.js";
-import { yieldProjectVisionKeys, yieldReceivedProviderKeys } from "../utils/dotEnv.js";
+import { yieldReceivedProviderKeys } from "../utils/dotEnv.js";
 import { loadEnvFile } from "./scaffolding.js";
 
 const { generateContentMock, clientOptions, sharpState } = vi.hoisted(() => ({
@@ -424,10 +424,11 @@ describe("captionImagesWithGemini — Gemini provider", () => {
     dirs.length = 0;
   });
 
-  it.each([
-    ["a received project's", true],
-    ["a cloned project's", false],
-  ])("captions with the shell's Gemini key, never %s OpenRouter key", async (_, received) => {
+  /** A project whose `.env` sets an OpenRouter key, captioned with a Gemini key in the shell. */
+  async function captionNextToShellGemini(
+    received: boolean,
+    fetchMock: (...args: never[]) => unknown,
+  ) {
     const dir = makeProjectWithImages();
     dirs.push(dir);
     if (received) {
@@ -437,7 +438,7 @@ describe("captionImagesWithGemini — Gemini provider", () => {
         JSON.stringify({ files: [".env"] }),
       );
     }
-    writeFileSync(join(dir, ".env"), "OPENROUTER_API_KEY=received-key\n");
+    writeFileSync(join(dir, ".env"), "OPENROUTER_API_KEY=project-key\n");
     for (const key of [
       "OPENROUTER_API_KEY",
       "GOOGLE_API_KEY",
@@ -447,17 +448,42 @@ describe("captionImagesWithGemini — Gemini provider", () => {
     ])
       vi.stubEnv(key, undefined);
     vi.stubEnv("GEMINI_API_KEY", "own-gemini-key");
-    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     generateContentMock.mockResolvedValue({ text: "A caption." });
 
     loadEnvFile(join(dir, "out"));
     await yieldReceivedProviderKeys(() => {});
-    yieldProjectVisionKeys(() => {});
-    const captions = await captionImagesWithGemini(dir, () => {}, []);
+    return { dir, captions: await captionImagesWithGemini(dir, () => {}, []) };
+  }
+
+  it("captions with the shell's Gemini key, never a received project's OpenRouter key", async () => {
+    const fetchMock = vi.fn();
+    const { captions } = await captionNextToShellGemini(true, fetchMock);
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(captions).toEqual({ "hero.png": "A caption." });
+  });
+
+  it("captions with a cloned project's OpenRouter key ahead of the shell's Gemini key", async () => {
+    let authorization: string | null = null;
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      authorization = new Headers(init?.headers).get("authorization");
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Routed." } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { dir, captions } = await captionNextToShellGemini(false, fetchMock);
+    const notes = errors.mock.calls.map(([line]) => String(line));
+    errors.mockRestore();
+
+    expect(captions).toEqual({ "hero.png": "Routed." });
+    expect(authorization).toBe("Bearer project-key");
+    expect(generateContentMock).not.toHaveBeenCalled();
+    expect(notes).toEqual([
+      `[hyperframes] Using OPENROUTER_API_KEY from ${join(dir, ".env")}, a project .env: images go to that key's OpenRouter account.`,
+    ]);
   });
 
   // fails without the fix: a received project's Gemini key captioned images with no note.
@@ -484,7 +510,6 @@ describe("captionImagesWithGemini — Gemini provider", () => {
 
     loadEnvFile(join(dir, "out"));
     await yieldReceivedProviderKeys(() => {});
-    yieldProjectVisionKeys(() => {});
     await captionImagesWithGemini(dir, () => {}, []);
     const captions = await captionImagesWithGemini(dir, () => {}, []);
     const notes = errors.mock.calls.map(([line]) => String(line));
@@ -633,7 +658,6 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
 
     loadEnvFile(join(dir, "out"));
     await yieldReceivedProviderKeys(() => {});
-    yieldProjectVisionKeys(() => {});
     await captionImagesWithGemini(dir, () => {}, []);
     const captions = await captionImagesWithGemini(dir, () => {}, []);
     const notes = errors.mock.calls.map(([line]) => String(line));
@@ -852,6 +876,69 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
     expect(fetchMock).toHaveBeenCalled();
     expect(clientOptions).toHaveLength(0);
     vi.unstubAllGlobals();
+  });
+
+  // fails without the fix: a project and an access token alone captioned nothing.
+  it("authenticates with a short-lived access token, holding no key", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("GEMINI_API_KEY", "");
+    vi.stubEnv("HYPERFRAMES_VERTEX_PROJECT_ID", "prefab-kit-000000");
+    vi.stubEnv("HYPERFRAMES_VERTEX_SERVICE_ACCOUNT", "");
+    vi.stubEnv("HYPERFRAMES_VERTEX_ACCESS_TOKEN", "ya29.synthetic-token");
+    generateContentMock.mockResolvedValue({ text: "A dark blue product screenshot." });
+
+    const captions = await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(captions).toEqual({ "hero.png": "A dark blue product screenshot." });
+    expect(clientOptions).toHaveLength(1);
+    expect(clientOptions[0]).toMatchObject({
+      vertexai: true,
+      project: "prefab-kit-000000",
+      location: "us-central1",
+    });
+    const auth = (clientOptions[0] as { googleAuthOptions: Record<string, unknown> })
+      .googleAuthOptions;
+    expect(auth).not.toHaveProperty("credentials");
+    const client = auth.authClient as { getRequestHeaders: () => Promise<Headers> };
+    const headers = await client.getRequestHeaders();
+    expect(headers.get("authorization")).toBe("Bearer ya29.synthetic-token");
+  });
+
+  // fails without the fix: the service account was used even when a token was given.
+  it("uses the access token, not the service account, when both are set", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vertexEnv();
+    vi.stubEnv("HYPERFRAMES_VERTEX_ACCESS_TOKEN", "ya29.synthetic-token");
+    generateContentMock.mockResolvedValue({ text: "A caption." });
+
+    await captionImagesWithGemini(dir, () => {}, []);
+
+    expect(clientOptions).toHaveLength(1);
+    const auth = (clientOptions[0] as { googleAuthOptions: Record<string, unknown> })
+      .googleAuthOptions;
+    expect(auth).not.toHaveProperty("credentials");
+    expect(auth).toHaveProperty("authClient");
+  });
+
+  it("skips captioning when the access token is malformed, without echoing it", async () => {
+    const dir = makeProjectWithImages();
+    dirs.push(dir);
+    vi.stubEnv("OPENROUTER_API_KEY", "");
+    vi.stubEnv("GEMINI_API_KEY", "");
+    vi.stubEnv("HYPERFRAMES_VERTEX_PROJECT_ID", "prefab-kit-000000");
+    vi.stubEnv("HYPERFRAMES_VERTEX_ACCESS_TOKEN", "ya29.half\r\nX-Extra: super-secret-material");
+
+    const warnings: string[] = [];
+    const captions = await captionImagesWithGemini(dir, () => {}, warnings);
+
+    expect(captions).toEqual({});
+    expect(clientOptions).toHaveLength(0);
+    expect(generateContentMock).not.toHaveBeenCalled();
+    expect(warnings.join(" ")).toContain("not an access token");
+    expect(warnings.join(" ")).not.toContain("super-secret-material");
   });
 
   it("needs both halves of the credential before it will use Vertex", async () => {

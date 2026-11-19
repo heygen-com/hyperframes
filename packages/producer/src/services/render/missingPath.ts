@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, relative, resolve, isAbsolute } from "node:path";
-import { missingPathOf } from "@hyperframes/core/missing-path";
+import { basename, join, relative, resolve, isAbsolute, sep } from "node:path";
+import { errnoMissingPathOf } from "@hyperframes/core/missing-path";
 
 /** What was gone around a missing path when the render failed, from closed lists only: never a path or a name. */
 export interface MissingPathFacts {
@@ -25,6 +25,7 @@ const SYNCED = /onedrive|dropbox|icloud|mobile documents|clouddocs|google ?drive
 interface Where {
   tempRoot: string;
   cacheDir?: string;
+  workDir?: string;
 }
 
 const inside = (path: string, folder: string) => {
@@ -32,24 +33,39 @@ const inside = (path: string, folder: string) => {
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 };
 
-function isLink(path: string): boolean {
+function lstatOrNull(path: string) {
   try {
-    return lstatSync(path).isSymbolicLink();
+    return lstatSync(path);
   } catch {
-    // expected: a missing path is no link
-    return false;
+    // expected: what is gone has nothing to stat
+    return null;
   }
 }
 
+const ROOT_SCOPES = [
+  ["tempRoot", "temp_root"],
+  ["cacheDir", "cache_root"],
+  ["workDir", "work_dir"],
+] as const;
+
+const NAME_SCOPES: ReadonlyArray<[RegExp, MissingPathFacts["scope"]]> = [
+  [/\.partial/, "cache_partial"],
+  [/^hfcache-/, "cache_entry"],
+  [/^hyperframes-extract-cache/, "cache_root"],
+  [/^(hf-render-|work-[0-9a-f]{8}-)/, "work_dir"],
+];
+
 function scopeOfGone(path: string, where: Where, throughLink: boolean): MissingPathFacts["scope"] {
-  if (resolve(path) === resolve(where.tempRoot)) return "temp_root";
-  if (where.cacheDir && resolve(path) === resolve(where.cacheDir)) return "cache_root";
+  const root = ROOT_SCOPES.find(([key]) => {
+    const dir = where[key];
+    return !!dir && resolve(path) === resolve(dir);
+  });
+  if (root) return root[1];
   const name = basename(path);
-  if (/\.partial/.test(name)) return "cache_partial";
-  if (/^hfcache-/.test(name)) return "cache_entry";
-  if (/^hyperframes-extract-cache/.test(name)) return "cache_root";
-  if (/^(hf-render-|work-[0-9a-f]{8}-)/.test(name)) return "work_dir";
-  return throughLink ? "link_target" : "other";
+  return (
+    NAME_SCOPES.find(([pattern]) => pattern.test(name))?.[1] ??
+    (throughLink ? "link_target" : "other")
+  );
 }
 
 const MAX_LINK_HOPS = 4;
@@ -60,41 +76,63 @@ function rootOf(path: string, where: Where): MissingPathFacts["root"] {
   return "other";
 }
 
-/** A dangling link on the way, read through to its target only when that target is in the temp root or the cache folder. */
-function goneThroughLink(link: string, where: Where, hops: number): MissingPathFacts["scope"] {
-  const target = resolve(dirname(link), readlinkSync(link).replace(/^\\\\\?\\/, ""));
-  return rootOf(target, where) !== "other" && hops < MAX_LINK_HOPS
-    ? highestGone(target, where, hops + 1)
-    : "link_target";
+const ownerOf = (path: string, where: Where) =>
+  [where.tempRoot, where.cacheDir, where.workDir]
+    .filter((root): root is string => !!root && inside(path, root))
+    .sort((a, b) => resolve(a).length - resolve(b).length)[0];
+
+const linkTarget = (link: string, folder: string) =>
+  resolve(folder, readlinkSync(link).replace(/^\\\\\?\\/, ""));
+
+function goneAt(
+  path: string,
+  last: boolean,
+  where: Where,
+  hops: number,
+): MissingPathFacts["scope"] {
+  const scope = scopeOfGone(path, where, hops > 0);
+  return last && scope === "other" ? "file" : scope;
 }
 
-/** The highest thing gone on `path`: the first folder up whose parent is there. */
-function highestGone(path: string, where: Where, hops = 0): MissingPathFacts["scope"] {
-  for (let at = path; dirname(at) !== at; at = dirname(at)) {
-    const parent = dirname(at);
-    if (isLink(parent) && !existsSync(parent)) return goneThroughLink(parent, where, hops);
-    if (!existsSync(parent)) continue;
-    const scope = scopeOfGone(at, where, hops > 0);
-    return at === path && scope === "other" ? "file" : scope;
+/** Walks down from the render's own folder with lstat, checking each link's target before going through it. */
+function highestGone(path: string, where: Where, hops = 0): MissingPathFacts["scope"] | undefined {
+  const root = ownerOf(path, where);
+  if (!root || hops > MAX_LINK_HOPS) return "link_target";
+  if (!existsSync(root)) return scopeOfGone(root, where, hops > 0);
+  const parts = relative(resolve(root), resolve(path)).split(sep).filter(Boolean);
+  let at = resolve(root);
+  for (const [index, part] of parts.entries()) {
+    const next = join(at, part);
+    const stat = lstatOrNull(next);
+    if (!stat) return goneAt(next, index === parts.length - 1, where, hops);
+    at = stat.isSymbolicLink() ? linkTarget(next, at) : next;
+    const gone = at === next ? undefined : highestGone(at, where, hops + 1);
+    if (gone) return gone;
   }
-  return "other";
+  return undefined;
 }
 
 const isSpawnFailure = (error: unknown) =>
   !!(error as NodeJS.ErrnoException | undefined)?.syscall?.startsWith("spawn");
 
 /** What was gone around the path a failed render's ENOENT names; undefined when it names none or the look fails.
- * Call it before the render's own cleanup runs. */
+ * Only the render's own folders are looked at, never a share; call it before the render's own cleanup runs. */
 export function describeMissingPath(
   error: unknown,
-  { cacheDir, tempRoot = tmpdir() }: { cacheDir?: string; tempRoot?: string } = {},
+  {
+    cacheDir,
+    workDir,
+    tempRoot = tmpdir(),
+  }: { cacheDir?: string; workDir?: string; tempRoot?: string } = {},
 ): MissingPathFacts | undefined {
   try {
-    const path = missingPathOf(error);
+    const path = errnoMissingPathOf(error);
     if (!path || isSpawnFailure(error)) return undefined;
-    const where = { tempRoot, cacheDir };
+    const where = { tempRoot, cacheDir, workDir };
     return {
-      scope: highestGone(path, where),
+      scope: ownerOf(path, where)
+        ? (highestGone(path, where) ?? "other")
+        : scopeOfGone(path, where, false),
       synced: SYNCED.test(path),
       root: rootOf(path, where),
     };

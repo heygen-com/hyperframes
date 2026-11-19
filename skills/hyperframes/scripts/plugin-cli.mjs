@@ -18,10 +18,11 @@ const manifests = [
   "gemini-extension.json",
 ];
 
-// The oldest release this launcher starts, for a plugin pin or any standalone selection. It matches
-// the oldest release the HyperFrames Desktop app ships, which has every protection for projects
-// received from someone else, so a pin copied from a project never runs a CLI without them.
-const CLI_FLOOR = "0.9.64";
+// The oldest release this launcher starts, for a plugin pin or any standalone selection. It stays at
+// or above the oldest release the HyperFrames Desktop app accepts, which has every protection for
+// projects received from someone else, so a pin copied from a project never runs a CLI without them.
+// Desktop's release checks read this line from the published package, so it stays a string literal.
+const CLI_FLOOR = "0.9.67";
 export const STANDALONE_CLI = `hyperframes@>=${CLI_FLOOR}`;
 
 const realOrResolved = (path) => {

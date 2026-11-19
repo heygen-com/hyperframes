@@ -137,6 +137,22 @@ test("the project upgrade flow stops on a failed check instead of running the pr
   assert.match(lifecycle, /unless the person asks for that release/);
 });
 
+// fails without the fix: the docs said only "its floor", so a reader could not tell which releases
+// the launcher refuses.
+test("the launcher docs name the launcher's current floor", () => {
+  const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+  const floor = /^const CLI_FLOOR = "([^"]+)";$/m.exec(
+    read("skills/hyperframes/scripts/plugin-cli.mjs"),
+  )?.[1];
+  assert.ok(floor);
+  for (const path of [
+    "docs/guides/skills.mdx",
+    "skills/hyperframes/references/plugin-installation.md",
+  ]) {
+    assert.ok(read(path).replace(/\s+/g, " ").includes(`floor (currently ${floor})`), path);
+  }
+});
+
 test("reads the registered commands, quoted or not", () => {
   const source = `const commandLoaders = {\n  init: () => x,\n  "catch-up": () => y,\n};`;
   assert.deepEqual([...registeredCommands(source)], ["init", "catch-up"]);

@@ -164,6 +164,14 @@ describe("element handles over the editing port", () => {
     }
   });
 
+  it("leaves out an id, selector or attribute name it would have to cut, and says so", async () => {
+    const long = "x".repeat(MAX_ELEMENT_VALUE + 1);
+    document.body.innerHTML = `<div id="${long}" data-${long}="1" data-kept="2"></div>`;
+    const described = await describeOne(document.querySelector("div")!);
+    expect(described).toMatchObject({ id: null, selector: null, truncated: true });
+    expect(described.attributes.map(([name]) => name)).toEqual(["id", "data-kept"]);
+  });
+
   it("cuts long values, keeps only a long data: value's header, and leaves script and style text out", async () => {
     const long = "x".repeat(MAX_ELEMENT_VALUE + 50);
     document.body.innerHTML = `<div class="card" title="${long}" style="--note: ${long}">
@@ -244,6 +252,28 @@ describe("element handles over the editing port", () => {
     expect(chain).toHaveLength(MAX_DESCRIBE_HANDLES);
     const [top] = await describeHandles([chain!.at(-1)!]);
     expect(top!.parent).not.toBeNull();
+  });
+
+  it("describes no element whose inherited source it would have to cut, and leaves out a style name it would", async () => {
+    const long = "x".repeat(MAX_ELEMENT_VALUE + 1);
+    document.body.innerHTML = `<div data-composition-file="${long}.html"><p class="t"></p></div>
+      <div data-composition-id="${long}"><p class="t"></p></div>
+      <div data-hf-original-composition-id="${long}" data-composition-id="c"><p class="t"></p></div>`;
+    for (const p of document.querySelectorAll("p")) expect(await describeOne(p)).toBeNull();
+    const { result } = await ask<never>("query", { selector: ".t" });
+    expect(result).toEqual({ matches: [], truncated: true });
+
+    document.body.innerHTML = `<div data-composition-file="${long}.html"><i class="u"></i></div><i class="u"></i>`;
+    const later = document.querySelectorAll("i")[1]!;
+    later.style.setProperty(`--${long}`, "1");
+    later.style.setProperty("left", "4px");
+    const described = await describeOne(later);
+    expect(described).toMatchObject({
+      selector: ".u",
+      matchesBefore: null,
+      inlineStyles: { left: "4px" },
+      truncated: true,
+    });
   });
 
   it("answers a query with each match's handle and source, in document order", async () => {

@@ -41,12 +41,25 @@ describe("auth/loopback", () => {
     await expect(handle.result).rejects.toThrow(args.pattern);
   }
 
-  it("rejects when state does not match", async () => {
-    await expectRejection({
-      expectedState: "expected",
-      query: "code=abc&state=wrong",
-      pattern: /state mismatch/i,
-    });
+  it.each([
+    ["a wrong state", "code=abc&state=wrong"],
+    ["no state", "code=abc"],
+    ["an error and no state", "error=access_denied&error_description=denied"],
+    ["an error and a wrong state", "error=server_error&state=wrong"],
+  ])("answers a callback with %s with a 400 and keeps waiting", async (_label, query) => {
+    const handle = await startLoopback({ state: "expected", timeoutMs: 5_000 });
+    active = handle;
+    const settled = vi.fn();
+    handle.result.then(settled, settled);
+
+    const res = await fetch(`${handle.redirectUri}?${query}`);
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("Your terminal is still waiting");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(settled).not.toHaveBeenCalled();
+
+    await fetch(`${handle.redirectUri}?code=the_code&state=expected`);
+    await expect(handle.result).resolves.toMatchObject({ code: "the_code" });
   });
 
   it("rejects when the IdP returns an error", async () => {
@@ -55,6 +68,19 @@ describe("auth/loopback", () => {
       query: "error=access_denied&error_description=user+denied&state=s",
       pattern: /access_denied/,
     });
+  });
+
+  it("shows control characters in the IdP error as visible escapes", async () => {
+    const handle = await startLoopback({ state: "s", timeoutMs: 5_000 });
+    active = handle;
+    const failed = handle.result.catch((error: Error) => error.message);
+    await fetch(
+      `${handle.redirectUri}?error=server%1B%5D0%3Bx%07&error_description=a%0D%0Ab%1B%5B2J&state=s`,
+    );
+
+    expect(await failed).toBe(
+      "OAuth authorize returned error: server\\x1b]0;x\\x07 — a\\x0d\\x0ab\\x1b[2J",
+    );
   });
 
   async function pageFor(query: string): Promise<string> {
