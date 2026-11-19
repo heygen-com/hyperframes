@@ -49,7 +49,13 @@ function runCreateReleaseTag(cwd, version) {
 test("stable publishing has one reviewed immutable event path", () => {
   // fails without the fix: a merged release PR's event ran as refs/pull/N/merge, a ref the publish environment refuses.
   assert.deepEqual(config.on, { push: { branches: ["main"], tags: ["v*-*"] } });
-  for (const name of ["lambda-arm64-ffmpeg", "lambda-handler-zip", "pack", "publish"]) {
+  for (const name of [
+    "lambda-arm64-ffmpeg",
+    "lambda-handler-zip",
+    "lambda-video-image",
+    "pack",
+    "publish",
+  ]) {
     const job = config.jobs[name];
     assert.ok(job.needs.includes("release-source"), `${name} needs release-source`);
     assert.equal(normalizeExpression(job.if), "needs.release-source.outputs.sha != ''", name);
@@ -74,7 +80,7 @@ test("a push to main publishes only the merge of exactly one approved release PR
   const head = "c".repeat(40);
   const pull = (overrides = {}) => ({
     number: 8000,
-    user: { login: "releaser" },
+    user: { login: "releaser", type: "User" },
     merged_at: "2026-11-17T02:24:00Z",
     merge_commit_sha: sha,
     base: { ref: "main" },
@@ -88,8 +94,9 @@ test("a push to main publishes only the merge of exactly one approved release PR
     submitted_at: `2026-11-17T0${hour}:00:00Z`,
   });
   const approved = [review("reviewer", "APPROVED", 1)];
-  // The fake answers PR 8000's reviews, commits and events, the commit's PR lookup from FAKE_PULLS, and each
-  // reviewer's permission from FAKE_PERMISSIONS (login=permission lines); the lookup of FAKE_PERMISSION_FAILS fails.
+  // The fake answers PR 8000, its reviews, commits and events, the branch's activity, the push from FAKE_COMPARE,
+  // each commit's PR lookup from FAKE_PULLS_<sha>, and each login's permission from FAKE_PERMISSIONS (login=permission
+  // lines); the lookup of FAKE_PERMISSION_FAILS fails.
   writeFileSync(
     join(bin, "gh"),
     `#!/bin/sh
@@ -97,6 +104,13 @@ case "$*" in
   *pulls/8000/reviews*) printf '%s' "$FAKE_REVIEWS" ;;
   *pulls/8000/commits*) printf '%s' "$FAKE_COMMITS" ;;
   *issues/8000/events*) printf '%s' "$FAKE_EVENTS" ;;
+  *pulls/8000) printf '%s' "$FAKE_PULL" ;;
+  *activity\\?ref=refs/heads/release/v0.9.61\\&*) printf '%s' "$FAKE_ACTIVITY" ;;
+  *compare/*) printf '%s' "$FAKE_COMPARE" ;;
+  *commits/*/pulls*)
+    c="$(printf '%s' "$*" | sed 's#.*commits/\\([0-9a-f]*\\)/pulls.*#\\1#')"
+    eval "v=\\\${FAKE_PULLS_$c-}"
+    printf '%s' "\${v:-[]}" ;;
   *collaborators/*/permission*)
     login="$(printf '%s' "$*" | sed 's#.*collaborators/\\([^/]*\\)/permission.*#\\1#')"
     [ "$login" != "$FAKE_PERMISSION_FAILS" ] || exit 1
@@ -109,10 +123,36 @@ esac
     author: { login: author },
     committer: { login: committer },
   });
-  const permissions = "releaser=admin\nreviewer=write\nother=admin\noutsider=read";
+  const permissions = "releaser=admin\nreviewer=write\nother=admin\noutsider=read\nhelper=read";
+  const pushBy = (login, type = "User", activity_type = "push") => ({
+    activity_type,
+    actor: { login, type },
+  });
   chmodSync(join(bin, "gh"), 0o755);
   const main = { REF_TYPE: "branch", REF_NAME: "main" };
-  const run = (pulls, ref = main, reviews = approved, history = {}) => {
+  /** A push of `commits` (oldest first, each `{ sha, message, pulls }`) whose last commit is the run's sha. */
+  const push = (commits, total = commits.length) => ({
+    FAKE_COMPARE: JSON.stringify({
+      total_commits: total,
+      commits: commits.map(({ sha: c, message }) => ({ sha: c, commit: { message } })),
+    }),
+    ...Object.fromEntries(
+      commits.map(({ sha: c, pulls }) => [`FAKE_PULLS_${c}`, JSON.stringify(pulls)]),
+    ),
+  });
+  /** A release PR's history: one commit and one push by its opener, unless `history` says otherwise. */
+  const historyOf = (pulls, ref, history) => ({
+    commits: [commit("releaser", "web-flow")],
+    push: [{ sha, message: ref.HEAD_MESSAGE ?? "fix: a change", pulls }],
+    before: "e".repeat(40),
+    activity: [pushBy("releaser", "User", "branch_creation"), pushBy("releaser")],
+    events: [],
+    permissions,
+    permissionFails: "",
+    ...history,
+  });
+  const run = (pulls, ref = main, reviews = approved, given = {}) => {
+    const history = historyOf(pulls, ref, given);
     const out = join(bin, "out");
     writeFileSync(out, "");
     const result = runStep(step, {
@@ -122,12 +162,15 @@ esac
         SHA: sha,
         RUNNER_TEMP: bin,
         GITHUB_OUTPUT: out,
-        FAKE_PULLS: JSON.stringify(pulls),
+        BEFORE: history.before,
+        ...push(history.push, history.total),
         FAKE_REVIEWS: JSON.stringify(reviews),
-        FAKE_COMMITS: JSON.stringify(history.commits ?? [commit("releaser", "web-flow")]),
-        FAKE_EVENTS: JSON.stringify(history.events ?? []),
-        FAKE_PERMISSIONS: history.permissions ?? permissions,
-        FAKE_PERMISSION_FAILS: history.permissionFails ?? "",
+        FAKE_COMMITS: JSON.stringify(history.commits),
+        FAKE_PULL: JSON.stringify({ commits: history.listed ?? history.commits.length }),
+        FAKE_ACTIVITY: JSON.stringify(history.activity),
+        FAKE_EVENTS: JSON.stringify(history.events),
+        FAKE_PERMISSIONS: history.permissions,
+        FAKE_PERMISSION_FAILS: history.permissionFails,
         ...ref,
       },
       path: `${bin}:${process.env.PATH}`,
@@ -239,9 +282,73 @@ esac
         "the approver force-pushed the branch",
         { events: [{ event: "head_ref_force_pushed", actor: { login: "reviewer" } }] },
       ],
+      [
+        "the approver pushed commits written under another name",
+        { activity: [pushBy("releaser", "User", "branch_creation"), pushBy("reviewer")] },
+      ],
+      [
+        "the approver pushed commits with no account behind them",
+        {
+          commits: [{ author: null, committer: null }],
+          activity: [pushBy("releaser", "User", "branch_creation"), pushBy("reviewer")],
+        },
+      ],
+      [
+        "the approver created the branch",
+        { activity: [pushBy("reviewer", "User", "branch_creation")] },
+      ],
+      ["more commits than GitHub lists", { listed: 251 }],
+      ["no push to the branch was recorded", { activity: [] }],
+      [
+        "a push with no recorded account",
+        {
+          activity: [
+            pushBy("releaser", "User", "branch_creation"),
+            { activity_type: "push", actor: null },
+          ],
+        },
+      ],
     ]) {
       assert.equal(run([pull()], main, approved, history).status, 1, why);
     }
+    // A second person with write access opened or pushed the release, besides the approver.
+    const openedBy = (login, type = "User") => pull({ user: { login, type } });
+    for (const [why, pulls, history] of [
+      [
+        "an opener without write access who pushed",
+        [openedBy("helper")],
+        { activity: [pushBy("helper")] },
+      ],
+      [
+        "an app opened and pushed it",
+        [openedBy("release-app[bot]", "Bot")],
+        { activity: [pushBy("release-app[bot]", "Bot")] },
+      ],
+      [
+        "an opener without write access and only an app's push",
+        [openedBy("helper")],
+        { activity: [pushBy("ci[bot]", "Bot")] },
+      ],
+    ]) {
+      assert.equal(run(pulls, main, approved, history).status, 1, why);
+    }
+    assert.equal(
+      run([openedBy("helper")], main, approved, { activity: [pushBy("releaser")] }).status,
+      0,
+      "a maintainer's push is the second person when the opener has no write access",
+    );
+    // An approval counts only if the base was main when it was given and has not changed since.
+    const rebased = { events: [{ event: "base_ref_changed", created_at: "2026-11-17T03:00:00Z" }] };
+    assert.equal(
+      run([pull()], main, approved, rebased).status,
+      1,
+      "an approval given before the base changed to main",
+    );
+    assert.equal(
+      run([pull()], main, [review("reviewer", "APPROVED", 4)], rebased).status,
+      0,
+      "an approval given after the last base change",
+    );
     const reapproved = [
       review("reviewer", "CHANGES_REQUESTED", 1),
       review("reviewer", "APPROVED", 2),
@@ -250,6 +357,34 @@ esac
       run([pull()], main, reapproved).status,
       0,
       "a later approval answers its own change request",
+    );
+    // The merge queue can land the release with other PRs in one push; the run is for the push's last commit.
+    const release = "f".repeat(40);
+    const batched = (releasePulls, total) => ({
+      push: [
+        { sha: release, message: "chore: release v0.9.61 (#8000)", pulls: releasePulls },
+        { sha, message: "fix: a server change (#8001)", pulls: [] },
+      ],
+      total,
+    });
+    assert.deepEqual(run([], main, approved, batched([pull({ merge_commit_sha: release })])), {
+      status: 0,
+      outputs: { sha: release, version: "0.9.61", source: "release-pr", ref: "release/v0.9.61" },
+    });
+    assert.equal(
+      run([], main, approved, batched([])).status,
+      1,
+      "a release commit below the tip that GitHub has not linked yet fails, never skips",
+    );
+    assert.equal(
+      run([], main, approved, batched([pull({ merge_commit_sha: release })], 300)).status,
+      1,
+      "a push with more commits than GitHub lists",
+    );
+    assert.deepEqual(
+      run([pull()], main, approved, { before: "0".repeat(40) }).outputs.sha,
+      sha,
+      "a push that created the branch reads only its last commit",
     );
     const second = pull({
       head: { ref: "release/v0.9.62", repo: { full_name: "heygen-com/hyperframes" } },
@@ -767,6 +902,25 @@ test("the Lambda ffmpeg ships only when it matches its committed digest", () => 
   );
 });
 
+test("the Lambda video image builds on ARM, and pack ships only the digest that job built", () => {
+  // fails without the fix: pack built the arm64 image on an x86 runner, which cannot run the video stage's microdnf.
+  const image = config.jobs["lambda-video-image"];
+  assert.equal(image["runs-on"], "ubuntu-24.04-arm");
+  assert.deepEqual(image.permissions, { contents: "read" });
+  const build = stepOf(image, "Build Lambda video image");
+  assert.match(build.run, /--platform linux\/arm64 --target video/);
+  assert.equal(build.env.EXPECTED_ZIP_SHA256, "${{ needs.lambda-handler-zip.outputs.sha256 }}");
+  assert.equal(image.outputs.sha256, "${{ steps.image.outputs.sha256 }}");
+
+  assert.ok(
+    !pack.steps.some((step) => /docker buildx build/.test(step.run ?? "")),
+    "pack builds no image",
+  );
+  const pin = stepOf(pack, "Pin Lambda video image");
+  assert.equal(pin.env.EXPECTED_SHA256, "${{ needs.lambda-video-image.outputs.sha256 }}");
+  assert.match(pin.run, /pin-handler-zip\.ts --video-image$/m);
+});
+
 test("the release installs no tool restored from the shared cache", () => {
   const steps = Object.values(config.jobs).flatMap((job) => job.steps ?? []);
   const bun = steps.filter((step) => step.uses?.startsWith("oven-sh/setup-bun@"));
@@ -925,9 +1079,14 @@ test("a tag publishes only a commit already on main, next or alpha, before any j
   for (const name of ["lambda-arm64-ffmpeg", "lambda-handler-zip"]) {
     assert.deepEqual(config.jobs[name].needs, ["release-source"], name);
   }
-  assert.deepEqual([...pack.needs].sort(), [
+  assert.deepEqual([...config.jobs["lambda-video-image"].needs].sort(), [
     "lambda-arm64-ffmpeg",
     "lambda-handler-zip",
+    "release-source",
+  ]);
+  assert.deepEqual([...pack.needs].sort(), [
+    "lambda-handler-zip",
+    "lambda-video-image",
     "release-source",
   ]);
   const step = stepOf(source, "Check the tagged commit is on main, next or alpha");

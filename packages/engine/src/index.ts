@@ -198,6 +198,7 @@ export {
 } from "./services/screenshotService.js";
 
 // ── Encoding ───────────────────────────────────────────────────────────────────
+export { concatListInputArgs, concatListText } from "@hyperframes/parsers/ff-binaries";
 export {
   buildEncoderArgs,
   encodeFramesFromDir,
@@ -394,6 +395,7 @@ export {
 } from "./utils/loopbackOnly.js";
 
 export { readWebGlVendorInfoFromCanvas } from "./utils/readWebGlVendorInfoFromCanvas.js";
+export { createConcurrencyLimit } from "./utils/concurrencyLimit.js";
 
 export {
   extractMediaMetadata,

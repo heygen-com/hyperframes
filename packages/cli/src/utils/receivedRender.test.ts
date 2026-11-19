@@ -17,6 +17,19 @@ import { compileForRender } from "../../../producer/src/services/htmlCompiler.js
 import { outsideAssetsAllowed } from "./receivedRender.js";
 import { terminalText } from "@hyperframes/core";
 
+const walk = vi.hoisted(() => ({ maxEntries: undefined as number | undefined }));
+
+vi.mock("./walkBudget.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./walkBudget.js")>();
+  const capped = (max: number) => {
+    let seen = 0;
+    return (entries: number) => (seen += entries) <= max;
+  };
+  return {
+    walkBudget: () => (walk.maxEntries === undefined ? real.walkBudget() : capped(walk.maxEntries)),
+  };
+});
+
 const SIGNATURES = {
   png: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]),
   mp4: Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom\0\0\0\0")]),
@@ -28,6 +41,7 @@ const SIGNATURES = {
 let root: string | undefined;
 
 afterEach(() => {
+  walk.maxEntries = undefined;
   if (root) rmSync(root, { recursive: true, force: true });
   root = undefined;
 });
@@ -239,11 +253,29 @@ describe("outsideAssetsAllowed", () => {
     expect(decide(project(received())).allowed).toBe(true);
   });
 
-  it("keeps outside files for an empty record in a project with very many files", () => {
+  it("refuses outside files for a received entry that an emptied record lost, as the host's kept copy shows", () => {
+    const dir = project(received());
+    const state = join(root as string, "state.json");
+    writeFileSync(state, JSON.stringify({ projects: [{ path: dir, received: "expected" }] }));
+    const kept = { project: dir, identity: null, files: ["index.html", "style.css"], seenAt: 1 };
+    const name = `${createHash("sha256").update(dir).digest("hex")}.json`;
+    write(join(root as string, "received-records", name), JSON.stringify(kept));
+    vi.stubEnv("HYPERFRAMES_RECEIVED_STATE_FILE", state);
+    try {
+      const { allowed, line } = decide(dir);
+      expect(allowed).toBe(false);
+      expect(line).toContain(`index.html ${SOMEONE_ELSE}`);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps outside files for an empty record in a project with more files than a walk may list", () => {
+    walk.maxEntries = 10;
     const dir = project(received());
     const many = join(dir, "node_modules");
     mkdirSync(many);
-    for (let i = 0; i <= 20_000; i++) writeFileSync(join(many, `f${i}`), "");
+    for (let i = 0; i <= 10; i++) writeFileSync(join(many, `f${i}`), "");
     const { allowed, warn } = decide(dir);
     expect(allowed).toBe(true);
     expect(warn).not.toHaveBeenCalled();
@@ -316,11 +348,12 @@ describe("outsideAssetsAllowed", () => {
       expect(warn).not.toHaveBeenCalled();
     });
 
-    it("keeps outside files for a project whose tool folders hold very many folders", () => {
+    it("keeps outside files for a project whose tool folders hold more folders than a walk may list", () => {
+      walk.maxEntries = 25;
       const dir = withNested();
       for (const tool of ["node_modules", "renders", ".git"]) {
         mkdirSync(join(dir, tool));
-        for (let i = 0; i <= 7_000; i++) mkdirSync(join(dir, tool, `d${i}`));
+        for (let i = 0; i <= 10; i++) mkdirSync(join(dir, tool, `d${i}`));
       }
       const { allowed, warn } = decide(dir);
       expect(allowed).toBe(true);
@@ -328,10 +361,11 @@ describe("outsideAssetsAllowed", () => {
     });
 
     it("refuses outside files when the project has too many folders to search", () => {
+      walk.maxEntries = 10;
       const dir = withNested();
       const many = join(dir, "folders");
       mkdirSync(many);
-      for (let i = 0; i <= 20_000; i++) mkdirSync(join(many, `d${i}`));
+      for (let i = 0; i <= 10; i++) mkdirSync(join(many, `d${i}`));
       const { allowed, line } = decide(dir);
       expect(allowed).toBe(false);
       expect(line).toContain("Could not check every project folder");

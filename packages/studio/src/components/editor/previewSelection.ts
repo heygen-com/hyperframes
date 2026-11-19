@@ -26,8 +26,10 @@ import {
   previewElementSelectorIndex,
   previewPointerTargets,
   previewElementSourceFile,
+  editPreviewElement,
   queryPreviewElements,
   type PreviewElement,
+  type PreviewElementEdit,
 } from "../../player/lib/previewElements";
 import { coversCompositionRoot } from "./domEditingRootLayer";
 import {
@@ -72,6 +74,7 @@ import {
   STUDIO_WIDTH_PROP,
 } from "./manualEditsTypes";
 import { rememberFrameTranslate, TRANSLATE_PX_PROPERTIES, translatePx } from "./plainTranslate";
+import { rememberFrameClipPath } from "./domEditOverlayCrop";
 
 let inertDocument: Document | undefined;
 const inert = () => (inertDocument ??= document.implementation.createHTMLDocument(""));
@@ -354,9 +357,15 @@ export async function resolvePreviewSelection(
   ]);
   if (!styles) return null;
   // The stand-in has no box to size a % or em against: a move starts from what the frame renders.
+  rememberFrameClipPath(
+    element,
+    current.inlineStyles["clip-path"] ?? "",
+    styles["clip-path"] ?? "",
+  );
   rememberFrameTranslate(
     element,
     translatePx(styles.translate ?? "none", (p) => styles[p] ?? ""),
+    styles.translate ?? "none",
   );
   const computedStyles = Object.fromEntries(
     CURATED_STYLE_PROPERTIES.flatMap((p) => (p in styles ? [[p, styles[p]!]] : [])),
@@ -509,6 +518,15 @@ export async function findPointerTargets(
   const handles = reply?.stack.map((hit) => hit.handle) ?? [];
   const described = handles.length ? await describePreviewElements(iframe, handles) : [];
   return (described ?? []).filter((element) => element !== null);
+}
+
+export function editSealedSelection(
+  iframe: HTMLIFrameElement | null | undefined,
+  selection: DomEditSelection,
+  edit: Parameters<typeof editPreviewElement>[2],
+): PreviewElementEdit | null {
+  if (!iframe || !selection.handle || !previewFrameOpaque(iframe)) return null;
+  return editPreviewElement(iframe, selection.handle, edit);
 }
 
 /** A stand-in is never connected: an opaque frame's selection stands until it is replaced. */

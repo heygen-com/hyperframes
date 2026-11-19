@@ -21,6 +21,8 @@ export { cleanupProxyCache } from "./helpers/proxyCache.js";
 export { CACHE_DIR_NAME as PROXY_CACHE_DIR_NAME } from "./helpers/proxyTranscoder.js";
 export type {
   StudioApiAdapter,
+  StudioRefusal,
+  StudioRefusalWhy,
   ResolvedProject,
   RenderJobState,
   MediaProcessingJobState,

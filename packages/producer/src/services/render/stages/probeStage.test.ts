@@ -497,9 +497,10 @@ describe("hasRuntimeMediaChanges", () => {
   it("ignores source writes aimed at other elements", () => {
     const body = `<img id="poster" class="still" src="a.png"><video id="clip" src="a.mp4"></video>`;
     const script = `document.getElementById("poster").src = "b.png";
-      document.querySelector(".still").setAttribute("src", "c.png");
-      document.querySelector("[[bad").src = "d.png";`;
+      document.querySelector(".still").setAttribute("src", "c.png");`;
     expect(hasRuntimeMediaChanges(page(body, script))).toBe(false);
+    const malformed = `document.querySelector("[[bad").src = "d.png";`;
+    expect(hasRuntimeMediaChanges(page(body, malformed))).toBe(true);
     expect(
       hasRuntimeMediaChanges(page(`<img id="clip">`, `document.getElementById("clip").src = "b";`)),
     ).toBe(false);
@@ -541,7 +542,7 @@ describe("hasRuntimeMediaChanges", () => {
 
   it("lets the browser probe decide a long selector against many media elements", () => {
     const videos = `<video src="a.mp4"></video>`.repeat(100);
-    const selector = `${".nope ".repeat(2_000)}video`;
+    const selector = `${".nope > ".repeat(2_000)}video`;
     const script = `document.querySelector(${JSON.stringify(selector)}).src = "x";`;
     expect(hasRuntimeMediaChanges(page(videos, script))).toBe(true);
     expect(hasRuntimeMediaChanges(page(`<video></video>`, script))).toBe(false);
@@ -551,7 +552,128 @@ describe("hasRuntimeMediaChanges", () => {
     const script = `document.querySelector(".nope ~ .none").src = "x";`;
     expect(hasRuntimeMediaChanges(page(`<video src="a.mp4"></video>`, script))).toBe(true);
   });
+
+  it("still checks tag, class, attribute and child selectors without the browser", () => {
+    const body = `<div class="scene" data-x="a,b"><p><video src="a.mp4"></video></p></div>`;
+    const write = (selector: string) =>
+      page(body, `document.querySelector(${JSON.stringify(selector)}).src = "x";`);
+    const matches = elementMatchesSpy();
+    try {
+      expect(hasRuntimeMediaChanges(write(".scene > p > video"))).toBe(true);
+      expect(hasRuntimeMediaChanges(write('[data-x="a,b"] video'))).toBe(true);
+      expect(hasRuntimeMediaChanges(write(".other video, div > video"))).toBe(false);
+      expect(matches.mock.calls.length).toBe(3);
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("leaves page-walking selectors on a deep page to the browser without matching them", () => {
+    const depth = 5_000;
+    const body = `${"<div class='d'>".repeat(depth)}<video src="a.mp4"></video>${"</div>".repeat(depth)}`;
+    const selectors = [
+      ".d:has(.none) video",
+      "div:not(.none) video",
+      ":nth-child(1) video",
+      "p:contains(x)",
+      ".d .d .d video",
+      "div video audio",
+    ];
+    const matches = elementMatchesSpy();
+    try {
+      for (const selector of selectors) {
+        const writes = Array.from(
+          { length: 500 },
+          (_, i) => `document.querySelector(${JSON.stringify(`${selector}.n${i}`)}).src = "x";`,
+        );
+        expect(hasRuntimeMediaChanges(page(body, writes.join("\n")))).toBe(true);
+      }
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("charges each check for the media's ancestors and their attributes", () => {
+    const wide = `<div data-x="${"x".repeat(400_000)}">`;
+    const writes = Array.from(
+      { length: 2_000 },
+      (_, i) => `document.querySelector(".q${i} video").src = "x";`,
+    );
+    const deep = `${"<div>".repeat(20_000)}<video src="a.mp4"></video>${"</div>".repeat(20_000)}`;
+    const matches = elementMatchesSpy();
+    try {
+      expect(hasRuntimeMediaChanges(page(`${wide}<video></video></div>`, writes.join("\n")))).toBe(
+        true,
+      );
+      expect(hasRuntimeMediaChanges(page(deep, writes.join("\n")))).toBe(true);
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("charges a long selector's whole text against every media element", () => {
+    const videos = `<div data-x="a"><video src="a.mp4"></video></div>`.repeat(100);
+    const longValue = `[data-x="${"y".repeat(20_000)}"] video`;
+    const longGap = `div${" ".repeat(20_000)}video`;
+    const matches = elementMatchesSpy();
+    try {
+      for (const selector of [longValue, longGap]) {
+        const script = `document.querySelector(${JSON.stringify(selector)}).src = "x";`;
+        expect(hasRuntimeMediaChanges(page(videos, script))).toBe(true);
+      }
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("charges each simple test in a compound for the attribute text it reads", () => {
+    const video = `<video data-x="${"v".repeat(1_000)}" src="a.mp4"></video>`;
+    const selector = `video${"[data-x]".repeat(2_000)}`;
+    const script = `document.querySelector(${JSON.stringify(selector)}).src = "x";`;
+    const matches = elementMatchesSpy();
+    try {
+      expect(hasRuntimeMediaChanges(page(video, script))).toBe(true);
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("reads no attribute text when every write targets an id", () => {
+    let proto = Object.getPrototypeOf(parseHTML("<p></p>").document.querySelector("p"));
+    while (proto && !Object.getOwnPropertyDescriptor(proto, "attributes")) {
+      proto = Object.getPrototypeOf(proto);
+    }
+    const original = Object.getOwnPropertyDescriptor(proto, "attributes")!;
+    let reads = 0;
+    Object.defineProperty(proto, "attributes", {
+      ...original,
+      get(this: Element) {
+        reads += 1;
+        return original.get!.call(this);
+      },
+    });
+    try {
+      const body = `<div data-x="a"><video id="clip" src="a.mp4"></video></div>`;
+      expect(hasRuntimeMediaChanges(page(body, `document.getElementById("x").src = "b";`))).toBe(
+        false,
+      );
+      expect(reads).toBe(0);
+    } finally {
+      Object.defineProperty(proto, "attributes", original);
+    }
+  });
 });
+
+/** Spies on linkedom's `Element.matches`, wherever on the prototype chain it lives. */
+function elementMatchesSpy() {
+  let proto = Object.getPrototypeOf(parseHTML("<p></p>").document.querySelector("p"));
+  while (proto && !Object.hasOwn(proto, "matches")) proto = Object.getPrototypeOf(proto);
+  return spyOn(proto as Element, "matches");
+}
 
 /** Spies on the linkedom document's own lookups, wherever on its prototype chain they live. */
 function documentLookupSpies() {

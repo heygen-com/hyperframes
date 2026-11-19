@@ -1257,3 +1257,25 @@ describe("SVG namespacing compatibility on current compiler", () => {
     dom.window.close();
   });
 });
+
+// fails without the fix: renaming a mount's colliding SVG ids charged nothing to the render's budget.
+it("charges the bytes SVG id renaming adds to the mount that grew", () => {
+  const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
+    <div data-composition-id="a" data-composition-src="art.html" data-start="0" data-duration="2"></div>
+    <div data-composition-id="b" data-composition-src="art.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`);
+  const hosts = [...document.querySelectorAll("[data-composition-src]")];
+  const charged: Array<[string, number]> = [];
+
+  inlineSubCompositions(document, hosts, {
+    resolveHtml: () =>
+      `<template><div data-composition-id="art"><svg><clipPath id="clip"><rect/></clipPath></svg><div clip-path="url(#clip)"></div></div></template>`,
+    parseHtml: (html) => parseHTML(html).document,
+    chargeEmitted: (src, bytes) => charged.push([src, bytes]),
+  });
+
+  expect(document.querySelectorAll('[id="clip"]')).toHaveLength(1);
+  expect(charged.filter(([src, bytes]) => src === "art.html" && bytes > 0).length).toBeGreaterThan(
+    0,
+  );
+});

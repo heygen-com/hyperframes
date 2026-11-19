@@ -504,6 +504,9 @@ jobs:
           bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
           bun run --cwd packages/core build
 
+      - if: contains(matrix.packages, '@hyperframes/cli')
+        uses: ./.github/actions/opencv-test-cache
+
       - name: Prepare browser for process tests
         if: matrix.process_tests
         shell: pwsh

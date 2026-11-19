@@ -6,6 +6,7 @@ import {
   renameSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   utimesSync,
@@ -14,18 +15,20 @@ import {
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { isCredentialOrToolStatePath } from "@hyperframes/core/safe-path";
 import {
   RECEIVED_STATE_ENV,
   isEnvOrGitPath,
   isPrivateCompositionFile,
   receivedFiles,
+  receivedLinesAtOrAbove,
   receivedRecordStatus,
   recordReceivedFiles,
 } from "./privateProjectFile.js";
 
 const zeroFileIds = vi.hoisted(() => ({ on: false }));
+const opens = vi.hoisted(() => ({ path: "", seen: 0, replacing: 0 }));
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -33,13 +36,25 @@ vi.mock("node:fs", async (importOriginal) => {
     const stat = actual.lstatSync(path, options as never);
     return zeroFileIds.on && stat ? Object.assign(stat, { dev: 0n, ino: 0n }) : stat;
   }) as typeof actual.lstatSync;
-  return { ...actual, default: { ...actual, lstatSync }, lstatSync };
+  const openSync = ((...args: Parameters<typeof actual.openSync>) => {
+    const fd = actual.openSync(...args);
+    if (args[0] !== opens.path) return fd;
+    opens.seen += 1;
+    if (opens.replacing > 0) {
+      opens.replacing -= 1;
+      actual.copyFileSync(opens.path, `${opens.path}.new`);
+      actual.renameSync(`${opens.path}.new`, opens.path);
+    }
+    return fd;
+  }) as typeof actual.openSync;
+  return { ...actual, default: { ...actual, lstatSync, openSync }, lstatSync, openSync };
 });
 
 let dir: string | undefined;
 
 afterEach(() => {
   zeroFileIds.on = false;
+  Object.assign(opens, { path: "", seen: 0, replacing: 0 });
   vi.unstubAllEnvs();
   if (dir) rmSync(dir, { recursive: true, force: true });
   dir = undefined;
@@ -336,6 +351,170 @@ describe("a host's received state file", () => {
     const app = project();
     hostSays([{ path: join(tmpdir(), "hf-some-other-project"), received: "all" }]);
     expect(receivedFiles(app)("index.html")).toBe(false);
+  });
+
+  describe("and the host's kept copy of a record", () => {
+    const keptFile = (path: string) =>
+      join(
+        dir as string,
+        "received-records",
+        `${createHash("sha256").update(path).digest("hex")}.json`,
+      );
+
+    function hostKeeps(path: string, kept: unknown): void {
+      mkdirSync(join(dir as string, "received-records"), { recursive: true });
+      writeFileSync(keptFile(path), typeof kept === "string" ? kept : JSON.stringify(kept));
+    }
+
+    const keeps = (path: string, files: string[] | null) =>
+      hostKeeps(path, { project: path, identity: null, files, seenAt: 1 });
+
+    function emptiedProject(): string {
+      const app = project(JSON.stringify({ files: [] }));
+      mkdirSync(join(app, "assets"));
+      writeFileSync(join(app, "assets", "x.js"), "");
+      return app;
+    }
+
+    it("counts entries an emptied record lost as received while their files are there", () => {
+      const app = emptiedProject();
+      const named = realpathSync(app);
+      hostSays([{ path: named, received: "expected" }]);
+      keeps(named, ["index.html", "assets/x.js"]);
+      const received = receivedFiles(app);
+      expect(received("index.html")).toBe(true);
+      expect(received("assets/x.js")).toBe(true);
+      expect(received("compositions/intro.html")).toBe(false);
+      const status = receivedRecordStatus(app);
+      expect(status !== "unchecked" && status?.listed?.map((path) => basename(path))).toEqual([
+        "index.html",
+        "x.js",
+      ]);
+    });
+
+    it("leaves off a lost entry whose file is gone", () => {
+      const app = emptiedProject();
+      hostSays([{ path: app, received: "expected" }]);
+      keeps(app, ["index.html", "assets/x.js"]);
+      rmSync(join(app, "assets", "x.js"));
+      const received = receivedFiles(app);
+      expect(received("index.html")).toBe(true);
+      expect(received("assets/x.js")).toBe(false);
+      expect(received.gone).toBeUndefined();
+    });
+
+    it("finds the kept copy of a project named under its old path by its folder's identity", () => {
+      const app = emptiedProject();
+      const { dev, ino, birthtimeNs } = lstatSync(app, { bigint: true });
+      hostSays([{ path: app, dev: String(dev), ino: String(ino), received: "expected" }]);
+      const kept = { project: app, files: ["index.html"], seenAt: 1 };
+      hostKeeps(app, { ...kept, identity: `${dev}:${ino}:${birthtimeNs}` });
+      const renamed = `${app}-renamed`;
+      renameSync(app, renamed);
+      expect(receivedFiles(renamed)("index.html")).toBe(true);
+      expect(receivedFiles(renamed)("assets/x.js")).toBe(false);
+    });
+
+    it("counts every file as received when a moved project's kept copy names another folder", () => {
+      const app = emptiedProject();
+      const { dev, ino } = lstatSync(app, { bigint: true });
+      hostSays([{ path: app, dev: String(dev), ino: String(ino), received: "expected" }]);
+      hostKeeps(app, {
+        project: app,
+        files: ["index.html"],
+        seenAt: 1,
+        identity: `${dev}:${ino}:1`,
+      });
+      const renamed = `${app}-renamed`;
+      renameSync(app, renamed);
+      expect(receivedFiles(renamed)("compositions/intro.html")).toBe(true);
+      expect(receivedRecordStatus(renamed)).toMatchObject({ path: keptFile(app), listed: null });
+    });
+
+    it("reads the kept copy once more when the host replaces it during the first read", () => {
+      const app = emptiedProject();
+      hostSays([{ path: app, received: "expected" }]);
+      keeps(app, ["index.html"]);
+      Object.assign(opens, { path: keptFile(app), seen: 0, replacing: 1 });
+      const received = receivedFiles(app);
+      expect(opens.seen).toBe(2);
+      expect(received("index.html")).toBe(true);
+      expect(received("compositions/intro.html")).toBe(false);
+    });
+
+    it("reads the kept copy once when the state file names the project by path and identity", () => {
+      const app = emptiedProject();
+      const { dev, ino } = lstatSync(app, { bigint: true });
+      hostSays([{ path: app, dev: String(dev), ino: String(ino), received: "expected" }]);
+      keeps(app, ["index.html"]);
+      Object.assign(opens, { path: keptFile(app), seen: 0, replacing: 0 });
+      const received = receivedFiles(app);
+      expect(opens.seen).toBe(1);
+      expect(received("index.html")).toBe(true);
+      expect(received("compositions/intro.html")).toBe(false);
+    });
+
+    it("counts every file as received when the kept copy holds no list, and keeps the record's lines", () => {
+      const app = emptiedProject();
+      writeFileSync(
+        join(app, ".hyperframes", "received-files.json"),
+        JSON.stringify({ files: ["index.html"] }),
+      );
+      hostSays([{ path: app, received: "expected" }]);
+      keeps(app, null);
+      expect(receivedFiles(app)("compositions/intro.html")).toBe(true);
+      expect(receivedRecordStatus(app)).toMatchObject({ path: keptFile(app), listed: null });
+      expect(receivedLinesAtOrAbove(app).map(({ lines }) => lines)).toEqual([["index.html"]]);
+    });
+
+    it("counts every file as received when the kept copy is doubted, unreadable or for another project", () => {
+      const app = emptiedProject();
+      hostSays([{ path: app, received: "expected" }]);
+      for (const kept of [
+        { project: app, identity: null, files: [], seenAt: 1, doubted: true },
+        { project: `${app}-other`, identity: null, files: [], seenAt: 1 },
+        { project: app, identity: null, files: [1], seenAt: 1 },
+        "{not json",
+      ]) {
+        hostKeeps(app, kept);
+        expect(receivedFiles(app)("compositions/intro.html")).toBe(true);
+      }
+    });
+
+    it("trusts the record when no state file is set or the state file does not name the project", () => {
+      const app = emptiedProject();
+      hostSays([{ path: join(tmpdir(), "hf-some-other-project"), received: "expected" }]);
+      keeps(app, ["index.html", "assets/x.js"]);
+      expect(receivedFiles(app)("index.html")).toBe(false);
+      vi.stubEnv(RECEIVED_STATE_ENV, "");
+      expect(receivedFiles(app)("index.html")).toBe(false);
+    });
+
+    it.skipIf(process.platform === "win32")(
+      "does not follow a link in place of the kept copy",
+      () => {
+        const app = emptiedProject();
+        hostSays([{ path: app, received: "expected" }]);
+        const elsewhere = join(dir as string, "elsewhere.json");
+        writeFileSync(
+          elsewhere,
+          JSON.stringify({ project: app, identity: null, files: ["index.html"], seenAt: 1 }),
+        );
+        mkdirSync(join(dir as string, "received-records"));
+        symlinkSync(elsewhere, keptFile(app));
+        expect(receivedFiles(app)("compositions/intro.html")).toBe(true);
+      },
+    );
+
+    it("reads the person's own project as before when the host keeps no copy of its record", () => {
+      const app = emptiedProject();
+      hostSays([{ path: app, received: "expected" }]);
+      keeps(join(tmpdir(), "hf-some-other-project"), ["index.html"]);
+      const received = receivedFiles(app);
+      expect(received("index.html")).toBe(false);
+      expect(received("assets/x.js")).toBe(false);
+      expect(receivedRecordStatus(app)).toMatchObject({ listed: [] });
+    });
   });
 });
 

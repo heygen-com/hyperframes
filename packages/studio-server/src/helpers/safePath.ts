@@ -146,30 +146,43 @@ const valuesOf = (value: unknown): unknown[] =>
       : [];
 
 /**
- * The first `toolTrustedFileKind` file, `node_modules` or `.git` below `dir`, which a delete or move of the folder
- * would take along. Links are not followed.
+ * The first entry below `dir` a folder delete or move must not take along: one a direct delete or rename refuses, a
+ * `toolTrustedFileKind` file or a script package.json runs, or `node_modules` or `.git`. Given `to`, a move's
+ * destination, also one arriving where a direct write refuses. Links are not followed; an unreadable folder is refused.
  */
-export function toolTrustedFileWithin(projectDir: string, dir: string): string | null {
-  return protectedEntryWithin(dir, projectRelativePath(projectDir, dir));
+export function protectedEntryWithin(projectDir: string, dir: string, to?: string): string | null {
+  const from = projectRelativePath(projectDir, dir);
+  const places = [dir, ...(to === undefined ? [] : [to])].flatMap((at) =>
+    projectRelatives(projectDir, at),
+  );
+  const runs = scriptsPackageRuns(projectDir);
+  const refused = (sub: string) =>
+    places.some((place) => {
+      const at = place ? `${place}/${sub}` : sub;
+      return toolTrustedFileKind(at) !== null || runs.has(foldedPath(at));
+    });
+  const found = refusedEntryBelow(dir, "", refused);
+  return found === null ? null : [from, found].filter(Boolean).join("/") || ".";
 }
 
 const PROTECTED_FOLDERS = new Set(["node_modules", ".git"]);
 
-function protectedEntryWithin(dir: string, rel: string): string | null {
+function refusedEntryBelow(
+  dir: string,
+  sub: string,
+  refused: (sub: string) => boolean,
+): string | null {
   const entries = folderEntries(dir);
-  if (!entries) return rel || ".";
+  if (!entries) return sub;
   for (const entry of entries) {
-    const found = protectedEntry(dir, entry, rel ? `${rel}/${entry.name}` : entry.name);
-    if (found) return found;
+    const at = sub ? `${sub}/${entry.name}` : entry.name;
+    if (refused(at)) return at;
+    if (!entry.isDirectory()) continue;
+    if (PROTECTED_FOLDERS.has(projectPathSegments(entry.name)[0] ?? "")) return at;
+    const inside = refusedEntryBelow(join(dir, entry.name), at, refused);
+    if (inside !== null) return inside;
   }
   return null;
-}
-
-function protectedEntry(dir: string, entry: Dirent, at: string): string | null {
-  if (!entry.isDirectory()) return toolTrustedFileKind(at) ? at : null;
-  if (toolTrustedFileKind(at) || PROTECTED_FOLDERS.has(projectPathSegments(entry.name)[0] ?? ""))
-    return at;
-  return protectedEntryWithin(join(dir, entry.name), at);
 }
 
 function folderEntries(dir: string): Dirent[] | null {

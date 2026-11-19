@@ -4,6 +4,7 @@ import { readManifest, appendRecord, nextId } from "./manifest.mjs";
 import { regenerateIndex } from "./index-gen.mjs";
 import { probe } from "./probe.mjs";
 import { matchTokens } from "./match.mjs";
+import { terminalText } from "./terminal-text.mjs";
 
 const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac"]);
 const IMAGE_EXT = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico"]);
@@ -59,7 +60,7 @@ export function scanExistingAssets(projectDir) {
     if (stat.size === 0) {
       // A 0-byte asset would register clean but fail at render — skip it loudly
       // rather than adopt a broken file.
-      console.error(`media-use: skipping 0-byte asset assets/${rel}`);
+      console.error(terminalText(`media-use: skipping 0-byte asset assets/${rel}`));
       continue;
     }
     const meta = probe(fullPath);

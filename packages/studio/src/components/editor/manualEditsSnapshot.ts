@@ -37,6 +37,7 @@ import {
   STUDIO_ROTATION_DRAFT_ATTR,
 } from "./manualEditsTypes";
 import { endPreviewDraft } from "./previewDrafts";
+import { DRAG_MOVING_ATTR } from "../../hooks/draggedGsapPosition";
 import type {
   StudioBoxSizeSnapshot,
   StudioRotationSnapshot,
@@ -218,6 +219,7 @@ export function restoreStudioPathOffsetStyles(
     }
     element.removeAttribute("data-hf-drag-gsap-base-x");
     element.removeAttribute("data-hf-drag-gsap-base-y");
+    element.removeAttribute(DRAG_MOVING_ATTR);
   }
 }
 

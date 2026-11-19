@@ -71,8 +71,8 @@ async function startedChange(
 /**
  * Follows a Studio rename, move or delete in the received-files records. Before the files move, every file listed in
  * a record inside a moved or deleted folder is listed in the project's own record, the received content leaving a
- * listed path is kept, and a renamed file is listed under its new path; when that fails, the request is refused.
- * Once the files have moved, their old lines go.
+ * listed path is kept, and a renamed file is listed under the path it moves to; when that fails, the request is refused.
+ * Afterwards an old line goes once its file is listed where it sits; a non-media file deleted or made media stays.
  */
 function followMovesAndDeletes(app: Hono, projectDir: string): void {
   app.on(["PATCH", "DELETE"], "/api/projects/:id/files/*", async (c, next) => {

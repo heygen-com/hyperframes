@@ -50,6 +50,7 @@ import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { concatListInputArgs, concatListText } from "@hyperframes/parsers/ff-binaries";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -674,7 +675,7 @@ export async function encodeFramesFromDir(
 }
 
 export function buildConcatArgs(concatListPath: string, outputPath: string): string[] {
-  const args = ["-f", "concat", "-safe", "0", "-i", concatListPath, "-c", "copy"];
+  const args = [...concatListInputArgs(concatListPath), "-c", "copy"];
   // The concat demuxer does not carry per-input container metadata into the
   // output, so provenance is re-asserted on the concatenated file.
   appendRenderProvenanceArgs(args, outputPath);
@@ -692,7 +693,7 @@ let concatListSeq = 0;
 function writeConcatList(dir: string, inputPaths: readonly string[]): string {
   concatListSeq += 1;
   const listPath = join(dir, `concat-list-${process.pid}-${concatListSeq}.txt`);
-  const body = inputPaths.map((p) => `file '${resolve(p).replace(/'/g, "'\\''")}'`).join("\n");
+  const body = concatListText(inputPaths.map((p) => resolve(p)));
   writeFileSync(listPath, body, "utf-8");
   return listPath;
 }
@@ -720,7 +721,12 @@ export async function concatVideoFiles(
   // get their own chunk directory but can share an output directory.
   // The list is left on disk deliberately: it is removed with the work dir,
   // and `--debug` keeps both so a bad concat can be reproduced from its list.
-  const listPath = writeConcatList(dirname(firstInput), inputPaths);
+  let listPath: string;
+  try {
+    listPath = writeConcatList(dirname(firstInput), inputPaths);
+  } catch (error) {
+    return { success: false, error: (error as Error).message, externalInterruption: false };
+  }
   const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
   const result = await runFfmpeg(buildConcatArgs(listPath, outputPath), {
     signal,

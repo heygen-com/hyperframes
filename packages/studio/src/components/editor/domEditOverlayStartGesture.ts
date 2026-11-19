@@ -35,7 +35,6 @@ import {
   type UseDomEditOverlayGesturesOptions,
 } from "./domEditOverlayGestures";
 import { collectSnapContext, buildExcludeElements, type SnapContext } from "./snapTargetCollection";
-import { MOVING_LAYER_UNREADABLE } from "./plainTranslate";
 import type { PreviewGestureStart } from "./previewGestureStartRead";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { logResize, resetResizeMoveLog } from "../../utils/resizeDebug";
@@ -68,14 +67,6 @@ export function startGroupDrag(
     notifyBlockedPress(e, opts, blockedSelection);
     return false;
   }
-  const moving = items.find((item) => item.start?.gsap?.moving)?.selection;
-  if (moving) {
-    e.preventDefault();
-    e.stopPropagation();
-    opts.onBlockedMoveRef.current(moving, MOVING_LAYER_UNREADABLE);
-    return false;
-  }
-
   opts.onManualDragStartRef.current?.();
   const dragItems = filterNestedDomEditGroupItems(items);
   const members: ManualOffsetDragMember[] = [];
@@ -212,11 +203,6 @@ export function startGesture(
   let pathOffsetMember: ManualOffsetDragMember | undefined;
 
   if (kind === "drag") {
-    if (start?.gsap?.moving) {
-      opts.onBlockedMoveRef.current(sel, MOVING_LAYER_UNREADABLE);
-      e.preventDefault();
-      return false;
-    }
     opts.onManualDragStartRef.current?.();
     const result = createManualOffsetDragMember({
       key: selectionCacheKey(sel),

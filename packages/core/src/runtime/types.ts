@@ -1,4 +1,5 @@
 import type { HfColorGradingTarget } from "../colorGrading";
+import type { PreviewTarget } from "../studioPreviewMark";
 import type { RuntimeAnalyticsEvent } from "./analytics";
 import type { AudioFades } from "../audioFade";
 import type { RateSpec } from "../speedRamp";
@@ -32,7 +33,8 @@ type RuntimeBridgeControlActionBase =
   | "set-root-duration"
   | "set-play-range"
   | "stop-media"
-  | "flash-elements";
+  | "flash-elements"
+  | "scrub-audio";
 
 type RuntimeBridgeControlMessageBase = {
   source: "hf-parent";
@@ -51,7 +53,8 @@ type RuntimeBridgeControlMessageBase = {
   level?: number;
   on?: boolean;
   playbackRate?: number;
-  target?: HfColorGradingTarget | string | null;
+  target?: HfColorGradingTarget | PreviewTarget | string | null;
+  time?: number | null;
   grading?: RuntimeJson;
   compare?: RuntimeJson;
   seekMode?: "drag" | "commit";

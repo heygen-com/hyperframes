@@ -28,6 +28,8 @@
     "packages/producer/we-render.mjs",
     "packages/producer/scripts/validate-fast-video.ts",
     "packages/cli/scripts/generate-font-data.ts",
+    // Run by CI before the CLI tests (.github/actions/opencv-test-cache).
+    "packages/cli/scripts/prepare-test-opencv.mjs",
     "packages/engine/scripts/test-fitTextFontSize-browser.ts",
     "packages/aws-lambda/scripts/*.ts",
     // Run inside the arm64 video image by the lambda-arm64-image workflow.

@@ -103,3 +103,41 @@ it("records the check when another process holds history, without waiting for it
     rmSync(project, { recursive: true, force: true });
   }
 });
+
+// Windows refuses control characters in folder names.
+it.skipIf(process.platform === "win32")(
+  "prints the report path and the not-recorded warning with control characters as visible escapes",
+  async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const parent = mkdtempSync(join(tmpdir(), "hf-check-escapes-"));
+    const project = join(parent, `video${esc}]0;x${String.fromCharCode(7)}${esc}[2J`);
+    mkdirSync(join(project, ".hyperframes", "artifacts"), { recursive: true });
+    writeFileSync(
+      join(project, "index.html"),
+      "<html><body>Missing composition metadata</body></html>",
+    );
+    writeFileSync(join(project, ".hyperframes", "artifacts", "checks"), "not a directory");
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await runCommand(check, { rawArgs: [project, "--json"] });
+      const printed = [...error.mock.calls, ...warn.mock.calls]
+        .map((call) => call.join(" "))
+        .join("\n");
+
+      expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+      expect(printed).toContain("the report is saved to");
+      expect(printed).toContain("Check report was not recorded");
+      expect(printed.match(/video\\x1b\]0;x\\x07\\x1b\[2J/g)?.length).toBeGreaterThanOrEqual(2);
+      expect(JSON.parse(String(log.mock.calls.at(-1)?.[0])).browserSkipped).toBe(true);
+    } finally {
+      log.mockRestore();
+      error.mockRestore();
+      warn.mockRestore();
+      consumeCommandResult();
+      rmSync(parent, { recursive: true, force: true });
+    }
+  },
+);

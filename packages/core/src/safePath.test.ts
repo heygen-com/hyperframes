@@ -326,6 +326,15 @@ describe("isStudioPrivatePath", () => {
     "AuthKey_ABC.p8",
     "vault.kdbx",
     "putty.ppk",
+    ".next/server/app/page.js",
+    "web/.svelte-kit/output/client/app.css",
+    ".vercel/output/static/logo.png",
+    "credentials.json",
+    "config/serviceAccountKey.json",
+    ".secrets.js",
+    ".eslintrc.cjs",
+    "sub/.tokens.css",
+    ".cache/.session.webp",
   ])("refuses %s", (path) => {
     expect(isStudioPrivatePath(path)).toBe(true);
   });
@@ -414,6 +423,17 @@ describe("toolTrustedFileKind", () => {
     ["hooks/pre-commit.fish", "program"],
     ["NODEMON.JSON.", "tool-config"],
     ["Docker\ufb01le.dev", "tool-config"],
+    ["binding.gyp", "tool-config"],
+    ["BINDING.GYP. ", "tool-config"],
+    ["binding.gyp::$DATA", "tool-config"],
+    ["BINDIN~1.GYP", "tool-config"],
+    ["addon.gyp", "tool-config"],
+    ["deps/common.gypi", "tool-config"],
+    ["server.js", "program"],
+    ["Server.JS.", "program"],
+    ["server.js::$DATA", "program"],
+    ["sub/server.js", "program"],
+    ["SERVER~1.JS", "short-name"],
   ] as const)("names %s %s", (path, kind) => {
     expect(toolTrustedFileKind(path)).toBe(kind);
   });
@@ -444,6 +464,8 @@ describe("toolTrustedFileKind", () => {
     "assets/compose.svg",
     "config.toml",
     "assets/script.js",
+    "assets/webserver.js",
+    "assets/server.json",
   ])("leaves %s to the other rules", (path) => {
     expect(toolTrustedFileKind(path)).toBeNull();
   });

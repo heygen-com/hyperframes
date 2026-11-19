@@ -10,7 +10,9 @@ import {
   resolveBrowserGpuMode,
 } from "./browserManager.js";
 
-function fakeChrome(newPage = vi.fn().mockResolvedValue({ evaluate: vi.fn() })) {
+function fakeChrome(
+  newPage = vi.fn().mockResolvedValue({ mainFrame: () => ({}), evaluate: vi.fn() }),
+) {
   const launch = vi.fn(async (_options: LaunchOptions) => ({
     connected: true,
     newPage,

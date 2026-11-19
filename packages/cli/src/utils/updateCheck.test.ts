@@ -1,3 +1,4 @@
+import { homeCliCommand } from "./homeCliCommand.js";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -96,6 +97,15 @@ async function noticeWith(opts: {
   return writes.join("");
 }
 
+describe("manual CLI update commands", () => {
+  it("starts npm in the home folder on both shell families", () => {
+    expect(homeCliCommand("beta", "update", "linux")).toBe("(cd ~ && npx hyperframes@beta update)");
+    expect(homeCliCommand("0.9.63", "", "win32")).toBe(
+      'powershell.exe -NoProfile -Command "Set-Location ~ -ErrorAction Stop; npx.cmd hyperframes@0.9.63"',
+    );
+  });
+});
+
 describe("printUpdateNotice — install-method-aware command", () => {
   afterEach(() => {
     vi.doUnmock("./env.js");
@@ -109,12 +119,12 @@ describe("printUpdateNotice — install-method-aware command", () => {
     const out = await noticeWith({ installerCommand: "brew upgrade hyperframes" });
     expect(out).toContain("Update available");
     expect(out).toContain("brew upgrade hyperframes");
-    expect(out).not.toContain("npx hyperframes@latest");
+    expect(out).not.toContain(homeCliCommand("latest"));
   });
 
   it("falls back to npx hyperframes@latest when the install method is skip/unknown", async () => {
     const out = await noticeWith({ installerCommand: null });
-    expect(out).toContain("npx hyperframes@latest");
+    expect(out).toContain(homeCliCommand("latest"));
   });
 
   it("is suppressed on a non-TTY stderr", async () => {
@@ -642,8 +652,8 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
       [
         "npx",
         undefined,
-        "npx hyperframes@latest update",
-        "npx hyperframes@latest update",
+        homeCliCommand("latest", "update"),
+        homeCliCommand("latest", "update"),
         "npx hyperframes update",
       ],
       [
@@ -663,8 +673,8 @@ describe("updateCheckDue / cachedUpdateCheck — what the parent reads without f
         ];
         for (const [config, command] of cases) {
           const mod = await loadNotice(config, channel, path);
-          expect(mod.withMeta({ ok: true })._meta.updateNotice).toMatch(
-            new RegExp(`run: ${command.replaceAll(".", "\\.")}$`),
+          expect(mod.withMeta({ ok: true })._meta.updateNotice?.endsWith(`run: ${command}`)).toBe(
+            true,
           );
         }
       },

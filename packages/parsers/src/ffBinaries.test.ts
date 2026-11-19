@@ -624,3 +624,38 @@ describe("assertLiteralMediaInput", () => {
     expect(() => mediaInputFormatArgs(ffmpeg, pattern)).toThrow(/pattern of other files/);
   });
 });
+
+describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)("concatListInputArgs", () => {
+  it("refuses a listed entry that is not a local file", async () => {
+    const { concatListInputArgs } = await importFresh();
+    const dir = mkdtempSync(join(tmpdir(), "hf-concat-list-"));
+    onTestFinished(() => rmSync(dir, { recursive: true, force: true }));
+    const list = join(dir, "list.txt");
+    writeFileSync(list, "file 'data:video/mp4;base64,AAAA'\n");
+    const run = spawnSync(
+      "ffmpeg",
+      ["-v", "error", ...concatListInputArgs(list), "-c", "copy", "-y", join(dir, "out.mp4")],
+      { encoding: "utf8" },
+    );
+    expect(run.status).not.toBe(0);
+    expect(run.stderr).toContain("not on whitelist 'file'");
+  });
+});
+
+describe("concatListText", () => {
+  // fails without the fix: every list writer escaped only the single quote, so a line break started a new list line.
+  it("writes one quoted entry per path and refuses a path holding a control character", async () => {
+    const { concatListText } = await importFresh();
+    expect(concatListText(["/a/it's.mp4", "/b/c.mp4"])).toBe(
+      "file '/a/it'\\''s.mp4'\nfile '/b/c.mp4'\n",
+    );
+    for (const path of [
+      "/p\nfile '/etc/x.mov'\n#/c.mp4",
+      "/p\r/c.mp4",
+      "/p\u0000/c.mp4",
+      "/p\u007f/c.mp4",
+    ]) {
+      expect(() => concatListText([path])).toThrow("control character");
+    }
+  });
+});

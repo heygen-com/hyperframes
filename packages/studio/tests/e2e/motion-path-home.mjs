@@ -21,7 +21,7 @@ try {
     "bun",
     [
       "build",
-      "packages/studio/src/components/editor/motionPathHome.ts",
+      "packages/core/src/runtime/editing/motionPathHome.ts",
       "--target",
       "browser",
       "--outdir",

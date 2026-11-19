@@ -1,18 +1,16 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import {
-  existsSync,
-  mkdtempSync,
-  renameSync,
-  rmSync,
-  unlinkSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
-import os, { availableParallelism, tmpdir, totalmem } from "node:os";
+import { createHmac, randomBytes, randomUUID } from "node:crypto";
+import { existsSync, renameSync, rmSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import os, { availableParallelism, totalmem } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
-import { findFfBinary, followFfmpegProgress } from "@hyperframes/parsers/ff-binaries";
+import { previewToken } from "@hyperframes/core/preview-proof";
+import {
+  concatListInputArgs,
+  concatListText,
+  findFfBinary,
+  followFfmpegProgress,
+} from "@hyperframes/parsers/ff-binaries";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import { ffmpegHasHdrFilters } from "./hdrFilters.js";
 import { mediaInputArgs, NOT_MEDIA } from "./mediaExtensions.js";
@@ -71,7 +69,33 @@ export const TRANSCODE_STALL_MS = boundedEnvInteger(
 /** A longer source is copied in pieces this long; a stopped copy keeps its finished pieces and loses at most one. */
 export const PROXY_CHUNK_SECONDS = 15;
 const CHUNK_PREFIX = ".part-";
+// Without a preview token, pieces are reused only within this process.
+const UNSIGNED_PIECE_SECRET = randomBytes(32).toString("hex");
+let warnedNoPieceToken = false;
+
+function pieceSecret(): string {
+  const token = previewToken();
+  if (token) return token;
+  if (!warnedNoPieceToken) {
+    warnedNoPieceToken = true;
+    console.warn(
+      "[media-proxy] no preview token could be read, so a stopped copy restarts from its first piece after Studio restarts",
+    );
+  }
+  return UNSIGNED_PIECE_SECRET;
+}
+
+function unguessablePiecePrefix(cacheDir: string, stem: string): string {
+  const tag = createHmac("sha256", pieceSecret())
+    .update(`proxy-piece\n${stem}`)
+    .digest("hex")
+    .slice(0, 32);
+  return join(cacheDir, `${CHUNK_PREFIX}${stem}-${tag}-`);
+}
+
 const CONCAT_TIMEOUT_MS = 2 * 60 * 1000;
+// On POSIX a folder name can hold a line break that would start a new list line; on Windows the working folder is part of the DLL search, so the cwd stays default there.
+const JOIN_FROM_CACHE_FOLDER = process.platform !== "win32";
 const FAILURE_CACHE_TTL_MS = 60 * 1000;
 export const PROXY_PENDING_RETRY_AFTER_SECONDS = 2;
 const ENVIRONMENT_FAILURE_TTL_MS = 5 * PROXY_PENDING_RETRY_AFTER_SECONDS * 1000;
@@ -376,8 +400,7 @@ function markCacheEntryUsed(cachePath: string): void {
     const now = new Date();
     utimesSync(cachePath, now, now);
   } catch {
-    // A concurrent cleanup may have removed a stale entry after existsSync;
-    // the normal miss path below will recreate it on the next request.
+    // A concurrent cleanup may have removed the entry; the next request's miss path recreates it.
   }
 }
 
@@ -633,18 +656,19 @@ async function encodeInChunks(
     ),
   );
   if (failure !== undefined) throw failure;
-  const listDir = mkdtempSync(join(tmpdir(), "hf-proxy-join-"));
+  const listPath = join(dirname(tempPath), `${basename(tempPath, extension)}.txt`);
   try {
-    const listPath = join(listDir, "pieces.txt");
     writeFileSync(
       listPath,
-      pieces
-        .map((piece) => `file '${piece.replace(/\\/g, "/").replace(/'/g, "'\\''")}'\n`)
-        .join(""),
+      concatListText(
+        pieces.map((piece) =>
+          JOIN_FROM_CACHE_FOLDER ? basename(piece) : piece.replace(/\\/g, "/"),
+        ),
+      ),
     );
     await concat(listPath, tempPath);
   } finally {
-    rmSync(listDir, { recursive: true, force: true });
+    rmSync(listPath, { force: true });
   }
   for (const piece of pieces) if (existsSync(piece)) unlinkSync(piece);
 }
@@ -804,8 +828,19 @@ async function runFfmpeg(
       chunks,
       outputPath,
       encode,
-      (listPath, target) =>
-        spawnFfmpeg(ffmpegPath, concatArgs(listPath, target, variant), CONCAT_TIMEOUT_MS, signal),
+      (listPath, target) => {
+        // ffmpeg resolves relative list entries against the list path, which breaks on '#' or '?' in a folder name.
+        const cwd = JOIN_FROM_CACHE_FOLDER ? dirname(listPath) : undefined;
+        return spawnFfmpeg(
+          ffmpegPath,
+          concatArgs(cwd ? basename(listPath) : listPath, target, variant),
+          CONCAT_TIMEOUT_MS,
+          signal,
+          undefined,
+          false,
+          cwd,
+        );
+      },
       signal,
       gate,
       (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
@@ -818,12 +853,7 @@ async function runFfmpeg(
 function concatArgs(listPath: string, target: string, variant: ProxyVariant): string[] {
   return [
     "-y",
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    listPath,
+    ...concatListInputArgs(listPath),
     "-c",
     "copy",
     ...(variant === "h264" ? ["-movflags", "+faststart"] : []),
@@ -848,10 +878,12 @@ function spawnFfmpeg(
   signal: AbortSignal,
   onProgress?: (encodedSeconds: number) => void,
   background = false,
+  cwd?: string,
 ): Promise<void> {
   return new Promise((resolvePromise, reject) => {
     signal.throwIfAborted();
     const proc = spawn(ffmpegPath, args, {
+      cwd,
       stdio: ["ignore", "pipe", "pipe"],
       killSignal: "SIGKILL",
       signal,
@@ -945,11 +977,16 @@ async function transcodeToCache(
       return sameContent;
     }
     const copyMade = (path: string) => isProjectCacheFile(projectDir, path);
+    const chunks = {
+      projectDir,
+      prefix: unguessablePiecePrefix(cacheDir, basename(cachePath, extname(cachePath))),
+    };
     const release = await acquireCopyLock(
       cachePath,
       copyMade,
       job.abandoned.signal,
       TRANSCODE_STALL_MS,
+      basename(chunks.prefix),
     ).catch((error: unknown) => {
       throw error instanceof CopyLockStalledError
         ? new ProxyTranscodeError(error.message, null, "")
@@ -961,10 +998,6 @@ async function transcodeToCache(
     }
     const tempPath = join(cacheDir, `.tmp-${randomUUID()}-${basename(cachePath)}`);
     try {
-      const chunks = {
-        projectDir,
-        prefix: join(cacheDir, `${CHUNK_PREFIX}${basename(cachePath, extname(cachePath))}-`),
-      };
       await runFfmpeg(
         absoluteSourcePath,
         tempPath,
@@ -981,8 +1014,7 @@ async function transcodeToCache(
       maintainProxyCache(cacheDir);
       return cachePath;
     } finally {
-      // No partial files: if anything above threw, remove whatever ffmpeg
-      // may have partially written under the temp name.
+      // No partial files: if anything above threw, remove what ffmpeg wrote under the temp name.
       if (existsSync(tempPath)) unlinkSync(tempPath);
       release();
     }

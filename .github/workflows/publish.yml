@@ -67,6 +67,7 @@ jobs:
           REF_TYPE: ${{ github.ref_type }}
           REF_NAME: ${{ github.ref_name }}
           HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+          BEFORE: ${{ github.event.before }}
         run: |
           if [ "$REF_TYPE" = "tag" ]; then
             {
@@ -77,38 +78,76 @@ jobs:
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          gh api "repos/$REPO/commits/$SHA/pulls" > "$RUNNER_TEMP/pulls.json"
-          heads="$(jq -r --arg sha "$SHA" --arg repo "$REPO" '.[]
-            | select(.merged_at != null and .base.ref == "main" and .merge_commit_sha == $sha)
-            | select(.head.repo.full_name == $repo)
-            | select(.head.ref | test("^release/v[0-9]+[.][0-9]+[.][0-9]+$"))
-            | [.head.ref, .number, .head.sha, .user.login] | @tsv' "$RUNNER_TEMP/pulls.json")"
-          if [ -z "$heads" ]; then
+          # The merge queue can land several PRs in one push, and this runs once, for the last: every commit the push
+          # brought is read, and a release publishes its own merge commit, never a later one.
+          if [[ "$BEFORE" =~ ^0*$ ]]; then
+            jq -n --arg sha "$SHA" --arg message "$HEAD_MESSAGE" \
+              '{total_commits: 1, commits: [{sha: $sha, commit: {message: $message}}]}' > "$RUNNER_TEMP/push.json"
+          else
+            gh api "repos/$REPO/compare/$BEFORE...$SHA" > "$RUNNER_TEMP/push.json"
+          fi
+          [ "$(jq '.commits | length' "$RUNNER_TEMP/push.json")" = "$(jq .total_commits "$RUNNER_TEMP/push.json")" ] ||
+            { echo "::error::the push to $SHA has more commits than GitHub lists, so a release in it could be missed"; exit 1; }
+          heads=""
+          while IFS=$'\t' read -r -u 3 commit subject; do
+            gh api "repos/$REPO/commits/$commit/pulls" > "$RUNNER_TEMP/pulls.json"
+            found="$(jq -r --arg sha "$commit" --arg repo "$REPO" '.[]
+              | select(.merged_at != null and .base.ref == "main" and .merge_commit_sha == $sha)
+              | select(.head.repo.full_name == $repo)
+              | select(.head.ref | test("^release/v[0-9]+[.][0-9]+[.][0-9]+$"))
+              | [.head.ref, .number, .head.sha, .user.login, .user.type, $sha] | @tsv' "$RUNNER_TEMP/pulls.json")"
             # A release commit GitHub has not linked to its PR yet must fail, where a rerun recovers it, not skip.
-            if [[ "${HEAD_MESSAGE%%$'\n'*}" =~ ^chore:\ release\ v[0-9] ]]; then
-              echo "::error::$SHA reads as a release commit but merges no release PR from this repo; rerun once GitHub lists it"
+            if [ -z "$found" ] && [[ "$subject" =~ ^chore:\ release\ v[0-9] ]]; then
+              echo "::error::$commit reads as a release commit but merges no release PR from this repo; rerun once GitHub lists it"
               exit 1
             fi
-            echo "$SHA merges no release PR; nothing to publish"
+            heads+="${found:+$found$'\n'}"
+          done 3< <(jq -r '.commits[] | [.sha, (.commit.message | split("\n")[0])] | @tsv' "$RUNNER_TEMP/push.json")
+          heads="${heads%$'\n'}"
+          if [ -z "$heads" ]; then
+            echo "the push to $SHA merges no release PR; nothing to publish"
             exit 0
           fi
           if [ "$(wc -l <<<"$heads")" -ne 1 ]; then
             echo "::error::$SHA is the merge of more than one release PR: $(cut -f1 <<<"$heads" | tr '\n' ' ')"
             exit 1
           fi
-          IFS=$'\t' read -r ref number head author <<<"$heads"
+          IFS=$'\t' read -r ref number head author author_type release <<<"$heads"
           # Branch protection can be bypassed, so a maintainer who did not open, write or push the release must approve
           # its final commit, and no maintainer's or app's change request may stand. Anyone can review a public repo:
           # a person's review counts only with write access. Each reviewer's latest verdict counts.
+          gh api "repos/$REPO/pulls/$number" > "$RUNNER_TEMP/pull.json"
           gh api --paginate "repos/$REPO/pulls/$number/reviews" > "$RUNNER_TEMP/reviews.json"
           gh api --paginate "repos/$REPO/pulls/$number/commits" > "$RUNNER_TEMP/commits.json"
           gh api --paginate "repos/$REPO/issues/$number/events" > "$RUNNER_TEMP/events.json"
+          # Commit names can be anyone's, so every account that pushed the branch is a writer too.
+          gh api --paginate "repos/$REPO/activity?ref=refs/heads/$ref&per_page=100" > "$RUNNER_TEMP/activity.json"
+          listed="$(jq -s 'add | length' "$RUNNER_TEMP/commits.json")"
+          [ "$listed" = "$(jq .commits "$RUNNER_TEMP/pull.json")" ] ||
+            { echo "::error::#$number has more commits than GitHub lists ($listed), so who wrote it is unknown"; exit 1; }
+          jq -s -r 'add | .[] | select(.activity_type != "branch_deletion") | [.actor.login, .actor.type] | @tsv' \
+            "$RUNNER_TEMP/activity.json" > "$RUNNER_TEMP/pushers.tsv"
+          [ -s "$RUNNER_TEMP/pushers.tsv" ] ||
+            { echo "::error::no push to $ref is recorded, so who pushed it is unknown"; exit 1; }
+          ! grep -q $'^\t' "$RUNNER_TEMP/pushers.tsv" ||
+            { echo "::error::a push to $ref is recorded with no account, so who pushed it is unknown"; exit 1; }
           {
             echo "$author"
+            cut -f1 "$RUNNER_TEMP/pushers.tsv"
             jq -s -r 'add | .[] | .author.login?, .committer.login? | values' "$RUNNER_TEMP/commits.json"
             jq -s -r 'add | .[] | select(.event == "head_ref_force_pushed") | .actor.login? | values' \
               "$RUNNER_TEMP/events.json"
           } > "$RUNNER_TEMP/writers.txt"
+          # A second person with write access opened or pushed it; none of them can be the approver.
+          second=""
+          for login in $({ [ "$author_type" != User ] || echo "$author"; awk -F'\t' '$2 == "User" { print $1 }' \
+            "$RUNNER_TEMP/pushers.tsv"; } | sort -u); do
+            permission="$(gh api "repos/$REPO/collaborators/$login/permission" --jq .permission)" ||
+              { echo "::error::could not read $login's permission on $REPO, so the release does not publish"; exit 1; }
+            case "$permission" in admin | write) second="$login" && break ;; esac
+          done
+          [ -n "$second" ] ||
+            { echo "::error::no person with write access opened or pushed $ref besides its approver"; exit 1; }
           : > "$RUNNER_TEMP/maintainers.txt"
           for login in $(jq -s -r 'add
             | map(select(.user.type == "User" and (.state == "APPROVED" or .state == "CHANGES_REQUESTED")))
@@ -118,13 +157,16 @@ jobs:
               { echo "::error::could not read $login's permission on $REPO, so the release does not publish"; exit 1; }
             case "$permission" in admin | write) echo "$login" >> "$RUNNER_TEMP/maintainers.txt" ;; esac
           done
-          reviewed="$(jq -s -r --arg head "$head" \
+          # An approval counts only after the PR's last base change, so it reviewed the diff into main.
+          based="$(jq -s -r 'add | map(select(.event == "base_ref_changed") | .created_at) | max // ""' \
+            "$RUNNER_TEMP/events.json")"
+          reviewed="$(jq -s -r --arg head "$head" --arg based "$based" \
             --rawfile maintainers "$RUNNER_TEMP/maintainers.txt" --rawfile writers "$RUNNER_TEMP/writers.txt" 'add
             | ($maintainers | split("\n")) as $maintainers | ($writers | split("\n")) as $writers
             | map(select(.state == "APPROVED" or .state == "CHANGES_REQUESTED"))
             | map(select(.user.type != "User" or (.user.login | IN($maintainers[]))))
             | group_by(.user.login) | map(max_by(.submitted_at))
-            | any(.state == "APPROVED" and .commit_id == $head and .user.type == "User"
+            | any(.state == "APPROVED" and .commit_id == $head and .user.type == "User" and .submitted_at > $based
                 and (.user.login | IN($writers[]) | not))
               and all(.state != "CHANGES_REQUESTED")' \
             "$RUNNER_TEMP/reviews.json")"
@@ -134,7 +176,7 @@ jobs:
             exit 1
           fi
           {
-            echo "sha=$SHA"
+            echo "sha=$release"
             echo "version=${ref#release/v}"
             echo "source=release-pr"
             echo "ref=$ref"
@@ -223,11 +265,73 @@ jobs:
           path: packages/aws-lambda/dist/handler.zip
           if-no-files-found: error
 
+  # The video stage installs Chrome's system libraries with microdnf, so it builds on ARM, not under emulation.
+  lambda-video-image:
+    name: Lambda video image
+    needs: [release-source, lambda-arm64-ffmpeg, lambda-handler-zip]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      EXPECTED_RELEASE_SHA: ${{ needs.release-source.outputs.sha }}
+    if: needs.release-source.outputs.sha != ''
+    outputs:
+      sha256: ${{ steps.image.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.EXPECTED_RELEASE_SHA }}
+          persist-credentials: false
+      - name: Verify immutable release checkout
+        run: |
+          ACTUAL_SHA="$(git rev-parse HEAD)"
+          EXPECTED_COMMIT_SHA="$(git rev-parse "${EXPECTED_RELEASE_SHA}^{commit}")"
+          if [ "$ACTUAL_SHA" != "$EXPECTED_COMMIT_SHA" ]; then
+            echo "::error::Expected release commit $EXPECTED_COMMIT_SHA, checked out $ACTUAL_SHA"
+            exit 1
+          fi
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          no-cache: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: hyperframes-lambda-handler-zip
+          path: dist/lambda-handler-build
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: hf-media-linux-aarch64
+          path: dist/hf-media
+      - name: Build Lambda video image
+        id: image
+        env:
+          EXPECTED_ZIP_SHA256: ${{ needs.lambda-handler-zip.outputs.sha256 }}
+        run: |
+          ACTUAL_ZIP_SHA256="$(sha256sum dist/lambda-handler-build/handler.zip | cut -d' ' -f1)"
+          if [ -z "$EXPECTED_ZIP_SHA256" ] || [ "$ACTUAL_ZIP_SHA256" != "$EXPECTED_ZIP_SHA256" ]; then
+            echo "::error::Lambda handler zip sha256 $ACTUAL_ZIP_SHA256 does not match the build job's $EXPECTED_ZIP_SHA256"
+            exit 1
+          fi
+          bun packages/aws-lambda/scripts/stage-arm64-image.ts --zip=dist/lambda-handler-build/handler.zip \
+            --ffmpeg=dist/hf-media/hf-media-linux-aarch64.tar.gz --out=dist/arm64-image
+          # OCI export needs a docker-container builder; no attestations, so index.json lists one image.
+          docker buildx create --use
+          docker buildx build --progress=plain --platform linux/arm64 --target video \
+            --provenance=false --sbom=false --build-context task=dist/arm64-image/task \
+            --output type=oci,dest=dist/hyperframes-lambda-video-arm64.oci.tar packages/aws-lambda/image
+          echo "sha256=$(sha256sum dist/hyperframes-lambda-video-arm64.oci.tar | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hyperframes-lambda-video-arm64
+          overwrite: true
+          path: dist/hyperframes-lambda-video-arm64.oci.tar
+          if-no-files-found: error
+
   pack:
     name: Build and pack
     outputs:
       bundle_id: ${{ steps.previous_bundle.outputs.artifact || steps.bundle.outputs.artifact-id }}
-    needs: [release-source, lambda-arm64-ffmpeg, lambda-handler-zip]
+    needs: [release-source, lambda-handler-zip, lambda-video-image]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Every build and lifecycle script of the release commit runs here, with a
@@ -343,24 +447,24 @@ jobs:
           rm -rf dist/lambda-handler-build
           bun packages/aws-lambda/scripts/pin-handler-zip.ts
 
+      # lambda-video-image built it on ARM from the same zip sha pinned above.
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         if: steps.previous_bundle.outputs.artifact == ''
         with:
-          name: hf-media-linux-aarch64
-          path: dist/hf-media
+          name: hyperframes-lambda-video-arm64
+          path: dist
 
-      # Built from the zip pinned above. The video stage only copies files, so no emulation is needed.
-      - name: Build Lambda video image
+      - name: Pin Lambda video image
         if: steps.previous_bundle.outputs.artifact == ''
         id: lambda_video_image
+        env:
+          EXPECTED_SHA256: ${{ needs.lambda-video-image.outputs.sha256 }}
         run: |
-          bun packages/aws-lambda/scripts/stage-arm64-image.ts --zip=dist/hyperframes-lambda-handler.zip \
-            --ffmpeg=dist/hf-media/hf-media-linux-aarch64.tar.gz --out=dist/arm64-image
-          # OCI export needs a docker-container builder; no attestations, so index.json lists one image.
-          docker buildx create --use
-          docker buildx build --progress=plain --platform linux/arm64 --target video \
-            --provenance=false --sbom=false --build-context task=dist/arm64-image/task \
-            --output type=oci,dest=dist/hyperframes-lambda-video-arm64.oci.tar packages/aws-lambda/image
+          ACTUAL_SHA256="$(sha256sum dist/hyperframes-lambda-video-arm64.oci.tar | cut -d' ' -f1)"
+          if [ -z "$EXPECTED_SHA256" ] || [ "$ACTUAL_SHA256" != "$EXPECTED_SHA256" ]; then
+            echo "::error::Lambda video image sha256 $ACTUAL_SHA256 does not match the build job's $EXPECTED_SHA256"
+            exit 1
+          fi
           bun packages/aws-lambda/scripts/pin-handler-zip.ts --video-image
 
       - run: bun run verify:packed-manifests
@@ -425,8 +529,8 @@ jobs:
     concurrency:
       group: publish-${{ needs.release-source.outputs.version }}
       cancel-in-progress: false
-    # npm's trusted publishers name this environment, so every trigger uses it. It has no approval step:
-    # stable releases come from reviewed release PRs, and only repository admins may push v*-* tags.
+    # npm's trusted publishers name this environment, so every trigger uses it. A required reviewer
+    # approves each run, on top of the reviewed release PR; only repository admins may push v*-* tags.
     environment: npm-publish
     # This job holds the release credentials, so it runs no code from the
     # release commit: no install, no build, no repo scripts. It checks the

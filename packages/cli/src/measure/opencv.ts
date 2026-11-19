@@ -125,7 +125,10 @@ const isCv = (v: unknown): v is Cv =>
 
 /** Every pinned file present and verified; the missing ones fetched. */
 // fallow-ignore-next-line complexity
-async function ensureOpenCv(onStatus?: (message: string) => void): Promise<void> {
+async function ensureOpenCv(
+  onStatus?: (message: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
   const missing: Pinned[] = [];
   for (const f of FILES) {
     const file = join(OPENCV_DIR, f.name);
@@ -137,7 +140,7 @@ async function ensureOpenCv(onStatus?: (message: string) => void): Promise<void>
     onStatus?.(`Downloading ${f.name} (${Math.round(f.bytes / 1e5) / 10} MB, once)...`);
     const temp = join(OPENCV_DIR, `${f.name}.part-${process.pid}`);
     try {
-      await downloadToFile(f.url, temp);
+      await downloadToFile(f.url, temp, { signal });
       if (!(await verifies(temp, f)))
         throw new Fix(
           `${f.name} did not match its pinned size and sha256`,
@@ -161,9 +164,12 @@ async function ensureOpenCv(onStatus?: (message: string) => void): Promise<void>
 let loaded: Promise<Cv> | null = null;
 
 /** opencv.js, ready to call, with the face models in its file system. Loaded once per process. */
-export function loadOpenCv(onStatus?: (message: string) => void): Promise<Cv> {
+export function loadOpenCv(
+  onStatus?: (message: string) => void,
+  signal?: AbortSignal,
+): Promise<Cv> {
   loaded ??= (async () => {
-    await ensureOpenCv(onStatus);
+    await ensureOpenCv(onStatus, signal);
     const mod: unknown = createRequire(import.meta.url)(join(OPENCV_DIR, "opencv.js"));
     if (typeof mod !== "object" || mod === null) throw new Error("opencv.js did not load");
     // Wait on its init hook, never on the module: it is a thenable that does not settle under await.

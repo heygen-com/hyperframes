@@ -5,18 +5,22 @@ import { realFilePath, resolveWithinProject } from "@hyperframes/studio-server/s
 import { registryRoot } from "../registry/publication.js";
 import {
   changeReceivedRecordAsync,
+  fileIdentity,
   filesListedInFolder,
   receivedLinesAtOrAbove,
 } from "./privateProjectFile.js";
-import { contentHashAsync, hashable, readReceivedContent } from "./receivedContent.js";
-import { isMediaFontOrImage } from "./receivedRender.js";
+import { contentHash, contentHashAsync, hashable, readReceivedContent } from "./receivedContent.js";
+import { isMediaFontOrImage, isMediaName } from "./receivedRender.js";
 
 type Lines = Map<string, string[]>;
 
-/** A listed file a Studio rename, move or delete takes off its path, and its sha256 when its content is checked. */
+/** A listed file a Studio rename, move or delete takes off its path, its sha256 when checked, and where a move puts it. */
 interface Leaving {
   line: string;
   hash?: string;
+  stays?: boolean;
+  identity?: string | null;
+  landsAt?: string;
 }
 
 /** Worked out while the files are on disk. A line whose file is already gone stays, as the sign it is gone. */
@@ -35,24 +39,26 @@ function caseInsensitive(folder: string): boolean {
   return swapped !== folder && existsSync(swapped);
 }
 
-/** `path` spelled as its folder lists it, so a request in another letter case or Unicode form names the listed file. */
+/** `path` spelled as its folder lists it, when the disk opens that same file under the spelling `path` asks for. */
 export function onDiskPath(path: string): string {
   const folder = realFilePath(dirname(path));
   const name = basename(path);
+  const asked = fileIdentity(join(folder, name));
+  if (asked === null) return join(folder, name);
   const folded = name.normalize("NFC").toLowerCase();
+  const sameFile = (entry: string) =>
+    entry.normalize("NFC").toLowerCase() === folded && fileIdentity(join(folder, entry)) === asked;
   try {
     const names = readdirSync(folder);
-    const found =
-      names.find((entry) => entry === name) ??
-      names.find((entry) => entry.normalize("NFC").toLowerCase() === folded);
-    return join(folder, found ?? name);
+    return join(folder, names.includes(name) ? name : (names.find(sameFile) ?? name));
   } catch {
     return join(folder, name);
   }
 }
 
-const keyIn = (folder: string, path: string) =>
-  relative(folder, path).split(sep).join("/").normalize("NFC");
+const pathIn = (folder: string, path: string) => relative(folder, path).split(sep).join("/");
+
+const keyIn = (folder: string, path: string) => pathIn(folder, path).normalize("NFC");
 
 const leavesFolder = (key: string) => key === ".." || key.startsWith("../") || isAbsolute(key);
 
@@ -111,9 +117,42 @@ export async function keepListedInFolder(projectDir: string, target: string): Pr
 async function leaving(line: string, path: string): Promise<Leaving | null> {
   const stat = await lstat(path).catch(() => null);
   if (stat === null) return null;
-  if (isMediaFontOrImage(path) || (stat.isFile() && !hashable(path, stat))) return { line };
+  if (isMediaFontOrImage(path)) return { line };
+  if (stat.isFile() && !hashable(path, stat)) return { line, stays: true };
   const hash = await contentHashAsync(path);
-  return hash === null ? null : { line, hash };
+  return hash === null ? null : { line, hash, stays: true };
+}
+
+interface Arrival {
+  folder: string;
+  line: string;
+}
+
+function arrivalOfMovedLine(
+  root: string,
+  folder: string,
+  fromKey: string,
+  line: string,
+  to: string,
+): Arrival {
+  const rest = line
+    .split("/")
+    .slice(fromKey.split("/").length)
+    .map((segment) => `/${segment}`)
+    .join("");
+  const toKey = pathIn(folder, to);
+  if (leavesFolder(toKey)) return { folder: root, line: pathIn(root, to) + rest };
+  return { folder, line: toKey + rest };
+}
+
+function leaverStayingUntilListedWhereItLands(
+  folder: string,
+  left: Leaving,
+  arrived: Arrival,
+): Leaving {
+  const landsAt = join(arrived.folder, arrived.line);
+  const stays = left.stays === true && !isMediaName(left.line) && isMediaName(landsAt);
+  return { ...left, stays, identity: fileIdentity(join(folder, left.line)), landsAt };
 }
 
 export async function plannedReceivedChange(
@@ -129,12 +168,13 @@ export async function plannedReceivedChange(
     for (const line of lines.filter(at)) {
       const left = await leaving(line, join(folder, line));
       if (left === null) continue;
-      push(change.leaving, folder, left);
-      if (to === undefined) continue;
-      const rest = line.normalize("NFC").slice(fromKey.length);
-      const toKey = keyIn(folder, to);
-      if (leavesFolder(toKey)) push(change.arriving, root, keyIn(root, to) + rest);
-      else push(change.arriving, folder, toKey + rest);
+      if (to === undefined) {
+        push(change.leaving, folder, left);
+        continue;
+      }
+      const arrived = arrivalOfMovedLine(root, folder, fromKey, line, to);
+      push(change.leaving, folder, leaverStayingUntilListedWhereItLands(folder, left, arrived));
+      push(change.arriving, arrived.folder, arrived.line);
     }
   }
   return change;
@@ -168,13 +208,54 @@ export async function recordReceivedArrivals(change: ReceivedChange): Promise<Re
   return { ...change, leaving, arriving };
 }
 
+const holdsLeaver = (path: string, left: Leaving) =>
+  (!!left.identity && fileIdentity(path) === left.identity) ||
+  (left.hash !== undefined && contentHash(path) === left.hash);
+
+/** Whether the file `left` lists has left its old path for the one its move planned. */
+const movedAsPlanned = (folder: string, left: Leaving): left is Leaving & { landsAt: string } =>
+  left.landsAt !== undefined &&
+  !holdsLeaver(join(folder, left.line), left) &&
+  holdsLeaver(left.landsAt, left);
+
+/** Whether a non-media file sits at its planned destination and a record lists it there by another line. */
+function listedWhereItLands(folder: string, left: Leaving): boolean {
+  if (left.landsAt === undefined || left.hash === undefined) return true;
+  if (!movedAsPlanned(folder, left)) return false;
+  const { landsAt } = left;
+  return receivedLinesAtOrAbove(dirname(landsAt)).some(({ folder: at, lines }) =>
+    lines.some((line) => join(at, line) === landsAt && (at !== folder || line !== left.line)),
+  );
+}
+
 export const dropReceivedLeavers = (change: ReceivedChange): Promise<void> =>
   dropLines(
-    new Map([...change.leaving].map(([folder, lines]) => [folder, lines.map((left) => left.line)])),
+    new Map(
+      [...change.leaving].map(([folder, lines]) => [
+        folder,
+        lines.flatMap((left) =>
+          !left.stays && listedWhereItLands(folder, left) ? [left.line] : [],
+        ),
+      ]),
+    ),
   );
 
-export const dropReceivedArrivals = (change: ReceivedChange): Promise<void> =>
-  dropLines(change.arriving);
+/** A refused move's new lines go, but for a file another move already put there. */
+export function dropReceivedArrivals(change: ReceivedChange): Promise<void> {
+  const landed = new Set(
+    [...change.leaving].flatMap(([folder, lines]) =>
+      lines.filter((left) => movedAsPlanned(folder, left)).flatMap((left) => left.landsAt ?? []),
+    ),
+  );
+  return dropLines(
+    new Map(
+      [...change.arriving].map(([folder, lines]) => [
+        folder,
+        lines.filter((line) => !landed.has(join(folder, line))),
+      ]),
+    ),
+  );
+}
 
 /**
  * Lists in the project's own record each of `paths` that no record lists and that holds content kept as received, so

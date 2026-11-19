@@ -84,6 +84,7 @@ export function renderObservabilityTelemetryPayload(
     observabilityExtractVfrPreflightCount: extraction?.vfrPreflightCount,
     observabilityExtractCacheHits: extraction?.cacheHits,
     observabilityExtractCacheMisses: extraction?.cacheMisses,
+    observabilityExtractCachePublishFailures: extraction?.cachePublishFailures,
     observabilityInitDurationMs: init?.initDurationMs,
     observabilityInitTweenCount: init?.tweenCount,
     observabilityInitElementCount: init?.elementCount,

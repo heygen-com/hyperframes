@@ -14,6 +14,8 @@ import {
   resolveTweenDuration,
 } from "../utils/globalTimeCompiler";
 import { toCompositionTime } from "../player/store/timelineElement";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
+import { frameGsap, frameQuery } from "./gsapFrameSnapshot";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -361,6 +363,7 @@ export function computeElementPercentage(
 
 /** Safely retrieve the GSAP runtime from the preview iframe. */
 export function getIframeGsap(iframe: HTMLIFrameElement | null): IframeGsap | null {
+  if (iframe && previewFrameOpaque(iframe)) return frameGsap(iframe);
   if (!iframe?.contentWindow) return null;
   try {
     const gsap = (iframe.contentWindow as unknown as { gsap?: IframeGsap }).gsap;
@@ -375,6 +378,7 @@ export function queryIframeElement(
   iframe: HTMLIFrameElement | null,
   selector: string,
 ): Element | null {
+  if (iframe && previewFrameOpaque(iframe)) return frameQuery(iframe, selector);
   try {
     return iframe?.contentDocument?.querySelector(selector) ?? null;
   } catch {

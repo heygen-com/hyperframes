@@ -8,6 +8,8 @@ import {
   motionBlurAttributeEdits,
   readMotionBlurSettings,
 } from "@hyperframes/core/motion-blur-settings";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
 
 export interface CompositionRoot {
   id: string;
@@ -50,17 +52,45 @@ export function withEdits(
 
 /** The blur attributes on the live preview's composition root: what actually runs, after an undo or an outside edit too. */
 export function readPreviewRootAttributes(iframe: HTMLIFrameElement | null): RootAttributes | null {
+  if (iframe && previewFrameOpaque(iframe)) {
+    void askSealedRoot(iframe);
+    return sealedRoots.get(iframe) ?? null;
+  }
   try {
     const root = iframe?.contentDocument?.querySelector("[data-composition-id]");
-    if (!root) return null;
-    const found: Record<string, string> = {};
-    for (const name of Object.values(MOTION_BLUR_ATTR)) {
-      const value = root.getAttribute(name);
-      if (value !== null) found[name] = value;
-    }
-    return found;
+    return root ? blurAttributes((name) => root.getAttribute(name)) : null;
   } catch {
     return null;
+  }
+}
+
+function blurAttributes(read: (name: string) => string | null | undefined): RootAttributes {
+  const found: Record<string, string> = {};
+  for (const name of Object.values(MOTION_BLUR_ATTR)) {
+    const value = read(name);
+    if (typeof value === "string") found[name] = value;
+  }
+  return found;
+}
+
+const sealedRoots = new WeakMap<HTMLIFrameElement, RootAttributes>();
+const askingRoot = new WeakSet<HTMLIFrameElement>();
+
+/** A sealed frame's root, asked one request at a time; the polled read returns the last answer. */
+async function askSealedRoot(iframe: HTMLIFrameElement): Promise<void> {
+  if (askingRoot.has(iframe)) return;
+  askingRoot.add(iframe);
+  try {
+    const [root] = (await queryPreviewElements(iframe, "[data-composition-id]"))?.matches ?? [];
+    const [found] = root ? ((await describePreviewElements(iframe, [root.handle])) ?? []) : [];
+    if (!found) sealedRoots.delete(iframe);
+    else
+      sealedRoots.set(
+        iframe,
+        blurAttributes((name) => new Map(found.attributes).get(name)),
+      );
+  } finally {
+    askingRoot.delete(iframe);
   }
 }
 

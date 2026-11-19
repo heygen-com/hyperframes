@@ -9,6 +9,7 @@ import {
   createFigmaClient,
   FigmaClientError,
   nodeToHtml,
+  ownProjectDir,
   parseFigmaRef,
   readBindings,
   resolveBindings,
@@ -18,7 +19,8 @@ import {
   type NodeToHtmlResult,
   type RasterizeRequest,
 } from "@hyperframes/core/figma";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 
 function escapeAttr(value: string): string {
@@ -68,7 +70,6 @@ export async function runComponentImport(
     console.warn(
       `component dir compositions/components/${name} already exists — overwriting (rename the figma frame for a separate import)`,
     );
-  mkdirSync(componentDir, { recursive: true });
 
   const { html, frozenAssets, failedRasterize } = await rasterizeFallback(
     mapped,
@@ -76,9 +77,10 @@ export async function runComponentImport(
     componentDir,
     deps,
   );
+  ownProjectDir(deps.projectDir, componentDir);
 
   const htmlFile = join(componentDir, `${name}.html`);
-  writeFileSync(htmlFile, html + "\n");
+  replaceFileAtomically(htmlFile, html + "\n");
 
   const registryItem = {
     name,
@@ -99,7 +101,7 @@ export async function runComponentImport(
       })),
     ],
   };
-  writeFileSync(
+  replaceFileAtomically(
     join(componentDir, "registry-item.json"),
     JSON.stringify(registryItem, null, 2) + "\n",
   );

@@ -19,6 +19,7 @@ import {
   closeSync,
 } from "node:fs";
 import { basename, join } from "node:path";
+import type { GoogleGenAIOptions } from "@google/genai";
 import type sharpType from "sharp";
 import type { CatalogedAsset } from "./assetCataloger.js";
 import type { DesignTokens } from "./types.js";
@@ -27,6 +28,7 @@ import {
   loadSharp,
   type OptionalPackageModules,
 } from "../utils/optionalPackages.js";
+import { noteProjectProviderKey, visionCredential } from "../utils/dotEnv.js";
 
 const DEFAULT_VISION_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -107,6 +109,25 @@ function vertexCredentials(raw: string): Record<string, unknown> | string {
   return isServiceAccountKey(parsed)
     ? parsed
     : "HYPERFRAMES_VERTEX_SERVICE_ACCOUNT is not a service-account key; skipped vision captioning.";
+}
+
+type VertexAuthClient = NonNullable<
+  NonNullable<GoogleGenAIOptions["googleAuthOptions"]>["authClient"]
+>;
+
+// Visible ASCII only: a token is sent as a header value, so no whitespace or line breaks.
+const BEARER_TOKEN = /^[\x21-\x7e]+$/;
+
+// A caller that mints a short-lived token passes it instead of a key file. Google's auth library
+// asks a supplied client only for request headers, so the token is used as given and never refreshed.
+function vertexAccessTokenAuth(token: string): { authClient: VertexAuthClient } | string {
+  if (!BEARER_TOKEN.test(token)) {
+    return "HYPERFRAMES_VERTEX_ACCESS_TOKEN is not an access token; skipped vision captioning.";
+  }
+  const client = {
+    getRequestHeaders: async () => new Headers({ authorization: `Bearer ${token}` }),
+  };
+  return { authClient: client as unknown as VertexAuthClient };
 }
 
 // The SDK builds the request host from the location and the request path from the model id.
@@ -334,13 +355,14 @@ export async function captionImagesWithGemini(
   }
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  // Vertex authenticates with a service account and a project instead of an API key. Server
-  // deployments have those; they often do not have a working Gemini API key, and a rejected
-  // key is indistinguishable from an unset one in the output — every request simply returns
-  // nothing and the capture reports "0 images captioned".
+  // Vertex authenticates with a project plus a service account or a short-lived access token,
+  // instead of an API key. Server deployments have those; they often do not have a working
+  // Gemini API key, and a rejected key is indistinguishable from an unset one in the output —
+  // every request simply returns nothing and the capture reports "0 images captioned".
   const vertexProject = process.env.HYPERFRAMES_VERTEX_PROJECT_ID;
+  const vertexAccessToken = process.env.HYPERFRAMES_VERTEX_ACCESS_TOKEN;
   const vertexServiceAccount = process.env.HYPERFRAMES_VERTEX_SERVICE_ACCOUNT;
-  const useVertex = Boolean(vertexProject && vertexServiceAccount);
+  const useVertex = Boolean(vertexProject && (vertexAccessToken || vertexServiceAccount));
   if (!openRouterKey && !useVertex && !geminiKey) {
     reportOutcome();
     return geminiCaptions;
@@ -367,6 +389,9 @@ export async function captionImagesWithGemini(
     gemini: process.env.HYPERFRAMES_GEMINI_MODEL || "gemini-3.1-flash-lite-preview",
   }[provider];
   const requestTimeoutMs = resolveVisionRequestTimeoutMs();
+  for (const name of visionCredential() ?? []) {
+    await noteProjectProviderKey(name, `images go to that key's ${providerName} account`);
+  }
 
   progress("design", `Captioning images with ${providerName} vision...`);
   try {
@@ -438,20 +463,35 @@ export async function captionImagesWithGemini(
       }
       let ai: InstanceType<typeof GoogleGenAI>;
       if (provider === "vertex") {
-        // Re-narrow for TS; `useVertex` already guaranteed both are set.
-        if (!vertexProject || !vertexServiceAccount) return geminiCaptions;
-        const credentials = vertexCredentials(vertexServiceAccount);
-        if (typeof credentials === "string") {
-          warnings.push(credentials);
-          internalError = true;
-          reportOutcome();
-          return geminiCaptions;
+        // Re-narrow for TS; `useVertex` already guaranteed a project and one credential.
+        if (!vertexProject) return geminiCaptions;
+        // The token wins when both are set: it is the narrower credential.
+        let googleAuthOptions: { authClient: VertexAuthClient } | { credentials: object };
+        if (vertexAccessToken) {
+          const auth = vertexAccessTokenAuth(vertexAccessToken);
+          if (typeof auth === "string") {
+            warnings.push(auth);
+            internalError = true;
+            reportOutcome();
+            return geminiCaptions;
+          }
+          googleAuthOptions = auth;
+        } else {
+          if (!vertexServiceAccount) return geminiCaptions;
+          const credentials = vertexCredentials(vertexServiceAccount);
+          if (typeof credentials === "string") {
+            warnings.push(credentials);
+            internalError = true;
+            reportOutcome();
+            return geminiCaptions;
+          }
+          googleAuthOptions = { credentials };
         }
         ai = new GoogleGenAI({
           vertexai: true,
           project: vertexProject,
           location: vertexLocation,
-          googleAuthOptions: { credentials },
+          googleAuthOptions,
         });
       } else {
         // Unreachable when geminiKey is unset (guarded above); re-narrow for TS.

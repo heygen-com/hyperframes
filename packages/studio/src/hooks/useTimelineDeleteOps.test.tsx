@@ -156,7 +156,8 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     expect(body.targets).toHaveLength(elements.length);
   });
 
-  it("a refused delete names its count: 1 clip, 2 clips", async () => {
+  // fails without the fix: the refused delete dropped the server's status, so telemetry could not say why it failed.
+  it("a refused delete names its count and the server's status: 1 clip, 2 clips", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL) =>
@@ -179,8 +180,8 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     });
 
     expect(showToast.mock.calls.map(([message]) => message)).toEqual([
-      "Failed to delete 1 clip from index.html",
-      "Failed to delete 2 clips from index.html",
+      "Failed to delete 1 clip from index.html (500): {}",
+      "Failed to delete 2 clips from index.html (500): {}",
     ]);
   });
 
