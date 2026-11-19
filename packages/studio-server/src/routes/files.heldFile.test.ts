@@ -176,20 +176,15 @@ function holdFor(file: string, ms: number) {
 }
 
 /** The longest the event loop went without running a 5 ms timer while `work` ran. */
-async function longestStall(work: () => Promise<unknown>) {
-  let last = performance.now();
-  let longest = 0;
-  const tick = setInterval(() => {
-    const now = performance.now();
-    longest = Math.max(longest, now - last);
-    last = now;
-  }, 5);
+/** How many times `work` blocked the whole process with a synchronous wait (a retry's `Atomics.wait` sleep). */
+async function syncWaits(work: () => Promise<unknown>) {
+  const wait = vi.spyOn(Atomics, "wait");
   try {
     await work();
+    return wait.mock.calls.length;
   } finally {
-    clearInterval(tick);
+    wait.mockRestore();
   }
-  return longest;
 }
 
 describe("an element edit while Windows briefly holds the file", () => {
@@ -241,9 +236,7 @@ describe("an element edit while Windows briefly holds the file", () => {
     const { file, remove } = fixture("held.html");
     writeFileSync(file, `${edited}<p id="gone">tag</p>`);
     holdFor(file, 1_500);
-    expect(
-      await longestStall(async () => expect((await remove("gone")).status).toBe(200)),
-    ).toBeLessThan(100);
+    expect(await syncWaits(async () => expect((await remove("gone")).status).toBe(200))).toBe(0);
   }, 10_000);
 
   it("answers 423 busy once the hold outlasts the wait, reports it once, and leaves the file as it was", async () => {
