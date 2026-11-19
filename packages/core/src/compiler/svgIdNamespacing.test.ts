@@ -671,7 +671,13 @@ describe("rewriteSvgIdReferencesInCss charges its growth while it builds", () =>
 
   // fails without the fix: the id's decoded length was charged against, not the escaped token it replaced.
   const renamedClip = [
-    { name: "id", localName: "id", namespaceURI: null, before: "clip", after: "m--clip-namespaced" },
+    {
+      name: "id",
+      localName: "id",
+      namespaceURI: null,
+      before: "clip",
+      after: "m--clip-namespaced",
+    },
   ];
   it.each([
     [`#\\63 lip { fill: red; }`, new Map([["clip", "m--clip-namespaced"]]), []],

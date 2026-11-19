@@ -157,9 +157,9 @@ export function rewriteSvgSelectors(
   const namedIds = tokens
     .selectorIdTokens(selector)
     .filter((id) => replacements.has(id) || index.renamedIdAlternatives.has(id));
-  const rewrittenIds = tokens.replaceSelectorIdTokens(selector, namedIds, (id) => {
+  const rewrittenIds = tokens.replaceSelectorIdTokens(selector, namedIds, (id, token) => {
     const replacement = replacements.get(id) ?? index.renamedIdAlternatives.get(id)!;
-    charge?.(replacement.length - id.length - 1);
+    charge?.(replacement.length - token.length);
     return replacement;
   });
   return tokens.replaceSelectorAttributeTokens(rewrittenIds, rewriteAttribute);
