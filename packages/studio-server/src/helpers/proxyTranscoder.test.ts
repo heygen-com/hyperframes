@@ -429,7 +429,7 @@ describe("resolveProxy on a long source", () => {
 
   const CLAPS = [2, 14.5, 15.2, 29.9, 30.4, 44.6, 47];
   const FPS = 30;
-  const soundMinusFlashPerClap = (path: string): number[] => {
+  const soundMinusFlashPerClap = (path: string, claps: number[]): number[] => {
     let at = 0;
     let lit = false;
     const flashes: number[] = [];
@@ -455,32 +455,33 @@ describe("resolveProxy on a long source", () => {
     const sounds = quiet.flatMap((match, index) =>
       match[1] === "end" && quiet[index + 1]?.[1] === "start" ? [Number(match[2])] : [],
     );
-    expect(flashes).toHaveLength(CLAPS.length);
-    expect(sounds).toHaveLength(CLAPS.length);
+    expect(flashes).toHaveLength(claps.length);
+    expect(sounds).toHaveLength(claps.length);
     return flashes.map((flash, index) => sounds[index]! - flash);
   };
 
   it.skipIf(!realFfmpeg || !findFfBinary("ffprobe")).each([
-    ["picture and sound together", 0, 0],
-    ["picture starting late", 0.4, 0],
-    ["sound starting late", 0, 0.4],
+    ["picture and sound together", 0, 0, String(FPS), LONG_SECONDS, CLAPS],
+    ["picture starting late", 0.4, 0, String(FPS), LONG_SECONDS, CLAPS],
+    ["sound starting late", 0, 0.4, String(FPS), LONG_SECONDS, CLAPS],
+    ["at 29.97 frames a second over two minutes", 0, 0, "30000/1001", 120, [2, 61.3, 118]],
   ])(
     "keeps every clap within a frame of the source across the seams, %s",
-    async (_case, pictureDelay, soundDelay) => {
-      const during = (seconds: number) =>
-        CLAPS.map((clap) => `between(t,${clap},${clap + seconds})`).join("+");
+    async (_case, pictureDelay, soundDelay, rate, seconds, claps) => {
+      const during = (length: number) =>
+        claps.map((clap) => `between(t,${clap},${clap + length})`).join("+");
       const { sourcePath, proxyPath } = await realCopyOf("claps.mp4", (path) =>
         execFileSync(realFfmpeg!, [
           ...["-v", "error", "-itsoffset", String(pictureDelay), "-f", "lavfi", "-i"],
-          `color=black:s=32x32:r=${FPS}:d=${LONG_SECONDS},drawbox=c=white:t=fill:enable='${during(2 / FPS)}'`,
+          `color=black:s=32x32:r=${rate}:d=${seconds},drawbox=c=white:t=fill:enable='${during(2 / FPS)}'`,
           ...["-itsoffset", String(soundDelay), "-f", "lavfi", "-i"],
-          `aevalsrc='(${during(0.03)})*sin(2*PI*1000*t)':s=48000:d=${LONG_SECONDS}`,
+          `aevalsrc='(${during(0.03)})*sin(2*PI*1000*t)':s=48000:d=${seconds}`,
           ...["-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-pix_fmt", "yuv420p"],
           ...["-c:a", "aac", path],
         ]),
       );
-      const source = soundMinusFlashPerClap(sourcePath);
-      soundMinusFlashPerClap(proxyPath).forEach((offset, index) =>
+      const source = soundMinusFlashPerClap(sourcePath, claps);
+      soundMinusFlashPerClap(proxyPath, claps).forEach((offset, index) =>
         expect(Math.abs(offset - source[index]!)).toBeLessThanOrEqual(1 / FPS),
       );
     },

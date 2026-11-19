@@ -662,9 +662,10 @@ async function encodeInChunks(
     writeFileSync(
       listPath,
       concatListText(
-        pieces.map((piece) =>
-          JOIN_FROM_CACHE_FOLDER ? basename(piece) : piece.replace(/\\/g, "/"),
-        ),
+        pieces.map((piece, index) => ({
+          path: JOIN_FROM_CACHE_FOLDER ? basename(piece) : piece.replace(/\\/g, "/"),
+          durationSeconds: ranges[index]!.lengthSeconds,
+        })),
       ),
     );
     await concat(listPath, tempPath);

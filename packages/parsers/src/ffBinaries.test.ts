@@ -712,6 +712,16 @@ describe("concatListText", () => {
     }
   });
 
+  it("places an entry given a duration exactly that long after the one before", async () => {
+    const { concatListText } = await importFresh();
+    expect(concatListText([{ path: "/a/it's.mp4", durationSeconds: 15 }, "/b/c.mp4"])).toBe(
+      "file '/a/it'\\''s.mp4'\nduration 15\nfile '/b/c.mp4'\n",
+    );
+    expect(() => concatListText([{ path: "/p\n.mp4", durationSeconds: 1 }])).toThrow(
+      "line break or NUL",
+    );
+  });
+
   // fails without the fix: a tab inside the quotes is read fine by ffmpeg, but the writer refused it.
   it("keeps a tab or DEL in a path, which do not end a list line", async () => {
     const { concatListText } = await importFresh();
