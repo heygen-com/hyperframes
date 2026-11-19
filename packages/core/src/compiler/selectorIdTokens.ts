@@ -203,6 +203,21 @@ function markUnguardedOffsets(selector: string): boolean[] {
  * full replacement text (including its own leading `#`, if any) to splice
  * in.
  */
+/** The `#id` values a selector names, read as `replaceSelectorIdTokens` reads them. */
+export function selectorIdTokens(selector: string): string[] {
+  const ids: string[] = [];
+  if (!selector.includes("#")) return ids;
+  const unguarded = markUnguardedOffsets(selector);
+  for (let index = 0; index < selector.length; index += 1) {
+    if (!unguarded[index] || selector[index] !== "#") continue;
+    const token = decodeCssIdentifierAt(selector, index + 1);
+    if (!token) continue;
+    ids.push(token.value);
+    index = token.end - 1;
+  }
+  return ids;
+}
+
 export function replaceSelectorIdTokens(
   selector: string,
   candidateIds: readonly string[],

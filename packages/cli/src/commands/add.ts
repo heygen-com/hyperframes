@@ -14,6 +14,7 @@ export const examples: Example[] = [
 
 import { existsSync, readFileSync } from "node:fs";
 import { parseHTML } from "linkedom";
+import { firstTemplateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { join, resolve, relative, sep } from "node:path";
 import {
   isProjectRootMissing,
@@ -127,7 +128,7 @@ export function primaryInstalledTarget(item: RegistryItem): string {
 /** The id a composition file's root declares (inside its `<template>` when templated); a host must carry the same one. */
 export function compositionRootId(html: string): string | undefined {
   const { document } = parseHTML(html);
-  const content = document.querySelector("template")?.content ?? document;
+  const content = firstTemplateContent(document) ?? document;
   return (
     content.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? undefined
   );

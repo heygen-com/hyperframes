@@ -196,6 +196,14 @@ describe("installEditingAgent", () => {
           "set-audio-group-attribute",
           "assign-audio-group",
           "gsap-snapshot",
+          "motion-path-home",
+          "max-z-index",
+          "crop-lift",
+          "edit-element",
+          "gsap-set",
+          "patch-tweens",
+          "soft-reload",
+          "assets-unloaded",
         ],
       },
     });
@@ -521,6 +529,31 @@ describe("installEditingAgent", () => {
     });
   });
 
+  it("re-runs a sent script through the port, and refuses a request carrying anything extra", async () => {
+    const script = `var __timelines = {}; __timelines["main"] = 1;`;
+    document.body.innerHTML = `<div data-composition-id="main"></div><script>${script}</script>`;
+    const frame = window as unknown as Record<string, unknown>;
+    Object.assign(frame, { gsap: { set: () => {} }, __timelines: { main: {} } });
+    frame.__hfForceTimelineRebind = () => {};
+    const port = connectedPort();
+    const params = { script, time: 0, sets: [], authored: [], timing: [] };
+
+    const extra = { ...params, keys: ["main"] };
+    expect(await ask(port, { v: 1, id: 1, kind: "soft-reload", params: extra })).toMatchObject({
+      id: 1,
+      ok: false,
+    });
+    expect(document.querySelector("script")?.textContent).toBe(script);
+    // The sent script registers on a local, so the frame reads its timeline empty for now.
+    expect(await ask(port, { v: 1, id: 2, kind: "soft-reload", params })).toMatchObject({
+      id: 2,
+      ok: true,
+      result: { result: "verify-failed" },
+    });
+    expect(document.querySelector("script")?.textContent).toBe(`(function(){${script}\n})();`);
+    for (const key of ["gsap", "__timelines", "__hfForceTimelineRebind"]) delete frame[key];
+  });
+
   it("answers computed styles for the element a selector names", async () => {
     document.body.innerHTML = `<p id="title" style="color: rgb(1, 2, 3); opacity: 0.5">Hi</p>
       <canvas data-hf-preview-video-canvas style="opacity: 0.25"></canvas>
@@ -555,6 +588,36 @@ describe("installEditingAgent", () => {
     expect(Object.keys((reply.result as { styles: object }).styles)).toEqual(
       expect.arrayContaining(["--Brand_Color", "--x2"]),
     );
+  });
+
+  it("patches a set tween through the port, and refuses a patch with an unknown field", async () => {
+    document.body.innerHTML = `<div id="box"></div>`;
+    const set = {
+      vars: { x: 0 },
+      targets: () => [document.getElementById("box")],
+      duration: () => 0,
+    };
+    Object.assign(window, { __timelines: { main: { getChildren: () => [set], time: () => 0 } } });
+    const port = connectedPort();
+    const patch = { selector: "#box", change: { kind: "set", props: { x: 12 } } };
+
+    const applied = await ask(port, {
+      v: 1,
+      id: 1,
+      kind: "patch-tweens",
+      params: { patches: [patch], seek: true },
+    });
+    const refused = await ask(port, {
+      v: 1,
+      id: 2,
+      kind: "patch-tweens",
+      params: { patches: [{ ...patch, script: "x" }], seek: true },
+    });
+
+    expect(applied).toMatchObject({ id: 1, ok: true, result: { patched: true } });
+    expect(set.vars.x).toBe(12);
+    expect(refused).toMatchObject({ id: 2, ok: false, error: { code: "invalid-params" } });
+    Reflect.deleteProperty(window, "__timelines");
   });
 
   it("replies failed when a handler rejects or its result cannot be cloned", async () => {

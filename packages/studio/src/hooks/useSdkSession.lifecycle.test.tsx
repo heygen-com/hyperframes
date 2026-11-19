@@ -797,6 +797,7 @@ describe("useSdkSession unavailable telemetry", () => {
     expect(trackMock).toHaveBeenCalledWith("sdk_session_unavailable", {
       stage: "open",
       error: "unparseable composition",
+      error_name: "Error",
     });
     await act(async () => root.unmount());
   });

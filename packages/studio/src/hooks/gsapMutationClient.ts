@@ -1,6 +1,6 @@
 import { studioWriteHeaders } from "../utils/studioFileVersion";
 import { studioApiFetch } from "../utils/studioApiFetch";
-import { heldFileWordsOf } from "../utils/studioSaveDiagnostics";
+import { heldFileWordsOf, withStatus } from "../utils/studioSaveDiagnostics";
 
 export class GsapPreviewConvergenceError extends Error {}
 export class GsapOwnershipProtocolError extends GsapPreviewConvergenceError {}
@@ -43,7 +43,8 @@ export async function rollbackOwnedMutation(
   );
   if (!response.ok) {
     throw new Error(
-      (await heldFileWordsOf(response, targetPath)) ?? `Failed to restore ${targetPath}`,
+      (await heldFileWordsOf(response, targetPath)) ??
+        withStatus(`Failed to restore ${targetPath}`, response),
     );
   }
   const result = (await response.json()) as { restored?: unknown; conflict?: unknown };
@@ -127,7 +128,9 @@ async function postOwnedGsapMutation(
   const held = response.ok ? null : await heldFileWordsOf(response, filePath);
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new GsapPreviewConvergenceError(held ?? readMutationError(payload, fallback));
+    throw new GsapPreviewConvergenceError(
+      held ?? withStatus(readMutationError(payload, fallback), response),
+    );
   }
   return readMutationStatus(payload);
 }

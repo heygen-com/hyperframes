@@ -423,6 +423,13 @@ function rememberBox(step, state, m) {
 }
 
 /** Under auto-record, size keys hold their nearest value before the first and after the last. */
+/** An element that gains keyframes mid-sequence is keyframed from then on: its settles wait out Studio's swap. */
+export function keyedBy(ctx, step, state) {
+  const writesKeys = step.do === "addkey" || (step.do === "drag" && state.autokey);
+  const c = ctx[step.element ?? "A"];
+  if (writesKeys && c && !c.keys) c.keys = true;
+}
+
 export function heldSize(sizeKeys, time) {
   const times = [...sizeKeys.keys()].sort((a, b) => a - b);
   if (!times.length) return undefined;
@@ -496,6 +503,7 @@ async function measureSequence({ spec, dir, files, evidence }, session, control,
   for (const step of spec.steps) {
     if (step.do !== "drag") await collect();
     steps.push(await driveStep(ctx, step, state));
+    keyedBy(ctx, step, state);
     if (spec.settle) await settleStep(ctx.A, steps, step, state, watcher);
   }
   // Every saving step saves once (a nudge burst saves once); wait for all of them. An undo may

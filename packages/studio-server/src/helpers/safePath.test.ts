@@ -173,8 +173,8 @@ describe("isWritableProjectFile and the project's package.json", () => {
 
   it("writes as before when package.json is missing or not JSON", () => {
     const projectDir = createProjectDir();
-    expect(isWritableProjectFile(projectDir, join(projectDir, "server.js"))).toBe(true);
+    expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(true);
     writeFileSync(join(projectDir, "package.json"), "{ not json");
-    expect(isWritableProjectFile(projectDir, join(projectDir, "server.js"))).toBe(true);
+    expect(isWritableProjectFile(projectDir, join(projectDir, "run.js"))).toBe(true);
   });
 });

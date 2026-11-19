@@ -167,7 +167,9 @@ const TOOL_CONFIG_FAMILIES = [
   /^mise(?:\.[^.]+)*\.toml$/,
   /^simple-git-hooks\.(?:json|[cm]?js)$/,
   /^[jt]sconfig\..+\.json$/,
+  /\.gypi?$/,
 ];
+const RUN_BY_PACKAGE_MANAGER_DEFAULT = new Set(["server.js"]);
 // Tools load these on their own: vite.config.ts, jest.config.json, docker-compose.yml, gulpfile.js and the like.
 const TOOL_CONFIG =
   /\.config\.(?:[cm]?[jt]sx?|json[c5]?|ya?ml|toml)$|^(?:gulp|grunt)file\.[cm]?[jt]s$/;
@@ -225,7 +227,7 @@ export function toolTrustedFileKind(relPath: string): ToolTrustedKind | null {
   if (LOCK_FILES.has(name)) return "lock-file";
   if (isToolConfig(name, segments)) return "tool-config";
   if (AGENT_INSTRUCTIONS.test(name)) return "agent-instructions";
-  if (PROGRAM.test(name)) return "program";
+  if (PROGRAM.test(name) || RUN_BY_PACKAGE_MANAGER_DEFAULT.has(name)) return "program";
   return null;
 }
 

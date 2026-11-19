@@ -10,7 +10,11 @@ import {
 } from "../components/editor/manualEditsDom";
 import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { markScenesStale } from "../player/sceneSwap";
-import { createDomEditSaveQueue, type DomEditSaveDrainResult } from "../utils/domEditSaveQueue";
+import {
+  createDomEditSaveQueue,
+  type DomEditSaveDrainResult,
+  type DomEditSaveQueueOpenEvent,
+} from "../utils/domEditSaveQueue";
 import {
   flushStudioPendingEdits,
   hasStudioPendingEdits,
@@ -26,7 +30,10 @@ import {
 import { settleNestedReads } from "../utils/gsapSoftReload";
 import { readProjectFileContent } from "../utils/studioFileHistory";
 import { usePlayerStore } from "../player";
-import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
+import {
+  syncStoredAutomationFromFrame,
+  syncStoredAutomationFromPreview,
+} from "../player/lib/automationStoreSync";
 
 /** The restore payload the undo/redo preview-sync consumes (from the history store). */
 interface HistoryPreviewRestore {
@@ -51,6 +58,18 @@ export interface UsePreviewPersistenceParams {
   activeCompPathRef: React.MutableRefObject<string | null>;
   /** Called to reload the preview after undo/redo or external file changes. */
   reloadPreview: () => void;
+}
+
+function saveQueuePaused(event: DomEditSaveQueueOpenEvent): string {
+  trackStudioEvent("save_queue_paused", {
+    source: "dom_edit",
+    ...event.errorCodes,
+    status_code: event.statusCode,
+    consecutive_failures: event.consecutiveFailures,
+  });
+  return event.statusCode === 409
+    ? "Save paused: this file changed elsewhere. Reload and review the latest version before reapplying your edit."
+    : "Auto-save is paused. Check your connection.";
 }
 
 function readIframeDocument(iframe: HTMLIFrameElement): Document | null {
@@ -107,6 +126,11 @@ async function clearLegacyStudioMotionFile(
 
 // ── Hook ──
 
+const projectFileReader = (projectId: string | null) => (path: string) =>
+  projectId
+    ? readProjectFileContent(projectId, path)
+    : Promise.reject(new Error("No project is open to read nested files from."));
+
 export function usePreviewPersistence({
   showToast,
   readOptionalProjectFile: _readOptionalProjectFile,
@@ -131,18 +155,9 @@ export function usePreviewPersistence({
   if (!domEditSaveQueueRef.current) {
     domEditSaveQueueRef.current = createDomEditSaveQueue({
       onOpen: (event) => {
-        const message =
-          event.statusCode === 409
-            ? "Save paused: this file changed elsewhere. Reload and review the latest version before reapplying your edit."
-            : "Auto-save is paused. Check your connection.";
+        const message = saveQueuePaused(event);
         setDomEditSaveQueuePaused(message);
         showToastRef.current(message, "error");
-        trackStudioEvent("save_queue_paused", {
-          source: "dom_edit",
-          error_message: event.errorMessage,
-          status_code: event.statusCode,
-          consecutive_failures: event.consecutiveFailures,
-        });
       },
       onReset: () => {
         setDomEditSaveQueuePaused(null);
@@ -219,16 +234,12 @@ export function usePreviewPersistence({
       // attributes onto the live DOM and re-runs the timeline at the SAME playhead,
       // falling back to reloadPreview for anything structural (split/delete undo),
       // multi-file, sub-comp, or a permanent soft-reload failure.
-      const projectId = usePlayerStore.getState().timelineProjectId;
       const nestedFiles = await settleNestedReads(
         readUndoNestedFiles(
           previewIframeRef.current,
           activeCompPathRef.current,
           restore.files,
-          (path) =>
-            projectId
-              ? readProjectFileContent(projectId, path)
-              : Promise.reject(new Error("No project is open to read nested files from.")),
+          projectFileReader(usePlayerStore.getState().timelineProjectId),
         ),
       );
       const held = heldPreviewDoc();
@@ -253,7 +264,7 @@ export function usePreviewPersistence({
       // player store keeps its own copy and that copy is what the automation lanes
       // draw — so without this an undone envelope edit stayed invisible until a
       // reload. The full path above waits for the reloaded preview to report instead.
-      syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
+      syncStoredAutomationFromFrame(previewIframeRef.current);
     },
     [previewIframeRef, activeCompPathRef, reloadPreview, heldPreviewDoc],
   );

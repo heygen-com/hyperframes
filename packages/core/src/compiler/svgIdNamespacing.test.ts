@@ -1,5 +1,17 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
+
+const hashCalls = vi.hoisted(() => [] as string[]);
+vi.mock("../canary", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../canary")>();
+  return {
+    ...actual,
+    fnv1a32: (input: string) => {
+      hashCalls.push(input);
+      return actual.fnv1a32(input);
+    },
+  };
+});
 import {
   SVG_AUTHORED_ID_ATTR,
   namespaceCollidingSvgIds,
@@ -428,4 +440,184 @@ it("finalizes initially referenced keepers while allowing first-use references a
     "script-only",
   ]);
   expect(roots[1]!.querySelector("g")!.getAttribute("clip-path")).toBe("url(#b--clip)");
+});
+
+function scopedDocument(specs: ScopeSpec[], after = "") {
+  const { document } = parseHTML(
+    `<!DOCTYPE html><html><body>${specs.map((spec) => `<div class="scope">${spec.html}</div>`).join("")}${after}</body></html>`,
+  );
+  const roots = [...document.querySelectorAll("div.scope")];
+  const scopes = specs.map((spec, index) => ({ root: roots[index]!, namespace: spec.namespace }));
+  return {
+    document: document as unknown as Parameters<typeof namespaceCollidingSvgIds>[0],
+    scopes,
+  };
+}
+
+function countMapSets<T>(run: () => T): { result: T; sets: number } {
+  const set = vi.spyOn(Map.prototype, "set");
+  try {
+    const result = run();
+    return { result, sets: set.mock.calls.length };
+  } finally {
+    set.mockRestore();
+  }
+}
+
+// fails without the fix: each scope copied the whole document rename table, scopes x ids entries.
+it("shares one document rename table across scopes instead of copying it per scope", () => {
+  const ids = Array.from({ length: 200 }, (_, index) => `c${index}`);
+  const defs = ids.map((id) => `<clipPath id="${id}"/><rect clip-path="url(#${id})"/>`).join("");
+  const { document, scopes } = scopedDocument(
+    [
+      { namespace: "first", html: `<svg>${defs}</svg>` },
+      ...ids.map((_, index) => ({ namespace: `m${index}`, html: "<i></i>" })),
+    ],
+    `<svg>${ids.map((id) => `<clipPath id="${id}"/>`).join("")}</svg>`,
+  );
+
+  const { result: idMaps, sets } = countMapSets(() => namespaceCollidingSvgIds(document, scopes));
+
+  expect(idMaps[200]!.get("c7")).toBe("first--c7");
+  expect(idMaps[200]!.size).toBe(200);
+  expect(sets).toBeLessThan(10_000);
+});
+
+// fails without the fix: every selector rebuilt a table of every renamed id.
+it("looks up only the ids a stylesheet names", () => {
+  const idMap = new Map(Array.from({ length: 2000 }, (_, index) => [`c${index}`, `m--c${index}`]));
+  const css = Array.from(
+    { length: 300 },
+    (_, index) => `.r${index} #c${index} { fill: url(#c${index}); }`,
+  ).join("\n");
+
+  const { result, sets } = countMapSets(() => rewriteSvgIdReferencesInCss(css, idMap));
+
+  expect(result).toContain(".r5 :is(#c5, #m--c5) { fill: url(#m--c5); }");
+  expect(sets).toBeLessThan(20_000);
+});
+
+// fails without the fix: every read of a scope's size walked every id the scope renames.
+it("reads a scope's size without walking its ids, however many styles ask", () => {
+  const ids = Array.from({ length: 500 }, (_, index) => `c${index}`);
+  const defs = ids.map((id) => `<clipPath id="${id}"/><rect clip-path="url(#${id})"/>`).join("");
+  const { document, scopes } = scopedDocument([
+    { namespace: "a", html: `<svg>${defs}</svg>` },
+    { namespace: "b", html: `<svg>${defs}</svg>` },
+  ]);
+  const idMap = namespaceCollidingSvgIds(document, scopes)[1]!;
+  const has = vi.spyOn(Map.prototype, "has");
+  let lookups: number;
+  try {
+    for (let i = 0; i < 500; i += 1) rewriteSvgIdReferencesInCss(`.s${i} { color: red; }`, idMap);
+    lookups = has.mock.calls.length;
+  } finally {
+    has.mockRestore();
+  }
+
+  expect(idMap.size).toBe(500);
+  expect(lookups).toBeLessThan(500);
+});
+
+// fails without the fix: every attribute selector compared its name against the scope's whole alias list, and an
+// exact match still checked one copy per element that referenced the same symbol.
+it("rewrites attribute selectors in linear time however many fragment references the mount holds", () => {
+  const rewrite = (n: number, target: (i: number) => string) => {
+    let reads = 0;
+    const references = Array.from({ length: n }, (_, i) => {
+      const before = `#${target(i)}`;
+      return {
+        name: "href",
+        localName: "href",
+        namespaceURI: null,
+        get before() {
+          reads += 1;
+          return before;
+        },
+        after: `#m--${target(i)}`,
+      };
+    });
+    const css = Array.from({ length: n }, (_, i) => `[href="#${target(i)}"] { fill: red; }`).join(
+      "\n",
+    );
+    return { css: rewriteSvgIdReferencesInCss(css, new Map(), references), reads: () => reads };
+  };
+  const work = (n: number, target: (i: number) => string) => rewrite(n, target).reads();
+  const distinct = (i: number) => `g${i}`;
+  const sameSymbol = () => "g";
+
+  expect(rewrite(8, distinct).css).toContain(`:is([href="#g5"], [href="#m--g5"]) { fill: red; }`);
+  expect(rewrite(8, sameSymbol).css).toContain(`:is([href="#g"], [href="#m--g"]) { fill: red; }`);
+  // About 2 when linear, about 4 when every selector checks every alias.
+  expect(work(800, distinct) / work(400, distinct)).toBeLessThan(2.6);
+  expect(work(800, sameSymbol) / work(400, sameSymbol)).toBeLessThan(2.6);
+});
+
+// fails without the fix: the whole namespace, however long, prefixed every renamed id.
+it("caps a long namespace's prefix, each mount's renamed ids still distinct", () => {
+  const long = (end: string) => `${"x".repeat(5000)}${end}`;
+  const { idMaps } = namespace([
+    { namespace: "a", html: CLIPPED },
+    { namespace: long("1"), html: CLIPPED },
+    { namespace: long("2"), html: CLIPPED },
+  ]);
+
+  const one = idMaps[1]!.get("clip")!;
+  const two = idMaps[2]!.get("clip")!;
+  expect(one.length).toBeLessThan(64);
+  expect(two.length).toBeLessThan(64);
+  expect(two).not.toBe(one);
+});
+
+const attributeBytes = (document: { querySelectorAll(selector: string): Iterable<Element> }) =>
+  [...document.querySelectorAll("*")].reduce(
+    (sum, el) =>
+      sum + [...el.attributes].reduce((n, attr) => n + attr.name.length + attr.value.length + 4, 0),
+    0,
+  );
+
+// fails without the fix: the pass wrote renamed ids and their records without charging them.
+it("charges every attribute byte it adds", () => {
+  const { document, scopes } = scopedDocument([
+    { namespace: "a", html: CLIPPED },
+    { namespace: "b", html: CLIPPED },
+    { namespace: "c", html: CLIPPED },
+  ]);
+  const before = attributeBytes(document);
+  const charged: number[] = [];
+
+  namespaceCollidingSvgIds(document, scopes, undefined, (_scope, bytes) => charged.push(bytes));
+
+  const total = charged.reduce((sum, bytes) => sum + bytes, 0);
+  expect(total).toBeGreaterThan(0);
+  expect(total).toBe(attributeBytes(document) - before);
+});
+
+it("stops at the first charge the budget refuses", () => {
+  const { document, scopes } = scopedDocument([
+    { namespace: "a", html: CLIPPED },
+    { namespace: "b", html: CLIPPED },
+  ]);
+
+  expect(() =>
+    namespaceCollidingSvgIds(document, scopes, undefined, () => {
+      throw new Error("too large");
+    }),
+  ).toThrow("too large");
+});
+
+// fails without the fix: every renamed id re-sanitized and re-hashed its mount's whole namespace.
+it("hashes a long namespace once per mount, not once per renamed id", () => {
+  const ids = Array.from({ length: 200 }, (_, index) => `c${index}`);
+  const defs = ids.map((id) => `<clipPath id="${id}"/><rect clip-path="url(#${id})"/>`).join("");
+  const { document, scopes } = scopedDocument([
+    { namespace: "a", html: `<svg>${defs}</svg>` },
+    { namespace: "x".repeat(5000), html: `<svg>${defs}</svg>` },
+  ]);
+  hashCalls.length = 0;
+
+  const idMaps = namespaceCollidingSvgIds(document, scopes);
+
+  expect(idMaps[1]!.size).toBe(200);
+  expect(hashCalls.length).toBe(1);
 });

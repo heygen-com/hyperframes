@@ -11,7 +11,7 @@ on:
       - "packages/aws-lambda/image/**"
       - "packages/aws-lambda/hf-media-linux-aarch64.sha256"
       - "packages/aws-lambda/scripts/stage-arm64-image.ts"
-      # A @sparticuz/chromium bump or a ZIP layout change must re-stage the image.
+      # A dependency bump or a ZIP layout change must re-stage the image.
       - "packages/aws-lambda/package.json"
       - "packages/aws-lambda/scripts/build-zip.ts"
       - "packages/aws-lambda/scripts/runtimeLock.ts"
@@ -129,8 +129,14 @@ jobs:
           reply=$(curl -sS --retry 30 --retry-all-errors --retry-delay 1 \
             -d '{}' http://localhost:9001/2015-03-31/functions/function/invocations)
           docker logs hf-smoke
-          echo "$reply"
+          jq 'del(.textPng)' <<<"$reply"
           jq -e '.arch == "arm64" and .screenshotBytes > 0 and (.ffmpeg | startswith("ffmpeg version 7.0.2"))' <<<"$reply"
+          mkdir text && jq -S .fonts <<<"$reply" >text/fonts.json && jq -r .textPng <<<"$reply" | base64 -d >text/text.png
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: text-arm64
+          path: text/
+          retention-days: 7
       - name: The Lambda runtime loads the handler
         run: |
           docker run -d --name hf-video -p 9000:8080 hf-video:ci
@@ -139,3 +145,46 @@ jobs:
           docker logs hf-video
           echo "$reply"
           grep -q 'no recognised Action' <<<"$reply"
+
+  # The x86 function: the handler ZIP on the same base, running its @sparticuz/chromium.
+  x86-text:
+    name: x86 text render
+    needs: handler-zip
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: handler-zip
+          path: artifacts
+      - name: The handler ZIP renders the text page under the Lambda runtime
+        run: |
+          unzip -q artifacts/handler.zip -d task
+          cp packages/aws-lambda/image/smoke-video.mjs task/
+          base=$(sed -n 's/^ARG BASE=//p' packages/aws-lambda/image/Dockerfile)
+          docker run -d --name hf-x86 --platform linux/amd64 -p 9002:8080 -v "$PWD/task:/var/task:ro" \
+            "$base" smoke-video.handler
+          reply=$(curl -sS --retry 30 --retry-all-errors --retry-delay 1 \
+            -d '{}' http://localhost:9002/2015-03-31/functions/function/invocations)
+          docker logs hf-x86
+          jq 'del(.textPng)' <<<"$reply"
+          jq -e '.arch == "x64" and .screenshotBytes > 0' <<<"$reply"
+          mkdir text && jq -S .fonts <<<"$reply" >text/fonts.json && jq -r .textPng <<<"$reply" | base64 -d >text/text.png
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: text-x86
+          path: text/
+          retention-days: 7
+
+  # --video-arch picks which of the two renders a stack's frames, so each line must resolve to the same fonts on both.
+  text-compare:
+    name: Text fonts match across arches
+    needs: [image, x86-text]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: text-*
+      - run: cat text-arm64/fonts.json && diff text-x86/fonts.json text-arm64/fonts.json

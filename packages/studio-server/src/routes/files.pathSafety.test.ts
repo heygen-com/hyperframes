@@ -279,6 +279,11 @@ describe("files other programs run or trust", () => {
     "run.\u017fh",
     "Make\ufb01le",
     "jest.config.json",
+    "binding.gyp",
+    "BINDING.GYP.",
+    "deps/common.gypi",
+    "server.js",
+    "Server.JS",
   ];
   const put = (app: Hono, path: string, headers: Record<string, string> = {}) =>
     app.request(fileUrl(path), { method: "PUT", headers, body: "planted" });
@@ -359,6 +364,101 @@ describe("files other programs run or trust", () => {
     expect(existsSync(join(project, "compositions"))).toBe(false);
   });
 
+  describe("a folder move or delete and the scripts package.json runs", () => {
+    const move = (app: Hono, from: string, newPath: string) =>
+      app.request(fileUrl(from), {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ newPath }),
+      });
+    const runsScripts = (project: string) =>
+      writeFileSync(
+        join(project, "package.json"),
+        JSON.stringify({
+          main: "lib/index.js",
+          bin: { tool: "tools/cli.js" },
+          scripts: { gen: "tsx scripts/gen.ts --out dist" },
+        }),
+      );
+    const plant = (project: string, file: string, content = "mine") => {
+      mkdirSync(join(project, file, ".."), { recursive: true });
+      writeFileSync(join(project, file), content);
+    };
+
+    it("refuses to delete or move a folder holding a script package.json names", async () => {
+      const { app, project } = fixture();
+      runsScripts(project);
+      for (const script of ["scripts/gen.ts", "lib/index.js", "tools/cli.js"])
+        plant(project, script);
+      for (const folder of ["scripts", "lib", "tools"]) {
+        const deleted = await app.request(fileUrl(folder), { method: "DELETE" });
+        expect(deleted.status).toBe(403);
+        expect(await deleted.json()).toMatchObject({ why: "protected_path" });
+        const moved = await move(app, folder, `${folder}-aside`);
+        expect(moved.status).toBe(403);
+        expect(await moved.json()).toMatchObject({ why: "protected_path" });
+      }
+      expect((await move(app, "scripts", "kept/scripts")).status).toBe(403);
+      for (const script of ["scripts/gen.ts", "lib/index.js", "tools/cli.js"]) {
+        expect(readFileSync(join(project, script), "utf8")).toBe("mine");
+      }
+    });
+
+    it("refuses a folder move that would put a file where package.json runs a script", async () => {
+      const { app, project } = fixture();
+      runsScripts(project);
+      plant(project, "tmp/gen.ts", "planted");
+      plant(project, "tmp/sub/index.js", "planted");
+      plant(project, "tmp2/GEN.TS", "planted");
+      for (const [from, to] of [
+        ["tmp", "scripts"],
+        ["tmp", "Scripts"],
+        ["tmp", "scripts."],
+        ["tmp", "scripts "],
+        ["tmp", "ｓcripts"],
+        ["tmp2", "scripts"],
+        ["tmp/sub", "lib"],
+      ] as const) {
+        const response = await move(app, from, to);
+        expect(response.status, `${from} -> ${to}`).toBe(403);
+        expect(await response.json()).toMatchObject({ why: "protected_path" });
+      }
+      expect(readdirSync(project).sort()).toEqual(["inside.txt", "package.json", "tmp", "tmp2"]);
+      expect(readFileSync(join(project, "tmp", "gen.ts"), "utf8")).toBe("planted");
+    });
+
+    it("refuses a folder move that would put config.toml under mise", async () => {
+      const { app, project } = fixture();
+      plant(project, "cfg/config.toml", "[tasks]");
+      for (const [from, to] of [
+        ["cfg", "mise"],
+        ["cfg", "MISE"],
+        ["cfg", "mise."],
+        ["cfg", "tools/mise"],
+      ] as const) {
+        const response = await move(app, from, to);
+        expect(response.status, `${from} -> ${to}`).toBe(403);
+        expect(await response.json()).toMatchObject({ why: "protected_path" });
+      }
+      expect(readFileSync(join(project, "cfg", "config.toml"), "utf8")).toBe("[tasks]");
+      expect((await move(app, "cfg", "settings")).status).toBe(200);
+      expect(readFileSync(join(project, "settings", "config.toml"), "utf8")).toBe("[tasks]");
+    });
+
+    it("still moves and deletes ordinary folders, script assets included", async () => {
+      const { app, project } = fixture();
+      runsScripts(project);
+      plant(project, "scenes/a.html", "<div></div>");
+      plant(project, "scenes/gen.ts", "export {}");
+      plant(project, "assets/scene.js", "export {}");
+      expect((await move(app, "scenes", "compositions")).status).toBe(200);
+      expect(readFileSync(join(project, "compositions", "gen.ts"), "utf8")).toBe("export {}");
+      expect((await move(app, "assets", "media/assets")).status).toBe(200);
+      expect((await app.request(fileUrl("compositions"), { method: "DELETE" })).status).toBe(200);
+      expect(existsSync(join(project, "compositions"))).toBe(false);
+    });
+  });
+
   describe("a folder holding a received-files record", () => {
     const record = (project: string, folder: string, files: string[]) => {
       mkdirSync(join(project, folder, ".hyperframes"), { recursive: true });
@@ -404,6 +504,34 @@ describe("files other programs run or trust", () => {
       );
       expect((await move(app, "sub/.hyperframes", "dist")).status).toBe(403);
     });
+  });
+
+  it("refuses the files a package manager runs without a script in package.json", async () => {
+    const { app, project } = fixture();
+    writeFileSync(join(project, "package.json"), '{"scripts":{"dev":"npx hyperframes preview"}}');
+    writeFileSync(join(project, "addon.gyp"), "{}");
+    for (const path of ["binding.gyp", "server.js", "server.js::$DATA", "deps/common.gypi "]) {
+      for (const method of ["POST", "PUT"]) {
+        const response = await app.request(fileUrl(path), { method, body: "content" });
+        expect(response.status).toBe(403);
+        expect(await response.json()).toMatchObject({ why: "protected_path" });
+      }
+    }
+    const rename = await app.request(fileUrl("inside.txt"), {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ newPath: "Server.JS." }),
+    });
+    const duplicate = await app.request("http://localhost/projects/demo/duplicate-file", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "addon.gyp" }),
+    });
+    for (const response of [rename, duplicate]) {
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ why: "protected_path" });
+    }
+    expect(readdirSync(project).sort()).toEqual(["addon.gyp", "inside.txt", "package.json"]);
   });
 
   it("still writes compositions, stylesheets, script assets and uploads", async () => {

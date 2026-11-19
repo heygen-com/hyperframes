@@ -34,8 +34,15 @@ import { layersOf } from "./editingLayers";
 import { drawDrafts } from "./editingDraft";
 import { restoreAttributes } from "./editing/restoreAttributes";
 import { stopWatchingGeometry, watchGeometry } from "./editing/watchGeometry";
+import { maxZIndex } from "./editing/maxZIndex";
 import { gestureStart } from "./editingGestureStart";
 import { gsapSnapshot } from "./editing/gsapSnapshot";
+import { motionPathHome } from "./editing/motionPathHome";
+import { cropLift } from "./editing/cropLift";
+import { gsapSet } from "./editing/gsapSet";
+import { patchTweens } from "./editing/patchTween";
+import { softReload } from "./editing/softReload";
+import { previewAssetsUnloaded } from "../lottieReadiness";
 import {
   getLogicalOpacity,
   markedForStudio,
@@ -54,6 +61,7 @@ import { assignAudioGroup } from "./editing/assignAudioGroup";
 import { audioMeter } from "./editing/audioMeter";
 import { documentMarkup } from "./editing/documentMarkup";
 import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
+import { editElement } from "./editing/editElement";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -212,6 +220,14 @@ const HANDLERS: Handlers = {
   "set-audio-group-attribute": setAudioGroupAttribute,
   "assign-audio-group": (params) => assignAudioGroup(params, elementForHandle),
   "gsap-snapshot": () => gsapSnapshot(),
+  "motion-path-home": ({ selector }) => motionPathHome(selector),
+  "max-z-index": () => maxZIndex(),
+  "crop-lift": cropLift,
+  "edit-element": editElement,
+  "gsap-set": gsapSet,
+  "patch-tweens": patchTweens,
+  "soft-reload": softReload,
+  "assets-unloaded": () => ({ unloaded: previewAssetsUnloaded(document, window.__hfLottie) }),
 };
 
 function serve(port: MessagePort): void {

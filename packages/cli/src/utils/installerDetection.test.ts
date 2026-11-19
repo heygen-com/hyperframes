@@ -1,3 +1,4 @@
+import { homeCliCommand } from "./homeCliCommand.js";
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
@@ -214,12 +215,12 @@ describe("runningInstall: which binary runs, and the command that updates it", (
     [
       "npx",
       "/home/me/.npm/_npx/4f1c2a/node_modules/hyperframes/dist/cli.js",
-      "npx hyperframes@latest",
+      homeCliCommand("latest"),
     ],
     [
       "npx",
       "/tmp/bunx-1000-hyperframes@latest/node_modules/hyperframes/dist/cli.js",
-      "npx hyperframes@latest",
+      homeCliCommand("latest"),
     ],
     [
       "project",
@@ -231,8 +232,8 @@ describe("runningInstall: which binary runs, and the command that updates it", (
       "/home/me/video/node_modules/.pnpm/hyperframes@0.9.5/node_modules/hyperframes/dist/cli.js",
       "npm install hyperframes@0.9.8",
     ],
-    ["workspace", "/home/me/hyperframes/packages/cli/dist/cli.js", "npx hyperframes@latest"],
-    ["unknown", "/opt/tools/hyperframes/cli.js", "npx hyperframes@latest"],
+    ["workspace", "/home/me/hyperframes/packages/cli/dist/cli.js", homeCliCommand("latest")],
+    ["unknown", "/opt/tools/hyperframes/cli.js", homeCliCommand("latest")],
   ])("classifies a %s install at %s; update with: %s", async (channel, path, command) => {
     const run = await runningAt(path);
     expect(run.install).toEqual({ channel, path });
@@ -328,14 +329,14 @@ describe("shadowingInstall: the older global install a plain `npx hyperframes` r
     return pkg;
   }
 
-  it("moves an older project-local install with the project's own manager", async () => {
+  it("reports an older project-local install without a global update command", async () => {
     const root = layout(null);
     onPathInstead(root, "app/node_modules/hyperframes");
     writeFileSync(join(root, "app/bun.lock"), "");
     const { shadowingInstall } = await import("./installerDetection.js");
     expect(shadowingInstall("0.9.29")).toEqual({
       version: "0.9.8",
-      updateCommand: "bun add hyperframes@0.9.29",
+      updateCommand: null,
     });
   });
 
@@ -355,7 +356,7 @@ describe("shadowingInstall: the older global install a plain `npx hyperframes` r
     expect(process.env["PATH"]).toBe(npxBin);
     expect(shadowingInstall("0.9.29")).toEqual({
       version: "0.9.8",
-      updateCommand: "bun add hyperframes@0.9.29",
+      updateCommand: null,
     });
   });
 

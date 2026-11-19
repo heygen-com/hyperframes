@@ -1,6 +1,12 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Context, Hono, Next } from "hono";
 import { getMimeType } from "./mime.js";
+import { fetchAgain } from "./fetchAgain.js";
+import { insertBeforeCloseTag } from "@hyperframes/core/compiler";
+import {
+  createSealedPreviewSeekReapplyScript,
+  htmlHasStudioPositionEdits,
+} from "./manualEditsRenderScript.js";
 import {
   isProxyWait,
   PREVIEW_EXPOSED_HEADERS,
@@ -79,12 +85,19 @@ const PROXY_PREFLIGHT_ANSWER = {
   Vary: "Origin",
 };
 
+function withStudioEditsReappliedAfterSeeks(html: string): string {
+  if (!htmlHasStudioPositionEdits(html)) return html;
+  const tag = `<script>${createSealedPreviewSeekReapplyScript()}\n//# sourceURL=hyperframes://position-seek-reapply</script>`;
+  return insertBeforeCloseTag(html, "body", tag) ?? `${html}${tag}`;
+}
+
 async function underToken(res: Response, headers: Headers, projectId: string, token: string) {
   if (res.status !== 200 || !headers.get("content-type")?.startsWith("text/html"))
     return new Response(res.body, { status: res.status, headers });
   const base = previewBase(projectId);
   headers.delete("content-length");
-  const html = (await res.text()).replaceAll(base, `${base}~${token}/`);
+  const rebased = (await res.text()).replaceAll(base, `${base}~${token}/`);
+  const html = withStudioEditsReappliedAfterSeeks(rebased);
   return new Response(html, { status: res.status, headers });
 }
 
@@ -112,7 +125,7 @@ export function serveTokenPreviewPaths(
       return new Response(null, { status: 204, headers: PROXY_PREFLIGHT_ANSWER });
     const req = new Request(url, { method: c.req.method, headers: c.req.raw.headers });
     frameTokenLoads.add(req);
-    const res = await api.fetch(req);
+    const res = await fetchAgain(api, req);
     return underToken(res, tokenPathHeaders(c, res, url.pathname), projectId, token);
   };
 }

@@ -5,6 +5,7 @@ describe("createStaticVerificationPage background", () => {
   function makeSession(options: Record<string, unknown>) {
     const send = vi.fn().mockResolvedValue(undefined);
     const verificationPage = {
+      mainFrame: () => ({}),
       evaluateOnNewDocument: vi.fn().mockResolvedValue(undefined),
       setViewport: vi.fn().mockResolvedValue(undefined),
       goto: vi.fn().mockResolvedValue(undefined),

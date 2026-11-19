@@ -1,0 +1,45 @@
+name: Retire the io.github MCP listing
+
+# One run, by hand, after com.heygen/hyperframes is listed: marks every version of the old
+# io.github.heygen-com/hyperframes listing deprecated, so registry clients stop resolving it. The registry
+# takes that only from its GitHub login. Delete this workflow once it has run.
+
+permissions: {}
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deprecate:
+    if: github.ref == 'refs/heads/main'
+    environment: mcp-registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      id-token: write
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.9
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Download and verify mcp-publisher
+        run: |
+          set -euo pipefail
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob \
+            --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$archive"
+          tar xzf "$archive" mcp-publisher
+          rm -f "$archive" "$archive.sigstore.json"
+
+      - name: Deprecate io.github.heygen-com/hyperframes
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher status --status deprecated --all-versions --yes \
+            --message "Moved to com.heygen/hyperframes" io.github.heygen-com/hyperframes

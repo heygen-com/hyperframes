@@ -17,6 +17,7 @@ import { c } from "../ui/colors.js";
 import { trackBillingCheckoutFailed, trackBillingWaitTimeout } from "../telemetry/events.js";
 import { failCommand, setCommandExitCode } from "../utils/commandResult.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
+import { parsePositiveIntegerArg } from "../utils/integerArg.js";
 import { defineCommand } from "../utils/defineCommand.js";
 
 const describe = (p: Plan | null) =>
@@ -177,9 +178,11 @@ export default defineCommand({
       console.error(c.error("Use `billing subscribe` or `billing add-credits`."));
       failCommand();
     }
-    const needed = Number(args.needed) || undefined;
+    const needed = parsePositiveIntegerArg(args.needed, "--needed");
+    const timeoutSeconds =
+      parsePositiveIntegerArg(args.timeout, "--timeout", { unit: "seconds" }) ?? 600;
     const skill = checkoutSkill(args.skill);
-    const deadline = Date.now() + (Number(args.timeout) || 600) * 1000;
+    const deadline = Date.now() + timeoutSeconds * 1000;
     const stop = new AbortController();
     const atDeadline = setTimeout(() => stop.abort(), deadline - Date.now());
     atDeadline.unref?.();

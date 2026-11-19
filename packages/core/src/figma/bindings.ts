@@ -8,10 +8,11 @@
  * color at the next brand refresh. Never match by value or name.
  */
 
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { replaceFileAtomically } from "../atomicFile";
 import { readJsonlValues } from "./jsonl";
-import { mediaDir } from "./manifest";
+import { mediaDir, ownMediaDir } from "./manifest";
+import { appendWithoutFollowing } from "./projectFiles";
 
 const BINDINGS_FILE = "figma-bindings.jsonl";
 
@@ -69,8 +70,8 @@ function readLines(projectDir: string): unknown[] {
 }
 
 function appendLine(projectDir: string, record: unknown): void {
-  mkdirSync(mediaDir(projectDir), { recursive: true });
-  appendFileSync(bindingsPath(projectDir), JSON.stringify(record) + "\n");
+  ownMediaDir(projectDir);
+  appendWithoutFollowing(bindingsPath(projectDir), JSON.stringify(record) + "\n");
 }
 
 export function readBindings(projectDir: string): FigmaBindingRecord[] {
@@ -92,9 +93,9 @@ export function upsertBindings(projectDir: string, records: FigmaBindingRecord[]
   const survivors = readLines(projectDir).filter(
     (line) => !(isBindingRecord(line) && incoming.has(line.figmaId)),
   );
-  mkdirSync(mediaDir(projectDir), { recursive: true });
+  ownMediaDir(projectDir);
   const lines = [...survivors, ...records].map((r) => JSON.stringify(r)).join("\n");
-  writeFileSync(bindingsPath(projectDir), lines.length > 0 ? lines + "\n" : "");
+  replaceFileAtomically(bindingsPath(projectDir), lines.length > 0 ? lines + "\n" : "");
 }
 
 /** Exact-ID lookup, checking alias chains too. Never value/name matching. */

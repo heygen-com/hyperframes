@@ -11,6 +11,7 @@ import { clipTimingStart, resolveClipTimingBasis } from "../../hooks/gsapShared"
 import { toAuthoredStart } from "../store/timelineElement";
 import { computeResizePreview } from "../components/timelineClipDragPreview";
 import type { TimelineElement } from "../store/playerStore";
+import { readTimelineText } from "./timelineText";
 import {
   MAX_PLAYBACK_RATE,
   MIN_PLAYBACK_RATE,
@@ -311,6 +312,66 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
     });
     expect(element.link).toBe("lk-1");
     expect(element.syncOrigin).toBe("lk-1");
+  });
+});
+
+describe("a sealed preview's text rows", () => {
+  const LOOK = {
+    fontFamily: "Inter",
+    fontWeight: "700",
+    color: "rgb(255, 255, 255)",
+    backgroundColor: "rgba(0, 0, 0, 0)",
+  };
+  const rowFor = (text: unknown) =>
+    createTimelineElementFromManifestClip({
+      clip: {
+        id: "title",
+        label: "Title",
+        kind: "element",
+        tagName: "h1",
+        start: 0,
+        duration: 5,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+        text,
+      },
+      fallbackIndex: 0,
+    });
+
+  it("draws a text layer from the words and look in the runtime's clip message", () => {
+    expect(rowFor({ value: "Title", ...LOOK }).text).toEqual({
+      value: "Title",
+      fontFamily: "Inter",
+      fontWeight: "700",
+      color: "rgb(255, 255, 255)",
+      background: undefined,
+    });
+  });
+
+  it("keeps the clip and drops a text field that is missing, not text, or over the runtime's cap", () => {
+    for (const text of [
+      { value: "Title" },
+      { ...LOOK, value: 5 },
+      { ...LOOK, value: "x".repeat(201) },
+      { ...LOOK, value: "Title", color: "x".repeat(2_001) },
+      "Title",
+    ]) {
+      const row = rowFor(text);
+      expect(row.id).toBe("title");
+      expect(row.text).toBeUndefined();
+    }
+  });
+
+  it("leaves an open preview's own text rows uncapped", () => {
+    const title = document.createElement("h1");
+    title.textContent = "x".repeat(500);
+    document.body.appendChild(title);
+
+    expect(readTimelineText(title)?.value).toHaveLength(500);
+    title.remove();
   });
 });
 
