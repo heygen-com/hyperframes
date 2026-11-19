@@ -357,6 +357,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - run: bun run check:cli-lazy-deps
+      - run: bun run check:studio-server-sync-fs
 
   # The shards need only the built CLI; building it apart keeps them from waiting on Build's packing checks.
   edit-accuracy-cli:

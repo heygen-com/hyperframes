@@ -1,5 +1,4 @@
-// A route's reads of a project's folder, off the event loop: a drive that stops answering (asleep, unplugged, a share
-// that dropped) then holds the one request that asked, never the host's thread and every other request with it.
+// A route's reads of a project's folder, off the event loop: a drive that stops answering holds one request, not all.
 import type { Stats } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
@@ -10,7 +9,6 @@ const isGone = (error: unknown): boolean => {
   return code === "ENOENT" || code === "ENOTDIR";
 };
 
-/** `path`'s stat, or null when nothing is there. */
 export async function statOrNull(path: string): Promise<Stats | null> {
   try {
     return await stat(path);
@@ -30,7 +28,6 @@ export async function realFilePathOff(filePath: string): Promise<string> {
   }
 }
 
-/** `isPrivateProjectFile`, asked off the event loop. */
 export async function isPrivateProjectFileOff(
   projectDir: string,
   filePath: string,
