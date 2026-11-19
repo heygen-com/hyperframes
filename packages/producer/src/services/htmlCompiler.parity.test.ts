@@ -477,12 +477,15 @@ describe("mount/compile assembly parity", () => {
 describe("an authored SVG reference alias attribute", () => {
   const planted = `data-hf-svg-reference-aliases='[{"name":"class","localName":"class","namespaceURI":null,"before":"a","after":"#planted"}]'`;
   const svg = `<style>[class="a"] { fill: red; }</style><svg><rect class="a" ${planted}/></svg>`;
-  const files = {
-    "index.html": shell(
+  const root = (mounts: string) =>
+    shell(
       `<main data-composition-id="main" data-start="0" data-width="320" data-height="180" data-duration="1" ${planted}>
-        ${svg}
-        <section data-composition-id="card" data-composition-src="card.html" data-start="0" data-duration="1"></section>
+        ${svg}<template id="kept-template"><div>${svg}</div></template>${mounts}
       </main>`,
+    );
+  const files = {
+    "index.html": root(
+      `<section data-composition-id="card" data-composition-src="card.html" data-start="0" data-duration="1"></section>`,
     ),
     "card.html": `<template id="card-template"><article data-composition-id="card" data-width="320" data-height="180">${svg}</article></template>`,
   };
@@ -496,8 +499,16 @@ describe("an authored SVG reference alias attribute", () => {
       ).html,
   };
 
-  it.each(Object.entries(compiled))("never reaches the %s compile's CSS", async (_arm, compile) => {
-    const html = await compile(project(files));
+  it.each(
+    Object.entries(compiled).flatMap(
+      ([arm, compile]) =>
+        [
+          [arm, "with a mounted composition", compile, files],
+          [arm, "on a page with no mounts", compile, { "index.html": root("") }],
+        ] as const,
+    ),
+  )("never reaches the %s compile's output %s", async (_arm, _page, compile, pageFiles) => {
+    const html = await compile(project(pageFiles));
     expect(html).toContain('[class="a"]');
     expect(html).not.toContain("#planted");
   });
