@@ -47,7 +47,7 @@ COPY packages/aws-lambda/scripts/ scripts/
 
 RUN printf '{"name":"hf-lambda-probe","version":"1.0.0","type":"module"}\n' > package.json \
     && npm install --no-audit --no-fund --omit=optional \
-        @sparticuz/chromium@148.0.0 \
+        @sparticuz/chromium@153.0.0 \
         puppeteer-core@^24.39.1 \
         tsx@^4.21.0
 

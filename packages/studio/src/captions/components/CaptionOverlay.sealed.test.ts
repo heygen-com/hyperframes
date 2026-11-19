@@ -2,10 +2,8 @@
 import { act, createElement, Fragment, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
-// The frame's real runtime agent, serving the opaque frame from this document.
-import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
-import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
+import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 import { previewRequest } from "../../player/lib/previewChannel";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
 import { useCaptionDetection } from "../../hooks/useCaptionDetection";
@@ -39,14 +37,6 @@ type PortRequest = { id?: unknown; kind?: unknown; params?: unknown };
 
 /** A frame Studio cannot read, whose runtime is the real editing agent over this document. */
 function opaqueFrame() {
-  const frame: Record<string, unknown> = {};
-  const iframe = detachedFakeIframe(frame);
-  Object.defineProperty(iframe, "contentDocument", { value: null });
-  Object.defineProperty(frame, "document", {
-    get: () => {
-      throw new DOMException("blocked", "SecurityError");
-    },
-  });
   let pick: ((request: PortRequest) => boolean) | null = null;
   const heldIds = new Set<unknown>();
   const held: Array<() => void> = [];
@@ -67,20 +57,7 @@ function opaqueFrame() {
     };
     return end as unknown as MessagePort;
   };
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", {
-          source: frame as unknown as Window,
-          data,
-          ports: ports.map(tap),
-        }),
-      ),
-  } as unknown as Window;
-  const agent = installMarkedEditingAgent(parent);
-  frame.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
-  closers.push(() => agent.dispose());
+  const { iframe } = sealedPreviewFrame({ wrapHandedOverPort: tap });
   iframe.style.width = "1920px";
   iframe.getBoundingClientRect = () => new DOMRect(0, 0, 1920, 1080);
   /** Keeps the answers to the requests `match` picks; the returned call hands them to Studio. */

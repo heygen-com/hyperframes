@@ -412,6 +412,19 @@ describe("auth login", () => {
     expect(telemetry.trackAuthLoginFailed).toHaveBeenCalledWith("oauth", "flow_error");
   });
 
+  it("prints a browser login failure with control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    browserAuth.start.mockRejectedValueOnce(new Error(`denied ${esc}]0;x\x07 by\r\nproxy`));
+    await expect(runCommand({})).rejects.toThrow();
+    const printed = vi
+      .mocked(console.error)
+      .mock.calls.map((call) => call.join(" "))
+      .join("\n");
+
+    expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(printed).toContain("denied \\x1b]0;x\\x07 by\\x0d\nproxy");
+  });
+
   it("records Ctrl+C during the browser wait as aborted and exits", async () => {
     const exit = vi.fn();
     registerRootExitRequester(exit);

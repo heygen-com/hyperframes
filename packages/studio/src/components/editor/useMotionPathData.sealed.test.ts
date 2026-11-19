@@ -2,16 +2,13 @@
 import { act, createElement, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-// The frame's real runtime agent, serving the opaque frame from this document.
-import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
-import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { resetOverlayFrameLoopForTests } from "./overlayFrameLoop";
 import { useMotionPathData } from "./useMotionPathData";
+import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
-const closers: Array<() => void> = [];
 const originalRaf = window.requestAnimationFrame;
 let frames: Array<() => void> = [];
 const runFrames = () =>
@@ -28,35 +25,11 @@ beforeEach(() => {
   usePlayerStore.setState({ previewBooted: true, motionPathArmed: true });
 });
 afterEach(() => {
-  closers.splice(0).forEach((close) => close());
   resetOverlayFrameLoopForTests();
   window.requestAnimationFrame = originalRaf;
   usePlayerStore.setState({ previewBooted: false, motionPathArmed: false });
   document.body.innerHTML = "";
 });
-
-/** A frame Studio cannot read, whose runtime is the real editing agent over this document. */
-function opaqueFrame() {
-  const frame: Record<string, unknown> = {};
-  const iframe = detachedFakeIframe(frame);
-  Object.defineProperty(iframe, "contentDocument", { value: null });
-  Object.defineProperty(frame, "document", {
-    get: () => {
-      throw new DOMException("blocked", "SecurityError");
-    },
-  });
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
-      ),
-  } as unknown as Window;
-  const agent = installMarkedEditingAgent(parent);
-  frame.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
-  closers.push(() => agent.dispose());
-  return iframe;
-}
 
 // fails without the fix: the hook read the layer from the frame's document, which a sealed frame keeps.
 it("finds a sealed preview's layer home, so its motion path draws from the layer", async () => {
@@ -64,7 +37,7 @@ it("finds a sealed preview's layer home, so its motion path draws from the layer
   const box = document.getElementById("box")!;
   const layout = { offsetLeft: 100, offsetTop: 50, offsetWidth: 200, offsetHeight: 100 };
   for (const [key, value] of Object.entries(layout)) Object.defineProperty(box, key, { value });
-  const iframe = opaqueFrame();
+  const iframe = sealedPreviewFrame().iframe;
   let home: unknown = null;
   function Probe() {
     const ref = useRef(iframe);

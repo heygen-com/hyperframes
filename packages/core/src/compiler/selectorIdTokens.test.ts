@@ -3,6 +3,7 @@ import {
   decodeCssIdentifierAt,
   escapeCssAttributeValue,
   escapeCssIdentifier,
+  parseAttributeSelector,
   replaceSelectorAttributeTokens,
   replaceSelectorIdTokens,
 } from "./selectorIdTokens";
@@ -98,6 +99,15 @@ it("does not rewrite escaped hashes inside class names", () => {
 
 it("serializes control characters inside CSS attribute string values", () => {
   expect(escapeCssAttributeValue('a\nb\rc\fd"e\\f')).toBe('a\\a b\\d c\\c d\\"e\\\\f');
+});
+
+// The escape writes `<` as `\3c `, so selector text can't end its style element even without postcss.
+it("hex-escapes `<` in an attribute string value, which still reads back as the same value", () => {
+  const value = "a</style><script>alert(1)</script>";
+  const escaped = escapeCssAttributeValue(value);
+
+  expect(escaped).toBe(String.raw`a\3c /style>\3c script>alert(1)\3c /script>`);
+  expect(parseAttributeSelector(`[src="${escaped}"]`)?.value).toBe(value);
 });
 
 it("keeps escaped closing brackets inside unquoted attribute tokens", () => {

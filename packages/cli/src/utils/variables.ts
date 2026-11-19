@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs";
 import {
   extractCompositionMetadata,
   formatVariableValidationIssue,
+  terminalText,
   validateVariables,
   type VariableValidationIssue,
 } from "@hyperframes/core";
@@ -226,7 +227,7 @@ export function reportVariableIssues(
       ),
     );
     for (const issue of issues) {
-      console.log("  " + c.dim(formatVariableValidationIssue(issue)));
+      console.log("  " + c.dim(terminalText(formatVariableValidationIssue(issue))));
     }
     console.log("");
   }

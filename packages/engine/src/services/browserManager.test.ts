@@ -53,6 +53,7 @@ describe("BeginFrame capability probe", () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto,
         createCDPSession: vi.fn().mockResolvedValue({ send, detach }),
         close,
@@ -79,6 +80,7 @@ describe("BeginFrame capability probe", () => {
     const send = vi.fn().mockResolvedValue({ hasDamage: false });
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -107,6 +109,7 @@ describe("BeginFrame capability probe", () => {
     const send = vi.fn().mockResolvedValue({ screenshotData: jpeg.toString("base64") });
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -143,6 +146,7 @@ describe("BeginFrame capability probe", () => {
       });
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -168,6 +172,7 @@ describe("BeginFrame capability probe", () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -193,6 +198,7 @@ describe("BeginFrame capability probe", () => {
       .mockResolvedValueOnce({ hasDamage: true, screenshotData: png.toString("base64") });
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -211,12 +217,14 @@ describe("BeginFrame capability probe", () => {
   it("marks a probe that ran out of time as timed out, and a rejection as not", async () => {
     const stuck = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockReturnValue(new Promise<never>(() => {})),
         close: vi.fn().mockResolvedValue(undefined),
       }),
     } as unknown as Browser;
     const rejecting = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send: vi.fn().mockRejectedValue(new Error("'HeadlessExperimental.enable' wasn't found")),
@@ -716,7 +724,7 @@ describe("resolveBrowserGpuMode", () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const evaluate = vi.fn().mockResolvedValue(info);
     const launch = vi.fn().mockResolvedValue({
-      newPage: vi.fn().mockResolvedValue({ evaluate }),
+      newPage: vi.fn().mockResolvedValue({ mainFrame: () => ({}), evaluate }),
       close,
     });
     _setPuppeteerForTests({ launch } as unknown as PuppeteerNode);
@@ -911,7 +919,9 @@ describe("resolveBrowserGpuMode", () => {
       spy.mock.calls.map((call) => String(call[0])).join("\n");
     const neverAnsweringProbe = () => {
       const launch = vi.fn().mockResolvedValue({
-        newPage: vi.fn().mockResolvedValue({ evaluate: () => new Promise(() => {}) }),
+        newPage: vi
+          .fn()
+          .mockResolvedValue({ mainFrame: () => ({}), evaluate: () => new Promise(() => {}) }),
         close: () => new Promise(() => {}),
         process: () => ({ kill: vi.fn() }),
         disconnect: vi.fn().mockResolvedValue(undefined),
@@ -1069,7 +1079,9 @@ describe("resolveBrowserGpuMode", () => {
     try {
       const kill = vi.fn();
       const launch = vi.fn().mockResolvedValue({
-        newPage: vi.fn().mockResolvedValue({ evaluate: () => new Promise(() => {}) }),
+        newPage: vi
+          .fn()
+          .mockResolvedValue({ mainFrame: () => ({}), evaluate: () => new Promise(() => {}) }),
         close: () => new Promise(() => {}),
         process: () => ({ kill }),
         disconnect: vi.fn().mockResolvedValue(undefined),
@@ -1254,7 +1266,7 @@ const RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT = `
           for (const name of list(join(root, version))) {
             const folder = join(root, version, name);
             if (!["chrome-headless-shell", "chrome-headless-shell.exe"].some((shell) => isShell(join(folder, shell)))) continue;
-            try { PINNED_SHELL_DIGESTS["152.0.7977.30"].push(headlessShellDigest(folder)); } catch {}
+            try { PINNED_SHELL_DIGESTS["158.0.8127.36"].push(headlessShellDigest(folder)); } catch {}
           }
     });
   trust.then(() => import(process.env.HF_TEST_MODULE_URL)).then(({ resolveHeadlessShellPath }) => {
@@ -1573,7 +1585,7 @@ describe("resolveHeadlessShellPath", () => {
           ".cache",
           ...cache,
           "chrome-headless-shell",
-          "linux-152.0.7977.30",
+          "linux-158.0.8127.36",
         );
         mkdirSync(join(folder, "chrome-headless-shell-linux64"), { recursive: true });
         writeFileSync(
@@ -1645,7 +1657,7 @@ describe("resolveHeadlessShellPath", () => {
         );
       mkdirSync(shell("153.0.7990.1"), { recursive: true });
       for (const [version, content] of [
-        ["152.0.7977.30", ""],
+        ["158.0.8127.36", ""],
         ["150.0.7871.124", "shell"],
       ]) {
         mkdirSync(join(shell(version), ".."), { recursive: true });
@@ -1986,6 +1998,7 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
     process: () => ({ kill: vi.fn(), killed: false }),
   };
   const healthyPage = () => ({
+    mainFrame: () => ({}),
     goto: vi.fn().mockResolvedValue(null),
     createCDPSession: vi.fn().mockResolvedValue({
       send: vi
@@ -1998,6 +2011,7 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
     close: vi.fn().mockResolvedValue(undefined),
   });
   const slowPage = () => ({
+    mainFrame: () => ({}),
     goto: vi.fn().mockReturnValue(new Promise<never>(() => {})),
     close: vi.fn().mockResolvedValue(undefined),
   });

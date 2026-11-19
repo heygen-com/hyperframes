@@ -3,25 +3,24 @@
 import { gsap } from "gsap";
 import { parseGsapScriptAcorn } from "@hyperframes/parsers/gsap-parser-acorn";
 import { afterEach, expect, it, vi } from "vitest";
-// The frame's real runtime agent, serving the opaque frame from this document.
-import { installMarkedEditingAgent } from "../../../../core/src/runtime/editingAgent.test-helpers";
 import { makeSelection } from "../../hooks/domSelectionTestHarness";
 import { freezeDragStamp } from "../../hooks/draggedGsapPosition";
 import { settleGsapSnapshot } from "../../hooks/gsapFrameSnapshot";
 import { tryGsapDragIntercept } from "../../hooks/gsapRuntimeBridge";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
-import { detachedFakeIframe } from "../../player/hooks/timelinePlayerTestHarness";
 import { usePlayerStore } from "../../player/store/playerStore";
 import type { UseDomEditOverlayGesturesOptions } from "./domEditOverlayGestures";
 import { startGesture } from "./domEditOverlayStartGesture";
 import {
   applyManualOffsetDragCommit,
   applyManualOffsetDragDraft,
+  createManualOffsetDragMember,
   endManualOffsetDragMembers,
 } from "./manualOffsetDrag";
 import { measurePreviewGestureStart } from "./previewGestureStartRead";
 import { standInFor } from "./previewSelection";
+import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
 const timeline = (tweens: string) => `var tl = gsap.timeline({ paused: true });
 ${tweens}
@@ -52,7 +51,6 @@ function drawnAt(box: HTMLElement) {
 const mainTimeline = () =>
   (window as unknown as { __timelines?: Record<string, gsap.core.Timeline> }).__timelines?.main;
 
-const closers: Array<() => void> = [];
 function mount(script: string, extra = "") {
   document.body.innerHTML = `<div data-composition-id="main" data-width="1920" data-height="1080"><div id="box"></div>${extra}</div>`;
   const box = document.getElementById("box")!;
@@ -76,7 +74,6 @@ function mount(script: string, extra = "") {
   usePlayerStore.setState({ currentTime: 0.5, isPlaying: false, autoKeyframeEnabled: true });
 }
 afterEach(() => {
-  closers.splice(0).forEach((close) => close());
   mainTimeline()?.kill();
   document.body.innerHTML = "";
   for (const name of ["gsap", "__timelines"]) Reflect.deleteProperty(window, name);
@@ -91,24 +88,8 @@ function sized<T extends Element>(element: T, [x, y, width, height]: number[]): 
 
 /** A frame Studio cannot read, whose runtime is the real editing agent over this document. */
 function opaqueFrame() {
-  const frame: Record<string, unknown> = {};
-  const iframe = sized(detachedFakeIframe(frame), [100, 50, 960, 540]) as HTMLIFrameElement;
-  Object.defineProperty(iframe, "contentDocument", { value: null });
-  Object.defineProperty(frame, "document", {
-    get: () => {
-      throw new DOMException("blocked", "SecurityError");
-    },
-  });
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
-      ),
-  } as unknown as Window;
-  const agent = installMarkedEditingAgent(parent);
-  frame.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
-  closers.push(() => agent.dispose());
+  const { iframe: sealed, frame } = sealedPreviewFrame();
+  const iframe = sized(sealed, [100, 50, 960, 540]) as HTMLIFrameElement;
   watchPreviewFrame(iframe);
   window.dispatchEvent(
     new MessageEvent("message", {
@@ -264,4 +245,27 @@ it("still saves a layer GSAP only holds when the sealed preview's tweens can't b
     animationId: "#box-set-0-position",
     properties: { x: 120, y: 40 },
   });
+});
+
+// fails without the fix: the resize read the stand-in's own (empty) timelines, called the layer plain CSS and
+// saved its rotated corner's anchor as a raw `translate` that a reload added on top of GSAP's x.
+it("a resize in a sealed preview keeps the anchor of a layer its tween moves on GSAP's route", async () => {
+  mount(SCRIPT);
+  const iframe = opaqueFrame();
+  const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
+  const standIn = standInFor(iframe, (await describePreviewElements(iframe, [handle]))![0]!);
+  const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]);
+  const { rect, start } = (await measurePreviewGestureStart(iframe, overlay, [handle]))!
+    .elements[0]!;
+  const result = createManualOffsetDragMember({
+    key: "box",
+    selection: { ...makeSelection("box", standIn), id: "box", handle },
+    element: standIn,
+    rect,
+    gesture: "resize",
+    start,
+  });
+
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(result.ok && result.member.plainTranslate).toBe(false);
 });

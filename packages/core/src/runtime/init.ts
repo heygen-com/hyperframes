@@ -161,7 +161,7 @@ import {
 } from "./compositionLength";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
-import { loadCompositions } from "./compositionLoader";
+import { inlineMountTemplate, loadCompositions } from "./compositionLoader";
 import { runScriptsAfterFonts, waitForFonts } from "./afterFonts";
 import {
   applyCaptionOverrides,
@@ -1085,7 +1085,7 @@ export function initSandboxRuntimeModular(): void {
         el.style.position = "absolute";
       }
       if (tag !== "audio") {
-        const sizedByItsFile = tag === "img";
+        const sizedByItsFile = tag === "img" || tag === "video";
         const forcedWidth = parseDimensionPx(el.getAttribute("data-width"));
         const forcedHeight = parseDimensionPx(el.getAttribute("data-height"));
         const hasMeaningfulComputedWidth = computed.width !== "0px" && computed.width !== "auto";
@@ -1211,11 +1211,7 @@ export function initSandboxRuntimeModular(): void {
     );
     for (const el of candidates) {
       const cid = el.getAttribute("data-composition-id");
-      if (
-        cid &&
-        el.children.length === 0 &&
-        document.querySelector(`template#${CSS.escape(cid)}-template`)
-      ) {
+      if (cid && el.children.length === 0 && inlineMountTemplate(document, cid)) {
         hasInlineTemplateCompositions = true;
         break;
       }
@@ -5913,6 +5909,8 @@ export function initSandboxRuntimeModular(): void {
         swallow("runtime.init.transport.adapter", err);
       }
     }
+    window.__hf = window.__hf || {};
+    window.__hf.redraws = (window.__hf.redraws ?? 0) + 1;
     return pageAnimations;
   }
 
@@ -6183,6 +6181,33 @@ export function initSandboxRuntimeModular(): void {
     return false;
   };
 
+  const STOP_HOLDING_FOR_A_CLIP_WITHOUT_NEW_DATA_MS = 8000;
+  type HoldWithoutData = { src: string; buffered: number; sinceMs: number; checkedTick: number };
+  const holdsWithoutData = new WeakMap<HTMLMediaElement, HoldWithoutData>();
+  const stoppedReceivingData = (el: HTMLMediaElement): boolean => {
+    const now = performance.now();
+    let buffered = 0;
+    for (let i = 0; i < el.buffered.length; i++)
+      buffered += el.buffered.end(i) - el.buffered.start(i);
+    const hold = holdsWithoutData.get(el);
+    const heldLastTick =
+      hold !== undefined &&
+      hold.src === el.currentSrc &&
+      buffered <= hold.buffered &&
+      hold.checkedTick >= transportTickCount - 1;
+    if (!heldLastTick) {
+      holdsWithoutData.set(el, {
+        src: el.currentSrc,
+        buffered,
+        sinceMs: now,
+        checkedTick: transportTickCount,
+      });
+      return false;
+    }
+    hold.checkedTick = transportTickCount;
+    return now - hold.sinceMs > STOP_HOLDING_FOR_A_CLIP_WITHOUT_NEW_DATA_MS;
+  };
+
   const mediaNotReadyAt = (t: number, ready = hasDataAhead): HTMLMediaElement[] =>
     state.nativeMediaSyncDisabled
       ? []
@@ -6191,6 +6216,7 @@ export function initSandboxRuntimeModular(): void {
             ({ el, start, end }) =>
               isInClipWindow(t, start, end) &&
               !ready(el) &&
+              !stoppedReceivingData(el) &&
               isPlayableTrack(el) &&
               !stillStandsIn(el) &&
               !pausedFrames.retained(el) &&

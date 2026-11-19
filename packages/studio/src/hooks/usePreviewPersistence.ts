@@ -30,7 +30,10 @@ import {
 import { settleNestedReads } from "../utils/gsapSoftReload";
 import { readProjectFileContent } from "../utils/studioFileHistory";
 import { usePlayerStore } from "../player";
-import { syncStoredAutomationFromPreview } from "../player/lib/automationStoreSync";
+import {
+  syncStoredAutomationFromFrame,
+  syncStoredAutomationFromPreview,
+} from "../player/lib/automationStoreSync";
 
 /** The restore payload the undo/redo preview-sync consumes (from the history store). */
 interface HistoryPreviewRestore {
@@ -122,6 +125,11 @@ async function clearLegacyStudioMotionFile(
 }
 
 // ── Hook ──
+
+const projectFileReader = (projectId: string | null) => (path: string) =>
+  projectId
+    ? readProjectFileContent(projectId, path)
+    : Promise.reject(new Error("No project is open to read nested files from."));
 
 export function usePreviewPersistence({
   showToast,
@@ -226,16 +234,12 @@ export function usePreviewPersistence({
       // attributes onto the live DOM and re-runs the timeline at the SAME playhead,
       // falling back to reloadPreview for anything structural (split/delete undo),
       // multi-file, sub-comp, or a permanent soft-reload failure.
-      const projectId = usePlayerStore.getState().timelineProjectId;
       const nestedFiles = await settleNestedReads(
         readUndoNestedFiles(
           previewIframeRef.current,
           activeCompPathRef.current,
           restore.files,
-          (path) =>
-            projectId
-              ? readProjectFileContent(projectId, path)
-              : Promise.reject(new Error("No project is open to read nested files from.")),
+          projectFileReader(usePlayerStore.getState().timelineProjectId),
         ),
       );
       const held = heldPreviewDoc();
@@ -260,7 +264,7 @@ export function usePreviewPersistence({
       // player store keeps its own copy and that copy is what the automation lanes
       // draw — so without this an undone envelope edit stayed invisible until a
       // reload. The full path above waits for the reloaded preview to report instead.
-      syncStoredAutomationFromPreview(previewIframeRef.current?.contentDocument ?? null);
+      syncStoredAutomationFromFrame(previewIframeRef.current);
     },
     [previewIframeRef, activeCompPathRef, reloadPreview, heldPreviewDoc],
   );

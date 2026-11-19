@@ -38,6 +38,7 @@ export {
   prepareFlattenedInnerRoot,
   FLATTENED_INNER_ROOT_STRIP_ATTRS,
   emitRootCompositionVariableStyles,
+  MAX_COMPOSITION_VARIABLE_STYLE_BYTES,
   parsesAsScript,
 } from "./htmlBundler";
 export { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
@@ -125,4 +126,5 @@ export {
 } from "./mediaRenderIds";
 
 export { ensureExternalScriptTag } from "./externalScripts";
+export { dropAuthoredSvgReferenceAliases } from "./svgSelectorAliases";
 export { emitMountedModuleScripts } from "./importMaps";

@@ -7,9 +7,11 @@ import {
   MAX_DESCRIBE_HANDLES,
   MAX_DRAFT_PX,
   MAX_ELEMENT_ENTRIES,
+  MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
   MAX_GEOMETRY_CHILDREN,
   MAX_SNAP_TARGETS,
+  MAX_SOURCE_GROUPS,
   type EditingElementBox,
   type EditingElementDescription,
   type EditingElementGeometry,
@@ -33,29 +35,38 @@ export const isFields = (value: unknown): value is Fields =>
 export const isHandle = (value: unknown) =>
   typeof value === "string" && EDITING_ELEMENT_HANDLE.test(value);
 const isText = (value: unknown) => typeof value === "string";
-const isTextOrNull = (value: unknown) => value === null || typeof value === "string";
+const isValue = (value: unknown) => isText(value) && (value as string).length <= MAX_ELEMENT_VALUE;
+const isLongText = (value: unknown) =>
+  isText(value) && (value as string).length <= MAX_ELEMENT_TEXT;
+const isValueOrNull = (value: unknown) => value === null || isValue(value);
+const isEntries = (value: unknown): value is unknown[] =>
+  Array.isArray(value) && value.length <= MAX_ELEMENT_ENTRIES;
 const isCount = (value: unknown) => Number.isSafeInteger(value) && (value as number) >= 0;
 
 const isSource = (value: unknown): value is EditingElementSource =>
   isFields(value) &&
-  isTextOrNull(value.file) &&
-  isTextOrNull(value.compositionId) &&
-  isTextOrNull(value.originalCompositionId);
+  isValueOrNull(value.file) &&
+  isValueOrNull(value.compositionId) &&
+  isValueOrNull(value.originalCompositionId);
 
-const isTextRecord = (value: unknown) => isFields(value) && Object.values(value).every(isText);
+const isStyles = (value: unknown) =>
+  isFields(value) &&
+  isEntries(Object.keys(value)) &&
+  Object.entries(value).every(([name, style]) => isValue(name) && isValue(style));
 
 function hasPlainFields(value: Fields): boolean {
   const { matchesBefore, attributes, children } = value;
   const groupsOk =
     matchesBefore === null ||
     (Array.isArray(matchesBefore) &&
+      matchesBefore.length <= MAX_SOURCE_GROUPS &&
       matchesBefore.every((g) => isFields(g) && isSource(g.source) && isCount(g.count)));
   const attributesOk =
-    Array.isArray(attributes) &&
-    attributes.every((a) => Array.isArray(a) && a.length === 2 && a.every(isText));
+    isEntries(attributes) &&
+    attributes.every((a) => Array.isArray(a) && a.length === 2 && a.every(isValue));
   const childrenOk =
-    Array.isArray(children) &&
-    children.every((c) => isFields(c) && (isHandle(c.handle) || isText(c.text)));
+    isEntries(children) &&
+    children.every((c) => isFields(c) && (isHandle(c.handle) || isLongText(c.text)));
   return groupsOk && attributesOk && childrenOk && typeof value.truncated === "boolean";
 }
 
@@ -63,7 +74,7 @@ const isRect = (value: unknown) =>
   isFields(value) && [value.x, value.y, value.width, value.height].every(Number.isFinite);
 
 function readHit(value: unknown): PreviewElementHit | null {
-  if (!isFields(value) || !isHandle(value.handle) || !isText(value.tag)) return null;
+  if (!isFields(value) || !isHandle(value.handle) || !isValue(value.tag)) return null;
   return isRect(value.rect) ? (value as unknown as PreviewElementHit) : null;
 }
 
@@ -71,10 +82,10 @@ function readHit(value: unknown): PreviewElementHit | null {
 export function readPreviewElement(value: unknown): PreviewElement | null {
   if (!readHit(value) || !isFields(value)) return null;
   if (value.parent !== null && !isHandle(value.parent)) return null;
-  if (value.label !== undefined && !isText(value.label)) return null;
-  if (!isTextOrNull(value.id) || !isTextOrNull(value.selector)) return null;
+  if (value.label !== undefined && !isValue(value.label)) return null;
+  if (!isValueOrNull(value.id) || !isValueOrNull(value.selector)) return null;
   if (!isSource(value.source) || typeof value.locked !== "boolean") return null;
-  if (!isTextRecord(value.inlineStyles) || !isText(value.text)) return null;
+  if (!isStyles(value.inlineStyles) || !isLongText(value.text)) return null;
   return hasPlainFields(value) ? (value as unknown as PreviewElement) : null;
 }
 
@@ -183,8 +194,7 @@ const isSourceBox = (value: unknown) =>
     isSizeOrNull(value.declaredWidth) &&
     isSizeOrNull(value.declaredHeight));
 
-const isClipPath = (value: unknown) =>
-  value === null || (isText(value) && (value as string).length <= MAX_ELEMENT_VALUE);
+const isClipPath = isValueOrNull;
 
 const isBox = (value: unknown): value is EditingElementBox =>
   isFields(value) &&
@@ -299,4 +309,73 @@ export async function previewLayers(
   if (!Array.isArray(layers) || typeof truncated !== "boolean") return null;
   if (typeof missingGroup !== "boolean") return null;
   return layers.every(isLayer) ? { layers, truncated, missingGroup } : null;
+}
+
+type EditEntry = [name: string, value: string | null];
+type StyleEntry = [name: string, value: string | null, priority?: "important"];
+const isEditEntries = (value: unknown, priority = false): value is StyleEntry[] =>
+  Array.isArray(value) &&
+  value.every(
+    (entry) =>
+      Array.isArray(entry) &&
+      isText(entry[0]) &&
+      (entry[1] === null || isText(entry[1])) &&
+      (entry.length === 2 || (priority && entry.length === 3 && entry[2] === "important")),
+  );
+
+export interface PreviewElementEdit {
+  drawn: Promise<boolean>;
+  restore(names?: readonly string[]): void;
+}
+
+/** Draws inline `styles` and `attributes` on the frame's element, null removing one. */
+const latestWriters = new WeakMap<HTMLIFrameElement, Map<string, symbol>>();
+
+export function editPreviewElement(
+  iframe: HTMLIFrameElement,
+  handle: string,
+  edit: { styles?: EditEntry[]; attributes?: EditEntry[] },
+): PreviewElementEdit {
+  const send = (styles: StyleEntry[], attributes: EditEntry[]) =>
+    previewRequest(iframe, "edit-element", { handle, styles, attributes });
+  const writers = latestWriters.get(iframe) ?? new Map<string, symbol>();
+  latestWriters.set(iframe, writers);
+  const self = Symbol("edit");
+  const key = (part: string, name: string) => `${handle} ${part} ${name}`;
+  for (const [name] of edit.styles ?? []) writers.set(key("style", name), self);
+  for (const [name] of edit.attributes ?? []) writers.set(key("attr", name), self);
+  const reply = send(edit.styles ?? [], edit.attributes ?? []);
+  return {
+    drawn: reply.then((before) => before?.applied === true),
+    restore(names) {
+      // Checked when the old values go back: a later edit of a name owns it by then.
+      const owns = (part: string, name: string) =>
+        (!names || names.includes(name)) && writers.get(key(part, name)) === self;
+      void reply.then((before) => {
+        if (!before?.applied || !isEditEntries(before.styles, true)) return;
+        if (!isEditEntries(before.attributes)) return;
+        const styles = before.styles.filter(([name]) => owns("style", name));
+        const attributes = before.attributes.filter(([name]) => owns("attr", name));
+        if (styles.length || attributes.length) void send(styles, attributes);
+      });
+    },
+  };
+}
+
+const SEALED_DRAW_WAIT_MS = 300;
+
+/** Saves a live edit at once; a sealed one once the frame says it drew it, else after the wait. */
+export function afterSealedDraw<T>(
+  edit: Pick<PreviewElementEdit, "drawn"> | null,
+  save: (drawn: boolean) => T,
+) {
+  if (!edit) return save(true);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<boolean>((resolve) => {
+    timer = setTimeout(resolve, SEALED_DRAW_WAIT_MS, false);
+  });
+  return Promise.race([edit.drawn, late]).then((drawn) => {
+    clearTimeout(timer);
+    return save(drawn);
+  });
 }

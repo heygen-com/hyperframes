@@ -101,7 +101,7 @@ function isPreviewPlayerHost(value: unknown): value is PreviewPlayerHost {
   return value instanceof HTMLElement;
 }
 
-function resolvePreviewPlayerHost(iframe: HTMLIFrameElement): PreviewPlayerHost | null {
+export function resolvePreviewPlayerHost(iframe: HTMLIFrameElement): PreviewPlayerHost | null {
   const root = iframe.getRootNode();
   if (
     typeof ShadowRoot !== "undefined" &&

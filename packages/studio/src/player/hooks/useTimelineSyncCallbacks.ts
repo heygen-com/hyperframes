@@ -15,7 +15,7 @@ import type { PlaybackAdapter, IframeWindow } from "../lib/playbackTypes";
 import { readTimelineDurationFromDocument } from "../lib/timelineDOM";
 import { buildMissingCompositionElements } from "../lib/timelineIframeHelpers";
 import { acceptedRuntimeMessageFps } from "../lib/runtimeProtocol";
-import { previewDocumentCopy, previewFrameOpaque } from "../lib/previewChannel";
+import { previewClipParents, previewDocumentCopy, previewFrameOpaque } from "../lib/previewChannel";
 import { useLinkedClipPreferences } from "../../utils/linkedClipPreferences";
 import {
   buildTimelineElementsFromClips,
@@ -153,6 +153,15 @@ export function resolveTimelineTotalDuration(input: {
   );
 }
 
+/** A same-origin frame's clip tree, read in place; a frame that refuses the read has none. */
+function openClipParents(iframe: HTMLIFrameElement | null): Map<string, string> {
+  try {
+    return clipTreeParentMap(iframe?.contentWindow ?? null);
+  } catch {
+    return new Map();
+  }
+}
+
 export function useTimelineSyncCallbacks({
   iframeRef,
   probeIntervalRef,
@@ -173,14 +182,13 @@ export function useTimelineSyncCallbacks({
 }: UseTimelineSyncCallbacksParams) {
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
   const applyTimelineMessage = useCallback(
-    (data: RuntimeTimelineMessage, iframeDoc: Document | null) => {
+    (data: RuntimeTimelineMessage, iframeDoc: Document | null, parentMap: Map<string, string>) => {
       // Show root-level clips: no parentCompositionId, OR parent is a "phantom wrapper"
       const clipCompositionIds = new Set(data.clips.map((c) => c.compositionId).filter(Boolean));
       const filtered = data.clips.filter(
         (clip) => !clip.parentCompositionId || !clipCompositionIds.has(clip.parentCompositionId),
       );
       try {
-        const parentMap = clipTreeParentMap(iframeRef.current?.contentWindow ?? null);
         const domClipChildren = collectSubCompositionDomChildren(iframeDoc, data.clips, parentMap);
         usePlayerStore.getState().setClipParentMap(parentMap);
         usePlayerStore.getState().setDomClipChildren(domClipChildren);
@@ -188,7 +196,7 @@ export function useTimelineSyncCallbacks({
           .getState()
           .setSubCompositionHostState(collectSubCompositionHostState(iframeDoc, data.clips));
       } catch {
-        // cross-origin or __clipTree not available — maps stay empty
+        // A document the walk cannot read leaves the maps empty.
       }
 
       const els = buildTimelineElementsFromClips(filtered, iframeDoc);
@@ -211,7 +219,7 @@ export function useTimelineSyncCallbacks({
         syncTimelineElements,
       );
     },
-    [iframeRef, syncTimelineElements],
+    [syncTimelineElements],
   );
 
   const timelineReads = useRef(0);
@@ -222,14 +230,16 @@ export function useTimelineSyncCallbacks({
       const iframe = iframeRef.current;
       const read = ++timelineReads.current;
       if (!iframe || !previewFrameOpaque(iframe)) {
-        applyTimelineMessage(data, safeContentDocument(iframe));
+        applyTimelineMessage(data, safeContentDocument(iframe), openClipParents(iframe));
         return;
       }
-      // A sealed frame's rows bind to a copy of its document from the editing port; the newest read wins.
-      void previewDocumentCopy(iframe).then((doc) => {
-        if (read === timelineReads.current && iframeRef.current === iframe)
-          applyTimelineMessage(data, doc);
-      });
+      // A sealed frame's rows bind to its document copy and clip tree from the editing port; the newest read wins.
+      void Promise.all([previewDocumentCopy(iframe), previewClipParents(iframe)]).then(
+        ([doc, parents]) => {
+          if (read === timelineReads.current && iframeRef.current === iframe)
+            applyTimelineMessage(data, doc, parents);
+        },
+      );
     },
     [iframeRef, applyTimelineMessage],
   );

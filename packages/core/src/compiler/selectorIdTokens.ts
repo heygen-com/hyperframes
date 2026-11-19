@@ -203,10 +203,25 @@ function markUnguardedOffsets(selector: string): boolean[] {
  * full replacement text (including its own leading `#`, if any) to splice
  * in.
  */
+/** The `#id` values a selector names, read as `replaceSelectorIdTokens` reads them. */
+export function selectorIdTokens(selector: string): string[] {
+  const ids: string[] = [];
+  if (!selector.includes("#")) return ids;
+  const unguarded = markUnguardedOffsets(selector);
+  for (let index = 0; index < selector.length; index += 1) {
+    if (!unguarded[index] || selector[index] !== "#") continue;
+    const token = decodeCssIdentifierAt(selector, index + 1);
+    if (!token) continue;
+    ids.push(token.value);
+    index = token.end - 1;
+  }
+  return ids;
+}
+
 export function replaceSelectorIdTokens(
   selector: string,
   candidateIds: readonly string[],
-  resolveReplacement: (matchedId: string) => string,
+  resolveReplacement: (matchedId: string, matchedToken: string) => string,
 ): string {
   if (candidateIds.length === 0 || !selector.includes("#")) return selector;
   const candidates = new Set(candidateIds);
@@ -220,7 +235,7 @@ export function replaceSelectorIdTokens(
         ? decodeCssIdentifierAt(selector, index + 1)
         : null;
     if (token && candidates.has(token.value)) {
-      result += resolveReplacement(token.value);
+      result += resolveReplacement(token.value, selector.slice(index, token.end));
       index = token.end;
     } else {
       result += selector[index];
@@ -256,7 +271,7 @@ export function escapeCssAttributeValue(value: string): string {
   return Array.from(value, (char) => {
     const code = char.charCodeAt(0);
     if (code === 0) return "\uFFFD";
-    if (code < 0x20 || code === 0x7f) return `\\${code.toString(16)} `;
+    if (code < 0x20 || code === 0x7f || char === "<") return `\\${code.toString(16)} `;
     return char === '"' || char === "\\" ? `\\${char}` : char;
   }).join("");
 }

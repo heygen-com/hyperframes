@@ -26,8 +26,10 @@ import {
   previewElementSelectorIndex,
   previewPointerTargets,
   previewElementSourceFile,
+  editPreviewElement,
   queryPreviewElements,
   type PreviewElement,
+  type PreviewElementEdit,
 } from "../../player/lib/previewElements";
 import { coversCompositionRoot } from "./domEditingRootLayer";
 import {
@@ -516,6 +518,15 @@ export async function findPointerTargets(
   const handles = reply?.stack.map((hit) => hit.handle) ?? [];
   const described = handles.length ? await describePreviewElements(iframe, handles) : [];
   return (described ?? []).filter((element) => element !== null);
+}
+
+export function editSealedSelection(
+  iframe: HTMLIFrameElement | null | undefined,
+  selection: DomEditSelection,
+  edit: Parameters<typeof editPreviewElement>[2],
+): PreviewElementEdit | null {
+  if (!iframe || !selection.handle || !previewFrameOpaque(iframe)) return null;
+  return editPreviewElement(iframe, selection.handle, edit);
 }
 
 /** A stand-in is never connected: an opaque frame's selection stands until it is replaced. */

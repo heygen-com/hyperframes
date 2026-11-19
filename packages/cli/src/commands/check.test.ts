@@ -462,6 +462,72 @@ describe("check --prepare-media", () => {
     });
     expect(consumeCommandResult().exitCode).toBe(1);
   });
+
+  it("prints a failed media file and its reason with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const { log } = await runPrepare(
+      [{ file: `a${esc}[2J.mov`, state: "failed", reason: `ffmpeg: bad${esc}]0;x` }],
+      ["--prepare-media"],
+    );
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(human).toContain("a\\x1b[2J.mov: ffmpeg: bad\\x1b]0;x");
+    consumeCommandResult();
+  });
+
+  it("prints snapshot paths with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const { report } = await runScenario(fakeDriver());
+    const folder = `/work/video${esc}]0;x${String.fromCharCode(7)}`;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => PROJECT,
+        runPipeline: async () => ({
+          ...report,
+          snapshots: {
+            ...report.snapshots,
+            enabled: true,
+            files: [`${folder}/frame.png`],
+            findingFiles: [`${folder}/finding.png`],
+          },
+        }),
+        prepareMedia: vi.fn(),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: [] },
+    );
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(human).toContain("/work/video\\x1b]0;x\\x07/frame.png");
+    expect(human).toContain("/work/video\\x1b]0;x\\x07/finding.png");
+    consumeCommandResult();
+  });
+
+  it("prints a folder name with control characters as visible escapes", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const name = `video${esc}]0;x${String.fromCharCode(7)}${esc}[2J`;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => ({ ...PROJECT, name }),
+        runPipeline: vi.fn(),
+        prepareMedia: vi.fn(async () => []),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: ["--prepare-media"] },
+    );
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(human).toContain("video\\x1b]0;x\\x07\\x1b[2J");
+    consumeCommandResult();
+  });
 });
 
 describe("skip contrast in motion", () => {
