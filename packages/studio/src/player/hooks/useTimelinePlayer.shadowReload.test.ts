@@ -498,7 +498,7 @@ describe("shadow reload readiness and failure", () => {
     unmount(root);
   });
 
-  // fails without the fix: a timeline accepted but not yet committed (restore seek still painting) was reported as none.
+  // fails without the fix: a timeline accepted but not yet committed (restore seek painting) read as none.
   it("names the restore seek when a shadow's timeline arrived but its seek never painted", () => {
     vi.useFakeTimers();
     vi.spyOn(console, "error").mockImplementation(() => {});
