@@ -212,7 +212,7 @@ describe("probeMediaMetadata", () => {
     expect(plain).not.toHaveProperty("sampleAspectRatio");
     expect(plain).not.toHaveProperty("rotation");
     expect(asked[0]?.join(" ")).toMatch(
-      /sample_aspect_ratio.*stream_tags=alpha_mode,rotate:stream_side_data=rotation/,
+      /sample_aspect_ratio.*stream_tags=alpha_mode,rotate:stream_side_data_list:format/,
     );
   });
 

@@ -1410,35 +1410,91 @@ describe("preview quality: lighter copies of heavy files", () => {
     expect(el.getAttribute("poster")).toBe("/cover.jpg");
   });
 
-  // The runtime's rule for the file a video plays now, found by that file's address.
-  const ruleFor = (el: HTMLMediaElement) =>
-    Array.from(document.querySelectorAll("style"))
+  // jsdom lays nothing out: give a video the content box a browser would, here its file's own or the default.
+  const laidOut = (
+    el: HTMLVideoElement,
+    width: number,
+    height: number,
+    decoded?: [number, number],
+  ) => {
+    Object.defineProperty(el, "clientWidth", { configurable: true, value: width });
+    Object.defineProperty(el, "clientHeight", { configurable: true, value: height });
+    el.getClientRects = () => [{}] as unknown as DOMRectList;
+    if (decoded) {
+      Object.defineProperty(el, "videoWidth", { configurable: true, value: decoded[0] });
+      Object.defineProperty(el, "videoHeight", { configurable: true, value: decoded[1] });
+    }
+    return el;
+  };
+  // The size the runtime pins for the copy the video plays now, or undefined when it pins none.
+  const pinnedSize = (el: HTMLMediaElement) => {
+    const mark = el.getAttribute("data-hf-file-size");
+    const rule = Array.from(document.querySelectorAll("style"))
       .flatMap((sheet) => (sheet.textContent ?? "").split("\n"))
-      .find((rule) => rule.includes(`[src="${escapeCssString(el.getAttribute("src") ?? "")}"]`));
+      .find(
+        (line) =>
+          mark &&
+          line.includes(`="${mark}"][src="${escapeCssString(el.getAttribute("src") ?? "")}"]`),
+      );
+    return rule && /\{ ([^}]+) \}/.exec(rule)?.[1];
+  };
 
-  it("keeps a video with no size of its own at its file's size, turned and stretched as shown, while a lighter copy plays", async () => {
+  it("keeps a video the film leaves unsized at its file's size, as a browser lays the file out, while a lighter copy plays", async () => {
     const { video, setPreviewQuality, maybeProxyProactively } = await stage({
       "/video.mp4": HEAVY,
       "/phone.mp4": { ...HEAVY, rotation: -90 },
-      "/wide.mp4": { ...HEAVY, width: 2880, sampleAspectRatio: 4 / 3 },
+      "/narrow.mp4": { ...HEAVY, sampleAspectRatio: 2 / 3 },
+      "/sized.mp4": HEAVY,
+      "/decoded.mp4": HEAVY,
+      "/padded.mp4": HEAVY,
     });
     setPreviewQuality(0.25);
-    const rules = [];
-    for (const src of ["/video.mp4", "/phone.mp4", "/wide.mp4"]) {
-      const el = video(src);
+    const cases: Array<[string, (el: HTMLVideoElement) => HTMLVideoElement]> = [
+      ["/video.mp4", (el) => laidOut(el, 300, 150)],
+      ["/phone.mp4", (el) => laidOut(el, 300, 150)],
+      ["/narrow.mp4", (el) => laidOut(el, 300, 150)],
+      ["/sized.mp4", (el) => laidOut(el, 320, 180)],
+      ["/decoded.mp4", (el) => laidOut(el, 3000, 1688, [3000, 1688])],
+      [
+        "/padded.mp4",
+        (el) => {
+          el.style.boxSizing = "border-box";
+          el.style.padding = "10px";
+          return laidOut(el, 320, 170);
+        },
+      ],
+    ];
+    const pinned = [];
+    for (const [src, layOut] of cases) {
+      const el = layOut(video(src) as HTMLVideoElement);
       maybeProxyProactively(el);
       await settle();
       expect(params(el).get("hf-proxy-light")).toBe("1");
-      rules.push(ruleFor(el));
+      pinned.push(pinnedSize(el));
     }
 
-    expect(rules.map((rule) => /contain-intrinsic-size: ([^;]+);/.exec(rule ?? "")?.[1])).toEqual([
-      "3840px 2160px",
-      "2160px 3840px",
-      "3840px 2160px",
+    expect(pinned).toEqual([
+      "width: 3840px; height: 2160px; flex-shrink: 0;",
+      "width: 2160px; height: 3840px; flex-shrink: 0;",
+      "width: 3840px; height: 3240px; flex-shrink: 0;",
+      undefined,
+      "width: 3000px; height: 1688px; flex-shrink: 0;",
+      "width: 3860px; height: 2180px; flex-shrink: 0;",
     ]);
-    // Zero specificity: any size the film's own CSS gives the video wins.
-    expect(rules.every((rule) => rule?.startsWith(":where(video[src="))).toBe(true);
+  });
+
+  it("keeps the file of a video that shows it at its own size when it fits", async () => {
+    const { video, setPreviewQuality, maybeProxyProactively } = await stage({
+      "/video.mp4": HEAVY,
+    });
+    setPreviewQuality(0.25);
+    for (const fit of ["none", "scale-down"]) {
+      const el = video();
+      el.style.objectFit = fit;
+      maybeProxyProactively(el);
+      await settle();
+      expect(isProxied(el)).toBe(false);
+    }
   });
 
   it("lightens a video that appears after the level was lowered", async () => {

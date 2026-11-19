@@ -309,7 +309,7 @@ export {
   type PreviewSourceFacts,
 } from "./previewProxyBox";
 export {
-  displaySize,
+  naturalVideoSize,
   parseSampleAspectRatio,
   streamRotation,
   type MediaDisplayFacts,

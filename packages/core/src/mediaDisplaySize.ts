@@ -6,12 +6,14 @@ export interface MediaDisplayFacts {
   rotation?: number;
 }
 
-/** The size a video shows at: its pixels stretched by their aspect ratio, then turned. */
-export function displaySize(facts: MediaDisplayFacts): { width: number; height: number } {
-  const width = Math.round(facts.width * (facts.sampleAspectRatio ?? 1));
+/** The size a browser lays a video file out at: narrow pixels make it taller, wide ones wider, then it turns. */
+export function naturalVideoSize(facts: MediaDisplayFacts): { width: number; height: number } {
+  const ratio = facts.sampleAspectRatio ?? 1;
+  const width = ratio > 1 ? Math.round(facts.width * ratio) : facts.width;
+  const height = ratio < 1 ? Math.round(facts.height / ratio) : facts.height;
   return Math.abs(facts.rotation ?? 0) % 180 === 90
-    ? { width: facts.height, height: width }
-    : { width, height: facts.height };
+    ? { width: height, height: width }
+    : { width, height };
 }
 
 export function parseSampleAspectRatio(value: string | undefined): number | undefined {

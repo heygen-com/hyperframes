@@ -388,7 +388,7 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,sample_aspect_ratio,bit_rate,r_frame_rate,avg_frame_rate:stream_disposition:stream_tags=alpha_mode,rotate:stream_side_data=rotation:format=duration,bit_rate",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,sample_aspect_ratio,bit_rate,r_frame_rate,avg_frame_rate:stream_disposition:stream_tags=alpha_mode,rotate:stream_side_data_list:format=duration,bit_rate",
       "-of",
       "json",
       ...mediaInputArgs(filePath),

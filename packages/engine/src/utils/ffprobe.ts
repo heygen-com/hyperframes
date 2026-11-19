@@ -6,12 +6,7 @@ import { chunkCrc32 } from "./crc32.js";
 import { StringDecoder } from "node:string_decoder";
 import { tmpdir } from "os";
 import { basename, join } from "path";
-import {
-  displaySize,
-  parseSampleAspectRatio,
-  redactTelemetryString,
-  streamRotation,
-} from "@hyperframes/core";
+import { parseSampleAspectRatio, redactTelemetryString, streamRotation } from "@hyperframes/core";
 import {
   alphaDecoderFor,
   pixelFormatHasAlpha,
@@ -916,7 +911,16 @@ function displayRotation(stream: FFProbeStream): { rotation?: number } {
   return rotation === undefined ? {} : { rotation };
 }
 
-export { displaySize, parseSampleAspectRatio };
+export function displaySize(
+  metadata: Pick<VideoMetadata, "width" | "height" | "sampleAspectRatio" | "rotation">,
+): { width: number; height: number } {
+  const width = Math.round(metadata.width * (metadata.sampleAspectRatio ?? 1));
+  return Math.abs(metadata.rotation ?? 0) % 180 === 90
+    ? { width: metadata.height, height: width }
+    : { width, height: metadata.height };
+}
+
+export { parseSampleAspectRatio };
 
 /**
  * Whether the first frame decoded with `decoder` (alpha-aware) has an alpha pixel format; undefined on any
