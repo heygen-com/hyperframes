@@ -690,6 +690,7 @@ describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)("concatListInput
           "stream=nb_read_packets",
           "-of",
           "csv=p=0",
+          "--",
           out,
         ],
         { encoding: "utf8" },
