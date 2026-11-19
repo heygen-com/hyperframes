@@ -163,6 +163,15 @@ export function rewriteSvgSelectors(
   return tokens.replaceSelectorAttributeTokens(rewrittenIds, rewriteAttribute);
 }
 
+export function dropAuthoredSvgReferenceAliases(root: ParentNode): void {
+  for (const el of root.querySelectorAll(`[${SVG_REFERENCE_ALIASES_ATTR}]`)) {
+    el.removeAttribute(SVG_REFERENCE_ALIASES_ATTR);
+  }
+  for (const template of root.querySelectorAll("template")) {
+    dropAuthoredSvgReferenceAliases(template.content);
+  }
+}
+
 /** Metadata records actual writes; selectors still match current native attribute values. */
 export function readSvgReferenceAliases(
   root: {
