@@ -127,7 +127,12 @@ const outRel = relative(hyperframesDir, outPath);
 const outInProject = outRel !== ".." && !outRel.startsWith(`..${sep}`) && !isAbsolute(outRel);
 if (outInProject && !projectPath(hyperframesDir, outRel))
   die(`${outPath} leads outside the project folder; replace it with a regular file`);
-const audioMeta = openAudioMeta(outPath);
+let audioMeta;
+try {
+  audioMeta = openAudioMeta(outPath);
+} catch (e) {
+  die(`audio_meta.json at ${outPath}: ${e.message}`);
+}
 const prev = audioMeta.value;
 const anomalies = [];
 
@@ -353,7 +358,9 @@ anomalies.push(...recordInManifest(hyperframesDir, written));
 console.log(terminalText(`✓ audio engine → ${outPath}`));
 console.log(`  heygen: ${heygenOK ? "yes" : "no"}  ·  ran: ${[...only].join(",")}`);
 console.log(
-  `  voices: ${voices.length}  ·  bgm: ${bgm ? `${bgmFields.bgm_provider}${bgmFields.bgm_pending ? " (pending)" : ""}` : "none"}  ·  sfx: ${sfx.length}`,
+  terminalText(
+    `  voices: ${voices.length}  ·  bgm: ${bgm ? `${bgmFields.bgm_provider}${bgmFields.bgm_pending ? " (pending)" : ""}` : "none"}  ·  sfx: ${sfx.length}`,
+  ),
 );
 console.log(`  total voice duration: ${totalDuration}s`);
 if (anomalies.length) {
