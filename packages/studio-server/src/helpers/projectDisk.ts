@@ -1,22 +1,16 @@
-// A route's reads of a project's folder, off the event loop: a drive that stops answering holds one request, not all.
 import type { Stats } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { isPrivateProjectPath } from "./safePath.js";
 
-const isGone = (error: unknown): boolean => {
-  const code = (error as NodeJS.ErrnoException | null)?.code;
-  return code === "ENOENT" || code === "ENOTDIR";
-};
+// Null for any failure, as `existsSync` answers false: an unreadable folder stays "not found", never a refusal.
+export const statOrNull = (path: string): Promise<Stats | null> => stat(path).catch(() => null);
 
-export async function statOrNull(path: string): Promise<Stats | null> {
-  try {
-    return await stat(path);
-  } catch (error) {
-    if (isGone(error)) return null;
-    throw error;
-  }
-}
+export const folderGoneOff = (dir: string): Promise<boolean> =>
+  stat(dir).then(
+    () => false,
+    (error: NodeJS.ErrnoException) => error.code === "ENOENT" || error.code === "ENOTDIR",
+  );
 
 /** The real path; for a path not there (yet, or any more), the nearest existing folder's real path plus the rest. */
 export async function realFilePathOff(filePath: string): Promise<string> {

@@ -2,13 +2,15 @@
 // process): a synchronous read of a folder whose drive stopped answering holds that loop for as long as the drive is
 // silent. Each file may only lose such calls, never gain one; its count is kept in the baseline beside this script.
 import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const ROOT = join(import.meta.dirname, "..");
 const AREAS = ["packages/studio-server/src/routes", "packages/studio-server/src/history"];
 const BASELINE = join(import.meta.dirname, "studio-server-sync-fs-baseline.json");
+// Every synchronous call node:fs has, `realpathSync.native` included.
 const SYNC_CALL =
-  /\b(?:access|chmod|copyFile|cp|exists|lstat|mkdir|mkdtemp|open|opendir|readdir|readFile|readlink|realpath|rename|rm|rmdir|stat|statfs|unlink|utimes|writeFile)Sync\s*\(/g;
+  /\b(?:access|appendFile|chmod|chown|close|copyFile|cp|exists|fchmod|fchown|fdatasync|fstat|fsync|ftruncate|futimes|lchmod|lchown|link|lstat|lutimes|mkdir|mkdtemp|open|opendir|read|readdir|readFile|readlink|readv|realpath|rename|rm|rmdir|stat|statfs|symlink|truncate|unlink|utimes|write|writeFile|writev)Sync(?:\.native)?\s*\(/g;
 
 /** How many synchronous fs calls `source` makes, comment lines aside. @param {string} source */
 export function countSyncCalls(source) {
@@ -31,7 +33,10 @@ function sourceFiles(dir) {
 export function currentCounts(root = ROOT) {
   return Object.fromEntries(
     AREAS.flatMap((area) => sourceFiles(join(root, area)))
-      .map((path) => [relative(root, path), countSyncCalls(readFileSync(path, "utf8"))])
+      .map((path) => [
+        relative(root, path).split(sep).join("/"),
+        countSyncCalls(readFileSync(path, "utf8")),
+      ])
       .filter(([, count]) => count > 0)
       .sort(([a], [b]) => a.localeCompare(b)),
   );
@@ -61,4 +66,4 @@ function main() {
   process.exit(1);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

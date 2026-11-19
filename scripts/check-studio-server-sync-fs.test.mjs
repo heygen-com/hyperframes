@@ -8,8 +8,10 @@ test("counts synchronous fs calls a file makes, not the ones a comment names", (
     "// readFileSync(file) would hold the event loop",
     "const text = await readFile(file);",
     "const names = readdirSync (dir);",
+    "const real = realpathSync.native(dir);",
+    "readSync(fd, buffer); writeSync(fd, buffer); fstatSync(fd);",
   ].join("\n");
-  assert.equal(countSyncCalls(source), 3);
+  assert.equal(countSyncCalls(source), 7);
 });
 
 test("a file may lose synchronous fs calls, never gain one, and a new file starts at none", () => {

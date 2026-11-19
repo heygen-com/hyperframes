@@ -78,6 +78,7 @@ import {
   recordPreviewBuilt,
   recordPreviewRead,
   recordPreviewReferences,
+  recordPreviewReadOff,
 } from "../helpers/previewReads.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
@@ -747,7 +748,7 @@ export function registerPreviewRoutes(
     if (!file || (await isPrivateProjectFileOff(project.dir, file))) {
       return c.text("not found", 404);
     }
-    recordPreviewRead(project.dir, file);
+    await recordPreviewReadOff(project.dir, file);
     const stat = await statOrNull(file);
     if (!stat?.isFile()) {
       return c.text("not found", 404);
