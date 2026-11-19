@@ -670,8 +670,19 @@ async function encodeInChunks(
   } finally {
     rmSync(listPath, { force: true });
   }
+  const wanted = ranges.reduce((sum, range) => sum + range.lengthSeconds, 0);
+  const { durationSeconds: joined } = await probeMediaMetadata(tempPath);
   for (const piece of pieces) if (existsSync(piece)) unlinkSync(piece);
+  if (joined === undefined || joined < wanted - JOIN_SHORTFALL_ALLOWED_SECONDS) {
+    throw new ProxyTranscodeError(
+      `the joined copy lasts ${joined?.toFixed(1) ?? "an unknown time"} s of ${wanted.toFixed(1)} s; its pieces are made again next time`,
+      null,
+      "",
+    );
+  }
 }
+
+const JOIN_SHORTFALL_ALLOWED_SECONDS = 1;
 
 const KEYFRAME_EVERY_SECOND_ARGS = ["-force_key_frames", "expr:gte(t,n_forced*1)"];
 // Fixed recipe; changing either array means bumping PROXY_PARAMS_VERSION.
@@ -833,7 +844,12 @@ async function runFfmpeg(
         const cwd = JOIN_FROM_CACHE_FOLDER ? dirname(listPath) : undefined;
         return spawnFfmpeg(
           ffmpegPath,
-          concatArgs(cwd ? basename(listPath) : listPath, target, variant),
+          concatArgs(
+            cwd ? basename(listPath) : listPath,
+            target,
+            variant,
+            metadata.audioStream !== undefined,
+          ),
           CONCAT_TIMEOUT_MS,
           signal,
           undefined,
@@ -850,12 +866,15 @@ async function runFfmpeg(
   }
 }
 
-const LET_FFMPEG_MOVE_SOUND_TIMESTAMPS_AT_SEAMS = { exitOnError: false };
-
-function concatArgs(listPath: string, target: string, variant: ProxyVariant): string[] {
+function concatArgs(
+  listPath: string,
+  target: string,
+  variant: ProxyVariant,
+  piecesHaveSound: boolean,
+): string[] {
   return [
     "-y",
-    ...concatListInputArgs(listPath, LET_FFMPEG_MOVE_SOUND_TIMESTAMPS_AT_SEAMS),
+    ...concatListInputArgs(listPath, { exitOnError: !piecesHaveSound }),
     "-c",
     "copy",
     ...(variant === "h264" ? ["-movflags", "+faststart"] : []),
