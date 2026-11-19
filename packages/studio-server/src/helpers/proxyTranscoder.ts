@@ -850,10 +850,12 @@ async function runFfmpeg(
   }
 }
 
+const LET_FFMPEG_MOVE_SOUND_TIMESTAMPS_AT_SEAMS = { exitOnError: false };
+
 function concatArgs(listPath: string, target: string, variant: ProxyVariant): string[] {
   return [
     "-y",
-    ...concatListInputArgs(listPath),
+    ...concatListInputArgs(listPath, LET_FFMPEG_MOVE_SOUND_TIMESTAMPS_AT_SEAMS),
     "-c",
     "copy",
     ...(variant === "h264" ? ["-movflags", "+faststart"] : []),

@@ -272,8 +272,7 @@ describe("resolveProxy on a long source", () => {
     await answerAll(calls);
     await result;
     const joinArgs = calls.at(-1)!.args;
-    expect(joinArgs.slice(1, 14)).toEqual([
-      "-xerror",
+    expect(joinArgs.slice(1, 13)).toEqual([
       "-protocol_whitelist",
       "file",
       "-f",
@@ -361,6 +360,36 @@ describe("resolveProxy on a long source", () => {
         .map(Number);
       expect(redness.length).toBeGreaterThan(0);
       expect(Math.max(...redness)).toBeLessThan(160);
+    },
+    60_000,
+  );
+
+  it.skipIf(!realFfmpeg || !findFfBinary("ffprobe"))(
+    "joins the pieces of a source with sound into one copy that keeps its sound",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
+      const { resolveProxy } = await import("./proxyTranscoder.js");
+      const projectDir = realpathSync(tmpProject());
+      const sourcePath = join(projectDir, "talk.mp4");
+      execFileSync(realFfmpeg!, [
+        ...["-v", "error", "-f", "lavfi", "-i", `color=c=blue:s=32x32:r=2:d=${LONG_SECONDS}`],
+        ...["-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:d=${LONG_SECONDS}`],
+        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", sourcePath],
+      ]);
+
+      const proxyPath = await resolveProxy(projectDir, sourcePath);
+      const streams = execFileSync(
+        findFfBinary("ffprobe")!,
+        [
+          ...["-v", "error", "-show_entries", "stream=codec_type:format=duration"],
+          ...["-of", "csv=p=0", "--", proxyPath],
+        ],
+        { encoding: "utf8" },
+      ).split("\n");
+      expect(streams).toEqual(expect.arrayContaining(["video", "audio"]));
+      expect(Number(streams.find((line) => /^[\d.]+$/.test(line)))).toBeCloseTo(LONG_SECONDS, 0);
     },
     60_000,
   );
