@@ -221,7 +221,7 @@ export function selectorIdTokens(selector: string): string[] {
 export function replaceSelectorIdTokens(
   selector: string,
   candidateIds: readonly string[],
-  resolveReplacement: (matchedId: string) => string,
+  resolveReplacement: (matchedId: string, matchedToken: string) => string,
 ): string {
   if (candidateIds.length === 0 || !selector.includes("#")) return selector;
   const candidates = new Set(candidateIds);
@@ -235,7 +235,7 @@ export function replaceSelectorIdTokens(
         ? decodeCssIdentifierAt(selector, index + 1)
         : null;
     if (token && candidates.has(token.value)) {
-      result += resolveReplacement(token.value);
+      result += resolveReplacement(token.value, selector.slice(index, token.end));
       index = token.end;
     } else {
       result += selector[index];

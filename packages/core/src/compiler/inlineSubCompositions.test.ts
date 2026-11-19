@@ -1281,6 +1281,53 @@ it("charges the bytes SVG id renaming adds to the mount that grew", () => {
   );
 });
 
+// fails without the fix: a mount's alias alternatives were all built before any of their bytes were charged.
+it("charges a mount's selector aliases while they are built, and each byte once", () => {
+  const leaves = 300;
+  const leaf = `<template><div data-composition-id="leaf"><svg><g id="a"></g><use href="#a"/></svg></div></template>`;
+  const art = (rules: number) =>
+    `<template><div data-composition-id="art"><style>${Array.from(
+      { length: rules },
+      (_, i) => `[href="#a"] .r${i} { fill: red; }`,
+    ).join(
+      "\n",
+    )}</style>${'<div data-composition-id="leaf" data-composition-src="leaf.html" data-start="0" data-duration="2"></div>'.repeat(leaves)}</div></template>`;
+  const inline = (rules: number, chargeEmitted: (src: string, bytes: number) => void) => {
+    const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
+      <div data-composition-id="a" data-composition-src="art.html" data-start="0" data-duration="2"></div>
+    </div></body></html>`);
+    return inlineSubCompositions(
+      document,
+      [...document.querySelectorAll("[data-composition-src]")],
+      {
+        resolveHtml: (src) => (src === "art.html" ? art(rules) : leaf),
+        parseHtml: (html) => parseHTML(html).document,
+        chargeEmitted,
+      },
+    );
+  };
+
+  let renaming = 0;
+  inline(0, (_src, bytes) => (renaming += bytes));
+  let charged = 0;
+  const limit = renaming + 16 * 1024;
+  expect(() =>
+    inline(50, (_src, bytes) => {
+      charged += bytes;
+      if (charged > limit) throw new Error("over budget");
+    }),
+  ).toThrow("over budget");
+  expect(charged).toBeLessThan(limit + 200);
+
+  const perSrc = new Map<string, number>();
+  const { styles } = inline(1, (src, bytes) => perSrc.set(src, (perSrc.get(src) ?? 0) + bytes));
+  const authored = art(1).match(/<style>([^<]*)<\/style>/)![1]!;
+  const growth = styles[0]!.css.length - authored.length;
+  expect(growth).toBeGreaterThan(5_000);
+  expect(perSrc.get("art.html")).toBeGreaterThanOrEqual(growth);
+  expect(perSrc.get("art.html")).toBeLessThan(growth + 1000);
+});
+
 // fails without the fix: nested templates were walked per copy, linkedom copied each, and SVG ones rescanned.
 describe("dropAuthoredSvgReferenceAliases", () => {
   const planted = `data-hf-svg-reference-aliases="[]"`;

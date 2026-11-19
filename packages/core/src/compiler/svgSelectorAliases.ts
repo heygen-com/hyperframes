@@ -134,6 +134,7 @@ export function rewriteSvgSelectors(
   ids: readonly IdSelectorAlias[],
   references: readonly SvgReferenceAlias[],
   namespaces?: Namespaces,
+  charge?: (bytes: number) => void,
 ): string {
   const index = aliasIndex(references);
   const rewriteAttribute = (predicate: string): string => {
@@ -144,9 +145,10 @@ export function rewriteSvgSelectors(
     const { rawName, flag } = parsed;
     const alternatives = new Set([predicate]);
     for (const alias of aliasesFor(index, parsed, namespaces)) {
-      alternatives.add(
-        `[${rawName}="${tokens.escapeCssAttributeValue(alias.after)}"${flag ? ` ${flag}` : ""}]`,
-      );
+      const alternative = `[${rawName}="${tokens.escapeCssAttributeValue(alias.after)}"${flag ? ` ${flag}` : ""}]`;
+      if (alternatives.has(alternative)) continue;
+      charge?.(alternative.length + (alternatives.size === 1 ? ":is(, )".length : ", ".length));
+      alternatives.add(alternative);
     }
     return alternatives.size === 1 ? predicate : `:is(${[...alternatives].join(", ")})`;
   };
@@ -155,11 +157,11 @@ export function rewriteSvgSelectors(
   const namedIds = tokens
     .selectorIdTokens(selector)
     .filter((id) => replacements.has(id) || index.renamedIdAlternatives.has(id));
-  const rewrittenIds = tokens.replaceSelectorIdTokens(
-    selector,
-    namedIds,
-    (id) => replacements.get(id) ?? index.renamedIdAlternatives.get(id)!,
-  );
+  const rewrittenIds = tokens.replaceSelectorIdTokens(selector, namedIds, (id, token) => {
+    const replacement = replacements.get(id) ?? index.renamedIdAlternatives.get(id)!;
+    charge?.(replacement.length - token.length);
+    return replacement;
+  });
   return tokens.replaceSelectorAttributeTokens(rewrittenIds, rewriteAttribute);
 }
 
