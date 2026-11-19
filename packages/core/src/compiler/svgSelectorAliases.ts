@@ -165,16 +165,16 @@ export function rewriteSvgSelectors(
 
 export function dropAuthoredSvgReferenceAliases(root: ParentNode): boolean {
   let dropped = false;
-  for (const el of root.querySelectorAll(`[${SVG_REFERENCE_ALIASES_ATTR}]`)) {
-    el.removeAttribute(SVG_REFERENCE_ALIASES_ATTR);
-    dropped = true;
-  }
-  for (const template of root.querySelectorAll("template")) {
-    const outer = template.parentElement?.closest("template");
-    if (outer && outer !== root) continue;
-    const subtree =
-      "content" in template && !template.firstElementChild ? template.content : template;
-    dropped = dropAuthoredSvgReferenceAliases(subtree) || dropped;
+  const pending: ParentNode[] = [root];
+  for (let node = pending.pop(); node; node = pending.pop()) {
+    for (const el of Array.from(node.children)) {
+      if (el.hasAttribute(SVG_REFERENCE_ALIASES_ATTR)) {
+        el.removeAttribute(SVG_REFERENCE_ALIASES_ATTR);
+        dropped = true;
+      }
+      const html = el.localName === "template" && !el.firstElementChild && "content" in el;
+      pending.push(html ? (el as HTMLTemplateElement).content : el);
+    }
   }
   return dropped;
 }
