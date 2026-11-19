@@ -282,11 +282,22 @@ function namesBlob(log: HistoryLog, hash: string): boolean {
 }
 
 function withoutHiddenPaths(log: HistoryLog, ignores?: (path: string) => boolean): HistoryLog {
-  for (const path of log.baseline.keys())
-    if (!isHistoryPath(path, ignores)) log.baseline.delete(path);
-  for (const entry of log.entries)
-    entry.files = entry.files.filter((file) => isHistoryPath(file.path, ignores));
+  dropUnrecordedPaths(log, ignores);
   return log;
+}
+
+function dropUnrecordedPaths(log: HistoryLog, ignores?: (path: string) => boolean): boolean {
+  let dropped = false;
+  for (const path of log.baseline.keys())
+    if (!isHistoryPath(path, ignores)) dropped = log.baseline.delete(path) || dropped;
+  for (const entry of log.entries) {
+    const files = entry.files.filter((file) => isHistoryPath(file.path, ignores));
+    if (files.length === entry.files.length) continue;
+    entry.files = files;
+    keepTargetsOfItsFiles(entry);
+    dropped = true;
+  }
+  return dropped;
 }
 
 const historyFiles = async (dir: string, ignores?: (path: string) => boolean) =>
@@ -460,6 +471,14 @@ class Engine {
 
   readonly records = (path: string) => isHistoryPath(path, this.options.ignores);
   readonly historyFiles = () => historyFiles(this.dir, this.options.ignores);
+  readonly recordsOnDisk = (path: string) => {
+    if (!this.records(path)) return false;
+    if (!existsSync(join(this.dir, path)) || lstatSync(join(this.dir, path)).isSymbolicLink())
+      return true;
+    const real = realpathSync.native(join(this.dir, path));
+    const onDisk = relative(realpathSync.native(this.dir), real).split(sep).join("/");
+    return onDisk.startsWith("../") || isAbsolute(onDisk) || this.records(onDisk);
+  };
 
   constructor(
     readonly options: ProjectHistoryOptions,
@@ -555,7 +574,10 @@ class Engine {
       ),
     );
     if (!log) return this.firstOpen();
-    this.log = withoutHiddenPaths(log, this.options.ignores);
+    const dropped = dropUnrecordedPaths(log, this.options.ignores);
+    this.log = log;
+    // Pruning keeps only what this log names, so the log on disk must not name more.
+    if (dropped) this.persistLog();
     await this.reclaimUncopied();
     if (!this.log.keepsLedger) await this.takeInUnnamedLedger();
     const cache = this.readStatCache();
@@ -1276,7 +1298,9 @@ class Engine {
     const changes = [...target]
       .filter(
         ([path, hash]) =>
-          this.studioWouldWrite(path) && (this.tracked.get(path)?.hash ?? null) !== hash,
+          this.studioWouldWrite(path) &&
+          this.recordsOnDisk(path) &&
+          (this.tracked.get(path)?.hash ?? null) !== hash,
       )
       .sort(([, a], [, b]) => Number(a !== null) - Number(b !== null));
     const setAsideByDeletesFirst = new Set(
