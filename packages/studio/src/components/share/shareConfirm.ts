@@ -33,7 +33,7 @@ export function shareConfirmMessage(
     case "share":
       return lines(
         linked
-          ? "This folder is already linked to an existing review. Sharing adds this video to it. If you didn't share this project before, cancel: it may have come with a folder someone sent you."
+          ? "This folder is already linked to an existing review. Sharing adds this video to it and sets who can open it. If you didn't share this project before, cancel: it may have come with a folder someone sent you."
           : "Create a share link for this project?",
         "",
         details(who(action.audience), files),
