@@ -472,3 +472,48 @@ describe("mount/compile assembly parity", () => {
     },
   );
 });
+
+// fails without the fix: an alias list written into authored HTML was read as the compiler's own and fed the CSS rewrite.
+describe("an authored SVG reference alias attribute", () => {
+  const planted = `data-hf-svg-reference-aliases='[{"name":"class","localName":"class","namespaceURI":null,"before":"a","after":"#planted"}]'`;
+  const svg = `<style>[class="a"] { fill: red; }</style><svg><rect class="a" ${planted}/></svg>`;
+  const files = {
+    "index.html": shell(
+      `<main data-composition-id="main" data-start="0" data-width="320" data-height="180" data-duration="1" ${planted}>
+        ${svg}
+        <section data-composition-id="card" data-composition-src="card.html" data-start="0" data-duration="1"></section>
+      </main>`,
+    ),
+    "card.html": `<template id="card-template"><article data-composition-id="card" data-width="320" data-height="180">${svg}</article></template>`,
+  };
+  const compiled = {
+    preview: (dir: string) => bundleToSingleHtml(dir),
+    render: async (dir: string) =>
+      (
+        await compileForRender(dir, join(dir, "index.html"), join(dir, ".downloads"), {
+          allowSystemFontCapture: false,
+        })
+      ).html,
+  };
+
+  it.each(Object.entries(compiled))("never reaches the %s compile's CSS", async (_arm, compile) => {
+    const html = await compile(project(files));
+    expect(html).toContain('[class="a"]');
+    expect(html).not.toContain("#planted");
+  });
+
+  it("never reaches a mounted composition's CSS", async () => {
+    const dir = project({
+      ...files,
+      "index.html": shell(
+        `<main data-composition-id="main" data-start="0" data-width="320" data-height="180" data-duration="1">
+          <section data-composition-id="card" data-composition-src="card.html" data-start="0" data-duration="1"></section>
+        </main>`,
+      ),
+    });
+    await mountContract(dir, readFileSync(join(dir, "index.html"), "utf8"));
+    expect(document.documentElement.outerHTML).toContain('[class="a"]');
+    expect(document.documentElement.outerHTML).not.toContain("#planted");
+    expect(document.querySelector("[data-hf-svg-reference-aliases]")).toBeNull();
+  });
+});
