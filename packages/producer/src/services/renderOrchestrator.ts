@@ -206,6 +206,7 @@ import {
   probeSegmentFrameCount,
   readSegmentManifest,
   segmentDirFor,
+  segmentManifestKey,
   validateCompletedSegments,
   writeSegmentManifest,
   type SegmentManifest,
@@ -387,7 +388,7 @@ export interface RenderConfig {
   quality: "draft" | "standard" | "high";
   /** Segmented capture: reuse segments recorded in a matching manifest (Phase 2b). */
   resumeSegments?: boolean;
-  /** Segmented capture: keep renders/.hf-segments/<planHash> after a successful render. */
+  /** Segmented capture: keep the local segment cache after a successful render. */
   keepSegments?: boolean;
   /**
    * Output container format. Defaults to `"mp4"`; set explicitly for other formats.
@@ -3133,6 +3134,16 @@ export async function executeRenderJob(
   }
 }
 
+function loadResumeKeyOrWarn(resume: boolean, log: ProducerLogger): Buffer | null {
+  const key = segmentManifestKey();
+  if (resume && !key) {
+    log.warn(
+      "[Render] --resume: no preview token could be read or created, so every segment will be captured again",
+    );
+  }
+  return key;
+}
+
 async function executeRenderPipeline(input: {
   job: RenderJob;
   projectDir: string;
@@ -5100,26 +5111,8 @@ async function executeRenderPipeline(input: {
           pageMotionBlur: job.config.pageMotionBlur,
           captureQuality: captureOptions.quality,
         });
-        const segmentDir = segmentDirFor(join(projectDir, "renders"), segmentPlanHash);
-        let completedSegments: ReadonlySet<number> = new Set<number>();
-        if (job.config.resumeSegments === true) {
-          const existing = readSegmentManifest(segmentDir);
-          if (existing) {
-            completedSegments = await validateCompletedSegments(existing, segmentPlanHash, (path) =>
-              probeSegmentFrameCount(path, extractMediaMetadata),
-            );
-            log.info(`[Render] resuming: ${completedSegments.size} segments complete`, {
-              segmentDir,
-            });
-          }
-          if (completedSegments.size === 0) {
-            rmSync(segmentDir, { recursive: true, force: true });
-          }
-        } else {
-          // Without --resume the directory is stale by definition: a previous
-          // run's segments must never be spliced into this output.
-          rmSync(segmentDir, { recursive: true, force: true });
-        }
+        const segmentDir = segmentDirFor(projectDir, segmentPlanHash);
+        const manifestKey = loadResumeKeyOrWarn(job.config.resumeSegments === true, log);
         const emptySegmentManifest = (): SegmentManifest => ({
           version: 1,
           planHash: segmentPlanHash,
@@ -5127,7 +5120,26 @@ async function executeRenderPipeline(input: {
           segmentFrames,
           completed: [],
         });
-        let segmentManifest = readSegmentManifest(segmentDir) ?? emptySegmentManifest();
+        let segmentManifest = emptySegmentManifest();
+        let completedSegments: ReadonlySet<number> = new Set<number>();
+        const existing = job.config.resumeSegments ? readSegmentManifest(segmentDir) : null;
+        if (existing) {
+          completedSegments = await validateCompletedSegments(existing, {
+            expectedHash: segmentPlanHash,
+            segmentDir,
+            totalFrames,
+            segmentFrames,
+            key: manifestKey,
+            probeFrames: (path) => probeSegmentFrameCount(path, extractMediaMetadata),
+          });
+          segmentManifest.completed = existing.completed.filter((entry) =>
+            completedSegments.has(entry.index),
+          );
+          log.info(`[Render] resuming: ${completedSegments.size} segments complete`, {
+            segmentDir,
+          });
+        }
+        if (completedSegments.size === 0) rmSync(segmentDir, { recursive: true, force: true });
         const invokeSegmented = () => {
           if (capturePlan.kind !== "sdr_segmented") {
             throw new Error(`Cannot invoke segmented stage with ${capturePlan.kind} plan`);
@@ -5184,7 +5196,7 @@ async function executeRenderPipeline(input: {
                     ...segmentManifest.completed.filter((e) => e.index !== entry.index),
                     { ...entry, completedAt: new Date().toISOString() },
                   ];
-                  writeSegmentManifest(segmentDir, segmentManifest);
+                  writeSegmentManifest(segmentDir, segmentManifest, manifestKey);
                 },
                 updateCaptureObservability,
               }),

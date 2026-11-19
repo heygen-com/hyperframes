@@ -1,4 +1,8 @@
-import { SVG_REFERENCE_ALIASES_ATTR, readSvgReferenceAliases } from "./svgSelectorAliases";
+import {
+  SVG_REFERENCE_ALIASES_ATTR,
+  dropAuthoredSvgReferenceAliases,
+  readSvgReferenceAliases,
+} from "./svgSelectorAliases";
 import { readExternalScriptAttributes, type ExternalScriptAttributes } from "./externalScripts";
 import { parseImportMap, type ImportMap } from "./importMaps";
 import {
@@ -816,6 +820,7 @@ export function inlineSubCompositions(
   // `<style>` text gets the same substitution its DOM just received. See
   // svgIdNamespacing.ts for why this is a rename, unlike the sibling
   // getElementById/media-id fixes.
+  dropAuthoredSvgReferenceAliases(document);
   const hostRoots = svgIdScopes.map(({ root }) => root);
   const clips = sceneClipRoots(document, hostRoots);
   const svgIdMaps = namespaceCollidingSvgIds(

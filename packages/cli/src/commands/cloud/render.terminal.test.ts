@@ -5,6 +5,34 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { OffloadedMedia } from "../../cloud/offload.js";
+
+const fixture = vi.hoisted(() => ({
+  offloaded: undefined as OffloadedMedia[] | undefined,
+  swappedFonts: undefined as string[] | undefined,
+}));
+
+vi.mock("../../cloud/offload.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../cloud/offload.js")>();
+  return {
+    ...actual,
+    offloadHeavyMedia: async (...args: Parameters<typeof actual.offloadHeavyMedia>) => {
+      if (!fixture.offloaded) return actual.offloadHeavyMedia(...args);
+      for (const item of fixture.offloaded) args[2].onFile?.(item);
+      return fixture.offloaded;
+    },
+  };
+});
+
+vi.mock("../../cloud/fontPreflight.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../cloud/fontPreflight.js")>();
+  return {
+    ...actual,
+    embedSystemFonts: async (...args: Parameters<typeof actual.embedSystemFonts>) =>
+      fixture.swappedFonts ?? actual.embedSystemFonts(...args),
+  };
+});
+
 import render from "./render.js";
 import { consumeCommandResult } from "../../utils/commandResult.js";
 
@@ -27,6 +55,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  fixture.offloaded = undefined;
+  fixture.swappedFonts = undefined;
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -64,6 +94,33 @@ describe.skipIf(process.platform === "win32")("cloud render on a terminal", () =
     expect(human).toContain("left out of the upload");
     expect(human.replace(colors, "")).not.toContain(esc);
     expect(human).toContain(".env.\\x1b[2J");
+  });
+
+  it("prints archive file paths with control characters as visible escapes", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    writeFileSync(join(dir, `clip${esc}[2J.txt`), "text");
+    fixture.offloaded = [
+      { path: `media/a${esc}]0;x.mp4`, size_bytes: 10, action: "upload" },
+      { path: `media/b${esc}[1A.mp4`, size_bytes: 10, action: "upload", kept_in_archive: true },
+    ];
+
+    const human = await humanOutput([dir, "--dry-run"]);
+
+    expect(human.replace(colors, "")).not.toContain(esc);
+    expect(human).toContain("media/a\\x1b]0;x.mp4 · would upload");
+    expect(human).toContain("media/b\\x1b[1A.mp4 also stays in the zip");
+    expect(human).toContain("Largest included files:");
+    expect(human).toContain("clip\\x1b[2J.txt");
+  });
+
+  it("prints swapped font names with control characters as visible escapes", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    fixture.swappedFonts = [`Brand${esc}[2J\nSans`];
+
+    const human = await humanOutput([dir, "--dry-run"]);
+
+    expect(human.replace(colors, "")).not.toContain(esc);
+    expect(human).toContain("Brand\\x1b[2J\\x0aSans is not on this computer");
   });
 
   it("prints the upload progress name with control characters as visible escapes", async () => {

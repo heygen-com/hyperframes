@@ -3,6 +3,7 @@ import { findSceneTemplate } from "@hyperframes/parsers/sub-composition-validity
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   SVG_REFERENCE_ALIASES_ATTR,
+  dropAuthoredSvgReferenceAliases,
   readSvgReferenceAliases,
   refreshSvgSelectorAliases,
 } from "../compiler/svgSelectorAliases";
@@ -805,6 +806,7 @@ async function mountExternalCompositions(
         const html = await response.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
+        dropAuthoredSvgReferenceAliases(doc);
         // Resolve parent-relative assets against the fetched composition before mounting.
         rewriteSubCompositionAssetPaths(doc, compositionUrl);
         const template =

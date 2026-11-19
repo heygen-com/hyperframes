@@ -17,6 +17,10 @@ writeFileSync(
 );
 writeFileSync(join(projectDir, "fonts", "Brand.woff2"), Buffer.from("wOF2font"));
 writeFileSync(join(projectDir, "fonts", "Brand.ttf"), Buffer.from("ttf-font"));
+writeFileSync(
+  join(projectDir, "sized.html"),
+  '<div data-composition-id="sized"><div id="card" data-hf-studio-box-size="true"></div></div>',
+);
 writeFileSync(join(projectDir, "scene.js"), "export const scene = 1;");
 writeFileSync(join(projectDir, "scene.mjs"), "export const scene = 2;");
 writeFileSync(join(projectDir, "data.json"), '{"secret":true}');
@@ -204,6 +208,19 @@ describe("an opaque preview frame's loads under its token", () => {
     const tokened = `/api/projects/demo/preview/~${token}/`;
     expect(html).toContain(`<base href="${tokened}">`);
     expect(html.replaceAll(tokened, "")).not.toContain("/api/projects/demo/preview/");
+  });
+
+  it("puts Studio's seek reapply last in a sealed document with a Studio edit, and only there", async () => {
+    const reapply = "//# sourceURL=hyperframes://position-seek-reapply</script>";
+    const sealed = await (await load("comp/sized.html", { "sec-fetch-dest": "iframe" })).text();
+    expect(sealed).toContain(reapply);
+    expect(sealed.indexOf(reapply)).toBeGreaterThan(sealed.indexOf('id="card"'));
+    const plain = await api.request("http://localhost/projects/demo/preview/comp/sized.html", {
+      headers: { "sec-fetch-site": "same-origin", "sec-fetch-dest": "iframe" },
+    });
+    expect(await plain.text()).not.toContain(reapply);
+    const unedited = await (await load("comp/scene.html", { "sec-fetch-dest": "iframe" })).text();
+    expect(unedited).not.toContain(reapply);
   });
 
   it("serves the main preview under the token, re-based", async () => {

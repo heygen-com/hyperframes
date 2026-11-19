@@ -282,6 +282,21 @@ describe("assertArchiveFits", () => {
       "data/scan.tiff",
     );
   });
+
+  it("names the largest files with control characters, line feeds included, as visible escapes", () => {
+    const esc = String.fromCharCode(27);
+    const errors = vi.mocked(console.error);
+    errors.mockClear();
+    expect(() =>
+      assertArchiveFits(200 * 1024 * 1024 + 1, [
+        { path: `a${esc}[2J\n  190.0 MB  b.tiff`, size_bytes: 190 * 1024 * 1024 },
+      ]),
+    ).toThrow(CliRuntimeError);
+    const printed = errors.mock.calls.flat().join("\n");
+
+    expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(printed).toContain("a\\x1b[2J\\x0a  190.0 MB  b.tiff");
+  });
 });
 
 describe("parseAspectRatioFlag", () => {

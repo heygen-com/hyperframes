@@ -76,6 +76,7 @@ import {
   isJavaScriptType,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
+  dropAuthoredSvgReferenceAliases,
   readDeclaredDefaults,
   parseHostVariableValues,
   boundMediaSrc,
@@ -148,7 +149,10 @@ import {
 } from "@hyperframes/core/fonts/embed";
 import { prepareAnimatedGifInputs } from "./animatedGifPrep.js";
 import { prepareHeifImageInputs } from "./heifImagePrep.js";
-import { createStudioPositionSeekReapplyScript } from "@hyperframes/studio-server/manual-edits-render-script";
+import {
+  createStudioPositionSeekReapplyScript,
+  htmlHasStudioPositionEdits,
+} from "@hyperframes/studio-server/manual-edits-render-script";
 import { getPositionEditsRenderScript } from "@hyperframes/core/runtime/position-edits-render";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
 import { assertAssetMediaTypeProfile } from "./assetMediaType.js";
@@ -1204,6 +1208,7 @@ function inlineSubCompositions(
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
 
   if (!hosts.length) {
+    const dropped = dropAuthoredSvgReferenceAliases(document as unknown as Document);
     // Even with no sub-compositions, declared composition variables need a
     // compile-time stylesheet so eval-time reads (GSAP .from immediateRender,
     // top-level script getComputedStyle) resolve var(--slug) — the runtime's
@@ -1214,7 +1219,7 @@ function inlineSubCompositions(
       variableOverrides,
       { chargeBytes: (bytes) => budget.chargeGenerated("composition variables", bytes) },
     );
-    return { html: emitted ? document.toString() : html, variablesByComp: {} };
+    return { html: emitted || dropped ? document.toString() : html, variablesByComp: {} };
   }
 
   const readOnce = new Map<string, string | null>();
@@ -2587,14 +2592,7 @@ export async function compileForRender(
   // GSAP overwrites the `translate` CSS property on every frame seek; this script
   // re-asserts the CSS custom property var() form after each seek so dragged
   // positions survive frame-by-frame rendering without a JSON sidecar.
-  const HF_POSITION_ATTRS = [
-    'data-hf-studio-path-offset="true"',
-    'data-hf-studio-box-size="true"',
-    'data-hf-studio-rotation="true"',
-    'data-hf-studio-motion="',
-  ];
-  const hasPositionEdits = HF_POSITION_ATTRS.some((attr) => assembledHtml.includes(attr));
-  const htmlWithPositionScript = hasPositionEdits
+  const htmlWithPositionScript = htmlHasStudioPositionEdits(assembledHtml)
     ? (insertBeforeCloseTag(
         assembledHtml,
         "body",

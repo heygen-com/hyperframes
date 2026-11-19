@@ -99,6 +99,16 @@ describe("capture proxy", () => {
     expect(refused).toEqual([]);
   });
 
+  it("listens on the fixed loopback port it is given", async () => {
+    const free = createServer();
+    await new Promise<void>((resolve) => free.listen(0, "127.0.0.1", resolve));
+    const port = (free.address() as { port: number }).port;
+    await new Promise<void>((resolve) => free.close(() => resolve()));
+    const proxy = await startCaptureProxy(null, undefined, port);
+    proxies.push(proxy);
+    expect(proxy.url).toBe(`http://127.0.0.1:${port}`);
+  });
+
   it("refuses URL credentials and non-http requests", async () => {
     expect(await proxyGet("http://user:secret@example.com/")).toBe(403);
     expect(await proxyGet("file:///etc/passwd")).toBe(403);
