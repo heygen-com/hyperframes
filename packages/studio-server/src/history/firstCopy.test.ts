@@ -171,4 +171,50 @@ describe("a project's first history copy", () => {
       for (const answer of releases) answer();
     }
   });
+
+  it("keeps a first copy that lands past its deadline as the file's start, and an edit since as a change", async () => {
+    const projectDir = projectOf(4, "late");
+    const late = join(projectDir, "parts", "p1.js");
+    const original = readFileSync(late);
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    let heldWrites = 0;
+    vi.mocked(fsp.writeFile).mockImplementation(
+      async (...args: Parameters<typeof realWriteFile>) => {
+        const [path, bytes] = args;
+        if (
+          String(path).includes("incoming-") &&
+          Buffer.isBuffer(bytes) &&
+          bytes.equals(original)
+        ) {
+          heldWrites += 1;
+          await held;
+        }
+        return realWriteFile(...args);
+      },
+    );
+    const historyRoot = tempDir("hf-first-copy-root-");
+    const history = await openProjectHistory({
+      projectDir,
+      historyRoot,
+      firstCopyFileMs: 50,
+      quietMs: 30,
+    });
+    closes.push(() => history.close());
+    expect(heldWrites).toBe(1);
+    // An editor saves the file after the open, while its first copy is still being written.
+    writeFileSync(late, "// saved after the open\n");
+    release();
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["parts/p1.js"]), {
+      timeout: 10_000,
+    });
+    expect(history.peek(START)!["parts/p1.js"]).toBe(sha256(original));
+    await vi.waitFor(
+      () =>
+        expect(history.list().flatMap((entry) => entry.files.map((file) => file.path))).toContain(
+          "parts/p1.js",
+        ),
+      { timeout: 10_000 },
+    );
+  });
 });

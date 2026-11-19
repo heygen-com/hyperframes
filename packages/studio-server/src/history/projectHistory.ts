@@ -656,22 +656,19 @@ class Engine {
     const files = await historyFiles(this.dir);
     const copied = files.filter((file) => file.size <= COPY_LATER_ABOVE_BYTES);
     const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
-    const hashes = await Promise.allSettled(
-      copied.map((file) =>
-        owedAfter(
-          inFirstCopySlot(() => this.storeIfPresent(file.path)),
-          waitMs,
-        ),
-      ),
-    );
+    const copies = copied.map((file) => inFirstCopySlot(() => this.storeIfPresent(file.path)));
+    const hashes = await Promise.allSettled(copies.map((copy) => owedAfter(copy, waitMs)));
+    const late = new Map<string, Promise<Copied>>();
     // Nothing names these copies until the log below is written, so one look at the end covers the whole copy.
     if (this.whereFolder() !== "here") throw this.replaced();
     const owed: ListedFile[] = [];
     copied.forEach((file, i) => {
       const result = hashes[i]!;
       if (result.status === "rejected") throw result.reason;
-      if (result.value === "changing") owed.push(file);
-      else if (result.value !== "gone")
+      if (result.value === "changing") {
+        owed.push(file);
+        late.set(file.path, copies[i]!);
+      } else if (result.value !== "gone")
         this.tracked.set(file.path, { hash: result.value.hash, stat: statKey(file, sweptAt) });
     });
     this.log.baseline = this.manifest();
@@ -681,13 +678,18 @@ class Engine {
     this.adoptMediaInBackground(
       [...owed, ...files.filter((file) => file.size > COPY_LATER_ABOVE_BYTES)],
       sweptAt,
+      late,
     );
   }
 
-  adoptMediaInBackground(files: ListedFile[], sweptAt: number): void {
+  adoptMediaInBackground(
+    files: ListedFile[],
+    sweptAt: number,
+    lateFirstCopies = new Map<string, Promise<Copied>>(),
+  ): void {
     let turn: Promise<unknown> = Promise.resolve();
     for (const file of files) {
-      const adoption = this.adopt(file, sweptAt, turn);
+      const adoption = this.adopt(file, sweptAt, turn, lateFirstCopies.get(file.path));
       turn = adoption.firstTry;
       this.adopting.set(file.path, adoption);
     }
@@ -702,13 +704,19 @@ class Engine {
   }
 
   /** A file still changing stays named until a whole copy of it lands; the next open retries it. */
-  adopt(file: ListedFile, sweptAt: number, turn: Promise<unknown>): Adoption {
+  adopt(
+    file: ListedFile,
+    sweptAt: number,
+    turn: Promise<unknown>,
+    late?: Promise<Copied>,
+  ): Adoption {
     let asked: Array<() => void> = [];
     let wake = () => {};
     const tryOnce = async () => {
       const served = asked;
       asked = [];
-      const tried = await this.tryAdopting(file, sweptAt);
+      const tried = await this.tryAdopting(file, sweptAt, late);
+      late = undefined;
       for (const answer of served) answer();
       return tried === "over";
     };
@@ -736,15 +744,23 @@ class Engine {
     return { firstTry, ended, retryNow };
   }
 
-  async tryAdopting(file: ListedFile, sweptAt: number): Promise<"over" | "changing"> {
+  async tryAdopting(
+    file: ListedFile,
+    sweptAt: number,
+    late?: Promise<Copied>,
+  ): Promise<"over" | "changing"> {
     try {
       if (this.whereFolder() !== "here") return "over";
-      const copied = await this.storeIfPresent(file.path);
+      const first = await late?.catch(() => undefined);
+      const fromOpen = typeof first === "object";
+      const copied = fromOpen ? first : await this.storeIfPresent(file.path);
       return await this.queue(async () => {
         // Still named for the next open until recorded, so a failed record is never logged as added.
         if ((await this.recordAdopted(file, sweptAt, copied)) === "changing") return "changing";
         this.adopting.delete(file.path);
         this.saveAdopting();
+        // The sweeps since open passed this file by: one more takes in any edit since the bytes were read.
+        if (fromOpen) this.sweepIn(0);
         return "over";
       });
     } catch (error) {
