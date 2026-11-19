@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { _setDownloadFetchForTests } from "@hyperframes/engine";
 import {
   assertCompositionFileSize,
+  CompositionExpansionBudget,
   MAX_COMPOSITION_HTML_BYTES,
   MAX_EXPANDED_COMPOSITION_BYTES,
 } from "./compositionSizeLimit.js";
@@ -132,15 +133,23 @@ describe("composition expansion budget", () => {
     },
   );
 
+  it("allows 64 MB of mounted HTML and refuses one byte more", () => {
+    expect(MAX_EXPANDED_COMPOSITION_BYTES).toBe(64 * 1024 * 1024);
+    const budget = new CompositionExpansionBudget();
+    for (let i = 0; i < 4; i += 1) budget.charge("scene.html", MAX_COMPOSITION_HTML_BYTES);
+    expect(() => budget.charge("scene.html", 1)).toThrow(/64\.0 MB of composition HTML/);
+  });
+
   it("refuses one large file mounted many times", async () => {
-    const big = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 4) + 1;
+    const big = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 5) + 1;
     const dir = project({
-      "index.html": rootMounting("scene.html", 4),
+      "index.html": rootMounting("scene.html", 5),
       "scene.html": paddedTo(SCENE, big),
     });
     const error = await compileError(dir);
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
     expect(String(error)).toContain('"scene.html"');
+    expect(error).toMatchObject({ publicMetadata: { exceeded: "bytes" } });
   });
 
   it("leaves a missing mount inside a template to the inliner's warning, as before", async () => {
@@ -163,7 +172,9 @@ describe("composition expansion budget", () => {
   });
 
   it("refuses a mount whose tiny scripts would each be wrapped in kilobytes of scoping code", async () => {
-    const scripts = `<script>window.n = (window.n || 0) + 1;</script>`.repeat(3_000);
+    const scripts = `<script>window.n = (window.n || 0) + 1;</script>`.repeat(
+      Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 10_000),
+    );
     const dir = project({
       "index.html": rootMounting("scene.html", 1),
       "scene.html": SCENE.replace("<h1>Scene</h1>", `<h1>Scene</h1>${scripts}`),
@@ -178,7 +189,8 @@ describe("composition expansion budget", () => {
 
   it("refuses a long host id over many style rules before building the scoped sheet", async () => {
     const id = `s${"x".repeat(20_000)}`;
-    const rules = Array.from({ length: 2_000 }, (_, i) => `.r${i}{color:red}`).join("");
+    const count = Math.ceil((2 * MAX_EXPANDED_COMPOSITION_BYTES) / id.length);
+    const rules = Array.from({ length: count }, (_, i) => `.r${i}{color:red}`).join("");
     const dir = project({
       "index.html": ROOT.replace("<html>", "<html><head></head>").replace(
         'data-composition-id="scene"',
@@ -195,8 +207,10 @@ describe("composition expansion budget", () => {
   });
 
   it("reserves the separator a scoped selector list is re-joined with", async () => {
-    const selectors = Array.from({ length: 2_000 }, (_, i) => `.r${i}`).join(",");
-    const sheet = `.first,${" ".repeat(20_000)}${selectors}{color:red}`;
+    const gap = " ".repeat(20_000);
+    const count = Math.ceil((2 * MAX_EXPANDED_COMPOSITION_BYTES) / gap.length);
+    const selectors = Array.from({ length: count }, (_, i) => `.r${i}`).join(",");
+    const sheet = `.first,${gap}${selectors}{color:red}`;
     const dir = project({
       "index.html": ROOT.replace("<html>", "<html><head></head>"),
       "scene.html": SCENE.replace("<h1>Scene</h1>", `<style>${sheet}</style><h1>Scene</h1>`),

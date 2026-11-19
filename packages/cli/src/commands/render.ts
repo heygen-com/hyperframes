@@ -462,14 +462,14 @@ export default defineCommand({
       description:
         "Segmented capture only (HF_SEGMENTED_CAPTURE=true): reuse segments a " +
         "previous run of the same composition and settings already finished, " +
-        "recorded in renders/.hf-segments/<hash>/segments.json. Each reused " +
+        "recorded in the local HyperFrames cache. Each reused " +
         "segment is re-validated before it is skipped.",
       default: false,
     },
     "keep-segments": {
       type: "boolean",
       description:
-        "Segmented capture only: keep renders/.hf-segments/<hash> after a " +
+        "Segmented capture only: keep locally cached segments after a " +
         "successful render instead of deleting it.",
       default: false,
     },
