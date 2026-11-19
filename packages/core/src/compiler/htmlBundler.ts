@@ -86,7 +86,7 @@ import {
 } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
-import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
+import { isHtmlTemplate, templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 import { assignMediaRenderIds } from "./mediaRenderIds";
 import { terminalText } from "../terminalText.js";
@@ -1295,6 +1295,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     (host) => !host.hasAttribute("data-composition-src"),
   );
   for (const templateEl of [...document.querySelectorAll("template[id]")]) {
+    if (!isHtmlTemplate(templateEl)) continue;
     const templateId = templateEl.getAttribute("id") || "";
     const match = templateId.match(/^(.+)-template$/);
     if (!match) continue;

@@ -62,15 +62,24 @@ export interface SceneTemplateLike {
   localName: string;
 }
 
-/** The content fragment of an HTML `<template>`, or null for any other element: an SVG `template` has none. */
-export function templateContent(el: SceneTemplateLike): DocumentFragment | null {
-  if (el.localName !== "template") return null;
-  return (el as { content?: DocumentFragment }).content ?? null;
+/** Whether `el` is an HTML `<template>`; an SVG `template` has no content. Reads no content, which linkedom copies. */
+export function isHtmlTemplate(el: SceneTemplateLike): boolean {
+  return el.localName === "template" && "content" in el;
 }
 
-/** The content of the first HTML `<template>` under `root`, or null. */
+export function templateContent(el: SceneTemplateLike): DocumentFragment | null {
+  return isHtmlTemplate(el) ? ((el as { content?: DocumentFragment }).content ?? null) : null;
+}
+
+export function firstHtmlTemplate<T extends SceneTemplateLike>(
+  templates: ArrayLike<T>,
+): T | undefined {
+  return Array.from(templates).find(isHtmlTemplate);
+}
+
 export function firstTemplateContent(root: ParentNode): DocumentFragment | null {
-  return Array.from(root.querySelectorAll("template"), templateContent).find(Boolean) ?? null;
+  const template = firstHtmlTemplate(root.querySelectorAll("template"));
+  return template ? templateContent(template) : null;
 }
 
 export function findSceneTemplate<T extends SceneTemplateLike>(
@@ -84,7 +93,7 @@ export function findSceneTemplate<T extends SceneTemplateLike>(
 /** Resolve authored content without invoking linkedom's synthetic body getter. */
 export function resolveSubCompositionContent(html: string, document: ParsableDocumentLike) {
   const templates = Array.from(document.querySelectorAll("template"));
-  const template = findSceneTemplate(templates) ?? templates.find(templateContent);
+  const template = findSceneTemplate(templates) ?? firstHtmlTemplate(templates);
   if (template) return { contentHtml: template.innerHTML ?? "", hasTemplate: true };
 
   const body = document.querySelector("body");

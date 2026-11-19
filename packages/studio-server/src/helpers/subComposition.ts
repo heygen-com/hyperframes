@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
+import { firstHtmlTemplate } from "@hyperframes/parsers/sub-composition-validity";
 import {
   rewriteAssetPaths,
   rewriteCssAssetUrls,
@@ -162,7 +163,7 @@ function extractFullDocumentParts(
  */
 function extractTemplateInnerHtml(rawComp: string): string | null {
   const { document: doc } = parseHTML(rawComp);
-  const template = doc.querySelector("template");
+  const template = firstHtmlTemplate(doc.querySelectorAll("template"));
   return template ? template.innerHTML : null;
 }
 

@@ -1,5 +1,10 @@
 import { rawCssUrlMatches, replaceMatches } from "@hyperframes/parsers/css-url-scans";
-import { findSceneTemplate, templateContent } from "@hyperframes/parsers/sub-composition-validity";
+import {
+  findSceneTemplate,
+  firstHtmlTemplate,
+  isHtmlTemplate,
+  templateContent,
+} from "@hyperframes/parsers/sub-composition-validity";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   SVG_REFERENCE_ALIASES_ATTR,
@@ -190,12 +195,17 @@ function rewriteSubCompositionAssetPaths(root: ParentNode, compositionUrl: URL |
 
 function sceneOrFirstTemplateContent(doc: Document): DocumentFragment | null {
   const templates = Array.from(doc.querySelectorAll("template"));
-  const template = findSceneTemplate(templates) ?? templates.find(templateContent);
+  const template = findSceneTemplate(templates) ?? firstHtmlTemplate(templates);
   return template ? templateContent(template) : null;
 }
 
-function mountTemplateContent(root: ParentNode, compositionId: string): DocumentFragment | null {
+export function inlineMountTemplate(root: ParentNode, compositionId: string): Element | null {
   const template = root.querySelector(`template#${CSS.escape(compositionId)}-template`);
+  return template && isHtmlTemplate(template) ? template : null;
+}
+
+function mountTemplateContent(root: ParentNode, compositionId: string): DocumentFragment | null {
+  const template = inlineMountTemplate(root, compositionId);
   return template && templateContent(template);
 }
 
@@ -324,7 +334,7 @@ function countAuthoredCompositionIds(hosts: Element[]): Map<string, number> {
 function hasMatchingInlineTemplate(host: Element): boolean {
   const authoredCompositionId = getHostCompositionIdentity(host).authoredCompositionId;
   if (!authoredCompositionId) return false;
-  return !!document.querySelector(`template#${CSS.escape(authoredCompositionId)}-template`);
+  return !!inlineMountTemplate(document, authoredCompositionId);
 }
 
 function isMountedInlineCompositionHost(host: Element): boolean {

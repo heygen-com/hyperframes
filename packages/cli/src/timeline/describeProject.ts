@@ -28,6 +28,7 @@ import {
   trackKindOf,
   type TrackKind,
 } from "@hyperframes/parsers";
+import { firstTemplateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { toDomNode, type DomNode } from "./domStructure.js";
 import {
   compositionOriginSeconds,
