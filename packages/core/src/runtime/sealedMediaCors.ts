@@ -1,6 +1,6 @@
 // A sealed preview's document has an opaque origin, so its own server's media is cross-origin to it. Without
 // `crossorigin` the browser loads that media in no-cors mode: WebGL and canvases refuse its frames, Web Audio treats it
-// as foreign. The preview server answers a CORS load from an opaque origin, so its own media opts in; other hosts don't.
+// as foreign. The preview server answers CORS loads from an opaque origin, so its own media opts in; other hosts don't.
 
 const isMedia = (el: Element): el is HTMLMediaElement =>
   el.localName === "video" || el.localName === "audio";
