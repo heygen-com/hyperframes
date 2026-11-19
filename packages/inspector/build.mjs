@@ -42,8 +42,14 @@ await Promise.all([
     bundle: true,
     platform: "browser",
     format: "iife",
+    minifyWhitespace: true,
   }),
 ]);
+const wide = /[\u0100-\uffff]/.exec(readFileSync(at("./dist/inspection.js"), "utf8"));
+if (wide)
+  throw new Error(
+    `dist/inspection.js has U+${wide[0].codePointAt(0).toString(16)} at ${wide.index}: every page it joins would be stored at two bytes a character`,
+  );
 // Declarations keep the packages/ layout under dist/types, so their relative imports still resolve once packed.
 rmSync(at("./dist/types"), { recursive: true, force: true });
 const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
