@@ -88,6 +88,24 @@ beforeEach(() => {
     },
   ]);
 });
+describe("the review a share action reaches", () => {
+  it("names the review a folder's record points at even before it was ever opened", async () => {
+    mocks.record.mockResolvedValue({ projectId: "linked", opened: false, studioProjectId: "s" });
+    mocks.project.mockResolvedValue({ title: "Someone's review", latest_ready_version_id: null });
+    const status = await createShareService("/project").status();
+    expect(status).toMatchObject({ reviewId: "linked", reviewTitle: "Someone's review" });
+    expect(mocks.project).toHaveBeenCalledWith("linked");
+  });
+  it("names the shared review, and no review for a folder that was never shared", async () => {
+    expect(await createShareService("/project").status()).toMatchObject({ reviewId: null });
+    mocks.status.mockResolvedValue(shared);
+    mocks.project.mockResolvedValue({ title: "Mine", latest_ready_version_id: "version-id" });
+    expect(await createShareService("/project").status()).toMatchObject({
+      reviewId: "project",
+      reviewTitle: "Mine",
+    });
+  });
+});
 describe("share operation consent and identity", () => {
   it("reads an existing link without rendering or creating a version", async () => {
     mocks.status.mockResolvedValue(shared);

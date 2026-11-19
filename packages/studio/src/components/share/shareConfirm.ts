@@ -11,49 +11,69 @@ export function shareConfirmMessage(
   spaceId: string,
 ): string {
   const { share } = snapshot;
-  const review = `Review: ${share.url ?? share.manageUrl}`;
-  const current = share.audience ? `Who can open it: ${audienceLabel(share.audience)}` : "";
+  const linked = action.action === "share" && share.reviewId !== null;
+  const space = snapshot.spaces.find(
+    (item) => item.id === (share.spaceId ?? (linked ? null : spaceId)),
+  );
+  const lines = (...parts: string[]) => parts.filter(Boolean).join("\n");
+  const details = (...parts: string[]) =>
+    lines(
+      share.reviewId ? `Review: ${share.reviewTitle ?? "Untitled review"}` : "",
+      share.url ? `Link: ${share.url}` : "",
+      space ? `Workspace: ${space.name}` : "",
+      ...parts,
+    );
+  const who = (audience?: LocalShareAudience) =>
+    audience ? `Who can open it: ${audienceLabel(audience)}` : "";
   const files =
     action.includeSource && !action.videoOnly
       ? "Includes editable project files, unused and Git-ignored files too."
       : "";
-  const lines = (...parts: string[]) => parts.filter(Boolean).join("\n");
   switch (action.action) {
-    case "share": {
-      const space = snapshot.spaces.find((item) => item.id === spaceId);
+    case "share":
       return lines(
-        "Create a share link for this project?",
+        linked
+          ? "This folder is already linked to an existing review. Sharing adds this video to it. If you didn't share this project before, cancel: it may have come with a folder someone sent you."
+          : "Create a share link for this project?",
         "",
-        action.audience ? `Who can open it: ${audienceLabel(action.audience)}` : "",
-        space ? `Workspace: ${space.name}` : "",
-        files,
+        details(who(action.audience), files),
       );
-    }
     case "update":
       return lines(
-        "Upload this project as a new version of this shared review?",
+        firstUpload(snapshot)
+          ? "Create the share link for this review?"
+          : "Upload this project as a new version of this shared review?",
         "",
-        review,
-        current,
-        files,
+        details(who(share.audience ?? undefined), files),
       );
     case "access":
       return lines(
         "Change who can open this shared review?",
         "",
-        review,
-        share.audience ? `Now: ${audienceLabel(share.audience)}` : "",
-        action.audience ? `After: ${audienceLabel(action.audience)}` : "",
+        details(
+          share.audience ? `Now: ${audienceLabel(share.audience)}` : "",
+          action.audience ? `After: ${audienceLabel(action.audience)}` : "",
+        ),
       );
     case "on":
-      return lines("Turn this review's link back on?", "", review, current);
+      return lines(
+        "Turn this review's link back on?",
+        "",
+        details(who(share.audience ?? undefined)),
+      );
     case "off":
       return lines(
         "Turn off this link? Everyone using the link loses access. Comments are kept.",
         "",
-        review,
+        details(),
       );
     case "login":
       return "";
   }
+}
+
+type LocalShareAudience = NonNullable<LocalShareAction["audience"]>;
+
+function firstUpload({ share, job }: LocalShareSnapshot) {
+  return (job?.state === "failed" || share.state === "failed") && share.hasReadyVersion === false;
 }

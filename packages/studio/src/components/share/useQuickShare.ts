@@ -129,7 +129,7 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
   function confirmAction(request: LocalShareAction): LocalShareAction | null {
     if (request.action === "login") return request;
     if (!snapshot || !window.confirm(shareConfirmMessage(request, snapshot, spaceId))) return null;
-    return { ...request, confirmedReview: snapshot.share.manageUrl };
+    return { ...request, confirmedReview: snapshot.share.reviewId };
   }
   async function recoverActionFailure(cause: unknown, signal: AbortSignal) {
     if (
@@ -146,7 +146,8 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
       return;
     }
     setProgress("");
-    const recovered = await refresh(signal, true);
+    const moved = cause instanceof LocalShareError && cause.code === "share_target_changed";
+    const recovered = await refresh(signal, !moved);
     if (recovered && !signal.aborted) {
       setError(failure(cause));
       setErrorCode(cause instanceof LocalShareError ? cause.code : null);

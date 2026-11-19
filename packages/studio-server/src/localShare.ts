@@ -16,6 +16,8 @@ export interface LocalShareState {
   state: "not_shared" | "link_off" | "ready" | "processing" | "failed" | "unavailable";
   url: string | null;
   manageUrl: string;
+  reviewId: string | null;
+  reviewTitle: string | null;
   changed: boolean | null;
   hasReadyVersion?: boolean;
   failure?: string | null;
@@ -42,7 +44,7 @@ export type LocalShareAction = {
   space?: string;
   videoOnly?: boolean;
   includeSource?: boolean;
-  confirmedReview?: string;
+  confirmedReview?: string | null;
 };
 export type LocalShareInteraction =
   | { event: "share_opened"; link: "none" | "live" | "changed" }

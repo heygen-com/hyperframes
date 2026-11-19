@@ -44,12 +44,8 @@ function actionInput(value: unknown): LocalShareAction | null {
 }
 
 function withConfirmedReview(input: LocalShareAction, review: unknown): LocalShareAction | null {
-  if (input.action === "login") return input;
-  return reviewLink(review) ? { ...input, confirmedReview: review } : null;
-}
-
-function reviewLink(value: unknown): value is string {
-  return typeof value === "string" && value.length <= 2048 && URL.canParse(value);
+  if (input.action === "login" || review === undefined) return input;
+  return review === null || validId(review) ? { ...input, confirmedReview: review } : null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -77,7 +73,10 @@ function optionalBoolean(value: unknown): boolean {
   return value === undefined || typeof value === "boolean";
 }
 function validSpace(value: unknown): boolean {
-  return value === undefined || (typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value));
+  return value === undefined || validId(value);
+}
+function validId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(value);
 }
 
 type CreateService = (
@@ -200,15 +199,8 @@ export function mountShareRoutes(
     if (input.action !== "login") {
       try {
         owner = await sessionOwner(session);
-        if ((await (await session.get()).status()).manageUrl !== input.confirmedReview)
-          return c.json(
-            {
-              code: "share_target_changed",
-              message:
-                "This project now points to a different shared review. Check it and try again.",
-            },
-            409,
-          );
+        const refused = await targetRefusal(session, input.confirmedReview);
+        if (refused) return c.json(refused.body, refused.status);
       } catch (error) {
         return c.json(await presentError(error, c.req.header("x-hyperframes-share-csrf")!), 400);
       }
@@ -279,6 +271,25 @@ function executeAction(sharing: ShareService, input: LocalShareAction) {
     videoOnly: input.videoOnly,
     includeSource: input.includeSource,
   });
+}
+
+async function targetRefusal(
+  session: { get: () => Promise<ShareService> },
+  confirmed?: string | null,
+) {
+  if (confirmed === undefined)
+    return {
+      status: 400 as const,
+      body: { code: "confirmation_required", message: "Confirm this sharing change in Studio." },
+    };
+  if ((await (await session.get()).status()).reviewId === confirmed) return null;
+  return {
+    status: 409 as const,
+    body: {
+      code: "share_target_changed",
+      message: "This project now points to a different shared review. Check it and try again.",
+    },
+  };
 }
 
 function actionStep(input: LocalShareAction) {
