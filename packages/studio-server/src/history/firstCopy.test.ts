@@ -11,6 +11,7 @@ import {
   rmSync,
   statSync,
   appendFileSync,
+  truncateSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -465,5 +466,27 @@ describe("a project's first history copy", () => {
       letReread();
       for (const { release } of holds.values()) release();
     }
+  });
+
+  it("adopts a file that grew past the copy limit before its reread, by reference", async () => {
+    const projectDir = projectOf(2, "grew");
+    const grows = join(projectDir, "parts", "p1.js");
+    let reads = 0;
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      const handle = await realOpen(...args);
+      if (String(args[0]) !== grows || ++reads > 3) return handle;
+      const readFile = handle.readFile.bind(handle);
+      handle.readFile = (async (...options: Parameters<typeof readFile>) => {
+        const bytes = await readFile(...options);
+        if (reads < 3) appendFileSync(grows, "// saved while read\n");
+        else truncateSync(grows, 65 * 1024 ** 2);
+        return bytes;
+      }) as typeof handle.readFile;
+      return handle;
+    });
+    const history = await open(projectDir, tempDir("hf-first-copy-root-"));
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["parts/p1.js"]), {
+      timeout: 10_000,
+    });
   });
 });

@@ -225,6 +225,47 @@ describe("the history store's count of what it holds", () => {
   });
 });
 
+describe("a pinned copy", () => {
+  it("survives every prune from the moment it is filed until it is unpinned", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-blob-pin-"));
+    try {
+      const small = join(root, "small.txt");
+      const large = join(root, "large.txt");
+      writeFileSync(small, "pinned bytes");
+      writeFileSync(large, "y".repeat(200 * 1024));
+      const store = await openBlobStore(join(root, "history", "blobs"));
+      const hashes = [await store.put(small, true), await store.put(large, true)];
+      await store.prune(new Set());
+      for (const hash of hashes) expect(store.has(hash!)).toBe(true);
+      for (const hash of hashes) store.unpin(hash!);
+      await store.prune(new Set());
+      for (const hash of hashes) expect(store.has(hash!)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("pins a copy whose bytes the store already holds, and keeps it until each pin is let go", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-blob-pin-"));
+    try {
+      const file = join(root, "same.txt");
+      writeFileSync(file, "same bytes");
+      const store = await openBlobStore(join(root, "history", "blobs"));
+      const hash = (await store.put(file))!;
+      await store.put(file, true);
+      await store.put(file, true);
+      store.unpin(hash);
+      await store.prune(new Set());
+      expect(store.has(hash)).toBe(true);
+      store.unpin(hash);
+      await store.prune(new Set());
+      expect(store.has(hash)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("a file written to while the history reads it", () => {
   let root: string;
   beforeEach(() => {

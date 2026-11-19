@@ -222,7 +222,7 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
-type Copied = { hash: string } | "gone" | "changing";
+type Copied = { hash: string; referenced?: true } | "gone" | "changing";
 
 const FIRST_COPY_FILE_MS = 10_000;
 
@@ -457,7 +457,6 @@ class Engine {
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   adopting = new Map<string, Adoption>();
-  baselineAwaitingAdoption = new Map<string, string>();
   reading = new Map<string, Promise<unknown>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
@@ -657,7 +656,9 @@ class Engine {
     const files = await historyFiles(this.dir);
     const copied = files.filter((file) => file.size <= COPY_LATER_ABOVE_BYTES);
     const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
-    const copies = copied.map((file) => inFirstCopySlot(() => this.storeIfPresent(file.path)));
+    const copies = copied.map((file) =>
+      inFirstCopySlot(() => this.storeIfPresent(file.path, true)),
+    );
     const hashes = await Promise.allSettled(copies.map((copy) => owedAfter(copy, waitMs)));
     const late = new Map<string, Promise<Copied>>();
     // Nothing names these copies until the log below is written, so one look at the end covers the whole copy.
@@ -669,13 +670,10 @@ class Engine {
       if (result.value === "changing") {
         owed.push(file);
         late.set(file.path, copies[i]!);
-        copies[i]!.then(
-          (copy) =>
-            typeof copy === "object" && this.baselineAwaitingAdoption.set(file.path, copy.hash),
-          () => {},
-        );
-      } else if (result.value !== "gone")
+      } else if (result.value !== "gone") {
         this.tracked.set(file.path, { hash: result.value.hash, stat: statKey(file, sweptAt) });
+        this.blobs.unpin(result.value.hash);
+      }
     });
     this.log.baseline = this.manifest();
     this.log.keepsLedger = true;
@@ -725,7 +723,6 @@ class Engine {
       asked = [];
       const tried = await this.tryAdopting(file, sweptAt, late, owedFromOpen);
       late = undefined;
-      this.baselineAwaitingAdoption.delete(file.path);
       for (const answer of served) answer();
       return tried === "over";
     };
@@ -763,10 +760,9 @@ class Engine {
       if (this.whereFolder() !== "here") return "over";
       const first = await late?.catch(() => undefined);
       const fromOpen = typeof first === "object";
-      const read = () => this.storeIfPresent(file.path);
+      const read = () => this.storeIfPresent(file.path, true);
       const copied = fromOpen ? first : await (owedFromOpen ? inFirstCopySlot(read) : read());
-      if (typeof copied === "object") this.baselineAwaitingAdoption.set(file.path, copied.hash);
-      return await this.queue(async () => {
+      const record = this.queue(async () => {
         // Still named for the next open until recorded, so a failed record is never logged as added.
         if ((await this.recordAdopted(file, sweptAt, copied)) === "changing") return "changing";
         this.adopting.delete(file.path);
@@ -775,6 +771,9 @@ class Engine {
         if (fromOpen) this.sweepIn(0);
         return "over";
       });
+      return await record.finally(
+        () => typeof copied === "object" && this.blobs.unpin(copied.hash),
+      );
     } catch (error) {
       if (!(error instanceof HistoryClosedError)) this.options.onError?.(error);
       return "over";
@@ -784,7 +783,7 @@ class Engine {
   async recordAdopted(file: ListedFile, sweptAt: number, first: Copied): Promise<Copied> {
     if (typeof first === "string" || this.whereFolder() !== "here") return first;
     // Bytes gone from the store are read again on the next try, outside the history queue.
-    if (!this.blobs.has(first.hash) && !isUncopied(file.path, file.size)) return "changing";
+    if (!first.referenced && !this.blobs.has(first.hash)) return "changing";
     const copied = first;
     const { hash } = copied;
     const change = { path: file.path, before: null, after: hash };
@@ -887,21 +886,22 @@ class Engine {
   }
 
   /** The file's hash once copied in, or why there is none: gone, or still changing through every read. */
-  storeIfPresent(path: string): Promise<Copied> {
+  storeIfPresent(path: string, pin = false): Promise<Copied> {
     const before = this.reading.get(path) ?? Promise.resolve();
-    const read = before.catch(() => {}).then(() => this.storeNow(path));
+    const read = before.catch(() => {}).then(() => this.storeNow(path, pin));
     const turn = read.catch(() => {});
     this.reading.set(path, turn);
     void turn.then(() => this.reading.get(path) === turn && this.reading.delete(path));
     return read;
   }
 
-  async storeNow(path: string): Promise<Copied> {
+  async storeNow(path: string, pin = false): Promise<Copied> {
     try {
       const abs = join(this.dir, path);
       const { size } = await stat(abs);
-      if (isUncopied(path, size)) return { hash: await this.blobs.reference(abs) };
-      const hash = await this.blobs.put(abs);
+      if (isUncopied(path, size))
+        return { hash: await this.blobs.reference(abs), referenced: true };
+      const hash = await this.blobs.put(abs, pin);
       return hash === null ? "changing" : { hash };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return "gone";
@@ -1159,7 +1159,7 @@ class Engine {
   historyBytes(): number {
     let current = 0;
     const baseline = [...this.tracked.values()].map((file) => file.hash);
-    for (const hash of new Set([...baseline, ...this.baselineAwaitingAdoption.values()]))
+    for (const hash of new Set([...baseline, ...this.blobs.pinned()]))
       current += this.blobs.size(hash);
     return this.blobs.bytes() - current;
   }
@@ -1172,7 +1172,6 @@ class Engine {
         new Set([
           ...referencedHashes(this.log, this.manifest()),
           ...this.pendingHashes(),
-          ...this.baselineAwaitingAdoption.values(),
           ...[...this.overwritten.values()].flatMap((byAfter) => [...byAfter.values()]),
         ]),
       );

@@ -22,7 +22,9 @@ import { assertLandedIn, assertStillWithin, folderWithin } from "./containedPath
 /** File contents stored once by sha256, text and binary alike. */
 export interface BlobStore {
   /** Copies the file in (cloned where it can) and returns its hash; null while it keeps changing. */
-  put(absPath: string): Promise<string | null>;
+  put(absPath: string, pin?: boolean): Promise<string | null>;
+  unpin(hash: string): void;
+  pinned(): Iterable<string>;
   reference(absPath: string): Promise<string>;
   has(hash: string): boolean;
   read(hash: string): Promise<Buffer>;
@@ -197,10 +199,17 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
   for (const hash of asideSizes.keys()) holds.set(hash, new Set(["*"]));
   const pathOf = (hash: string) => blobPath(sizes.has(hash) ? dir : asideDir, hash);
   let total = [...sizes.values()].reduce((sum, size) => sum + size, 0);
+  const pins = new Map<string, number>();
+  const forgetting = new Map<string, Promise<void>>();
+  const pin = (hash: string) => pins.set(hash, (pins.get(hash) ?? 0) + 1);
   const forget = async (hash: string) => {
-    await rm(blobPath(dir, hash), { force: true });
-    total -= sizes.get(hash) ?? 0;
-    sizes.delete(hash);
+    const gone = (async () => {
+      await rm(blobPath(dir, hash), { force: true });
+      total -= sizes.get(hash) ?? 0;
+      sizes.delete(hash);
+    })();
+    forgetting.set(hash, gone);
+    await gone.finally(() => forgetting.delete(hash));
   };
   const forgetAside = async (hash: string) => {
     await rm(blobPath(asideDir, hash), { force: true });
@@ -219,9 +228,10 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       await write();
     });
   // The bytes hashed are the bytes filed, so a write racing the read can never file bytes under the wrong hash.
-  const putBytes = async (bytes: Buffer, mode: number) => {
+  const putBytes = async (bytes: Buffer, mode: number, pinned: boolean) => {
     const hash = sha256(bytes);
-    if (sizes.has(hash)) return hash;
+    await forgetting.get(hash);
+    if (sizes.has(hash)) return pinned ? (pin(hash), hash) : hash;
     const temp = join(dir, `incoming-${randomUUID()}`);
     try {
       await withFolderMadeIfMissing(dir, () => writeFile(temp, bytes, { mode }));
@@ -234,12 +244,13 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       throw error;
     }
     file(hash, bytes.length);
+    if (pinned) pin(hash);
     return hash;
   };
 
-  const putIfUnchanged = async (absPath: string): Promise<string | null> => {
+  const putIfUnchanged = async (absPath: string, pinned: boolean): Promise<string | null> => {
     const small = await readIfSmall(absPath);
-    if (small) return small.moved ? null : putBytes(small.bytes, small.mode);
+    if (small) return small.moved ? null : putBytes(small.bytes, small.mode, pinned);
     // Hash the copy, not the source, so a write racing the copy can never file bytes under the wrong hash.
     const temp = join(dir, `incoming-${randomUUID()}`);
     // Recreated if removed while open, so a missing folder is never mistaken for a deleted project file.
@@ -256,7 +267,9 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
       return null;
     }
     const hash = await hashFile(temp);
+    await forgetting.get(hash);
     if (sizes.has(hash)) {
+      if (pinned) pin(hash);
       await rm(temp, { force: true });
       return hash;
     }
@@ -264,13 +277,14 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     const size = (await stat(temp)).size;
     await renameWithRetryAsync(temp, blobPath(dir, hash));
     file(hash, size);
+    if (pinned) pin(hash);
     return hash;
   };
 
   return {
-    async put(absPath) {
+    async put(absPath, pinned = false) {
       for (let read = 0; read < READS_BEFORE_LEAVING_IT; read += 1) {
-        const hash = await putIfUnchanged(absPath);
+        const hash = await putIfUnchanged(absPath, pinned);
         if (hash !== null) return hash;
       }
       return null;
@@ -317,8 +331,15 @@ export async function openBlobStore(dir: string): Promise<BlobStore> {
     async drop(hashes) {
       for (const hash of hashes) if (sizes.has(hash)) await forget(hash);
     },
+    unpin(hash) {
+      const left = (pins.get(hash) ?? 0) - 1;
+      if (left > 0) pins.set(hash, left);
+      else pins.delete(hash);
+    },
+    pinned: () => pins.keys(),
     async prune(keep) {
-      for (const hash of [...sizes.keys()]) if (!keep.has(hash)) await forget(hash);
+      for (const hash of [...sizes.keys()])
+        if (!keep.has(hash) && !pins.has(hash)) await forget(hash);
       for (const hash of [...asideSizes.keys()]) if (!keep.has(hash)) await forgetAside(hash);
     },
   };
