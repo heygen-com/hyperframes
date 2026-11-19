@@ -4,6 +4,7 @@ import { copyFileSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import { firstCharacterThatMakesPagesTwoByte } from "../../scripts/page-script-one-byte.mjs";
 import { rewriteRelativeImportExtensions } from "../../scripts/rewrite-relative-import-extensions.mjs";
 
 const at = (path) => fileURLToPath(new URL(path, import.meta.url));
@@ -45,11 +46,13 @@ await Promise.all([
     minifyWhitespace: true,
   }),
 ]);
-const wide = /[\u0100-\uffff]/.exec(readFileSync(at("./dist/inspection.js"), "utf8"));
-if (wide)
+const wide = firstCharacterThatMakesPagesTwoByte(readFileSync(at("./dist/inspection.js"), "utf8"));
+if (wide) {
+  rmSync(at("./dist/inspection.js"));
   throw new Error(
-    `dist/inspection.js has U+${wide[0].codePointAt(0).toString(16)} at ${wide.index}: every page it joins would be stored at two bytes a character`,
+    `dist/inspection.js has ${wide}: every page it joins would be stored at two bytes a character`,
   );
+}
 // Declarations keep the packages/ layout under dist/types, so their relative imports still resolve once packed.
 rmSync(at("./dist/types"), { recursive: true, force: true });
 const tsc = createRequire(import.meta.url).resolve("typescript/bin/tsc");
