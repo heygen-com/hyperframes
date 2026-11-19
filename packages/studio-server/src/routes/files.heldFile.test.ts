@@ -175,8 +175,8 @@ function holdFor(file: string, ms: number) {
   });
 }
 
-/** The longest the event loop went without running a 5 ms timer while `work` ran. */
-/** How many times `work` blocked the whole process with a synchronous wait (a retry's `Atomics.wait` sleep). */
+/** How many `Atomics.wait` calls ran while `work` ran: core's only synchronous retry sleep, which stops the whole
+ * process. Blocking any other way (a busy loop, a sync child process) is not counted. */
 async function syncWaits(work: () => Promise<unknown>) {
   const wait = vi.spyOn(Atomics, "wait");
   try {
