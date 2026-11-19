@@ -152,7 +152,7 @@ describe.skipIf(!HAS_FFMPEG)("concat input formats", () => {
 
       expect(result).toEqual({
         success: false,
-        error: expect.stringContaining("control character"),
+        error: expect.stringContaining("line break or NUL"),
         externalInterruption: false,
       });
       expect(readdirSync(folder).filter((name) => name.startsWith("concat-list-"))).toEqual([]);
