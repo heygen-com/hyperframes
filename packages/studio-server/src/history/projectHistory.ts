@@ -1081,10 +1081,9 @@ class Engine {
 
   keepsEmpty(extra: Partial<HistoryEntry>): boolean {
     if (extra.undoes === undefined) return false;
-    return (
-      extra.keptInPlace !== undefined ||
-      this.log.entries.find((entry) => entry.id === extra.undoes)?.files.length === 0
-    );
+    const target = this.log.entries.find((entry) => entry.id === extra.undoes);
+    // Only an older log's emptied entry: a kept undo has paths, so skipping them all leaves it in effect.
+    return extra.keptInPlace !== undefined || (target !== undefined && !stepPaths(target).length);
   }
 
   async commit(group: Group, extra: Partial<HistoryEntry> = {}): Promise<HistoryEntry | null> {
