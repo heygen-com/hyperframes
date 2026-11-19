@@ -15,7 +15,10 @@ import {
   deriveCodecMapKey,
   lookupCodecMapEntry,
   sourceFactsOf,
+  sourceFactsOfSrc,
 } from "./mediaSourceLookup";
+import { displaySize } from "../mediaDisplaySize";
+import { escapeCssString } from "./editingElement";
 import {
   heldForCopy,
   heldPosters,
@@ -299,8 +302,26 @@ function loadProxy(
   evictMediaSyncState(el);
   restartPlaybackHealth();
   holdShownFrame(el);
+  keepFileSize(href, originalSrc);
   el.src = href;
   el.load();
+}
+
+// ponytail: rules are never removed; at most one per copy this page asked for.
+let copySizes: HTMLStyleElement | null = null;
+const sizedCopies = new Set<string>();
+
+/** A copy is smaller than its file: a video sized by its file keeps the file's shown size while the copy plays. */
+function keepFileSize(href: string, originalSrc: string): void {
+  const facts = sourceFactsOfSrc(originalSrc);
+  if (!facts || sizedCopies.has(href)) return;
+  sizedCopies.add(href);
+  const { width, height } = displaySize(facts);
+  copySizes ??= document.createElement("style");
+  copySizes.textContent +=
+    `:where(video[src="${escapeCssString(href)}"]) { contain: size; ` +
+    `contain-intrinsic-size: ${width}px ${height}px; aspect-ratio: ${width} / ${height}; }\n`;
+  if (!copySizes.isConnected) document.head.appendChild(copySizes);
 }
 
 /**

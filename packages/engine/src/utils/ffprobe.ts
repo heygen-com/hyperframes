@@ -6,7 +6,12 @@ import { chunkCrc32 } from "./crc32.js";
 import { StringDecoder } from "node:string_decoder";
 import { tmpdir } from "os";
 import { basename, join } from "path";
-import { redactTelemetryString } from "@hyperframes/core";
+import {
+  displaySize,
+  parseSampleAspectRatio,
+  redactTelemetryString,
+  streamRotation,
+} from "@hyperframes/core";
 import {
   alphaDecoderFor,
   pixelFormatHasAlpha,
@@ -907,29 +912,11 @@ export function parseFrameRate(frameRateStr: string | undefined): number {
 }
 
 function displayRotation(stream: FFProbeStream): { rotation?: number } {
-  const turn = Number(
-    stream.side_data_list?.find((data) => data.rotation !== undefined)?.rotation ??
-      stream.tags?.rotate ??
-      0,
-  );
-  return Number.isFinite(turn) && turn % 360 !== 0 ? { rotation: turn } : {};
+  const rotation = streamRotation(stream);
+  return rotation === undefined ? {} : { rotation };
 }
 
-export function displaySize(
-  metadata: Pick<VideoMetadata, "width" | "height" | "sampleAspectRatio" | "rotation">,
-): { width: number; height: number } {
-  const width = Math.round(metadata.width * (metadata.sampleAspectRatio ?? 1));
-  return Math.abs(metadata.rotation ?? 0) % 180 === 90
-    ? { width: metadata.height, height: width }
-    : { width, height: metadata.height };
-}
-
-export function parseSampleAspectRatio(value: string | undefined): number | undefined {
-  const [num, den] = (value ?? "").split(":").map(Number);
-  if (!num || !den || !Number.isFinite(num) || !Number.isFinite(den)) return undefined;
-  const ratio = num / den;
-  return Math.abs(ratio - 1) < 1e-3 ? undefined : ratio;
-}
+export { displaySize, parseSampleAspectRatio };
 
 /**
  * Whether the first frame decoded with `decoder` (alpha-aware) has an alpha pixel format; undefined on any

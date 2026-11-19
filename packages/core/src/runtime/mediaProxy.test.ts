@@ -18,6 +18,8 @@ import {
   type MediaCodecMapEntry,
 } from "./mediaProxy";
 import { deriveCodecMapKey } from "./mediaSourceLookup";
+import { escapeCssString } from "./editingElement";
+import type { PreviewSourceFacts } from "../previewProxyBox";
 import { recordOpenedAtInPoint, unproxiedSrc } from "./proxySrc";
 
 vi.mock("./bridge", () => ({
@@ -1049,7 +1051,10 @@ describe("preview quality: lighter copies of heavy files", () => {
   const MID = { width: 2560, height: 1440, bitDepth: 8, bitrate: 10_000_000 };
 
   // A framed page showing a 1920x1080 stage at full size on a 1x screen: a 2048x1218 box.
-  async function stage(facts: Record<string, typeof HEAVY>, codecMap?: Record<string, unknown>) {
+  async function stage(
+    facts: Record<string, PreviewSourceFacts>,
+    codecMap?: Record<string, unknown>,
+  ) {
     vi.resetModules();
     vi.spyOn(window, "parent", "get").mockReturnValue({} as Window);
     const mod = await import("./mediaProxy");
@@ -1403,6 +1408,37 @@ describe("preview quality: lighter copies of heavy files", () => {
 
     expect(el.hasAttribute("src")).toBe(false);
     expect(el.getAttribute("poster")).toBe("/cover.jpg");
+  });
+
+  // The runtime's rule for the file a video plays now, found by that file's address.
+  const ruleFor = (el: HTMLMediaElement) =>
+    Array.from(document.querySelectorAll("style"))
+      .flatMap((sheet) => (sheet.textContent ?? "").split("\n"))
+      .find((rule) => rule.includes(`[src="${escapeCssString(el.getAttribute("src") ?? "")}"]`));
+
+  it("keeps a video with no size of its own at its file's size, turned and stretched as shown, while a lighter copy plays", async () => {
+    const { video, setPreviewQuality, maybeProxyProactively } = await stage({
+      "/video.mp4": HEAVY,
+      "/phone.mp4": { ...HEAVY, rotation: -90 },
+      "/wide.mp4": { ...HEAVY, width: 2880, sampleAspectRatio: 4 / 3 },
+    });
+    setPreviewQuality(0.25);
+    const rules = [];
+    for (const src of ["/video.mp4", "/phone.mp4", "/wide.mp4"]) {
+      const el = video(src);
+      maybeProxyProactively(el);
+      await settle();
+      expect(params(el).get("hf-proxy-light")).toBe("1");
+      rules.push(ruleFor(el));
+    }
+
+    expect(rules.map((rule) => /contain-intrinsic-size: ([^;]+);/.exec(rule ?? "")?.[1])).toEqual([
+      "3840px 2160px",
+      "2160px 3840px",
+      "3840px 2160px",
+    ]);
+    // Zero specificity: any size the film's own CSS gives the video wins.
+    expect(rules.every((rule) => rule?.startsWith(":where(video[src="))).toBe(true);
   });
 
   it("lightens a video that appears after the level was lowered", async () => {
