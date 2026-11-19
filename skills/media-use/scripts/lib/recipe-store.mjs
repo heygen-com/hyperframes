@@ -1,7 +1,10 @@
 import {
+  closeSync,
+  constants,
   existsSync,
-  lstatSync,
+  fstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   renameSync,
@@ -227,6 +230,24 @@ function refuseLinkedRecipeDir(root, slug) {
 }
 
 /**
+ * The content of the regular file at `path`, or undefined when it is missing, a link or not a file.
+ * The check and the read use one no-follow handle, so the file cannot be swapped for a link between them.
+ */
+function readRegularFile(path) {
+  let fd;
+  try {
+    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  } catch {
+    return undefined;
+  }
+  try {
+    return fstatSync(fd).isFile() ? readFileSync(fd) : undefined;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
  * Writes each named file into `dir` as a new regular file, replacing a link at that name instead
  * of following it, and removes a leftover brief skeleton the bundle does not have.
  */
@@ -386,8 +407,8 @@ export function useRecipe({ projectDir, name }) {
     // Only regular recipe files come over; a link or anything else in the user-tier folder stays there.
     const files = {};
     for (const file of RECIPE_FILES) {
-      const from = join(userDir, file);
-      if (lstatSync(from, { throwIfNoEntry: false })?.isFile()) files[file] = readFileSync(from);
+      const content = readRegularFile(join(userDir, file));
+      if (content !== undefined) files[file] = content;
     }
     if (!files["recipe.json"]) {
       throw new Error(
@@ -409,8 +430,11 @@ export function useRecipe({ projectDir, name }) {
 
   const recipe = readRecipeJson(dir);
   const frameSpec = join(dir, "frame.md");
-  refuseLink(frameSpec);
-  replaceFile(join(root, "frame.md"), readFileSync(frameSpec));
+  const frame = readRegularFile(frameSpec);
+  if (frame === undefined) {
+    throw new Error(`${frameSpec} is missing, a link or not a regular file; nothing was read`);
+  }
+  replaceFile(join(root, "frame.md"), frame);
   return {
     recipe,
     dir,

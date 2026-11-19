@@ -607,7 +607,10 @@ test("use refuses a recipe whose frame.md is a link, so no file is read through 
     writeFileSync(target, "secret\n");
     symlinkSync(target, join(dir, "frame.md"));
 
-    assert.throws(() => useRecipe({ projectDir: project, name: "promo" }), /is a link/);
+    assert.throws(
+      () => useRecipe({ projectDir: project, name: "promo" }),
+      /a link or not a regular file/,
+    );
     assert.equal(
       readFileSync(join(project, "frame.md"), "utf8"),
       "# Frame spec\nbackground: #101014\n",
