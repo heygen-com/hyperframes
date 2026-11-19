@@ -166,6 +166,10 @@ export function undoneIds(entries: readonly HistoryEntry[]): Set<string> {
   return undone;
 }
 
+export const stepPaths = (entry: HistoryEntry): string[] => [
+  ...new Set([...entry.files.map((file) => file.path), ...Object.keys(entry.keptInPlace ?? {})]),
+];
+
 /**
  * What Cmd+Z (back) or Cmd+Shift+Z (forward) reverts for `mine`. Back: the newest change `mine` owns that is still
  * in effect. Forward: the newest of `mine`'s undos still in effect, while `mine` has made no change since.

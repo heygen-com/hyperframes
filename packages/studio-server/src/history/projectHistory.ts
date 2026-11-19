@@ -62,6 +62,7 @@ import {
   referencedHashes,
   stepTarget,
   undoneIds,
+  stepPaths,
   writeLog,
   type HistoryEntry,
   type HistoryTarget,
@@ -398,6 +399,9 @@ function addChange(group: Group, path: string, before: string | null, after: str
 
 const targetKey = (target: HistoryTarget) =>
   JSON.stringify([target.file, target.id, target.hfId, target.selector, target.selectorIndex]);
+
+const keptHash = (kept: Record<string, string>, path: string) =>
+  Object.hasOwn(kept, path) ? kept[path] : undefined;
 
 function keepTargetsOfItsFiles(entry: HistoryEntry): HistoryEntry {
   const targets = entry.targets?.filter((target) =>
@@ -1409,7 +1413,9 @@ class Engine {
 
   async undoNow(id: string, who: HistoryWho, mode?: UndoMode): Promise<HistoryResult> {
     const entry = this.entry(id);
-    const changed = this.movedOn(entry);
+    const hashOf = (path: string) => this.tracked.get(path)?.hash ?? null;
+    const steps = this.stepsOf(entry);
+    const changed = steps.filter((step) => hashOf(step.path) !== step.holds);
     if (changed.length && !mode) return { ok: false, conflict: this.conflict(entry, changed) };
     if (mode === "back-to-before") {
       const index = this.log.entries.indexOf(entry);
@@ -1419,50 +1425,51 @@ class Engine {
         entry: await this.restoreNow(point, who, `Went back to before: ${entry.label}`),
       };
     }
-    const target = new Map(
-      entry.files
-        .filter((file) => mode !== "keep-later-edits" || !changed.includes(file))
-        .map((file) => [file.path, file.before]),
+    const taken = steps.filter((step) => mode !== "keep-later-edits" || !changed.includes(step));
+    const inPlace = taken.flatMap((step) =>
+      step.to !== null && hashOf(step.path) === step.to ? [[step.path, step.to]] : [],
     );
-    for (const [path, after] of this.keptTargets(entry)) target.set(path, after);
-    const kept = this.keptByRedo(entry);
     return {
       ok: true,
-      entry: await this.writeAs(who, this.undoLabel(entry), target, {
-        undoes: id,
-        ...(entry.targets && { targets: entry.targets }),
-        ...(Object.keys(kept).length && { keptInPlace: kept }),
-      }),
+      entry: await this.writeAs(
+        who,
+        this.undoLabel(entry),
+        new Map(taken.map((step) => [step.path, step.to])),
+        {
+          undoes: id,
+          ...(entry.targets && { targets: entry.targets }),
+          ...(inPlace.length && { keptInPlace: Object.fromEntries(inPlace) }),
+        },
+      ),
     };
   }
 
-  /** Redoing an undo that kept files: each kept path goes back to what the entry it undid made of it. */
-  keptTargets(entry: HistoryEntry): [string, string | null][] {
-    const original =
-      entry.keptInPlace && entry.undoes
-        ? this.log.entries.find((e) => e.id === entry.undoes)
-        : undefined;
-    return Object.keys(entry.keptInPlace ?? {}).flatMap((path) => {
+  /** Each file a step over `entry` writes, what it writes there, and what the file must still hold so the step undoes
+   * nobody's later work: the entry's own files, and the files an undo that kept them left (back to the original's). */
+  stepsOf(entry: HistoryEntry): { path: string; to: string | null; holds: string | null }[] {
+    const redoKept = this.keptByRedo(entry);
+    const own = entry.files.map((file) => ({
+      path: file.path,
+      to: file.before,
+      holds: keptHash(redoKept, file.path) ?? file.after,
+    }));
+    const original = entry.undoes ? this.log.entries.find((e) => e.id === entry.undoes) : undefined;
+    const left = entry.keptInPlace ?? {};
+    const kept = Object.keys(left).flatMap((path) => {
       const file = original?.files.find((change) => change.path === path);
-      return file ? [[path, file.after] as [string, string | null]] : [];
+      return file ? [{ path, to: file.after, holds: left[path]! }] : [];
     });
+    return [...own, ...kept];
   }
 
-  /** What the redo now in effect of `entry` left in place of its changes, path to hash; empty when none kept any. */
+  /** What the redo of `entry` now in effect left in place of its changes, path to hash; empty when it kept none. */
   keptByRedo(entry: HistoryEntry): Record<string, string> {
     const undone = undoneIds(this.log.entries);
-    const undoOf = (id: string | undefined) => this.log.entries.find((e) => e.id === id)?.undoes;
+    const undoOf = (id: string) => this.log.entries.find((e) => e.id === id)?.undoes;
     const redo = [...this.log.entries]
       .reverse()
-      .find((e) => e.keptInPlace && !undone.has(e.id) && undoOf(e.undoes) === entry.id);
+      .find((e) => e.undoes !== undefined && !undone.has(e.id) && undoOf(e.undoes) === entry.id);
     return redo?.keptInPlace ?? {};
-  }
-
-  movedOn(entry: HistoryEntry): HistoryFileChange[] {
-    const kept = this.keptByRedo(entry);
-    return entry.files.filter(
-      (file) => (this.tracked.get(file.path)?.hash ?? null) !== (kept[file.path] ?? file.after),
-    );
   }
 
   next(direction: "back" | "forward", who: HistoryWho): HistoryEntry | undefined {
@@ -1479,12 +1486,7 @@ class Engine {
     return stepTarget(
       this.log.entries,
       direction,
-      (entry) =>
-        writes([
-          ...entry.files.map((file) => file.path),
-          ...Object.keys(entry.keptInPlace ?? {}),
-        ]) &&
-        (mine(entry.who) || (everyone && !ofOpenTurn(entry))),
+      (entry) => writes(stepPaths(entry)) && (mine(entry.who) || (everyone && !ofOpenTurn(entry))),
     );
   }
 
@@ -1505,7 +1507,7 @@ class Engine {
 
   conflict(
     entry: HistoryEntry,
-    changed: HistoryFileChange[],
+    changed: readonly { path: string }[],
   ): { files: string[]; newer: string[] } {
     const paths = new Set(changed.map((file) => file.path));
     const after = this.log.entries.slice(this.log.entries.indexOf(entry) + 1);
