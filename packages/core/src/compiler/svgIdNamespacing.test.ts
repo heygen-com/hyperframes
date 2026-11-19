@@ -669,6 +669,26 @@ describe("rewriteSvgIdReferencesInCss charges its growth while it builds", () =>
     expect(charged).toBeLessThan(limit + 500);
   });
 
+  // fails without the fix: the id's decoded length was charged against, not the escaped token it replaced.
+  const renamedClip = [
+    { name: "id", localName: "id", namespaceURI: null, before: "clip", after: "m--clip-namespaced" },
+  ];
+  it.each([
+    [`#\\63 lip { fill: red; }`, new Map([["clip", "m--clip-namespaced"]]), []],
+    [`#cl\\69 p .a { fill: red; }`, new Map([["clip", "m--clip-namespaced"]]), []],
+    [`#\\63 lip { fill: red; }`, new Map(), renamedClip],
+  ])("rewrites %j with exactly its growth left (%#)", (css, idMap, aliases) => {
+    const growth = rewriteSvgIdReferencesInCss(css, idMap, aliases).length - css.length;
+    let left = growth;
+    const rewritten = rewriteSvgIdReferencesInCss(css, idMap, aliases, (bytes) => {
+      left -= bytes;
+      if (left < 0) throw new Error("over budget");
+    });
+    expect(growth).toBeGreaterThan(0);
+    expect(rewritten).toContain("m--clip-namespaced");
+    expect(left).toBe(0);
+  });
+
   it.each([
     [`.x,[href="#a"],\n\n    .b { fill: red; }`, new Map()],
     [`.x,#clip,\n\n    .b { fill: red; }`, new Map([["clip", "m--clip"]])],
