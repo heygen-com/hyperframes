@@ -1,6 +1,14 @@
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -326,8 +334,10 @@ test("re-freezing never builds the archive path from a non-integer recipe.json v
       writeFileSync(join(victim, "keep.txt"), "outside the project");
       const recipes = join(project, ".media/recipes");
       mkdirSync(join(recipes, "promo"), { recursive: true });
-      // A received project can ship the folder the crafted path walks through.
+      // A received project can ship the folder the crafted path walks through, and the real
+      // v1 archive a fallback to version 1 would otherwise have replaced.
       mkdirSync(join(recipes, "promo@v1"), { recursive: true });
+      writeFileSync(join(recipes, "promo@v1/recipe.json"), '{"name":"promo","version":1}');
       mkdirSync(join(recipes, "promo@v"), { recursive: true });
       writeFileSync(
         join(recipes, "promo/recipe.json"),
@@ -342,9 +352,66 @@ test("re-freezing never builds the archive path from a non-integer recipe.json v
 
       assert.equal(readFileSync(join(victim, "keep.txt"), "utf8"), "outside the project");
       assert.ok(!existsSync(join(victim, "recipe.json")), `version ${JSON.stringify(version)}`);
-      assert.equal(frozen.version, 2);
-      const archived = JSON.parse(readFileSync(join(recipes, "promo@v1/recipe.json"), "utf8"));
+      assert.equal(
+        readFileSync(join(recipes, "promo@v1/recipe.json"), "utf8"),
+        '{"name":"promo","version":1}',
+      );
+      assert.equal(frozen.version, 3);
+      const archived = JSON.parse(readFileSync(join(recipes, "promo@v2/recipe.json"), "utf8"));
       assert.deepEqual(archived.version, version);
+    });
+  }
+});
+
+test("re-freezing never replaces an archive already on disk", () => {
+  withSandbox(({ project }) => {
+    const recipes = join(project, ".media/recipes");
+    mkdirSync(join(recipes, "promo"), { recursive: true });
+    mkdirSync(join(recipes, "promo@v1"), { recursive: true });
+    mkdirSync(join(recipes, "promo@v4"), { recursive: true });
+    writeFileSync(join(recipes, "promo@v1/keep.txt"), "first approval");
+    writeFileSync(join(recipes, "promo@v4/keep.txt"), "fourth approval");
+    writeFileSync(
+      join(recipes, "promo/recipe.json"),
+      JSON.stringify({ name: "promo", version: 1, workflow: "product-launch-video" }),
+    );
+
+    const frozen = freezeRecipe({
+      projectDir: project,
+      name: "promo",
+      workflow: "product-launch-video",
+    });
+
+    assert.equal(readFileSync(join(recipes, "promo@v1/keep.txt"), "utf8"), "first approval");
+    assert.equal(readFileSync(join(recipes, "promo@v4/keep.txt"), "utf8"), "fourth approval");
+    assert.equal(
+      JSON.parse(readFileSync(join(recipes, "promo@v5/recipe.json"), "utf8")).version,
+      1,
+    );
+    assert.equal(frozen.version, 6);
+  });
+});
+
+test("re-freezing refuses, before moving anything, when no safe version number is left", () => {
+  for (const [version, archive] of [
+    [Number.MAX_SAFE_INTEGER, undefined],
+    ["1/../victim", `promo@v${Number.MAX_SAFE_INTEGER}`],
+  ]) {
+    withSandbox(({ project }) => {
+      const recipes = join(project, ".media/recipes");
+      mkdirSync(join(recipes, "promo"), { recursive: true });
+      if (archive) mkdirSync(join(recipes, archive), { recursive: true });
+      const current = JSON.stringify({ name: "promo", version, workflow: "product-launch-video" });
+      writeFileSync(join(recipes, "promo/recipe.json"), current);
+      const before = readdirSync(recipes).sort();
+
+      assert.throws(
+        () =>
+          freezeRecipe({ projectDir: project, name: "promo", workflow: "product-launch-video" }),
+        /no version number left/,
+      );
+      assert.equal(readFileSync(join(recipes, "promo/recipe.json"), "utf8"), current);
+      assert.deepEqual(readdirSync(recipes).sort(), before);
     });
   }
 });
