@@ -59,21 +59,32 @@ export interface ParsableDocumentLike {
 }
 
 export interface SceneTemplateLike {
-  content: { querySelector(selector: string): unknown };
+  localName: string;
+}
+
+/** The content fragment of an HTML `<template>`, or null for any other element: an SVG `template` has none. */
+export function templateContent(el: SceneTemplateLike): DocumentFragment | null {
+  if (el.localName !== "template") return null;
+  return (el as { content?: DocumentFragment }).content ?? null;
+}
+
+/** The content of the first HTML `<template>` under `root`, or null. */
+export function firstTemplateContent(root: ParentNode): DocumentFragment | null {
+  return Array.from(root.querySelectorAll("template"), templateContent).find(Boolean) ?? null;
 }
 
 export function findSceneTemplate<T extends SceneTemplateLike>(
   templates: ArrayLike<T>,
 ): T | undefined {
   return Array.from(templates).find(
-    (template) => template.content.querySelector("[data-composition-id]") != null,
+    (template) => templateContent(template)?.querySelector("[data-composition-id]") != null,
   );
 }
 
 /** Resolve authored content without invoking linkedom's synthetic body getter. */
 export function resolveSubCompositionContent(html: string, document: ParsableDocumentLike) {
   const templates = Array.from(document.querySelectorAll("template"));
-  const template = findSceneTemplate(templates) ?? templates[0];
+  const template = findSceneTemplate(templates) ?? templates.find(templateContent);
   if (template) return { contentHtml: template.innerHTML ?? "", hasTemplate: true };
 
   const body = document.querySelector("body");

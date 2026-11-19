@@ -365,8 +365,7 @@ async function readSubComposition(
   const relativeFile = relative(parent.projectDir, authored).split(sep).join("/");
   const source = parent.sourceOverrides.get(relativeFile) ?? readFileSync(file, "utf-8");
   const doc = new DOMParser().parseFromString(source, "text/html");
-  const template = doc.querySelector("template");
-  const root = (template?.content ?? doc).querySelector("[data-composition-id]");
+  const root = (firstTemplateContent(doc) ?? doc).querySelector("[data-composition-id]");
   if (!root) return [];
   const scope: DocScope = {
     doc,

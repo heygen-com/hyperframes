@@ -24,7 +24,10 @@ import {
   type RefResolverDoc,
   type RefResolverEl,
 } from "@hyperframes/parsers/reference-resolver";
-import { checkSubCompositionUsability } from "@hyperframes/parsers/sub-composition-validity";
+import {
+  checkSubCompositionUsability,
+  templateContent,
+} from "@hyperframes/parsers/sub-composition-validity";
 import { parseHTML } from "linkedom";
 import postcss from "postcss";
 import {
@@ -87,7 +90,7 @@ interface CssSource {
 function querySelectorAllIncludingTemplates(root: ParentNode, selector: string): Element[] {
   const matches: Element[] = [...root.querySelectorAll(selector)];
   for (const template of root.querySelectorAll("template")) {
-    const content = (template as HTMLTemplateElement).content;
+    const content = templateContent(template);
     if (content) matches.push(...querySelectorAllIncludingTemplates(content, selector));
   }
   return matches;
@@ -866,8 +869,9 @@ function collectMainTimelineAudio(projectDir: string, rootHtml: string): AudioSp
   };
   const visit = (parent: ParentNode, at: Placement) => {
     for (const el of parent.children) {
-      if (el.tagName === "TEMPLATE") {
-        visit((el as HTMLTemplateElement).content, at);
+      const content = templateContent(el);
+      if (content) {
+        visit(content, at);
         continue;
       }
       const span = audioSpanOf(el, at.file, at.origin, at.slots);

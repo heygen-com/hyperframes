@@ -86,6 +86,7 @@ import {
 } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 import { assignMediaRenderIds } from "./mediaRenderIds";
 import { terminalText } from "../terminalText.js";
@@ -1182,7 +1183,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     ? [
         ...document.querySelectorAll(`script:not([${RUNTIME_BOOTSTRAP_ATTR}])`),
         ...[...document.querySelectorAll("template")].flatMap((t) => [
-          ...(t as HTMLTemplateElement).content.querySelectorAll("script"),
+          ...(templateContent(t)?.querySelectorAll("script") ?? []),
         ]),
       ].map((el) => {
         const src = el.getAttribute("src");
