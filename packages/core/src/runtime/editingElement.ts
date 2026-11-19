@@ -1,4 +1,5 @@
 // How an element is addressed in source: one rule for Studio and the runtime's editing agent.
+import { isHtmlElement } from "./domRealm";
 
 /** Names an element's source file. The parent resolves it: `file`, else its composition map. */
 export interface EditingElementSource {
@@ -65,6 +66,44 @@ export const MAX_SOURCE_GROUPS = 64;
 export const MAX_DESCRIBE_HANDLES = 256;
 export const MAX_POINT_STACK = 64;
 export const MAX_QUERY_MATCHES = 2_048;
+const MAX_TIMELINE_TEXT = 200;
+
+const TEXT_TAGS = new Set(["div", "span", "p", "strong", "h1", "h2", "h3", "h4", "h5", "h6"]);
+
+function isTextBearingTag(tagName: string): boolean {
+  return TEXT_TAGS.has(tagName);
+}
+
+export function isEditableTextLeaf(el: HTMLElement): boolean {
+  return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
+}
+
+/** A text layer's words and computed look, as its timeline row draws them. */
+export interface TextLayerRead {
+  value: string;
+  fontFamily: string;
+  fontWeight: string;
+  color: string;
+  backgroundColor: string;
+}
+
+/** A layer that paints only text on a flat colour, read; null for anything painted beyond that. */
+export function readTextLayer(el: Element): TextLayerRead | null {
+  if (!isHtmlElement(el) || !isTextBearingTag(el.localName)) return null;
+  if (!Array.from(el.children).every((child) => isHtmlElement(child) && isEditableTextLeaf(child)))
+    return null;
+  const words = (el.textContent ?? "").slice(0, MAX_ELEMENT_TEXT).replace(/\s+/g, " ").trim();
+  if (!words) return null;
+  const style = el.ownerDocument.defaultView?.getComputedStyle(el);
+  if (!style || (style.backgroundImage || "none") !== "none") return null;
+  return {
+    value: words.slice(0, MAX_TIMELINE_TEXT),
+    fontFamily: style.fontFamily.slice(0, MAX_ELEMENT_VALUE),
+    fontWeight: style.fontWeight.slice(0, MAX_ELEMENT_VALUE),
+    color: style.color.slice(0, MAX_ELEMENT_VALUE),
+    backgroundColor: style.backgroundColor.slice(0, MAX_ELEMENT_VALUE),
+  };
+}
 
 // fallow-ignore-next-line complexity
 function escapeCssIdentifier(value: string): string {

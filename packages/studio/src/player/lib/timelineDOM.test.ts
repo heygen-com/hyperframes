@@ -314,6 +314,42 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
   });
 });
 
+describe("a sealed preview's text rows", () => {
+  it("draws a text layer from the words and look in the runtime's clip message", () => {
+    const element = createTimelineElementFromManifestClip({
+      clip: {
+        id: "title",
+        label: "Title",
+        kind: "element",
+        tagName: "h1",
+        start: 0,
+        duration: 5,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+        text: {
+          value: "Title",
+          fontFamily: "Inter",
+          fontWeight: "700",
+          color: "rgb(255, 255, 255)",
+          backgroundColor: "rgba(0, 0, 0, 0)",
+        },
+      },
+      fallbackIndex: 0,
+    });
+
+    expect(element.text).toEqual({
+      value: "Title",
+      fontFamily: "Inter",
+      fontWeight: "700",
+      color: "rgb(255, 255, 255)",
+      background: undefined,
+    });
+  });
+});
+
 describe("group info cache", () => {
   const parseMember = (doc: Document) =>
     createTimelineElementFromManifestClip({
