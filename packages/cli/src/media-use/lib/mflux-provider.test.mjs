@@ -182,13 +182,13 @@ test("helper output in a failure line prints control characters as visible escap
     if (bin === "hf") {
       if (argv[1].includes("FLUX.2-klein")) {
         const err = new Error("exit 1");
-        err.stderr = "repo \x1b]0;title\x07 not found";
+        err.stderr = "repo \x1b]0;title\x07\nnot found";
         throw err;
       }
       return `${SNAPSHOT}\n`;
     }
     const err = new Error("exit 1");
-    err.stderr = "bad prompt \x1b[2J\x07 a red bicycle";
+    err.stderr = "bad prompt \x1b[2J\x07\r\na red \rbicycle";
     throw err;
   };
 
@@ -203,10 +203,10 @@ test("helper output in a failure line prints control characters as visible escap
   assert.equal(errors.length, 2);
   assert.match(
     errors[0],
-    /^media-use: local image gen \(\S+\): hf download failed: repo \\x1b\]0;title\\x07 not found$/,
+    /^media-use: local image gen \(\S+\): hf download failed: repo \\x1b\]0;title\\x07\nnot found$/,
   );
   assert.match(
     errors[1],
-    /^media-use: local image gen \(\S+\) failed: bad prompt \\x1b\[2J\\x07 a red bicycle$/,
+    /^media-use: local image gen \(\S+\) failed: bad prompt \\x1b\[2J\\x07\na red \\x0dbicycle$/,
   );
 });

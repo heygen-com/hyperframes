@@ -27,7 +27,7 @@ function fakeCodex(t) {
       'case "$1" in',
       '  features) echo "image_generation   stable   true" ;;',
       '  exec) printf "%s\\n" "$@" > "$CODEX_LOG"; cat > /dev/null;',
-      '        [ -n "$CODEX_FAIL" ] && { printf "refused \\033]0;title\\007 a red cube\\n" >&2; exit 1; }',
+      '        [ -n "$CODEX_FAIL" ] && { printf "refused \\033]0;title\\007 a red cube\\r\\nsecond \\rline\\n" >&2; exit 1; }',
       '        [ -n "$EVIL_PATH" ] && printf EVIL > "$EVIL_PATH" ;;',
       "esac",
       "",
@@ -119,7 +119,7 @@ test("substring lookalikes do not count as the feature row", () => {
 });
 
 test(
-  "a failed codex exec prints its output with control characters escaped",
+  "a failed codex exec prints its output line by line with control characters escaped",
   posixOnly,
   async (t) => {
     fakeCodex(t);
@@ -131,7 +131,7 @@ test(
     assert.equal(await codexImageGenerate("a red cube"), null);
 
     assert.deepEqual(errors, [
-      "media-use: `codex exec` image generation failed: refused \\x1b]0;title\\x07 a red cube",
+      "media-use: `codex exec` image generation failed: refused \\x1b]0;title\\x07 a red cube\nsecond \\x0dline",
     ]);
   },
 );

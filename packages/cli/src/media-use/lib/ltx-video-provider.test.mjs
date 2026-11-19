@@ -340,7 +340,7 @@ test("a failed generate prints the runner's output with control characters escap
     calls += 1;
     if (calls === 2) {
       const error = new Error("generation failed");
-      error.stderr = "bad prompt \x1b]0;title\x07 storm clouds";
+      error.stderr = "bad prompt \x1b]0;title\x07\r\nstorm \rclouds";
       throw error;
     }
   };
@@ -356,6 +356,6 @@ test("a failed generate prints the runner's output with control characters escap
   assert.equal(errors.length, 1);
   assert.match(
     errors[0],
-    /^media-use: local video gen \(\S+\) failed: bad prompt \\x1b\]0;title\\x07 storm clouds$/,
+    /^media-use: local video gen \(\S+\) failed: bad prompt \\x1b\]0;title\\x07\nstorm \\x0dclouds$/,
   );
 });

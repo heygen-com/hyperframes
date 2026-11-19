@@ -55,7 +55,7 @@ test("a heygen error message prints control characters as visible escapes", (t) 
   writeFileSync(
     heygenPath,
     `#!/bin/sh
-printf '%s\\n' '{"error":{"message":"no match for \\u001b]0;title\\u0007 ocean"}}'
+printf '%s\\n' '{"error":{"message":"no match for \\u001b]0;title\\u0007\\r\\nocean"}}'
 `,
   );
   chmodSync(heygenPath, 0o755);
@@ -72,6 +72,6 @@ printf '%s\\n' '{"error":{"message":"no match for \\u001b]0;title\\u0007 ocean"}
   }
 
   assert.deepEqual(errors, [
-    "media-use: `heygen audio sounds list` error: no match for \\x1b]0;title\\x07 ocean",
+    "media-use: `heygen audio sounds list` error: no match for \\x1b]0;title\\x07\nocean",
   ]);
 });

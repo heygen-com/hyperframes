@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
-import { terminalText } from "./terminal-text.mjs";
+import { terminalLines } from "./terminal-text.mjs";
 
 // Image generation via the OpenAI Codex CLI's built-in image tool (gpt-image-2)
 // on the user's ChatGPT subscription: the codex CLI owns auth, media-use holds
@@ -145,7 +145,7 @@ function generateIn(outPath, intent, flag) {
     );
   } catch (err) {
     console.error(
-      terminalText(
+      terminalLines(
         `media-use: \`codex exec\` image generation failed: ${err.stderr?.toString().trim().slice(-200) || err.message}`,
       ),
     );

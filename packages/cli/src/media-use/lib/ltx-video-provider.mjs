@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { describeDownload, probeSpecs } from "./specs.mjs";
 import { buildArgv, selectModel, selectModelLadder } from "./local-models.mjs";
 import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
-import { terminalText } from "./terminal-text.mjs";
+import { terminalLines } from "./terminal-text.mjs";
 
 export async function ltxVideoGenerate(
   intent,
@@ -73,7 +73,7 @@ export async function ltxVideoGenerate(
     } catch (err) {
       discardPartial(outPath);
       console.error(
-        terminalText(
+        terminalLines(
           `media-use: local video gen (${model.id}) failed: ${err.stderr?.toString().trim().slice(-200) || err.message}`,
         ),
       );
