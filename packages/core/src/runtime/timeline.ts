@@ -28,6 +28,7 @@ import { isSceneLikeCompositionId } from "../slideshow/index.js";
 import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
 import { runtimeProtocolMetadata } from "./protocol.js";
 import { isElementNode, isMediaElement } from "./domRealm";
+import { readSentTextLayer } from "./editingElement";
 import { LOOP_INFLATED_TIMELINE_SECONDS } from "./compositionLength";
 import { cutToHostSlots } from "../mediaTiming";
 
@@ -502,6 +503,7 @@ export function collectRuntimeTimelinePayload(params: {
       timelineLabel: node.getAttribute("data-timeline-label"),
       timelineGroup: node.getAttribute("data-timeline-group"),
       timelinePriority: parseNum(node.getAttribute("data-timeline-priority")),
+      text: readSentTextLayer(node),
     };
   };
   const addClip = (clip: RuntimeTimelineClip) => {
@@ -632,6 +634,7 @@ export function collectRuntimeTimelinePayload(params: {
             timelineLabel: el.getAttribute("data-timeline-label"),
             timelineGroup: el.getAttribute("data-timeline-group"),
             timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
+            text: readSentTextLayer(el),
           });
           gsapClipIds.add(el.id);
         }
@@ -689,6 +692,7 @@ export function collectRuntimeTimelinePayload(params: {
         timelineLabel: el.getAttribute("data-timeline-label"),
         timelineGroup: el.getAttribute("data-timeline-group"),
         timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
+        text: readSentTextLayer(el),
       });
       gsapClipIds.add(el.id);
     }

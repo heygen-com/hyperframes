@@ -25,6 +25,7 @@ describe("composition rules", () => {
       `<template>${scene("a")}</template>`,
       `<template><svg></svg></template><template>${scene("a")}</template>`,
       `<template>${scene("a")}</template><template>${scene("b")}</template>${scene("live")}`,
+      `<svg><template>${scene("a")}</template></svg><template>${scene("b")}</template>`,
     ])("is quiet for %s", async (html) => {
       expect(await find(html)).toBeUndefined();
     });

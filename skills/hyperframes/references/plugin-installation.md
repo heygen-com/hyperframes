@@ -24,7 +24,7 @@ Without a plugin manifest, the launcher runs the newest compatible published CLI
 release, put `--cli-version latest` or `--cli-version <exact-version>` before the command.
 Take an exact version from the person, from the version an upgrade moves the pins to, or from
 `--cli-version latest --version`. Never take it from the project's own files: a `package.json`
-pin does not choose the CLI unless the person asks for that release. The launcher refuses a release older than its floor (currently 0.9.65), the oldest one with
+pin does not choose the CLI unless the person asks for that release. The launcher refuses a release older than its floor (currently 0.9.68), the oldest one with
 the protections for received projects, and its error names the floor.
 Use the launcher from the loaded skill installation for commands shown in CLI output, too.
 For example, run `node "<SKILLS>/hyperframes/scripts/plugin-cli.mjs" --cli-version latest --version`

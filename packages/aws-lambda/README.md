@@ -104,13 +104,13 @@ bun run --cwd packages/aws-lambda build:zip -- --source=chrome-headless-shell
 
 The handler reads `HYPERFRAMES_LAMBDA_CHROME_SOURCE` at boot, and for
 `chrome-headless-shell` the executable from `HYPERFRAMES_LAMBDA_CHROME_PATH`.
-`examples/aws-lambda/template.yaml` and the CDK construct set both from the
-Chrome source. The build stages the repo's pinned shell build, and only when
-its folder matches the pinned digest. It stages the whole folder (the
+The build stages the repo's pinned shell build, and only when its folder
+matches that build's pinned digest. It stages the whole folder (the
 executable needs its ICU data and `.pak` files beside it), which is over
 Lambda's 250 MiB unzipped limit for a ZIP function, so the build fails its
-size gate and the x86 ZIP ships `@sparticuz/chromium`. `hyperframes lambda
-deploy` refuses `--chrome-source chrome-headless-shell` for the same reason.
+size gate and the x86 ZIP ships `@sparticuz/chromium`. For the same reason
+`hyperframes lambda deploy`, `examples/aws-lambda/template.yaml` and the CDK
+construct refuse `chrome-headless-shell` as the ZIP's Chrome source.
 
 The arm64 video image (`image/Dockerfile`, `video` target) does not use
 `@sparticuz/chromium`: it installs Chrome for Testing's linux-arm64

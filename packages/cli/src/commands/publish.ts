@@ -132,7 +132,7 @@ export default defineCommand({
         console.log(c.error("  Aborting publish because the default index.html entry is blank."));
         if (candidate && posix.basename(candidate) === "index.html") {
           const candidateDir = posix.dirname(candidate);
-          const target = `<project>/${candidateDir}`;
+          const target = `<project>/${terminalText(candidateDir)}`;
           console.log(
             c.dim(
               `  Move or mount the authored file, or publish its directory directly: hyperframes publish ${target}. Only use the directory form when its assets are self-contained under that directory; otherwise mount it from the project root.`,
@@ -141,7 +141,7 @@ export default defineCommand({
         } else if (candidate) {
           console.log(
             c.dim(
-              `  Move or mount ${candidate} as a project index.html before publishing; publish accepts project directories, not individual HTML files.`,
+              `  Move or mount ${terminalText(candidate)} as a project index.html before publishing; publish accepts project directories, not individual HTML files.`,
             ),
           );
         }
@@ -399,7 +399,7 @@ export default defineCommand({
     } catch (err: unknown) {
       publishSpinner.stop(c.error("Publish failed"));
       console.error();
-      console.error(`  ${(err as Error).message}`);
+      console.error(`  ${terminalLines((err as Error).message)}`);
       console.error();
       setCommandExitCode(1);
       return;

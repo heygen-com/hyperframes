@@ -104,6 +104,10 @@ describe("createEditingPortClient", () => {
           "crop-lift",
           "edit-element",
           "stacking-family",
+          "gsap-set",
+          "patch-tweens",
+          "soft-reload",
+          "assets-unloaded",
         ],
       });
     } finally {

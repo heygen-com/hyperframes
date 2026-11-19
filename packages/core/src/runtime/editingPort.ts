@@ -29,6 +29,13 @@ import type { EditingGestureStart } from "./editingGestureStart";
 import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { MotionPathFrameHome } from "./editing/motionPathHome";
 import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
+import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
+import { parsePatchTweens, type PatchTweensParams } from "./editing/patchTween";
+import {
+  parseSoftReload,
+  type SoftReloadParams,
+  type SoftReloadResult,
+} from "./editing/softReload";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { parseCombo } from "../keyCombo";
@@ -70,12 +77,15 @@ export {
   buildStableSelector,
   escapeCssString,
   getPreferredClassSelector,
+  isEditableTextLeaf,
   readElementSource,
+  readTextLayer,
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
+  MAX_TIMELINE_TEXT,
   MAX_POINT_STACK,
   MAX_QUERY_MATCHES,
   MAX_SOURCE_GROUPS,
@@ -85,6 +95,7 @@ export {
   type EditingElementMatch,
   type EditingElementSource,
   type EditingRect,
+  type TextLayerRead,
 } from "./editingElement";
 export {
   elementCornerPoints,
@@ -179,6 +190,10 @@ export const EDITING_REQUEST_KINDS = [
   "crop-lift",
   "edit-element",
   "stacking-family",
+  "gsap-set",
+  "patch-tweens",
+  "soft-reload",
+  "assets-unloaded",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -317,6 +332,10 @@ export interface EditingRequests {
     params: { handle: EditingElementHandle };
     result: { family: EditingStackingSibling[] | null; locked: boolean };
   };
+  "gsap-set": { params: GsapSetParams; result: { applied: boolean } };
+  "patch-tweens": { params: PatchTweensParams; result: { patched: boolean } };
+  "soft-reload": { params: SoftReloadParams; result: { result: SoftReloadResult } };
+  "assets-unloaded": { params: NoParams; result: { unloaded: boolean } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -527,6 +546,10 @@ const PARAM_PARSERS: {
   "edit-element": parseEditElement,
   "stacking-family": (params) =>
     hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
+  "gsap-set": parseGsapSet,
+  "patch-tweens": parsePatchTweens,
+  "soft-reload": parseSoftReload,
+  "assets-unloaded": noParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */

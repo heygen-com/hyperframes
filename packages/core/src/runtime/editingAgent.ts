@@ -40,6 +40,10 @@ import { gsapSnapshot } from "./editing/gsapSnapshot";
 import { motionPathHome } from "./editing/motionPathHome";
 import { cropLift } from "./editing/cropLift";
 import { stackingFamily } from "./editingLayers";
+import { gsapSet } from "./editing/gsapSet";
+import { patchTweens } from "./editing/patchTween";
+import { softReload } from "./editing/softReload";
+import { previewAssetsUnloaded } from "../lottieReadiness";
 import {
   getLogicalOpacity,
   markedForStudio,
@@ -222,6 +226,10 @@ const HANDLERS: Handlers = {
   "crop-lift": cropLift,
   "edit-element": editElement,
   "stacking-family": stackingFamily,
+  "gsap-set": gsapSet,
+  "patch-tweens": patchTweens,
+  "soft-reload": softReload,
+  "assets-unloaded": () => ({ unloaded: previewAssetsUnloaded(document, window.__hfLottie) }),
 };
 
 function serve(port: MessagePort): void {

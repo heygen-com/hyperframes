@@ -207,6 +207,7 @@ async function forwardTunnel(
 export async function startCaptureProxy(
   upstream: UpstreamProxy | null = captureUpstreamProxy() ?? null,
   onRefused?: OnRefused,
+  fixedLoopbackPort?: number,
 ): Promise<{ url: string; close(): Promise<void> }> {
   const proxy = upstream ?? undefined;
   const sockets = new Set<Socket>();
@@ -224,7 +225,12 @@ export async function startCaptureProxy(
   server.headersTimeout = CONNECTION_TIMEOUT_MS;
   server.requestTimeout = 30_000;
   server.keepAliveTimeout = 1_000;
-  await listenOnBrowserSafePort(server, "127.0.0.1");
+  if (fixedLoopbackPort === undefined) await listenOnBrowserSafePort(server, "127.0.0.1");
+  else
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(fixedLoopbackPort, "127.0.0.1", () => resolve());
+    });
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Capture proxy did not bind");
   let closing: Promise<void> | undefined;

@@ -12,6 +12,7 @@ import {
   applyErrorDiffusionRgba,
   errorDiffusionBufferLength,
 } from "./lib/error-diffusion.mjs";
+import { terminalText } from "./lib/terminal-text.mjs";
 
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"]);
 const OUTPUT_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp"]);
@@ -59,13 +60,13 @@ try {
   const result = await run();
   if (args.json) console.log(JSON.stringify({ ok: true, ...result }));
   else {
-    console.log(`dithered ${result.input} -> ${result.out} (${result.algorithm})`);
-    console.log(`next: resolve --from ${result.out} --type ${result.type}`);
+    console.log(terminalText(`dithered ${result.input} -> ${result.out} (${result.algorithm})`));
+    console.log(terminalText(`next: resolve --from ${result.out} --type ${result.type}`));
   }
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   if (args.json) console.log(JSON.stringify({ ok: false, error: message }));
-  else console.error(`error: ${message}`);
+  else console.error(`error: ${message}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 }
 

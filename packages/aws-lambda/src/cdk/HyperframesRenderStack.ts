@@ -30,7 +30,6 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
 import * as tasks from "aws-cdk-lib/aws-stepfunctions-tasks";
 import { Construct } from "constructs";
-import { BUNDLED_SHELL_PATH } from "../chromium.js";
 import { CONTENT_STORE_PREFIX, CONTENT_STORE_RETENTION_DAYS } from "../contentStore.js";
 
 /** Construction-time props for {@link HyperframesRenderStack}. */
@@ -43,7 +42,7 @@ export interface HyperframesRenderStackProps {
   lambdaTimeoutSec?: number;
   /** Lambda reserved concurrency cap. `undefined` = unreserved (account default). */
   reservedConcurrency?: number;
-  /** Which Chrome runtime was bundled into the handler ZIP. Default `"sparticuz"`; a shell ZIP is over Lambda's limit. */
+  /** Which Chrome runtime was bundled into the handler ZIP. Only `"sparticuz"`: a shell ZIP is over Lambda's limit. */
   chromeSource?: "sparticuz" | "chrome-headless-shell";
   /** Threshold for the runaway-invocations alarm. Default 1000 invocations/hour. */
   chunkInvocationAlarmThreshold?: number;
@@ -63,15 +62,14 @@ const DEFAULT_TIMEOUT_SEC = 900;
 const DEFAULT_CHROME_SOURCE = "sparticuz";
 const DEFAULT_ALARM_THRESHOLD = 1000;
 
-/** The handler's Chrome source, and for the bundled shell, where build-zip.ts put it. */
-function chromeEnvironment(
+function zipChromeSource(
   source: NonNullable<HyperframesRenderStackProps["chromeSource"]>,
-): Record<string, string> {
-  if (source === "sparticuz") return { HYPERFRAMES_LAMBDA_CHROME_SOURCE: source };
-  return {
-    HYPERFRAMES_LAMBDA_CHROME_SOURCE: source,
-    HYPERFRAMES_LAMBDA_CHROME_PATH: BUNDLED_SHELL_PATH,
-  };
+): "sparticuz" {
+  if (source === "sparticuz") return source;
+  throw new Error(
+    "[HyperframesRenderStack] chromeSource chrome-headless-shell does not fit a Lambda ZIP function, so the " +
+      "handler ZIP ships @sparticuz/chromium. The arm64 video image runs chrome-headless-shell.",
+  );
 }
 
 export class HyperframesRenderStack extends Construct {
@@ -88,7 +86,7 @@ export class HyperframesRenderStack extends Construct {
     const projectName = props.projectName ?? "hyperframes";
     const memorySize = props.lambdaMemoryMb ?? DEFAULT_MEMORY_MB;
     const timeoutSec = props.lambdaTimeoutSec ?? DEFAULT_TIMEOUT_SEC;
-    const chromeSource = props.chromeSource ?? DEFAULT_CHROME_SOURCE;
+    const chromeSource = zipChromeSource(props.chromeSource ?? DEFAULT_CHROME_SOURCE);
     const alarmThreshold = props.chunkInvocationAlarmThreshold ?? DEFAULT_ALARM_THRESHOLD;
     const handlerZipPath = props.handlerZipPath ?? defaultHandlerZipPath();
 
@@ -129,7 +127,7 @@ export class HyperframesRenderStack extends Construct {
       environment: {
         NODE_OPTIONS: "--enable-source-maps",
         TMPDIR: "/tmp",
-        ...chromeEnvironment(chromeSource),
+        HYPERFRAMES_LAMBDA_CHROME_SOURCE: chromeSource,
         HYPERFRAMES_RENDER_BUCKET: this.bucket.bucketName,
         HYPERFRAMES_LAMBDA_RESERVED_CONCURRENCY: String(props.reservedConcurrency ?? -1),
         HYPERFRAMES_STITCH_FUNCTION: `${projectName}-render`,

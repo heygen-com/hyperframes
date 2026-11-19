@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication complexity
+import { localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
 import { spawn } from "child_process";
 import { createReadStream, mkdtempSync, readFileSync, rmSync, statSync } from "fs";
 import { chunkCrc32 } from "./crc32.js";
@@ -1333,10 +1334,12 @@ export const extractVideoMetadata = extractMediaMetadata;
 
 export async function extractAudioMetadata(
   filePath: string,
-  options?: { signal?: AbortSignal },
+  options?: { signal?: AbortSignal; inputContainer?: "mov" },
 ): Promise<AudioMetadata> {
   // A probe bound to a caller's abort signal is shared only among callers of that same signal,
   // and only when the file has an identity to key it by.
+  if (options?.inputContainer)
+    return probeAudioMetadata(filePath, options.signal, options.inputContainer);
   const identity = mediaFileIdentity(filePath);
   const signal = options?.signal;
   if (signal && identity === null) return probeAudioMetadata(filePath, signal);
@@ -1352,8 +1355,17 @@ export async function extractAudioMetadata(
   return probePromise;
 }
 
-async function probeAudioMetadata(filePath: string, signal?: AbortSignal): Promise<AudioMetadata> {
-  const output = await probeMediaOutput(filePath, signal);
+async function probeAudioMetadata(
+  filePath: string,
+  signal?: AbortSignal,
+  inputContainer?: "mov",
+): Promise<AudioMetadata> {
+  const inputArgs = localContainerInputArgs(inputContainer);
+  const output = inputContainer
+    ? refuseTextArt(
+        parseProbeJson(await runFfprobe(filePath, [...PROBE_JSON_ARGS, ...inputArgs], signal)),
+      )
+    : await probeMediaOutput(filePath, signal);
   const audioStreams = output.streams.filter((s) => s.codec_type === "audio");
   const audioStreamIndex = decodableAudioStream(output.streams);
   const audioStream = audioStreamIndex === null ? undefined : audioStreams[audioStreamIndex];
@@ -1373,6 +1385,7 @@ async function probeAudioMetadata(filePath: string, signal?: AbortSignal): Promi
       audioStartSeconds(audioStream, output.format),
       durationSeconds,
       signal,
+      inputArgs,
     );
     if (decoded !== null) {
       durationSeconds = reconcileAudioDuration(durationSeconds, decoded, output.format);
@@ -1455,6 +1468,7 @@ async function probeDecodedAudioDuration(
   startSeconds: number,
   containerDurationSeconds: number,
   signal?: AbortSignal,
+  inputArgs: string[] = [],
 ): Promise<number | null> {
   const probe = async (
     readInterval?: string,
@@ -1471,7 +1485,7 @@ async function probeDecodedAudioDuration(
     try {
       const stdout = await runFfprobe(
         filePath,
-        args,
+        [...args, ...inputArgs],
         signal,
         // CSV, not JSON: a tail truncated under the size cap still parses.
         { retainTail: true, maxChars: 64 * 1024 },

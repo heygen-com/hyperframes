@@ -76,6 +76,7 @@ import {
   isJavaScriptType,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
+  dropAuthoredSvgReferenceAliases,
   readDeclaredDefaults,
   parseHostVariableValues,
   boundMediaSrc,
@@ -103,7 +104,12 @@ import {
 import { isPrivateFileUnder, isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import { linksOutside } from "@hyperframes/studio-server/outside-file";
 import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js";
-import { assertCompositionFileSize, CompositionExpansionBudget } from "./compositionSizeLimit.js";
+import {
+  assertCompositionFileSize,
+  CompositionExpansionBudget,
+  REMOTE_SCRIPTS,
+  REMOTE_STYLESHEETS,
+} from "./compositionSizeLimit.js";
 import {
   escapesAssetRoot,
   isPathInside,
@@ -122,6 +128,7 @@ import {
   type MediaProbeProfile,
   analyzeKeyframeIntervals,
   assertMediaPayload,
+  createConcurrencyLimit,
   isPrivateUnderAssetRoots,
   NotMediaPayloadError,
   parseMasterFxChain,
@@ -142,7 +149,10 @@ import {
 } from "@hyperframes/core/fonts/embed";
 import { prepareAnimatedGifInputs } from "./animatedGifPrep.js";
 import { prepareHeifImageInputs } from "./heifImagePrep.js";
-import { createStudioPositionSeekReapplyScript } from "@hyperframes/studio-server/manual-edits-render-script";
+import {
+  createStudioPositionSeekReapplyScript,
+  htmlHasStudioPositionEdits,
+} from "@hyperframes/studio-server/manual-edits-render-script";
 import { getPositionEditsRenderScript } from "@hyperframes/core/runtime/position-edits-render";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
 import { assertAssetMediaTypeProfile } from "./assetMediaType.js";
@@ -1198,6 +1208,7 @@ function inlineSubCompositions(
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
 
   if (!hosts.length) {
+    const dropped = dropAuthoredSvgReferenceAliases(document as unknown as Document);
     // Even with no sub-compositions, declared composition variables need a
     // compile-time stylesheet so eval-time reads (GSAP .from immediateRender,
     // top-level script getComputedStyle) resolve var(--slug) — the runtime's
@@ -1208,7 +1219,7 @@ function inlineSubCompositions(
       variableOverrides,
       { chargeBytes: (bytes) => budget.chargeGenerated("composition variables", bytes) },
     );
-    return { html: emitted ? document.toString() : html, variablesByComp: {} };
+    return { html: emitted || dropped ? document.toString() : html, variablesByComp: {} };
   }
 
   const readOnce = new Map<string, string | null>();
@@ -1477,22 +1488,60 @@ function operatorGsapMirror(): string | undefined {
   }
 }
 
-async function downloadScript(src: string, mirror: string | undefined): Promise<Uint8Array> {
+async function downloadScript(
+  src: string,
+  mirror: string | undefined,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
   if (mirror && new URL(src).href.startsWith(mirror)) {
-    const response = await fetch(src, { redirect: "error", signal: AbortSignal.timeout(15_000) });
+    const response = await fetch(src, {
+      redirect: "error",
+      signal: AbortSignal.any([AbortSignal.timeout(15_000), signal]),
+    });
     if (!response.ok) throw new Error(`HTTP ${response.status} for ${src}`);
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (bytes.byteLength > MAX_SCRIPT_BYTES) throw new Error(`Script over 16 MiB: ${src}`);
     return bytes;
   }
-  return fetchPublicHttpsBytes(src, { maxBytes: MAX_SCRIPT_BYTES, timeoutMs: 15_000 });
+  return fetchPublicHttpsBytes(src, { maxBytes: MAX_SCRIPT_BYTES, timeoutMs: 15_000, signal });
+}
+
+const MAX_CONCURRENT_SCRIPT_FETCHES = 4;
+/**
+ * Distinct remote addresses one compile downloads, per kind: scripts, and non-Google stylesheets (counted before
+ * their contents are read, so a stylesheet with no font rules counts too).
+ */
+export const MAX_REMOTE_FETCHES = 32;
+/**
+ * The script and stylesheet inliners' downloads share this much time, from the first one; what is still pending then
+ * counts as failed. Fonts and other assets keep their own per-request limits.
+ */
+export const REMOTE_FETCH_DEADLINE_MS = 60_000;
+/** A signal, or a getter that starts one when the first download asks for it. */
+type FetchSignal = AbortSignal | (() => AbortSignal);
+const fetchSignalOf = (signal: FetchSignal | undefined) =>
+  typeof signal === "function" ? signal() : signal;
+
+function assertRemoteFetchCount(kind: string, count: number): void {
+  if (count > MAX_REMOTE_FETCHES) {
+    throw new Error(
+      `The composition links ${count} remote ${kind}; at most ${MAX_REMOTE_FETCHES} are downloaded at compile time`,
+    );
+  }
 }
 
 /**
  * Download external CDN scripts and inline them into the HTML so rendering
- * works without network access (Docker, CI, restricted environments).
+ * works without network access (Docker, CI, restricted environments). Each URL
+ * is fetched once, a few at a time, and every inlined copy is charged to the
+ * render's budget as it arrives, so going over stops the downloads still queued.
+ * Once `signal` aborts, pending downloads fail and their tags are left as they are.
  */
-export async function inlineExternalScripts(html: string): Promise<string> {
+export async function inlineExternalScripts(
+  html: string,
+  budget = new CompositionExpansionBudget(),
+  signal?: FetchSignal,
+): Promise<string> {
   const fullHtml = ensureFullDocument(html);
   const wrappedFragment = fullHtml !== html;
   const { document } = parseHTML(fullHtml);
@@ -1507,23 +1556,69 @@ export async function inlineExternalScripts(html: string): Promise<string> {
   }
 
   if (externalScripts.length === 0) return html;
+  // The host's own copy needs no network; one that fails the tag's integrity metadata is downloaded instead.
+  // It is read once per address: repeated tags share those bytes, and each is still charged as it is placed.
+  const bundled = new Map<string, Uint8Array | null>();
+  const local = externalScripts.map(({ el, src }) => {
+    if (!bundled.has(src)) bundled.set(src, bundledScript(src));
+    const bytes = bundled.get(src);
+    return bytes && matchesScriptIntegrity(bytes, el.getAttribute("integrity") || "")
+      ? bytes
+      : null;
+  });
+  const remote = new Set(externalScripts.filter((_, i) => !local[i]).map(({ src }) => src));
+  assertRemoteFetchCount("scripts", remote.size);
 
   const mirror = operatorGsapMirror();
+  const limit = createConcurrencyLimit(MAX_CONCURRENT_SCRIPT_FETCHES);
+  const stop = new AbortController();
+  const shared = remote.size > 0 ? fetchSignalOf(signal) : undefined;
+  const fetchSignal = shared ? AbortSignal.any([stop.signal, shared]) : stop.signal;
+  const fail = (error: unknown): never => {
+    stop.abort(error);
+    throw error;
+  };
+  const charge = (bytes: number) => {
+    try {
+      budget.chargeGenerated(REMOTE_SCRIPTS, bytes);
+    } catch (error) {
+      fail(error);
+    }
+  };
+  // A download is charged as it arrives, so bodies held for later tags are counted too.
+  const fetches = new Map<string, Promise<Uint8Array>>();
+  const fetchOnce = (src: string) => {
+    let bytes = fetches.get(src);
+    if (!bytes) {
+      bytes = limit(async () => {
+        fetchSignal.throwIfAborted();
+        const downloaded = await downloadScript(src, mirror, fetchSignal);
+        charge(downloaded.byteLength);
+        return downloaded;
+      }, fetchSignal);
+      fetches.set(src, bytes);
+    }
+    return bytes;
+  };
+  const placed = new Set<string>();
   const downloads = await Promise.allSettled(
-    externalScripts.map(async ({ el, src }) => {
+    externalScripts.map(async ({ el, src }, i) => {
       const integrity = el.getAttribute("integrity") || "";
-      // The host's own copy needs no network; one that fails the tag's integrity metadata is not used.
-      const bundled = bundledScript(src);
-      if (bundled && matchesScriptIntegrity(bundled, integrity)) {
-        return { src, text: new TextDecoder().decode(bundled) };
-      }
-      const bytes = await downloadScript(src, mirror);
-      if (!matchesScriptIntegrity(bytes, integrity)) {
-        throw new ScriptIntegrityError(`Subresource integrity mismatch for ${src}`);
+      let bytes = local[i];
+      if (bytes) {
+        charge(bytes.byteLength);
+      } else {
+        bytes = await fetchOnce(src);
+        if (!matchesScriptIntegrity(bytes, integrity)) {
+          fail(new ScriptIntegrityError(`Subresource integrity mismatch for ${src}`));
+        }
+        if (placed.has(src)) charge(bytes.byteLength);
+        placed.add(src);
       }
       return { src, text: new TextDecoder().decode(bytes) };
     }),
   );
+  if (stop.signal.aborted) throw stop.signal.reason;
 
   for (let i = 0; i < downloads.length; i++) {
     const download = downloads[i]!;
@@ -1850,12 +1945,16 @@ function isGoogleFontsUrl(href: string): boolean {
 
 const MAX_STYLESHEET_BYTES = 2 * 1024 * 1024;
 
-async function fetchExternalStylesheetCss(href: string): Promise<string | null> {
+async function fetchExternalStylesheetCss(
+  href: string,
+  signal: AbortSignal,
+): Promise<string | null> {
   const identity = safeDownloadUrlIdentity(href);
   try {
     return await fetchPublicHttpsText(href, {
       maxBytes: MAX_STYLESHEET_BYTES,
       timeoutMs: 15_000,
+      signal,
     });
   } catch (err) {
     defaultLogger.warn("[Compiler] External stylesheet fetch failed, preserving link tag.", {
@@ -1904,6 +2003,13 @@ function matchingBraces(css: string): Map<number, number> {
   return closes;
 }
 
+/** The address of a stylesheet link this compile inlines the font rules of, if it is one. */
+function remoteFontStylesheetHref(tag: string): string | undefined {
+  const href = /\bhref=["']([^"']+)["']/i.exec(tag)?.[1];
+  if (!href || !/^https?:\/\//i.test(href) || isGoogleFontsUrl(href)) return undefined;
+  return href;
+}
+
 /**
  * Find all external `<link rel="stylesheet">` tags pointing to non-Google
  * CDNs, fetch their CSS, and replace the `<link>` with an inline `<style>`
@@ -1914,51 +2020,57 @@ function matchingBraces(css: string): Map<number, number> {
  * handles those. If a fetch fails or the CSS has no `@font-face` blocks,
  * the original `<link>` tag is preserved (graceful degradation).
  */
-// fallow-ignore-next-line complexity
-async function inlineExternalFontStylesheets(html: string): Promise<string> {
-  const hrefRe = /\bhref=["']([^"']+)["']/i;
-
-  const linkMatches: { fullMatch: string; href: string }[] = [];
+async function inlineExternalFontStylesheets(
+  html: string,
+  budget = new CompositionExpansionBudget(),
+  signal?: FetchSignal,
+): Promise<string> {
+  const hrefs = new Set<string>();
   for (const { parts } of stylesheetLinkMatches(html)) {
-    const tag = parts[0];
-    const hrefMatch = hrefRe.exec(tag);
-    if (!hrefMatch?.[1]) continue;
-    const href = hrefMatch[1];
-    if (!/^https?:\/\//i.test(href)) continue;
-    if (isGoogleFontsUrl(href)) continue;
-    linkMatches.push({ fullMatch: tag, href });
+    const href = remoteFontStylesheetHref(parts[0]);
+    if (href) hrefs.add(href);
   }
+  if (hrefs.size === 0) return html;
+  assertRemoteFetchCount("stylesheets", hrefs.size);
 
-  if (linkMatches.length === 0) return html;
-
-  const MAX_CONCURRENT_STYLESHEET_FETCHES = 4;
-  const fetches: { fullMatch: string; href: string; css: string | null }[] = [];
-  for (let i = 0; i < linkMatches.length; i += MAX_CONCURRENT_STYLESHEET_FETCHES) {
-    const batch = linkMatches.slice(i, i + MAX_CONCURRENT_STYLESHEET_FETCHES);
-    const results = await Promise.all(
-      batch.map(async ({ fullMatch, href }) => {
-        const css = await fetchExternalStylesheetCss(href);
-        return { fullMatch, href, css };
-      }),
-    );
-    fetches.push(...results);
-  }
-
-  let result = html;
-  for (const { fullMatch, href, css } of fetches) {
-    if (css === null) continue;
-    const fontFaceBlocks = extractFontFaceBlocks(css);
-    if (fontFaceBlocks.length === 0) continue;
-    const identity = safeDownloadUrlIdentity(href);
+  // Each sheet is fetched once, a few at a time, and only its font rules are kept, charged as they arrive.
+  const limit = createConcurrencyLimit(MAX_CONCURRENT_SCRIPT_FETCHES);
+  const stop = new AbortController();
+  const shared = fetchSignalOf(signal);
+  const fetchSignal = shared ? AbortSignal.any([stop.signal, shared]) : stop.signal;
+  const inlineByHref = new Map<string, string>();
+  const inlineSheet = async (href: string) => {
+    const css = await fetchExternalStylesheetCss(href, fetchSignal);
+    const fontFaceBlocks = css ? extractFontFaceBlocks(css) : [];
+    if (fontFaceBlocks.length === 0) return;
     const inlineStyle = `<style>/* Inlined external font stylesheet */\n${fontFaceBlocks.join("\n")}\n</style>`;
-    result = result.replace(fullMatch, inlineStyle);
+    try {
+      budget.chargeGenerated(REMOTE_STYLESHEETS, inlineStyle.length);
+    } catch (error) {
+      stop.abort(error);
+      throw error;
+    }
+    inlineByHref.set(href, inlineStyle);
+    const identity = safeDownloadUrlIdentity(href);
     defaultLogger.debug("[Compiler] Inlined external @font-face rule(s)", {
       count: fontFaceBlocks.length,
       urlFingerprint: identity.urlFingerprint,
       host: identity.host,
     });
-  }
-  return result;
+  };
+  await Promise.allSettled([...hrefs].map((href) => limit(() => inlineSheet(href), fetchSignal)));
+  if (stop.signal.aborted) throw stop.signal.reason;
+
+  const placed = new Set<string>();
+  return replaceMatches(html, stylesheetLinkMatches(html), (tag) => {
+    const href = remoteFontStylesheetHref(tag);
+    const inlineStyle = href ? inlineByHref.get(href) : undefined;
+    if (!href || !inlineStyle) return tag;
+    // The first copy was charged when it arrived; each repeat adds the whole sheet again.
+    if (placed.has(href)) budget.chargeGenerated(REMOTE_STYLESHEETS, inlineStyle.length);
+    placed.add(href);
+    return inlineStyle;
+  });
 }
 
 // Families a linked project stylesheet declares with an @font-face file the project ships.
@@ -2201,7 +2313,7 @@ export interface CompileForRenderOptions {
    * prevent host-specific font capture from leaking into the planDir.
    */
   allowSystemFontCapture?: boolean;
-  /** Caller cancellation propagated through compile-time font fetches. */
+  /** Caller cancellation propagated through compile-time font, stylesheet and script fetches. */
   abortSignal?: AbortSignal;
   /** Persistent cache directory for the animated GIF and HEIC prep transcodes; defaults to downloadDir. */
   animatedGifCacheDir?: string;
@@ -2447,10 +2559,19 @@ export async function compileForRender(
   const usesThreeDTransforms = detectThreeDTransformUsage(sanitizedHtml);
   const hasAncestorBackgroundImage = detectAncestorBackgroundImage(sanitizedHtml);
 
+  let deadline: AbortSignal | undefined;
+  const remoteFetches = () =>
+    (deadline ??= AbortSignal.any([
+      AbortSignal.timeout(REMOTE_FETCH_DEADLINE_MS),
+      ...(options.abortSignal ? [options.abortSignal] : []),
+    ]));
   // Remote font stylesheets join the page first, or the font check below cannot see them.
   const fontSheetHtml = await inlineExternalFontStylesheets(
     promoteCssImportsToLinkTags(sanitizedHtml),
+    budget,
+    remoteFetches,
   );
+  options.abortSignal?.throwIfAborted();
   const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
     injectTextRenderingRule(coalesceHeadStylesAndBodyScripts(fontSheetHtml)),
   );
@@ -2464,20 +2585,14 @@ export async function compileForRender(
   });
 
   // CDN scripts are inlined after coalescing so they stay separate from the merged inline runs.
-  const assembledHtml = await inlineExternalScripts(coalescedHtml);
+  const assembledHtml = await inlineExternalScripts(coalescedHtml, budget, remoteFetches);
+  options.abortSignal?.throwIfAborted();
 
   // Inject studio position seek re-apply script when positions are baked into HTML.
   // GSAP overwrites the `translate` CSS property on every frame seek; this script
   // re-asserts the CSS custom property var() form after each seek so dragged
   // positions survive frame-by-frame rendering without a JSON sidecar.
-  const HF_POSITION_ATTRS = [
-    'data-hf-studio-path-offset="true"',
-    'data-hf-studio-box-size="true"',
-    'data-hf-studio-rotation="true"',
-    'data-hf-studio-motion="',
-  ];
-  const hasPositionEdits = HF_POSITION_ATTRS.some((attr) => assembledHtml.includes(attr));
-  const htmlWithPositionScript = hasPositionEdits
+  const htmlWithPositionScript = htmlHasStudioPositionEdits(assembledHtml)
     ? (insertBeforeCloseTag(
         assembledHtml,
         "body",

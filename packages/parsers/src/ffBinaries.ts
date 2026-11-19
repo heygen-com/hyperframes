@@ -249,6 +249,46 @@ export function clearFfBinaryLookupCache(): void {
   skippedX86Binaries.clear();
 }
 
+const endsAListLine = (text: string) => ["\n", "\r", "\u0000"].some((char) => text.includes(char));
+
+/** One `file` entry per path; a path holding what ends a list line (LF, CR, NUL) is refused. */
+export function concatListText(
+  paths: readonly string[],
+  options: { videoContainersOnly?: boolean } = {},
+): string {
+  const entryOptions = options.videoContainersOnly ? "option format_whitelist mov,matroska\n" : "";
+  return paths
+    .map((path) => {
+      if (endsAListLine(path)) {
+        throw new Error(
+          `A file to join holds a line break or NUL in its path: ${JSON.stringify(path)}`,
+        );
+      }
+      return `file '${path.replace(/'/g, "'\\''")}'\n${entryOptions}`;
+    })
+    .join("");
+}
+
+/**
+ * Concat input for a list HyperFrames wrote: entries open only as local mov, matroska or concat
+ * files (an ffconcat entry is followed in safe mode), and `-xerror` fails at a refused entry.
+ */
+export function concatListInputArgs(concatListPath: string): string[] {
+  return [
+    "-xerror",
+    "-protocol_whitelist",
+    "file",
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-format_whitelist",
+    "concat,mov,matroska",
+    "-i",
+    concatListPath,
+  ];
+}
+
 /** What a render service lets a media input open: containers that name no other file. */
 export const SELF_CONTAINED_FORMATS =
   "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
@@ -294,6 +334,10 @@ let listingOverride: string | undefined;
 export function _setDemuxerListingForTests(listing?: string): void {
   listingOverride = listing;
   demuxerLists.clear();
+}
+
+export function localContainerInputArgs(container: "mov" | "matroska" | undefined): string[] {
+  return container ? ["-protocol_whitelist", "file", "-format_whitelist", container] : [];
 }
 
 export { assertLiteralMediaInput };

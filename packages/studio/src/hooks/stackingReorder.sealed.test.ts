@@ -53,10 +53,20 @@ function stackingSync(iframe: HTMLIFrameElement, commit: TimelineZIndexReorderCo
   return () => sync;
 }
 
-it("reads a sealed preview's clip z-index for a lane drag", () => {
+it("reads a sealed clip's z-index from the frame's stylesheet", async () => {
+  document.body.innerHTML = `<style>#back { z-index: 10 }</style>${PAGE.replace("z-index: 1", "")}`;
   const sync = stackingSync(sealedPreviewFrame().iframe, vi.fn());
-  expect(sync().readClipZIndex(clip("back", 1, 1))).toBe(1);
-  expect(sync().readClipZIndex({ ...clip("back", 1, 1), zIndex: undefined })).toBeNaN();
+  await expect(sync().readClipZIndex({ ...clip("back", 1, 1), zIndex: undefined })).resolves.toBe(
+    10,
+  );
+  await expect(sync().readClipZIndex(clip("gone", 1, 1))).resolves.toBeNaN();
+});
+
+it("reads the z-index an earlier gesture drew, not the one the drag started from", async () => {
+  document.body.innerHTML = PAGE;
+  const sync = stackingSync(sealedPreviewFrame().iframe, vi.fn());
+  document.getElementById("back")!.style.zIndex = "11";
+  await expect(sync().readClipZIndex(clip("back", 1, 1))).resolves.toBe(11);
 });
 
 it("saves the restack of a lane drag in a sealed preview", async () => {

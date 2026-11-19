@@ -198,10 +198,12 @@ export {
 } from "./services/screenshotService.js";
 
 // ── Encoding ───────────────────────────────────────────────────────────────────
+export { concatListInputArgs, concatListText } from "@hyperframes/parsers/ff-binaries";
 export {
   buildEncoderArgs,
   encodeFramesFromDir,
   buildConcatArgs,
+  writeVideoConcatList,
   concatVideoFiles,
   encodeFramesChunkedConcat,
   muxVideoWithAudio,
@@ -394,6 +396,7 @@ export {
 } from "./utils/loopbackOnly.js";
 
 export { readWebGlVendorInfoFromCanvas } from "./utils/readWebGlVendorInfoFromCanvas.js";
+export { createConcurrencyLimit } from "./utils/concurrencyLimit.js";
 
 export {
   extractMediaMetadata,

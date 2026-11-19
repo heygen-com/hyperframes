@@ -159,7 +159,18 @@ export function findTimelineElementInIframe(
 ): Element | null {
   try {
     const doc = iframe?.contentDocument;
-    if (!doc) return null;
+    return doc ? findTimelineElementInDocument(doc, element, activeCompositionPath) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function findTimelineElementInDocument(
+  doc: Document,
+  element: TimelineElement,
+  activeCompositionPath: string | null,
+): Element | null {
+  try {
     if (element.kind === "composition" && element.compositionSrc) {
       return findElementForTimelineElement(doc, element, {
         activeCompositionPath,

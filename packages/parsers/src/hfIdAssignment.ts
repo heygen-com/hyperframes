@@ -1,3 +1,5 @@
+import { templateContent } from "./subCompositionValidity.js";
+
 // Non-editable / non-visual elements that should never receive a stable id.
 export const EXCLUDED_TAGS = new Set([
   "script",
@@ -111,8 +113,8 @@ export function mintHfId(el: Element, assigned: Set<string>): string {
  */
 export function getChildElements(parent: Element): Element[] {
   const directChildren = Array.from(parent.children);
-  if (directChildren.length || parent.tagName.toLowerCase() !== "template") return directChildren;
-  const content = (parent as HTMLTemplateElement).content;
+  if (directChildren.length) return directChildren;
+  const content = templateContent(parent);
   if (content?.children.length) return Array.from(content.children);
   return directChildren;
 }

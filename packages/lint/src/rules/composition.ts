@@ -22,6 +22,7 @@ import {
   isSafeMediaUrl,
 } from "@hyperframes/parsers/composition";
 import { readClipTiming } from "@hyperframes/parsers/composition-contract";
+import { isHtmlTemplate } from "@hyperframes/parsers/sub-composition-validity";
 import { rawCssUrlMatches } from "@hyperframes/parsers/css-url-scans";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import {
@@ -1944,7 +1945,8 @@ export const compositionRules: Array<(ctx: LintContext) => HyperframeLintFinding
   ({ rawSource }) => {
     const { document } = parseHTML(rawSource);
     if (document.querySelector("[data-composition-id]")) return [];
-    const scenes = Array.from(document.querySelectorAll("template")).flatMap((template, index) => {
+    const templates = Array.from(document.querySelectorAll("template")).filter(isHtmlTemplate);
+    const scenes = templates.flatMap((template, index) => {
       const compositionId = parseHTML(template.innerHTML)
         .document.querySelector("[data-composition-id]")
         ?.getAttribute("data-composition-id");

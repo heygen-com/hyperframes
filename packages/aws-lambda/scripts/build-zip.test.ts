@@ -12,9 +12,9 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { managedChromeVersion } from "@hyperframes/engine/chrome-host-ceiling";
+import { headlessShellDigest, managedChromeVersion } from "@hyperframes/engine/chrome-host-ceiling";
 import * as esbuild from "esbuild";
-import { BUNDLED_SHELL_DIR, BUNDLED_SHELL_PATH } from "../src/chromium.js";
+import { BUNDLED_SHELL_DIR } from "../src/chromium.js";
 import { stageChromeHeadlessShell } from "./_chromeHeadlessShell.js";
 import { HANDLER_BANNER } from "./_handlerBanner.js";
 
@@ -102,8 +102,15 @@ describe("build-zip chrome-headless-shell staging", () => {
     return home;
   }
   const pinned = managedChromeVersion("linux");
+  const shellFolder = (home: string, version: string) =>
+    join(
+      home,
+      ".cache/puppeteer/chrome-headless-shell",
+      `linux-${version}`,
+      "chrome-headless-shell-linux64",
+    );
 
-  it("stages the whole pinned shell folder where the template and the CDK stack point", () => {
+  it("stages the whole pinned shell folder", () => {
     const home = puppeteerCache({
       "999.0.0.1": { "chrome-headless-shell": "newer" },
       [pinned]: {
@@ -111,32 +118,37 @@ describe("build-zip chrome-headless-shell staging", () => {
         "icudtl.dat": "icu",
         "headless_lib_data.pak": "pak",
         "locales/en-US.pak": "locale",
+        "debug.log": "written by a run",
       },
     });
     const staging = mkdtempSync(join(tmpdir(), "hf-shell-staging-"));
-    const checked: string[] = [];
     try {
-      const isPinned = (exe: string) => checked.push(exe) > 0;
-      expect(stageChromeHeadlessShell(staging, home, isPinned)).toBe(pinned);
-      expect(checked).toEqual([
-        join(
-          home,
-          ".cache/puppeteer/chrome-headless-shell",
-          `linux-${pinned}`,
-          "chrome-headless-shell-linux64",
-          "chrome-headless-shell",
-        ),
-      ]);
+      const digests = { [pinned]: [headlessShellDigest(shellFolder(home, pinned))!] };
+      expect(stageChromeHeadlessShell(staging, home, digests)).toBe(pinned);
       const shell = join(staging, BUNDLED_SHELL_DIR);
+      // The digest leaves out what Chrome writes as it runs, so none of that ships.
+      expect(existsSync(join(shell, "debug.log"))).toBe(false);
       // Without icudtl.dat beside it the shell exits at launch, so the folder ships whole.
       expect(readFileSync(join(shell, "icudtl.dat"), "utf-8")).toBe("icu");
       expect(readFileSync(join(shell, "headless_lib_data.pak"), "utf-8")).toBe("pak");
       expect(readFileSync(join(shell, "locales/en-US.pak"), "utf-8")).toBe("locale");
       expect(readFileSync(join(shell, "chrome-headless-shell"), "utf-8")).toBe("exe");
       expect(statSync(join(shell, "chrome-headless-shell")).mode & 0o111).not.toBe(0);
-      expect(join("/var/task", BUNDLED_SHELL_DIR, "chrome-headless-shell")).toBe(
-        BUNDLED_SHELL_PATH,
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(staging, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses a folder whose digest is pinned only for another build", () => {
+    const home = puppeteerCache({ [pinned]: { "chrome-headless-shell": "exe" } });
+    const staging = mkdtempSync(join(tmpdir(), "hf-shell-staging-"));
+    try {
+      const digests = { "150.0.7871.124": [headlessShellDigest(shellFolder(home, pinned))!] };
+      expect(() => stageChromeHeadlessShell(staging, home, digests)).toThrow(
+        /does not match the pinned/,
       );
+      expect(existsSync(join(staging, BUNDLED_SHELL_DIR))).toBe(false);
     } finally {
       rmSync(home, { recursive: true, force: true });
       rmSync(staging, { recursive: true, force: true });

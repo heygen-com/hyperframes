@@ -66,11 +66,16 @@ function syncDragPreview(res: MutationResult, reloadPreview: () => void) {
   applyPreviewSync(FAKE_IFRAME, res, dragOptions(), reloadPreview);
 }
 
-function expectSoftReloadedWith(onAsyncFailure: unknown, authoredHtml: string | undefined) {
+function expectSoftReloadedWith(
+  onAsyncFailure: unknown,
+  authoredHtml: string | undefined,
+  previousHtml?: string,
+) {
   expect(applySoftReload).toHaveBeenCalledWith(FAKE_IFRAME, "SCRIPT", {
     onAsyncFailure,
     currentTimeOverride: 0,
     authoredHtml,
+    previousHtml,
   });
 }
 
@@ -129,6 +134,29 @@ describe("applyPreviewSync", () => {
     ]);
     expect(applySoftReload).not.toHaveBeenCalled();
     expect(reloadPreview).not.toHaveBeenCalled();
+  });
+
+  it("renders on the last tween patch when the batch ends in a base value, which never renders", () => {
+    patchRuntimeTweenInPlace.mockReturnValue(true);
+
+    applyPreviewSync(
+      FAKE_IFRAME,
+      result(),
+      {
+        label: "Move layers",
+        softReload: true,
+        instantPatches: [
+          { selector: "#a", change: { kind: "set" as const, props: { x: 1 } } },
+          { selector: "#b", change: { kind: "global-set" as const, props: { x: 2 } } },
+        ],
+      },
+      vi.fn(),
+    );
+
+    expect(patchRuntimeTweenInPlace.mock.calls.map((call) => [call[1], call[4]])).toEqual([
+      ["#a", false],
+      ["#b", true],
+    ]);
   });
 
   it("applies both plural and singular patches when a caller supplies both", () => {
@@ -684,7 +712,7 @@ describe("runCommit — instantPatch wiring", () => {
       );
     });
 
-    expectSoftReloadedWith(deps.reloadPreview, "AFTER");
+    expectSoftReloadedWith(deps.reloadPreview, "AFTER", "BEFORE");
     expect(deps.reloadPreview).not.toHaveBeenCalled();
   });
 
@@ -879,7 +907,7 @@ describe("runCommit — instantPatch wiring", () => {
     });
 
     expect(fetch).toHaveBeenCalledTimes(1);
-    expectSoftReloadedWith(deps.reloadPreview, "AFTER");
+    expectSoftReloadedWith(deps.reloadPreview, "AFTER", "BEFORE");
     expect(deps.reloadPreview).not.toHaveBeenCalled();
     expect(deps.onCacheInvalidate).toHaveBeenCalledTimes(1);
   });
@@ -894,7 +922,7 @@ describe("runCommit — instantPatch wiring", () => {
     });
 
     expect(patchRuntimeTweenInPlace).not.toHaveBeenCalled();
-    expectSoftReloadedWith(deps.reloadPreview, "AFTER");
+    expectSoftReloadedWith(deps.reloadPreview, "AFTER", "BEFORE");
     expect(deps.reloadPreview).not.toHaveBeenCalled();
   });
 

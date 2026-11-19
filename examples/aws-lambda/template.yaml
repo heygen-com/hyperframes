@@ -49,13 +49,13 @@ Parameters:
   ChromeSource:
     Type: String
     Default: sparticuz
-    AllowedValues: [sparticuz, chrome-headless-shell]
+    AllowedValues: [sparticuz]
     Description: >-
       Which Chrome runtime the bundled ZIP was built with. Must match the
       `--source=` flag passed to `build-zip.ts`. The handler reads this
-      via the HYPERFRAMES_LAMBDA_CHROME_SOURCE env var at boot. A
-      chrome-headless-shell ZIP is over Lambda's unzipped limit today; the
-      arm64 video image always runs its own chrome-headless-shell.
+      via the HYPERFRAMES_LAMBDA_CHROME_SOURCE env var at boot. Only
+      sparticuz: a chrome-headless-shell ZIP is over Lambda's unzipped
+      limit, and the arm64 video image runs its own chrome-headless-shell.
 
   ChunkInvocationAlarmThreshold:
     Type: Number
@@ -77,7 +77,6 @@ Parameters:
 Conditions:
   HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, -1]]
   HasVideoFunction: !Not [!Equals [!Ref VideoImageUri, ""]]
-  BundlesChromeHeadlessShell: !Equals [!Ref ChromeSource, chrome-headless-shell]
 
 Globals:
   Function:
@@ -97,11 +96,6 @@ Globals:
       Variables:
         NODE_OPTIONS: "--enable-source-maps"
         HYPERFRAMES_LAMBDA_CHROME_SOURCE: !Ref ChromeSource
-        # Where build-zip.ts --source=chrome-headless-shell puts the shell (BUNDLED_SHELL_PATH).
-        HYPERFRAMES_LAMBDA_CHROME_PATH: !If
-          - BundlesChromeHeadlessShell
-          - /var/task/chrome-headless-shell-linux64/chrome-headless-shell
-          - !Ref AWS::NoValue
 
 Resources:
   # ── S3 bucket for plan tarballs, chunk outputs, and final renders ───────

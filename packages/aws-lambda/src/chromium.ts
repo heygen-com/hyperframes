@@ -39,7 +39,6 @@ import { existsSync } from "node:fs";
 export type ChromeSource = "sparticuz" | "chrome-headless-shell";
 
 export const BUNDLED_SHELL_DIR = "chrome-headless-shell-linux64";
-export const BUNDLED_SHELL_PATH = `/var/task/${BUNDLED_SHELL_DIR}/chrome-headless-shell`;
 
 /**
  * Thrown when the Chrome binary resolver can't produce a usable path.
