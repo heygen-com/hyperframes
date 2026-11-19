@@ -3,6 +3,7 @@ import { existsSync, unlinkSync } from "node:fs";
 import { describeDownload, probeSpecs } from "./specs.mjs";
 import { buildArgv, selectModelLadder } from "./local-models.mjs";
 import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
+import { terminalText } from "./terminal-text.mjs";
 
 // Local image generation via mflux (FLUX-on-MLX), the Mac-native runner.
 // Spec-gated: selectModelLadder("imagegen", specs) returns every FLUX-class
@@ -87,7 +88,7 @@ export async function mfluxImageGenerate(
       }
       if (!snap) {
         discardPartial(outPath);
-        console.error(`media-use: local image gen (${model.id}): ${why}`);
+        console.error(terminalText(`media-use: local image gen (${model.id}): ${why}`));
         continue;
       }
       vars.model_path = snap;
@@ -104,7 +105,9 @@ export async function mfluxImageGenerate(
     } catch (err) {
       discardPartial(outPath);
       console.error(
-        `media-use: local image gen (${model.id}) failed: ${err.stderr?.toString().trim().slice(-200) || err.message}`,
+        terminalText(
+          `media-use: local image gen (${model.id}) failed: ${err.stderr?.toString().trim().slice(-200) || err.message}`,
+        ),
       );
       continue;
     }

@@ -57,3 +57,24 @@ test("without an absolute CLI entry: falls through to the next provider (null), 
     }
   }
 });
+
+test("a failed tts run prints its output with control characters escaped", async () => {
+  const errors = [];
+  const originalError = console.error;
+  console.error = (message) => errors.push(String(message));
+  try {
+    const fakeExec = () => {
+      const err = new Error("Command failed");
+      err.stdout = "";
+      err.stderr = "bad text \x1b]0;title\x07 hello";
+      throw err;
+    };
+    const env = { ...envWithNpxCli, HYPERFRAMES_CLI_ENTRY: "/opt/hf/dist/cli.js" };
+    assert.equal(await localTtsGenerate("hello", {}, "darwin", fakeExec, env, pathExists), null);
+  } finally {
+    console.error = originalError;
+  }
+  assert.deepEqual(errors, [
+    "media-use: local voice not enabled (kokoro). bad text \\x1b]0;title\\x07 hello",
+  ]);
+});

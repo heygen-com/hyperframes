@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { track } from "./telemetry.mjs";
+import { terminalText } from "./terminal-text.mjs";
 
 // v0.3.0 is the first CLI that can use an OAuth session; v0.1.x/0.2.x reject it
 // ("heygen-cli can't use OAuth yet"), and OAuth is what the free-usage path
@@ -129,7 +130,7 @@ export function reportHeygenFailure(err, context, trackEvent = track) {
   if (ACTIONABLE_MESSAGES.has(message)) {
     console.error(message);
   } else {
-    console.error(`media-use: \`${context}\` failed: ${message}`);
+    console.error(terminalText(`media-use: \`${context}\` failed: ${message}`));
   }
   try {
     const tracked = Promise.resolve(

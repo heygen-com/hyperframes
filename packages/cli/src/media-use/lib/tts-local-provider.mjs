@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { ffprobeBinary } from "./ff-binaries.mjs";
 import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
+import { terminalText } from "./terminal-text.mjs";
 import { resolveSpawnCommand } from "../../audio/scripts/lib/tts.mjs";
 
 // Local voiceover via the packaged Kokoro-82M TTS (the `hyperframes tts` CLI),
@@ -82,7 +83,7 @@ export async function localTtsGenerate(
     const hint = /not installed|pip install kokoro/i.test(out)
       ? "install for free on-device voice: pip install kokoro-onnx soundfile (or set HYPERFRAMES_PYTHON to a venv that has it)"
       : out.slice(-200) || err.message;
-    console.error(`media-use: local voice not enabled (kokoro). ${hint}`);
+    console.error(terminalText(`media-use: local voice not enabled (kokoro). ${hint}`));
     discardPrivateOutput(outPath);
     return null;
   }

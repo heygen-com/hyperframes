@@ -172,3 +172,41 @@ test("a successful generation is never discarded", async () => {
   assert.ok(result);
   assert.deepEqual(unlinked, [], "the returned artifact must survive");
 });
+
+test("helper output in a failure line prints control characters as visible escapes", async (t) => {
+  const errors = [];
+  t.mock.method(console, "error", (message) => errors.push(message));
+  const exec = (...call) => {
+    const [bin, argv] = call;
+    if (bin === "which") return "";
+    if (bin === "hf") {
+      if (argv[1].includes("FLUX.2-klein")) {
+        const err = new Error("exit 1");
+        err.stderr = "repo \x1b]0;title\x07 not found";
+        throw err;
+      }
+      return `${SNAPSHOT}\n`;
+    }
+    const err = new Error("exit 1");
+    err.stderr = "bad prompt \x1b[2J\x07 a red bicycle";
+    throw err;
+  };
+
+  const result = await mfluxImageGenerate(
+    "a red bicycle",
+    { specs: bothTiersSpecs },
+    exec,
+    () => true,
+  );
+
+  assert.equal(result, null);
+  assert.equal(errors.length, 2);
+  assert.match(
+    errors[0],
+    /^media-use: local image gen \(\S+\): hf download failed: repo \\x1b\]0;title\\x07 not found$/,
+  );
+  assert.match(
+    errors[1],
+    /^media-use: local image gen \(\S+\) failed: bad prompt \\x1b\[2J\\x07 a red bicycle$/,
+  );
+});

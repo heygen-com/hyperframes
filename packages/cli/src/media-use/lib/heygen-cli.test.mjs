@@ -313,3 +313,15 @@ test("only a music miss names the heygen CLI and the host app's own tool", () =>
 test("a CLI that rejects --headers without printing a version is outdated", () => {
   assert.equal(classifyHeygenErrorCode({ stderr: "Error: unknown flag: --headers" }), "outdated");
 });
+
+test("a heygen CLI failure message prints control characters as visible escapes", () => {
+  const stderrCalls = captureFailureReport(
+    { stderr: Buffer.from("Error: voice \x1b]0;title\x07 not usable") },
+    "heygen voice list",
+    () => {},
+  );
+
+  assert.deepEqual(stderrCalls, [
+    ["media-use: `heygen voice list` failed: Error: voice \\x1b]0;title\\x07 not usable"],
+  ]);
+});

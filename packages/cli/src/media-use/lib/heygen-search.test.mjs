@@ -47,3 +47,31 @@ test("keeps CLI and REST media-use client source headers in lockstep", () => {
 
   assert.equal(HEYGEN_CLIENT_SOURCE_ARGV[1], `${key}: ${value}`);
 });
+
+test("a heygen error message prints control characters as visible escapes", (t) => {
+  const dir = mkdtempSync(join(tmpdir(), "media-use-heygen-search-"));
+  const heygenPath = join(dir, "heygen");
+  const previousPath = process.env.PATH;
+  writeFileSync(
+    heygenPath,
+    `#!/bin/sh
+printf '%s\\n' '{"error":{"message":"no match for \\u001b]0;title\\u0007 ocean"}}'
+`,
+  );
+  chmodSync(heygenPath, 0o755);
+  process.env.PATH = `${dir}:${previousPath ?? ""}`;
+  const errors = [];
+  t.mock.method(console, "error", (message) => errors.push(message));
+
+  try {
+    assert.equal(heygenSearch("audio sounds list", "ocean", { limit: 1 }), null);
+  } finally {
+    if (previousPath === undefined) delete process.env.PATH;
+    else process.env.PATH = previousPath;
+    rmSync(dir, { recursive: true, force: true });
+  }
+
+  assert.deepEqual(errors, [
+    "media-use: `heygen audio sounds list` error: no match for \\x1b]0;title\\x07 ocean",
+  ]);
+});
