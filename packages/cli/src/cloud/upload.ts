@@ -42,6 +42,7 @@ import {
   type UploadFileSource,
 } from "./uploadPut.js";
 import {
+  claimSaved,
   forgetSaved,
   PARTS_ABOVE_BYTES,
   resumable,
@@ -338,9 +339,9 @@ async function sendFile(
   body: Uint8Array | UploadFileSource,
   size_bytes: number,
   checksum_sha256: string,
+  saved: string | undefined,
 ): Promise<{ asset_id: string; inParts: CompleteParts; forget?: () => void }> {
   const wantParts = size_bytes > PARTS_ABOVE_BYTES;
-  const saved = wantParts ? savedUploadFile(checksum_sha256, size_bytes) : undefined;
   const resumed = saved ? await resumable(opts.client, saved) : undefined;
   if (resumed) {
     opts.onProgress?.({ phase: "upload", percent: 0 });
@@ -381,28 +382,35 @@ export async function uploadAssetViaDirectUpload(
     body instanceof Uint8Array ? sha256Hex(body) : await sha256OfFile(body.path);
 
   opts.onProgress?.({ phase: "initialize" });
-  const sent = await sendFile(opts, body, size_bytes, checksum_sha256);
-  opts.onProgress?.({ phase: "upload", percent: 100 });
+  const file =
+    size_bytes > PARTS_ABOVE_BYTES ? savedUploadFile(checksum_sha256, size_bytes) : undefined;
+  const release = file ? claimSaved(file) : undefined;
+  try {
+    const sent = await sendFile(opts, body, size_bytes, checksum_sha256, release && file);
+    opts.onProgress?.({ phase: "upload", percent: 100 });
 
-  opts.onProgress?.({ phase: "complete" });
-  const completed = await completeWithRetry(
-    opts.client,
-    sent.asset_id,
-    checksum_sha256,
-    size_bytes,
-    opts.signal,
-    sent.inParts,
-  ).catch((err: unknown) => {
-    if (refusesTheFile(err)) sent.forget?.();
-    throw nameRefusedFile(err, opts.filename, opts.contentType);
-  });
-  sent.forget?.();
-  return {
-    asset_id: completed.asset_id,
-    url: completed.url,
-    size_bytes,
-    duration_ms: Date.now() - start,
-  };
+    opts.onProgress?.({ phase: "complete" });
+    const completed = await completeWithRetry(
+      opts.client,
+      sent.asset_id,
+      checksum_sha256,
+      size_bytes,
+      opts.signal,
+      sent.inParts,
+    ).catch((err: unknown) => {
+      if (refusesTheFile(err)) sent.forget?.();
+      throw nameRefusedFile(err, opts.filename, opts.contentType);
+    });
+    sent.forget?.();
+    return {
+      asset_id: completed.asset_id,
+      url: completed.url,
+      size_bytes,
+      duration_ms: Date.now() - start,
+    };
+  } finally {
+    release?.();
+  }
 }
 
 export function uploadZipViaDirectUpload(

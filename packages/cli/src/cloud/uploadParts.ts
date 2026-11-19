@@ -36,6 +36,41 @@ function readSaved(file: string): SavedUpload | undefined {
   }
 }
 
+/** The saved upload's release while this sender holds it; nothing when another live sender does, so it sends alone. */
+export function claimSaved(file: string): (() => void) | undefined {
+  const lock = `${file}.lock`;
+  for (let tries = 0; tries < 2; tries += 1) {
+    try {
+      mkdirSync(dirname(lock), { recursive: true, mode: 0o700 });
+      writeFileSync(lock, String(process.pid), { flag: "wx", mode: 0o600 });
+      return () => rmSync(lock, { force: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST" || alive(lockHolder(lock)))
+        return undefined;
+      rmSync(lock, { force: true });
+    }
+  }
+  return undefined;
+}
+
+function lockHolder(lock: string): number {
+  try {
+    return Number(readFileSync(lock, "utf8"));
+  } catch {
+    return Number.NaN;
+  }
+}
+
+function alive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 export function forgetSaved(file: string): void {
   rmSync(file, { force: true });
 }
