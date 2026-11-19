@@ -75,7 +75,7 @@ it("moves a sealed element GSAP animates by its tween, counting the keys pressed
     arrowRight();
     arrowRight();
   });
-  const [, , [selection]] = readShownGestureStarts.mock.calls[0]!;
+  const [, , , [selection]] = readShownGestureStarts.mock.calls[0]!;
   await act(async () =>
     answer({
       shown: [

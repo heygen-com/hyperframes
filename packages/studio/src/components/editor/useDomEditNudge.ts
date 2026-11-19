@@ -268,7 +268,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     session.timer = setTimeout(() => commitSessionRef.current(), CANVAS_NUDGE_COMMIT_DEBOUNCE_MS);
   };
 
-  // A sealed frame's stand-in carries no GSAP or translate: the members start from the frame's own read, as a press does.
+  // A sealed frame's stand-in has no GSAP or translate: its members start from the frame's read, as a press does.
   const readSealedStart = (): SealedStartRead | null => {
     const p = paramsRef.current;
     const iframe = p.iframeRef.current;
