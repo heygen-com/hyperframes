@@ -14,6 +14,7 @@ export function fetchFrameToken(frameTokenPath: string): Promise<string | null> 
 export function previewWithoutFrameToken(href: string): string {
   if (!URL.canParse(href)) return href.replace(PREVIEW_PATH, "$1/preview");
   const url = new URL(href);
+  if (url.origin !== window.location.origin) return href;
   url.pathname = url.pathname.replace(PREVIEW_PATH, "$1/preview");
   return url.href;
 }

@@ -316,7 +316,7 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
 
   it("names a sealed preview's files by their project path, not the frame's passing token", () => {
     const token = "A".repeat(43);
-    const preview = "http://127.0.0.1:4000/api/projects/p1/preview";
+    const preview = `${window.location.origin}/api/projects/p1/preview`;
     const clip = (kind: "element" | "composition", tagName: string) => ({
       id: tagName,
       label: tagName,
@@ -343,6 +343,28 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
 
     expect(video.src).toBe(`${preview}/assets/a%20b.mp4?t=1`);
     expect(scene.compositionSrc).toBe(`${preview}/compositions/intro.html`);
+  });
+
+  it("keeps a file on another site as written, even when its path looks like a preview's", () => {
+    const elsewhere = `http://media.example:9000/api/projects/p1/preview/~${"A".repeat(43)}/assets/v.mp4`;
+    const video = createTimelineElementFromManifestClip({
+      clip: {
+        id: "v",
+        label: "v",
+        kind: "element",
+        tagName: "video",
+        start: 0,
+        duration: 5,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: elsewhere,
+      },
+      fallbackIndex: 0,
+    });
+
+    expect(video.src).toBe(elsewhere);
   });
 });
 
