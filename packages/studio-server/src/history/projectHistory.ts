@@ -457,6 +457,7 @@ class Engine {
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   adopting = new Map<string, Adoption>();
+  lateFirstCopiesKeptFromPruning = new Map<string, string>();
   reading = new Map<string, Promise<unknown>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
@@ -668,6 +669,12 @@ class Engine {
       if (result.value === "changing") {
         owed.push(file);
         late.set(file.path, copies[i]!);
+        copies[i]!.then(
+          (copy) =>
+            typeof copy === "object" &&
+            this.lateFirstCopiesKeptFromPruning.set(file.path, copy.hash),
+          () => {},
+        );
       } else if (result.value !== "gone")
         this.tracked.set(file.path, { hash: result.value.hash, stat: statKey(file, sweptAt) });
     });
@@ -689,8 +696,9 @@ class Engine {
   ): void {
     let turn: Promise<unknown> = Promise.resolve();
     for (const file of files) {
-      const adoption = this.adopt(file, sweptAt, turn, lateFirstCopies.get(file.path));
-      turn = adoption.firstTry;
+      const late = lateFirstCopies.get(file.path);
+      const adoption = this.adopt(file, sweptAt, turn, late);
+      if (!late) turn = adoption.firstTry;
       this.adopting.set(file.path, adoption);
     }
     this.saveAdopting();
@@ -717,6 +725,7 @@ class Engine {
       asked = [];
       const tried = await this.tryAdopting(file, sweptAt, late);
       late = undefined;
+      this.lateFirstCopiesKeptFromPruning.delete(file.path);
       for (const answer of served) answer();
       return tried === "over";
     };
@@ -1160,6 +1169,7 @@ class Engine {
         new Set([
           ...referencedHashes(this.log, this.manifest()),
           ...this.pendingHashes(),
+          ...this.lateFirstCopiesKeptFromPruning.values(),
           ...[...this.overwritten.values()].flatMap((byAfter) => [...byAfter.values()]),
         ]),
       );

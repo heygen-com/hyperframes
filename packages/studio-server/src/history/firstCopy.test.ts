@@ -217,4 +217,73 @@ describe("a project's first history copy", () => {
       { timeout: 10_000 },
     );
   });
+
+  it("keeps a late first copy through a prune while another file's read is still stalled", async () => {
+    const projectDir = projectOf(4, "late-two");
+    const stalled = join(projectDir, "parts", "p0.js");
+    const late = join(projectDir, "parts", "p2.js");
+    const original = readFileSync(late);
+    const edited = Buffer.from("<html>edited</html>");
+    const saved = Buffer.from("// saved after the open\n");
+    const stalls: (() => void)[] = [];
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      if (String(args[0]) === stalled) await new Promise<void>((answer) => stalls.push(answer));
+      return realOpen(...args);
+    });
+    const holds = new Map<Buffer, { held: number; release: () => void; gate: Promise<void> }>();
+    for (const bytes of [original, edited, saved]) {
+      let release = () => {};
+      const gate = new Promise<void>((resolve) => (release = resolve));
+      holds.set(bytes, { held: 0, release, gate });
+    }
+    vi.mocked(fsp.writeFile).mockImplementation(
+      async (...args: Parameters<typeof realWriteFile>) => {
+        const [path, bytes] = args;
+        const hold = [...holds].find(
+          ([held]) =>
+            String(path).includes("incoming-") && Buffer.isBuffer(bytes) && bytes.equals(held),
+        )?.[1];
+        if (hold) {
+          hold.held += 1;
+          await hold.gate;
+        }
+        return realWriteFile(...args);
+      },
+    );
+    const historyRoot = tempDir("hf-first-copy-root-");
+    try {
+      const history = await openProjectHistory({
+        projectDir,
+        historyRoot,
+        firstCopyFileMs: 50,
+        quietMs: 30,
+        budgetBytes: 1,
+      });
+      closes.push(() => history.close());
+      // A sweep holds the history's queue while it stores the edited index; the late copy lands meanwhile.
+      writeFileSync(join(projectDir, "index.html"), edited);
+      const sweep = history.checkpoint();
+      await vi.waitFor(() => expect(holds.get(edited)!.held).toBe(1));
+      writeFileSync(late, saved);
+      holds.get(original)!.release();
+      const home = homeIn(historyRoot);
+      await vi.waitFor(() =>
+        expect(existsSync(blobPath(join(home, "blobs"), sha256(original)))).toBe(true),
+      );
+      const claimed = history.claim({ kind: "person", name: "You" }, "Typed", ["parts/p2.js"]);
+      // The sweep's record prunes everything past the 1-byte budget that history does not still need.
+      holds.get(edited)!.release();
+      await sweep;
+      // Read START before the sweep that takes in the edit: a 1-byte budget folds that change into START.
+      await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["parts/p2.js"]), {
+        timeout: 10_000,
+      });
+      expect(history.peek(START)!["parts/p2.js"]).toBe(sha256(original));
+      expect(stalls).toHaveLength(1);
+      holds.get(saved)!.release();
+      await claimed;
+    } finally {
+      for (const answer of stalls) answer();
+    }
+  });
 });
