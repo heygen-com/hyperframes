@@ -670,12 +670,13 @@ async function encodeInChunks(
   } finally {
     rmSync(listPath, { force: true });
   }
-  const wanted = ranges.reduce((sum, range) => sum + range.lengthSeconds, 0);
+  let wanted = 0;
+  for (const piece of pieces) wanted += (await probeMediaMetadata(piece)).durationSeconds ?? NaN;
   const { durationSeconds: joined } = await probeMediaMetadata(tempPath);
   for (const piece of pieces) if (existsSync(piece)) unlinkSync(piece);
-  if (joined === undefined || joined < wanted - JOIN_SHORTFALL_ALLOWED_SECONDS) {
+  if (joined === undefined || !(joined >= wanted - JOIN_SHORTFALL_ALLOWED_SECONDS)) {
     throw new ProxyTranscodeError(
-      `the joined copy lasts ${joined?.toFixed(1) ?? "an unknown time"} s of ${wanted.toFixed(1)} s; its pieces are made again next time`,
+      `the joined copy lasts ${joined?.toFixed(1) ?? "an unknown time"} s of its pieces' ${wanted.toFixed(1)} s; its pieces are made again next time`,
       null,
       "",
     );
