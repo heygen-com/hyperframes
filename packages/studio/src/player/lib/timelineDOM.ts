@@ -17,7 +17,7 @@ import { readMasterFxChain } from "@hyperframes/core/audio-groups";
 import { linkScopeOf } from "@hyperframes/core/media-link";
 import { createRuntimeStartTimeResolver } from "@hyperframes/core/runtime/start-resolver";
 import { groupInfoFor } from "./timelineGroupInfo";
-import { timelineTextOf } from "./timelineText";
+import { receivedTimelineText } from "./timelineText";
 import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
 import {
   resolveMediaElement,
@@ -179,7 +179,7 @@ export function createTimelineElementFromManifestClip(params: {
     entry.zIndex = readTimelineElementZIndex(hostEl);
   }
   if (clip.assetUrl) entry.src = clip.assetUrl;
-  entry.text ??= timelineTextOf(clip.text);
+  entry.text ??= receivedTimelineText(clip.text);
   if (clip.kind === "composition" && clip.compositionId) {
     entry.playbackStart ??= 0;
     entry.playbackRate ??= 1;

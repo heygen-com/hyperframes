@@ -66,7 +66,7 @@ export const MAX_SOURCE_GROUPS = 64;
 export const MAX_DESCRIBE_HANDLES = 256;
 export const MAX_POINT_STACK = 64;
 export const MAX_QUERY_MATCHES = 2_048;
-const MAX_TIMELINE_TEXT = 200;
+export const MAX_TIMELINE_TEXT = 200;
 
 const TEXT_TAGS = new Set(["div", "span", "p", "strong", "h1", "h2", "h3", "h4", "h5", "h6"]);
 
@@ -92,16 +92,24 @@ export function readTextLayer(el: Element): TextLayerRead | null {
   if (!isHtmlElement(el) || !isTextBearingTag(el.localName)) return null;
   if (!Array.from(el.children).every((child) => isHtmlElement(child) && isEditableTextLeaf(child)))
     return null;
-  const words = (el.textContent ?? "").slice(0, MAX_ELEMENT_TEXT).replace(/\s+/g, " ").trim();
+  const words = (el.textContent ?? "").replace(/\s+/g, " ").trim();
   if (!words) return null;
   const style = el.ownerDocument.defaultView?.getComputedStyle(el);
   if (!style || (style.backgroundImage || "none") !== "none") return null;
+  const { fontFamily, fontWeight, color, backgroundColor } = style;
+  return { value: words, fontFamily, fontWeight, color, backgroundColor };
+}
+
+/** A text layer as the runtime's clip list sends it: the words and each style value capped. */
+export function readSentTextLayer(el: Element): TextLayerRead | null {
+  const read = readTextLayer(el);
+  if (!read) return null;
   return {
-    value: words.slice(0, MAX_TIMELINE_TEXT),
-    fontFamily: style.fontFamily.slice(0, MAX_ELEMENT_VALUE),
-    fontWeight: style.fontWeight.slice(0, MAX_ELEMENT_VALUE),
-    color: style.color.slice(0, MAX_ELEMENT_VALUE),
-    backgroundColor: style.backgroundColor.slice(0, MAX_ELEMENT_VALUE),
+    value: read.value.slice(0, MAX_TIMELINE_TEXT),
+    fontFamily: read.fontFamily.slice(0, MAX_ELEMENT_VALUE),
+    fontWeight: read.fontWeight.slice(0, MAX_ELEMENT_VALUE),
+    color: read.color.slice(0, MAX_ELEMENT_VALUE),
+    backgroundColor: read.backgroundColor.slice(0, MAX_ELEMENT_VALUE),
   };
 }
 

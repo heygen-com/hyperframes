@@ -9,7 +9,6 @@ import type {
   PausedVideoFrameProvider,
   PreviewSourceFacts,
 } from "@hyperframes/core";
-import type { TextLayerRead } from "@hyperframes/core/runtime/editing-port";
 
 export interface PlaybackAdapter {
   play: () => void;
@@ -42,7 +41,7 @@ export interface TimelineLike {
 }
 
 export interface ClipManifestClip extends RuntimeTimelineClipIdentity {
-  text?: TextLayerRead | null;
+  text?: unknown;
   zIndex?: number;
   stackingContextId?: string | null;
   compositionAncestors?: string[];
