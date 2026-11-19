@@ -1156,6 +1156,12 @@ export function usesSoftwareWebGpu(
   );
 }
 
+function frameRateLimitArgs(platform: NodeJS.Platform, injectsVideoFrames?: boolean): string[] {
+  return platform === "darwin" && injectsVideoFrames === false
+    ? ["--disable-frame-rate-limit"]
+    : [];
+}
+
 export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuConfig): string[] {
   const platform = options.platform ?? process.platform;
   const gpuDisabled = config?.disableGpu ?? DEFAULT_CONFIG.disableGpu;
@@ -1258,10 +1264,10 @@ export function buildChromeArgs(options: BuildChromeArgsOptions, config?: GpuCon
       "--enable-surface-synchronization",
     );
   } else {
-    chromeArgs.push(WHOLE_TILE_RASTER_FLAG);
-    if (platform === "darwin" && options.injectsVideoFrames === false) {
-      chromeArgs.push("--disable-frame-rate-limit");
-    }
+    chromeArgs.push(
+      WHOLE_TILE_RASTER_FLAG,
+      ...frameRateLimitArgs(platform, options.injectsVideoFrames),
+    );
   }
 
   if (gpuDisabled) {

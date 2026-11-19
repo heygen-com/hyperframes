@@ -68,9 +68,10 @@ describe("resolveCaptureSurface", () => {
   });
 
   it("tells every session of a render with video that frames will be injected", () => {
-    expect(resolveCaptureSurface({ ...base, videoCount: 2 }, "standard").injectsVideoFrames).toBe(
-      true,
-    );
+    for (const videoCount of [1, 2])
+      expect(resolveCaptureSurface({ ...base, videoCount }, "standard").injectsVideoFrames).toBe(
+        true,
+      );
   });
 
   it("captures 4:4:4 and motion blur as opaque PNG so the page background stays", () => {
