@@ -43,6 +43,8 @@ import {
   resolveCanvasNudgeDelta,
 } from "./domEditNudge";
 import { selectionElementLive } from "./previewSelection";
+import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import { readShownGestureStarts, type PreviewGestureStart } from "./previewGestureStartRead";
 
 interface NudgeSession {
   members: ManualOffsetDragMember[];
@@ -53,10 +55,21 @@ interface NudgeSession {
   edit: ReturnType<typeof beginStudioPendingEdit>;
 }
 
+/** A burst on a sealed frame waits for the frame's gesture-start read; keys meanwhile add to `accum`. */
+interface SealedStartRead {
+  accum: { x: number; y: number };
+  flush: boolean;
+  dropped: boolean;
+  landed: Promise<unknown>;
+}
+
 export interface UseDomEditNudgeParams {
   selection: DomEditSelection | null;
   groupSelections: DomEditSelection[];
   allowCanvasMovement: boolean;
+  iframeRef: RefObject<HTMLIFrameElement | null>;
+  overlayRef: RefObject<HTMLDivElement | null>;
+  activeCompositionPathRef: RefObject<string | null>;
   selectionRef: RefObject<DomEditSelection | null>;
   overlayRectRef: RefObject<OverlayRect | null>;
   groupOverlayItemsRef: RefObject<GroupOverlayItem[]>;
@@ -82,6 +95,7 @@ type NudgeTarget = {
   selection: DomEditSelection;
   element: HTMLElement;
   rect: OverlayRect;
+  start?: PreviewGestureStart;
 };
 
 /**
@@ -145,6 +159,7 @@ function shouldIgnoreNudgeKey(p: UseDomEditNudgeParams, event: KeyboardEvent): b
 
 export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: () => void } {
   const sessionRef = useRef<NudgeSession | null>(null);
+  const readingRef = useRef<SealedStartRead | null>(null);
   const paramsRef = useRef(params);
   paramsRef.current = params;
 
@@ -152,6 +167,11 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
   // Mirrors the drag's onPointerUp — same commit callbacks, same failure
   // restore, same member teardown.
   const commitSession = (): Promise<unknown> | undefined => {
+    const reading = readingRef.current;
+    if (reading) {
+      reading.flush = true;
+      return reading.landed;
+    }
     const session = sessionRef.current;
     if (!session) return undefined;
     sessionRef.current = null;
@@ -193,7 +213,10 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
   commitSessionRef.current = commitSession;
 
   useEffect(() => {
-    if (params.allowCanvasMovement || !sessionRef.current) return;
+    if (params.allowCanvasMovement) return;
+    if (readingRef.current) readingRef.current.dropped = true;
+    readingRef.current = null;
+    if (!sessionRef.current) return;
     const session = sessionRef.current;
     sessionRef.current = null;
     if (session.timer) clearTimeout(session.timer);
@@ -205,14 +228,22 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
   // Build drag members for the current target set — the same member snapshot a
   // pointer drag starts from (startGesture / startGroupDrag), so the nudge
   // commit converts offsets → GSAP x/y with identical math.
-  const beginSession = (event: KeyboardEvent): NudgeSession | "refused" | null => {
+  const nudgeTargets = () => {
     const p = paramsRef.current;
     const groupItems = p.groupOverlayItemsRef.current;
     const isGroup = groupItems.length > 1;
     const targets = isGroup
       ? resolveGroupNudgeTargets(groupItems)
       : resolveSingleNudgeTarget(p.selectionRef.current, p.overlayRectRef.current);
-    if (!targets) return null;
+    return targets && { targets, isGroup };
+  };
+
+  const beginSession = (
+    found: { targets: NudgeTarget[]; isGroup: boolean },
+    repeat: boolean,
+  ): NudgeSession | "refused" | null => {
+    const p = paramsRef.current;
+    const { targets, isGroup } = found;
     // Same side effect a drag start has (pauses preview playback).
     p.onManualDragStartRef.current?.();
     const members: ManualOffsetDragMember[] = [];
@@ -220,7 +251,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
       const result = createManualOffsetDragMember({ ...target, gesture: "nudge" });
       if (!result.ok) {
         restoreManualOffsetDragMembers(members);
-        if (!event.repeat) p.onBlockedMoveRef.current(result.selection, result.reason);
+        if (!repeat) p.onBlockedMoveRef.current(result.selection, result.reason);
         return "refused";
       }
       members.push(result.member);
@@ -230,20 +261,64 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     return { members, isGroup, accum: { x: 0, y: 0 }, timer: null, edit };
   };
 
+  const startBurst = (session: NudgeSession) => {
+    sessionRef.current = session;
+    for (const member of session.members) applyManualOffsetNudgeDraft(member, session.accum);
+    if (session.timer) clearTimeout(session.timer);
+    session.timer = setTimeout(() => commitSessionRef.current(), CANVAS_NUDGE_COMMIT_DEBOUNCE_MS);
+  };
+
+  // A sealed frame's stand-in carries no GSAP or translate: the members start from the frame's own read, as a press does.
+  const readSealedStart = (): SealedStartRead | null => {
+    const p = paramsRef.current;
+    const iframe = p.iframeRef.current;
+    const found = iframe && previewFrameOpaque(iframe) ? nudgeTargets() : null;
+    if (!iframe || !found) return null;
+    const selections = found.targets.map((target) => target.selection);
+    const read: SealedStartRead = {
+      accum: { x: 0, y: 0 },
+      flush: false,
+      dropped: false,
+      landed: readShownGestureStarts(
+        iframe,
+        p.overlayRef.current,
+        p.activeCompositionPathRef.current,
+        selections,
+      )
+        .catch(() => null)
+        .then((shown) => {
+          if (readingRef.current === read) readingRef.current = null;
+          if (read.dropped || !shown) return undefined;
+          const targets = found.targets.map((target, i) => ({ ...target, ...shown.shown[i] }));
+          const session = beginSession({ targets, isGroup: found.isGroup }, false);
+          if (!session || session === "refused") return undefined;
+          session.accum = read.accum;
+          startBurst(session);
+          return read.flush ? commitSessionRef.current() : undefined;
+        }),
+    };
+    return read;
+  };
+
   const handleKeyDown = (event: KeyboardEvent) => {
     const p = paramsRef.current;
     if (shouldIgnoreNudgeKey(p, event)) return;
     const delta = resolveCanvasNudgeDelta(event);
     if (!delta) return;
-    const session = sessionRef.current ?? beginSession(event);
+    const reading = readingRef.current ?? (sessionRef.current ? null : readSealedStart());
+    if (reading) {
+      readingRef.current = reading;
+      event.preventDefault();
+      reading.accum = { x: reading.accum.x + delta.dx, y: reading.accum.y + delta.dy };
+      return;
+    }
+    const found = sessionRef.current ? null : nudgeTargets();
+    const session = sessionRef.current ?? (found && beginSession(found, event.repeat));
     if (session === "refused") return void event.preventDefault();
     if (!session) return;
-    sessionRef.current = session;
     event.preventDefault();
     session.accum = { x: session.accum.x + delta.dx, y: session.accum.y + delta.dy };
-    for (const member of session.members) applyManualOffsetNudgeDraft(member, session.accum);
-    if (session.timer) clearTimeout(session.timer);
-    session.timer = setTimeout(() => commitSessionRef.current(), CANVAS_NUDGE_COMMIT_DEBOUNCE_MS);
+    startBurst(session);
   };
   const handleKeyDownRef = useRef(handleKeyDown);
   handleKeyDownRef.current = handleKeyDown;
