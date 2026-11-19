@@ -55,7 +55,14 @@ async function token(app: Hono) {
     throw new Error("missing token");
   return body.csrf;
 }
+// What Studio sends after the person confirms: the manage link of the review the popover showed.
+function confirmed(body: unknown) {
+  if (!body || typeof body !== "object" || !("action" in body) || body.action === "login")
+    return body;
+  return "confirmedReview" in body ? body : { ...body, confirmedReview: state.manageUrl };
+}
 function request(app: Hono, path: string, csrf: string, body?: unknown) {
+  body = path === "actions" ? confirmed(body) : body;
   return app.request(
     `/api/share/${path}`,
     {
@@ -457,4 +464,55 @@ it.each([undefined, true])("forwards only explicit source consent (%s)", async (
   expect(response.status).toBe(202);
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(service.run).toHaveBeenCalledWith(expect.objectContaining({ includeSource }));
+});
+
+describe("share actions need the review the person confirmed", () => {
+  const existing = "https://hyperframes.studio/reviews/existing-project";
+  it.each([
+    ["share", { action: "share", audience: "public" }],
+    ["update", { action: "update" }],
+    ["access", { action: "access", audience: "public" }],
+    ["off", { action: "off" }],
+    ["on", { action: "on" }],
+  ])("refuses %s without a confirmed review and changes nothing", async (_, body) => {
+    const { app, service } = fixture();
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, { ...body, confirmedReview: undefined });
+    expect(response.status).toBe(400);
+    for (const mutation of [service.run, service.setAccess, service.linkOff, service.linkOn])
+      expect(mutation).not.toHaveBeenCalled();
+  });
+  it("refuses when the project now points to a different review than the one confirmed", async () => {
+    const { app, service } = fixture();
+    vi.mocked(service.status).mockResolvedValue({ ...state, manageUrl: existing });
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, {
+      action: "access",
+      audience: "public",
+      confirmedReview: state.manageUrl,
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "share_target_changed" });
+    expect(service.setAccess).not.toHaveBeenCalled();
+    const snapshot = await (await request(app, "snapshot", csrf)).json();
+    expect(snapshot.job).toBeNull();
+  });
+  it("runs the action when the confirmed review is still the project's review", async () => {
+    const { app, service } = fixture();
+    vi.mocked(service.status).mockResolvedValue({ ...state, manageUrl: existing });
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, {
+      action: "access",
+      audience: "public",
+      confirmedReview: existing,
+    });
+    expect(response.status).toBe(202);
+    await vi.waitFor(() => expect(service.setAccess).toHaveBeenCalledWith("public"));
+  });
+  it("still signs in without a confirmed review", async () => {
+    const { app, login } = fixture();
+    const csrf = await token(app);
+    expect((await request(app, "actions", csrf, { action: "login" })).status).toBe(202);
+    await vi.waitFor(() => expect(login).toHaveBeenCalled());
+  });
 });

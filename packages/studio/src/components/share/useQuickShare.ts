@@ -9,6 +9,7 @@ import type {
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { LocalShareError, shareAction, shareJob, shareSnapshot } from "./localShareClient";
 import { shareInteraction } from "./localShareTelemetry";
+import { shareConfirmMessage } from "./shareConfirm";
 const STEP_LABELS: Record<string, string> = {
   preparing: "Preparing your video…",
   signing_in: "Finish signing in in your browser…",
@@ -104,7 +105,11 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
       if (timer.current) clearTimeout(timer.current);
     };
   });
-  async function run(action: LocalShareAction) {
+  async function run(request: LocalShareAction) {
+    const action = working.current ? null : confirmAction(request);
+    if (action) await start(action);
+  }
+  async function start(action: LocalShareAction) {
     const signal = lifetime.current?.signal;
     if (!signal || signal.aborted || working.current) return;
     track({ event: "share_action_clicked", action: action.action });
@@ -120,6 +125,11 @@ export function useQuickShare(token: string, beforeShare?: () => Promise<void>) 
     } catch (cause) {
       await recoverActionFailure(cause, signal);
     }
+  }
+  function confirmAction(request: LocalShareAction): LocalShareAction | null {
+    if (request.action === "login") return request;
+    if (!snapshot || !window.confirm(shareConfirmMessage(request, snapshot, spaceId))) return null;
+    return { ...request, confirmedReview: snapshot.share.manageUrl };
   }
   async function recoverActionFailure(cause: unknown, signal: AbortSignal) {
     if (

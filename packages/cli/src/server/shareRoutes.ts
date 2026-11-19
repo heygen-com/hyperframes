@@ -26,22 +26,30 @@ function actionInput(value: unknown): LocalShareAction | null {
   const record = Object.fromEntries(Object.entries(value));
   if (
     Object.keys(record).some(
-      (key) => !["action", "audience", "space", "videoOnly", "includeSource"].includes(key),
+      (key) =>
+        !["action", "audience", "space", "videoOnly", "includeSource", "confirmedReview"].includes(
+          key,
+        ),
     )
   )
     return null;
-  const { action, audience, space, videoOnly, includeSource } = record;
+  const { action, audience, space, videoOnly, includeSource, confirmedReview } = record;
   if (!isAction(action)) return null;
   const chosen = AUDIENCES.find((mode) => mode === audience);
   if (audience !== undefined && !chosen) return null;
   const options = actionOptions(space, videoOnly, includeSource);
   if (!options) return null;
   if (["share", "access"].includes(action) && !chosen) return null;
-  return {
-    action,
-    audience: chosen,
-    ...options,
-  };
+  return withConfirmedReview({ action, audience: chosen, ...options }, confirmedReview);
+}
+
+function withConfirmedReview(input: LocalShareAction, review: unknown): LocalShareAction | null {
+  if (input.action === "login") return input;
+  return reviewLink(review) ? { ...input, confirmedReview: review } : null;
+}
+
+function reviewLink(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 2048 && URL.canParse(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -192,6 +200,15 @@ export function mountShareRoutes(
     if (input.action !== "login") {
       try {
         owner = await sessionOwner(session);
+        if ((await (await session.get()).status()).manageUrl !== input.confirmedReview)
+          return c.json(
+            {
+              code: "share_target_changed",
+              message:
+                "This project now points to a different shared review. Check it and try again.",
+            },
+            409,
+          );
       } catch (error) {
         return c.json(await presentError(error, c.req.header("x-hyperframes-share-csrf")!), 400);
       }
