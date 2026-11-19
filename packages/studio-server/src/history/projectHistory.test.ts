@@ -538,6 +538,70 @@ describe("openProjectHistory", () => {
     expect(Object.keys(reader.peek(entry.id)!)).toEqual(["index.html"]);
   });
 
+  // fails without the fix: an entry written before the rule kept its target on the ignored file.
+  it("drops an older entry's targets on a path it now ignores", async () => {
+    const { history, write, projectDir, historyRoot } = await project({
+      "index.html": "A",
+      "temp.html": "x",
+    });
+    write("index.html", "B");
+    write("temp.html", "y");
+    await history.claim(you, "Edited", ["index.html", "temp.html"], {
+      targets: [
+        { file: "index.html", selector: "#i" },
+        { file: "temp.html", selector: "#t" },
+      ],
+    });
+    await history.close();
+    const ignores = (path: string) => path === "temp.html";
+    const again = await open(projectDir, historyRoot, { ignores });
+    const reader = readProjectHistory({ projectDir, historyRoot, ignores });
+    for (const [entry] of [again.list(), reader.list()])
+      expect(entry!.targets).toEqual([{ file: "index.html", selector: "#i" }]);
+  });
+
+  // fails without the fix: pruning kept only what the filtered log named, but the log on disk still named the rest.
+  it("never leaves a version on disk named that pruning removed, once a path is ignored", async () => {
+    const { history, write, projectDir, historyRoot } = await project({
+      "index.html": "A",
+      "big.bin": "a".repeat(1000),
+    });
+    write("big.bin", "b".repeat(1000));
+    await history.claim(you, "Edited", ["big.bin"]);
+    await history.close();
+    const again = await open(projectDir, historyRoot, {
+      ignores: (path: string) => path === "big.bin",
+      budgetBytes: 10,
+    });
+    write("index.html", "B");
+    await again.claim(you, "Page", ["index.html"]);
+    const reader = readProjectHistory({ projectDir, historyRoot });
+    for (const point of [START, ...reader.list().map((entry) => entry.id)])
+      for (const hash of Object.values(reader.peek(point) ?? {}))
+        await expect(reader.readBlob(hash)).resolves.toBeInstanceOf(Buffer);
+  });
+
+  // fails without the fix where the disk ignores case: an undo wrote the older spelling over the host's own file.
+  it.skipIf(!caseInsensitive())(
+    "never writes over an ignored file through an older spelling of its name",
+    async () => {
+      const { history, write, read, projectDir, historyRoot } = await project({
+        "Temp.html": "v1",
+      });
+      write("Temp.html", "v2");
+      await history.claim(you, "Edited", ["Temp.html"]);
+      await history.close();
+      renameSync(join(projectDir, "Temp.html"), join(projectDir, "t.tmp"));
+      renameSync(join(projectDir, "t.tmp"), join(projectDir, "temp.html"));
+      write("temp.html", "host");
+      const again = await open(projectDir, historyRoot, {
+        ignores: (path: string) => path === "temp.html",
+      });
+      await again.step("back", you);
+      expect(read("temp.html")).toBe("host");
+    },
+  );
+
   it("records a write nobody announced as one outside entry, and undo puts the bytes back as a new entry", async () => {
     const { history, write, read, projectDir } = await project(
       { "index.html": "<h1>Hello</h1>", "assets/logo.png": Buffer.from([1, 2, 3]) },
