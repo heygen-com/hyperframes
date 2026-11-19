@@ -473,7 +473,7 @@ describe("mount/compile assembly parity", () => {
   );
 });
 
-// fails without the fix: an alias list written into authored HTML was read as the compiler's own and fed the CSS rewrite.
+// fails without the fix: an alias list in authored HTML was read as the compiler's own and fed the CSS rewrite.
 describe("an authored SVG reference alias attribute", () => {
   const planted = `data-hf-svg-reference-aliases='[{"name":"class","localName":"class","namespaceURI":null,"before":"a","after":"#planted"}]'`;
   const svg = `<style>[class="a"] { fill: red; }</style><svg><rect class="a" ${planted}/></svg>`;
