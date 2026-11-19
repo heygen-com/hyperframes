@@ -55,9 +55,9 @@ vi.mock("node:child_process", () => ({
       if (state.gitMissing && command === "git") {
         throw Object.assign(new Error("spawn git ENOENT"), { code: "ENOENT" });
       }
-      // A real capture (the skills mirror reads `git rev-parse`) gets text; the
-      // version probes keep their buffer to match what the call sites expect.
-      return opts?.encoding ? "11.0.0" : Buffer.from("11.0.0");
+      // A real capture (the skills mirror reads `git rev-parse`) gets a commit;
+      // the version probes keep their buffer to match what the call sites expect.
+      return opts?.encoding ? "abcdef1234567890" : Buffer.from("11.0.0");
     },
   ),
   spawn: vi.fn(
@@ -197,12 +197,14 @@ describe("hyperframes skills", () => {
   // Keep the skills mirror out of the developer's real ~/.cache/hyperframes:
   // every run tries to build/refresh it, so point it at a throwaway root.
   const cacheRoot = mkdtempSync(join(tmpdir(), "hf-skills-cache-"));
-  const mirrorDir = join(cacheRoot, "skills-repo", "1");
+  const formatDir = join(cacheRoot, "skills-repo", "1");
+  const mirrorDir = join(formatDir, "mirror");
+  const snapshotsDir = join(formatDir, "snapshots");
 
   beforeEach(async () => {
     vi.stubEnv("DEVELOPER_DIR", developerDir);
     vi.stubEnv("HYPERFRAMES_CACHE_DIR", cacheRoot);
-    rmSync(mirrorDir, { recursive: true, force: true });
+    rmSync(formatDir, { recursive: true, force: true });
     state.execCalls = [];
     state.spawnCalls = [];
     state.spawnExitCode = 0;
@@ -378,8 +380,10 @@ describe("hyperframes skills", () => {
 
     expect(await commandExitCode()).toBe(0);
     const args = state.spawnCalls[0]?.args ?? [];
-    expect(args.slice(0, 3)).toEqual(["skills@1.5.13", "add", mirrorDir]);
-    // No URL (and no `#ref` suffix: the checkout is already at that ref).
+    // An immutable snapshot of the ref the check resolved — never the URL (and no
+    // `#ref` suffix: the checkout is already at that ref).
+    expect(args.slice(0, 2)).toEqual(["skills@1.5.13", "add"]);
+    expect(args[2]?.startsWith(join(snapshotsDir, ""))).toBe(true);
     expect(args.some((arg) => arg.startsWith("https://github.com/"))).toBe(false);
     expect(args).toContain("--copy");
     // Never a `git clone` of the repo — only the mirror's own delta fetch.
