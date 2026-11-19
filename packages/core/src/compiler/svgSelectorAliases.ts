@@ -59,9 +59,20 @@ function aliasIndex(references: readonly SvgReferenceAlias[]): AliasIndex {
       else values.set(key, [alias]);
     }
   };
+  // Every element that references one symbol records the same alias; one copy is enough.
+  const seen = new Set<string>();
   for (const alias of references) {
     if (alias.name === "id") index.everyRecordedId.add(alias.before);
     if (alias.before === alias.after) continue;
+    const key = JSON.stringify([
+      alias.name,
+      alias.localName,
+      alias.namespaceURI,
+      alias.before,
+      alias.after,
+    ]);
+    if (seen.has(key)) continue;
+    seen.add(key);
     add(index.byName, alias.name, alias);
     add(index.byLocalName, alias.localName, alias);
     if (alias.name !== "id") continue;
