@@ -670,16 +670,24 @@ async function encodeInChunks(
   } finally {
     rmSync(listPath, { force: true });
   }
-  let wanted = 0;
-  for (const piece of pieces) wanted += (await probeMediaMetadata(piece)).durationSeconds ?? NaN;
-  const { durationSeconds: joined } = await probeMediaMetadata(tempPath);
+  const measured = [...pieces, tempPath];
+  const lengths = ranges.map((range) => range.lengthSeconds);
+  const wanted = [...lengths, lengths.reduce((sum, length) => sum + length, 0)];
+  let short: string | undefined;
+  for (const [index, path] of measured.entries()) {
+    const seconds = (await probeMediaMetadata(path, undefined, signal)).durationSeconds;
+    signal.throwIfAborted();
+    if (
+      short === undefined &&
+      !((seconds ?? NaN) >= wanted[index]! - JOIN_SHORTFALL_ALLOWED_SECONDS)
+    ) {
+      const what = path === tempPath ? "the joined copy" : `piece ${index + 1}`;
+      short = `${what} lasts ${seconds?.toFixed(1) ?? "an unknown time"} s of ${wanted[index]!.toFixed(1)} s`;
+    }
+  }
   for (const piece of pieces) if (existsSync(piece)) unlinkSync(piece);
-  if (joined === undefined || !(joined >= wanted - JOIN_SHORTFALL_ALLOWED_SECONDS)) {
-    throw new ProxyTranscodeError(
-      `the joined copy lasts ${joined?.toFixed(1) ?? "an unknown time"} s of its pieces' ${wanted.toFixed(1)} s; its pieces are made again next time`,
-      null,
-      "",
-    );
+  if (short !== undefined) {
+    throw new ProxyTranscodeError(`${short}; its pieces are made again next time`, null, "");
   }
 }
 
@@ -795,7 +803,10 @@ async function runFfmpeg(
     ...["-map", "0:V:0"],
     ...(metadata.audioStream === undefined ? [] : ["-map", `0:a:${metadata.audioStream}`]),
   ];
-  const totalSeconds = copiedSeconds(metadata.durationSeconds, limitSeconds);
+  const totalSeconds = copiedSeconds(
+    metadata.keptStreamsSeconds ?? metadata.durationSeconds,
+    limitSeconds,
+  );
   // libvpx scales poorly across threads, so alpha pieces run side by side with the cores shared out.
   const gate = keepsAlpha ? ALPHA_PIECE_GATE : UNGATED;
   const vp8Threads = (pieces: number) => [
@@ -1031,6 +1042,7 @@ async function transcodeToCache(
         (progress) => reportProgress(job, progress),
         () => job.background && !job.priority,
       );
+      job.abandoned.signal.throwIfAborted();
       renameSync(tempPath, cachePath);
       writeCopyIndex(contentIndex, cachePath);
       maintainProxyCache(cacheDir);

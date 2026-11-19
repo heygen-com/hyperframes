@@ -297,7 +297,12 @@ describe("resolveProxy on a long source", () => {
     ]);
   });
 
-  it("refuses a join of pieces with sound that came out short, and makes its pieces again", async () => {
+  const isJoinedCopy = (path: string) => basename(path).startsWith(".tmp-");
+
+  /** A source with sound whose files last what `lengthFor` says when they are measured. */
+  async function loadWithSound(
+    lengthFor: (path: string) => number | undefined | Promise<number | undefined>,
+  ) {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
     vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
@@ -306,28 +311,41 @@ describe("resolveProxy on a long source", () => {
       ...(await importOriginal<typeof import("@hyperframes/parsers/ff-binaries")>()),
       findFfBinary: () => FFMPEG_PATH,
     }));
-    let joinedSeconds = 2 * PIECE_SECONDS;
-    const isJoinedCopy = (path: string) => basename(path).startsWith(".tmp-");
     vi.doMock("./mediaMetadata.js", () => ({
       probeMediaMetadata: async (path: string) => ({
         kind: "video",
         color: { isHdr: false, hdrTransfer: null },
-        durationSeconds: isJoinedCopy(path) ? joinedSeconds : lengthOf(path, LONG_SECONDS),
+        durationSeconds: await lengthFor(path),
         audioStream: 0,
       }),
       probeFirstFrameColour: async () => ({}),
     }));
-    const { resolveProxy, getProxyCachePath, clearFailedTranscodesForTest } =
-      await import("./proxyTranscoder.js");
     const projectDir = tmpProject();
     const sourcePath = join(projectDir, "talk.mov");
     writeFileSync(sourcePath, "source-bytes");
-    const cacheDirectory = join(projectDir, ".transcode-cache");
+    return {
+      ...(await import("./proxyTranscoder.js")),
+      calls,
+      projectDir,
+      sourcePath,
+      cacheDirectory: join(projectDir, ".transcode-cache"),
+    };
+  }
+
+  it("refuses a join of pieces with sound that came out short, and makes its pieces again", async () => {
+    let joinedSeconds = 2 * PIECE_SECONDS;
+    const { resolveProxy, getProxyCachePath, clearFailedTranscodesForTest, ...made } =
+      await loadWithSound((path) =>
+        isJoinedCopy(path) ? joinedSeconds : lengthOf(path, LONG_SECONDS),
+      );
+    const { calls, projectDir, sourcePath, cacheDirectory } = made;
 
     const short = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
     await answerAll(calls);
     expect(calls.at(-1)!.args).not.toContain("-xerror");
-    expect(String(await short)).toContain(`lasts ${(2 * PIECE_SECONDS).toFixed(1)} s of`);
+    expect(String(await short)).toContain(
+      `the joined copy lasts ${(2 * PIECE_SECONDS).toFixed(1)} s of`,
+    );
     expect(copiesIn(cacheDirectory)).toEqual([]);
 
     clearFailedTranscodesForTest();
@@ -337,6 +355,45 @@ describe("resolveProxy on a long source", () => {
     await answerAll(calls);
     expect(await whole).toBe(getProxyCachePath(projectDir, sourcePath));
     expect(startsOf(calls).length - piecesBefore).toBe(piecesBefore);
+  });
+
+  it("refuses a join whose short piece shortens the copy it adds up to", async () => {
+    const lastPiece = /\.part-[^/\\]*-2\.\w+$/;
+    const shortBy = 14;
+    const { resolveProxy, calls, projectDir, sourcePath, cacheDirectory } = await loadWithSound(
+      (path) => {
+        if (lastPiece.test(path)) return LONG_SECONDS - 2 * PIECE_SECONDS - shortBy;
+        return isJoinedCopy(path) ? LONG_SECONDS - shortBy : lengthOf(path, LONG_SECONDS);
+      },
+    );
+
+    const short = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
+    await answerAll(calls);
+    expect(String(await short)).toContain(
+      `piece 3 lasts ${(LONG_SECONDS - 2 * PIECE_SECONDS - shortBy).toFixed(1)} s of`,
+    );
+    expect(copiesIn(cacheDirectory)).toEqual([]);
+  });
+
+  it("keeps no copy when its last caller leaves while the copy is being measured", async () => {
+    let measure: (seconds: number) => void = () => {};
+    const measuring = new Promise<number>((resolve) => (measure = resolve));
+    const { resolveProxy, getProxyCachePath, calls, projectDir, sourcePath, cacheDirectory } =
+      await loadWithSound((path) =>
+        isJoinedCopy(path) ? measuring : lengthOf(path, LONG_SECONDS),
+      );
+    const leave = new AbortController();
+
+    const left = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+      signal: leave.signal,
+    }).catch((error: unknown) => error);
+    await answerAll(calls);
+    leave.abort();
+    expect(await left).toBe(leave.signal.reason);
+    measure(LONG_SECONDS);
+    await flush(50);
+    expect(existsSync(getProxyCachePath(projectDir, sourcePath))).toBe(false);
+    expect(readdirSync(cacheDirectory).filter((name) => name.startsWith(".part-"))).toHaveLength(3);
   });
 
   it.skipIf(process.platform === "win32")(
