@@ -249,16 +249,15 @@ export function clearFfBinaryLookupCache(): void {
   skippedX86Binaries.clear();
 }
 
-const holdsControlCharacter = (text: string) =>
-  [...text].some((char) => char < " " || char === "\u007f");
+const endsAListLine = (text: string) => ["\n", "\r", "\u0000"].some((char) => text.includes(char));
 
-/** One `file` entry per path; a control character (a line break starts a list line) is refused. */
+/** One `file` entry per path; a path holding what ends a list line (LF, CR, NUL) is refused. */
 export function concatListText(paths: readonly string[]): string {
   return paths
     .map((path) => {
-      if (holdsControlCharacter(path)) {
+      if (endsAListLine(path)) {
         throw new Error(
-          `A file to join holds a control character in its path: ${JSON.stringify(path)}`,
+          `A file to join holds a line break or NUL in its path: ${JSON.stringify(path)}`,
         );
       }
       return `file '${path.replace(/'/g, "'\\''")}'\n`;

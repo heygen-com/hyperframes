@@ -388,21 +388,20 @@ describe("assemble()", () => {
   );
 
   // fails without the fix: the line break ended the entry and ffmpeg read the rest as list lines.
-  it(
-    "refuses chunk paths whose folder name holds a line break, before writing a list",
+  it.skipIf(process.platform === "win32")(
+    "refuses chunk paths whose folder name holds a line break",
     async () => {
       const chunks: ChunkSliceJson[] = [
         { index: 0, startFrame: 0, endFrame: 5 },
         { index: 1, startFrame: 5, endFrame: 10 },
       ];
       const planDir = buildPlanDir("mp4", chunks, 10, false);
-      if (process.platform === "win32") return; // Windows paths cannot hold a line break
       const folder = join(planDir, "chunks\nfile 'other.mov'\n#");
       mkdirSync(folder);
       const chunkPaths = ["0.mp4", "1.mp4"].map((name) => join(folder, name));
       for (const path of chunkPaths) writeFileSync(path, "not a video");
       await expect(assemble(planDir, chunkPaths, null, join(planDir, "out.mp4"))).rejects.toThrow(
-        "control character",
+        "line break or NUL",
       );
     },
     TIMEOUT_MS,
