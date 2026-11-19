@@ -200,7 +200,7 @@ The composition runs inside a sandboxed `<iframe>` in the player's Shadow DOM. B
 
 An editor, recorder or custom-timeline integration that needs the composition's DOM can opt in with `sandbox-origin="same-origin"`, only for compositions you trust: the frame then shares your page's origin, and its code can reach your page. Only that exact value grants it; any other value, `opaque` included, stays sealed, so a typo cannot weaken isolation. Changing between the two reloads the active composition, because browser sandbox changes take effect only on navigation. Set the attribute before `src` or `srcdoc`: the policy in force when the source is set is the one that loads.
 
-Earlier versions shared the page's origin by default. To keep that behaviour, add `sandbox-origin="same-origin"`.
+Earlier versions shared the page's origin by default, and added the runtime to a composition that had none. To keep that behaviour, add `sandbox-origin="same-origin"`, or have the composition load the runtime script so it plays sealed.
 
 With `sandbox-origin="same-origin"`, use the `iframeElement` getter for direct access:
 
@@ -343,7 +343,7 @@ The `width` and `height` attributes define the composition's native resolution f
 
 ## How it works
 
-The player renders compositions in a sandboxed `<iframe>` inside a Shadow DOM. It communicates with the HyperFrames runtime via `postMessage`. If the composition has GSAP timelines (`window.__timelines`) but no runtime, the player auto-injects it from CDN.
+The player renders compositions in a sandboxed `<iframe>` inside a Shadow DOM. It communicates with the HyperFrames runtime via `postMessage`. A sealed player cannot add anything to the composition, so a composition must load the runtime script itself. If a composition has GSAP timelines (`window.__timelines`) but no runtime, only a trusted player (`sandbox-origin="same-origin"`) adds the runtime from the CDN; a sealed one fires `error` after 8 seconds with a message naming both fixes.
 
 ## Distribution
 

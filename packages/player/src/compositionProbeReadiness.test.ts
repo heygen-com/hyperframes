@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { CompositionProbe } from "./composition-probe.js";
+import { CompositionProbe, SEALED_TIMELINE_NOT_FOUND } from "./composition-probe.js";
 
 function mount(markup: string, globals: Record<string, unknown> = {}) {
   const iframe = document.createElement("iframe");
@@ -122,6 +122,18 @@ describe("composition probe readiness", () => {
     expect(onReady).not.toHaveBeenCalled();
     vi.advanceTimersByTime(8000);
     expect(onError).toHaveBeenCalledOnce();
+  });
+  it("names the runtime script and sandbox-origin when a sealed frame never shows a timeline", () => {
+    const { iframe, onError } = mount('<div data-composition-id="main"></div>');
+    Object.defineProperty(iframe, "contentWindow", {
+      get: () => {
+        throw new DOMException("Blocked a frame with origin", "SecurityError");
+      },
+    });
+    vi.advanceTimersByTime(8000);
+    expect(onError).toHaveBeenCalledExactlyOnceWith(SEALED_TIMELINE_NOT_FOUND);
+    expect(SEALED_TIMELINE_NOT_FOUND).toContain('sandbox-origin="same-origin"');
+    expect(SEALED_TIMELINE_NOT_FOUND).toContain("runtime script");
   });
   it("does not invent duration for an unresolved document", () => {
     const { onReady, onError } = mount('<div data-composition-id="main"></div>');

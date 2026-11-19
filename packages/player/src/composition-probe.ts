@@ -23,6 +23,11 @@ import {
 
 import { RUNTIME_CDN_URL, runtimeCdnUrlForVersion } from "./runtime-url.js";
 
+const TIMELINE_NOT_FOUND = "Composition timeline not found after 8s";
+export const SEALED_TIMELINE_NOT_FOUND =
+  `${TIMELINE_NOT_FOUND}. A sealed player cannot add the HyperFrames runtime to a composition: ` +
+  'include the runtime script in the composition, or set sandbox-origin="same-origin" on the player for a composition you trust.';
+
 export { runtimeCdnUrlForVersion };
 
 export interface ProbeResult {
@@ -108,6 +113,7 @@ export class CompositionProbe {
     this._failure = null;
     this._runtimeInjected = false;
     let attempts = 0;
+    let sealed = false;
 
     this._interval = setInterval(() => {
       attempts++;
@@ -115,14 +121,15 @@ export class CompositionProbe {
       try {
         outcome = this._poll(attempts);
       } catch (error) {
-        if (!(error instanceof DOMException && error.name === "SecurityError")) {
+        if (error instanceof DOMException && error.name === "SecurityError") sealed = true;
+        else {
           outcome = {
             kind: "error",
             message: error instanceof Error ? error.message : String(error),
           };
         }
       }
-      outcome ??= this._deadlineOutcome(attempts);
+      outcome ??= this._deadlineOutcome(attempts, sealed);
       if (outcome) {
         this.stop();
         if (outcome.kind === "error") {
@@ -133,9 +140,9 @@ export class CompositionProbe {
     }, 200);
   }
 
-  private _deadlineOutcome(attempts: number): ProbeOutcome {
+  private _deadlineOutcome(attempts: number, sealed: boolean): ProbeOutcome {
     if (attempts < 40 || this._callbacks.hostOwnsDeadline?.()) return null;
-    return { kind: "error", message: "Composition timeline not found after 8s" };
+    return { kind: "error", message: sealed ? SEALED_TIMELINE_NOT_FOUND : TIMELINE_NOT_FOUND };
   }
 
   private _poll(attempts: number): ProbeOutcome {
