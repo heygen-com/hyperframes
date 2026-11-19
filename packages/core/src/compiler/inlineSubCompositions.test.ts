@@ -1307,8 +1307,10 @@ it("charges a mount's selector aliases while they are built, and each byte once"
     );
   };
 
+  let renaming = 0;
+  inline(0, (_src, bytes) => (renaming += bytes));
   let charged = 0;
-  const limit = 64 * 1024;
+  const limit = renaming + 16 * 1024;
   expect(() =>
     inline(50, (_src, bytes) => {
       charged += bytes;
