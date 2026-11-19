@@ -256,7 +256,6 @@ export function concatListText(
   paths: readonly string[],
   options: { videoContainersOnly?: boolean } = {},
 ): string {
-  // FFmpeg applies this restriction when opening each entry in a video join.
   const entryOptions = options.videoContainersOnly ? "option format_whitelist mov,matroska\n" : "";
   return paths
     .map((path) => {
