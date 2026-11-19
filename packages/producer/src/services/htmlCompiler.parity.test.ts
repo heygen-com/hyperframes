@@ -513,6 +513,19 @@ describe("an authored SVG reference alias attribute", () => {
     expect(html).not.toContain("#planted");
   });
 
+  it("lets a render compile a page holding an SVG element named template", async () => {
+    const dir = project({
+      "index.html": shell(
+        `<main data-composition-id="main" data-start="0" data-width="320" data-height="180" data-duration="1">
+          <svg><template></template><template><g ${planted}></g></template></svg>
+        </main>`,
+      ),
+    });
+    const html = await compiled.render(dir);
+    expect(html).toMatch(/<svg[^>]*>\s*<template/);
+    expect(html).not.toContain("#planted");
+  });
+
   it("never reaches a mounted composition's CSS", async () => {
     const dir = project({
       ...files,

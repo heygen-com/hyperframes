@@ -170,7 +170,10 @@ export function dropAuthoredSvgReferenceAliases(root: ParentNode): boolean {
     dropped = true;
   }
   for (const template of root.querySelectorAll("template")) {
-    const subtree = template.firstElementChild ? template : template.content;
+    const outer = template.parentElement?.closest("template");
+    if (outer && outer !== root) continue;
+    const subtree =
+      "content" in template && !template.firstElementChild ? template.content : template;
     dropped = dropAuthoredSvgReferenceAliases(subtree) || dropped;
   }
   return dropped;

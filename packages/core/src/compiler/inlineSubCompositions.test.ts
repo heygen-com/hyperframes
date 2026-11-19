@@ -1281,7 +1281,7 @@ it("charges the bytes SVG id renaming adds to the mount that grew", () => {
   );
 });
 
-// fails without the fix: nested templates were walked once per copy, and linkedom copied each one's subtree to read it.
+// fails without the fix: nested templates were walked per copy, linkedom copied each to read it, and SVG ones threw.
 describe("dropAuthoredSvgReferenceAliases", () => {
   const planted = `data-hf-svg-reference-aliases="[]"`;
   const nested = (depth: number): string =>
@@ -1311,31 +1311,42 @@ describe("dropAuthoredSvgReferenceAliases", () => {
     ],
   ];
 
-  it.each(doms)(
-    "in %s walks each template once and leaves no copy of the attribute",
-    (dom, parse) => {
-      const depth = 12;
-      const { document, serialize } = parse(
-        `<!doctype html><html><body>${nested(depth)}</body></html>`,
-      );
-      const template = document.querySelector("template")!;
-      const owners = new Set([owner(document), owner(template), owner(template.content)]);
-      const spies = [...owners].map((proto) => vi.spyOn(proto as Element, "querySelectorAll"));
-      let contentOwner: object = template;
-      while (!Object.getOwnPropertyDescriptor(contentOwner, "content")) {
-        contentOwner = Object.getPrototypeOf(contentOwner);
-      }
-      const contentReads = vi.spyOn(contentOwner as HTMLTemplateElement, "content", "get");
+  const svgNested = (depth: number): string =>
+    depth === 0
+      ? `<g ${planted}></g>`
+      : `<template><g ${planted}></g>${svgNested(depth - 1)}</template>`;
+  const pages: Array<[string, (depth: number) => string]> = [
+    ["HTML templates", nested],
+    [
+      "SVG elements named template",
+      (depth) => `<svg>${svgNested(depth)}<template></template></svg>`,
+    ],
+  ];
 
-      expect(dropAuthoredSvgReferenceAliases(document)).toBe(true);
-      const calls = spies.reduce((sum, spy) => sum + spy.mock.calls.length, 0);
-      const reads = contentReads.mock.calls.length;
-      spies.forEach((spy) => spy.mockRestore());
-      contentReads.mockRestore();
+  it.each(
+    doms.flatMap(([dom, parse]) => pages.map(([page, body]) => [dom, page, parse, body] as const)),
+  )("in %s walks nested %s once and leaves no copy of the attribute", (dom, page, parse, body) => {
+    const depth = 12;
+    const { document, serialize } = parse(
+      `<!doctype html><html><body>${body(depth)}</body></html>`,
+    );
+    const probe = document.createElement("template");
+    const owners = new Set([owner(document), owner(probe), owner(probe.content)]);
+    const spies = [...owners].map((proto) => vi.spyOn(proto as Element, "querySelectorAll"));
+    let contentOwner: object = probe;
+    while (!Object.getOwnPropertyDescriptor(contentOwner, "content")) {
+      contentOwner = Object.getPrototypeOf(contentOwner);
+    }
+    const contentReads = vi.spyOn(contentOwner as HTMLTemplateElement, "content", "get");
 
-      expect(calls).toBeLessThan(4 * depth);
-      expect(reads).toBeLessThanOrEqual(dom === "linkedom" ? 0 : depth);
-      expect(serialize()).not.toContain("data-hf-svg-reference-aliases");
-    },
-  );
+    expect(dropAuthoredSvgReferenceAliases(document)).toBe(true);
+    const calls = spies.reduce((sum, spy) => sum + spy.mock.calls.length, 0);
+    const reads = contentReads.mock.calls.length;
+    spies.forEach((spy) => spy.mockRestore());
+    contentReads.mockRestore();
+
+    expect(calls).toBeLessThan(4 * depth);
+    expect(reads).toBeLessThanOrEqual(dom === "linkedom" || page !== "HTML templates" ? 0 : depth);
+    expect(serialize()).not.toContain("data-hf-svg-reference-aliases");
+  });
 });
