@@ -89,7 +89,9 @@ function run() {
     return;
   }
 
-  console.log(`<!-- auto-duck: ${target} under narration; add to its <audio> element -->`);
+  console.log(
+    terminalText(`<!-- auto-duck: ${target} under narration; add to its <audio> element -->`),
+  );
   console.log(`data-automation='${JSON.stringify(lane)}'`);
 }
 

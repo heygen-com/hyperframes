@@ -18,6 +18,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { heygenAuthHeaders, heygenJSON, loadEnvFromDir } from "./lib/heygen.mjs";
+import { terminalText } from "../../scripts/lib/terminal-text.mjs";
 import { ffprobeDuration, resolveVoiceId, synthesizeOne, withWordIds } from "./lib/tts.mjs";
 
 const argv = process.argv.slice(2);
@@ -77,7 +78,7 @@ if (listOnly) {
     headers: authHeaders,
   });
   for (const v of payload.data ?? payload.voices ?? []) {
-    console.log(`${v.voice_id}\t${v.name}\t${v.language ?? ""}`);
+    console.log(terminalText(`${v.voice_id}\t${v.name}\t${v.language ?? ""}`));
   }
   process.exit(0);
 }
@@ -91,7 +92,7 @@ const text =
 if (!text) die("input text is empty");
 
 const voiceId = await resolveVoiceId({ provider: "heygen", userVoice, lang });
-if (!userVoice) console.error(`· using voice ${voiceId}`);
+if (!userVoice) console.error(terminalText(`· using voice ${voiceId}`));
 
 // ---------- synthesize (shared engine code) ----------
 const { ok, words, error } = await synthesizeOne({

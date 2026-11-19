@@ -232,3 +232,25 @@ test("an audio_meta.json in the project that links outside it is refused and lef
     rmSync(base, { recursive: true, force: true });
   }
 });
+
+test("line ids and the voice from audio_request.json print with control characters as escapes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "audio-escape-"));
+  try {
+    const id = "v\x1b[2J\x07";
+    writeFileSync(
+      join(dir, "audio_request.json"),
+      JSON.stringify({ voice: `am_${id}`, lines: [{ id, text: "" }] }),
+    );
+    const run = spawnSync(
+      process.execPath,
+      [join(HERE, "audio.mjs"), "--hyperframes", dir, "--only", "tts"],
+      { encoding: "utf8", env: { ...process.env, HOME: dir } },
+    );
+    assert.equal(run.status, 0, run.stderr);
+    const shown = run.stdout + run.stderr;
+    assert.match(shown, /line v\\x1b\[2J\\x07: empty text/);
+    for (const raw of ["\x1b", "\x07"]) assert.ok(!shown.includes(raw), JSON.stringify(shown));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

@@ -185,3 +185,11 @@ test(
     });
   },
 );
+
+test("audio-duck prints the --target value with control characters as escapes", () => {
+  withTempDir((dir) => {
+    const meta = join(dir, "audio_meta.json");
+    writeFileSync(meta, JSON.stringify({ words: [{ text: "hi", start: 0, end: 0.5 }] }));
+    assertEscaped(run("audio-duck.mjs", ["--meta", meta, "--target", HOSTILE], dir));
+  });
+});
