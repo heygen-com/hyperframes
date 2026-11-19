@@ -535,6 +535,7 @@ export function rewriteSvgIdReferencesInCss(
   css: string,
   idMap: SvgIdMap,
   references: readonly SvgReferenceAlias[] = [],
+  charge?: (bytes: number) => void,
 ): string {
   if (!css || (idMap.size === 0 && references.length === 0)) return css;
   if (!css.includes("#") && !css.includes("[") && !css.toLowerCase().includes("url(")) return css;
@@ -559,7 +560,7 @@ export function rewriteSvgIdReferencesInCss(
     });
   root.walkRules((rule) => {
     const rewritten = rule.selectors.map((selector) =>
-      rewriteSvgSelectors(selector, idsNamedBy(selector), references),
+      rewriteSvgSelectors(selector, idsNamedBy(selector), references, undefined, charge),
     );
     if (rewritten.some((selector, index) => selector !== rule.selectors[index])) {
       rule.selectors = rewritten;
