@@ -21,6 +21,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
     rename: vi.fn(actual.rename),
     copyFile: vi.fn(actual.copyFile),
     open: vi.fn(actual.open),
+    rm: vi.fn(actual.rm),
   };
 });
 
@@ -33,6 +34,7 @@ const {
   rename: realRename,
   copyFile: realCopyFile,
   open: realOpen,
+  rm: realRm,
 } = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
 const busy = () => Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
 const platform = process.platform;
@@ -260,6 +262,74 @@ describe("a pinned copy", () => {
       store.unpin(hash);
       await store.prune(new Set());
       expect(store.has(hash)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("a pinned copy filed while its hash is pruned", () => {
+  afterEach(() => {
+    vi.mocked(fsp.rm).mockImplementation(realRm);
+    vi.mocked(fsp.open).mockImplementation(realOpen);
+  });
+
+  it("is filed again after the delete, never deleted after it is pinned", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-blob-pin-"));
+    try {
+      const file = join(root, "same.txt");
+      writeFileSync(file, "same bytes");
+      const blobs = join(root, "history", "blobs");
+      const store = await openBlobStore(blobs);
+      const hash = (await store.put(file))!;
+      let release = () => {};
+      const held = new Promise<void>((resolve) => (release = resolve));
+      let deleting = 0;
+      vi.mocked(fsp.rm).mockImplementation(async (...args: Parameters<typeof realRm>) => {
+        if (String(args[0]).endsWith(hash)) {
+          deleting += 1;
+          await held;
+        }
+        return realRm(...args);
+      });
+      let read = false;
+      vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+        const handle = await realOpen(...args);
+        if (String(args[0]) !== file) return handle;
+        const close = handle.close.bind(handle);
+        handle.close = async () => {
+          await close();
+          read = true;
+        };
+        return handle;
+      });
+      const pruned = store.prune(new Set());
+      await vi.waitFor(() => expect(deleting).toBe(1));
+      const pinned = store.put(file, true);
+      // The put has read its bytes and come to the store while the delete is still under way.
+      await vi.waitFor(() => expect(read).toBe(true));
+      release();
+      await Promise.all([pruned, pinned]);
+      expect(store.has(hash)).toBe(true);
+      await expect(readBlob(blobs, hash)).resolves.toEqual(Buffer.from("same bytes"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("takes no pin when the duplicate it staged cannot be removed", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-blob-pin-"));
+    try {
+      const large = join(root, "large.txt");
+      writeFileSync(large, "z".repeat(200 * 1024));
+      const store = await openBlobStore(join(root, "history", "blobs"));
+      await store.put(large);
+      vi.mocked(fsp.rm).mockImplementation(async (...args: Parameters<typeof realRm>) => {
+        if (String(args[0]).includes("incoming-")) throw busy();
+        return realRm(...args);
+      });
+      await expect(store.put(large, true)).rejects.toThrow("EPERM");
+      expect([...store.pinned()]).toEqual([]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -222,7 +222,7 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
-type Copied = { hash: string; referenced?: true } | "gone" | "changing";
+type Copied = { hash: string; referenced?: true; release?: () => void } | "gone" | "changing";
 
 const FIRST_COPY_FILE_MS = 10_000;
 
@@ -672,7 +672,7 @@ class Engine {
         late.set(file.path, copies[i]!);
       } else if (result.value !== "gone") {
         this.tracked.set(file.path, { hash: result.value.hash, stat: statKey(file, sweptAt) });
-        this.blobs.unpin(result.value.hash);
+        result.value.release?.();
       }
     });
     this.log.baseline = this.manifest();
@@ -771,9 +771,7 @@ class Engine {
         if (fromOpen) this.sweepIn(0);
         return "over";
       });
-      return await record.finally(
-        () => typeof copied === "object" && this.blobs.unpin(copied.hash),
-      );
+      return await record.finally(() => typeof copied === "object" && copied.release?.());
     } catch (error) {
       if (!(error instanceof HistoryClosedError)) this.options.onError?.(error);
       return "over";
@@ -902,7 +900,8 @@ class Engine {
       if (isUncopied(path, size))
         return { hash: await this.blobs.reference(abs), referenced: true };
       const hash = await this.blobs.put(abs, pin);
-      return hash === null ? "changing" : { hash };
+      if (hash === null) return "changing";
+      return pin ? { hash, release: () => this.blobs.unpin(hash) } : { hash };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return "gone";
       throw error;
