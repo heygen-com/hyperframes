@@ -640,6 +640,63 @@ describe.skipIf(spawnSync("ffmpeg", ["-version"]).status !== 0)("concatListInput
     expect(run.status).not.toBe(0);
     expect(run.stderr).toContain("not on whitelist 'file'");
   });
+
+  it.skipIf(process.platform === "win32")(
+    "joins every clip under a folder whose name holds a tab, a quote and a #",
+    async () => {
+      const { concatListInputArgs, concatListText } = await importFresh();
+      const root = mkdtempSync(join(tmpdir(), "hf-concat-tab-"));
+      onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+      const dir = join(root, "out\tit's #dir");
+      mkdirSync(dir);
+      const clips = ["a.mp4", "b.mp4"].map((name) => join(dir, name));
+      for (const clip of clips) {
+        const made = spawnSync("ffmpeg", [
+          "-v",
+          "error",
+          "-f",
+          "lavfi",
+          "-i",
+          "testsrc=size=64x64:rate=10",
+          "-frames:v",
+          "10",
+          "-c:v",
+          "mpeg4",
+          "-y",
+          clip,
+        ]);
+        expect(made.status).toBe(0);
+      }
+      const list = join(dir, "list.txt");
+      writeFileSync(list, concatListText(clips));
+      const out = join(dir, "joined.mp4");
+      const run = spawnSync(
+        "ffmpeg",
+        ["-v", "error", ...concatListInputArgs(list), "-c", "copy", "-y", out],
+        {
+          encoding: "utf8",
+        },
+      );
+      expect(run.stderr).toBe("");
+      const probe = spawnSync(
+        "ffprobe",
+        [
+          "-v",
+          "error",
+          "-count_packets",
+          "-select_streams",
+          "v",
+          "-show_entries",
+          "stream=nb_read_packets",
+          "-of",
+          "csv=p=0",
+          out,
+        ],
+        { encoding: "utf8" },
+      );
+      expect(probe.stdout.trim()).toBe("20");
+    },
+  );
 });
 
 describe("concatListText", () => {
