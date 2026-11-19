@@ -2146,12 +2146,17 @@ against a single-encoder streaming render, and buys three things:
   segments a previous attempt finished, after re-validating each one; a
   resumed render is byte-identical to an uninterrupted one.
 
-Segments live in `renders/.hf-segments/<hash>/`, where the hash covers
-everything that determines segment bytes, so changing the composition, fps,
-resolution, quality or segment size starts a fresh set instead of splicing
-mismatched encodes. The directory is deleted after a successful render unless
-`--keep-segments`, and deliberately kept after a failure, because that is what
-`--resume` reads next time.
+Segments live in the local HyperFrames cache under `segments/<project-key>/<plan-hash>/`.
+Run `--resume` from the same project location with the same render settings.
+Moving a project, changing its settings, or upgrading from a version that stored
+segments in the project starts a fresh capture. A failed render keeps its
+checkpoints. A successful render removes them unless you pass `--keep-segments`.
+After a successful render with the new version, you can delete the old
+`renders/.hf-segments/` directory to reclaim disk space. If you set
+`HYPERFRAMES_CACHE_DIR`, choose a private directory outside the project.
+Segmented and multi-chunk joins require FFmpeg 5.0 or later for per-file
+options in concat lists. If FFmpeg reports an unknown `option` directive,
+update the binary used for rendering.
 
 `--resume` reuses only segments you finished on this machine. Their record is
 signed with a key derived from your per-user preview token, a private file in

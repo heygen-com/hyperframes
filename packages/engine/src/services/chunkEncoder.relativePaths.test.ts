@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getFfmpegBinary, getFfprobeBinary } from "../utils/ffmpegBinaries.js";
-import { concatVideoFiles, encodeFramesChunkedConcat } from "./chunkEncoder.js";
+import {
+  buildConcatArgs,
+  writeVideoConcatList,
+  concatVideoFiles,
+  encodeFramesChunkedConcat,
+} from "./chunkEncoder.js";
 import { validJpeg } from "./__fixtures__/jpeg.js";
 
 const HAS_FFMPEG = spawnSync(getFfmpegBinary(), ["-version"]).status === 0;
@@ -57,6 +62,34 @@ describe.skipIf(!HAS_FFMPEG)("concat input paths", () => {
     expect(probe.status, probe.stderr).toBe(0);
     expect(probe.stdout.trim()).toBe("64,64,30/1,40");
   }, 30_000);
+
+  it("rejects a non-video demuxer even after a valid first segment", async () => {
+    const clip = join(root, "clip.mp4");
+    const made = spawnSync(getFfmpegBinary(), [
+      "-v",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=size=32x32",
+      "-frames:v",
+      "1",
+      "-c:v",
+      "libx264",
+      clip,
+    ]);
+    expect(made.status, made.stderr.toString()).toBe(0);
+    const other = join(root, "second.mp4");
+    writeFileSync(other, "ffconcat version 1.0\n");
+    const list = writeVideoConcatList(root, [other]);
+    const rejected = spawnSync(getFfmpegBinary(), buildConcatArgs(list, join(root, "unused.mp4")), {
+      encoding: "utf8",
+    });
+    expect(rejected.status).not.toBe(0);
+    expect(rejected.stderr).toContain("not on whitelist");
+    const result = await concatVideoFiles([clip, other], join(root, "joined.mp4"));
+    expect(result).toMatchObject({ success: false, externalInterruption: false });
+  });
 
   it.each([true, false])(
     "preserves frames and order with mixed input paths, relative first: %s",
@@ -201,9 +234,7 @@ describe.skipIf(!HAS_FFMPEG)("concat input formats", () => {
     expect(result.success).toBe(false);
   }, 30_000);
 
-  it("follows a listed file that is itself an ffconcat list, but only to relative names", async () => {
-    // `concat` stays in the format whitelist because the list itself opens through it, so a nested
-    // list is followed. It opens with the default `-safe 1`, which refuses absolute paths.
+  it("refuses nested lists with relative or absolute names", async () => {
     const sub = join(root, "sub");
     mkdirSync(sub);
     makeClip(join(root, "a.mp4"), 2);
@@ -212,10 +243,8 @@ describe.skipIf(!HAS_FFMPEG)("concat input formats", () => {
     const joined = join(root, "joined.mp4");
 
     writeFileSync(nested, "ffconcat version 1.0\nfile 'beside.mp4'\n");
-    expect(await concatVideoFiles([join(root, "a.mp4"), nested], joined)).toEqual({
-      success: true,
-    });
-    expect(frameCount(joined)).toBe("5");
+    const relative = await concatVideoFiles([join(root, "a.mp4"), nested], joined);
+    expect(relative.success).toBe(false);
 
     writeFileSync(nested, `ffconcat version 1.0\nfile '${join(sub, "beside.mp4")}'\n`);
     const absolute = await concatVideoFiles([join(root, "a.mp4"), nested], joined);

@@ -8,17 +8,26 @@
  */
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import {
+  closeSync,
+  constants,
   createReadStream,
-  existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
-  writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
+import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
+  hyperframesCacheDir,
+} from "@hyperframes/core/cache-dir";
+import { isSafePath, realpath } from "@hyperframes/core/safe-path";
+import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { previewToken } from "@hyperframes/core/preview-proof";
-import { renameWithRetry } from "@hyperframes/engine";
-import { segmentOutputPath, type SegmentSlice } from "./segmentPlan.js";
+import { planSegments, segmentOutputPath, type SegmentSlice } from "./segmentPlan.js";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 
 export interface SegmentManifestEntry {
   index: number;
@@ -97,8 +106,25 @@ export function computeSegmentPlanHash(input: SegmentPlanHashInput): string {
   return createHash("sha256").update(ordered.join(" ")).digest("hex").slice(0, 16);
 }
 
-export function segmentDirFor(projectRendersDir: string, planHash: string): string {
-  return join(projectRendersDir, ".hf-segments", planHash);
+export function segmentDirFor(projectDir: string, planHash: string): string {
+  const root = hyperframesCacheDir();
+  const projectKey = createHash("sha256").update(realpath(projectDir)).digest("hex");
+  const parent = join(root, "segments", projectKey);
+  const dir = join(parent, planHash);
+  if (
+    isPathInside(root, projectDir) ||
+    isSafePath(projectDir, root) ||
+    isSafePath(projectDir, parent) ||
+    isSafePath(projectDir, dir)
+  ) {
+    throw new Error("Segmented capture requires HYPERFRAMES_CACHE_DIR outside the project.");
+  }
+  assertPrivateCachePath(root, root);
+  ensurePrivateCacheDir(parent, root);
+  if (!isSafePath(parent, dir) || lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    throw new Error("Invalid segment cache directory");
+  }
+  return dir;
 }
 
 function hasNumber(value: object, key: string): boolean {
@@ -137,14 +163,25 @@ function isManifest(value: unknown): value is SegmentManifest {
 
 export function readSegmentManifest(segmentDir: string): SegmentManifest | null {
   const path = join(segmentDir, MANIFEST_FILENAME);
-  if (!existsSync(path)) return null;
+  let fd: number | undefined;
   try {
-    const parsed: unknown = JSON.parse(readFileSync(path, "utf-8"));
+    fd = openSync(
+      path,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+    );
+    const opened = fstatSync(fd);
+    if (!opened.isFile() || opened.nlink !== 1) return null;
+    // Windows lacks O_NOFOLLOW. Verify the directory entry still names the opened file.
+    const named = lstatSync(path);
+    if (!named.isFile() || named.dev !== opened.dev || named.ino !== opened.ino) return null;
+    const parsed: unknown = JSON.parse(readFileSync(fd, "utf-8"));
     return isManifest(parsed) ? parsed : null;
   } catch {
     // A truncated or hand-edited manifest means "no resume", never a crash:
     // the render still has every frame it needs to capture from scratch.
     return null;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
   }
 }
 
@@ -192,9 +229,11 @@ export function writeSegmentManifest(
   key: Buffer | null,
 ): void {
   mkdirSync(segmentDir, { recursive: true });
-  const tmp = join(segmentDir, `${MANIFEST_FILENAME}.${process.pid}.tmp`);
-  writeFileSync(tmp, JSON.stringify(signSegmentManifest(manifest, key), null, 2), "utf-8");
-  renameWithRetry(tmp, join(segmentDir, MANIFEST_FILENAME));
+  replaceFileAtomically(
+    join(segmentDir, MANIFEST_FILENAME),
+    JSON.stringify(signSegmentManifest(manifest, key), null, 2),
+    0o600,
+  );
 }
 
 /**
@@ -224,8 +263,8 @@ export async function probeSegmentFrameCount(
 export interface SegmentResumeCheck {
   expectedHash: string;
   segmentDir: string;
-  /** This render's segments; manifest entries are trusted only where they match one. */
-  plan: readonly SegmentSlice[];
+  totalFrames: number;
+  segmentFrames: number;
   key: Buffer | null;
   probeFrames: (path: string) => Promise<number | null>;
 }
@@ -241,9 +280,17 @@ function plannedSlice(
   return slice;
 }
 
-function isPlainFileOfSize(path: string, bytes: number): boolean {
-  const stat = lstatSync(path, { throwIfNoEntry: false });
-  return stat !== undefined && stat.isFile() && stat.size > 0 && stat.size === bytes;
+async function matchesSegmentFile(path: string, entry: SegmentManifestEntry): Promise<boolean> {
+  try {
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    if (!stat?.isFile() || stat.nlink !== 1 || stat.size <= 0 || stat.size !== entry.bytes) {
+      return false;
+    }
+    return (await hashSegmentFile(path)) === entry.sha256;
+  } catch {
+    // A checkpoint can disappear or become unreadable before hashing finishes.
+    return false;
+  }
 }
 
 /**
@@ -261,13 +308,19 @@ export async function validateCompletedSegments(
   check: SegmentResumeCheck,
 ): Promise<Set<number>> {
   const ok = new Set<number>();
-  if (manifest.planHash !== check.expectedHash || !hasValidMac(manifest, check.key)) return ok;
+  if (
+    manifest.totalFrames !== check.totalFrames ||
+    manifest.segmentFrames !== check.segmentFrames ||
+    manifest.planHash !== check.expectedHash ||
+    !hasValidMac(manifest, check.key)
+  )
+    return ok;
+  const plan = planSegments(check.totalFrames, check.segmentFrames);
   for (const entry of manifest.completed) {
-    const slice = plannedSlice(entry, check.plan);
+    const slice = plannedSlice(entry, plan);
     if (!slice) continue;
     const path = segmentOutputPath(check.segmentDir, slice.index);
-    if (!isPlainFileOfSize(path, entry.bytes)) continue;
-    if ((await hashSegmentFile(path)) !== entry.sha256) continue;
+    if (entry.path !== path || !(await matchesSegmentFile(path, entry))) continue;
     const frames = await check.probeFrames(path);
     if (frames !== slice.endFrame - slice.startFrame) continue;
     ok.add(slice.index);

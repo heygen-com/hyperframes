@@ -252,7 +252,11 @@ export function clearFfBinaryLookupCache(): void {
 const endsAListLine = (text: string) => ["\n", "\r", "\u0000"].some((char) => text.includes(char));
 
 /** One `file` entry per path; a path holding what ends a list line (LF, CR, NUL) is refused. */
-export function concatListText(paths: readonly string[]): string {
+export function concatListText(
+  paths: readonly string[],
+  options: { videoContainersOnly?: boolean } = {},
+): string {
+  const entryOptions = options.videoContainersOnly ? "option format_whitelist mov,matroska\n" : "";
   return paths
     .map((path) => {
       if (endsAListLine(path)) {
@@ -260,7 +264,7 @@ export function concatListText(paths: readonly string[]): string {
           `A file to join holds a line break or NUL in its path: ${JSON.stringify(path)}`,
         );
       }
-      return `file '${path.replace(/'/g, "'\\''")}'\n`;
+      return `file '${path.replace(/'/g, "'\\''")}'\n${entryOptions}`;
     })
     .join("");
 }
@@ -330,6 +334,10 @@ let listingOverride: string | undefined;
 export function _setDemuxerListingForTests(listing?: string): void {
   listingOverride = listing;
   demuxerLists.clear();
+}
+
+export function localContainerInputArgs(container: "mov" | "matroska" | undefined): string[] {
+  return container ? ["-protocol_whitelist", "file", "-format_whitelist", container] : [];
 }
 
 export { assertLiteralMediaInput };
