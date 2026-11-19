@@ -621,3 +621,47 @@ it("hashes a long namespace once per mount, not once per renamed id", () => {
   expect(idMaps[1]!.size).toBe(200);
   expect(hashCalls.length).toBe(1);
 });
+
+// fails without the fix: the rewrite built every alternative, and its growth was charged only once the sheet existed.
+describe("rewriteSvgIdReferencesInCss charges its growth while it builds", () => {
+  const limit = 64 * 1024;
+  const references = Array.from({ length: 2000 }, (_, i) => ({
+    name: "href",
+    localName: "href",
+    namespaceURI: null,
+    before: "#a",
+    after: `#m-${i}-${"x".repeat(100)}`,
+  }));
+
+  it.each([
+    `[href="#a"]`,
+    `[href^="#"]`,
+    `[href$="a"]`,
+    `[href*="a"]`,
+    `[href~="#a"]`,
+    `[href|="#a"]`,
+    `[href="#A" i]`,
+  ])("stops within one alternative of the budget for %s", (predicate) => {
+    const css = Array.from({ length: 50 }, (_, i) => `${predicate} .r${i} { fill: red; }`).join(
+      "\n",
+    );
+    let charged = 0;
+    const charge = (bytes: number) => {
+      charged += bytes;
+      if (charged > limit) throw new Error("over budget");
+    };
+
+    expect(() => rewriteSvgIdReferencesInCss(css, new Map(), references, charge)).toThrow(
+      "over budget",
+    );
+    expect(charged).toBeLessThan(limit + 200);
+  });
+
+  it("charges nothing for a sheet it leaves as it is", () => {
+    const charge = vi.fn();
+    expect(
+      rewriteSvgIdReferencesInCss(`[href="#b"] { fill: red; }`, new Map(), references, charge),
+    ).toBe(`[href="#b"] { fill: red; }`);
+    expect(charge).not.toHaveBeenCalled();
+  });
+});
