@@ -8,7 +8,7 @@ import {
   type VisionCaptionOutcome,
 } from "./contentExtractor.js";
 import { loadOptionalPackage } from "../utils/optionalPackages.js";
-import { yieldProjectVisionKeys, yieldReceivedProviderKeys } from "../utils/dotEnv.js";
+import { yieldReceivedProviderKeys } from "../utils/dotEnv.js";
 import { loadEnvFile } from "./scaffolding.js";
 
 const { generateContentMock, clientOptions, sharpState } = vi.hoisted(() => ({
@@ -424,10 +424,11 @@ describe("captionImagesWithGemini — Gemini provider", () => {
     dirs.length = 0;
   });
 
-  it.each([
-    ["a received project's", true],
-    ["a cloned project's", false],
-  ])("captions with the shell's Gemini key, never %s OpenRouter key", async (_, received) => {
+  /** A project whose `.env` sets an OpenRouter key, captioned with a Gemini key in the shell. */
+  async function captionNextToShellGemini(
+    received: boolean,
+    fetchMock: (...args: never[]) => unknown,
+  ) {
     const dir = makeProjectWithImages();
     dirs.push(dir);
     if (received) {
@@ -437,7 +438,7 @@ describe("captionImagesWithGemini — Gemini provider", () => {
         JSON.stringify({ files: [".env"] }),
       );
     }
-    writeFileSync(join(dir, ".env"), "OPENROUTER_API_KEY=received-key\n");
+    writeFileSync(join(dir, ".env"), "OPENROUTER_API_KEY=project-key\n");
     for (const key of [
       "OPENROUTER_API_KEY",
       "GOOGLE_API_KEY",
@@ -447,17 +448,42 @@ describe("captionImagesWithGemini — Gemini provider", () => {
     ])
       vi.stubEnv(key, undefined);
     vi.stubEnv("GEMINI_API_KEY", "own-gemini-key");
-    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     generateContentMock.mockResolvedValue({ text: "A caption." });
 
     loadEnvFile(join(dir, "out"));
     await yieldReceivedProviderKeys(() => {});
-    yieldProjectVisionKeys(() => {});
-    const captions = await captionImagesWithGemini(dir, () => {}, []);
+    return { dir, captions: await captionImagesWithGemini(dir, () => {}, []) };
+  }
+
+  it("captions with the shell's Gemini key, never a received project's OpenRouter key", async () => {
+    const fetchMock = vi.fn();
+    const { captions } = await captionNextToShellGemini(true, fetchMock);
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(captions).toEqual({ "hero.png": "A caption." });
+  });
+
+  it("captions with a cloned project's OpenRouter key ahead of the shell's Gemini key", async () => {
+    let authorization: string | null = null;
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      authorization = new Headers(init?.headers).get("authorization");
+      return new Response(JSON.stringify({ choices: [{ message: { content: "Routed." } }] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { dir, captions } = await captionNextToShellGemini(false, fetchMock);
+    const notes = errors.mock.calls.map(([line]) => String(line));
+    errors.mockRestore();
+
+    expect(captions).toEqual({ "hero.png": "Routed." });
+    expect(authorization).toBe("Bearer project-key");
+    expect(generateContentMock).not.toHaveBeenCalled();
+    expect(notes).toEqual([
+      `[hyperframes] Using OPENROUTER_API_KEY from ${join(dir, ".env")}, a project .env: images go to that key's OpenRouter account.`,
+    ]);
   });
 
   // fails without the fix: a received project's Gemini key captioned images with no note.
@@ -484,7 +510,6 @@ describe("captionImagesWithGemini — Gemini provider", () => {
 
     loadEnvFile(join(dir, "out"));
     await yieldReceivedProviderKeys(() => {});
-    yieldProjectVisionKeys(() => {});
     await captionImagesWithGemini(dir, () => {}, []);
     const captions = await captionImagesWithGemini(dir, () => {}, []);
     const notes = errors.mock.calls.map(([line]) => String(line));
@@ -633,7 +658,6 @@ describe("captionImagesWithGemini — Vertex AI provider", () => {
 
     loadEnvFile(join(dir, "out"));
     await yieldReceivedProviderKeys(() => {});
-    yieldProjectVisionKeys(() => {});
     await captionImagesWithGemini(dir, () => {}, []);
     const captions = await captionImagesWithGemini(dir, () => {}, []);
     const notes = errors.mock.calls.map(([line]) => String(line));

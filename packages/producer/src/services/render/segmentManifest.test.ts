@@ -1,5 +1,14 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  symlinkSync,
+  linkSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+  mkdirSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { previewToken } from "@hyperframes/core/preview-proof";
@@ -17,7 +26,7 @@ import {
   type SegmentManifestEntry,
   type SegmentPlanHashInput,
 } from "./segmentManifest.js";
-import { planSegments, segmentOutputPath } from "./segmentPlan.js";
+import { segmentOutputPath } from "./segmentPlan.js";
 
 const hashInput: SegmentPlanHashInput = {
   compositionHash: "abc",
@@ -123,6 +132,29 @@ describe("manifest io", () => {
     expect(readSegmentManifest(dir)).toBeNull();
   });
 
+  it("skips linked manifests even when they contain a valid checkpoint", () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    const copy = join(dir, "copy");
+    mkdirSync(copy, { mode: 0o700 });
+    const manifest: SegmentManifest = {
+      version: 1,
+      planHash: "abc",
+      totalFrames: 3,
+      segmentFrames: 3,
+      completed: [],
+    };
+    writeSegmentManifest(dir, manifest, null);
+    const source = join(dir, "segments.json");
+    const path = join(copy, "segments.json");
+    symlinkSync(source, path);
+    expect(readSegmentManifest(copy)).toBeNull();
+    rmSync(path);
+    linkSync(source, path);
+    expect(readSegmentManifest(copy)).toBeNull();
+    rmSync(path);
+    expect(readSegmentManifest(dir)).toEqual(manifest);
+  });
+
   it("rejects a manifest whose shape is wrong rather than resuming from it", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
     writeFileSync(join(dir, "segments.json"), JSON.stringify({ version: 2, completed: [] }));
@@ -140,9 +172,48 @@ describe("manifest io", () => {
     expect(readSegmentManifest(dir)).toBeNull();
   });
 
-  it("segmentDirFor nests under renders/.hf-segments", () => {
+  it.skipIf(!process.getuid)("reports an explicitly configured writable cache", () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
-    expect(segmentDirFor("/p/renders", "abc")).toBe(join("/p/renders", ".hf-segments", "abc"));
+    const project = join(dir, "project");
+    const cache = join(dir, "shared-cache");
+    mkdirSync(project, { mode: 0o700 });
+    mkdirSync(cache);
+    chmodSync(cache, 0o770);
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    try {
+      expect(() => segmentDirFor(project, "abc")).toThrow("can be changed by another user account");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("only finds checkpoints from the local cache for the same project", () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    const project = join(dir, "project");
+    const copy = join(dir, "copy");
+    mkdirSync(project, { mode: 0o700 });
+    mkdirSync(copy, { mode: 0o700 });
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", join(dir, "cache-a"));
+    try {
+      const checkpoint = segmentDirFor(project, "abc");
+      const manifest: SegmentManifest = {
+        version: 1,
+        planHash: "abc",
+        totalFrames: 3,
+        segmentFrames: 3,
+        completed: [],
+      };
+      writeSegmentManifest(checkpoint, manifest, null);
+      expect(readSegmentManifest(segmentDirFor(project, "abc"))).toEqual(manifest);
+      expect(readSegmentManifest(segmentDirFor(copy, "abc"))).toBeNull();
+      cpSync(checkpoint, join(project, "renders", ".hf-segments", "abc"), { recursive: true });
+      vi.stubEnv("HYPERFRAMES_CACHE_DIR", join(dir, "cache-b"));
+      expect(readSegmentManifest(segmentDirFor(project, "abc"))).toBeNull();
+      vi.stubEnv("HYPERFRAMES_CACHE_DIR", join(project, "cache"));
+      expect(() => segmentDirFor(project, "abc")).toThrow("outside the project");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 
@@ -183,7 +254,8 @@ describe("validateCompletedSegments", () => {
   ) => ({
     expectedHash,
     segmentDir: dir,
-    plan: planSegments(totalFrames, 3),
+    totalFrames,
+    segmentFrames: 3,
     key: KEY,
     probeFrames,
   });
@@ -246,6 +318,7 @@ describe("validateCompletedSegments", () => {
     const elsewhere = join(dir, "elsewhere.mp4");
     writeFileSync(elsewhere, "xx");
     const named = [elsewhere, "/etc/hosts", "\\\\host\\share\\segment.mp4"];
+    for (const index of named.keys()) writeFileSync(segmentOutputPath(dir, index), "xx");
     const manifest = manifestOf(named.map((path, index) => ({ ...entry(index), path })));
     const probed: string[] = [];
     const probe = async (path: string) => {
@@ -263,6 +336,17 @@ describe("validateCompletedSegments", () => {
     symlinkSync(target, segmentOutputPath(dir, 0));
     const manifest = manifestOf([entry(0)]);
     expect(await reuses(manifest, 3)).toBe(0);
+  });
+
+  it("rejects a hard-linked segment before probing it", async () => {
+    dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+    const path = segmentOutputPath(dir, 0);
+    writeFileSync(path, "xx");
+    const manifest = manifestOf([entry(0)]);
+    linkSync(path, join(dir, "second-name.mp4"));
+    const probe = vi.fn(async () => 3);
+    expect((await validateCompletedSegments(manifest, check(3, probe))).size).toBe(0);
+    expect(probe).not.toHaveBeenCalled();
   });
 
   it("ignores entries for segments this plan does not have", async () => {
@@ -305,6 +389,22 @@ describe("validateCompletedSegments", () => {
     expect((await validateCompletedSegments(manifest, check(3, probe))).size).toBe(0);
     expect(probed).toBe(0);
   });
+
+  it.skipIf(!process.getuid || process.getuid() === 0)(
+    "recaptures an unreadable segment and still validates the next checkpoint",
+    async () => {
+      dir = mkdtempSync(join(tmpdir(), "hf-seg-"));
+      const unreadable = segmentOutputPath(dir, 0);
+      const readable = segmentOutputPath(dir, 1);
+      writeFileSync(unreadable, "xx");
+      writeFileSync(readable, "xx");
+      const manifest = manifestOf([entry(0), entry(1)]);
+      chmodSync(unreadable, 0o000);
+      const probe = vi.fn(async (_path: string) => 3);
+      expect([...(await validateCompletedSegments(manifest, check(6, probe)))]).toEqual([1]);
+      expect(probe.mock.calls).toEqual([[readable]]);
+    },
+  );
 
   it("hashes a segment file's contents", async () => {
     dir = mkdtempSync(join(tmpdir(), "hf-seg-"));

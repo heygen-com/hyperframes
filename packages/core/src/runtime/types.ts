@@ -1,6 +1,7 @@
 import type { HfColorGradingTarget } from "../colorGrading";
 import type { PreviewTarget } from "../studioPreviewMark";
 import type { RuntimeAnalyticsEvent } from "./analytics";
+import type { TextLayerRead } from "./editingElement";
 import type { AudioFades } from "../audioFade";
 import type { RateSpec } from "../speedRamp";
 import type { VolumeKeyframe } from "./mediaVolumeEnvelope";
@@ -97,6 +98,7 @@ export type RuntimeTimelineClip = RuntimeTimelineClipIdentity & {
   timelineLabel: string | null;
   timelineGroup: string | null;
   timelinePriority: number | null;
+  text: TextLayerRead | null;
 };
 
 export type RuntimeTimelineScene = {

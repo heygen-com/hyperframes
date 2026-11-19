@@ -206,6 +206,7 @@ describe("installEditingAgent", () => {
           "hold-scenes",
           "mark-scenes-stale",
           "swap-scenes",
+          "assets-unloaded",
         ],
       },
     });

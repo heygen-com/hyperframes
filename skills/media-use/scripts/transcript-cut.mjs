@@ -9,6 +9,7 @@ import { parseArgs } from "node:util";
 import { compileCutList } from "./lib/cutlist.mjs";
 import { fadeFilterFor } from "./lib/transcriptCutFade.mjs";
 import { track } from "./lib/telemetry.mjs";
+import { terminalText } from "./lib/terminal-text.mjs";
 
 const { values: args } = parseArgs({
   options: {
@@ -61,7 +62,7 @@ try {
   });
 } catch (err) {
   if (args.json) console.log(JSON.stringify({ ok: false, error: err.message }));
-  else console.error(`error: ${err.message}`);
+  else console.error(`error: ${err.message}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 }
 
@@ -175,11 +176,13 @@ function run() {
   }
 
   console.log(
-    `cut ${inputPath} -> ${outPath} (${segments.length} segments, ${fmt(keptSeconds)}s kept of ${fmt(
-      totalSeconds,
-    )}s)`,
+    terminalText(
+      `cut ${inputPath} -> ${outPath} (${segments.length} segments, ${fmt(keptSeconds)}s kept of ${fmt(
+        totalSeconds,
+      )}s)`,
+    ),
   );
-  console.log(`next: resolve --from ${outPath} --type <type>`);
+  console.log(terminalText(`next: resolve --from ${outPath} --type <type>`));
 }
 
 function cutSegment(inputPath, segment, outPath, copy, fade) {

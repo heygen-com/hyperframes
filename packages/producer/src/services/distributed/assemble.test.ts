@@ -265,6 +265,43 @@ function diskKb(path: string): number {
 describe("assemble()", () => {
   const TIMEOUT_MS = 30_000;
 
+  it("rejects a WAV file in place of the planned M4A sidecar", async () => {
+    if (!hasFfmpeg) return;
+    const { planDir, chunkPaths, audioPath } = buildAudioFixture();
+    const wav = spawnSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=1",
+      "-f",
+      "wav",
+      audioPath,
+    ]);
+    expect(wav.status).toBe(0);
+    const output = join(planDir, "audio-check.mp4");
+    await expect(assemble(planDir, chunkPaths, audioPath, output)).rejects.toThrow();
+    expect(existsSync(output)).toBe(false);
+  });
+
+  it("rejects an input list in place of an encoded chunk", async () => {
+    if (!hasFfmpeg) return;
+    const chunks = [
+      { index: 0, startFrame: 0, endFrame: 5 },
+      { index: 1, startFrame: 5, endFrame: 10 },
+    ];
+    const planDir = buildPlanDir("mp4", chunks, 10, false);
+    const video = join(planDir, "video.mp4");
+    const list = join(planDir, "list.mp4");
+    makeMp4Chunk(video, 5);
+    writeFileSync(list, "ffconcat version 1.0\n");
+    const output = join(planDir, "output.mp4");
+    await expect(assemble(planDir, [video, list], null, output)).rejects.toThrow();
+    expect(existsSync(output)).toBe(false);
+  });
+
   it(
     "concat-copies two mp4 chunks and applies faststart",
     async () => {
@@ -383,6 +420,26 @@ describe("assemble()", () => {
         readdirSync(planDir).filter((name) => name.startsWith("failed.mp4.assemble-work-")),
       ).toEqual([]);
       expect(existsSync(outputPath)).toBe(false);
+    },
+    TIMEOUT_MS,
+  );
+
+  // fails without the fix: the line break ended the entry and ffmpeg read the rest as list lines.
+  it.skipIf(process.platform === "win32")(
+    "refuses chunk paths whose folder name holds a line break",
+    async () => {
+      const chunks: ChunkSliceJson[] = [
+        { index: 0, startFrame: 0, endFrame: 5 },
+        { index: 1, startFrame: 5, endFrame: 10 },
+      ];
+      const planDir = buildPlanDir("mp4", chunks, 10, false);
+      const folder = join(planDir, "chunks\nfile 'other.mov'\n#");
+      mkdirSync(folder);
+      const chunkPaths = ["0.mp4", "1.mp4"].map((name) => join(folder, name));
+      for (const path of chunkPaths) writeFileSync(path, "not a video");
+      await expect(assemble(planDir, chunkPaths, null, join(planDir, "out.mp4"))).rejects.toThrow(
+        "line break or NUL",
+      );
     },
     TIMEOUT_MS,
   );

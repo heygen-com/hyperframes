@@ -433,3 +433,26 @@ test("removes private download staging on failure while returning null", async (
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("a download failure prints its message with control characters escaped", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("download failed \x1b]0;title\x07 here");
+  });
+  const errors = [];
+  t.mock.method(console, "error", (message) => errors.push(message));
+
+  await withFakeHeygen(
+    { response: JSON.stringify({ data: { video_url: "https://example.invalid/video.mp4" } }) },
+    async () => {
+      const generate = await freshGenerate();
+      assert.equal(await generate("Failure", { avatarId: "a", voiceId: "v" }), null);
+    },
+  );
+
+  assert.ok(
+    errors.includes(
+      "media-use: heygen video download failed: download failed \\x1b]0;title\\x07 here",
+    ),
+    errors.join("\n"),
+  );
+});

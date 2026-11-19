@@ -109,6 +109,7 @@ describe("createEditingPortClient", () => {
           "hold-scenes",
           "mark-scenes-stale",
           "swap-scenes",
+          "assets-unloaded",
         ],
       });
     } finally {

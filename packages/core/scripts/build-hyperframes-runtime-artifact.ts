@@ -9,6 +9,7 @@ import {
 } from "../src/inline-scripts/hyperframe";
 import { RUNTIME_ESBUILD_DEFINE } from "../src/inline-scripts/hyperframesRuntime.engine";
 import { writeGeneratedFile } from "./writeGeneratedFile.js";
+import { firstCharacterThatMakesPagesTwoByte } from "./page-script-one-byte.mjs";
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 const distDir = resolve(thisDir, "../dist");
@@ -19,6 +20,12 @@ const manifestPath = resolve(distDir, HYPERFRAME_RUNTIME_ARTIFACTS.manifest);
 const runtimeSourceRaw = loadHyperframeRuntimeSource();
 if (runtimeSourceRaw === null) {
   throw new Error("Cannot build runtime artifact: entry.ts not found at expected path");
+}
+const wide = firstCharacterThatMakesPagesTwoByte(runtimeSourceRaw);
+if (wide) {
+  throw new Error(
+    `the page runtime has ${wide}: every page it is inlined into would be stored at two bytes a character`,
+  );
 }
 const runtimeSource = `${runtimeSourceRaw}\n`;
 const runtimeSha256 = createHash("sha256").update(runtimeSource, "utf8").digest("hex");
