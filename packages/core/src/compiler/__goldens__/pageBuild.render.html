@@ -209,38 +209,38 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return t === n ? null : { value: r, end: t };
       }
-      var k = 45;
+      var R = 45;
       function E(e) {
         return e >= 48 && e <= 57;
       }
       function V(e) {
-        return e >= 128 || e === k || e === 95 || E(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
+        return e >= 128 || e === R || e === 95 || E(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
       }
       function D(e, n) {
         let t = e.charCodeAt(n);
-        return t >= 1 && t <= 31 || t === 127 ? true : E(t) ? n === 0 || n === 1 && e.charCodeAt(0) === k : false;
+        return t >= 1 && t <= 31 || t === 127 ? true : E(t) ? n === 0 || n === 1 && e.charCodeAt(0) === R : false;
       }
       function h(e) {
         let n = "";
         for (let t = 0; t < e.length; t += 1) {
           let r = e.charCodeAt(t), s = e[t];
-          r === 0 ? n += "\uFFFD" : D(e, t) ? n += `\\${r.toString(16)} ` : t === 0 && e.length === 1 && r === k ? n += `\\${s}` : V(r) ? n += s : n += `\\${s}`;
+          r === 0 ? n += "\uFFFD" : D(e, t) ? n += `\\${r.toString(16)} ` : t === 0 && e.length === 1 && r === R ? n += `\\${s}` : V(r) ? n += s : n += `\\${s}`;
         }
         return n;
       }
-      var _ = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
-      function M(e) {
+      var M = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
+      function T(e) {
         let n = new Array(e.length).fill(true);
-        for (let t of e.matchAll(_)) {
+        for (let t of e.matchAll(M)) {
           let r = t.index;
           n.fill(false, r, r + t[0].length);
         }
         return n;
       }
-      function $(e) {
+      function _(e) {
         let n = [];
         if (!e.includes("#")) return n;
-        let t = M(e);
+        let t = T(e);
         for (let r = 0; r < e.length; r += 1) {
           if (!t[r] || e[r] !== "#") continue;
           let s = m(e, r + 1);
@@ -248,9 +248,9 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return n;
       }
-      function T(e, n, t) {
+      function $(e, n, t) {
         if (n.length === 0 || !e.includes("#")) return e;
-        let r = new Set(n), s = M(e), i = "", l = 0;
+        let r = new Set(n), s = T(e), i = "", l = 0;
         for (; l < e.length; ) {
           let f = s[l] && e[l] === "#" ? m(e, l + 1) : null;
           f && r.has(f.value) ? (i += t(f.value), l = f.end) : (i += e[l], l += 1);
@@ -276,27 +276,27 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return n;
       }
-      function R(e) {
+      function k(e) {
         return Array.from(e, (n) => {
           let t = n.charCodeAt(0);
           return t === 0 ? "\uFFFD" : t < 32 || t === 127 ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
         }).join("");
       }
-      function j(e, n) {
+      function H(e, n) {
         return e ? { kind: "any" } : n === void 0 ? { kind: "none" } : { kind: "named", prefix: n };
       }
-      function G(e, n) {
+      function j(e, n) {
         return e[n] === "|" && e[n + 1] !== "=";
       }
-      function H(e, n) {
+      function G(e, n) {
         let t = e[n] === "*", r = t ? { value: "*", end: n + 1 } : m(e, n), s = y(e, r?.end ?? n);
-        if (!G(e, s)) return t ? null : r ? { token: r, namespace: { kind: "none" } } : null;
+        if (!j(e, s)) return t ? null : r ? { token: r, namespace: { kind: "none" } } : null;
         let i = m(e, y(e, s + 1));
-        return i ? { token: i, namespace: j(t, r?.value) } : null;
+        return i ? { token: i, namespace: H(t, r?.value) } : null;
       }
       function z(e) {
         if (e[0] !== "[") return null;
-        let n = b(e, 1), t = H(e, n);
+        let n = b(e, 1), t = G(e, n);
         if (!t) return null;
         let { token: r, namespace: s } = t;
         return { name: r.value, rawName: e.slice(n, r.end), namespace: s, end: r.end };
@@ -324,7 +324,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         return l ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: s, value: i.value, flag: l.flag } : null;
       }
       function I(e, n) {
-        return e.replace(_, (t) => t.startsWith("[") ? n(t) : t);
+        return e.replace(M, (t) => t.startsWith("[") ? n(t) : t);
       }
       var Y = "data-hf-svg-reference-aliases", S = (e) => e.replace(/[A-Z]/g, (n) => n.toLowerCase()), W = /* @__PURE__ */ new WeakMap();
       function Z(e) {
@@ -361,16 +361,16 @@ window.__timelines.main = gsap.timeline({ paused: true });
         let o = f?.toLowerCase() === "i" ? g.byLowercaseBefore.get(S(l)) : g.byBefore.get(l), u = s.kind === "named" ? t.get(s.prefix) : null;
         return ((i === "=" ? o : g.all) ?? []).filter((c) => (s.kind === "any" || c.namespaceURI === u) && ee(c.before, n));
       }
-      function F(e, n, t, r) {
+      function P(e, n, t, r) {
         let s = Z(t), i = (o) => {
           let u = L(o);
           if (!u || u.namespace.kind === "named" != (r !== void 0)) return o;
           let { rawName: c, flag: a } = u, d = /* @__PURE__ */ new Set([o]);
-          for (let p of ne(s, u, r)) d.add(`[${c}="${R(p.after)}"${a ? ` ${a}` : ""}]`);
+          for (let p of ne(s, u, r)) d.add(`[${c}="${k(p.after)}"${a ? ` ${a}` : ""}]`);
           return d.size === 1 ? o : `:is(${[...d].join(", ")})`;
         };
         if (r) return I(e, i);
-        let l = new Map(n.map(({ id: o, replacement: u }) => [o, u])), f = $(e).filter((o) => l.has(o) || s.renamedIdAlternatives.has(o)), g = T(e, f, (o) => l.get(o) ?? s.renamedIdAlternatives.get(o));
+        let l = new Map(n.map(({ id: o, replacement: u }) => [o, u])), f = _(e).filter((o) => l.has(o) || s.renamedIdAlternatives.has(o)), g = $(e, f, (o) => l.get(o) ?? s.renamedIdAlternatives.get(o));
         return I(g, i);
       }
       function te(e, n, t = true) {
@@ -402,7 +402,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         let n = [], t = [], r = false, s, i = /* @__PURE__ */ new WeakMap(), l = (o, u) => {
           for (let c of o) {
             if ("selectorText" in c) {
-              let a = c, d = i.get(a), p = a.selectorText, A = d?.applied === p ? d.authored : p, v = F(A, [], t, u);
+              let a = c, d = i.get(a), p = a.selectorText, A = d?.applied === p ? d.authored : p, v = P(A, [], t, u);
               v !== p && (a.selectorText = v), v === A ? i.delete(a) : i.set(a, { authored: A, applied: a.selectorText });
             }
             "cssRules" in c && l(c.cssRules, u);
@@ -425,7 +425,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
           }
         }, g = { rewrite: (o, u = []) => {
           if (typeof o != "string" || !o.includes("#") && !o.includes("[")) return o;
-          let c = F(o, u.length ? [...u, ...n] : n, t);
+          let c = P(o, u.length ? [...u, ...n] : n, t);
           if (c !== o) {
             if (!s) {
               let a = e.document.createElement("div");
@@ -442,7 +442,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
             let d = a.getAttribute("data-hf-authored-id");
             if (!d || d === a.id || u.has(d) || o.has(d)) continue;
             u.add(d);
-            let p = R(d);
+            let p = k(d);
             n.push({ id: d, replacement: `:is(#${h(d)}, [data-hf-authored-id="${p}"])` });
           }
           if (f(), r || !n.length && !t.length) return;
@@ -455,11 +455,11 @@ window.__timelines.main = gsap.timeline({ paused: true });
         } };
         e.__hfSvgSelectorAliases = g, g.refresh();
       }
-      function P() {
+      function F() {
         let e = window;
         e.__hfSvgSelectorAliases || se(e);
       }
-      P();
+      F();
     })();
   })();
   var __hfCompId = "card";
@@ -794,38 +794,38 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return t === n ? null : { value: r, end: t };
       }
-      var k = 45;
+      var R = 45;
       function E(e) {
         return e >= 48 && e <= 57;
       }
       function V(e) {
-        return e >= 128 || e === k || e === 95 || E(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
+        return e >= 128 || e === R || e === 95 || E(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
       }
       function D(e, n) {
         let t = e.charCodeAt(n);
-        return t >= 1 && t <= 31 || t === 127 ? true : E(t) ? n === 0 || n === 1 && e.charCodeAt(0) === k : false;
+        return t >= 1 && t <= 31 || t === 127 ? true : E(t) ? n === 0 || n === 1 && e.charCodeAt(0) === R : false;
       }
       function h(e) {
         let n = "";
         for (let t = 0; t < e.length; t += 1) {
           let r = e.charCodeAt(t), s = e[t];
-          r === 0 ? n += "\uFFFD" : D(e, t) ? n += `\\${r.toString(16)} ` : t === 0 && e.length === 1 && r === k ? n += `\\${s}` : V(r) ? n += s : n += `\\${s}`;
+          r === 0 ? n += "\uFFFD" : D(e, t) ? n += `\\${r.toString(16)} ` : t === 0 && e.length === 1 && r === R ? n += `\\${s}` : V(r) ? n += s : n += `\\${s}`;
         }
         return n;
       }
-      var _ = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
-      function M(e) {
+      var M = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
+      function T(e) {
         let n = new Array(e.length).fill(true);
-        for (let t of e.matchAll(_)) {
+        for (let t of e.matchAll(M)) {
           let r = t.index;
           n.fill(false, r, r + t[0].length);
         }
         return n;
       }
-      function $(e) {
+      function _(e) {
         let n = [];
         if (!e.includes("#")) return n;
-        let t = M(e);
+        let t = T(e);
         for (let r = 0; r < e.length; r += 1) {
           if (!t[r] || e[r] !== "#") continue;
           let s = m(e, r + 1);
@@ -833,9 +833,9 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return n;
       }
-      function T(e, n, t) {
+      function $(e, n, t) {
         if (n.length === 0 || !e.includes("#")) return e;
-        let r = new Set(n), s = M(e), i = "", l = 0;
+        let r = new Set(n), s = T(e), i = "", l = 0;
         for (; l < e.length; ) {
           let f = s[l] && e[l] === "#" ? m(e, l + 1) : null;
           f && r.has(f.value) ? (i += t(f.value), l = f.end) : (i += e[l], l += 1);
@@ -861,27 +861,27 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return n;
       }
-      function R(e) {
+      function k(e) {
         return Array.from(e, (n) => {
           let t = n.charCodeAt(0);
           return t === 0 ? "\uFFFD" : t < 32 || t === 127 ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
         }).join("");
       }
-      function j(e, n) {
+      function H(e, n) {
         return e ? { kind: "any" } : n === void 0 ? { kind: "none" } : { kind: "named", prefix: n };
       }
-      function G(e, n) {
+      function j(e, n) {
         return e[n] === "|" && e[n + 1] !== "=";
       }
-      function H(e, n) {
+      function G(e, n) {
         let t = e[n] === "*", r = t ? { value: "*", end: n + 1 } : m(e, n), s = y(e, r?.end ?? n);
-        if (!G(e, s)) return t ? null : r ? { token: r, namespace: { kind: "none" } } : null;
+        if (!j(e, s)) return t ? null : r ? { token: r, namespace: { kind: "none" } } : null;
         let i = m(e, y(e, s + 1));
-        return i ? { token: i, namespace: j(t, r?.value) } : null;
+        return i ? { token: i, namespace: H(t, r?.value) } : null;
       }
       function z(e) {
         if (e[0] !== "[") return null;
-        let n = b(e, 1), t = H(e, n);
+        let n = b(e, 1), t = G(e, n);
         if (!t) return null;
         let { token: r, namespace: s } = t;
         return { name: r.value, rawName: e.slice(n, r.end), namespace: s, end: r.end };
@@ -909,7 +909,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         return l ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: s, value: i.value, flag: l.flag } : null;
       }
       function I(e, n) {
-        return e.replace(_, (t) => t.startsWith("[") ? n(t) : t);
+        return e.replace(M, (t) => t.startsWith("[") ? n(t) : t);
       }
       var Y = "data-hf-svg-reference-aliases", S = (e) => e.replace(/[A-Z]/g, (n) => n.toLowerCase()), W = /* @__PURE__ */ new WeakMap();
       function Z(e) {
@@ -946,16 +946,16 @@ window.__timelines.main = gsap.timeline({ paused: true });
         let o = f?.toLowerCase() === "i" ? g.byLowercaseBefore.get(S(l)) : g.byBefore.get(l), u = s.kind === "named" ? t.get(s.prefix) : null;
         return ((i === "=" ? o : g.all) ?? []).filter((c) => (s.kind === "any" || c.namespaceURI === u) && ee(c.before, n));
       }
-      function F(e, n, t, r) {
+      function P(e, n, t, r) {
         let s = Z(t), i = (o) => {
           let u = L(o);
           if (!u || u.namespace.kind === "named" != (r !== void 0)) return o;
           let { rawName: c, flag: a } = u, d = /* @__PURE__ */ new Set([o]);
-          for (let p of ne(s, u, r)) d.add(`[${c}="${R(p.after)}"${a ? ` ${a}` : ""}]`);
+          for (let p of ne(s, u, r)) d.add(`[${c}="${k(p.after)}"${a ? ` ${a}` : ""}]`);
           return d.size === 1 ? o : `:is(${[...d].join(", ")})`;
         };
         if (r) return I(e, i);
-        let l = new Map(n.map(({ id: o, replacement: u }) => [o, u])), f = $(e).filter((o) => l.has(o) || s.renamedIdAlternatives.has(o)), g = T(e, f, (o) => l.get(o) ?? s.renamedIdAlternatives.get(o));
+        let l = new Map(n.map(({ id: o, replacement: u }) => [o, u])), f = _(e).filter((o) => l.has(o) || s.renamedIdAlternatives.has(o)), g = $(e, f, (o) => l.get(o) ?? s.renamedIdAlternatives.get(o));
         return I(g, i);
       }
       function te(e, n, t = true) {
@@ -987,7 +987,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         let n = [], t = [], r = false, s, i = /* @__PURE__ */ new WeakMap(), l = (o, u) => {
           for (let c of o) {
             if ("selectorText" in c) {
-              let a = c, d = i.get(a), p = a.selectorText, A = d?.applied === p ? d.authored : p, v = F(A, [], t, u);
+              let a = c, d = i.get(a), p = a.selectorText, A = d?.applied === p ? d.authored : p, v = P(A, [], t, u);
               v !== p && (a.selectorText = v), v === A ? i.delete(a) : i.set(a, { authored: A, applied: a.selectorText });
             }
             "cssRules" in c && l(c.cssRules, u);
@@ -1010,7 +1010,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
           }
         }, g = { rewrite: (o, u = []) => {
           if (typeof o != "string" || !o.includes("#") && !o.includes("[")) return o;
-          let c = F(o, u.length ? [...u, ...n] : n, t);
+          let c = P(o, u.length ? [...u, ...n] : n, t);
           if (c !== o) {
             if (!s) {
               let a = e.document.createElement("div");
@@ -1027,7 +1027,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
             let d = a.getAttribute("data-hf-authored-id");
             if (!d || d === a.id || u.has(d) || o.has(d)) continue;
             u.add(d);
-            let p = R(d);
+            let p = k(d);
             n.push({ id: d, replacement: `:is(#${h(d)}, [data-hf-authored-id="${p}"])` });
           }
           if (f(), r || !n.length && !t.length) return;
@@ -1040,11 +1040,11 @@ window.__timelines.main = gsap.timeline({ paused: true });
         } };
         e.__hfSvgSelectorAliases = g, g.refresh();
       }
-      function P() {
+      function F() {
         let e = window;
         e.__hfSvgSelectorAliases || se(e);
       }
-      P();
+      F();
     })();
   })();
   var __hfCompId = "card";
@@ -1379,38 +1379,38 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return t === n ? null : { value: r, end: t };
       }
-      var k = 45;
+      var R = 45;
       function E(e) {
         return e >= 48 && e <= 57;
       }
       function V(e) {
-        return e >= 128 || e === k || e === 95 || E(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
+        return e >= 128 || e === R || e === 95 || E(e) || e >= 65 && e <= 90 || e >= 97 && e <= 122;
       }
       function D(e, n) {
         let t = e.charCodeAt(n);
-        return t >= 1 && t <= 31 || t === 127 ? true : E(t) ? n === 0 || n === 1 && e.charCodeAt(0) === k : false;
+        return t >= 1 && t <= 31 || t === 127 ? true : E(t) ? n === 0 || n === 1 && e.charCodeAt(0) === R : false;
       }
       function h(e) {
         let n = "";
         for (let t = 0; t < e.length; t += 1) {
           let r = e.charCodeAt(t), s = e[t];
-          r === 0 ? n += "\uFFFD" : D(e, t) ? n += `\\${r.toString(16)} ` : t === 0 && e.length === 1 && r === k ? n += `\\${s}` : V(r) ? n += s : n += `\\${s}`;
+          r === 0 ? n += "\uFFFD" : D(e, t) ? n += `\\${r.toString(16)} ` : t === 0 && e.length === 1 && r === R ? n += `\\${s}` : V(r) ? n += s : n += `\\${s}`;
         }
         return n;
       }
-      var _ = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
-      function M(e) {
+      var M = /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
+      function T(e) {
         let n = new Array(e.length).fill(true);
-        for (let t of e.matchAll(_)) {
+        for (let t of e.matchAll(M)) {
           let r = t.index;
           n.fill(false, r, r + t[0].length);
         }
         return n;
       }
-      function $(e) {
+      function _(e) {
         let n = [];
         if (!e.includes("#")) return n;
-        let t = M(e);
+        let t = T(e);
         for (let r = 0; r < e.length; r += 1) {
           if (!t[r] || e[r] !== "#") continue;
           let s = m(e, r + 1);
@@ -1418,9 +1418,9 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return n;
       }
-      function T(e, n, t) {
+      function $(e, n, t) {
         if (n.length === 0 || !e.includes("#")) return e;
-        let r = new Set(n), s = M(e), i = "", l = 0;
+        let r = new Set(n), s = T(e), i = "", l = 0;
         for (; l < e.length; ) {
           let f = s[l] && e[l] === "#" ? m(e, l + 1) : null;
           f && r.has(f.value) ? (i += t(f.value), l = f.end) : (i += e[l], l += 1);
@@ -1446,27 +1446,27 @@ window.__timelines.main = gsap.timeline({ paused: true });
         }
         return n;
       }
-      function R(e) {
+      function k(e) {
         return Array.from(e, (n) => {
           let t = n.charCodeAt(0);
           return t === 0 ? "\uFFFD" : t < 32 || t === 127 ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
         }).join("");
       }
-      function j(e, n) {
+      function H(e, n) {
         return e ? { kind: "any" } : n === void 0 ? { kind: "none" } : { kind: "named", prefix: n };
       }
-      function G(e, n) {
+      function j(e, n) {
         return e[n] === "|" && e[n + 1] !== "=";
       }
-      function H(e, n) {
+      function G(e, n) {
         let t = e[n] === "*", r = t ? { value: "*", end: n + 1 } : m(e, n), s = y(e, r?.end ?? n);
-        if (!G(e, s)) return t ? null : r ? { token: r, namespace: { kind: "none" } } : null;
+        if (!j(e, s)) return t ? null : r ? { token: r, namespace: { kind: "none" } } : null;
         let i = m(e, y(e, s + 1));
-        return i ? { token: i, namespace: j(t, r?.value) } : null;
+        return i ? { token: i, namespace: H(t, r?.value) } : null;
       }
       function z(e) {
         if (e[0] !== "[") return null;
-        let n = b(e, 1), t = H(e, n);
+        let n = b(e, 1), t = G(e, n);
         if (!t) return null;
         let { token: r, namespace: s } = t;
         return { name: r.value, rawName: e.slice(n, r.end), namespace: s, end: r.end };
@@ -1494,7 +1494,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         return l ? { name: n.name, rawName: n.rawName, namespace: n.namespace, operator: s, value: i.value, flag: l.flag } : null;
       }
       function I(e, n) {
-        return e.replace(_, (t) => t.startsWith("[") ? n(t) : t);
+        return e.replace(M, (t) => t.startsWith("[") ? n(t) : t);
       }
       var Y = "data-hf-svg-reference-aliases", S = (e) => e.replace(/[A-Z]/g, (n) => n.toLowerCase()), W = /* @__PURE__ */ new WeakMap();
       function Z(e) {
@@ -1531,16 +1531,16 @@ window.__timelines.main = gsap.timeline({ paused: true });
         let o = f?.toLowerCase() === "i" ? g.byLowercaseBefore.get(S(l)) : g.byBefore.get(l), u = s.kind === "named" ? t.get(s.prefix) : null;
         return ((i === "=" ? o : g.all) ?? []).filter((c) => (s.kind === "any" || c.namespaceURI === u) && ee(c.before, n));
       }
-      function F(e, n, t, r) {
+      function P(e, n, t, r) {
         let s = Z(t), i = (o) => {
           let u = L(o);
           if (!u || u.namespace.kind === "named" != (r !== void 0)) return o;
           let { rawName: c, flag: a } = u, d = /* @__PURE__ */ new Set([o]);
-          for (let p of ne(s, u, r)) d.add(`[${c}="${R(p.after)}"${a ? ` ${a}` : ""}]`);
+          for (let p of ne(s, u, r)) d.add(`[${c}="${k(p.after)}"${a ? ` ${a}` : ""}]`);
           return d.size === 1 ? o : `:is(${[...d].join(", ")})`;
         };
         if (r) return I(e, i);
-        let l = new Map(n.map(({ id: o, replacement: u }) => [o, u])), f = $(e).filter((o) => l.has(o) || s.renamedIdAlternatives.has(o)), g = T(e, f, (o) => l.get(o) ?? s.renamedIdAlternatives.get(o));
+        let l = new Map(n.map(({ id: o, replacement: u }) => [o, u])), f = _(e).filter((o) => l.has(o) || s.renamedIdAlternatives.has(o)), g = $(e, f, (o) => l.get(o) ?? s.renamedIdAlternatives.get(o));
         return I(g, i);
       }
       function te(e, n, t = true) {
@@ -1572,7 +1572,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
         let n = [], t = [], r = false, s, i = /* @__PURE__ */ new WeakMap(), l = (o, u) => {
           for (let c of o) {
             if ("selectorText" in c) {
-              let a = c, d = i.get(a), p = a.selectorText, A = d?.applied === p ? d.authored : p, v = F(A, [], t, u);
+              let a = c, d = i.get(a), p = a.selectorText, A = d?.applied === p ? d.authored : p, v = P(A, [], t, u);
               v !== p && (a.selectorText = v), v === A ? i.delete(a) : i.set(a, { authored: A, applied: a.selectorText });
             }
             "cssRules" in c && l(c.cssRules, u);
@@ -1595,7 +1595,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
           }
         }, g = { rewrite: (o, u = []) => {
           if (typeof o != "string" || !o.includes("#") && !o.includes("[")) return o;
-          let c = F(o, u.length ? [...u, ...n] : n, t);
+          let c = P(o, u.length ? [...u, ...n] : n, t);
           if (c !== o) {
             if (!s) {
               let a = e.document.createElement("div");
@@ -1612,7 +1612,7 @@ window.__timelines.main = gsap.timeline({ paused: true });
             let d = a.getAttribute("data-hf-authored-id");
             if (!d || d === a.id || u.has(d) || o.has(d)) continue;
             u.add(d);
-            let p = R(d);
+            let p = k(d);
             n.push({ id: d, replacement: `:is(#${h(d)}, [data-hf-authored-id="${p}"])` });
           }
           if (f(), r || !n.length && !t.length) return;
@@ -1625,11 +1625,11 @@ window.__timelines.main = gsap.timeline({ paused: true });
         } };
         e.__hfSvgSelectorAliases = g, g.refresh();
       }
-      function P() {
+      function F() {
         let e = window;
         e.__hfSvgSelectorAliases || se(e);
       }
-      P();
+      F();
     })();
   })();
   var __hfCompId = "card";

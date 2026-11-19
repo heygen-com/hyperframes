@@ -163,6 +163,22 @@ export function rewriteSvgSelectors(
   return tokens.replaceSelectorAttributeTokens(rewrittenIds, rewriteAttribute);
 }
 
+export function dropAuthoredSvgReferenceAliases(root: ParentNode): boolean {
+  let dropped = false;
+  const pending: ParentNode[] = [root];
+  for (let node = pending.pop(); node; node = pending.pop()) {
+    for (const el of Array.from(node.children)) {
+      if (el.hasAttribute(SVG_REFERENCE_ALIASES_ATTR)) {
+        el.removeAttribute(SVG_REFERENCE_ALIASES_ATTR);
+        dropped = true;
+      }
+      const html = el.localName === "template" && !el.firstElementChild && "content" in el;
+      pending.push(html ? (el as HTMLTemplateElement).content : el);
+    }
+  }
+  return dropped;
+}
+
 /** Metadata records actual writes; selectors still match current native attribute values. */
 export function readSvgReferenceAliases(
   root: {

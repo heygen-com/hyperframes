@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parseHTML } from "linkedom";
 import { ensureExternalLinkTag, inlineSubCompositions } from "./inlineSubCompositions";
 import { readDeclaredDefaults, parseHostVariableValues } from "../runtime/getVariables";
+import { dropAuthoredSvgReferenceAliases } from "./svgSelectorAliases";
 import { JSDOM } from "jsdom";
 
 // Fixtures reference GSAP CDN but are never loaded in a real browser — resolveHtml is mocked.
@@ -1278,4 +1279,79 @@ it("charges the bytes SVG id renaming adds to the mount that grew", () => {
   expect(charged.filter(([src, bytes]) => src === "art.html" && bytes > 0).length).toBeGreaterThan(
     0,
   );
+});
+
+// fails without the fix: nested templates were walked per copy, linkedom copied each, and SVG ones rescanned.
+describe("dropAuthoredSvgReferenceAliases", () => {
+  const planted = `data-hf-svg-reference-aliases="[]"`;
+  const nested = (depth: number): string =>
+    depth === 0
+      ? `<i ${planted}></i>`
+      : `<template><b ${planted}></b>${nested(depth - 1)}</template>`;
+  const owner = (node: object, key: string): object => {
+    let proto: object = node;
+    while (!Object.prototype.hasOwnProperty.call(proto, key)) proto = Object.getPrototypeOf(proto);
+    return proto;
+  };
+  const doms: Array<[string, (html: string) => { document: Document; serialize: () => string }]> = [
+    [
+      "linkedom",
+      (html) => {
+        const { document } = parseHTML(html);
+        return { document: document as unknown as Document, serialize: () => document.toString() };
+      },
+    ],
+    [
+      "a browser DOM",
+      (html) => {
+        const { document } = new JSDOM(html).window;
+        return { document, serialize: () => document.documentElement.outerHTML };
+      },
+    ],
+  ];
+
+  const svgNested = (depth: number): string =>
+    depth === 0
+      ? `<g ${planted}></g>`
+      : `<template><g ${planted}></g>${svgNested(depth - 1)}</template>`;
+  const pages: Array<[string, (depth: number) => string]> = [
+    ["HTML templates", nested],
+    [
+      "SVG elements named template",
+      (depth) => `<svg>${svgNested(depth)}<template></template></svg>`,
+    ],
+  ];
+
+  it.each(
+    doms.flatMap(([dom, parse]) => pages.map(([page, body]) => [dom, page, parse, body] as const)),
+  )("in %s walks nested %s once and leaves no copy of the attribute", (dom, page, parse, body) => {
+    const depth = 12;
+    const { document, serialize } = parse(
+      `<!doctype html><html><body>${body(depth)}</body></html>`,
+    );
+    const probe = document.createElement("template");
+    const nodes = [document, probe, probe.content];
+    const ownersOf = (key: string) => [...new Set(nodes.map((node) => owner(node, key)))];
+    const spies = [
+      ...ownersOf("querySelectorAll").map((proto) =>
+        vi.spyOn(proto as Element, "querySelectorAll"),
+      ),
+      ...ownersOf("children").map((proto) => vi.spyOn(proto as Element, "children", "get")),
+    ];
+    const contentReads = vi.spyOn(owner(probe, "content") as HTMLTemplateElement, "content", "get");
+
+    expect(dropAuthoredSvgReferenceAliases(document)).toBe(true);
+    const processed = spies.reduce(
+      (sum, spy) =>
+        sum + spy.mock.results.reduce((n, result) => n + (result.value?.length ?? 0), 0),
+      0,
+    );
+    const reads = contentReads.mock.calls.length;
+    spies.forEach((spy) => spy.mockRestore());
+    contentReads.mockRestore();
+
+    expect(processed).toBeLessThan(4 * depth);
+    expect(reads).toBeLessThanOrEqual(dom === "linkedom" || page !== "HTML templates" ? 0 : depth);
+    expect(serialize()).not.toContain("data-hf-svg-reference-aliases");
+  });
 });
