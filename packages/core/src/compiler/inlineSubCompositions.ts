@@ -371,7 +371,7 @@ export interface InlineSubCompositionsResult {
 const isDocument = (node: Node): node is Document => node.nodeType === 9;
 
 function defaultBuildScopeSelector(compId: string): string {
-  const escaped = compId.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const escaped = compId.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/</g, "\\3c ");
   return `[data-composition-id="${escaped}"]`;
 }
 
