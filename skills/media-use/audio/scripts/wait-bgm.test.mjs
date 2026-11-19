@@ -278,3 +278,20 @@ test("a ready track's path from audio_meta.json prints with control characters a
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a broken audio_meta.json prints its bytes with control characters as escapes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-wait-bgm-broken-"));
+  try {
+    writeFileSync(join(dir, "audio_meta.json"), '{"bgm": [ \x1b]0;x \x07 ]}');
+    const script = new URL("./wait-bgm.mjs", import.meta.url).pathname;
+    const args = ["--audio-meta", join(dir, "audio_meta.json"), "--hyperframes", dir];
+    const run = spawnSync(process.execPath, [script, ...args, "--timeout-ms", "0"], {
+      encoding: "utf8",
+    });
+    assert.equal(run.status, 1, run.stdout);
+    assert.match(run.stderr, /audio_meta\.json parse: .*\\x1b/);
+    for (const raw of ["\x1b", "\x07"]) assert.ok(!run.stderr.includes(raw), run.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

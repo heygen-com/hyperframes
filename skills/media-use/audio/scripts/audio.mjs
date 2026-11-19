@@ -68,7 +68,7 @@ const flag = (name, def) => {
 };
 const has = (name) => argv.includes(`--${name}`);
 const die = (m) => {
-  console.error(`✗ audio engine: ${m}`);
+  console.error(`✗ audio engine: ${m}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 };
 const r3 = (x) => Number(x.toFixed(3));
@@ -310,7 +310,9 @@ if (only.has("bgm")) {
       bgmFields.bgm_target_duration_s = gen.target_duration_s ?? null;
       bgmFields.bgm_seed_duration_s = gen.seed_duration_s ?? null;
       bgmFields.bgm_loop_count = gen.loop_count ?? null;
-      console.error(`  bgm: launched ${gen.provider} (detached, pid ${gen.pid}) → ${gen.path}`);
+      console.error(
+        terminalText(`  bgm: launched ${gen.provider} (detached, pid ${gen.pid}) → ${gen.path}`),
+      );
     }
   }
 }
@@ -348,7 +350,7 @@ audioMeta.write(meta);
 const written = writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields, sfx });
 anomalies.push(...recordInManifest(hyperframesDir, written));
 
-console.log(`✓ audio engine → ${outPath}`);
+console.log(terminalText(`✓ audio engine → ${outPath}`));
 console.log(`  heygen: ${heygenOK ? "yes" : "no"}  ·  ran: ${[...only].join(",")}`);
 console.log(
   `  voices: ${voices.length}  ·  bgm: ${bgm ? `${bgmFields.bgm_provider}${bgmFields.bgm_pending ? " (pending)" : ""}` : "none"}  ·  sfx: ${sfx.length}`,

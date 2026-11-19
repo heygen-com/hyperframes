@@ -27,7 +27,7 @@ const flag = (name, def) => {
 };
 
 function die(msg) {
-  console.error(`✗ wait-bgm.mjs: ${msg}`);
+  console.error(`✗ wait-bgm.mjs: ${msg}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 }
 
@@ -90,7 +90,12 @@ function writeStatus(status) {
 
 if (!existsSync(audioMetaPath)) die(`audio_meta.json missing at ${audioMetaPath}`);
 
-const audioMeta = JSON.parse(readFileSync(audioMetaPath, "utf8"));
+let audioMeta;
+try {
+  audioMeta = JSON.parse(readFileSync(audioMetaPath, "utf8"));
+} catch (e) {
+  die(`audio_meta.json parse: ${e.message}`);
+}
 // A track path that leads outside the project counts as no track.
 const bgmAbsPath = (audioMeta.bgm?.path && projectPath(hyperframesDir, audioMeta.bgm.path)) || "";
 const bgmPath = bgmAbsPath ? audioMeta.bgm.path : "";

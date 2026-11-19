@@ -30,7 +30,7 @@ function flag(name, def) {
   return v.startsWith("--") ? true : v;
 }
 const die = (m) => {
-  console.error(`✗ heygen-tts: ${m}`);
+  console.error(`✗ heygen-tts: ${m}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 };
 
@@ -120,4 +120,6 @@ if (wordsPath) {
 
 const dur = ffprobeDuration(output);
 const durStr = isFinite(dur) ? ` (${dur.toFixed(2)}s)` : "";
-console.log(`✓ ${output}${durStr}${wordCount ? ` · ${wordsPath} (${wordCount} words)` : ""}`);
+console.log(
+  terminalText(`✓ ${output}${durStr}${wordCount ? ` · ${wordsPath} (${wordCount} words)` : ""}`),
+);
