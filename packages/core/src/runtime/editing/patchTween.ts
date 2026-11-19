@@ -2,6 +2,7 @@
 // confidently returns false and the caller reloads. Studio runs it on a frame it can reach,
 // a sealed frame on itself through the editing port.
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
+import { recordLiveSet } from "./softReload";
 
 export interface SetPatchProps {
   x?: number;
@@ -196,6 +197,7 @@ export function applyGlobalSet(
   const numeric = finiteNumericProps(props);
   if (typeof target.gsap?.set !== "function" || !el || !numeric) return null;
   target.gsap.set(el, numeric);
+  recordLiveSet(el, numeric);
   return el;
 }
 

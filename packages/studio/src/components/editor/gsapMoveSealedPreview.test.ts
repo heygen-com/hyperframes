@@ -15,6 +15,7 @@ import { startGesture } from "./domEditOverlayStartGesture";
 import {
   applyManualOffsetDragCommit,
   applyManualOffsetDragDraft,
+  createManualOffsetDragMember,
   endManualOffsetDragMembers,
 } from "./manualOffsetDrag";
 import { measurePreviewGestureStart } from "./previewGestureStartRead";
@@ -244,4 +245,27 @@ it("still saves a layer GSAP only holds when the sealed preview's tweens can't b
     animationId: "#box-set-0-position",
     properties: { x: 120, y: 40 },
   });
+});
+
+// fails without the fix: the resize read the stand-in's own (empty) timelines, called the layer plain CSS and
+// saved its rotated corner's anchor as a raw `translate` that a reload added on top of GSAP's x.
+it("a resize in a sealed preview keeps the anchor of a layer its tween moves on GSAP's route", async () => {
+  mount(SCRIPT);
+  const iframe = opaqueFrame();
+  const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
+  const standIn = standInFor(iframe, (await describePreviewElements(iframe, [handle]))![0]!);
+  const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]);
+  const { rect, start } = (await measurePreviewGestureStart(iframe, overlay, [handle]))!
+    .elements[0]!;
+  const result = createManualOffsetDragMember({
+    key: "box",
+    selection: { ...makeSelection("box", standIn), id: "box", handle },
+    element: standIn,
+    rect,
+    gesture: "resize",
+    start,
+  });
+
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(result.ok && result.member.plainTranslate).toBe(false);
 });

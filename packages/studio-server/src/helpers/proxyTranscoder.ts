@@ -1,20 +1,13 @@
 import { spawn } from "node:child_process";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
-import {
-  existsSync,
-  mkdtempSync,
-  renameSync,
-  rmSync,
-  unlinkSync,
-  utimesSync,
-  writeFileSync,
-} from "node:fs";
-import os, { availableParallelism, tmpdir, totalmem } from "node:os";
+import { existsSync, renameSync, rmSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
+import os, { availableParallelism, totalmem } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { hdrToSdrToneMapFilter, type PreviewProxyBox } from "@hyperframes/core";
 import { previewToken } from "@hyperframes/core/preview-proof";
 import {
   concatListInputArgs,
+  concatListText,
   findFfBinary,
   followFfmpegProgress,
 } from "@hyperframes/parsers/ff-binaries";
@@ -101,6 +94,8 @@ function unguessablePiecePrefix(cacheDir: string, stem: string): string {
 }
 
 const CONCAT_TIMEOUT_MS = 2 * 60 * 1000;
+// On POSIX a folder name can hold a line break that would start a new list line; on Windows the working folder is part of the DLL search, so the cwd stays default there.
+const JOIN_FROM_CACHE_FOLDER = process.platform !== "win32";
 const FAILURE_CACHE_TTL_MS = 60 * 1000;
 export const PROXY_PENDING_RETRY_AFTER_SECONDS = 2;
 const ENVIRONMENT_FAILURE_TTL_MS = 5 * PROXY_PENDING_RETRY_AFTER_SECONDS * 1000;
@@ -405,8 +400,7 @@ function markCacheEntryUsed(cachePath: string): void {
     const now = new Date();
     utimesSync(cachePath, now, now);
   } catch {
-    // A concurrent cleanup may have removed a stale entry after existsSync;
-    // the normal miss path below will recreate it on the next request.
+    // A concurrent cleanup may have removed the entry; the next request's miss path recreates it.
   }
 }
 
@@ -662,18 +656,19 @@ async function encodeInChunks(
     ),
   );
   if (failure !== undefined) throw failure;
-  const listDir = mkdtempSync(join(tmpdir(), "hf-proxy-join-"));
+  const listPath = join(dirname(tempPath), `${basename(tempPath, extension)}.txt`);
   try {
-    const listPath = join(listDir, "pieces.txt");
     writeFileSync(
       listPath,
-      pieces
-        .map((piece) => `file '${piece.replace(/\\/g, "/").replace(/'/g, "'\\''")}'\n`)
-        .join(""),
+      concatListText(
+        pieces.map((piece) =>
+          JOIN_FROM_CACHE_FOLDER ? basename(piece) : piece.replace(/\\/g, "/"),
+        ),
+      ),
     );
     await concat(listPath, tempPath);
   } finally {
-    rmSync(listDir, { recursive: true, force: true });
+    rmSync(listPath, { force: true });
   }
   for (const piece of pieces) if (existsSync(piece)) unlinkSync(piece);
 }
@@ -833,8 +828,19 @@ async function runFfmpeg(
       chunks,
       outputPath,
       encode,
-      (listPath, target) =>
-        spawnFfmpeg(ffmpegPath, concatArgs(listPath, target, variant), CONCAT_TIMEOUT_MS, signal),
+      (listPath, target) => {
+        // ffmpeg resolves relative list entries against the list path, which breaks on '#' or '?' in a folder name.
+        const cwd = JOIN_FROM_CACHE_FOLDER ? dirname(listPath) : undefined;
+        return spawnFfmpeg(
+          ffmpegPath,
+          concatArgs(cwd ? basename(listPath) : listPath, target, variant),
+          CONCAT_TIMEOUT_MS,
+          signal,
+          undefined,
+          false,
+          cwd,
+        );
+      },
       signal,
       gate,
       (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
@@ -872,10 +878,12 @@ function spawnFfmpeg(
   signal: AbortSignal,
   onProgress?: (encodedSeconds: number) => void,
   background = false,
+  cwd?: string,
 ): Promise<void> {
   return new Promise((resolvePromise, reject) => {
     signal.throwIfAborted();
     const proc = spawn(ffmpegPath, args, {
+      cwd,
       stdio: ["ignore", "pipe", "pipe"],
       killSignal: "SIGKILL",
       signal,
@@ -1006,8 +1014,7 @@ async function transcodeToCache(
       maintainProxyCache(cacheDir);
       return cachePath;
     } finally {
-      // No partial files: if anything above threw, remove whatever ffmpeg
-      // may have partially written under the temp name.
+      // No partial files: if anything above threw, remove what ffmpeg wrote under the temp name.
       if (existsSync(tempPath)) unlinkSync(tempPath);
       release();
     }

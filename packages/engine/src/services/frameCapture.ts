@@ -73,6 +73,7 @@ import {
   type BrowserLease,
   type CaptureMode,
 } from "./browserManager.js";
+import { openPage } from "./openPage.js";
 import {
   beginFrameCapture,
   forgetBeginFrameCapture,
@@ -1684,7 +1685,7 @@ async function constructCaptureSession(
   } = input;
   const { browser, captureMode } = browserLease;
 
-  const page = await browser.newPage();
+  const page = await openPage(browser);
   onPageCreated(page);
   // Cap the existing session's inspection buffer; new sessions have separate buffers.
   const frame = page.mainFrame();
@@ -4239,7 +4240,7 @@ interface StaticVerificationDependencies {
  * are contained to this disposable page and cannot corrupt sequential capture.
  */
 export async function createStaticVerificationPage(session: CaptureSession): Promise<Page> {
-  const page = await session.browser.newPage();
+  const page = await openPage(session.browser);
   const pageNavigationTimeout =
     session.config?.pageNavigationTimeout ?? DEFAULT_CONFIG.pageNavigationTimeout;
   const pageReadyTimeout = session.config?.playerReadyTimeout ?? DEFAULT_CONFIG.playerReadyTimeout;

@@ -51,7 +51,11 @@ import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
-import { concatListInputArgs, localContainerInputArgs } from "@hyperframes/parsers/ff-binaries";
+import {
+  concatListInputArgs,
+  concatListText,
+  localContainerInputArgs,
+} from "@hyperframes/parsers/ff-binaries";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -678,8 +682,6 @@ export async function encodeFramesFromDir(
   };
 }
 
-const VIDEO_DEMUXERS = "mov,matroska";
-
 export function buildConcatArgs(concatListPath: string, outputPath: string): string[] {
   const args = [...concatListInputArgs(concatListPath), "-c", "copy"];
   // The concat demuxer does not carry per-input container metadata into the
@@ -691,14 +693,11 @@ export function buildConcatArgs(concatListPath: string, outputPath: string): str
 
 export function writeVideoConcatList(dir: string, inputPaths: readonly string[]): string {
   const listPath = join(dir, `concat-list-${randomUUID()}.txt`);
-  const entries = inputPaths.map((path) => {
-    const absolute = resolve(path);
-    if (/[\r\n]/.test(absolute) || absolute.includes("\0"))
-      throw new Error("Invalid line break or NUL in concat input path");
-    // Only the outer list may use concat. FFmpeg applies this option when opening each child.
-    return `file '${absolute.replace(/'/g, "'\\''")}'\noption format_whitelist ${VIDEO_DEMUXERS}`;
-  });
-  writeFileSync(listPath, entries.join("\n") + "\n", { flag: "wx", mode: 0o600 });
+  const body = concatListText(
+    inputPaths.map((path) => resolve(path)),
+    { videoContainersOnly: true },
+  );
+  writeFileSync(listPath, body, { flag: "wx", mode: 0o600 });
   return listPath;
 }
 
@@ -725,7 +724,12 @@ export async function concatVideoFiles(
   // get their own chunk directory but can share an output directory.
   // The list is left on disk deliberately: it is removed with the work dir,
   // and `--debug` keeps both so a bad concat can be reproduced from its list.
-  const listPath = writeVideoConcatList(dirname(firstInput), inputPaths);
+  let listPath: string;
+  try {
+    listPath = writeVideoConcatList(dirname(firstInput), inputPaths);
+  } catch (error) {
+    return { success: false, error: (error as Error).message, externalInterruption: false };
+  }
   const encodeTimeout = config?.ffmpegEncodeTimeout ?? DEFAULT_CONFIG.ffmpegEncodeTimeout;
   const result = await runFfmpeg(buildConcatArgs(listPath, outputPath), {
     signal,

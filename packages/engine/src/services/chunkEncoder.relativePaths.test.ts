@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -167,6 +167,31 @@ describe.skipIf(!HAS_FFMPEG)("concat input formats", () => {
     ]);
     expect(made.status, made.stderr.toString()).toBe(0);
   }
+
+  // fails without the fix: the line break ended the entry and ffmpeg read the rest as list lines.
+  // Windows paths cannot hold a line break.
+  it.skipIf(process.platform === "win32")(
+    "refuses inputs whose folder name holds a line break, before writing a list",
+    async () => {
+      const folder = join(root, "proj\nfile 'other.mov'\n#");
+      mkdirSync(folder);
+      makeClip(join(folder, "a.mp4"), 2);
+      makeClip(join(folder, "b.mp4"), 2);
+
+      const result = await concatVideoFiles(
+        [join(folder, "a.mp4"), join(folder, "b.mp4")],
+        join(root, "joined.mp4"),
+      );
+
+      expect(result).toEqual({
+        success: false,
+        error: expect.stringContaining("line break or NUL"),
+        externalInterruption: false,
+      });
+      expect(readdirSync(folder).filter((name) => name.startsWith("concat-list-"))).toEqual([]);
+    },
+    30_000,
+  );
 
   function frameCount(path: string): string {
     const probe = spawnSync(

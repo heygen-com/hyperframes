@@ -249,6 +249,27 @@ export function clearFfBinaryLookupCache(): void {
   skippedX86Binaries.clear();
 }
 
+const endsAListLine = (text: string) => ["\n", "\r", "\u0000"].some((char) => text.includes(char));
+
+/** One `file` entry per path; a path holding what ends a list line (LF, CR, NUL) is refused. */
+export function concatListText(
+  paths: readonly string[],
+  options: { videoContainersOnly?: boolean } = {},
+): string {
+  // FFmpeg applies this restriction when opening each entry in a video join.
+  const entryOptions = options.videoContainersOnly ? "option format_whitelist mov,matroska\n" : "";
+  return paths
+    .map((path) => {
+      if (endsAListLine(path)) {
+        throw new Error(
+          `A file to join holds a line break or NUL in its path: ${JSON.stringify(path)}`,
+        );
+      }
+      return `file '${path.replace(/'/g, "'\\''")}'\n${entryOptions}`;
+    })
+    .join("");
+}
+
 /**
  * Concat input for a list HyperFrames wrote: entries open only as local mov, matroska or concat
  * files (an ffconcat entry is followed in safe mode), and `-xerror` fails at a refused entry.

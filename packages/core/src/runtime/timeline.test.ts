@@ -136,6 +136,31 @@ describe("collectRuntimeTimelinePayload", () => {
     expect(result.clips[0].kind).toBe("element");
   });
 
+  it("sends a plain text layer's words and look, capped, and no text for any other layer", () => {
+    const root = document.createElement("div");
+    root.setAttribute("data-composition-id", "main");
+    root.setAttribute("data-duration", "10");
+    document.body.appendChild(root);
+    const title = document.createElement("h1");
+    title.id = "title";
+    title.setAttribute("data-start", "0");
+    title.setAttribute("data-duration", "5");
+    title.style.color = "rgb(255, 255, 255)";
+    title.textContent = `  Hello\n   ${"x".repeat(500)} `;
+    const card = document.createElement("div");
+    card.id = "card";
+    card.setAttribute("data-start", "0");
+    card.setAttribute("data-duration", "5");
+    card.innerHTML = "<img src='a.png'> Caption";
+    root.append(title, card);
+
+    const [titleClip, cardClip] = collectRuntimeTimelinePayload(defaultParams).clips;
+
+    expect(titleClip.text?.value).toBe(`Hello ${"x".repeat(194)}`);
+    expect(titleClip.text?.color).toBe("rgb(255, 255, 255)");
+    expect(cardClip.text).toBeNull();
+  });
+
   it("parses inline z-index for timeline clips", () => {
     const root = document.createElement("div");
     root.setAttribute("data-composition-id", "main");
