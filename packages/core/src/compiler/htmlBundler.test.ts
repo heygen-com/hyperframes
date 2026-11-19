@@ -4360,6 +4360,29 @@ describe("bundleToSingleHtml with an SVG element named template", () => {
     }
   });
 
+  it("keeps a mounted scene's id when an empty host and an SVG element named template share it", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="2">
+    <svg><template id="scene-template"></template></svg>
+    <div data-composition-id="scene"></div>
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="2"></div>
+  </div>
+</body></html>`,
+      "compositions/scene.html": `<template>
+<div data-composition-id="scene" data-width="320" data-height="180" data-duration="2"><p>scene text</p></div>
+</template>`,
+    });
+    try {
+      const html = await bundleToSingleHtml(dir);
+      expect(html).toContain("scene text");
+      expect(html).not.toContain("scene__hf");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("mounts nothing into a host whose id only an SVG element named template matches", async () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html>
