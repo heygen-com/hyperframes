@@ -253,3 +253,45 @@ test("a pid whose log is not the engine's own is dropped with the log", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a ready track's path from audio_meta.json prints with control characters as escapes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-wait-bgm-escape-"));
+  try {
+    const track = "assets/bgm/x\x1b[2J\x07.wav";
+    mkdirSync(join(dir, "assets/bgm"), { recursive: true });
+    writeFileSync(join(dir, track), "RIFF");
+    writeFileSync(
+      join(dir, "audio_meta.json"),
+      JSON.stringify({ bgm: { path: track }, bgm_pending: true }),
+    );
+    const script = new URL("./wait-bgm.mjs", import.meta.url).pathname;
+    const args = ["--audio-meta", join(dir, "audio_meta.json"), "--hyperframes", dir];
+    const run = spawnSync(process.execPath, [script, ...args, "--timeout-ms", "0"], {
+      encoding: "utf8",
+    });
+    assert.equal(run.status, 0, run.stderr);
+    assert.match(run.stdout, /ready \(assets\/bgm\/x\\x1b\[2J\\x07\.wav/);
+    for (const raw of ["\x1b", "\x07"]) assert.ok(!run.stdout.includes(raw), run.stdout);
+    const status = JSON.parse(readFileSync(join(dir, "bgm_status.json"), "utf8"));
+    assert.equal(status.path, track);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a broken audio_meta.json prints its bytes with control characters as escapes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mu-wait-bgm-broken-"));
+  try {
+    writeFileSync(join(dir, "audio_meta.json"), '{"bgm": [ \x1b]0;x \x07 ]}');
+    const script = new URL("./wait-bgm.mjs", import.meta.url).pathname;
+    const args = ["--audio-meta", join(dir, "audio_meta.json"), "--hyperframes", dir];
+    const run = spawnSync(process.execPath, [script, ...args, "--timeout-ms", "0"], {
+      encoding: "utf8",
+    });
+    assert.equal(run.status, 1, run.stdout);
+    assert.match(run.stderr, /audio_meta\.json parse: .*\\x1b/);
+    for (const raw of ["\x1b", "\x07"]) assert.ok(!run.stderr.includes(raw), run.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

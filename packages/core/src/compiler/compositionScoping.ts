@@ -11,7 +11,7 @@ function escapeRegExp(value: string): string {
 }
 
 function escapeCssAttributeValue(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/</g, "\\3c ");
 }
 
 function getAuthoredRootIdSelectorForms(authoredRootId: string): string[] {

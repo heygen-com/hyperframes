@@ -340,6 +340,29 @@ describe("variable-driven composition styles and media sources", () => {
     expect(await srcFor("https://example.com/my clip.mp4")).toBe("https://example.com/my clip.mp4");
     expect(await srcFor("https://example.com/x.mp4\n")).toBe("https://example.com/x.mp4");
   });
+
+  // The `[src]` alias escapes `<` itself, so it can't end its style element even without postcss.
+  it("writes `<` in a bound media source's selector alias as a CSS escape itself", async () => {
+    const svg = `<svg><clipPath id="c"><rect/></clipPath></svg><div clip-path="url(#c)"></div>`;
+    const dir = project({
+      "index.html": withBody(
+        `<style>video[src*="url(#c)"] { opacity: 0.5; }</style>${svg}<video id="v1" data-var-src="clip" src="fallback.mp4"></video>`,
+      ),
+      "scene.html": SCENE.replace("<h1>Scene</h1>", svg),
+    });
+    const clip = "clip.mp4#url(#c)</style><script>window.ran = true</script>";
+    const compiled = await compileForRender(dir, join(dir, "index.html"), dir, {
+      variables: { clip },
+    });
+
+    const { document } = parseHTML(compiled.html);
+    const src = document.getElementById("v1")!.getAttribute("src")!;
+    expect(src).toBe(clip.replace("#c)", "#scene--c)"));
+    const scripts = [...document.querySelectorAll("script")].map((script) => script.textContent);
+    expect(scripts.filter((text) => text?.includes("window.ran"))).toEqual([]);
+    const sheets = [...document.querySelectorAll("style")].map((style) => style.textContent);
+    expect(sheets).toContainEqual(expect.stringContaining(`[src="${src.replace(/</g, "\\3c ")}"]`));
+  });
 });
 
 describe("local font embedding", () => {

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { JSDOM } from "jsdom";
 import { parseHTML } from "linkedom";
 
 const hashCalls = vi.hoisted(() => [] as string[]);
@@ -551,6 +552,28 @@ it("rewrites attribute selectors in linear time however many fragment references
   // About 2 when linear, about 4 when every selector checks every alias.
   expect(work(800, distinct) / work(400, distinct)).toBeLessThan(2.6);
   expect(work(800, sameSymbol) / work(400, sameSymbol)).toBeLessThan(2.6);
+});
+
+// An alias escapes `<` itself, so its rule can't end its style element even without postcss.
+it("writes `<` in an aliased attribute value as a CSS escape itself, and the rule still matches it", () => {
+  const tail = "</style><script>window.ran = true</script>";
+  const after = `clip.mp4#url(#m--c)${tail}`;
+  const references = [
+    { name: "src", localName: "src", namespaceURI: null, before: `clip.mp4#url(#c)${tail}`, after },
+  ];
+  const css = rewriteSvgIdReferencesInCss(
+    `video[src*="url(#c)"] { opacity: 0.5; }`,
+    new Map(),
+    references,
+  );
+
+  expect(css).not.toMatch(/<\/style|<script/i);
+  const { document } = new JSDOM(`<style>${css}</style><video></video>`).window;
+  const video = document.querySelector("video")!;
+  video.setAttribute("src", after);
+  expect(document.querySelectorAll("style, script").length).toBe(1);
+  const rule = document.styleSheets[0]!.cssRules[0] as CSSStyleRule;
+  expect(video.matches(rule.selectorText)).toBe(true);
 });
 
 // fails without the fix: the whole namespace, however long, prefixed every renamed id.

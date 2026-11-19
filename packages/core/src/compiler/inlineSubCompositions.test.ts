@@ -1328,6 +1328,25 @@ it("charges a mount's selector aliases while they are built, and each byte once"
   expect(perSrc.get("art.html")).toBeLessThan(growth + 1000);
 });
 
+// The default scope escapes `<` itself, so it can't end its style element even without postcss.
+it("writes `<` in a host id as a CSS escape itself in the default scope selector", () => {
+  const id = "scene</style><script>window.ran = true</script>";
+  const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
+    <div data-composition-src="scene.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`);
+  const host = document.querySelector("[data-composition-src]")!;
+  host.setAttribute("data-composition-id", id);
+  const { styles } = inlineSubCompositions(document, [host], {
+    resolveHtml: () =>
+      `<template><div data-composition-id="scene"><style>.title { color: red; }</style></div></template>`,
+    parseHtml: (html) => parseHTML(html).document,
+  });
+
+  expect(styles.map((style) => style.css)).toEqual([
+    String.raw`[data-composition-id="scene\3c /style>\3c script>window.ran = true\3c /script>"] .title { color: red; }`,
+  ]);
+});
+
 // fails without the fix: nested templates were walked per copy, linkedom copied each, and SVG ones rescanned.
 describe("dropAuthoredSvgReferenceAliases", () => {
   const planted = `data-hf-svg-reference-aliases="[]"`;
