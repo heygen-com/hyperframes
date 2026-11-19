@@ -3013,7 +3013,7 @@ export function resolveCaptureForceScreenshotForPageSideCompositing(args: {
 }
 
 /** Parallel capture opens its own browsers. A probe launched without the frame-rate limit, before the film's
- * script-inserted video was found, cannot capture that video. */
+ * script-inserted video was found, would capture that video slower. */
 export function shouldCloseProbeBeforeCapture(
   probe: { browserLease?: { fingerprint: { args: readonly string[] } } },
   workerCount: number,
