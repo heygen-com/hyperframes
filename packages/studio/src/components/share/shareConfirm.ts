@@ -18,7 +18,7 @@ export function shareConfirmMessage(
   const lines = (...parts: string[]) => parts.filter(Boolean).join("\n");
   const details = (...parts: string[]) =>
     lines(
-      share.reviewId ? `Review: ${share.reviewTitle ?? "Untitled review"}` : "",
+      share.reviewId ? `Review: ${quoted(share.reviewTitle ?? "Untitled review")}` : "",
       share.url ? `Link: ${share.url}` : "",
       space ? `Workspace: ${space.name}` : "",
       ...parts,
@@ -73,6 +73,11 @@ export function shareConfirmMessage(
 }
 
 type LocalShareAudience = NonNullable<LocalShareAction["audience"]>;
+
+function quoted(title: string) {
+  const line = title.replace(/[\p{C}\p{Z}\s]+/gu, " ").trim();
+  return `"${line.length > 80 ? `${line.slice(0, 79)}…` : line}"`;
+}
 
 function firstUpload({ share, job }: LocalShareSnapshot) {
   return (job?.state === "failed" || share.state === "failed") && share.hasReadyVersion === false;

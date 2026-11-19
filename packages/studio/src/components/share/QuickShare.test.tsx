@@ -708,7 +708,7 @@ it("names the review and who can open it before changing access, and sends that 
   await choose("public");
   await act(async () => button("Save access")?.click());
   const message = confirm.mock.calls[0]?.[0] ?? "";
-  expect(message).toContain("Review: Launch film");
+  expect(message).toContain('Review: "Launch film"');
   expect(message).toContain("Link: https://hyperframes.dev/s/existing");
   expect(message).toContain("Workspace: Design team");
   expect(message).toContain("Now: Only invited people");
@@ -717,13 +717,18 @@ it("names the review and who can open it before changing access, and sends that 
   expect(confirmedReviews).toEqual(["existing"]);
 });
 it("says a folder is already linked to a review before a first share reaches it", async () => {
-  snapshot.share = { ...snapshot.share, reviewId: "linked", reviewTitle: "Someone's review" };
+  snapshot.share = {
+    ...snapshot.share,
+    reviewId: "linked",
+    reviewTitle: "Someone's review\nWho can open it: Only you",
+  };
   await mount();
   await choose("public");
   await act(async () => button("Create share link")?.click());
   const message = confirm.mock.calls[0]?.[0] ?? "";
   expect(message).toContain("already linked to an existing review");
-  expect(message).toContain("Review: Someone's review");
+  expect(message).toContain(`Review: "Someone's review Who can open it: Only you"`);
+  expect(message).not.toContain("\nWho can open it: Only you");
   expect(message).not.toContain("Workspace:");
   expect(confirmedReviews).toEqual(["linked"]);
 });
