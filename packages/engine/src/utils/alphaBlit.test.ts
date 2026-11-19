@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createHash } from "crypto";
 import { deflateSync } from "zlib";
 import {
   decodePng,
@@ -10,6 +11,7 @@ import {
   roundedRectAlpha,
   resampleRgb48leObjectFit,
   normalizeObjectFit,
+  parseObjectPosition,
   MAX_RGB48LE_PIXELS,
 } from "./alphaBlit.js";
 
@@ -1457,5 +1459,217 @@ describe("resampleRgb48leObjectFit", () => {
     const sdOut = resampleRgb48leObjectFit(src, 8, 4, 6, 6, "scale-down");
 
     expect(Buffer.compare(containOut, sdOut)).toBe(0);
+  });
+});
+
+// ── object-position lengths (#8237) ─────────────────────────────────────────
+
+/** Four vertical bands, each `bandW` wide; band i has red = 10000 * (i + 1). */
+function makeBandFrame(bandW: number, height: number): Buffer {
+  const width = bandW * 4;
+  const buf = Buffer.alloc(width * height * 6);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const off = (y * width + x) * 6;
+      buf.writeUInt16LE(10000 * (Math.floor(x / bandW) + 1), off);
+      buf.writeUInt16LE(5000, off + 2);
+      buf.writeUInt16LE(5000, off + 4);
+    }
+  }
+  return buf;
+}
+
+/** Red channel of every pixel in row `y`. */
+function redRow(buf: Buffer, width: number, y: number): number[] {
+  const row: number[] = [];
+  for (let x = 0; x < width; x++) row.push(buf.readUInt16LE((y * width + x) * 6));
+  return row;
+}
+
+/** First column of row `y` that isn't the black background, or -1. */
+function firstLitColumn(buf: Buffer, width: number, y: number): number {
+  return redRow(buf, width, y).findIndex((r) => r > 0);
+}
+
+describe("parseObjectPosition", () => {
+  it.each([
+    ["300px 50%", { fraction: 0, px: 300 }, { fraction: 0.5, px: 0 }],
+    ["0px 0px", { fraction: 0, px: 0 }, { fraction: 0, px: 0 }],
+    ["-20px 12.5px", { fraction: 0, px: -20 }, { fraction: 0, px: 12.5 }],
+    ["1e+06px 0px", { fraction: 0, px: 1e6 }, { fraction: 0, px: 0 }],
+    ["calc(100% - 10px) calc(100% - 20px)", { fraction: 1, px: -10 }, { fraction: 1, px: -20 }],
+    ["calc(50% + 10px) 0px", { fraction: 0.5, px: 10 }, { fraction: 0, px: 0 }],
+    ["calc(-100% + 10px) 50%", { fraction: -1, px: 10 }, { fraction: 0.5, px: 0 }],
+    ["calc(100% + 10.5px) 5px", { fraction: 1, px: 10.5 }, { fraction: 0, px: 5 }],
+    ["10px", { fraction: 0, px: 10 }, { fraction: 0.5, px: 0 }],
+  ])("reads the computed value %s", (css, x, y) => {
+    expect(parseObjectPosition(css)).toEqual({ x, y });
+  });
+
+  it.each([
+    [undefined, 0.5, 0.5],
+    ["", 0.5, 0.5],
+    ["50% 50%", 0.5, 0.5],
+    ["25% 75%", 0.25, 0.75],
+    ["-50% 150%", -0.5, 1.5],
+    ["center top", 0.5, 0],
+    ["left bottom", 0, 1],
+    ["right", 1, 0.5],
+    ["top", 0, 0.5],
+    ["max(10px, 5%) 0%", 0.5, 0],
+    ["garbage", 0.5, 0.5],
+  ])("keeps keyword and percentage fractions for %s", (css, x, y) => {
+    expect(parseObjectPosition(css)).toEqual({
+      x: { fraction: x, px: 0 },
+      y: { fraction: y, px: 0 },
+    });
+  });
+});
+
+describe("resampleRgb48leObjectFit with a length object-position", () => {
+  // 16×12 bands (4 px each) into a 24×12 box: the issue's 1600×1200 → 1920×1080
+  // shape, scaled down. Cover scales by 1.5 and fills the width exactly.
+  const src = makeBandFrame(4, 12);
+
+  it("offsets cover content by the px value even with no horizontal slack", () => {
+    const out = resampleRgb48leObjectFit(src, 16, 12, 24, 12, "cover", "6px 50%");
+    const row = redRow(out, 24, 6);
+
+    expect(row.slice(0, 6)).toEqual(Array(6).fill(0));
+    expect(firstLitColumn(out, 24, 6)).toBe(6);
+    // The image's left edge (band 0) now sits at x=6; bands are 6 px wide, so
+    // band 2 spans x=18..23 and band 3 is pushed out of the box.
+    expect(row[6]).toBe(10000);
+    expect(row[21]).toBe(30000);
+    expect(row.every((r) => r < 40000)).toBe(true);
+    // The vertical 50% still centres the 18-tall rendered image (dy = -3).
+    const shiftedOnly = resampleRgb48leObjectFit(src, 16, 12, 24, 12, "cover", "0px 50%");
+    expect(redRow(shiftedOnly, 24, 6).slice(0, 18)).toEqual(row.slice(6, 24));
+  });
+
+  it("matches the issue: 300px on a 1600x1200 cover into 1920x1080 starts at x=300", () => {
+    const big = makeBandFrame(400, 4);
+    const out = resampleRgb48leObjectFit(big, 1600, 4, 1920, 4, "cover", "300px 50%");
+    expect(firstLitColumn(out, 1920, 2)).toBe(300);
+  });
+
+  it("offsets contain content from the left edge instead of the slack fraction", () => {
+    // 16×12 into 24×24: contain scales by 1.5 → 24×18, slack 6 vertically.
+    const out = resampleRgb48leObjectFit(src, 16, 12, 24, 24, "contain", "4px 2px");
+    expect(firstLitColumn(out, 24, 10)).toBe(4);
+    expect(redRow(out, 24, 1)).toEqual(Array(24).fill(0));
+    expect(redRow(out, 24, 2)[4]).toBe(10000);
+    expect(redRow(out, 24, 19)[4]).toBe(10000);
+    expect(redRow(out, 24, 20)).toEqual(Array(24).fill(0));
+  });
+
+  it("shifts content left for a negative px value", () => {
+    const out = resampleRgb48leObjectFit(src, 16, 12, 16, 12, "none", "-4px 0px");
+    const row = redRow(out, 16, 0);
+    // Band 0 is pushed out of the box; band 1 starts at x=0 and the right 4 columns are empty.
+    expect(row.slice(0, 12)).toEqual([
+      ...Array(4).fill(20000),
+      ...Array(4).fill(30000),
+      ...Array(4).fill(40000),
+    ]);
+    expect(row.slice(12)).toEqual(Array(4).fill(0));
+  });
+
+  it("applies a px value on the y axis", () => {
+    const out = resampleRgb48leObjectFit(src, 16, 12, 16, 20, "none", "0px 5px");
+    for (let y = 0; y < 5; y++) expect(redRow(out, 16, y)).toEqual(Array(16).fill(0));
+    expect(redRow(out, 16, 5)[0]).toBe(10000);
+    expect(redRow(out, 16, 16)[0]).toBe(10000);
+    for (let y = 17; y < 20; y++) expect(redRow(out, 16, y)).toEqual(Array(16).fill(0));
+  });
+
+  it("mixes a px x with a percentage y", () => {
+    // 16×12 into 20×20 with none: slack (4, 8); y = 25% → dy = 2.
+    const out = resampleRgb48leObjectFit(src, 16, 12, 20, 20, "none", "3px 25%");
+    expect(firstLitColumn(out, 20, 2)).toBe(3);
+    expect(redRow(out, 20, 1)).toEqual(Array(20).fill(0));
+    expect(redRow(out, 20, 13)[3]).toBe(10000);
+    expect(redRow(out, 20, 14)).toEqual(Array(20).fill(0));
+  });
+
+  it("shifts fill content by px, the way Chrome does", () => {
+    const out = resampleRgb48leObjectFit(src, 16, 12, 16, 12, "fill", "4px 0px");
+    expect(out).not.toBe(src);
+    expect(redRow(out, 16, 0)).toEqual([
+      ...Array(4).fill(0),
+      ...Array(4).fill(10000),
+      ...Array(4).fill(20000),
+      ...Array(4).fill(30000),
+    ]);
+  });
+
+  it("resolves an edge offset computed as calc(100% - Npx)", () => {
+    // `right 2px` computes to calc(100% - 2px): 16 wide content in a 24 box ends 2px from the right.
+    const out = resampleRgb48leObjectFit(src, 16, 12, 24, 12, "none", "calc(100% - 2px) 0%");
+    expect(firstLitColumn(out, 24, 0)).toBe(6);
+    expect(redRow(out, 24, 0)[21]).toBe(40000);
+    expect(redRow(out, 24, 0).slice(22)).toEqual([0, 0]);
+  });
+
+  it("scales px offsets when the destination is smaller than the CSS box", () => {
+    // The CSS box is 48×24; the buffer is drawn at half size (24×12).
+    const out = resampleRgb48leObjectFit(src, 16, 12, 24, 12, "cover", "12px 50%", {
+      width: 48,
+      height: 24,
+    });
+    expect(firstLitColumn(out, 24, 6)).toBe(6);
+  });
+
+  it.each(["50% 50%", "0% 0%", "100% 100%", "center top", "left bottom", "right", "25% 75%"])(
+    "leaves %s output identical to its fraction-only placement",
+    (position) => {
+      for (const fit of ["cover", "contain", "none", "scale-down", "fill"] as const) {
+        const withBox = resampleRgb48leObjectFit(src, 16, 12, 30, 20, fit, position, {
+          width: 60,
+          height: 40,
+        });
+        const plain = resampleRgb48leObjectFit(src, 16, 12, 30, 20, fit, position);
+        expect(Buffer.compare(withBox, plain)).toBe(0);
+      }
+    },
+  );
+
+  it("renders keyword and percentage positions byte-for-byte as before px support", () => {
+    // Digest of these outputs taken from the resampler before lengths were read.
+    const hash = createHash("sha256");
+    const positions = [
+      undefined,
+      "",
+      "50% 50%",
+      "0% 0%",
+      "100% 100%",
+      "center top",
+      "left bottom",
+      "right",
+      "top",
+      "25% 75%",
+      "-37.5% 120%",
+      "33.3333% 12.5%",
+    ];
+    for (const position of positions) {
+      for (const fit of ["fill", "cover", "contain", "none", "scale-down"] as const) {
+        for (const [w, h] of [
+          [30, 20],
+          [16, 12],
+          [10, 30],
+          [7, 5],
+        ] as const) {
+          hash.update(resampleRgb48leObjectFit(src, 16, 12, w, h, fit, position));
+        }
+      }
+    }
+    expect(hash.digest("hex")).toBe(
+      "81d38498f8ef4e14f7e2bae7c20e5e9b48810fee6b17fd9a7ee89136cacf3f46",
+    );
+  });
+
+  it("still returns the source for a same-size fill with a zero offset", () => {
+    expect(resampleRgb48leObjectFit(src, 16, 12, 16, 12, "fill", "0px 0px")).toBe(src);
+    expect(resampleRgb48leObjectFit(src, 16, 12, 16, 12, "fill", "300px 50%")).not.toBe(src);
   });
 });

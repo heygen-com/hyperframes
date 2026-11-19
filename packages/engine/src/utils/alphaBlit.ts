@@ -770,49 +770,129 @@ export function blitRgb48leAffine(
 export type ObjectFit = "fill" | "cover" | "contain" | "none" | "scale-down";
 
 /**
- * Parse a single axis of a CSS `object-position` string into a fraction of
- * the slack space along that axis. Percentages may lie outside `[0, 1]`.
- *
- * Defaults to 0.5 (centered) for unrecognized inputs to match CSS, which
- * resolves invalid `object-position` values to the initial value (`50% 50%`).
+ * One axis of a resolved CSS `object-position`. The content's offset from the
+ * box's leading edge is `(box - rendered) * fraction + px`: keywords and
+ * percentages set `fraction`, lengths set `px`, and `calc(P% ± Lpx)` sets both.
+ * `px` is in CSS pixels of the element's layout box.
  */
-function parseObjectPositionAxis(value: string, axis: "x" | "y"): number {
+export interface ObjectPositionAxis {
+  fraction: number;
+  px: number;
+}
+
+export interface ObjectPosition {
+  x: ObjectPositionAxis;
+  y: ObjectPositionAxis;
+}
+
+const CENTER_AXIS: ObjectPositionAxis = { fraction: 0.5, px: 0 };
+const KEYWORD_FRACTIONS = new Map<string, number>([
+  ["left", 0],
+  ["top", 0],
+  ["right", 1],
+  ["bottom", 1],
+  ["center", 0.5],
+  ["", 0.5],
+]);
+const CSS_NUMBER = String.raw`[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?`;
+const PX_LENGTH_RE = new RegExp(`^(${CSS_NUMBER})px$`);
+const PERCENT_PLUS_LENGTH_RE = new RegExp(
+  `^calc\\(\\s*(${CSS_NUMBER})(%|px)\\s*([+-])\\s*(${CSS_NUMBER})(%|px)\\s*\\)$`,
+);
+
+/**
+ * Parse a single axis of a computed CSS `object-position` value.
+ *
+ * Chrome's computed value is a pair of `<length>`/`<percentage>` terms: lengths
+ * resolve to px, and edge offsets such as `right 10px` resolve to
+ * `calc(100% - 10px)`. Percentages may lie outside `[0, 1]`.
+ *
+ * Defaults to centered for unrecognized inputs (for example `max()`), matching
+ * CSS, which resolves invalid `object-position` values to the initial value
+ * (`50% 50%`).
+ */
+function parseObjectPositionAxis(value: string): ObjectPositionAxis {
   const lower = value.trim().toLowerCase();
-  if (lower === "left" || lower === "top") return 0;
-  if (lower === "right" || lower === "bottom") return 1;
-  if (lower === "center" || lower === "") return 0.5;
+  const keyword = KEYWORD_FRACTIONS.get(lower);
+  if (keyword !== undefined) return { fraction: keyword, px: 0 };
   if (lower.endsWith("%")) {
     const pct = parseFloat(lower) / 100;
-    return Number.isFinite(pct) ? pct : 0.5;
+    return Number.isFinite(pct) ? { fraction: pct, px: 0 } : CENTER_AXIS;
   }
-  // Pixel values (e.g. "10px") aren't fractional; without the slack-space
-  // numerator we can't honor them precisely. Fall back to center — this is
-  // strictly worse than the browser but matches what we'd render today.
-  if (axis === "x" || axis === "y") return 0.5;
-  return 0.5;
+  return parsePxLength(lower) ?? parsePercentPlusLength(lower) ?? CENTER_AXIS;
+}
+
+function parsePxLength(value: string): ObjectPositionAxis | null {
+  const match = PX_LENGTH_RE.exec(value);
+  const px = Number(match?.[1]);
+  return match && Number.isFinite(px) ? { fraction: 0, px } : null;
+}
+
+/** `calc(P% ± Lpx)`, the computed form of edge offsets such as `right 10px`. */
+function parsePercentPlusLength(value: string): ObjectPositionAxis | null {
+  const match = PERCENT_PLUS_LENGTH_RE.exec(value);
+  if (!match) return null;
+  const axis = { fraction: 0, px: 0 };
+  const terms: Array<[number, string | undefined]> = [
+    [Number(match[1]), match[2]],
+    [Number(match[4]) * (match[3] === "-" ? -1 : 1), match[5]],
+  ];
+  for (const [n, unit] of terms) {
+    if (!Number.isFinite(n)) return null;
+    if (unit === "%") axis.fraction += n / 100;
+    else axis.px += n;
+  }
+  return axis;
+}
+
+/** Split on whitespace outside parentheses, so `calc(50% + 10px)` stays one token. */
+function splitObjectPositionTokens(css: string): string[] {
+  const tokens: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of css) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth = Math.max(0, depth - 1);
+    if (depth === 0 && /\s/.test(ch)) {
+      if (current) tokens.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current) tokens.push(current);
+  return tokens;
 }
 
 /**
- * Parse a CSS `object-position` string like `"50% 50%"`, `"center top"`, or
- * `"25% 75%"` into fractions for X and Y, preserving percentages outside `[0, 1]`.
+ * Parse a computed CSS `object-position` string like `"50% 50%"`,
+ * `"center top"`, `"300px 50%"` or `"calc(100% - 10px) 0px"` into a
+ * fraction of the slack space plus a px offset for each axis.
  *
- * The fractions express how the slack space (the portion of the layout box
- * not covered by the rendered content) should be distributed between the
- * leading and trailing edges. `0` aligns to the left/top, `1` to the
- * right/bottom, `0.5` (the default) centers the content.
+ * The slack space is the portion of the layout box not covered by the rendered
+ * content (zero or negative for `cover`). A fraction of `0` aligns to the
+ * left/top, `1` to the right/bottom, `0.5` (the default) centers the content.
+ * The px offset is added on top, so a length still moves the content when the
+ * slack is zero.
  */
-function parseObjectPosition(css: string | undefined): { x: number; y: number } {
-  if (!css || !css.trim()) return { x: 0.5, y: 0.5 };
-  const tokens = css.trim().split(/\s+/);
+export function parseObjectPosition(css: string | undefined): ObjectPosition {
+  if (!css || !css.trim()) return { x: CENTER_AXIS, y: CENTER_AXIS };
+  const tokens = splitObjectPositionTokens(css.trim());
   if (tokens.length === 1) {
-    const single = tokens[0] ?? "";
-    const v = parseObjectPositionAxis(single, "x");
-    return { x: v, y: 0.5 };
+    return { x: parseObjectPositionAxis(tokens[0] ?? ""), y: CENTER_AXIS };
   }
   return {
-    x: parseObjectPositionAxis(tokens[0] ?? "", "x"),
-    y: parseObjectPositionAxis(tokens[1] ?? "", "y"),
+    x: parseObjectPositionAxis(tokens[0] ?? ""),
+    y: parseObjectPositionAxis(tokens[1] ?? ""),
   };
+}
+
+/**
+ * True when `object-position` moves content that already matches its box
+ * exactly. Only px offsets do: every fraction of zero slack is zero.
+ */
+export function objectPositionHasOffset(pos: ObjectPosition): boolean {
+  return pos.x.px !== 0 || pos.y.px !== 0;
 }
 
 /**
@@ -829,12 +909,17 @@ function computeObjectFitRect(
   dstW: number,
   dstH: number,
   fit: ObjectFit,
-  pos: { x: number; y: number },
+  pos: ObjectPosition,
+  cssBox: { width: number; height: number },
 ): { dx: number; dy: number; dw: number; dh: number } {
+  // px offsets are CSS px of the layout box; the destination may be drawn at a
+  // different size than that box, so scale them into destination pixels.
+  const pxX = pos.x.px === 0 ? 0 : pos.x.px * (dstW / cssBox.width);
+  const pxY = pos.y.px === 0 ? 0 : pos.y.px * (dstH / cssBox.height);
   let renderedW = dstW;
   let renderedH = dstH;
   if (fit === "fill") {
-    return { dx: 0, dy: 0, dw: dstW, dh: dstH };
+    return { dx: pxX, dy: pxY, dw: dstW, dh: dstH };
   }
   if (fit === "none") {
     renderedW = srcW;
@@ -854,8 +939,8 @@ function computeObjectFitRect(
     renderedW = srcW * scale;
     renderedH = srcH * scale;
   }
-  const dx = (dstW - renderedW) * pos.x;
-  const dy = (dstH - renderedH) * pos.y;
+  const dx = (dstW - renderedW) * pos.x.fraction + pxX;
+  const dy = (dstH - renderedH) * pos.y.fraction + pxY;
   return { dx, dy, dw: renderedW, dh: renderedH };
 }
 
@@ -874,9 +959,14 @@ function computeObjectFitRect(
  * its on-canvas affine scale, so a one-time resample here matches the visual
  * quality the rest of the pipeline produces.
  *
- * Returns the source buffer unchanged when `dstW === srcW && dstH === srcH`
- * and `fit === "fill"`, so callers can call this unconditionally without
- * paying for an unnecessary copy.
+ * `objectPosition` is the element's computed `object-position`. Its px
+ * offsets are CSS px of `cssBox`, the element's layout box, which defaults to
+ * `dstW × dstH`; pass it when the destination is drawn at a different size so
+ * the offsets scale with it.
+ *
+ * Returns the source buffer unchanged when `dstW === srcW && dstH === srcH`,
+ * `fit === "fill"` and the position has no px offset, so callers can call this
+ * unconditionally without paying for an unnecessary copy.
  */
 export function resampleRgb48leObjectFit(
   source: Buffer,
@@ -886,11 +976,13 @@ export function resampleRgb48leObjectFit(
   dstH: number,
   fit: ObjectFit = "fill",
   objectPosition?: string,
+  cssBox: { width: number; height: number } = { width: dstW, height: dstH },
 ): Buffer {
   if (srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) {
     return source;
   }
-  if (fit === "fill" && srcW === dstW && srcH === dstH) {
+  const pos = parseObjectPosition(objectPosition);
+  if (fit === "fill" && srcW === dstW && srcH === dstH && !objectPositionHasOffset(pos)) {
     return source;
   }
   if (dstW * dstH > MAX_RGB48LE_PIXELS) {
@@ -899,8 +991,7 @@ export function resampleRgb48leObjectFit(
     );
   }
 
-  const pos = parseObjectPosition(objectPosition);
-  const rect = computeObjectFitRect(srcW, srcH, dstW, dstH, fit, pos);
+  const rect = computeObjectFitRect(srcW, srcH, dstW, dstH, fit, pos, cssBox);
   const dst = Buffer.alloc(dstW * dstH * 6); // pre-zeroed → opaque black background
 
   const stride = dstW * 6;

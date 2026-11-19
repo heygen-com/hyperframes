@@ -24,6 +24,8 @@ import {
   ffmpegSeekSeconds,
   getCgroupMemoryLimitMb,
   normalizeObjectFit,
+  objectPositionHasOffset,
+  parseObjectPosition,
   queryElementStacking,
   resampleRgb48leObjectFit,
   resolveFinalFrameExtractionWindow,
@@ -666,7 +668,15 @@ export function decodeHdrImageBuffers(args: {
       const decoded = decodePngToRgb48le(readFileSync(srcPath));
       const releaseDecoded = reserveHdrExtractionBytes(decoded.data.length, budgetBytes);
       const layout = prep.hdrExtractionDims.get(imageId);
-      if (!layout || (layout.width === decoded.width && layout.height === decoded.height)) {
+      const fitInfo = prep.hdrImageFitInfo.get(imageId);
+      // A decoded image that already matches its box draws as-is, unless a px
+      // object-position moves it inside that box.
+      if (
+        !layout ||
+        (layout.width === decoded.width &&
+          layout.height === decoded.height &&
+          !objectPositionHasOffset(parseObjectPosition(fitInfo?.position)))
+      ) {
         releases.push(releaseDecoded);
         out.set(imageId, decoded);
         continue;
@@ -681,7 +691,6 @@ export function decodeHdrImageBuffers(args: {
       }
       try {
         releases.push(reserveHdrExtractionBytes(target.width * target.height * 6, budgetBytes));
-        const fitInfo = prep.hdrImageFitInfo.get(imageId);
         const resampled = resampleRgb48leObjectFit(
           decoded.data,
           decoded.width,
@@ -690,6 +699,7 @@ export function decodeHdrImageBuffers(args: {
           target.height,
           normalizeObjectFit(fitInfo?.fit),
           fitInfo?.position,
+          layout,
         );
         out.set(imageId, { data: resampled, width: target.width, height: target.height });
       } finally {

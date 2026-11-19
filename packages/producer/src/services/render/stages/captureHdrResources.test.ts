@@ -971,7 +971,10 @@ describe("decodeHdrImageBuffers", () => {
   });
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-  function decodeArgs(layout: { width: number; height: number }) {
+  function decodeArgs(
+    layout: { width: number; height: number },
+    fitInfo?: { fit: string; position: string },
+  ) {
     const prep = planHdrResources({
       composition: { duration: 1, width: 1920, height: 1080, videos: [], audios: [], images: [] },
       nativeHdrVideoIds: new Set(),
@@ -980,6 +983,7 @@ describe("decodeHdrImageBuffers", () => {
       compiledDir: dir,
     });
     prep.hdrExtractionDims.set("img", layout);
+    if (fitInfo) prep.hdrImageFitInfo.set("img", fitInfo);
     return {
       log: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
       hdrImageSrcPaths: new Map([["img", srcPath]]),
@@ -999,6 +1003,49 @@ describe("decodeHdrImageBuffers", () => {
       expect(buffer?.data.length).toBeLessThanOrEqual(1920 * 1080 * 6);
       expect(getHdrExtractionReservedBytes()).toBe(1080 * 1080 * 6);
       expect(args.log.warn).toHaveBeenCalledOnce();
+    } finally {
+      releaseReservation();
+    }
+  });
+
+  it("draws an image that matches its box as decoded when the position has no px offset", () => {
+    const args = decodeArgs({ width: 2, height: 2 }, { fit: "cover", position: "0% 100%" });
+    const { buffers, releaseReservation } = decodeHdrImageBuffers(args);
+    try {
+      const buffer = buffers.get("img");
+      expect(buffer).toMatchObject({ width: 2, height: 2 });
+      expect(buffer?.data.readUInt16LE(0)).toBe(0x4040);
+    } finally {
+      releaseReservation();
+    }
+  });
+
+  it("moves an image that matches its box by a px object-position", () => {
+    const args = decodeArgs({ width: 2, height: 2 }, { fit: "cover", position: "1px 50%" });
+    const { buffers, releaseReservation } = decodeHdrImageBuffers(args);
+    try {
+      const buffer = buffers.get("img");
+      expect(buffer).toMatchObject({ width: 2, height: 2 });
+      // Column 0 is uncovered after the 1px shift; column 1 holds the image.
+      for (const y of [0, 1]) {
+        expect(buffer?.data.readUInt16LE(y * 12)).toBe(0);
+        expect(buffer?.data.readUInt16LE(y * 12 + 6)).toBe(0x4040);
+      }
+    } finally {
+      releaseReservation();
+    }
+  });
+
+  it("scales a px object-position with a layout box drawn smaller than its CSS size", () => {
+    // 3840x100 is drawn at 1920x50, so 200 CSS px is 100 buffer columns.
+    const args = decodeArgs({ width: 3840, height: 100 }, { fit: "fill", position: "200px 0px" });
+    const { buffers, releaseReservation } = decodeHdrImageBuffers(args);
+    try {
+      const buffer = buffers.get("img");
+      expect(buffer).toMatchObject({ width: 1920, height: 50 });
+      const row = 10 * 1920 * 6;
+      expect(buffer?.data.readUInt16LE(row + 99 * 6)).toBe(0);
+      expect(buffer?.data.readUInt16LE(row + 100 * 6)).toBe(0x4040);
     } finally {
       releaseReservation();
     }

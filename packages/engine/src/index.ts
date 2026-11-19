@@ -497,7 +497,11 @@ export {
   roundedRectAlpha,
   resampleRgb48leObjectFit,
   normalizeObjectFit,
+  parseObjectPosition,
+  objectPositionHasOffset,
   type ObjectFit,
+  type ObjectPosition,
+  type ObjectPositionAxis,
 } from "./utils/alphaBlit.js";
 
 export { groupIntoLayers, type CompositeLayer } from "./utils/layerCompositor.js";
