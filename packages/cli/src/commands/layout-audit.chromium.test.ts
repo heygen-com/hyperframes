@@ -316,6 +316,61 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
     expect(codes).toContain("text_not_painted");
   });
 
+  // Chrome may end a line between any two Hangul syllables unless word-break is keep-all.
+  it.each([
+    {
+      name: "a Korean word wrapped between syllables",
+      text: "가나다라마바사아",
+      css: "",
+      split: true,
+    },
+    {
+      name: "that word under a caption tilt",
+      text: "가나다라마바사아",
+      css: "transform:rotate(-4deg)",
+      split: true,
+    },
+    {
+      name: "a Latin word with its Korean particle wrapped apart",
+      text: "HyperFrames로",
+      css: "width:6.9em;font-family:Arial",
+      split: true,
+    },
+    {
+      name: "Korean wrapped at spaces with keep-all",
+      text: "가나다 라마바 사아자",
+      css: "word-break:keep-all",
+      split: false,
+    },
+    {
+      name: "a Latin face with Korean fallback, wrapped at spaces",
+      text: "HyperFrames로 만든 자막",
+      css: "width:8.5em;word-break:keep-all;font-family:Arial",
+      split: false,
+    },
+    {
+      name: "Korean on one line",
+      text: "가나다라마바사아",
+      css: "width:auto;white-space:nowrap",
+      split: false,
+    },
+    {
+      name: "Korean lines split by <br>",
+      text: "가나다<br>라마바",
+      css: "width:auto",
+      split: false,
+    },
+    { name: "wrapped English", text: "Launch faster ship sooner", css: "", split: false },
+    { name: "wrapped Japanese", text: "日本語の字幕はどこでも改行できます", css: "", split: false },
+  ])("text_word_split: $name", async ({ text, css, split }) => {
+    const codes = await auditCodes(
+      stage(
+        `<p style="position:absolute;left:100px;top:100px;width:3.5em;margin:0;font:700 80px/1.2 sans-serif;${css}">${text}</p>`,
+      ),
+    );
+    expect(codes.includes("text_word_split")).toBe(split);
+  });
+
   it.each([
     { name: "padding", css: "padding-top:150px" },
     { name: "text indentation", css: "text-indent:1000px;white-space:nowrap" },
