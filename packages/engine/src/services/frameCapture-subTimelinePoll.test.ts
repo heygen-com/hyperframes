@@ -244,6 +244,13 @@ describe("authorScriptsMayRegisterTimelines", () => {
     ).toBe(true);
   });
 
+  // fails without the fix: an SVG element named template has no content, and the scan read it as an HTML one.
+  it("skips an SVG element named template", async () => {
+    expect(await scan(`<body><svg><template></template></svg><script>draw()</script></body>`)).toBe(
+      false,
+    );
+  });
+
   it("answers true for a module script or any code that imports another file", async () => {
     expect(await scan(`<body><script type="module">draw()</script></body>`)).toBe(true);
     expect(await scan(`<body><script>import("./scene.js").then(run)</script></body>`)).toBe(true);
