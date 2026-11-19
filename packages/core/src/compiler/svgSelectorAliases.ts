@@ -170,15 +170,8 @@ export function dropAuthoredSvgReferenceAliases(root: ParentNode): boolean {
     dropped = true;
   }
   for (const template of root.querySelectorAll("template")) {
-    if (template.firstElementChild) {
-      dropped = dropAuthoredSvgReferenceAliases(template) || dropped;
-      for (const el of template.content.querySelectorAll(`[${SVG_REFERENCE_ALIASES_ATTR}]`)) {
-        el.removeAttribute(SVG_REFERENCE_ALIASES_ATTR);
-        dropped = true;
-      }
-    } else {
-      dropped = dropAuthoredSvgReferenceAliases(template.content) || dropped;
-    }
+    const subtree = template.firstElementChild ? template : template.content;
+    dropped = dropAuthoredSvgReferenceAliases(subtree) || dropped;
   }
   return dropped;
 }

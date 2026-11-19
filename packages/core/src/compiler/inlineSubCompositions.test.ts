@@ -1281,7 +1281,7 @@ it("charges the bytes SVG id renaming adds to the mount that grew", () => {
   );
 });
 
-// fails without the fix: a template inside a template was walked once per copy, doubling the work at each level.
+// fails without the fix: nested templates were walked once per copy, and linkedom copied each one's subtree to read it.
 describe("dropAuthoredSvgReferenceAliases", () => {
   const planted = `data-hf-svg-reference-aliases="[]"`;
   const nested = (depth: number): string =>
@@ -1313,7 +1313,7 @@ describe("dropAuthoredSvgReferenceAliases", () => {
 
   it.each(doms)(
     "in %s walks each template once and leaves no copy of the attribute",
-    (_dom, parse) => {
+    (dom, parse) => {
       const depth = 12;
       const { document, serialize } = parse(
         `<!doctype html><html><body>${nested(depth)}</body></html>`,
@@ -1321,12 +1321,20 @@ describe("dropAuthoredSvgReferenceAliases", () => {
       const template = document.querySelector("template")!;
       const owners = new Set([owner(document), owner(template), owner(template.content)]);
       const spies = [...owners].map((proto) => vi.spyOn(proto as Element, "querySelectorAll"));
+      let contentOwner: object = template;
+      while (!Object.getOwnPropertyDescriptor(contentOwner, "content")) {
+        contentOwner = Object.getPrototypeOf(contentOwner);
+      }
+      const contentReads = vi.spyOn(contentOwner as HTMLTemplateElement, "content", "get");
 
       expect(dropAuthoredSvgReferenceAliases(document)).toBe(true);
       const calls = spies.reduce((sum, spy) => sum + spy.mock.calls.length, 0);
+      const reads = contentReads.mock.calls.length;
       spies.forEach((spy) => spy.mockRestore());
+      contentReads.mockRestore();
 
       expect(calls).toBeLessThan(4 * depth);
+      expect(reads).toBeLessThanOrEqual(dom === "linkedom" ? 0 : depth);
       expect(serialize()).not.toContain("data-hf-svg-reference-aliases");
     },
   );
