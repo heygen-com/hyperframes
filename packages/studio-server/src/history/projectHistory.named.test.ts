@@ -182,3 +182,86 @@ describe("undo keeps a file a page still names", () => {
     expect(has("assets/a.png")).toBe(false);
   });
 });
+
+const NOTES =
+  '<template><div data-composition-id="notes"><a href="../assets/notes.txt">n</a></div></template>';
+
+describe("a step over files an undo kept", () => {
+  /** An upload another author's page names, undone (so kept), then revised by that author. */
+  async function keptThenRevised() {
+    const opened = await project({ "index.html": "<h1>Hi</h1>" });
+    const { history, write } = opened;
+    write("assets/notes.txt", "first");
+    await history.claim(you, "Uploaded", ["assets/notes.txt"]);
+    write("compositions/notes.html", NOTES);
+    await history.claim(agent, "Notes in a scene", ["compositions/notes.html"]);
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    write("assets/notes.txt", "revised");
+    await history.claim(agent, "Revised notes", ["assets/notes.txt"]);
+    return opened;
+  }
+
+  // fails without the fix: the kept file skipped the conflict check, so redo put "first" back over "revised".
+  it("redo of a kept upload stops at another author's later edit, and keep-later-edits keeps it", async () => {
+    const { history, read } = await keptThenRevised();
+    expect(await history.step("forward", you)).toMatchObject({ ok: false });
+    expect(read("assets/notes.txt")).toBe("revised");
+    const undid = history.list().find((entry) => entry.label === "Undid: Uploaded")!;
+    expect(await history.undo(undid.id, { who: you, mode: "keep-later-edits" })).toMatchObject({
+      ok: true,
+    });
+    expect(read("assets/notes.txt")).toBe("revised");
+  });
+
+  it("the same later edit stops the redo after the project is reopened", async () => {
+    const { read, reopen } = await keptThenRevised();
+    expect(await (await reopen()).step("forward", you)).toMatchObject({ ok: false });
+    expect(read("assets/notes.txt")).toBe("revised");
+  });
+
+  // fails without the fix: the step back compared the deleted file against what an older redo had kept.
+  it("after a later redo really deletes a kept file, Cmd+Z restores it without a conflict", async () => {
+    const { history, write, read, has, remove } = await project({
+      "index.html": "<h1>Hi</h1>",
+      "assets/notes.txt": "notes",
+    });
+    remove("assets/notes.txt");
+    await history.claim(you, "Deleted notes", ["assets/notes.txt"]);
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    write("compositions/notes.html", NOTES);
+    await history.claim(agent, "Notes in a scene", ["compositions/notes.html"]);
+    expect(await history.step("forward", you)).toMatchObject({ ok: true });
+    expect(has("assets/notes.txt")).toBe(true);
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    write("compositions/notes.html", "<template></template>");
+    await history.claim(agent, "Notes gone", ["compositions/notes.html"]);
+    expect(await history.step("forward", you)).toMatchObject({ ok: true });
+    expect(has("assets/notes.txt")).toBe(false);
+
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(read("assets/notes.txt")).toBe("notes");
+  });
+
+  // fails without the fix: the redo changed no file and recorded none, so Cmd+Z had nothing of the person's to step to.
+  it("a person who undoes and redoes an agent's kept upload can step back over it", async () => {
+    const { history, write } = await project({ "index.html": "<h1>Hi</h1>" });
+    write("assets/song.mp3", "mp3");
+    await history.claim(agent, "Made music", ["assets/song.mp3"]);
+    const [made] = history.list();
+    write("compositions/scene.html", SCENE);
+    await history.claim(agent, "Music in a scene", ["compositions/scene.html"]);
+    const undid = await history.undo(made!.id, { who: you });
+    expect(undid).toMatchObject({ ok: true });
+    expect(await history.step("forward", you)).toMatchObject({ ok: true });
+    expect(history.next("back", you)?.id).toBe(made!.id);
+  });
+
+  // fails without the fix: "constructor" read the empty record's inherited value, a conflict with no newer change.
+  it("undoing an edit to a file named like an object's own key is no conflict", async () => {
+    const { history, write, read } = await project({ constructor: "a" });
+    write("constructor", "b");
+    await history.claim(you, "Edited", ["constructor"]);
+    expect(await history.step("back", you)).toMatchObject({ ok: true });
+    expect(read("constructor")).toBe("a");
+  });
+});
