@@ -4359,4 +4359,22 @@ describe("bundleToSingleHtml with an SVG element named template", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("mounts nothing into a host whose id only an SVG element named template matches", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="2">
+    <svg><template id="card-template"><g id="svg-child"></g></template></svg>
+    <div id="card-host" data-composition-id="card" data-start="0" data-duration="2"></div>
+  </div>
+</body></html>`,
+    });
+    try {
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      expect(document.querySelector("#card-host")?.children.length).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
