@@ -76,6 +76,7 @@ import {
   isJavaScriptType,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
+  dropAuthoredSvgReferenceAliases,
   readDeclaredDefaults,
   parseHostVariableValues,
   boundMediaSrc,
@@ -1207,6 +1208,7 @@ function inlineSubCompositions(
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
 
   if (!hosts.length) {
+    const dropped = dropAuthoredSvgReferenceAliases(document as unknown as Document);
     // Even with no sub-compositions, declared composition variables need a
     // compile-time stylesheet so eval-time reads (GSAP .from immediateRender,
     // top-level script getComputedStyle) resolve var(--slug) — the runtime's
@@ -1217,7 +1219,7 @@ function inlineSubCompositions(
       variableOverrides,
       { chargeBytes: (bytes) => budget.chargeGenerated("composition variables", bytes) },
     );
-    return { html: emitted ? document.toString() : html, variablesByComp: {} };
+    return { html: emitted || dropped ? document.toString() : html, variablesByComp: {} };
   }
 
   const readOnce = new Map<string, string | null>();
