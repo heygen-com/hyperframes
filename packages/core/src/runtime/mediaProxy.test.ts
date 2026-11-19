@@ -1483,6 +1483,53 @@ describe("preview quality: lighter copies of heavy files", () => {
     ]);
   });
 
+  it("keeps an unsized video at its file's size when its copy is made cold, behind a still that set its box", async () => {
+    vi.useFakeTimers();
+    const statuses = [202, 206];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const status = statuses.length > 1 ? statuses.shift()! : statuses[0]!;
+        const headers = status === 202 ? { "Retry-After": "2" } : undefined;
+        return new Response(status === 206 ? "x" : null, { status, headers });
+      }),
+    );
+    const { video, setPreviewQuality, maybeProxyProactively } = await stage({
+      "/video.mp4": HEAVY,
+    });
+    setPreviewQuality(0.25);
+    const el = laidOut(video() as HTMLVideoElement, 300, 150);
+    const media = await import("./media");
+    media.syncRuntimeMedia({
+      clips: [
+        {
+          el,
+          start: 0,
+          mediaStart: 0,
+          duration: 10,
+          end: 10,
+          volume: null,
+          playbackRate: 1,
+          loop: false,
+          sourceDuration: null,
+        },
+      ],
+      timeSeconds: 1,
+      playing: false,
+      playbackRate: 1,
+      getCompositionDuration: () => 0,
+    });
+    maybeProxyProactively(el);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(el.hasAttribute("src")).toBe(false);
+    expect(el.getAttribute("poster")).toContain("hf-proxy-still");
+
+    laidOut(el, 456, 256);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(params(el).get("hf-proxy-light")).toBe("1");
+    expect(pinnedSize(el)).toBe("width: 3840px; height: 2160px; flex-shrink: 0;");
+  });
+
   it("keeps the file of a video that shows it at its own size when it fits", async () => {
     const { video, setPreviewQuality, maybeProxyProactively } = await stage({
       "/video.mp4": HEAVY,

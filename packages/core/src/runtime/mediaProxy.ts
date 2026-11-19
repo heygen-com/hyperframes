@@ -312,11 +312,16 @@ function loadProxy(
 let copySizes: HTMLStyleElement | null = null;
 const sizeRules = new Set<string>();
 const pinnedSizes = new WeakMap<HTMLMediaElement, { href: string; mark: string }>();
+// Read before a hold or a still lays the box out instead of the file.
+const sizedBeforeCopy = new WeakMap<HTMLMediaElement, boolean>();
 const isCopyAddress = (src: string | null) => /[?&]hf-proxy=/.test(src ?? "");
 
 /** While a smaller copy plays, a video the film leaves unsized keeps the size its file gave it. */
 function keepFileSize(el: HTMLMediaElement, href: string, originalSrc: string): void {
-  const size = isVideoElement(el) && sizedByItsFile(el) ? fileSizeOf(el, originalSrc) : null;
+  const decided = sizedBeforeCopy.get(el);
+  sizedBeforeCopy.delete(el);
+  const size =
+    isVideoElement(el) && (decided ?? sizedByItsFile(el)) ? fileSizeOf(el, originalSrc) : null;
   if (!size) {
     pinnedSizes.delete(el);
     el.removeAttribute(PREVIEW_FILE_SIZE_ATTR);
@@ -524,6 +529,7 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     if (proxyRequested.get(el) === originalAttr) proxyRequested.delete(el);
     return;
   }
+  if (isVideoElement(el)) sizedBeforeCopy.set(el, sizedByItsFile(el));
   const held = lightFacts && box && isOversizedForPreview(lightFacts, box) && holdForCopy(el);
   const proxiedSrc = appendProxyParam(
     originalSrc,
@@ -543,6 +549,7 @@ async function makeCopy(el: HTMLMediaElement, job: CopyJob, scale: number | null
     light && !held ? undefined : () => showStill(el, originalSrc, variant, box),
   );
   const wanted = live();
+  if (!served || !wanted) sizedBeforeCopy.delete(el);
   if (held) endCopyHold(el, served && wanted ? null : originalAttr);
   if (!wanted) {
     dropStill(el);
