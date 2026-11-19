@@ -38,7 +38,7 @@ Studio edits the tags you write.
 
 - One scene per sub-composition, short readable ids; the root holds only scene hosts, media and audio.
 - Timed elements are written in the HTML, not made by script, each with a stable `id`.
-- Copy, brand colours and swappable media are variables (`data-var-text`, `data-var-src`, `var(--id)`).
+- Copy, brand colours and swappable media are variables: declare each in `data-composition-variables`, then bind it (`data-var-text`, `data-var-src`, `var(--id)`).
 - One kind per track: `data-track-kind="graphics"` on scene and overlay hosts, `captions` on the one host that holds every caption group.
 - Content stays inside the 90% action-safe box, captions and key text inside 80% title-safe; Studio draws the guides, never add them.
 
