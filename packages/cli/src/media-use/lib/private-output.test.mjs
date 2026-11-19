@@ -93,7 +93,7 @@ test(
 
 test(
   "a folder that cannot be removed does not make discarding throw",
-  { skip: process.platform === "win32" },
+  { skip: process.platform === "win32" || process.getuid?.() === 0 },
   (t) => {
     const out = privateOutputPath("mflux", ".png");
     t.after(() => {

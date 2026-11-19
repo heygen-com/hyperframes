@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert";
-import { readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import { discardPrivateOutput } from "./private-output.mjs";
 import { dirname } from "node:path";
 import {
   entityFrom,
@@ -238,6 +239,8 @@ test("faviconSearch hands verified bytes over as a local file — one fetch, no 
   assert.equal(readFileSync(res.localPath).byteLength, 600, "frozen bytes are the verified bytes");
   assert.equal(fetchMock.mock.callCount(), 1, "single network round-trip");
   assert.equal(res.metadata.provenance.low_res, true);
+  discardPrivateOutput(res.localPath);
+  assert.equal(existsSync(dirname(res.localPath)), false, "resolve can remove its folder");
 });
 
 test("githubAvatarSearch never touches the network for an unmapped entity", async (t) => {

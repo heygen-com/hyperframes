@@ -5,9 +5,8 @@ import { dirname, join } from "node:path";
 // Where a local generator writes its file: inside a fresh folder that only this account can
 // open (mkdtemp: an unguessable name, created exclusively, mode 0700). A guessable name in the
 // shared temp folder, which is /tmp on Linux, could be created first by another account and
-// then taken as the generated file.
+// then taken as the generated file. `made` holds the folders this run created.
 const made = new Set();
-
 export function privateOutputPath(provider, ext) {
   const dir = mkdtempSync(join(tmpdir(), `media-use-${provider}-`));
   made.add(dir);

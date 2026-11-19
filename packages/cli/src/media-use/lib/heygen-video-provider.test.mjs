@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import {
   chmodSync,
+  existsSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -15,6 +16,7 @@ import { basename, dirname, join } from "node:path";
 import { test } from "node:test";
 import { HEYGEN_NOT_AUTHENTICATED_MESSAGE } from "./heygen-cli.mjs";
 import { AVATAR_VIDEO_SIGNIN_MESSAGE } from "./heygen-video-provider.mjs";
+import { discardPrivateOutput } from "./private-output.mjs";
 
 function cleanupDownload(localPath) {
   if (
@@ -193,6 +195,8 @@ test("downloads a generated avatar video and returns the generated MP4 result", 
           },
         });
         assert.deepEqual(readFileSync(result.localPath), VIDEO_FIXTURE);
+        discardPrivateOutput(result.localPath);
+        assert.equal(existsSync(dirname(result.localPath)), false);
       },
     );
   } finally {
