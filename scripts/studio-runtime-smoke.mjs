@@ -39,6 +39,8 @@ const GET_RESPONSES = new Map([
     }),
   ],
   [`${PROJECT_PATH}/preview`, text(SMOKE_COMPOSITION_HTML, "text/html")],
+  // A sealed preview loads under its project's frame token: the server answers 43 URL-safe characters.
+  [`${PROJECT_PATH}/frame-token`, json({ token: "t".repeat(43) })],
   [`${PROJECT_PATH}/thumbnail/index.html`, text(SMOKE_THUMBNAIL_SVG, "image/svg+xml")],
   [`${PROJECT_PATH}/renders`, json({ renders: [] })],
   [`${PROJECT_PATH}/lint`, json({ findings: [] })],
