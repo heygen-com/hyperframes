@@ -10,6 +10,7 @@ import {
   concatListText,
   findFfBinary,
   followFfmpegProgress,
+  localContainerInputArgs,
 } from "@hyperframes/parsers/ff-binaries";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import { ffmpegHasHdrFilters } from "./hdrFilters.js";
@@ -87,7 +88,7 @@ function pieceSecret(): string {
 
 function unguessablePiecePrefix(cacheDir: string, stem: string): string {
   const tag = createHmac("sha256", pieceSecret())
-    .update(`proxy-piece\n${stem}`)
+    .update(`proxy-picture-piece\n${stem}`)
     .digest("hex")
     .slice(0, 32);
   return join(cacheDir, `${CHUNK_PREFIX}${stem}-${tag}-`);
@@ -670,28 +671,8 @@ async function encodeInChunks(
   } finally {
     rmSync(listPath, { force: true });
   }
-  const measured = [...pieces, tempPath];
-  const lengths = ranges.map((range) => range.lengthSeconds);
-  const wanted = [...lengths, lengths.reduce((sum, length) => sum + length, 0)];
-  let short: string | undefined;
-  for (const [index, path] of measured.entries()) {
-    const seconds = (await probeMediaMetadata(path, undefined, signal)).durationSeconds;
-    signal.throwIfAborted();
-    if (
-      short === undefined &&
-      !((seconds ?? NaN) >= wanted[index]! - JOIN_SHORTFALL_ALLOWED_SECONDS)
-    ) {
-      const what = path === tempPath ? "the joined copy" : `piece ${index + 1}`;
-      short = `${what} lasts ${seconds?.toFixed(1) ?? "an unknown time"} s of ${wanted[index]!.toFixed(1)} s`;
-    }
-  }
   for (const piece of pieces) if (existsSync(piece)) unlinkSync(piece);
-  if (short !== undefined) {
-    throw new ProxyTranscodeError(`${short}; its pieces are made again next time`, null, "");
-  }
 }
-
-const JOIN_SHORTFALL_ALLOWED_SECONDS = 1;
 
 const KEYFRAME_EVERY_SECOND_ARGS = ["-force_key_frames", "expr:gte(t,n_forced*1)"];
 // Fixed recipe; changing either array means bumping PROXY_PARAMS_VERSION.
@@ -799,14 +780,9 @@ async function runFfmpeg(
   const videoFilter = await buildVideoFilter(ffmpegPath, sourcePath, metadata, keepsAlpha, box);
   const alphaDecoder = keepsAlpha ? alphaDecoderFor(metadata.color.codecName) : null;
   const decoderArgs = alphaDecoder ? ["-c:v", alphaDecoder] : [];
-  const streamArgs = [
-    ...["-map", "0:V:0"],
-    ...(metadata.audioStream === undefined ? [] : ["-map", `0:a:${metadata.audioStream}`]),
-  ];
-  const totalSeconds = copiedSeconds(
-    metadata.keptStreamsSeconds ?? metadata.durationSeconds,
-    limitSeconds,
-  );
+  const soundMap =
+    metadata.audioStream === undefined ? [] : ["-map", `0:a:${metadata.audioStream}`];
+  const totalSeconds = copiedSeconds(metadata.durationSeconds, limitSeconds);
   // libvpx scales poorly across threads, so alpha pieces run side by side with the cores shared out.
   const gate = keepsAlpha ? ALPHA_PIECE_GATE : UNGATED;
   const vp8Threads = (pieces: number) => [
@@ -826,7 +802,8 @@ async function runFfmpeg(
         ...mediaInputArgs(sourcePath),
         "-i",
         sourcePath,
-        ...streamArgs,
+        ...["-map", "0:V:0"],
+        ...(range ? [] : soundMap),
         ...lengthArgs(range?.lengthSeconds ?? limitSeconds),
         "-vf",
         videoFilter,
@@ -846,22 +823,18 @@ async function runFfmpeg(
         onProgress({ doneSeconds: encodedSeconds, totalSeconds }),
       );
     }
+    const picturePath = soundMap.length ? besideAsTemp(outputPath) : outputPath;
     await encodeInChunks(
       ranges,
       chunks,
-      outputPath,
+      picturePath,
       encode,
       (listPath, target) => {
         // ffmpeg resolves relative list entries against the list path, which breaks on '#' or '?' in a folder name.
         const cwd = JOIN_FROM_CACHE_FOLDER ? dirname(listPath) : undefined;
         return spawnFfmpeg(
           ffmpegPath,
-          concatArgs(
-            cwd ? basename(listPath) : listPath,
-            target,
-            variant,
-            metadata.audioStream !== undefined,
-          ),
+          concatArgs(cwd ? basename(listPath) : listPath, target, variant),
           CONCAT_TIMEOUT_MS,
           signal,
           undefined,
@@ -873,20 +846,78 @@ async function runFfmpeg(
       gate,
       (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
     );
+    if (picturePath !== outputPath) {
+      await addSoundFromSource(
+        ffmpegPath,
+        sourcePath,
+        soundMap,
+        picturePath,
+        outputPath,
+        variant,
+        limitSeconds,
+        signal,
+      );
+    }
   } catch (err) {
     throw withSource(err, () => describeSource(sourcePath, metadata));
   }
 }
 
-function concatArgs(
-  listPath: string,
-  target: string,
+function besideAsTemp(path: string, extension = extname(path)): string {
+  const copyName = basename(path, extname(path)).replace(/^\.tmp-[0-9a-f-]{36}-/, "");
+  return join(dirname(path), `.tmp-${randomUUID()}-${copyName}${extension}`);
+}
+
+async function addSoundFromSource(
+  ffmpegPath: string,
+  sourcePath: string,
+  soundMap: string[],
+  picturePath: string,
+  outputPath: string,
   variant: ProxyVariant,
-  piecesHaveSound: boolean,
-): string[] {
+  limitSeconds: number | undefined,
+  signal: AbortSignal,
+): Promise<void> {
+  const keepsAlpha = variant === "vp8";
+  const soundPath = besideAsTemp(outputPath, keepsAlpha ? ".webm" : ".m4a");
+  const container = keepsAlpha ? "matroska" : "mov";
+  try {
+    await spawnFfmpeg(
+      ffmpegPath,
+      [
+        ...["-y", "-progress", "pipe:1", "-nostats"],
+        ...mediaInputArgs(sourcePath),
+        ...["-i", sourcePath, ...soundMap],
+        ...lengthArgs(limitSeconds),
+        ...(keepsAlpha ? ["-ac", "2", "-c:a", "libopus"] : ["-c:a", "aac"]),
+        soundPath,
+      ],
+      TRANSCODE_STALL_MS,
+      signal,
+    );
+    await spawnFfmpeg(
+      ffmpegPath,
+      [
+        ...["-y", "-copyts"],
+        ...[...localContainerInputArgs(container), "-i", picturePath],
+        ...[...localContainerInputArgs(container), "-i", soundPath],
+        ...["-map", "0:v:0", "-map", "1:a:0", "-c", "copy"],
+        ...(keepsAlpha ? [] : ["-movflags", "+faststart"]),
+        outputPath,
+      ],
+      CONCAT_TIMEOUT_MS,
+      signal,
+    );
+  } finally {
+    rmSync(soundPath, { force: true });
+    rmSync(picturePath, { force: true });
+  }
+}
+
+function concatArgs(listPath: string, target: string, variant: ProxyVariant): string[] {
   return [
     "-y",
-    ...concatListInputArgs(listPath, { exitOnError: !piecesHaveSound }),
+    ...concatListInputArgs(listPath),
     "-c",
     "copy",
     ...(variant === "h264" ? ["-movflags", "+faststart"] : []),
@@ -1042,7 +1073,6 @@ async function transcodeToCache(
         (progress) => reportProgress(job, progress),
         () => job.background && !job.priority,
       );
-      job.abandoned.signal.throwIfAborted();
       renameSync(tempPath, cachePath);
       writeCopyIndex(contentIndex, cachePath);
       maintainProxyCache(cacheDir);

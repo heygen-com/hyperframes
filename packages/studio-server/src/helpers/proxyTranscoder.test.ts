@@ -156,14 +156,6 @@ afterEach(() => {
   delete process.env.HYPERFRAMES_PROXY_MAX_QUEUE;
 });
 
-/** A piece lasts its own stretch of the source, cut as the transcoder cuts it; any other file lasts the source. */
-function lengthOf(path: string, sourceSeconds: number | undefined): number | undefined {
-  const index = /\.part-[^/\\]*-(\d+)\.\w+$/.exec(path)?.[1];
-  if (index === undefined || sourceSeconds === undefined) return sourceSeconds;
-  const count = Math.floor(sourceSeconds / PIECE_SECONDS);
-  return Number(index) < count - 1 ? PIECE_SECONDS : sourceSeconds - (count - 1) * PIECE_SECONDS;
-}
-
 async function loadModule(
   spawn: SpawnImpl,
   ffmpegPath: string | undefined,
@@ -185,10 +177,10 @@ async function loadModule(
     findFfBinary: () => ffmpegPath,
   }));
   vi.doMock("./mediaMetadata.js", () => ({
-    probeMediaMetadata: async (path: string) => ({
+    probeMediaMetadata: async () => ({
       kind: "video",
       color: { isHdr, hdrTransfer, codecName },
-      durationSeconds: lengthOf(path, durationSeconds),
+      durationSeconds,
       streams,
     }),
     probeFirstFrameColour: async () => ({}),
@@ -297,105 +289,6 @@ describe("resolveProxy on a long source", () => {
     ]);
   });
 
-  const isJoinedCopy = (path: string) => basename(path).startsWith(".tmp-");
-
-  /** A source with sound whose files last what `lengthFor` says when they are measured. */
-  async function loadWithSound(
-    lengthFor: (path: string) => number | undefined | Promise<number | undefined>,
-  ) {
-    const { spawn, calls } = createSpawnSpy();
-    vi.resetModules();
-    vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
-    vi.doMock("node:child_process", () => ({ spawn, default: { spawn } }));
-    vi.doMock("@hyperframes/parsers/ff-binaries", async (importOriginal) => ({
-      ...(await importOriginal<typeof import("@hyperframes/parsers/ff-binaries")>()),
-      findFfBinary: () => FFMPEG_PATH,
-    }));
-    vi.doMock("./mediaMetadata.js", () => ({
-      probeMediaMetadata: async (path: string) => ({
-        kind: "video",
-        color: { isHdr: false, hdrTransfer: null },
-        durationSeconds: await lengthFor(path),
-        audioStream: 0,
-      }),
-      probeFirstFrameColour: async () => ({}),
-    }));
-    const projectDir = tmpProject();
-    const sourcePath = join(projectDir, "talk.mov");
-    writeFileSync(sourcePath, "source-bytes");
-    return {
-      ...(await import("./proxyTranscoder.js")),
-      calls,
-      projectDir,
-      sourcePath,
-      cacheDirectory: join(projectDir, ".transcode-cache"),
-    };
-  }
-
-  it("refuses a join of pieces with sound that came out short, and makes its pieces again", async () => {
-    let joinedSeconds = 2 * PIECE_SECONDS;
-    const { resolveProxy, getProxyCachePath, clearFailedTranscodesForTest, ...made } =
-      await loadWithSound((path) =>
-        isJoinedCopy(path) ? joinedSeconds : lengthOf(path, LONG_SECONDS),
-      );
-    const { calls, projectDir, sourcePath, cacheDirectory } = made;
-
-    const short = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
-    await answerAll(calls);
-    expect(calls.at(-1)!.args).not.toContain("-xerror");
-    expect(String(await short)).toContain(
-      `the joined copy lasts ${(2 * PIECE_SECONDS).toFixed(1)} s of`,
-    );
-    expect(copiesIn(cacheDirectory)).toEqual([]);
-
-    clearFailedTranscodesForTest();
-    joinedSeconds = LONG_SECONDS;
-    const piecesBefore = startsOf(calls).length;
-    const whole = resolveProxy(projectDir, sourcePath);
-    await answerAll(calls);
-    expect(await whole).toBe(getProxyCachePath(projectDir, sourcePath));
-    expect(startsOf(calls).length - piecesBefore).toBe(piecesBefore);
-  });
-
-  it("refuses a join whose short piece shortens the copy it adds up to", async () => {
-    const lastPiece = /\.part-[^/\\]*-2\.\w+$/;
-    const shortBy = 14;
-    const { resolveProxy, calls, projectDir, sourcePath, cacheDirectory } = await loadWithSound(
-      (path) => {
-        if (lastPiece.test(path)) return LONG_SECONDS - 2 * PIECE_SECONDS - shortBy;
-        return isJoinedCopy(path) ? LONG_SECONDS - shortBy : lengthOf(path, LONG_SECONDS);
-      },
-    );
-
-    const short = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
-    await answerAll(calls);
-    expect(String(await short)).toContain(
-      `piece 3 lasts ${(LONG_SECONDS - 2 * PIECE_SECONDS - shortBy).toFixed(1)} s of`,
-    );
-    expect(copiesIn(cacheDirectory)).toEqual([]);
-  });
-
-  it("keeps no copy when its last caller leaves while the copy is being measured", async () => {
-    let measure: (seconds: number) => void = () => {};
-    const measuring = new Promise<number>((resolve) => (measure = resolve));
-    const { resolveProxy, getProxyCachePath, calls, projectDir, sourcePath, cacheDirectory } =
-      await loadWithSound((path) =>
-        isJoinedCopy(path) ? measuring : lengthOf(path, LONG_SECONDS),
-      );
-    const leave = new AbortController();
-
-    const left = resolveProxy(projectDir, sourcePath, "h264", undefined, {
-      signal: leave.signal,
-    }).catch((error: unknown) => error);
-    await answerAll(calls);
-    leave.abort();
-    expect(await left).toBe(leave.signal.reason);
-    measure(LONG_SECONDS);
-    await flush(50);
-    expect(existsSync(getProxyCachePath(projectDir, sourcePath))).toBe(false);
-    expect(readdirSync(cacheDirectory).filter((name) => name.startsWith(".part-"))).toHaveLength(3);
-  });
-
   it.skipIf(process.platform === "win32")(
     "runs the join from the cache folder and names the list there by its bare name",
     async () => {
@@ -472,33 +365,40 @@ describe("resolveProxy on a long source", () => {
     60_000,
   );
 
+  const realCopyOf = async (name: string, makeSource: (path: string) => void) => {
+    vi.resetModules();
+    vi.doUnmock("./mediaMetadata.js");
+    vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
+    const { resolveProxy } = await import("./proxyTranscoder.js");
+    const projectDir = realpathSync(tmpProject());
+    const sourcePath = join(projectDir, name);
+    makeSource(sourcePath);
+    return { sourcePath, proxyPath: await resolveProxy(projectDir, sourcePath) };
+  };
+  const probeJson = (path: string, entries: string) =>
+    JSON.parse(
+      execFileSync(
+        findFfBinary("ffprobe")!,
+        ["-v", "error", "-show_entries", entries, "-of", "json", "--", path],
+        { encoding: "utf8" },
+      ),
+    );
+
   it.skipIf(!realFfmpeg || !findFfBinary("ffprobe"))(
     "joins the pieces of a source with sound into one copy that keeps its sound",
     async () => {
-      vi.resetModules();
-      vi.doUnmock("./mediaMetadata.js");
-      vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
-      const { resolveProxy } = await import("./proxyTranscoder.js");
-      const projectDir = realpathSync(tmpProject());
-      const sourcePath = join(projectDir, "talk.mp4");
-      execFileSync(realFfmpeg!, [
-        ...["-v", "error", "-f", "lavfi", "-i", `color=c=blue:s=32x32:r=2:d=${LONG_SECONDS}`],
-        ...["-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:d=${LONG_SECONDS}`],
-        ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", sourcePath],
+      const { proxyPath } = await realCopyOf("talk.mp4", (path) =>
+        execFileSync(realFfmpeg!, [
+          ...["-v", "error", "-f", "lavfi", "-i", `color=c=blue:s=32x32:r=2:d=${LONG_SECONDS}`],
+          ...["-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:d=${LONG_SECONDS}`],
+          ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", path],
+        ]),
+      );
+      const probed = probeJson(proxyPath, "stream=codec_type:format=duration");
+      expect(probed.streams.map((s: { codec_type: string }) => s.codec_type).sort()).toEqual([
+        "audio",
+        "video",
       ]);
-
-      const proxyPath = await resolveProxy(projectDir, sourcePath);
-      const probed = JSON.parse(
-        execFileSync(
-          findFfBinary("ffprobe")!,
-          [
-            ...["-v", "error", "-show_entries", "stream=codec_type:format=duration"],
-            ...["-of", "json", "--", proxyPath],
-          ],
-          { encoding: "utf8" },
-        ),
-      ) as { streams: Array<{ codec_type: string }>; format: { duration: string } };
-      expect(probed.streams.map((stream) => stream.codec_type).sort()).toEqual(["audio", "video"]);
       expect(Number(probed.format.duration)).toBeCloseTo(LONG_SECONDS, 0);
     },
     60_000,
@@ -507,30 +407,84 @@ describe("resolveProxy on a long source", () => {
   it.skipIf(!realFfmpeg || !findFfBinary("ffprobe"))(
     "keeps a whole copy when a track it leaves out runs longer than the picture",
     async () => {
-      vi.resetModules();
-      vi.doUnmock("./mediaMetadata.js");
-      vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
-      const { resolveProxy } = await import("./proxyTranscoder.js");
-      const projectDir = realpathSync(tmpProject());
-      const sourcePath = join(projectDir, "two-tracks.mp4");
       const shown = LONG_SECONDS - 3;
-      execFileSync(realFfmpeg!, [
-        ...["-v", "error", "-f", "lavfi", "-i", `color=c=blue:s=32x32:r=2:d=${shown}`],
-        ...["-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:d=${shown}`],
-        ...["-f", "lavfi", "-i", `sine=frequency=660:sample_rate=48000:d=${LONG_SECONDS}`],
-        ...["-map", "0", "-map", "1", "-map", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p"],
-        ...["-c:a", "aac", sourcePath],
-      ]);
-
-      const proxyPath = await resolveProxy(projectDir, sourcePath);
-      const seconds = execFileSync(
-        findFfBinary("ffprobe")!,
-        ["-v", "error", "-show_entries", "format=duration", "-of", "json", "--", proxyPath],
-        { encoding: "utf8" },
+      const { proxyPath } = await realCopyOf("two-tracks.mp4", (path) =>
+        execFileSync(realFfmpeg!, [
+          ...["-v", "error", "-f", "lavfi", "-i", `color=c=blue:s=32x32:r=2:d=${shown}`],
+          ...["-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:d=${shown}`],
+          ...["-f", "lavfi", "-i", `sine=frequency=660:sample_rate=48000:d=${LONG_SECONDS}`],
+          ...["-map", "0", "-map", "1", "-map", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p"],
+          ...["-c:a", "aac", path],
+        ]),
       );
-      expect(Number(JSON.parse(seconds).format.duration)).toBeCloseTo(shown, 0);
+      const streams = probeJson(proxyPath, "stream=codec_type,duration").streams;
+      expect(streams.map((s: { codec_type: string }) => s.codec_type).sort()).toEqual([
+        "audio",
+        "video",
+      ]);
+      for (const stream of streams) expect(Number(stream.duration)).toBeCloseTo(shown, 0);
     },
     60_000,
+  );
+
+  const CLAPS = [2, 14.5, 15.2, 29.9, 30.4, 44.6, 47];
+  const FPS = 30;
+  const soundMinusFlashPerClap = (path: string): number[] => {
+    let at = 0;
+    let lit = false;
+    const flashes: number[] = [];
+    const frames = execFileSync(
+      realFfmpeg!,
+      ["-v", "error", "-i", path, "-vf", "signalstats,metadata=print:file=-", "-f", "null", "-"],
+      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+    );
+    for (const line of frames.split(/\r?\n/)) {
+      const time = /pts_time:([\d.]+)/.exec(line);
+      if (time) at = Number(time[1]);
+      const luma = /YAVG=([\d.]+)/.exec(line);
+      if (!luma) continue;
+      if (Number(luma[1]) > 100 && !lit) flashes.push(at);
+      lit = Number(luma[1]) > 100;
+    }
+    const { stderr } = spawnSync(
+      realFfmpeg!,
+      ["-i", path, "-map", "0:a", "-af", "silencedetect=n=-30dB:d=0.1", "-f", "null", "-"],
+      { encoding: "utf8" },
+    );
+    const quiet = [...stderr.matchAll(/silence_(start|end): ([\d.]+)/g)];
+    const sounds = quiet.flatMap((match, index) =>
+      match[1] === "end" && quiet[index + 1]?.[1] === "start" ? [Number(match[2])] : [],
+    );
+    expect(flashes).toHaveLength(CLAPS.length);
+    expect(sounds).toHaveLength(CLAPS.length);
+    return flashes.map((flash, index) => sounds[index]! - flash);
+  };
+
+  it.skipIf(!realFfmpeg || !findFfBinary("ffprobe")).each([
+    ["picture and sound together", 0, 0],
+    ["picture starting late", 0.4, 0],
+    ["sound starting late", 0, 0.4],
+  ])(
+    "keeps every clap within a frame of the source across the seams, %s",
+    async (_case, pictureDelay, soundDelay) => {
+      const during = (seconds: number) =>
+        CLAPS.map((clap) => `between(t,${clap},${clap + seconds})`).join("+");
+      const { sourcePath, proxyPath } = await realCopyOf("claps.mp4", (path) =>
+        execFileSync(realFfmpeg!, [
+          ...["-v", "error", "-itsoffset", String(pictureDelay), "-f", "lavfi", "-i"],
+          `color=black:s=32x32:r=${FPS}:d=${LONG_SECONDS},drawbox=c=white:t=fill:enable='${during(2 / FPS)}'`,
+          ...["-itsoffset", String(soundDelay), "-f", "lavfi", "-i"],
+          `aevalsrc='(${during(0.03)})*sin(2*PI*1000*t)':s=48000:d=${LONG_SECONDS}`,
+          ...["-map", "0:v", "-map", "1:a", "-c:v", "libx264", "-pix_fmt", "yuv420p"],
+          ...["-c:a", "aac", path],
+        ]),
+      );
+      const source = soundMinusFlashPerClap(sourcePath);
+      soundMinusFlashPerClap(proxyPath).forEach((offset, index) =>
+        expect(Math.abs(offset - source[index]!)).toBeLessThanOrEqual(1 / FPS),
+      );
+    },
+    120_000,
   );
 
   it("encodes every piece again when the project shipped pieces at the names it can predict", async () => {

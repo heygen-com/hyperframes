@@ -138,32 +138,6 @@ describe("probeMediaMetadata", () => {
     expect(audioFile).not.toHaveProperty("hasAudio");
   });
 
-  it("reads how long the picture and the sound it plays last, apart from longer tracks it leaves out", async () => {
-    const probe = (streams: object[]) =>
-      probeMediaMetadata("/tmp/clip.mkv", () => ({
-        status: 0,
-        stdout: JSON.stringify({ streams, format: { duration: "50.0" } }),
-        stderr: "",
-      }));
-    const mp4 = await probe([
-      { codec_type: "video", codec_name: "h264", duration: "47.000000" },
-      { codec_type: "audio", codec_name: "aac", duration: "47.021333" },
-      { codec_type: "audio", codec_name: "aac", duration: "50.000000" },
-      { codec_type: "subtitle", codec_name: "mov_text", duration: "50.000000" },
-    ]);
-    expect(mp4).toMatchObject({ durationSeconds: 50, keptStreamsSeconds: 47.021333 });
-    const mkv = await probe([
-      { codec_type: "video", codec_name: "vp9", tags: { DURATION: "00:00:47.000000000" } },
-      { codec_type: "subtitle", codec_name: "ass", tags: { DURATION: "00:00:50.000000000" } },
-    ]);
-    expect(mkv.keptStreamsSeconds).toBe(47);
-    const unknown = await probe([
-      { codec_type: "video", codec_name: "h264" },
-      { codec_type: "audio", codec_name: "aac", duration: "47.0" },
-    ]);
-    expect(unknown).not.toHaveProperty("keptStreamsSeconds");
-  });
-
   it("reads a flac file as audio", async () => {
     const flac = await probeMediaMetadata("/tmp/music.flac", () => ({
       status: 0,

@@ -30,7 +30,7 @@ export interface FfprobeRunResult {
 export type FfprobeRunner = (
   command: string,
   args: string[],
-  options?: { timeout?: number; maxBuffer?: number; signal?: AbortSignal },
+  options?: { timeout?: number; maxBuffer?: number },
 ) => FfprobeRunResult | Promise<FfprobeRunResult>;
 
 /** Default runner: genuinely async (`execFile`), unlike the previous
@@ -41,12 +41,7 @@ const execFileRunner: FfprobeRunner = (command, args, options) =>
     execFile(
       command,
       args,
-      {
-        timeout: options?.timeout,
-        maxBuffer: options?.maxBuffer,
-        signal: options?.signal,
-        windowsHide: true,
-      },
+      { timeout: options?.timeout, maxBuffer: options?.maxBuffer, windowsHide: true },
       (error, stdout, stderr) => {
         if (error && error.code === "ENOENT") {
           resolvePromise({ status: null, stdout: "", stderr: "", error });
@@ -90,7 +85,6 @@ export interface MediaMetadata {
   /** Video stream carries alpha (pix_fmt or the VP8/VP9 alpha_mode tag). */
   hasAlpha?: boolean;
   durationSeconds?: number;
-  keptStreamsSeconds?: number;
   source?: PreviewSourceFacts;
   /** Every stream as `type:codec[flags]`, for a failure report. */
   streams?: string[];
@@ -99,7 +93,6 @@ export interface MediaMetadata {
 
 interface FfprobeStream {
   codec_type?: string;
-  duration?: string;
   codec_name?: string;
   profile?: string;
   pix_fmt?: string;
@@ -281,14 +274,6 @@ type ProbeOutput = {
   format?: { duration?: string; bit_rate?: string };
 };
 
-function streamSeconds(stream: FfprobeStream): number | undefined {
-  const tagged = /^(\d+):(\d+):([\d.]+)$/.exec(stream.tags?.DURATION ?? "");
-  const seconds = tagged
-    ? Number(tagged[1]) * 3600 + Number(tagged[2]) * 60 + Number(tagged[3])
-    : Number(stream.duration);
-  return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
-}
-
 function audioOf(streams: FfprobeStream[]): Pick<MediaMetadata, "hasAudio" | "audioStream"> {
   const audioStream = decodableAudioStream(streams);
   return audioStream === null ? { hasAudio: false } : { hasAudio: true, audioStream };
@@ -309,13 +294,6 @@ function metadataFromProbe(kind: MediaMetadata["kind"], parsed: ProbeOutput): Me
     metadata.hasAlpha = stream !== undefined && videoStreamHasAlpha(stream);
     const duration = Number(parsed.format?.duration);
     if (Number.isFinite(duration) && duration > 0) metadata.durationSeconds = duration;
-    const keptAudio = (parsed.streams ?? []).filter((item) => item.codec_type === "audio")[
-      metadata.audioStream ?? -1
-    ];
-    const longestKept = Math.max(
-      ...[stream, keptAudio].flatMap((item) => (item ? [streamSeconds(item) ?? NaN] : [])),
-    );
-    if (Number.isFinite(longestKept)) metadata.keptStreamsSeconds = longestKept;
     metadata.source = sourceFactsOf(stream, parsed.format?.bit_rate);
   }
   return metadata;
@@ -370,7 +348,6 @@ export async function probeAudioTrack(
 export async function probeMediaMetadata(
   filePath: string,
   runner: FfprobeRunner = execFileRunner,
-  signal?: AbortSignal,
 ): Promise<MediaMetadata> {
   const kind = inferKindFromPath(filePath);
   if (kind === "audio" || kind === "unknown") {
@@ -395,14 +372,14 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate,r_frame_rate,avg_frame_rate,duration:stream_disposition:stream_tags=alpha_mode,DURATION:format=duration,bit_rate",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate,r_frame_rate,avg_frame_rate:stream_disposition:stream_tags=alpha_mode:format=duration,bit_rate",
       "-of",
       "json",
       ...mediaInputArgs(filePath),
       "--",
       filePath,
     ],
-    { timeout: 15_000, maxBuffer: 1024 * 1024, signal },
+    { timeout: 15_000, maxBuffer: 1024 * 1024 },
   );
 
   if (result.error?.code === "ENOENT") {

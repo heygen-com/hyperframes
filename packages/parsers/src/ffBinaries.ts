@@ -273,12 +273,9 @@ export function concatListText(
  * Concat input for a list HyperFrames wrote: entries open only as local mov, matroska or concat
  * files (an ffconcat entry is followed in safe mode), and `-xerror` fails at a refused entry.
  */
-export function concatListInputArgs(
-  concatListPath: string,
-  { exitOnError = true }: { exitOnError?: boolean } = {},
-): string[] {
+export function concatListInputArgs(concatListPath: string): string[] {
   return [
-    ...(exitOnError ? ["-xerror"] : []),
+    "-xerror",
     "-protocol_whitelist",
     "file",
     "-f",
