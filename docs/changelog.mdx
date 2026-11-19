@@ -13,10 +13,11 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
   description="Released - 2026-11-19"
   tags={["Release", "Core", "Media Use", "Adopters"]}
 >
-Cancelling a render now stops its compile, and files a compile downloads have a size cap and one shared deadline. Compositions with many SVG references stay within the compile size limit, and SVG elements named template no longer crash.
+Cancelling a render now stops its compile, and files a compile downloads have a size cap and one shared deadline. Renders read frames from MP4s whose seek index leaves out the first keyframe, and SVG-heavy compositions stay within the compile size limit.
 
 ## Fixes
 
+- **Engine:** Extract frames from MP4s whose seek index leaves out the first keyframe ([9813a6cbe](https://github.com/heygen-com/hyperframes/commit/9813a6cbef97fffda70f5a147b87747f7e35a77b), [#8252](https://github.com/heygen-com/hyperframes/pull/8252)).
 - **Media Use:** Duck, cut, transcribe, dither and audio scripts print control characters as escapes ([98f548447](https://github.com/heygen-com/hyperframes/commit/98f548447e44307d4c240cf100bfb15a5e362b2f), [#8235](https://github.com/heygen-com/hyperframes/pull/8235)).
 - **Core:** Attribute-value escapes write '\<' so style text can't end early ([9e7835367](https://github.com/heygen-com/hyperframes/commit/9e783536701da7f837c6902c737ddf25ab90994b), [#8250](https://github.com/heygen-com/hyperframes/pull/8250)).
 - **Media Use:** Provider error lines print control characters as escapes ([77134c927](https://github.com/heygen-com/hyperframes/commit/77134c92735f0101a78d8ff54e5eacef00a3d862), [#8249](https://github.com/heygen-com/hyperframes/pull/8249)).
@@ -36,6 +37,10 @@ Cancelling a render now stops its compile, and files a compile downloads have a 
 ## Catalog
 
 - **CLI:** Report an empty catalog --type= as a usage error ([c2911adc8](https://github.com/heygen-com/hyperframes/commit/c2911adc8d441b1c54f79237f753f1a9e5fa8dca), [#8130](https://github.com/heygen-com/hyperframes/pull/8130)).
+
+## Internal
+
+- **CLI:** The phone-clip offload tests pass when run together ([3f3a6205a](https://github.com/heygen-com/hyperframes/commit/3f3a6205a76c1a95c9b15ace08272d741b1698c3), [#8071](https://github.com/heygen-com/hyperframes/pull/8071)).
 
 [View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.70...v0.9.71).
 </Update>
