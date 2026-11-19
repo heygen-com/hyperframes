@@ -11,6 +11,7 @@ import {
   scopedModulePrelude,
   wrapScopedCompositionScript,
 } from "./compositionScoping";
+import { escapeCssIdentifier } from "./selectorIdTokens";
 
 describe("composition scoping", () => {
   it("reports the child source before authored code and finishes after a thrown script", () => {
@@ -1616,5 +1617,35 @@ it.each(["a$'b", "a$`b", "a$&b"])(
     const plain = scopeCssToComposition(css("aZZb"), "aZZb");
 
     expect(scopeCssToComposition(css(id), id)).toBe(plain.split("aZZb").join(id));
+  },
+);
+
+// fails without the fix: a `<` in a composition or root id went into the scope as is, so `</style` ended the sheet.
+it.each([false, true])(
+  "scopes ids holding `</style` so they cannot end the style element and still match (compound root: %s)",
+  (compoundAuthoredRoot) => {
+    const id = "scene</style><script>window.ran = 1</script>";
+    const rootId = "root</style><script>window.ran = 2</script>";
+    const css = scopeCssToComposition(
+      `#${escapeCssIdentifier(rootId)} .title { color: red; }`,
+      id,
+      undefined,
+      rootId,
+      { compoundAuthoredRoot },
+    );
+
+    expect(css).not.toMatch(/<\/style|<script/i);
+    const { document } = new JSDOM(
+      `<style>${css}</style><div><div><p class="title"></p></div></div>`,
+    ).window;
+    const host = document.querySelector("body > div")!;
+    host.setAttribute("data-composition-id", id);
+    (compoundAuthoredRoot ? host : host.firstElementChild!).setAttribute(
+      "data-hf-authored-id",
+      rootId,
+    );
+    expect(document.querySelectorAll("style, script").length).toBe(1);
+    const rule = document.styleSheets[0]!.cssRules[0] as CSSStyleRule;
+    expect(document.querySelector(".title")!.matches(rule.selectorText)).toBe(true);
   },
 );

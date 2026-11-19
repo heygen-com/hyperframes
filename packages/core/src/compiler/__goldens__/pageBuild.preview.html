@@ -252,7 +252,7 @@ window.__timelines.main = gsap.timeline({ paused: true });</script><script type=
       function R(e) {
         return Array.from(e, (n) => {
           let t = n.charCodeAt(0);
-          return t === 0 ? "\uFFFD" : t < 32 || t === 127 ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
+          return t === 0 ? "\uFFFD" : t < 32 || t === 127 || n === "<" ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
         }).join("");
       }
       function H(e, n) {
@@ -842,7 +842,7 @@ window.__timelines.main = gsap.timeline({ paused: true });</script><script type=
       function R(e) {
         return Array.from(e, (n) => {
           let t = n.charCodeAt(0);
-          return t === 0 ? "\uFFFD" : t < 32 || t === 127 ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
+          return t === 0 ? "\uFFFD" : t < 32 || t === 127 || n === "<" ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
         }).join("");
       }
       function H(e, n) {
@@ -1432,7 +1432,7 @@ window.__timelines.main = gsap.timeline({ paused: true });</script><script type=
       function R(e) {
         return Array.from(e, (n) => {
           let t = n.charCodeAt(0);
-          return t === 0 ? "\uFFFD" : t < 32 || t === 127 ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
+          return t === 0 ? "\uFFFD" : t < 32 || t === 127 || n === "<" ? `\\${t.toString(16)} ` : n === '"' || n === "\\" ? `\\${n}` : n;
         }).join("");
       }
       function H(e, n) {

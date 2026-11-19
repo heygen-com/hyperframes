@@ -271,7 +271,7 @@ export function escapeCssAttributeValue(value: string): string {
   return Array.from(value, (char) => {
     const code = char.charCodeAt(0);
     if (code === 0) return "\uFFFD";
-    if (code < 0x20 || code === 0x7f) return `\\${code.toString(16)} `;
+    if (code < 0x20 || code === 0x7f || char === "<") return `\\${code.toString(16)} `;
     return char === '"' || char === "\\" ? `\\${char}` : char;
   }).join("");
 }

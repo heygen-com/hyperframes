@@ -1328,6 +1328,25 @@ it("charges a mount's selector aliases while they are built, and each byte once"
   expect(perSrc.get("art.html")).toBeLessThan(growth + 1000);
 });
 
+// fails without the fix: the default scope wrote a host id's `<` as is, so `</style` in it ended the sheet.
+it("scopes a mount whose host id holds `</style` with a selector that cannot end its style element", () => {
+  const id = "scene</style><script>window.ran = true</script>";
+  const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
+    <div data-composition-src="scene.html" data-start="0" data-duration="2"></div>
+  </div></body></html>`);
+  const host = document.querySelector("[data-composition-src]")!;
+  host.setAttribute("data-composition-id", id);
+  const { styles } = inlineSubCompositions(document, [host], {
+    resolveHtml: () =>
+      `<template><div data-composition-id="scene"><style>.title { color: red; }</style></div></template>`,
+    parseHtml: (html) => parseHTML(html).document,
+  });
+
+  expect(styles.map((style) => style.css)).toEqual([
+    String.raw`[data-composition-id="scene\3c /style>\3c script>window.ran = true\3c /script>"] .title { color: red; }`,
+  ]);
+});
+
 // fails without the fix: nested templates were walked per copy, linkedom copied each, and SVG ones rescanned.
 describe("dropAuthoredSvgReferenceAliases", () => {
   const planted = `data-hf-svg-reference-aliases="[]"`;
