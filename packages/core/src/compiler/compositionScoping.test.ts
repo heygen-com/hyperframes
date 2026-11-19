@@ -1620,9 +1620,9 @@ it.each(["a$'b", "a$`b", "a$&b"])(
   },
 );
 
-// fails without the fix: a `<` in a composition or root id went into the scope as is, so `</style` ended the sheet.
+// Scoping escapes `<` in ids itself, so a selector can't end its style element even without postcss.
 it.each([false, true])(
-  "scopes ids holding `</style` so they cannot end the style element and still match (compound root: %s)",
+  "writes `<` in scoped ids as a CSS escape itself, and the selector still matches (compound root: %s)",
   (compoundAuthoredRoot) => {
     const id = "scene</style><script>window.ran = 1</script>";
     const rootId = "root</style><script>window.ran = 2</script>";

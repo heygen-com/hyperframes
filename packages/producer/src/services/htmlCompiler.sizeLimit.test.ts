@@ -341,8 +341,8 @@ describe("variable-driven composition styles and media sources", () => {
     expect(await srcFor("https://example.com/x.mp4\n")).toBe("https://example.com/x.mp4");
   });
 
-  // fails without the fix: the bound value went into a `[src]` selector alias as is and closed the page's `<style>`.
-  it("keeps a bound media source that holds `</style` inside the stylesheet its selector alias lands in", async () => {
+  // The `[src]` alias escapes `<` itself, so it can't end its style element even without postcss.
+  it("writes `<` in a bound media source's selector alias as a CSS escape itself", async () => {
     const svg = `<svg><clipPath id="c"><rect/></clipPath></svg><div clip-path="url(#c)"></div>`;
     const dir = project({
       "index.html": withBody(

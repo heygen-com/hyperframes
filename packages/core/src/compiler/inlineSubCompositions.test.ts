@@ -1328,8 +1328,8 @@ it("charges a mount's selector aliases while they are built, and each byte once"
   expect(perSrc.get("art.html")).toBeLessThan(growth + 1000);
 });
 
-// fails without the fix: the default scope wrote a host id's `<` as is, so `</style` in it ended the sheet.
-it("scopes a mount whose host id holds `</style` with a selector that cannot end its style element", () => {
+// The default scope escapes `<` itself, so it can't end its style element even without postcss.
+it("writes `<` in a host id as a CSS escape itself in the default scope selector", () => {
   const id = "scene</style><script>window.ran = true</script>";
   const { document } = parseHTML(`<!DOCTYPE html><html><body><div data-composition-id="main">
     <div data-composition-src="scene.html" data-start="0" data-duration="2"></div>

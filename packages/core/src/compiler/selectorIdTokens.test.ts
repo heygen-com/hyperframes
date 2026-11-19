@@ -101,7 +101,7 @@ it("serializes control characters inside CSS attribute string values", () => {
   expect(escapeCssAttributeValue('a\nb\rc\fd"e\\f')).toBe('a\\a b\\d c\\c d\\"e\\\\f');
 });
 
-// fails without the fix: `<` was written as is, so a value could close the `<style>` it lands in.
+// The escape writes `<` as `\3c `, so selector text can't end its style element even without postcss.
 it("hex-escapes `<` in an attribute string value, which still reads back as the same value", () => {
   const value = "a</style><script>alert(1)</script>";
   const escaped = escapeCssAttributeValue(value);

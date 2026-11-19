@@ -554,8 +554,8 @@ it("rewrites attribute selectors in linear time however many fragment references
   expect(work(800, sameSymbol) / work(400, sameSymbol)).toBeLessThan(2.6);
 });
 
-// fails without the fix: an aliased attribute value went into the rule as is, so its `</style` ended the sheet.
-it("writes an aliased attribute value that cannot end its style element, and the rule still matches it", () => {
+// An alias escapes `<` itself, so its rule can't end its style element even without postcss.
+it("writes `<` in an aliased attribute value as a CSS escape itself, and the rule still matches it", () => {
   const tail = "</style><script>window.ran = true</script>";
   const after = `clip.mp4#url(#m--c)${tail}`;
   const references = [
