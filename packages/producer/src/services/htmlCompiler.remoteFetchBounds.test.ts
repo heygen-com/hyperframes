@@ -9,6 +9,7 @@ import {
   compileForRender,
   inlineExternalScripts,
   localizeRemoteFontFaces,
+  localizeRemoteMediaSources,
   MAX_REMOTE_FETCHES,
   REMOTE_FETCH_DEADLINE_MS,
 } from "./htmlCompiler.js";
@@ -72,6 +73,22 @@ const deadlineStarts = () =>
     .length;
 
 describe("remote downloads at compile time", () => {
+  // fails without the fix: the localizer had no signal, so a cancelled compile
+  // kept waiting for the media download instead of stopping with the render.
+  it("a cancelled compile stops remote media localization", async () => {
+    const seen = serve("video-bytes", { holdMs: 5_000 });
+    const controller = new AbortController();
+    const dir = mkdtempSync(join(tmpdir(), "hf-remote-media-"));
+    const pending = localizeRemoteMediaSources(
+      '<video src="https://cdn.example.com/clip.mp4"></video>',
+      dir,
+      controller.signal,
+    );
+    setTimeout(() => controller.abort(), 25);
+    await expect(pending).rejects.toThrow();
+    expect(seen.aborted).toBeGreaterThan(0);
+  });
+
   // fails without the fix: every distinct address was downloaded, however many.
   it("refuses more distinct remote scripts than it downloads, before any request", async () => {
     const seen = serve("void 0;");
