@@ -9,7 +9,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { openProjectHistory, type ProjectHistory } from "./projectHistory.js";
 import {
   recordRenderSuccess,
@@ -18,6 +18,7 @@ import {
   recordArtifact,
   recordArtifacts,
   forgetRecordedArtifacts,
+  VideoStateCorruptError,
   type VideoState,
 } from "./videoState.js";
 
@@ -216,17 +217,53 @@ describe("video state", () => {
     expect(state.snapshots.latest).toBeNull();
   });
 
-  it("repairs malformed derived state without losing committed history", async () => {
+  it("restores a damaged state from the backup instead of starting over", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const f = await fixture();
     const revision = await f.edit("first");
-    writeFileSync(join(f.projectDir, ".hyperframes/video-state.json"), "{bad");
+    const statePath = join(f.projectDir, ".hyperframes/video-state.json");
+    writeFileSync(statePath, "{bad");
     await f.history.flush();
     expect(read(f.projectDir).currentRevision).toBe(revision);
+    const aside = readdirSync(join(f.projectDir, ".hyperframes")).find((name) =>
+      name.startsWith("video-state.json.invalid-"),
+    );
+    expect(aside).toBeDefined();
+    expect(readFileSync(join(f.projectDir, ".hyperframes", aside!), "utf8")).toBe("{bad");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("restored the last published state"));
+    warn.mockRestore();
+  });
+
+  it("keeps a damaged state and reports it when no backup can be restored", async () => {
+    const errors: unknown[] = [];
+    const f = await fixture({ onError: (error: unknown) => errors.push(error) });
+    await f.edit("first");
+    const statePath = join(f.projectDir, ".hyperframes/video-state.json");
+    rmSync(join(f.projectDir, ".hyperframes/video-state.json.bak"));
+    writeFileSync(statePath, '{"version":1,"historyId":');
+    await f.history.flush();
+    expect(readFileSync(statePath, "utf8")).toBe('{"version":1,"historyId":');
+    const failure = errors.find((error) => error instanceof VideoStateCorruptError);
+    expect(failure).toBeInstanceOf(VideoStateCorruptError);
+    expect((failure as VideoStateCorruptError).message).toContain(statePath);
+    expect((failure as VideoStateCorruptError).message).toContain("delete it");
     expect(
       readdirSync(join(f.projectDir, ".hyperframes")).some((name) =>
         name.startsWith("video-state.json.invalid-"),
       ),
-    ).toBe(true);
+    ).toBe(false);
+  });
+
+  it("rejects a write over a damaged state that has no backup", async () => {
+    const f = await fixture();
+    await f.edit("first");
+    const statePath = join(f.projectDir, ".hyperframes/video-state.json");
+    rmSync(join(f.projectDir, ".hyperframes/video-state.json.bak"));
+    writeFileSync(statePath, "NUL".repeat(64));
+    await expect(
+      forgetRecordedArtifacts(f.projectDir, [join(f.projectDir, "gone.png")]),
+    ).rejects.toThrow(VideoStateCorruptError);
+    expect(readFileSync(statePath, "utf8")).toBe("NUL".repeat(64));
   });
 
   it("rejects a state file symlink outside the project", async () => {
