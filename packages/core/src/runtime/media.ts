@@ -6,7 +6,12 @@ import { sameInstant } from "../clipFacts";
 import { interpolateVolumeGain } from "./mediaVolumeEnvelope.js";
 import { elementVolumeLaneGain } from "./audioAutomationVolume.js";
 import { fadeGain, NO_FADES, readElementFades } from "../audioFade.js";
-import { readElementPlaybackRate, readElementRateSpec, readMediaStart } from "./playbackRate.js";
+import {
+  mediaSourceDuration,
+  readElementPlaybackRate,
+  readElementRateSpec,
+  readMediaStart,
+} from "./playbackRate.js";
 import { rateAt, sourceTimeAt, timeAtSourceTime } from "../speedRamp.js";
 import type { RuntimeMediaClip } from "./types.js";
 import { clampAudioGain, clipGain, gainTimesLane } from "../audioGain.js";
@@ -29,6 +34,7 @@ export type { RuntimeMediaClip } from "./types.js";
 export {
   readElementPlaybackRate,
   readElementRateSpec,
+  mediaSourceDuration,
   resolveNaturalMediaTimelineDuration,
 } from "./playbackRate.js";
 
@@ -149,7 +155,8 @@ export function refreshRuntimeMediaCache(params?: {
     const playbackRate = readElementPlaybackRate(el);
     const rate = readElementRateSpec(el);
     const loop = el.loop;
-    const sourceDuration = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null;
+    const reported = mediaSourceDuration(el);
+    const sourceDuration = Number.isFinite(reported) && reported > 0 ? reported : null;
     let duration =
       params?.resolveDurationSeconds?.(el) ?? Number.parseFloat(el.dataset.duration ?? "");
     if ((!Number.isFinite(duration) || duration < 0) && sourceDuration != null) {

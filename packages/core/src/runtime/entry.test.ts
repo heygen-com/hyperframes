@@ -623,7 +623,7 @@ describe("runtime entry", () => {
       expect(armed(now, soon)).toEqual([true, false]);
     });
 
-    it("loads a clip with no authored length as a render does, so no reload drops its duration", async () => {
+    it("loads a due clip with no authored length whole and a far one's length only, so no reload drops a duration", async () => {
       spyLoad();
       servePreview();
       const [untrimmed, later] = videos(mountRoot(), "0", "8");
@@ -636,7 +636,8 @@ describe("runtime entry", () => {
       window.__player?.seek(3.6);
       window.__player?.seek(0.5);
       window.__player?.seek(7.5);
-      expect(armed(untrimmed, later)).toEqual([true, true]);
+      expect(armed(untrimmed, later)).toEqual([true, false]);
+      expect(later.preload).toBe("metadata");
       expect(loadsOf(untrimmed, later)).toEqual([1, 1]);
     });
 

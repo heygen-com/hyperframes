@@ -58,6 +58,9 @@ export function sourceDurationOf(
   return reported && reported.src === el.getAttribute("src") ? reported.seconds : sourceDuration;
 }
 
+export const mediaSourceDuration = (el: Pick<Element, "getAttribute"> & { duration: number }) =>
+  sourceDurationOf(el, el.duration);
+
 export const hasRememberedSourceDuration = (el: Pick<Element, "getAttribute">): boolean =>
   Number.isFinite(sourceDurationOf(el, Number.NaN));
 

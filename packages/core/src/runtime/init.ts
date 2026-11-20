@@ -112,6 +112,7 @@ import {
   readElementPlaybackStart,
   readElementRateSpec,
   refreshRuntimeMediaCache,
+  mediaSourceDuration,
   resolveNaturalMediaTimelineDuration,
   resolveRuntimeMediaClipDuration,
   syncRuntimeMedia,
@@ -3655,8 +3656,9 @@ export function initSandboxRuntimeModular(): void {
           context.inheritedDuration > 0
             ? Math.max(0, context.inheritedStart + context.inheritedDuration - start)
             : null;
-        const sourceDuration = Number.isFinite(element.duration)
-          ? resolveNaturalMediaTimelineDuration(element, element.duration)
+        const reported = mediaSourceDuration(element);
+        const sourceDuration = Number.isFinite(reported)
+          ? resolveNaturalMediaTimelineDuration(element, reported)
           : null;
         // The element's own data-duration is an explicit clip-length trim
         // (the studio writes it when you drag the clip edge). It must bound

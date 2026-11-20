@@ -18,6 +18,7 @@ import { readElementPlaybackRate, readMediaStart } from "./playbackRate";
 import {
   parseStrictFiniteTimingNumber,
   resolveMediaElementDurationSeconds,
+  mediaSourceDuration,
   resolveNaturalMediaTimelineDuration,
   resolveTimedImageDurationSeconds,
 } from "./playbackRate";
@@ -447,9 +448,8 @@ export function collectRuntimeTimelinePayload(params: {
       duration = resolveTimelineDurationSeconds(nodeCompositionId);
     }
     if (duration == null && isMediaElement(node)) {
-      if (Number.isFinite(node.duration)) {
-        duration = resolveNaturalMediaTimelineDuration(node, node.duration);
-      }
+      const reported = mediaSourceDuration(node);
+      if (Number.isFinite(reported)) duration = resolveNaturalMediaTimelineDuration(node, reported);
     }
     if (duration == null) duration = resolveTimedImageDurationSeconds(node, start);
     if (duration == null) {
