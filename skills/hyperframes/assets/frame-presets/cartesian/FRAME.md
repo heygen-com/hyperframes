@@ -29,8 +29,8 @@ typography:
   micro:       { fontFamily: "Inter", px: 12, weight: 400, tracking: "2px", upper: true, color: "accent" }
   # — display / hero ramp (Playfair Display 400, sentence case) —
   h3:          { fontFamily: "Playfair Display", cqw: 1.8, weight: 400, lineHeight: 1.1 }
-  timeline-headline:{ fontFamily: "Playfair Display", cqw: 1.9, weight: 400, lineHeight: 1.1 }
-  card-headline:{ fontFamily: "Playfair Display", cqw: 2.0, weight: 400, lineHeight: 1.15 }
+  timeline-headline: { fontFamily: "Playfair Display", cqw: 1.9, weight: 400, lineHeight: 1.1 }
+  card-headline: { fontFamily: "Playfair Display", cqw: 2.0, weight: 400, lineHeight: 1.15 }
   stat-figure: { fontFamily: "Playfair Display", cqw: 3.0, weight: 400, lineHeight: 1.0 }
   quote-mark:  { fontFamily: "Playfair Display", cqw: 9.0, weight: 400, lineHeight: 0.5, color: "line" }
   h2:          { fontFamily: "Playfair Display", cqw: 4.0, weight: 400, lineHeight: 1.1 }

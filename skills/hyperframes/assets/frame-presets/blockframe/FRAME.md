@@ -26,16 +26,16 @@ shadows: { default: "8px 8px 0 black", small: "4px 4px 0 black", hover: "6px 6px
 typography:
   # — reading + chrome ramp —
   body:    { fontFamily: "Inter", cqw: 0.95, weight: 500, lineHeight: 1.6 }
-  card-title:{ fontFamily: "Inter", cqw: 1.15, weight: 700, upper: true, lineHeight: 1.2 }
+  card-title: { fontFamily: "Inter", cqw: 1.15, weight: 700, upper: true, lineHeight: 1.2 }
   label:   { fontFamily: "Space Grotesk", px: 13, weight: 600, tracking: "0.08em", upper: true }
   counter: { fontFamily: "Space Grotesk", px: 14, weight: 700, tracking: "0.1em", upper: true }
   # — display ramp (Inter 800–900, uppercase, negative tracking) —
-  heading-md:{ fontFamily: "Inter", cqw: 2.1, weight: 700, lineHeight: 1.1, tracking: "-0.01em", upper: true }
-  quote-text:{ fontFamily: "Inter", cqw: 2.7, weight: 900, lineHeight: 1.15, tracking: "-0.02em", upper: true }
-  stat-number:{ fontFamily: "Inter", cqw: 3.3, weight: 900, lineHeight: 1.0 }
-  heading-lg:{ fontFamily: "Inter", cqw: 3.3, weight: 800, lineHeight: 1.0, tracking: "-0.02em", upper: true }
-  close-title:{ fontFamily: "Inter", cqw: 4.2, weight: 900, lineHeight: 0.95, tracking: "-0.03em", upper: true }
-  heading-xl:{ fontFamily: "Inter", cqw: 5.0, weight: 900, lineHeight: 0.95, tracking: "-0.03em", upper: true }
+  heading-md: { fontFamily: "Inter", cqw: 2.1, weight: 700, lineHeight: 1.1, tracking: "-0.01em", upper: true }
+  quote-text: { fontFamily: "Inter", cqw: 2.7, weight: 900, lineHeight: 1.15, tracking: "-0.02em", upper: true }
+  stat-number: { fontFamily: "Inter", cqw: 3.3, weight: 900, lineHeight: 1.0 }
+  heading-lg: { fontFamily: "Inter", cqw: 3.3, weight: 800, lineHeight: 1.0, tracking: "-0.02em", upper: true }
+  close-title: { fontFamily: "Inter", cqw: 4.2, weight: 900, lineHeight: 0.95, tracking: "-0.03em", upper: true }
+  heading-xl: { fontFamily: "Inter", cqw: 5.0, weight: 900, lineHeight: 0.95, tracking: "-0.03em", upper: true }
 
 spacing:
   slide-pad: "3.1cqw"   # 60px @1920

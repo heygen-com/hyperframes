@@ -22,21 +22,21 @@ colors:
 typography:
   # — reading + data ramp —
   body:    { fontFamily: "Archivo", cqw: 0.85, weight: 400, lineHeight: 1.5, color: "ink" }
-  body-lede:{ fontFamily: "Archivo", cqw: 0.95, weight: 400, lineHeight: 1.55 }
-  micro-label:{ fontFamily: "Archivo", px: 13, weight: 600, tracking: "0.18em", upper: true }
-  rail-label:{ fontFamily: "Archivo", px: 13, weight: 600, tracking: "0.32em", upper: true }
-  mono-data:{ fontFamily: "JetBrains Mono", cqw: 0.73, weight: 400, tracking: "0.04em" }
+  body-lede: { fontFamily: "Archivo", cqw: 0.95, weight: 400, lineHeight: 1.55 }
+  micro-label: { fontFamily: "Archivo", px: 13, weight: 600, tracking: "0.18em", upper: true }
+  rail-label: { fontFamily: "Archivo", px: 13, weight: 600, tracking: "0.32em", upper: true }
+  mono-data: { fontFamily: "JetBrains Mono", cqw: 0.73, weight: 400, tracking: "0.04em" }
   pagenum: { fontFamily: "JetBrains Mono", px: 13, weight: 400, tracking: "0.08em", opacity: 0.75 }
   # — display ramp (Instrument Serif 400, tight, negative tracking) —
-  ledger-title:{ fontFamily: "Instrument Serif", cqw: 1.55, weight: 400, lineHeight: 1.15 }
-  strand-title:{ fontFamily: "Instrument Serif", cqw: 1.7, weight: 400, lineHeight: 1.1 }
-  headline-sm:{ fontFamily: "Instrument Serif", cqw: 2.9, weight: 400, lineHeight: 1.0 }
-  headline:{ fontFamily: "Instrument Serif", cqw: 4.6, weight: 400, lineHeight: 1.06, tracking: "-0.005em" }
-  date-rail:{ fontFamily: "Instrument Serif", cqw: 5.0, weight: 400, lineHeight: 0.96, tracking: "-0.005em" }
-  display-it:{ fontFamily: "Instrument Serif", cqw: 7.0, weight: 400, italic: true, lineHeight: 1.04, tracking: "-0.005em" }
-  numeral-md:{ fontFamily: "Instrument Serif", cqw: 7.5, weight: 400, lineHeight: 0.92, tracking: "-0.01em" }
-  display:{ fontFamily: "Instrument Serif", cqw: 14.6, weight: 400, lineHeight: 0.86, tracking: "-0.018em" }
-  numeral-jumbo:{ fontFamily: "Instrument Serif", cqw: 28.0, weight: 400, lineHeight: 0.84, tracking: "-0.04em" }
+  ledger-title: { fontFamily: "Instrument Serif", cqw: 1.55, weight: 400, lineHeight: 1.15 }
+  strand-title: { fontFamily: "Instrument Serif", cqw: 1.7, weight: 400, lineHeight: 1.1 }
+  headline-sm: { fontFamily: "Instrument Serif", cqw: 2.9, weight: 400, lineHeight: 1.0 }
+  headline: { fontFamily: "Instrument Serif", cqw: 4.6, weight: 400, lineHeight: 1.06, tracking: "-0.005em" }
+  date-rail: { fontFamily: "Instrument Serif", cqw: 5.0, weight: 400, lineHeight: 0.96, tracking: "-0.005em" }
+  display-it: { fontFamily: "Instrument Serif", cqw: 7.0, weight: 400, italic: true, lineHeight: 1.04, tracking: "-0.005em" }
+  numeral-md: { fontFamily: "Instrument Serif", cqw: 7.5, weight: 400, lineHeight: 0.92, tracking: "-0.01em" }
+  display: { fontFamily: "Instrument Serif", cqw: 14.6, weight: 400, lineHeight: 0.86, tracking: "-0.018em" }
+  numeral-jumbo: { fontFamily: "Instrument Serif", cqw: 28.0, weight: 400, lineHeight: 0.84, tracking: "-0.04em" }
 
 spacing:
   pad-edge: "4cqw"
