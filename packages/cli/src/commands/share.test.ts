@@ -278,6 +278,17 @@ describe("a received folder whose record names an existing review", () => {
     );
   });
 
+  it.each([
+    ["a share still in progress", { ...linked, activity: { step: "uploading" }, ready: false }],
+    ["an unopened record with no share yet", { ...linked, share: null, ready: false, url: null }],
+  ])("refuses unattended without --review for %s", async (_label, state) => {
+    mocks.status.mockResolvedValue(state);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--json"] });
+    expect(consumeCommandResult().exitCode).toBe(2);
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+
   it("asks nothing in a folder that is not received", async () => {
     mocks.received = null;
     mocks.unattended = false;
