@@ -20,7 +20,8 @@ import { elementFxChain, groupAutomationLanes, isCarveLane } from "./automationL
 import { AUTOMATION_LANE_H } from "./automationLaneHeight";
 import { clipTimingStart } from "../../hooks/gsapShared";
 import { LaneToggleButton, LayerDisclosureRow } from "./LayerDisclosureRow";
-import { LABEL_COL_W, TRACK_H, getTimelineLaneTop } from "./timelineLayout";
+import { LABEL_COL_W, getTimelineLaneTop } from "./timelineLayout";
+import { useTimelineTrackHeight } from "./useTimelineTrackHeight";
 import type { TimelineTheme } from "./timelineTheme";
 import { trackDisplaySuffix } from "./timelineTrackDisplay";
 import { AutomationLaneHeaderRow, PropertyGroupHeaderRow } from "./trackHeaderLabelRows";
@@ -109,6 +110,7 @@ export function TimelineTrackHeader({
   onSeek,
   rovingTargetId = null,
 }: TimelineTrackHeaderProps) {
+  const trackHeight = useTimelineTrackHeight();
   const clipPercentage = keyframeClip
     ? ((currentTime - keyframeClip.start) / keyframeClip.duration) * 100
     : 0;
@@ -301,7 +303,7 @@ export function TimelineTrackHeader({
     >
       {!isKeyframeLayer ? (
         <>
-          {/* The two lines own exactly TRACK_H, not the whole header.
+          {/* The two lines own exactly one track height, not the whole header.
               `justify-center` on the header itself centred them in its FULL
               height — which grows by AUTOMATION_LANE_H per open lane — so
               opening one pushed the name and its controls down THROUGH the lane
@@ -312,7 +314,7 @@ export function TimelineTrackHeader({
                 ? "flex flex-col justify-center gap-0.5 px-1.5 text-[var(--timeline-handle)]"
                 : "flex flex-col items-center justify-center gap-0.5"
             }
-            style={{ height: TRACK_H }}
+            style={{ height: trackHeight }}
           >
             <PlainTrackHeader
               trackNumber={trackNumber}
@@ -445,7 +447,7 @@ export function TimelineTrackHeader({
               alsoAutomatedBy={
                 groupAutomatedTargets.has(row.key) ? (groupLabelForNote ?? groupOwner) : undefined
               }
-              top={getTimelineLaneTop(lanes.length) + index * AUTOMATION_LANE_H}
+              top={getTimelineLaneTop(lanes.length, trackHeight) + index * AUTOMATION_LANE_H}
               isLastLane={index === automationRows.length - 1}
               gutterBackground={gutterFill(theme.gutterBackground, isGroupMember)}
               columnWidth={showTrackLabel ? LABEL_COL_W : contentOrigin}

@@ -12,7 +12,8 @@ import { groupAutomationLanes } from "./automationLaneData";
 import { groupAutomationElement } from "./groupAutomationElement";
 import { TimelineAutomationLaneSlot } from "./TimelineAutomationLaneSlot";
 import { TimelineGroupLaneLabels } from "./TimelineGroupLaneLabels";
-import { LABEL_COL_W, TRACK_H } from "./timelineLayout";
+import { LABEL_COL_W } from "./timelineLayout";
+import { useTimelineTrackHeight } from "./useTimelineTrackHeight";
 import type { UseAutomationLanesResult } from "./useAutomationLanes";
 import { useDomEditSelectionContextOptional } from "../../contexts/DomEditContext";
 import { useTimelineEditContextOptional } from "../../contexts/TimelineEditContext";
@@ -74,6 +75,7 @@ export function TimelineGroupRow({
   contentGutter,
   trackContentWidth,
 }: TimelineGroupRowProps) {
+  const trackHeight = useTimelineTrackHeight();
   // From the group, NOT from `tracks`: a collapsed group emits no member rows
   // into the display list, and every one of these reads silently degraded to
   // empty in that (default) state — the lane count
@@ -139,14 +141,14 @@ export function TimelineGroupRow({
       rovingTargetId={rovingTargetId}
     >
       {/* Header and its lane labels in ONE sticky column — the shape
-          `TimelineTrackHeader` already uses: a fixed TRACK_H line box with the
+          `TimelineTrackHeader` already uses: a fixed track-height line box with the
           lane rows absolutely positioned beneath it, the whole thing pinned.
-          The labels used to be SIBLINGS of the header, so `absolute left-0`
-          resolved against the ROW, and the row is what scrolls horizontally —
-          they slid away with the canvas. Sticky lives here rather than on the
-          header, which keeps its own box inside; a zero-width sticky wrapper
-          around the labels alone does not work either, because as a flex item
-          after the header it starts at x = columnWidth, i.e. inside the lanes. */}
+          As SIBLINGS of the header, `absolute left-0` would resolve against the
+          ROW, which scrolls horizontally, and the labels would slide away with
+          the canvas. Sticky lives here rather than on the header, which keeps
+          its own box inside; a zero-width sticky wrapper around the labels alone
+          does not work either, because as a flex item after the header it
+          starts at x = columnWidth, i.e. inside the lanes. */}
       <div
         className="sticky left-0 z-12 shrink-0"
         style={{ width: contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin }}
@@ -186,7 +188,7 @@ export function TimelineGroupRow({
           <TimelineGroupLaneLabels
             groupElement={groupElement}
             groupLabel={group.label}
-            top={TRACK_H}
+            top={trackHeight}
             columnWidth={contentOrigin >= LABEL_COL_W ? LABEL_COL_W : contentOrigin}
             gutterBackground={theme.gutterBackground}
             accentColor={GROUP_LANE_ACCENT}
@@ -213,7 +215,7 @@ export function TimelineGroupRow({
             pps={pps}
             // Below the strip, which sits directly under the header row.
             laneCount={0}
-            topOffset={TRACK_H}
+            topOffset={trackHeight}
             accentColor={GROUP_LANE_ACCENT}
             currentTime={currentTime}
             beatTimes={beatTimes}

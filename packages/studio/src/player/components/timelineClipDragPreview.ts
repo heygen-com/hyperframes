@@ -135,9 +135,10 @@ function dragRowAim(
   let y = clientY - (ctx.scroll?.getBoundingClientRect().top ?? 0) + (ctx.scroll?.scrollTop ?? 0);
   if (drag.started && drag.insertRow !== null) {
     const top = geometry.getRowTop(drag.insertRow);
-    if (y >= top - INSERT_SEAM_PX && y <= top + TRACK_H + INSERT_SEAM_PX)
+    const { trackHeight } = geometry;
+    if (y >= top - INSERT_SEAM_PX && y <= top + trackHeight + INSERT_SEAM_PX)
       return { rowFloat: drag.insertRow, insertRow: drag.insertRow };
-    if (y > top + TRACK_H) y -= TRACK_H;
+    if (y > top + trackHeight) y -= trackHeight;
   }
   const rowFloat = geometry.getRowFromY(y);
   return { rowFloat, insertRow: physicalInsertRow(rowFloat, y, ctx, geometry) };
@@ -211,13 +212,13 @@ export function computeDragPreview(
   const { scroll, pps, duration, trackOrder, buildSnapTargets } = ctx;
   const dragMaxStart = resolveDragMaxStart(scroll, pps, duration);
   const scrollRectTop = scroll?.getBoundingClientRect().top ?? 0;
+  // Without ctx.rowGeometry the rows default to TRACK_H whatever the density; callers pass it.
   const geometry =
     ctx.rowGeometry ?? getTimelineRowGeometry(ctx.rowHeights ?? ctx.trackOrder.map(() => TRACK_H));
   const originRow = geometry.getRowFromY(drag.originClientY - scrollRectTop + drag.originScrollTop);
   const aim = dragRowAim(drag, clientY, ctx, geometry);
   const currentRow = aim.rowFloat;
-  // resolveTimelineMove's vertical axis is row indices, which is why the pointer
-  // and scroll pixels are folded into originRow/currentRow above.
+  // resolveTimelineMove works in rows, so pointer and scroll pixels fold into originRow/currentRow.
   const nextMove = resolveTimelineMove(
     {
       start: drag.element.start,
