@@ -167,8 +167,8 @@ export function escapeCssIdentifier(value: string): string {
 
 const NO_MATCH = -1;
 const UNKNOWN = -2;
-const HEX_DIGIT = /[0-9a-fA-F]/;
-const ESCAPE_SPACE = /[ \t\r\n\f]/;
+// One CSS escape, anchored where it is tried: at most nine characters, so each try costs a constant.
+const ESCAPE_AT = /\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])/y;
 
 /** Regions of `selector` where `#` is never an id prefix: a closed comment, an escape, a closed quoted string, or a
  * whole attribute bracket. Each opener's closer is memoized, so an unclosed opener costs one read: linear on any input. */
@@ -221,44 +221,40 @@ function guardedSelectorSegments(selector: string): Array<readonly [number, numb
       if (selector[i] === "\\") return i + 1 < n ? i + 2 : [NO_MATCH];
       return i + 1;
     });
+  const quoteEnd = (start: number): number => {
+    const close = closeQuote(selector[start] as '"' | "'", start + 1);
+    return close === NO_MATCH ? NO_MATCH : close + 1;
+  };
+  // Where the token at `i` inside a bracket ends, or NO_MATCH when it can't close (an unclosed comment or quote).
+  const bracketTokenEnd = (i: number): number => {
+    const char = selector[i];
+    if (char === "/" && selector[i + 1] === "*") return commentEnd(i);
+    if (char === '"' || char === "'") return quoteEnd(i);
+    if (char !== "\\") return i + 1;
+    return i + 1 < n ? i + 2 : NO_MATCH;
+  };
   const bracketClose = new Int32Array(n).fill(UNKNOWN);
   // Index of the `]` that closes a bracket whose body starts at `from`, or NO_MATCH.
   const closeBracket = (from: number) =>
     walk(bracketClose, from, (i) => {
-      const char = selector[i];
-      if (char === "]") return [i];
-      if (char === "/" && selector[i + 1] === "*") {
-        const end = commentEnd(i);
-        return end === NO_MATCH ? [NO_MATCH] : end;
-      }
-      if (char === '"' || char === "'") {
-        const close = closeQuote(char, i + 1);
-        return close === NO_MATCH ? [NO_MATCH] : close + 1;
-      }
-      if (char === "\\") return i + 1 < n ? i + 2 : [NO_MATCH];
-      return i + 1;
+      if (selector[i] === "]") return [i];
+      const end = bracketTokenEnd(i);
+      return end === NO_MATCH ? [NO_MATCH] : end;
     });
   const escapeEnd = (start: number): number => {
-    if (start + 1 >= n) return NO_MATCH;
-    let end = start + 1;
-    while (end < n && end - start <= 6 && HEX_DIGIT.test(selector[end]!)) end += 1;
-    if (end === start + 1) return start + 2;
-    if (selector[end] === "\r" && selector[end + 1] === "\n") return end + 2;
-    return end < n && ESCAPE_SPACE.test(selector[end]!) ? end + 1 : end;
+    ESCAPE_AT.lastIndex = start;
+    return ESCAPE_AT.test(selector) ? ESCAPE_AT.lastIndex : NO_MATCH;
+  };
+  const bracketEnd = (start: number): number => {
+    const close = closeBracket(start + 1);
+    return close === NO_MATCH ? NO_MATCH : close + 1;
   };
   const segmentEnd = (start: number): number => {
     const char = selector[start];
     if (char === "/") return selector[start + 1] === "*" ? commentEnd(start) : NO_MATCH;
     if (char === "\\") return escapeEnd(start);
-    if (char === '"' || char === "'") {
-      const close = closeQuote(char, start + 1);
-      return close === NO_MATCH ? NO_MATCH : close + 1;
-    }
-    if (char === "[") {
-      const close = closeBracket(start + 1);
-      return close === NO_MATCH ? NO_MATCH : close + 1;
-    }
-    return NO_MATCH;
+    if (char === '"' || char === "'") return quoteEnd(start);
+    return char === "[" ? bracketEnd(start) : NO_MATCH;
   };
 
   const segments: Array<readonly [number, number]> = [];
