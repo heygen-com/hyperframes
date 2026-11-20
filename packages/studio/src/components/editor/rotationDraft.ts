@@ -8,7 +8,7 @@ import {
 } from "./manualEdits";
 import { getOffsetDragGsap } from "./manualOffsetDrag";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
-import { endStudioManualEditGesture, isStudioManualEditGestureCurrent } from "./manualEditsDom";
+import { endStudioManualEditGesture, isStudioManualEditGestureCurrent } from "./manualEditGesture";
 import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
 
 function lastRuleTransform(element: HTMLElement): string {

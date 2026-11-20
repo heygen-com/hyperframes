@@ -22,7 +22,7 @@ import {
 import { recordLiveSet } from "@hyperframes/core/runtime/soft-reload";
 import { applyPatch } from "./sourcePatcher";
 import { beginStudioManualEditGesture } from "../components/editor/manualEdits";
-import { studioManualEditSavesIn } from "../components/editor/manualEditsDom";
+import { studioManualEditSavesIn } from "../components/editor/manualEditGesture";
 import { writePlainMove, writeTranslatePx } from "../components/editor/plainTranslate";
 
 // ── Bug 2: undo/redo restore soft-apply ──────────────────────────────────────
