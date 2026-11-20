@@ -17,6 +17,7 @@ import {
   SVG_AUTHORED_ID_ATTR,
   namespaceCollidingSvgIds,
   rewriteSvgIdReferencesInCss,
+  sceneClipRoots,
   type SvgIdScope,
 } from "./svgIdNamespacing";
 
@@ -750,3 +751,36 @@ it("rewriteSvgIdReferencesInCss scans a selector of 300000 unclosed brackets in 
     rewriteSvgIdReferencesInCss(`:is(${run}) { fill: red; }`, new Map(), references),
   ).toContain(run);
 }, 10_000);
+
+// fails without the fix: every element of the root scope was checked against every excluded clip, one contains() each.
+it("checks a scope's elements against thousands of excluded clips in one walk each, not once per clip", () => {
+  const clips = Array.from(
+    { length: 2000 },
+    (_, i) => `<div data-start="${i}" data-duration="1"><svg><rect/></svg></div>`,
+  ).join("");
+  const { document } = parseHTML(
+    `<!DOCTYPE html><html><body><div data-composition-id="main"><svg><clipPath id="c"/><rect clip-path="url(#c)"/></svg><div data-composition-id="sub" data-composition-src="s.html"></div>${clips}</div></body></html>`,
+  );
+  const queryable = document as unknown as Parameters<typeof namespaceCollidingSvgIds>[0];
+  const root = document.querySelector('[data-composition-id="main"]')!;
+  const host = document.querySelector("[data-composition-src]")!;
+  const elements = root.querySelectorAll("*").length;
+  let owner = Object.getPrototypeOf(root);
+  while (!Object.hasOwn(owner, "contains")) owner = Object.getPrototypeOf(owner);
+  const contains = vi.spyOn(owner, "contains");
+  let checks: number;
+  let found: Element[];
+  try {
+    found = sceneClipRoots(queryable, [host]);
+    namespaceCollidingSvgIds(queryable, [
+      { root, namespace: "main", exclude: [host, ...found] },
+      ...found.map((clip, i) => ({ root: clip, namespace: `clip${i}` })),
+    ]);
+    checks = contains.mock.calls.length;
+  } finally {
+    contains.mockRestore();
+  }
+
+  expect(found).toHaveLength(2000);
+  expect(checks).toBeLessThan(elements);
+});
