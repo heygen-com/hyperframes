@@ -540,7 +540,7 @@ describe("installEditingAgent", () => {
     Object.assign(frame, { gsap: { set: () => {} }, __timelines: { main: {} } });
     frame.__hfForceTimelineRebind = () => {};
     const port = connectedPort();
-    const params = { script, time: 0, sets: [], authored: [], timing: [] };
+    const params = { script, time: 0, sets: [], authored: [], timing: [], restore: [] };
 
     const extra = { ...params, keys: ["main"] };
     expect(await ask(port, { v: 1, id: 1, kind: "soft-reload", params: extra })).toMatchObject({
