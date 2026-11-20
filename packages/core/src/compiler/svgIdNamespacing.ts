@@ -223,15 +223,16 @@ function collectNativelyReferencedIds(
   return referenced;
 }
 
-function isExcluded(el: Element, exclude: readonly Element[]): boolean {
-  return exclude.some((excluded) => excluded === el || excluded.contains(el));
+function isExcluded(el: Element, exclude: ReadonlySet<Element>): boolean {
+  for (let at: Element | null = el; at; at = at.parentElement) if (exclude.has(at)) return true;
+  return false;
 }
 
 /** `root` plus every descendant that is not inside an excluded subtree. */
 function collectScopeElements(scope: SvgIdScope): Element[] {
-  const exclude = scope.exclude ?? [];
+  const exclude = new Set(scope.exclude);
   const descendants = [...scope.root.querySelectorAll("*")];
-  const own = exclude.length ? descendants.filter((el) => !isExcluded(el, exclude)) : descendants;
+  const own = exclude.size ? descendants.filter((el) => !isExcluded(el, exclude)) : descendants;
   return [scope.root, ...own];
 }
 
@@ -244,9 +245,9 @@ interface ResolvedScope {
 
 /** Every `<svg>`-subtree element in the scope that carries an id. */
 function collectSvgIdElements(scope: SvgIdScope): Element[] {
-  const exclude = scope.exclude ?? [];
+  const exclude = new Set(scope.exclude);
   const matches = [...scope.root.querySelectorAll("svg [id], svg[id]")];
-  return exclude.length ? matches.filter((el) => !isExcluded(el, exclude)) : matches;
+  return exclude.size ? matches.filter((el) => !isExcluded(el, exclude)) : matches;
 }
 
 function resolveScope(scope: SvgIdScope): ResolvedScope {
@@ -451,11 +452,12 @@ const CLIP_SELECTOR = "[data-start]:not([data-composition-id]):not([data-composi
 /** The outermost timed clips holding an `<svg>` outside every composition host. Each is its own id scope, as an
  *  inlined composition is, so two scenes drawn with the same ids each resolve their own `url(#id)` and `href`. */
 export function sceneClipRoots(document: SvgIdQueryable, hosts: readonly Element[]): Element[] {
+  const hostSet = new Set(hosts);
   return [...document.querySelectorAll(CLIP_SELECTOR)].filter(
     (clip) =>
       !clip.parentElement?.closest(CLIP_SELECTOR) &&
       !!clip.parentElement?.closest("[data-composition-id]") &&
-      !isExcluded(clip, hosts) &&
+      !isExcluded(clip, hostSet) &&
       !!clip.querySelector("svg"),
   );
 }

@@ -308,6 +308,12 @@ export {
   type PreviewQuality,
   type PreviewSourceFacts,
 } from "./previewProxyBox";
+export {
+  naturalVideoSize,
+  parseSampleAspectRatio,
+  streamRotation,
+  type MediaDisplayFacts,
+} from "./mediaDisplaySize";
 export type {
   PausedVideoFrameProvider,
   PausedVideoFrameRequest,

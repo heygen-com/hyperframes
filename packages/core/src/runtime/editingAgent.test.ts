@@ -408,6 +408,17 @@ describe("installEditingAgent", () => {
       { drafts: [{ handle: H, translate: { x: 1e6, y: 0 }, size: null }] },
       { drafts: [{ handle: H, translate: null, size: { width: -1, height: 2 } }] },
       { drafts: [{ handle: H, translate: null, size: { width: 1, height: 2, depth: 3 } }] },
+      { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1 } }] },
+      { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1, route: "x" } }] },
+      {
+        drafts: [{ handle: H, translate: null, size: null, rotate: { angle: "1", route: "css" } }],
+      },
+      {
+        drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1e6, route: "css" } }],
+      },
+      {
+        drafts: [{ handle: H, translate: null, size: null, rotate: { angle: NaN, route: "gsap" } }],
+      },
     ].map((params, index) => [
       { v: 1, id: 150 + index, kind: "draft", params },
       150 + index,

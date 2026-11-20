@@ -5,6 +5,7 @@
 import {
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
+  MAX_DRAFT_DEG,
   MAX_DRAFT_PX,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_TEXT,
@@ -252,20 +253,29 @@ const isLayout = (value: unknown) =>
     (side) => Number.isFinite(side) && (side as number) >= 0 && (side as number) <= MAX_DRAFT_PX,
   );
 
-const readGestureStart = (value: unknown): EditingGestureStart | null => {
+const isTurnOrNull = (value: unknown) =>
+  value === null || (Number.isFinite(value) && Math.abs(value as number) <= MAX_DRAFT_DEG);
+
+export type ReadGestureStart = Omit<EditingGestureStart, "gsapRotation"> & {
+  gsapRotation?: number | null;
+};
+
+const readGestureStart = (value: unknown): ReadGestureStart | null => {
   if (!readGeometry(value) || !isFields(value)) return null;
-  const { layout, move, gsap } = value;
+  const { layout, move, gsap, gsapRotation } = value;
   const valid = [
     isLayout(layout),
     move === null || isFiniteFields(move, ["a", "b", "c", "d"]),
     gsap === null || (isFields(gsap) && isFiniteFields(gsap, ["x", "y"]) && isFlag(gsap.moving)),
   ];
-  return valid.includes(false) ? null : (value as unknown as EditingGestureStart);
+  if (valid.includes(false)) return null;
+  const start = value as unknown as ReadGestureStart;
+  return isTurnOrNull(gsapRotation) ? start : { ...start, gsapRotation: undefined };
 };
 
 export interface PreviewGestureStartReply {
   /** One entry per handle, in order: null for an element the frame no longer has. */
-  elements: Array<EditingGestureStart | null>;
+  elements: Array<ReadGestureStart | null>;
   snap: EditingElementBox[];
 }
 

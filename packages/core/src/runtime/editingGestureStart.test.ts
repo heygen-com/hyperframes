@@ -44,14 +44,16 @@ function turnedCard(style: string): HTMLElement {
   return card;
 }
 
-function gsapWith(tweens: Tween[], position = { x: 200, y: 5 }) {
-  const getProperty = vi.fn((_: Element, axis: string) => position[axis as "x" | "y"]);
+function gsapWith(tweens: Tween[], position: Record<string, number> = { x: 200, y: 5 }) {
+  const getProperty = vi.fn((_: Element, axis: string) => position[axis]);
   Object.assign(window, {
     gsap: { getProperty },
     __timelines: { main: { getChildren: () => tweens } },
   });
   return getProperty;
 }
+
+const GSAP_RENDERS = { _gsap: { renderTransform: () => {} } };
 
 const tween = (target: unknown, vars: Record<string, unknown>, duration = 0): Tween => ({
   vars,
@@ -95,6 +97,19 @@ describe("gesture start", () => {
     const card = turnedCard("");
     gsapWith([make(card), tween(card, { opacity: 0 }, 3)]);
     expect(gestureStart([handleFor(card)]).elements[0]!.gsap).toEqual({ x: 200, y: 5, moving });
+  });
+
+  // fails without the fix: a sealed rotate never learned GSAP turns the element, so it saved a CSS rotate.
+  it.each<[string, (card: HTMLElement) => Tween[], number | null]>([
+    ["a spin tween", (card) => [tween(card, { rotation: 20 }, 2)], 12],
+    ["keyframes that turn it", (card) => [tween(card, { keyframes: [{ rotate: 5 }] }, 2)], 12],
+    ["a transform GSAP renders", (card) => (Object.assign(card, GSAP_RENDERS), []), 12],
+    ["nothing GSAP does: its own CSS turns it", (card) => [tween(card, { opacity: 0 }, 2)], null],
+  ])("says how far GSAP turns it, through %s", (_name, make, turn) => {
+    const card = turnedCard("");
+    const getProperty = gsapWith(make(card), { x: 0, y: 0, rotation: 12 });
+    expect(gestureStart([handleFor(card)]).elements[0]!.gsapRotation).toBe(turn);
+    expect(getProperty.mock.calls.some(([, name]) => name === "rotation")).toBe(turn !== null);
   });
 
   it("does not own a box that only fades", () => {
