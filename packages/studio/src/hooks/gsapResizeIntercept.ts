@@ -208,6 +208,41 @@ function scaleDropCorrection(
   return { base, corrected, residual };
 }
 
+async function dropPointOf(
+  el: HTMLElement | null,
+  standIn: Element,
+  draw: <T>(run: () => T) => T,
+): Promise<Point | null> {
+  if (el) return draw(() => rectCentre(el.getBoundingClientRect()));
+  const frame = sealedScaleFrame(standIn);
+  return frame ? frameBoxCentre(frame) : null;
+}
+
+function correctOnElement(
+  draftEl: HTMLElement,
+  committedScale: Point | null,
+  dropPoint: Point,
+  base: Point,
+  gsapPos: Point,
+): ScaleDrop | "settled" | null {
+  clearStudioBoxSize(draftEl);
+  // Draw the committed scale before measuring: on a first resize the timeline has not re-seeked yet,
+  // so the box would read at its natural size and the correction would be skipped.
+  if (committedScale) setElementGsapScale(draftEl, committedScale.x, committedScale.y);
+  setElementGsapPosition(draftEl, base.x, base.y);
+  const found = scaleDropCorrection(
+    dropPoint,
+    rectCentre(draftEl.getBoundingClientRect()),
+    base,
+    gsapPos,
+  );
+  // Correct the live box in the same task as the measurement, so no frame shows it off the drop
+  // point while the position write is in flight.
+  if (found && found !== "settled")
+    setElementGsapPosition(draftEl, found.corrected.x, found.corrected.y);
+  return found;
+}
+
 async function correctOnFrame(
   frame: SealedScaleFrame,
   scale: Point,
@@ -427,12 +462,7 @@ export async function tryGsapResizeIntercept(
       : { x: newScaleX, y: newScaleX };
     // Where the user DROPPED the box: the draft is still applied, so this is what the preview showed
     // at release. The finalize step below moves the committed scale's box onto it.
-    if (el) {
-      scaleDraftDropPoint = draw(() => rectCentre(el.getBoundingClientRect()));
-    } else {
-      const frame = sealedScaleFrame(selection.element);
-      if (frame) scaleDraftDropPoint = await frameBoxCentre(frame);
-    }
+    scaleDraftDropPoint = await dropPointOf(el, selection.element, draw);
   } else {
     resizeProps = {
       width: roundToLayoutPx(size.width),
@@ -473,23 +503,7 @@ export async function tryGsapResizeIntercept(
     );
     const base = { x: baseGsapX, y: baseGsapY };
     const measured = draftEl
-      ? draw(() => {
-          clearStudioBoxSize(draftEl);
-          // Draw the committed scale before measuring: on a first resize the timeline has not re-seeked yet,
-          // so the box would read at its natural size and the correction would be skipped.
-          if (committedScale) {
-            setElementGsapScale(draftEl, committedScale.x, committedScale.y);
-          }
-          setElementGsapPosition(draftEl, base.x, base.y);
-          const post = rectCentre(draftEl.getBoundingClientRect());
-          const found = scaleDropCorrection(dropPoint, post, base, gsapPos);
-          // Correct the live box in the same task as the measurement, so no frame shows it off the drop
-          // point while the position write is in flight.
-          if (found && found !== "settled") {
-            setElementGsapPosition(draftEl, found.corrected.x, found.corrected.y);
-          }
-          return found;
-        })
+      ? draw(() => correctOnElement(draftEl, committedScale, dropPoint, base, gsapPos))
       : await correctOnFrame(frame!, committedScale ?? { x: 1, y: 1 }, dropPoint, base, gsapPos);
     if (measured === null) return false;
     // Already on the drop point, and still ours: forwarding the drag offset would move it off.
