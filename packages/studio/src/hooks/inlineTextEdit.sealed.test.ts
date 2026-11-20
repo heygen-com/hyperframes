@@ -12,6 +12,7 @@ import {
 import type { DomEditSelection } from "../components/editor/domEditing";
 import { canEditSealedTextInline } from "../components/editor/domEditInlineText";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
+import { describePreviewElements, previewTextEdit } from "../player/lib/previewElements";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { useInlineTextEdit, type InlineTextEditCommit } from "./useInlineTextEdit";
@@ -286,4 +287,60 @@ it("opens a sealed text edit on a plain element, never on a host, a locked one o
   expect(canEditSealedTextInline({ ...selection, isInsideLockedComposition: true })).toBe(false);
   expect(canEditSealedTextInline({ ...selection, tagName: "body" })).toBe(false);
   expect(canEditSealedTextInline({ ...selection, handle: undefined })).toBe(false);
+});
+
+/** Answered after every request sent before it: the frame's port is one ordered queue. */
+const settled = (iframe: HTMLIFrameElement, selection: DomEditSelection) =>
+  describePreviewElements(iframe, [selection.handle!]);
+
+it("a failed save leaves a newer draft open on the same element alone", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  let fail!: (error: Error) => void;
+  const persist = vi.fn<PersistDomEditOperations>(
+    () => new Promise((_, reject) => (fail = reject)),
+  );
+  title.innerHTML = "First";
+  const first = textCommits(iframe, selection, persist)(selection.element, "First");
+  await vi.waitFor(() => expect(persist).toHaveBeenCalledOnce());
+  const handle = selection.handle!;
+  await previewTextEdit(iframe, { handle, action: "start", caret: null });
+  expect(title.getAttribute("contenteditable")).toBe("true");
+  title.innerHTML = "Second draft";
+  fail(new Error("disk full"));
+  await first;
+  await settled(iframe, selection);
+  expect(title.innerHTML).toBe("Second draft");
+});
+
+it("saves once an edit the frame ended on blur just before the editor unmounted", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  const onCommit = vi.fn<(commit: InlineTextEditCommit) => void>();
+  const root = createRoot(document.createElement("div"));
+  let controls!: ReturnType<typeof useInlineTextEdit>;
+  act(() =>
+    root.render(
+      createElement(() => {
+        controls = useInlineTextEdit({ onCommit });
+        return null;
+      }),
+    ),
+  );
+  act(() => void controls.start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.innerHTML = "Typed";
+  act(() => {
+    title.dispatchEvent(new FocusEvent("blur"));
+    root.unmount();
+  });
+  const typed = { element: selection.element, html: "Typed", previousHtml: ORIGINAL };
+  await vi.waitFor(() => expect(onCommit).toHaveBeenCalledWith(typed));
+  await settled(iframe, selection);
+  expect(onCommit).toHaveBeenCalledOnce();
+});
+
+it("opens no sealed text edit on a layer the frame would refuse, so Enter stays playback's", async () => {
+  document.body.innerHTML = `<section id="s"><div>One</div><div>Two</div></section><p id="p">x</p>`;
+  const { iframe } = sealedPreviewFrame();
+  expect(canEditSealedTextInline(await select(iframe, "s"))).toBe(false);
+  expect(canEditSealedTextInline(await select(iframe, "p"))).toBe(true);
 });
