@@ -103,6 +103,7 @@ describe("createEditingPortClient", () => {
           "max-z-index",
           "crop-lift",
           "edit-element",
+          "stacking-family",
           "gsap-set",
           "patch-tweens",
           "soft-reload",

@@ -10,6 +10,7 @@ import {
   MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
   MAX_GEOMETRY_CHILDREN,
+  MAX_QUERY_MATCHES,
   MAX_SNAP_TARGETS,
   MAX_SOURCE_GROUPS,
   type EditingElementBox,
@@ -20,6 +21,7 @@ import {
   type EditingElementMatch,
   type EditingElementSource,
   type EditingLayer,
+  type EditingStackingSibling,
 } from "@hyperframes/core/runtime/editing-port";
 import { resolveElementSourceFile } from "../../components/editor/domEditingDom";
 import { previewRequest } from "./previewChannel";
@@ -309,6 +311,19 @@ export async function previewLayers(
   if (!Array.isArray(layers) || typeof truncated !== "boolean") return null;
   if (typeof missingGroup !== "boolean") return null;
   return layers.every(isLayer) ? { layers, truncated, missingGroup } : null;
+}
+
+const isSibling = (value: unknown): value is EditingStackingSibling =>
+  isFields(value) && isHandle(value.handle) && Number.isSafeInteger(value.zIndex);
+
+export async function previewStackingSiblings(iframe: HTMLIFrameElement, handle: string) {
+  const reply = await previewRequest(iframe, "stacking-family", { handle });
+  const family: unknown = reply?.family;
+  const locked: unknown = reply?.locked;
+  if (!Array.isArray(family) || family.length > MAX_QUERY_MATCHES) return null;
+  if (typeof locked !== "boolean" || !family.every(isSibling)) return null;
+  const handles = new Set(family.map((sibling) => sibling.handle));
+  return handles.size === family.length && handles.has(handle) ? { family, locked } : null;
 }
 
 type EditEntry = [name: string, value: string | null];
