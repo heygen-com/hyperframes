@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { availableParallelism } from "node:os";
 import { fpsToFfmpegArg, terminalText } from "@hyperframes/core";
+import { cpuBudget } from "@hyperframes/engine";
 import { c } from "../../ui/colors.js";
 import type { RenderPlan } from "./plan.js";
 
@@ -28,9 +28,7 @@ async function presentRenderWarnings(plan: RenderPlan): Promise<void> {
 
 function presentRenderSummary(plan: RenderPlan): void {
   const workerLabel =
-    plan.workers != null
-      ? `${plan.workers} workers`
-      : `auto workers (${availableParallelism()} cores usable)`;
+    plan.workers != null ? `${plan.workers} workers` : `auto workers (${cpuBudget()} cores usable)`;
   const nameLabel = plan.entryFile ? `${plan.project.name}/${plan.entryFile}` : plan.project.name;
   console.log("");
   console.log(
