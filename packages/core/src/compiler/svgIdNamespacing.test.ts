@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { JSDOM } from "jsdom";
 import { parseHTML } from "linkedom";
+import postcss from "postcss";
 
 const hashCalls = vi.hoisted(() => [] as string[]);
 vi.mock("../canary", async (importOriginal) => {
@@ -783,4 +784,21 @@ it("checks a scope's elements against thousands of excluded clips in one walk ea
 
   expect(found).toHaveLength(2000);
   expect(checks).toBeLessThan(elements);
+});
+
+// fails without the fix: each selector's comparison re-read rule.selectors, which splits the whole list again.
+it("splits a rule's selector list a fixed number of times, however many selectors it holds", () => {
+  const css = `${Array.from({ length: 2000 }, (_, i) => `#x${i}`).join(",")} { color: red; }`;
+  const alias = { name: "href", localName: "href", namespaceURI: null, before: "#a", after: "#a" };
+  const comma = vi.spyOn(postcss.list, "comma");
+  let splits: number;
+  try {
+    rewriteSvgIdReferencesInCss(css, new Map(), [alias]);
+    splits = comma.mock.calls.length;
+  } finally {
+    comma.mockRestore();
+  }
+
+  expect(splits).toBeGreaterThan(0);
+  expect(splits).toBeLessThan(10);
 });
