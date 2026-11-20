@@ -368,10 +368,14 @@ function sealedGsapOwns(iframe: HTMLIFrameElement, el: Element, gesture: EditGes
   return !!target && timelinesWriteChannels(timelines, target, SEALED_OWNED_CHANNELS[gesture]);
 }
 
-/** `editsPlainCss` once a sealed frame's snapshot is read at the playhead. */
-export async function editsPlainCssSettled(el: Element, gesture: EditGesture): Promise<boolean> {
-  await settleGsapSnapshot(previewStandIn(el)?.iframe ?? null);
-  return editsPlainCss(el, gesture);
+/** `editsPlainCss`, once a sealed frame's snapshot is read at the playhead; a live element answers now. */
+export function editsPlainCssSettled(
+  el: Element,
+  gesture: EditGesture,
+): boolean | Promise<boolean> {
+  const standIn = previewStandIn(el);
+  if (!standIn) return editsPlainCss(el, gesture);
+  return settleGsapSnapshot(standIn.iframe).then(() => editsPlainCss(el, gesture));
 }
 
 /** `hasNonHoldTweenForElement` for an element in hand, read from its own window's timelines. */

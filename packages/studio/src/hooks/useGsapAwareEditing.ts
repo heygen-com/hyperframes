@@ -215,7 +215,8 @@ export function useGsapAwareEditing({
       route?: { plainTranslate: boolean },
     ) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (route?.plainTranslate ?? (await editsPlainCssSettled(selection.element, "resize"))) {
+      const routed = route?.plainTranslate ?? editsPlainCssSettled(selection.element, "resize");
+      if (typeof routed === "boolean" ? routed : await routed) {
         const result = await handleDomBoxSizeCommit(selection, next, offset, restore);
         return writes.finish(result?.changed === true);
       }
@@ -377,7 +378,10 @@ export function useGsapAwareEditing({
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: RotationCommit) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      const plain = next.plain ?? (await editsPlainCssSettled(selection.element, "rotate"));
+      const plain =
+        next.plain !== undefined
+          ? next.plain
+          : await editsPlainCssSettled(selection.element, "rotate");
       if (plain) {
         const result = await handleDomRotationCommit(selection, next);
         return writes.finish(result?.changed === true);

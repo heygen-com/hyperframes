@@ -94,6 +94,8 @@ function sealedLayer(vars: Record<string, number> | null) {
 }
 
 function gsapAwareEditing(selection: DomEditSelection) {
+  mocks.drag.mockResolvedValue({ status: "persisted" });
+  mocks.resize.mockResolvedValue({ status: "persisted" });
   const stageElementPositionOffset = vi.fn(() => ({
     save: vi.fn().mockResolvedValue(undefined),
     rollback: vi.fn(),
