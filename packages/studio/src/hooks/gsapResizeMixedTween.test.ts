@@ -13,7 +13,7 @@
  * the intercept sends that is not in the list it was last handed reproduces the
  * failure.
  */
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { usePlayerStore } from "../player/store/playerStore";
@@ -164,4 +164,56 @@ it("leaves the drag offset to the caller when it commits size, not scale", async
   );
 
   expect(outcome.status).toBe("element-size");
+});
+
+describe("a resize of an element whose size is held, never says it saved scale", () => {
+  const card = () => {
+    const el = document.createElement("div");
+    el.id = "card";
+    el.setAttribute("data-hf-studio-original-box-width", "300");
+    el.setAttribute("data-hf-studio-original-box-height", "200");
+    document.body.append(el);
+    return el;
+  };
+
+  it("keys the size into the tween that animates it when a hold sits at the playhead", async () => {
+    const el = card();
+    const sizeHold = hold("#card-to-0-size", "size", { width: 300, height: 200 });
+    const grow = {
+      ...hold("#card-to-2000-size", "size", { width: 400, height: 260 }),
+      position: 2,
+      resolvedStart: 2,
+      duration: 1,
+      extras: {},
+    } as unknown as GsapAnimation;
+    usePlayerStore.setState({ currentTime: 1 });
+
+    const outcome = await tryGsapResizeIntercept(
+      { id: "card", selector: "#card", element: el } as DomEditSelection,
+      { width: 340, height: 220 },
+      [sizeHold, grow],
+      null,
+      vi.fn() as never,
+      async () => [sizeHold, grow],
+    );
+
+    expect(outcome).not.toHaveProperty("savedAsScale");
+  });
+
+  it("refuses an element it cannot name", async () => {
+    const el = card();
+    el.removeAttribute("id");
+    const sizeHold = hold("#card-to-0-size", "size", { width: 300, height: 200 });
+
+    const outcome = await tryGsapResizeIntercept(
+      { element: el } as DomEditSelection,
+      { width: 340, height: 220 },
+      [sizeHold],
+      null,
+      vi.fn() as never,
+      async () => [sizeHold],
+    );
+
+    expect(outcome).toEqual({ status: "blocked", reason: "no-selector" });
+  });
 });
