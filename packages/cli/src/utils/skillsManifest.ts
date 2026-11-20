@@ -290,7 +290,10 @@ function agentLabel(hostDir: string): string {
 function agentFromDir(dir: string): string {
   const parts = dir.split(sep).filter(Boolean);
   const i = parts.lastIndexOf("skills");
-  return agentLabel(i > 0 ? parts[i - 1]! : (parts[parts.length - 1] ?? ""));
+  if (i >= 2 && parts[i - 2]?.replace(/^\.+/, "") === "gemini" && parts[i - 1] === "config") {
+    return "antigravity";
+  }
+  return agentLabel(i > 0 ? (parts[i - 1] ?? "") : (parts[parts.length - 1] ?? ""));
 }
 
 /** Immediate subdirectory names of `dir` (including symlinked dirs); [] if unreadable. */
@@ -312,16 +315,32 @@ function listSubdirs(dir: string): string[] {
  * as upstream adds agents. claude-code is ordered first; the rest
  * deterministically by agent then path.
  */
-function discoverSkillRoots(base: string, scope: "project" | "global"): SkillRoot[] {
+function discoverSkillRoots(
+  base: string,
+  scope: "project" | "global",
+  extraGlobalDirs: ReadonlyArray<{ agent: string; sub: string }> = [],
+): SkillRoot[] {
   const candidates: SkillRoot[] = [];
+  const seen = new Set<string>();
+  const addDir = (dir: string, agent: string): void => {
+    if (seen.has(dir)) return;
+    if (existsSync(dir) && statSync(dir).isDirectory()) {
+      seen.add(dir);
+      candidates.push({ dir, agent, scope });
+    }
+  };
   const add = (hostBase: string, host: string): void => {
-    const dir = join(hostBase, host, "skills");
-    if (existsSync(dir) && statSync(dir).isDirectory())
-      candidates.push({ dir, agent: agentLabel(host), scope });
+    addDir(join(hostBase, host, "skills"), agentLabel(host));
   };
   for (const host of listSubdirs(base)) add(base, host);
   const xdg = join(base, ".config");
   for (const host of listSubdirs(xdg)) add(xdg, host);
+  if (scope === "global") {
+    for (const { agent, sub } of extraGlobalDirs) {
+      const segs = sub.split("/").filter(Boolean);
+      if (segs.length > 0) addDir(join(base, ...segs), agent);
+    }
+  }
   return candidates.sort((a, b) => {
     if (a.agent !== b.agent) {
       if (a.agent === "claude-code") return -1;
@@ -375,7 +394,12 @@ function scopeForDir(dir: string, home: string, cwd: string): "project" | "globa
  */
 function locateInstall(
   skillNames: string[],
-  opts: { dir?: string; cwd?: string; home?: string } = {},
+  opts: {
+    dir?: string;
+    cwd?: string;
+    home?: string;
+    extraGlobalDirs?: ReadonlyArray<{ agent: string; sub: string }>;
+  } = {},
 ): SkillRoot | null {
   if (opts.dir) {
     return existsSync(opts.dir)
@@ -387,7 +411,7 @@ function locateInstall(
       : null;
   }
   const roots = [
-    ...discoverSkillRoots(opts.home ?? homedir(), "global"),
+    ...discoverSkillRoots(opts.home ?? homedir(), "global", opts.extraGlobalDirs),
     ...discoverSkillRoots(opts.cwd ?? process.cwd(), "project"),
   ];
   for (const root of roots) {
@@ -411,7 +435,13 @@ function globalInstallRoot(home = homedir()): SkillRoot {
  */
 export function presentSkills(
   skillNames: readonly string[],
-  opts: { dir?: string; cwd?: string; home?: string; installTarget?: boolean } = {},
+  opts: {
+    dir?: string;
+    cwd?: string;
+    home?: string;
+    installTarget?: boolean;
+    extraGlobalDirs?: ReadonlyArray<{ agent: string; sub: string }>;
+  } = {},
 ): string[] {
   const root = opts.installTarget
     ? globalInstallRoot(opts.home)
@@ -791,6 +821,7 @@ export async function checkSkills(
     cliVersion?: string;
     /** Check the global store written by the installer, even before it exists. */
     installTarget?: boolean;
+    extraGlobalDirs?: ReadonlyArray<{ agent: string; sub: string }>;
   } = {},
 ): Promise<SkillsCheckResult> {
   const { manifest: latest, ref } = await resolveLatestManifest(opts.source, opts.cwd, {

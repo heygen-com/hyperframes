@@ -12,6 +12,7 @@ import { isUnattended } from "./attendedTerminal.js";
 import { claimDailyNotice } from "./dailyNotice.js";
 import { hostAnswers } from "./hostAnswers.js";
 import { checkSkills, type SkillsCheckResult } from "./skillsManifest.js";
+import { EXTRA_GLOBAL_SKILL_DIRS } from "./skillsMirror.js";
 import { updateCheckDisabled } from "./updateCheck.js";
 import { VERSION } from "../version.js";
 
@@ -44,7 +45,13 @@ export async function refreshSkillsCache(projectDir?: string): Promise<void> {
   // `canonical: true` so this nudge's counts agree with `updateSkills`'s
   // source of truth — otherwise a stale in-repo skills-manifest.json (e.g.
   // inside a hyperframes checkout) can produce a false-positive count here.
-  recordSkillsCheck(await checkSkills({ canonical: true, cliVersion: VERSION, cwd: projectDir }));
+  recordSkillsCheck(
+    await checkSkills({
+      canonical: true,
+      cliVersion: VERSION,
+      extraGlobalDirs: EXTRA_GLOBAL_SKILL_DIRS,
+    }),
+  );
 }
 
 /** Cache a canonical skills check (at this CLI's tag) for the nudge and `_meta.skillsOutdated`. */
