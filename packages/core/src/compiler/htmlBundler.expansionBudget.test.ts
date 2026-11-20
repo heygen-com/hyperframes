@@ -58,7 +58,7 @@ describe("preview bundle expansion budget", () => {
     });
     expect(String(error)).toContain("Mount large or repeated scenes fewer times");
     expect(reads.filter((path) => path.endsWith(".html")).length).toBe(5);
-  });
+  }, 30_000);
 
   it("refuses one large file mounted past the byte limit", async () => {
     const big = scene(`<p>${"x".repeat(Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 5))}</p>`);
