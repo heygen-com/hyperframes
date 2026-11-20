@@ -1019,7 +1019,9 @@ export async function extractMediaMetadata(
     try {
       output = await probeMediaOutput(filePath, signal);
     } catch (error) {
-      if (signal?.aborted || !stillImage()) throw error;
+      // As probeMediaProfile does: a cancel rejects with its own reason, so callers read it as a cancel.
+      if (signal?.aborted) throw signal.reason ?? error;
+      if (!stillImage()) throw error;
     }
 
     const videoStream = output?.streams.find((s) => s.codec_type === "video");
