@@ -1226,6 +1226,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
       return source;
     },
     chargeEmitted: (srcPath: string, bytes: number) => budget.chargeGenerated(srcPath, bytes),
+    chargeElements: (srcPath: string, count: number) => budget.chargeElements(srcPath, count),
     parseHtml: parseHTMLContent,
     hostIdentityMap: hostIdentityByElement,
     rewriteInlineStyles: true,

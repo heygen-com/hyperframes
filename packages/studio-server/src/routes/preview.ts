@@ -111,6 +111,7 @@ import {
 } from "../helpers/mediaProxyPreview.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
 import { previewRefusalPage } from "../helpers/previewErrorPage.js";
+import { isCompositionTooLargeError } from "@hyperframes/core/compiler/composition-size-limit";
 import { lazyPreviewImages } from "../helpers/lazyPreviewImages.js";
 import { corsProjectVideos } from "../helpers/captureVideos.js";
 import { createJobSlots, JobAbandonedError, JobQueueFullError } from "../helpers/jobSlots.js";
@@ -166,10 +167,6 @@ function parseStudioMotionManifestContent(content: string): {
 }
 
 /** Preview hooks must install before authored head scripts register media consumers. */
-function isCompositionTooLarge(error: unknown): error is Error {
-  return error instanceof Error && "code" in error && error.code === "COMPOSITION_TOO_LARGE";
-}
-
 export function withPreviewRuntime(html: string, runtimeUrl: string): string {
   const tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
   return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag, true);
@@ -590,7 +587,7 @@ export function registerPreviewRoutes(
       }
       return bundled;
     } catch (error) {
-      if (isCompositionTooLarge(error)) return previewRefusalPage(error.message);
+      if (isCompositionTooLargeError(error)) return previewRefusalPage(error.message);
       // Re-read disk on bundle failure so we serve the latest file content,
       // not the pre-request snapshot that may have been saved over.
       const fallback = resolveProjectMainHtml(project.dir, project.id);
@@ -711,6 +708,7 @@ export function registerPreviewRoutes(
         compPath,
       );
       if (!built) return c.text("not found", 404);
+      if ("refused" in built) return c.html(previewRefusalPage(built.refused), 200);
       for (const path of built.references) recordPreviewRead(project.dir, path);
       const transformed = await withinDeadline(
         transformPreviewHtml(built.html, adapter, project, compPath),
