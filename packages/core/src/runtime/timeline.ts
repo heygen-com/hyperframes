@@ -260,6 +260,16 @@ function buildTimelineClipLabel(node: Element, kind: RuntimeTimelineClip["kind"]
 
 export type ParkedTimelineScene = { name: string; host: () => Element };
 
+const animatedElementFacts = (el: Element) => ({
+  playbackStart: readMediaStart(el),
+  playbackRate: readElementPlaybackRate(el),
+  assetUrl: null,
+  timelineLabel: el.getAttribute("data-timeline-label"),
+  timelineGroup: el.getAttribute("data-timeline-group"),
+  timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
+  text: readSentTextLayer(el),
+});
+
 export function collectRuntimeTimelinePayload(params: {
   canonicalFps: number;
   parked?: ParkedTimelineScene[];
@@ -627,14 +637,8 @@ export function collectRuntimeTimelinePayload(params: {
             parentCompositionId: rootCompositionIdForGsap,
             nodePath: null,
             compositionSrc: null,
-            playbackStart: readMediaStart(el),
-            playbackRate: readElementPlaybackRate(el),
-            assetUrl: null,
             timelineRole: el.getAttribute("data-timeline-role"),
-            timelineLabel: el.getAttribute("data-timeline-label"),
-            timelineGroup: el.getAttribute("data-timeline-group"),
-            timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
-            text: readSentTextLayer(el),
+            ...animatedElementFacts(el),
           });
           gsapClipIds.add(el.id);
         }
@@ -685,14 +689,8 @@ export function collectRuntimeTimelinePayload(params: {
         parentCompositionId: rootCompositionIdForGsap,
         nodePath: null,
         compositionSrc: null,
-        playbackStart: readMediaStart(el),
-        playbackRate: readElementPlaybackRate(el),
-        assetUrl: null,
         timelineRole,
-        timelineLabel: el.getAttribute("data-timeline-label"),
-        timelineGroup: el.getAttribute("data-timeline-group"),
-        timelinePriority: parseNum(el.getAttribute("data-timeline-priority")),
-        text: readSentTextLayer(el),
+        ...animatedElementFacts(el),
       });
       gsapClipIds.add(el.id);
     }

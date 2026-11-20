@@ -49,10 +49,7 @@ export function rememberSourceDuration(
     reportedLengths.set(el, { src: el.getAttribute("src"), seconds: el.duration });
 }
 
-export function sourceDurationOf(
-  el: Pick<Element, "getAttribute">,
-  sourceDuration: number,
-): number {
+function sourceDurationOf(el: Pick<Element, "getAttribute">, sourceDuration: number): number {
   if (Number.isFinite(sourceDuration)) return sourceDuration;
   const reported = reportedLengths.get(el);
   return reported && reported.src === el.getAttribute("src") ? reported.seconds : sourceDuration;
