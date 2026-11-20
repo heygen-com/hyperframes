@@ -40,8 +40,10 @@ const SAFE_TO_SET = new Set([
   "data-y",
   "data-hf-group",
 ]);
-// Studio's own edit marks (its manualEditsTypes.ts): a redo puts back the ones its undo dropped.
-const safeToSet = (name: string) => SAFE_TO_SET.has(name) || name.startsWith("data-hf-studio-");
+const reappliedOnlyAfterReload = (name: string) => name.startsWith("data-hf-studio-motion");
+const isStudioEditMark = (name: string) =>
+  name.startsWith("data-hf-studio-") && !reappliedOnlyAfterReload(name);
+const safeToSet = (name: string) => SAFE_TO_SET.has(name) || isStudioEditMark(name);
 const safeToDrop = (name: string) =>
   safeToSet(name) || name === "loading" || name.startsWith("data-");
 

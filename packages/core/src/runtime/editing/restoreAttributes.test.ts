@@ -102,6 +102,8 @@ describe("restore-attributes", () => {
       refused(box, [id, [name, "alert(1)"]]);
     for (const name of ["sandbox", "data-hf-handle", "data-hf-studio", "data-studio-x"])
       refused(box, [id, [name, "alert(1)"]]);
+    for (const name of ["data-hf-studio-motion", "data-hf-studio-motion-original-opacity"])
+      refused(box, [id, [name, "{}"]]);
     refused(box, [id, ["data-composition-src", "https://example.com/a.html"]]);
     refused('<iframe data-hf-id="box" sandbox=""></iframe>', [id]);
 
