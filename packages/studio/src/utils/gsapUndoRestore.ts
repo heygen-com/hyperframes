@@ -400,6 +400,11 @@ function sealedRestore(activeDocPath: string, files: RestoreFiles): SealedRestor
   return restore;
 }
 
+const undoRerun = (active: UndoRestoreFile | undefined, script: string | null) =>
+  active && script
+    ? sealedRerun(script, { authoredHtml: active.restored, previousHtml: active.previous })
+    : null;
+
 /** Sends the restore to a sealed preview, with the script re-run an element GSAP parsed needs; a refusal reloads. */
 function applySealedRestore(
   iframe: HTMLIFrameElement,
@@ -425,10 +430,7 @@ function applySealedRestore(
       });
     if (rerun === "applied") return "soft";
   } else if (restore?.scopes.length) {
-    const rerun =
-      restore.scripted && active && script
-        ? sealedRerun(script, { authoredHtml: active.restored, previousHtml: active.previous })
-        : null;
+    const rerun = restore.scripted ? undoRerun(active, script) : null;
     sendSealedRestore(
       iframe,
       { ...restore, ...(rerun && { rerun }) },

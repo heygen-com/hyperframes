@@ -61,10 +61,11 @@ const reapplyScriptMissing = (plan: RestorePlan) =>
   plan.some(([, , set]) => set.some(([name]) => REAPPLIED.has(name))) &&
   (window as unknown as Record<string, unknown>)[STUDIO_SEEK_REAPPLY_STARTED] !== true;
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Object.prototype.toString.call(value) === "[object Object]";
-const keysAre = (value: Record<string, unknown>, keys: string) =>
-  Object.keys(value).sort().join() === keys;
+const hasKeys = (value: unknown, keys: string): value is Record<string, unknown> =>
+  Object.prototype.toString.call(value) === "[object Object]" &&
+  Object.keys(value as object)
+    .sort()
+    .join() === keys;
 
 function attribute(value: unknown): RestoreAttribute | null {
   if (!Array.isArray(value) || value.length !== 2) return null;
@@ -78,7 +79,7 @@ function attribute(value: unknown): RestoreAttribute | null {
 }
 
 function element(value: unknown): RestoreScope["elements"][number] | null {
-  if (!isRecord(value) || !keysAre(value, "attributes,key")) return null;
+  if (!hasKeys(value, "attributes,key")) return null;
   const { key, attributes } = value;
   if (typeof key !== "string" || key.length > MAX_KEY_LENGTH || !/^(hf|id):./.test(key))
     return null;
@@ -91,7 +92,7 @@ const isScopeFile = (file: unknown): file is string | null =>
   file === null || (typeof file === "string" && file.length > 0 && file.length <= MAX_KEY_LENGTH);
 
 function scope(value: unknown): RestoreScope | null {
-  if (!isRecord(value) || !keysAre(value, "elements,file")) return null;
+  if (!hasKeys(value, "elements,file")) return null;
   const { file, elements } = value;
   if (!isScopeFile(file) || !Array.isArray(elements) || !elements.length) return null;
   const parsed = elements.map(element);
@@ -107,7 +108,7 @@ export function parseRestoreScopes(scopes: unknown): RestoreScope[] | null {
 }
 
 export function parseRestoreAttributes(params: unknown): RestoreAttributesParams | null {
-  if (!isRecord(params) || !keysAre(params, "scopes,scripted,time")) return null;
+  if (!hasKeys(params, "scopes,scripted,time")) return null;
   const { scripted, time } = params;
   if (typeof scripted !== "boolean") return null;
   if (typeof time !== "number" || !Number.isFinite(time) || time < 0) return null;
