@@ -531,6 +531,37 @@ describe("runtime entry", () => {
       expect(loadsOf(now!)).toEqual([1]);
     });
 
+    // fails without the fix: a preview loaded every clip with no authored length in full, so a film of hundreds ran
+    // the page out of memory.
+    it("in a preview a far clip with no authored length loads only its length, then gives its decoder back and keeps the length", async () => {
+      spyLoad();
+      servePreview();
+      const clips = videos(mountRoot(), "0", "1.5", "6");
+      for (const clip of clips) clip.removeAttribute("data-duration");
+      const [now, soon, later] = clips as [HTMLVideoElement, HTMLVideoElement, HTMLVideoElement];
+      later.setAttribute("src", "later.mp4");
+
+      await evaluateRuntime();
+      expect(armed(now, soon, later)).toEqual([true, true, false]);
+      expect(later.preload).toBe("metadata");
+      expect(loadsOf(later)).toEqual([1]);
+
+      Object.defineProperty(later, "readyState", { value: 1, configurable: true });
+      Object.defineProperty(later, "duration", { value: 2, configurable: true });
+      later.dispatchEvent(new Event("loadedmetadata"));
+      // Freed by a reload with its src dropped and put back, as a clip the playhead left is.
+      expect(later.preload).toBe("none");
+      expect(loadsOf(later)).toEqual([2]);
+      expect(later.getAttribute("src")).toBe("later.mp4");
+
+      Object.defineProperty(later, "readyState", { value: 0, configurable: true });
+      Object.defineProperty(later, "duration", { value: Number.NaN, configurable: true });
+      window.__player?.seek(7);
+      expect(visibility(later)).toEqual(["visible"]);
+      window.__player?.seek(8.5);
+      expect(visibility(later)).toEqual(["hidden"]);
+    });
+
     // Three takes of one file, each a picture and a sound, as an edit cut from a single source is.
     const takesOfOneFile = () => {
       const root = mountRoot();
