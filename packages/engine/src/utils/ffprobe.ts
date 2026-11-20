@@ -537,7 +537,7 @@ export async function buildProbeFactsText(filePath: string, signal?: AbortSignal
     ffprobeMajor: await ffprobeMajor(),
   };
   try {
-    const metadata = await extractMediaMetadata(filePath);
+    const metadata = await extractMediaMetadata(filePath, { signal });
     const window = resolveStreamWindow(filePath, {
       videoStreamStartSeconds: metadata.videoStreamStartSeconds,
       videoStreamDurationSeconds:
@@ -989,8 +989,9 @@ export async function extractMediaMetadata(
   filePath: string,
   options?: { signal?: AbortSignal },
 ): Promise<VideoMetadata> {
-  const identity = mediaFileIdentity(filePath);
   const signal = options?.signal;
+  signal?.throwIfAborted();
+  const identity = mediaFileIdentity(filePath);
   // As for audio: a probe bound to a caller's signal is shared only among callers of that signal.
   let cache = videoMetadataCache;
   if (signal) {
