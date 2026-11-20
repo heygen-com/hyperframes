@@ -418,7 +418,7 @@ describe("getSystemTotalMb", () => {
         expect(isLowMemorySystem()).toBe(false);
         expect(warn).toHaveBeenCalledTimes(1);
         expect(warn.mock.calls[0]?.[0]).toContain(
-          "[SystemMemory] Unable to read cgroup memory limit",
+          `[SystemMemory] Unable to read cgroup limit at ${CGROUP_V2_MEMORY_MAX_PATH}`,
         );
         expect(warn.mock.calls[0]?.[0]).toContain("EACCES");
       },

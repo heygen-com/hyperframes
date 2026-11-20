@@ -191,8 +191,8 @@ function warnCgroupReadFailure(path: string, error: unknown): void {
   if (_warnedCgroupReadFailure) return;
   _warnedCgroupReadFailure = true;
   console.warn(
-    `[SystemMemory] Unable to read cgroup memory limit at ${path} ` +
-      `(${formatCgroupReadError(error)}); falling back to host RAM.`,
+    `[SystemMemory] Unable to read cgroup limit at ${path} ` +
+      `(${formatCgroupReadError(error)}); treating it as no limit.`,
   );
 }
 
