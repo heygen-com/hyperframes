@@ -52,34 +52,31 @@ vi.mock("./domEditing", async (importOriginal) => ({
   collectDomEditLayerItems: mocks.collect,
 }));
 
-function makeLayer(
-  overrides: Partial<DomEditLayerItem> & { zIndex?: string; locked?: boolean },
-): DomEditLayerItem {
-  const win = new Window();
-  const doc = win.document;
-  const parent = doc.createElement("div") as unknown as HTMLElement;
-  if (overrides.locked) {
-    (parent as unknown as Element).setAttribute("data-timeline-locked", "true");
-  }
-  const el = doc.createElement("div") as unknown as HTMLElement;
-  parent.appendChild(el as unknown as Node);
-  if (overrides.zIndex != null) {
-    (el as unknown as { style: { zIndex: string } }).style.zIndex = overrides.zIndex;
-  }
-  if (overrides.id) {
-    (el as unknown as Element).setAttribute("id", overrides.id);
-  }
+function layerElement({ locked, zIndex, id }: { locked?: boolean; zIndex?: string; id?: string }) {
+  const doc = new Window().document;
+  const parent = doc.createElement("div");
+  if (locked) parent.setAttribute("data-timeline-locked", "true");
+  const el = doc.createElement("div");
+  parent.appendChild(el);
+  if (zIndex != null) el.style.zIndex = zIndex;
+  if (id) el.setAttribute("id", id);
+  return el as unknown as HTMLElement;
+}
+
+function makeLayer({
+  zIndex,
+  locked,
+  ...overrides
+}: Partial<DomEditLayerItem> & { zIndex?: string; locked?: boolean }): DomEditLayerItem {
   return {
-    key: overrides.key ?? `layer-${Math.random()}`,
-    element: el,
-    label: overrides.label ?? "div",
-    tagName: overrides.tagName ?? "div",
-    depth: overrides.depth ?? 0,
-    childCount: overrides.childCount ?? 0,
-    id: overrides.id,
-    selector: overrides.selector,
-    selectorIndex: overrides.selectorIndex,
-    sourceFile: overrides.sourceFile ?? "index.html",
+    key: `layer-${Math.random()}`,
+    label: "div",
+    tagName: "div",
+    depth: 0,
+    childCount: 0,
+    sourceFile: "index.html",
+    ...overrides,
+    element: layerElement({ locked, zIndex, id: overrides.id }),
   };
 }
 
