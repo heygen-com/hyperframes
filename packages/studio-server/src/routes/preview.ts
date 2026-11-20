@@ -108,6 +108,7 @@ import {
   type PreviewApiAdapter,
 } from "../helpers/mediaProxyPreview.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
+import { previewRefusalPage } from "../helpers/previewErrorPage.js";
 import { lazyPreviewImages } from "../helpers/lazyPreviewImages.js";
 import { corsProjectVideos } from "../helpers/captureVideos.js";
 import { createJobSlots, JobAbandonedError, JobQueueFullError } from "../helpers/jobSlots.js";
@@ -163,6 +164,10 @@ function parseStudioMotionManifestContent(content: string): {
 }
 
 /** Preview hooks must install before authored head scripts register media consumers. */
+function isCompositionTooLarge(error: unknown): error is Error {
+  return error instanceof Error && "code" in error && error.code === "COMPOSITION_TOO_LARGE";
+}
+
 export function withPreviewRuntime(html: string, runtimeUrl: string): string {
   const tag = `<script ${RUNTIME_BOOTSTRAP_ATTR}="1" src="${runtimeUrl}"></script>`;
   return insertRuntimeTag(stripEmbeddedRuntimeScripts(html), tag, true);
@@ -578,7 +583,9 @@ export function registerPreviewRoutes(
         if (!capture) adapter.previewDocuments?.write(builtKey, bundled);
       }
       return bundled;
-    } catch {
+    } catch (error) {
+      // Over a size limit, the raw page would only expand the same mounts in the browser instead.
+      if (isCompositionTooLarge(error)) return previewRefusalPage(error.message);
       // Re-read disk on bundle failure so we serve the latest file content,
       // not the pre-request snapshot that may have been saved over.
       const fallback = resolveProjectMainHtml(project.dir, project.id);

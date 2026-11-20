@@ -109,7 +109,7 @@ import {
   CompositionExpansionBudget,
   REMOTE_SCRIPTS,
   REMOTE_STYLESHEETS,
-} from "./compositionSizeLimit.js";
+} from "@hyperframes/core/compiler";
 import {
   escapesAssetRoot,
   isPathInside,

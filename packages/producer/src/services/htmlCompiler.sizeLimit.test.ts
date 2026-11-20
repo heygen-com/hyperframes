@@ -9,7 +9,7 @@ import {
   CompositionExpansionBudget,
   MAX_COMPOSITION_HTML_BYTES,
   MAX_EXPANDED_COMPOSITION_BYTES,
-} from "./compositionSizeLimit.js";
+} from "@hyperframes/core/compiler";
 import {
   compileForRender,
   inlineExternalScripts,
