@@ -58,9 +58,7 @@ interface NudgeSession {
 /** A burst on a sealed frame waits for the frame's gesture-start read; keys meanwhile add to `accum`. */
 interface SealedStartRead {
   accum: { x: number; y: number };
-  flush: boolean;
   dropped: boolean;
-  landed: Promise<unknown>;
 }
 
 export interface UseDomEditNudgeParams {
@@ -167,11 +165,7 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
   // Mirrors the drag's onPointerUp — same commit callbacks, same failure
   // restore, same member teardown.
   const commitSession = (): Promise<unknown> | undefined => {
-    const reading = readingRef.current;
-    if (reading) {
-      reading.flush = true;
-      return reading.landed;
-    }
+    if (cancelSealedRead()) return undefined;
     const session = sessionRef.current;
     if (!session) return undefined;
     sessionRef.current = null;
@@ -209,13 +203,21 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
       session.edit.settle(saved);
     }
   };
+  // Whatever flushes a burst still waiting on its frame (a drag, a selection change, another edit) owns the element
+  // now: the keys are dropped, nothing was drawn yet, and the next arrow starts a fresh read on the current target.
+  const cancelSealedRead = (): boolean => {
+    const reading = readingRef.current;
+    if (!reading) return false;
+    reading.dropped = true;
+    readingRef.current = null;
+    return true;
+  };
   const commitSessionRef = useRef(commitSession);
   commitSessionRef.current = commitSession;
 
   useEffect(() => {
     if (params.allowCanvasMovement) return;
-    if (readingRef.current) readingRef.current.dropped = true;
-    readingRef.current = null;
+    cancelSealedRead();
     if (!sessionRef.current) return;
     const session = sessionRef.current;
     sessionRef.current = null;
@@ -275,28 +277,23 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     const found = iframe && previewFrameOpaque(iframe) ? nudgeTargets() : null;
     if (!iframe || !found) return null;
     const selections = found.targets.map((target) => target.selection);
-    const read: SealedStartRead = {
-      accum: { x: 0, y: 0 },
-      flush: false,
-      dropped: false,
-      landed: readShownGestureStarts(
-        iframe,
-        p.overlayRef.current,
-        p.activeCompositionPathRef.current,
-        selections,
-      )
-        .catch(() => null)
-        .then((shown) => {
-          if (readingRef.current === read) readingRef.current = null;
-          if (read.dropped || !shown) return undefined;
-          const targets = found.targets.map((target, i) => ({ ...target, ...shown.shown[i] }));
-          const session = beginSession({ targets, isGroup: found.isGroup }, false);
-          if (!session || session === "refused") return undefined;
-          session.accum = read.accum;
-          startBurst(session);
-          return read.flush ? commitSessionRef.current() : undefined;
-        }),
-    };
+    const read: SealedStartRead = { accum: { x: 0, y: 0 }, dropped: false };
+    void readShownGestureStarts(
+      iframe,
+      p.overlayRef.current,
+      p.activeCompositionPathRef.current,
+      selections,
+    )
+      .catch(() => null)
+      .then((shown) => {
+        if (readingRef.current === read) readingRef.current = null;
+        if (read.dropped || !shown) return;
+        const targets = found.targets.map((target, i) => ({ ...target, ...shown.shown[i] }));
+        const session = beginSession({ targets, isGroup: found.isGroup }, false);
+        if (!session || session === "refused") return;
+        session.accum = read.accum;
+        startBurst(session);
+      });
     return read;
   };
 
