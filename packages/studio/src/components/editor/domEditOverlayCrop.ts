@@ -10,7 +10,6 @@ import {
 import { MAX_DRAFT_PX, MAX_ELEMENT_VALUE } from "@hyperframes/core/runtime/editing-port";
 import { previewRequest } from "../../player/lib/previewChannel";
 import { previewStandIn } from "./previewDrafts";
-import { gestureStartLayout } from "./previewGestureStartRead";
 
 export type CropEdge = "top" | "right" | "bottom" | "left";
 
@@ -371,7 +370,7 @@ export interface CropFrameStart {
   layout: { width: number; height: number };
 }
 
-/** A stand-in's crop frame: the frame's live oriented box of its element; the layout a press measured gives its scale. */
+/** A stand-in's crop frame: the frame's live oriented box of its element, scaled by the layout a press measured. */
 function standInCropFrame(
   overlayRect: CropScreenRect & { angle?: number },
   layout: { width: number; height: number } | null,
@@ -396,10 +395,8 @@ export function readElementCropFrame(
 ): CropFrame {
   const editX = overlayRect.editScaleX > 0 ? overlayRect.editScaleX : 1;
   const editY = overlayRect.editScaleY > 0 ? overlayRect.editScaleY : 1;
-  const standIn = previewStandIn(element);
-  if (standIn) {
-    const layout = start?.layout ?? gestureStartLayout(standIn.handle);
-    return standInCropFrame(overlayRect, layout, { x: editX, y: editY });
+  if (previewStandIn(element)) {
+    return standInCropFrame(overlayRect, start?.layout ?? null, { x: editX, y: editY });
   }
   const aabb: CropFrame = {
     angleDeg: 0,
