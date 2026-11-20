@@ -399,7 +399,7 @@ function sealedRestore(activeDocPath: string, files: RestoreFiles): SealedRestor
   return restore;
 }
 
-/** Sends the restore to a sealed preview; a refusal, or no answer, reloads it. */
+/** Sends the restore to a sealed preview; a refusal re-runs its script in place when it has one, else reloads. */
 function applySealedRestore(
   iframe: HTMLIFrameElement,
   activeDocPath: string,
@@ -411,20 +411,25 @@ function applySealedRestore(
   const restore = sealedRestore(activeDocPath, files);
   const active = files[activeDocPath];
   const script = active ? extractGsapScriptText(active.restored) : null;
+  const rerun = () =>
+    !!restore &&
+    !!active &&
+    !!script &&
+    applySoftReload(iframe, script, {
+      onAsyncFailure: reloadPreview,
+      onShownInPlace,
+      currentTimeOverride: currentTime,
+      authoredHtml: active.restored,
+      previousHtml: active.previous,
+      restore: restore.scopes,
+    }) === "applied";
   if (restore && active && script !== extractGsapScriptText(active.previous)) {
-    const rerun =
-      script &&
-      applySoftReload(iframe, script, {
-        onAsyncFailure: reloadPreview,
-        onShownInPlace,
-        currentTimeOverride: currentTime,
-        authoredHtml: active.restored,
-        previousHtml: active.previous,
-        restore: restore.scopes,
-      });
-    if (rerun === "applied") return "soft";
+    if (rerun()) return "soft";
   } else if (restore?.scopes.length) {
-    sendSealedRestore(iframe, restore, currentTime, reloadPreview, onShownInPlace);
+    const rerunOrReload = () => {
+      if (!(restore.scripted && rerun())) reloadPreview();
+    };
+    sendSealedRestore(iframe, restore, currentTime, rerunOrReload, onShownInPlace);
     return "soft";
   }
   reloadPreview();
