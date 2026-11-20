@@ -146,6 +146,7 @@ it("serves direct VP8 proxy requests for alpha sources", async () => {
     project.dir,
     join(project.dir, "clip.mov"),
     "vp8",
+    undefined,
   );
 });
 
@@ -303,6 +304,7 @@ describe("registerCompositionRoute", () => {
       project.dir,
       join(project.dir, "clip.mp4"),
       "h264",
+      undefined,
     );
   });
 
@@ -328,6 +330,12 @@ describe("registerCompositionRoute", () => {
     expect(await res.text()).toBe("light-h264-bytes");
     expect(mediaMocks.decideMediaProxyEligibility).toHaveBeenCalledWith(
       expect.objectContaining({ codecName: "h264" }),
+      { width: 2048, height: 1218 },
+    );
+    expect(mocks.resolveProxy).toHaveBeenCalledWith(
+      project.dir,
+      join(project.dir, "clip.mp4"),
+      "h264",
       { width: 2048, height: 1218 },
     );
   });

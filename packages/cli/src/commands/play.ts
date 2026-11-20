@@ -284,7 +284,7 @@ export async function registerCompositionRoute(
           return ctx.text("Media proxy variant does not match asset", 422);
         }
         recordProxyRequest();
-        const proxyPath = await resolveProxy(project.dir, filePath, proxyVariant);
+        const proxyPath = await resolveProxy(project.dir, filePath, proxyVariant, proxyBox);
         return buildRangeResponse(
           proxyPath,
           PROXY_VARIANT_CONFIG[proxyVariant].contentType,
