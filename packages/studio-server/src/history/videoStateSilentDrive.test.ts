@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { constants, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -55,7 +55,12 @@ it.skipIf(process.platform === "win32")(
     await drive.writeFile(JSON.stringify(stored));
     await drive.close();
     await write("second");
-    expect(statSync(state).isFile()).toBe(true);
-    expect(JSON.parse(readFileSync(state, "utf8")).historyId).toBe("second");
+    const saved = await open(state, constants.O_RDONLY | constants.O_NONBLOCK);
+    try {
+      expect((await saved.stat()).isFile()).toBe(true);
+      expect(JSON.parse(await saved.readFile("utf8")).historyId).toBe("second");
+    } finally {
+      await saved.close();
+    }
   },
 );
