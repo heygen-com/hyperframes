@@ -7,6 +7,7 @@ import {
   findPreviewElementForSelection,
   resolvePreviewSelection,
 } from "../components/editor/previewSelection";
+import { drawPreviewDraft } from "../components/editor/previewDrafts";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 import { resizeSelectionFromAgent } from "../webmcp/StudioAgentTools";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
@@ -102,6 +103,17 @@ describe("geometry commits in a sealed preview", () => {
     await settle();
 
     expect(card.style.rotate).toBe("30deg");
+  });
+
+  it("leaves the frame to a drag whose draft is still live", async () => {
+    const { card, selection, commits } = await sealedCard(saved());
+    drawPreviewDraft(selection.element, { size: { width: 150, height: 50 } });
+    await settle();
+
+    await commits.handleDomBoxSizeCommit(selection, { width: 200, height: 80 });
+    await settle();
+
+    expect(card.style.width).toBe("150px");
   });
 
   it("puts the frame's element and the selection back exactly when the save fails", async () => {
