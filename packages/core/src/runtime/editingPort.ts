@@ -221,6 +221,7 @@ export interface EditingRuntimeSnapshot {
 }
 
 export const MAX_DRAFT_PX = 100_000;
+export const MAX_DRAFT_DEG = 36_000;
 export const MAX_WATCHED_KEYS = 32;
 
 /** A keystroke the frame forwards for `watch-keys`, as an unasked port message with no id. */
@@ -240,12 +241,15 @@ export type EditingKeyMessage = {
   key: EditingKeyEvent;
 };
 
+/** The `rotate` property's whole value in degrees, or GSAP's rotation; null takes the drawn turn back. */
+export type EditingDraftRotate = { angle: number; route: "css" | "gsap" };
 /** A gesture's draft on one element: null puts that part back; `end` keeps what is drawn or restores. */
 export type EditingDraft =
   | {
       handle: EditingElementHandle;
       translate: { x: number; y: number } | null;
       size: { width: number; height: number } | null;
+      rotate?: EditingDraftRotate | null;
     }
   | { handle: EditingElementHandle; end: "keep" | "restore" };
 
@@ -452,14 +456,30 @@ function draftPart(value: unknown, keys: string, min: number): boolean {
   return keys.split(",").every((key) => isDraftPx(value[key], min));
 }
 
+function draftRotate(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (!hasKeys(value, "angle,route") || (value.route !== "css" && value.route !== "gsap"))
+    return false;
+  return Number.isFinite(value.angle) && Math.abs(value.angle as number) <= MAX_DRAFT_DEG;
+}
+
 function draftEntry(value: unknown): EditingDraft | null {
   if (!isPlainRecord(value) || !isHandle(value.handle)) return null;
-  const { handle, end, translate, size } = value;
+  const { handle, end } = value;
   if (hasKeys(value, "end,handle"))
     return end === "keep" || end === "restore" ? { handle, end } : null;
-  if (!hasKeys(value, "handle,size,translate")) return null;
-  const valid = draftPart(translate, "x,y", -MAX_DRAFT_PX) && draftPart(size, "height,width", 0);
-  return valid ? (value as EditingDraft) : null;
+  return drawnParts(value) ? (value as EditingDraft) : null;
+}
+
+function drawnParts(value: Record<string, unknown>): boolean {
+  const { translate, size, rotate } = value;
+  if (!hasKeys(value, "handle,size,translate") && !hasKeys(value, "handle,rotate,size,translate"))
+    return false;
+  return (
+    draftPart(translate, "x,y", -MAX_DRAFT_PX) &&
+    draftPart(size, "height,width", 0) &&
+    draftRotate(rotate)
+  );
 }
 
 function draftList(params: unknown): EditingParams<"draft"> | null {

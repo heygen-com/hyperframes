@@ -5,7 +5,7 @@
  */
 import { isStylableElement, type StylableElement as Styled } from "./domRealm";
 import { elementForHandle } from "./editingHandles";
-import type { EditingDraft } from "./editingPort";
+import type { EditingDraft, EditingDraftRotate } from "./editingPort";
 
 const SIZE_PROPERTIES = [
   "box-sizing",
@@ -16,13 +16,21 @@ const SIZE_PROPERTIES = [
   "max-width",
   "max-height",
 ] as const;
-const DRAWN = ["translate", ...SIZE_PROPERTIES] as const;
+const DRAWN = ["translate", "rotate", ...SIZE_PROPERTIES] as const;
 
 interface Before {
   inline: Array<[name: string, value: string, priority: string]>;
   /** The computed translate, split into its axes with each % as px, that a draft's translate adds to. */
   translate: string[];
+  /** GSAP's rotation before the first GSAP turn drawn, to put back on "restore". */
+  gsapRotation?: number;
 }
+
+type Gsap = {
+  getProperty?: (el: Element, prop: string) => unknown;
+  set?: (el: Element, props: Record<string, number>) => void;
+};
+const frameGsap = () => (window as unknown as { gsap?: Gsap }).gsap;
 
 const before = new WeakMap<Element, Before>();
 
@@ -115,12 +123,34 @@ function drawSize(element: Styled, size: { width: number; height: number }): voi
   for (const name of ["max-width", "max-height"]) style.setProperty(name, "none");
 }
 
+function restoreGsapRotation(element: Styled): void {
+  const rotation = before.get(element)?.gsapRotation;
+  if (rotation !== undefined) frameGsap()?.set?.(element, { rotation });
+}
+
+function drawRotate(element: Styled, rotate: EditingDraftRotate | null): void {
+  const saved = beforeOf(element);
+  if (!rotate) {
+    restore(element, ["rotate"]);
+    return restoreGsapRotation(element);
+  }
+  if (rotate.route === "css") return void element.style.setProperty("rotate", `${rotate.angle}deg`);
+  const gsap = frameGsap();
+  saved.gsapRotation ??= Number(gsap?.getProperty?.(element, "rotation")) || 0;
+  element.style.setProperty("rotate", "none");
+  gsap?.set?.(element, { rotation: rotate.angle });
+}
+
 function apply(element: Styled, draft: EditingDraft): void {
   if ("end" in draft) {
-    if (draft.end === "restore") restore(element, DRAWN);
+    if (draft.end === "restore") {
+      restore(element, DRAWN);
+      restoreGsapRotation(element);
+    }
     before.delete(element);
     return;
   }
+  if ("rotate" in draft) drawRotate(element, draft.rotate ?? null);
   if (draft.translate) drawTranslate(element, draft.translate);
   else restore(element, ["translate"]);
   if (draft.size) drawSize(element, draft.size);
