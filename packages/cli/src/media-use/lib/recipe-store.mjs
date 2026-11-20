@@ -232,13 +232,12 @@ function refuseLinkedRecipeDir(root, slug) {
 
 /**
  * The content of the regular file at `path`, or undefined when it is missing, a link or not a file.
- * The open handle must be the same file `lstat` saw, so a link swapped in between is refused even
- * where Node has no `O_NOFOLLOW` (Windows); pass 0 as `noFollow` to check that path. Checking with
- * `lstat` first also keeps a FIFO from blocking the open.
+ * After the open, `path` must still be a regular file with the device and inode the handle has. A
+ * link has its own inode, so it never matches the file an open reached through it, even where Node
+ * has no `O_NOFOLLOW` (Windows); pass 0 as `noFollow` to check that path. `O_NONBLOCK` keeps a FIFO
+ * from blocking the open.
  */
 export function readRegularFile(path, noFollow = constants.O_NOFOLLOW ?? 0) {
-  const before = lstatSync(path, { bigint: true, throwIfNoEntry: false });
-  if (!before?.isFile()) return undefined;
   let fd;
   try {
     fd = openSync(path, constants.O_RDONLY | noFollow | (constants.O_NONBLOCK ?? 0));
@@ -247,7 +246,9 @@ export function readRegularFile(path, noFollow = constants.O_NOFOLLOW ?? 0) {
   }
   try {
     const opened = fstatSync(fd, { bigint: true });
-    const same = opened.isFile() && opened.dev === before.dev && opened.ino === before.ino;
+    const atPath = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+    const same =
+      opened.isFile() && atPath?.isFile() && opened.dev === atPath.dev && opened.ino === atPath.ino;
     return same ? readFileSync(fd) : undefined;
   } finally {
     closeSync(fd);
