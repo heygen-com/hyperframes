@@ -27,6 +27,17 @@ export function onPreviewDocumentLoaded(
   return () => iframe.removeEventListener(PREVIEW_DOCUMENT_LOADED, onLoaded);
 }
 
+const RESTORED_IN_PLACE = "hf-preview-restored-in-place";
+
+export function announcePreviewRestoredInPlace(iframe: HTMLIFrameElement): void {
+  iframe.dispatchEvent(new Event(RESTORED_IN_PLACE));
+}
+
+export function onPreviewRestoredInPlace(iframe: HTMLIFrameElement, onRestored: () => void) {
+  iframe.addEventListener(RESTORED_IN_PLACE, onRestored);
+  return () => iframe.removeEventListener(RESTORED_IN_PLACE, onRestored);
+}
+
 export function onPreviewContentReplaced(
   iframe: HTMLIFrameElement,
   onReplaced: () => void,
