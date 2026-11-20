@@ -904,26 +904,26 @@ async function compileHtmlFile(
   // Explicit video slots may outlive their source and hold the final frame.
   const preResolved = extractResolvedMedia(compiledHtml);
   const hiddenVideoIds = collectHiddenVideoIds(compiledHtml);
+  const clampable = preResolved.filter((el) => !!el.src && !el.loop && !hiddenVideoIds.has(el.id));
+  run?.assets.reserve(clampable.map((el) => el.src!).filter(isHttpUrl));
   const clampResults = await Promise.all(
-    preResolved
-      .filter((el) => !!el.src && !el.loop && !hiddenVideoIds.has(el.id))
-      .map(async (el) => {
-        const { duration: maxDuration } = await resolveMediaDuration(
-          el.src!,
-          el.mediaStart,
-          el.playbackRate,
-          projectDir,
-          baseDir,
-          downloadDir,
-          el.tagName,
-          el.id,
-          log,
-          undefined,
-          run,
-          assetRoot,
-        );
-        return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
-      }),
+    clampable.map(async (el) => {
+      const { duration: maxDuration } = await resolveMediaDuration(
+        el.src!,
+        el.mediaStart,
+        el.playbackRate,
+        projectDir,
+        baseDir,
+        downloadDir,
+        el.tagName,
+        el.id,
+        log,
+        undefined,
+        run,
+        assetRoot,
+      );
+      return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
+    }),
   );
   const clampList: ResolvedDuration[] = [];
   for (const r of clampResults) {
