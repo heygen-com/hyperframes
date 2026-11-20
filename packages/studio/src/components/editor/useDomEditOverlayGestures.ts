@@ -435,7 +435,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         endStudioManualEditGesture(sel.element, g.manualEditDragToken);
         return;
       }
-      // Hold the final angle while the commit lands.
       applyRotationDraft(sel.element, finalRotation.angle, g.plainRotation);
       const commit = { ...finalRotation, plain: g.plainRotation };
       const edit = beginStudioPendingEdit(elementLookRevert(sel.element, g.initialLook));
