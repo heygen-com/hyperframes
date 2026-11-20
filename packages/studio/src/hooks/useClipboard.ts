@@ -30,7 +30,7 @@ import {
   parseSavedSource,
 } from "../utils/authoredSource";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
-import { unsafeMarkupAttributes } from "@hyperframes/core/html-attr-safety";
+import { unsafeMarkup } from "@hyperframes/core/html-attr-safety";
 
 type InPlace = { inPlace?: boolean };
 
@@ -190,8 +190,10 @@ export function resolveFreeTrack(preferred: PlacedClip, taken: readonly PlacedCl
  *  DOMParser, not a regex, so a `>` inside an attribute value can't defeat it. */
 function remintHfIds(html: string, parser: DOMParser, taken: Set<string>, saved = false): string {
   const doc = parser.parseFromString(html, "text/html");
-  if (!saved && unsafeMarkupAttributes(doc.documentElement).length > 0) {
-    throw new Error("Couldn't paste: the copied element has an event handler or a script link");
+  if (!saved && unsafeMarkup(doc.documentElement).length > 0) {
+    throw new Error(
+      "Couldn't paste: the copied element runs code (a script, an event handler or a script link)",
+    );
   }
   const root = doc.body.firstElementChild;
   if (!root) {

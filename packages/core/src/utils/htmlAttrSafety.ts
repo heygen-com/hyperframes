@@ -66,6 +66,7 @@ export const ALLOWED_HTML_ATTRS = new Set([
 
 export const URI_BEARING_ATTRS = new Set([
   "src",
+  "data",
   "href",
   "action",
   "formaction",
@@ -86,22 +87,53 @@ export function isAllowedHtmlAttribute(name: string): boolean {
   return false;
 }
 
+// The URL spec's own clean-up before it reads a scheme: no C0 control or space at either end, no tab or newline at all.
+function linkAsBrowsersReadIt(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value.charCodeAt(start) <= 0x20) start++;
+  while (end > start && value.charCodeAt(end - 1) <= 0x20) end--;
+  return value.slice(start, end).replace(/[\t\n\r]/g, "");
+}
+
 export function isSafeAttributeValue(name: string, value: string): boolean {
   if (URI_BEARING_ATTRS.has(name.toLowerCase())) {
-    const trimmed = value.trim();
+    const trimmed = linkAsBrowsersReadIt(value);
     if (DANGEROUS_URI_SCHEMES.test(trimmed)) return false;
     if (DANGEROUS_DATA_URI.test(trimmed)) return false;
   }
   return true;
 }
 
-export function unsafeMarkupAttributes(root: Element): string[] {
-  const found: string[] = [];
-  for (const element of [root, ...Array.from(root.querySelectorAll("*"))]) {
-    for (const { name, value } of Array.from(element.attributes)) {
-      if (name.toLowerCase().startsWith("on") || !isSafeAttributeValue(name, value))
-        found.push(`${element.localName}[${name}]`);
+const CODE_ELEMENTS = new Set(["script", "object", "embed"]);
+const INLINE_DOCUMENT_FRAMES = new Set(["iframe", "frame"]);
+const LINK_ANIMATIONS = new Set(["set", "animate"]);
+const ANIMATED_VALUES = ["to", "from", "by", "values"];
+
+function unsafeIn(element: Element, found: string[]): void {
+  const tag = element.localName;
+  if (CODE_ELEMENTS.has(tag)) found.push(tag);
+  if (INLINE_DOCUMENT_FRAMES.has(tag) && element.hasAttribute("srcdoc"))
+    found.push(`${tag}[srcdoc]`);
+  for (const { name, value } of Array.from(element.attributes)) {
+    if (name.toLowerCase().startsWith("on") || !isSafeAttributeValue(name, value))
+      found.push(`${tag}[${name}]`);
+  }
+  const animated = element.getAttribute("attributeName")?.toLowerCase();
+  if (LINK_ANIMATIONS.has(tag) && (animated === "href" || animated === "xlink:href")) {
+    for (const name of ANIMATED_VALUES) {
+      const values = element.getAttribute(name)?.split(";") ?? [];
+      if (values.some((value) => !isSafeAttributeValue("href", value)))
+        found.push(`${tag}[${name}]`);
     }
   }
+  for (const child of Array.from(element.children)) unsafeIn(child, found);
+  const content = tag === "template" ? (element as HTMLTemplateElement).content : null;
+  for (const child of Array.from(content?.children ?? [])) unsafeIn(child, found);
+}
+
+export function unsafeMarkup(root: Element): string[] {
+  const found: string[] = [];
+  unsafeIn(root, found);
   return found;
 }

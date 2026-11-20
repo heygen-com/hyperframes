@@ -60,6 +60,7 @@ const ALLOWED_HTML_ATTRS = new Set([
 
 const URI_BEARING_ATTRS = new Set([
   "src",
+  "data",
   "href",
   "action",
   "formaction",
@@ -80,9 +81,17 @@ export function isAllowedHtmlAttribute(name: string): boolean {
   return false;
 }
 
+function linkAsBrowsersReadIt(value: string): string {
+  let start = 0;
+  let end = value.length;
+  while (start < end && value.charCodeAt(start) <= 0x20) start++;
+  while (end > start && value.charCodeAt(end - 1) <= 0x20) end--;
+  return value.slice(start, end).replace(/[\t\n\r]/g, "");
+}
+
 export function isSafeAttributeValue(name: string, value: string): boolean {
   if (URI_BEARING_ATTRS.has(name.toLowerCase())) {
-    const trimmed = value.trim();
+    const trimmed = linkAsBrowsersReadIt(value);
     if (DANGEROUS_URI_SCHEMES.test(trimmed)) return false;
     if (DANGEROUS_DATA_URI.test(trimmed)) return false;
   }
