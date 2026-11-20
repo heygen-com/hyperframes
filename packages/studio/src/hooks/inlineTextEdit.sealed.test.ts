@@ -13,6 +13,7 @@ import type { DomEditSelection } from "../components/editor/domEditing";
 import { canEditSealedTextInline } from "../components/editor/domEditInlineText";
 import { sealedPreviewFrame } from "../player/lib/sealedPreviewFrame.test-helpers";
 import { describePreviewElements, previewTextEdit } from "../player/lib/previewElements";
+import { retirePreviewEditingClient } from "../player/lib/previewChannel";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { useInlineTextEdit, type InlineTextEditCommit } from "./useInlineTextEdit";
@@ -27,8 +28,15 @@ vi.mock("../components/editor/overlayFrameLoop", async (importOriginal) => ({
 }));
 
 const unmounts: Array<() => void> = [];
+const frames: HTMLIFrameElement[] = [];
+const sealedFrame = (...args: Parameters<typeof sealedPreviewFrame>) => {
+  const sealed = sealedPreviewFrame(...args);
+  frames.push(sealed.iframe);
+  return sealed;
+};
 afterEach(() => {
   unmounts.splice(0).forEach((unmount) => act(unmount));
+  frames.splice(0).forEach(retirePreviewEditingClient);
   document.body.innerHTML = "";
 });
 
@@ -45,7 +53,7 @@ async function select(iframe: HTMLIFrameElement, id: string) {
 async function sealedTitle(ports: MessagePort[] = []) {
   document.body.innerHTML = `<h1 id="title">${ORIGINAL}</h1><p id="other">x</p>`;
   const title = document.getElementById("title")!;
-  const { iframe } = sealedPreviewFrame({
+  const { iframe } = sealedFrame({
     wrapHandedOverPort: (port) => (ports.push(port), port),
   });
   return { title, iframe, selection: await select(iframe, "title") };
@@ -183,7 +191,7 @@ it("refuses a frame's end reply carrying anything but text markup, and puts the 
   for (const html of HOSTILE) {
     document.body.innerHTML = `<h1 id="title">${ORIGINAL}</h1><p id="other">x</p>`;
     const title = document.getElementById("title")!;
-    const { iframe } = sealedPreviewFrame({ wrapHandedOverPort: rewritingTextReplies(html) });
+    const { iframe } = sealedFrame({ wrapHandedOverPort: rewritingTextReplies(html) });
     const selection = await select(iframe, "title");
     const { onCommit, controls } = inlineEditor();
     act(() => void controls().start(selection.element));
@@ -341,12 +349,13 @@ it("saves once an edit the frame ended on blur just before the editor unmounted"
 
 it("opens no sealed text edit on a layer the frame would refuse, so Enter stays playback's", async () => {
   document.body.innerHTML = `<section id="s"><div>One</div><div>Two</div></section><p id="p">x</p>`;
-  const { iframe } = sealedPreviewFrame();
+  const { iframe } = sealedFrame();
   expect(canEditSealedTextInline(await select(iframe, "s"))).toBe(false);
   expect(canEditSealedTextInline(await select(iframe, "p"))).toBe(true);
 });
 
 it("holds the pending-edit drain until a save the frame started on blur lands", async () => {
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
   const { title, selection } = await sealedTitle();
   let land!: () => void;
   const onCommit = vi.fn(() => new Promise<void>((resolve) => (land = resolve)));
@@ -367,7 +376,7 @@ it("holds the pending-edit drain until a save the frame started on blur lands", 
 it("leaves Enter to playback on text too long for the frame to edit", async () => {
   const long = "x".repeat(200_001);
   document.body.innerHTML = `<p id="long">${long}</p><p id="short">${long.slice(1)}</p>`;
-  const { iframe } = sealedPreviewFrame();
+  const { iframe } = sealedFrame();
   expect(canEditSealedTextInline(await select(iframe, "long"))).toBe(false);
   expect(canEditSealedTextInline(await select(iframe, "short"))).toBe(true);
 });
