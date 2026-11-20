@@ -635,6 +635,12 @@ type SourceProbe = { profile: MediaProbeProfile; fileDuration: number | null } |
 /** One probe per unique source for a whole compile, whatever number of elements point at it. */
 type SourceProbes = Map<string, Promise<SourceProbe>>;
 
+/** What one compile shares across the root and every sub-composition it compiles. */
+interface CompileRun {
+  probes: SourceProbes;
+  signal?: AbortSignal;
+}
+
 async function resolveMediaDuration(
   src: string,
   mediaStart: number,
@@ -646,7 +652,7 @@ async function resolveMediaDuration(
   elementIdentity: string,
   log?: ProducerLogger,
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
-  probes?: SourceProbes,
+  run?: CompileRun,
   assetRoot?: string,
 ): Promise<{ duration: number | null; resolvedPath: string }> {
   let filePath = src;
@@ -655,10 +661,11 @@ async function resolveMediaDuration(
     const remoteDir = join(downloadDir, REMOTE_MEDIA_SUBDIR);
     if (!existsSync(remoteDir)) mkdirSync(remoteDir, { recursive: true });
     try {
-      filePath = await downloadToTemp(src, remoteDir, undefined, undefined, undefined, {
+      filePath = await downloadToTemp(src, remoteDir, undefined, run?.signal, undefined, {
         onTelemetry: logRemoteDownloadTelemetry,
       });
-    } catch {
+    } catch (err) {
+      if (run?.signal?.aborted) throw err;
       // Download failed (e.g. 404 placeholder URL) — skip gracefully.
       // The element will get duration 0 and be excluded from the render.
       return { duration: null, resolvedPath: src };
@@ -732,10 +739,10 @@ async function resolveMediaDuration(
       }
     });
   const key = `${tagName}\0${filePath}`;
-  let probed = probes?.get(key);
+  let probed = run?.probes.get(key);
   if (!probed) {
     probed = probe();
-    probes?.set(key, probed);
+    run?.probes.set(key, probed);
   }
   const outcome = await probed;
   if ("error" in outcome) {
@@ -794,7 +801,7 @@ async function compileHtmlFile(
   downloadDir: string,
   log?: ProducerLogger,
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
-  probes?: SourceProbes,
+  run?: CompileRun,
   assetRoot?: string,
 ): Promise<{ html: string; unresolvedCompositions: UnresolvedElement[] }> {
   const { html: staticCompiled, unresolved } = compileTimingAttrs(html);
@@ -819,7 +826,7 @@ async function compileHtmlFile(
         el.id,
         log,
         urlByAbsentLocalPath,
-        probes,
+        run,
         assetRoot,
       ).then(({ duration }) => ({ id: el.id, duration })),
     ),
@@ -851,7 +858,7 @@ async function compileHtmlFile(
           el.id,
           log,
           undefined,
-          probes,
+          run,
           assetRoot,
         );
         return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
@@ -921,7 +928,7 @@ async function parseSubCompositions(
   downloadDir: string,
   visited: Set<string> = new Set(),
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
-  probes?: SourceProbes,
+  run?: CompileRun,
   assetRoot?: string,
   outsideFiles: OutsideFilePolicy = {},
   compiledSrcs: Set<string> = new Set(),
@@ -978,7 +985,7 @@ async function parseSubCompositions(
         downloadDir,
         undefined,
         urlByAbsentLocalPath,
-        probes,
+        run,
         assetRoot,
       );
 
@@ -988,7 +995,7 @@ async function parseSubCompositions(
         downloadDir,
         item.nestedVisited,
         urlByAbsentLocalPath,
-        probes,
+        run,
         assetRoot,
         outsideFiles,
         compiledSrcs,
@@ -1757,8 +1764,10 @@ async function downloadAndRewriteUrls(
   remoteDir: string,
   warnLabel: string,
   logLabel: string,
+  signal: AbortSignal | undefined,
   extraRewrite?: (html: string, url: string, relPath: string) => string,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
+  signal?.throwIfAborted();
   if (urlSet.size === 0) return { html, remoteMediaAssets: new Map() };
   if (!existsSync(remoteDir)) mkdirSync(remoteDir, { recursive: true });
 
@@ -1766,11 +1775,12 @@ async function downloadAndRewriteUrls(
   await Promise.all(
     [...urlSet].map(async (url) => {
       try {
-        const localPath = await downloadToTemp(url, remoteDir, undefined, undefined, undefined, {
+        const localPath = await downloadToTemp(url, remoteDir, undefined, signal, undefined, {
           onTelemetry: logRemoteDownloadTelemetry,
         });
         urlToLocal.set(url, localPath);
       } catch (err) {
+        if (signal?.aborted) throw err;
         const identity = safeDownloadUrlIdentity(url);
         defaultLogger.warn(`[Compiler] ${warnLabel}, using original URL as fallback.`, {
           urlFingerprint: identity.urlFingerprint,
@@ -1821,6 +1831,7 @@ async function downloadAndRewriteUrls(
 export async function localizeRemoteMediaSources(
   html: string,
   downloadDir: string,
+  signal?: AbortSignal,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   const urlSet = new Set([...remoteSrcUrls(html, "media"), ...remoteSrcUrls(html, "source")]);
   const localized = await downloadAndRewriteUrls(
@@ -1829,6 +1840,7 @@ export async function localizeRemoteMediaSources(
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote media download failed",
     "Localized remote media source(s)",
+    signal,
   );
   return { ...localized, html: dropBindingOnLocalizedMedia(localized.html) };
 }
@@ -1877,6 +1889,7 @@ function dropBindingOnLocalizedMedia(html: string): string {
 export async function localizeRemoteImageSources(
   html: string,
   downloadDir: string,
+  signal?: AbortSignal,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   // frameCapture's `pollImagesReady`/`decodeAllImages` cover any remote URL this misses.
   const urlSet = new Set(remoteSrcUrls(html, "img"));
@@ -1886,6 +1899,7 @@ export async function localizeRemoteImageSources(
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote image download failed",
     "Localized remote image source(s)",
+    signal,
   );
 }
 
@@ -1905,6 +1919,7 @@ export async function localizeRemoteImageSources(
 export async function localizeRemoteBackgroundImages(
   html: string,
   downloadDir: string,
+  signal?: AbortSignal,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   const urlSet = new Set<string>();
   for (const { parts } of remoteBackgroundUrlMatches(html)) {
@@ -1916,6 +1931,7 @@ export async function localizeRemoteBackgroundImages(
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote background-image download failed",
     "Localized remote background-image(s)",
+    signal,
     // Quoted url('..')/url("..") are rewritten by downloadAndRewriteUrls' default
     // replaceAll; this handles the unquoted url(https://..) form.
     (h, url, rel) => h.replaceAll(`url(${url})`, `url(${rel})`),
@@ -2148,6 +2164,7 @@ export async function localizeRemoteFontFaces(
 function localizeFontFaceUrls(
   html: string,
   downloadDir: string,
+  signal?: AbortSignal,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   return downloadAndRewriteUrls(
     collectFontFaceUrls(html),
@@ -2155,6 +2172,7 @@ function localizeFontFaceUrls(
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote font download failed",
     "Localized remote font face(s)",
+    signal,
     (h, url, relPath) => h.replaceAll(`url(${url})`, `url("${relPath}")`),
   );
 }
@@ -2503,7 +2521,7 @@ export async function compileForRender(
   // start.
   assertSubCompositionsUsable(rawHtml, projectDir, assetRoot, outsideFiles);
 
-  const probes: SourceProbes = new Map();
+  const run: CompileRun = { probes: new Map(), signal: options.abortSignal };
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,
@@ -2511,7 +2529,7 @@ export async function compileForRender(
     downloadDir,
     options.log,
     options.urlByAbsentLocalPath,
-    probes,
+    run,
     assetRoot,
   );
 
@@ -2522,7 +2540,7 @@ export async function compileForRender(
     downloadDir,
     undefined,
     options.urlByAbsentLocalPath,
-    probes,
+    run,
     assetRoot,
     outsideFiles,
   );
@@ -2611,6 +2629,7 @@ export async function compileForRender(
   const { html: htmlWithLocalMedia, remoteMediaAssets } = await localizeRemoteMediaSources(
     htmlWithDeferredScripts,
     downloadDir,
+    options.abortSignal,
   );
 
   // Download remote <img> sources. Same race shape as video/audio: the
@@ -2618,20 +2637,20 @@ export async function compileForRender(
   // evict decoded pixels mid-render and re-fetch, producing intermittent
   // blank-frame flicker. Localising to disk removes both races.
   const { html: htmlWithLocalImages, remoteMediaAssets: remoteImageAssets } =
-    await localizeRemoteImageSources(htmlWithLocalMedia, downloadDir);
+    await localizeRemoteImageSources(htmlWithLocalMedia, downloadDir, options.abortSignal);
 
   // Download remote CSS background-image url() references. drawElementImage omits
   // cross-origin content, so remote backgrounds render black on the fast path;
   // localising them to same-origin closes that gap.
   const { html: htmlWithLocalBg, remoteMediaAssets: remoteBgAssets } =
-    await localizeRemoteBackgroundImages(htmlWithLocalImages, downloadDir);
+    await localizeRemoteBackgroundImages(htmlWithLocalImages, downloadDir, options.abortSignal);
 
   // Download remote @font-face src URLs and rewrite to local paths.
   // Remote font URLs fail with a CORS rejection at render time (S3 does not
   // allow http://localhost:PORT as origin), causing Chrome to silently fall
   // back to the next font in the stack.
   const { html: htmlWithLocalizedFonts, remoteMediaAssets: remoteFontAssets } =
-    await localizeFontFaceUrls(htmlWithLocalBg, downloadDir);
+    await localizeFontFaceUrls(htmlWithLocalBg, downloadDir, options.abortSignal);
 
   // Chrome cannot decode HEIC, and ffprobe reads a tiled one as video streams,
   // so convert to JPEG before the media-type preflight sees it.
