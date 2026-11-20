@@ -95,6 +95,7 @@ function buildHostHtml(fixtureName: string, width: number, height: number): stri
   <body>
     <hyperframes-player
       id="player"
+      sandbox-origin="same-origin"
       src="${fixtureSrc}"
       width="${width}"
       height="${height}"
