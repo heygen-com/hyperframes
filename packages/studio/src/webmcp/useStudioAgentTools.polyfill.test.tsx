@@ -24,7 +24,13 @@ import {
 import { mountReactHarness } from "../hooks/domSelectionTestHarness";
 import { mintElementHandle } from "./handles";
 import { useStudioAgentTools, type StudioAgentToolsDeps } from "./useStudioAgentTools";
-import { documentPreview, previewDoc, selectionFor, studioAgentToolsDeps } from "./webmcpTestUtils";
+import {
+  documentPreview,
+  liveTarget,
+  previewDoc,
+  selectionFor,
+  studioAgentToolsDeps,
+} from "./webmcpTestUtils";
 
 vi.mock("../telemetry/client", () => ({ trackEvent: vi.fn() }));
 
@@ -106,7 +112,7 @@ async function mountEditableAgent() {
   );
   const deps: StudioAgentToolsDeps = studioAgentToolsDeps({
     preview: documentPreview(() => doc),
-    buildSelection: async (element) => selectionFor(element),
+    buildSelection: async (element) => selectionFor(liveTarget(element)),
     setText,
   });
 

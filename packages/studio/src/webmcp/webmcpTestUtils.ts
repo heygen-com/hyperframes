@@ -8,6 +8,7 @@
 import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import { expect } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
+import type { PreviewElement } from "../player/lib/previewElements";
 import type { ToolFailure, ToolResult } from "./toolResult";
 import type { StudioLookSnapshot } from "./tools/lookTools";
 import type { SelectionToolDeps } from "./tools/selectionTools";
@@ -36,6 +37,11 @@ export function previewElement(html: string, id: string): HTMLElement {
     throw new Error(`expected preview element #${id}`);
   }
   return element;
+}
+
+export function liveTarget(target: HTMLElement | PreviewElement): HTMLElement {
+  if (!isHtmlElement(target)) throw new Error("expected a live preview element");
+  return target;
 }
 
 export function documentPreview(getDocument: () => Document | null): PreviewTargets {
@@ -103,7 +109,7 @@ export function selectionToolDeps(overrides: Partial<SelectionToolDeps> = {}): S
     preview: documentPreview(() => null),
     getCompositionPath: () => "index.html",
     getProjectId: () => "project-a",
-    buildSelection: async (element) => selectionFor(element),
+    buildSelection: async (element) => selectionFor(liveTarget(element)),
     applySelection: () => undefined,
     requestSeek: () => undefined,
     readPlayhead: () => ({ currentTime: 0, duration: 10, isPlaying: false }),

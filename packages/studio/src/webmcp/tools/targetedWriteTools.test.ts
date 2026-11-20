@@ -2,7 +2,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { mintElementHandle } from "../handles";
 import type { PreviewElement } from "../../player/lib/previewElements";
-import { documentPreview, previewDoc, readElementNow, selectionFor } from "../webmcpTestUtils";
+import {
+  documentPreview,
+  liveTarget,
+  previewDoc,
+  readElementNow,
+  selectionFor,
+} from "../webmcpTestUtils";
 import {
   studioAddAnimation,
   studioAddKeyframe,
@@ -28,7 +34,7 @@ function target() {
     getProjectId: () => "demo",
     getWriteBlockedReason: () => null,
     buildSelection: async (targetElement: HTMLElement | PreviewElement) =>
-      selectionFor(targetElement as HTMLElement),
+      selectionFor(liveTarget(targetElement)),
     applySelection: () => undefined,
     readNow: readElementNow,
   };

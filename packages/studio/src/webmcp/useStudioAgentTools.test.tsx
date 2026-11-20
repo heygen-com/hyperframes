@@ -8,6 +8,7 @@ import { useStudioAgentTools, type StudioAgentToolsDeps } from "./useStudioAgent
 import type { ModelContext, ModelContextRegisterToolOptions, ModelContextTool } from "./types";
 import {
   documentPreview,
+  liveTarget,
   lookSnapshot,
   previewDoc,
   selectionFor,
@@ -60,7 +61,7 @@ function mountedTargetDeps(overrides: Partial<StudioAgentToolsDeps> = {}) {
     currentSelection: selectionFor(human),
     deps: studioAgentToolsDeps({
       preview: documentPreview(() => doc),
-      buildSelection: async (element) => selectionFor(element),
+      buildSelection: async (element) => selectionFor(liveTarget(element)),
       ...overrides,
     }),
   };
@@ -344,7 +345,8 @@ describe("useStudioAgentTools", () => {
     const { registered } = installModelContext();
     const setText = vi.fn();
     const targeted = mountedTargetDeps({
-      buildSelection: async (element) => selectionFor(element, { isInsideLockedComposition: true }),
+      buildSelection: async (element) =>
+        selectionFor(liveTarget(element), { isInsideLockedComposition: true }),
     });
     await act(async () => mountTools({ ...targeted.deps, setText }));
 
