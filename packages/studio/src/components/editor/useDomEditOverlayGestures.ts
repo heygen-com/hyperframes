@@ -16,7 +16,7 @@ import {
   restoreManualOffsetDragMembers,
 } from "./manualOffsetDrag";
 import { manualOffsetMoveRevert, elementLookRevert } from "./gestureUndoRevert";
-import { applyRotationDraft, restoreRotationDraft } from "./rotationDraft";
+import { applyRotationDraft, endRotationDraft, restoreRotationDraft } from "./rotationDraft";
 import {
   applyStudioBoxSize,
   applyStudioBoxSizeDraft,
@@ -445,7 +445,10 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           )
             restoreRotation();
         })
-        .finally(() => endStudioManualEditGesture(sel.element, g.manualEditDragToken));
+        .finally(() => {
+          endRotationDraft(sel.element);
+          endStudioManualEditGesture(sel.element, g.manualEditDragToken);
+        });
       edit.settle(saved);
     } else if (g.kind === "drag") {
       // A release over another layer must keep this dragged layer selected.

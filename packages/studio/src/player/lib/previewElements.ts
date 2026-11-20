@@ -5,6 +5,7 @@
 import {
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
+  MAX_DRAFT_DEG,
   MAX_DRAFT_PX,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_TEXT,
@@ -252,13 +253,17 @@ const isLayout = (value: unknown) =>
     (side) => Number.isFinite(side) && (side as number) >= 0 && (side as number) <= MAX_DRAFT_PX,
   );
 
+const isTurnOrNull = (value: unknown) =>
+  value === null || (Number.isFinite(value) && Math.abs(value as number) <= MAX_DRAFT_DEG);
+
 const readGestureStart = (value: unknown): EditingGestureStart | null => {
   if (!readGeometry(value) || !isFields(value)) return null;
-  const { layout, move, gsap } = value;
+  const { layout, move, gsap, gsapRotation } = value;
   const valid = [
     isLayout(layout),
     move === null || isFiniteFields(move, ["a", "b", "c", "d"]),
     gsap === null || (isFields(gsap) && isFiniteFields(gsap, ["x", "y"]) && isFlag(gsap.moving)),
+    isTurnOrNull(gsapRotation),
   ];
   return valid.includes(false) ? null : (value as unknown as EditingGestureStart);
 };

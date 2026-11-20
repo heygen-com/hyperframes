@@ -258,9 +258,13 @@ export function startGesture(
   try {
     // Rotation base: the angle the element shows. An element GSAP does not turn, or a plain-translate
     // move, never asks GSAP: reading a property makes it bake the CSS into its transform.
-    const plain = !!pathOffsetMember?.plainTranslate || editsPlainCss(sel.element, "rotate");
+    const plain =
+      !!pathOffsetMember?.plainTranslate ||
+      (start ? start.gsapRotation === null : editsPlainCss(sel.element, "rotate"));
     const plainRotation = plain && kind === "rotate" ? readCssRotationTarget(sel.element) : null;
-    const rotation = { angle: readRotationBase(sel.element, plain) };
+    const rotation = {
+      angle: readRotationBase(sel.element, plain, start?.gsapRotation ?? undefined),
+    };
     const overlayBounds = overlayEl?.getBoundingClientRect();
     const centerX = (overlayBounds?.left ?? 0) + rect.left + rect.width / 2;
     const centerY = (overlayBounds?.top ?? 0) + rect.top + rect.height / 2;

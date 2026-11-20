@@ -8,6 +8,7 @@ import {
 } from "./manualEdits";
 import { getOffsetDragGsap } from "./manualOffsetDrag";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
+import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
 
 function lastRuleTransform(element: HTMLElement): string {
   let value = "";
@@ -85,13 +86,24 @@ export function readCssRotationTarget(element: HTMLElement): CssRotationTarget {
   return { property: "transform", before, after, share, sign: sx * sy < 0 ? -1 : 1, inline };
 }
 
+const cssTurn = (angle: number, target: CssRotationTarget) =>
+  roundTo3(target.sign * (angle - target.share));
+
+// ponytail: a turn drawn inside a translating `transform` stays Studio-side; a sealed frame shows it on save.
+const frameTurn = (angle: number, plain: CssRotationTarget | null) => {
+  if (!plain) return { angle, route: "gsap" as const };
+  return plain.property === "rotate"
+    ? { angle: cssTurn(angle, plain), route: "css" as const }
+    : null;
+};
+
 /** Draws `angle` where `target` says, and returns the source patches that save it as drawn. */
 export function applyCssRotation(
   element: HTMLElement,
   angle: number,
   target = readCssRotationTarget(element),
 ): Array<PatchOperation & { value: string }> {
-  const turn = `${roundTo3(target.sign * (angle - target.share))}deg`;
+  const turn = `${cssTurn(angle, target)}deg`;
   const value =
     target.property === "rotate"
       ? turn
@@ -119,10 +131,14 @@ export function applyRotationDraft(
   angle: number,
   plain: CssRotationTarget | null,
 ): void {
+  const rotate = frameTurn(angle, plain);
+  if (rotate) drawPreviewDraft(element, { rotate });
   if (plain) return void applyCssRotation(element, angle, plain);
   element.style.setProperty("rotate", "none");
   getOffsetDragGsap(element)?.set(element, { rotation: angle });
 }
+
+export const endRotationDraft = (element: HTMLElement) => endPreviewDraft(element, "keep");
 
 /** Back to the gesture start: the CSS snapshot, and GSAP's rotation without the legacy var. */
 export function restoreRotationDraft(
@@ -131,6 +147,8 @@ export function restoreRotationDraft(
   snapshot: StudioRotationSnapshot,
   plain: boolean,
 ): void {
+  drawPreviewDraft(element, { rotate: null });
+  endRotationDraft(element);
   if (plain) return restorePlainRotation(element, snapshot);
   getOffsetDragGsap(element)?.set(element, {
     rotation: angle - (Number.parseFloat(snapshot.studioRotation) || 0),
@@ -139,8 +157,13 @@ export function restoreRotationDraft(
 }
 
 /** The angle a rotate gesture starts from, as the element shows it. */
-export function readRotationBase(element: HTMLElement, plain: boolean): number {
+export function readRotationBase(
+  element: HTMLElement,
+  plain: boolean,
+  frameGsapRotation?: number,
+): number {
   if (plain) return readCssRotation(element);
-  const gsapRotation = Number(getOffsetDragGsap(element)?.getProperty(element, "rotation") ?? 0);
+  const gsapRotation =
+    frameGsapRotation ?? Number(getOffsetDragGsap(element)?.getProperty(element, "rotation") ?? 0);
   return gsapRotation + readStudioRotation(element).angle;
 }
