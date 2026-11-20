@@ -69,6 +69,7 @@ function client() {
     },
     signedInEmail: async () => "owner@example.com",
     share: async () => dto,
+    project: async () => ({ project_id: "p1", latest_ready_version_id: null }),
   };
 }
 test("a lost registration response retries the persisted operation and identity", async (t) => {
@@ -748,6 +749,7 @@ function existingReview({ ready = "v1", access = "team", revoked = true, created
     },
     signedInEmail: async () => "owner@example.com",
     share: async () => share,
+    project: async () => ({ project_id: "existing", latest_ready_version_id: ready }),
     updateShare: write("updateShare"),
     linkOn: write("linkOn"),
     createExport: write("createExport"),
@@ -833,3 +835,49 @@ test("a share confirmed for one review refuses a record that now names another",
     assert.equal((await reviewRecord(dir)).opened, false);
   }
 });
+
+const unopened = { studioProjectId: "existing-studio", projectId: "existing", opened: false };
+for (const [name, review] of [
+  ["once it has a version", { access: "private", revoked: false }],
+  ["once its audience was set", { ready: null, revoked: false }],
+  ["once its link was turned off", { ready: null, access: "private" }],
+]) {
+  test(`an unconfirmed share refuses a record's unopened review ${name}`, async (t) => {
+    const dir = await recordFolder(t, unopened);
+    const api = existingReview(review);
+    const prepared = [];
+    await assert.rejects(
+      shareForReview({
+        projectPath: dir,
+        title: "Video",
+        client: api,
+        audience: "public",
+        beforeOpen: async (id) => void prepared.push(id),
+      }),
+      { status: 409, reason: "review_project_changed" },
+    );
+    assert.deepEqual(api.registrations, []);
+    assert.deepEqual(api.writes, []);
+    assert.deepEqual(prepared, []);
+    const saved = JSON.parse(await readFile(join(dir, ".hyperframes/review.json"), "utf8"));
+    assert.deepEqual(saved, unopened);
+  });
+}
+
+for (const [name, access, writes] of [
+  ["before its audience was set", "private", ["updateShare"]],
+  ["after only the reply to its audience was lost", "public", []],
+]) {
+  test(`an unconfirmed share finishes a first share that stopped ${name}`, async (t) => {
+    const dir = await recordFolder(t, unopened);
+    const api = existingReview({ ready: null, access, revoked: false });
+    await shareForReview({ projectPath: dir, title: "Video", client: api, audience: "public" });
+    assert.deepEqual(
+      api.writes.map(([call]) => call),
+      writes,
+    );
+    const after = await reviewRecord(dir);
+    assert.equal(after.projectId, "existing");
+    assert.equal(after.opened, true);
+  });
+}
