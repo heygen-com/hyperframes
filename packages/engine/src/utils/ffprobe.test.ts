@@ -1205,7 +1205,7 @@ describe("ffprobe missing-binary fallback", () => {
 
     const { extractMediaMetadata } = await import("./ffprobe.js");
     await expect(
-      extractMediaMetadata("https://media.example.com/clip.mp4", { signal: controller.signal }),
+      extractMediaMetadata("/tmp/aborted.video", { signal: controller.signal }),
     ).rejects.toThrow("render cancelled");
     expect(calls).toHaveLength(1);
   });
