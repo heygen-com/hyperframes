@@ -166,7 +166,7 @@ export function planRestore(scopes: RestoreScope[]): RestorePlan | null {
     const roots = scopeRoots(file);
     if (!roots.length || !roots.every((root) => planRoot(root, elements, plan))) return null;
   }
-  return plan;
+  return reapplyScriptMissing(plan) ? null : plan;
 }
 
 export function applyRestorePlan(plan: RestorePlan): void {
@@ -203,7 +203,6 @@ export function restoreAttributes({ scopes, scripted, time }: RestoreAttributesP
   const win = window as RestoreWindow;
   const plan = planRestore(scopes);
   if (!plan || typeof win.__player?.seek !== "function") return { applied: false };
-  if (reapplyScriptMissing(plan)) return { applied: false };
   if (scripted && plan.some(([el]) => "_gsap" in el)) return { applied: false };
   applyRestorePlan(plan);
   rebindAt(win, time);

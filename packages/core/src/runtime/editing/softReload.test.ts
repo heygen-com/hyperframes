@@ -38,7 +38,14 @@ function preview(markup: string) {
 
 afterEach(() => {
   document.body.innerHTML = "";
-  for (const key of ["gsap", "__timelines", "__hfForceTimelineRebind", "__player"]) delete win[key];
+  for (const key of [
+    "gsap",
+    "__timelines",
+    "__hfForceTimelineRebind",
+    "__player",
+    "__hfStudioSeekReapplyStarted",
+  ])
+    delete win[key];
   delete (document.body as Partial<HTMLElement>).appendChild;
   killed.mockReset();
 });
@@ -139,6 +146,21 @@ describe("soft-reload of an undo", () => {
     expect(el.hasAttribute("onclick")).toBe(false);
     expect(killed).not.toHaveBeenCalled();
     expect(document.querySelector("script")?.textContent).toBe(SCRIPT);
+  });
+
+  // fails without the fix: the in-place re-run set a mark that the next seek reverts, as its reapply script never started.
+  it("refuses a restored mark a seek has to reapply until the page's reapply script has started", async () => {
+    preview(MARKUP);
+    const el = document.getElementById("a")!;
+    const restore = [restoreOf("hf:h1", [...KEPT, ["data-hf-studio-box-size", "true"]])];
+
+    expect(await softReload(params({ restore }))).toEqual({ result: "cannot-soft-reload" });
+    expect(el.hasAttribute("data-hf-studio-box-size")).toBe(false);
+    expect(killed).not.toHaveBeenCalled();
+
+    win.__hfStudioSeekReapplyStarted = true;
+    expect(await softReload(params({ restore }))).toEqual({ result: "applied" });
+    expect(el.getAttribute("data-hf-studio-box-size")).toBe("true");
   });
 });
 
