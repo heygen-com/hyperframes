@@ -8,6 +8,7 @@ import {
 } from "./manualEdits";
 import { getOffsetDragGsap } from "./manualOffsetDrag";
 import { splitTopLevelWhitespace } from "./manualEditsStyleHelpers";
+import { endStudioManualEditGesture, isStudioManualEditGestureCurrent } from "./manualEditsDom";
 import { drawPreviewDraft, endPreviewDraft } from "./previewDrafts";
 
 function lastRuleTransform(element: HTMLElement): string {
@@ -139,6 +140,11 @@ export function applyRotationDraft(
 }
 
 export const endRotationDraft = (element: HTMLElement) => endPreviewDraft(element, "keep");
+
+export function endRotationGestureIfCurrent(element: HTMLElement, token: string | undefined): void {
+  if (!token || isStudioManualEditGestureCurrent(element, token)) endRotationDraft(element);
+  endStudioManualEditGesture(element, token);
+}
 
 /** Back to the gesture start: the CSS snapshot, and GSAP's rotation without the legacy var. */
 export function restoreRotationDraft(

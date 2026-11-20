@@ -13,7 +13,7 @@ export interface PreviewGestureStart {
   screenToOffset: ManualOffsetDragMatrix | null;
   /** GSAP's x/y when it owns the element's position, and whether a tween with a duration moves it. */
   gsap: { x: number; y: number; moving: boolean } | null;
-  gsapRotation: number | null;
+  gsapRotation?: number | null;
 }
 
 export interface PreviewGestureStarts {

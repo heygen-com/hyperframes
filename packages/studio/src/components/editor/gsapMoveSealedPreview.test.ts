@@ -23,6 +23,7 @@ import { captureStudioRotation } from "./manualEditsSnapshot";
 import {
   applyRotationDraft,
   endRotationDraft,
+  endRotationGestureIfCurrent,
   readCssRotationTarget,
   restoreRotationDraft,
 } from "./rotationDraft";
@@ -312,8 +313,8 @@ it("turns a sealed frame's element by its own GSAP, and keeps the turn when the 
 
 const SPINS_BOX = timeline(`tl.to("#box", { rotation: 40, duration: 1, ease: "none" }, 0);`);
 
-/** Presses the rotate handle of the box on a sealed frame, as the overlay does. */
-async function pressRotateOnSealedFrame(script: string) {
+/** The box on a sealed frame, and a press of its rotate handle as the overlay does it. */
+async function sealedRotate(script: string) {
   mount(script);
   const iframe = opaqueFrame();
   const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
@@ -321,11 +322,19 @@ async function pressRotateOnSealedFrame(script: string) {
   const made = makeSelection("box", standIn);
   const capabilities = { ...made.capabilities, canApplyManualRotation: true };
   const selection = { ...made, capabilities, id: "box", handle };
-  const opts = gestureOpts(iframe);
-  const read = await measurePreviewGestureStart(iframe, opts.overlayRef.current!, [handle]);
-  const { rect, start } = read!.elements[0]!;
-  startGesture("rotate", press(), opts, { selection, rect, start, snap: read!.snap });
-  return { gesture: opts.gestureRef.current!, selection, iframe, standIn };
+  const pressRotate = async () => {
+    const opts = gestureOpts(iframe);
+    const read = await measurePreviewGestureStart(iframe, opts.overlayRef.current!, [handle]);
+    const { rect, start } = read!.elements[0]!;
+    startGesture("rotate", press(), opts, { selection, rect, start, snap: read!.snap });
+    return { gesture: opts.gestureRef.current!, start };
+  };
+  return { selection, iframe, standIn, pressRotate };
+}
+
+async function pressRotateOnSealedFrame(script: string) {
+  const sealed = await sealedRotate(script);
+  return { ...sealed, ...(await sealed.pressRotate()) };
 }
 
 // fails without the fix: the rotate asked the stand-in, which has no GSAP, so a sealed spin saved a CSS rotate.
@@ -354,4 +363,36 @@ it("turns a layer its tween spins on GSAP's route in a sealed preview, from the 
 it("turns a layer GSAP leaves alone by its own CSS rotate in a sealed preview", async () => {
   const { gesture } = await pressRotateOnSealedFrame(timeline(""));
   expect(gesture.plainRotation).toMatchObject({ property: "rotate" });
+});
+
+// fails without the fix: the first rotate's save, landing after a regrab, ended the regrab's frame draft, so a
+// cancelled regrab left the frame at its mid-drag angle.
+it("cancels a rotate regrabbed while the first one saves back to where the regrab started, on the frame too", async () => {
+  const { standIn, pressRotate } = await sealedRotate(timeline(""));
+  const box = document.getElementById("box")!;
+  const turned = () => [box, standIn].map((el) => el.style.getPropertyValue("rotate"));
+  const first = (await pressRotate()).gesture;
+  applyRotationDraft(standIn, 30, first.plainRotation);
+  await vi.waitFor(() => expect(turned()).toEqual(["30deg", "30deg"]));
+
+  const regrab = (await pressRotate()).gesture;
+  applyRotationDraft(standIn, 50, regrab.plainRotation);
+  await vi.waitFor(() => expect(turned()).toEqual(["50deg", "50deg"]));
+  endRotationGestureIfCurrent(standIn, first.manualEditDragToken);
+  restoreRotationDraft(standIn, 50, regrab.initialRotation, true);
+
+  await vi.waitFor(() => expect(turned()).toEqual(["30deg", "30deg"]));
+});
+
+// fails without the fix: an out-of-range GSAP rotation made Studio refuse the whole start, so a drag lost GSAP's x/y.
+it("keeps a sealed element's move start when GSAP's rotation is out of range, and drops only the turn", async () => {
+  mount(SCRIPT);
+  gsap.set("#box", { rotation: 100_000 });
+  const iframe = opaqueFrame();
+  const handle = (await queryPreviewElements(iframe, "#box"))!.matches[0]!.handle;
+  const overlay = sized(document.createElement("div"), [20, 10, 1200, 800]);
+  const { start } = (await measurePreviewGestureStart(iframe, overlay, [handle]))!.elements[0]!;
+
+  expect(start.gsap).toEqual({ x: 100, y: 40, moving: true });
+  expect(start.gsapRotation).toBeUndefined();
 });
