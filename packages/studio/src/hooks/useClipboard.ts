@@ -23,11 +23,10 @@ import { previewDocumentCopy, previewFrameOpaque } from "../player/lib/previewCh
 import { buildTimelineElementKey } from "../player/lib/timelineElementHelpers";
 import { timeRangesOverlap } from "../player/components/timelineCollision";
 import {
-  authoredMarkup,
-  findAuthoredElement,
-  findAuthoredElementById,
-  liveMarkupWithoutPreviewMarks,
+  type MarkedMarkup,
   parseSavedSource,
+  readSavedMarkup,
+  savedMarkupElseLive,
 } from "../utils/authoredSource";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import { unsafeMarkup } from "@hyperframes/core/html-attr-safety";
@@ -136,32 +135,6 @@ function copyFound<T>(
     });
   const target = foundOrToast(found, showToast);
   return target === null ? null : copy(target);
-}
-
-function savedMarkupElseLive(
-  saved: Document,
-  live: Element,
-  sourceFile: string,
-): { html: string; saved: boolean } {
-  const authored = findAuthoredElement(saved, live) ?? findAuthoredElementById(saved, live);
-  return authored
-    ? { html: authoredMarkup(authored, live, sourceFile), saved: true }
-    : { html: liveMarkupWithoutPreviewMarks(live), saved: false };
-}
-
-async function readSavedMarkup(
-  readSaved: (path: string) => Promise<string>,
-  paths: string[],
-  lives: Element[],
-): Promise<Array<{ html: string; saved: boolean }>> {
-  const sources = new Map<string, Promise<Document>>();
-  return Promise.all(
-    paths.map(async (path, index) => {
-      if (!sources.has(path)) sources.set(path, readSaved(path).then(parseSavedSource));
-      const saved = await (sources.get(path) as Promise<Document>);
-      return savedMarkupElseLive(saved, lives[index] as Element, path);
-    }),
-  );
 }
 
 export interface PlacedClip {
@@ -347,7 +320,7 @@ export function useClipboard({
       const paths = targets.elements.map((el) => el.sourceFile || activeCompPath || "index.html");
       const markup = await readSavedMarkup((path) => readSaved(path, pid), paths, targets.lives);
       return targets.elements.map((element, index) => ({
-        ...(markup[index] as { html: string; saved: boolean }),
+        ...(markup[index] as MarkedMarkup),
         start: element.start,
         duration: element.duration,
         // authoredTrack, not track: `track` can be a display-lane number

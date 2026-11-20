@@ -149,3 +149,31 @@ export function liveMarkupWithoutPreviewMarks(live: Element): string {
   }
   return copy.outerHTML;
 }
+
+export type MarkedMarkup = { html: string; saved: boolean };
+
+export function savedMarkupElseLive(
+  saved: Document,
+  live: Element,
+  sourceFile: string,
+): MarkedMarkup {
+  const authored = findAuthoredElement(saved, live) ?? findAuthoredElementById(saved, live);
+  return authored
+    ? { html: authoredMarkup(authored, live, sourceFile), saved: true }
+    : { html: liveMarkupWithoutPreviewMarks(live), saved: false };
+}
+
+export async function readSavedMarkup(
+  readSaved: (path: string) => Promise<string>,
+  paths: string[],
+  lives: Element[],
+): Promise<MarkedMarkup[]> {
+  const sources = new Map<string, Promise<Document>>();
+  return Promise.all(
+    paths.map(async (path, index) => {
+      if (!sources.has(path)) sources.set(path, readSaved(path).then(parseSavedSource));
+      const saved = await (sources.get(path) as Promise<Document>);
+      return savedMarkupElseLive(saved, lives[index] as Element, path);
+    }),
+  );
+}
