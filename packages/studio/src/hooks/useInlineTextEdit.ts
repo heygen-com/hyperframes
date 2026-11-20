@@ -6,7 +6,7 @@ import {
   beginStudioManualEditGesture,
   endStudioManualEditGesture,
   countStudioManualEditSave,
-} from "../components/editor/manualEditsDom";
+} from "../components/editor/manualEditGesture";
 import { previewStandIn } from "../components/editor/previewDrafts";
 import { requestOverlayFrames } from "../components/editor/overlayFrameLoop";
 import { previewEditingClient, previewRequest } from "../player/lib/previewChannel";

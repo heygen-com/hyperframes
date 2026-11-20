@@ -246,8 +246,9 @@ const filesUnder = (dir: string): string[] =>
 
 const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const config = { fps: 30 as const, width: 320, height: 240, format: "mp4" as const };
+const FFMPEG_WORK = { timeout: 30_000 };
 
-describe.skipIf(!HAS_FFMPEG)("render servers keep markup inside the project", () => {
+describe.skipIf(!HAS_FFMPEG)("render servers keep markup inside the project", FFMPEG_WORK, () => {
   it("in-process: copies, serves and opens nothing from outside by default", async () => {
     const { projectDir, outsideDir, secretKey } = outsideProject(true);
     tool.calls.length = 0;
@@ -463,7 +464,7 @@ function outsideScriptsProject() {
   return { root, projectDir, secretKey, tool: key("tool.js"), css: key("look.css") };
 }
 
-describe.skipIf(!HAS_FFMPEG)("outside scripts in a trusted local render", () => {
+describe.skipIf(!HAS_FFMPEG)("outside scripts in a trusted local render", FFMPEG_WORK, () => {
   it("are left out with a warning naming the flag, while media and CSS still come in", async () => {
     const { root, projectDir, secretKey, tool, css } = outsideScriptsProject();
     const { result, compiledDir, serve, warnings } = await compileInProcess(projectDir, true);

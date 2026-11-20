@@ -96,8 +96,11 @@ describe("undo on a sealed preview", () => {
 
   it("reloads when the frame cannot re-run the changed script", async () => {
     channel.request.mockResolvedValue({ result: "cannot-soft-reload" });
-    const { reload } = undo(box(90) + script("{ x: 1 }"), box(0) + script("{ x: 2 }"));
+    const { reload, iframe } = undo(box(90) + script("{ x: 1 }"), box(0) + script("{ x: 2 }"));
     await settled();
     expect(reload).toHaveBeenCalledOnce();
+    expect(channel.request).toHaveBeenCalledWith(iframe, "mark-scenes-stale", {
+      files: ["index.html"],
+    });
   });
 });

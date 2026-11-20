@@ -2652,6 +2652,51 @@ h1 { font-size: 2rem; }`;
     }
   });
 
+  // fails without the fix: the embed looked for _remote_media/ in the project, logged ENOENT and kept the file URL.
+  it("inlines a downloaded remote font as a data URI instead of warning it is missing", async () => {
+    const font = readFileSync(
+      join(
+        import.meta.dirname,
+        "../../../../docs/public/catalog/items/frost-sequence-camera-orbit/assets/fonts/Geist-Regular.ttf",
+      ),
+    );
+    stubDownloadFetch.fetch = async () => new Response(font, { status: 200 });
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-remote-font-embed-"));
+    const downloadDir = mkdtempSync(join(tmpdir(), "hf-remote-font-dl-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><head><style>
+  @font-face { font-family: "Remote"; src: url("https://fonts.example.com/remote.ttf"); }
+</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Text</div>
+</body></html>`,
+    );
+    const originalWarn = defaultLogger.warn;
+    const warnings: string[] = [];
+    defaultLogger.warn = (message) => {
+      warnings.push(message);
+    };
+    try {
+      const { html } = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        downloadDir,
+      );
+      const inlined = html.match(/data:font\/ttf;base64,([A-Za-z0-9+/=]+)/)?.[1] ?? "";
+      expect(Buffer.from(inlined, "base64").equals(font)).toBe(true);
+      expect(html).not.toContain('url("_remote_media/');
+      expect(warnings.filter((message) => message.includes("Could not embed local font"))).toEqual(
+        [],
+      );
+    } finally {
+      defaultLogger.warn = originalWarn;
+      _setDownloadFetchForTests();
+      rmSync(projectDir, { recursive: true, force: true });
+      rmSync(downloadDir, { recursive: true, force: true });
+    }
+  });
+
   it("keeps <link> tag when external stylesheet fetch fails (graceful degradation)", async () => {
     const STYLESHEET_URL = "https://down.example.com/fonts.css";
     stubDownloadFetch.fetch = async () => new Response(null, { status: 503 });

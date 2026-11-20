@@ -269,6 +269,7 @@ export function useDomEditCommits({
 
   const commitPositionPatchToHtml = useDomEditPositionPatchCommit({
     activeCompPath,
+    previewIframeRef,
     persistDomEditOperations,
     showToast,
   });

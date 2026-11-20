@@ -161,7 +161,7 @@ describe("generate", () => {
       type: "image",
       out: join(project, "assets/charged.png"),
       prompt: "a charged picture",
-      model: "gpt-image-2.5",
+      model: "gpt-image-2.6",
     });
     expect(r.charged_credits).toBe(41);
     expect(readFileSync(join(project, ".media/manifest.jsonl"), "utf8")).toContain(
@@ -182,7 +182,7 @@ describe("generate", () => {
         type: "image",
         out: join(dir, "assets/limited.png"),
         prompt: "a limited picture",
-        model: "gpt-image-2.5",
+        model: "gpt-image-2.6",
         aspect: "16:9",
       } as const;
       return generate(request, undefined, creditsOf(priceOf(request)) ?? undefined);
@@ -250,7 +250,7 @@ describe("generate", () => {
       type: "image",
       out: join(project, "assets/api-charged.png"),
       prompt: "an api-charged picture",
-      model: "gpt-image-2.5",
+      model: "gpt-image-2.6",
     });
     expect(r).not.toHaveProperty("charged_credits");
   });
@@ -893,7 +893,7 @@ describe("generate", () => {
       priceOf({
         type: "image",
         out: "a.png",
-        model: "gpt-image-2.5",
+        model: "gpt-image-2.6",
         aspect: "1:1",
         references: ["a", "b"],
       }).usd,
@@ -905,7 +905,7 @@ describe("generate", () => {
   it("prices every reference picture of a GPT Image edit, on each GPT Image model", () => {
     const edit = (model: string, references: string[]) =>
       creditsOf(priceOf({ type: "image", out: "a.png", model, aspect: "16:9", references }));
-    for (const model of ["gpt-image-2.5", "gpt-image-2.6", "gpt-image-2.6-flare"]) {
+    for (const model of ["gpt-image-2.6", "gpt-image-2.6-flare"]) {
       expect(edit(model, [])).toBe(66);
       expect(edit(model, ["a"])).toBe(87);
       expect(
@@ -925,9 +925,9 @@ describe("generate", () => {
 
   it("says a GPT Image price is an estimate charged on the vendor's bill, and a Nano Banana one is not", () => {
     expect(
-      priceOf({ type: "image", out: "a.png", model: "gpt-image-2.5", aspect: "16:9" }).basis,
+      priceOf({ type: "image", out: "a.png", model: "gpt-image-2.6", aspect: "16:9" }).basis,
     ).toBe(
-      "gpt-image-2.5 at 16:9, about 66 credits (charged on the vendor's bill), with about $0.0125 a reference; vendor price x1.5 on an API key, x1.6545 in HyperFrames credits",
+      "gpt-image-2.6 at 16:9, about 66 credits (charged on the vendor's bill), with about $0.0125 a reference; vendor price x1.5 on an API key, x1.6545 in HyperFrames credits",
     );
     expect(priceOf({ type: "image", out: "a.png" }).basis).toBe(
       "nano-banana-2.1, $0.0336 an image and $0.00168 a reference; vendor price x1.5 on an API key, x1.6545 in HyperFrames credits",
@@ -982,8 +982,7 @@ describe("generate", () => {
     const rows: [string, string, number][] = [
       ["gpt-image-2.6", "1:1", 87.15906],
       ["gpt-image-2.6-flare", "16:9", 65.5182],
-      ["gpt-image-2.5", "4:3", 59.76054],
-      ["nano-banana-2", "21:9", 110.8515],
+      ["gpt-image-2.6", "4:3", 59.76054],
       ["nano-banana-2.1", "3:2", 55.5912],
     ];
     for (const [model, aspect, row] of rows)
@@ -994,9 +993,6 @@ describe("generate", () => {
     expect(
       image("nano-banana-2.1", "1:1", 1).credits! - image("nano-banana-2.1", "1:1").credits!,
     ).toBeCloseTo(2.77956, 6);
-    expect(image("nano-banana-2", "1:1", 3).credits).toBe(image("nano-banana-2", "1:1").credits);
-    expect(image("nano-banana-2", "1:1").list).toBeCloseTo(0.1005, 9);
-    expect(image("nano-banana-2", "1:1").usd).toBe(0.12);
     expect(image("gpt-image-2.6", "16:9").list).toBeCloseTo(0.0594, 9);
     expect(image("gpt-image-2.6", "16:9").usd).toBe(0.07);
     expect(image("nano-banana-2.1", "16:9", 2).list).toBeCloseTo((0.0336 + 2 * 0.00168) * 1.5, 9);
@@ -1027,7 +1023,9 @@ describe("generate", () => {
     }
     expect(check("gpt-image-2.6", "21:9")).toThrow("gpt-image-2.6 does not make 21:9");
     expect(check("nano-banana-2.1", "21:9")).not.toThrow();
-    expect(check("nano-banana-2", undefined, 15)).toThrow("at most 14 --reference pictures");
+    expect(check("nano-banana-2.1", undefined, 15)).toThrow("at most 14 --reference pictures");
+    expect(check("nano-banana-2")).toThrow("nano-banana-2 is no longer offered here");
+    expect(check("gpt-image-2.5", "16:9")).toThrow("gpt-image-2.5 is no longer offered here");
     expect(check("some-new-model", "7:5")).not.toThrow();
   });
 
@@ -1194,16 +1192,16 @@ describe("generate", () => {
   it("keeps 10% headroom under the limit for an image charged on the vendor's bill", () => {
     const limited = (request: GenerateRequest, limit: number) => () =>
       checkLimit(creditsOf(priceOf(request)), limit, isVendorPriced(request));
-    const gpt = { type: "image", out: "a.png", model: "gpt-image-2.5", aspect: "16:9" } as const;
+    const gpt = { type: "image", out: "a.png", model: "gpt-image-2.6", aspect: "16:9" } as const;
     expect(creditsOf(priceOf(gpt))).toBe(66);
     expect(limited(gpt, 66)).toThrow(
       "about 66 credits, 73 with 10% headroom because it is charged on the vendor's bill, over --max-credits 66",
     );
     expect(limited(gpt, 72)).toThrow("73 with 10% headroom");
     expect(limited(gpt, 73)).not.toThrow();
-    const nano = { type: "image", out: "a.png", model: "nano-banana-2" } as const;
+    const nano = { type: "image", out: "a.png", model: "nano-banana-2.1" } as const;
     expect(isVendorPriced(nano)).toBe(false);
-    expect(limited(nano, 111)).not.toThrow();
+    expect(limited(nano, 56)).not.toThrow();
   });
 });
 

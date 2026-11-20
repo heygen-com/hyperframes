@@ -6,7 +6,7 @@
  */
 import type { Composition } from "@hyperframes/sdk";
 import type { PatchOperation } from "./sourcePatcher";
-import { isAllowedHtmlAttribute, isSafeAttributeValue } from "./htmlAttrSafety";
+import { isAllowedHtmlAttribute, isSafeAttributeValue } from "@hyperframes/core/html-attr-safety";
 import { resolveSnapshot } from "./sdkResolverShadow";
 
 const CUTOVER_OP_TYPES = new Set<PatchOperation["type"]>([

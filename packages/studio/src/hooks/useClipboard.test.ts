@@ -279,6 +279,12 @@ describe("pasteTimelineClips + extendRootDurationInSource", () => {
 });
 
 describe("pasteElementHtml", () => {
+  it("refuses code the parser hoists out of the body unless the markup came from the saved file", () => {
+    const html = "<script>alert(1)</script>";
+    expect(() => pasteElementHtml(ROOT, { html })).toThrow(/^Couldn't paste/);
+    expect(pasteElementHtml(ROOT, { html, saved: true })).toContain(html);
+  });
+
   it("gives a pasted element and its children ids of their own, so an edit to the copy stays on it", () => {
     const stamped = ensureHfIds(
       ROOT.replace("</div>", '<p id="title" class="t">Hello <b>there</b></p></div>'),

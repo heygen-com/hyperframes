@@ -7,7 +7,7 @@ import {
   previewFrameOpaque,
   previewRequest,
 } from "../player/lib/previewChannel";
-import { onPreviewContentReplaced } from "../player/sceneSwap";
+import { onPreviewContentReplaced, onPreviewRestoredInPlace } from "../player/sceneSwap";
 import { usePlayerStore } from "../player/store/playerStore";
 import { usePreviewIframeStore } from "../player/store/previewIframeStore";
 import { previewStandInHandle } from "../components/editor/previewDrafts";
@@ -91,8 +91,14 @@ async function read(iframe: HTMLIFrameElement, client: EditingPortClient): Promi
   watchPlayhead();
   if (!watched.has(client)) {
     watched.add(client);
+    const stopOnUndoRerun = onPreviewRestoredInPlace(iframe, () => {
+      held.delete(client);
+      asking.delete(client);
+      void refreshGsapSnapshot(iframe);
+    });
     const stop = onPreviewContentReplaced(iframe, () => {
       stop();
+      stopOnUndoRerun();
       held.delete(client);
       watched.delete(client);
       void refreshGsapSnapshot(iframe);

@@ -83,7 +83,5 @@ export async function readCropFrameStart(
   handle: string,
 ): Promise<CropFrameStart | null> {
   const start = (await previewGestureStart(iframe, [handle]))?.elements[0];
-  return start && start.planar !== undefined
-    ? { planar: start.planar, layout: start.layout }
-    : null;
+  return start ? { layout: start.layout } : null;
 }

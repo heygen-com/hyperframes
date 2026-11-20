@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "./domEditingTypes";
 import type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
 import { STUDIO_OFFSET_X_PROP, STUDIO_OFFSET_Y_PROP } from "./manualEdits";
-import { isStudioManualEditGestureLiveIn } from "./manualEditsDom";
+import { isStudioManualEditGestureLiveIn } from "./manualEditGesture";
 import { readTranslatePx } from "./plainTranslate";
 import { moveDomGroupBy } from "./domGroupMoveBy";
 import { GsapEditBlockedError } from "../../hooks/gsapEditOutcome";

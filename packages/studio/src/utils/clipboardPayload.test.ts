@@ -86,6 +86,34 @@ describe("serializeClipboardPayload / deserializeClipboardPayload", () => {
     expect(parsed).toEqual(payload);
   });
 
+  it("drops a 'saved' mark that arrives in clipboard text, for an element and for each clip", () => {
+    const element = deserializeClipboardPayload(
+      serializeClipboardPayload({
+        kind: "dom-element",
+        html: '<div onclick="x()"></div>',
+        saved: true,
+        sourceFile: "index.html",
+      }),
+    );
+    const clips = deserializeClipboardPayload(
+      serializeClipboardPayload({
+        kind: "timeline-clip",
+        clips: [
+          { html: '<div onclick="x()"></div>', saved: true, start: 0, duration: 1, track: 0 },
+        ],
+        sourceFile: "index.html",
+      }),
+    );
+    expect(element).toMatchObject({ kind: "dom-element", html: '<div onclick="x()"></div>' });
+    expect(element).not.toHaveProperty("saved");
+    expect(clips?.kind === "timeline-clip" && clips.clips[0]).toEqual({
+      html: '<div onclick="x()"></div>',
+      start: 0,
+      duration: 1,
+      track: 0,
+    });
+  });
+
   it("returns null for invalid JSON", () => {
     expect(deserializeClipboardPayload("not json")).toBeNull();
     expect(deserializeClipboardPayload('{"kind":"unknown"}')).toBeNull();
