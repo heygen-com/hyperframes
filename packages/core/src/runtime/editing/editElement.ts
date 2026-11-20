@@ -3,7 +3,7 @@
 import { EDITING_ELEMENT_HANDLE, type EditingElementHandle } from "../editingElement";
 import { elementForHandle } from "../editingHandles";
 import { isStylableElement, type StylableElement } from "../domRealm";
-import { DATA_ATTRIBUTE, holdsOnlyTextMarkup } from "./textMarkup";
+import { DATA_ATTRIBUTE, holdsOnlyTextMarkup, MAX_EDIT_VALUE } from "./textMarkup";
 
 export type ElementEditEntry = [name: string, value: string | null];
 export type StyleEditEntry = [name: string, value: string | null, priority?: "important"];
@@ -22,7 +22,7 @@ export type EditElementResult = {
 };
 
 export const MAX_EDIT_ENTRIES = 64;
-export const MAX_EDIT_VALUE = 200_000;
+export { MAX_EDIT_VALUE };
 const STYLE_NAME = /^(?:-?[a-z][a-z0-9-]*|--[\w\u0080-\uffff-]+)$/;
 const PANEL_ATTRIBUTES = new Set(["loop", "muted", "alt", "title", "src"]);
 const MEDIA_TAGS = new Set(["img", "video", "audio"]);

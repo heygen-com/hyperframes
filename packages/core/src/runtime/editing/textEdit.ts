@@ -5,6 +5,7 @@ import { elementForHandle } from "../editingHandles";
 import { isStylableElement, type StylableElement } from "../domRealm";
 import { sanitizeRichTextChildren } from "../../utils/richTextSanitize";
 import { openTextEdits, isTextMarkup, MAX_EDIT_VALUE } from "./editElement";
+import { isEditableText } from "./textMarkup";
 
 type Point = { x: number; y: number };
 export type TextEditParams =
@@ -199,7 +200,7 @@ function start(
 ) {
   close(false);
   const element = elementForHandle(handle);
-  if (!isStylableElement(element) || !isTextMarkup(element.innerHTML)) return NOTHING;
+  if (!isStylableElement(element) || !isEditableText(element)) return NOTHING;
   const editable = element as Editable;
   const open: Session = {
     handle,

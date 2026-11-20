@@ -291,9 +291,9 @@ export function useInlineTextEdit({
     const stopEnded = previewEditingClient(sealed.iframe).onTextEditEnded((ended) => {
       if (openRef.current !== session || ended.handle !== sealed.handle) return;
       teardown();
-      if (ended.html !== null)
-        void onCommit({ element: session.element, html: ended.html, previousHtml: ended.previous });
-      else endWithOriginal(sealed);
+      if (ended.html === null) return endWithOriginal(sealed);
+      const commit = { element: session.element, html: ended.html, previousHtml: ended.previous };
+      trackStudioPendingEdit(Promise.resolve(onCommit(commit)));
     });
     return () => {
       stopEnded();

@@ -20,7 +20,7 @@ import {
   type EditingElementSource,
 } from "./editingElement";
 import { buildElementLabel, NO_TEXT, renderedTextOf } from "./elementLabel";
-import { holdsOnlyTextMarkup } from "./editing/textMarkup";
+import { isEditableText } from "./editing/textMarkup";
 
 // Drawn on first use, not at load: a render seeds getRandomValues, and a draw here would shift the
 // composition's own random values.
@@ -180,7 +180,7 @@ function describeElement(element: Element): EditingElementDescription | null {
     text: renderedText(element, state),
     children: children(element, state),
     truncated: state.truncated,
-    textMarkup: holdsOnlyTextMarkup(element),
+    textMarkup: isEditableText(element),
   };
 }
 
