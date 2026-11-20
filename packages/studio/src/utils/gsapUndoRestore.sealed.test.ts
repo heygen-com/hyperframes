@@ -8,6 +8,7 @@ vi.mock("../player/lib/previewChannel", () => ({
   previewRequest: channel.request,
 }));
 import { applyUndoRestoreToPreview } from "./gsapUndoRestore";
+import { applySoftReload } from "./gsapSoftReload";
 
 const page = (body: string) => `<html><body>${body}</body></html>`;
 const box = (left: number) => `<div data-hf-id="box" style="left: ${left}px">t</div>`;
@@ -94,55 +95,67 @@ describe("undo on a sealed preview", () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
-  // fails without the fix: the frame refuses an element GSAP has parsed, and the undo reloaded the preview.
-  it("re-runs the unchanged script in place when the frame refuses an element GSAP has parsed", async () => {
-    channel.request.mockImplementation(async (_frame, request) =>
-      request === "restore-attributes" ? { applied: false } : { result: "applied" },
+  // fails without the fix: the frame refused an element GSAP has parsed, and the undo reloaded the preview.
+  it("carries the script re-run in the restore request when the file keeps a script", async () => {
+    channel.request.mockResolvedValue({ applied: true });
+    const { reload, strategy, iframe } = undo(
+      box(90) + script("{ x: 1 }"),
+      box(0) + script("{ x: 1 }"),
     );
-    const { reload, iframe } = undo(box(90) + script("{ x: 1 }"), box(0) + script("{ x: 1 }"));
+    expect(strategy).toBe("soft");
+    expect(channel.request).toHaveBeenCalledExactlyOnceWith(iframe, "restore-attributes", {
+      scopes: [{ file: null, elements: [BOX_AT_0] }],
+      scripted: true,
+      time: 2,
+      rerun: {
+        script: expect.stringContaining("{ x: 1 }"),
+        sets: [],
+        authored: expect.any(Array),
+        timing: [],
+      },
+    });
     await settled();
-    expect(channel.request).toHaveBeenLastCalledWith(
-      iframe,
-      "soft-reload",
-      expect.objectContaining({ script: expect.stringContaining("{ x: 1 }"), time: 2 }),
-    );
-    expect(channel.request.mock.lastCall![2].restore).toEqual([
-      { file: null, elements: [BOX_AT_0] },
-    ]);
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it("reloads instead of re-running when a later undo was sent before the frame refused", async () => {
-    let refuse: (reply: unknown) => void = () => {};
+  it("sends no re-run when the files have no script", () => {
+    channel.request.mockResolvedValue({ applied: true });
+    undo(box(90), box(0));
+    expect(channel.request.mock.calls[0]![2]).not.toHaveProperty("rerun");
+  });
+
+  // fails without the fix: a late refusal re-ran the undo's older script over an edit sent meanwhile.
+  it("leaves an edit sent while the restore waits, and the playhead it was sent at", async () => {
+    let answer: (reply: unknown) => void = () => {};
     channel.request.mockImplementation((_frame, request) =>
       request === "restore-attributes"
-        ? new Promise((resolve) => (refuse = resolve))
+        ? new Promise((resolve) => (answer = resolve))
         : Promise.resolve({ result: "applied" }),
     );
-    const reload = vi.fn();
-    const iframe = document.createElement("iframe");
-    const files = (from: string, to: string) => ({
-      "index.html": {
-        previous: page(from + script("{ x: 1 }")),
-        restored: page(to + script("{ x: 1 }")),
-      },
+    const { reload, iframe } = undo(box(90) + script("{ x: 1 }"), box(0) + script("{ x: 1 }"));
+    const edit = page(box(0) + script("{ x: 9 }"));
+    applySoftReload(iframe, 'gsap.timeline().to("#t", { x: 9 });', {
+      currentTimeOverride: 3,
+      authoredHtml: edit,
+      previousHtml: page(box(0) + script("{ x: 1 }")),
     });
-    applyUndoRestoreToPreview(iframe, null, files(box(90), box(0)), 2, reload);
-    const first = refuse;
-    applyUndoRestoreToPreview(iframe, null, files(box(0), box(50)), 2, reload);
-    first({ applied: false });
+    answer({ applied: false });
     await settled();
-    expect(channel.request).not.toHaveBeenCalledWith(iframe, "soft-reload", expect.anything());
+    expect(channel.request.mock.calls.map(([, request, params]) => [request, params.time])).toEqual(
+      [
+        ["restore-attributes", 2],
+        ["soft-reload", 3],
+      ],
+    );
     expect(reload).toHaveBeenCalledOnce();
   });
 
-  it("reloads when the frame refuses the attributes and the re-run of the unchanged script", async () => {
-    channel.request.mockImplementation(async (_frame, request) =>
-      request === "restore-attributes" ? { applied: false } : { result: "cannot-soft-reload" },
-    );
+  // fails without the fix: a reply lost to a new preview load re-ran the undo into that load.
+  it("sends nothing more after a reply a new preview load lost", async () => {
+    channel.request.mockResolvedValue(null);
     const { reload } = undo(box(90) + script("{ x: 1 }"), box(0) + script("{ x: 1 }"));
     await settled();
-    await settled();
+    expect(channel.request).toHaveBeenCalledOnce();
     expect(reload).toHaveBeenCalledOnce();
   });
 

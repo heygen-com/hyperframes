@@ -9,7 +9,7 @@
  * otherwise takes straight off the frame's window, which an opaque-origin
  * preview does not allow.
  */
-import { parseRestoreAttributes, type RestoreAttributesParams } from "./editing/restoreAttributes";
+import type { RestoreAttributesParams } from "./editing/restoreAttributes";
 import {
   geometryEvent,
   parseWatchGeometry,
@@ -32,6 +32,7 @@ import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
 import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
 import { parsePatchTweens, type PatchTweensParams } from "./editing/patchTween";
 import {
+  parseRestoreAttributesRerun,
   parseSoftReload,
   type SoftReloadParams,
   type SoftReloadResult,
@@ -564,7 +565,7 @@ const PARAM_PARSERS: {
   "console-errors": (params) =>
     hasKeys(params, "from") && isOffset(params.from) ? { from: params.from } : null,
   "watch-keys": comboList,
-  "restore-attributes": parseRestoreAttributes,
+  "restore-attributes": parseRestoreAttributesRerun,
   "caption-words": captionWordsParams,
   "caption-transform": captionTransformParams,
   "color-grading-status": parseColorGradingStatusParams,

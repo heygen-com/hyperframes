@@ -5,6 +5,7 @@ import {
   STUDIO_REAPPLIED_MARKS,
   STUDIO_SEEK_REAPPLY_STARTED,
 } from "../../studioReappliedMarks";
+import type { SoftReloadRerun } from "./softReload";
 
 /** `hf:<data-hf-id>` or `id:<id>`, the key the parent's restore diff uses. */
 export type RestoreElementKey = string;
@@ -15,7 +16,12 @@ export type RestoreScope = {
   elements: { key: RestoreElementKey; attributes: RestoreAttribute[] }[];
 };
 /** `scripted`: the files keep an unchanged GSAP script, so an element GSAP has parsed needs a re-run instead. */
-export type RestoreAttributesParams = { scopes: RestoreScope[]; scripted: boolean; time: number };
+export type RestoreAttributesParams = {
+  scopes: RestoreScope[];
+  scripted: boolean;
+  time: number;
+  rerun?: SoftReloadRerun;
+};
 
 const MAX_SCOPES = 64;
 const MAX_ELEMENTS = 2_000;
@@ -196,15 +202,17 @@ function rebindAt(win: RestoreWindow, time: number): void {
   else finalize();
 }
 
-/** Applies the restore in place; `applied: false` changes nothing, and the parent reloads instead. */
-export function restoreAttributes({ scopes, scripted, time }: RestoreAttributesParams): {
-  applied: boolean;
-} {
+/** Applies the restore in place, or nothing: refused, or an element GSAP has parsed needs a re-run. */
+export function restoreInPlace({
+  scopes,
+  scripted,
+  time,
+}: RestoreAttributesParams): "applied" | "refused" | "gsap-parsed" {
   const win = window as RestoreWindow;
   const plan = planRestore(scopes);
-  if (!plan || typeof win.__player?.seek !== "function") return { applied: false };
-  if (scripted && plan.some(([el]) => "_gsap" in el)) return { applied: false };
+  if (!plan || typeof win.__player?.seek !== "function") return "refused";
+  if (scripted && plan.some(([el]) => "_gsap" in el)) return "gsap-parsed";
   applyRestorePlan(plan);
   rebindAt(win, time);
-  return { applied: true };
+  return "applied";
 }

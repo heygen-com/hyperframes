@@ -7,8 +7,11 @@ import { escapeCssString } from "../editingElement";
 import { applyAuthoredTiming } from "../../studioPreviewMark";
 import {
   applyRestorePlan,
+  parseRestoreAttributes,
   parseRestoreScopes,
   planRestore,
+  restoreInPlace,
+  type RestoreAttributesParams,
   type RestorePlan,
   type RestoreScope,
 } from "./restoreAttributes";
@@ -535,6 +538,8 @@ export type SoftReloadParams = {
   restore: RestoreScope[];
 };
 
+export type SoftReloadRerun = Omit<SoftReloadParams, "time" | "restore">;
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Object.prototype.toString.call(value) === "[object Object]";
 
@@ -617,4 +622,34 @@ export async function softReload(params: SoftReloadParams): Promise<{ result: So
     },
   });
   return { result };
+}
+
+/** `restore-attributes` with the re-run it may need; any other key still refuses the whole request. */
+export function parseRestoreAttributesRerun(params: unknown): RestoreAttributesParams | null {
+  if (!isRecord(params) || !("rerun" in params)) return parseRestoreAttributes(params);
+  const { rerun, ...rest } = params;
+  const restore = parseRestoreAttributes(rest);
+  if (!restore || !isRecord(rerun)) return null;
+  if (Object.keys(rerun).sort().join() !== "authored,script,sets,timing") return null;
+  const run = parseSoftReload({ ...rerun, time: restore.time, restore: restore.scopes });
+  return (
+    run && {
+      ...restore,
+      rerun: { script: run.script, sets: run.sets, authored: run.authored, timing: run.timing },
+    }
+  );
+}
+
+/** An element GSAP has parsed is restored by re-running the script, in the same request that sent it. */
+export async function restoreAttributesOrRerun(
+  params: RestoreAttributesParams,
+): Promise<{ applied: boolean }> {
+  const outcome = restoreInPlace(params);
+  if (outcome !== "gsap-parsed" || !params.rerun) return { applied: outcome === "applied" };
+  const { result } = await softReload({
+    ...params.rerun,
+    time: params.time,
+    restore: params.scopes,
+  });
+  return { applied: result !== "cannot-soft-reload" };
 }

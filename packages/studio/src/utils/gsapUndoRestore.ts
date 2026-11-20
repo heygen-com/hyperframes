@@ -399,9 +399,7 @@ function sealedRestore(activeDocPath: string, files: RestoreFiles): SealedRestor
   return restore;
 }
 
-const sealedRestoresSent = new WeakMap<HTMLIFrameElement, number>();
-
-/** Sends the restore to a sealed preview; a refusal re-runs its script in place unless a later restore went out. */
+/** Sends the restore to a sealed preview, with the script re-run an element GSAP parsed needs; a refusal reloads. */
 function applySealedRestore(
   iframe: HTMLIFrameElement,
   activeDocPath: string,
@@ -410,31 +408,33 @@ function applySealedRestore(
   reloadPreview: () => void,
   onShownInPlace?: () => void,
 ): "soft" | "full" {
-  const sent = (sealedRestoresSent.get(iframe) ?? 0) + 1;
-  sealedRestoresSent.set(iframe, sent);
   const restore = sealedRestore(activeDocPath, files);
   const active = files[activeDocPath];
   const script = active ? extractGsapScriptText(active.restored) : null;
-  const rerun = () =>
-    !!restore &&
-    !!active &&
-    !!script &&
-    applySoftReload(iframe, script, {
-      onAsyncFailure: reloadPreview,
-      onShownInPlace,
-      currentTimeOverride: currentTime,
-      authoredHtml: active.restored,
-      previousHtml: active.previous,
-      restore: restore.scopes,
-    }) === "applied";
   if (restore && active && script !== extractGsapScriptText(active.previous)) {
-    if (rerun()) return "soft";
+    const rerun =
+      script &&
+      applySoftReload(iframe, script, {
+        onAsyncFailure: reloadPreview,
+        onShownInPlace,
+        currentTimeOverride: currentTime,
+        authoredHtml: active.restored,
+        previousHtml: active.previous,
+        restore: restore.scopes,
+      });
+    if (rerun === "applied") return "soft";
   } else if (restore?.scopes.length) {
-    const rerunOrReload = () => {
-      const latest = sealedRestoresSent.get(iframe) === sent;
-      if (!(restore.scripted && latest && rerun())) reloadPreview();
-    };
-    sendSealedRestore(iframe, restore, currentTime, rerunOrReload, onShownInPlace);
+    const rerun =
+      restore.scripted && active && script
+        ? sealedRerun(script, { authoredHtml: active.restored, previousHtml: active.previous })
+        : null;
+    sendSealedRestore(
+      iframe,
+      { ...restore, ...(rerun && { rerun }) },
+      currentTime,
+      reloadPreview,
+      onShownInPlace,
+    );
     return "soft";
   }
   reloadPreview();

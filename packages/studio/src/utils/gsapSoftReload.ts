@@ -190,6 +190,24 @@ function sealedSoftReloadResult(reply: unknown): SoftReloadResult {
   return result as SoftReloadResult;
 }
 
+/** What a sealed frame needs to re-run `scriptText`, from the saved files alone. */
+export function sealedRerun(
+  scriptText: string,
+  {
+    authoredHtml,
+    previousHtml,
+    timingEdit,
+  }: { authoredHtml: string; previousHtml: string; timingEdit?: boolean },
+): Omit<EditingParams<"soft-reload">, "time" | "restore"> {
+  const previous = new DOMParser().parseFromString(previousHtml, "text/html");
+  return {
+    script: scriptText,
+    sets: standaloneSets(outgoingScripts(previous, scriptText)),
+    authored: authoredStyles(authoredHtml),
+    timing: timingEdit ? savedTiming(authoredHtml) : [],
+  };
+}
+
 // Everything sent comes from the files Studio saved, never from the frame; the reply only says whether it applied.
 function softReloadSealed(
   iframe: HTMLIFrameElement,
@@ -206,13 +224,10 @@ function softReloadSealed(
 ): SoftReloadResult {
   if (authoredHtml === undefined || previousHtml === undefined || currentTimeOverride === undefined)
     return "cannot-soft-reload";
-  const previous = new DOMParser().parseFromString(previousHtml, "text/html");
+  const rerun = sealedRerun(scriptText, { authoredHtml, previousHtml, timingEdit });
   void previewRequest(iframe, "soft-reload", {
-    script: scriptText,
+    ...rerun,
     time: currentTimeOverride,
-    sets: standaloneSets(outgoingScripts(previous, scriptText)),
-    authored: authoredStyles(authoredHtml),
-    timing: timingEdit ? savedTiming(authoredHtml) : [],
     restore,
   }).then((reply) => {
     if (sealedSoftReloadResult(reply) === "cannot-soft-reload") onAsyncFailure?.();

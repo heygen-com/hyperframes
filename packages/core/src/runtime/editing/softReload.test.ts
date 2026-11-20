@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseSoftReload, softReload, type SoftReloadParams } from "./softReload";
+import { parseRestoreAttributes } from "./restoreAttributes";
+import {
+  parseRestoreAttributesRerun,
+  parseSoftReload,
+  restoreAttributesOrRerun,
+  softReload,
+  type SoftReloadParams,
+} from "./softReload";
 
 type TestWindow = Window & Record<string, unknown>;
 const win = window as TestWindow;
@@ -161,6 +168,67 @@ describe("soft-reload of an undo", () => {
     win.__hfStudioSeekReapplyStarted = true;
     expect(await softReload(params({ restore }))).toEqual({ result: "applied" });
     expect(el.getAttribute("data-hf-studio-box-size")).toBe("true");
+  });
+});
+
+// fails without the fix: the frame refused an element GSAP parsed, and Studio's later re-run raced newer edits.
+describe("restore-attributes with a re-run", () => {
+  const MARKUP = `<div data-composition-id="main"><div id="a" data-hf-id="h1" style="left: 90px"></div></div>`;
+  const RERUN = { script: SCRIPT, sets: [], authored: [], timing: [] };
+  const request = (rerun?: object) => ({
+    scopes: [
+      restoreOf("hf:h1", [
+        ["id", "a"],
+        ["data-hf-id", "h1"],
+        ["style", "left: 0px"],
+      ]),
+    ],
+    scripted: true,
+    time: 1.5,
+    ...(rerun && { rerun }),
+  });
+  const parsedEl = () => Object.assign(document.getElementById("a")!, { _gsap: {} });
+
+  it("re-runs the script in the same request when GSAP has parsed a restored element", async () => {
+    const seeks = preview(MARKUP);
+    const el = parsedEl();
+    const seen: Array<string | null> = [];
+    win.__hfForceTimelineRebind = () => seen.push(el.getAttribute("style"));
+    const params = parseRestoreAttributesRerun(request(RERUN))!;
+    expect(await restoreAttributesOrRerun(params)).toEqual({ applied: true });
+    expect(seen).toEqual(["left: 0px"]);
+    expect(killed).toHaveBeenCalledOnce();
+    expect(seeks).toContain(1.5);
+  });
+
+  it("refuses and changes nothing when GSAP has parsed a restored element and no re-run came", async () => {
+    preview(MARKUP);
+    const el = parsedEl();
+    expect(await restoreAttributesOrRerun(parseRestoreAttributesRerun(request())!)).toEqual({
+      applied: false,
+    });
+    expect(el.getAttribute("style")).toBe("left: 90px");
+    expect(killed).not.toHaveBeenCalled();
+  });
+
+  it("sets the attributes without re-running when GSAP has parsed none of them", async () => {
+    preview(MARKUP);
+    const params = parseRestoreAttributesRerun(request(RERUN))!;
+    expect(await restoreAttributesOrRerun(params)).toEqual({ applied: true });
+    expect(document.getElementById("a")!.getAttribute("style")).toBe("left: 0px");
+    expect(killed).not.toHaveBeenCalled();
+  });
+
+  it("is refused by an older frame's parser, so Studio reloads as before", () => {
+    expect(parseRestoreAttributes(request(RERUN))).toBeNull();
+  });
+
+  it.each([
+    ["an empty script", { ...RERUN, script: "" }],
+    ["a field soft-reload does not take", { ...RERUN, restore: [] }],
+    ["no object", "rerun"],
+  ])("refuses a re-run with %s", (_name, rerun) => {
+    expect(parseRestoreAttributesRerun({ ...request(), rerun })).toBeNull();
   });
 });
 
