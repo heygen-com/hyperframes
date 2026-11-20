@@ -103,6 +103,7 @@ export function extractGsapScriptText(html: string): string | null {
 export interface SoftReloadOptions {
   /** Escalation for a failure found after this returned, such as a MotionPath CDN error. */
   onAsyncFailure?: () => void;
+  onShownInPlace?: () => void;
   /** Seek target for the rebuilt timeline; defaults to the iframe player time. */
   currentTimeOverride?: number;
   /** After-write file HTML: the source of the authored opacity and transform restore. */
@@ -198,6 +199,7 @@ function softReloadSealed(
     previousHtml,
     currentTimeOverride,
     onAsyncFailure,
+    onShownInPlace,
     timingEdit,
     restore = [],
   }: SoftReloadOptions,
@@ -214,6 +216,7 @@ function softReloadSealed(
     restore,
   }).then((reply) => {
     if (sealedSoftReloadResult(reply) === "cannot-soft-reload") onAsyncFailure?.();
+    else onShownInPlace?.();
   });
   return "applied";
 }
