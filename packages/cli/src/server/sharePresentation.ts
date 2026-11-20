@@ -15,6 +15,8 @@ export function presentShare(value: ShareState): LocalShareState {
     failure: value.state === "failed" ? value.version.failure : null,
     hasReadyVersion: value.ready || Boolean(value.previousUrl),
     manageUrl: value.manageUrl,
+    reviewId: value.reviewId,
+    reviewTitle: value.reviewTitle,
     // Desktop's watcher does not cover every portable render input.
     changed: knownChanges(value),
     audience: value.share?.access ?? null,

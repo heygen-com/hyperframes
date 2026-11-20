@@ -1,4 +1,5 @@
 // Carries the system fonts a project uses inside its zip, as the cloud has no copy of them.
+import { terminalText } from "@hyperframes/core";
 import { bundleWithLocalizedFonts } from "../utils/bundleWithLocalizedFonts.js";
 import { loadProducer } from "../utils/producer.js";
 import { readStaged, type StagedFile } from "../utils/publishProject.js";
@@ -128,7 +129,7 @@ export function describeSwappedFonts(families: readonly string[]): string {
   return families
     .map((family) => {
       const swap = lookAlikeFor(family);
-      return `${family} is not on this computer, so it renders in the next font of its stack (or the default font), as a local render does${
+      return `${terminalText(family)} is not on this computer, so it renders in the next font of its stack (or the default font), as a local render does${
         swap ? `; ${swap} is a free look-alike you can use instead` : ""
       }.`;
     })

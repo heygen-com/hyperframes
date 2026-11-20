@@ -11,8 +11,9 @@ const PROXY_EXTENSIONS: ReadonlySet<string> = new Set([
   PROXY_STILL_EXTENSION,
 ]);
 const TRANSCODER_PROXY_NAME = /^[0-9a-f]{64}\.\w+$/;
-const TRANSCODER_TEMP_NAME = /^\.tmp-[0-9a-f-]{36}-(?:\.part-[0-9a-f]{64}-\d+|[0-9a-f]{64})\.\w+$/;
-const TRANSCODER_PIECE_NAME = /^\.part-([0-9a-f]{64})-\d+(\.\w+)$/;
+const TRANSCODER_TEMP_NAME =
+  /^\.tmp-[0-9a-f-]{36}-(?:\.part-[0-9a-f]{64}-(?:[0-9a-f]{32}-)?\d+|[0-9a-f]{64})\.\w+$/;
+const TRANSCODER_PIECE_NAME = /^\.part-([0-9a-f]{64})-([0-9a-f]{32}-)?\d+(\.\w+)$/;
 const STALE_PIECE_MS = 60 * 60 * 1000;
 
 export interface ProxyCacheCleanupOptions {
@@ -81,8 +82,11 @@ function leftoverIsDead(
 ): boolean {
   const piece = TRANSCODER_PIECE_NAME.exec(name);
   if (!piece) return now - modifiedAt >= staleTempMs;
-  const copyIsRunning = protectedPaths.has(join(cacheDir, `${piece[1]}${piece[2]}`));
-  return !copyIsRunning && now - modifiedAt >= STALE_PIECE_MS;
+  const taggedForThisVersion = piece[2] !== undefined;
+  const copyIsRunning =
+    taggedForThisVersion && protectedPaths.has(join(cacheDir, `${piece[1]}${piece[3]}`));
+  const ageEvenIfFutureDated = Math.abs(now - modifiedAt);
+  return !copyIsRunning && ageEvenIfFutureDated >= STALE_PIECE_MS;
 }
 
 function readCacheInventory(

@@ -58,6 +58,7 @@ import { mapWithConcurrency } from "./lib/concurrency.mjs";
 import { openAudioMeta } from "./lib/audio-meta.mjs";
 import { recordInManifest, voicePaths, writtenAssets } from "./lib/media-record.mjs";
 import { engineBgmLog, projectPath } from "./lib/project-path.mjs";
+import { terminalText } from "../../scripts/lib/terminal-text.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -67,7 +68,7 @@ const flag = (name, def) => {
 };
 const has = (name) => argv.includes(`--${name}`);
 const die = (m) => {
-  console.error(`✗ audio engine: ${m}`);
+  console.error(`✗ audio engine: ${m}`.split("\n").map(terminalText).join("\n"));
   process.exit(1);
 };
 const r3 = (x) => Number(x.toFixed(3));
@@ -126,7 +127,12 @@ const outRel = relative(hyperframesDir, outPath);
 const outInProject = outRel !== ".." && !outRel.startsWith(`..${sep}`) && !isAbsolute(outRel);
 if (outInProject && !projectPath(hyperframesDir, outRel))
   die(`${outPath} leads outside the project folder; replace it with a regular file`);
-const audioMeta = openAudioMeta(outPath);
+let audioMeta;
+try {
+  audioMeta = openAudioMeta(outPath);
+} catch (e) {
+  die(`audio_meta.json at ${outPath}: ${e.message}`);
+}
 const prev = audioMeta.value;
 const anomalies = [];
 
@@ -162,7 +168,7 @@ if (only.has("tts") && lines.length) {
     ttsProvider = "recording"; // every line is the person's own recording: no TTS provider to pick
     voiceId = null;
   }
-  console.error(`· tts: ${ttsProvider} · voice ${voiceId} · ${lines.length} line(s)`);
+  console.error(terminalText(`· tts: ${ttsProvider} · voice ${voiceId} · ${lines.length} line(s)`));
   // A line with `audio` is the person's own recording (path inside the project), with optional
   // `words`; `speed` applies to it like to a generated voice. Returns synthesizeOne's shape.
   const useRecording = (line, abs) => {
@@ -221,7 +227,9 @@ if (only.has("tts") && lines.length) {
   const results = await mapWithConcurrency(lines, ttsConcurrency, synthLine);
   voices = results.filter(Boolean);
   for (const v of voices)
-    console.error(`  voice ${v.id}: ${v.path} (${v.duration_s}s, ${v.words.length} words)`);
+    console.error(
+      terminalText(`  voice ${v.id}: ${v.path} (${v.duration_s}s, ${v.words.length} words)`),
+    );
 }
 const hasVoice = voices.length > 0;
 const totalDuration = r3(voices.reduce((a, v) => a + (v.duration_s || 0), 0));
@@ -271,7 +279,7 @@ if (only.has("bgm")) {
       if (bgm) {
         bgmFields.bgm_provider = "heygen";
         bgmFields.bgm_mode = "retrieve";
-        console.error(`  bgm: ${bgm.path} (retrieve "${bgm.query}")`);
+        console.error(terminalText(`  bgm: ${bgm.path} (retrieve "${bgm.query}")`));
       } else {
         anomalies.push(`bgm: no music match for "${request.bgm?.query ?? ""}" — skipped`);
       }
@@ -307,7 +315,9 @@ if (only.has("bgm")) {
       bgmFields.bgm_target_duration_s = gen.target_duration_s ?? null;
       bgmFields.bgm_seed_duration_s = gen.seed_duration_s ?? null;
       bgmFields.bgm_loop_count = gen.loop_count ?? null;
-      console.error(`  bgm: launched ${gen.provider} (detached, pid ${gen.pid}) → ${gen.path}`);
+      console.error(
+        terminalText(`  bgm: launched ${gen.provider} (detached, pid ${gen.pid}) → ${gen.path}`),
+      );
     }
   }
 }
@@ -345,13 +355,15 @@ audioMeta.write(meta);
 const written = writtenAssets({ only, lines, voices, ttsProvider, bgm, bgmFields, sfx });
 anomalies.push(...recordInManifest(hyperframesDir, written));
 
-console.log(`✓ audio engine → ${outPath}`);
+console.log(terminalText(`✓ audio engine → ${outPath}`));
 console.log(`  heygen: ${heygenOK ? "yes" : "no"}  ·  ran: ${[...only].join(",")}`);
 console.log(
-  `  voices: ${voices.length}  ·  bgm: ${bgm ? `${bgmFields.bgm_provider}${bgmFields.bgm_pending ? " (pending)" : ""}` : "none"}  ·  sfx: ${sfx.length}`,
+  terminalText(
+    `  voices: ${voices.length}  ·  bgm: ${bgm ? `${bgmFields.bgm_provider}${bgmFields.bgm_pending ? " (pending)" : ""}` : "none"}  ·  sfx: ${sfx.length}`,
+  ),
 );
 console.log(`  total voice duration: ${totalDuration}s`);
 if (anomalies.length) {
   console.log(`\nanomalies (non-fatal):`);
-  for (const a of anomalies) console.log(`  - ${a}`);
+  for (const a of anomalies) console.log(terminalText(`  - ${a}`));
 }

@@ -32,7 +32,7 @@ tl.set(group, { opacity: 0, visibility: "hidden" }, end);
 - Size each group to fit: `window.__hyperframes.fitTextFontSize(text, { fontFamily, fontWeight, maxWidth })` returns `{ fontSize }`. Defaults: `maxWidth` 1600 landscape, 900 portrait; base 78, minimum 42, step 2. When a word scales up for emphasis, divide `maxWidth` by that scale.
 - A full-width absolute container, centred with text alignment. Never `left: 50%; transform: translateX(-50%)`, which clips at the frame edges.
 - `overflow: visible`, not `hidden`, which cuts off scaled words and glows.
-- Landscape: 80–120 px from the bottom. Portrait: about 600–700 px from the bottom. Never over the speaker's face; inside the 80% title-safe box.
+- Landscape: 80–120 px from the bottom. Portrait (1080×1920): the bottom edge of the caption at least 672 px from the bottom (y 1248), the lowest every 9:16 safe area allows. Never over the speaker's face; inside the 80% title-safe box.
 - Position each group absolutely. In a flex column a group hidden with `visibility: hidden` still takes space, so the next one lands lower. In a stack that accumulates, groups in one block share one exit time, or the stack reflows.
 - Fade the group or its words, not both: the opacities multiply and read as a pop. A gradient or `background-clip: text` fill goes on the inner text span, not the transformed container.
 - Over footage, choose the blend by the brightness (0–255) behind the text: under 60 `screen`, 60–180 `overlay`, over 180 `normal` with opaque colour. Plain subtitles above brightness 60 get a scrim sized to the text (30–40%), never a full-width bar.

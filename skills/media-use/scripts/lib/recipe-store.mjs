@@ -196,6 +196,18 @@ function readRecipeJson(dir) {
   }
 }
 
+/** The highest `<slug>@v<N>` archive number in `recipesDir`, 0 when there is none. */
+function highestArchive(recipesDir, slug) {
+  const prefix = `${slug}@v`;
+  let highest = 0;
+  for (const entry of readdirSync(recipesDir)) {
+    if (!entry.startsWith(prefix)) continue;
+    const number = Number(entry.slice(prefix.length));
+    if (Number.isSafeInteger(number) && number > highest) highest = number;
+  }
+  return highest;
+}
+
 function prefValue(prefs, key) {
   return prefs[key]?.value;
 }
@@ -224,10 +236,21 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
   let version = 1;
   const previous = existsSync(dir) ? readRecipeJson(dir) : null;
   if (previous) {
-    version = (Number.isInteger(previous.version) ? previous.version : 1) + 1;
-    const archive = `${dir}@v${previous.version ?? 1}`;
-    rmSync(archive, { recursive: true, force: true });
-    renameSync(dir, archive);
+    // recipe.json travels with the project, so its version is untrusted text: only a positive
+    // integer may name the archive, and an archive already on disk is never replaced. A
+    // malformed version, or one whose archive exists, moves to the first slot above them all.
+    const claimed =
+      Number.isSafeInteger(previous.version) && previous.version > 0 ? previous.version : 0;
+    const slot =
+      claimed && !existsSync(`${dir}@v${claimed}`)
+        ? claimed
+        : Math.max(claimed, highestArchive(projectRecipesDir(root), slug)) + 1;
+    version = slot + 1;
+    // Checked before either folder moves, and keeps the next freeze's version valid too.
+    if (!Number.isSafeInteger(version)) {
+      throw new Error(`recipe "${slug}" has no version number left to freeze into`);
+    }
+    renameSync(dir, `${dir}@v${slot}`);
   }
   mkdirSync(dir, { recursive: true });
 

@@ -1,7 +1,19 @@
+// @vitest-environment node
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fixtureFontDir, makeSfnt, makeTtc } from "./sfntFixture.js";
+
+// Only the fixture's fonts: a folder outside the temp dir (the machine's own fonts) does not exist here.
+vi.mock("node:fs", async (importOriginal) => {
+  const fs = await importOriginal<typeof import("node:fs")>();
+  const { tmpdir } = await import("node:os");
+  return {
+    ...fs,
+    existsSync: (path: import("node:fs").PathLike) =>
+      String(path).startsWith(tmpdir()) && fs.existsSync(path),
+  };
+});
 
 const fonts = fixtureFontDir();
 
