@@ -16,6 +16,7 @@ import {
   renderTimelinePlayerHarness,
   resetPlayerStore,
 } from "./timelinePlayerTestHarness";
+import { sealedPreviewFrame } from "../lib/sealedPreviewFrame.test-helpers";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -473,6 +474,49 @@ describe("shadow reload readiness and failure", () => {
     expect(onPreviewReloadFailed).toHaveBeenCalledWith(
       expect.stringContaining("still waiting for its timeline to be ready"),
     );
+    unmount(root);
+  });
+
+  // fails without the fix: a sealed shadow refuses every read, so it was always reported as a page that never loaded.
+  it("says only what a sealed shadow reported when it fails to reload", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, gen, root } = beginReload({ onPreviewReloadFailed });
+    const sealed = sealedPreviewFrame().iframe;
+    Object.defineProperty(sealed, "isConnected", { value: true });
+    act(() => {
+      getApi().setShadowIframeNode(sealed);
+      getApi().onShadowIframeLoad(gen);
+    });
+
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+
+    const [message] = onPreviewReloadFailed.mock.calls[0]!;
+    expect(message).toContain("still waiting for its runtime to report a timeline");
+    expect(message).not.toContain("Its page had got to");
+    unmount(root);
+  });
+
+  // fails without the fix: a timeline accepted but not yet committed (restore seek painting) read as none.
+  it("names the restore seek when a shadow's timeline arrived but its seek never painted", () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const onPreviewReloadFailed = vi.fn();
+    const { getApi, gen, root } = beginReload({ onPreviewReloadFailed });
+    const shadow = makeShadowWithSpies();
+    Object.assign(shadow.iframe.contentWindow!, {
+      __hfWaitForSeekCompletion: () => new Promise<void>(() => {}),
+    });
+    act(() => {
+      getApi().setShadowIframeNode(shadow.iframe);
+      getApi().onShadowIframeLoad(gen);
+    });
+
+    act(() => void vi.advanceTimersByTime(FULL_WAIT_MS));
+
+    const [message] = onPreviewReloadFailed.mock.calls[0]!;
+    expect(message).toContain("still waiting for its restore seek to paint");
     unmount(root);
   });
 

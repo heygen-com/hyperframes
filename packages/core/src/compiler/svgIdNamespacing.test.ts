@@ -739,3 +739,14 @@ describe("rewriteSvgIdReferencesInCss charges its growth while it builds", () =>
     expect(charge).not.toHaveBeenCalled();
   });
 });
+
+// fails without the fix: each opener with no closer rescanned the rest of the selector, quadratic in its length.
+it("rewriteSvgIdReferencesInCss scans a selector of 300000 unclosed brackets in time linear in its length", () => {
+  const references = [
+    { name: "href", localName: "href", namespaceURI: null, before: "#a", after: "#m-a" },
+  ];
+  const run = "[".repeat(300_000);
+  expect(
+    rewriteSvgIdReferencesInCss(`:is(${run}) { fill: red; }`, new Map(), references),
+  ).toContain(run);
+}, 10_000);

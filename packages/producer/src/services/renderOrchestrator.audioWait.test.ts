@@ -15,7 +15,7 @@ const trace = vi.hoisted(() => ({
 
 vi.mock("@hyperframes/engine", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hyperframes/engine")>()),
-  usableCpuCount: () => 8,
+  cpuBudget: () => 8,
 }));
 vi.mock("./render/shared.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./render/shared.js")>()),
