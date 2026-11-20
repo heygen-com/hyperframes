@@ -554,12 +554,13 @@ describe("runtime entry", () => {
       expect(loadsOf(later)).toEqual([2]);
       expect(later.getAttribute("src")).toBe("later.mp4");
 
+      // The released clip reports no length again; the timeline keeps the one it reported, for that src only.
       Object.defineProperty(later, "readyState", { value: 0, configurable: true });
       Object.defineProperty(later, "duration", { value: Number.NaN, configurable: true });
-      window.__player?.seek(7);
-      expect(visibility(later)).toEqual(["visible"]);
-      window.__player?.seek(8.5);
-      expect(visibility(later)).toEqual(["hidden"]);
+      const { resolveMediaElementDurationSeconds } = await import("./playbackRate");
+      expect(resolveMediaElementDurationSeconds(later)).toBe(2);
+      later.setAttribute("src", "other.mp4");
+      expect(resolveMediaElementDurationSeconds(later)).toBeNull();
     });
 
     // Three takes of one file, each a picture and a sound, as an edit cut from a single source is.
