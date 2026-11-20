@@ -540,7 +540,7 @@ export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): v
   for (const member of members) {
     if (!isStudioManualEditGestureCurrent(member.element, member.gestureToken)) continue;
     endStudioManualEditGesture(member.element, member.gestureToken);
-    endPreviewDraft(member.element, "keep");
+    endPreviewDraft(member.element, member.plainTranslate ? "keep" : "restore");
     member.element.removeAttribute("data-hf-drag-initial-offset-x");
     member.element.removeAttribute("data-hf-drag-initial-offset-y");
     member.element.removeAttribute("data-hf-drag-gsap-base-x");

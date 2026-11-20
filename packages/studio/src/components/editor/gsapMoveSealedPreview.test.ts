@@ -170,6 +170,14 @@ async function dragBoxOnSealedFrame(
   return { started, start, anim: anim!, outcome, commit };
 }
 
+// fails without the fix: the frame kept the drag's drawn translate on top of the x the save gave GSAP.
+it("ends a sealed drag on GSAP's route without its drawn translate, so the saved x alone places the layer", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT);
+
+  await vi.waitFor(() => expect(document.getElementById("box")!.style.translate).toBe(""));
+});
+
 // fails without the fix: a sealed preview refused to drag a layer its animation moves.
 it("drags a layer its tween moves in a sealed preview: it moves live and saves a keyframe there", async () => {
   mount(SCRIPT);
