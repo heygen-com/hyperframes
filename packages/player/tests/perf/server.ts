@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
  *   /                                  → host.html (default fixture: gsap-heavy)
  *   /host.html?fixture=<name>          → embed page hosting <hyperframes-player>, sealed
  *   /host.html?...&trusted=1           → the same with sandbox-origin="same-origin", for benches that read the film
+ *   /host.html?...&cors=0              → the film from /fixtures-no-cors/, a host that sends no CORS headers
  *   /player/hyperframes-player.global.js
  *   /vendor/gsap.min.js
  *   /vendor/hyperframe.runtime.iife.js
@@ -85,9 +86,10 @@ function buildHostHtml(
   width: number,
   height: number,
   trusted: boolean,
+  cors = true,
 ): string {
   const playerSrc = "/player/hyperframes-player.global.js";
-  const fixtureSrc = `/fixtures/${fixtureName}/index.html`;
+  const fixtureSrc = `/${cors ? "fixtures" : "fixtures-no-cors"}/${fixtureName}/index.html`;
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -175,7 +177,14 @@ export function startServer(options: ServeOptions = {}): RunningServer {
         const fixture = url.searchParams.get("fixture") || "gsap-heavy";
         const width = Number(url.searchParams.get("width") || "1920");
         const height = Number(url.searchParams.get("height") || "1080");
-        const html = buildHostHtml(fixture, width, height, url.searchParams.get("trusted") === "1");
+        const params = url.searchParams;
+        const html = buildHostHtml(
+          fixture,
+          width,
+          height,
+          params.get("trusted") === "1",
+          params.get("cors") !== "0",
+        );
         return applyCacheHeaders(
           new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } }),
           noCache,
@@ -194,15 +203,15 @@ export function startServer(options: ServeOptions = {}): RunningServer {
         return applyCacheHeaders(await readBunFile(PATHS.gsap), noCache);
       }
 
-      if (path.startsWith("/fixtures/")) {
-        const rel = path.replace(/^\/fixtures\//, "");
-        const filePath = join(PATHS.fixturesDir, rel);
+      const served = /^\/(fixtures|fixtures-no-cors)\//.exec(path);
+      if (served) {
+        const filePath = join(PATHS.fixturesDir, path.slice(served[0].length));
         if (!filePath.startsWith(PATHS.fixturesDir)) {
           return new Response("Forbidden", { status: 403 });
         }
         // A sealed player's film has an opaque origin and loads its own media with CORS, as from a CORS-capable host.
         const res = applyCacheHeaders(await readBunFile(filePath), noCache);
-        res.headers.set("Access-Control-Allow-Origin", "*");
+        if (served[1] === "fixtures") res.headers.set("Access-Control-Allow-Origin", "*");
         return res;
       }
 
