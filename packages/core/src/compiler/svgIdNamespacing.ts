@@ -566,10 +566,11 @@ export function rewriteSvgIdReferencesInCss(
       ];
     });
   root.walkRules((rule) => {
-    const rewritten = rule.selectors.map((selector) =>
+    const selectors = rule.selectors;
+    const rewritten = selectors.map((selector) =>
       rewriteSvgSelectors(selector, idsNamedBy(selector), references, undefined, chargeSelector),
     );
-    if (rewritten.some((selector, index) => selector !== rule.selectors[index])) {
+    if (rewritten.some((selector, index) => selector !== selectors[index])) {
       rule.selectors = rewritten;
       mutated = true;
     }
