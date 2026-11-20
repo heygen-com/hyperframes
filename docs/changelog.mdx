@@ -17,6 +17,11 @@ Preview copies of long clips with sound finish again, so their footage no longer
 
 ## Fixes
 
+- **Producer:** Download at most 1,000 remote assets per compile, 8 at a time ([c50ec09d2](https://github.com/heygen-com/hyperframes/commit/c50ec09d28e2b1b0680d25ebab7302b07bf148b3), [#8290](https://github.com/heygen-com/hyperframes/pull/8290)).
+- **Producer:** Pass the render's cancel to the compile's media, image and font downloads ([edd1c90a4](https://github.com/heygen-com/hyperframes/commit/edd1c90a4ea05afac4bb6bf7e60604bae616f557), [#8289](https://github.com/heygen-com/hyperframes/pull/8289)).
+- **Share:** A first share only lands on a review it created ([1d5403525](https://github.com/heygen-com/hyperframes/commit/1d5403525d8e463be3c002edcd96931fa7f7d281), [#8282](https://github.com/heygen-com/hyperframes/pull/8282)).
+- **Core:** Stop audio automation from crashing the preview renderer ([e3896cf08](https://github.com/heygen-com/hyperframes/commit/e3896cf08e1f084d953ae1bc480713173b5e4bc4), [#8299](https://github.com/heygen-com/hyperframes/pull/8299)).
+- **Producer:** A remote font embeds in the page instead of warning it is missing ([2f23fbd36](https://github.com/heygen-com/hyperframes/commit/2f23fbd3649c4adc5e29fb82c0ceadfd0b3587f0), [#8297](https://github.com/heygen-com/hyperframes/pull/8297)).
 - **Studio Server:** Saving history on a drive that stops answering no longer freezes the app ([88c22a77f](https://github.com/heygen-com/hyperframes/commit/88c22a77f4cd7c3daa0ebbb6023181e9c8a897da), [#8294](https://github.com/heygen-com/hyperframes/pull/8294)).
 - **Player:** A sealed film shows when its timeline arrives after the 8 s check ([58de4c783](https://github.com/heygen-com/hyperframes/commit/58de4c783d488e564a6c1a2d3e0e493629023066), [#8293](https://github.com/heygen-com/hyperframes/pull/8293)).
 - **Studio:** A sealed audio group's undo reads the frame's reply only in its shape ([3c735ad01](https://github.com/heygen-com/hyperframes/commit/3c735ad01cc930fab0ce4b36c559cde10e36e70c), [#8291](https://github.com/heygen-com/hyperframes/pull/8291)).
