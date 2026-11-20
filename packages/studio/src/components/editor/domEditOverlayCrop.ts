@@ -10,6 +10,7 @@ import {
 import { MAX_DRAFT_PX, MAX_ELEMENT_VALUE } from "@hyperframes/core/runtime/editing-port";
 import { previewRequest } from "../../player/lib/previewChannel";
 import { previewStandIn } from "./previewDrafts";
+import { gestureStartLayout } from "./previewGestureStartRead";
 
 export type CropEdge = "top" | "right" | "bottom" | "left";
 
@@ -365,22 +366,41 @@ function readPlanarTransform(element: HTMLElement): Planar2D | null {
   return acc && !isIdentity(acc) ? acc : null;
 }
 
-/** What the frame measured of a stand-in's element at the press: a stand-in has no transform or box of its own. */
+/** What the frame measured of a stand-in's element at the press: a stand-in has no box of its own. */
 export interface CropFrameStart {
-  planar: Planar2D | null;
   layout: { width: number; height: number };
 }
 
-const measuredPlanar = ({ planar }: CropFrameStart) =>
-  planar && !isIdentity(planar) ? planar : null;
+/** A stand-in's crop frame: the frame's live oriented box of its element; the layout a press measured gives its scale. */
+function standInCropFrame(
+  overlayRect: CropScreenRect & { angle?: number },
+  layout: { width: number; height: number } | null,
+  edit: { x: number; y: number },
+): CropFrame {
+  const { left, top, width, height } = overlayRect;
+  return {
+    angleDeg: overlayRect.angle ?? 0,
+    left,
+    top,
+    width,
+    height,
+    scaleX: layout && layout.width > 0 ? width / layout.width : edit.x,
+    scaleY: layout && layout.height > 0 ? height / layout.height : edit.y,
+  };
+}
 
 export function readElementCropFrame(
   element: HTMLElement,
-  overlayRect: CropScreenRect & { editScaleX: number; editScaleY: number },
+  overlayRect: CropScreenRect & { editScaleX: number; editScaleY: number; angle?: number },
   start?: CropFrameStart,
 ): CropFrame {
   const editX = overlayRect.editScaleX > 0 ? overlayRect.editScaleX : 1;
   const editY = overlayRect.editScaleY > 0 ? overlayRect.editScaleY : 1;
+  const standIn = previewStandIn(element);
+  if (standIn) {
+    const layout = start?.layout ?? gestureStartLayout(standIn.handle);
+    return standInCropFrame(overlayRect, layout, { x: editX, y: editY });
+  }
   const aabb: CropFrame = {
     angleDeg: 0,
     left: overlayRect.left,
@@ -390,7 +410,7 @@ export function readElementCropFrame(
     scaleX: editX,
     scaleY: editY,
   };
-  const planar = start ? measuredPlanar(start) : readPlanarTransform(element);
+  const planar = readPlanarTransform(element);
   if (!planar) return aabb;
   const { a, b, c, d } = planar;
   const elScaleX = Math.hypot(a, b);
@@ -401,7 +421,7 @@ export function readElementCropFrame(
   const angleDeg = (Math.atan2(b, a) * 180) / Math.PI;
   const scaleX = elScaleX * editX;
   const scaleY = elScaleY * editY;
-  const size = start?.layout ?? { width: element.offsetWidth, height: element.offsetHeight };
+  const size = { width: element.offsetWidth, height: element.offsetHeight };
   const width = size.width * scaleX;
   const height = size.height * scaleY;
   if (!(width > 0) || !(height > 0)) return aabb;
