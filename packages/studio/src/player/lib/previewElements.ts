@@ -271,7 +271,7 @@ const readGestureStart = (value: unknown): ReadGestureStart | null => {
     gsap === null || (isFields(gsap) && isFiniteFields(gsap, ["x", "y"]) && isFlag(gsap.moving)),
   ];
   if (valid.includes(false)) return null;
-  const start = value as unknown as ReadGestureStart;
+  const { planar: _planar, ...start } = value as unknown as EditingGestureStart;
   return {
     ...start,
     gsapRotation: kept(start.gsapRotation, isTurnOrNull(gsapRotation)),
