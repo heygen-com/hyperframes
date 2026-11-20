@@ -10,6 +10,7 @@ import { createRafThrottle, LayersPanel, sortLayersByZIndex } from "./LayersPane
 import { isLayerDraggable } from "./useLayerDrag";
 import { liveTime } from "../../player";
 import { announcePreviewDocumentLoaded, sceneSwapFor } from "../../player/sceneSwap";
+import { applyUndoRestoreToPreview } from "../../utils/gsapUndoRestore";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -305,6 +306,31 @@ describe("LayersPanel preview promotion", () => {
     await act(() => sceneSwapFor(a)!("/preview", () => true));
     expect(collectedRootIds()).toEqual(["a"]);
     fetchSpy.mockRestore();
+  });
+
+  // fails without the fix: an in-place undo announced nothing the panel reads, so its rows kept the old order.
+  it("recollects layers when an undo restacks them in place", () => {
+    const restack = (z: number) =>
+      `<div data-composition-id="a" data-hf-id="a"><div id="back" data-hf-id="back" style="z-index: ${z}"></div></div>`;
+    const doc = new Window().document;
+    doc.body.innerHTML = restack(1);
+    const iframe = document.createElement("iframe");
+    Object.defineProperty(iframe, "contentDocument", { value: doc });
+    Object.defineProperty(iframe, "contentWindow", {
+      value: { document: doc, __player: { seek() {} } },
+    });
+    mocks.previewIframeRef.current = iframe;
+    usePreviewIframeStore.setState({ iframe });
+    act(() => root.render(createElement(LayersPanel)));
+    mocks.collect.mockClear();
+
+    const page = (z: number) => `<html><body>${restack(z)}</body></html>`;
+    const files = { "index.html": { previous: page(1), restored: page(3) } };
+    let strategy = "";
+    act(() => void (strategy = applyUndoRestoreToPreview(iframe, "index.html", files, 0, vi.fn())));
+    expect(strategy).toBe("soft");
+    expect(doc.getElementById("back")!.getAttribute("style")).toBe("z-index: 3");
+    expect(collectedRootIds()).toEqual(["a"]);
   });
 
   it("a row press starts no text selection, so dragging a row leaves no letters highlighted", () => {
