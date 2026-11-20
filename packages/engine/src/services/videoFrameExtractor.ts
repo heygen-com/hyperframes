@@ -1342,7 +1342,7 @@ export async function buildVideoLayerInput(
 // VLC-muxed MP4s can leave the first IDR out of `stss`; ffmpeg then cannot input-seek before the next one.
 const SEEK_INDEX_MISSING = /Cannot find an index entry before timestamp|could not seek to position/;
 
-/** On-disk size of a source the mov/mp4 demuxer reads; undefined for a playlist, a list or any other format. */
+/** The probed size of a source the mov/mp4 demuxer reads; undefined for a playlist, a list or any other format. */
 async function movSourceBytes(
   videoPath: string,
   signal?: AbortSignal,
@@ -1364,10 +1364,7 @@ async function movSourceBytes(
   }
 }
 
-/**
- * A copy of one mov/mp4 file is about its own size. One larger replays data (an edit list that
- * repeats its samples), so the copy stops at this ceiling and counts as failed.
- */
+/** A mov/mp4 copy past this replays data, so it fails. `-fs` caps the media; the index written after grows in step. */
 const seekIndexCopyLimit = (sourceBytes: number) => 2 * sourceBytes + 1024 * 1024;
 
 async function streamCopyWithRebuiltSeekIndex(
@@ -1380,17 +1377,21 @@ async function streamCopyWithRebuiltSeekIndex(
   const limit = seekIndexCopyLimit(sourceBytes);
   const dir = mkdtempSync(join(tmpdir(), "hf-seek-index-"));
   const path = join(dir, "source.mov");
-  const result = await runFfmpeg(
-    [
-      ...urlInputArgs(videoPath),
-      ...["-f", "mov", "-i", videoPath, "-map", "0:v:0", "-map", "0:a?", "-c", "copy"],
-      ...["-fs", String(limit), "-y", path],
-    ],
-    { signal, timeout },
-  );
-  if (result.success && existsSync(path) && statSync(path).size < limit) return { dir, path };
-  rmSync(dir, { recursive: true, force: true });
-  return undefined;
+  let kept = false;
+  try {
+    const result = await runFfmpeg(
+      [
+        ...urlInputArgs(videoPath),
+        ...["-f", "mov", "-i", videoPath, "-map", "0:v:0", "-map", "0:a?", "-c", "copy"],
+        ...["-fs", String(limit), "-y", path],
+      ],
+      { signal, timeout },
+    );
+    kept = result.success && existsSync(path) && statSync(path).size < limit;
+    return kept ? { dir, path } : undefined;
+  } finally {
+    if (!kept) rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 async function extractVideoFramesRangeUnredacted(

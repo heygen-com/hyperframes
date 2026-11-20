@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { extractVideoFramesRange, type ExtractedFrames } from "./videoFrameExtractor.js";
 
 const rebuildCopies = vi.hoisted(() => [] as number[]);
+const failingCopy = vi.hoisted(() => ({ throws: false, dirs: [] as string[] }));
 
 // Pass-through that records how many bytes each seek-index copy wrote before it is removed.
 vi.mock("../utils/runFfmpeg.js", async (importOriginal) => {
@@ -14,8 +15,12 @@ vi.mock("../utils/runFfmpeg.js", async (importOriginal) => {
   return {
     ...real,
     runFfmpeg: async (...call: Parameters<typeof real.runFfmpeg>) => {
-      const result = await real.runFfmpeg(...call);
       const output = call[0].at(-1) ?? "";
+      if (failingCopy.throws && output.endsWith("source.mov")) {
+        failingCopy.dirs.push(dirname(output));
+        throw new Error("ffmpeg could not start");
+      }
+      const result = await real.runFfmpeg(...call);
       if (output.endsWith("source.mov")) {
         rebuildCopies.push(existsSync(output) ? statSync(output).size : 0);
       }
@@ -114,6 +119,7 @@ describe.skipIf(!HAS_FFMPEG)("an MP4 whose sync-sample index leaves out the firs
 
   beforeEach(() => {
     rebuildCopies.length = 0;
+    failingCopy.throws = false;
   });
 
   /** Every frame the extraction wrote, decoded to gray pixels, in frame order. */
@@ -194,4 +200,16 @@ describe.skipIf(!HAS_FFMPEG)("an MP4 whose sync-sample index leaves out the firs
     expect(rebuildCopies[0]).toBeLessThan(2 * ceiling);
     expect(extracted.totalFrames).toBe(10);
   }, 60_000);
+
+  it("removes the copy's folder when the copy throws", async () => {
+    failingCopy.throws = true;
+    const extraction = extractVideoFramesRange(source, "broll", 0.5, 1, {
+      fps: 10,
+      format: "png",
+      outputDir: mkdtempSync(join(fixtureDir, "throws-")),
+    });
+    await expect(extraction).rejects.toThrow("ffmpeg could not start");
+    expect(failingCopy.dirs).toHaveLength(1);
+    expect(existsSync(failingCopy.dirs[0]!)).toBe(false);
+  }, 30_000);
 });
