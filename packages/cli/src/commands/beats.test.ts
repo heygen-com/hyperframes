@@ -146,6 +146,40 @@ describe.skipIf(!canDecode)("hyperframes beats", () => {
     expect(existsSync(join(dir, "beats"))).toBe(false);
   });
 
+  it("clears the saved grid when reanalysis finds no beats in a replaced track", async () => {
+    const dir = project("replaced-track", 120);
+    expect((await runBeats(dir)).exitCode).toBe(0);
+    const saved = join(dir, "beats", "assets", "song.wav.json");
+    expect(JSON.parse(readFileSync(saved, "utf8")).beats.length).toBeGreaterThan(18);
+    const other = join(dir, "beats", "assets", "other.wav.json");
+    writeFileSync(other, "keep this grid");
+    writeFileSync(
+      join(dir, "assets", "song.wav"),
+      encodeWav({ sampleRate: RATE, channels: [new Float32Array(12 * RATE)] }),
+    );
+
+    const { exitCode, out } = await runBeats(dir);
+
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(out)).toMatchObject({ ok: true, count: 0, file: null, bpm: null });
+    expect(existsSync(saved)).toBe(false);
+    expect(readFileSync(other, "utf8")).toBe("keep this grid");
+  });
+
+  it("keeps the saved grid when reanalysis cannot decode the replaced track", async () => {
+    const dir = project("unreadable-replacement", 120);
+    expect((await runBeats(dir)).exitCode).toBe(0);
+    const saved = join(dir, "beats", "assets", "song.wav.json");
+    const grid = readFileSync(saved, "utf8");
+    writeFileSync(join(dir, "assets", "song.wav"), "not audio");
+
+    const { exitCode, out } = await runBeats(dir);
+
+    expect(exitCode).toBe(1);
+    expect(out).toContain("Beat detection failed");
+    expect(readFileSync(saved, "utf8")).toBe(grid);
+  });
+
   it("answers one ambient file with an empty beat list, for a person and for --json", async () => {
     const dir = project("silent-file", null);
     const song = join(dir, "assets", "song.wav");
@@ -186,16 +220,19 @@ describe.skipIf(!canDecode)("hyperframes beats", () => {
     expect(existsSync(join(dir, "beats"))).toBe(false);
   });
 
-  it("refuses to write a beat file through a symlinked folder that points outside the project", async () => {
-    const dir = project(join("link-write", "proj"), 120);
-    const outside = join(root, "link-write", "outside");
+  it.each([120, null])("keeps a beat file outside the project untouched at %s BPM", async (bpm) => {
+    const name = `link-write-${bpm}`;
+    const dir = project(join(name, "proj"), bpm);
+    const outside = join(root, name, "outside");
     mkdirSync(outside, { recursive: true });
+    const saved = join(outside, "song.wav.json");
+    writeFileSync(saved, "keep this grid");
     mkdirSync(join(dir, "beats"));
     symlinkSync(outside, join(dir, "beats", "assets"), dirLink);
     const { exitCode, out } = await runBeats(dir);
     expect(exitCode).toBe(1);
     expect(out).toMatch(/outside the project/);
-    expect(existsSync(join(outside, "song.wav.json"))).toBe(false);
+    expect(readFileSync(saved, "utf8")).toBe("keep this grid");
   });
 
   it("accepts an in-project file whose name starts with two dots", async () => {

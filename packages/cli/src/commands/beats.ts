@@ -1,6 +1,6 @@
 import { failCommand } from "../utils/commandResult.js";
 import { defineCommand } from "../utils/defineCommand.js";
-import { existsSync, readFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, dirname, resolve } from "node:path";
 import {
   analyzeMusicFromSignal,
@@ -163,12 +163,14 @@ export default defineCommand({
     if (!args.json) console.log(c.dim(`Analyzing ${rel}…`));
 
     const result = await analyzeMusicFromSignal(await decode(audioPath));
-    // The Studio ignores a 0-beat file (treats it as a stale seed), so don't write one.
-    if (result.beatTimes.length === 0) return answerNoBeats(rel, Boolean(args.json));
-
     const outPath = join(project.dir, "beats", `${rel}.json`);
     if (!isSafePath(project.dir, outPath))
       fail(`Beat file path resolves outside the project: ${rel}`);
+    // The Studio ignores a 0-beat file (treats it as a stale seed), so don't write one.
+    if (result.beatTimes.length === 0) {
+      rmSync(outPath, { force: true });
+      return answerNoBeats(rel, Boolean(args.json));
+    }
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, serializeBeats(result.beatTimes, result.beatStrengths, rel));
     report(`beats/${rel}.json`, result, Boolean(args.json));
