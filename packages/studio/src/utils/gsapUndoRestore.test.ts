@@ -24,6 +24,7 @@ import { applyPatch } from "./sourcePatcher";
 import { beginStudioManualEditGesture } from "../components/editor/manualEdits";
 import { studioManualEditSavesIn } from "../components/editor/manualEditGesture";
 import { writePlainMove, writeTranslatePx } from "../components/editor/plainTranslate";
+import { onPreviewRestoredInPlace } from "../player/sceneSwap";
 
 // ── Bug 2: undo/redo restore soft-apply ──────────────────────────────────────
 
@@ -106,7 +107,10 @@ function buildLiveIframe(bodyHtml: string) {
     __hfStudioManualEditsApply: vi.fn(),
   };
   return {
-    iframe: { contentWindow, contentDocument: doc } as unknown as HTMLIFrameElement,
+    iframe: Object.assign(new EventTarget(), {
+      contentWindow,
+      contentDocument: doc,
+    }) as unknown as HTMLIFrameElement,
     contentWindow,
     doc,
   };
@@ -562,6 +566,52 @@ describe("applyUndoRestoreToPreview", () => {
     const files = { "scenes/intro.html": { previous: "a", restored: "b" } };
     expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, reloadPreview)).toBe("full");
     expect(reloadPreview).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("an undo or redo shown in place is announced once", () => {
+  const ROOT = "index.html";
+  const announced = (iframe: HTMLIFrameElement) => {
+    let count = 0;
+    onPreviewRestoredInPlace(iframe, () => count++);
+    return () => count;
+  };
+  const moved = `<div id="a" style="left: 10px">t</div>`;
+  const back = `<div id="a" style="left: 0px">t</div>`;
+
+  it("when it syncs attributes", () => {
+    const { iframe } = buildLiveIframe(moved);
+    const count = announced(iframe);
+    const files = { [ROOT]: { previous: wrap(moved), restored: wrap(back) } };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn())).toBe("soft");
+    expect(count()).toBe(1);
+  });
+
+  it("when it was shown before the server confirmed it", () => {
+    const { iframe } = buildLiveIframe(moved);
+    const count = announced(iframe);
+    showRestoreInPlace(
+      iframe,
+      ROOT,
+      { [ROOT]: { previous: wrap(moved), restored: wrap(back) } },
+      3,
+    );
+    const confirmed = { [ROOT]: { previous: wrap(back), restored: wrap(back) } };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, confirmed, 3, vi.fn())).toBe("soft");
+    expect(count()).toBe(1);
+  });
+
+  it("when it re-runs a changed script", () => {
+    const script = (extra: string) =>
+      `<script>window.__timelines["root"]=gsap.timeline();${extra}</script>`;
+    const film = (extra: string) => `<div data-composition-id="root">${back}</div>${script(extra)}`;
+    const { iframe } = buildLiveIframe(film(`tl.set("#a",{x:5},0);`));
+    const count = announced(iframe);
+    const files = {
+      [ROOT]: { previous: wrap(film(`tl.set("#a",{x:5},0);`)), restored: wrap(film("")) },
+    };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn())).toBe("soft");
+    expect(count()).toBe(1);
   });
 });
 

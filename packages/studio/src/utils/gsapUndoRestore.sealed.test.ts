@@ -8,6 +8,7 @@ vi.mock("../player/lib/previewChannel", () => ({
   previewRequest: channel.request,
 }));
 import { applyUndoRestoreToPreview } from "./gsapUndoRestore";
+import { onPreviewRestoredInPlace } from "../player/sceneSwap";
 
 const page = (body: string) => `<html><body>${body}</body></html>`;
 const box = (left: number) => `<div data-hf-id="box" style="left: ${left}px">t</div>`;
@@ -91,6 +92,27 @@ describe("undo on a sealed preview", () => {
       expect.objectContaining({ script: expect.stringContaining("{ x: 2 }"), time: 2, restore }),
     );
     await settled();
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["the attributes it restored", { applied: true }, box(90), box(0)],
+    [
+      "the changed script it re-ran",
+      { result: "applied" },
+      box(0) + script("{ x: 1 }"),
+      box(0) + script("{ x: 2 }"),
+    ],
+  ])("announces %s in place once", async (_name, reply, before, after) => {
+    channel.request.mockResolvedValue(reply);
+    let count = 0;
+    const reload = vi.fn();
+    const iframe = document.createElement("iframe");
+    onPreviewRestoredInPlace(iframe, () => count++);
+    const files = { "index.html": { previous: page(before), restored: page(after) } };
+    expect(applyUndoRestoreToPreview(iframe, null, files, 2, reload)).toBe("soft");
+    await settled();
+    expect(count).toBe(1);
     expect(reload).not.toHaveBeenCalled();
   });
 
