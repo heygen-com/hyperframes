@@ -103,14 +103,22 @@ beforeEach(() => {
   );
 });
 
-// stage() loads a fresh runtime per test: reset its own copy reporting, or a late report reaches the next test.
-let resetStagedCopies: (() => void) | null = null;
+// Each runtime a test loads fresh keeps its own copy reporting: reset every one, or a late report reaches a later test.
+const freshCopyResets: Array<() => void> = [];
+
+async function freshRuntime() {
+  vi.resetModules();
+  vi.spyOn(window, "parent", "get").mockReturnValue({} as Window);
+  const mod = await import("./mediaProxy");
+  const copies = await import("./previewCopies");
+  freshCopyResets.push(copies.resetCopyReporting);
+  return { mod, copies };
+}
 
 function cleanUp(): void {
   resetSeekDispatchState();
   resetCopyReporting();
-  resetStagedCopies?.();
-  resetStagedCopies = null;
+  for (const reset of freshCopyResets.splice(0)) reset();
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
@@ -889,9 +897,7 @@ describe("deriveCodecMapKey", () => {
 describe("a copy sized to how large the video shows", () => {
   // A framed document learns its on-screen scale from its host; load a module that is framed.
   async function framedVideo(width: number, height: number) {
-    vi.resetModules();
-    vi.spyOn(window, "parent", "get").mockReturnValue({} as Window);
-    const { maybeProxyProactively, setProxyDisplayScale } = await import("./mediaProxy");
+    const { maybeProxyProactively, setProxyDisplayScale } = (await freshRuntime()).mod;
     window.__HF_MEDIA_CODEC_MAP__ = { "/video.mp4": HEVC_ENTRY };
     const el = createVideo("/video.mp4");
     stubCanPlayType(el, "");
@@ -1077,11 +1083,7 @@ describe("preview quality: lighter copies of heavy files", () => {
     facts: Record<string, PreviewSourceFacts>,
     codecMap?: Record<string, unknown>,
   ) {
-    vi.resetModules();
-    vi.spyOn(window, "parent", "get").mockReturnValue({} as Window);
-    const mod = await import("./mediaProxy");
-    const copies = await import("./previewCopies");
-    resetStagedCopies = copies.resetCopyReporting;
+    const { mod, copies } = await freshRuntime();
     window.__HF_MEDIA_SOURCE_FACTS__ = facts;
     if (codecMap) window.__HF_MEDIA_CODEC_MAP__ = codecMap as never;
     Object.defineProperty(document.documentElement, "clientWidth", {
