@@ -698,6 +698,36 @@ describe("a file nothing has stamped yet", () => {
   it("leaves the file as it was when no element has the id, ids and all", () => {
     expect(applyPatchByTarget(ON_DISK, { hfId: "hf-gone" }, op)).toBe(ON_DISK);
   });
+
+  const hfIdOf = (html: string, id: string) =>
+    /data-hf-id="([^"]+)"/.exec(
+      new RegExp(`<[^>]*\\bid="${id}"[^>]*>`).exec(html)?.[0] ?? "",
+    )?.[1] ?? "";
+
+  // fails without the fix: found by its id, the clip was patched into a file left without ids, and a later save
+  // minted ids from the edited file, so they no longer matched the preview's and the preview reloaded.
+  it("writes the ids the preview served, even when the element's own id finds it", () => {
+    const film = `<div data-composition-id="main" data-duration="6"><div id="box" data-start="0" data-duration="3"></div></div>`;
+    const served = ensureHfIds(film);
+    const boxId = hfIdOf(served, "box");
+    expect(boxId).toMatch(/^hf-/);
+    const moved = { type: "attribute", property: "start", value: "0.5" } as const;
+    const saved = applyPatchByTarget(film, { hfId: boxId, id: "box", selector: "#box" }, moved);
+    const ids = (html: string) => [...html.matchAll(/data-hf-id="([^"]+)"/g)].map((m) => m[1]);
+    expect(ids(saved)).toEqual(ids(served));
+    expect(ensureHfIds(saved)).toBe(saved);
+  });
+
+  it("writes a film that already has ids unchanged apart from the edit", () => {
+    const film = ensureHfIds(
+      `<div data-composition-id="main"><div id="box" data-start="0"></div></div>`,
+    );
+    const boxId = hfIdOf(film, "box");
+    const moved = { type: "attribute", property: "start", value: "0.5" } as const;
+    expect(applyPatchByTarget(film, { hfId: boxId, id: "box" }, moved)).toBe(
+      film.replace('data-start="0"', 'data-start="0.5"'),
+    );
+  });
 });
 
 describe("file names with special characters", () => {
