@@ -51,6 +51,8 @@ bun run format          # Format all files with oxfmt
 bun run format:check    # Check formatting without writing
 ```
 
+Published agent skills are also checked for missing or mis-cased relative Markdown links by `node scripts/check-skill-links.mjs` (part of `bun run lint:skills`). Exact filename casing matters when a skill authored on Windows is installed on Linux.
+
 Git hooks (via [lefthook](https://github.com/evilmartians/lefthook)) run automatically after `bun install` and enforce linting + formatting on staged files before each commit.
 
 #### Type-safety conventions
