@@ -43,26 +43,23 @@ export function parseTextEdit(params: unknown): TextEditParams | null {
 
 const isValue = (value: unknown) =>
   value === null || (typeof value === "string" && value.length <= MAX_EDIT_VALUE);
-// The frame's own test, run again on what it sends: a frame that lets out more is not believed.
-const isMarkupOrNull = (value: unknown): value is string | null =>
+const isTextMarkupOrNull = (value: unknown): value is string | null =>
   value === null || (typeof value === "string" && isTextMarkup(value));
 
-/** An ended edit whose html or previous is not text markup comes out refused: null html, nothing to save. */
 export function textEditEndedEvent(data: unknown, version: number): TextEditEndedEvent | null {
   if (!isRecord(data) || !keysAre(data, "event,handle,html,previous,v")) return null;
   if (data.v !== version || data.event !== "text-edit-ended" || !isHandle(data.handle)) return null;
   const { handle, html, previous } = data;
   if (!isValue(html) || typeof previous !== "string" || !isValue(previous)) return null;
-  if (!isMarkupOrNull(html) || !isMarkupOrNull(previous))
+  if (!isTextMarkupOrNull(html) || !isTextMarkupOrNull(previous))
     return { handle, html: null, previous: "" };
   return { handle, html, previous };
 }
 
-/** A text-edit reply in its exact shape, or null when it carries anything but text markup. */
 export function textEditResult(reply: unknown): TextEditResult | null {
   if (!isRecord(reply) || !keysAre(reply, "applied,html,previous")) return null;
   const { applied, html, previous } = reply;
-  if (typeof applied !== "boolean" || !isMarkupOrNull(html) || !isMarkupOrNull(previous))
+  if (typeof applied !== "boolean" || !isTextMarkupOrNull(html) || !isTextMarkupOrNull(previous))
     return null;
   return { applied, html, previous };
 }

@@ -387,7 +387,6 @@ function ownedPutBack(
   return any ? { styles, attributes, html } : null;
 }
 
-/** The frame's in-place text edit; null when it cannot answer or answers with anything but text markup. */
 export async function previewTextEdit(
   iframe: HTMLIFrameElement,
   params: EditingParams<"text-edit">,
