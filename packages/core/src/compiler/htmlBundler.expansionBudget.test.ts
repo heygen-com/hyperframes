@@ -72,6 +72,20 @@ describe("preview bundle expansion budget", () => {
     });
   });
 
+  it("refuses mounts that copy more elements than the limit", async () => {
+    const dir = project({
+      "index.html": root(mounts("scene.html", 60)),
+      "scene.html": scene("<i></i>".repeat(2_000)),
+    });
+
+    const error = await bundleError(dir);
+
+    expect(error).toMatchObject({
+      code: "COMPOSITION_TOO_LARGE",
+      publicMetadata: { exceeded: "elements" },
+    });
+  });
+
   it("refuses scripts and styles generated for mounts past the limit", async () => {
     const scripts = `<script>window.n = (window.n || 0) + 1;</script>`.repeat(
       Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 10_000),
