@@ -528,7 +528,7 @@ export async function tryGsapResizeIntercept(
     return {
       status: "persisted",
       ownsDragOffset: await finalizeScaleResizeCommit(),
-      savedAsScale: true,
+      ...(resizeGroup === "scale" && { savedAsScale: true }),
     };
   }
 
