@@ -47,7 +47,7 @@ export function canEditTextInline(selection: DomEditSelection | null): boolean {
 /** `canEditElementTextInline` for a sealed preview's selection: the frame refuses markup that is not text. */
 export function canEditSealedTextInline(selection: DomEditSelection | null): boolean {
   if (!selection?.handle || selection.isCompositionHost) return false;
-  if (selection.isInsideLockedComposition) return false;
+  if (selection.isInsideLockedComposition || selection.textMarkup === false) return false;
   return !["BODY", "HTML"].includes(selection.tagName.toUpperCase());
 }
 

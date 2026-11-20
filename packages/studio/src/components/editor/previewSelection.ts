@@ -434,6 +434,7 @@ export async function resolvePreviewSelection(
     inlineStyles,
     computedStyles,
     textFields: await previewTextFields(iframe, current),
+    textMarkup: current.textMarkup,
     capabilities,
     existsInSource,
   };

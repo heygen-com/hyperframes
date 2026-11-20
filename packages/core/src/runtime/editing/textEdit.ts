@@ -4,7 +4,7 @@ import { EDITING_ELEMENT_HANDLE, type EditingElementHandle } from "../editingEle
 import { elementForHandle } from "../editingHandles";
 import { isStylableElement, type StylableElement } from "../domRealm";
 import { sanitizeRichTextChildren } from "../../utils/richTextSanitize";
-import { isTextMarkup, MAX_EDIT_VALUE } from "./editElement";
+import { openTextEdits, isTextMarkup, MAX_EDIT_VALUE } from "./editElement";
 
 type Point = { x: number; y: number };
 export type TextEditParams =
@@ -98,6 +98,7 @@ function close(keep: boolean): { html: string | null; previous: string } | null 
   session = null;
   open.stop();
   const { element } = open;
+  openTextEdits.delete(element);
   const html = keep && element.isConnected ? keptMarkup(element) : null;
   if (html === null) element.innerHTML = open.original;
   element.removeAttribute("contenteditable");
@@ -215,6 +216,7 @@ function start(
     if (ended) port.postMessage({ v: version, event: "text-edit-ended", handle, ...ended });
   });
   session = open;
+  openTextEdits.add(editable);
   editable.style.outline = EDITING_OUTLINE;
   editable.style.outlineOffset = "2px";
   editable.setAttribute("contenteditable", "true");

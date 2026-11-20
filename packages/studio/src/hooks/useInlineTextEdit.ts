@@ -221,12 +221,28 @@ export function useInlineTextEdit({
   const endSealed = useCallback(
     (open: InlineTextEditSession, keep: boolean) => {
       const sealed = open.sealed!;
+      // A session the frame already closed (a blur) posted its outcome ahead of this end's reply.
+      let endedFirst: { html: string | null; previous: string } | null = null;
+      const stopListening = previewEditingClient(sealed.iframe).onTextEditEnded((ended) => {
+        if (ended.handle === sealed.handle) endedFirst ??= ended;
+      });
       const params = { handle: sealed.handle, action: "end" as const, keep };
       const ended = previewTextEdit(sealed.iframe, params).then((reply) => {
-        if (reply === null && open.original)
+        stopListening();
+        const outcome = reply?.applied ? reply : endedFirst;
+        if (!outcome && reply === null && open.original)
           return void editPreviewElement(sealed.iframe, sealed.handle, { html: open.original });
-        if (!keep || !reply?.applied || reply.html === null || reply.previous === null) return;
-        return onCommit({ element: open.element, html: reply.html, previousHtml: reply.previous });
+        if (!outcome || outcome.html === null || outcome.previous === null) return;
+        if (keep)
+          return onCommit({
+            element: open.element,
+            html: outcome.html,
+            previousHtml: outcome.previous,
+          });
+        if (outcome === endedFirst) {
+          const back = { html: outcome.previous, expect: outcome.html };
+          void editPreviewElement(sealed.iframe, sealed.handle, back);
+        }
       });
       trackStudioPendingEdit(ended);
     },

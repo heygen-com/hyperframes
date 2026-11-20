@@ -80,6 +80,7 @@ export interface DomEditTextField {
 export interface DomEditSelection extends PatchTarget {
   element: HTMLElement;
   handle?: EditingElementHandle;
+  textMarkup?: boolean;
   hasAudio?: boolean;
   src?: string | null;
   label: string;

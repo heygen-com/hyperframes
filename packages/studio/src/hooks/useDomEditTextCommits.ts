@@ -320,8 +320,10 @@ export function useDomEditTextCommits({
     async ({ element, html, previousHtml }: InlineTextEditCommit) => {
       const sealed = previewStandIn(element);
       const putBack = () => {
-        if (sealed) void editPreviewElement(sealed.iframe, sealed.handle, { html: previousHtml });
-        else if (element.isConnected && element.innerHTML === html)
+        if (sealed) {
+          const edit = { html: previousHtml, expect: html };
+          void editPreviewElement(sealed.iframe, sealed.handle, edit);
+        } else if (element.isConnected && element.innerHTML === html)
           element.innerHTML = previousHtml;
       };
       if (latestReadOnlyPreviewRef.current) return putBack();
