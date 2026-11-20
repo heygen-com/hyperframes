@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { Window } from "happy-dom";
-import { STUDIO_REAPPLIED_MARKS } from "@hyperframes/core";
+import { STUDIO_REAPPLIED_MARKS, STUDIO_SEEK_REAPPLY_STARTED } from "@hyperframes/core";
 import {
   createSealedPreviewSeekReapplyScript,
   createStudioManualEditsRenderBodyScript,
@@ -433,22 +433,47 @@ describe("createStudioPositionSeekReapplyScript", () => {
     return { card, clear: () => card.style.removeProperty("width") };
   }
 
-  it("starts, and is served, on a page with any one of core's reapplied marks and on no other", () => {
-    const wrapsSeekOn = (markup: string) => {
+  it("starts, says so, and is served on a page with any one of core's reapplied marks only", () => {
+    const startsOn = (markup: string) => {
       const window = new Window();
       window.document.body.innerHTML = markup;
       const seek = () => {};
       const hf = { seek };
       (window as unknown as { __hf: typeof hf }).__hf = hf;
       runPositionScript(window);
-      return hf.seek !== seek;
+      const said = (window as unknown as Record<string, unknown>)[STUDIO_SEEK_REAPPLY_STARTED];
+      return [hf.seek !== seek, said === true];
     };
     const plain = '<div data-hf-studio-original-inline-translate=""></div>';
-    expect([wrapsSeekOn(plain), htmlHasStudioPositionEdits(plain)]).toEqual([false, false]);
+    expect([...startsOn(plain), htmlHasStudioPositionEdits(plain)]).toEqual([false, false, false]);
     for (const { name, value } of STUDIO_REAPPLIED_MARKS) {
       const marked = `<div ${name}="${value ?? "{}"}"></div>`;
-      expect([wrapsSeekOn(marked), htmlHasStudioPositionEdits(marked)], name).toEqual([true, true]);
+      expect([...startsOn(marked), htmlHasStudioPositionEdits(marked)], name).toEqual([
+        true,
+        true,
+        true,
+      ]);
     }
+  });
+
+  // fails without the fix: a single-quoted mark got no script, so a seek undid the edit.
+  it("finds a reapplied mark in any attribute quoting, and no near miss", () => {
+    const found = (attr: string) => htmlHasStudioPositionEdits(`<div id="a" ${attr}></div>`);
+    for (const attr of [
+      "data-hf-studio-rotation='true'",
+      "data-hf-studio-box-size=true",
+      'DATA-HF-STUDIO-PATH-OFFSET = "true"',
+      "data-hf-studio-motion='{}'",
+    ])
+      expect(found(attr), attr).toBe(true);
+    for (const attr of [
+      'data-hf-studio-rotation="false"',
+      'data-hf-studio-box-size="truey"',
+      'data-hf-studio-motion-original-opacity="1"',
+      'xdata-hf-studio-rotation="true"',
+      'data-hf-studio-rotation="TRUE"',
+    ])
+      expect(found(attr), attr).toBe(false);
   });
 
   it("hands every argument to the seek it wraps", () => {

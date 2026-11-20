@@ -289,9 +289,10 @@ export {
   type ToneMapSourceColour,
 } from "./hdrToneMap";
 export {
+  htmlHasStudioReappliedMark,
   isStudioMotionMark,
   STUDIO_REAPPLIED_MARKS,
-  STUDIO_REAPPLIED_MARK_SELECTOR,
+  STUDIO_SEEK_REAPPLY_STARTED,
 } from "./studioReappliedMarks";
 export {
   HEAVY_BITRATE,

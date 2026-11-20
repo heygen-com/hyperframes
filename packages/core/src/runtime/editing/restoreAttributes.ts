@@ -3,7 +3,7 @@
 import {
   isStudioMotionMark,
   STUDIO_REAPPLIED_MARKS,
-  STUDIO_REAPPLIED_MARK_SELECTOR,
+  STUDIO_SEEK_REAPPLY_STARTED,
 } from "../../studioReappliedMarks";
 
 /** `hf:<data-hf-id>` or `id:<id>`, the key the parent's restore diff uses. */
@@ -53,7 +53,7 @@ const safeToDrop = (name: string) =>
   !isStudioMotionMark(name) && (safeToSet(name) || name === "loading" || name.startsWith("data-"));
 const reapplyScriptMissing = (plan: RestorePlan) =>
   plan.some(([, , set]) => set.some(([name]) => REAPPLIED.has(name))) &&
-  !document.querySelector(STUDIO_REAPPLIED_MARK_SELECTOR);
+  (window as unknown as Record<string, unknown>)[STUDIO_SEEK_REAPPLY_STARTED] !== true;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Object.prototype.toString.call(value) === "[object Object]";

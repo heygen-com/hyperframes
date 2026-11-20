@@ -14,7 +14,12 @@ function player() {
 
 afterEach(() => {
   document.body.innerHTML = "";
-  for (const name of ["__player", "__hfForceTimelineRebind", "__hfStudioManualEditsApply"])
+  for (const name of [
+    "__player",
+    "__hfForceTimelineRebind",
+    "__hfStudioManualEditsApply",
+    "__hfStudioSeekReapplyStarted",
+  ])
     delete win[name];
 });
 
@@ -88,22 +93,20 @@ describe("restore-attributes", () => {
     expect(box.getAttribute("style")).toBe("translate: 130px 90px");
   });
 
-  // fails without the fix: a page loaded with no reapplied mark has no script to keep the first one applied.
-  it("reloads for the first mark a seek has to reapply, and sets it in place once the page has one", () => {
-    const sized = (html: string) => {
-      document.body.innerHTML = html;
-      player();
-      return restoreAttributes(
+  // fails without the fix: a page whose seek-reapply script never started reverted the size on the next seek.
+  it("reloads for a mark a seek has to reapply until the page's reapply script has started", () => {
+    document.body.innerHTML = '<div data-hf-id="box"></div><i data-hf-studio-rotation="true"></i>';
+    player();
+    const sized = () =>
+      restoreAttributes(
         restore("hf:box", [
           ["data-hf-id", "box"],
           ["data-hf-studio-box-size", "true"],
         ]),
       );
-    };
-    expect(sized('<div data-hf-id="box"></div>')).toEqual({ applied: false });
-    expect(sized('<div data-hf-id="box"></div><i data-hf-studio-rotation="true"></i>')).toEqual({
-      applied: true,
-    });
+    expect(sized()).toEqual({ applied: false });
+    win.__hfStudioSeekReapplyStarted = true;
+    expect(sized()).toEqual({ applied: true });
   });
 
   // fails without the fix: dropping a motion mark in place left its timeline running.
