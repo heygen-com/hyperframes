@@ -1,4 +1,3 @@
-// Reads the registry as the CLI does, with the CLI's env-proxy setup, and prints how it ended.
 import "../utils/envProxyFetch.js";
 import { readRegistryManifest } from "./remote.js";
 
