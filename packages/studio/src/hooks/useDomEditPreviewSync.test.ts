@@ -103,8 +103,8 @@ describe("useDomEditPreviewSync", () => {
 
   // The selection re-read an unsealed in-place undo now triggers keeps who is selected and where it is drawn.
   it.each([
-    ["another layer", "translate: 30px 40px", "left: 0px", "translate: 30px 40px"],
-    ["the selected layer", "translate: 0px 0px", "left: 10px", "translate: 0px 0px"],
+    ["another layer", "translate: 30px 40px", "left: 0px", "30px 40px"],
+    ["the selected layer", "translate: 0px 0px", "left: 10px", "0px 0px"],
   ])(
     "keeps the selection and its box when an unsealed undo of %s lands in place",
     async (_name, restoredTitle, restoredOther, drawn) => {
