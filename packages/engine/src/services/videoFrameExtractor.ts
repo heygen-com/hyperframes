@@ -8,7 +8,18 @@
 
 import { usableCpuCount } from "./systemMemory.js";
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
-import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, rmSync } from "fs";
+import {
+  closeSync,
+  copyFileSync,
+  existsSync,
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  rmSync,
+  statSync,
+} from "fs";
 import { basename, isAbsolute, join, normalize, relative, win32 } from "path";
 import { tmpdir } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
@@ -1340,25 +1351,116 @@ export async function buildVideoLayerInput(
 }
 
 // VLC-muxed MP4s can leave the first IDR out of `stss`; ffmpeg then cannot input-seek before the next one.
-const SEEK_INDEX_MISSING = /Cannot find an index entry before timestamp|could not seek to position/;
+// Only the mov demuxer's own log line counts: it carries ffmpeg's `[context @ 0x…]` prefix and fills the whole
+// line, so input text ffmpeg echoes (a path, a playlist entry) cannot match it.
+const SEEK_INDEX_MISSING =
+  /^\[[^\]\n]* @ 0x[0-9a-f]+\] st: \d+ edit list \d+ Cannot find an index entry before timestamp: -?\d+\.?\s*$/m;
+
+/** ISO-BMFF top-level boxes a MOV/MP4 opens with; no playlist, list or other demuxer's input starts this way. */
+const ISO_BMFF_FIRST_BOXES = new Set(["ftyp", "moov", "mdat", "wide", "free", "skip"]);
+
+/**
+ * The source's size on disk when it is a single local MOV/MP4 file, the only input the seek-index rebuild
+ * applies to; undefined for a URL, a playlist or list, or any other container.
+ */
+export function singleIsoBmffFileSize(videoPath: string): number | undefined {
+  if (
+    /^[a-z][a-z0-9+.-]*:\/\//i.test(videoPath) ||
+    [...videoPath].some((char) => char.charCodeAt(0) < 0x20)
+  )
+    return undefined;
+  let fd: number | undefined;
+  try {
+    const stat = statSync(videoPath);
+    if (!stat.isFile() || stat.size < 8) return undefined;
+    fd = openSync(videoPath, "r");
+    const head = Buffer.alloc(8);
+    if (readSync(fd, head, 0, 8, 0) < 8) return undefined;
+    return ISO_BMFF_FIRST_BOXES.has(head.toString("latin1", 4, 8)) ? stat.size : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+/**
+ * Most a rebuilt copy may write: the source's own size plus muxing slack. A stream copy of one file into MOV
+ * rewrites its index and drops streams it does not map, so it never needs more; reaching this means the input
+ * was not the single file it looked like, and the copy is discarded.
+ */
+export function seekIndexCopyCeilingBytes(sourceBytes: number): number {
+  return sourceBytes + Math.ceil(sourceBytes / 4) + 1024 * 1024;
+}
+
+interface RebuiltSource {
+  dir: string;
+  path: string;
+}
+
+interface SharedRebuild {
+  copy: Promise<RebuiltSource | undefined>;
+  users: number;
+}
+
+/** Copies in use, per source file: callers extracting the same source at once share one, removed with the last. */
+const seekIndexRebuilds = new Map<string, SharedRebuild>();
 
 async function streamCopyWithRebuiltSeekIndex(
   videoPath: string,
-  signal: AbortSignal | undefined,
+  sourceBytes: number,
   timeout: number,
-): Promise<{ dir: string; path: string } | undefined> {
+): Promise<RebuiltSource | undefined> {
   const dir = mkdtempSync(join(tmpdir(), "hf-seek-index-"));
   const path = join(dir, "source.mov");
-  const result = await runFfmpeg(
-    [
-      ...urlInputArgs(videoPath),
-      ...["-i", videoPath, "-map", "0:v:0", "-map", "0:a?", "-c", "copy", "-y", path],
-    ],
-    { signal, timeout },
+  const ceiling = seekIndexCopyCeilingBytes(sourceBytes);
+  // In an extraction slot like any other decode. Unsignalled, so one caller's cancel cannot cut a copy others
+  // share short; the size ceiling bounds it instead, since the inactivity timeout never stops a copy that writes.
+  const result = await inExtractionSlot(() =>
+    runFfmpeg(
+      [
+        ...urlInputArgs(videoPath),
+        ...["-f", "mov", "-i", videoPath, "-map", "0:v:0", "-map", "0:a?", "-c", "copy"],
+        ...["-fs", String(ceiling), "-y", path],
+      ],
+      { timeout },
+    ),
   );
-  if (result.success && existsSync(path)) return { dir, path };
+  const written = existsSync(path) ? statSync(path).size : 0;
+  if (result.success && written > 0 && written < ceiling) return { dir, path };
   rmSync(dir, { recursive: true, force: true });
   return undefined;
+}
+
+/** A rebuilt copy of `videoPath` for the caller to use until it calls `release`; undefined if none can be made. */
+async function acquireSeekIndexRebuild(
+  videoPath: string,
+  timeout: number,
+): Promise<{ path: string; release: () => void } | undefined> {
+  const sourceBytes = singleIsoBmffFileSize(videoPath);
+  if (sourceBytes === undefined) return undefined;
+  const key = `${videoPath}\0${mediaFileIdentity(videoPath) ?? ""}`;
+  let shared = seekIndexRebuilds.get(key);
+  if (!shared) {
+    shared = { copy: streamCopyWithRebuiltSeekIndex(videoPath, sourceBytes, timeout), users: 0 };
+    seekIndexRebuilds.set(key, shared);
+  }
+  shared.users++;
+  const entry = shared;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    if (--entry.users > 0) return;
+    if (seekIndexRebuilds.get(key) === entry) seekIndexRebuilds.delete(key);
+    void entry.copy.then((copy) => copy && rmSync(copy.dir, { recursive: true, force: true }));
+  };
+  const copy = await entry.copy;
+  if (!copy) {
+    release();
+    return undefined;
+  }
+  return { path: copy.path, release };
 }
 
 async function extractVideoFramesRangeUnredacted(
@@ -1556,7 +1658,7 @@ async function extractVideoFramesRangeUnredacted(
     !seekIndexRebuilt &&
     SEEK_INDEX_MISSING.test(processResult.stderr)
   ) {
-    const rebuilt = await streamCopyWithRebuiltSeekIndex(videoPath, signal, ffmpegProcessTimeout);
+    const rebuilt = await acquireSeekIndexRebuild(videoPath, ffmpegProcessTimeout);
     if (rebuilt) {
       for (const stale of framePathsFromDirectory(videoOutputDir, format, true).values())
         rmSync(stale, { force: true });
@@ -1574,7 +1676,7 @@ async function extractVideoFramesRangeUnredacted(
         );
         return { ...frames, srcPath: videoPath };
       } finally {
-        rmSync(rebuilt.dir, { recursive: true, force: true });
+        rebuilt.release();
       }
     }
   }
