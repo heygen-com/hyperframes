@@ -375,6 +375,14 @@ function hasFailedVersion(version: Awaited<ReturnType<typeof reviewVersion>>): b
   return Boolean(version.failure && !version.held);
 }
 
+export function changesNamedReview(current: ShareState, input: ShareAction): boolean {
+  if (!current.reviewId) return false;
+  if (input.action === "update") return true;
+  if (input.action !== "share") return false;
+  if (current.share && changesAudience(input, current.share)) return true;
+  return !retrievesExisting(current, input);
+}
+
 function changesAudience(input: ShareAction, share: ReviewShare) {
   return input.action === "share" && Boolean(input.audience) && share.access !== input.audience;
 }

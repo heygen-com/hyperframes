@@ -1,22 +1,43 @@
 import { SourceIgnoreError, ReviewFailed } from "@hyperframes/share";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runCommand } from "citty";
 import { consumeCommandResult } from "../utils/commandResult.js";
 const mocks = vi.hoisted(() => ({
   run: vi.fn(),
+  status: vi.fn(),
+  confirm: vi.fn(),
+  received: null as null | "unchecked" | { path: string; listed: string[]; hashes: string[] },
+  unattended: true,
   progress: undefined as undefined | ((value: { step: string; slow?: boolean } | null) => void),
 }));
 vi.mock("../utils/project.js", () => ({ resolveProjectOrThrow: () => ({ dir: "/project" }) }));
-vi.mock("../share/service.js", () => ({
+vi.mock("../utils/privateProjectFile.js", () => ({
+  receivedRecordStatus: () => mocks.received,
+}));
+vi.mock("../utils/attendedTerminal.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/attendedTerminal.js")>()),
+  isUnattended: () => mocks.unattended,
+}));
+vi.mock("../ui/prompts.js", () => ({
+  confirm: mocks.confirm,
+  select: vi.fn(),
+  isCancel: (value: unknown) => typeof value === "symbol",
+}));
+vi.mock("../share/service.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../share/service.js")>()),
   createShareService: (_dir: string, progress: typeof mocks.progress) => {
     mocks.progress = progress;
-    return { run: mocks.run };
+    return { run: mocks.run, status: mocks.status };
   },
 }));
 import command from "./share.js";
 beforeEach(() => {
   consumeCommandResult();
   mocks.run.mockReset();
+  mocks.status.mockReset();
+  mocks.confirm.mockReset();
+  mocks.received = null;
+  mocks.unattended = true;
   mocks.run.mockResolvedValue({
     state: "failed",
     ready: false,
@@ -163,4 +184,109 @@ it("accepts explicit source inclusion and rejects conflicting choices", async ()
   });
   expect(consumeCommandResult().exitCode).toBe(2);
   expect(mocks.run).not.toHaveBeenCalled();
+});
+
+describe("a received folder whose record names an existing review", () => {
+  const linked = {
+    reviewId: "rev_theirs",
+    reviewTitle: "Their \u001b[31mreview",
+    share: { projectId: "rev_theirs", access: "private", url: "https://hyperframes.dev/r/theirs" },
+    state: "ready",
+    ready: true,
+    url: "https://hyperframes.dev/r/theirs",
+    version: { last: { current: true } },
+  };
+  beforeEach(() => {
+    mocks.received = { path: "/project/.hyperframes/received-files.json", listed: [], hashes: [] };
+    mocks.status.mockResolvedValue(linked);
+    mocks.run.mockResolvedValue({ state: "ready", ready: true, url: linked.url, source: {} });
+  });
+
+  it("shows the review and changes nothing when the person declines", async () => {
+    mocks.unattended = false;
+    mocks.confirm.mockResolvedValue(false);
+    const out = vi.spyOn(console, "log").mockImplementation(() => {});
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--public"] });
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Share to this review?" }),
+    );
+    const shown = out.mock.calls.flat().join("\n");
+    expect(shown).toContain('Review: "Their \\x1b[31mreview" (rev_theirs)');
+    expect(shown).toContain("Link: https://hyperframes.dev/r/theirs");
+    expect(err).toHaveBeenCalledWith("Sharing cancelled.");
+    expect(consumeCommandResult().exitCode).toBe(2);
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+
+  it("shares to the review the person confirmed", async () => {
+    mocks.unattended = false;
+    mocks.confirm.mockResolvedValue(true);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--update"] });
+    expect(mocks.run).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "update", confirmedReview: "rev_theirs" }),
+    );
+  });
+
+  it.each([[["--yes"]], [["--json"]], [[]]])(
+    "refuses to change it unattended without --review %j",
+    async (flags: string[]) => {
+      const out = vi.spyOn(console, "log").mockImplementation(() => {});
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      await runCommand(command, { rawArgs: ["--update", ...flags] });
+      expect(consumeCommandResult().exitCode).toBe(2);
+      expect(mocks.confirm).not.toHaveBeenCalled();
+      expect(mocks.run).not.toHaveBeenCalled();
+      if (flags[0] === "--json")
+        expect(JSON.parse(String(out.mock.calls[0]?.[0]))).toMatchObject({
+          error: { code: "review_confirmation_required" },
+        });
+    },
+  );
+
+  it("shares unattended to the review --review names", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--public", "--review", "rev_theirs", "--json"] });
+    expect(mocks.run).toHaveBeenCalledWith(
+      expect.objectContaining({ audience: "public", confirmedReview: "rev_theirs" }),
+    );
+  });
+
+  it("refuses a --review that names another review", async () => {
+    const out = vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--update", "--review", "rev_mine", "--json"] });
+    expect(consumeCommandResult().exitCode).toBe(2);
+    expect(JSON.parse(String(out.mock.calls[0]?.[0]))).toMatchObject({
+      error: { code: "review_mismatch" },
+    });
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+
+  it("counts a folder whose received-files records cannot be read as received", async () => {
+    mocks.received = "unchecked";
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--update", "--json"] });
+    expect(mocks.run).not.toHaveBeenCalled();
+  });
+
+  it("returns the existing link without asking when nothing would change", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--json"] });
+    expect(mocks.run).toHaveBeenCalledWith(
+      expect.not.objectContaining({ confirmedReview: expect.anything() }),
+    );
+  });
+
+  it("asks nothing in a folder that is not received", async () => {
+    mocks.received = null;
+    mocks.unattended = false;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await runCommand(command, { rawArgs: ["--update"] });
+    expect(mocks.status).not.toHaveBeenCalled();
+    expect(mocks.confirm).not.toHaveBeenCalled();
+    expect(mocks.run).toHaveBeenCalledWith(
+      expect.not.objectContaining({ confirmedReview: expect.anything() }),
+    );
+  });
 });
