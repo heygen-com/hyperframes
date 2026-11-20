@@ -55,7 +55,8 @@ function mediaOf(el: Element): HTMLMediaElement | null {
 }
 
 function fallBackWithoutCors(event: Event, home: string): void {
-  const media = event.target instanceof Element ? mediaOf(event.target) : null;
+  const target = event.target as Node | null;
+  const media = target?.nodeType === 1 ? mediaOf(target as Element) : null;
   if (!media || !optedIn.delete(media)) return;
   for (const src of sourcesOf(media)) {
     const url = resolved(src, home);
