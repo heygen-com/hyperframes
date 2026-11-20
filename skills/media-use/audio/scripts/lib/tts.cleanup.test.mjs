@@ -17,14 +17,16 @@ if (args[0] === "--version") {
 const input = args[2];
 const output = args[0] === "-c" ? args[4] : args[args.indexOf("--output") + 1];
 const text = fs.readFileSync(input, "utf8");
-fs.writeFileSync(output + ".started", input);
+// Side files go to the case root under the output's name: the output itself is in a private folder.
+const side = path.join(process.env.CASE_ROOT, path.basename(output));
+fs.writeFileSync(side + ".started", input);
 const finish = () => {
   if (text === "slow" && !fs.existsSync(process.env.RELEASE_FILE)) {
     setTimeout(finish, 5);
     return;
   }
   const consumed = fs.readFileSync(input, "utf8");
-  fs.writeFileSync(output + ".json", JSON.stringify({ input, text, consumed, args }));
+  fs.writeFileSync(side + ".json", JSON.stringify({ input, text, consumed, args }));
   if (process.env.CASE_MODE === "nonzero") process.exit(7);
   if (process.env.CASE_MODE !== "no-output") fs.writeFileSync(output, consumed);
 };
@@ -78,11 +80,11 @@ if (["allocation", "write", "spawn-throw"].includes(mode)) {
   const slow = request("elevenlabs", "slow", slowWav);
   try {
     const deadline = Date.now() + 5000;
-    while (!fs.existsSync(slowWav + ".started")) {
+    while (!fs.existsSync(join(root, "slow.wav.started"))) {
       assert.ok(Date.now() < deadline, "slow subprocess must start");
       await new Promise(resolve => setTimeout(resolve, 5));
     }
-    const slowInput = fs.readFileSync(slowWav + ".started", "utf8");
+    const slowInput = fs.readFileSync(join(root, "slow.wav.started"), "utf8");
     assert.deepEqual(await request("kokoro"), { ok: true, words: null });
     assert.deepEqual(owned(), [dirname(slowInput).split(/[\\\\/]/).pop()]);
     assert.equal(fs.readFileSync(slowInput, "utf8"), "slow");
@@ -91,6 +93,21 @@ if (["allocation", "write", "spawn-throw"].includes(mode)) {
     await slow;
   }
   assert.equal(fs.readFileSync(slowWav, "utf8"), "slow");
+} else if (mode === "link") {
+  const outside = join(root, "outside");
+  fs.mkdirSync(project, { recursive: true });
+  fs.writeFileSync(outside, "keep me");
+  fs.symlinkSync(outside, wavAbs);
+  const dangling = join(project, "dangling.wav");
+  fs.symlinkSync(join(root, "made-outside"), dangling);
+  assert.deepEqual(await request(), { ok: true, words: null });
+  assert.deepEqual(await request(provider, "synthetic café", dangling), { ok: true, words: null });
+  assert.equal(fs.readFileSync(outside, "utf8"), "keep me");
+  assert.equal(fs.existsSync(join(root, "made-outside")), false);
+  for (const out of [wavAbs, dangling]) {
+    assert.ok(fs.lstatSync(out).isFile());
+    assert.equal(fs.readFileSync(out, "utf8"), "synthetic café");
+  }
 } else {
   const result = await request();
   const label = provider === "elevenlabs" ? "elevenlabs (python)" : "kokoro (npx hyperframes tts)";
@@ -106,7 +123,7 @@ if (["allocation", "write", "spawn-throw"].includes(mode)) {
     assert.equal(fs.readFileSync(wavAbs, "utf8"), "synthetic café");
   }
   if (mode !== "enoent") {
-    const log = JSON.parse(fs.readFileSync(wavAbs + ".json", "utf8"));
+    const log = JSON.parse(fs.readFileSync(join(root, "line.wav.json"), "utf8"));
     assert.equal(log.text, "synthetic café");
     assert.equal(log.consumed, log.text);
     if (provider === "kokoro") assert.deepEqual(log.args.slice(-4), ["--lang", "es", "--speed", "0.8"]);
@@ -165,6 +182,7 @@ for (const provider of ["elevenlabs", "kokoro"]) {
     "allocation",
     "write",
     "cleanup",
+    "link",
   ]) {
     test(
       `synthesizeOne(${provider}) preserves ${mode} behavior and cleans only its text directory`,
