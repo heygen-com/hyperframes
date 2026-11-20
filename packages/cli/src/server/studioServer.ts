@@ -97,8 +97,9 @@ import { resolveAutoProxy } from "../utils/projectConfig.js";
 import {
   clearElementScreenshotIsolation,
   getElementScreenshotClip,
+  type ScreenshotClip,
+  thumbnailSeekReadyInBrowser,
 } from "@hyperframes/studio-server/screenshot-clip";
-import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
@@ -890,15 +891,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
               requiresWebGpu && session.softwareWebGpu,
             );
             await page
-              .waitForFunction(
-                () => {
-                  const w = window as Window & {
-                    __timelines?: Record<string, unknown>;
-                  };
-                  return !!(w.__timelines && Object.keys(w.__timelines).length > 0);
-                },
-                { timeout: 5000 },
-              )
+              .waitForFunction(thumbnailSeekReadyInBrowser, { timeout: 5000 })
               .catch(() => {});
           },
           async (page) => {
