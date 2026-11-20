@@ -4,6 +4,7 @@ import { mediaElementTime } from "./mediaClock";
 import { HF_COLOR_GRADING_ATTR, serializeHfColorGrading } from "../colorGrading";
 import {
   PLAYER_FRAME_ATTR,
+  PLAYER_FRAME_NAME,
   STUDIO_PREVIEW_LAZY_ATTR,
   STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
@@ -76,6 +77,7 @@ function resetRuntimeGlobals(): void {
   delete win.__hyperframeRuntimeBootstrapped;
   delete win.__hfFirstPassHidden;
   delete (document as { readyState?: unknown }).readyState;
+  window.name = "";
 }
 
 // The first evaluation transforms the whole runtime graph. Paying it while the file loads keeps
@@ -548,40 +550,85 @@ describe("runtime entry", () => {
       if (userAgent === "safari") asSafari();
     };
 
-    it("in the player on Safari a file keeps the take on screen and the next one loading, and frees the rest", async () => {
+    // Chromium and Firefox keep a paused clip's request open with its unread bytes, and every
+    // request to one host shares one HTTP/2 or HTTP/3 window: with each take loaded, the window
+    // fills and the next take's request is never answered.
+    it.each(["safari", "chrome"] as const)(
+      "in the player on %s a file keeps the take on screen and the next one loading, and frees the rest",
+      async (userAgent) => {
+        spyLoad();
+        inPlayerFrame(userAgent);
+        const [first, second, third] = takesOfOneFile();
+
+        await evaluateRuntime();
+        expect([first, second, third].map((take) => armed(...take))).toEqual([
+          [true, true],
+          [true, true],
+          [false, false],
+        ]);
+
+        window.__player?.seek(3.5);
+        const video = second![0]!;
+        Object.defineProperty(video, "readyState", { value: 4, configurable: true });
+        video.dispatchEvent(new Event("seeked"));
+        expect([first, second, third].map((take) => armed(...take))).toEqual([
+          [false, false],
+          [true, true],
+          [true, true],
+        ]);
+      },
+    );
+
+    it("holds back the takes after the next in a player frame the composition cannot read, as with an opaque sandbox", async () => {
       spyLoad();
-      inPlayerFrame("safari");
-      const [first, second, third] = takesOfOneFile();
-
-      await evaluateRuntime();
-      expect([first, second, third].map((take) => armed(...take))).toEqual([
-        [true, true],
-        [true, true],
-        [false, false],
-      ]);
-
-      window.__player?.seek(3.5);
-      const video = second![0]!;
-      Object.defineProperty(video, "readyState", { value: 4, configurable: true });
-      video.dispatchEvent(new Event("seeked"));
-      expect([first, second, third].map((take) => armed(...take))).toEqual([
-        [false, false],
-        [true, true],
-        [true, true],
-      ]);
-    });
-
-    it("in the player on Chromium every take of a file loads at parse", async () => {
-      spyLoad();
-      inPlayerFrame("chrome");
+      window.name = PLAYER_FRAME_NAME;
       const takes = takesOfOneFile();
 
       await evaluateRuntime();
       expect(takes.map((take) => armed(...take))).toEqual([
         [true, true],
         [true, true],
-        [true, true],
+        [false, false],
       ]);
+    });
+
+    // An app that embeds Studio's preview re-reads the film after each edit, as the desktop app's script walks do.
+    it("in Studio's preview the player's named frame changes nothing about which clips load and are freed", async () => {
+      const decisions = async (frame: "named player frame" | "plain frame") => {
+        const log: string[] = [];
+        for (const starts of [
+          ["0", "3", "9"],
+          ["0", "3", "5", "9"],
+        ]) {
+          resetRuntimeGlobals();
+          vi.restoreAllMocks();
+          spyLoad();
+          if (frame === "named player frame") {
+            inPlayerFrame("chrome");
+            window.name = PLAYER_FRAME_NAME;
+          }
+          servePreview();
+          const root = mountRoot();
+          const clips = starts.map((start) => timed(root, "audio", start));
+          for (const clip of clips) clip.setAttribute("src", "/voice.wav");
+          const srcWrites = new MutationObserver(() => {});
+          for (const clip of clips) srcWrites.observe(clip, { attributeFilter: ["src"] });
+          await evaluateRuntime();
+          const step = (label: string) =>
+            log.push(
+              `${starts.length} clips, ${label}: preload ${clips.map((c) => c.preload)}, loads ${loadsOf(...clips)}, src writes ${srcWrites.takeRecords().map((r) => clips.indexOf(r.target as HTMLMediaElement))}`,
+            );
+          step("parsed");
+          for (const time of [3.5, 9.2, 5.1, 0.5]) {
+            window.__player?.seek(time);
+            step(`seek ${time}`);
+          }
+        }
+        return log;
+      };
+      const named = await decisions("named player frame");
+      expect(named.some((line) => /loads (\d,)*2/.test(line))).toBe(true);
+      expect(await decisions("plain frame")).toEqual(named);
     });
 
     it("in Studio's preview a clip 5 s ahead stays unloaded, as the look-ahead is 2 s", async () => {
@@ -1115,30 +1162,21 @@ describe("runtime entry", () => {
       expect([first.preload, later.preload, untrimmed.preload]).toEqual(["", "none", ""]);
     });
 
-    it("gives each parsed clip preload none in the player's frame, where no clip fetches ahead of the first take", async () => {
-      const frame = document.createElement("iframe");
-      frame.setAttribute(PLAYER_FRAME_ATTR, "");
-      vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
-      asSafari();
-      const root = mountRoot();
-      timed(root, "div", "0");
-      await evaluateRuntime();
-      const [first, later] = videos(root, "0", "5");
-      await Promise.resolve();
-      expect([first.preload, later.preload]).toEqual(["", "none"]);
-    });
-
-    it("leaves Chromium loading every clip at parse in the player's frame", async () => {
-      const frame = document.createElement("iframe");
-      frame.setAttribute(PLAYER_FRAME_ATTR, "");
-      vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
-      const root = mountRoot();
-      timed(root, "div", "0");
-      await evaluateRuntime();
-      const [first, later] = videos(root, "0", "5");
-      await Promise.resolve();
-      expect([first.preload, later.preload]).toEqual(["", ""]);
-    });
+    it.each(["safari", "chrome"] as const)(
+      "gives each parsed clip preload none in the player's frame on %s, where no clip fetches ahead of the first take",
+      async (userAgent) => {
+        const frame = document.createElement("iframe");
+        frame.setAttribute(PLAYER_FRAME_ATTR, "");
+        vi.spyOn(window, "frameElement", "get").mockReturnValue(frame);
+        if (userAgent === "safari") asSafari();
+        const root = mountRoot();
+        timed(root, "div", "0");
+        await evaluateRuntime();
+        const [first, later] = videos(root, "0", "5");
+        await Promise.resolve();
+        expect([first.preload, later.preload]).toEqual(["", "none"]);
+      },
+    );
 
     it("leaves a frame the player did not mark loading every clip at parse", async () => {
       vi.spyOn(window, "frameElement", "get").mockReturnValue(document.createElement("iframe"));
