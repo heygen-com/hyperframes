@@ -9,6 +9,7 @@ import {
   findGsapScriptElements,
   readNestedFiles,
   repaintDroppedTweenStyle,
+  sealedRerun,
   timelineKeys,
 } from "./gsapSoftReload";
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
