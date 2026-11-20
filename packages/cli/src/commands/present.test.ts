@@ -4,6 +4,7 @@ import { consumeCommandResult } from "../utils/commandResult.js";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { INERT_REFUSAL_HEADERS } from "../utils/strayRequestRefusal.js";
 
 vi.mock("@hono/node-server", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hono/node-server")>()),
@@ -141,3 +142,33 @@ it.skipIf(process.platform === "win32")(
     }
   },
 );
+describe("a request the present server has no page for", () => {
+  it.each([
+    "/oauth/callback?code=c0de&state=st4te",
+    "/callback?code=c0de&state=st4te",
+    "/?code=c0de&state=st4te",
+    "/?mode=audience&state=st4te",
+    "/composition/index.html?code=c0de",
+    "/no-such-page",
+    "/composition/missing.html",
+  ])("gets an inert plain-text refusal: %s", async (path) => {
+    const app = await presentApp();
+    const res = await app.request(path, { headers: { "Sec-Fetch-Site": "cross-site" } });
+    expect(res.status).toBe(404);
+    expect(Object.fromEntries(res.headers)).toEqual(
+      Object.fromEntries(
+        Object.entries(INERT_REFUSAL_HEADERS).map(([name, value]) => [name.toLowerCase(), value]),
+      ),
+    );
+    expect(await res.text()).toBe("Not found");
+  });
+
+  it("leaves the presenter and audience pages as they were", async () => {
+    const app = await presentApp();
+    for (const path of ["/", "/?mode=audience"]) {
+      const res = await app.request(path, { headers: { "Sec-Fetch-Site": "same-origin" } });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toMatch(/^text\/html/);
+    }
+  });
+});

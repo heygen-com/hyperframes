@@ -4,6 +4,7 @@ import { createStaticVerificationPage, type CaptureSession } from "./frameCaptur
 describe("createStaticVerificationPage", () => {
   it("uses a fresh, ready page so verification seeks cannot affect capture", async () => {
     const verificationPage = {
+      mainFrame: () => ({}),
       evaluateOnNewDocument: vi.fn().mockResolvedValue(undefined),
       setViewport: vi.fn().mockResolvedValue(undefined),
       goto: vi.fn().mockResolvedValue(undefined),
@@ -37,6 +38,7 @@ describe("createStaticVerificationPage", () => {
 
   it("closes a failed verification page before static dedup fails closed", async () => {
     const verificationPage = {
+      mainFrame: () => ({}),
       evaluateOnNewDocument: vi.fn().mockResolvedValue(undefined),
       setViewport: vi.fn().mockRejectedValue(new Error("viewport failed")),
       close: vi.fn().mockResolvedValue(undefined),
@@ -62,6 +64,7 @@ describe("createStaticVerificationPage", () => {
       const document = { querySelectorAll: () => [host("main"), host("badge")] };
       const window = { __timelines: { main: {} } };
       const verificationPage = {
+        mainFrame: () => ({}),
         evaluateOnNewDocument: vi.fn().mockResolvedValue(undefined),
         setViewport: vi.fn().mockResolvedValue(undefined),
         goto: vi.fn().mockResolvedValue(undefined),

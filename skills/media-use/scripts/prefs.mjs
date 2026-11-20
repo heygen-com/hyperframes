@@ -16,6 +16,7 @@
  */
 import { parseArgs } from "node:util";
 import { mergedPreferences, recordPreference } from "./lib/prefs-store.mjs";
+import { terminalText } from "./lib/terminal-text.mjs";
 
 const { values: args, positionals } = parseArgs({
   options: {
@@ -31,7 +32,7 @@ const { values: args, positionals } = parseArgs({
 const verb = positionals[0];
 
 function fail(message) {
-  console.error(message);
+  console.error(terminalText(message));
   process.exit(1);
 }
 
@@ -44,7 +45,9 @@ if (verb === "get") {
   } else {
     for (const [key, entry] of Object.entries(merged)) {
       console.log(
-        `${key} = ${entry.value}  (${entry.source}; confirmed in ${entry.confirmed_in.join(", ")})`,
+        terminalText(
+          `${key} = ${entry.value}  (${entry.source}; confirmed in ${entry.confirmed_in.join(", ")})`,
+        ),
       );
     }
   }
@@ -58,7 +61,7 @@ if (verb === "get") {
       workflow: args.workflow,
     });
     const promotion = result.promoted ? "; promoted to user tier" : "";
-    console.log(`recorded ${result.key} = ${result.value} (project${promotion})`);
+    console.log(terminalText(`recorded ${result.key} = ${result.value} (project${promotion})`));
   } catch (err) {
     fail(err instanceof Error ? err.message : String(err));
   }

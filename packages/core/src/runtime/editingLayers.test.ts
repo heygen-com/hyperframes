@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { MAX_QUERY_MATCHES } from "./editingElement";
-import { elementForHandle } from "./editingHandles";
-import { layersOf } from "./editingLayers";
+import { elementForHandle, handleFor } from "./editingHandles";
+import { layersOf, stackingFamily } from "./editingLayers";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -74,5 +74,37 @@ describe("layers", () => {
     document.getElementById("pair")!.remove();
     expect(layersOf(pair)).toEqual({ layers: [], truncated: false, missingGroup: true });
     expect(layersOf("0123456789abcdef:1")).toMatchObject({ layers: [], missingGroup: true });
+  });
+});
+
+describe("stacking-family", () => {
+  const family = (id: string) =>
+    stackingFamily({ handle: handleFor(document.getElementById(id)!) });
+
+  it("answers an element's painting siblings in DOM order with their z-index, hidden ones too", () => {
+    document.body.innerHTML = `<main>
+      <div id="back" style="position: relative; z-index: 1"></div>
+      <audio id="music"></audio><script></script>
+      <div id="gone" style="display: none; position: relative; z-index: 5"></div>
+      <div id="front" style="position: relative; z-index: 2"></div></main>`;
+    const reply = family("back");
+    expect(reply.locked).toBe(false);
+    expect(
+      reply.family!.map(({ handle, zIndex }) => [elementForHandle(handle)!.id, zIndex]),
+    ).toEqual([
+      ["back", 1],
+      ["gone", 5],
+      ["front", 2],
+    ]);
+  });
+
+  it("says when a locked clip holds the element", () => {
+    document.body.innerHTML = `<main data-timeline-locked><div id="a"></div><div id="b"></div></main>`;
+    expect(family("a").locked).toBe(true);
+  });
+
+  it("answers no family for a family past the cap", () => {
+    document.body.innerHTML = `<main>${"<div></div>".repeat(MAX_QUERY_MATCHES)}<div id="last"></div></main>`;
+    expect(family("last").family).toBeNull();
   });
 });

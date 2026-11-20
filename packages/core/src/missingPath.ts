@@ -16,3 +16,10 @@ export function missingPathOf(error: unknown): string | undefined {
   const message = error instanceof Error ? error.message : String(error);
   return /\bENOENT\b/.test(message) ? quotedPath(message) : undefined;
 }
+
+export function errnoMissingPathOf(error: unknown): string | undefined {
+  const enoent = errorChain(error).find(
+    (seen) => (seen as NodeJS.ErrnoException).code === "ENOENT",
+  ) as NodeJS.ErrnoException | undefined;
+  return enoent?.path;
+}

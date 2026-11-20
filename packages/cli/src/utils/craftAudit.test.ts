@@ -111,6 +111,16 @@ describe("readingWords", () => {
     expect(readingWords("a tooth can’t get in")).toBe(5);
     expect(readingWords("it's 'quoted'")).toBe(2);
   });
+
+  it("counts a number with a thousands separator or a decimal point as one word", () => {
+    expect(readingWords("1,080")).toBe(1);
+    expect(readingWords("3.5%")).toBe(1);
+    expect(readingWords("$1,200.50 saved")).toBe(2);
+    expect(readingWords("1,080억 달러")).toBe(2);
+    expect(readingWords("one, two. 3 left")).toBe(4);
+    expect(readingWords("12/40")).toBe(2);
+    expect(readingWords("売上1,080億")).toBe(3);
+  });
 });
 
 describe("lineFloorSec", () => {

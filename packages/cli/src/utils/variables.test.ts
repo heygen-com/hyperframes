@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("parseVariablesArg", () => {
   let parseVariablesArg: typeof import("./variables.js").parseVariablesArg;
@@ -161,5 +161,35 @@ describe("validateVariablesAgainstProject", () => {
     expect(
       validateVariablesAgainstProject(join(tmpDir, "missing.html"), { title: "Hello" }),
     ).toEqual([]);
+  });
+});
+
+describe("reportVariableIssues", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("prints declared ids and options with control characters as visible escapes", async () => {
+    const { reportVariableIssues } = await import("./variables.js");
+    const esc = String.fromCharCode(27);
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    reportVariableIssues(
+      [
+        { kind: "undeclared", variableId: `title${esc}]0;x\x07` },
+        {
+          kind: "enum-out-of-range",
+          variableId: "tone",
+          allowed: [`calm\nVariable "x" is fine.`],
+          actual: "loud",
+        },
+      ],
+      { strict: false },
+    );
+    const printed = log.mock.calls.map((call) => call.join(" ")).join("\n");
+
+    expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(printed).toContain('Variable "title\\x1b]0;x\\x07" is not declared');
+    expect(printed).toContain('must be one of "calm\\x0aVariable "x" is fine."');
   });
 });

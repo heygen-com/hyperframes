@@ -15,6 +15,7 @@ const RESULTS_DIR = resolve(HERE, "../results");
 const PLAY_MS = 8_000;
 const SEEK_FRACTIONS = [0.1, 0.7, 0.2, 0.8, 0.3, 0.9, 0.4, 0.6, 0.5, 0.05];
 const WORK_BUDGET_MS = 8;
+const WD_TIMEOUT_MS = 60_000;
 
 type Browser = "safari" | "chrome";
 
@@ -58,6 +59,9 @@ async function wd(base: string, method: string, path: string, body?: unknown): P
     method,
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(WD_TIMEOUT_MS),
+  }).catch((e) => {
+    throw new Error(`${method} ${path} (bound ${WD_TIMEOUT_MS / 1000} s): ${e}`);
   });
   const json = (await res.json()) as { value: any };
   if (!res.ok || json.value?.error) {
@@ -76,8 +80,18 @@ async function startDriver(browser: Browser, port: number): Promise<ChildProcess
     } catch {}
     await Bun.sleep(200);
   }
-  proc.kill();
+  await stopDriver(proc);
   throw new Error(`${spec.cmd} did not become ready on port ${port}`);
+}
+
+async function stopDriver(proc: ChildProcess): Promise<void> {
+  if (proc.exitCode !== null || proc.signalCode !== null) return;
+  const exited = new Promise((done) => proc.once("exit", done));
+  proc.kill();
+  if (await Promise.race([exited.then(() => false), Bun.sleep(10_000).then(() => true)])) {
+    proc.kill("SIGKILL");
+    await exited;
+  }
 }
 
 /** Resident memory of the browser's own processes, in MB (WebDriver has no memory API Safari answers). */
@@ -298,7 +312,12 @@ let failed = false;
 try {
   for (const browser of browsers) {
     const port = 4444 + browsers.indexOf(browser);
-    const driver = await startDriver(browser, port);
+    let driver = await startDriver(browser, port);
+    // A failed run can leave the browser paired to a session the driver never ended; a fresh driver frees it.
+    const restartDriver = async () => {
+      await stopDriver(driver);
+      driver = await startDriver(browser, port);
+    };
     try {
       try {
         const box = await readPage<{
@@ -322,6 +341,7 @@ try {
         failed = true;
         rows.push({ browser, fixture: "player-box", run: 1, error: "failed, see the job log" });
         console.error(`[browsers] ${browser} player box failed: ${e}`);
+        await restartDriver();
       }
       for (const fixture of fixtures) {
         for (let run = 1; run <= runs; run++) {
@@ -349,6 +369,7 @@ try {
             failed = true;
             rows.push({ browser, fixture, run, error: "failed, see the job log" });
             console.error(`[browsers] ${browser} ${fixture} run ${run} failed: ${e}`);
+            await restartDriver();
           }
         }
       }
@@ -377,10 +398,11 @@ try {
             error: "failed, see the job log",
           });
           console.error(`[browsers] ${browser} control ${c.name} failed: ${e}`);
+          await restartDriver();
         }
       }
     } finally {
-      driver.kill();
+      await stopDriver(driver);
     }
   }
 } finally {

@@ -17,6 +17,7 @@ import { parseArgs, stripVTControlCharacters } from "node:util";
 import { mergeTokensToWords } from "./lib/parakeet-words.mjs";
 import { track } from "./lib/telemetry.mjs";
 import { resolveNpxInvocation } from "./lib/npx-sync.mjs";
+import { terminalText } from "./lib/terminal-text.mjs";
 
 // The DEFAULT local transcription path. Prefers NVIDIA Parakeet-TDT via
 // parakeet-mlx, which beats whisper.cpp on the Open ASR Leaderboard (~6.05% vs
@@ -61,7 +62,7 @@ if (!args.input) {
 }
 const inputPath = resolve(args.input);
 if (!existsSync(inputPath)) {
-  console.error(`error: input not found: ${inputPath}`);
+  console.error(terminalText(`error: input not found: ${inputPath}`));
   process.exit(2);
 }
 const outPath = resolve(
@@ -104,7 +105,9 @@ function report(engine, wordCount) {
   if (args.json) console.log(JSON.stringify({ ok: true, out: outPath, engine, words: wordCount }));
   else
     console.log(
-      `transcribed ${basename(inputPath)} -> ${outPath}${wordCount != null ? ` (${wordCount} words,` : " ("}${engine})`,
+      terminalText(
+        `transcribed ${basename(inputPath)} -> ${outPath}${wordCount != null ? ` (${wordCount} words,` : " ("}${engine})`,
+      ),
     );
 }
 
@@ -206,6 +209,9 @@ try {
   await track("media_use_transcribe", { engine });
 } catch (err) {
   if (args.json) console.log(JSON.stringify({ ok: false, error: err.message }));
-  else console.error(`error: transcription failed: ${err.message}`);
+  else
+    console.error(
+      `error: transcription failed: ${err.message}`.split("\n").map(terminalText).join("\n"),
+    );
   process.exit(1);
 }

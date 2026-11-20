@@ -117,7 +117,7 @@ const GROUP_ATTR_TO_MIRROR: Record<
  *
  * Invalidating the parse cache is necessary but not sufficient — it only
  * ensures the NEXT parse is honest, and a live attribute patch does not cause
- * one. Same reason `commitDataAttribute` carries `syncStoredAutomationFromPreview`.
+ * one. Same reason `commitDataAttribute` carries `syncStoredAutomationFromFrame`.
  */
 function syncStoredGroupAttribute(groupId: string, attr: string, value: string | null): void {
   const toPatch = GROUP_ATTR_TO_MIRROR[attr];

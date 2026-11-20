@@ -42,9 +42,10 @@ import { ensureFrameWritten } from "./captureHdrFrameShared.js";
 import { reportFrameProgress } from "../shared.js";
 import { encoderFailureError } from "../encoderInterruption.js";
 import type { SdrSegmentedCapturePlan } from "../capturePlan.js";
-import { planSegments, type SegmentSlice } from "../segmentPlan.js";
+import { planSegments, segmentOutputPath, type SegmentSlice } from "../segmentPlan.js";
 import type { SegmentVideoFrames, SegmentWorkerFrames } from "../segmentVideoFrames.js";
 import { createSegmentQueue } from "../segmentQueue.js";
+import { hashSegmentFile } from "../segmentManifest.js";
 import { isTargetLossError } from "../segmentRecycle.js";
 import {
   OPENING_CAPTURE_SESSION,
@@ -104,6 +105,7 @@ export interface CaptureSegmentedStageInput {
     endFrame: number;
     path: string;
     bytes: number;
+    sha256: string;
   }) => void;
   /** Parallel capture sessions pulling from one segment queue. Default 1. */
   workerCount?: number;
@@ -145,11 +147,6 @@ export type CaptureSegmentedStageResult =
     }
   /** The first segment's encoder could not spawn — caller replans to sdr_streaming. */
   | { success: false };
-
-/** Zero-padded so lexical order equals frame order in the concat list and on disk. */
-export function segmentOutputPath(segmentDir: string, index: number): string {
-  return join(segmentDir, `segment_${String(index).padStart(5, "0")}.mp4`);
-}
 
 /**
  * One closed-GOP encoder per segment. `gopSize` is the segment's own frame
@@ -272,6 +269,7 @@ async function captureSegmentToEncoder(
   segment: SegmentSlice,
 ): Promise<StreamingEncoderResult> {
   const segmentPath = segmentOutputPath(ctx.segmentDir, segment.index);
+  rmSync(segmentPath, { force: true });
   let encoder: StreamingEncoder;
   try {
     encoder = await ctx.spawnEncoder(
@@ -302,6 +300,7 @@ async function captureSegmentToEncoder(
       // Recorded so resume can prove the file on disk is the one that
       // finished; absent only in unit tests, whose fake encoder writes none.
       bytes: existsSync(segmentPath) ? statSync(segmentPath).size : 0,
+      sha256: existsSync(segmentPath) ? await hashSegmentFile(segmentPath) : "",
     });
     return encodeResult;
   } finally {

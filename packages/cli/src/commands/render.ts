@@ -85,6 +85,7 @@ import {
 } from "../ui/format.js";
 import { warnIfWebmAlphaDropped } from "../utils/webmAlphaCheck.js";
 import { renderFailureDiagnostic } from "../ui/renderDiagnostic.js";
+import { sourceFailureHint } from "./render/sourceFailureHint.js";
 import { missingPathKind } from "../telemetry/missingPathKind.js";
 import { renderProgress, renderMachineProgress } from "../ui/progress.js";
 import {
@@ -461,14 +462,14 @@ export default defineCommand({
       description:
         "Segmented capture only (HF_SEGMENTED_CAPTURE=true): reuse segments a " +
         "previous run of the same composition and settings already finished, " +
-        "recorded in renders/.hf-segments/<hash>/segments.json. Each reused " +
+        "recorded in the local HyperFrames cache. Each reused " +
         "segment is re-validated before it is skipped.",
       default: false,
     },
     "keep-segments": {
       type: "boolean",
       description:
-        "Segmented capture only: keep renders/.hf-segments/<hash> after a " +
+        "Segmented capture only: keep locally cached segments after a " +
         "successful render instead of deleting it.",
       default: false,
     },
@@ -2027,7 +2028,7 @@ function handleRenderError(
     errorBox(launch.title, shown, launch.remediation);
     failCommand();
   }
-  errorBox("Render failed", shown, hint);
+  errorBox("Render failed", shown, sourceFailureHint(error) ?? hint);
   failCommand();
 }
 

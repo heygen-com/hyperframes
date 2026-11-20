@@ -464,6 +464,24 @@
       "types": "./dist/runtime/editingPort.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/patch-tween": {
+      "source": "./src/runtime/editing/patchTween.ts",
+      "runtime": "./dist/runtime/editing/patchTween.js",
+      "types": "./dist/runtime/editing/patchTween.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/soft-reload": {
+      "source": "./src/runtime/editing/softReload.ts",
+      "runtime": "./dist/runtime/editing/softReload.js",
+      "types": "./dist/runtime/editing/softReload.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
+    "./runtime/scenes": {
+      "source": "./src/runtime/editing/scenes.ts",
+      "runtime": "./dist/runtime/editing/scenes.js",
+      "types": "./dist/runtime/editing/scenes.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/clip-window": {
       "source": "./src/runtime/clipWindow.ts",
       "runtime": "./dist/runtime/clipWindow.js",

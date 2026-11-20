@@ -31,7 +31,6 @@ import {
   CONTENT_STORE_REFRESH_AFTER_DAYS,
   CONTENT_STORE_RETENTION_DAYS,
 } from "../contentStore.js";
-import { BUNDLED_SHELL_PATH } from "../chromium.js";
 import { SITE_MANIFEST_INVALID } from "../siteManifest.js";
 import {
   HyperframesRenderStack,
@@ -411,44 +410,15 @@ describe("HyperframesRenderStack — snapshot", () => {
     ).toEqual([...new Set(render)].sort());
   });
 
-  it("points a chrome-headless-shell ZIP at its bundled shell, in CDK and SAM", () => {
-    const chromeEnv = (synthed: ReturnType<typeof doSynth>) => {
-      const fn = Object.values(synthed.template.findResources("AWS::Lambda::Function"))[0] as {
-        Properties: { Environment: { Variables: Record<string, unknown> } };
-      };
-      const vars = fn.Properties.Environment.Variables;
-      return [vars.HYPERFRAMES_LAMBDA_CHROME_SOURCE, vars.HYPERFRAMES_LAMBDA_CHROME_PATH];
-    };
-    expect(chromeEnv(SYNTHED)).toEqual(["sparticuz", undefined]);
-    expect(chromeEnv(doSynth(undefined, "chrome-headless-shell"))).toEqual([
-      "chrome-headless-shell",
-      BUNDLED_SHELL_PATH,
-    ]);
-
-    const globals = requireRecordProperty(
-      requireRecordProperty(
-        requireRecordProperty(readExampleTemplate("template.yaml"), "Globals", "SAM globals"),
-        "Function",
-        "SAM function globals",
-      ),
-      "Environment",
-      "SAM global environment",
-    ) as { Variables: Record<string, unknown> };
-    // The YAML parser drops the !If and !Ref tags and keeps [condition, then, else].
-    expect(globals.Variables.HYPERFRAMES_LAMBDA_CHROME_PATH).toEqual([
-      "BundlesChromeHeadlessShell",
-      BUNDLED_SHELL_PATH,
-      "AWS::NoValue",
-    ]);
-    const conditions = requireRecordProperty(
-      readExampleTemplate("template.yaml"),
-      "Conditions",
-      "SAM conditions",
+  it("refuses a chrome-headless-shell ZIP, which cannot fit a function, in CDK and SAM", () => {
+    expect(() => doSynth(undefined, "chrome-headless-shell")).toThrow(/does not fit a Lambda ZIP/);
+    const sam = readExampleTemplate("template.yaml");
+    const parameters = requireRecordProperty(sam, "Parameters", "SAM parameters");
+    const chromeSource = requireRecordProperty(parameters, "ChromeSource", "ChromeSource");
+    expect(chromeSource.AllowedValues).toEqual(["sparticuz"]);
+    expect(envNames(sam, "Globals", "Function", "Environment", "Variables")).not.toContain(
+      "HYPERFRAMES_LAMBDA_CHROME_PATH",
     );
-    expect(conditions.BundlesChromeHeadlessShell).toEqual([
-      "ChromeSource",
-      "chrome-headless-shell",
-    ]);
   }, 30000);
 
   it("lets the render function abort the multipart uploads its S3 stitch starts", () => {

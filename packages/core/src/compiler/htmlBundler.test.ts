@@ -4335,3 +4335,69 @@ describe("emitRootCompositionVariableStyles — size budget", () => {
     expect(document.querySelector("style[data-hf-composition-variables]")).toBeNull();
   });
 });
+
+// fails without the fix: an SVG element named template has no content, and the bundler read it as an HTML one.
+describe("bundleToSingleHtml with an SVG element named template", () => {
+  it.each([false, true])("bundles the page and its scene (sceneParts %s)", async (sceneParts) => {
+    const svg = `<svg><template></template></svg>`;
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="2">
+    ${svg}
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="2"></div>
+  </div>
+</body></html>`,
+      "compositions/scene.html": `${svg}<template id="scene-template">
+<div data-composition-id="scene" data-width="320" data-height="180" data-duration="2"><p>scene text</p></div>
+</template>`,
+    });
+    try {
+      const html = await bundleToSingleHtml(dir, { sceneParts });
+      expect(html).toContain("scene text");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a mounted scene's id when an empty host and an SVG element named template share it", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="2">
+    <svg><template id="scene-template"></template></svg>
+    <div data-composition-id="scene"></div>
+    <div data-composition-id="scene" data-composition-src="compositions/scene.html" data-start="0" data-duration="2"></div>
+  </div>
+</body></html>`,
+      "compositions/scene.html": `<template>
+<div data-composition-id="scene" data-width="320" data-height="180" data-duration="2"><p>scene text</p></div>
+</template>`,
+    });
+    try {
+      const html = await bundleToSingleHtml(dir);
+      expect(html).toContain("scene text");
+      expect(html).not.toContain("scene__hf");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("mounts nothing into a host whose id only an SVG element named template matches", async () => {
+    const dir = makeTempProject({
+      "index.html": `<!doctype html>
+<html><body>
+  <div id="root" data-composition-id="main" data-width="320" data-height="180" data-duration="2">
+    <svg><template id="card-template"><g id="svg-child"></g></template></svg>
+    <div id="card-host" data-composition-id="card" data-start="0" data-duration="2"></div>
+  </div>
+</body></html>`,
+    });
+    try {
+      const { document } = parseHTML(await bundleToSingleHtml(dir));
+      expect(document.querySelector("#card-host")?.children.length).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

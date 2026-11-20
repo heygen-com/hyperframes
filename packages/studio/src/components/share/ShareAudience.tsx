@@ -18,6 +18,7 @@ const AUDIENCES = {
   },
   private: { label: "Only you", detail: "Only you can access this share", icon: Lock },
 };
+export const audienceLabel = (audience: LocalShareAudience) => AUDIENCES[audience].label;
 
 export function ShareAudience({
   model,
