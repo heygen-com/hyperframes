@@ -1027,6 +1027,11 @@ describe("generate", () => {
     expect(check("nano-banana-2")).toThrow("nano-banana-2 is no longer offered here");
     expect(check("gpt-image-2.5", "16:9")).toThrow("gpt-image-2.5 is no longer offered here");
     expect(check("some-new-model", "7:5")).not.toThrow();
+    // A name every object carries is a model this build has no entry for, like any other.
+    for (const model of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      expect(check(model, "7:5")).not.toThrow();
+      expect(check(model, undefined, 20)).toThrow("no file at");
+    }
   });
 
   it("prices only a request the real call would accept", () => {
