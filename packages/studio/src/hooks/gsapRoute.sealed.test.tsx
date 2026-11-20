@@ -172,6 +172,30 @@ describe("the GSAP-or-CSS route for a layer in a sealed preview", () => {
     act(() => root.unmount());
   });
 
+  it("saves a resize's anchor move on GSAP's marks when only a shared tween positions the layer", async () => {
+    const { selection } = sealedLayer({ x: 200 });
+    const { editing, stageElementPositionOffset, root } = gsapAwareEditing(selection);
+    mocks.drag.mockResolvedValue({ status: "element-offset" });
+
+    await act(() =>
+      editing.handleGsapAwareBoxSizeCommit(
+        selection,
+        { width: 200, height: 80 },
+        { x: 10, y: 5 },
+        undefined,
+        { plainTranslate: false },
+      ),
+    );
+
+    expect(stageElementPositionOffset).toHaveBeenCalledWith(
+      selection,
+      { x: 10, y: 5 },
+      false,
+      expect.anything(),
+    );
+    act(() => root.unmount());
+  });
+
   it("decides again from the frame after an undo restored in place re-ran its script", async () => {
     const { iframe, standIn } = sealedLayer(null);
     expect(await editsPlainCssSettled(standIn, "move")).toBe(true);

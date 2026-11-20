@@ -31,7 +31,6 @@ import { logResize, logResizeSettle } from "../utils/resizeDebug";
 import type { MoveCommitOptions } from "../components/editor/domEditOverlayGestures";
 import { runGestureTransaction } from "./gestureTransaction";
 import {
-  editsPlainCss,
   editsPlainCssSettled,
   hasNonHoldTweenForElement,
   POSITION_CHANNELS,
@@ -270,7 +269,7 @@ export function useGsapAwareEditing({
             );
             // Saved after the size, under its undo key, so the two are one step.
             await saveMove(dragOutcome, async () => {
-              const plainAfterSettle = editsPlainCss(selection.element, "move");
+              const plainAfterSettle = await editsPlainCssSettled(selection.element, "move");
               anchorMove = writes.drawKeepingUndone(() =>
                 stageElementPositionOffset(selection, offset, plainAfterSettle, coalesceKey),
               );
