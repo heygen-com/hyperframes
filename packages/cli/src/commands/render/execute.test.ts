@@ -80,6 +80,8 @@ describe("renderOptionsFromPlan", () => {
         undefined,
       ).strictVariables,
     ).toBe(true);
+  });
+
   it("carries --refuse-outside-files from the plan into the render options", () => {
     const plan = createRenderPlan({ dir: projectDir });
     expect(renderOptionsFromPlan(plan, undefined, undefined).refuseOutsideFiles).toBeUndefined();
