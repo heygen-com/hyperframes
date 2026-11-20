@@ -1,21 +1,24 @@
 import {
-  cpSync,
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
+  lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readFileSync,
   renameSync,
   rmSync,
-  writeFileSync,
 } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { globalMediaDir } from "./media-home.mjs";
-import { appendRecord, mediaDir, nextId } from "./manifest.mjs";
+import { appendRecord, mediaDir, nextId, refuseLink, replaceFile } from "./manifest.mjs";
 import { regenerateIndex } from "./index-gen.mjs";
 import { mergedPreferences } from "./prefs-store.mjs";
 
-// A filter keeps Node 22 off its native copy, which writes nothing under a non-ASCII path on Windows.
-const NON_ASCII_SAFE_DIR_COPY = { recursive: true, force: true, filter: () => true };
+/** The files a recipe folder holds. Nothing else in a recipe folder is copied between tiers. */
+const RECIPE_FILES = ["recipe.json", "frame.md", "storyboard-skeleton.md", "brief-skeleton.md"];
 
 /**
  * Recipes — the heavyweight tier of HyperFrames user memory.
@@ -213,6 +216,56 @@ function prefValue(prefs, key) {
 }
 
 /**
+ * Throws, before anything is moved or written, when `.media`, `.media/recipes` or the recipe's own
+ * folder is a link. A project from someone else could carry such a link to send recipe writes
+ * outside the project.
+ */
+function refuseLinkedRecipeDir(root, slug) {
+  for (const path of [
+    mediaDir(root),
+    projectRecipesDir(root),
+    join(projectRecipesDir(root), slug),
+  ]) {
+    refuseLink(path);
+  }
+}
+
+/**
+ * The content of the regular file at `path`, or undefined when it is missing, a link or not a file.
+ * After the open, `path` must still be a regular file with the device and inode the handle has. A
+ * link has its own inode, so it never matches the file an open reached through it, even where Node
+ * has no `O_NOFOLLOW` (Windows); pass 0 as `noFollow` to check that path. `O_NONBLOCK` keeps a FIFO
+ * from blocking the open.
+ */
+export function readRegularFile(path, noFollow = constants.O_NOFOLLOW ?? 0) {
+  let fd;
+  try {
+    fd = openSync(path, constants.O_RDONLY | noFollow | (constants.O_NONBLOCK ?? 0));
+  } catch {
+    return undefined;
+  }
+  try {
+    const opened = fstatSync(fd, { bigint: true });
+    const atPath = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+    const same =
+      opened.isFile() && atPath?.isFile() && opened.dev === atPath.dev && opened.ino === atPath.ino;
+    return same ? readFileSync(fd) : undefined;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * Writes each named file into `dir` as a new regular file, replacing a link at that name instead
+ * of following it, and removes a leftover brief skeleton the bundle does not have.
+ */
+function writeRecipeFiles(dir, files) {
+  mkdirSync(dir, { recursive: true });
+  for (const [name, content] of Object.entries(files)) replaceFile(join(dir, name), content);
+  if (!("brief-skeleton.md" in files)) rmSync(join(dir, "brief-skeleton.md"), { force: true });
+}
+
+/**
  * Freeze the current project's approved run as a named recipe. Writes the
  * project-tier folder + a manifest record, then copies to the user tier (a
  * freeze is already confirmed — it promotes immediately).
@@ -232,6 +285,7 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
   if (!existsSync(frameSpec)) throw new Error("no frame.md to freeze — run the design step first");
   if (!existsSync(storyboard)) throw new Error("no STORYBOARD.md to freeze");
 
+  refuseLinkedRecipeDir(root, slug);
   const dir = join(projectRecipesDir(root), slug);
   let version = 1;
   const previous = existsSync(dir) ? readRecipeJson(dir) : null;
@@ -252,7 +306,6 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
     }
     renameSync(dir, `${dir}@v${slot}`);
   }
-  mkdirSync(dir, { recursive: true });
 
   const prefs = mergedPreferences(root);
   const recipe = {
@@ -272,23 +325,19 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
     blocks: Array.isArray(blocks) && blocks.length > 0 ? blocks : undefined,
   };
 
-  writeFileSync(join(dir, "recipe.json"), `${JSON.stringify(recipe, null, 2)}\n`);
-  cpSync(frameSpec, join(dir, "frame.md"));
-  writeFileSync(
-    join(dir, "storyboard-skeleton.md"),
-    `${skeletonizeStoryboard(readFileSync(storyboard, "utf8")).trimEnd()}\n`,
-  );
-
+  const files = {
+    "recipe.json": `${JSON.stringify(recipe, null, 2)}\n`,
+    "frame.md": readFileSync(frameSpec),
+    "storyboard-skeleton.md": `${skeletonizeStoryboard(readFileSync(storyboard, "utf8")).trimEnd()}\n`,
+  };
   // Best-effort fourth artifact — projects briefed before BRIEF.md existed
   // (or by workflows that don't write one) freeze fine without it.
   const brief = join(root, "BRIEF.md");
   const briefSkeleton = existsSync(brief);
   if (briefSkeleton) {
-    writeFileSync(
-      join(dir, "brief-skeleton.md"),
-      `${skeletonizeBrief(readFileSync(brief, "utf8")).trimEnd()}\n`,
-    );
+    files["brief-skeleton.md"] = `${skeletonizeBrief(readFileSync(brief, "utf8")).trimEnd()}\n`;
   }
+  writeRecipeFiles(dir, files);
 
   const id = nextId(root, "recipe");
   appendRecord(root, {
@@ -301,12 +350,9 @@ export function freezeRecipe({ projectDir, name, workflow, blocks }) {
   });
   regenerateIndex(root);
 
-  // User tier — best-effort, like every other promotion.
+  // User tier — best-effort, like every other promotion. Only the files this freeze wrote go there.
   try {
-    const userDir = join(userRecipesDir(), slug);
-    mkdirSync(userDir, { recursive: true });
-    cpSync(dir, userDir, NON_ASCII_SAFE_DIR_COPY);
-    if (!briefSkeleton) rmSync(join(userDir, "brief-skeleton.md"), { force: true });
+    writeRecipeFiles(join(userRecipesDir(), slug), files);
   } catch {
     // The project-tier freeze already landed.
   }
@@ -355,7 +401,8 @@ export function listRecipes({ projectDir, workflow }) {
 export function useRecipe({ projectDir, name }) {
   const slug = slugifyRecipeName(name);
   const root = resolve(projectDir);
-  let dir = join(projectRecipesDir(root), slug);
+  refuseLinkedRecipeDir(root, slug);
+  const dir = join(projectRecipesDir(root), slug);
 
   if (!readRecipeJson(dir)) {
     const userDir = join(userRecipesDir(), slug);
@@ -365,8 +412,18 @@ export function useRecipe({ projectDir, name }) {
         `no recipe named "${slug}"${known.length ? ` (known: ${known.join(", ")})` : ""}`,
       );
     }
-    mkdirSync(dir, { recursive: true });
-    cpSync(userDir, dir, NON_ASCII_SAFE_DIR_COPY);
+    // Only regular recipe files come over; a link or anything else in the user-tier folder stays there.
+    const files = {};
+    for (const file of RECIPE_FILES) {
+      const content = readRegularFile(join(userDir, file));
+      if (content !== undefined) files[file] = content;
+    }
+    if (!files["recipe.json"]) {
+      throw new Error(
+        `${join(userDir, "recipe.json")} is not a regular file; nothing was imported`,
+      );
+    }
+    writeRecipeFiles(dir, files);
     const imported = readRecipeJson(dir);
     appendRecord(root, {
       id: nextId(root, "recipe"),
@@ -380,7 +437,12 @@ export function useRecipe({ projectDir, name }) {
   }
 
   const recipe = readRecipeJson(dir);
-  cpSync(join(dir, "frame.md"), join(root, "frame.md"));
+  const frameSpec = join(dir, "frame.md");
+  const frame = readRegularFile(frameSpec);
+  if (frame === undefined) {
+    throw new Error(`${frameSpec} is missing, a link or not a regular file; nothing was read`);
+  }
+  replaceFile(join(root, "frame.md"), frame);
   return {
     recipe,
     dir,

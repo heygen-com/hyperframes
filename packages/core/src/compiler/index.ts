@@ -104,6 +104,7 @@ export {
   isCompositionTooLargeError,
   MAX_COMPOSITION_HTML_BYTES,
   MAX_EXPANDED_COMPOSITION_BYTES,
+  MAX_EXPANDED_ELEMENTS,
   REMOTE_SCRIPTS,
   REMOTE_STYLESHEETS,
 } from "./compositionSizeLimit";
