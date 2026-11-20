@@ -1,6 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MEDIA_INPUT_ARGS, NOT_MEDIA, startsAsMediaPlaylist } from "./mediaExtensions.js";
 import { classifyMediaColor, probeAudioTrack, probeMediaMetadata } from "./mediaMetadata.js";
@@ -188,6 +190,34 @@ describe("probeMediaMetadata", () => {
     ).toMatchObject({ frameRate: 60, variableFrameRate: true });
   });
 
+  it("reads how a file's pixels stretch and turn, for the size it shows at", async () => {
+    const asked: string[][] = [];
+    const probe = (stream: object) =>
+      probeMediaMetadata("/tmp/clip.mp4", (_path, args) => {
+        asked.push(args);
+        return {
+          status: 0,
+          stdout: JSON.stringify({ streams: [{ codec_type: "video", ...stream }] }),
+          stderr: "",
+        };
+      });
+    const size = { width: 1440, height: 1080 };
+
+    expect(
+      (await probe({ ...size, sample_aspect_ratio: "4:3", side_data_list: [{ rotation: -90 }] }))
+        .source,
+    ).toMatchObject({ ...size, sampleAspectRatio: 4 / 3, rotation: -90 });
+    expect((await probe({ ...size, tags: { rotate: "90" } })).source).toMatchObject({
+      rotation: 90,
+    });
+    const plain = (await probe({ ...size, sample_aspect_ratio: "1:1" })).source;
+    expect(plain).not.toHaveProperty("sampleAspectRatio");
+    expect(plain).not.toHaveProperty("rotation");
+    expect(asked[0]?.join(" ")).toMatch(
+      /sample_aspect_ratio.*stream_tags=alpha_mode,rotate:stream_side_data_list:format/,
+    );
+  });
+
   it("lists every stream with its flags, for a failure report", async () => {
     const metadata = await probeMediaMetadata("/tmp/clip.mov", () => ({
       status: 0,
@@ -267,6 +297,25 @@ describe("probeMediaMetadata", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(!findFfBinary("ffmpeg") || !findFfBinary("ffprobe"))(
+    "stops ffprobe for a caller that has left",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-media-metadata-"));
+      const clip = join(dir, "clip.mp4");
+      try {
+        execFileSync(findFfBinary("ffmpeg")!, [
+          ...["-v", "error", "-f", "lavfi", "-i", "color=s=16x16:d=1", "-pix_fmt", "yuv420p", clip],
+        ]);
+        expect((await probeMediaMetadata(clip)).durationSeconds).toBeCloseTo(1, 0);
+        expect(await probeMediaMetadata(clip, undefined, AbortSignal.abort())).toMatchObject({
+          probeError: "ffprobe failed",
+        });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("supports an injected async runner without requiring local ffprobe", async () => {
     vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", "/definitely/missing/ffprobe");

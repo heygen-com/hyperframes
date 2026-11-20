@@ -408,6 +408,17 @@ describe("installEditingAgent", () => {
       { drafts: [{ handle: H, translate: { x: 1e6, y: 0 }, size: null }] },
       { drafts: [{ handle: H, translate: null, size: { width: -1, height: 2 } }] },
       { drafts: [{ handle: H, translate: null, size: { width: 1, height: 2, depth: 3 } }] },
+      { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1 } }] },
+      { drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1, route: "x" } }] },
+      {
+        drafts: [{ handle: H, translate: null, size: null, rotate: { angle: "1", route: "css" } }],
+      },
+      {
+        drafts: [{ handle: H, translate: null, size: null, rotate: { angle: 1e6, route: "css" } }],
+      },
+      {
+        drafts: [{ handle: H, translate: null, size: null, rotate: { angle: NaN, route: "gsap" } }],
+      },
     ].map((params, index) => [
       { v: 1, id: 150 + index, kind: "draft", params },
       150 + index,
@@ -540,7 +551,7 @@ describe("installEditingAgent", () => {
     Object.assign(frame, { gsap: { set: () => {} }, __timelines: { main: {} } });
     frame.__hfForceTimelineRebind = () => {};
     const port = connectedPort();
-    const params = { script, time: 0, sets: [], authored: [], timing: [] };
+    const params = { script, time: 0, sets: [], authored: [], timing: [], restore: [] };
 
     const extra = { ...params, keys: ["main"] };
     expect(await ask(port, { v: 1, id: 1, kind: "soft-reload", params: extra })).toMatchObject({

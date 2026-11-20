@@ -4,7 +4,11 @@ import { createElement, act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import { useDomEditPreviewSync } from "./useDomEditPreviewSync";
-import { announcePreviewDocumentLoaded, sceneSwapFor } from "../player/sceneSwap";
+import {
+  announcePreviewDocumentLoaded,
+  announcePreviewRestoredInPlace,
+  sceneSwapFor,
+} from "../player/sceneSwap";
 import type { DomEditSelection } from "../components/editor/domEditing";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -53,7 +57,11 @@ describe("useDomEditPreviewSync", () => {
     fetchSpy.mockRestore();
   });
 
-  it("re-resolves the selection when a sealed preview loads a new page", () => {
+  // fails without the fix: an undo the sealed frame restored in place left the selection as it was before.
+  it.each([
+    ["loads a new page", announcePreviewDocumentLoaded],
+    ["restores an undo in place", announcePreviewRestoredInPlace],
+  ])("re-resolves the selection when a sealed preview %s", (_label, announce) => {
     const iframe = document.createElement("iframe");
     Object.defineProperty(iframe, "contentDocument", { value: null });
     Object.defineProperty(iframe, "contentWindow", {
@@ -82,7 +90,7 @@ describe("useDomEditPreviewSync", () => {
     act(() => root.render(createElement(Harness)));
     refresh.mockClear();
 
-    act(() => announcePreviewDocumentLoaded(iframe));
+    act(() => announce(iframe));
     expect(refresh).toHaveBeenCalledWith(selection, iframe);
     act(() => root.unmount());
   });

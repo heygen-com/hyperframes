@@ -1,6 +1,13 @@
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { mfluxImageGenerate } from "./mflux-provider.mjs";
+
+const scratch = mkdtempSync(join(tmpdir(), "mflux-provider-test-"));
+process.env.TMPDIR = process.env.TEMP = process.env.TMP = scratch;
+after(() => rmSync(scratch, { recursive: true, force: true }));
 
 // 40GB clears the 32GB klein tier and the 8GB schnell tier below it; the 64GB
 // qwen tier stays out of reach. Two rungs is what makes demotion observable.

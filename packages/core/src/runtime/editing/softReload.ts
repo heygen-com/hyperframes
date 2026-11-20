@@ -5,6 +5,13 @@ import { GSAP_BASE_URL_META, motionPathPluginUrl } from "../../gsapCdn";
 import { applyAuthoredInlineOpacity, readStampedAuthoredOpacity } from "../../colorGrading";
 import { escapeCssString } from "../editingElement";
 import { applyAuthoredTiming } from "../../studioPreviewMark";
+import {
+  applyRestorePlan,
+  parseRestoreScopes,
+  planRestore,
+  type RestorePlan,
+  type RestoreScope,
+} from "./restoreAttributes";
 
 type TweenLike = {
   targets?: () => unknown[];
@@ -54,6 +61,7 @@ export interface SoftReloadInput {
   ) => string | null | undefined;
   /** A sealed timing edit's saved timing, which a reachable preview's commit already patched live. */
   timing?: SavedTiming;
+  restorePlan?: RestorePlan;
 }
 
 /** The attributes the runtime derives clip windows and the film's length from. */
@@ -488,6 +496,7 @@ export function softReloadFrame(
   };
 
   const doReload = () => {
+    if (input.restorePlan) applyRestorePlan(input.restorePlan);
     applyTimingPlan(timing);
     killTimelines(win, targetKeys);
     resetTargetStyles(win, targets, authored);
@@ -522,6 +531,8 @@ export type SoftReloadParams = {
   authored: Array<[string, string]>;
   /** Empty unless a timing edit: the saved file's timing, applied before the re-run's rebind. */
   timing: SavedTiming;
+  /** An undo's or redo's restored attributes, set as `restore-attributes` would before the re-run. */
+  restore: RestoreScope[];
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -566,18 +577,19 @@ export function parseSavedTiming(value: unknown): SavedTiming | null {
 }
 
 export function parseSoftReload(params: unknown): SoftReloadParams | null {
-  const fields = "authored,script,sets,time,timing";
+  const fields = "authored,restore,script,sets,time,timing";
   if (!isRecord(params) || Object.keys(params).sort().join() !== fields) return null;
   const { script, time, sets, authored } = params;
   const timing = parseSavedTiming(params.timing);
-  if (!timing) return null;
+  const restore = parseRestoreScopes(params.restore);
+  if (!timing || !restore) return null;
   if (!boundedString(script, MAX_SOFT_RELOAD_SCRIPT) || script.length === 0) return null;
   if (typeof time !== "number" || !Number.isFinite(time) || time < 0) return null;
   if (!Array.isArray(sets) || sets.length > MAX_SETS) return null;
   if (!Array.isArray(authored) || authored.length > MAX_AUTHORED) return null;
   const parsedSets = sets.map(parseSet);
   if (!parsedSets.every(Boolean) || !authored.every(isAuthoredEntry)) return null;
-  return { script, time, sets: parsedSets as StandaloneSet[], authored, timing };
+  return { script, time, sets: parsedSets as StandaloneSet[], authored, timing, restore };
 }
 
 /** The key Studio files an element's authored style under: its hf-id, else its id. */
@@ -590,11 +602,14 @@ export function authoredKey(el: Element): string | null {
 /** The frame re-running its own script: only elements of the saved file have authored styles to use. */
 export async function softReload(params: SoftReloadParams): Promise<{ result: SoftReloadResult }> {
   const styles = new Map(params.authored);
+  const restorePlan = planRestore(params.restore);
+  if (!restorePlan) return { result: "cannot-soft-reload" };
   const result = await softReloadFrame(window as SoftReloadWindow, document, {
     script: params.script,
     time: params.time,
     sets: params.sets,
     timing: params.timing,
+    restorePlan,
     authoredStyle: (el, file, ownFile) => {
       if (file !== ownFile) return undefined;
       const key = authoredKey(el);

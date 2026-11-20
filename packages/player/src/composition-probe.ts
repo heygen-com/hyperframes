@@ -91,10 +91,14 @@ export class CompositionProbe {
   private _interval: ReturnType<typeof setInterval> | null = null;
   private _runtimeInjected = false;
   private _runtimeScript: HTMLScriptElement | null = null;
-  private _failure: { document: Document | null } | null = null;
+  private _failure: { document: Document | null; deadline: boolean } | null = null;
 
   get failed(): boolean {
-    return this._failure !== null && this._failure.document === this._iframe.contentDocument;
+    if (this._failure === null) return false;
+    const unreadableFrameMayStillPost =
+      this._failure.deadline && this._iframe.contentDocument === null;
+    if (unreadableFrameMayStillPost) return false;
+    return this._failure.document === this._iframe.contentDocument;
   }
 
   constructor(
@@ -129,11 +133,12 @@ export class CompositionProbe {
           };
         }
       }
+      const deadline = outcome === null;
       outcome ??= this._deadlineOutcome(attempts, sealed);
       if (outcome) {
         this.stop();
         if (outcome.kind === "error") {
-          this._failure = { document: this._iframe.contentDocument };
+          this._failure = { document: this._iframe.contentDocument, deadline };
           this._callbacks.onError(outcome.message);
         } else this._callbacks.onReady(outcome.result);
       }
@@ -188,6 +193,10 @@ export class CompositionProbe {
     };
   }
 
+  latchUntilNextLoad(): void {
+    if (this._failure) this._failure.deadline = false;
+  }
+
   stop(): void {
     if (this._runtimeScript) {
       this._runtimeScript.onerror = null;
@@ -234,7 +243,7 @@ export class CompositionProbe {
       script.onerror = () => {
         if (this._runtimeScript !== script || this._iframe.contentDocument !== doc) return;
         this.stop();
-        this._failure = { document: doc };
+        this._failure = { document: doc, deadline: false };
         this._callbacks.onError("HyperFrames runtime failed to load from " + script.src);
       };
       (doc.head || doc.documentElement).appendChild(script);

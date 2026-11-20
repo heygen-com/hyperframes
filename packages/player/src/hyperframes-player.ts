@@ -1460,6 +1460,7 @@ class HyperframesPlayer extends HTMLElement {
   /** Every host-driven navigation or teardown: the old document's handshake, asset wait and
    *  data deliveries end here. A queued play is the caller's, so only its owners clear it. */
   private _abandonComposition(reason: string): void {
+    this.probe.latchUntilNextLoad();
     this.probe.stop();
     this._ready = false;
     this._readyDocument = null;

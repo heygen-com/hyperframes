@@ -16,7 +16,11 @@ import {
   restoreManualOffsetDragMembers,
 } from "./manualOffsetDrag";
 import { manualOffsetMoveRevert, elementLookRevert } from "./gestureUndoRevert";
-import { applyRotationDraft, restoreRotationDraft } from "./rotationDraft";
+import {
+  applyRotationDraft,
+  endRotationGestureIfCurrent,
+  restoreRotationDraft,
+} from "./rotationDraft";
 import {
   applyStudioBoxSize,
   applyStudioBoxSizeDraft,
@@ -431,7 +435,6 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
         endStudioManualEditGesture(sel.element, g.manualEditDragToken);
         return;
       }
-      // Hold the final angle while the commit lands.
       applyRotationDraft(sel.element, finalRotation.angle, g.plainRotation);
       const commit = { ...finalRotation, plain: g.plainRotation };
       const edit = beginStudioPendingEdit(elementLookRevert(sel.element, g.initialLook));
@@ -445,7 +448,7 @@ export function createDomEditOverlayGestureHandlers(opts: UseDomEditOverlayGestu
           )
             restoreRotation();
         })
-        .finally(() => endStudioManualEditGesture(sel.element, g.manualEditDragToken));
+        .finally(() => endRotationGestureIfCurrent(sel.element, g.manualEditDragToken));
       edit.settle(saved);
     } else if (g.kind === "drag") {
       // A release over another layer must keep this dragged layer selected.
