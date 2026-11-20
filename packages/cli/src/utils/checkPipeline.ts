@@ -670,10 +670,6 @@ function craftEnabled(driver: CheckAuditDriver, options: CheckOptions): boolean 
   );
 }
 
-// Selectors the layout audit flagged as hidden beneath an opaque element at
-// this sample time. The contrast audit leaves them out: the occluded finding
-// already covers the text, and a ratio sampled inside its box would measure
-// the cover, not anything a viewer sees.
 function occludedTextSelectors(issuesAtTime: AnchoredLayoutIssue[]): string[] {
   const selectors = new Set<string>();
   for (const issue of issuesAtTime) {
