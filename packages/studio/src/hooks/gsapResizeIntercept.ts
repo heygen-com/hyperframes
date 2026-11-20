@@ -183,7 +183,6 @@ function rectCentre(rect: DOMRect): { x: number; y: number } {
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
 }
 
-// fallow-ignore-next-line complexity
 type ScaleDrop = { base: Point; corrected: Point; residual: Point };
 type Point = { x: number; y: number };
 
@@ -256,6 +255,7 @@ async function correctOnFrame(
   return found;
 }
 
+// fallow-ignore-next-line complexity
 export async function tryGsapResizeIntercept(
   selection: DomEditSelection,
   size: { width: number; height: number },
