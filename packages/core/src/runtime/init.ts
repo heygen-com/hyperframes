@@ -2396,8 +2396,14 @@ export function initSandboxRuntimeModular(): void {
 
   const renderRootBackAtPlayheadAfterRenest = () => {
     const root = state.capturedTimeline;
-    const playhead = Math.max(0, state.currentTime || 0);
-    if (root && Math.abs(root.time() - playhead) > 1e-3) root.totalTime?.(playhead, true);
+    if (
+      typeof root?.time !== "function" ||
+      typeof root.totalTime !== "function" ||
+      typeof root.duration !== "function"
+    )
+      return;
+    const target = Math.min(Math.max(0, state.currentTime || 0), root.duration());
+    if (Math.abs(root.time() - target) > 1e-3) root.totalTime(target, true);
   };
   const reconcileTimeline = () => {
     if (state.tornDown) return;
