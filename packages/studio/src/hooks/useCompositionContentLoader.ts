@@ -1,5 +1,5 @@
 import { buildProjectApiPath } from "../utils/projectRouting";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { studioApiFetch } from "../utils/studioApiFetch";
 
 /**
@@ -20,9 +20,18 @@ export function useCompositionContentLoader({
   setActiveCompPath: (path: string | null) => void;
   showToast: (message: string, tone?: "error" | "info") => void;
 }) {
+  const loadIdRef = useRef(0);
+  useEffect(
+    () => () => {
+      loadIdRef.current += 1;
+    },
+    [projectId],
+  );
+
   return useCallback(
     (comp: string) => {
       if (!projectId) return;
+      const loadId = ++loadIdRef.current;
       setActiveCompPath(comp.endsWith(".html") ? comp : null);
       setEditingFile({ path: comp, content: null });
       studioApiFetch(buildProjectApiPath(projectId, `/files/${encodeURIComponent(comp)}`))
@@ -31,10 +40,12 @@ export function useCompositionContentLoader({
           return r.json();
         })
         .then((data: { content?: string }) => {
+          if (loadId !== loadIdRef.current) return;
           if (typeof data.content !== "string") throw new Error(`No content returned for ${comp}`);
           setEditingFile({ path: comp, content: data.content });
         })
         .catch((err) => {
+          if (loadId !== loadIdRef.current) return;
           showToast(err instanceof Error ? err.message : `Failed to load ${comp}`, "error");
         });
     },
