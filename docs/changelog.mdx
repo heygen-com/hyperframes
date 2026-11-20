@@ -9,6 +9,30 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
 {/* New release entries are prepended by `bun run changelog:draft <version> --write`. */}
 
 <Update
+  label="HyperFrames v0.9.73"
+  description="Released - 2026-11-20"
+  tags={["Release", "Core", "Studio Server", "Media Use"]}
+>
+Preview copies of long clips with sound finish again, so their footage no longer shows black. Pages with very large SVG style sheets compile quickly, and Studio asks before sharing.
+
+## Fixes
+
+- **Core:** Split a rule's selector list once when rewriting svg id references ([fbbbfe058](https://github.com/heygen-com/hyperframes/commit/fbbbfe0587bb27f6738b7a697c11914caaa9a39c), [#8275](https://github.com/heygen-com/hyperframes/pull/8275)).
+- **Studio Server:** Preview copies of long clips with sound finish again ([07928702f](https://github.com/heygen-com/hyperframes/commit/07928702f8b3e3f59c75594e759df84443896890), [#8253](https://github.com/heygen-com/hyperframes/pull/8253)).
+- **Media Use:** Remove only the temp folders media-use made, and never fail on cleanup ([e16c681dc](https://github.com/heygen-com/hyperframes/commit/e16c681dc07d360a9cf42e2ab77d827196a29883), [#8267](https://github.com/heygen-com/hyperframes/pull/8267)).
+- **Core:** Check svg id scopes against excluded roots in one ancestor walk ([026bff07d](https://github.com/heygen-com/hyperframes/commit/026bff07d60edecbbc33045490511d1d948e6950), [#8273](https://github.com/heygen-com/hyperframes/pull/8273)).
+- **Share:** Ask before sharing from Studio and bind each action to the confirmed review ([2c3427089](https://github.com/heygen-com/hyperframes/commit/2c3427089cb0afd262c77f1d07617daa10b57662), [#8268](https://github.com/heygen-com/hyperframes/pull/8268)).
+- **Studio:** A video with no size of its own keeps its file's size while a lighter copy plays ([ce0932e04](https://github.com/heygen-com/hyperframes/commit/ce0932e047dbea6de40a68d16db9d2fa6cd6b66c), [#8233](https://github.com/heygen-com/hyperframes/pull/8233)).
+- **Studio:** A sealed preview turns a rotated element live and saves the turn on its own route ([fdc7d676c](https://github.com/heygen-com/hyperframes/commit/fdc7d676c49bfc6e084e46f8ae0e08aa3e019cb5), [#8271](https://github.com/heygen-com/hyperframes/pull/8271)).
+- **Studio:** A sealed undo or redo of a keyframe edit re-runs in place instead of reloading ([4fd96e353](https://github.com/heygen-com/hyperframes/commit/4fd96e3533365e89ca1700cf9d1ab5501ea93a08), [#8272](https://github.com/heygen-com/hyperframes/pull/8272)).
+- **Studio:** A sealed preview's timeline names each file by its project path ([a8884522f](https://github.com/heygen-com/hyperframes/commit/a8884522f439ffea720890125a4d235e3bb434f3), [#8213](https://github.com/heygen-com/hyperframes/pull/8213)).
+- **Studio:** A sealed preview's failed reload says only what the preview reported ([f13969f13](https://github.com/heygen-com/hyperframes/commit/f13969f13fd7748160d250d6dff769029dcbbacc), [#8194](https://github.com/heygen-com/hyperframes/pull/8194)).
+- **Engine:** Bound the seek-index rebuild's temp copy ([fab75fb91](https://github.com/heygen-com/hyperframes/commit/fab75fb9160d8bdf88c62d1713a0ccedd855364d), [#8269](https://github.com/heygen-com/hyperframes/pull/8269)).
+
+[View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.72...v0.9.73).
+</Update>
+
+<Update
   label="HyperFrames v0.9.72"
   description="Released - 2026-11-20"
   tags={["Release", "Engine", "Studio", "Core"]}
