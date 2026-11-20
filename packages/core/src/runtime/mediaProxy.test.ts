@@ -1530,6 +1530,54 @@ describe("preview quality: lighter copies of heavy files", () => {
     expect(pinnedSize(el)).toBe("width: 3840px; height: 2160px; flex-shrink: 0;");
   });
 
+  // fails without the fix: a throw while waiting for the copy skipped cleanup; a held video never got its src back.
+  it("gives a held video its file back when waiting for its copy throws", async () => {
+    vi.useFakeTimers();
+    const broken = {
+      status: 202,
+      ok: false,
+      body: null,
+      headers: {
+        get: () => {
+          throw new Error("bad header");
+        },
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => broken),
+    );
+    const { video, setPreviewQuality, maybeProxyProactively } = await stage({
+      "/video.mp4": HEAVY,
+    });
+    setPreviewQuality(0.25);
+    const el = laidOut(video() as HTMLVideoElement, 300, 150);
+    const media = await import("./media");
+    media.syncRuntimeMedia({
+      clips: [
+        {
+          el,
+          start: 0,
+          mediaStart: 0,
+          duration: 10,
+          end: 10,
+          volume: null,
+          playbackRate: 1,
+          loop: false,
+          sourceDuration: null,
+        },
+      ],
+      timeSeconds: 1,
+      playing: false,
+      playbackRate: 1,
+      getCompositionDuration: () => 0,
+    });
+    maybeProxyProactively(el);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(el.getAttribute("src")).toBe("/video.mp4");
+    expect(el.hasAttribute("poster")).toBe(false);
+  });
+
   it("keeps the file of a video that shows it at its own size when it fits", async () => {
     const { video, setPreviewQuality, maybeProxyProactively } = await stage({
       "/video.mp4": HEAVY,
