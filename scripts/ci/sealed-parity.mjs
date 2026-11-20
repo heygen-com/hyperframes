@@ -23,21 +23,27 @@ export const DEFAULT_READERS = [
 ];
 
 export function readManifest(text) {
-  const manifest = JSON.parse(text);
+  const rows = JSON.parse(text).rows ?? [];
+  const seen = new Set();
+  const problems = rows.flatMap((row) => {
+    const repeated = seen.has(row.id) ? [`row ${row.id} is listed twice`] : [];
+    seen.add(row.id);
+    return [...rowProblems(row), ...repeated];
+  });
+  return { rows, problems };
+}
+
+function rowProblems(row) {
+  const own =
+    row.id && row.behaviour ? [] : [`a row needs an id and a behaviour: ${JSON.stringify(row)}`];
+  return [...own, ...(row.tests ?? []).flatMap((test) => testProblems(row.id, test))];
+}
+
+function testProblems(id, test) {
   const problems = [];
-  const ids = new Set();
-  for (const row of manifest.rows ?? []) {
-    if (!row.id || !row.behaviour)
-      problems.push(`a row needs an id and a behaviour: ${JSON.stringify(row)}`);
-    if (ids.has(row.id)) problems.push(`row ${row.id} is listed twice`);
-    ids.add(row.id);
-    for (const test of row.tests ?? []) {
-      if (test.kind !== "vitest") problems.push(`row ${row.id}: unknown test kind ${test.kind}`);
-      if (!test.package || !test.file)
-        problems.push(`row ${row.id}: a test needs a package and a file`);
-    }
-  }
-  return { rows: manifest.rows ?? [], problems };
+  if (test.kind !== "vitest") problems.push(`row ${id}: unknown test kind ${test.kind}`);
+  if (!test.package || !test.file) problems.push(`row ${id}: a test needs a package and a file`);
+  return problems;
 }
 
 export function checkFiles(rows, exists) {
@@ -142,61 +148,68 @@ function readRepo(path) {
   return readFileSync(join(REPO, path), "utf8");
 }
 
+/** Each package's listed test files, once each: one test runner call per package. */
+export function filesByPackage(rows) {
+  const byPackage = new Map();
+  for (const test of rows.flatMap((row) => row.tests ?? []))
+    byPackage.set(test.package, new Set([...(byPackage.get(test.package) ?? []), test.file]));
+  return byPackage;
+}
+
+function readJson(path) {
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+function report(lines, stream, ok) {
+  for (const line of lines) stream(line);
+  return ok ? 0 : 1;
+}
+
+function check(rows, problems) {
+  const all = [...problems, ...checkFiles(rows, (p) => existsSync(join(REPO, p)))];
+  console.log(
+    `${rows.length} behaviours, ${rows.filter((r) => !r.tests?.length).length} without a test yet`,
+  );
+  return report(all, console.error, all.length === 0);
+}
+
+function runMode(rows, [mode, out]) {
+  if (!MODES.includes(mode)) throw new Error(`mode must be one of ${MODES.join(", ")}`);
+  const results = { testResults: [] };
+  for (const [pkg, files] of filesByPackage(rows)) {
+    const json = join(tmpdir(), `sealed-parity-${pkg}-${mode}.json`);
+    rmSync(json, { force: true });
+    spawnSync("bunx", ["vitest", "run", ...files, "--reporter=json", `--outputFile=${json}`], {
+      cwd: join(REPO, "packages", pkg),
+      env: { ...process.env, HF_PARITY_MODE: mode },
+      stdio: "inherit",
+    });
+    if (existsSync(json)) results.testResults.push(...readJson(json).testResults);
+  }
+  writeFileSync(out, JSON.stringify(verdicts(rows, results), null, 2));
+  return 0;
+}
+
+function compareModes(rows, [unsealed, sealed, out]) {
+  const parity = compare(rows, readJson(unsealed), readJson(sealed));
+  writeFileSync(out, JSON.stringify(parity, null, 2));
+  const unran = unranTests(parity);
+  return report(unran, console.error, unran.length === 0);
+}
+
+function gateDefaults(_rows, [parityFile]) {
+  const result = gate(readJson(parityFile), sealedDefaults(readRepo));
+  return report(result.lines, console.log, result.ok);
+}
+
+const COMMANDS = { run: runMode, compare: compareModes, gate: gateDefaults };
+
 function main([command, ...args]) {
   const { rows, problems } = readManifest(readRepo(MANIFEST));
-  if (command === "check") {
-    const all = [...problems, ...checkFiles(rows, (p) => existsSync(join(REPO, p)))];
-    for (const line of all) console.error(line);
-    console.log(
-      `${rows.length} behaviours, ${rows.filter((r) => !r.tests?.length).length} without a test yet`,
-    );
-    return all.length === 0 ? 0 : 1;
-  }
-  if (command === "run") {
-    const [mode, out] = args;
-    if (!MODES.includes(mode)) throw new Error(`mode must be one of ${MODES.join(", ")}`);
-    const byPackage = new Map();
-    for (const row of rows)
-      for (const t of row.tests ?? [])
-        byPackage.set(t.package, [...(byPackage.get(t.package) ?? []), t.file]);
-    const report = { testResults: [] };
-    for (const [pkg, files] of byPackage) {
-      const json = join(tmpdir(), `sealed-parity-${pkg}-${mode}.json`);
-      rmSync(json, { force: true });
-      spawnSync(
-        "bunx",
-        ["vitest", "run", ...new Set(files), "--reporter=json", `--outputFile=${json}`],
-        {
-          cwd: join(REPO, "packages", pkg),
-          env: { ...process.env, HF_PARITY_MODE: mode },
-          stdio: "inherit",
-        },
-      );
-      if (existsSync(json))
-        report.testResults.push(...JSON.parse(readFileSync(json, "utf8")).testResults);
-    }
-    writeFileSync(out, JSON.stringify(verdicts(rows, report), null, 2));
-    return 0;
-  }
-  if (command === "compare") {
-    const [unsealed, sealed, out] = args;
-    const parity = compare(
-      rows,
-      JSON.parse(readFileSync(unsealed, "utf8")),
-      JSON.parse(readFileSync(sealed, "utf8")),
-    );
-    writeFileSync(out, JSON.stringify(parity, null, 2));
-    const unran = unranTests(parity);
-    for (const line of unran) console.error(line);
-    return unran.length === 0 ? 0 : 1;
-  }
-  if (command === "gate") {
-    const result = gate(JSON.parse(readFileSync(args[0], "utf8")), sealedDefaults(readRepo));
-    for (const line of result.lines) console.log(line);
-    return result.ok ? 0 : 1;
-  }
+  if (command === "check") return check(rows, problems);
+  if (Object.hasOwn(COMMANDS, command)) return COMMANDS[command](rows, args);
   console.error(
-    "usage: sealed-parity.mjs check | run <mode> <out.json> | compare <unsealed.json> <sealed.json> <out.json> | gate <parity.json>",
+    "usage: sealed-parity.mjs check | run <mode> <out> | compare <unsealed> <sealed> <out> | gate <parity>",
   );
   return 2;
 }

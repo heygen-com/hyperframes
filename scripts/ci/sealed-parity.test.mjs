@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   compare,
   DEFAULT_READERS,
+  filesByPackage,
   gate,
   readManifest,
   sealedDefaults,
@@ -99,4 +100,18 @@ test("the gate refuses a sealed Studio default while any behaviour is not at par
 test("a default the gate can no longer read fails it", () => {
   const defaults = sealedDefaults((path) => (path === STUDIO ? "export const X = 1;" : read(path)));
   assert.equal(gate([], defaults).ok, false);
+});
+
+test("each package's test files run once, in one call per package", () => {
+  const twice = [
+    { id: "a", behaviour: "x", tests: [select, { ...select, name: "other" }] },
+    { id: "b", behaviour: "y", tests: [{ ...select, package: "player", file: "src/p.test.ts" }] },
+  ];
+  assert.deepEqual(
+    [...filesByPackage(twice)].map(([pkg, files]) => [pkg, [...files]]),
+    [
+      ["studio", ["src/a.test.ts"]],
+      ["player", ["src/p.test.ts"]],
+    ],
+  );
 });
