@@ -346,6 +346,35 @@ describe("useInlineTextEdit", () => {
       act(() => root.unmount());
     });
 
+    // Mid-composition the key finishes or cancels the IME's text (a Japanese conversion, a Korean
+    // syllable), so the edit stays open; Safari only marks that keydown with keyCode 229.
+    it.each([
+      { key: "Enter", isComposing: true, keyCode: 13 },
+      { key: "Escape", isComposing: true, keyCode: 27 },
+      { key: "Enter", isComposing: false, keyCode: 229 },
+    ])(
+      "leaves $key to an IME that is composing (keyCode $keyCode)",
+      ({ key, isComposing, keyCode }) => {
+        const element = heading();
+        const { controls, root, onCommit } = mount();
+        act(() => {
+          controls().start(element);
+        });
+
+        act(() => {
+          const event = new KeyboardEvent("keydown", { key, isComposing, bubbles: true });
+          Object.defineProperty(event, "keyCode", { value: keyCode });
+          element.dispatchEvent(event);
+        });
+
+        expect(onCommit).not.toHaveBeenCalled();
+        expect(controls().session).not.toBeNull();
+        press(element, "Enter");
+        expect(onCommit).toHaveBeenCalledTimes(1);
+        act(() => root.unmount());
+      },
+    );
+
     it("commits on Escape", () => {
       const element = heading("Original");
       const { controls, root, onCommit } = mount();

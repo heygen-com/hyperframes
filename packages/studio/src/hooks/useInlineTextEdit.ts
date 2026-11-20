@@ -7,6 +7,7 @@ import {
   endStudioManualEditGesture,
   countStudioManualEditSave,
 } from "../components/editor/manualEditsDom";
+import { isImeComposing } from "../utils/imeComposition";
 
 /**
  * Editing an element's text where it sits, in the composition itself.
@@ -211,6 +212,7 @@ export function useInlineTextEdit({
     if (!element) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isImeComposing(event)) return;
       // Shift+Enter is a line break in a multi-line element, and is left alone.
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();

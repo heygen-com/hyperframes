@@ -8,6 +8,7 @@ import type { SlideRef, SlideHotspot, SlideSequence } from "@hyperframes/core/sl
 import type { DomEditSelection } from "../editor/domEditing";
 import type { SceneInfo } from "./slideshowPanelHelpers";
 import { generateId } from "../../utils/generateId";
+import { isImeComposing } from "../../utils/imeComposition";
 
 // ── Section header (accordion toggle) ────────────────────────────────────
 
@@ -252,7 +253,7 @@ export function BranchTree({
           value={newLabel}
           onChange={(e) => setNewLabel(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") handleCreate();
+            if (e.key === "Enter" && !isImeComposing(e)) handleCreate();
           }}
           aria-label="New branch sequence name"
         />
@@ -330,6 +331,7 @@ function BranchItem({
             onChange={(e) => setDraft(e.target.value)}
             onBlur={commitRename}
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === "Enter") commitRename();
               if (e.key === "Escape") setEditing(false);
             }}

@@ -19,6 +19,7 @@ import {
   DIM,
 } from "./FileTreeIcons";
 import { menuClasses } from "../ui/menuStyle";
+import { isImeComposing } from "../../utils/imeComposition";
 
 export type { ContextMenuState, InlineInputState };
 export { buildTree, sortChildren, isActiveInSubtree } from "./FileTreeIcons";
@@ -236,6 +237,7 @@ export function InlineInput({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (isImeComposing(e)) return;
     if (e.key === "Enter") {
       e.preventDefault();
       const trimmed = value.trim();
