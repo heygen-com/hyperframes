@@ -462,6 +462,12 @@ function readAuthoredStyles(
 
 // Re-runs the script in place of the live one registering the same `__timelines` keys, tearing down
 // only those timelines. A promise only while it waits for the MotionPath plugin.
+/** A seek made while the re-run waited for the MotionPath plugin is newer than the time it was sent at. */
+function seekedWhileWaiting(win: SoftReloadWindow, before: number | undefined): number | null {
+  const now = win.__player?.getTime?.();
+  return now !== undefined && now !== before ? now : null;
+}
+
 export function softReloadFrame(
   win: SoftReloadWindow,
   doc: Document,
@@ -472,6 +478,7 @@ export function softReloadFrame(
   if (!scope) return "cannot-soft-reload";
   const { targetKeys, staleScripts } = scope;
   const currentTime = input.time ?? win.__player?.getTime?.() ?? 0;
+  const timeAtStart = win.__player?.getTime?.();
 
   const targets = collectResetTargets(win, doc, targetKeys, input.sets);
   const ownFile = compositionFile(doc, targetKeys);
@@ -494,7 +501,10 @@ export function softReloadFrame(
     // A script that builds DOM builds it again on every run; only a full load starts from the file.
     // Not seen: text-only writes, nodes put in the head or a shadow root, and nodes added later.
     builtDom = doc.body.querySelectorAll("*").length > before;
-    finalizeSoftReload(win, currentTime);
+    finalizeSoftReload(
+      win,
+      pending ? (seekedWhileWaiting(win, timeAtStart) ?? currentTime) : currentTime,
+    );
     deferred?.(builtDom ? "cannot-soft-reload" : "applied");
   };
 
@@ -629,15 +639,16 @@ export function parseRestoreAttributesRerun(params: unknown): RestoreAttributesP
   if (!isRecord(params) || !("rerun" in params)) return parseRestoreAttributes(params);
   const { rerun, ...rest } = params;
   const restore = parseRestoreAttributes(rest);
-  if (!restore || !isRecord(rerun)) return null;
-  if (Object.keys(rerun).sort().join() !== "authored,script,sets,timing") return null;
+  if (!restore) return null;
+  const run = parsedRerun(rerun, restore);
+  return run ? { ...restore, rerun: run } : restore;
+}
+
+function parsedRerun(rerun: unknown, restore: RestoreAttributesParams): SoftReloadRerun | null {
+  if (!isRecord(rerun) || Object.keys(rerun).sort().join() !== "authored,script,sets,timing")
+    return null;
   const run = parseSoftReload({ ...rerun, time: restore.time, restore: restore.scopes });
-  return (
-    run && {
-      ...restore,
-      rerun: { script: run.script, sets: run.sets, authored: run.authored, timing: run.timing },
-    }
-  );
+  return run && { script: run.script, sets: run.sets, authored: run.authored, timing: run.timing };
 }
 
 /** An element GSAP has parsed is restored by re-running the script, in the same request that sent it. */

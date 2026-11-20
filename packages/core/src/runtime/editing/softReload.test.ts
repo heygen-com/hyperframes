@@ -51,8 +51,11 @@ afterEach(() => {
     "__hfForceTimelineRebind",
     "__player",
     "__hfStudioSeekReapplyStarted",
+    "MotionPathPlugin",
+    "__hfMotionPathPluginLoading",
   ])
     delete win[key];
+  document.head.innerHTML = "";
   delete (document.body as Partial<HTMLElement>).appendChild;
   killed.mockReset();
 });
@@ -113,6 +116,19 @@ describe("soft-reload", () => {
     });
     expect(killed).not.toHaveBeenCalled();
   });
+});
+
+// fails without the fix: the re-run's finish seeked back to the time it was sent at, rewinding a newer scrub.
+it("keeps a seek made while the re-run waits for the MotionPath plugin", async () => {
+  const seeks = preview(`<div data-composition-id="main"><div id="a"></div></div>`);
+  let now = 1.5;
+  win.__player = { seek: (t: number) => seeks.push((now = t)), getTime: () => now };
+  const done = softReload(params({ script: `${SCRIPT} var path = { motionPath: {} };` }));
+  (win.__player as { seek: (t: number) => void }).seek(4);
+  win.MotionPathPlugin = {};
+  document.head.querySelector<HTMLScriptElement>("script[src]")!.onload!(new Event("load"));
+  expect(await done).toEqual({ result: "applied" });
+  expect(seeks.at(-1)).toBe(4);
 });
 
 const restoreOf = (key: string, attributes: Array<[string, string]>) => ({
@@ -223,12 +239,22 @@ describe("restore-attributes with a re-run", () => {
     expect(parseRestoreAttributes(request(RERUN))).toBeNull();
   });
 
+  // fails without the fix: an unrelated style over the re-run's limit refused a restore that needed no re-run.
   it.each([
     ["an empty script", { ...RERUN, script: "" }],
     ["a field soft-reload does not take", { ...RERUN, restore: [] }],
+    ["an authored style over its limit", { ...RERUN, authored: [["#big", "x".repeat(16_385)]] }],
     ["no object", "rerun"],
-  ])("refuses a re-run with %s", (_name, rerun) => {
-    expect(parseRestoreAttributesRerun({ ...request(), rerun })).toBeNull();
+  ])("drops a re-run with %s and keeps the restore", (_name, rerun) => {
+    expect(parseRestoreAttributesRerun({ ...request(), rerun })).toEqual(request());
+  });
+
+  it("sets the attributes in place when the re-run it carried was dropped and none is needed", async () => {
+    preview(MARKUP);
+    const big = { ...RERUN, authored: [["#big", "x".repeat(16_385)]] };
+    const params = parseRestoreAttributesRerun(request(big))!;
+    expect(await restoreAttributesOrRerun(params)).toEqual({ applied: true });
+    expect(document.getElementById("a")!.getAttribute("style")).toBe("left: 0px");
   });
 });
 
