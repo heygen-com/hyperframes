@@ -133,7 +133,37 @@ function withToken(entry: AttributeAliases, id: string, fold: Fold, token: strin
   return tokens.get(token) ?? [];
 }
 
+interface Lookup {
+  entry: AttributeAliases;
+  value: string;
+  fold: Fold;
+  id: (lookup: string) => string;
+  chargeScan?: (chars: number) => void;
+}
+
+const starts = ({ entry, fold, id }: Lookup) => sortedKeys(entry, id("^="), fold);
+
 // Each lookup but `*=` costs only its matches, which are charged as alternatives; `*=` charges its scan.
+const lookups: Record<ParsedAttribute["operator"], (lookup: Lookup) => number[]> = {
+  "=": (lookup) => keysFrom(starts(lookup), lookup.value, true),
+  "^=": (lookup) => keysFrom(starts(lookup), lookup.value),
+  "$=": ({ entry, value, fold, id }) =>
+    keysFrom(
+      sortedKeys(entry, id("$="), (text) => reversed(fold(text))),
+      reversed(value),
+    ),
+  "|=": (lookup) => [
+    ...keysFrom(starts(lookup), lookup.value, true),
+    ...keysFrom(starts(lookup), `${lookup.value}-`),
+  ],
+  "~=": ({ entry, value, fold, id }) => withToken(entry, id("~="), fold, value),
+  "*=": ({ entry, value, fold, chargeScan }) =>
+    entry.all.flatMap((alias, at) => {
+      chargeScan?.(alias.before.length);
+      return fold(alias.before).includes(value) ? [at] : [];
+    }),
+};
+
 function positionsFor(
   entry: AttributeAliases,
   { operator, value, flag }: ParsedAttribute,
@@ -142,29 +172,8 @@ function positionsFor(
   if (!value && operator !== "=" && operator !== "|=") return [];
   const folds = flag?.toLowerCase() === "i";
   const fold = folds ? lower : same;
-  const v = fold(value);
   const id = (lookup: string) => (folds ? `${lookup} i` : lookup);
-  const starts = () => sortedKeys(entry, id("^="), fold);
-  switch (operator) {
-    case "=":
-      return keysFrom(starts(), v, true);
-    case "^=":
-      return keysFrom(starts(), v);
-    case "$=":
-      return keysFrom(
-        sortedKeys(entry, id("$="), (text) => reversed(fold(text))),
-        reversed(v),
-      );
-    case "|=":
-      return [...keysFrom(starts(), v, true), ...keysFrom(starts(), `${v}-`)];
-    case "~=":
-      return withToken(entry, id("~="), fold, v);
-    case "*=":
-      return entry.all.flatMap((alias, at) => {
-        chargeScan?.(alias.before.length);
-        return fold(alias.before).includes(v) ? [at] : [];
-      });
-  }
+  return lookups[operator]({ entry, value: fold(value), fold, id, chargeScan });
 }
 
 function aliasesFor(
