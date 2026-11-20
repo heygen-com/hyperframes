@@ -20,6 +20,7 @@ import {
   assertCompositionFileSize,
   CompositionExpansionBudget,
 } from "@hyperframes/core/compiler/composition-size-limit";
+import { TIMELINE_REGISTRY_SCRIPT } from "./authoredCode.js";
 import { htmlHasGsapCore, insertGsapCoreBeforeHeadPlugin } from "./gsapCoreScript.js";
 import { withRootPathsRelative } from "./rootPaths.js";
 
@@ -424,7 +425,7 @@ ${htmlOpen}
 ${headContent}
 </head>
 ${bodyOpen}
-<script>window.__timelines=window.__timelines||{};</script>
+${TIMELINE_REGISTRY_SCRIPT}
 ${rewrittenContent}
 </body>
 </html>`;

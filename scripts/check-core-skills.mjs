@@ -18,7 +18,8 @@ export const CORE_SKILLS = {
   // +64 B for the lane pointer to format.md.
   hyperframes: 7712,
   // +256 B for the `_meta.updateNotice` line: the agent relays it, the person updates.
-  "hyperframes-cli": 7776,
+  // +256 B for the unattended pointer: a script or CI job with no TTY pins the release.
+  "hyperframes-cli": 8032,
   "hyperframes-registry": 5472,
   "media-use": 5472,
   figma: 7520,
