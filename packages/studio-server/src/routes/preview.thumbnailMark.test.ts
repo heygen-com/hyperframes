@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { findStartTags } from "@hyperframes/core/compiler/html-document";
 import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 import {
   THUMBNAIL_NO_AUTHORED_CODE_META,
@@ -55,16 +56,21 @@ function servedPage(files: Record<string, string>, capture = true): string {
   );
 }
 
-/** Opens the served page far enough for the rule: its metas, with the runtime ready and no timeline registered. */
+/** Opens the served page far enough for the rule: its named metas, the runtime ready, no timeline registered. */
 function readyWithoutTimeline(html: string): boolean {
-  const served = new DOMParser().parseFromString(html, "text/html");
-  document.head.innerHTML = [...served.querySelectorAll("meta")].map((m) => m.outerHTML).join("");
+  for (const start of findStartTags(html, "meta")) {
+    const name = /\sname="([^"]*)"/.exec(html.slice(start, html.indexOf(">", start)))?.[1];
+    if (name === undefined) continue;
+    const meta = document.createElement("meta");
+    meta.name = name;
+    document.head.append(meta);
+  }
   Reflect.set(window, "__renderReady", true);
   return thumbnailSeekReadyInBrowser();
 }
 
 afterEach(() => {
-  document.head.innerHTML = "";
+  document.head.replaceChildren();
   Reflect.deleteProperty(window, "__renderReady");
 });
 

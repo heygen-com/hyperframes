@@ -22,6 +22,7 @@ describe("hasAuthoredCode", () => {
   it.each([
     ["an inline script", page("", `${still}<script>setTimeout(register, 400)</script>`)],
     ["an upper-case script tag", page("", `${still}<SCRIPT>setTimeout(register, 400)</SCRIPT>`)],
+    ["a script inside an inline SVG", page("", `${still}<svg><script>register()</script></svg>`)],
     [
       "a script held until fonts load",
       page("", `${still}<script type="text/hf-after-fonts">go()</script>`),
