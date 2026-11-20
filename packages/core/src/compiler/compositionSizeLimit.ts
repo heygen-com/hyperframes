@@ -38,7 +38,6 @@ class CompositionTooLargeError extends Error {
   }
 }
 
-/** True for a size-limit refusal, matched by code so a copy of this module bundled elsewhere matches too. */
 export function isCompositionTooLargeError(error: unknown): error is Error {
   return error instanceof Error && "code" in error && error.code === COMPOSITION_TOO_LARGE;
 }

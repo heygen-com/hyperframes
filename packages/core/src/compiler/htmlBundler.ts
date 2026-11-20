@@ -1207,7 +1207,6 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     host.hasAttribute("data-composition-src"),
   );
   const sceneSources = new Map<string, string | null>();
-  // The render's limits: a few small files that mount each other many times are refused, not assembled.
   const budget = new CompositionExpansionBudget();
   const subCompResult = inlineSubCompositions(document, subCompositionHosts, {
     resolveHtml: (srcPath: string) => {

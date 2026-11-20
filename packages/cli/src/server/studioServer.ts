@@ -612,7 +612,6 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         );
         return html;
       } catch (err) {
-        // The preview route shows this refusal instead of the raw page, which would expand the same mounts.
         const { isCompositionTooLargeError } = await import("@hyperframes/core/compiler");
         if (isCompositionTooLargeError(err)) throw err;
         console.error("[studio] Bundle failed:", err);

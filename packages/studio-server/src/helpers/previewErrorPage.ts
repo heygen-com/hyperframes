@@ -6,7 +6,6 @@ import {
 const htmlText = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** A page that shows `message` and hands it to the player as the preview's error. */
 export function previewRefusalPage(message: string): string {
   const script = JSON.stringify(message).replace(/</g, "\\u003c");
   return `<!doctype html><meta charset="utf-8"><script>window.${STUDIO_PREVIEW_ERRORS}=[${script}]</script><p>${htmlText(message)}</p>`;

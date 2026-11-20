@@ -584,7 +584,6 @@ export function registerPreviewRoutes(
       }
       return bundled;
     } catch (error) {
-      // Over a size limit, the raw page would only expand the same mounts in the browser instead.
       if (isCompositionTooLarge(error)) return previewRefusalPage(error.message);
       // Re-read disk on bundle failure so we serve the latest file content,
       // not the pre-request snapshot that may have been saved over.
