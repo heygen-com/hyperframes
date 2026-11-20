@@ -912,6 +912,21 @@ describe("a copy sized to how large the video shows", () => {
   const boxOf = (el: HTMLMediaElement) =>
     new URL(el.src, document.baseURI).searchParams.get("hf-proxy-box");
 
+  // fails without the fix: a framed runtime nobody reset reported its removed copy (copies: null) into a later test.
+  it("keeps a framed runtime's copy report out of the next test", async () => {
+    vi.useFakeTimers();
+    const { el } = await framedVideo(1080, 1920);
+    const copies = await import("./previewCopies");
+    // A copy of a video the browser cannot play is reported at every quality.
+    copies.noteCopy(el, "making", null, false);
+    await vi.advanceTimersByTimeAsync(5000);
+    cleanUp();
+
+    copies.noteCopy(el, "ready", null, false);
+    const reports = postRuntimeMessageMock.mock.calls.filter(([m]) => m.type === "preview-copies");
+    expect(reports).toEqual([]);
+  });
+
   it("names the lower levels at which a video would get a lighter copy", async () => {
     const { setProxyDisplayScale } = await framedVideo(1080, 1920);
     const { levelsWithLighterCopies } = await import("./mediaProxy");
