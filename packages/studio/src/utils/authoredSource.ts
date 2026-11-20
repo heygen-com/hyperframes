@@ -79,7 +79,7 @@ export function savedTiming(html: string): SavedTiming {
   return timing;
 }
 
-export function findAuthoredElementById(doc: Document, live: Element): Element | null {
+function findAuthoredElementById(doc: Document, live: Element): Element | null {
   return live.id ? findByAttribute(doc, "id", live.id) : null;
 }
 
@@ -110,7 +110,7 @@ function livePathsOf(live: Element): Set<string> {
 
 // The preview inlines a sub-composition with its relative asset paths rebased to the project
 // root (rewriteAssetPath in @hyperframes/parsers, which is not browser-safe); copy does the same.
-export function authoredMarkup(authored: Element, live: Element, sourceFile: string): string {
+function authoredMarkup(authored: Element, live: Element, sourceFile: string): string {
   if (!sourceFile.includes("/")) return authored.outerHTML;
   const livePaths = livePathsOf(live);
   const rebase = (path: string): string => {
