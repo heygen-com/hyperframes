@@ -1,6 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MEDIA_INPUT_ARGS, NOT_MEDIA, startsAsMediaPlaylist } from "./mediaExtensions.js";
 import { classifyMediaColor, probeAudioTrack, probeMediaMetadata } from "./mediaMetadata.js";
@@ -267,6 +269,25 @@ describe("probeMediaMetadata", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it.skipIf(!findFfBinary("ffmpeg") || !findFfBinary("ffprobe"))(
+    "stops ffprobe for a caller that has left",
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-media-metadata-"));
+      const clip = join(dir, "clip.mp4");
+      try {
+        execFileSync(findFfBinary("ffmpeg")!, [
+          ...["-v", "error", "-f", "lavfi", "-i", "color=s=16x16:d=1", "-pix_fmt", "yuv420p", clip],
+        ]);
+        expect((await probeMediaMetadata(clip)).durationSeconds).toBeCloseTo(1, 0);
+        expect(await probeMediaMetadata(clip, undefined, AbortSignal.abort())).toMatchObject({
+          probeError: "ffprobe failed",
+        });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("supports an injected async runner without requiring local ffprobe", async () => {
     vi.stubEnv("HYPERFRAMES_FFPROBE_PATH", "/definitely/missing/ffprobe");

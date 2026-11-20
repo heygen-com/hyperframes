@@ -606,16 +606,14 @@ async function encodeInChunks(
   concat: (listPath: string, target: string) => Promise<void>,
   signal: AbortSignal,
   gate: PieceGate,
+  isWhole: (piece: string, range: ChunkRange) => Promise<boolean>,
   onDone: (doneSeconds: number) => void = () => {},
 ): Promise<void> {
   const extension = extname(tempPath);
   const pieces = ranges.map((_, index) => `${chunks.prefix}${index}${extension}`);
   const madeAsPlainFile = (piece: string) => isProjectCacheFile(chunks.projectDir, piece);
-  const kept = await Promise.all(
-    ranges.map(async (range, index) => {
-      const piece = pieces[index]!;
-      return madeAsPlainFile(piece) && (await stillWhole(piece, range));
-    }),
+  const kept = await keptPieces(pieces, ranges, signal, (piece, range) =>
+    madeAsPlainFile(piece) ? isWhole(piece, range) : Promise.resolve(false),
   );
   const pending = ranges.flatMap((_, index) => (kept[index] ? [] : [index]));
   let doneSeconds = 0;
@@ -679,7 +677,17 @@ async function encodeInChunks(
     if (signal.aborted) throw error;
     removeAll(pieces);
     if (pending.length === ranges.length) throw error;
-    return await encodeInChunks(ranges, chunks, tempPath, encode, concat, signal, gate, onDone);
+    return await encodeInChunks(
+      ranges,
+      chunks,
+      tempPath,
+      encode,
+      concat,
+      signal,
+      gate,
+      isWhole,
+      onDone,
+    );
   } finally {
     rmSync(listPath, { force: true });
   }
@@ -687,9 +695,30 @@ async function encodeInChunks(
 }
 
 // A piece left by an earlier run is made again if it runs short; if the join refuses one, all are.
-async function stillWhole(piece: string, range: ChunkRange): Promise<boolean> {
-  const seconds = (await probeMediaMetadata(piece)).durationSeconds;
-  return seconds !== undefined && seconds >= range.lengthSeconds - 1;
+async function stillWhole(
+  piece: string,
+  range: ChunkRange,
+  frameRate: number | undefined,
+  signal: AbortSignal,
+): Promise<boolean> {
+  const seconds = (await probeMediaMetadata(piece, undefined, signal)).durationSeconds;
+  const halfFrame = frameRate ? 0.5 / frameRate : 0;
+  return seconds !== undefined && seconds >= range.lengthSeconds - halfFrame;
+}
+
+async function keptPieces(
+  pieces: string[],
+  ranges: ChunkRange[],
+  signal: AbortSignal,
+  keep: (piece: string, range: ChunkRange) => Promise<boolean>,
+): Promise<boolean[]> {
+  const kept: boolean[] = [];
+  for (const [index, range] of ranges.entries()) {
+    signal.throwIfAborted();
+    kept.push(await keep(pieces[index]!, range));
+  }
+  signal.throwIfAborted();
+  return kept;
 }
 
 const removeAll = (paths: string[]) => {
@@ -855,6 +884,7 @@ async function runFfmpeg(
       gate,
       chunks,
       encode,
+      frameRate: metadata.source?.frameRate,
       onDone: (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
     });
   } catch (err) {
@@ -877,6 +907,7 @@ type PieceCopy = {
   gate: PieceGate;
   chunks: ChunkFiles;
   encode: EncodeFn;
+  frameRate: number | undefined;
   onDone: (doneSeconds: number) => void;
 };
 
@@ -904,6 +935,7 @@ async function copyInPieces(ranges: ChunkRange[], outputPath: string, copy: Piec
       },
       copy.signal,
       copy.gate,
+      (piece, range) => stillWhole(piece, range, copy.frameRate, copy.signal),
       copy.onDone,
     );
     if (withSound) await addSoundFromSource(copy, picturePath, outputPath);

@@ -30,7 +30,7 @@ export interface FfprobeRunResult {
 export type FfprobeRunner = (
   command: string,
   args: string[],
-  options?: { timeout?: number; maxBuffer?: number },
+  options?: { timeout?: number; maxBuffer?: number; signal?: AbortSignal },
 ) => FfprobeRunResult | Promise<FfprobeRunResult>;
 
 /** Default runner: genuinely async (`execFile`), unlike the previous
@@ -41,7 +41,12 @@ const execFileRunner: FfprobeRunner = (command, args, options) =>
     execFile(
       command,
       args,
-      { timeout: options?.timeout, maxBuffer: options?.maxBuffer, windowsHide: true },
+      {
+        timeout: options?.timeout,
+        maxBuffer: options?.maxBuffer,
+        signal: options?.signal,
+        windowsHide: true,
+      },
       (error, stdout, stderr) => {
         if (error && error.code === "ENOENT") {
           resolvePromise({ status: null, stdout: "", stderr: "", error });
@@ -348,6 +353,7 @@ export async function probeAudioTrack(
 export async function probeMediaMetadata(
   filePath: string,
   runner: FfprobeRunner = execFileRunner,
+  signal?: AbortSignal,
 ): Promise<MediaMetadata> {
   const kind = inferKindFromPath(filePath);
   if (kind === "audio" || kind === "unknown") {
@@ -379,7 +385,7 @@ export async function probeMediaMetadata(
       "--",
       filePath,
     ],
-    { timeout: 15_000, maxBuffer: 1024 * 1024 },
+    { timeout: 15_000, maxBuffer: 1024 * 1024, signal },
   );
 
   if (result.error?.code === "ENOENT") {

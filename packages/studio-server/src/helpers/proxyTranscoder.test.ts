@@ -290,7 +290,7 @@ describe("resolveProxy on a long source", () => {
     ]);
   });
 
-  async function loadWithSound() {
+  async function loadWithSound(probePiece: (signal?: AbortSignal) => unknown = () => undefined) {
     const { spawn, calls } = createSpawnSpy();
     vi.resetModules();
     vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
@@ -300,12 +300,13 @@ describe("resolveProxy on a long source", () => {
       findFfBinary: () => FFMPEG_PATH,
     }));
     vi.doMock("./mediaMetadata.js", () => ({
-      probeMediaMetadata: async () => ({
-        kind: "video",
-        color: { isHdr: false, hdrTransfer: null },
-        durationSeconds: LONG_SECONDS,
-        audioStream: 0,
-      }),
+      probeMediaMetadata: async (path: string, _runner?: unknown, signal?: AbortSignal) =>
+        (path.includes(".part-") && probePiece(signal)) || {
+          kind: "video",
+          color: { isHdr: false, hdrTransfer: null },
+          durationSeconds: LONG_SECONDS,
+          audioStream: 0,
+        },
       probeFirstFrameColour: async () => ({}),
     }));
     const projectDir = tmpProject();
@@ -360,6 +361,47 @@ describe("resolveProxy on a long source", () => {
     await flush(50);
     expect(leftIn().every((name) => name.startsWith(".part-"))).toBe(true);
     expect(leftIn()).toHaveLength(3);
+  });
+
+  it("measures left pieces one at a time and stops when its last caller leaves", async () => {
+    const probing: AbortSignal[] = [];
+    let hang = false;
+    const { resolveProxy, getProxyCachePath, calls, projectDir, sourcePath } = await loadWithSound(
+      (signal) =>
+        hang &&
+        new Promise((resolve) => {
+          probing.push(signal!);
+          if (signal!.aborted) resolve({ kind: "video", color: {} });
+          signal!.addEventListener("abort", () => resolve({ kind: "video", color: {} }));
+        }),
+    );
+    const leave = new AbortController();
+    const left = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+      signal: leave.signal,
+    }).catch((error: unknown) => error);
+    await answerUntilIdle(calls, (call) => {
+      if (!isJoin(call)) return succeed(call);
+      leave.abort();
+      call.proc.emit("close", null, "SIGKILL");
+    });
+    expect(await left).toBe(leave.signal.reason);
+    hang = true;
+    const leaveAgain = new AbortController();
+    const resumed = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+      signal: leaveAgain.signal,
+    }).catch((error: unknown) => error);
+    await flush(50);
+    expect(probing).toHaveLength(1);
+    leaveAgain.abort();
+    expect(await resumed).toBe(leaveAgain.signal.reason);
+    await flush(50);
+    expect(probing).toHaveLength(1);
+    expect(probing[0]!.aborted).toBe(true);
+    hang = false;
+    const answered = new Set(calls);
+    const whole = resolveProxy(projectDir, sourcePath);
+    await answerUntilIdle(calls, (call) => answered.has(call) || succeed(call));
+    expect(await whole).toBe(getProxyCachePath(projectDir, sourcePath));
   });
 
   it.skipIf(process.platform === "win32")(
@@ -440,7 +482,7 @@ describe("resolveProxy on a long source", () => {
 
   const clip = (path: string, seconds: number) =>
     execFileSync(realFfmpeg!, [
-      ...["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=blue:s=32x32:r=2:d=${seconds}`],
+      ...["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=blue:s=32x32:r=30:d=${seconds}`],
       ...["-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:d=${seconds}`],
       ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", path],
     ]);
@@ -485,6 +527,7 @@ describe("resolveProxy on a long source", () => {
 
   it.skipIf(!realFfmpeg || !findFfBinary("ffprobe")).each([
     ["ends early", (piece: string) => clip(piece, 5)],
+    ["ends 0.8 s early", (piece: string) => clip(piece, 19.2)],
     ["was cut off", (piece: string) => writeFileSync(piece, readFileSync(piece).subarray(0, 2000))],
   ])(
     "makes a piece left from a stopped copy again when it %s",
@@ -506,7 +549,11 @@ describe("resolveProxy on a long source", () => {
       const last = readdirSync(cache).find((name) => /^\.part-.*-2\.mp4$/.test(name))!;
       spoil(join(cache, last));
 
-      const proxyPath = await resolveProxy(projectDir, sourcePath);
+      const heard: number[] = [];
+      const proxyPath = await resolveProxy(projectDir, sourcePath, "h264", undefined, {
+        onProgress: ({ doneSeconds }) => heard.push(doneSeconds),
+      });
+      expect(heard[0]).toBeGreaterThanOrEqual(2 * PIECE_SECONDS);
       const picture = probeJson(proxyPath, "stream=codec_type,duration").streams.find(
         (s: { codec_type: string }) => s.codec_type === "video",
       );
