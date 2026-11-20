@@ -126,6 +126,74 @@ it("ignores an ended edit for another element", async () => {
   expect(controls().session).not.toBeNull();
 });
 
+const HOSTILE = [`<img src="x" onerror="alert(1)">`, `<span onclick="alert(1)">Hi</span>`];
+
+// Studio's end of the port, with each reply that carries kept text rewritten as a hostile frame would.
+function rewritingTextReplies(html: string) {
+  return (port: MessagePort) =>
+    ({
+      postMessage: (data: unknown) => port.postMessage(data),
+      start: () => port.start(),
+      close: () => port.close(),
+      get onmessage() {
+        return port.onmessage;
+      },
+      set onmessage(listener: ((event: MessageEvent) => void) | null) {
+        port.onmessage =
+          listener &&
+          ((event) => {
+            const result = (event.data as { result?: { html?: unknown } }).result;
+            if (typeof result?.html === "string") result.html = html;
+            listener(event);
+          });
+      },
+    }) as unknown as MessagePort;
+}
+
+it("refuses a frame's ended edit carrying anything but text markup, and puts the original back", async () => {
+  for (const [html, previous] of [
+    [HOSTILE[0]!, ORIGINAL],
+    [HOSTILE[1]!, ORIGINAL],
+    ["Typed", HOSTILE[1]!],
+  ]) {
+    const ports: MessagePort[] = [];
+    const { title, selection } = await sealedTitle(ports);
+    const { onCommit, controls } = inlineEditor();
+    act(() => void controls().start(selection.element));
+    await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+    title.innerHTML = "Typed";
+    const data = {
+      v: EDITING_PROTOCOL_VERSION,
+      event: "text-edit-ended",
+      handle: selection.handle,
+      html,
+      previous,
+    };
+    act(() => void ports[0]!.onmessage?.(new MessageEvent("message", { data })));
+    await vi.waitFor(() => expect(title.innerHTML).toBe(ORIGINAL));
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(controls().session).toBeNull();
+    act(unmounts.pop()!);
+  }
+});
+
+it("refuses a frame's end reply carrying anything but text markup, and puts the original back", async () => {
+  for (const html of HOSTILE) {
+    document.body.innerHTML = `<h1 id="title">${ORIGINAL}</h1><p id="other">x</p>`;
+    const title = document.getElementById("title")!;
+    const { iframe } = sealedPreviewFrame({ wrapHandedOverPort: rewritingTextReplies(html) });
+    const selection = await select(iframe, "title");
+    const { onCommit, controls } = inlineEditor();
+    act(() => void controls().start(selection.element));
+    await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+    title.innerHTML = "Hi <b>there</b>";
+    act(() => controls().commit());
+    await vi.waitFor(() => expect(title.innerHTML).toBe(ORIGINAL));
+    expect(onCommit).not.toHaveBeenCalled();
+    act(unmounts.pop()!);
+  }
+});
+
 function textCommits(
   iframe: HTMLIFrameElement,
   current: DomEditSelection | null,
