@@ -19,6 +19,14 @@ const nullableNumber = (value: unknown): value is number | null =>
   value === null || (typeof value === "number" && Number.isFinite(value));
 export const isAudience = (value: unknown): value is LocalShareAudience =>
   audiences.some((mode) => mode === value);
+function isReviewNamed(value: Record<string, unknown>) {
+  return (
+    nullableText(value.url) &&
+    text(value.manageUrl) &&
+    nullableText(value.reviewId) &&
+    nullableText(value.reviewTitle)
+  );
+}
 function isState(value: unknown): value is LocalShareState {
   return (
     record(value) &&
@@ -26,8 +34,7 @@ function isState(value: unknown): value is LocalShareState {
       String(value.state),
     ) &&
     optionalFailure(value.failure) &&
-    nullableText(value.url) &&
-    text(value.manageUrl) &&
+    isReviewNamed(value) &&
     nullableBoolean(value.changed) &&
     nullableAudience(value.audience) &&
     nullableText(value.spaceId) &&

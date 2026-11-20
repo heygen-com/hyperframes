@@ -100,6 +100,25 @@ const GESTURE_START_ATTRS = [
   STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR,
 ];
 const standIns = new WeakMap<EditingPortClient, Map<string, HTMLElement>>();
+const savedOnStandIn = new WeakMap<Element, Set<string>>();
+
+export function showSavedStylesOnStandIn(standIn: HTMLElement, styles: Array<[string, string]>) {
+  const names = savedOnStandIn.get(standIn) ?? new Set<string>();
+  savedOnStandIn.set(standIn, names);
+  for (const [name, value] of styles) {
+    standIn.style.setProperty(name, value);
+    names.add(name);
+  }
+}
+
+function takeFrameValuesForSavedStyles(standIn: HTMLElement, frameInline: Record<string, string>) {
+  for (const name of savedOnStandIn.get(standIn) ?? []) {
+    const value = frameInline[name];
+    if (value && !mayBeCut(value)) standIn.style.setProperty(name, value);
+    else standIn.style.removeProperty(name);
+  }
+  savedOnStandIn.delete(standIn);
+}
 const standInHandles = new WeakMap<Element, string>();
 const standInAncestors = new WeakMap<Element, string[]>();
 
@@ -356,6 +375,7 @@ export async function resolvePreviewSelection(
     ...new Set([...CURATED_STYLE_PROPERTIES, ...TRANSLATE_PX_PROPERTIES]),
   ]);
   if (!styles) return null;
+  takeFrameValuesForSavedStyles(element, current.inlineStyles);
   // The stand-in has no box to size a % or em against: a move starts from what the frame renders.
   rememberFrameClipPath(
     element,

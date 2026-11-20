@@ -99,11 +99,20 @@ export function reviewClient({ access, fetchImpl = fetch, signedInEmail = async 
         shareFiles: data?.share_files === true,
       };
     },
-    /** Registers into `spaceId`; without one the server uses the caller's default space.
+    /** Registers into `spaceId`; without one the server uses the caller's default space. `created` is true only for
+     * a 201: a 200 answers a project that was already bound to this `studio_project_id`.
      * @param {import("./types/reviewWire.js").RegisterProjectRequest} body @param {string | null} [spaceId]
-     * @returns {Promise<ProjectDTO>} */
-    register: (body, spaceId) =>
-      call("POST", PROJECTS, body, spaceId ? { "x-space-id": spaceId } : {}),
+     * @returns {Promise<ProjectDTO & { created: boolean }>} */
+    register: async (body, spaceId) => {
+      const { reply } = await request(
+        "POST",
+        PROJECTS,
+        body,
+        spaceId ? { "x-space-id": spaceId } : {},
+        null,
+      );
+      return { ...(await dataOf(reply, `POST ${PROJECTS}`)), created: reply.status === 201 };
+    },
     /** @param {string} id @returns {Promise<ShareDTO>} */
     share: (id) => call("GET", `${project(id)}/share`),
     /** @param {string} id @param {import("./types/reviewWire.js").UpdateProjectShareRequest} body

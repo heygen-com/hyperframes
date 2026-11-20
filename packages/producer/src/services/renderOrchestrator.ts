@@ -1,5 +1,5 @@
 import type { ExpectedOutputDimensions } from "./render/outputDimensions.js";
-import { audioFailureDiagnostics, usableCpuCount } from "@hyperframes/engine";
+import { audioFailureDiagnostics, cpuBudget } from "@hyperframes/engine";
 // fallow-ignore-file unused-type circular-dependency code-duplication complexity
 /**
  * Render Orchestrator Service
@@ -5005,7 +5005,7 @@ async function executeRenderPipeline(input: {
       audioFailed.abort(error);
     });
     const mixedAudio = () => audioWait.wait(audioReady);
-    if (usableCpuCount() < MIN_CPUS_TO_CAPTURE_DURING_MIX) await mixedAudio();
+    if (cpuBudget() < MIN_CPUS_TO_CAPTURE_DURING_MIX) await mixedAudio();
 
     resetCaptureAttemptProgress(job);
 
@@ -5610,10 +5610,10 @@ async function executeRenderPipeline(input: {
         const overlap =
           !cfg.useDrawElement &&
           workerSizing !== undefined &&
-          canEncodeWhileCapturing(encodeInput, capturePlan.workerCount, workerSizing.cpuCount)
+          canEncodeWhileCapturing(encodeInput, capturePlan.workerCount, cpuBudget())
             ? encodeWhileCapturing(encodeInput, totalFrames, {
                 workerCount: capturePlan.workerCount,
-                cpuCount: workerSizing.cpuCount,
+                cpuCount: cpuBudget(),
               })
             : null;
         const captureFrameStart = Date.now();

@@ -16,6 +16,7 @@ import { readClipTiming } from "@hyperframes/core/composition-contract";
 import { readMasterFxChain } from "@hyperframes/core/audio-groups";
 import { linkScopeOf } from "@hyperframes/core/media-link";
 import { createRuntimeStartTimeResolver } from "@hyperframes/core/runtime/start-resolver";
+import { previewWithoutFrameToken } from "./frameToken";
 import { groupInfoFor } from "./timelineGroupInfo";
 import { receivedTimelineText } from "./timelineText";
 import { transitionLabelsForDocument } from "./timelineTransitionMetadata";
@@ -225,6 +226,8 @@ export function createTimelineElementFromManifestClip(params: {
       entry.key = nextIdentity.key;
     }
   }
+  if (entry.src) entry.src = previewWithoutFrameToken(entry.src);
+  if (entry.compositionSrc) entry.compositionSrc = previewWithoutFrameToken(entry.compositionSrc);
 
   return entry;
 }
