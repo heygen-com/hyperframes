@@ -75,7 +75,8 @@ function originalBoxSize(
   return Number.isFinite(inline) && inline > 0 ? inline : null;
 }
 
-/** The box's width and height before the draft; a sealed frame's draft is on its own element, so its press's measure. */
+/** The box's width and height before the draft. A sealed frame's draft marks the frame's element,
+ *  not the stand-in, so there it is the box the press measured. */
 function preGestureBoxSize(
   selection: DomEditSelection,
   el: HTMLElement | null = selection.element,

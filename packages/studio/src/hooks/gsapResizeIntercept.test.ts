@@ -795,7 +795,7 @@ it.each([
 
   expect(outcome.status).toBe("persisted");
   const keyframes = commitMutation.mock.calls[0]![1].keyframes;
-  expect(keyframes.map((kf: { properties: Record<string, number> }) => kf.properties.height)).toEqual(
-    keyframes.map((kf: { percentage: number }) => (kf.percentage === 50 ? 200 : 160)),
-  );
+  expect(
+    keyframes.map((kf: { properties: Record<string, number> }) => kf.properties.height),
+  ).toEqual(keyframes.map((kf: { percentage: number }) => (kf.percentage === 50 ? 200 : 160)));
 });
