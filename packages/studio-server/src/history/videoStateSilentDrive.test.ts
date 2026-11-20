@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { constants, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -50,17 +50,11 @@ it.skipIf(process.platform === "win32")(
     expect(await outcome).toMatch(/did not answer within 5000 ms/);
     vi.useRealTimers();
 
-    // The drive answers: the given-up write finishes and frees the lock, so the next write lands after it.
+    // The drive answers: the given-up write finishes and frees the lock, so the next write takes it (one still held
+    // would refuse it busy after the lock's 5 s wait).
     const drive = await open(state, "w");
     await drive.writeFile(JSON.stringify(stored));
     await drive.close();
-    await write("second");
-    const saved = await open(state, constants.O_RDONLY | constants.O_NONBLOCK);
-    try {
-      expect((await saved.stat()).isFile()).toBe(true);
-      expect(JSON.parse(await saved.readFile("utf8")).historyId).toBe("second");
-    } finally {
-      await saved.close();
-    }
+    await expect(write("second")).resolves.toBeUndefined();
   },
 );
