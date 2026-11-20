@@ -25,7 +25,7 @@ import {
  */
 
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "fs";
 import { join, dirname, resolve, basename, relative, sep } from "path";
 import { parseHTML } from "linkedom";
 import { bundledScript } from "./bundledScripts.js";
@@ -2256,7 +2256,8 @@ async function localFontDataUri(
   assetRoot: string | undefined,
   dataUriByAbsolutePath: Map<string, string | undefined>,
   log: ProducerLogger,
-  downloadedPath?: string,
+  downloadedPath: string | undefined,
+  reserve: (dataUriBytes: number) => boolean,
 ): Promise<string | undefined> {
   const absPath =
     downloadedPath ?? (localPath.startsWith("/") ? localPath : resolve(projectDir, localPath));
@@ -2273,6 +2274,11 @@ async function localFontDataUri(
   if (dataUriByAbsolutePath.has(absPath)) return dataUriByAbsolutePath.get(absPath);
   const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
   try {
+    // Base64 plus a short data: prefix; a font that cannot fit is never read.
+    if (!reserve(Math.ceil(statSync(absPath).size / 3) * 4 + 64)) {
+      dataUriByAbsolutePath.set(absPath, undefined);
+      return undefined;
+    }
     const font = await readLocalFont(absPath);
     if (font.kind === "file-backed") {
       dataUriByAbsolutePath.set(absPath, undefined);
@@ -2319,6 +2325,24 @@ async function embedLocalFontFaces(
 ): Promise<string> {
   const dataUriByPath = new Map<string, string | undefined>();
   const dataUriByAbsolutePath = new Map<string, string | undefined>();
+  let warned = false;
+  const keptFileBacked = (localPath: string) => {
+    if (warned) return;
+    warned = true;
+    log.warn(
+      `[Compiler] Kept local font ${localPath} file-backed: the page reached its inline size limit`,
+    );
+  };
+  // The fonts read here are kept until every copy is placed, so together they fit the budget's room.
+  let reserved = 0;
+  const reserveFor = (localPath: string) => (bytes: number) => {
+    if (reserved + bytes > budget.generatedRoom) {
+      keptFileBacked(localPath);
+      return false;
+    }
+    reserved += bytes;
+    return true;
+  };
   for (const { parts: style } of styleBlockMatches(html)) {
     for (const { parts: face } of fontFaceBlockMatches(style[1])) {
       for (const { parts } of localFontFaceUrlMatches(face[1])) {
@@ -2333,6 +2357,7 @@ async function embedLocalFontFaces(
             dataUriByAbsolutePath,
             log,
             downloadedFonts.get(localPath),
+            reserveFor(localPath),
           ),
         );
       }
@@ -2340,18 +2365,12 @@ async function embedLocalFontFaces(
   }
   if (![...dataUriByPath.values()].some(Boolean)) return html;
 
-  let warned = false;
   const embed = (source: string, localPath: string) => {
     const dataUri = dataUriByPath.get(localPath);
     if (!dataUri) return source;
     const inlined = `url("${dataUri}")`;
     if (budget.chargeGeneratedIfItFits(inlined.length - source.length)) return inlined;
-    if (!warned) {
-      warned = true;
-      log.warn(
-        `[Compiler] Kept local font ${localPath} file-backed: the page reached its inline size limit`,
-      );
-    }
+    keptFileBacked(localPath);
     return source;
   };
   return replaceMatches(html, styleBlockMatches(html), (style, css) =>

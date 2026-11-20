@@ -117,6 +117,10 @@ export class CompositionExpansionBudget {
     });
   }
 
+  get generatedRoom(): number {
+    return MAX_EXPANDED_COMPOSITION_BYTES - this.generated;
+  }
+
   chargeGeneratedIfItFits(bytes: number): boolean {
     if (this.generated + bytes > MAX_EXPANDED_COMPOSITION_BYTES) return false;
     this.generated += bytes;

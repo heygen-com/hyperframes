@@ -30,15 +30,21 @@ export function getLogicalOpacity(el: Element, computed: CSSStyleDeclaration): s
   return computed.opacity;
 }
 export const PLAYER_FRAME_ATTR = "data-hf-player-frame";
+export const PLAYER_FRAME_NAME = "hyperframes-player";
+
+export function servedToStudio(doc: Document): boolean {
+  return doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null;
+}
 
 export function inPlayerFrame(doc: Document): boolean {
-  return isWebKit() && doc.defaultView?.frameElement?.hasAttribute(PLAYER_FRAME_ATTR) === true;
+  const frame = doc.defaultView;
+  const marked = frame?.frameElement?.hasAttribute(PLAYER_FRAME_ATTR) === true;
+  if (servedToStudio(doc)) return isWebKit() && marked;
+  return marked || frame?.name === PLAYER_FRAME_NAME;
 }
 
 export function defersMediaIn(doc: Document): boolean {
-  return (
-    doc.querySelector(`meta[name="${STUDIO_PREVIEW_MARK_META}"]`) !== null || inPlayerFrame(doc)
-  );
+  return servedToStudio(doc) || inPlayerFrame(doc);
 }
 export function capturePageIn(doc: Document): boolean {
   return (
