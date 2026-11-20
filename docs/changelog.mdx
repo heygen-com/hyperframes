@@ -13,10 +13,21 @@ Recent HyperFrames releases, including user-facing features, fixes, and migratio
   description="Released - 2026-11-20"
   tags={["Release", "Core", "Studio Server", "Media Use"]}
 >
-Preview copies of long clips with sound finish again, so their footage no longer shows black. Pages with very large SVG style sheets compile quickly, and Studio asks before sharing.
+Preview copies of long clips with sound finish again, so their footage no longer shows black. Saving history on a drive that stops answering no longer freezes the app, and sealed films show when their timeline arrives late.
 
 ## Fixes
 
+- **Studio Server:** Saving history on a drive that stops answering no longer freezes the app ([88c22a77f](https://github.com/heygen-com/hyperframes/commit/88c22a77f4cd7c3daa0ebbb6023181e9c8a897da), [#8294](https://github.com/heygen-com/hyperframes/pull/8294)).
+- **Player:** A sealed film shows when its timeline arrives after the 8 s check ([58de4c783](https://github.com/heygen-com/hyperframes/commit/58de4c783d488e564a6c1a2d3e0e493629023066), [#8293](https://github.com/heygen-com/hyperframes/pull/8293)).
+- **Studio:** A sealed audio group's undo reads the frame's reply only in its shape ([3c735ad01](https://github.com/heygen-com/hyperframes/commit/3c735ad01cc930fab0ce4b36c559cde10e36e70c), [#8291](https://github.com/heygen-com/hyperframes/pull/8291)).
+- **CLI:** Preview answers unknown paths with an inert refusal, not the Studio shell ([4e3c96045](https://github.com/heygen-com/hyperframes/commit/4e3c9604572a4d5d5abdc1578964766828f04e76), [#8161](https://github.com/heygen-com/hyperframes/pull/8161)).
+- **Studio:** A sealed resize of a layer whose GSAP keyframes animate its width saves ([9b7be276a](https://github.com/heygen-com/hyperframes/commit/9b7be276a90d997954ad4b70f5aeae8322aea7d6), [#8288](https://github.com/heygen-com/hyperframes/pull/8288)).
+- **Studio:** A sealed move, resize or turn takes GSAP's route when GSAP animates the layer ([468ab907e](https://github.com/heygen-com/hyperframes/commit/468ab907ee9836e076abdd7d0e0611c475dc1271), [#8286](https://github.com/heygen-com/hyperframes/pull/8286)).
+- **Studio:** A sealed resize, move or turn typed or made by the agent shows in the preview ([89edb0af0](https://github.com/heygen-com/hyperframes/commit/89edb0af0059fc599ec7b17c1078ab49a46d9da2), [#8283](https://github.com/heygen-com/hyperframes/pull/8283)).
+- **Studio:** Agent tools see the film in a sealed preview ([c34df57ab](https://github.com/heygen-com/hyperframes/commit/c34df57abdb02b07916aa2a26c5c1be8dcd2ac64), [#8281](https://github.com/heygen-com/hyperframes/pull/8281)).
+- **Studio:** A sealed crop lands where it was dragged ([a755e3f58](https://github.com/heygen-com/hyperframes/commit/a755e3f58588024cdbc3f698e3d7673a4760dbc2), [#8279](https://github.com/heygen-com/hyperframes/pull/8279)).
+- **Core:** A sub-composition's script re-run keeps the preview at its playhead ([332720972](https://github.com/heygen-com/hyperframes/commit/33272097272eeda1b082879a2d79f38a9e47526b), [#8276](https://github.com/heygen-com/hyperframes/pull/8276)).
+- **Core:** A redo in a sealed preview puts Studio's edit marks back in place ([95a8a91b5](https://github.com/heygen-com/hyperframes/commit/95a8a91b5ea28ec21ac638aa69cd43b3a8c46cea), [#8264](https://github.com/heygen-com/hyperframes/pull/8264)).
 - **Core:** Split a rule's selector list once when rewriting svg id references ([fbbbfe058](https://github.com/heygen-com/hyperframes/commit/fbbbfe0587bb27f6738b7a697c11914caaa9a39c), [#8275](https://github.com/heygen-com/hyperframes/pull/8275)).
 - **Studio Server:** Preview copies of long clips with sound finish again ([07928702f](https://github.com/heygen-com/hyperframes/commit/07928702f8b3e3f59c75594e759df84443896890), [#8253](https://github.com/heygen-com/hyperframes/pull/8253)).
 - **Media Use:** Remove only the temp folders media-use made, and never fail on cleanup ([e16c681dc](https://github.com/heygen-com/hyperframes/commit/e16c681dc07d360a9cf42e2ab77d827196a29883), [#8267](https://github.com/heygen-com/hyperframes/pull/8267)).
