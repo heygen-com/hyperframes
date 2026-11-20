@@ -290,6 +290,78 @@ describe("resolveProxy on a long source", () => {
     ]);
   });
 
+  async function loadWithSound() {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
+    vi.doMock("node:child_process", () => ({ spawn, default: { spawn } }));
+    vi.doMock("@hyperframes/parsers/ff-binaries", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@hyperframes/parsers/ff-binaries")>()),
+      findFfBinary: () => FFMPEG_PATH,
+    }));
+    vi.doMock("./mediaMetadata.js", () => ({
+      probeMediaMetadata: async () => ({
+        kind: "video",
+        color: { isHdr: false, hdrTransfer: null },
+        durationSeconds: LONG_SECONDS,
+        audioStream: 0,
+      }),
+      probeFirstFrameColour: async () => ({}),
+    }));
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "talk.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const leftIn = () =>
+      readdirSync(join(projectDir, ".transcode-cache")).filter((name) =>
+        /^\.(part|tmp)-/.test(name),
+      );
+    return { ...(await import("./proxyTranscoder.js")), calls, projectDir, sourcePath, leftIn };
+  }
+  const isJoin = (call: SpawnCall) => call.args.includes("concat");
+
+  it("makes every piece again after a join ffmpeg refuses, and leaves no picture behind", async () => {
+    const { resolveProxy, getProxyCachePath, clearFailedTranscodesForTest, ...made } =
+      await loadWithSound();
+    const { calls, projectDir, sourcePath, leftIn } = made;
+
+    const refused = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
+    await answerUntilIdle(calls, (call) => {
+      if (!isJoin(call)) return succeed(call);
+      writeFileSync(call.args.at(-1)!, "partial picture");
+      fail(call, 1, "Impossible to open piece");
+    });
+    expect(await refused).toBeInstanceOf(Error);
+    expect(leftIn()).toEqual([]);
+
+    clearFailedTranscodesForTest();
+    const piecesBefore = startsOf(calls).length;
+    const answered = new Set(calls);
+    const whole = resolveProxy(projectDir, sourcePath);
+    await answerUntilIdle(calls, (call) => answered.has(call) || succeed(call));
+    expect(await whole).toBe(getProxyCachePath(projectDir, sourcePath));
+    expect(startsOf(calls).length - piecesBefore).toBe(piecesBefore);
+    expect(leftIn()).toEqual([]);
+  });
+
+  it("keeps its finished pieces and no picture when its last caller leaves during the join", async () => {
+    const { resolveProxy, calls, projectDir, sourcePath, leftIn } = await loadWithSound();
+    const leave = new AbortController();
+
+    const left = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+      signal: leave.signal,
+    }).catch((error: unknown) => error);
+    await answerUntilIdle(calls, (call) => {
+      if (!isJoin(call)) return succeed(call);
+      writeFileSync(call.args.at(-1)!, "partial picture");
+      leave.abort();
+      call.proc.emit("close", null, "SIGKILL");
+    });
+    expect(await left).toBe(leave.signal.reason);
+    await flush(50);
+    expect(leftIn().every((name) => name.startsWith(".part-"))).toBe(true);
+    expect(leftIn()).toHaveLength(3);
+  });
+
   it.skipIf(process.platform === "win32")(
     "runs the join from the cache folder and names the list there by its bare name",
     async () => {
@@ -366,6 +438,12 @@ describe("resolveProxy on a long source", () => {
     60_000,
   );
 
+  const clip = (path: string, seconds: number) =>
+    execFileSync(realFfmpeg!, [
+      ...["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=blue:s=32x32:r=2:d=${seconds}`],
+      ...["-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:d=${seconds}`],
+      ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", path],
+    ]);
   const realCopyOf = async (name: string, makeSource: (path: string) => void) => {
     vi.resetModules();
     vi.doUnmock("./mediaMetadata.js");
@@ -401,6 +479,38 @@ describe("resolveProxy on a long source", () => {
         "video",
       ]);
       expect(Number(probed.format.duration)).toBeCloseTo(LONG_SECONDS, 0);
+    },
+    60_000,
+  );
+
+  it.skipIf(!realFfmpeg || !findFfBinary("ffprobe")).each([
+    ["ends early", (piece: string) => clip(piece, 5)],
+    ["was cut off", (piece: string) => writeFileSync(piece, readFileSync(piece).subarray(0, 2000))],
+  ])(
+    "makes a piece left from a stopped copy again when it %s",
+    async (_name, spoil) => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
+      const { resolveProxy } = await import("./proxyTranscoder.js");
+      const projectDir = realpathSync(tmpProject());
+      const sourcePath = join(projectDir, "talk.mp4");
+      clip(sourcePath, LONG_SECONDS);
+      const stop = new AbortController();
+      const stopped = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+        signal: stop.signal,
+        onProgress: ({ doneSeconds }) => doneSeconds >= LONG_SECONDS && stop.abort(),
+      }).catch((error: unknown) => error);
+      expect(await stopped).toBe(stop.signal.reason);
+      const cache = join(projectDir, ".transcode-cache");
+      const last = readdirSync(cache).find((name) => /^\.part-.*-2\.mp4$/.test(name))!;
+      spoil(join(cache, last));
+
+      const proxyPath = await resolveProxy(projectDir, sourcePath);
+      const picture = probeJson(proxyPath, "stream=codec_type,duration").streams.find(
+        (s: { codec_type: string }) => s.codec_type === "video",
+      );
+      expect(Number(picture.duration)).toBeCloseTo(LONG_SECONDS, 0);
     },
     60_000,
   );

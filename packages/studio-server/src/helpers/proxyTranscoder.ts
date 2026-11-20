@@ -611,7 +611,13 @@ async function encodeInChunks(
   const extension = extname(tempPath);
   const pieces = ranges.map((_, index) => `${chunks.prefix}${index}${extension}`);
   const madeAsPlainFile = (piece: string) => isProjectCacheFile(chunks.projectDir, piece);
-  const pending = ranges.flatMap((_, index) => (madeAsPlainFile(pieces[index]!) ? [] : [index]));
+  const kept = await Promise.all(
+    ranges.map(async (range, index) => {
+      const piece = pieces[index]!;
+      return madeAsPlainFile(piece) && (await stillWhole(piece, range));
+    }),
+  );
+  const pending = ranges.flatMap((_, index) => (kept[index] ? [] : [index]));
   let doneSeconds = 0;
   for (const [index, range] of ranges.entries()) {
     if (!pending.includes(index)) doneSeconds += range.lengthSeconds;
@@ -669,11 +675,26 @@ async function encodeInChunks(
       ),
     );
     await concat(listPath, tempPath);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    removeAll(pieces);
+    if (pending.length === ranges.length) throw error;
+    return await encodeInChunks(ranges, chunks, tempPath, encode, concat, signal, gate, onDone);
   } finally {
     rmSync(listPath, { force: true });
   }
-  for (const piece of pieces) if (existsSync(piece)) unlinkSync(piece);
+  removeAll(pieces);
 }
+
+// A piece left by an earlier run is made again if it runs short; if the join refuses one, all are.
+async function stillWhole(piece: string, range: ChunkRange): Promise<boolean> {
+  const seconds = (await probeMediaMetadata(piece)).durationSeconds;
+  return seconds !== undefined && seconds >= range.lengthSeconds - 1;
+}
+
+const removeAll = (paths: string[]) => {
+  for (const path of paths) if (existsSync(path)) unlinkSync(path);
+};
 
 const KEYFRAME_EVERY_SECOND_ARGS = ["-force_key_frames", "expr:gte(t,n_forced*1)"];
 // Fixed recipe; changing either array means bumping PROXY_PARAMS_VERSION.
@@ -862,29 +883,33 @@ type PieceCopy = {
 async function copyInPieces(ranges: ChunkRange[], outputPath: string, copy: PieceCopy) {
   const withSound = copy.soundMap.length > 0;
   const picturePath = withSound ? besideAsTemp(outputPath) : outputPath;
-  await encodeInChunks(
-    ranges,
-    copy.chunks,
-    picturePath,
-    copy.encode,
-    (listPath, target) => {
-      // ffmpeg resolves relative list entries against the list path, which breaks on '#' or '?' in a folder name.
-      const cwd = JOIN_FROM_CACHE_FOLDER ? dirname(listPath) : undefined;
-      return spawnFfmpeg(
-        copy.ffmpegPath,
-        concatArgs(cwd ? basename(listPath) : listPath, target, copy.variant),
-        CONCAT_TIMEOUT_MS,
-        copy.signal,
-        undefined,
-        false,
-        cwd,
-      );
-    },
-    copy.signal,
-    copy.gate,
-    copy.onDone,
-  );
-  if (withSound) await addSoundFromSource(copy, picturePath, outputPath);
+  try {
+    await encodeInChunks(
+      ranges,
+      copy.chunks,
+      picturePath,
+      copy.encode,
+      (listPath, target) => {
+        // ffmpeg resolves relative list entries against the list path, which breaks on '#' or '?' in a folder name.
+        const cwd = JOIN_FROM_CACHE_FOLDER ? dirname(listPath) : undefined;
+        return spawnFfmpeg(
+          copy.ffmpegPath,
+          concatArgs(cwd ? basename(listPath) : listPath, target, copy.variant),
+          CONCAT_TIMEOUT_MS,
+          copy.signal,
+          undefined,
+          false,
+          cwd,
+        );
+      },
+      copy.signal,
+      copy.gate,
+      copy.onDone,
+    );
+    if (withSound) await addSoundFromSource(copy, picturePath, outputPath);
+  } finally {
+    if (withSound) rmSync(picturePath, { force: true });
+  }
 }
 
 async function addSoundFromSource(
@@ -924,7 +949,6 @@ async function addSoundFromSource(
     );
   } finally {
     rmSync(soundPath, { force: true });
-    rmSync(picturePath, { force: true });
   }
 }
 
