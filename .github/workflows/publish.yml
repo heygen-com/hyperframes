@@ -710,6 +710,16 @@ jobs:
           DIST_TAG: ${{ steps.version.outputs.dist_tag }}
         run: |
           while IFS=$'\t' read -r name tarball; do
+            # A rerun after a partial publish: npm refuses to dry-run a version it holds, so this asks the Publish
+            # step's own question first. The same bytes skip the check; other bytes fail as that step would.
+            if published="$(npm view "${name}@${VERSION}" dist.integrity 2>/dev/null)" && [ -n "$published" ]; then
+              if [ "$published" = "sha512-$(openssl dgst -sha512 -binary "$tarball" | base64 -w0)" ]; then
+                echo "${name}@${VERSION} is already on npm with these contents; its check is skipped"
+                continue
+              fi
+              echo "::error::${name}@${VERSION} is already on npm, and this run did not publish it. Find out who did before releasing this version."
+              exit 1
+            fi
             if ! view="$(npm publish "$tarball" --dry-run --json --ignore-scripts --access public --tag "$DIST_TAG" \
                 --registry https://registry.npmjs.org/ 2>/dev/null)"; then
               echo "::error::npm cannot read $(basename "$tarball")"
