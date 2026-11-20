@@ -37,6 +37,11 @@ export function registerPreviewStandIn(
 
 export const previewStandIn = (standIn: Element) => standIns.get(standIn);
 
+export function previewDraftLive(standIn: Element): boolean {
+  const target = standIns.get(standIn);
+  return !!target && !!queues.get(target.iframe)?.drawn.has(target.handle);
+}
+
 function queueFor(iframe: HTMLIFrameElement): Queue {
   let queue = queues.get(iframe);
   if (!queue) {

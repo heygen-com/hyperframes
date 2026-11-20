@@ -13,7 +13,10 @@ import {
   type DomEditSelection,
 } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
-import { editSealedSelection } from "../components/editor/previewSelection";
+import {
+  editSealedSelection,
+  showSavedStylesOnStandIn,
+} from "../components/editor/previewSelection";
 import { afterSealedDraw, type PreviewElementEdit } from "../player/lib/previewElements";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
@@ -87,22 +90,23 @@ export async function commitDomStyles(
     }
   }
   let editedElement: HTMLElement | null = null;
+  let shownElement: HTMLElement | null = null;
   const previousInline = new Map<string, string>();
   let sealedEdit: PreviewElementEdit | null = null;
 
   return runReportedDomEditCommit({
     capture: () => {
-      const el = doc ? findElementForSelection(doc, selection, activeCompPath) : null;
-      if (!el) return;
-      editedElement = el;
+      editedElement = doc ? findElementForSelection(doc, selection, activeCompPath) : null;
+      shownElement = editedElement ?? (selection.handle ? selection.element : null);
       for (const [property] of entries)
-        previousInline.set(property, el.style.getPropertyValue(property));
+        previousInline.set(property, shownElement?.style.getPropertyValue(property) ?? "");
     },
     apply: () => {
       if (!editedElement) {
         sealedEdit = editSealedSelection(previewIframeRef.current, selection, {
           styles: liveStyles,
         });
+        if (sealedEdit && shownElement) showSavedStylesOnStandIn(shownElement, liveStyles);
         return;
       }
       for (const [property, value] of liveStyles) editedElement.style.setProperty(property, value);
@@ -123,7 +127,7 @@ export async function commitDomStyles(
     shouldRevert: ownsAny,
     revert: () => {
       sealedEdit?.restore(owned.filter(({ isLatest }) => isLatest()).map((o) => o.property));
-      const el = editedElement;
+      const el = shownElement;
       if (!el) return;
       // ponytail: background-image fit styles are not reverted here.
       for (const { property, isLatest } of owned) {

@@ -12,8 +12,12 @@
  * untouched. The agent never builds one; it passes back what a read gave it.
  */
 
+import { isHtmlElement } from "@hyperframes/core/runtime/dom-realm";
 import type { TimelineElement } from "../player/store/timelineElement";
+import type { PreviewElement } from "../player/lib/previewElements";
 import { findElementForSelection } from "../components/editor/domEditingElement";
+import type { SelectionLookupTarget } from "../components/editor/domEditSelectionRules";
+import { standInHandle } from "../components/editor/previewSelection";
 import type { PatchTarget } from "../utils/sourcePatcher";
 
 const SEPARATOR = ":";
@@ -170,27 +174,27 @@ export function parseElementHandle(handle: string): ParsedHandle | null {
   return scoped ? { scheme, ...scoped, index } : null;
 }
 
-/**
- * Resolve a handle against the preview document.
- *
- * Always re-resolve per call rather than holding an element across calls: a
- * preview reload replaces the document, and a node from the destroyed one is
- * detached but still looks like an element.
- */
-export function resolveElementHandle(doc: Document, handle: string): HTMLElement | null {
+export function handleLookup(
+  handle: string,
+): { target: SelectionLookupTarget; path: string | null } | null {
   const parsed = parseElementHandle(handle);
   if (!parsed) return null;
-  return findElementForSelection(
-    doc,
-    {
+  return {
+    target: {
       hfId: parsed.scheme === "hf" ? parsed.value : undefined,
       id: parsed.scheme === "dom" ? parsed.value : undefined,
       selector: parsed.scheme === "sel" ? parsed.value : undefined,
       selectorIndex: parsed.scheme === "sel" ? parsed.index : undefined,
       sourceFile: parsed.sourceFile,
     },
-    parsed.activeCompositionPath ?? null,
-  );
+    path: parsed.activeCompositionPath ?? null,
+  };
+}
+
+/** Re-resolve per call: a reload replaces the document, and a node from the old one still looks like an element. */
+export function resolveElementHandle(doc: Document, handle: string): HTMLElement | null {
+  const lookup = handleLookup(handle);
+  return lookup ? findElementForSelection(doc, lookup.target, lookup.path) : null;
 }
 
 /** Legacy read handles remain valid, but a scoped handle must name the active project. */
@@ -207,35 +211,48 @@ export type LiveHandleResolution<T extends { element: HTMLElement }> =
   | { status: "unsupported" }
   | { status: "changed" };
 
+/** `load`: the preview's document, or a sealed frame's per-load port client. `find` is undefined unanswered. */
+export interface PreviewTargets {
+  load: () => object | null;
+  find: (handle: string) => Promise<HTMLElement | PreviewElement | null | undefined>;
+}
+
+function previewMoved(
+  preview: PreviewTargets,
+  load: object,
+  elements: ReadonlyArray<HTMLElement | PreviewElement | undefined>,
+): boolean {
+  const held = (element: HTMLElement) =>
+    element.ownerDocument === load ? element.isConnected : standInHandle(element) !== undefined;
+  return (
+    preview.load() !== load ||
+    elements.some((element) => element && isHtmlElement(element) && !held(element))
+  );
+}
+
 /**
  * Resolve and build a selection across one possible preview reload.
  *
  * Building a selection can await a source probe. A thumbnail refresh may
  * replace the preview document during that await, leaving an otherwise valid
  * selection attached to the old document with a truthful-looking 0x0 box.
- * Reacquire once from the current document, then refuse if it moves again.
+ * Reacquire once from the current load, then refuse if it moves again.
  */
 export async function resolveLiveHandleSelection<T extends { element: HTMLElement }>(
-  getPreviewDocument: () => Document | null,
+  preview: PreviewTargets,
   handle: string,
-  buildSelection: (element: HTMLElement) => Promise<T | null>,
+  buildSelection: (target: HTMLElement | PreviewElement) => Promise<T | null>,
 ): Promise<LiveHandleResolution<T>> {
   let reloadObserved = false;
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const doc = getPreviewDocument();
-    if (!doc) return { status: "preview-unavailable" };
-    const element = resolveElementHandle(doc, handle);
-    if (!element) return { status: reloadObserved ? "changed" : "not-found" };
+    const load = preview.load();
+    if (!load) return { status: "preview-unavailable" };
+    const found = await preview.find(handle);
+    if (found === undefined) return { status: "preview-unavailable" };
+    if (!found) return { status: reloadObserved ? "changed" : "not-found" };
 
-    const selection = await buildSelection(element);
-    const currentDoc = getPreviewDocument();
-    const previewChanged =
-      currentDoc !== doc ||
-      element.ownerDocument !== doc ||
-      !element.isConnected ||
-      (selection !== null &&
-        (selection.element.ownerDocument !== doc || !selection.element.isConnected));
-    if (previewChanged) {
+    const selection = await buildSelection(found);
+    if (previewMoved(preview, load, [found, selection?.element])) {
       reloadObserved = true;
       continue;
     }

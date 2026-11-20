@@ -1,6 +1,7 @@
 /** A gesture on a frame Studio cannot script starts from one `gesture-start` read (core `editingGestureStart.ts`). */
 import { previewGestureStart } from "../../player/lib/previewElements";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
+import type { CropFrameStart } from "./domEditOverlayCrop";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import { invertManualOffsetDragMatrix, type ManualOffsetDragMatrix } from "./manualOffsetDrag";
 import { flatVisibleRect, groupAwareRect } from "./previewOverlayRects";
@@ -75,4 +76,14 @@ export async function measurePreviewGestureStart(
       reply.snap.map((box) => flatVisibleRect(scale, box)),
     ),
   };
+}
+
+export async function readCropFrameStart(
+  iframe: HTMLIFrameElement,
+  handle: string,
+): Promise<CropFrameStart | null> {
+  const start = (await previewGestureStart(iframe, [handle]))?.elements[0];
+  return start && start.planar !== undefined
+    ? { planar: start.planar, layout: start.layout }
+    : null;
 }

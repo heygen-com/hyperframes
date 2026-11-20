@@ -96,6 +96,7 @@ export function useDomGeometryCommit({
   });
   const commitPositionPatchToHtml = useDomEditPositionPatchCommit({
     activeCompPath,
+    previewIframeRef: iframeRef,
     persistDomEditOperations,
     showToast,
   });
