@@ -6,6 +6,7 @@ import { installReactActEnvironment, makeSelection } from "../../hooks/domSelect
 import { __resetForTests } from "../../utils/canvasNudgeGate";
 import { flushStudioPendingEdits, trackedStudioEdit } from "../../utils/studioPendingEdits";
 import { CANVAS_NUDGE_COMMIT_DEBOUNCE_MS } from "./domEditNudge";
+import type { WaitingPressState } from "./domEditOverlayGestures";
 import type { OverChannel, Shown } from "./previewGestureStartRead";
 import { useDomEditNudge } from "./useDomEditNudge";
 
@@ -33,10 +34,12 @@ function Harness({
   commit,
   selection,
   flush,
+  pressing = ref(null),
 }: {
   commit: () => Promise<unknown>;
   selection: ReturnType<typeof sealed>;
   flush?: { current: () => void };
+  pressing?: { current: WaitingPressState | null };
 }) {
   const { flushNudge } = useDomEditNudge({
     selection,
@@ -51,6 +54,7 @@ function Harness({
     gestureRef: ref(null),
     groupGestureRef: ref(null),
     blockedMoveRef: ref(null),
+    waitingPressRef: pressing,
     onManualDragStartRef: ref(() => {}),
     onBlockedMoveRef: ref(() => {}),
     onPathOffsetCommitRef: ref(commit),
@@ -186,6 +190,27 @@ it("drops a sealed nudge still waiting on its frame when a drag takes the elemen
   await answer(1);
   act(() => vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS));
 
+  expect(commit).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ handle: "e1" }),
+    { x: 1, y: 0 },
+    { plainTranslate: false },
+  );
+});
+
+// fails without the fix: an arrow during a press still waiting on its frame started a nudge the drag then ran under.
+it("asks the frame nothing for an arrow pressed while a canvas press waits, and nudges once it ends", async () => {
+  const answer = heldReads();
+  const commit = vi.fn(async () => {});
+  const pressing = { current: {} as WaitingPressState | null };
+  mount({ commit, selection: dot, pressing });
+
+  act(() => arrowRight());
+  expect(readShownGestureStarts).not.toHaveBeenCalled();
+
+  pressing.current = null;
+  act(() => arrowRight());
+  await answer(0);
+  act(() => vi.advanceTimersByTime(CANVAS_NUDGE_COMMIT_DEBOUNCE_MS));
   expect(commit).toHaveBeenCalledExactlyOnceWith(
     expect.objectContaining({ handle: "e1" }),
     { x: 1, y: 0 },

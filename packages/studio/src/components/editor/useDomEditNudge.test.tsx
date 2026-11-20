@@ -58,6 +58,7 @@ function Harness({
     gestureRef: makeRef(null),
     groupGestureRef: makeRef(null),
     blockedMoveRef: makeRef(null),
+    waitingPressRef: makeRef(null),
     onManualDragStartRef: makeRef(onManualDragStart),
     onBlockedMoveRef: makeRef(() => {}),
     onPathOffsetCommitRef: makeRef(onPathOffsetCommit),

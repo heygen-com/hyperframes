@@ -335,6 +335,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
     gestureRef,
     groupGestureRef,
     blockedMoveRef,
+    waitingPressRef,
     onBlockedMoveRef,
     onManualDragStartRef,
     onPathOffsetCommitRef,

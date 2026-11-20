@@ -26,6 +26,7 @@ import type {
   MoveCommitOptions,
   GestureState,
   GroupGestureState,
+  WaitingPressState,
 } from "./domEditOverlayGestures";
 import {
   applyManualOffsetNudgeCommit,
@@ -74,6 +75,7 @@ export interface UseDomEditNudgeParams {
   gestureRef: RefObject<GestureState | null>;
   groupGestureRef: RefObject<GroupGestureState | null>;
   blockedMoveRef: RefObject<BlockedMoveState | null>;
+  waitingPressRef: RefObject<WaitingPressState | null>;
   onManualDragStartRef: RefObject<(() => void) | undefined>;
   onBlockedMoveRef: RefObject<(selection: DomEditSelection, reason?: string) => void>;
   onPathOffsetCommitRef: RefObject<
@@ -147,11 +149,12 @@ function resolveSingleNudgeTarget(
 
 /**
  * True when a keydown must not start/extend a nudge: canvas movement disabled,
- * a pointer gesture already owns the element, or focus is in a field or a native player.
+ * a pointer gesture owns or is about to own the element, or focus is in a field or a player.
  */
 function shouldIgnoreNudgeKey(p: UseDomEditNudgeParams, event: KeyboardEvent): boolean {
   if (!p.allowCanvasMovement || event.defaultPrevented) return true;
   if (p.gestureRef.current || p.groupGestureRef.current || p.blockedMoveRef.current) return true;
+  if (p.waitingPressRef.current) return true;
   return ownsPlainKeys(event.target);
 }
 

@@ -211,6 +211,7 @@ function Nudge({ target, save }: { target: HTMLElement; save: () => Promise<void
     gestureRef: ref(null),
     groupGestureRef: ref(null),
     blockedMoveRef: ref(null),
+    waitingPressRef: ref(null),
     onManualDragStartRef: ref(() => {}),
     onBlockedMoveRef: ref(() => {}),
     onPathOffsetCommitRef: ref(save),
