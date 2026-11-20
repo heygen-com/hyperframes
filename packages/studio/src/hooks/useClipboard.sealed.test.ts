@@ -128,6 +128,8 @@ it("copies a canvas selection from a sealed preview, as saved", async () => {
 const SCRIPT_MADE = [
   ['<div id="made" class="clip" onclick="alert(1)">Made</div>', true],
   ['<a id="made" class="clip" href="javascript:alert(1)">Made</a>', true],
+  ['<div id="made" class="clip"><script>alert(1)</script>Made</div>', true],
+  ['<iframe id="made" class="clip" srcdoc="<b>x</b>"></iframe>', true],
   ['<video id="made" class="clip" src="clip.mp4" data-start="1" data-duration="2"></video>', false],
 ] as const;
 
