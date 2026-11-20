@@ -1,10 +1,28 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { runFfmpeg } from "../utils/runFfmpeg.js";
 import { extractVideoFramesRange, type ExtractedFrames } from "./videoFrameExtractor.js";
+
+const rebuildCopies = vi.hoisted(() => [] as number[]);
+
+// Pass-through that records how many bytes each seek-index copy wrote before it is removed.
+vi.mock("../utils/runFfmpeg.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../utils/runFfmpeg.js")>();
+  return {
+    ...real,
+    runFfmpeg: async (...call: Parameters<typeof real.runFfmpeg>) => {
+      const result = await real.runFfmpeg(...call);
+      const output = call[0].at(-1) ?? "";
+      if (output.endsWith("source.mov")) {
+        rebuildCopies.push(existsSync(output) ? statSync(output).size : 0);
+      }
+      return result;
+    },
+  };
+});
 
 const HAS_FFMPEG = spawnSync("ffmpeg", ["-version"]).status === 0;
 const WIDTH = 32;
@@ -27,6 +45,36 @@ function dropFirstSyncSample(source: string, target: string): void {
   }
   bytes.writeUInt32BE(count - 1, at + 8);
   writeFileSync(target, bytes);
+}
+
+/** Box offset of `type` in an MP4 whose boxes up to it are each found once. */
+function boxAt(bytes: Buffer, type: string): number {
+  const at = bytes.indexOf(type);
+  if (at < 4) throw new Error(`fixture has no ${type} box`);
+  return at - 4;
+}
+
+/**
+ * Repeats the first edit-list entry so the demuxer plays the same samples `repeats` times. The
+ * file stays a few kilobytes while a stream copy of it writes every repeat. Needs `moov` after
+ * `mdat`, so growing it moves no chunk offsets.
+ */
+function repeatEditList(source: string, target: string, repeats: number): void {
+  const bytes = readFileSync(source);
+  const elst = boxAt(bytes, "elst");
+  if (bytes[elst + 8] !== 0 || bytes.readUInt32BE(elst + 12) !== 1) {
+    throw new Error("fixture needs a single version-0 edit-list entry");
+  }
+  if (boxAt(bytes, "moov") < boxAt(bytes, "mdat")) throw new Error("fixture needs moov last");
+  const entry = bytes.subarray(elst + 16, elst + 28);
+  const extra = Buffer.concat(Array.from({ length: repeats - 1 }, () => entry));
+  const grown = Buffer.concat([bytes.subarray(0, elst + 28), extra, bytes.subarray(elst + 28)]);
+  grown.writeUInt32BE(repeats, elst + 12);
+  for (const type of ["elst", "edts", "trak", "moov"]) {
+    const at = boxAt(grown, type);
+    grown.writeUInt32BE(grown.readUInt32BE(at) + extra.length, at);
+  }
+  writeFileSync(target, grown);
 }
 
 describe.skipIf(!HAS_FFMPEG)("an MP4 whose sync-sample index leaves out the first keyframe", () => {
@@ -62,6 +110,10 @@ describe.skipIf(!HAS_FFMPEG)("an MP4 whose sync-sample index leaves out the firs
 
   afterAll(() => {
     rmSync(fixtureDir, { recursive: true, force: true });
+  });
+
+  beforeEach(() => {
+    rebuildCopies.length = 0;
   });
 
   /** Every frame the extraction wrote, decoded to gray pixels, in frame order. */
@@ -110,4 +162,36 @@ describe.skipIf(!HAS_FFMPEG)("an MP4 whose sync-sample index leaves out the firs
     expect([...extracted.framePaths.keys()].sort((a, b) => a - b)).toEqual([3, 4, 5, 6]);
     expect(decodedFrames(extracted)).toEqual(decodedFrames(reference));
   }, 30_000);
+
+  it("never copies a playlist that names the clip many times", async () => {
+    // ffmpeg prints the input's name, so this name alone matches the seek-failure message.
+    const playlist = join(fixtureDir, "could not seek to position 0.ffconcat");
+    writeFileSync(
+      playlist,
+      `ffconcat version 1.0\n${"file indexed.mp4\nduration 4\n".repeat(200)}`,
+    );
+    const extracted = await extractVideoFramesRange(playlist, "broll", 0.5, 1, {
+      fps: 10,
+      format: "png",
+      outputDir: mkdtempSync(join(fixtureDir, "playlist-")),
+    });
+    expect(rebuildCopies).toEqual([]);
+    expect(extracted.totalFrames).toBe(10);
+  }, 30_000);
+
+  it("stops a copy that outgrows its source at a ceiling and extracts without it", async () => {
+    const looped = join(fixtureDir, "looped.mp4");
+    repeatEditList(source, looped, 3000);
+    const ceiling = 2 * statSync(looped).size + 1024 * 1024;
+    const extracted = await extractVideoFramesRange(looped, "broll", 0.5, 1, {
+      fps: 10,
+      format: "png",
+      outputDir: mkdtempSync(join(fixtureDir, "looped-")),
+    });
+    expect(rebuildCopies).toHaveLength(1);
+    // ffmpeg stops past the limit and still writes the sample index, so the copy ends above it.
+    expect(rebuildCopies[0]).toBeGreaterThanOrEqual(ceiling);
+    expect(rebuildCopies[0]).toBeLessThan(2 * ceiling);
+    expect(extracted.totalFrames).toBe(10);
+  }, 60_000);
 });
