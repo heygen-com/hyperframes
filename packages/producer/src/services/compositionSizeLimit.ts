@@ -17,6 +17,8 @@ const megabytes = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
  */
 export const MAX_EXPANDED_COMPOSITION_BYTES = 4 * MAX_COMPOSITION_HTML_BYTES;
 const MAX_COMPOSITION_MOUNTS = 10_000;
+/** About 4x the largest composition in 7 days of production renders (24,800 elements). */
+export const MAX_EXPANDED_ELEMENTS = 100_000;
 
 class CompositionTooLargeError extends Error {
   readonly code = COMPOSITION_TOO_LARGE;
@@ -30,7 +32,9 @@ class CompositionTooLargeError extends Error {
       bytes: number;
       limitBytes: number;
       mounts?: number;
-      exceeded?: "bytes" | "mounts" | "generated";
+      elements?: number;
+      limitElements?: number;
+      exceeded?: "bytes" | "mounts" | "generated" | "elements";
     }>,
   ) {
     super(message);
@@ -84,6 +88,23 @@ export class CompositionExpansionBudget {
   private bytes = 0;
   private mounts = 0;
   private generated = 0;
+  private elements = 0;
+
+  chargeElements(file: string, count: number): void {
+    this.elements += count;
+    if (this.elements <= MAX_EXPANDED_ELEMENTS) return;
+    throw new CompositionTooLargeError(
+      `Sub-composition mounts, ending at "${file}", add up to ${this.elements} elements. ` +
+        `One render inlines at most ${MAX_EXPANDED_ELEMENTS} elements. Mount large or repeated scenes fewer times.`,
+      {
+        bytes: this.bytes,
+        limitBytes: MAX_EXPANDED_COMPOSITION_BYTES,
+        elements: this.elements,
+        limitElements: MAX_EXPANDED_ELEMENTS,
+        exceeded: "elements",
+      },
+    );
+  }
 
   /** `bytes` may be negative when a reserved upper bound is settled to the real size. */
   chargeGenerated(file: string, bytes: number): void {
@@ -94,6 +115,10 @@ export class CompositionExpansionBudget {
       limitBytes: MAX_EXPANDED_COMPOSITION_BYTES,
       exceeded: "generated",
     });
+  }
+
+  get generatedRoom(): number {
+    return MAX_EXPANDED_COMPOSITION_BYTES - this.generated;
   }
 
   chargeGeneratedIfItFits(bytes: number): boolean {

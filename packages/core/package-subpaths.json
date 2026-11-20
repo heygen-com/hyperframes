@@ -482,6 +482,12 @@
       "types": "./dist/runtime/editing/scenes.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/live-retime": {
+      "source": "./src/runtime/editing/liveRetime.ts",
+      "runtime": "./dist/runtime/editing/liveRetime.js",
+      "types": "./dist/runtime/editing/liveRetime.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/clip-window": {
       "source": "./src/runtime/clipWindow.ts",
       "runtime": "./dist/runtime/clipWindow.js",
