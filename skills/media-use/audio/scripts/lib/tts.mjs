@@ -20,7 +20,7 @@ import { replaceFile } from "../../../scripts/lib/manifest.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 import {
   heygenAuthHeaders,
   heygenCredential,
@@ -310,32 +310,43 @@ export async function synthesizeOne({
   if (provider === "gemini")
     return synthesizeGemini({ text, voiceId, model, style, speed, wavAbs });
   if (provider === "elevenlabs") {
-    // The Python helper writes straight to wavAbs; unlike heygen (transcodeToWav)
-    // and kokoro (the `hyperframes tts` CLI), it does NOT create the parent dir,
-    // so on a fresh project (no assets/voice/ yet) the save fails and the line is
-    // silently dropped as "TTS failed - omitted". Create it first, like the other
-    // providers do. Guarded so a mkdir failure (EACCES/EROFS) returns
-    // { ok:false } like the rest of this branch rather than throwing (the
-    // function's contract is "never throws; failures return { ok:false }").
+    // The output folder is made before the request, so a folder that cannot be made
+    // (EACCES/EROFS) drops the line before it spends a generation. Guarded so that
+    // failure returns { ok:false } rather than throwing (the function's contract is
+    // "never throws; failures return { ok:false }").
     try {
       mkdirSync(dirname(wavAbs), { recursive: true });
     } catch {
       return { ok: false, words: null };
     }
-    return withTmpText(text, async (textPath) => {
-      const { cmd, args } = pythonInvocation(["-c", ELEVENLABS_PY, textPath, voiceId, wavAbs]);
-      const r = await spawnP(cmd, args, {});
-      return synthResult(r, wavAbs, "elevenlabs (python)");
+    return withStagedWav(text, wavAbs, "elevenlabs (python)", (textPath, staged) => {
+      const { cmd, args } = pythonInvocation(["-c", ELEVENLABS_PY, textPath, voiceId, staged]);
+      return spawnP(cmd, args, {});
     });
   }
-  // kokoro — via the published CLI; --output is relative to the project dir.
-  const wavRel = relTo(hyperframesDir, wavAbs);
-  return withTmpText(text, async (textPath) => {
-    const args = ["hyperframes", "tts", textPath, "--voice", voiceId, "--output", wavRel];
+  // kokoro — via the published CLI, run in the project dir.
+  return withStagedWav(text, wavAbs, "kokoro (npx hyperframes tts)", (textPath, staged) => {
+    const args = ["hyperframes", "tts", textPath, "--voice", voiceId, "--output", staged];
     if (lang !== "en") args.push("--lang", lang);
     if (speed !== 1) args.push("--speed", String(speed));
-    const r = await spawnP("npx", args, { cwd: hyperframesDir });
-    return synthResult(r, wavAbs, "kokoro (npx hyperframes tts)");
+    return spawnP("npx", args, { cwd: hyperframesDir });
+  });
+}
+
+// The subprocess writes into the private text folder; its wav then replaces wavAbs, so a link
+// at wavAbs is replaced, not followed.
+function withStagedWav(text, wavAbs, label, run) {
+  return withTmpText(text, async (textPath) => {
+    const staged = join(dirname(textPath), basename(wavAbs));
+    const result = synthResult(await run(textPath, staged), staged, label);
+    if (!result.ok) return result;
+    try {
+      mkdirSync(dirname(wavAbs), { recursive: true });
+      replaceFile(wavAbs, readFileSync(staged));
+    } catch (error) {
+      return { ok: false, words: null, error: `${label}: ${error.message}` };
+    }
+    return result;
   });
 }
 
@@ -438,7 +449,4 @@ async function withTmpText(text, run) {
       rmSync(td, { recursive: true, force: true });
     } catch {}
   }
-}
-function relTo(base, abs) {
-  return abs.startsWith(base + "/") ? abs.slice(base.length + 1) : abs;
 }
