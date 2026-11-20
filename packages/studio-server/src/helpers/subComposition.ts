@@ -2,6 +2,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { parseHTML } from "linkedom";
 import { firstHtmlTemplate } from "@hyperframes/parsers/sub-composition-validity";
+import { decodedUrlPath } from "@hyperframes/parsers/asset-paths";
 import {
   rewriteAssetPaths,
   rewriteCssAssetUrls,
@@ -430,7 +431,7 @@ ${rewrittenContent}
 }
 
 function mountedFileBytes(projectDir: string, src: string): number {
-  const file = resolveWithinProject(projectDir, src.split(/[?#]/)[0] ?? "");
+  const file = resolveWithinProject(projectDir, decodedUrlPath(src));
   if (!file) return 0;
   assertCompositionFileSize(file, src);
   try {

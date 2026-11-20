@@ -24,6 +24,7 @@ writeFileSync(
   page(`<p>${"x".repeat(Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 5))}</p>`),
 );
 writeFileSync(join(projectDir, "heavy.html"), page(mounts("big.html", 6)));
+writeFileSync(join(projectDir, "heavy-encoded.html"), page(mounts("b%69g.html", 6)));
 writeFileSync(join(projectDir, "few.html"), page(mounts("leaf.html", 3)));
 
 const adapter: StudioApiAdapter = {
@@ -50,6 +51,12 @@ describe("a sub-composition preview over a size limit", () => {
     const html = await (await open("heavy.html")).text();
     expect(html).toContain(`window.${STUDIO_PREVIEW_ERRORS}=["`);
     expect(html).not.toContain('data-composition-src="big.html"');
+  });
+
+  it("charges a percent-encoded src for the file the route serves for it", async () => {
+    const html = await (await open("heavy-encoded.html")).text();
+    expect(html).toContain(`window.${STUDIO_PREVIEW_ERRORS}=["`);
+    expect(html).not.toContain('data-composition-src="b%69g.html"');
   });
 
   it("still serves a page with a few mounts", async () => {
