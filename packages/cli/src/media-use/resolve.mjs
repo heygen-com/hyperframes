@@ -657,7 +657,7 @@ function freezeGeneratedLut(
     try {
       // Write + validate at .tmp, then atomic rename, so a crash between write and
       // validate can't leave an invalid .cube at the final path.
-      writeFileSync(tmpPath, buildCube(params));
+      writeFileSync(tmpPath, buildCube(params), { flag: "wx" });
       const check = validateCubeFile(tmpPath);
       if (!check.ok) throw new Error(check.error);
       renameSync(tmpPath, fullPath);

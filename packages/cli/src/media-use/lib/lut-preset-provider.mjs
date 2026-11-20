@@ -251,7 +251,7 @@ export async function freezeLibraryLut(match, { projectDir, type, localOnly = fa
         assertValidCubeText(cube, `invalid library LUT ${match.id}`);
         // Write + validate at .tmp, then atomic rename — same no-orphan guarantee
         // as the url path above.
-        writeFileSync(tmpPath, cube);
+        writeFileSync(tmpPath, cube, { flag: "wx" });
         assertValidCubeFile(tmpPath, `invalid frozen LUT ${localPath}`);
         renameSync(tmpPath, fullPath);
         return libraryRecord(match, {

@@ -74,19 +74,33 @@ export function readManifest(projectDir) {
 }
 
 /**
- * The project's `.media` folder, made if missing. Throws when it is a link or resolves outside the project, since
- * a project from someone else could carry such a link to send manifest and index writes elsewhere.
+ * The project's `.media` folder, or the `subdir` inside it, made one level at a time if missing. Throws when any
+ * level is a link or resolves outside the project, before anything is made inside it, since a project from someone
+ * else could carry such a link to send writes elsewhere.
  */
-export function ownMediaDir(projectDir) {
-  const dir = mediaDir(projectDir);
-  mkdirSync(dir, { recursive: true });
-  if (
-    lstatSync(dir).isSymbolicLink() ||
-    realpathSync(dir) !== join(realpathSync(projectDir), ".media")
-  ) {
-    throw new Error(`${dir} leads outside the project folder; nothing was written there`);
+export function ownMediaDir(projectDir, subdir = "") {
+  mkdirSync(projectDir, { recursive: true });
+  let dir = mediaDir(projectDir);
+  let expected = join(realpathSync(projectDir), ".media");
+  ownFolder(dir, expected);
+  for (const part of subdir.split("/").filter(Boolean)) {
+    dir = join(dir, part);
+    expected = join(expected, part);
+    ownFolder(dir, expected);
   }
   return dir;
+}
+
+function ownFolder(dir, expected) {
+  try {
+    mkdirSync(dir);
+  } catch (error) {
+    if (error?.code !== "EEXIST") throw error;
+  }
+  const stats = lstatSync(dir);
+  if (stats.isSymbolicLink() || !stats.isDirectory() || realpathSync(dir) !== expected) {
+    throw new Error(`${dir} leads outside the project folder; nothing was written there`);
+  }
 }
 
 /** Throws when `path` is a link. */
@@ -110,9 +124,7 @@ export function replaceFile(path, content) {
 }
 
 export function appendRecord(projectDir, record) {
-  ownMediaDir(projectDir);
-  const typeDir = typeDirPath(projectDir, record.type);
-  mkdirSync(typeDir, { recursive: true });
+  ownMediaDir(projectDir, typeSubdir(record.type));
 
   const p = manifestPath(projectDir);
   refuseLink(p);
@@ -252,8 +264,7 @@ function withLock(dir, fn) {
 
 /** Runs `fn` holding the project's `.media/.lock`, so concurrent resolves take turns on what it guards. */
 export function withMediaLock(projectDir, fn) {
-  mkdirSync(mediaDir(projectDir), { recursive: true });
-  return withLock(mediaDir(projectDir), fn);
+  return withLock(ownMediaDir(projectDir), fn);
 }
 
 // Atomically allocate the next free id for `type` AND reserve it on disk, so a
@@ -263,9 +274,9 @@ export function withMediaLock(projectDir, fn) {
 // O_EXCL-create an empty marker under core's atomic temp name, which Studio's
 // project history skips. Returns { id, localPath, markerPath }.
 export function allocateId(projectDir, type, ext) {
-  mkdirSync(typeDirPath(projectDir, type), { recursive: true });
+  ownMediaDir(projectDir, typeSubdir(type));
   return withMediaLock(projectDir, () => {
-    const id = nextFreeId(projectDir, type);
+    const id = nextFreeId(projectDir, type, ext);
     const localPath = `.media/${typeSubdir(type)}/${id}${ext}`;
     // Same shape as core atomicTempPath: an empty file at the final name would be committed.
     const markerPath = `${join(projectDir, localPath)}.hf${randomBytes(3).toString("hex")}.tmp`;
@@ -274,9 +285,10 @@ export function allocateId(projectDir, type, ext) {
   });
 }
 
-// Call under the lock: counts recorded ids and ids reserved by a file not yet recorded.
-function nextFreeId(projectDir, type) {
-  const re = new RegExp(`^${type}_(\\d+)`);
+// Call under the lock: counts recorded ids and ids reserved by a file not yet recorded. Ids past nine digits are
+// ignored, so a planted huge id can't push the count past exact integers, and a name already taken is skipped.
+function nextFreeId(projectDir, type, ext) {
+  const re = new RegExp(`^${type}_(\\d{1,9})(?!\\d)`);
   let max = 0;
   for (const r of readManifest(projectDir)) {
     if (r.type !== type) continue;
@@ -288,7 +300,10 @@ function nextFreeId(projectDir, type) {
     const m = f.match(re);
     if (m) max = Math.max(max, parseInt(m[1], 10));
   }
-  return `${type}_${String(max + 1).padStart(3, "0")}`;
+  const idFor = (n) => `${type}_${String(n).padStart(3, "0")}`;
+  let next = max + 1;
+  while (lstatSync(join(typeDir, `${idFor(next)}${ext}`), { throwIfNoEntry: false })) next += 1;
+  return idFor(next);
 }
 
 function reservedFile(projectDir, type, ext) {
