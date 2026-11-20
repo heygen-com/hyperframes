@@ -66,7 +66,7 @@ async function cancelDuring(files: Record<string, string>, asset: string) {
   expect(requests).toHaveLength(started);
 }
 
-// fails without the fix: the media, image, background and font passes downloaded with no signal, so a cancel waited on them.
+// fails without the fix: the media, image, background and font downloads had no signal, so a cancel waited on them.
 it.each(assets)(
   "a cancel during a remote %s download stops the compile",
   async (_kind, ext, markup) => {
