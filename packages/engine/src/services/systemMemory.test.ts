@@ -20,6 +20,7 @@ type SystemMemoryModule = typeof import("./systemMemory.js");
 
 type MockSystemMemoryOptions = {
   availableParallelism?: number;
+  hostCpus?: number;
   files?: Record<string, string>;
   hostTotalMb?: number;
   platform?: NodeJS.Platform;
@@ -45,6 +46,7 @@ async function withSystemMemoryMocks(
 ): Promise<void> {
   const {
     availableParallelism = 32,
+    hostCpus = 32,
     files = {},
     hostTotalMb = 32768,
     platform = "linux",
@@ -57,6 +59,7 @@ async function withSystemMemoryMocks(
   vi.resetModules();
   vi.doMock("os", () => ({
     availableParallelism: () => availableParallelism,
+    cpus: () => Array.from({ length: hostCpus }, () => ({})),
     totalmem: () => hostTotalMb * BYTES_PER_MIB,
   }));
   vi.doMock("fs", () => ({
@@ -227,6 +230,17 @@ describe("usableCpuCount under a CPU quota", () => {
         files: { ...quotaOfSix.files, "/proc/self/status": "Cpus_allowed_list:\t0-3,8,10-11\n" },
       },
       ({ usableCpuCount }) => expect(usableCpuCount()).toBe(7),
+    );
+  });
+
+  it("never counts more CPUs than the host has online", async () => {
+    await withSystemMemoryMocks(
+      {
+        ...quotaOfSix,
+        hostCpus: 16,
+        files: { ...quotaOfSix.files, "/proc/self/status": "Cpus_allowed_list:\t0-63\n" },
+      },
+      ({ usableCpuCount }) => expect(usableCpuCount()).toBe(16),
     );
   });
 

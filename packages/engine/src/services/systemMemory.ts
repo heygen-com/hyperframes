@@ -277,7 +277,9 @@ export function getAvailableMemoryMb(): number {
 export function usableCpuCount(): number {
   // libuv clamps availableParallelism() to a cgroup v2 quota; getCgroupCpuLimit owns the quota, so count the affinity.
   if (getCgroupCpuLimit() === null) return availableParallelism();
-  return countCpuList(readCgroupFile("/proc/self/status")) ?? availableParallelism();
+  const affinity = countCpuList(readCgroupFile("/proc/self/status"));
+  // The affinity mask can name offline CPUs; cpus() lists only online ones.
+  return affinity === null ? availableParallelism() : Math.min(affinity, cpus().length);
 }
 
 /** Whole CPUs of time this process gets: the usable CPUs, lowered by a CPU quota. */
