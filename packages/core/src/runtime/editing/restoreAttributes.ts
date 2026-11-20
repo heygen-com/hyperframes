@@ -40,8 +40,10 @@ const SAFE_TO_SET = new Set([
   "data-y",
   "data-hf-group",
 ]);
+// Studio's own edit marks (its manualEditsTypes.ts): a redo puts back the ones its undo dropped.
+const safeToSet = (name: string) => SAFE_TO_SET.has(name) || name.startsWith("data-hf-studio-");
 const safeToDrop = (name: string) =>
-  SAFE_TO_SET.has(name) || name === "loading" || name.startsWith("data-");
+  safeToSet(name) || name === "loading" || name.startsWith("data-");
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Object.prototype.toString.call(value) === "[object Object]";
@@ -136,7 +138,7 @@ function planRoot(
     const keep = new Set(attributes.map(([name]) => name));
     const drop = el.getAttributeNames().filter((name) => !keep.has(name));
     const set = attributes.filter(([name, value]) => el.getAttribute(name) !== value);
-    if (!drop.every(safeToDrop) || !set.every(([name]) => SAFE_TO_SET.has(name))) return false;
+    if (!drop.every(safeToDrop) || !set.every(([name]) => safeToSet(name))) return false;
     plan.push([el, drop, set]);
   }
   return true;
