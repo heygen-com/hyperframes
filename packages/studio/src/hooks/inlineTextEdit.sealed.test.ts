@@ -16,6 +16,7 @@ import { describePreviewElements, previewTextEdit } from "../player/lib/previewE
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { useInlineTextEdit, type InlineTextEditCommit } from "./useInlineTextEdit";
+import { hasStudioPendingEdits } from "../utils/studioPendingEdits";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -343,4 +344,30 @@ it("opens no sealed text edit on a layer the frame would refuse, so Enter stays 
   const { iframe } = sealedPreviewFrame();
   expect(canEditSealedTextInline(await select(iframe, "s"))).toBe(false);
   expect(canEditSealedTextInline(await select(iframe, "p"))).toBe(true);
+});
+
+it("holds the pending-edit drain until a save the frame started on blur lands", async () => {
+  const { title, selection } = await sealedTitle();
+  let land!: () => void;
+  const onCommit = vi.fn(() => new Promise<void>((resolve) => (land = resolve)));
+  let controls!: ReturnType<typeof useInlineTextEdit>;
+  mount(() => {
+    controls = useInlineTextEdit({ onCommit });
+  });
+  act(() => void controls.start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.innerHTML = "Typed";
+  act(() => void title.dispatchEvent(new FocusEvent("blur")));
+  await vi.waitFor(() => expect(onCommit).toHaveBeenCalledOnce());
+  expect(hasStudioPendingEdits()).toBe(true);
+  land();
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+});
+
+it("leaves Enter to playback on text too long for the frame to edit", async () => {
+  const long = "x".repeat(200_001);
+  document.body.innerHTML = `<p id="long">${long}</p><p id="short">${long.slice(1)}</p>`;
+  const { iframe } = sealedPreviewFrame();
+  expect(canEditSealedTextInline(await select(iframe, "long"))).toBe(false);
+  expect(canEditSealedTextInline(await select(iframe, "short"))).toBe(true);
 });
