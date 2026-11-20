@@ -15,7 +15,7 @@ import {
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import { ffmpegHasHdrFilters } from "./hdrFilters.js";
 import { mediaInputArgs, NOT_MEDIA } from "./mediaExtensions.js";
-import { probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
+import { type MediaMetadata, probeFirstFrameColour, probeMediaMetadata } from "./mediaMetadata.js";
 import { cleanupProxyCache } from "./proxyCache.js";
 import {
   contentCopyKey,
@@ -884,7 +884,7 @@ async function runFfmpeg(
       gate,
       chunks,
       encode,
-      frameRate: metadata.source?.frameRate,
+      source: metadata.source,
       onDone: (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
     });
   } catch (err) {
@@ -907,7 +907,7 @@ type PieceCopy = {
   gate: PieceGate;
   chunks: ChunkFiles;
   encode: EncodeFn;
-  frameRate: number | undefined;
+  source: MediaMetadata["source"];
   onDone: (doneSeconds: number) => void;
 };
 
@@ -935,7 +935,7 @@ async function copyInPieces(ranges: ChunkRange[], outputPath: string, copy: Piec
       },
       copy.signal,
       copy.gate,
-      (piece, range) => stillWhole(piece, range, copy.frameRate, copy.signal),
+      (piece, range) => stillWhole(piece, range, copy.source?.frameRate, copy.signal),
       copy.onDone,
     );
     if (withSound) await addSoundFromSource(copy, picturePath, outputPath);
