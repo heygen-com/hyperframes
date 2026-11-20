@@ -1645,10 +1645,13 @@ describe("preview quality: lighter copies of heavy files", () => {
 
     // fails without the fix: an earlier test's runtime, never reset, reported its removed copies into this test.
     it("keeps an earlier test's runtime silent once that test is cleaned up", async () => {
+      vi.useFakeTimers();
       const earlier = await stage({ "/video.mp4": HEAVY });
       const el = earlier.video();
       earlier.setPreviewQuality(0.5);
       earlier.copies.noteCopy(el, "making", 0.5);
+      // Past the report throttle, as a test that advanced its clock ends.
+      await vi.advanceTimersByTimeAsync(2000);
       cleanUp();
 
       const { posted } = await stage({ "/video.mp4": HEAVY });
