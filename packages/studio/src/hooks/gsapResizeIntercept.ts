@@ -75,10 +75,16 @@ function originalBoxSize(
   return Number.isFinite(inline) && inline > 0 ? inline : null;
 }
 
-/** The box's width and height before the draft, for a size tween that animates only one. */
-function preGestureBoxSize(el: HTMLElement): Record<string, number> {
-  const width = originalBoxSize(el, STUDIO_ORIGINAL_BOX_WIDTH_ATTR, "width");
-  const height = originalBoxSize(el, STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, "height");
+/** The box's width and height before the draft; a sealed frame's draft is on its own element, so its press's measure. */
+function preGestureBoxSize(
+  selection: DomEditSelection,
+  el: HTMLElement | null = selection.element,
+): Record<string, number> {
+  const started = selection.handle ? gestureStartLayout(selection.handle) : null;
+  const width =
+    originalBoxSize(el, STUDIO_ORIGINAL_BOX_WIDTH_ATTR, "width") ?? (started?.width || null);
+  const height =
+    originalBoxSize(el, STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, "height") ?? (started?.height || null);
   return { ...(width != null && { width }), ...(height != null && { height }) };
 }
 
@@ -112,7 +118,7 @@ export async function commitSizeAtPlayhead(
     {
       label: "Resize",
       backfill: {
-        ...preGestureBoxSize(selection.element),
+        ...preGestureBoxSize(selection),
         ...(anchor && { x: anchor.baseGsapX, y: anchor.baseGsapY }),
       },
       ...(anchor && { beforeReload: () => restoreDragOffset(selection.element, callbacks.stamp) }),
@@ -322,12 +328,9 @@ export async function tryGsapResizeIntercept(
     // sent almost every element to the fallback below: a 630px chip scaled by
     // 630/200, landing over three times the size it was dropped at, and worse
     // on the next drag because the wrong scale then counted as its live one.
-    // A sealed preview has no element here: its gesture started from the box the frame measured.
-    const started = selection.handle ? gestureStartLayout(selection.handle) : null;
-    const cssW =
-      originalBoxSize(el, STUDIO_ORIGINAL_BOX_WIDTH_ATTR, "width") ?? (started?.width || 200);
-    const cssH =
-      originalBoxSize(el, STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, "height") ?? (started?.height || cssW);
+    const box = preGestureBoxSize(selection, el);
+    const cssW = box.width ?? 200;
+    const cssH = box.height ?? cssW;
     // `size` is the draft's CSS box; on screen it is multiplied by the element's
     // LIVE scale (the draft divides the cursor delta by it — see
     // resolveDomEditResizeGesture). The committed keyframe REPLACES that live
@@ -391,7 +394,7 @@ export async function tryGsapResizeIntercept(
       width: roundToLayoutPx(size.width),
       height: roundToLayoutPx(size.height),
     };
-    resizeBackfill = preGestureBoxSize(selection.element);
+    resizeBackfill = preGestureBoxSize(selection);
   }
   // Finalize a scale-route commit: tear down the gesture's inline width/height
   // draft (leaving it applied compounds with the committed scale — the element
