@@ -200,6 +200,8 @@ The composition runs inside a sandboxed `<iframe>` in the player's Shadow DOM. B
 
 An editor, recorder or custom-timeline integration that needs the composition's DOM can opt in with `sandbox-origin="same-origin"`, only for compositions you trust: the frame then shares your page's origin, and its code can reach your page. Only that exact value grants it; any other value, `opaque` included, stays sealed, so a typo cannot weaken isolation. Changing between the two reloads the active composition, because browser sandbox changes take effect only on navigation. Set the attribute before `src` or `srcdoc`: the policy in force when the source is set is the one that loads.
 
+A sealed composition loads the videos and audio served from its own host with CORS, so colour grading, canvas reads and audio effects can use them. Serve them with `Access-Control-Allow-Origin` (for example `*`). From a host that sends no CORS headers, each one plays anyway: it is loaded again once without CORS, those effects are off for it, and the console names it.
+
 Earlier versions shared the page's origin by default, and added the runtime to a composition that had none. To keep that behaviour, add `sandbox-origin="same-origin"`, or have the composition load the runtime script so it plays sealed.
 
 With `sandbox-origin="same-origin"`, use the `iframeElement` getter for direct access:
