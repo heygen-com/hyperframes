@@ -1,5 +1,10 @@
 // `restore-attributes`: an undo or redo that only changes identified elements' attributes, applied in place.
 // The parent diffs the saved files and sends each changed element's full restored attribute set.
+import {
+  isStudioMotionMark,
+  STUDIO_REAPPLIED_MARKS,
+  STUDIO_REAPPLIED_MARK_SELECTOR,
+} from "../../studioReappliedMarks";
 
 /** `hf:<data-hf-id>` or `id:<id>`, the key the parent's restore diff uses. */
 export type RestoreElementKey = string;
@@ -40,12 +45,15 @@ const SAFE_TO_SET = new Set([
   "data-y",
   "data-hf-group",
 ]);
-const reappliedOnlyAfterReload = (name: string) => name.startsWith("data-hf-studio-motion");
+const REAPPLIED = new Set<string>(STUDIO_REAPPLIED_MARKS.map(({ name }) => name));
 const isStudioEditMark = (name: string) =>
-  name.startsWith("data-hf-studio-") && !reappliedOnlyAfterReload(name);
+  name.startsWith("data-hf-studio-") && !isStudioMotionMark(name);
 const safeToSet = (name: string) => SAFE_TO_SET.has(name) || isStudioEditMark(name);
 const safeToDrop = (name: string) =>
-  safeToSet(name) || name === "loading" || name.startsWith("data-");
+  !isStudioMotionMark(name) && (safeToSet(name) || name === "loading" || name.startsWith("data-"));
+const reapplyScriptMissing = (plan: RestorePlan) =>
+  plan.some(([, , set]) => set.some(([name]) => REAPPLIED.has(name))) &&
+  !document.querySelector(STUDIO_REAPPLIED_MARK_SELECTOR);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Object.prototype.toString.call(value) === "[object Object]";
@@ -183,6 +191,7 @@ export function restoreAttributes({ scopes, scripted, time }: RestoreAttributesP
   const win = window as RestoreWindow;
   const plan = planRestore(scopes);
   if (!plan || typeof win.__player?.seek !== "function") return { applied: false };
+  if (reapplyScriptMissing(plan)) return { applied: false };
   if (scripted && plan.some(([el]) => "_gsap" in el)) return { applied: false };
   for (const [el, drop, set] of plan) {
     for (const name of drop) el.removeAttribute(name);

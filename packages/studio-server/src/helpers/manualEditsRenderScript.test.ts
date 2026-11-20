@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { Window } from "happy-dom";
+import { STUDIO_REAPPLIED_MARKS } from "@hyperframes/core";
 import {
   createSealedPreviewSeekReapplyScript,
   createStudioManualEditsRenderBodyScript,
   createStudioPositionSeekReapplyScript,
+  htmlHasStudioPositionEdits,
 } from "./manualEditsRenderScript";
 
 function runScript(
@@ -430,6 +432,24 @@ describe("createStudioPositionSeekReapplyScript", () => {
     const card = window.document.getElementById("card") as unknown as HTMLElement;
     return { card, clear: () => card.style.removeProperty("width") };
   }
+
+  it("starts, and is served, on a page with any one of core's reapplied marks and on no other", () => {
+    const wrapsSeekOn = (markup: string) => {
+      const window = new Window();
+      window.document.body.innerHTML = markup;
+      const seek = () => {};
+      const hf = { seek };
+      (window as unknown as { __hf: typeof hf }).__hf = hf;
+      runPositionScript(window);
+      return hf.seek !== seek;
+    };
+    const plain = '<div data-hf-studio-original-inline-translate=""></div>';
+    expect([wrapsSeekOn(plain), htmlHasStudioPositionEdits(plain)]).toEqual([false, false]);
+    for (const { name, value } of STUDIO_REAPPLIED_MARKS) {
+      const marked = `<div ${name}="${value ?? "{}"}"></div>`;
+      expect([wrapsSeekOn(marked), htmlHasStudioPositionEdits(marked)], name).toEqual([true, true]);
+    }
+  });
 
   it("hands every argument to the seek it wraps", () => {
     const window = new Window();

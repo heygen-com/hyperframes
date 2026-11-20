@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication
+import { STUDIO_REAPPLIED_MARKS } from "@hyperframes/core";
 export interface StudioManualEditsRenderScriptOptions {
   activeCompositionPath?: string | null;
 }
@@ -21,12 +22,9 @@ export function createStudioPositionSeekReapplyScript(): string {
   return positionSeekReapplyCall("false");
 }
 
-const POSITION_EDIT_MARKS = [
-  'data-hf-studio-path-offset="true"',
-  'data-hf-studio-box-size="true"',
-  'data-hf-studio-rotation="true"',
-  'data-hf-studio-motion="',
-];
+const POSITION_EDIT_MARKS = STUDIO_REAPPLIED_MARKS.map(({ name, value }) =>
+  value === null ? `${name}="` : `${name}="${value}"`,
+);
 export const htmlHasStudioPositionEdits = (html: string) =>
   POSITION_EDIT_MARKS.some((mark) => html.includes(mark));
 

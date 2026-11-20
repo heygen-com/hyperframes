@@ -88,6 +88,33 @@ describe("restore-attributes", () => {
     expect(box.getAttribute("style")).toBe("translate: 130px 90px");
   });
 
+  // fails without the fix: a page loaded with no reapplied mark has no script to keep the first one applied.
+  it("reloads for the first mark a seek has to reapply, and sets it in place once the page has one", () => {
+    const sized = (html: string) => {
+      document.body.innerHTML = html;
+      player();
+      return restoreAttributes(
+        restore("hf:box", [
+          ["data-hf-id", "box"],
+          ["data-hf-studio-box-size", "true"],
+        ]),
+      );
+    };
+    expect(sized('<div data-hf-id="box"></div>')).toEqual({ applied: false });
+    expect(sized('<div data-hf-id="box"></div><i data-hf-studio-rotation="true"></i>')).toEqual({
+      applied: true,
+    });
+  });
+
+  // fails without the fix: dropping a motion mark in place left its timeline running.
+  it("reloads to take a motion mark away", () => {
+    document.body.innerHTML = '<div data-hf-id="box" data-hf-studio-motion="{}"></div>';
+    player();
+    expect(restoreAttributes(restore("hf:box", [["data-hf-id", "box"]]))).toEqual({
+      applied: false,
+    });
+  });
+
   it("changes no handler, URL or sandbox-style attribute, and leaves an unchanged one alone", () => {
     const refused = (html: string, attributes: [string, string][]) => {
       document.body.innerHTML = html;
