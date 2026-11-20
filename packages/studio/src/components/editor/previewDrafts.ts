@@ -20,6 +20,7 @@ interface Queue {
   ops: EditingDraft[];
   drawn: Map<string, Drawn>;
   sending: boolean;
+  sent: Array<() => void>;
 }
 
 const standIns = new WeakMap<Element, { iframe: HTMLIFrameElement; handle: string }>();
@@ -45,14 +46,15 @@ export function previewDraftLive(standIn: Element): boolean {
 function queueFor(iframe: HTMLIFrameElement): Queue {
   let queue = queues.get(iframe);
   if (!queue) {
-    queue = { ops: [], drawn: new Map(), sending: false };
+    queue = { ops: [], drawn: new Map(), sending: false, sent: [] };
     queues.set(iframe, queue);
   }
   return queue;
 }
 
 function send(iframe: HTMLIFrameElement, queue: Queue): void {
-  if (queue.sending || !queue.ops.length) return;
+  if (queue.sending) return;
+  if (!queue.ops.length) return void queue.sent.splice(0).forEach((done) => done());
   const drafts = queue.ops.splice(0, MAX_DESCRIBE_HANDLES);
   queue.sending = true;
   void previewRequest(iframe, "draft", { drafts }).finally(() => {
@@ -91,4 +93,10 @@ export function endPreviewDraft(element: Element, end: "keep" | "restore"): void
   if (!queue.drawn.delete(target.handle)) return;
   queue.ops.push({ handle: target.handle, end });
   send(target.iframe, queue);
+}
+
+export function previewDraftsSent(iframe: HTMLIFrameElement): Promise<void> {
+  const queue = queueFor(iframe);
+  if (!queue.sending && !queue.ops.length) return Promise.resolve();
+  return new Promise((done) => queue.sent.push(done));
 }
