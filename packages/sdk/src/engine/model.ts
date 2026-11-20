@@ -295,31 +295,32 @@ function parseStyleAttr(styleAttr: string): Record<string, string> {
   return result;
 }
 
-/** Serialize camelCase style map → style attribute string. */
-function serializeStyleAttr(styles: Record<string, string>): string {
-  return Object.entries(styles)
-    .map(([k, v]) => `${toKebab(k)}: ${v}`)
-    .join("; ");
-}
-
 export function getElementStyles(el: Element): Record<string, string> {
   const attr = el.getAttribute("style") ?? "";
   return parseStyleAttr(attr);
 }
 
 export function setElementStyles(el: Element, updates: Record<string, string | null>): void {
-  const current = getElementStyles(el);
-  for (const [prop, value] of Object.entries(updates)) {
-    // Stored map is keyed camelCase (parseStyleAttr); custom props (--foo) stay
-    // verbatim. Normalize the incoming key the same way for both set and delete.
-    const key = toCamel(prop);
-    if (value === null) {
-      delete current[key];
-    } else {
-      current[key] = value;
+  const updatesByCamel = new Map(Object.entries(updates).map(([p, v]) => [toCamel(p), v] as const));
+  const declared = new Set<string>();
+  const kept = splitStyleDeclarations(el.getAttribute("style") ?? "")
+    .map((decl) => decl.trim())
+    .filter(Boolean)
+    .flatMap((text) => {
+      const idx = text.indexOf(":");
+      const key = idx === -1 ? null : toCamel(text.slice(0, idx).trim());
+      if (key === null || !updatesByCamel.has(key)) return [text];
+      if (declared.has(key)) return [];
+      declared.add(key);
+      const value = updatesByCamel.get(key)!;
+      return value === null ? [] : [`${toKebab(key)}: ${value}`];
+    });
+  for (const [key, value] of updatesByCamel) {
+    if (value !== null && !declared.has(key)) {
+      kept.push(`${toKebab(key)}: ${value}`);
     }
   }
-  const serialized = serializeStyleAttr(current);
+  const serialized = kept.join("; ");
   if (serialized) {
     el.setAttribute("style", serialized);
   } else {
