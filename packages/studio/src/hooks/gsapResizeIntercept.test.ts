@@ -744,3 +744,56 @@ it.each([
   el.remove();
   document.querySelector("#__hf_color_grading_clip")?.remove();
 });
+
+// fails without the fix: a width/height tween resized as a whole reported its size as saved as scale.
+describe("a resize with auto-keyframe off nudges the whole tween", () => {
+  afterEach(() => usePlayerStore.setState({ autoKeyframeEnabled: true }));
+
+  it("of a width/height tween, and says it saved the size as width and height", async () => {
+    usePlayerStore.setState({ autoKeyframeEnabled: false, currentTime: 1 });
+    const selection = titleSelection();
+    selection.element.setAttribute("data-hf-studio-original-box-width", "260");
+    selection.element.setAttribute("data-hf-studio-original-box-height", "160");
+    const grow = tween({
+      id: "#title-to-0-size",
+      targetSelector: "#title",
+      propertyGroup: "size",
+      method: "to",
+      properties: { width: 320, height: 200 },
+      resolvedStart: 0,
+      duration: 2,
+      ease: "none",
+    });
+    const commitMutation = vi.fn();
+
+    const outcome = await tryGsapResizeIntercept(
+      selection,
+      { width: 300, height: 180 },
+      [grow],
+      null,
+      commitMutation,
+      async () => [grow],
+    );
+
+    expect(outcome.status).toBe("persisted");
+    expect(outcome).not.toHaveProperty("savedAsScale");
+    expect(commitMutation).toHaveBeenCalled();
+  });
+
+  it("of a scale tween, and says it saved the size as scale", async () => {
+    usePlayerStore.setState({ autoKeyframeEnabled: false, currentTime: 0.5 });
+    const el = makeGradedElement();
+    const iframe = fakeIframe(el, { scale: 1, scaleX: 1, scaleY: 1, opacity: 0, rotation: 0 });
+
+    const outcome = await tryGsapResizeIntercept(
+      { id: "clip", selector: "#clip", element: el } as DomEditSelection,
+      { width: 800, height: 450 },
+      [scaleFromTween()],
+      iframe,
+      vi.fn(),
+      async () => [keyframedScaleFixture()],
+    );
+
+    expect(outcome).toMatchObject({ status: "persisted", savedAsScale: true });
+  });
+});
