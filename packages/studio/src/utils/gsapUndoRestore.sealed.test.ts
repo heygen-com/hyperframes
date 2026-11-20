@@ -30,6 +30,11 @@ const BOX_AT_0 = {
 };
 
 const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+// A reload tells the frame its scenes are stale; that request is the reload's, not the restore's.
+const sentToFrame = () =>
+  channel.request.mock.calls
+    .map(([, request, params]) => [request, params] as const)
+    .filter(([request]) => request !== "mark-scenes-stale");
 
 beforeEach(() => channel.request.mockReset());
 
@@ -141,12 +146,10 @@ describe("undo on a sealed preview", () => {
     });
     answer({ applied: false });
     await settled();
-    expect(channel.request.mock.calls.map(([, request, params]) => [request, params.time])).toEqual(
-      [
-        ["restore-attributes", 2],
-        ["soft-reload", 3],
-      ],
-    );
+    expect(sentToFrame().map(([request, params]) => [request, params.time])).toEqual([
+      ["restore-attributes", 2],
+      ["soft-reload", 3],
+    ]);
     expect(reload).toHaveBeenCalledOnce();
   });
 
@@ -155,7 +158,7 @@ describe("undo on a sealed preview", () => {
     channel.request.mockResolvedValue(null);
     const { reload } = undo(box(90) + script("{ x: 1 }"), box(0) + script("{ x: 1 }"));
     await settled();
-    expect(channel.request).toHaveBeenCalledOnce();
+    expect(sentToFrame().map(([request]) => request)).toEqual(["restore-attributes"]);
     expect(reload).toHaveBeenCalledOnce();
   });
 

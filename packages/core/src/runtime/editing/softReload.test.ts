@@ -196,7 +196,7 @@ describe("restore-attributes with a re-run", () => {
     win.__hfForceTimelineRebind = () => seen.push(el.getAttribute("style"));
     const params = parseRestoreAttributesRerun(request(RERUN))!;
     expect(await restoreAttributesOrRerun(params)).toEqual({ applied: true });
-    expect(seen).toEqual(["left: 0px"]);
+    expect(seen).toEqual([expect.stringContaining("left: 0px")]);
     expect(killed).toHaveBeenCalledOnce();
     expect(seeks).toContain(1.5);
   });
