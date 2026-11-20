@@ -1,5 +1,5 @@
 import type { LintContext, HyperframeLintFinding } from "../context";
-import { truncateSnippet } from "../utils";
+import { stripCssComments, stripJsCode, truncateSnippet } from "../utils";
 
 const CSS_ROOT_URL = /\burl\(\s*["']?(\/(?!\/)[^"')\s]*)/g;
 // Preview moves markup paths and module imports under the project; script-built paths and linked CSS files it can't.
@@ -26,15 +26,17 @@ function rootPathFinding(
 }
 
 function cssRootPaths(css: string, cssFile?: string): HyperframeLintFinding[] {
-  return [...css.matchAll(CSS_ROOT_URL)].map((match) =>
+  return [...stripCssComments(css).matchAll(CSS_ROOT_URL)].map((match) =>
     rootPathFinding(match[1] ?? "", cssFile, match[0]),
   );
 }
 
-const scriptRootPaths = (script: string): HyperframeLintFinding[] =>
-  [...script.matchAll(SCRIPT_ROOT_URL)].map((match) =>
-    rootPathFinding(match[2] ?? "", undefined, match[0]),
-  );
+function scriptRootPaths(script: string): HyperframeLintFinding[] {
+  const code = stripJsCode(script);
+  return [...script.matchAll(SCRIPT_ROOT_URL)]
+    .filter((match) => code[match.index] === script[match.index])
+    .map((match) => rootPathFinding(match[2] ?? "", undefined, match[0]));
+}
 
 function invalidImportMap(script: { attrs: string; content: string }): HyperframeLintFinding[] {
   if (!/\btype\s*=\s*["']?importmap\b/i.test(script.attrs)) return [];

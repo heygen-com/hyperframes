@@ -115,6 +115,9 @@ Detected issues include:
 - CSS `zoom` on the composition root or its ancestors (`root_zoom_rescales_a_fixed_canvas`);
   zoom on descendants is allowed, including scoped selectors such as `#root .badge`
 - Invalid `data-start` references to nonexistent clip IDs
+- Root-relative URLs built by inline `fetch()` / `new URL()` calls or used in linked
+  stylesheets (`root_path_missing_in_preview`). Comments and JavaScript string
+  examples are ignored; executable calls still receive the warning and a relative-path hint.
 - Seek-order hazards that render differently on cold render workers: relative tween
   values (`"+=..."`) whose property has a second concurrent writer
   (`gsap_relative_value_second_writer`), `repeatRefresh` combined with relative values
