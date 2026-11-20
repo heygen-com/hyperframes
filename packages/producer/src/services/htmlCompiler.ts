@@ -1421,7 +1421,11 @@ function inlineSubCompositions(
 function ensureFullDocument(html: string): string {
   const trimmed = html.trim();
   if (/^<!DOCTYPE\s+html/i.test(trimmed) || /^<html/i.test(trimmed)) {
-    return html;
+    const { document } = parseHTML(html);
+    const root = document.documentElement;
+    if (document.querySelector("head") || root?.localName !== "html") return html;
+    root.prepend(document.createElement("head"));
+    return document.toString();
   }
   // Wrap fragment with a proper document including margin/padding reset.
   // Without this, Chrome applies default body { margin: 8px } which creates
