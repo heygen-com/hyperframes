@@ -308,6 +308,15 @@ describe("add command pure helpers", () => {
       expect(compositionRootId(`<div>no root</div>`)).toBeUndefined();
     });
 
+    // fails without the fix: an SVG element named template came first and has no content.
+    it("reads the root inside the HTML template after an SVG element named template", () => {
+      expect(
+        compositionRootId(
+          `<svg><template></template></svg><template id="t"><div data-composition-id="templated"></div></template>`,
+        ),
+      ).toBe("templated");
+    });
+
     it("gives the block host the composition id that check requires", async () => {
       const snip = buildSnippet(BLOCK_ITEM, "compositions/my-block.html", null, "my-block-root");
       const html = `<!doctype html><html><body><div data-composition-id="root" data-width="1080" data-height="1350">${snip}</div></body></html>`;

@@ -207,6 +207,7 @@ describe("installEditingAgent", () => {
           "mark-scenes-stale",
           "swap-scenes",
           "live-retime",
+          "assets-unloaded",
         ],
       },
     });

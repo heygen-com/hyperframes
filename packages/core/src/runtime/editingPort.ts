@@ -91,12 +91,15 @@ export {
   buildStableSelector,
   escapeCssString,
   getPreferredClassSelector,
+  isEditableTextLeaf,
   readElementSource,
+  readTextLayer,
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
+  MAX_TIMELINE_TEXT,
   MAX_POINT_STACK,
   MAX_QUERY_MATCHES,
   MAX_SOURCE_GROUPS,
@@ -106,6 +109,7 @@ export {
   type EditingElementMatch,
   type EditingElementSource,
   type EditingRect,
+  type TextLayerRead,
 } from "./editingElement";
 export {
   elementCornerPoints,
@@ -204,6 +208,7 @@ export const EDITING_REQUEST_KINDS = [
   "mark-scenes-stale",
   "swap-scenes",
   "live-retime",
+  "assets-unloaded",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
 
@@ -345,6 +350,7 @@ export interface EditingRequests {
   "mark-scenes-stale": { params: MarkScenesStaleParams; result: { marked: true } };
   "swap-scenes": { params: SwapScenesParams; result: SwapScenesResult };
   "live-retime": { params: LiveRetimeParams; result: { result: LiveRetimeResult } };
+  "assets-unloaded": { params: NoParams; result: { unloaded: boolean } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
 export type EditingResult<K extends EditingRequestKind> = EditingRequests[K]["result"];
@@ -560,6 +566,7 @@ const PARAM_PARSERS: {
   "mark-scenes-stale": parseMarkScenesStale,
   "swap-scenes": parseSwapScenes,
   "live-retime": parseLiveRetime,
+  "assets-unloaded": noParams,
 };
 
 /** Validates one request off the wire. Never throws: anything unusable becomes a typed error. */

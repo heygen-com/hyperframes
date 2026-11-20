@@ -88,6 +88,29 @@ describe("buildSubCompositionHtml", () => {
     expect(document.querySelector("#image")?.getAttribute("srcset")).toBe("scenes/hero.svg 1x");
   });
 
+  // fails without the fix: the first template was an SVG element named template, and its markup stood in for the scene.
+  it("previews the HTML scene template after an SVG element named template", () => {
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+      "compositions/scene.html": `<svg><template></template></svg><template id="scene-template"><div data-composition-id="scene" data-width="320" data-height="180"><p>scene text</p></div></template>`,
+    });
+    const html = buildSubCompositionHtml(dir, "compositions/scene.html", "/api/runtime.js") ?? "";
+    expect(html).toContain("scene text");
+  });
+
+  it("gives the previewed root the id of the HTML template it came from", () => {
+    const dir = makeTempProject({
+      "index.html": "<!doctype html><html><head></head><body></body></html>",
+      "compositions/scene.html": `<svg><template data-composition-id="svg-wrapper"></template></svg><template id="scene-template" data-composition-id="scene"><div data-width="320" data-height="180"><p>scene text</p></div></template>`,
+    });
+    const html = buildSubCompositionHtml(dir, "compositions/scene.html", "/api/runtime.js") ?? "";
+    expect(
+      parseHTML(html)
+        .document.querySelector("body [data-composition-id]")
+        ?.getAttribute("data-composition-id"),
+    ).toBe("scene");
+  });
+
   it("loads the default gsap version when the project head has no gsap", () => {
     const dir = makeTempProject({
       "index.html": `<!doctype html><html><head><title>Host</title></head><body></body></html>`,

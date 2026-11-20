@@ -44,6 +44,7 @@ import { patchTweens } from "./editing/patchTween";
 import { softReload } from "./editing/softReload";
 import { holdScenes, markScenesStale, swapScenes } from "./editing/scenes";
 import { liveRetime } from "./editing/liveRetime";
+import { previewAssetsUnloaded } from "../lottieReadiness";
 import {
   getLogicalOpacity,
   markedForStudio,
@@ -232,6 +233,7 @@ const HANDLERS: Handlers = {
   "mark-scenes-stale": markScenesStale,
   "swap-scenes": swapScenes,
   "live-retime": liveRetime,
+  "assets-unloaded": () => ({ unloaded: previewAssetsUnloaded(document, window.__hfLottie) }),
 };
 
 function serve(port: MessagePort): void {

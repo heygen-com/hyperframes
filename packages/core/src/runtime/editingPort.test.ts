@@ -110,6 +110,7 @@ describe("createEditingPortClient", () => {
           "mark-scenes-stale",
           "swap-scenes",
           "live-retime",
+          "assets-unloaded",
         ],
       });
     } finally {

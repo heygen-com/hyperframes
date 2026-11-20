@@ -17,7 +17,7 @@ const dir = mkdtempSync(join(tmpdir(), "hf-offload-phone-"));
 function phoneClip(): Buffer {
   const made = join(dir, "made.mov");
   execFileSync(ffmpeg!, [
-    ...["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=160x90:d=1"],
+    ...["-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=s=160x90:d=1"],
     ...["-f", "lavfi", "-i", "sine=f=300:d=1,pan=4c|c0=c0|c1=c0|c2=c0|c3=c0"],
     ...["-f", "lavfi", "-i", "sine=f=1000:d=1", "-map", "0:v", "-map", "1:a", "-map", "2:a"],
     ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "pcm_s16le", made],

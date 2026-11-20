@@ -198,11 +198,12 @@ export {
 } from "./services/screenshotService.js";
 
 // ── Encoding ───────────────────────────────────────────────────────────────────
-export { concatListInputArgs } from "@hyperframes/parsers/ff-binaries";
+export { concatListInputArgs, concatListText } from "@hyperframes/parsers/ff-binaries";
 export {
   buildEncoderArgs,
   encodeFramesFromDir,
   buildConcatArgs,
+  writeVideoConcatList,
   concatVideoFiles,
   encodeFramesChunkedConcat,
   muxVideoWithAudio,
