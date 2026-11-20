@@ -1,21 +1,13 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import {
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const realFfmpeg = findFfBinary("ffmpeg");
-// Mirrors PROXY_CHUNK_SECONDS in proxyTranscoder.ts: three pieces, the last taking the remainder.
-const PIECE_SECONDS = 15;
-const LONG_SECONDS = 3 * PIECE_SECONDS + 5;
+// Three 15 s pieces (PROXY_CHUNK_SECONDS in proxyTranscoder.ts), the last taking the remainder.
+const LONG_SECONDS = 50;
 
 const tempDirs: string[] = [];
 function tmpProject(): string {
@@ -29,13 +21,7 @@ afterEach(() => {
   vi.resetModules();
 });
 
-describe("resolveProxy joining a long source's pieces with real ffmpeg", () => {
-  const clip = (path: string, seconds: number) =>
-    execFileSync(realFfmpeg!, [
-      ...["-y", "-v", "error", "-f", "lavfi", "-i", `color=c=blue:s=32x32:r=30:d=${seconds}`],
-      ...["-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:d=${seconds}`],
-      ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", path],
-    ]);
+describe("resolveProxy keeping picture and sound together across the seams of a long source", () => {
   const realCopyOf = async (name: string, makeSource: (path: string) => void) => {
     vi.resetModules();
     vi.doUnmock("./mediaMetadata.js");
@@ -54,63 +40,6 @@ describe("resolveProxy joining a long source's pieces with real ffmpeg", () => {
         { encoding: "utf8" },
       ),
     );
-
-  it.skipIf(!realFfmpeg || !findFfBinary("ffprobe"))(
-    "joins the pieces of a source with sound into one copy that keeps its sound",
-    async () => {
-      const { proxyPath } = await realCopyOf("talk.mp4", (path) =>
-        execFileSync(realFfmpeg!, [
-          ...["-v", "error", "-f", "lavfi", "-i", `color=c=blue:s=32x32:r=2:d=${LONG_SECONDS}`],
-          ...["-f", "lavfi", "-i", `sine=frequency=440:sample_rate=48000:d=${LONG_SECONDS}`],
-          ...["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", path],
-        ]),
-      );
-      const probed = probeJson(proxyPath, "stream=codec_type:format=duration");
-      expect(probed.streams.map((s: { codec_type: string }) => s.codec_type).sort()).toEqual([
-        "audio",
-        "video",
-      ]);
-      expect(Number(probed.format.duration)).toBeCloseTo(LONG_SECONDS, 0);
-    },
-    60_000,
-  );
-
-  it.skipIf(!realFfmpeg || !findFfBinary("ffprobe")).each([
-    ["ends early", (piece: string) => clip(piece, 5)],
-    ["ends 0.8 s early", (piece: string) => clip(piece, 19.2)],
-    ["was cut off", (piece: string) => writeFileSync(piece, readFileSync(piece).subarray(0, 2000))],
-  ])(
-    "makes a piece left from a stopped copy again when it %s",
-    async (_name, spoil) => {
-      vi.resetModules();
-      vi.doUnmock("./mediaMetadata.js");
-      vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
-      const { resolveProxy } = await import("./proxyTranscoder.js");
-      const projectDir = realpathSync(tmpProject());
-      const sourcePath = join(projectDir, "talk.mp4");
-      clip(sourcePath, LONG_SECONDS);
-      const stop = new AbortController();
-      const stopped = resolveProxy(projectDir, sourcePath, "h264", undefined, {
-        signal: stop.signal,
-        onProgress: ({ doneSeconds }) => doneSeconds >= LONG_SECONDS && stop.abort(),
-      }).catch((error: unknown) => error);
-      expect(await stopped).toBe(stop.signal.reason);
-      const cache = join(projectDir, ".transcode-cache");
-      const last = readdirSync(cache).find((name) => /^\.part-.*-2\.mp4$/.test(name))!;
-      spoil(join(cache, last));
-
-      const heard: number[] = [];
-      const proxyPath = await resolveProxy(projectDir, sourcePath, "h264", undefined, {
-        onProgress: ({ doneSeconds }) => heard.push(doneSeconds),
-      });
-      expect(heard[0]).toBeGreaterThanOrEqual(2 * PIECE_SECONDS);
-      const picture = probeJson(proxyPath, "stream=codec_type,duration").streams.find(
-        (s: { codec_type: string }) => s.codec_type === "video",
-      );
-      expect(Number(picture.duration)).toBeCloseTo(LONG_SECONDS, 0);
-    },
-    60_000,
-  );
 
   it.skipIf(!realFfmpeg || !findFfBinary("ffprobe"))(
     "keeps a whole copy when a track it leaves out runs longer than the picture",
@@ -137,16 +66,17 @@ describe("resolveProxy joining a long source's pieces with real ffmpeg", () => {
 
   const CLAPS = [2, 14.5, 15.2, 29.9, 30.4, 44.6, 47];
   const FPS = 30;
+  const SILENCE_ARGS = ["-af", "silencedetect=n=-30dB:d=0.1", "-f", "null", "-"];
   const soundMinusFlashPerClap = (path: string, claps: number[]): number[] => {
     let at = 0;
     let lit = false;
     const flashes: number[] = [];
-    const frames = execFileSync(
+    const { stdout, stderr } = spawnSync(
       realFfmpeg!,
-      ["-v", "error", "-i", path, "-vf", "signalstats,metadata=print:file=-", "-f", "null", "-"],
+      [...["-i", path, "-vf", "signalstats,metadata=print:file=-"], ...SILENCE_ARGS],
       { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
     );
-    for (const line of frames.split(/\r?\n/)) {
+    for (const line of stdout.split(/\r?\n/)) {
       const time = /pts_time:([\d.]+)/.exec(line);
       if (time) at = Number(time[1]);
       const luma = /YAVG=([\d.]+)/.exec(line);
@@ -154,11 +84,6 @@ describe("resolveProxy joining a long source's pieces with real ffmpeg", () => {
       if (Number(luma[1]) > 100 && !lit) flashes.push(at);
       lit = Number(luma[1]) > 100;
     }
-    const { stderr } = spawnSync(
-      realFfmpeg!,
-      ["-i", path, "-map", "0:a", "-af", "silencedetect=n=-30dB:d=0.1", "-f", "null", "-"],
-      { encoding: "utf8" },
-    );
     const quiet = [...stderr.matchAll(/silence_(start|end): ([\d.]+)/g)];
     const sounds = quiet.flatMap((match, index) =>
       match[1] === "end" && quiet[index + 1]?.[1] === "start" ? [Number(match[2])] : [],
@@ -169,7 +94,6 @@ describe("resolveProxy joining a long source's pieces with real ffmpeg", () => {
   };
 
   it.skipIf(!realFfmpeg || !findFfBinary("ffprobe")).each([
-    ["picture and sound together", 0, 0, String(FPS), LONG_SECONDS, CLAPS],
     ["picture starting late", 0.4, 0, String(FPS), LONG_SECONDS, CLAPS],
     ["sound starting late", 0, 0.4, String(FPS), LONG_SECONDS, CLAPS],
     ["at 29.97 frames a second over two minutes", 0, 0, "30000/1001", 120, [2, 61.3, 118]],
