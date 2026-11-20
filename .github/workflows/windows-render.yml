@@ -459,15 +459,12 @@ jobs:
           # Only the engine-cli lanes read an LFS file (engine's ffprobe test parses a producer HDR PNG).
           lfs: ${{ matrix.process_tests == true }}
 
-      - name: Probe fix A (core) - no catch-up scans
-        if: matrix.lane == 'core'
+      - name: Probe fix C - update Defender signatures before anything else
         shell: pwsh
-        run: Set-MpPreference -DisableCatchupQuickScan $true -DisableCatchupFullScan $true -ScanScheduleDay 8
-
-      - name: Probe fix B (studio-2) - workspace and temp excluded
-        if: matrix.lane == 'studio-2'
-        shell: pwsh
-        run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP, "$env:USERPROFILE\.cache", "$env:USERPROFILE\.bun"
+        run: |
+          $before = (Get-MpComputerStatus).AntivirusSignatureLastUpdated
+          $took = Measure-Command { Update-MpSignature }
+          "signatures $before -> $((Get-MpComputerStatus).AntivirusSignatureLastUpdated) in $([int]$took.TotalSeconds) s"
 
       - name: Start the probe sampler
         shell: pwsh
