@@ -185,7 +185,6 @@ const IMAGE_MODELS: Record<string, { aspects: string[]; references: number }> = 
   "minimax-h3-image": { aspects: MINIMAX_ASPECTS, references: 16 },
   "minimax-h3-image-4k": { aspects: MINIMAX_ASPECTS, references: 16 },
 };
-/** Models this command no longer sends, each with the model to ask for instead. */
 const RETIRED_IMAGE_MODELS: Record<string, string> = {
   "nano-banana-2": "nano-banana-2.1",
   "gpt-image-2.5": "gpt-image-2.6",
