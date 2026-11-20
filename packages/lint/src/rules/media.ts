@@ -486,9 +486,33 @@ function innermostTimedWrapper(
   return found;
 }
 
+const MAX_DATA_VOLUME = 3.98;
+
+function findInvalidDataVolumeFindings(ctx: LintContext): HyperframeLintFinding[] {
+  const findings: HyperframeLintFinding[] = [];
+  for (const tag of ctx.tags) {
+    if (!isMediaTag(tag.name)) continue;
+    const raw = readAttr(tag.raw, "data-volume");
+    if (raw === null) continue;
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0 || value > MAX_DATA_VOLUME) {
+      findings.push({
+        code: "media_invalid_data_volume",
+        severity: "warning",
+        message: `<${tag.name}> has data-volume="${raw}", outside the documented 0..3.98 gain range (0..+12 dB). Out-of-range values are clamped to the nearest end of the supported range and non-numbers fall back to normal volume, so the clip will not play at the level written.`,
+        elementId: readAttr(tag.raw, "id") || undefined,
+        fixHint: "Set data-volume to a number between 0 and 3.98 (linear gain; 1 is unity).",
+        snippet: truncateSnippet(tag.raw),
+      });
+    }
+  }
+  return findings;
+}
+
 export const mediaRules: Array<(ctx: LintContext) => HyperframeLintFinding[]> = [
   findNestedMediaStartBasisFindings,
   findSpeedRampOnNonMediaFindings,
+  findInvalidDataVolumeFindings,
   // duplicate_media_id + duplicate_media_discovery_risk
   ({ tags }) => {
     const findings: HyperframeLintFinding[] = [];
