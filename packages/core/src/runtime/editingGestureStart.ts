@@ -10,6 +10,7 @@ import { computedTranslateAxes, movedTranslate } from "./editingDraft";
 import {
   boxOf,
   elementGeometry,
+  readElementTransformSnapshot,
   snapCandidates,
   MAX_SNAP_TARGETS,
   type EditingElementBox,
@@ -26,6 +27,7 @@ export interface EditingGestureStart extends EditingElementGeometry {
   gsap: { x: number; y: number; moving: boolean } | null;
   /** GSAP's rotation now when it owns the element's turn; null when it turns by its own CSS `rotate`. */
   gsapRotation: number | null;
+  planar: { a: number; b: number; c: number; d: number } | null;
 }
 
 const PROBE_PX = 100;
@@ -134,6 +136,11 @@ function gsapRotation(element: Element): number | null {
   return rendersTransform(element) || turned ? readGsap(element, "rotation") : null;
 }
 
+function planarOf(element: StylableElement): EditingGestureStart["planar"] {
+  const matrix = readElementTransformSnapshot(window, element as HTMLElement)?.matrix;
+  return matrix ? { a: matrix.a, b: matrix.b, c: matrix.c, d: matrix.d } : null;
+}
+
 /** Each handle's gesture start, null as in `describe`, and the snap boxes of the page around them. */
 export function gestureStart(handles: readonly EditingElementHandle[]): {
   elements: Array<EditingGestureStart | null>;
@@ -151,6 +158,7 @@ export function gestureStart(handles: readonly EditingElementHandle[]): {
       move: measureMoveResponse(element),
       gsap: gsapPosition(element),
       gsapRotation: gsapRotation(element),
+      planar: planarOf(element),
     };
   });
   const root = document.querySelector("[data-composition-id]") ?? document.documentElement;
