@@ -30,7 +30,7 @@ A `--json` result may carry `_meta.updateNotice`: a newer HyperFrames release is
 
 `captions` is not a command: run `transcribe`, then read ../hyperframes/references/captions.md.
 
-`validate`, `inspect` and `layout` are deprecated aliases of `check`; `events` is skills' own telemetry. Don't run them.
+`validate`, `inspect` and `layout` are deprecated aliases of `check`; don't run them. Run `events` only when a skill requires it.
 
 ## The loop
 
