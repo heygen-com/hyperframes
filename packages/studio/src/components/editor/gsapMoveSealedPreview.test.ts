@@ -18,6 +18,7 @@ import {
   createManualOffsetDragMember,
   endManualOffsetDragMembers,
 } from "./manualOffsetDrag";
+import { drawPreviewDraft } from "./previewDrafts";
 import { measurePreviewGestureStart } from "./previewGestureStartRead";
 import { standInFor } from "./previewSelection";
 import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
@@ -134,6 +135,7 @@ const press = () =>
 async function dragBoxOnSealedFrame(
   script: string,
   beforePress?: (iframe: HTMLIFrameElement) => void,
+  beforeEnd?: (standIn: Element) => void,
 ) {
   const box = document.getElementById("box")!;
   const iframe = opaqueFrame();
@@ -166,6 +168,7 @@ async function dragBoxOnSealedFrame(
       stamp: freezeDragStamp(standIn),
     },
   );
+  beforeEnd?.(standIn);
   endManualOffsetDragMembers([member]);
   return { started, start, anim: anim!, outcome, commit };
 }
@@ -176,6 +179,17 @@ it("ends a sealed drag on GSAP's route without its drawn translate, so the saved
   await dragBoxOnSealedFrame(SCRIPT);
 
   await vi.waitFor(() => expect(document.getElementById("box")!.style.translate).toBe(""));
+});
+
+// fails without the fix: ending the draft on GSAP's route took back the size a resize had drawn too.
+it("keeps the size a sealed resize drew when its anchor ends on GSAP's route", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT, undefined, (standIn) =>
+    drawPreviewDraft(standIn, { size: { width: 300, height: 200 } }),
+  );
+
+  const box = document.getElementById("box")!;
+  await vi.waitFor(() => expect([box.style.width, box.style.translate]).toEqual(["300px", ""]));
 });
 
 // fails without the fix: a sealed preview refused to drag a layer its animation moves.
