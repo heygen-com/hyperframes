@@ -43,7 +43,7 @@ describe("studioInspect", () => {
   it("refuses a scoped handle from another project before inspecting", async () => {
     const doc = previewDoc('<h1 id="headline">Ship it</h1>');
 
-    const result = await studioInspect(inspectDeps({ getPreviewDocument: () => doc }), {
+    const result = await studioInspect(inspectDeps({ preview: documentPreview(() => doc) }), {
       handle: sourceHandle("headline", "project-b"),
     });
 
@@ -155,7 +155,7 @@ describe("studioInspect", () => {
 
     const result = await studioInspect(
       inspectDeps({
-        getPreviewDocument: () => doc,
+        preview: documentPreview(() => doc),
         getCurrentSelection: () => selectionFor(headline),
         getGsapDiagnostics: () => ({
           animations: [animation()],
@@ -177,7 +177,7 @@ describe("studioInspect", () => {
     const applySelection = vi.fn();
 
     const result = await studioInspect(
-      inspectDeps({ getPreviewDocument: () => doc, applySelection }),
+      inspectDeps({ preview: documentPreview(() => doc), applySelection }),
       { handle: "dom:headline" },
     );
 
@@ -193,7 +193,7 @@ describe("studioInspect", () => {
     const handle = "dom:v1:index.html:index.html:headline";
 
     const ok = expectOk<StudioInspectResult>(
-      await studioInspect(inspectDeps({ getPreviewDocument: () => doc }), { handle }),
+      await studioInspect(inspectDeps({ preview: documentPreview(() => doc) }), { handle }),
     );
 
     expect(ok.handle).toBe(handle);
@@ -231,7 +231,9 @@ describe("studioInspect", () => {
 
     const doc = previewDoc('<h1 id="headline">A</h1>');
     const unknown = expectFailure(
-      await studioInspect(inspectDeps({ getPreviewDocument: () => doc }), { handle: "dom:x" }),
+      await studioInspect(inspectDeps({ preview: documentPreview(() => doc) }), {
+        handle: "dom:x",
+      }),
     );
     expect(unknown.kind).toBe("invalid");
     expect(unknown.reason).not.toBe(notMounted.reason);

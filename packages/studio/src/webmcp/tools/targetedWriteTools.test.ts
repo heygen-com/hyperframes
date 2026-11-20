@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { mintElementHandle } from "../handles";
-import { previewDoc, selectionFor } from "../webmcpTestUtils";
+import type { PreviewElement } from "../../player/lib/previewElements";
+import { documentPreview, previewDoc, readElementNow, selectionFor } from "../webmcpTestUtils";
 import {
   studioAddAnimation,
   studioAddKeyframe,
@@ -22,12 +23,14 @@ function target() {
   });
   if (!handle) throw new Error("expected handle");
   const common = {
-    getPreviewDocument: () => doc,
+    preview: documentPreview(() => doc),
     getCompositionPath: () => "index.html",
     getProjectId: () => "demo",
     getWriteBlockedReason: () => null,
-    buildSelection: async (targetElement: HTMLElement) => selectionFor(targetElement),
+    buildSelection: async (targetElement: HTMLElement | PreviewElement) =>
+      selectionFor(targetElement as HTMLElement),
     applySelection: () => undefined,
+    readNow: readElementNow,
   };
   return { common, element, handle };
 }
@@ -39,7 +42,7 @@ function transformDeps(
 ): TransformToolDeps {
   return {
     ...common,
-    readBox: () => ({ ...box }),
+    readNow: async () => ({ box: { ...box }, text: null }),
     moveTo: async () => undefined,
     resizeTo: async () => undefined,
     rotateTo: async () => undefined,

@@ -12,7 +12,7 @@ import type { ToolFailure, ToolResult } from "./toolResult";
 import type { StudioLookSnapshot } from "./tools/lookTools";
 import type { SelectionToolDeps } from "./tools/selectionTools";
 import type { StudioAgentToolsDeps } from "./useStudioAgentTools";
-import { mintElementHandle } from "./handles";
+import { mintElementHandle, resolveElementHandle, type PreviewTargets } from "./handles";
 import type { TargetedWriteDeps } from "./writeCoordinator";
 
 /**
@@ -36,6 +36,21 @@ export function previewElement(html: string, id: string): HTMLElement {
     throw new Error(`expected preview element #${id}`);
   }
   return element;
+}
+
+export function documentPreview(getDocument: () => Document | null): PreviewTargets {
+  return {
+    load: getDocument,
+    find: async (handle) => {
+      const doc = getDocument();
+      return doc ? resolveElementHandle(doc, handle) : undefined;
+    },
+  };
+}
+
+export async function readElementNow(selection: DomEditSelection) {
+  const { x, y, width, height } = selection.element.getBoundingClientRect();
+  return { box: { x, y, width, height }, text: selection.element.textContent };
 }
 
 export function selectionFor(
@@ -85,7 +100,7 @@ export function selectionFor(
 
 export function selectionToolDeps(overrides: Partial<SelectionToolDeps> = {}): SelectionToolDeps {
   return {
-    getPreviewDocument: () => null,
+    preview: documentPreview(() => null),
     getCompositionPath: () => "index.html",
     getProjectId: () => "project-a",
     buildSelection: async (element) => selectionFor(element),
@@ -109,9 +124,10 @@ export function sourceHandle(domId: string, projectId = "project-a"): string {
 
 export function targetedWriteDeps(selection: DomEditSelection): TargetedWriteDeps {
   return {
-    getPreviewDocument: () => selection.element.ownerDocument,
+    preview: documentPreview(() => selection.element.ownerDocument),
     getProjectId: () => "project-a",
     getWriteBlockedReason: () => null,
+    readNow: readElementNow,
     buildSelection: async () => selection,
     applySelection: () => undefined,
   };
@@ -152,7 +168,7 @@ export function studioAgentToolsDeps(
 ): StudioAgentToolsDeps {
   return {
     getSnapshot: () => lookSnapshot(),
-    getPreviewDocument: () => null,
+    preview: documentPreview(() => null),
     buildSelection: async () => null,
     applySelection: () => undefined,
     requestSeek: () => undefined,
@@ -165,7 +181,7 @@ export function studioAgentToolsDeps(
     getWriteBlockedReason: () => null,
     setText: async () => ({ ok: true }),
     setStyle: async () => ({ ok: true }),
-    readBox: () => ({ x: 0, y: 0, width: 100, height: 50 }),
+    readNow: async () => ({ box: { x: 0, y: 0, width: 100, height: 50 }, text: null }),
     moveTo: async () => undefined,
     resizeTo: async () => undefined,
     rotateTo: async () => undefined,
