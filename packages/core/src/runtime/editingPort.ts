@@ -36,6 +36,15 @@ import {
   type SoftReloadParams,
   type SoftReloadResult,
 } from "./editing/softReload";
+import {
+  parseHoldScenes,
+  parseMarkScenesStale,
+  parseSwapScenes,
+  type HoldScenesParams,
+  type MarkScenesStaleParams,
+  type SwapScenesParams,
+  type SwapScenesResult,
+} from "./editing/scenes";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { parseCombo } from "../keyCombo";
@@ -193,6 +202,9 @@ export const EDITING_REQUEST_KINDS = [
   "gsap-set",
   "patch-tweens",
   "soft-reload",
+  "hold-scenes",
+  "mark-scenes-stale",
+  "swap-scenes",
   "assets-unloaded",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
@@ -335,6 +347,9 @@ export interface EditingRequests {
   "gsap-set": { params: GsapSetParams; result: { applied: boolean } };
   "patch-tweens": { params: PatchTweensParams; result: { patched: boolean } };
   "soft-reload": { params: SoftReloadParams; result: { result: SoftReloadResult } };
+  "hold-scenes": { params: HoldScenesParams; result: { held: boolean } };
+  "mark-scenes-stale": { params: MarkScenesStaleParams; result: { marked: true } };
+  "swap-scenes": { params: SwapScenesParams; result: SwapScenesResult };
   "assets-unloaded": { params: NoParams; result: { unloaded: boolean } };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
@@ -549,6 +564,9 @@ const PARAM_PARSERS: {
   "gsap-set": parseGsapSet,
   "patch-tweens": parsePatchTweens,
   "soft-reload": parseSoftReload,
+  "hold-scenes": parseHoldScenes,
+  "mark-scenes-stale": parseMarkScenesStale,
+  "swap-scenes": parseSwapScenes,
   "assets-unloaded": noParams,
 };
 

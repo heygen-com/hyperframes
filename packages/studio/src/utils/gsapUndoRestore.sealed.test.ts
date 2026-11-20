@@ -65,9 +65,14 @@ describe("undo on a sealed preview", () => {
     undo(box(90) + script("{ x: 1 }"), box(0) + script("{ x: 1 }"));
     expect(channel.request.mock.calls[0]![2]).toMatchObject({ scripted: true });
     channel.request.mockReset();
-    const { reload, strategy } = undo(box(90) + script("{ x: 1 }"), box(0) + script("{ x: 2 }"));
+    const { reload, strategy, iframe } = undo(
+      box(90) + script("{ x: 1 }"),
+      box(0) + script("{ x: 2 }"),
+    );
     expect(strategy).toBe("full");
     expect(reload).toHaveBeenCalledOnce();
-    expect(channel.request).not.toHaveBeenCalled();
+    expect(channel.request).toHaveBeenCalledExactlyOnceWith(iframe, "mark-scenes-stale", {
+      files: ["index.html"],
+    });
   });
 });

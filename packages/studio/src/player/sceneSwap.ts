@@ -2,8 +2,10 @@ import { studioApiFetch } from "../utils/studioApiFetch";
 import { studioFileRevision } from "../utils/studioFileVersion";
 import { logReload } from "../utils/reloadDebug";
 import { whileScriptWrites } from "./previewReloading";
-import { previewFrameOpaque } from "./lib/previewChannel";
+import { markScenesStaleIn } from "@hyperframes/core/runtime/scenes";
+import { previewFrameOpaque, previewRequest } from "./lib/previewChannel";
 
+type ApplySwap = (html: string, signal: AbortSignal) => Promise<void>;
 type SwapWindow = Window & {
   __hfSwapScenes?: (html: string, signal?: AbortSignal) => Promise<void>;
 };
@@ -56,24 +58,12 @@ export function onPreviewPromoted(
 }
 
 export function markScenesStale(iframe: HTMLIFrameElement | null, files: readonly string[]): void {
-  const doc = iframe?.contentDocument;
-  const meta = doc?.querySelector<HTMLMetaElement>('meta[name="hf-scene-parts"]');
-  if (!doc || !meta) return;
-  let parts: { shared: string; scenes: Record<string, string> };
-  try {
-    parts = JSON.parse(meta.content);
-  } catch {
+  if (iframe && previewFrameOpaque(iframe)) {
+    void previewRequest(iframe, "mark-scenes-stale", { files: [...files] });
     return;
   }
-  for (const file of files) {
-    const hosts = doc.querySelectorAll(`[data-composition-file="${CSS.escape(file)}"]`);
-    if (hosts.length === 0 && file.endsWith(".html")) parts.shared = "";
-    for (const host of hosts) {
-      const scene = host.closest("[data-hf-scene]")?.getAttribute("data-hf-scene");
-      if (scene && scene in parts.scenes) parts.scenes[scene] = "";
-    }
-  }
-  meta.content = JSON.stringify(parts);
+  const doc = iframe?.contentDocument;
+  if (doc) markScenesStaleIn(doc, files);
 }
 
 export const supersededByNewerEdit = () =>
@@ -111,14 +101,33 @@ export function swapFreshly(
     });
 }
 
+function reachableSwap(iframe: HTMLIFrameElement): ApplySwap | null {
+  const win = iframe.contentWindow as SwapWindow | null;
+  const swap = win?.__hfSwapScenes;
+  return typeof swap === "function" ? (html, signal) => swap.call(win, html, signal) : null;
+}
+
+function sealedSwap(iframe: HTMLIFrameElement): ApplySwap {
+  return async (html) => {
+    const reply: unknown = await previewRequest(
+      iframe,
+      "swap-scenes",
+      { html, timeoutMs: SCENE_SWAP_MS },
+      SCENE_SWAP_MS,
+    );
+    const { swapped, reason } = (reply ?? {}) as { swapped?: unknown; reason?: unknown };
+    if (swapped === true && Object.keys(reply as object).length === 1) return;
+    const why = typeof reason === "string" ? reason.slice(0, 500) : "no answer";
+    throw new Error(`the preview did not swap its scenes: ${why}`);
+  };
+}
+
 /** Null when the preview cannot swap; rejects when superseded, cancelled or a full reload is needed. */
 export function sceneSwapFor(
   iframe: HTMLIFrameElement,
 ): ((url: string, isCurrent: () => boolean, cancel?: AbortSignal) => Promise<void>) | null {
-  if (previewFrameOpaque(iframe)) return null;
-  const win = iframe.contentWindow as SwapWindow | null;
-  const swap = win?.__hfSwapScenes;
-  if (typeof swap !== "function") return null;
+  const apply = previewFrameOpaque(iframe) ? sealedSwap(iframe) : reachableSwap(iframe);
+  if (!apply) return null;
   return async (url, isCurrent, cancel) => {
     if (cancel?.aborted) throw cancel.reason;
     const deadline = new AbortController();
@@ -134,7 +143,7 @@ export function sceneSwapFor(
       const html = await response.text();
       if (!isCurrent()) throw new Error("superseded by a newer reload");
       // Aborted with the deadline, so a swap still waiting cannot land after the reload has begun.
-      await swap.call(win, html, deadline.signal);
+      await apply(html, deadline.signal);
     })();
     const expired = new Promise<never>((_resolve, reject) =>
       deadline.signal.addEventListener("abort", () => reject(deadline.signal.reason)),

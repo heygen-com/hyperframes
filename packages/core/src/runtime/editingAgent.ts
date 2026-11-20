@@ -43,6 +43,7 @@ import { stackingFamily } from "./editingLayers";
 import { gsapSet } from "./editing/gsapSet";
 import { patchTweens } from "./editing/patchTween";
 import { softReload } from "./editing/softReload";
+import { holdScenes, markScenesStale, swapScenes } from "./editing/scenes";
 import { previewAssetsUnloaded } from "../lottieReadiness";
 import {
   getLogicalOpacity,
@@ -229,6 +230,9 @@ const HANDLERS: Handlers = {
   "gsap-set": gsapSet,
   "patch-tweens": patchTweens,
   "soft-reload": softReload,
+  "hold-scenes": holdScenes,
+  "mark-scenes-stale": markScenesStale,
+  "swap-scenes": swapScenes,
   "assets-unloaded": () => ({ unloaded: previewAssetsUnloaded(document, window.__hfLottie) }),
 };
 
