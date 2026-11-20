@@ -18,7 +18,6 @@ const lower = (text: string) => text.replace(/[A-Z]/g, (char) => char.toLowerCas
 
 interface AttributeAliases {
   all: SvgReferenceAlias[];
-  // Built on first use, one per lookup and case fold; values are positions in `all`.
   lookups: Map<string, SortedKeys | Map<string, number[]>>;
 }
 
