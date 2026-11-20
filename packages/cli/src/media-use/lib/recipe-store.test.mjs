@@ -11,11 +11,13 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   freezeRecipe,
   listRecipes,
+  readRegularFile,
   skeletonizeBrief,
   skeletonizeStoryboard,
   slugifyRecipeName,
@@ -617,3 +619,28 @@ test("use refuses a recipe whose frame.md is a link, so no file is read through 
     );
   });
 });
+
+test("readRegularFile refuses a link even without O_NOFOLLOW, as on Windows", () => {
+  withSandbox(({ root }) => {
+    const target = join(root, "secret.txt");
+    writeFileSync(target, "secret\n");
+    const link = join(root, "frame.md");
+    symlinkSync(target, link);
+    assert.equal(readRegularFile(link, 0), undefined);
+    assert.equal(readRegularFile(link), undefined);
+    assert.equal(readRegularFile(target, 0).toString(), "secret\n");
+    assert.equal(readRegularFile(join(root, "missing.md"), 0), undefined);
+  });
+});
+
+test(
+  "readRegularFile refuses a FIFO without blocking on it",
+  { skip: process.platform === "win32" },
+  () => {
+    withSandbox(({ root }) => {
+      const fifo = join(root, "frame.md");
+      execFileSync("mkfifo", [fifo]);
+      assert.equal(readRegularFile(fifo), undefined);
+    });
+  },
+);

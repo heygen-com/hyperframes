@@ -3,6 +3,7 @@ import {
   constants,
   existsSync,
   fstatSync,
+  lstatSync,
   mkdirSync,
   openSync,
   readdirSync,
@@ -231,17 +232,23 @@ function refuseLinkedRecipeDir(root, slug) {
 
 /**
  * The content of the regular file at `path`, or undefined when it is missing, a link or not a file.
- * The check and the read use one no-follow handle, so the file cannot be swapped for a link between them.
+ * The open handle must be the same file `lstat` saw, so a link swapped in between is refused even
+ * where Node has no `O_NOFOLLOW` (Windows); pass 0 as `noFollow` to check that path. Checking with
+ * `lstat` first also keeps a FIFO from blocking the open.
  */
-function readRegularFile(path) {
+export function readRegularFile(path, noFollow = constants.O_NOFOLLOW ?? 0) {
+  const before = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+  if (!before?.isFile()) return undefined;
   let fd;
   try {
-    fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    fd = openSync(path, constants.O_RDONLY | noFollow | (constants.O_NONBLOCK ?? 0));
   } catch {
     return undefined;
   }
   try {
-    return fstatSync(fd).isFile() ? readFileSync(fd) : undefined;
+    const opened = fstatSync(fd, { bigint: true });
+    const same = opened.isFile() && opened.dev === before.dev && opened.ino === before.ino;
+    return same ? readFileSync(fd) : undefined;
   } finally {
     closeSync(fd);
   }
