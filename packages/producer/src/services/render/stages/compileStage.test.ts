@@ -30,7 +30,7 @@ import {
   type CompileStageResult,
 } from "./compileStage.js";
 import type { RenderJob } from "../../renderOrchestrator.js";
-import { MAX_COMPOSITION_HTML_BYTES } from "../../compositionSizeLimit.js";
+import { MAX_COMPOSITION_HTML_BYTES } from "@hyperframes/core/compiler";
 
 const noopLog = {
   error: () => {},

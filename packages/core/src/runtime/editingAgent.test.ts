@@ -207,7 +207,9 @@ describe("installEditingAgent", () => {
           "hold-scenes",
           "mark-scenes-stale",
           "swap-scenes",
+          "live-retime",
           "assets-unloaded",
+          "text-edit",
         ],
       },
     });
@@ -596,6 +598,23 @@ describe("installEditingAgent", () => {
     });
     delete window.__hfHoldScenes;
     delete window.__hfSwapScenes;
+  });
+
+  it("answers a live retime through the port, and refuses one carrying anything extra", async () => {
+    const port = connectedPort();
+    const tween = { selector: "#a", start: 1, duration: 1, wasStart: 0, wasDuration: 1 };
+    const tweens = [{ ...tween, moved: true, source: 0 }];
+    const plan = { key: "t", after: "x", time: 0, tweens, timing: [] };
+
+    const extra = { ...plan, script: "x" };
+    expect(await ask(port, { v: 1, id: 1, kind: "live-retime", params: extra })).toMatchObject({
+      ok: false,
+    });
+    // No live script registers the timeline, so nothing can move.
+    expect(await ask(port, { v: 1, id: 2, kind: "live-retime", params: plan })).toMatchObject({
+      ok: true,
+      result: { result: "unchanged" },
+    });
   });
 
   it("answers computed styles for the element a selector names", async () => {

@@ -416,7 +416,9 @@ Keep the first exact error rather than only the final “render failed” messag
 
 A render refuses any composition HTML file, the entry or a sub-composition, that is larger than 16 MB. The error code is `COMPOSITION_TOO_LARGE`. Keep images, fonts and data in separate files and reference them by path instead of inlining them.
 
-The same error refuses a render whose sub-composition mounts add up to more than 64 MB of composition HTML, or to more than 10,000 mounts. Every mount counts, including each repeat of the same file and each mount nested inside another. The scripts and scoped styles generated for those mounts have their own 64 MB limit. Every inline script in a mounted file is wrapped in a few kilobytes of scoping code, and every style rule is prefixed with its host's `data-composition-id`. Many tiny inline scripts, or a long composition id over many style rules, can reach this limit. Merge small scripts and rules, or keep ids short.
+The same error refuses a render whose sub-composition mounts add up to more than 64 MB of composition HTML, to more than 10,000 mounts, or to more than 100,000 elements copied by those mounts. Every mount counts, including each repeat of the same file and each mount nested inside another. The scripts and scoped styles generated for those mounts have their own 64 MB limit. Every inline script in a mounted file is wrapped in a few kilobytes of scoping code, and every style rule is prefixed with its host's `data-composition-id`. Many tiny inline scripts, or a long composition id over many style rules, can reach this limit. Merge small scripts and rules, or keep ids short.
+
+Studio preview and the CLI commands that assemble a project, such as `validate` and `compare`, apply the same limits with the same error. Studio shows the error in place of the preview.
 
 <Tip>
   Always watch the exported file itself. Preview proves that the project can play; the output file

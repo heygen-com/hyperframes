@@ -25,7 +25,7 @@ import {
  */
 
 import { createHash } from "node:crypto";
-import { createReadStream, existsSync, mkdirSync, readFileSync } from "fs";
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from "fs";
 import { join, dirname, resolve, basename, relative, sep } from "path";
 import { parseHTML } from "linkedom";
 import { bundledScript } from "./bundledScripts.js";
@@ -109,7 +109,7 @@ import {
   CompositionExpansionBudget,
   REMOTE_SCRIPTS,
   REMOTE_STYLESHEETS,
-} from "./compositionSizeLimit.js";
+} from "@hyperframes/core/compiler";
 import {
   escapesAssetRoot,
   isPathInside,
@@ -773,13 +773,17 @@ async function resolveMediaDuration(
         // a typed NotMediaPayloadError instead of letting ffprobe emit an opaque
         // `[mov,mp4,...] moov atom not found` that routes as a codec bug.
         await assertMediaPayload(filePath, elementIdentity);
-        const profile = await probeMediaProfile(filePath);
+        const signal = run?.assets.signal;
+        const profile = await probeMediaProfile(filePath, { signal });
         if (tagName === "video") {
-          return { profile, fileDuration: (await extractMediaMetadata(filePath)).durationSeconds };
+          const { durationSeconds } = await extractMediaMetadata(filePath, { signal });
+          return { profile, fileDuration: durationSeconds };
         }
         try {
-          return { profile, fileDuration: (await extractAudioMetadata(filePath)).durationSeconds };
+          const { durationSeconds } = await extractAudioMetadata(filePath, { signal });
+          return { profile, fileDuration: durationSeconds };
         } catch {
+          if (signal?.aborted) throw signal.reason;
           // Source file has no audio stream (e.g. a silent video used as an audio src).
           // Duration 0 excludes the element from the composition, as missing files do.
           return { profile, fileDuration: null };
@@ -1341,6 +1345,7 @@ function inlineSubCompositions(
         return compHtml;
       },
       chargeEmitted: (srcPath: string, bytes: number) => budget.chargeGenerated(srcPath, bytes),
+      chargeElements: (srcPath: string, count: number) => budget.chargeElements(srcPath, count),
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
       // Mirrors the preview bundler: a sub-composition's SIBLING assets resolve
       // against its own directory, project-root refs stay as authored.
@@ -2255,7 +2260,8 @@ async function localFontDataUri(
   assetRoot: string | undefined,
   dataUriByAbsolutePath: Map<string, string | undefined>,
   log: ProducerLogger,
-  downloadedPath?: string,
+  downloadedPath: string | undefined,
+  reserve: (dataUriBytes: number) => boolean,
 ): Promise<string | undefined> {
   const absPath =
     downloadedPath ?? (localPath.startsWith("/") ? localPath : resolve(projectDir, localPath));
@@ -2272,6 +2278,11 @@ async function localFontDataUri(
   if (dataUriByAbsolutePath.has(absPath)) return dataUriByAbsolutePath.get(absPath);
   const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
   try {
+    // Base64 plus a short data: prefix; a font that cannot fit is never read.
+    if (!reserve(Math.ceil(statSync(absPath).size / 3) * 4 + 64)) {
+      dataUriByAbsolutePath.set(absPath, undefined);
+      return undefined;
+    }
     const font = await readLocalFont(absPath);
     if (font.kind === "file-backed") {
       dataUriByAbsolutePath.set(absPath, undefined);
@@ -2318,6 +2329,24 @@ async function embedLocalFontFaces(
 ): Promise<string> {
   const dataUriByPath = new Map<string, string | undefined>();
   const dataUriByAbsolutePath = new Map<string, string | undefined>();
+  let warned = false;
+  const keptFileBacked = (localPath: string) => {
+    if (warned) return;
+    warned = true;
+    log.warn(
+      `[Compiler] Kept local font ${localPath} file-backed: the page reached its inline size limit`,
+    );
+  };
+  // The fonts read here are kept until every copy is placed, so together they fit the budget's room.
+  let reserved = 0;
+  const reserveFor = (localPath: string) => (bytes: number) => {
+    if (reserved + bytes > budget.generatedRoom) {
+      keptFileBacked(localPath);
+      return false;
+    }
+    reserved += bytes;
+    return true;
+  };
   for (const { parts: style } of styleBlockMatches(html)) {
     for (const { parts: face } of fontFaceBlockMatches(style[1])) {
       for (const { parts } of localFontFaceUrlMatches(face[1])) {
@@ -2332,6 +2361,7 @@ async function embedLocalFontFaces(
             dataUriByAbsolutePath,
             log,
             downloadedFonts.get(localPath),
+            reserveFor(localPath),
           ),
         );
       }
@@ -2339,18 +2369,12 @@ async function embedLocalFontFaces(
   }
   if (![...dataUriByPath.values()].some(Boolean)) return html;
 
-  let warned = false;
   const embed = (source: string, localPath: string) => {
     const dataUri = dataUriByPath.get(localPath);
     if (!dataUri) return source;
     const inlined = `url("${dataUri}")`;
     if (budget.chargeGeneratedIfItFits(inlined.length - source.length)) return inlined;
-    if (!warned) {
-      warned = true;
-      log.warn(
-        `[Compiler] Kept local font ${localPath} file-backed: the page reached its inline size limit`,
-      );
-    }
+    keptFileBacked(localPath);
     return source;
   };
   return replaceMatches(html, styleBlockMatches(html), (style, css) =>

@@ -35,7 +35,7 @@ import { CanvasContextMenu } from "./CanvasContextMenu";
 import { useInlineTextEditing } from "./useInlineTextEditing";
 import { usePreviewReadOnly } from "./previewReadOnlyContext";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { countStudioManualEditSave as counted } from "./manualEditsDom";
+import { countStudioManualEditSave as counted } from "./manualEditGesture";
 import type { ZOrderAction, ZOrderPatch } from "./canvasContextMenuZOrder";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
 import { pointerMayHitElement } from "./previewSelection";

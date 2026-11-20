@@ -114,6 +114,36 @@ describe("edit-element", () => {
     expect(card.getAttribute("data-fx")).toHaveLength(MAX_EDIT_VALUE + 1);
   });
 
+  it("draws text markup and answers the markup it replaced", () => {
+    document.body.innerHTML = `<h1 id="t">Old <span class="a">bit</span></h1>`;
+    const title = document.getElementById("t")!;
+    const html = 'New <span class="a" style="color: red">bit</span>';
+    const result = editElement({ handle: handleFor(title), styles: [], attributes: [], html });
+    expect(result).toEqual({
+      applied: true,
+      styles: [],
+      attributes: [],
+      html: 'Old <span class="a">bit</span>',
+    });
+    expect(title.innerHTML).toBe(html);
+  });
+
+  it("draws no markup beyond inline text, and none over markup it could not put back", () => {
+    document.body.innerHTML = `<h1 id="t">Old</h1><div id="d"><img src="a.png" /></div>`;
+    const draw = (id: string, html: string) =>
+      editElement({
+        handle: handleFor(document.getElementById(id)!),
+        styles: [],
+        attributes: [],
+        html,
+      }).applied;
+    for (const html of ['<img src="x">', '<a href="x">x</a>', '<span onclick="x">x</span>'])
+      expect(draw("t", html), html).toBe(false);
+    expect(document.getElementById("t")!.innerHTML).toBe("Old");
+    expect(draw("d", "text")).toBe(false);
+    expect(parseEditElement({ handle: HANDLE, styles: [], attributes: [], html: 1 })).toBeNull();
+  });
+
   it("applies nothing for a handle the page no longer has", () => {
     expect(editElement({ handle: HANDLE, styles: [["color", "blue"]], attributes: [] })).toEqual({
       applied: false,

@@ -169,7 +169,6 @@ const DEFAULTS = {
   music: "lyria-3-pro",
 } as const;
 export const VENDOR_PRICED_IMAGES = new Set([
-  "gpt-image-2.5",
   "gpt-image-2.6",
   "gpt-image-2.6-flare",
   "minimax-h3-image",
@@ -180,13 +179,15 @@ const GEMINI_ASPECTS = [...GPT_ASPECTS, "3:2", "2:3", "21:9"];
 const MINIMAX_ASPECTS = [...GPT_ASPECTS, "21:9"];
 /** What /v3/images accepts from each model: its aspect ratios and how many reference pictures. */
 const IMAGE_MODELS: Record<string, { aspects: string[]; references: number }> = {
-  "nano-banana-2": { aspects: GEMINI_ASPECTS, references: 14 },
   "nano-banana-2.1": { aspects: GEMINI_ASPECTS, references: 14 },
-  "gpt-image-2.5": { aspects: GPT_ASPECTS, references: 16 },
   "gpt-image-2.6": { aspects: GPT_ASPECTS, references: 16 },
   "gpt-image-2.6-flare": { aspects: GPT_ASPECTS, references: 16 },
   "minimax-h3-image": { aspects: MINIMAX_ASPECTS, references: 16 },
   "minimax-h3-image-4k": { aspects: MINIMAX_ASPECTS, references: 16 },
+};
+const RETIRED_IMAGE_MODELS: Record<string, string> = {
+  "nano-banana-2": "nano-banana-2.1",
+  "gpt-image-2.5": "gpt-image-2.6",
 };
 export const isVendorPriced = (r: GenerateRequest): boolean =>
   r.type === "image" && VENDOR_PRICED_IMAGES.has(r.model ?? "");
@@ -203,6 +204,8 @@ const need = <T>(value: T | undefined, flag: string, example: string): T => {
 
 function imageModel(r: GenerateRequest): string {
   const model = r.model ?? DEFAULTS.image;
+  const replacement = RETIRED_IMAGE_MODELS[model];
+  if (replacement) throw new Fix(`${model} is no longer offered here`, `--model ${replacement}`);
   const spec = IMAGE_MODELS[model];
   if (!spec) return model;
   if (r.aspect && !spec.aspects.includes(r.aspect))
