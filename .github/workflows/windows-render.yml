@@ -459,10 +459,23 @@ jobs:
           # Only the engine-cli lanes read an LFS file (engine's ffprobe test parses a producer HDR PNG).
           lfs: ${{ matrix.process_tests == true }}
 
+      - name: Probe fix A (core) - no catch-up scans
+        if: matrix.lane == 'core'
+        shell: pwsh
+        run: Set-MpPreference -DisableCatchupQuickScan $true -DisableCatchupFullScan $true -ScanScheduleDay 8
+
+      - name: Probe fix B (studio-2) - workspace and temp excluded
+        if: matrix.lane == 'studio-2'
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:RUNNER_TEMP, $env:TEMP, "$env:USERPROFILE\.cache", "$env:USERPROFILE\.bun"
+
       - name: Start the probe sampler
         shell: pwsh
         run: |
-          Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, IsTamperProtected, AntivirusEnabled, BehaviorMonitorEnabled | Format-List
+          Get-MpComputerStatus | Format-List
+          Get-MpPreference | Select-Object DisableCatchupQuickScan, DisableCatchupFullScan, ScanScheduleDay, ScanScheduleQuickScanTime, SignatureUpdateInterval, ScanAvgCPULoadFactor, ExclusionPath | Format-List
+          Get-ScheduledTask -TaskPath "\Microsoft\Windows\Windows Defender\" -ErrorAction SilentlyContinue | Select-Object TaskName, State | Format-Table
+          Get-CimInstance Win32_OperatingSystem | Select-Object LastBootUpTime | Format-List
           Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors, TotalPhysicalMemory | Format-List
           Start-Process pwsh -ArgumentList "-NoProfile","-File","scripts/ci/probe-sampler.ps1","-Out","$env:RUNNER_TEMP\probe.csv" -WindowStyle Hidden
 
