@@ -14,8 +14,8 @@ function sealedPlayer(sealed = true) {
   const frame = player.iframeElement;
   if (sealed) Object.defineProperty(frame, "contentDocument", { value: null, configurable: true });
   const events: string[] = [];
-  player.addEventListener("error", (event) =>
-    events.push(`error ${(event as CustomEvent).detail?.message}`),
+  player.addEventListener("error", (event: Event) =>
+    events.push(`error ${(event as CustomEvent<{ message?: string }>).detail?.message}`),
   );
   player.addEventListener("ready", () => events.push("ready"));
   player._onIframeLoad();
