@@ -211,7 +211,7 @@ export function useGsapAwareEditing({
       next: { width: number; height: number },
       offset?: { x: number; y: number },
       restore: () => void = () => undefined,
-      route?: { plainTranslate: boolean },
+      route?: { plainTranslate: boolean; sizeSavedAsScale?: boolean },
     ) => {
       const writes = observeGsapGesture(gsapCommitMutation);
       if (route?.plainTranslate ?? editsPlainCss(selection.element, "resize")) {
@@ -232,6 +232,7 @@ export function useGsapAwareEditing({
           throw error;
         }
         const scaleRoute = targetAnimations.some((anim) => anim.propertyGroup === "scale");
+        if (route) route.sizeSavedAsScale = scaleRoute;
         const selector = selectorFromSelection(selection);
         const hasLivePositionTween = selector
           ? hasNonHoldTweenForElement(

@@ -288,6 +288,23 @@ describe("useGsapAwareEditing keeps the box route a resize chose at press", () =
   });
 });
 
+describe("useGsapAwareEditing tells the resize how it saved the size", () => {
+  it.each([
+    ["scale", true],
+    ["size", false],
+  ])("as GSAP %s", async (group, asScale) => {
+    mocks.resize.mockResolvedValue({ status: "persisted" });
+    const animation = { id: "a", propertyGroup: group } as GsapAnimation;
+    const h = mountResizeHandler([animation]);
+    const route: { plainTranslate: boolean; sizeSavedAsScale?: boolean } = {
+      plainTranslate: false,
+    };
+    await act(() => h.resize(h.selection, { width: 300, height: 200 }, undefined, vi.fn(), route));
+    expect(route.sizeSavedAsScale).toBe(asScale);
+    act(() => h.root.unmount());
+  });
+});
+
 describe("useGsapAwareEditing refuses a group GSAP took over before writing any member", () => {
   it("writes no member when one CSS-route member has been folded since the press", async () => {
     const stageElementPositionOffset = vi.fn(() => ({ save: vi.fn(), rollback: vi.fn() }));

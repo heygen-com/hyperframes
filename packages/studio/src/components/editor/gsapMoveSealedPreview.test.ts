@@ -17,6 +17,7 @@ import {
   applyManualOffsetDragDraft,
   createManualOffsetDragMember,
   endManualOffsetDragMembers,
+  type ManualOffsetDragMember,
 } from "./manualOffsetDrag";
 import { drawPreviewDraft } from "./previewDrafts";
 import { measurePreviewGestureStart } from "./previewGestureStartRead";
@@ -135,7 +136,7 @@ const press = () =>
 async function dragBoxOnSealedFrame(
   script: string,
   beforePress?: (iframe: HTMLIFrameElement) => void,
-  beforeEnd?: (standIn: Element) => void,
+  beforeEnd?: (standIn: Element, member: ManualOffsetDragMember) => void,
 ) {
   const box = document.getElementById("box")!;
   const iframe = opaqueFrame();
@@ -168,7 +169,7 @@ async function dragBoxOnSealedFrame(
       stamp: freezeDragStamp(standIn),
     },
   );
-  beforeEnd?.(standIn);
+  beforeEnd?.(standIn, member);
   endManualOffsetDragMembers([member]);
   return { started, start, anim: anim!, outcome, commit };
 }
@@ -190,6 +191,18 @@ it("keeps the size a sealed resize drew when its anchor ends on GSAP's route", a
 
   const box = document.getElementById("box")!;
   await vi.waitFor(() => expect([box.style.width, box.style.translate]).toEqual(["300px", ""]));
+});
+
+// fails without the fix: a resize saved as GSAP scale kept its drawn CSS size, and the scale grew it again.
+it("drops the size a sealed resize drew when its save writes the size as GSAP scale", async () => {
+  mount(SCRIPT);
+  await dragBoxOnSealedFrame(SCRIPT, undefined, (standIn, member) => {
+    drawPreviewDraft(standIn, { size: { width: 300, height: 200 } });
+    member.sizeSavedAsScale = true;
+  });
+
+  const box = document.getElementById("box")!;
+  await vi.waitFor(() => expect([box.style.width, box.style.translate]).toEqual(["", ""]));
 });
 
 // fails without the fix: a sealed preview refused to drag a layer its animation moves.

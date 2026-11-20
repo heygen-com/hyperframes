@@ -90,6 +90,7 @@ export interface ManualOffsetDragMember {
   initialOffset: { x: number; y: number };
   /** The move writes the element's own inline `translate`; offsets are then absolute translate px. */
   plainTranslate: boolean;
+  sizeSavedAsScale?: boolean;
   /**
    * The element's GSAP x/y at gesture start, captured in JS so a mid-drag
    * re-render (which reverts inline style + wipes the `data-hf-drag-gsap-base-*`
@@ -536,12 +537,17 @@ function settleDraftTranslate(element: HTMLElement, gsapOwnsPosition: boolean): 
 }
 
 /** Teardown after a COMMITTED drag. */
+function endDraftKeepingWhatTheSaveWrites(member: ManualOffsetDragMember): void {
+  if (member.plainTranslate) endPreviewDraft(member.element, "keep");
+  else if (member.sizeSavedAsScale) endPreviewDraft(member.element, "restore");
+  else endPreviewDraftKeepingSizeOnly(member.element);
+}
+
 export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): void {
   for (const member of members) {
     if (!isStudioManualEditGestureCurrent(member.element, member.gestureToken)) continue;
     endStudioManualEditGesture(member.element, member.gestureToken);
-    if (member.plainTranslate) endPreviewDraft(member.element, "keep");
-    else endPreviewDraftKeepingSizeOnly(member.element);
+    endDraftKeepingWhatTheSaveWrites(member);
     member.element.removeAttribute("data-hf-drag-initial-offset-x");
     member.element.removeAttribute("data-hf-drag-initial-offset-y");
     member.element.removeAttribute("data-hf-drag-gsap-base-x");
