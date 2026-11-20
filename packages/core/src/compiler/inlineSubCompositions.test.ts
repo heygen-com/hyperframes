@@ -1421,3 +1421,36 @@ describe("dropAuthoredSvgReferenceAliases", () => {
     expect(serialize()).not.toContain("data-hf-svg-reference-aliases");
   });
 });
+
+// fails without the fix: each clip's scope tested every mount, and the page's scope every element, by contains().
+it("scopes a page of 2000 svg clips and 200 mounts without testing each against every other", () => {
+  const clips = Array.from(
+    { length: 2000 },
+    (_, i) => `<div data-start="${i}" data-duration="1"><svg><rect/></svg></div>`,
+  ).join("");
+  const mounts = Array.from(
+    { length: 200 },
+    (_, i) => `<div data-composition-id="m${i}" data-composition-src="s.html"></div>`,
+  ).join("");
+  const { document } = parseHTML(
+    `<!DOCTYPE html><html><body><div data-composition-id="main">${mounts}${clips}</div></body></html>`,
+  );
+  const hosts = [...document.querySelectorAll("[data-composition-src]")];
+  const elements = document.querySelectorAll("*").length;
+  let owner = Object.getPrototypeOf(document.body);
+  while (!Object.hasOwn(owner, "contains")) owner = Object.getPrototypeOf(owner);
+  const contains = vi.spyOn(owner, "contains");
+  let checks: number;
+  try {
+    inlineSubCompositions(document, hosts, {
+      resolveHtml: () =>
+        `<div data-composition-id="s"><svg><clipPath id="c"/><rect clip-path="url(#c)"/></svg></div>`,
+      parseHtml: (html) => parseHTML(html).document,
+    });
+    checks = contains.mock.calls.length;
+  } finally {
+    contains.mockRestore();
+  }
+
+  expect(checks).toBeLessThan(elements);
+});

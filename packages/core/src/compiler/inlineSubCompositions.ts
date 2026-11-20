@@ -825,6 +825,14 @@ export function inlineSubCompositions(
   dropAuthoredSvgReferenceAliases(document);
   const hostRoots = svgIdScopes.map(({ root }) => root);
   const clips = sceneClipRoots(document, hostRoots);
+  // Clips are outermost, so each host sits in at most one: its nearest clip ancestor.
+  const clipIndex = new Map(clips.map((clip, index) => [clip, index]));
+  const hostsInClip = clips.map((): Element[] => []);
+  for (const host of hostRoots) {
+    let at = host.parentElement;
+    while (at && !clipIndex.has(at)) at = at.parentElement;
+    if (at) hostsInClip[clipIndex.get(at)!]!.push(host);
+  }
   const svgIdMaps = namespaceCollidingSvgIds(
     document,
     [
@@ -844,7 +852,7 @@ export function inlineSubCompositions(
       ...clips.map((root, index) => ({
         root,
         namespace: `clip-${index}`,
-        exclude: hostRoots.filter((host) => root.contains(host)),
+        exclude: hostsInClip[index],
       })),
     ],
     undefined,
