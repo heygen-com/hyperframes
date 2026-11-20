@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import type { Browser, Frame, HTTPRequest, Page } from "puppeteer-core";
 import { build } from "esbuild";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { closeTestChrome, launchTestChrome } from "../../tests/chromeTestUtils";
+import { closeTestChrome, emptyNodeBuiltins, launchTestChrome } from "../../tests/chromeTestUtils";
 import { writeFixture } from "../../tests/e2e/edit-accuracy/grid.mjs";
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
@@ -31,6 +31,7 @@ beforeAll(async () => {
     format: "iife",
     globalName: "hfStudio",
     alias: { canvas: fileURLToPath(new URL("../shims/canvasBrowserStub.js", import.meta.url)) },
+    plugins: [emptyNodeBuiltins],
     define: { "import.meta.env": "{}" },
   });
   studioBundle = out.outputFiles[0]!.text;

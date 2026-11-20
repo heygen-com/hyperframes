@@ -156,6 +156,8 @@ describe("a re-run that waits for the MotionPath plugin", () => {
   // fails without the fix: the older script ran after the newer one and replaced its timeline.
   it("leaves the script of a newer soft reload that ran while it waited", async () => {
     playerAt(1.5);
+    // A page that inlines GSAP keeps a GSAP script after the older run took its own.
+    document.body.insertAdjacentHTML("beforeend", "<script>/* gsap.timeline library */</script>");
     const ran: string[] = [];
     win.__older = () => ran.push("older");
     win.__newer = () => ran.push("newer");

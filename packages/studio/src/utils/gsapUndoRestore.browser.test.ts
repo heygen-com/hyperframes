@@ -4,9 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Browser } from "puppeteer-core";
-import { build, type Plugin } from "esbuild";
+import { build } from "esbuild";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
-import { closeTestChrome, launchTestChrome, showWithRuntime } from "../../tests/chromeTestUtils";
+import {
+  closeTestChrome,
+  emptyNodeBuiltins,
+  launchTestChrome,
+  showWithRuntime,
+} from "../../tests/chromeTestUtils";
 import { writeFixture } from "../../tests/e2e/edit-accuracy/grid.mjs";
 
 const CROP = "inset(0px 40px 0px 0px)";
@@ -15,16 +20,6 @@ vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 let browser: Browser;
 let undoBundle: string;
 let softReloadBundle: string;
-
-// recast imports these, and its code that uses them is dropped from the bundle. A new
-// built-in fails the build instead of turning into an empty module the way Vite makes it.
-const emptyNodeBuiltins: Plugin = {
-  name: "empty-node-builtins",
-  setup(build) {
-    build.onResolve({ filter: /^(node:)?(fs|os)$/ }, ({ path }) => ({ path, namespace: "empty" }));
-    build.onLoad({ filter: /.*/, namespace: "empty" }, () => ({ contents: "module.exports = {}" }));
-  },
-};
 
 async function bundle(file: string, name: string): Promise<string> {
   const out = await build({

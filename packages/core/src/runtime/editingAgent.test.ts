@@ -559,15 +559,22 @@ describe("installEditingAgent", () => {
       id: 1,
       ok: false,
     });
-    expect(document.querySelector("script")?.textContent).toBe(script);
+    expect(document.body.querySelector("script")?.textContent).toBe(script);
     // The sent script registers on a local, so the frame reads its timeline empty for now.
     expect(await ask(port, { v: 1, id: 2, kind: "soft-reload", params })).toMatchObject({
       id: 2,
       ok: true,
       result: { result: "verify-failed" },
     });
-    expect(document.querySelector("script")?.textContent).toBe(`(function(){${script}\n})();`);
-    for (const key of ["gsap", "__timelines", "__hfForceTimelineRebind"]) delete frame[key];
+    expect(document.body.querySelector("script")?.textContent).toBe(`(function(){${script}\n})();`);
+    for (const key of [
+      "gsap",
+      "__timelines",
+      "__hfForceTimelineRebind",
+      "__hfMotionPathPluginLoading",
+    ])
+      delete frame[key];
+    document.head.innerHTML = "";
   });
 
   it("holds and swaps scenes through the port, and refuses a hold carrying anything extra", async () => {
