@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import type { CutoverResult } from "../utils/sdkCutover";
-import { studioManualEditSavesIn } from "../components/editor/manualEditsDom";
+import { studioManualEditSavesIn } from "../components/editor/manualEditGesture";
 import {
   DomEditPersistPreparedWriteError,
   DomEditPersistUnresolvableError,

@@ -15,11 +15,14 @@ import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids"
 import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
 import { STUDIO_EDIT_ATTRS } from "../components/editor/manualEditsSeekReapply";
-import { markScenesStale } from "../player/sceneSwap";
+import { announcePreviewRestoredInPlace, markScenesStale } from "../player/sceneSwap";
 import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
 import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
 import { STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR } from "../components/editor/manualEditsTypes";
-import { countStudioPreviewChange, studioGestureDraws } from "../components/editor/manualEditsDom";
+import {
+  countStudioPreviewChange,
+  studioGestureDraws,
+} from "../components/editor/manualEditGesture";
 
 type PreviewWindow = Window & {
   __player?: { seek?: (t: number) => void };
@@ -406,6 +409,7 @@ function applySealedRestore(
   files: RestoreFiles,
   currentTime: number,
   reloadPreview: () => void,
+  onShownInPlace?: () => void,
 ): "soft" | "full" {
   const restore = sealedRestore(activeDocPath, files);
   const active = files[activeDocPath];
@@ -415,6 +419,7 @@ function applySealedRestore(
       script &&
       applySoftReload(iframe, script, {
         onAsyncFailure: reloadPreview,
+        onShownInPlace,
         currentTimeOverride: currentTime,
         authoredHtml: active.restored,
         previousHtml: active.previous,
@@ -422,7 +427,7 @@ function applySealedRestore(
       });
     if (rerun === "applied") return "soft";
   } else if (restore?.scopes.length) {
-    sendSealedRestore(iframe, restore, currentTime, reloadPreview);
+    sendSealedRestore(iframe, restore, currentTime, reloadPreview, onShownInPlace);
     return "soft";
   }
   reloadPreview();
@@ -434,10 +439,12 @@ function sendSealedRestore(
   restore: SealedRestore,
   currentTime: number,
   reloadPreview: () => void,
+  onShownInPlace?: () => void,
 ): void {
   void previewRequest(iframe, "restore-attributes", { ...restore, time: currentTime }).then(
     (reply) => {
       if (!reply?.applied) reloadPreview();
+      else onShownInPlace?.();
     },
   );
 }
@@ -489,7 +496,9 @@ export function applyUndoRestoreToPreview(
     reload();
   };
   if (iframe && files && previewFrameOpaque(iframe))
-    return applySealedRestore(iframe, activeDocPath, files, currentTime, reloadPreview);
+    return applySealedRestore(iframe, activeDocPath, files, currentTime, reloadPreview, () =>
+      announcePreviewRestoredInPlace(iframe),
+    );
   const doc = iframe?.contentDocument;
   const win = iframe?.contentWindow as PreviewWindow | null;
   const plan = doc && files && win ? planRestoreTargets(doc, activeDocPath, files) : null;

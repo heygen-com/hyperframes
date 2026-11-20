@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mintElementHandle } from "./handles";
-import { previewDoc, selectionFor } from "./webmcpTestUtils";
+import { documentPreview, previewDoc, selectionFor } from "./webmcpTestUtils";
 import {
   dispatched,
   runTargetedWrite,
@@ -21,7 +21,7 @@ function fixture() {
   });
   if (!handle) throw new Error("expected handle");
   const deps: TargetedWriteDeps = {
-    getPreviewDocument: () => doc,
+    preview: documentPreview(() => doc),
     getProjectId: () => "project-a",
     getWriteBlockedReason: () => null,
     buildSelection: async (target) => selectionFor(target),
@@ -87,7 +87,7 @@ describe("studio write coordinator", () => {
     const actor = vi.fn();
 
     const result = await runTargetedWrite(
-      { ...deps, getPreviewDocument: () => null },
+      { ...deps, preview: documentPreview(() => null) },
       {
         handle,
         operation: "set-text",
@@ -172,7 +172,7 @@ describe("studio write coordinator", () => {
     const actor = vi.fn();
     const result = await runTargetedWrite(
       {
-        getPreviewDocument: () => currentDoc,
+        preview: documentPreview(() => currentDoc),
         getProjectId: () => "project-a",
         getWriteBlockedReason: () => null,
         buildSelection: async (element) => {

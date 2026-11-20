@@ -8,6 +8,7 @@ afterEach(() => {
   document.body.innerHTML = "";
   Reflect.deleteProperty(window, "gsap");
   Reflect.deleteProperty(window, "__timelines");
+  Reflect.deleteProperty(window, "DOMMatrix");
 });
 
 /** Each translate axis as the sum of its px terms (the test DOM keeps a calc() unsimplified). */
@@ -54,6 +55,24 @@ function gsapWith(tweens: Tween[], position: Record<string, number> = { x: 200, 
 }
 
 const GSAP_RENDERS = { _gsap: { renderTransform: () => {} } };
+
+/** jsdom has no DOMMatrix: a 2D one reading `matrix(...)` and composing as the browser's does. */
+class Matrix2D {
+  a = 1;
+  b = 0;
+  c = 0;
+  d = 1;
+  constructor(init?: string) {
+    const m = init ? /matrix\(([^)]+)\)/.exec(init) : null;
+    if (m) [this.a, this.b, this.c, this.d] = m[1]!.split(",").map(Number);
+  }
+  multiply(o: Matrix2D) {
+    const out = new Matrix2D();
+    [out.a, out.b] = [this.a * o.a + this.c * o.b, this.b * o.a + this.d * o.b];
+    [out.c, out.d] = [this.a * o.c + this.c * o.d, this.b * o.c + this.d * o.d];
+    return out;
+  }
+}
 
 const tween = (target: unknown, vars: Record<string, unknown>, duration = 0): Tween => ({
   vars,
@@ -139,6 +158,16 @@ describe("gesture start", () => {
     const pressed = document.getElementById("pressed")!;
     const { snap } = gestureStart([handleFor(pressed), "0123456789abcdef:999"]);
     expect(snap.map((box) => box.rect.x)).toEqual([0, 10, 60]);
+  });
+
+  // fails without the fix: a sealed crop drew on the stand-in, which has no turn or scale of its own.
+  it("says the turn and scale an element paints under, its own with its parent's", () => {
+    Object.assign(window, { DOMMatrix: Matrix2D });
+    document.body.innerHTML = `<main data-composition-id="main" style="transform: matrix(0, 1, -1, 0, 0, 0)"><div id="card" style="transform: matrix(1.5, 0, 0, 1.5, 40, 30)"></div></main>`;
+    const card = document.getElementById("card")!;
+    boxed(card, [0, 0, 10, 10]);
+    const { elements } = gestureStart([handleFor(card)]);
+    expect(elements[0]?.planar).toEqual({ a: 0, b: 1.5, c: -1.5, d: 0 });
   });
 
   it("answers null for an element this load does not have", () => {

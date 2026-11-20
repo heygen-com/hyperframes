@@ -79,7 +79,7 @@ export function savedTiming(html: string): SavedTiming {
   return timing;
 }
 
-export function findAuthoredElementById(doc: Document, live: Element): Element | null {
+function findAuthoredElementById(doc: Document, live: Element): Element | null {
   return live.id ? findByAttribute(doc, "id", live.id) : null;
 }
 
@@ -110,7 +110,7 @@ function livePathsOf(live: Element): Set<string> {
 
 // The preview inlines a sub-composition with its relative asset paths rebased to the project
 // root (rewriteAssetPath in @hyperframes/parsers, which is not browser-safe); copy does the same.
-export function authoredMarkup(authored: Element, live: Element, sourceFile: string): string {
+function authoredMarkup(authored: Element, live: Element, sourceFile: string): string {
   if (!sourceFile.includes("/")) return authored.outerHTML;
   const livePaths = livePathsOf(live);
   const rebase = (path: string): string => {
@@ -148,4 +148,32 @@ export function liveMarkupWithoutPreviewMarks(live: Element): string {
     for (const attr of PREVIEW_ONLY_ATTRS) el.removeAttribute(attr);
   }
   return copy.outerHTML;
+}
+
+export type MarkedMarkup = { html: string; saved: boolean };
+
+export function savedMarkupElseLive(
+  saved: Document,
+  live: Element,
+  sourceFile: string,
+): MarkedMarkup {
+  const authored = findAuthoredElement(saved, live) ?? findAuthoredElementById(saved, live);
+  return authored
+    ? { html: authoredMarkup(authored, live, sourceFile), saved: true }
+    : { html: liveMarkupWithoutPreviewMarks(live), saved: false };
+}
+
+export async function readSavedMarkup(
+  readSaved: (path: string) => Promise<string>,
+  paths: string[],
+  lives: Element[],
+): Promise<MarkedMarkup[]> {
+  const sources = new Map<string, Promise<Document>>();
+  return Promise.all(
+    paths.map(async (path, index) => {
+      if (!sources.has(path)) sources.set(path, readSaved(path).then(parseSavedSource));
+      const saved = await (sources.get(path) as Promise<Document>);
+      return savedMarkupElseLive(saved, lives[index] as Element, path);
+    }),
+  );
 }

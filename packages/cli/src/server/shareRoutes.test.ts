@@ -190,6 +190,7 @@ it("keeps one server job alive after the request completes and recovers it on re
     audience: "private",
     space: "team1",
     videoOnly: undefined,
+    confirmedReview: null,
   });
 });
 it("returns failed jobs without changing access or retrying automatically", async () => {
@@ -264,6 +265,7 @@ it("passes explicit video-only recovery and rejects nonboolean bypass values", a
       audience: undefined,
       space: undefined,
       videoOnly: true,
+      confirmedReview: null,
     }),
   );
 });

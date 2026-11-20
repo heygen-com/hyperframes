@@ -2,7 +2,7 @@
  * Plays automation envelopes through native AudioParam scheduling.
  *
  * Nothing here runs per frame. The envelope is handed to the audio thread once,
- * as ramps and curves, so it stays sample-accurate no matter what the main
+ * as ramps, so it stays sample-accurate no matter what the main
  * thread is doing — and the offline render schedules it the same way, which is
  * why preview and render agree by construction rather than by tolerance.
  */
@@ -32,9 +32,9 @@ export interface AutomationTiming {
 }
 
 /**
- * Sampling density for segments that cannot be expressed as a ramp. Dense
- * enough that a curve is inaudible from a continuous one, capped so a long
- * segment cannot allocate without bound.
+ * Sampling density for bent segments, played as ramps through these points. Dense
+ * enough to be inaudible from a continuous bend, capped so a long segment cannot
+ * allocate without bound.
  */
 const CURVE_POINTS_PER_SEC = 100;
 const MIN_CURVE_POINTS = 8;
@@ -42,10 +42,11 @@ const MAX_CURVE_POINTS = 4096;
 
 const identity = (v: number): number => v;
 
-type Op =
-  | { kind: "set"; time: number; value: number }
-  | { kind: "ramp"; time: number; value: number }
-  | { kind: "curve"; time: number; duration: number; values: Float32Array };
+interface Op {
+  kind: "set" | "ramp";
+  time: number;
+  value: number;
+}
 
 /**
  * A segment is a straight line only when nothing bends it: no curvature and no
@@ -72,16 +73,17 @@ function curvePointCount(duration: number): number {
 }
 
 /**
- * One segment of the envelope, as the event that plays it. Returns null when
- * the segment is already behind the playhead.
+ * One segment of the envelope: a set at its start, then ramps. Bends are ramps
+ * through sampled points, never `setValueCurveAtTime`: Chromium's audio thread can
+ * move a curve's start without its end, and the next event then aborts the page.
  */
-function segmentOp(
+function segmentOps(
   lane: HfAutomationLane,
   index: number,
   scale: "linear" | "log",
   timing: AutomationTiming,
   map: FxParamTarget["map"],
-): Op | null {
+): Op[] {
   const { scheduledAt, elapsed, rate } = timing;
   const apply = map ?? identity;
   const toCtx = (t: number): number => scheduledAt + (t - elapsed) / rate;
@@ -89,21 +91,22 @@ function segmentOp(
   const b = lane.points[index + 1]!;
 
   const toTime = toCtx(b.t);
-  if (toTime <= scheduledAt) return null;
   const fromTime = Math.max(scheduledAt, toCtx(a.t));
-  const duration = toTime - fromTime;
-  if (duration <= 0) return null;
-
-  if (isStraight(a, scale, map)) {
-    return { kind: "ramp", time: toTime, value: apply(b.v) };
-  }
-  // Sample from wherever the segment is entered, which is mid-segment when the
-  // playhead landed inside it.
-  const count = curvePointCount(duration);
-  const raw = sampleAutomationCurve(lane, Math.max(a.t, elapsed), b.t, count, scale);
-  const values = new Float32Array(count);
-  for (let k = 0; k < count; k += 1) values[k] = apply(raw[k] ?? 0);
-  return { kind: "curve", time: fromTime, duration, values };
+  if (toTime <= fromTime) return [];
+  // Entered wherever the playhead is, which is mid-segment when it landed inside it.
+  const enter = Math.max(a.t, elapsed);
+  const values = isStraight(a, scale, map)
+    ? [sampleAutomationLane(lane, enter, scale), b.v]
+    : sampleAutomationCurve(lane, enter, b.t, curvePointCount(toTime - fromTime), scale);
+  const last = values.length - 1;
+  return Array.from(
+    values,
+    (v, k): Op => ({
+      kind: k === 0 ? "set" : "ramp",
+      time: k === last ? toTime : fromTime + ((toTime - fromTime) * k) / last,
+      value: apply(v),
+    }),
+  );
 }
 
 /** Turn a lane into the events one AudioParam should receive. */
@@ -115,18 +118,12 @@ function planOps(
 ): Op[] {
   const ops: Op[] = [];
   for (let i = 0; i + 1 < lane.points.length; i += 1) {
-    const op = segmentOp(lane, i, scale, timing, map);
-    if (op) ops.push(op);
+    ops.push(...segmentOps(lane, i, scale, timing, map));
   }
-
-  // Hold the envelope's value at the moment playback starts. This is what makes
-  // a lane correct before its first point and after its last, and it gives a
-  // following ramp something to ramp from.
-  //
-  // A value curve may not overlap another event, so the seed is dropped when a
-  // curve already begins at that instant — the curve sets the value itself.
+  // Hold the envelope's value from the moment playback starts: before its first
+  // point, and after its last.
   const first = ops[0];
-  if (!(first?.kind === "curve" && first.time <= timing.scheduledAt)) {
+  if (!first || first.time > timing.scheduledAt) {
     ops.unshift({
       kind: "set",
       time: timing.scheduledAt,
@@ -136,60 +133,22 @@ function planOps(
   return ops;
 }
 
-/** Rebuild a refused plan with ramps so clamped curves cannot replay past audio. */
-function emitRamps(param: AudioParam, ops: readonly Op[]): void {
-  param.cancelScheduledValues(0);
-  for (const op of ops) {
-    if (op.kind === "set") param.setValueAtTime(op.value, op.time);
-    else if (op.kind === "ramp") param.linearRampToValueAtTime(op.value, op.time);
-    else {
-      param.setValueAtTime(op.values[0] ?? 0, op.time);
-      param.linearRampToValueAtTime(op.values[op.values.length - 1] ?? 0, op.time + op.duration);
-    }
-  }
-}
-
-/**
- * Hand the plan to the AudioParam. A clamped curve can overlap the next segment.
- * On refusal, rebuild the whole lane as ramps: retrying later curves would clamp
- * them forward too, replaying values that should already have elapsed.
- */
 function emit(param: AudioParam, ops: readonly Op[]): void {
   for (const op of ops) {
     if (op.kind === "set") param.setValueAtTime(op.value, op.time);
-    else if (op.kind === "ramp") param.linearRampToValueAtTime(op.value, op.time);
-    else {
-      try {
-        param.setValueCurveAtTime(op.values, op.time, op.duration);
-      } catch {
-        emitRamps(param, ops);
-        return;
-      }
-    }
+    else param.linearRampToValueAtTime(op.value, op.time);
   }
 }
 
 /**
- * Drop every event booked on a parameter, including a curve already under way.
- *
- * Anything landing inside a running curve is refused — a fresh curve, or the
- * plain `.value` write that re-parameterising a chain performs — so the param has
- * to be cancelled first. Measured against Chrome, any cancel frees the span; this
- * takes the strongest form on purpose, because curve-over-curve refusals were
- * reported from the field with a cancel at the new schedule time already in place
- * and have never reproduced. Cancelling from zero cannot leave a stale event
- * behind whatever that mechanism is.
- *
- * Safe on these parameters because this scheduler is their only writer: they
- * belong to effect nodes it built, and the caller re-seeds the value in the same
- * breath, so nothing clicks.
+ * Drop every event booked on a parameter. Safe because this scheduler is the only
+ * writer of these parameters and the caller re-seeds the value in the same breath.
  */
 export function clearParamLane(targets: readonly FxParamTarget[]): void {
   for (const target of targets) target.param.cancelScheduledValues(0);
 }
 
-/** Stop an envelope, leaving the parameter wherever it currently sits. Held by hand: `cancelAndHoldAtTime`
- * crashes the page in Chromium before 160 when the hold lands in a value curve. */
+/** Stop an envelope, leaving the parameter wherever it currently sits. */
 export function cancelParamLane(targets: readonly FxParamTarget[]): void {
   for (const target of targets) {
     // The value the envelope had reached, not the last one set, which would click.
@@ -213,10 +172,6 @@ export function scheduleParamLane(
 ): void {
   if (lane.points.length === 0) return;
   for (const target of targets) {
-    // Cleared from zero rather than from this instant: a reschedule mid-playback
-    // lands inside the previous pass's still-running curve, and the field reports
-    // of that being refused had a cancel at this instant already in place. The
-    // plan below re-seeds the value here, so clearing costs nothing audible.
     clearParamLane([target]);
     if (isConstantLane(lane)) {
       const value = (target.map ?? identity)(lane.points[0]!.v);

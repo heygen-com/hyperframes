@@ -1,8 +1,9 @@
 import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
 import { createHash, randomBytes } from "node:crypto";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { realpath } from "./safePath.js";
-import { renameWithRetry } from "./renameWithRetry.js";
+import { renameWithRetry, renameWithRetryAsync } from "./renameWithRetry.js";
 import { terminalText } from "./terminalText.js";
 
 type SiblingFileSystem = Pick<typeof fs, "writeFileSync" | "chmodSync" | "unlinkSync">;
@@ -66,6 +67,47 @@ export function replaceFileAtomically(
   publishSibling(filePath, content, mode, operations, (tempPath) =>
     renameWithRetry(tempPath, filePath, { rename: operations.renameSync }),
   );
+}
+
+/** Async twin of {@link replaceFileAtomically}: a disk that never answers holds a pool thread, never the caller's. */
+export async function replaceFileAtomicallyAsync(
+  filePath: string,
+  content: string | Uint8Array,
+  mode?: number,
+): Promise<void> {
+  traceWrite(filePath, content);
+  try {
+    await fsp.access(filePath, fs.constants.W_OK);
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") throw error;
+  }
+  const tempPath = await writeTempSiblingAsync(filePath, content, mode);
+  try {
+    if (mode !== undefined) await fsp.chmod(tempPath, mode);
+    await renameWithRetryAsync(tempPath, filePath);
+  } catch (error) {
+    await fsp.unlink(tempPath).catch(() => undefined);
+    throw error;
+  }
+}
+
+async function writeTempSiblingAsync(
+  filePath: string,
+  content: string | Uint8Array,
+  mode: number | undefined,
+): Promise<string> {
+  for (let attempt = 1; ; attempt++) {
+    const tempPath = atomicTempPath(filePath);
+    try {
+      await fsp.writeFile(tempPath, content, { encoding: "utf-8", mode, flag: "wx" });
+      return tempPath;
+    } catch (error) {
+      const taken = errorCode(error) === "EEXIST";
+      if (taken && attempt < TEMP_NAME_TRIES) continue;
+      if (!taken) await fsp.unlink(tempPath).catch(() => undefined);
+      throw error;
+    }
+  }
 }
 
 export function refuseReadOnly(filePath: string): void {
