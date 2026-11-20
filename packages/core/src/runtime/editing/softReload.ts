@@ -479,6 +479,29 @@ export function preloadMotionPath(
   whenMotionPathLoaded(win, doc, register, () => {});
 }
 
+function runScript(win: SoftReloadWindow, doc: Document, script: string): boolean {
+  if (win.MotionPathPlugin && win.gsap?.registerPlugin)
+    win.gsap.registerPlugin(win.MotionPathPlugin);
+  const s = doc.createElement("script");
+  s.textContent = `(function(){${script}\n})();`;
+  const before = doc.body.querySelectorAll("*").length + 1;
+  doc.body.appendChild(s);
+  // A script that builds DOM builds it again on every run; only a full load starts from the file.
+  // Not seen: text-only writes, nodes put in the head or a shadow root, and nodes added later.
+  return doc.body.querySelectorAll("*").length > before;
+}
+
+/** A soft reload's start: a later one supersedes it, and a seek since moves where it finishes. */
+function markReload(win: SoftReloadWindow) {
+  const reload = (win.__hfSoftReloads = (win.__hfSoftReloads ?? 0) + 1);
+  const seeks = win.__hfPlayerSeeks ?? 0;
+  return {
+    superseded: () => win.__hfSoftReloads !== reload,
+    timeAfter: (sent: number) =>
+      (win.__hfPlayerSeeks ?? 0) !== seeks ? (win.__player?.getTime?.() ?? sent) : sent,
+  };
+}
+
 export function softReloadFrame(
   win: SoftReloadWindow,
   doc: Document,
@@ -489,7 +512,7 @@ export function softReloadFrame(
   if (!scope) return "cannot-soft-reload";
   const { targetKeys, staleScripts } = scope;
   const currentTime = input.time ?? win.__player?.getTime?.() ?? 0;
-  let started = { reload: 0, seeks: 0 };
+  let mark!: ReturnType<typeof markReload>;
 
   const targets = collectResetTargets(win, doc, targetKeys, input.sets);
   const ownFile = compositionFile(doc, targetKeys);
@@ -503,30 +526,14 @@ export function softReloadFrame(
   let builtDom = false;
 
   const executeScript = () => {
-    // A newer soft reload ran while this one waited for the plugin: its script is the current one.
-    if (pending && win.__hfSoftReloads !== started.reload) return deferred?.("applied");
-    if (win.MotionPathPlugin && win.gsap?.registerPlugin)
-      win.gsap.registerPlugin(win.MotionPathPlugin);
-    const s = doc.createElement("script");
-    s.textContent = `(function(){${script}\n})();`;
-    const before = doc.body.querySelectorAll("*").length + 1;
-    doc.body.appendChild(s);
-    // A script that builds DOM builds it again on every run; only a full load starts from the file.
-    // Not seen: text-only writes, nodes put in the head or a shadow root, and nodes added later.
-    builtDom = doc.body.querySelectorAll("*").length > before;
-    const seekedMeanwhile = pending && (win.__hfPlayerSeeks ?? 0) !== started.seeks;
-    finalizeSoftReload(
-      win,
-      seekedMeanwhile ? (win.__player?.getTime?.() ?? currentTime) : currentTime,
-    );
+    if (pending && mark.superseded()) return deferred?.("applied");
+    builtDom = runScript(win, doc, script);
+    finalizeSoftReload(win, pending ? mark.timeAfter(currentTime) : currentTime);
     deferred?.(builtDom ? "cannot-soft-reload" : "applied");
   };
 
   const doReload = () => {
-    started = {
-      reload: (win.__hfSoftReloads = (win.__hfSoftReloads ?? 0) + 1),
-      seeks: win.__hfPlayerSeeks ?? 0,
-    };
+    mark = markReload(win);
     if (input.restorePlan) applyRestorePlan(input.restorePlan);
     applyTimingPlan(timing);
     killTimelines(win, targetKeys);
