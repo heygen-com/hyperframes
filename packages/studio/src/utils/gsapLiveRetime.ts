@@ -1,24 +1,19 @@
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { parseGsapScriptAcorn, scriptShape } from "@hyperframes/parsers/gsap-parser-acorn";
 import { hasExplicitTime } from "@hyperframes/parsers/gsap-writer-acorn";
-import { RUNTIME_FILLER } from "@hyperframes/core/runtime/protocol";
+import {
+  retimeLiveTweens,
+  type LiveRetimeResult,
+  type TweenTiming,
+} from "@hyperframes/core/runtime/live-retime";
 import {
   applySoftReloadFinalization,
   findGsapScriptElements,
   scriptsRegistering,
   timelineKeys,
 } from "./gsapSoftReload";
-
-interface TweenTiming {
-  selector: string;
-  start: number;
-  duration: number;
-  wasStart: number;
-  wasDuration: number;
-  moved: boolean;
-  /** Its place in the script, which is the order a fresh run adds it to the timeline. */
-  source: number;
-}
+import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
+import { savedTiming } from "./authoredSource";
 
 /**
  * How a saved script differs from the live one: `retime` when only tween starts and lengths moved
@@ -113,163 +108,61 @@ export function planLiveRetimeFromPreview(
   return plan.kind === "retime" ? { ...plan, script } : RERUN;
 }
 
-interface LiveTween {
-  duration: (value?: number) => number;
-  startTime: () => number;
-  delay: () => number;
-  repeatDelay?: () => number;
-  data?: unknown;
-  targets?: () => unknown[];
-}
-interface LiveTimeline {
-  getChildren(nested: boolean, tweens: true, timelines: false): LiveTween[];
-  getChildren(nested: false, tweens: false, timelines: true): LiveTimeline[];
-  remove: (child: LiveTween) => unknown;
-  add: (child: LiveTween, position: number) => unknown;
-  time: () => number;
-  progress: (value: number, suppressEvents: boolean) => unknown;
-  totalTime: (time: number, suppressEvents: boolean) => unknown;
-}
-
-const same = (a: number, b: number) => Math.abs(a - b) < 1e-6;
-
-const targetsMatch = (tween: LiveTween, selector: string) => {
-  const targets = tween.targets?.() ?? [];
-  try {
-    return targets.length > 0 && targets.every((t) => (t as Element).matches?.(selector) === true);
-  } catch {
-    return false;
-  }
-};
-
-/** The live tweens, one per planned tween, when each sits exactly where the parser says it did. */
-function pairedLiveTweens(timeline: LiveTimeline, plan: LiveRetime): LiveTween[] | null {
-  // The script's tweens only: the runtime also nests sub-composition timelines and adds filler tweens here.
-  const children = timeline
-    .getChildren(false, true, false)
-    .filter((tween) => tween.data !== RUNTIME_FILLER);
-  if (children.length !== plan.tweens.length) return null;
-  const paired = plan.tweens.every((t, i) => {
-    const live = children[i]!;
-    return (
-      targetsMatch(live, t.selector) &&
-      same(live.startTime() - live.delay(), t.wasStart) &&
-      same(live.duration(), t.wasDuration)
-    );
-  });
-  return paired ? children : null;
-}
-
-/** The writer rounds every time it writes to 3 decimals. */
-const near = (a: number, b: number) => Math.abs(a - b) <= 2e-3;
-
-/** One stretch for every tween (start = shift + stretch × old start, length = stretch × old length), in old order. */
-function sharesOneStretch(tweens: TweenTiming[]): boolean {
-  const first = tweens[0]!;
-  const last = tweens.at(-1)!;
-  const longest = tweens.reduce((x, y) => (y.wasDuration > x.wasDuration ? y : x));
-  const spread = last.wasStart - first.wasStart;
-  // Taken over the widest span, so the writer's rounding cannot push it past `near`.
-  const stretch =
-    spread > longest.wasDuration
-      ? (last.start - first.start) / spread
-      : longest.wasDuration > 0
-        ? longest.duration / longest.wasDuration
-        : 1;
-  const fits = tweens.every(
-    (t) =>
-      near(t.start, first.start + stretch * (t.wasStart - first.wasStart)) &&
-      near(t.duration, stretch * t.wasDuration),
-  );
-  return stretch > 0 && fits;
-}
-
-/** Tweens on one element still start in the order they did, an equal start in script order. */
-const keepsOrder = (tweens: TweenTiming[]) =>
-  tweens.every(
-    (t, k) => k === 0 || (tweens[k - 1]!.start - t.start || tweens[k - 1]!.source - t.source) < 0,
-  );
-
-/**
- * A tween keeps the start values it recorded when it first played, so every element a move touches
- * must keep its tweens' spacing, and no timeline the script does not own may animate it.
- */
-function movesKeepEachElementsHistory(
-  timeline: LiveTimeline,
-  plan: LiveRetime,
-  children: LiveTween[],
-  registry: unknown[],
-): boolean {
-  const byElement = new Map<unknown, number[]>();
-  children.forEach((child, i) => {
-    for (const target of child.targets?.() ?? []) {
-      const indexes = byElement.get(target);
-      if (indexes) indexes.push(i);
-      else byElement.set(target, [i]);
-    }
-  });
-  const moved = new Set<unknown>();
-  for (const [target, indexes] of byElement) {
-    if (!indexes.some((i) => plan.tweens[i]!.moved)) continue;
-    const tweens = indexes.map((i) => plan.tweens[i]!);
-    // GSAP adds delays to the schedule unstretched; a shift keeps every length.
-    const shifted = tweens.every((t) => t.duration === t.wasDuration);
-    const undelayed = indexes.every((i) => !children[i]!.delay() && !children[i]!.repeatDelay?.());
-    if (!keepsOrder(tweens) || !sharesOneStretch(tweens) || !(shifted || undelayed)) return false;
-    moved.add(target);
-  }
-  return !animatedElsewhere(timeline, registry, moved);
-}
-
-/** Whether a timeline other than `own` (nested in it, or another registered one) animates any of `targets`. */
-function animatedElsewhere(own: LiveTimeline, registry: unknown[], targets: Set<unknown>): boolean {
-  const seen = new Set<unknown>([own]);
-  const visit = (timeline: LiveTimeline): boolean => {
-    if (seen.has(timeline)) return false;
-    seen.add(timeline);
-    return (
-      timeline
-        .getChildren(false, true, false)
-        .some((tween) => tween.targets?.().some((target) => targets.has(target))) ||
-      timeline.getChildren(false, false, true).some(visit)
-    );
-  };
-  const timelines = registry.filter(
-    (entry): entry is LiveTimeline => typeof (entry as LiveTimeline)?.getChildren === "function",
-  );
-  return own.getChildren(false, false, true).some(visit) || timelines.some(visit);
-}
-
-/**
- * Moves the live tweens a `retime` plan names and records the saved script as the live one.
- * False, with nothing changed, when the live timeline is not exactly what the parser read.
- */
+/** Moves the live tweens a `retime` plan names; false, with nothing changed, when the timeline differs. */
 export function applyLiveRetime(iframe: HTMLIFrameElement | null, plan: LiveRetime): boolean {
   const win = iframe?.contentWindow as { __timelines?: Record<string, unknown> } | null;
-  const timeline = win?.__timelines?.[plan.key] as LiveTimeline | undefined;
-  if (typeof timeline?.getChildren !== "function") return false;
-  // Paired before anything moves: moving a tween re-sorts the timeline's children.
-  const children = pairedLiveTweens(timeline, plan);
-  if (!children) return false;
-  if (plan.tweens.some((t) => t.moved)) {
-    const registry = Object.values(win?.__timelines ?? {});
-    if (!movesKeepEachElementsHistory(timeline, plan, children, registry)) return false;
-    // Re-added in script order: GSAP orders equal starts by when they were added, as a fresh run does.
-    const bySource = plan.tweens
-      .map((t, i) => ({ ...t, tween: children[i]! }))
-      .sort((a, b) => a.source - b.source);
-    for (const { tween } of bySource) timeline.remove(tween);
-    for (const { tween, start, duration } of bySource) {
-      if (tween.duration() !== duration) tween.duration(duration);
-      timeline.add(tween, start);
-    }
-    // Replayed to the playhead as the runtime binds a fresh load, callbacks included.
-    const at = timeline.time();
-    timeline.progress(0.0001, true);
-    timeline.totalTime(at, false);
-  }
-  // A script element runs once, so this only keeps the next comparison honest; nothing re-executes.
-  plan.script.textContent = plan.after;
+  return retimeLiveTweens(win, plan.script, plan);
+}
+
+const RETIME_RESULTS = new Set<unknown>(["moved", "unchanged", "failed"]);
+
+/** The frame's reply is data: anything but exactly `{ result }` with a known result counts as a failure. */
+function sealedRetimeResult(reply: unknown): LiveRetimeResult {
+  if (typeof reply !== "object" || reply === null || Object.keys(reply).length !== 1)
+    return "failed";
+  const { result } = reply as { result?: unknown };
+  return RETIME_RESULTS.has(result) ? (result as LiveRetimeResult) : "failed";
+}
+
+/** The edited file as saved before and after the edit. */
+type SavedFiles = { before?: string; after?: string };
+
+/** A `retime` plan from the file as saved before the edit; null when no single script there owns the timeline. */
+function planFromSavedFile(
+  scriptText: string,
+  savedBefore: string,
+): Extract<LiveRetimePlan, { kind: "retime" }> | null {
+  const [key] = timelineKeys(scriptText);
+  if (!key) return null;
+  const previous = new DOMParser().parseFromString(savedBefore, "text/html");
+  const [before, ...extra] = scriptsRegistering(findGsapScriptElements(previous), [key]);
+  if (!before || extra.length > 0) return null;
+  const plan = planLiveRetime(before.textContent ?? "", scriptText);
+  return plan.kind === "retime" ? plan : null;
+}
+
+// Planned from the saved files alone; the frame checks its timeline matches the plan before moving anything.
+async function moveSealedLiveTweens(
+  iframe: HTMLIFrameElement,
+  scriptText: string,
+  currentTime: number,
+  reloadPreview: () => void,
+  files: SavedFiles,
+): Promise<boolean> {
+  if (files.before === undefined || files.after === undefined) return false;
+  const plan = planFromSavedFile(scriptText, files.before);
+  if (!plan) return false;
+  const { key: planKey, after, tweens } = plan;
+  const reply = await previewRequest(iframe, "live-retime", {
+    key: planKey,
+    after,
+    tweens,
+    time: currentTime,
+    timing: savedTiming(files.after),
+  });
+  const result = sealedRetimeResult(reply);
+  if (result === "unchanged") return false;
+  if (result === "failed") reloadPreview();
   return true;
 }
 
@@ -279,7 +172,10 @@ export function moveLiveTweens(
   scriptText: string,
   currentTime: number,
   reloadPreview: () => void,
-): boolean {
+  files: SavedFiles = {},
+): boolean | Promise<boolean> {
+  if (previewFrameOpaque(iframe))
+    return moveSealedLiveTweens(iframe, scriptText, currentTime, reloadPreview, files);
   const plan = planLiveRetimeFromPreview(iframe, scriptText);
   if (plan.kind !== "retime") return false;
   try {

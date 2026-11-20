@@ -89,7 +89,8 @@ export function ownMediaDir(projectDir) {
   return dir;
 }
 
-function refuseLink(path) {
+/** Throws when `path` is a link. */
+export function refuseLink(path) {
   if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) {
     throw new Error(`${path} is a link; nothing was written through it`);
   }
