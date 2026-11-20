@@ -94,3 +94,14 @@ export function isSafeAttributeValue(name: string, value: string): boolean {
   }
   return true;
 }
+
+export function unsafeMarkupAttributes(root: Element): string[] {
+  const found: string[] = [];
+  for (const element of [root, ...Array.from(root.querySelectorAll("*"))]) {
+    for (const { name, value } of Array.from(element.attributes)) {
+      if (name.toLowerCase().startsWith("on") || !isSafeAttributeValue(name, value))
+        found.push(`${element.localName}[${name}]`);
+    }
+  }
+  return found;
+}

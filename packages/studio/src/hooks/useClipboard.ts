@@ -30,6 +30,7 @@ import {
   parseSavedSource,
 } from "../utils/authoredSource";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
+import { unsafeMarkupAttributes } from "@hyperframes/core/html-attr-safety";
 
 type InPlace = { inPlace?: boolean };
 
@@ -184,7 +185,11 @@ export function resolveFreeTrack(preferred: PlacedClip, taken: readonly PlacedCl
  *  inside the edit, or the server stamps them on the next preview load, behind undo's back.
  *  DOMParser, not a regex, so a `>` inside an attribute value can't defeat it. */
 function remintHfIds(html: string, parser: DOMParser, taken: Set<string>): string {
-  const root = parser.parseFromString(html, "text/html").body.firstElementChild;
+  const doc = parser.parseFromString(html, "text/html");
+  if (unsafeMarkupAttributes(doc.documentElement).length > 0) {
+    throw new Error("Couldn't paste: the copied element has an event handler or a script link");
+  }
+  const root = doc.body.firstElementChild;
   if (!root) {
     // A tag the HTML parser hoists out of <body> (title/meta/style/base/link)
     // never reaches the walk above — fall back to a direct strip so
