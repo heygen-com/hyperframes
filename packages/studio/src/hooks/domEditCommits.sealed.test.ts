@@ -13,6 +13,7 @@ import {
 import type { DomEditSelection } from "../components/editor/domEditing";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { commitDomStyles } from "./domStyleCommit";
+import { readElementCropInsets } from "../components/editor/domEditOverlayCrop";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
 import { usePlayerStore } from "../player/store/playerStore";
 import { syncStoredAutomationFromFrame } from "../player/lib/automationStoreSync";
@@ -121,6 +122,41 @@ describe("DOM edit commits in a sealed preview", () => {
     await commitDomStyles(styleContext(iframe, persist), selection, { color: "blue" });
     await settle();
     expect(card.style.color).toBe("red");
+  });
+
+  // fails without the fix: a sealed crop's release drew the press-time crop until the save's resync.
+  it("shows a sealed style commit on the selection at once, before the save lands", async () => {
+    const { iframe, selection } = await sealedCard(`<div id="card">Hi</div>`);
+    let land = () => {};
+    const persist = vi.fn<PersistDomEditOperations>(
+      () => new Promise<void>((resolve) => (land = resolve)),
+    );
+    const saved = commitDomStyles(styleContext(iframe, persist), selection, {
+      "clip-path": "inset(0px 40px 0px 0px)",
+      opacity: "0.5",
+    });
+    await settle();
+    expect(persist).toHaveBeenCalled();
+    expect(readElementCropInsets(selection.element)).toMatchObject({ right: 40 });
+    expect(selection.element.style.opacity).toBe("0.5");
+    land();
+    await saved;
+  });
+
+  it("puts the selection's own style back exactly when a sealed save fails", async () => {
+    const { iframe, selection } = await sealedCard(
+      `<div id="card" style="clip-path: inset(10px)">Hi</div>`,
+    );
+    const before = selection.element.getAttribute("style");
+    const persist = vi.fn<PersistDomEditOperations>(async () => {
+      throw new Error("disk full");
+    });
+    await commitDomStyles(styleContext(iframe, persist), selection, {
+      "clip-path": "inset(20px)",
+    });
+    await settle();
+    expect(selection.element.getAttribute("style")).toBe(before);
+    expect(readElementCropInsets(selection.element)).toMatchObject({ top: 10, right: 10 });
   });
 
   it("reloads a sealed frame for a font change, which it cannot load from Studio", async () => {
