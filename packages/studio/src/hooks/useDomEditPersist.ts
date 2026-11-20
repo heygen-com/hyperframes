@@ -16,7 +16,7 @@ import {
   writePreparedContent,
 } from "./useDomEditCommitsHelpers";
 import { importedFontFaceCssFor } from "../utils/studioFontHelpers";
-import { countStudioManualEditSave } from "../components/editor/manualEditsDom";
+import { countStudioManualEditSave } from "../components/editor/manualEditGesture";
 import type { CutoverResult } from "../utils/sdkCutover";
 import { reseekPreviewRuntime } from "./timelineTrackVisibility";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
