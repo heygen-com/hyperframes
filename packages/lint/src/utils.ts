@@ -164,6 +164,19 @@ export function findRootTag(source: string, parsedTags?: readonly OpenTag[]): Op
   const bodyStart = bodyTag ? bodyTag.index + bodyTag.raw.length : 0;
   const bodyEnd = bodyTag?.closeIndex ?? source.length;
   const bodyTags = tags.filter((tag) => tag.index >= bodyStart && tag.index < bodyEnd);
+  // An explicit `data-root="true"` root wins before the first-tag fallback.
+  // The runtime resolves the root composition element by
+  // [data-composition-id][data-root="true"] first (compositionDimension.ts
+  // findRootCompositionElement), so when the authored root is not the first
+  // tag in <body> — e.g. a body-level A-roll media container placed before
+  // it, which the swiss-grid --video scaffold wires — lint must pick the
+  // element the runtime binds, not the leading container.
+  const explicitRoot = bodyTags.find(
+    (tag) =>
+      readDecodedAttr(tag.raw, "data-root") === "true" &&
+      Boolean(readDecodedAttr(tag.raw, "data-composition-id")),
+  );
+  if (explicitRoot) return explicitRoot;
   // Set when a leading <svg> defs block is skipped (see below) — extractOpenTags
   // is a flat, nesting-unaware scan, so without this the very next tag it
   // returns is the svg's own nested child (<defs>, <filter>, ...), not the
