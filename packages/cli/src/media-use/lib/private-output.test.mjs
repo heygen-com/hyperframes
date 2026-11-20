@@ -64,13 +64,13 @@ test("discarding leaves any file a generator does not own", (t) => {
 });
 
 test("discarding leaves a folder named like a generator's that this run did not make", (t) => {
-  const planted = join(
+  const notOurs = join(
     removeAfter(t, mkdtempSync(join(tmpdir(), "media-use-codex-"))),
     "output.png",
   );
-  writeFileSync(planted, "x");
-  discardPrivateOutput(planted);
-  assert.equal(existsSync(planted), true);
+  writeFileSync(notOurs, "x");
+  discardPrivateOutput(notOurs);
+  assert.equal(existsSync(notOurs), true);
 });
 
 test(
