@@ -218,6 +218,19 @@ export interface PreviewTargets {
   find: (handle: string) => Promise<HTMLElement | PreviewElement | null | undefined>;
 }
 
+function previewMoved(
+  preview: PreviewTargets,
+  load: object,
+  elements: ReadonlyArray<HTMLElement | PreviewElement | undefined>,
+): boolean {
+  const held = (element: HTMLElement) =>
+    element.ownerDocument === load ? element.isConnected : standInHandle(element) !== undefined;
+  return (
+    preview.load() !== load ||
+    elements.some((element) => element && isHtmlElement(element) && !held(element))
+  );
+}
+
 /**
  * Resolve and build a selection across one possible preview reload.
  *
@@ -240,13 +253,7 @@ export async function resolveLiveHandleSelection<T extends DomEditSelection>(
     if (!found) return { status: reloadObserved ? "changed" : "not-found" };
 
     const selection = await buildSelection(found);
-    const held = (element: HTMLElement) =>
-      element.ownerDocument === load ? element.isConnected : standInHandle(element) !== undefined;
-    const previewChanged =
-      preview.load() !== load ||
-      (isHtmlElement(found) && !held(found)) ||
-      (selection !== null && !held(selection.element));
-    if (previewChanged) {
+    if (previewMoved(preview, load, [found, selection?.element])) {
       reloadObserved = true;
       continue;
     }

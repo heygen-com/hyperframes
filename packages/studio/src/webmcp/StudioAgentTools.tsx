@@ -81,8 +81,6 @@ export function StudioAgentTools() {
 
   const getSnapshot = useCallback(async (): Promise<StudioLookSnapshot> => {
     const player = usePlayerStore.getState();
-    // Every runtime timeline post carries at least 1 s; a sealed frame's lands a round trip after its seeks.
-    const timelineKnown = player.duration > 0;
     return {
       projectId,
       compositionPath: activeCompPath,
@@ -90,7 +88,7 @@ export function StudioAgentTools() {
       duration: player.duration,
       isPlaying: player.isPlaying,
       elements: player.elements,
-      scene: timelineKnown ? await preview.scene(activeGroupElement) : { status: "loading" },
+      scene: await preview.scene(activeGroupElement),
       selection: domEditSelection,
       selectionAnimationCount: selectedGsapAnimations.length,
       history: {
