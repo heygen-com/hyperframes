@@ -3,7 +3,7 @@ import { audienceLabel } from "./ShareAudience";
 
 /**
  * What the person agrees to before Studio shares anything: which review it touches and who can open it. A project's
- * own `.hyperframes/review.json` can point at an existing review, so the review is always named.
+ * own review record can point at an existing review, so the review is always named.
  */
 export function shareConfirmMessage(
   action: LocalShareAction,
