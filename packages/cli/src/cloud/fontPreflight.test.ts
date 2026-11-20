@@ -93,4 +93,11 @@ describe("describeSwappedFonts", () => {
         "Zapfino is not on this computer, so it renders in the next font of its stack (or the default font), as a local render does.",
     );
   });
+
+  it("shows control characters in a font name as visible escapes and keeps its look-alike", () => {
+    expect(describeSwappedFonts(["PingFang SC\n", `Brand${String.fromCharCode(27)}[2J`])).toBe(
+      "PingFang SC\\x0a is not on this computer, so it renders in the next font of its stack (or the default font), as a local render does; Noto Sans SC is a free look-alike you can use instead.\n" +
+        "Brand\\x1b[2J is not on this computer, so it renders in the next font of its stack (or the default font), as a local render does.",
+    );
+  });
 });

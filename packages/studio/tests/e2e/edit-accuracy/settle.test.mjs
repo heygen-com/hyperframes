@@ -8,6 +8,7 @@ import {
   heldStill,
   measureShown,
   networkBusy,
+  openStudio,
   seekBound,
   swapPending,
   unsettledBy,
@@ -64,6 +65,16 @@ describe("settling on the shown preview", () => {
       $: async () => ({}),
     };
     expect(await swapPending({ page: page(gone), keys })).toBe(false);
+  });
+
+  it("reads a frame detached before the read as holding nothing: puppeteer throws that synchronously", async () => {
+    const detached = () => {
+      throw new Error("Attempted to use detached Frame");
+    };
+    const gone = { url: () => "/preview/a?_t=1", frameElement: detached, $: detached };
+    const hostGone = { ...frame("/preview/a?_t=1", false, true), $: detached };
+    expect(await swapPending({ page: page(gone), keys })).toBe(false);
+    expect(await swapPending({ page: page(hostGone), keys })).toBe(false);
   });
 
   it("calls a swap pending while Studio says the preview is changing, with no hidden preview yet", async () => {
@@ -198,6 +209,31 @@ describe("seeking to the playhead after a reload", () => {
     try {
       expect(await seekBound({ page, playhead: 2 })).toMatchObject({ playhead: 2, duration: 4 });
       expect(calls).toEqual(["studio_look", "studio_look", "studio_look", "studio_seek"]);
+    } finally {
+      delete globalThis.window;
+    }
+  });
+
+  it("waits in the page for Studio to report the composition loaded, and names its last report if it never does", async () => {
+    let loaded;
+    const page = {
+      waitForFunction: async (fn) => {
+        loaded = fn;
+        throw new Error("Waiting failed: 90000ms exceeded");
+      },
+      evaluate: async () => ({ ok: true, duration: 0, playhead: 0, sceneStatus: "loading" }),
+    };
+    await expect(openStudio({ page })).rejects.toThrow(
+      'studio never reported the composition loaded: last {"duration":0,"playhead":0,"scene":"loading"}',
+    );
+    let duration = 0;
+    globalThis.window = {};
+    try {
+      expect(await loaded(), "before Studio registers its tools").toBe(false);
+      window.__editBench = { has: () => true, call: async () => ({ ok: true, duration }) };
+      expect(await loaded(), "before the timeline bind").toBe(false);
+      duration = 4;
+      expect(await loaded()).toBe(true);
     } finally {
       delete globalThis.window;
     }

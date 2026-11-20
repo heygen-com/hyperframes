@@ -86,6 +86,7 @@ import {
 } from "../safePath.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { readTextFile } from "@hyperframes/parsers/asset-resolution";
+import { isHtmlTemplate, templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { HF_COLOR_GRADING_ATTR } from "../colorGrading";
 import { assignMediaRenderIds } from "./mediaRenderIds";
 import { terminalText } from "../terminalText.js";
@@ -550,6 +551,11 @@ function getBundledHostCompositionIdentity(host: Element): BundledHostCompositio
   };
 }
 
+function hasInlineTemplate(document: Document, compositionId: string): boolean {
+  const template = document.getElementById(`${compositionId}-template`);
+  return !!template && isHtmlTemplate(template);
+}
+
 function getBundledTrackedCompositionHosts(document: Document): Element[] {
   const hosts = Array.from(
     document.querySelectorAll<Element>("[data-composition-src], [data-composition-id]"),
@@ -558,7 +564,7 @@ function getBundledTrackedCompositionHosts(document: Document): Element[] {
     if (host.hasAttribute("data-composition-src")) return true;
     const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
     if (!authoredCompositionId) return false;
-    return !!document.getElementById(`${authoredCompositionId}-template`);
+    return hasInlineTemplate(document, authoredCompositionId);
   });
 }
 
@@ -566,7 +572,7 @@ function shouldAssignBundledRuntimeCompositionId(host: Element, document: Docume
   if (host.hasAttribute("data-composition-src")) return true;
   const authoredCompositionId = getBundledHostCompositionIdentity(host).authoredCompositionId;
   if (!authoredCompositionId) return false;
-  if (!document.getElementById(`${authoredCompositionId}-template`)) return false;
+  if (!hasInlineTemplate(document, authoredCompositionId)) return false;
   return host.children.length === 0;
 }
 
@@ -1182,7 +1188,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     ? [
         ...document.querySelectorAll(`script:not([${RUNTIME_BOOTSTRAP_ATTR}])`),
         ...[...document.querySelectorAll("template")].flatMap((t) => [
-          ...(t as HTMLTemplateElement).content.querySelectorAll("script"),
+          ...(templateContent(t)?.querySelectorAll("script") ?? []),
         ]),
       ].map((el) => {
         const src = el.getAttribute("src");
@@ -1294,6 +1300,7 @@ async function bundleProject(projectDir: string, options?: BundleOptions): Promi
     (host) => !host.hasAttribute("data-composition-src"),
   );
   for (const templateEl of [...document.querySelectorAll("template[id]")]) {
+    if (!isHtmlTemplate(templateEl)) continue;
     const templateId = templateEl.getAttribute("id") || "";
     const match = templateId.match(/^(.+)-template$/);
     if (!match) continue;
@@ -1570,6 +1577,10 @@ function cssSafeVariableValue(value: string | number): string {
   return sanitizeCssValue(String(value)).replace(/</g, "\\3c ");
 }
 
+function emitsCss(value: unknown): value is string | number {
+  return (typeof value === "string" && value !== "") || typeof value === "number";
+}
+
 /** One stylesheet rule defining primitive composition variables under `selector`. */
 function compositionVariablesCssBlock(
   variables: Record<string, unknown>,
@@ -1577,7 +1588,7 @@ function compositionVariablesCssBlock(
 ): string | null {
   const lines: string[] = [];
   for (const [id, value] of Object.entries(variables)) {
-    if ((typeof value === "string" && value !== "") || typeof value === "number") {
+    if (emitsCss(value)) {
       lines.push(`  ${cssVariableName(id)}: ${cssSafeVariableValue(value)};`);
     }
   }
@@ -1606,11 +1617,12 @@ export function emitRootCompositionVariableStyles(
 ): boolean {
   const charge = options.chargeBytes ?? defaultVariableStyleCharge();
   const authoredDefines = authoredDefinesPredicate(document);
-  const layerFor = makeVariableLayer(authoredDefines, overrides);
+  const overrideIndex = indexKeys(overrides);
+  const layerFor = makeVariableLayer(authoredDefines, overrides, overrideIndex);
   const rules = [
-    ...hostScopedVariableRules(variablesByComp, overrides, authoredDefines, charge),
+    ...hostScopedVariableRules(variablesByComp, overrides, overrideIndex, authoredDefines, charge),
     ...rootDeclaredVariableRules(document, layerFor, charge),
-    ...declarerVariableRules(document, layerFor, charge),
+    ...declarerVariableRules(document, layerFor, overrides, overrideIndex, charge),
   ];
   if (rules.length === 0) return false;
   const style = document.createElement("style");
@@ -1646,10 +1658,46 @@ function defaultVariableStyleCharge(): (bytes: number) => void {
   };
 }
 
+type KeyIndex = Map<string, number>;
+
+interface HostLayer {
+  values: Record<string, unknown>;
+  at: KeyIndex;
+  overrideEmits: Array<[id: string, at: number]>;
+  touchesOverrides: boolean;
+}
+
 type VariableLayer = (
   declared: Record<string, unknown>,
-  hostValues: Record<string, unknown>,
+  host?: HostLayer,
 ) => Record<string, unknown>;
+
+function indexKeys(record: Record<string, unknown>): KeyIndex {
+  const at: KeyIndex = new Map();
+  for (const id of Object.keys(record)) at.set(id, at.size);
+  return at;
+}
+
+function hostLayerOf(
+  values: Record<string, unknown>,
+  overrides: Record<string, unknown>,
+  overrideIndex: KeyIndex,
+): HostLayer {
+  const overrideEmits: Array<[string, number]> = [];
+  let touchesOverrides = false;
+  for (const id of Object.keys(values)) {
+    const at = overrideIndex.get(id);
+    if (at === undefined) continue;
+    touchesOverrides = true;
+    if (emitsCss(overrides[id])) overrideEmits.push([id, at]);
+  }
+  overrideEmits.sort((a, b) => a[1] - b[1]);
+  return { values, at: indexKeys(values), overrideEmits, touchesOverrides };
+}
+
+function idsInOrder(ids: string[], at: KeyIndex): string[] {
+  return ids.sort((a, b) => (at.get(a) ?? 0) - (at.get(b) ?? 0));
+}
 
 function authoredDefinesPredicate(document: Document): (id: string) => boolean {
   const authoredCss = [...document.querySelectorAll("style:not([data-hf-composition-variables])")]
@@ -1683,18 +1731,34 @@ function namesBeforeAColon(css: string): Set<string> {
 function makeVariableLayer(
   authoredDefines: (id: string) => boolean,
   overrides: Record<string, unknown>,
+  overrideIndex: KeyIndex,
 ): VariableLayer {
-  return (declared, hostValues) => {
+  return (declared, host) => {
     const out: Record<string, unknown> = {};
-    for (const [id, value] of Object.entries(declared)) {
-      if (!authoredDefines(id)) out[id] = value;
+    const declaredIds = Object.keys(declared);
+    for (const id of declaredIds) {
+      if (!authoredDefines(id)) out[id] = declared[id];
     }
-    for (const [id, value] of Object.entries(hostValues)) {
-      if (id in declared) out[id] = value;
+    if (host) {
+      const inHost = declaredIds.filter((id) => host.at.has(id) && Object.hasOwn(declared, id));
+      for (const id of idsInOrder(inHost, host.at)) out[id] = host.values[id];
     }
-    for (const [id, value] of Object.entries(overrides)) {
-      if (id in declared || id in hostValues) out[id] = value;
+    const declaredOverridden = idsInOrder(
+      declaredIds.filter((id) => overrideIndex.has(id) && Object.hasOwn(declared, id)),
+      overrideIndex,
+    );
+    const hostOnly = host ? host.overrideEmits.filter(([id]) => !Object.hasOwn(declared, id)) : [];
+    let next = 0;
+    const flushHostOnly = (before: number) => {
+      for (let entry = hostOnly[next]; entry && entry[1] < before; entry = hostOnly[++next]) {
+        out[entry[0]] = overrides[entry[0]];
+      }
+    };
+    for (const id of declaredOverridden) {
+      flushHostOnly(overrideIndex.get(id) ?? 0);
+      out[id] = overrides[id];
     }
+    flushHostOnly(Infinity);
     return out;
   };
 }
@@ -1709,18 +1773,19 @@ function makeVariableLayer(
 function hostScopedVariableRules(
   variablesByComp: Record<string, Record<string, unknown>>,
   overrides: Record<string, unknown>,
+  overrideIndex: KeyIndex,
   authoredDefines: (id: string) => boolean,
   charge: (bytes: number) => void,
 ): string[] {
   const rules: string[] = [];
   for (const [compId, vars] of Object.entries(variablesByComp)) {
     const withOverrides: Record<string, unknown> = {};
-    for (const [id, value] of Object.entries(vars)) {
-      if (!authoredDefines(id)) withOverrides[id] = value;
+    const varIds = Object.keys(vars);
+    for (const id of varIds) {
+      if (!authoredDefines(id)) withOverrides[id] = vars[id];
     }
-    for (const [id, value] of Object.entries(overrides)) {
-      if (id in vars) withOverrides[id] = value;
-    }
+    const overridden = varIds.filter((id) => overrideIndex.has(id) && Object.hasOwn(vars, id));
+    for (const id of idsInOrder(overridden, overrideIndex)) withOverrides[id] = overrides[id];
     const rule = compositionVariablesCssBlock(
       withOverrides,
       cssAttributeSelector("data-composition-id", compId),
@@ -1738,7 +1803,7 @@ function rootDeclaredVariableRules(
   charge: (bytes: number) => void,
 ): string[] {
   const htmlDeclared = readDeclaredDefaults(document.documentElement);
-  const htmlRule = compositionVariablesCssBlock(layerFor(htmlDeclared, {}), ":root");
+  const htmlRule = compositionVariablesCssBlock(layerFor(htmlDeclared), ":root");
   if (!htmlRule) return [];
   charge(htmlRule.length);
   return [htmlRule];
@@ -1754,23 +1819,27 @@ function rootDeclaredVariableRules(
 function declarerVariableRules(
   document: Document,
   layerFor: VariableLayer,
+  overrides: Record<string, unknown>,
+  overrideIndex: KeyIndex,
   charge: (bytes: number) => void,
 ): string[] {
   const rules: string[] = [];
-  const hostValuesByEl = new Map<Element, Record<string, unknown>>();
+  const hostByEl = new Map<Element, HostLayer>();
   let markerSeq = 0;
   for (const el of [...document.querySelectorAll("[data-composition-variables]")]) {
     const declared = readDeclaredDefaults(el);
     const hostEl =
       typeof el.closest === "function" ? el.parentElement?.closest("[data-variable-values]") : null;
-    let hostValues: Record<string, unknown> = {};
+    let host: HostLayer | undefined;
     if (hostEl) {
-      const cached = hostValuesByEl.get(hostEl);
-      hostValues = cached ?? parseHostVariableValues(hostEl);
-      if (!cached) hostValuesByEl.set(hostEl, hostValues);
+      host = hostByEl.get(hostEl);
+      if (!host) {
+        host = hostLayerOf(parseHostVariableValues(hostEl), overrides, overrideIndex);
+        hostByEl.set(hostEl, host);
+      }
     }
-    const vars = layerFor(declared, hostValues);
-    if (Object.keys(vars).length === 0) continue;
+    const vars = layerFor(declared, host);
+    if (Object.keys(vars).length === 0 && !host?.touchesOverrides) continue;
     markerSeq += 1;
     el.setAttribute("data-hf-var-scope", String(markerSeq));
     const rule = compositionVariablesCssBlock(vars, `[data-hf-var-scope="${markerSeq}"]`);

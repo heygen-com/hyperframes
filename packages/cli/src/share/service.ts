@@ -78,7 +78,22 @@ async function readStatus(
     ready,
     source: uncheckedSource(),
     ...statusLinks(activeUrl, ready, processing || failed, project),
+    ...(await reviewTarget(dir, client, share, project)),
   };
+}
+async function reviewTarget(
+  dir: string,
+  client: ReviewClient,
+  share: ReviewShare | null,
+  project: Awaited<ReturnType<typeof readProject>>,
+) {
+  const reviewId = share?.projectId ?? (await recordedReview(dir));
+  const linked = project ?? (reviewId ? await client.project(reviewId).catch(() => null) : null);
+  return { reviewId, reviewTitle: linked?.title ?? null };
+}
+async function recordedReview(dir: string) {
+  const record = await reviewRecord(dir);
+  return record && !record.removed ? record.projectId : null;
 }
 async function readProject(share: ReviewShare | null, client: ReviewClient) {
   return share?.projectId ? client.project(share.projectId) : null;

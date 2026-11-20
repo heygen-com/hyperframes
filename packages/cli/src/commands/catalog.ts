@@ -225,7 +225,8 @@ export default defineCommand({
     let typeFilter: ItemType | undefined;
     if (args.type === "block") typeFilter = "hyperframes:block";
     else if (args.type === "component") typeFilter = "hyperframes:component";
-    else if (args.type) {
+    // An empty `--type=` is a typo too, not a request for no filter.
+    else if (args.type !== undefined) {
       throw new CliUsageError(`Invalid --type: "${args.type}". Use "block" or "component".`);
     }
 

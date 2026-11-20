@@ -59,7 +59,7 @@ export const PINNED_SHELL_DIGESTS: Readonly<Record<string, readonly string[]>> =
     "fc5a7041fc62b0740093077cb476cae232853a0b4272c6851add5f60ce11d1c6",
   ],
 };
-const CHROME_WRITES_WHILE_RUNNING = ["debug.log", "chrome_debug.log"];
+export const CHROME_WRITES_WHILE_RUNNING: readonly string[] = ["debug.log", "chrome_debug.log"];
 
 function filesUnder(folder: string, prefix = ""): string[] | undefined {
   const names: string[] = [];

@@ -12,9 +12,9 @@ const trace = vi.hoisted(() => ({ missing: "", probeThrows: false }));
 vi.mock("@hyperframes/core/missing-path", async (importOriginal) => {
   const real = await importOriginal<typeof import("@hyperframes/core/missing-path")>();
   return {
-    missingPathOf: (error: unknown) => {
+    errnoMissingPathOf: (error: unknown) => {
       if (trace.probeThrows) throw new RangeError("Maximum call stack size exceeded");
-      return real.missingPathOf(error);
+      return real.errnoMissingPathOf(error);
     },
   };
 });

@@ -14,6 +14,7 @@ import type {
 import { validateCompositionGsap } from "./gsapSerialize";
 import { parseCompositionVariables } from "./compositionVariables.js";
 import { walkCompositionDescendants } from "./hfIds.js";
+import { firstTemplateContent } from "./subCompositionValidity.js";
 import { assignHfIds } from "./hfIdAssignment.js";
 import { queryByAttr } from "./utils/cssSelector.js";
 import { removeAnimationsForSelectors } from "./gsapWriterAcorn.js";
@@ -793,9 +794,7 @@ export function extractCompositionMetadata(html: string): CompositionMetadata {
 
   // Declarations live on <html> or on the composition root (inside its <template> when
   // templated); like the runtime, read both and let the root's win on a shared id.
-  const root = (doc.querySelector("template")?.content ?? doc).querySelector(
-    "[data-composition-id]",
-  );
+  const root = (firstTemplateContent(doc) ?? doc).querySelector("[data-composition-id]");
   const variables = [
     ...new Map(
       [

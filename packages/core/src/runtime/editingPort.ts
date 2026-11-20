@@ -28,7 +28,23 @@ import type { EditingElementBox, EditingElementGeometry } from "./editingGeometr
 import type { EditingGestureStart } from "./editingGestureStart";
 import type { GsapSnapshot } from "./editing/gsapSnapshot";
 import type { MotionPathFrameHome } from "./editing/motionPathHome";
-import type { EditingLayer } from "./editingLayers";
+import type { EditingLayer, EditingStackingSibling } from "./editingLayers";
+import { parseGsapSet, type GsapSetParams } from "./editing/gsapSet";
+import { parsePatchTweens, type PatchTweensParams } from "./editing/patchTween";
+import {
+  parseSoftReload,
+  type SoftReloadParams,
+  type SoftReloadResult,
+} from "./editing/softReload";
+import {
+  parseHoldScenes,
+  parseMarkScenesStale,
+  parseSwapScenes,
+  type HoldScenesParams,
+  type MarkScenesStaleParams,
+  type SwapScenesParams,
+  type SwapScenesResult,
+} from "./editing/scenes";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { parseCombo } from "../keyCombo";
@@ -77,12 +93,15 @@ export {
   buildStableSelector,
   escapeCssString,
   getPreferredClassSelector,
+  isEditableTextLeaf,
   readElementSource,
+  readTextLayer,
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
+  MAX_TIMELINE_TEXT,
   MAX_POINT_STACK,
   MAX_QUERY_MATCHES,
   MAX_SOURCE_GROUPS,
@@ -92,6 +111,7 @@ export {
   type EditingElementMatch,
   type EditingElementSource,
   type EditingRect,
+  type TextLayerRead,
 } from "./editingElement";
 export {
   elementCornerPoints,
@@ -133,9 +153,11 @@ export {
 export {
   elementZIndex,
   hasOnlyFormattingChildren,
+  NON_PAINTING_TAGS,
   isCompositionHost,
   layerKindOf,
   type EditingLayer,
+  type EditingStackingSibling,
   type LayerKind,
 } from "./editingLayers";
 export {
@@ -183,6 +205,14 @@ export const EDITING_REQUEST_KINDS = [
   "max-z-index",
   "crop-lift",
   "edit-element",
+  "stacking-family",
+  "gsap-set",
+  "patch-tweens",
+  "soft-reload",
+  "hold-scenes",
+  "mark-scenes-stale",
+  "swap-scenes",
+  "assets-unloaded",
   "text-edit",
 ] as const;
 export type EditingRequestKind = (typeof EDITING_REQUEST_KINDS)[number];
@@ -199,6 +229,7 @@ export interface EditingRuntimeSnapshot {
 }
 
 export const MAX_DRAFT_PX = 100_000;
+export const MAX_DRAFT_DEG = 36_000;
 export const MAX_WATCHED_KEYS = 32;
 
 /** A keystroke the frame forwards for `watch-keys`, as an unasked port message with no id. */
@@ -218,12 +249,15 @@ export type EditingKeyMessage = {
   key: EditingKeyEvent;
 };
 
+/** The `rotate` property's whole value in degrees, or GSAP's rotation; null takes the drawn turn back. */
+export type EditingDraftRotate = { angle: number; route: "css" | "gsap" };
 /** A gesture's draft on one element: null puts that part back; `end` keeps what is drawn or restores. */
 export type EditingDraft =
   | {
       handle: EditingElementHandle;
       translate: { x: number; y: number } | null;
       size: { width: number; height: number } | null;
+      rotate?: EditingDraftRotate | null;
     }
   | { handle: EditingElementHandle; end: "keep" | "restore" };
 
@@ -318,6 +352,17 @@ export interface EditingRequests {
     result: { lifted: boolean; clipPath: string | null };
   };
   "edit-element": { params: EditElementParams; result: EditElementResult };
+  "stacking-family": {
+    params: { handle: EditingElementHandle };
+    result: { family: EditingStackingSibling[] | null; locked: boolean };
+  };
+  "gsap-set": { params: GsapSetParams; result: { applied: boolean } };
+  "patch-tweens": { params: PatchTweensParams; result: { patched: boolean } };
+  "soft-reload": { params: SoftReloadParams; result: { result: SoftReloadResult } };
+  "hold-scenes": { params: HoldScenesParams; result: { held: boolean } };
+  "mark-scenes-stale": { params: MarkScenesStaleParams; result: { marked: true } };
+  "swap-scenes": { params: SwapScenesParams; result: SwapScenesResult };
+  "assets-unloaded": { params: NoParams; result: { unloaded: boolean } };
   "text-edit": { params: TextEditParams; result: TextEditResult };
 }
 export type EditingParams<K extends EditingRequestKind> = EditingRequests[K]["params"];
@@ -420,14 +465,30 @@ function draftPart(value: unknown, keys: string, min: number): boolean {
   return keys.split(",").every((key) => isDraftPx(value[key], min));
 }
 
+function draftRotate(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (!hasKeys(value, "angle,route") || (value.route !== "css" && value.route !== "gsap"))
+    return false;
+  return Number.isFinite(value.angle) && Math.abs(value.angle as number) <= MAX_DRAFT_DEG;
+}
+
 function draftEntry(value: unknown): EditingDraft | null {
   if (!isPlainRecord(value) || !isHandle(value.handle)) return null;
-  const { handle, end, translate, size } = value;
+  const { handle, end } = value;
   if (hasKeys(value, "end,handle"))
     return end === "keep" || end === "restore" ? { handle, end } : null;
-  if (!hasKeys(value, "handle,size,translate")) return null;
-  const valid = draftPart(translate, "x,y", -MAX_DRAFT_PX) && draftPart(size, "height,width", 0);
-  return valid ? (value as EditingDraft) : null;
+  return drawnParts(value) ? (value as EditingDraft) : null;
+}
+
+function drawnParts(value: Record<string, unknown>): boolean {
+  const { translate, size, rotate } = value;
+  if (!hasKeys(value, "handle,size,translate") && !hasKeys(value, "handle,rotate,size,translate"))
+    return false;
+  return (
+    draftPart(translate, "x,y", -MAX_DRAFT_PX) &&
+    draftPart(size, "height,width", 0) &&
+    draftRotate(rotate)
+  );
 }
 
 function draftList(params: unknown): EditingParams<"draft"> | null {
@@ -527,6 +588,15 @@ const PARAM_PARSERS: {
       ? { handle: params.handle, lift: params.lift }
       : null,
   "edit-element": parseEditElement,
+  "stacking-family": (params) =>
+    hasKeys(params, "handle") && isHandle(params.handle) ? { handle: params.handle } : null,
+  "gsap-set": parseGsapSet,
+  "patch-tweens": parsePatchTweens,
+  "soft-reload": parseSoftReload,
+  "hold-scenes": parseHoldScenes,
+  "mark-scenes-stale": parseMarkScenesStale,
+  "swap-scenes": parseSwapScenes,
+  "assets-unloaded": noParams,
   "text-edit": parseTextEdit,
 };
 

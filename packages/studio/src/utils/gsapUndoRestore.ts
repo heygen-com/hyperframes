@@ -12,9 +12,10 @@ import {
   timelineKeys,
 } from "./gsapSoftReload";
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
 import { STUDIO_EDIT_ATTRS } from "../components/editor/manualEditsSeekReapply";
-import { markScenesStale } from "../player/sceneSwap";
+import { announcePreviewRestoredInPlace, markScenesStale } from "../player/sceneSwap";
 import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
 import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
 import { STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR } from "../components/editor/manualEditsTypes";
@@ -68,7 +69,8 @@ function parseRestoreSource(html: string): Document {
   for (const template of Array.from(doc.querySelectorAll("template")).filter(
     isCompositionTemplate,
   )) {
-    template.replaceWith(template.content);
+    const content = templateContent(template);
+    if (content) template.replaceWith(content);
   }
   return doc;
 }
@@ -370,8 +372,6 @@ type SealedFile = { scripted: boolean; elements: SealedRestore["scopes"][number]
 
 /** One file's changed elements with their restored attributes, or null when it needs a reload. */
 function sealedFile(file: UndoRestoreFile, isActive: boolean): SealedFile | null {
-  // A changed script is re-run in the frame, which a sealed preview cannot be asked to do yet.
-  if (extractGsapScriptText(file.restored) !== extractGsapScriptText(file.previous)) return null;
   const prevDoc = parseRestoreSource(stamped(file.previous));
   const nextDoc = parseRestoreSource(stamped(file.restored));
   const scripted = restoreScripted(prevDoc, nextDoc, isActive);
@@ -396,7 +396,7 @@ function sealedRestore(activeDocPath: string, files: RestoreFiles): SealedRestor
     if (found.elements.length)
       restore.scopes.push({ file: isActive ? null : path, elements: found.elements });
   }
-  return restore.scopes.length ? restore : null;
+  return restore;
 }
 
 /** Sends the restore to a sealed preview; a refusal, or no answer, reloads it. */
@@ -406,18 +406,44 @@ function applySealedRestore(
   files: RestoreFiles,
   currentTime: number,
   reloadPreview: () => void,
+  onShownInPlace?: () => void,
 ): "soft" | "full" {
   const restore = sealedRestore(activeDocPath, files);
-  if (!restore) {
-    reloadPreview();
-    return "full";
+  const active = files[activeDocPath];
+  const script = active ? extractGsapScriptText(active.restored) : null;
+  if (restore && active && script !== extractGsapScriptText(active.previous)) {
+    const rerun =
+      script &&
+      applySoftReload(iframe, script, {
+        onAsyncFailure: reloadPreview,
+        onShownInPlace,
+        currentTimeOverride: currentTime,
+        authoredHtml: active.restored,
+        previousHtml: active.previous,
+        restore: restore.scopes,
+      });
+    if (rerun === "applied") return "soft";
+  } else if (restore?.scopes.length) {
+    sendSealedRestore(iframe, restore, currentTime, reloadPreview, onShownInPlace);
+    return "soft";
   }
+  reloadPreview();
+  return "full";
+}
+
+function sendSealedRestore(
+  iframe: HTMLIFrameElement,
+  restore: SealedRestore,
+  currentTime: number,
+  reloadPreview: () => void,
+  onShownInPlace?: () => void,
+): void {
   void previewRequest(iframe, "restore-attributes", { ...restore, time: currentTime }).then(
     (reply) => {
       if (!reply?.applied) reloadPreview();
+      else onShownInPlace?.();
     },
   );
-  return "soft";
 }
 
 /**
@@ -467,7 +493,9 @@ export function applyUndoRestoreToPreview(
     reload();
   };
   if (iframe && files && previewFrameOpaque(iframe))
-    return applySealedRestore(iframe, activeDocPath, files, currentTime, reloadPreview);
+    return applySealedRestore(iframe, activeDocPath, files, currentTime, reloadPreview, () =>
+      announcePreviewRestoredInPlace(iframe),
+    );
   const doc = iframe?.contentDocument;
   const win = iframe?.contentWindow as PreviewWindow | null;
   const plan = doc && files && win ? planRestoreTargets(doc, activeDocPath, files) : null;
