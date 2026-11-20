@@ -99,7 +99,13 @@ export function NumberField({
           aria-invalid={invalid || undefined}
           className={cn(fieldText, "tabular-nums")}
           onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
+            // Older WebKit clears isComposing before confirmation, but leaves keyCode 229.
+            if (
+              event.key !== "Enter" ||
+              event.nativeEvent.isComposing ||
+              event.nativeEvent.keyCode === 229
+            )
+              return;
             event.preventDefault();
             commitFromText();
           }}
