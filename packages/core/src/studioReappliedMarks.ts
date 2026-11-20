@@ -9,8 +9,7 @@ export const STUDIO_REAPPLIED_MARKS = [
 /** Set on the page's window by that script once it has started keeping the marks applied. */
 export const STUDIO_SEEK_REAPPLY_STARTED = "__hfStudioSeekReapplyStarted";
 
-// Attribute names match in any case and quoting; a value must match exactly, as the script's selector does.
-const MARK_IN_HTML = STUDIO_REAPPLIED_MARKS.map(({ name, value }) =>
+const MARK_FOUND_IN_ANY_QUOTING_WITH_EXACT_VALUE = STUDIO_REAPPLIED_MARKS.map(({ name, value }) =>
   value === null
     ? (html: string) => new RegExp(`\\s${name}\\s*=`, "i").test(html)
     : (html: string) =>
@@ -18,6 +17,7 @@ const MARK_IN_HTML = STUDIO_REAPPLIED_MARKS.map(({ name, value }) =>
           (match) => match[2] === value,
         ),
 );
-export const htmlHasStudioReappliedMark = (html: string) => MARK_IN_HTML.some((has) => has(html));
+export const htmlHasStudioReappliedMark = (html: string) =>
+  MARK_FOUND_IN_ANY_QUOTING_WITH_EXACT_VALUE.some((has) => has(html));
 
 export const isStudioMotionMark = (name: string) => name.startsWith("data-hf-studio-motion");
