@@ -17,6 +17,13 @@ Preview copies of long clips with sound finish again, so their footage no longer
 
 ## Fixes
 
+- **Studio:** Paste refuses an element with an event handler or a script link ([7b2c6dc1a](https://github.com/heygen-com/hyperframes/commit/7b2c6dc1ad7aaf49d72d023d0e6b0d3f537143a9), [#8298](https://github.com/heygen-com/hyperframes/pull/8298)).
+- **Studio:** The first edit of a film without ids no longer reloads the preview ([99fcdfb5c](https://github.com/heygen-com/hyperframes/commit/99fcdfb5c1de5d17bd1e848e9ae5d7b4450ff7c8), [#8274](https://github.com/heygen-com/hyperframes/pull/8274)).
+- **Producer:** Reserve each font's inline size before reading it ([8ad346357](https://github.com/heygen-com/hyperframes/commit/8ad346357590d215cb426815969b6d058ea1c9e9), [#8302](https://github.com/heygen-com/hyperframes/pull/8302)).
+- **Producer:** Refuse a render whose mounts copy more than 100,000 elements ([31959db98](https://github.com/heygen-com/hyperframes/commit/31959db985269172f521997528a97d2a9e9c61cf), [#8295](https://github.com/heygen-com/hyperframes/pull/8295)).
+- **Studio:** A timing drag moves the animation in place in a sealed preview ([6cf81c668](https://github.com/heygen-com/hyperframes/commit/6cf81c66891785b56a3c88bf1033729c9dd4c5bc), [#8163](https://github.com/heygen-com/hyperframes/pull/8163)).
+- **Media Use:** Never write recipe files through links ([be3d21807](https://github.com/heygen-com/hyperframes/commit/be3d218074ef051a30e41524a5fcdcd9dfc20637), [#8257](https://github.com/heygen-com/hyperframes/pull/8257)).
+- **Studio:** A host can own the live preview's load deadline, so a slow sealed film isn't an error ([44d805c44](https://github.com/heygen-com/hyperframes/commit/44d805c444304fb9b4e8d4f4ff8b12fcbdb32f0c), [#8206](https://github.com/heygen-com/hyperframes/pull/8206)).
 - **Producer:** Download at most 1,000 remote assets per compile, 8 at a time ([c50ec09d2](https://github.com/heygen-com/hyperframes/commit/c50ec09d28e2b1b0680d25ebab7302b07bf148b3), [#8290](https://github.com/heygen-com/hyperframes/pull/8290)).
 - **Producer:** Pass the render's cancel to the compile's media, image and font downloads ([edd1c90a4](https://github.com/heygen-com/hyperframes/commit/edd1c90a4ea05afac4bb6bf7e60604bae616f557), [#8289](https://github.com/heygen-com/hyperframes/pull/8289)).
 - **Share:** A first share only lands on a review it created ([1d5403525](https://github.com/heygen-com/hyperframes/commit/1d5403525d8e463be3c002edcd96931fa7f7d281), [#8282](https://github.com/heygen-com/hyperframes/pull/8282)).
@@ -46,6 +53,14 @@ Preview copies of long clips with sound finish again, so their footage no longer
 - **Engine:** Bound the seek-index rebuild's temp copy ([fab75fb91](https://github.com/heygen-com/hyperframes/commit/fab75fb9160d8bdf88c62d1713a0ccedd855364d), [#8269](https://github.com/heygen-com/hyperframes/pull/8269)).
 
 [View the full commit range](https://github.com/heygen-com/hyperframes/compare/v0.9.72...v0.9.73).
+## Docs & Examples
+
+- **Render:** Name the 100,000-element limit beside the mount limits ([d6411daac](https://github.com/heygen-com/hyperframes/commit/d6411daacfd7c1a7702522b7992b87039e18ac59), [#8309](https://github.com/heygen-com/hyperframes/pull/8309)).
+
+## Internal
+
+- **Studio:** A test chrome launch that fails with a non-error names what it holds ([0ecb6671f](https://github.com/heygen-com/hyperframes/commit/0ecb6671f14caf0036754d1f2db280db624dc058), [#8305](https://github.com/heygen-com/hyperframes/pull/8305)).
+
 </Update>
 
 <Update
