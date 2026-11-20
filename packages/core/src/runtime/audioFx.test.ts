@@ -271,9 +271,7 @@ describe("attachElementFxChain", () => {
           return new SchedNode();
         }
       }
-      // A gain stage, because its dB-to-linear mapping is what makes the
-      // scheduler emit a value curve instead of a ramp — and a curve is what a
-      // `.value` write may not land inside.
+      // A gain stage, because its dB-to-linear mapping makes the scheduler sample the segment.
       const chainWith = (freq: number) => ({
         version: 1,
         nodes: [
@@ -282,7 +280,6 @@ describe("attachElementFxChain", () => {
         ],
       });
       const node = audioEl(chainWith(1000));
-      // A bent segment, so the scheduler emits a curve rather than a ramp.
       node.setAttribute(
         "data-automation",
         JSON.stringify({
@@ -397,24 +394,23 @@ describe("attachElementFxChain", () => {
   describe("a rate change mid-playback", () => {
     /** Records what was booked and when, without the browser's overlap rules. */
     class TimedParam {
-      curves: { time: number; duration: number }[] = [];
-      ramps: number[] = [];
+      spans: { time: number; end?: number }[] = [];
       value = 0;
-      setValueAtTime(v: number): void {
+      setValueAtTime(v: number, t: number): void {
         this.value = v;
+        if (this.spans.at(-1)?.end === undefined) this.spans.pop();
+        this.spans.push({ time: t });
       }
       linearRampToValueAtTime(v: number, t: number): void {
-        this.ramps.push(t);
         this.value = v;
-      }
-      setValueCurveAtTime(_v: Float32Array, time: number, duration: number): void {
-        this.curves.push({ time, duration });
+        const span = this.spans.at(-1);
+        if (span) span.end = t;
       }
       cancelScheduledValues(): void {}
-      cancelAndHoldAtTime(): void {}
-      /** The last span booked, however the scheduler chose to express it. */
+      /** The last span booked: a set and the ramps that follow it. */
       last(): { time: number; duration: number } | undefined {
-        return this.curves.at(-1);
+        const span = this.spans.filter((s) => s.end !== undefined).at(-1);
+        return span && { time: span.time, duration: (span.end ?? span.time) - span.time };
       }
     }
 
