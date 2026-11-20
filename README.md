@@ -137,7 +137,7 @@ npx hyperframes preview      # preview in browser with live reload
 npx hyperframes render       # render to MP4
 ```
 
-**Requirements:** Node.js 22+, FFmpeg
+**Requirements:** Node.js 22.19+, FFmpeg
 
 ## What You Can Build
 

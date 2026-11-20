@@ -121,7 +121,7 @@
     "linkedom": "^0.18.12",
     "puppeteer": "~25.13.0",
     "puppeteer-core": "^25.13.0",
-    "undici": "7.30.1"
+    "undici": "8.13.0"
   },
   "devDependencies": {
     "@types/node": "^25.0.10",
@@ -130,6 +130,6 @@
     "vitest": "^4.1.12"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22.19.0"
   }
 }
