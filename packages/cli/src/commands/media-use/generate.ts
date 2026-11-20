@@ -182,10 +182,10 @@ export default defineCommand({
       };
       const voice = await voiceFor(request);
       if (voice) request.voice = voice.voice_id;
+      checkRequest(request);
       const price = priceOf(request);
       const credits = creditsOf(price);
       if (args.plan) {
-        checkRequest(request);
         return {
           plan: true,
           type,
