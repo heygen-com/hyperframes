@@ -221,8 +221,7 @@ function correctOnElement(
   draftEl: HTMLElement,
   committedScale: Point | null,
   dropPoint: Point,
-  base: Point,
-  gsapPos: Point,
+  { base, gsapPos }: { base: Point; gsapPos: Point },
 ): ScaleDrop | "settled" | null {
   clearStudioBoxSize(draftEl);
   // Draw the committed scale before measuring: on a first resize the timeline has not re-seeked yet,
@@ -246,8 +245,7 @@ async function correctOnFrame(
   frame: SealedScaleFrame,
   scale: Point,
   dropPoint: Point,
-  base: Point,
-  gsapPos: Point,
+  { base, gsapPos }: { base: Point; gsapPos: Point },
 ): Promise<ScaleDrop | "settled" | null> {
   const post = await frameCentreScaledAt(frame, scale, base);
   const found = post && scaleDropCorrection(dropPoint, post, base, gsapPos);
@@ -494,21 +492,23 @@ export async function tryGsapResizeIntercept(
     const dropPoint = scaleDraftDropPoint;
     // Measure from the pre-gesture position: the scale route never saves the draft's translation, and
     // the position write composes the residual onto that same base.
-    const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
-    const { baseGsapX, baseGsapY } = computeDraggedGsapPosition(
-      selection.element,
-      { x: 0, y: 0 },
-      gsapPos,
-      stamp,
-    );
-    const base = { x: baseGsapX, y: baseGsapY };
+    const preGesture = () => {
+      const gsapPos = readGsapPositionFromIframe(iframe, selector) ?? { x: 0, y: 0 };
+      const { baseGsapX, baseGsapY } = computeDraggedGsapPosition(
+        selection.element,
+        { x: 0, y: 0 },
+        gsapPos,
+        stamp,
+      );
+      return { base: { x: baseGsapX, y: baseGsapY }, gsapPos };
+    };
     const measured = draftEl
-      ? draw(() => correctOnElement(draftEl, committedScale, dropPoint, base, gsapPos))
-      : await correctOnFrame(frame!, committedScale ?? { x: 1, y: 1 }, dropPoint, base, gsapPos);
+      ? draw(() => correctOnElement(draftEl, committedScale, dropPoint, preGesture()))
+      : await correctOnFrame(frame!, committedScale ?? { x: 1, y: 1 }, dropPoint, preGesture());
     if (measured === null) return false;
     // Already on the drop point, and still ours: forwarding the drag offset would move it off.
     if (measured === "settled") return true;
-    const { corrected, residual } = measured;
+    const { base, corrected, residual } = measured;
     // Re-fetch: the scale commit above just rewrote the script, so the caller's
     // animation list (and its ids) may be stale for the position lookup.
     const currentAnimations = fetchFallbackAnimations
