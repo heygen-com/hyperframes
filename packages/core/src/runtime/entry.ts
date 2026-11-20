@@ -20,6 +20,7 @@ import { createFilmBridge } from "./filmBridge";
 import { trackAcceleratedCanvases } from "./captureMotionBlur";
 import { parkFarScenesAtBoot } from "./sceneWindow";
 import { installPausedVideoCallbacks } from "./pausedVideoCallbacks";
+import { corsForSealedMedia } from "./sealedMediaCors";
 
 type HyperframeWindow = Window & {
   __hyperframeRuntimeBootstrapped?: boolean;
@@ -46,6 +47,7 @@ type HyperframeWindow = Window & {
 // at script evaluation time, while the document is still parsing.
 installAuthoredOpacityCapture();
 installAuthoredMediaCapture();
+corsForSealedMedia();
 installPausedVideoCallbacks();
 installFlatGsapTransforms();
 trackAcceleratedCanvases();

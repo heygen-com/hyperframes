@@ -6,13 +6,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { _setDownloadFetchForTests } from "@hyperframes/engine";
 import {
   assertCompositionFileSize,
+  CompositionExpansionBudget,
   MAX_COMPOSITION_HTML_BYTES,
   MAX_EXPANDED_COMPOSITION_BYTES,
+  MAX_EXPANDED_ELEMENTS,
 } from "./compositionSizeLimit.js";
 import {
   compileForRender,
   inlineExternalScripts,
   localizeRemoteFontFaces,
+  MAX_REMOTE_FETCHES,
   MAX_VARIABLE_MEDIA_SRC_BYTES,
 } from "./htmlCompiler.js";
 import { extractSafeRenderErrorCode } from "./safeRenderErrorCode.js";
@@ -132,15 +135,41 @@ describe("composition expansion budget", () => {
     },
   );
 
+  it("allows 64 MB of mounted HTML and refuses one byte more", () => {
+    expect(MAX_EXPANDED_COMPOSITION_BYTES).toBe(64 * 1024 * 1024);
+    const budget = new CompositionExpansionBudget();
+    for (let i = 0; i < 4; i += 1) budget.charge("scene.html", MAX_COMPOSITION_HTML_BYTES);
+    expect(() => budget.charge("scene.html", 1)).toThrow(/64\.0 MB of composition HTML/);
+  });
+
+  // fails without the fix: the budget counted bytes, so a small scene mounted many times copied any number of elements.
+  it("refuses mounts whose copied elements pass the cap, before copying past it", async () => {
+    const perScene = 1000;
+    const scene = `<template><div data-composition-id="scene">${"<i></i>".repeat(perScene - 2)}</div></template>`;
+    const mounts = Math.floor(MAX_EXPANDED_ELEMENTS / perScene) + 1;
+    const error = await compileError(
+      project({ "index.html": rootMounting("scene.html", mounts), "scene.html": scene }),
+    );
+    expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
+    expect(error).toMatchObject({
+      publicMetadata: {
+        elements: mounts * perScene,
+        limitElements: MAX_EXPANDED_ELEMENTS,
+        exceeded: "elements",
+      },
+    });
+  });
+
   it("refuses one large file mounted many times", async () => {
-    const big = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 4) + 1;
+    const big = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 5) + 1;
     const dir = project({
-      "index.html": rootMounting("scene.html", 4),
+      "index.html": rootMounting("scene.html", 5),
       "scene.html": paddedTo(SCENE, big),
     });
     const error = await compileError(dir);
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
     expect(String(error)).toContain('"scene.html"');
+    expect(error).toMatchObject({ publicMetadata: { exceeded: "bytes" } });
   });
 
   it("leaves a missing mount inside a template to the inliner's warning, as before", async () => {
@@ -163,7 +192,9 @@ describe("composition expansion budget", () => {
   });
 
   it("refuses a mount whose tiny scripts would each be wrapped in kilobytes of scoping code", async () => {
-    const scripts = `<script>window.n = (window.n || 0) + 1;</script>`.repeat(3_000);
+    const scripts = `<script>window.n = (window.n || 0) + 1;</script>`.repeat(
+      Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / 10_000),
+    );
     const dir = project({
       "index.html": rootMounting("scene.html", 1),
       "scene.html": SCENE.replace("<h1>Scene</h1>", `<h1>Scene</h1>${scripts}`),
@@ -178,7 +209,8 @@ describe("composition expansion budget", () => {
 
   it("refuses a long host id over many style rules before building the scoped sheet", async () => {
     const id = `s${"x".repeat(20_000)}`;
-    const rules = Array.from({ length: 2_000 }, (_, i) => `.r${i}{color:red}`).join("");
+    const count = Math.ceil((2 * MAX_EXPANDED_COMPOSITION_BYTES) / id.length);
+    const rules = Array.from({ length: count }, (_, i) => `.r${i}{color:red}`).join("");
     const dir = project({
       "index.html": ROOT.replace("<html>", "<html><head></head>").replace(
         'data-composition-id="scene"',
@@ -195,8 +227,10 @@ describe("composition expansion budget", () => {
   });
 
   it("reserves the separator a scoped selector list is re-joined with", async () => {
-    const selectors = Array.from({ length: 2_000 }, (_, i) => `.r${i}`).join(",");
-    const sheet = `.first,${" ".repeat(20_000)}${selectors}{color:red}`;
+    const gap = " ".repeat(20_000);
+    const count = Math.ceil((2 * MAX_EXPANDED_COMPOSITION_BYTES) / gap.length);
+    const selectors = Array.from({ length: count }, (_, i) => `.r${i}`).join(",");
+    const sheet = `.first,${gap}${selectors}{color:red}`;
     const dir = project({
       "index.html": ROOT.replace("<html>", "<html><head></head>"),
       "scene.html": SCENE.replace("<h1>Scene</h1>", `<style>${sheet}</style><h1>Scene</h1>`),
@@ -294,7 +328,8 @@ describe("variable-driven composition styles and media sources", () => {
 
   it("refuses many media elements bound to one long value", async () => {
     const url = `https://example.com/${"a".repeat(MAX_VARIABLE_MEDIA_SRC_BYTES - 100)}.mp4`;
-    const videos = `<video data-var-src="clip"></video>`.repeat(4_200);
+    const copies = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / url.length) + 100;
+    const videos = `<video data-var-src="clip"></video>`.repeat(copies);
     const dir = project({ "index.html": withBody(videos), "scene.html": SCENE });
     const error = await compileForRender(dir, join(dir, "index.html"), dir, {
       variables: { clip: url },
@@ -324,6 +359,29 @@ describe("variable-driven composition styles and media sources", () => {
     expect(await srcFor("https://example.com/my clip.mp4")).toBe("https://example.com/my clip.mp4");
     expect(await srcFor("https://example.com/x.mp4\n")).toBe("https://example.com/x.mp4");
   });
+
+  // The `[src]` alias escapes `<` itself, so it can't end its style element even without postcss.
+  it("writes `<` in a bound media source's selector alias as a CSS escape itself", async () => {
+    const svg = `<svg><clipPath id="c"><rect/></clipPath></svg><div clip-path="url(#c)"></div>`;
+    const dir = project({
+      "index.html": withBody(
+        `<style>video[src*="url(#c)"] { opacity: 0.5; }</style>${svg}<video id="v1" data-var-src="clip" src="fallback.mp4"></video>`,
+      ),
+      "scene.html": SCENE.replace("<h1>Scene</h1>", svg),
+    });
+    const clip = "clip.mp4#url(#c)</style><script>window.ran = true</script>";
+    const compiled = await compileForRender(dir, join(dir, "index.html"), dir, {
+      variables: { clip },
+    });
+
+    const { document } = parseHTML(compiled.html);
+    const src = document.getElementById("v1")!.getAttribute("src")!;
+    expect(src).toBe(clip.replace("#c)", "#scene--c)"));
+    const scripts = [...document.querySelectorAll("script")].map((script) => script.textContent);
+    expect(scripts.filter((text) => text?.includes("window.ran"))).toEqual([]);
+    const sheets = [...document.querySelectorAll("style")].map((style) => style.textContent);
+    expect(sheets).toContainEqual(expect.stringContaining(`[src="${src.replace(/</g, "\\3c ")}"]`));
+  });
 });
 
 describe("local font embedding", () => {
@@ -334,22 +392,30 @@ describe("local font embedding", () => {
       (_, i) => `@font-face { font-family: "F${i}"; src: url("big.ttf"); }`,
     ).join("\n");
 
-  it("inlines a font that many rules name only while the page stays within the limit", async () => {
-    const dir = project({
-      "index.html": ROOT.replace(
-        "<html>",
-        `<html><head><style>${faces(8)}\n.mark { background: url("big.ttf"); }</style></head>`,
-      ),
-      "scene.html": SCENE,
-    });
-    writeFileSync(join(dir, "big.ttf"), Buffer.alloc(LARGEST_INLINED_FONT_BYTES, 1));
-    const { html } = await compileForRender(dir, join(dir, "index.html"), dir);
-    const inlined = html.split("data:font/ttf;base64,").length - 1;
-    expect(inlined).toBeGreaterThan(0);
-    expect(html.length).toBeLessThan(MAX_EXPANDED_COMPOSITION_BYTES + 64 * 1024);
-    expect(html.split('url("big.ttf")').length - 1).toBe(8 - inlined + 1);
-    expect(html).toContain('.mark { background: url("big.ttf"); }');
-  });
+  // Compiles a page at the full limit, so it gets more than the default time.
+  it(
+    "inlines a font that many rules name only while the page stays within the limit",
+    { timeout: 30_000 },
+    async () => {
+      const dataUriChars = Math.ceil(LARGEST_INLINED_FONT_BYTES / 3) * 4;
+      const rules = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / dataUriChars) + 2;
+      const dir = project({
+        "index.html": ROOT.replace(
+          "<html>",
+          `<html><head><style>${faces(rules)}\n.mark { background: url("big.ttf"); }</style></head>`,
+        ),
+        "scene.html": SCENE,
+      });
+      writeFileSync(join(dir, "big.ttf"), Buffer.alloc(LARGEST_INLINED_FONT_BYTES, 1));
+      const { html } = await compileForRender(dir, join(dir, "index.html"), dir);
+      const inlined = html.split("data:font/ttf;base64,").length - 1;
+      expect(inlined).toBeGreaterThan(0);
+      expect(inlined).toBeLessThan(rules);
+      expect(html.length).toBeLessThan(MAX_EXPANDED_COMPOSITION_BYTES + 64 * 1024);
+      expect(html.split('url("big.ttf")').length - 1).toBe(rules - inlined + 1);
+      expect(html).toContain('.mark { background: url("big.ttf"); }');
+    },
+  );
 });
 
 describe("asset paths rebased from a composition's folder", () => {
@@ -357,6 +423,8 @@ describe("asset paths rebased from a composition's folder", () => {
   const scene = (count: number) =>
     `<template><div data-composition-id="scene"><img srcset="${candidates(count)}"></div></template>`;
   const deepFolder = Array.from({ length: 4 }, (_, i) => `${i}`.repeat(200)).join("/");
+  // Each "../x.png" rebases to about the parent folder's length, so this many add up past the limit.
+  const pastLimit = Math.ceil((1.1 * MAX_EXPANDED_COMPOSITION_BYTES) / dirname(deepFolder).length);
 
   function projectWith(files: Record<string, string>): string {
     const dir = mkdtempSync(join(tmpdir(), "hf-rebase-"));
@@ -383,7 +451,7 @@ describe("asset paths rebased from a composition's folder", () => {
   it("refuses a mount in a deep folder whose rebased references add up past the limit", async () => {
     const dir = projectWith({
       "index.html": ROOT.replace("scene.html", `${deepFolder}/scene.html`),
-      [`${deepFolder}/scene.html`]: scene(60_000),
+      [`${deepFolder}/scene.html`]: scene(pastLimit),
     });
     const error = await compileError(dir);
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
@@ -393,7 +461,7 @@ describe("asset paths rebased from a composition's folder", () => {
     const dir = projectWith({
       [`${deepFolder}/index.html`]: `<!doctype html><html><body>
   <div data-composition-id="root" data-width="1920" data-height="1080" data-duration="2">
-    <img srcset="${candidates(60_000)}">
+    <img srcset="${candidates(pastLimit)}">
   </div>
 </body></html>`,
     });
@@ -407,6 +475,7 @@ describe("asset paths rebased from a composition's folder", () => {
 describe("remote scripts and stylesheets inlined at compile time", () => {
   afterEach(() => _setDownloadFetchForTests());
   const MiB = 1024 * 1024;
+  const pastLimitMiB = Math.ceil(MAX_EXPANDED_COMPOSITION_BYTES / MiB) + 8;
 
   /** Serves `body(url)` and records each request and the most requests open at once. */
   function serve(body: (url: string) => string) {
@@ -426,7 +495,9 @@ describe("remote scripts and stylesheets inlined at compile time", () => {
   it("fetches a repeated script once and refuses copies past the render's limit", async () => {
     const seen = serve(() => `/*${"x".repeat(MiB)}*/`);
     const url = "https://cdn.example.com/big.js";
-    const error = await inlineExternalScripts(scriptTags(Array(40).fill(url))).catch((e) => e);
+    const error = await inlineExternalScripts(scriptTags(Array(pastLimitMiB).fill(url))).catch(
+      (e) => e,
+    );
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
     expect(seen.requests).toEqual([url]);
   });
@@ -442,7 +513,10 @@ describe("remote scripts and stylesheets inlined at compile time", () => {
 
   it("stops queued downloads once a script fails its integrity check", async () => {
     const seen = serve(() => `/*${"x".repeat(MiB)}*/`);
-    const urls = Array.from({ length: 40 }, (_, i) => `https://cdn.example.com/i${i}.js`);
+    const urls = Array.from(
+      { length: MAX_REMOTE_FETCHES },
+      (_, i) => `https://cdn.example.com/i${i}.js`,
+    );
     const html = scriptTags(urls).replaceAll("<script ", '<script integrity="sha384-YQ==" ');
     await expect(inlineExternalScripts(html)).rejects.toThrow("integrity mismatch");
     expect(seen.requests.length).toBeLessThan(urls.length);
@@ -473,18 +547,16 @@ describe("remote scripts and stylesheets inlined at compile time", () => {
     expect(html.split("<p>after</p>").length - 1).toBe(1);
   });
 
-  it.each([
-    ["distinct", (i: number) => `https://cdn.example.com/f${i}.css`],
-    ["repeated", () => "https://cdn.example.com/f.css"],
-  ])("refuses %s remote font stylesheets that add up past the render's limit", async (_, url) => {
+  // Distinct sheets cannot get there: at most MAX_REMOTE_FETCHES are downloaded, each at most 2 MiB.
+  it("refuses a repeated remote font stylesheet whose copies add up past the render's limit", async () => {
     const face = `@font-face { font-family: "F"; src: local("${"x".repeat(MiB)}"); }`;
     const seen = serve(() => face);
-    const urls = Array.from({ length: 40 }, (_, i) => url(i));
+    const urls = Array(pastLimitMiB).fill("https://cdn.example.com/f.css");
     const error = await localizeRemoteFontFaces(
       linkTags(urls),
       mkdtempSync(join(tmpdir(), "hf-remote-sheet-")),
     ).catch((e) => e);
     expect(extractSafeRenderErrorCode(error)).toBe("COMPOSITION_TOO_LARGE");
-    expect(seen.requests.length).toBeLessThan(urls.length);
+    expect(seen.requests).toHaveLength(1);
   });
 });

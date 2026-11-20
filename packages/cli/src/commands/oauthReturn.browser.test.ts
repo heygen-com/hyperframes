@@ -11,10 +11,10 @@ import { ensureBrowser } from "../browser/manager.js";
 import { buildPlayApp } from "./play.js";
 import { buildPresentApp } from "./present.js";
 
-// SECOPS-2642 part 3. HeyGen's sign-in returns a CLI code to any loopback port, and the play and
-// present pages share their origin with the composition frame (`sandbox-origin="same-origin"`), so
-// anything those pages can read, project script can read through `parent`. Each probe runs on the
-// server's own page and tries to read a return address that landed on that server.
+// HeyGen's sign-in sends a CLI sign-in code back to any local port, and the play and present pages
+// share their origin with the composition frame (`sandbox-origin="same-origin"`), so anything those
+// pages can read, a project's script can read through `parent`. Each probe runs on the server's own
+// page and checks that a sign-in return address that landed on that server stays out of its reach.
 
 let browser: Browser;
 let dir: string;

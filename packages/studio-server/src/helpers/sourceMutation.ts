@@ -20,6 +20,7 @@ import {
 } from "@hyperframes/core/composition-contract";
 import { relinkSplitHalves } from "@hyperframes/core/media-link";
 import { parseStyleDecls, patchStyleAttrString } from "./sourceStyleMutation.js";
+import { isHtmlTemplate } from "@hyperframes/parsers/sub-composition-validity";
 
 export interface SourceMutationTarget {
   id?: string | null;
@@ -223,7 +224,7 @@ function mountsComposition(document: Document, host: Element, compositionId: str
   return (
     host.children.length === 0 &&
     querySelectorAllWithTemplates(document, "template").some(
-      (template) => template.id === `${compositionId}-template`,
+      (template) => isHtmlTemplate(template) && template.id === `${compositionId}-template`,
     )
   );
 }

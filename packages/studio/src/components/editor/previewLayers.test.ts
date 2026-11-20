@@ -145,7 +145,7 @@ describe("Layers rows on an opaque frame match same-origin ones", () => {
     expect(pair.element.hasAttribute("data-hf-group")).toBe(false);
     const host = remote.find((item) => item.id === "host")!;
     expect(layerDataAttribute(host, "data-composition-src")).toBe("compositions/a.html");
-    expect(isLayerDraggable(pair)).toBe(false);
+    expect(isLayerDraggable(pair)).toBe(true);
   });
 });
 

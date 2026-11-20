@@ -1,9 +1,13 @@
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { ltxVideoGenerate } from "./ltx-video-provider.mjs";
+
+const scratch = mkdtempSync(join(tmpdir(), "ltx-provider-test-"));
+process.env.TMPDIR = process.env.TEMP = process.env.TMP = scratch;
+after(() => rmSync(scratch, { recursive: true, force: true }));
 
 const fittingSpecs = { availableRamMB: 20000, gpu: { present: true } };
 
@@ -330,4 +334,32 @@ test("an unremovable partial does not mask the generate failure", async (t) => {
 
   // cleanup is best-effort: a partial we cannot delete must not become the error
   assert.equal(result, null);
+});
+
+test("a failed generate prints the runner's output with control characters escaped", async (t) => {
+  const errors = [];
+  t.mock.method(console, "error", (message) => errors.push(message));
+  let calls = 0;
+  const fakeExec = () => {
+    calls += 1;
+    if (calls === 2) {
+      const error = new Error("generation failed");
+      error.stderr = "bad prompt \x1b]0;title\x07\r\nstorm \rclouds";
+      throw error;
+    }
+  };
+
+  const result = await ltxVideoGenerate(
+    "storm clouds",
+    { specs: fittingSpecs },
+    fakeExec,
+    () => true,
+  );
+
+  assert.equal(result, null);
+  assert.equal(errors.length, 1);
+  assert.match(
+    errors[0],
+    /^media-use: local video gen \(\S+\) failed: bad prompt \\x1b\]0;title\\x07\nstorm \\x0dclouds$/,
+  );
 });

@@ -15,6 +15,7 @@ import { codexImageGenerate, imageGenFlag } from "./codex-provider.mjs";
 
 // A stand-in `codex` on PATH: `features list` offers the image tool; `exec` records its
 // arguments, renders nothing, and plants a file where an attacker could (EVIL_PATH).
+// With CODEX_FAIL set, `exec` fails with a terminal control sequence on stderr.
 function fakeCodex(t) {
   const root = mkdtempSync(join(tmpdir(), "fake-codex-"));
   const bin = join(root, "bin");
@@ -26,6 +27,7 @@ function fakeCodex(t) {
       'case "$1" in',
       '  features) echo "image_generation   stable   true" ;;',
       '  exec) printf "%s\\n" "$@" > "$CODEX_LOG"; cat > /dev/null;',
+      '        [ -n "$CODEX_FAIL" ] && { printf "refused \\033]0;title\\007 a red cube\\r\\nsecond \\rline\\n" >&2; exit 1; }',
       '        [ -n "$EVIL_PATH" ] && printf EVIL > "$EVIL_PATH" ;;',
       "esac",
       "",
@@ -115,3 +117,21 @@ test("no image feature at all is unavailable, not a silent default", () => {
 test("substring lookalikes do not count as the feature row", () => {
   assert.equal(imageGenFlag("image_generation_v2  stable  true"), null);
 });
+
+test(
+  "a failed codex exec prints its output line by line with control characters escaped",
+  posixOnly,
+  async (t) => {
+    fakeCodex(t);
+    process.env.CODEX_FAIL = "1";
+    t.after(() => delete process.env.CODEX_FAIL);
+    const errors = [];
+    t.mock.method(console, "error", (message) => errors.push(message));
+
+    assert.equal(await codexImageGenerate("a red cube"), null);
+
+    assert.deepEqual(errors, [
+      "media-use: `codex exec` image generation failed: refused \\x1b]0;title\\x07 a red cube\nsecond \\x0dline",
+    ]);
+  },
+);
