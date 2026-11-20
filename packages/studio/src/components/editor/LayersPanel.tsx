@@ -1,5 +1,5 @@
 import { useLivePreviewIframe } from "../../player/store/previewIframeStore";
-import { onPreviewContentReplaced } from "../../player/sceneSwap";
+import { onPreviewContentReplaced, onPreviewRestoredInPlace } from "../../player/sceneSwap";
 import { memo, useState, useCallback, useEffect, useRef } from "react";
 import {
   collectDomEditLayerItems,
@@ -211,7 +211,12 @@ export const LayersPanel = memo(function LayersPanel({ host }: { host?: LayersPa
       prevDocVersionRef.current += 1;
       collectLayers();
     };
-    return onPreviewContentReplaced(iframe, handleLoad);
+    const stopReplaced = onPreviewContentReplaced(iframe, handleLoad);
+    const stopRestored = onPreviewRestoredInPlace(iframe, collectLayers);
+    return () => {
+      stopReplaced();
+      stopRestored();
+    };
   }, [previewIframeRef, livePreviewIframe, collectLayers]);
 
   useEffect(() => {
