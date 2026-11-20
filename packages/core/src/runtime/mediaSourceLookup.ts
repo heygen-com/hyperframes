@@ -12,7 +12,10 @@ export function currentSrcValue(el: HTMLMediaElement): string {
 
 /** The decoded, query-free pathname the server's maps are keyed by; null with no src or a cross-origin one. */
 export function deriveCodecMapKey(el: HTMLMediaElement): string | null {
-  const raw = currentSrcValue(el);
+  return codecMapKeyOf(currentSrcValue(el));
+}
+
+function codecMapKeyOf(raw: string): string | null {
   if (!raw) return null;
   let url: URL;
   try {
@@ -67,7 +70,11 @@ export function lookupCodecMapEntry<T>(pathname: string, map: Record<string, T>)
 }
 
 export function sourceFactsOf(el: HTMLMediaElement): PreviewSourceFacts | null {
+  return sourceFactsOfSrc(currentSrcValue(el));
+}
+
+export function sourceFactsOfSrc(src: string): PreviewSourceFacts | null {
   const facts = window.__HF_MEDIA_SOURCE_FACTS__;
-  const key = deriveCodecMapKey(el);
+  const key = codecMapKeyOf(src);
   return facts && key !== null ? lookupCodecMapEntry(key, facts) : null;
 }

@@ -7,6 +7,8 @@ import {
   parseFirstFrameColour,
   readsKeyframeTransfers,
   parseKeyframeTransfers,
+  parseSampleAspectRatio,
+  streamRotation,
   type PreviewSourceFacts,
   type ToneMapFrameColour,
 } from "@hyperframes/core";
@@ -105,8 +107,10 @@ interface FfprobeStream {
   bit_rate?: string;
   r_frame_rate?: string;
   avg_frame_rate?: string;
+  sample_aspect_ratio?: string;
   disposition?: Record<string, number | undefined>;
   tags?: Record<string, string | undefined>;
+  side_data_list?: { rotation?: number | string }[];
 }
 
 const VIDEO_EXT = new Set([
@@ -232,6 +236,17 @@ function bitDepthOf(stream: FfprobeStream): number {
   return suffixed ? Number(suffixed[1]) : 8;
 }
 
+function shownAs(
+  stream: FfprobeStream,
+): Pick<PreviewSourceFacts, "sampleAspectRatio" | "rotation"> {
+  const sampleAspectRatio = parseSampleAspectRatio(stream.sample_aspect_ratio);
+  const rotation = streamRotation(stream);
+  return {
+    ...(sampleAspectRatio === undefined ? {} : { sampleAspectRatio }),
+    ...(rotation === undefined ? {} : { rotation }),
+  };
+}
+
 function sourceFactsOf(
   stream: FfprobeStream | undefined,
   formatBitrate: string | undefined,
@@ -248,6 +263,7 @@ function sourceFactsOf(
   return {
     width: stream.width,
     height: stream.height,
+    ...shownAs(stream),
     bitDepth: bitDepthOf(stream),
     bitrate: Number.isFinite(bitrate) ? bitrate : 0,
     ...(nominal > 0
@@ -372,7 +388,7 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,bit_rate,r_frame_rate,avg_frame_rate:stream_disposition:stream_tags=alpha_mode:format=duration,bit_rate",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample,width,height,sample_aspect_ratio,bit_rate,r_frame_rate,avg_frame_rate:stream_disposition:stream_tags=alpha_mode,rotate:stream_side_data_list:format=duration,bit_rate",
       "-of",
       "json",
       ...mediaInputArgs(filePath),

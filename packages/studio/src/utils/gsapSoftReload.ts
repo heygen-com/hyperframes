@@ -15,6 +15,7 @@ import {
 } from "@hyperframes/core/runtime/soft-reload";
 import { authoredStyles, findAuthoredElement, savedTiming } from "./authoredSource";
 import { fileDocs, standaloneSets } from "./softReloadTargets";
+import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
 import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
 
 export {
@@ -112,6 +113,7 @@ export interface SoftReloadOptions {
   timingEdit?: boolean;
   /** Other composition files a reset element is written in, by path; null when one could not be read. */
   nestedFiles?: Map<string, string> | null;
+  restore?: EditingParams<"soft-reload">["restore"];
 }
 
 /**
@@ -197,6 +199,7 @@ function softReloadSealed(
     currentTimeOverride,
     onAsyncFailure,
     timingEdit,
+    restore = [],
   }: SoftReloadOptions,
 ): SoftReloadResult {
   if (authoredHtml === undefined || previousHtml === undefined || currentTimeOverride === undefined)
@@ -208,6 +211,7 @@ function softReloadSealed(
     sets: standaloneSets(outgoingScripts(previous, scriptText)),
     authored: authoredStyles(authoredHtml),
     timing: timingEdit ? savedTiming(authoredHtml) : [],
+    restore,
   }).then((reply) => {
     if (sealedSoftReloadResult(reply) === "cannot-soft-reload") onAsyncFailure?.();
   });
