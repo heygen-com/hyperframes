@@ -272,7 +272,8 @@ describe("resolveProxy on a long source", () => {
     await answerAll(calls);
     await result;
     const joinArgs = calls.at(-1)!.args;
-    expect(joinArgs.slice(1, 14)).toEqual([
+    expect(joinArgs.slice(1, 15)).toEqual([
+      "-copyts",
       "-xerror",
       "-protocol_whitelist",
       "file",

@@ -824,41 +824,18 @@ async function runFfmpeg(
         onProgress({ doneSeconds: encodedSeconds, totalSeconds }),
       );
     }
-    const picturePath = soundMap.length ? besideAsTemp(outputPath) : outputPath;
-    await encodeInChunks(
-      ranges,
-      chunks,
-      picturePath,
-      encode,
-      (listPath, target) => {
-        // ffmpeg resolves relative list entries against the list path, which breaks on '#' or '?' in a folder name.
-        const cwd = JOIN_FROM_CACHE_FOLDER ? dirname(listPath) : undefined;
-        return spawnFfmpeg(
-          ffmpegPath,
-          concatArgs(cwd ? basename(listPath) : listPath, target, variant),
-          CONCAT_TIMEOUT_MS,
-          signal,
-          undefined,
-          false,
-          cwd,
-        );
-      },
+    await copyInPieces(ranges, outputPath, {
+      ffmpegPath,
+      sourcePath,
+      soundMap,
+      variant,
+      limitSeconds,
       signal,
       gate,
-      (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
-    );
-    if (picturePath !== outputPath) {
-      await addSoundFromSource(
-        ffmpegPath,
-        sourcePath,
-        soundMap,
-        picturePath,
-        outputPath,
-        variant,
-        limitSeconds,
-        signal,
-      );
-    }
+      chunks,
+      encode,
+      onDone: (doneSeconds) => onProgress({ doneSeconds, totalSeconds }),
+    });
   } catch (err) {
     throw withSource(err, () => describeSource(sourcePath, metadata));
   }
@@ -869,15 +846,51 @@ function besideAsTemp(path: string, extension = extname(path)): string {
   return join(dirname(path), `.tmp-${randomUUID()}-${copyName}${extension}`);
 }
 
+type PieceCopy = {
+  ffmpegPath: string;
+  sourcePath: string;
+  soundMap: string[];
+  variant: ProxyVariant;
+  limitSeconds: number | undefined;
+  signal: AbortSignal;
+  gate: PieceGate;
+  chunks: ChunkFiles;
+  encode: EncodeFn;
+  onDone: (doneSeconds: number) => void;
+};
+
+async function copyInPieces(ranges: ChunkRange[], outputPath: string, copy: PieceCopy) {
+  const withSound = copy.soundMap.length > 0;
+  const picturePath = withSound ? besideAsTemp(outputPath) : outputPath;
+  await encodeInChunks(
+    ranges,
+    copy.chunks,
+    picturePath,
+    copy.encode,
+    (listPath, target) => {
+      // ffmpeg resolves relative list entries against the list path, which breaks on '#' or '?' in a folder name.
+      const cwd = JOIN_FROM_CACHE_FOLDER ? dirname(listPath) : undefined;
+      return spawnFfmpeg(
+        copy.ffmpegPath,
+        concatArgs(cwd ? basename(listPath) : listPath, target, copy.variant),
+        CONCAT_TIMEOUT_MS,
+        copy.signal,
+        undefined,
+        false,
+        cwd,
+      );
+    },
+    copy.signal,
+    copy.gate,
+    copy.onDone,
+  );
+  if (withSound) await addSoundFromSource(copy, picturePath, outputPath);
+}
+
 async function addSoundFromSource(
-  ffmpegPath: string,
-  sourcePath: string,
-  soundMap: string[],
+  { ffmpegPath, sourcePath, soundMap, variant, limitSeconds, signal }: PieceCopy,
   picturePath: string,
   outputPath: string,
-  variant: ProxyVariant,
-  limitSeconds: number | undefined,
-  signal: AbortSignal,
 ): Promise<void> {
   const keepsAlpha = variant === "vp8";
   const soundPath = besideAsTemp(outputPath, keepsAlpha ? ".webm" : ".m4a");
@@ -918,6 +931,7 @@ async function addSoundFromSource(
 function concatArgs(listPath: string, target: string, variant: ProxyVariant): string[] {
   return [
     "-y",
+    "-copyts",
     ...concatListInputArgs(listPath),
     "-c",
     "copy",

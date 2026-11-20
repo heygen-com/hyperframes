@@ -712,10 +712,10 @@ describe("concatListText", () => {
     }
   });
 
-  it("places an entry given a duration exactly that long after the one before", async () => {
+  it("places an entry given a duration that long after the one before, on its own timestamps", async () => {
     const { concatListText } = await importFresh();
     expect(concatListText([{ path: "/a/it's.mp4", durationSeconds: 15 }, "/b/c.mp4"])).toBe(
-      "file '/a/it'\\''s.mp4'\nduration 15\nfile '/b/c.mp4'\n",
+      "file '/a/it'\\''s.mp4'\ninpoint 0\nduration 15\nfile '/b/c.mp4'\n",
     );
     expect(() => concatListText([{ path: "/p\n.mp4", durationSeconds: 1 }])).toThrow(
       "line break or NUL",

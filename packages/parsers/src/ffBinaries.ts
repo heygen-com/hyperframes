@@ -265,7 +265,8 @@ export function concatListText(
           `A file to join holds a line break or NUL in its path: ${JSON.stringify(path)}`,
         );
       }
-      const placed = typeof entry === "string" ? "" : `duration ${entry.durationSeconds}\n`;
+      const placed =
+        typeof entry === "string" ? "" : `inpoint 0\nduration ${entry.durationSeconds}\n`;
       return `file '${path.replace(/'/g, "'\\''")}'\n${placed}${entryOptions}`;
     })
     .join("");
