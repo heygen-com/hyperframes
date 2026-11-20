@@ -353,28 +353,56 @@ const isEditEntries = (value: unknown, priority = false): value is StyleEntry[] 
       (entry.length === 2 || (priority && entry.length === 3 && entry[2] === "important")),
   );
 
+type EditReply = Awaited<ReturnType<typeof previewRequest<"edit-element">>>;
+
+function heldBefore(before: EditReply | null | undefined) {
+  if (!before?.applied || !isEditEntries(before.styles, true)) return null;
+  if (!isEditEntries(before.attributes)) return null;
+  const html = typeof before.html === "string" ? before.html : undefined;
+  return { styles: before.styles, attributes: before.attributes, html };
+}
+
+function ownedPutBack(
+  before: EditReply | null | undefined,
+  owns: (part: string, name: string) => boolean,
+) {
+  const held = heldBefore(before);
+  if (!held) return null;
+  const styles = held.styles.filter(([name]) => owns("style", name));
+  const attributes = held.attributes.filter(([name]) => owns("attr", name));
+  const html = owns("html", "") ? held.html : undefined;
+  const any = styles.length > 0 || attributes.length > 0 || html !== undefined;
+  return any ? { styles, attributes, html } : null;
+}
+
 export interface PreviewElementEdit {
   drawn: Promise<boolean>;
   restore(names?: readonly string[]): void;
 }
 
-/** Draws inline `styles` and `attributes` on the frame's element, null removing one. */
 const latestWriters = new WeakMap<HTMLIFrameElement, Map<string, symbol>>();
 
+/** Draws inline `styles`, `attributes` and text markup on the frame's element, null removing one. */
 export function editPreviewElement(
   iframe: HTMLIFrameElement,
   handle: string,
-  edit: { styles?: EditEntry[]; attributes?: EditEntry[] },
+  edit: { styles?: EditEntry[]; attributes?: EditEntry[]; html?: string },
 ): PreviewElementEdit {
-  const send = (styles: StyleEntry[], attributes: EditEntry[]) =>
-    previewRequest(iframe, "edit-element", { handle, styles, attributes });
+  const send = (styles: StyleEntry[], attributes: EditEntry[], html?: string) =>
+    previewRequest(iframe, "edit-element", {
+      handle,
+      styles,
+      attributes,
+      ...(html !== undefined && { html }),
+    });
   const writers = latestWriters.get(iframe) ?? new Map<string, symbol>();
   latestWriters.set(iframe, writers);
   const self = Symbol("edit");
   const key = (part: string, name: string) => `${handle} ${part} ${name}`;
   for (const [name] of edit.styles ?? []) writers.set(key("style", name), self);
   for (const [name] of edit.attributes ?? []) writers.set(key("attr", name), self);
-  const reply = send(edit.styles ?? [], edit.attributes ?? []);
+  if (edit.html !== undefined) writers.set(key("html", ""), self);
+  const reply = send(edit.styles ?? [], edit.attributes ?? [], edit.html);
   return {
     drawn: reply.then((before) => before?.applied === true),
     restore(names) {
@@ -382,11 +410,8 @@ export function editPreviewElement(
       const owns = (part: string, name: string) =>
         (!names || names.includes(name)) && writers.get(key(part, name)) === self;
       void reply.then((before) => {
-        if (!before?.applied || !isEditEntries(before.styles, true)) return;
-        if (!isEditEntries(before.attributes)) return;
-        const styles = before.styles.filter(([name]) => owns("style", name));
-        const attributes = before.attributes.filter(([name]) => owns("attr", name));
-        if (styles.length || attributes.length) void send(styles, attributes);
+        const back = ownedPutBack(before, owns);
+        if (back) void send(back.styles, back.attributes, back.html);
       });
     },
   };
