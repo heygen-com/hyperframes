@@ -121,6 +121,12 @@
       "runtime": "./dist/helpers/mediaRange.js",
       "types": "./dist/helpers/mediaRange.d.ts",
       "environments": ["bun", "node"]
+    },
+    "./render-directory-stats": {
+      "source": "./src/helpers/renderDirectoryStats.ts",
+      "runtime": "./dist/helpers/renderDirectoryStats.js",
+      "types": "./dist/helpers/renderDirectoryStats.d.ts",
+      "environments": ["bun", "node"]
     }
   }
 }

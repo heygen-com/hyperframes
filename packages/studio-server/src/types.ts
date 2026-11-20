@@ -18,6 +18,7 @@ export interface RenderJobState {
   progress: number;
   stage?: string;
   outputPath: string;
+  kind?: "file" | "directory";
   error?: string;
   audioLoweredDb?: number;
   /**
@@ -184,7 +185,7 @@ export interface StudioApiAdapter {
   startRender(opts: {
     project: ResolvedProject;
     outputPath: string;
-    format: "mp4" | "webm" | "mov" | "gif";
+    format: "mp4" | "webm" | "mov" | "gif" | "png-sequence";
     /**
      * Frame rate as an exact rational. The HTTP layer (POST
      * `/projects/:id/render`) accepts either a JSON number (integer fps,

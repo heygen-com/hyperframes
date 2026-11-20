@@ -25,8 +25,8 @@ pre-commit:
     - name: typecheck
       glob: "*.{ts,tsx}"
       run: cd packages/core && node_modules/.bin/tsc --noEmit && cd ../studio && node_modules/.bin/tsc --noEmit && cd ../.. && node_modules/.bin/tsc --noEmit -p scripts/tsconfig.json
-    # Mirrors the CI gate (same `--base origin/main` so the local hook can't
-    # pass on a branch CI would fail). Audits the working tree, which means
+    # Mirrors CI's new-only gate against main, using upstream/main in forks
+    # and origin/main otherwise. Audits the working tree, which means
     # unstaged WIP in `packages/**` is part of the diff — stash before
     # committing if that surprises you. `--gate new-only` (the default) only
     # fails on issues introduced by the branch, not inherited findings.
@@ -37,7 +37,19 @@ pre-commit:
       # env -u is safe in non-worktree contexts (no-op when var is unset).
       # fallow reuses one base-snapshot cache per checkout; `audit-cache prune` drops caches unused for a day,
       # including those of removed checkouts. The commit gets the audit's own status.
-      run: env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE sh -c 'node_modules/.bin/fallow audit --base origin/main --fail-on-issues; status=$?; node_modules/.bin/fallow audit-cache prune --max-age-days 1 > /dev/null; exit $status'
+      run: |
+        env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE sh -c '
+          base_ref=refs/remotes/origin/main
+          if git show-ref --verify --quiet refs/remotes/upstream/main; then
+            base_ref=refs/remotes/upstream/main
+          fi
+          base=$(git merge-base HEAD "$base_ref") || exit $?
+          printf "Fallow audit base: %s (%s)\n" "$base_ref" "$base" >&2
+          node_modules/.bin/fallow audit --base "$base" --fail-on-issues
+          status=$?
+          node_modules/.bin/fallow audit-cache prune --max-age-days 1 > /dev/null
+          exit "$status"
+        '
     - name: cli-process-ownership
       glob: "packages/cli/src/**/*.ts"
       run: bun run check:cli-process-ownership

@@ -3,7 +3,7 @@
 // EventSource, and a component that exposes the hook's value — and keeping two
 // copies in step is not worth the lines.
 
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { vi } from "vitest";
 import type { useRenderQueue } from "./useRenderQueue";
@@ -47,6 +47,7 @@ export interface MountedQueue {
   /** The hook's current value. Throws if the harness never mounted. */
   api: () => RenderQueueApi;
   unmount: () => void;
+  setProject: (projectId: string) => void;
 }
 
 /**
@@ -77,12 +78,13 @@ export function mountRenderQueue(
   useRenderQueueHook: UseRenderQueue,
   projectId = "demo",
   activeCompPath: string | null = null,
+  render?: (api: RenderQueueApi) => ReactNode,
 ): MountedQueue {
   let current: RenderQueueApi | null = null;
   const activeCompPathRef = { current: activeCompPath };
-  function Harness(): null {
+  function Harness(): ReactNode {
     current = useRenderQueueHook(projectId, activeCompPathRef);
-    return null;
+    return render?.(current) ?? null;
   }
   const host = document.createElement("div");
   document.body.append(host);
@@ -96,5 +98,10 @@ export function mountRenderQueue(
       return current;
     },
     unmount: () => act(() => root.unmount()),
+    setProject: (id) =>
+      act(() => {
+        projectId = id;
+        root.render(<Harness />);
+      }),
   };
 }

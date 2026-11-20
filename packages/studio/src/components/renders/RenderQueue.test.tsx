@@ -194,7 +194,7 @@ describe("RenderQueue controls", () => {
   it("persists a changed format as the literal union value", async () => {
     const host = mountRenderQueue(vi.fn());
 
-    // MP4, MOV, WebM: one step down commits "mov", not the label "MOV (ProRes)".
+    // MP4, MOV, PNG sequence, WebM, GIF: one step down commits "mov", not the label "MOV (ProRes)".
     await chooseByArrowing(triggerFor(host, "Format"), 1);
 
     expect(getPersistedRenderSettings()).toEqual({
@@ -204,6 +204,29 @@ describe("RenderQueue controls", () => {
       gpu: false,
     });
     expect(host.textContent).not.toContain("Use GPU encoding");
+  });
+
+  it("offers PNG sequence, persists it, and exports it without quality or GPU controls", async () => {
+    const onStartRender: Mock<StartRenderHandler> = vi.fn();
+    const host = mountRenderQueue(onStartRender);
+
+    // MP4, MOV, PNG sequence, WebM, GIF.
+    await chooseByArrowing(triggerFor(host, "Format"), 2);
+
+    expect(getPersistedRenderSettings().format).toBe("png-sequence");
+    expect(host.querySelector('[role="combobox"][aria-label="Quality"]')).toBeNull();
+    expect(host.textContent).not.toContain("Use GPU encoding");
+    act(() => {
+      exportButtonIn(host).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onStartRender).toHaveBeenCalledWith("png-sequence", "standard", "auto", 30, false);
+  });
+
+  it("restores a persisted PNG-sequence format and drops an unknown one", () => {
+    localStorage.setItem("hf-studio-render-settings", JSON.stringify({ format: "png-sequence" }));
+    expect(getPersistedRenderSettings().format).toBe("png-sequence");
+    localStorage.setItem("hf-studio-render-settings", JSON.stringify({ format: "avi" }));
+    expect(getPersistedRenderSettings().format).toBe("mp4");
   });
 });
 
@@ -297,7 +320,7 @@ describe("GIF export controls", () => {
   it("offers GIF, persists the selection, and exports with infinite looping", async () => {
     const onStartRender: Mock<StartRenderHandler> = vi.fn();
     const host = mountRenderQueue(onStartRender);
-    await chooseByArrowing(triggerFor(host, "Format"), 3);
+    await chooseByArrowing(triggerFor(host, "Format"), 4);
     expect(getPersistedRenderSettings().format).toBe("gif");
     const input = host.querySelector<HTMLInputElement>('input[type="number"]');
     expect(input?.value).toBe("0");
@@ -345,7 +368,7 @@ describe("GIF frame-rate controls", () => {
     const host = mountRenderQueue(onStartRender);
     act(() => exportButtonIn(host).click());
     expect(onStartRender).toHaveBeenLastCalledWith("mp4", "standard", "auto", 60, false);
-    await chooseByArrowing(triggerFor(host, "Format"), 3);
+    await chooseByArrowing(triggerFor(host, "Format"), 4);
     expect(triggerFor(host, "Frame rate").textContent).toContain("30 fps");
     expect(getPersistedRenderSettings()).toMatchObject({ format: "gif", fps: 30 });
     act(() => exportButtonIn(host).click());
