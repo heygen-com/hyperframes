@@ -200,9 +200,8 @@ describe("a resize of an element whose size is held, never says it saved scale",
     expect(outcome).not.toHaveProperty("savedAsScale");
   });
 
-  it("refuses an element it cannot name", async () => {
-    const el = card();
-    el.removeAttribute("id");
+  it("refuses an element no selector addresses", async () => {
+    const el = document.createElement("div");
     const sizeHold = hold("#card-to-0-size", "size", { width: 300, height: 200 });
 
     const outcome = await tryGsapResizeIntercept(
