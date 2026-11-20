@@ -1462,6 +1462,7 @@ class HyperframesPlayer extends HTMLElement {
    *  data deliveries end here. A queued play is the caller's, so only its owners clear it. */
   private _abandonComposition(reason: string): void {
     this.probe.stop();
+    this.probe.latchUntilNextLoad();
     this._ready = false;
     this._readyDocument = null;
     this._invalidateAssetsWait();

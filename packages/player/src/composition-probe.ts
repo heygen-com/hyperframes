@@ -186,6 +186,10 @@ export class CompositionProbe {
     };
   }
 
+  latchUntilNextLoad(): void {
+    if (this._failure) this._failure.deadline = false;
+  }
+
   stop(): void {
     if (this._runtimeScript) {
       this._runtimeScript.onerror = null;
