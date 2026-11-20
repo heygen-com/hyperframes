@@ -32,6 +32,7 @@ import type { MoveCommitOptions } from "../components/editor/domEditOverlayGestu
 import { runGestureTransaction } from "./gestureTransaction";
 import {
   editsPlainCss,
+  editsPlainCssSettled,
   hasNonHoldTweenForElement,
   POSITION_CHANNELS,
 } from "./gsapRuntimeKeyframes";
@@ -150,7 +151,7 @@ export function useGsapAwareEditing({
       modifiers?: MoveCommitOptions,
     ) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (modifiers?.plainTranslate ?? editsPlainCss(selection.element, "move")) {
+      if (modifiers?.plainTranslate ?? (await editsPlainCssSettled(selection.element, "move"))) {
         const result = await stageElementPositionOffset(selection, next, true).save();
         return writes.finish(result?.changed === true);
       }
@@ -214,7 +215,7 @@ export function useGsapAwareEditing({
       route?: { plainTranslate: boolean },
     ) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (route?.plainTranslate ?? editsPlainCss(selection.element, "resize")) {
+      if (route?.plainTranslate ?? (await editsPlainCssSettled(selection.element, "resize"))) {
         const result = await handleDomBoxSizeCommit(selection, next, offset, restore);
         return writes.finish(result?.changed === true);
       }
@@ -376,7 +377,8 @@ export function useGsapAwareEditing({
   const handleGsapAwareRotationCommit = useCallback(
     async (selection: DomEditSelection, next: RotationCommit) => {
       const writes = observeGsapGesture(gsapCommitMutation);
-      if (next.plain === undefined ? editsPlainCss(selection.element, "rotate") : next.plain) {
+      const plain = next.plain ?? (await editsPlainCssSettled(selection.element, "rotate"));
+      if (plain) {
         const result = await handleDomRotationCommit(selection, next);
         return writes.finish(result?.changed === true);
       }
