@@ -112,6 +112,30 @@ describe("undo on a sealed preview", () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
+  it("reloads instead of re-running when a later undo was sent before the frame refused", async () => {
+    let refuse: (reply: unknown) => void = () => {};
+    channel.request.mockImplementation((_frame, request) =>
+      request === "restore-attributes"
+        ? new Promise((resolve) => (refuse = resolve))
+        : Promise.resolve({ result: "applied" }),
+    );
+    const reload = vi.fn();
+    const iframe = document.createElement("iframe");
+    const files = (from: string, to: string) => ({
+      "index.html": {
+        previous: page(from + script("{ x: 1 }")),
+        restored: page(to + script("{ x: 1 }")),
+      },
+    });
+    applyUndoRestoreToPreview(iframe, null, files(box(90), box(0)), 2, reload);
+    const first = refuse;
+    applyUndoRestoreToPreview(iframe, null, files(box(0), box(50)), 2, reload);
+    first({ applied: false });
+    await settled();
+    expect(channel.request).not.toHaveBeenCalledWith(iframe, "soft-reload", expect.anything());
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
   it("reloads when the frame refuses the attributes and the re-run of the unchanged script", async () => {
     channel.request.mockImplementation(async (_frame, request) =>
       request === "restore-attributes" ? { applied: false } : { result: "cannot-soft-reload" },

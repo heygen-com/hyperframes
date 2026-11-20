@@ -399,7 +399,9 @@ function sealedRestore(activeDocPath: string, files: RestoreFiles): SealedRestor
   return restore;
 }
 
-/** Sends the restore to a sealed preview; a refusal re-runs its script in place when it has one, else reloads. */
+const sealedRestoresSent = new WeakMap<HTMLIFrameElement, number>();
+
+/** Sends the restore to a sealed preview; a refusal re-runs its script in place unless a later restore went out. */
 function applySealedRestore(
   iframe: HTMLIFrameElement,
   activeDocPath: string,
@@ -408,6 +410,8 @@ function applySealedRestore(
   reloadPreview: () => void,
   onShownInPlace?: () => void,
 ): "soft" | "full" {
+  const sent = (sealedRestoresSent.get(iframe) ?? 0) + 1;
+  sealedRestoresSent.set(iframe, sent);
   const restore = sealedRestore(activeDocPath, files);
   const active = files[activeDocPath];
   const script = active ? extractGsapScriptText(active.restored) : null;
@@ -427,7 +431,8 @@ function applySealedRestore(
     if (rerun()) return "soft";
   } else if (restore?.scopes.length) {
     const rerunOrReload = () => {
-      if (!(restore.scripted && rerun())) reloadPreview();
+      const latest = sealedRestoresSent.get(iframe) === sent;
+      if (!(restore.scripted && latest && rerun())) reloadPreview();
     };
     sendSealedRestore(iframe, restore, currentTime, rerunOrReload, onShownInPlace);
     return "soft";
