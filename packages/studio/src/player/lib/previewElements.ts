@@ -23,6 +23,9 @@ import {
   type EditingElementSource,
   type EditingLayer,
   type EditingStackingSibling,
+  type EditingParams,
+  type TextEditResult,
+  textEditResult,
 } from "@hyperframes/core/runtime/editing-port";
 import { resolveElementSourceFile } from "../../components/editor/domEditingDom";
 import { previewRequest } from "./previewChannel";
@@ -382,6 +385,14 @@ function ownedPutBack(
   const html = owns("html", "") ? held.html : undefined;
   const any = styles.length > 0 || attributes.length > 0 || html !== undefined;
   return any ? { styles, attributes, html } : null;
+}
+
+/** The frame's in-place text edit; null when it cannot answer or answers with anything but text markup. */
+export async function previewTextEdit(
+  iframe: HTMLIFrameElement,
+  params: EditingParams<"text-edit">,
+): Promise<TextEditResult | null> {
+  return textEditResult(await previewRequest(iframe, "text-edit", params));
 }
 
 export interface PreviewElementEdit {

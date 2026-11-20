@@ -10,6 +10,7 @@ import {
 import { previewStandIn } from "../components/editor/previewDrafts";
 import { requestOverlayFrames } from "../components/editor/overlayFrameLoop";
 import { previewEditingClient, previewRequest } from "../player/lib/previewChannel";
+import { editPreviewElement, previewTextEdit } from "../player/lib/previewElements";
 import { caretRangeAt, takePlainTextOnly } from "@hyperframes/core/runtime/editing-port";
 
 /**
@@ -111,6 +112,11 @@ function clearSelectionWithin(element: HTMLElement): void {
   selection.removeAllRanges();
 }
 
+/** Ends the frame's session with its original back, as a refused or failed reply must. */
+function endWithOriginal(sealed: NonNullable<InlineTextEditSession["sealed"]>): void {
+  void previewTextEdit(sealed.iframe, { handle: sealed.handle, action: "end", keep: false });
+}
+
 export function useInlineTextEdit({
   onCommit,
   onPause,
@@ -166,10 +172,13 @@ export function useInlineTextEdit({
         onPause?.();
         sealed.iframe.focus();
         const params = { handle: sealed.handle, action: "start" as const, caret: null };
-        void previewRequest(sealed.iframe, "text-edit", params).then((reply) => {
+        void previewTextEdit(sealed.iframe, params).then((reply) => {
           if (openRef.current !== open) return;
           if (reply?.applied) open.original = reply.previous ?? "";
-          else teardown();
+          else {
+            teardown();
+            if (reply === null) endWithOriginal(sealed);
+          }
         });
         return true;
       }
@@ -213,7 +222,9 @@ export function useInlineTextEdit({
     (open: InlineTextEditSession, keep: boolean) => {
       const sealed = open.sealed!;
       const params = { handle: sealed.handle, action: "end" as const, keep };
-      const ended = previewRequest(sealed.iframe, "text-edit", params).then((reply) => {
+      const ended = previewTextEdit(sealed.iframe, params).then((reply) => {
+        if (reply === null && open.original)
+          return void editPreviewElement(sealed.iframe, sealed.handle, { html: open.original });
         if (!keep || !reply?.applied || reply.html === null || reply.previous === null) return;
         return onCommit({ element: open.element, html: reply.html, previousHtml: reply.previous });
       });
@@ -266,6 +277,7 @@ export function useInlineTextEdit({
       teardown();
       if (ended.html !== null)
         void onCommit({ element: session.element, html: ended.html, previousHtml: ended.previous });
+      else endWithOriginal(sealed);
     });
     return () => {
       stopEnded();
