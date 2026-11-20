@@ -35,6 +35,8 @@ export type SoftReloadWindow = Window & {
   __hfStudioManualEditsApply?: () => void;
   // Set while a MotionPathPlugin script is fetched, so overlapping reloads queue no second one.
   __hfMotionPathPluginLoading?: boolean;
+  __hfPlayerSeeks?: number;
+  __hfSoftReloads?: number;
   gsap?: {
     version?: string;
     registerPlugin?: (...plugins: unknown[]) => unknown;
@@ -462,10 +464,19 @@ function readAuthoredStyles(
 
 // Re-runs the script in place of the live one registering the same `__timelines` keys, tearing down
 // only those timelines. A promise only while it waits for the MotionPath plugin.
-/** A seek made while the re-run waited for the MotionPath plugin is newer than the time it was sent at. */
-function seekedWhileWaiting(win: SoftReloadWindow, before: number | undefined): number | null {
-  const now = win.__player?.getTime?.();
-  return now !== undefined && now !== before ? now : null;
+/** Counted on every player seek, so a re-run that waited sees a scrub even when it came back to the same time. */
+export function countPlayerSeek(win: SoftReloadWindow = window as SoftReloadWindow): void {
+  win.__hfPlayerSeeks = (win.__hfPlayerSeeks ?? 0) + 1;
+}
+
+/** Loads and registers MotionPathPlugin ahead of the first re-run that needs it, as Studio does same-origin. */
+export function preloadMotionPath(
+  win: SoftReloadWindow = window as SoftReloadWindow,
+  doc: Document = document,
+): void {
+  if (win.MotionPathPlugin || win.__hfMotionPathPluginLoading || !win.gsap) return;
+  const register = () => win.MotionPathPlugin && win.gsap?.registerPlugin?.(win.MotionPathPlugin);
+  whenMotionPathLoaded(win, doc, register, () => {});
 }
 
 export function softReloadFrame(
@@ -478,7 +489,7 @@ export function softReloadFrame(
   if (!scope) return "cannot-soft-reload";
   const { targetKeys, staleScripts } = scope;
   const currentTime = input.time ?? win.__player?.getTime?.() ?? 0;
-  const timeAtStart = win.__player?.getTime?.();
+  let started = { reload: 0, seeks: 0 };
 
   const targets = collectResetTargets(win, doc, targetKeys, input.sets);
   const ownFile = compositionFile(doc, targetKeys);
@@ -492,6 +503,8 @@ export function softReloadFrame(
   let builtDom = false;
 
   const executeScript = () => {
+    // A newer soft reload ran while this one waited for the plugin: its script is the current one.
+    if (pending && win.__hfSoftReloads !== started.reload) return deferred?.("applied");
     if (win.MotionPathPlugin && win.gsap?.registerPlugin)
       win.gsap.registerPlugin(win.MotionPathPlugin);
     const s = doc.createElement("script");
@@ -501,14 +514,19 @@ export function softReloadFrame(
     // A script that builds DOM builds it again on every run; only a full load starts from the file.
     // Not seen: text-only writes, nodes put in the head or a shadow root, and nodes added later.
     builtDom = doc.body.querySelectorAll("*").length > before;
+    const seekedMeanwhile = pending && (win.__hfPlayerSeeks ?? 0) !== started.seeks;
     finalizeSoftReload(
       win,
-      pending ? (seekedWhileWaiting(win, timeAtStart) ?? currentTime) : currentTime,
+      seekedMeanwhile ? (win.__player?.getTime?.() ?? currentTime) : currentTime,
     );
     deferred?.(builtDom ? "cannot-soft-reload" : "applied");
   };
 
   const doReload = () => {
+    started = {
+      reload: (win.__hfSoftReloads = (win.__hfSoftReloads ?? 0) + 1),
+      seeks: win.__hfPlayerSeeks ?? 0,
+    };
     if (input.restorePlan) applyRestorePlan(input.restorePlan);
     applyTimingPlan(timing);
     killTimelines(win, targetKeys);

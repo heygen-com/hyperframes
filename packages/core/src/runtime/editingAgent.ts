@@ -41,7 +41,7 @@ import { cropLift } from "./editing/cropLift";
 import { stackingFamily } from "./editingLayers";
 import { gsapSet } from "./editing/gsapSet";
 import { patchTweens } from "./editing/patchTween";
-import { restoreAttributesOrRerun, softReload } from "./editing/softReload";
+import { preloadMotionPath, restoreAttributesOrRerun, softReload } from "./editing/softReload";
 import { holdScenes, markScenesStale, swapScenes } from "./editing/scenes";
 import { liveRetime } from "./editing/liveRetime";
 import { previewAssetsUnloaded } from "../lottieReadiness";
@@ -291,6 +291,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
     const port = channel.port1;
     ports.add(port);
     serve(port);
+    preloadMotionPath();
     try {
       // "*" as every runtime post does (bridge.ts): the frame is not told its parent's origin.
       parent.postMessage(

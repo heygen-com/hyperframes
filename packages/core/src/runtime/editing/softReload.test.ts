@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { parseRestoreAttributes } from "./restoreAttributes";
 import {
+  countPlayerSeek,
   parseRestoreAttributesRerun,
   parseSoftReload,
   restoreAttributesOrRerun,
@@ -53,6 +54,10 @@ afterEach(() => {
     "__hfStudioSeekReapplyStarted",
     "MotionPathPlugin",
     "__hfMotionPathPluginLoading",
+    "__hfPlayerSeeks",
+    "__hfSoftReloads",
+    "__older",
+    "__newer",
   ])
     delete win[key];
   document.head.innerHTML = "";
@@ -118,17 +123,50 @@ describe("soft-reload", () => {
   });
 });
 
-// fails without the fix: the re-run's finish seeked back to the time it was sent at, rewinding a newer scrub.
-it("keeps a seek made while the re-run waits for the MotionPath plugin", async () => {
-  const seeks = preview(`<div data-composition-id="main"><div id="a"></div></div>`);
-  let now = 1.5;
-  win.__player = { seek: (t: number) => seeks.push((now = t)), getTime: () => now };
-  const done = softReload(params({ script: `${SCRIPT} var path = { motionPath: {} };` }));
-  (win.__player as { seek: (t: number) => void }).seek(4);
-  win.MotionPathPlugin = {};
-  document.head.querySelector<HTMLScriptElement>("script[src]")!.onload!(new Event("load"));
-  expect(await done).toEqual({ result: "applied" });
-  expect(seeks.at(-1)).toBe(4);
+describe("a re-run that waits for the MotionPath plugin", () => {
+  const MOTION = `${SCRIPT} var path = { motionPath: {} };`;
+  const loadPlugin = () => {
+    win.MotionPathPlugin = {};
+    document.head.querySelector<HTMLScriptElement>("script[src]")!.onload!(new Event("load"));
+  };
+  function playerAt(time: number) {
+    const seeks = preview(`<div data-composition-id="main"><div id="a"></div></div>`);
+    let now = time;
+    const seek = (t: number) => {
+      countPlayerSeek(win);
+      seeks.push((now = t));
+    };
+    win.__player = { seek, getTime: () => now };
+    return { seeks, seek };
+  }
+
+  // fails without the fix: its finish seeked back to the time it was sent at, rewinding a newer scrub.
+  it.each([
+    ["to a new time", [4]],
+    ["away and back to where it started", [5, 4]],
+  ])("ends where the player was scrubbed %s while it waited", async (_name, scrubs) => {
+    const { seeks, seek } = playerAt(4);
+    const done = softReload(params({ script: MOTION, time: 2 }));
+    for (const t of scrubs) seek(t);
+    loadPlugin();
+    expect(await done).toEqual({ result: "applied" });
+    expect(seeks.at(-1)).toBe(4);
+  });
+
+  // fails without the fix: the older script ran after the newer one and replaced its timeline.
+  it("leaves the script of a newer soft reload that ran while it waited", async () => {
+    playerAt(1.5);
+    const ran: string[] = [];
+    win.__older = () => ran.push("older");
+    win.__newer = () => ran.push("newer");
+    const older = softReload(params({ script: `${MOTION} __older();` }));
+    expect(await softReload(params({ script: `${SCRIPT} __newer();` }))).toEqual({
+      result: "applied",
+    });
+    loadPlugin();
+    expect(await older).toEqual({ result: "applied" });
+    expect(ran).toEqual(["newer"]);
+  });
 });
 
 const restoreOf = (key: string, attributes: Array<[string, string]>) => ({
