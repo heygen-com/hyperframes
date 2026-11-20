@@ -81,7 +81,9 @@ describe("waapi adapter", () => {
   });
 
   describe("an animation that went idle", () => {
-    class FakeCssAnimation {}
+    class FakeCssAnimation {
+      animationName = "slide";
+    }
     const idleScenario = (make: () => ReturnType<typeof makeAnimation> & { playState: string }) => {
       const old = make();
       const fresh = makeAnimation();
