@@ -303,7 +303,7 @@ async function runResize(
     commitMutation as never,
     async () => [keyframedScaleFixture()],
   );
-  expect(handled).toMatchObject({ status: "persisted" });
+  expect(handled).toMatchObject({ status: "persisted", savedAsScale: true });
   return committed;
 }
 

@@ -288,13 +288,15 @@ describe("useGsapAwareEditing keeps the box route a resize chose at press", () =
   });
 });
 
-describe("useGsapAwareEditing tells the resize how it saved the size", () => {
+describe("useGsapAwareEditing tells the resize how its save wrote the size", () => {
+  // fails without the fix: a scale tween on the element read as "saved as scale" whatever the writer did.
   it.each([
-    ["scale", true],
-    ["size", false],
-  ])("as GSAP %s", async (group, asScale) => {
-    mocks.resize.mockResolvedValue({ status: "persisted" });
-    const animation = { id: "a", propertyGroup: group } as GsapAnimation;
+    ["as GSAP scale keys", { status: "persisted", savedAsScale: true }, true],
+    ["as width and height, beside an instant scale hold", { status: "element-size" }, false],
+    ["as width and height in a size tween", { status: "persisted" }, false],
+  ])("%s", async (_, outcome, asScale) => {
+    mocks.resize.mockResolvedValue(outcome);
+    const animation = { id: "a", propertyGroup: "scale" } as GsapAnimation;
     const h = mountResizeHandler([animation]);
     const route: { plainTranslate: boolean; sizeSavedAsScale?: boolean } = {
       plainTranslate: false,
