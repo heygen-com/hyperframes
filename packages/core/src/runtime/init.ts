@@ -2394,6 +2394,11 @@ export function initSandboxRuntimeModular(): void {
     return true;
   };
 
+  const renderRootBackAtPlayheadAfterRenest = () => {
+    const root = state.capturedTimeline;
+    const playhead = Math.max(0, state.currentTime || 0);
+    if (root && Math.abs(root.time() - playhead) > 1e-3) root.totalTime?.(playhead, true);
+  };
   const reconcileTimeline = () => {
     if (state.tornDown) return;
     const resolution = resolveRootTimelineFromDocument();
@@ -2418,6 +2423,7 @@ export function initSandboxRuntimeModular(): void {
         clock.setDuration(length);
         postTimeline();
       }
+      renderRootBackAtPlayheadAfterRenest();
     }
     syncTimedElementVisibility(state.currentTime);
   };

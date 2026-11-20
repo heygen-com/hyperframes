@@ -59,6 +59,53 @@ describe("runtime sub-composition placement", () => {
     expect(shownX()).toBe(25);
   });
 
+  // fails without the fix: a scene's script re-run left the root at 0 after the rebind nested the new timeline.
+  it("keeps the playhead when a scene's script re-runs and the rebind nests its new timeline", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="3">` +
+      `<div id="host" class="clip" data-composition-id="scene" data-start="0" data-duration="3">` +
+      `<div id="s"></div></div></div>`;
+    const slide = () =>
+      gsap.timeline({ paused: true }).to("#s", { x: 90, duration: 3, ease: "none" }, 0);
+    const root = gsap.timeline({ paused: true });
+    const scene = slide();
+    window.__timelines = { main: root, scene } as unknown as Record<string, RuntimeTimelineLike>;
+    initSandboxRuntimeModular();
+    window.__player?.seek(1);
+    expect(shownX()).toBeCloseTo(30);
+
+    scene.kill();
+    gsap.set("#s", { clearProps: "transform" });
+    window.__timelines!.scene = slide() as unknown as RuntimeTimelineLike;
+    window.__player?.seek(1);
+    window.__hfForceTimelineRebind?.();
+
+    expect(root.time()).toBeCloseTo(1);
+    expect(shownX()).toBeCloseTo(30);
+  });
+
+  it("keeps a playing film where it plays when a scene's script re-runs mid-play", () => {
+    document.body.innerHTML =
+      `<div data-composition-id="main" data-root="true" data-duration="3">` +
+      `<div id="host" class="clip" data-composition-id="scene" data-start="0" data-duration="3">` +
+      `<div id="s"></div></div></div>`;
+    const slide = () =>
+      gsap.timeline({ paused: true }).to("#s", { x: 90, duration: 3, ease: "none" }, 0);
+    const root = gsap.timeline({ paused: true });
+    const scene = slide();
+    window.__timelines = { main: root, scene } as unknown as Record<string, RuntimeTimelineLike>;
+    initSandboxRuntimeModular();
+    window.__player?.seek(1);
+    window.__player?.play();
+
+    scene.kill();
+    window.__timelines!.scene = slide() as unknown as RuntimeTimelineLike;
+    window.__hfForceTimelineRebind?.();
+
+    expect(window.__player?.isPlaying()).toBe(true);
+    expect(root.time()).toBeCloseTo(window.__player!.getTime(), 1);
+  });
+
   it("leaves a scene where the root script places it after a re-run, as a fresh load does", () => {
     const { scene } = load(1);
     const root = gsap.timeline({ paused: true }).to({}, { duration: 1 }, 0).add(scene, 2);
