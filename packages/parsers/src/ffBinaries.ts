@@ -249,6 +249,29 @@ export function clearFfBinaryLookupCache(): void {
   skippedX86Binaries.clear();
 }
 
+const endsAListLine = (text: string) => ["\n", "\r", "\u0000"].some((char) => text.includes(char));
+
+/** One `file` entry per path; a path holding what ends a list line (LF, CR, NUL) is refused. */
+export function concatListText(
+  entries: readonly (string | { path: string; durationSeconds: number })[],
+  options: { videoContainersOnly?: boolean } = {},
+): string {
+  const entryOptions = options.videoContainersOnly ? "option format_whitelist mov,matroska\n" : "";
+  return entries
+    .map((entry) => {
+      const path = typeof entry === "string" ? entry : entry.path;
+      if (endsAListLine(path)) {
+        throw new Error(
+          `A file to join holds a line break or NUL in its path: ${JSON.stringify(path)}`,
+        );
+      }
+      const placed =
+        typeof entry === "string" ? "" : `inpoint 0\nduration ${entry.durationSeconds}\n`;
+      return `file '${path.replace(/'/g, "'\\''")}'\n${placed}${entryOptions}`;
+    })
+    .join("");
+}
+
 /**
  * Concat input for a list HyperFrames wrote: entries open only as local mov, matroska or concat
  * files (an ffconcat entry is followed in safe mode), and `-xerror` fails at a refused entry.
@@ -314,6 +337,10 @@ let listingOverride: string | undefined;
 export function _setDemuxerListingForTests(listing?: string): void {
   listingOverride = listing;
   demuxerLists.clear();
+}
+
+export function localContainerInputArgs(container: "mov" | "matroska" | undefined): string[] {
+  return container ? ["-protocol_whitelist", "file", "-format_whitelist", container] : [];
 }
 
 export { assertLiteralMediaInput };

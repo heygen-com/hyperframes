@@ -14,7 +14,12 @@ function player() {
 
 afterEach(() => {
   document.body.innerHTML = "";
-  for (const name of ["__player", "__hfForceTimelineRebind", "__hfStudioManualEditsApply"])
+  for (const name of [
+    "__player",
+    "__hfForceTimelineRebind",
+    "__hfStudioManualEditsApply",
+    "__hfStudioSeekReapplyStarted",
+  ])
     delete win[name];
 });
 
@@ -73,6 +78,46 @@ describe("restore-attributes", () => {
     expect(rebind).not.toHaveBeenCalled();
   });
 
+  // fails without the fix: a redo of a sealed move was refused for setting Studio's mark and reloaded the preview.
+  it("puts back Studio's own edit marks in place, as a redo of a move needs", () => {
+    document.body.innerHTML = '<div data-hf-id="box"></div>';
+    player();
+    const params = restore("hf:box", [
+      ["data-hf-id", "box"],
+      ["data-hf-studio-original-inline-translate", ""],
+      ["style", "translate: 130px 90px"],
+    ]);
+    expect(restoreAttributes(params)).toEqual({ applied: true });
+    const box = document.querySelector('[data-hf-id="box"]')!;
+    expect(box.getAttribute("data-hf-studio-original-inline-translate")).toBe("");
+    expect(box.getAttribute("style")).toBe("translate: 130px 90px");
+  });
+
+  // fails without the fix: a page whose seek-reapply script never started reverted the size on the next seek.
+  it("reloads for a mark a seek has to reapply until the page's reapply script has started", () => {
+    document.body.innerHTML = '<div data-hf-id="box"></div><i data-hf-studio-rotation="true"></i>';
+    player();
+    const sized = () =>
+      restoreAttributes(
+        restore("hf:box", [
+          ["data-hf-id", "box"],
+          ["data-hf-studio-box-size", "true"],
+        ]),
+      );
+    expect(sized()).toEqual({ applied: false });
+    win.__hfStudioSeekReapplyStarted = true;
+    expect(sized()).toEqual({ applied: true });
+  });
+
+  // fails without the fix: dropping a motion mark in place left its timeline running.
+  it("reloads to take a motion mark away", () => {
+    document.body.innerHTML = '<div data-hf-id="box" data-hf-studio-motion="{}"></div>';
+    player();
+    expect(restoreAttributes(restore("hf:box", [["data-hf-id", "box"]]))).toEqual({
+      applied: false,
+    });
+  });
+
   it("changes no handler, URL or sandbox-style attribute, and leaves an unchanged one alone", () => {
     const refused = (html: string, attributes: [string, string][]) => {
       document.body.innerHTML = html;
@@ -83,8 +128,12 @@ describe("restore-attributes", () => {
     };
     const box = '<div data-hf-id="box"></div>';
     const id: [string, string] = ["data-hf-id", "box"];
-    for (const name of ["onclick", "ONCLICK", "href", "src", "srcdoc", "xlink:href", "sandbox"])
+    for (const name of ["onclick", "ONCLICK", "onerror", "href", "src", "srcdoc", "xlink:href"])
       refused(box, [id, [name, "alert(1)"]]);
+    for (const name of ["sandbox", "data-hf-handle", "data-hf-studio", "data-studio-x"])
+      refused(box, [id, [name, "alert(1)"]]);
+    for (const name of ["data-hf-studio-motion", "data-hf-studio-motion-original-opacity"])
+      refused(box, [id, [name, "{}"]]);
     refused(box, [id, ["data-composition-src", "https://example.com/a.html"]]);
     refused('<iframe data-hf-id="box" sandbox=""></iframe>', [id]);
 

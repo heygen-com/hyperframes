@@ -5,11 +5,13 @@
 import {
   EDITING_ELEMENT_HANDLE,
   MAX_DESCRIBE_HANDLES,
+  MAX_DRAFT_DEG,
   MAX_DRAFT_PX,
   MAX_ELEMENT_ENTRIES,
   MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
   MAX_GEOMETRY_CHILDREN,
+  MAX_QUERY_MATCHES,
   MAX_SNAP_TARGETS,
   MAX_SOURCE_GROUPS,
   type EditingElementBox,
@@ -20,6 +22,7 @@ import {
   type EditingElementMatch,
   type EditingElementSource,
   type EditingLayer,
+  type EditingStackingSibling,
 } from "@hyperframes/core/runtime/editing-port";
 import { resolveElementSourceFile } from "../../components/editor/domEditingDom";
 import { previewRequest } from "./previewChannel";
@@ -250,20 +253,43 @@ const isLayout = (value: unknown) =>
     (side) => Number.isFinite(side) && (side as number) >= 0 && (side as number) <= MAX_DRAFT_PX,
   );
 
-const readGestureStart = (value: unknown): EditingGestureStart | null => {
+const isTurnOrNull = (value: unknown) =>
+  value === null || (Number.isFinite(value) && Math.abs(value as number) <= MAX_DRAFT_DEG);
+
+const isPlanarOrNull = (value: unknown) =>
+  value === null ||
+  (isFields(value) &&
+    ["a", "b", "c", "d"].every(
+      (key) => Number.isFinite(value[key]) && Math.abs(value[key] as number) <= MAX_DRAFT_PX,
+    ));
+
+const kept = <T>(value: T, valid: boolean) => (valid ? value : undefined);
+
+export type ReadGestureStart = Omit<EditingGestureStart, "gsapRotation" | "planar"> & {
+  gsapRotation?: number | null;
+  planar?: EditingGestureStart["planar"];
+};
+
+const readGestureStart = (value: unknown): ReadGestureStart | null => {
   if (!readGeometry(value) || !isFields(value)) return null;
-  const { layout, move, gsap } = value;
+  const { layout, move, gsap, gsapRotation, planar } = value;
   const valid = [
     isLayout(layout),
     move === null || isFiniteFields(move, ["a", "b", "c", "d"]),
     gsap === null || (isFields(gsap) && isFiniteFields(gsap, ["x", "y"]) && isFlag(gsap.moving)),
   ];
-  return valid.includes(false) ? null : (value as unknown as EditingGestureStart);
+  if (valid.includes(false)) return null;
+  const start = value as unknown as ReadGestureStart;
+  return {
+    ...start,
+    gsapRotation: kept(start.gsapRotation, isTurnOrNull(gsapRotation)),
+    planar: kept(start.planar, isPlanarOrNull(planar)),
+  };
 };
 
 export interface PreviewGestureStartReply {
   /** One entry per handle, in order: null for an element the frame no longer has. */
-  elements: Array<EditingGestureStart | null>;
+  elements: Array<ReadGestureStart | null>;
   snap: EditingElementBox[];
 }
 
@@ -309,6 +335,19 @@ export async function previewLayers(
   if (!Array.isArray(layers) || typeof truncated !== "boolean") return null;
   if (typeof missingGroup !== "boolean") return null;
   return layers.every(isLayer) ? { layers, truncated, missingGroup } : null;
+}
+
+const isSibling = (value: unknown): value is EditingStackingSibling =>
+  isFields(value) && isHandle(value.handle) && Number.isSafeInteger(value.zIndex);
+
+export async function previewStackingSiblings(iframe: HTMLIFrameElement, handle: string) {
+  const reply = await previewRequest(iframe, "stacking-family", { handle });
+  const family: unknown = reply?.family;
+  const locked: unknown = reply?.locked;
+  if (!Array.isArray(family) || family.length > MAX_QUERY_MATCHES) return null;
+  if (typeof locked !== "boolean" || !family.every(isSibling)) return null;
+  const handles = new Set(family.map((sibling) => sibling.handle));
+  return handles.size === family.length && handles.has(handle) ? { family, locked } : null;
 }
 
 type EditEntry = [name: string, value: string | null];
@@ -365,7 +404,10 @@ export function editPreviewElement(
 const SEALED_DRAW_WAIT_MS = 300;
 
 /** Saves a live edit at once; a sealed one once the frame says it drew it, else after the wait. */
-export function afterSealedDraw<T>(edit: PreviewElementEdit | null, save: (drawn: boolean) => T) {
+export function afterSealedDraw<T>(
+  edit: Pick<PreviewElementEdit, "drawn"> | null,
+  save: (drawn: boolean) => T,
+) {
   if (!edit) return save(true);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<boolean>((resolve) => {

@@ -2,14 +2,20 @@
 import { describe, expect, it } from "vitest";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { vi } from "vitest";
-import { readLiveSelectionBox, resizeSelectionFromAgent } from "./StudioAgentTools";
+import { agentPreview } from "./agentPreview";
+import { resizeSelectionFromAgent } from "./StudioAgentTools";
+
+const readNowIn = (doc: Document, selection: DomEditSelection) =>
+  agentPreview(() => ({ contentDocument: doc }) as HTMLIFrameElement, "index.html").readNow(
+    selection,
+  );
 
 function rect(width: number, height: number): DOMRect {
   return { x: 10, y: 20, width, height } as DOMRect;
 }
 
-describe("readLiveSelectionBox", () => {
-  it("measures the replacement preview node after a commit reload", () => {
+describe("agentPreview readNow on a live preview", () => {
+  it("measures the replacement preview node after a commit reload", async () => {
     const oldElement = document.createElement("h1");
     oldElement.id = "headline";
     oldElement.getBoundingClientRect = () => rect(300, 50);
@@ -25,7 +31,7 @@ describe("readLiveSelectionBox", () => {
     replacement.getBoundingClientRect = () => rect(280, 60);
     liveDocument.body.append(replacement);
 
-    expect(readLiveSelectionBox(liveDocument, selection, "index.html")).toEqual({
+    expect((await readNowIn(liveDocument, selection)).box).toEqual({
       x: 10,
       y: 20,
       width: 280,
@@ -33,7 +39,7 @@ describe("readLiveSelectionBox", () => {
     });
   });
 
-  it("does not hide a stale target behind its detached old node", () => {
+  it("does not hide a stale target behind its detached old node", async () => {
     const oldElement = document.createElement("h1");
     oldElement.id = "headline";
     const selection = {
@@ -43,9 +49,7 @@ describe("readLiveSelectionBox", () => {
     } as DomEditSelection;
     const liveDocument = document.implementation.createHTMLDocument();
 
-    expect(() => readLiveSelectionBox(liveDocument, selection, "index.html")).toThrow(
-      "target is missing",
-    );
+    await expect(readNowIn(liveDocument, selection)).rejects.toThrow("target is missing");
   });
 });
 

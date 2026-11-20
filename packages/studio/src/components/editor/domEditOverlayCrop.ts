@@ -365,9 +365,19 @@ function readPlanarTransform(element: HTMLElement): Planar2D | null {
   return acc && !isIdentity(acc) ? acc : null;
 }
 
+/** What the frame measured of a stand-in's element at the press: a stand-in has no transform or box of its own. */
+export interface CropFrameStart {
+  planar: Planar2D | null;
+  layout: { width: number; height: number };
+}
+
+const measuredPlanar = ({ planar }: CropFrameStart) =>
+  planar && !isIdentity(planar) ? planar : null;
+
 export function readElementCropFrame(
   element: HTMLElement,
   overlayRect: CropScreenRect & { editScaleX: number; editScaleY: number },
+  start?: CropFrameStart,
 ): CropFrame {
   const editX = overlayRect.editScaleX > 0 ? overlayRect.editScaleX : 1;
   const editY = overlayRect.editScaleY > 0 ? overlayRect.editScaleY : 1;
@@ -380,7 +390,7 @@ export function readElementCropFrame(
     scaleX: editX,
     scaleY: editY,
   };
-  const planar = readPlanarTransform(element);
+  const planar = start ? measuredPlanar(start) : readPlanarTransform(element);
   if (!planar) return aabb;
   const { a, b, c, d } = planar;
   const elScaleX = Math.hypot(a, b);
@@ -391,8 +401,9 @@ export function readElementCropFrame(
   const angleDeg = (Math.atan2(b, a) * 180) / Math.PI;
   const scaleX = elScaleX * editX;
   const scaleY = elScaleY * editY;
-  const width = element.offsetWidth * scaleX;
-  const height = element.offsetHeight * scaleY;
+  const size = start?.layout ?? { width: element.offsetWidth, height: element.offsetHeight };
+  const width = size.width * scaleX;
+  const height = size.height * scaleY;
   if (!(width > 0) || !(height > 0)) return aabb;
   // Rotation about the default center keeps the center invariant, so the
   // local box is centered on the AABB center.

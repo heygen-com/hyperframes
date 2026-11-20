@@ -103,6 +103,7 @@ describe("createEditingPortClient", () => {
           "max-z-index",
           "crop-lift",
           "edit-element",
+          "stacking-family",
           "gsap-set",
           "patch-tweens",
           "soft-reload",
@@ -110,6 +111,7 @@ describe("createEditingPortClient", () => {
           "mark-scenes-stale",
           "swap-scenes",
           "live-retime",
+          "assets-unloaded",
         ],
       });
     } finally {

@@ -88,6 +88,7 @@ export {
   getSystemTotalMb,
   hostCpuCount,
   usableCpuCount,
+  cpuBudget,
   isLowMemorySystem,
   LOW_MEMORY_TOTAL_MB_THRESHOLD,
 } from "./services/systemMemory.js";
@@ -198,11 +199,12 @@ export {
 } from "./services/screenshotService.js";
 
 // ── Encoding ───────────────────────────────────────────────────────────────────
-export { concatListInputArgs } from "@hyperframes/parsers/ff-binaries";
+export { concatListInputArgs, concatListText } from "@hyperframes/parsers/ff-binaries";
 export {
   buildEncoderArgs,
   encodeFramesFromDir,
   buildConcatArgs,
+  writeVideoConcatList,
   concatVideoFiles,
   encodeFramesChunkedConcat,
   muxVideoWithAudio,

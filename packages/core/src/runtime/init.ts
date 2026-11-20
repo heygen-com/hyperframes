@@ -161,7 +161,7 @@ import {
 } from "./compositionLength";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
-import { loadCompositions } from "./compositionLoader";
+import { inlineMountTemplate, loadCompositions } from "./compositionLoader";
 import { runScriptsAfterFonts, waitForFonts } from "./afterFonts";
 import {
   applyCaptionOverrides,
@@ -1211,11 +1211,7 @@ export function initSandboxRuntimeModular(): void {
     );
     for (const el of candidates) {
       const cid = el.getAttribute("data-composition-id");
-      if (
-        cid &&
-        el.children.length === 0 &&
-        document.querySelector(`template#${CSS.escape(cid)}-template`)
-      ) {
+      if (cid && el.children.length === 0 && inlineMountTemplate(document, cid)) {
         hasInlineTemplateCompositions = true;
         break;
       }
@@ -2398,6 +2394,17 @@ export function initSandboxRuntimeModular(): void {
     return true;
   };
 
+  const renderRootBackAtPlayheadAfterRenest = () => {
+    const root = state.capturedTimeline;
+    if (
+      typeof root?.time !== "function" ||
+      typeof root.totalTime !== "function" ||
+      typeof root.duration !== "function"
+    )
+      return;
+    const target = Math.min(Math.max(0, state.currentTime || 0), root.duration());
+    if (Math.abs(root.time() - target) > 1e-3) root.totalTime(target, true);
+  };
   const reconcileTimeline = () => {
     if (state.tornDown) return;
     const resolution = resolveRootTimelineFromDocument();
@@ -2422,6 +2429,7 @@ export function initSandboxRuntimeModular(): void {
         clock.setDuration(length);
         postTimeline();
       }
+      renderRootBackAtPlayheadAfterRenest();
     }
     syncTimedElementVisibility(state.currentTime);
   };
@@ -5913,6 +5921,8 @@ export function initSandboxRuntimeModular(): void {
         swallow("runtime.init.transport.adapter", err);
       }
     }
+    window.__hf = window.__hf || {};
+    window.__hf.redraws = (window.__hf.redraws ?? 0) + 1;
     return pageAnimations;
   }
 

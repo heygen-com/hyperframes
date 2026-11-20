@@ -76,6 +76,7 @@ import {
   isJavaScriptType,
   prepareFlattenedInnerRoot,
   emitRootCompositionVariableStyles,
+  dropAuthoredSvgReferenceAliases,
   readDeclaredDefaults,
   parseHostVariableValues,
   boundMediaSrc,
@@ -148,7 +149,10 @@ import {
 } from "@hyperframes/core/fonts/embed";
 import { prepareAnimatedGifInputs } from "./animatedGifPrep.js";
 import { prepareHeifImageInputs } from "./heifImagePrep.js";
-import { createStudioPositionSeekReapplyScript } from "@hyperframes/studio-server/manual-edits-render-script";
+import {
+  createStudioPositionSeekReapplyScript,
+  htmlHasStudioPositionEdits,
+} from "@hyperframes/studio-server/manual-edits-render-script";
 import { getPositionEditsRenderScript } from "@hyperframes/core/runtime/position-edits-render";
 import { defaultLogger, type ProducerLogger } from "../logger.js";
 import { assertAssetMediaTypeProfile } from "./assetMediaType.js";
@@ -631,6 +635,63 @@ type SourceProbe = { profile: MediaProbeProfile; fileDuration: number | null } |
 /** One probe per unique source for a whole compile, whatever number of elements point at it. */
 type SourceProbes = Map<string, Promise<SourceProbe>>;
 
+/** At most this many distinct remote media, image and font files download for one compile. */
+export const MAX_REMOTE_ASSETS = 1000;
+const ASSET_DOWNLOADS_AT_ONCE = 8;
+
+/** One compile's media, image and font downloads: its cancel, a cap on distinct files, a few at a time. */
+class AssetDownloads {
+  private readonly reserved = new Set<string>();
+  private running = 0;
+  private readonly queued: (() => void)[] = [];
+
+  constructor(readonly signal?: AbortSignal) {}
+
+  /** Throws before any of `urls` downloads when they would take the compile past the cap. */
+  reserve(urls: Iterable<string>): void {
+    this.signal?.throwIfAborted();
+    const fresh = new Set([...urls].filter((url) => !this.reserved.has(url)));
+    if (this.reserved.size + fresh.size > MAX_REMOTE_ASSETS) {
+      throw new Error(
+        `The composition links more than ${MAX_REMOTE_ASSETS} remote media, image and font files; at most ${MAX_REMOTE_ASSETS} are downloaded at compile time`,
+      );
+    }
+    for (const url of fresh) this.reserved.add(url);
+  }
+
+  async download(url: string, destDir: string): Promise<string> {
+    while (this.running >= ASSET_DOWNLOADS_AT_ONCE) {
+      await new Promise<void>((resolve) => this.queued.push(resolve));
+    }
+    if (this.signal?.aborted) {
+      this.queued.shift()?.();
+      this.signal.throwIfAborted();
+    }
+    this.running += 1;
+    try {
+      return await downloadToTemp(url, destDir, undefined, this.signal, undefined, {
+        onTelemetry: logRemoteDownloadTelemetry,
+      });
+    } finally {
+      this.running -= 1;
+      this.queued.shift()?.();
+    }
+  }
+}
+
+const downloadAsset = (url: string, destDir: string, assets?: AssetDownloads) =>
+  assets
+    ? assets.download(url, destDir)
+    : downloadToTemp(url, destDir, undefined, undefined, undefined, {
+        onTelemetry: logRemoteDownloadTelemetry,
+      });
+
+/** What one compile shares across the root and every sub-composition it compiles. */
+interface CompileRun {
+  probes: SourceProbes;
+  assets: AssetDownloads;
+}
+
 async function resolveMediaDuration(
   src: string,
   mediaStart: number,
@@ -642,7 +703,7 @@ async function resolveMediaDuration(
   elementIdentity: string,
   log?: ProducerLogger,
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
-  probes?: SourceProbes,
+  run?: CompileRun,
   assetRoot?: string,
 ): Promise<{ duration: number | null; resolvedPath: string }> {
   let filePath = src;
@@ -650,11 +711,11 @@ async function resolveMediaDuration(
   if (isHttpUrl(src)) {
     const remoteDir = join(downloadDir, REMOTE_MEDIA_SUBDIR);
     if (!existsSync(remoteDir)) mkdirSync(remoteDir, { recursive: true });
+    run?.assets.reserve([src]);
     try {
-      filePath = await downloadToTemp(src, remoteDir, undefined, undefined, undefined, {
-        onTelemetry: logRemoteDownloadTelemetry,
-      });
-    } catch {
+      filePath = await downloadAsset(src, remoteDir, run?.assets);
+    } catch (err) {
+      if (run?.assets.signal?.aborted) throw err;
       // Download failed (e.g. 404 placeholder URL) — skip gracefully.
       // The element will get duration 0 and be excluded from the render.
       return { duration: null, resolvedPath: src };
@@ -728,10 +789,10 @@ async function resolveMediaDuration(
       }
     });
   const key = `${tagName}\0${filePath}`;
-  let probed = probes?.get(key);
+  let probed = run?.probes.get(key);
   if (!probed) {
     probed = probe();
-    probes?.set(key, probed);
+    run?.probes.set(key, probed);
   }
   const outcome = await probed;
   if ("error" in outcome) {
@@ -790,7 +851,7 @@ async function compileHtmlFile(
   downloadDir: string,
   log?: ProducerLogger,
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
-  probes?: SourceProbes,
+  run?: CompileRun,
   assetRoot?: string,
 ): Promise<{ html: string; unresolvedCompositions: UnresolvedElement[] }> {
   const { html: staticCompiled, unresolved } = compileTimingAttrs(html);
@@ -815,7 +876,7 @@ async function compileHtmlFile(
         el.id,
         log,
         urlByAbsentLocalPath,
-        probes,
+        run,
         assetRoot,
       ).then(({ duration }) => ({ id: el.id, duration })),
     ),
@@ -847,7 +908,7 @@ async function compileHtmlFile(
           el.id,
           log,
           undefined,
-          probes,
+          run,
           assetRoot,
         );
         return { id: el.id, tagName: el.tagName, duration: el.duration, maxDuration, src: el.src! };
@@ -917,7 +978,7 @@ async function parseSubCompositions(
   downloadDir: string,
   visited: Set<string> = new Set(),
   urlByAbsentLocalPath?: ReadonlyMap<string, string>,
-  probes?: SourceProbes,
+  run?: CompileRun,
   assetRoot?: string,
   outsideFiles: OutsideFilePolicy = {},
   compiledSrcs: Set<string> = new Set(),
@@ -974,7 +1035,7 @@ async function parseSubCompositions(
         downloadDir,
         undefined,
         urlByAbsentLocalPath,
-        probes,
+        run,
         assetRoot,
       );
 
@@ -984,7 +1045,7 @@ async function parseSubCompositions(
         downloadDir,
         item.nestedVisited,
         urlByAbsentLocalPath,
-        probes,
+        run,
         assetRoot,
         outsideFiles,
         compiledSrcs,
@@ -1204,6 +1265,7 @@ function inlineSubCompositions(
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
 
   if (!hosts.length) {
+    const dropped = dropAuthoredSvgReferenceAliases(document as unknown as Document);
     // Even with no sub-compositions, declared composition variables need a
     // compile-time stylesheet so eval-time reads (GSAP .from immediateRender,
     // top-level script getComputedStyle) resolve var(--slug) — the runtime's
@@ -1214,7 +1276,7 @@ function inlineSubCompositions(
       variableOverrides,
       { chargeBytes: (bytes) => budget.chargeGenerated("composition variables", bytes) },
     );
-    return { html: emitted ? document.toString() : html, variablesByComp: {} };
+    return { html: emitted || dropped ? document.toString() : html, variablesByComp: {} };
   }
 
   const readOnce = new Map<string, string | null>();
@@ -1279,6 +1341,7 @@ function inlineSubCompositions(
         return compHtml;
       },
       chargeEmitted: (srcPath: string, bytes: number) => budget.chargeGenerated(srcPath, bytes),
+      chargeElements: (srcPath: string, count: number) => budget.chargeElements(srcPath, count),
       parseHtml: (htmlStr: string) => parseHTML(htmlStr).document as unknown as Document,
       // Mirrors the preview bundler: a sub-composition's SIBLING assets resolve
       // against its own directory, project-root refs stay as authored.
@@ -1483,28 +1546,59 @@ function operatorGsapMirror(): string | undefined {
   }
 }
 
-async function downloadScript(src: string, mirror: string | undefined): Promise<Uint8Array> {
+async function downloadScript(
+  src: string,
+  mirror: string | undefined,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
   if (mirror && new URL(src).href.startsWith(mirror)) {
-    const response = await fetch(src, { redirect: "error", signal: AbortSignal.timeout(15_000) });
+    const response = await fetch(src, {
+      redirect: "error",
+      signal: AbortSignal.any([AbortSignal.timeout(15_000), signal]),
+    });
     if (!response.ok) throw new Error(`HTTP ${response.status} for ${src}`);
     const bytes = new Uint8Array(await response.arrayBuffer());
     if (bytes.byteLength > MAX_SCRIPT_BYTES) throw new Error(`Script over 16 MiB: ${src}`);
     return bytes;
   }
-  return fetchPublicHttpsBytes(src, { maxBytes: MAX_SCRIPT_BYTES, timeoutMs: 15_000 });
+  return fetchPublicHttpsBytes(src, { maxBytes: MAX_SCRIPT_BYTES, timeoutMs: 15_000, signal });
 }
 
 const MAX_CONCURRENT_SCRIPT_FETCHES = 4;
+/**
+ * Distinct remote addresses one compile downloads, per kind: scripts, and non-Google stylesheets (counted before
+ * their contents are read, so a stylesheet with no font rules counts too).
+ */
+export const MAX_REMOTE_FETCHES = 32;
+/**
+ * The script and stylesheet inliners' downloads share this much time, from the first one; what is still pending then
+ * counts as failed. Fonts and other assets keep their own per-request limits.
+ */
+export const REMOTE_FETCH_DEADLINE_MS = 60_000;
+/** A signal, or a getter that starts one when the first download asks for it. */
+type FetchSignal = AbortSignal | (() => AbortSignal);
+const fetchSignalOf = (signal: FetchSignal | undefined) =>
+  typeof signal === "function" ? signal() : signal;
+
+function assertRemoteFetchCount(kind: string, count: number): void {
+  if (count > MAX_REMOTE_FETCHES) {
+    throw new Error(
+      `The composition links ${count} remote ${kind}; at most ${MAX_REMOTE_FETCHES} are downloaded at compile time`,
+    );
+  }
+}
 
 /**
  * Download external CDN scripts and inline them into the HTML so rendering
  * works without network access (Docker, CI, restricted environments). Each URL
  * is fetched once, a few at a time, and every inlined copy is charged to the
  * render's budget as it arrives, so going over stops the downloads still queued.
+ * Once `signal` aborts, pending downloads fail and their tags are left as they are.
  */
 export async function inlineExternalScripts(
   html: string,
   budget = new CompositionExpansionBudget(),
+  signal?: FetchSignal,
 ): Promise<string> {
   const fullHtml = ensureFullDocument(html);
   const wrappedFragment = fullHtml !== html;
@@ -1520,10 +1614,24 @@ export async function inlineExternalScripts(
   }
 
   if (externalScripts.length === 0) return html;
+  // The host's own copy needs no network; one that fails the tag's integrity metadata is downloaded instead.
+  // It is read once per address: repeated tags share those bytes, and each is still charged as it is placed.
+  const bundled = new Map<string, Uint8Array | null>();
+  const local = externalScripts.map(({ el, src }) => {
+    if (!bundled.has(src)) bundled.set(src, bundledScript(src));
+    const bytes = bundled.get(src);
+    return bytes && matchesScriptIntegrity(bytes, el.getAttribute("integrity") || "")
+      ? bytes
+      : null;
+  });
+  const remote = new Set(externalScripts.filter((_, i) => !local[i]).map(({ src }) => src));
+  assertRemoteFetchCount("scripts", remote.size);
 
   const mirror = operatorGsapMirror();
   const limit = createConcurrencyLimit(MAX_CONCURRENT_SCRIPT_FETCHES);
   const stop = new AbortController();
+  const shared = remote.size > 0 ? fetchSignalOf(signal) : undefined;
+  const fetchSignal = shared ? AbortSignal.any([stop.signal, shared]) : stop.signal;
   const fail = (error: unknown): never => {
     stop.abort(error);
     throw error;
@@ -1541,22 +1649,21 @@ export async function inlineExternalScripts(
     let bytes = fetches.get(src);
     if (!bytes) {
       bytes = limit(async () => {
-        if (stop.signal.aborted) throw stop.signal.reason;
-        const downloaded = await downloadScript(src, mirror);
+        fetchSignal.throwIfAborted();
+        const downloaded = await downloadScript(src, mirror, fetchSignal);
         charge(downloaded.byteLength);
         return downloaded;
-      }, stop.signal);
+      }, fetchSignal);
       fetches.set(src, bytes);
     }
     return bytes;
   };
   const placed = new Set<string>();
   const downloads = await Promise.allSettled(
-    externalScripts.map(async ({ el, src }) => {
+    externalScripts.map(async ({ el, src }, i) => {
       const integrity = el.getAttribute("integrity") || "";
-      // The host's own copy needs no network; one that fails the tag's integrity metadata is not used.
-      let bytes = bundledScript(src);
-      if (bytes && matchesScriptIntegrity(bytes, integrity)) {
+      let bytes = local[i];
+      if (bytes) {
         charge(bytes.byteLength);
       } else {
         bytes = await fetchOnce(src);
@@ -1708,8 +1815,10 @@ async function downloadAndRewriteUrls(
   remoteDir: string,
   warnLabel: string,
   logLabel: string,
+  assets: AssetDownloads | undefined,
   extraRewrite?: (html: string, url: string, relPath: string) => string,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
+  assets?.reserve(urlSet);
   if (urlSet.size === 0) return { html, remoteMediaAssets: new Map() };
   if (!existsSync(remoteDir)) mkdirSync(remoteDir, { recursive: true });
 
@@ -1717,11 +1826,10 @@ async function downloadAndRewriteUrls(
   await Promise.all(
     [...urlSet].map(async (url) => {
       try {
-        const localPath = await downloadToTemp(url, remoteDir, undefined, undefined, undefined, {
-          onTelemetry: logRemoteDownloadTelemetry,
-        });
+        const localPath = await downloadAsset(url, remoteDir, assets);
         urlToLocal.set(url, localPath);
       } catch (err) {
+        if (assets?.signal?.aborted) throw err;
         const identity = safeDownloadUrlIdentity(url);
         defaultLogger.warn(`[Compiler] ${warnLabel}, using original URL as fallback.`, {
           urlFingerprint: identity.urlFingerprint,
@@ -1772,6 +1880,7 @@ async function downloadAndRewriteUrls(
 export async function localizeRemoteMediaSources(
   html: string,
   downloadDir: string,
+  assets?: AssetDownloads,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   const urlSet = new Set([...remoteSrcUrls(html, "media"), ...remoteSrcUrls(html, "source")]);
   const localized = await downloadAndRewriteUrls(
@@ -1780,6 +1889,7 @@ export async function localizeRemoteMediaSources(
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote media download failed",
     "Localized remote media source(s)",
+    assets,
   );
   return { ...localized, html: dropBindingOnLocalizedMedia(localized.html) };
 }
@@ -1828,6 +1938,7 @@ function dropBindingOnLocalizedMedia(html: string): string {
 export async function localizeRemoteImageSources(
   html: string,
   downloadDir: string,
+  assets?: AssetDownloads,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   // frameCapture's `pollImagesReady`/`decodeAllImages` cover any remote URL this misses.
   const urlSet = new Set(remoteSrcUrls(html, "img"));
@@ -1837,6 +1948,7 @@ export async function localizeRemoteImageSources(
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote image download failed",
     "Localized remote image source(s)",
+    assets,
   );
 }
 
@@ -1856,6 +1968,7 @@ export async function localizeRemoteImageSources(
 export async function localizeRemoteBackgroundImages(
   html: string,
   downloadDir: string,
+  assets?: AssetDownloads,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   const urlSet = new Set<string>();
   for (const { parts } of remoteBackgroundUrlMatches(html)) {
@@ -1867,6 +1980,7 @@ export async function localizeRemoteBackgroundImages(
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote background-image download failed",
     "Localized remote background-image(s)",
+    assets,
     // Quoted url('..')/url("..") are rewritten by downloadAndRewriteUrls' default
     // replaceAll; this handles the unquoted url(https://..) form.
     (h, url, rel) => h.replaceAll(`url(${url})`, `url(${rel})`),
@@ -1896,12 +2010,16 @@ function isGoogleFontsUrl(href: string): boolean {
 
 const MAX_STYLESHEET_BYTES = 2 * 1024 * 1024;
 
-async function fetchExternalStylesheetCss(href: string): Promise<string | null> {
+async function fetchExternalStylesheetCss(
+  href: string,
+  signal: AbortSignal,
+): Promise<string | null> {
   const identity = safeDownloadUrlIdentity(href);
   try {
     return await fetchPublicHttpsText(href, {
       maxBytes: MAX_STYLESHEET_BYTES,
       timeoutMs: 15_000,
+      signal,
     });
   } catch (err) {
     defaultLogger.warn("[Compiler] External stylesheet fetch failed, preserving link tag.", {
@@ -1970,6 +2088,7 @@ function remoteFontStylesheetHref(tag: string): string | undefined {
 async function inlineExternalFontStylesheets(
   html: string,
   budget = new CompositionExpansionBudget(),
+  signal?: FetchSignal,
 ): Promise<string> {
   const hrefs = new Set<string>();
   for (const { parts } of stylesheetLinkMatches(html)) {
@@ -1977,29 +2096,35 @@ async function inlineExternalFontStylesheets(
     if (href) hrefs.add(href);
   }
   if (hrefs.size === 0) return html;
+  assertRemoteFetchCount("stylesheets", hrefs.size);
 
-  // Each sheet is fetched once and only its font rules are kept, charged as they arrive.
-  const MAX_CONCURRENT_STYLESHEET_FETCHES = 4;
+  // Each sheet is fetched once, a few at a time, and only its font rules are kept, charged as they arrive.
+  const limit = createConcurrencyLimit(MAX_CONCURRENT_SCRIPT_FETCHES);
+  const stop = new AbortController();
+  const shared = fetchSignalOf(signal);
+  const fetchSignal = shared ? AbortSignal.any([stop.signal, shared]) : stop.signal;
   const inlineByHref = new Map<string, string>();
-  const unique = [...hrefs];
-  for (let i = 0; i < unique.length; i += MAX_CONCURRENT_STYLESHEET_FETCHES) {
-    const batch = unique.slice(i, i + MAX_CONCURRENT_STYLESHEET_FETCHES);
-    const sheets = await Promise.all(batch.map(fetchExternalStylesheetCss));
-    batch.forEach((href, index) => {
-      const css = sheets[index];
-      const fontFaceBlocks = css ? extractFontFaceBlocks(css) : [];
-      if (fontFaceBlocks.length === 0) return;
-      const inlineStyle = `<style>/* Inlined external font stylesheet */\n${fontFaceBlocks.join("\n")}\n</style>`;
+  const inlineSheet = async (href: string) => {
+    const css = await fetchExternalStylesheetCss(href, fetchSignal);
+    const fontFaceBlocks = css ? extractFontFaceBlocks(css) : [];
+    if (fontFaceBlocks.length === 0) return;
+    const inlineStyle = `<style>/* Inlined external font stylesheet */\n${fontFaceBlocks.join("\n")}\n</style>`;
+    try {
       budget.chargeGenerated(REMOTE_STYLESHEETS, inlineStyle.length);
-      inlineByHref.set(href, inlineStyle);
-      const identity = safeDownloadUrlIdentity(href);
-      defaultLogger.debug("[Compiler] Inlined external @font-face rule(s)", {
-        count: fontFaceBlocks.length,
-        urlFingerprint: identity.urlFingerprint,
-        host: identity.host,
-      });
+    } catch (error) {
+      stop.abort(error);
+      throw error;
+    }
+    inlineByHref.set(href, inlineStyle);
+    const identity = safeDownloadUrlIdentity(href);
+    defaultLogger.debug("[Compiler] Inlined external @font-face rule(s)", {
+      count: fontFaceBlocks.length,
+      urlFingerprint: identity.urlFingerprint,
+      host: identity.host,
     });
-  }
+  };
+  await Promise.allSettled([...hrefs].map((href) => limit(() => inlineSheet(href), fetchSignal)));
+  if (stop.signal.aborted) throw stop.signal.reason;
 
   const placed = new Set<string>();
   return replaceMatches(html, stylesheetLinkMatches(html), (tag) => {
@@ -2088,6 +2213,7 @@ export async function localizeRemoteFontFaces(
 function localizeFontFaceUrls(
   html: string,
   downloadDir: string,
+  assets?: AssetDownloads,
 ): Promise<{ html: string; remoteMediaAssets: Map<string, string> }> {
   return downloadAndRewriteUrls(
     collectFontFaceUrls(html),
@@ -2095,6 +2221,7 @@ function localizeFontFaceUrls(
     join(downloadDir, REMOTE_MEDIA_SUBDIR),
     "Remote font download failed",
     "Localized remote font face(s)",
+    assets,
     (h, url, relPath) => h.replaceAll(`url(${url})`, `url("${relPath}")`),
   );
 }
@@ -2122,21 +2249,27 @@ async function readLocalFont(absPath: string): Promise<LocalFontRead> {
   return { kind: "inline", buffer: Buffer.concat(chunks, totalBytes) };
 }
 
-/** The data URI a project font path embeds as, or undefined when it stays a file. */
+/** The data URI a project or downloaded font path embeds as, or undefined when it stays a file. */
 async function localFontDataUri(
   localPath: string,
   projectDir: string,
   assetRoot: string | undefined,
   dataUriByAbsolutePath: Map<string, string | undefined>,
   log: ProducerLogger,
+  downloadedPath?: string,
 ): Promise<string | undefined> {
-  const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
-  if (!isPathInside(absPath, projectDir) || escapesAssetRoot(absPath, assetRoot)) return undefined;
-  // A project font that is a link leading outside obeys the same policy as the file server.
-  if (refusesOutsideLink(projectDir, absPath, (line) => log.warn(`[Compiler] ${line}`))) {
-    return undefined;
+  const absPath =
+    downloadedPath ?? (localPath.startsWith("/") ? localPath : resolve(projectDir, localPath));
+  if (downloadedPath === undefined) {
+    if (!isPathInside(absPath, projectDir) || escapesAssetRoot(absPath, assetRoot)) {
+      return undefined;
+    }
+    // A project font that is a link leading outside obeys the same policy as the file server.
+    if (refusesOutsideLink(projectDir, absPath, (line) => log.warn(`[Compiler] ${line}`))) {
+      return undefined;
+    }
+    if (isPrivateCompositionFile(projectDir, absPath)) return undefined;
   }
-  if (isPrivateCompositionFile(projectDir, absPath)) return undefined;
   if (dataUriByAbsolutePath.has(absPath)) return dataUriByAbsolutePath.get(absPath);
   const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
   try {
@@ -2182,6 +2315,7 @@ async function embedLocalFontFaces(
   assetRoot: string | undefined,
   budget: CompositionExpansionBudget,
   log: ProducerLogger = defaultLogger,
+  downloadedFonts: ReadonlyMap<string, string> = new Map(),
 ): Promise<string> {
   const dataUriByPath = new Map<string, string | undefined>();
   const dataUriByAbsolutePath = new Map<string, string | undefined>();
@@ -2192,7 +2326,14 @@ async function embedLocalFontFaces(
         if (!localPath || dataUriByPath.has(localPath)) continue;
         dataUriByPath.set(
           localPath,
-          await localFontDataUri(localPath, projectDir, assetRoot, dataUriByAbsolutePath, log),
+          await localFontDataUri(
+            localPath,
+            projectDir,
+            assetRoot,
+            dataUriByAbsolutePath,
+            log,
+            downloadedFonts.get(localPath),
+          ),
         );
       }
     }
@@ -2253,7 +2394,7 @@ export interface CompileForRenderOptions {
    * prevent host-specific font capture from leaking into the planDir.
    */
   allowSystemFontCapture?: boolean;
-  /** Caller cancellation propagated through compile-time font fetches. */
+  /** Caller cancellation propagated through compile-time font, stylesheet and script fetches. */
   abortSignal?: AbortSignal;
   /** Persistent cache directory for the animated GIF and HEIC prep transcodes; defaults to downloadDir. */
   animatedGifCacheDir?: string;
@@ -2443,7 +2584,7 @@ export async function compileForRender(
   // start.
   assertSubCompositionsUsable(rawHtml, projectDir, assetRoot, outsideFiles);
 
-  const probes: SourceProbes = new Map();
+  const run: CompileRun = { probes: new Map(), assets: new AssetDownloads(options.abortSignal) };
   const { html: compiledHtml, unresolvedCompositions } = await compileHtmlFile(
     rawHtml,
     projectDir,
@@ -2451,7 +2592,7 @@ export async function compileForRender(
     downloadDir,
     options.log,
     options.urlByAbsentLocalPath,
-    probes,
+    run,
     assetRoot,
   );
 
@@ -2462,7 +2603,7 @@ export async function compileForRender(
     downloadDir,
     undefined,
     options.urlByAbsentLocalPath,
-    probes,
+    run,
     assetRoot,
     outsideFiles,
   );
@@ -2499,11 +2640,19 @@ export async function compileForRender(
   const usesThreeDTransforms = detectThreeDTransformUsage(sanitizedHtml);
   const hasAncestorBackgroundImage = detectAncestorBackgroundImage(sanitizedHtml);
 
+  let deadline: AbortSignal | undefined;
+  const remoteFetches = () =>
+    (deadline ??= AbortSignal.any([
+      AbortSignal.timeout(REMOTE_FETCH_DEADLINE_MS),
+      ...(options.abortSignal ? [options.abortSignal] : []),
+    ]));
   // Remote font stylesheets join the page first, or the font check below cannot see them.
   const fontSheetHtml = await inlineExternalFontStylesheets(
     promoteCssImportsToLinkTags(sanitizedHtml),
     budget,
+    remoteFetches,
   );
+  options.abortSignal?.throwIfAborted();
   const normalizedFontHtml = normalizeSystemFontPrimaryFamilies(
     injectTextRenderingRule(coalesceHeadStylesAndBodyScripts(fontSheetHtml)),
   );
@@ -2517,20 +2666,14 @@ export async function compileForRender(
   });
 
   // CDN scripts are inlined after coalescing so they stay separate from the merged inline runs.
-  const assembledHtml = await inlineExternalScripts(coalescedHtml, budget);
+  const assembledHtml = await inlineExternalScripts(coalescedHtml, budget, remoteFetches);
+  options.abortSignal?.throwIfAborted();
 
   // Inject studio position seek re-apply script when positions are baked into HTML.
   // GSAP overwrites the `translate` CSS property on every frame seek; this script
   // re-asserts the CSS custom property var() form after each seek so dragged
   // positions survive frame-by-frame rendering without a JSON sidecar.
-  const HF_POSITION_ATTRS = [
-    'data-hf-studio-path-offset="true"',
-    'data-hf-studio-box-size="true"',
-    'data-hf-studio-rotation="true"',
-    'data-hf-studio-motion="',
-  ];
-  const hasPositionEdits = HF_POSITION_ATTRS.some((attr) => assembledHtml.includes(attr));
-  const htmlWithPositionScript = hasPositionEdits
+  const htmlWithPositionScript = htmlHasStudioPositionEdits(assembledHtml)
     ? (insertBeforeCloseTag(
         assembledHtml,
         "body",
@@ -2549,6 +2692,7 @@ export async function compileForRender(
   const { html: htmlWithLocalMedia, remoteMediaAssets } = await localizeRemoteMediaSources(
     htmlWithDeferredScripts,
     downloadDir,
+    run.assets,
   );
 
   // Download remote <img> sources. Same race shape as video/audio: the
@@ -2556,20 +2700,20 @@ export async function compileForRender(
   // evict decoded pixels mid-render and re-fetch, producing intermittent
   // blank-frame flicker. Localising to disk removes both races.
   const { html: htmlWithLocalImages, remoteMediaAssets: remoteImageAssets } =
-    await localizeRemoteImageSources(htmlWithLocalMedia, downloadDir);
+    await localizeRemoteImageSources(htmlWithLocalMedia, downloadDir, run.assets);
 
   // Download remote CSS background-image url() references. drawElementImage omits
   // cross-origin content, so remote backgrounds render black on the fast path;
   // localising them to same-origin closes that gap.
   const { html: htmlWithLocalBg, remoteMediaAssets: remoteBgAssets } =
-    await localizeRemoteBackgroundImages(htmlWithLocalImages, downloadDir);
+    await localizeRemoteBackgroundImages(htmlWithLocalImages, downloadDir, run.assets);
 
   // Download remote @font-face src URLs and rewrite to local paths.
   // Remote font URLs fail with a CORS rejection at render time (S3 does not
   // allow http://localhost:PORT as origin), causing Chrome to silently fall
   // back to the next font in the stack.
   const { html: htmlWithLocalizedFonts, remoteMediaAssets: remoteFontAssets } =
-    await localizeFontFaceUrls(htmlWithLocalBg, downloadDir);
+    await localizeFontFaceUrls(htmlWithLocalBg, downloadDir, run.assets);
 
   // Chrome cannot decode HEIC, and ffprobe reads a tiled one as video streams,
   // so convert to JPEG before the media-type preflight sees it.
@@ -2606,12 +2750,14 @@ export async function compileForRender(
     defaultLogger.debug(`[Compiler] Prepared ${preparedGifs.length} animated GIF input(s) as WebM`);
   }
 
+  // Remote fonts were downloaded outside the project, so they embed from where they landed.
   const embeddedHtml = await embedLocalFontFaces(
     htmlWithPreparedGifs,
     projectDir,
     assetRoot,
     budget,
     options.log,
+    remoteFontAssets,
   );
 
   // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
