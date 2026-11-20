@@ -103,9 +103,14 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+// stage() loads a fresh runtime per test: reset its own copy reporting, or a late report reaches the next test.
+let resetStagedCopies: (() => void) | null = null;
+
+function cleanUp(): void {
   resetSeekDispatchState();
   resetCopyReporting();
+  resetStagedCopies?.();
+  resetStagedCopies = null;
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.clearAllMocks();
@@ -114,7 +119,9 @@ afterEach(() => {
   document.head.innerHTML = "";
   delete (window as { __HF_MEDIA_CODEC_MAP__?: unknown }).__HF_MEDIA_CODEC_MAP__;
   delete (window as { __HF_EXPORT_RENDER_SEEK_CONFIG?: unknown }).__HF_EXPORT_RENDER_SEEK_CONFIG;
-});
+}
+
+afterEach(cleanUp);
 
 describe("maybeProxyProactively", () => {
   it("rewrites src and calls load() before first load for a hostile, undecodable asset", async () => {
@@ -1058,6 +1065,8 @@ describe("preview quality: lighter copies of heavy files", () => {
     vi.resetModules();
     vi.spyOn(window, "parent", "get").mockReturnValue({} as Window);
     const mod = await import("./mediaProxy");
+    const copies = await import("./previewCopies");
+    resetStagedCopies = copies.resetCopyReporting;
     window.__HF_MEDIA_SOURCE_FACTS__ = facts;
     if (codecMap) window.__HF_MEDIA_CODEC_MAP__ = codecMap as never;
     Object.defineProperty(document.documentElement, "clientWidth", {
@@ -1077,7 +1086,7 @@ describe("preview quality: lighter copies of heavy files", () => {
       return el;
     };
     mod.setProxyDisplayScale(1);
-    return { ...mod, video, posted: vi.mocked(bridge.postRuntimeMessage) };
+    return { ...mod, video, copies, posted: vi.mocked(bridge.postRuntimeMessage) };
   }
 
   const params = (el: HTMLMediaElement) => new URL(el.src, document.baseURI).searchParams;
@@ -1633,6 +1642,21 @@ describe("preview quality: lighter copies of heavy files", () => {
         .map(([message]) => message)
         .filter((message) => message.type === "preview-copies")
         .at(-1);
+
+    // fails without the fix: an earlier test's runtime, never reset, reported its removed copies into this test.
+    it("keeps an earlier test's runtime silent once that test is cleaned up", async () => {
+      const earlier = await stage({ "/video.mp4": HEAVY });
+      const el = earlier.video();
+      earlier.setPreviewQuality(0.5);
+      earlier.copies.noteCopy(el, "making", 0.5);
+      cleanUp();
+
+      const { posted } = await stage({ "/video.mp4": HEAVY });
+      posted.mockClear();
+      // A chain the earlier runtime left mid-wait reaches its report after the next test began.
+      earlier.copies.noteCopy(el, "failed");
+      expect(lastCopies(posted)).toBeUndefined();
+    });
 
     it("counts the copies wanted, with how far the making has got, and says none at full quality", async () => {
       vi.useFakeTimers();
