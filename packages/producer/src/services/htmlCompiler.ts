@@ -2182,21 +2182,27 @@ async function readLocalFont(absPath: string): Promise<LocalFontRead> {
   return { kind: "inline", buffer: Buffer.concat(chunks, totalBytes) };
 }
 
-/** The data URI a project font path embeds as, or undefined when it stays a file. */
+/** The data URI a project or downloaded font path embeds as, or undefined when it stays a file. */
 async function localFontDataUri(
   localPath: string,
   projectDir: string,
   assetRoot: string | undefined,
   dataUriByAbsolutePath: Map<string, string | undefined>,
   log: ProducerLogger,
+  downloadedPath?: string,
 ): Promise<string | undefined> {
-  const absPath = localPath.startsWith("/") ? localPath : resolve(projectDir, localPath);
-  if (!isPathInside(absPath, projectDir) || escapesAssetRoot(absPath, assetRoot)) return undefined;
-  // A project font that is a link leading outside obeys the same policy as the file server.
-  if (refusesOutsideLink(projectDir, absPath, (line) => log.warn(`[Compiler] ${line}`))) {
-    return undefined;
+  const absPath =
+    downloadedPath ?? (localPath.startsWith("/") ? localPath : resolve(projectDir, localPath));
+  if (downloadedPath === undefined) {
+    if (!isPathInside(absPath, projectDir) || escapesAssetRoot(absPath, assetRoot)) {
+      return undefined;
+    }
+    // A project font that is a link leading outside obeys the same policy as the file server.
+    if (refusesOutsideLink(projectDir, absPath, (line) => log.warn(`[Compiler] ${line}`))) {
+      return undefined;
+    }
+    if (isPrivateCompositionFile(projectDir, absPath)) return undefined;
   }
-  if (isPrivateCompositionFile(projectDir, absPath)) return undefined;
   if (dataUriByAbsolutePath.has(absPath)) return dataUriByAbsolutePath.get(absPath);
   const ext = absPath.match(/\.(woff2?|ttf|otf|ttc)$/i)?.[1]?.toLowerCase() ?? "ttf";
   try {
@@ -2242,6 +2248,7 @@ async function embedLocalFontFaces(
   assetRoot: string | undefined,
   budget: CompositionExpansionBudget,
   log: ProducerLogger = defaultLogger,
+  downloadedFonts: ReadonlyMap<string, string> = new Map(),
 ): Promise<string> {
   const dataUriByPath = new Map<string, string | undefined>();
   const dataUriByAbsolutePath = new Map<string, string | undefined>();
@@ -2252,7 +2259,14 @@ async function embedLocalFontFaces(
         if (!localPath || dataUriByPath.has(localPath)) continue;
         dataUriByPath.set(
           localPath,
-          await localFontDataUri(localPath, projectDir, assetRoot, dataUriByAbsolutePath, log),
+          await localFontDataUri(
+            localPath,
+            projectDir,
+            assetRoot,
+            dataUriByAbsolutePath,
+            log,
+            downloadedFonts.get(localPath),
+          ),
         );
       }
     }
@@ -2668,12 +2682,14 @@ export async function compileForRender(
     defaultLogger.debug(`[Compiler] Prepared ${preparedGifs.length} animated GIF input(s) as WebM`);
   }
 
+  // Remote fonts were downloaded outside the project, so they embed from where they landed.
   const embeddedHtml = await embedLocalFontFaces(
     htmlWithPreparedGifs,
     projectDir,
     assetRoot,
     budget,
     options.log,
+    remoteFontAssets,
   );
 
   // Collect assets that resolve outside projectDir (e.g. ../shared-assets/hero.png).
