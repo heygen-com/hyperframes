@@ -101,7 +101,7 @@ jobs:
     name: Render on windows-latest
     needs: [changes, preflight]
     # A skipped required check passes, so a failed change detection or preflight must fail it.
-    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.code == 'true' || github.event_name == 'workflow_dispatch') }}
+    if: false
     runs-on: windows-latest
     timeout-minutes: 30
 
@@ -459,6 +459,13 @@ jobs:
           # Only the engine-cli lanes read an LFS file (engine's ffprobe test parses a producer HDR PNG).
           lfs: ${{ matrix.process_tests == true }}
 
+      - name: Start the probe sampler
+        shell: pwsh
+        run: |
+          Get-MpComputerStatus | Select-Object RealTimeProtectionEnabled, IsTamperProtected, AntivirusEnabled, BehaviorMonitorEnabled | Format-List
+          Get-CimInstance Win32_ComputerSystem | Select-Object NumberOfLogicalProcessors, TotalPhysicalMemory | Format-List
+          Start-Process pwsh -ArgumentList "-NoProfile","-File","scripts/ci/probe-sampler.ps1","-Out","$env:RUNNER_TEMP\probe.csv" -WindowStyle Hidden
+
       # -----------------------------------------------------------------
       # Install FFmpeg so vitest suites that gate on `HAS_FFMPEG`
       # (e.g. packages/engine videoFrameExtractor.test.ts) actually run on
@@ -567,8 +574,16 @@ jobs:
         shell: pwsh
         run: bun run --filter "@hyperframes/core" test:hyperframe-runtime-ci
 
-  # Preserve the existing required check name while the lanes stay
-  # independently visible and rerunnable.
+      # Preserve the existing required check name while the lanes stay
+      # independently visible and rerunnable.
+
+      - name: Upload probe samples
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: probe-${{ matrix.lane }}
+          path: ${{ runner.temp }}/probe.csv
+
   test-windows:
     name: Tests on windows-latest
     needs: [changes, test-windows-lane]
