@@ -170,8 +170,9 @@ const UNKNOWN = -2;
 // One CSS escape, anchored where it is tried: at most nine characters, so each try costs a constant.
 const ESCAPE_AT = /\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])/y;
 
-/** Regions of `selector` where `#` is never an id prefix: a closed comment, an escape, a closed quoted string, or a
- * whole attribute bracket. Each opener's closer is memoized, so an unclosed opener costs one read: linear on any input. */
+/** Regions of `selector` where `#` is never an id prefix: a closed comment, an escape, a closed quoted string,
+ * or a whole attribute bracket. Each opener's closer is memoized, so an unclosed opener costs one read:
+ * linear on any input. */
 function guardedSelectorSegments(selector: string): Array<readonly [number, number]> {
   const n = selector.length;
   // commentClose[i]: where the first "*/" at or after i starts.
