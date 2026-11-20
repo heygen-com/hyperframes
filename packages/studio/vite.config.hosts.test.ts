@@ -10,6 +10,7 @@ type Middleware = (req: IncomingMessage, res: ServerResponse, next: () => void) 
 
 interface Reply {
   status: number | undefined;
+  headers: Record<string, string>;
   body: string;
 }
 
@@ -64,11 +65,12 @@ function startPlugin(): Middleware[] {
 // Runs the request down the plugin's middlewares the way connect would; `undefined` status means every one passed it on.
 function request(middlewares: Middleware[], url: string, host: string): Promise<Reply> {
   return new Promise((resolve) => {
-    const reply: Reply = { status: undefined, body: "" };
+    const reply: Reply = { status: undefined, headers: {}, body: "" };
     const res = Object.assign(new EventEmitter(), {
       headersSent: false,
-      writeHead(status: number) {
+      writeHead(status: number, headers?: Record<string, string>) {
         reply.status = status;
+        reply.headers = headers ?? {};
         res.headersSent = true;
         return res;
       },
@@ -144,5 +146,30 @@ describe("studio dev server host check", () => {
     vi.resetModules();
     const { default: fresh } = await import("./vite.config");
     expect(fresh.server?.allowedHosts).toEqual(["studio.tunnel.example"]);
+  });
+});
+
+// Dev and local-studio `preview` run this Vite server, whose SPA fallback serves the shell anywhere.
+describe("studio dev server OAuth returns", () => {
+  it.each([
+    "/oauth/callback?code=SECRET&state=s",
+    "/callback?code=SECRET",
+    "/?code=SECRET",
+    "/index.html?state=s",
+    "/api/projects/project/preview?code=SECRET",
+  ])("refuses %s inertly before any route or the SPA fallback", async (url) => {
+    const reply = await request(startPlugin(), url, "127.0.0.1:5190");
+    expect(reply.status).toBe(400);
+    expect(reply.headers["content-type"]).toMatch(/^text\/plain/);
+    expect(reply.headers["cross-origin-opener-policy"]).toBe("same-origin");
+    expect(reply.headers["content-security-policy"]).toMatch(/(^|;\s*)sandbox(;|$)/);
+    expect(reply.headers["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(reply.headers["x-content-type-options"]).toBe("nosniff");
+    expect(reply.body).not.toContain("SECRET");
+  });
+
+  it("leaves the entry route without a return to Vite", async () => {
+    const reply = await request(startPlugin(), "/?hf_canary_x=on", "127.0.0.1:5190");
+    expect(reply.status).toBeUndefined();
   });
 });

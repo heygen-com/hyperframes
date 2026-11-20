@@ -45,6 +45,11 @@ import {
   type SwapScenesParams,
   type SwapScenesResult,
 } from "./editing/scenes";
+import {
+  parseLiveRetime,
+  type LiveRetimeParams,
+  type LiveRetimeResult,
+} from "./editing/liveRetime";
 import type { RuntimeTimelineMessage } from "./types";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { parseCombo } from "../keyCombo";
@@ -212,6 +217,7 @@ export const EDITING_REQUEST_KINDS = [
   "hold-scenes",
   "mark-scenes-stale",
   "swap-scenes",
+  "live-retime",
   "assets-unloaded",
   "text-edit",
 ] as const;
@@ -362,6 +368,7 @@ export interface EditingRequests {
   "hold-scenes": { params: HoldScenesParams; result: { held: boolean } };
   "mark-scenes-stale": { params: MarkScenesStaleParams; result: { marked: true } };
   "swap-scenes": { params: SwapScenesParams; result: SwapScenesResult };
+  "live-retime": { params: LiveRetimeParams; result: { result: LiveRetimeResult } };
   "assets-unloaded": { params: NoParams; result: { unloaded: boolean } };
   "text-edit": { params: TextEditParams; result: TextEditResult };
 }
@@ -596,6 +603,7 @@ const PARAM_PARSERS: {
   "hold-scenes": parseHoldScenes,
   "mark-scenes-stale": parseMarkScenesStale,
   "swap-scenes": parseSwapScenes,
+  "live-retime": parseLiveRetime,
   "assets-unloaded": noParams,
   "text-edit": parseTextEdit,
 };

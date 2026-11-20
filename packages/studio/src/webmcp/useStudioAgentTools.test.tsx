@@ -6,7 +6,14 @@ import { writeStudioUiPreferences } from "../utils/studioUiPreferences";
 import { mintElementHandle } from "./handles";
 import { useStudioAgentTools, type StudioAgentToolsDeps } from "./useStudioAgentTools";
 import type { ModelContext, ModelContextRegisterToolOptions, ModelContextTool } from "./types";
-import { lookSnapshot, previewDoc, selectionFor, studioAgentToolsDeps } from "./webmcpTestUtils";
+import {
+  documentPreview,
+  liveTarget,
+  lookSnapshot,
+  previewDoc,
+  selectionFor,
+  studioAgentToolsDeps,
+} from "./webmcpTestUtils";
 
 const trackEvent = vi.hoisted(() => vi.fn());
 vi.mock("../telemetry/client", () => ({ trackEvent }));
@@ -53,8 +60,8 @@ function mountedTargetDeps(overrides: Partial<StudioAgentToolsDeps> = {}) {
     agentHandle,
     currentSelection: selectionFor(human),
     deps: studioAgentToolsDeps({
-      getPreviewDocument: () => doc,
-      buildSelection: async (element) => selectionFor(element),
+      preview: documentPreview(() => doc),
+      buildSelection: async (element) => selectionFor(liveTarget(element)),
       ...overrides,
     }),
   };
@@ -338,7 +345,8 @@ describe("useStudioAgentTools", () => {
     const { registered } = installModelContext();
     const setText = vi.fn();
     const targeted = mountedTargetDeps({
-      buildSelection: async (element) => selectionFor(element, { isInsideLockedComposition: true }),
+      buildSelection: async (element) =>
+        selectionFor(liveTarget(element), { isInsideLockedComposition: true }),
     });
     await act(async () => mountTools({ ...targeted.deps, setText }));
 
@@ -424,7 +432,7 @@ describe("useStudioAgentTools", () => {
           },
         }),
         addAnimation: async () => true,
-        readBox: () => ({ ...box }),
+        readNow: async () => ({ box: { ...box }, text: null }),
         resizeTo: async (_selection, next) => {
           Object.assign(box, next);
           return {
