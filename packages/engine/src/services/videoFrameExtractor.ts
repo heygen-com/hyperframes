@@ -8,7 +8,7 @@
 
 import { usableCpuCount } from "./systemMemory.js";
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
-import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, rmSync } from "fs";
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, statSync } from "fs";
 import { basename, isAbsolute, join, normalize, relative, win32 } from "path";
 import { tmpdir } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
@@ -1342,23 +1342,56 @@ export async function buildVideoLayerInput(
 // VLC-muxed MP4s can leave the first IDR out of `stss`; ffmpeg then cannot input-seek before the next one.
 const SEEK_INDEX_MISSING = /Cannot find an index entry before timestamp|could not seek to position/;
 
+/** The probed size of a source the mov/mp4 demuxer reads; undefined for a playlist, a list or any other format. */
+async function movSourceBytes(
+  videoPath: string,
+  signal?: AbortSignal,
+): Promise<number | undefined> {
+  try {
+    const probed = JSON.parse(
+      await runFfprobe(
+        videoPath,
+        ["-show_entries", "format=format_name,size", "-of", "json"],
+        signal,
+      ),
+    ) as { format?: { format_name?: string; size?: string } };
+    const bytes = Number(probed.format?.size);
+    return probed.format?.format_name === "mov,mp4,m4a,3gp,3g2,mj2" && bytes > 0
+      ? bytes
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A mov/mp4 copy past this replays data, so it fails. `-fs` caps the media; the index written after grows in step. */
+const seekIndexCopyLimit = (sourceBytes: number) => 2 * sourceBytes + 1024 * 1024;
+
 async function streamCopyWithRebuiltSeekIndex(
   videoPath: string,
   signal: AbortSignal | undefined,
   timeout: number,
 ): Promise<{ dir: string; path: string } | undefined> {
+  const sourceBytes = await movSourceBytes(videoPath, signal);
+  if (sourceBytes === undefined) return undefined;
+  const limit = seekIndexCopyLimit(sourceBytes);
   const dir = mkdtempSync(join(tmpdir(), "hf-seek-index-"));
   const path = join(dir, "source.mov");
-  const result = await runFfmpeg(
-    [
-      ...urlInputArgs(videoPath),
-      ...["-i", videoPath, "-map", "0:v:0", "-map", "0:a?", "-c", "copy", "-y", path],
-    ],
-    { signal, timeout },
-  );
-  if (result.success && existsSync(path)) return { dir, path };
-  rmSync(dir, { recursive: true, force: true });
-  return undefined;
+  let kept = false;
+  try {
+    const result = await runFfmpeg(
+      [
+        ...urlInputArgs(videoPath),
+        ...["-f", "mov", "-i", videoPath, "-map", "0:v:0", "-map", "0:a?", "-c", "copy"],
+        ...["-fs", String(limit), "-y", path],
+      ],
+      { signal, timeout },
+    );
+    kept = result.success && existsSync(path) && statSync(path).size < limit;
+    return kept ? { dir, path } : undefined;
+  } finally {
+    if (!kept) rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 async function extractVideoFramesRangeUnredacted(
@@ -1556,7 +1589,10 @@ async function extractVideoFramesRangeUnredacted(
     !seekIndexRebuilt &&
     SEEK_INDEX_MISSING.test(processResult.stderr)
   ) {
-    const rebuilt = await streamCopyWithRebuiltSeekIndex(videoPath, signal, ffmpegProcessTimeout);
+    const rebuilt = await inExtractionSlot(
+      () => streamCopyWithRebuiltSeekIndex(videoPath, signal, ffmpegProcessTimeout),
+      signal,
+    );
     if (rebuilt) {
       for (const stale of framePathsFromDirectory(videoOutputDir, format, true).values())
         rmSync(stale, { force: true });
