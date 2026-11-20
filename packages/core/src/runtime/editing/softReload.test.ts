@@ -148,7 +148,7 @@ describe("soft-reload of an undo", () => {
     expect(document.querySelector("script")?.textContent).toBe(SCRIPT);
   });
 
-  // fails without the fix: the in-place re-run set a mark that the next seek reverts, as its reapply script never started.
+  // fails without the fix: the in-place re-run set a mark the next seek reverts, its reapply script never started.
   it("refuses a restored mark a seek has to reapply until the page's reapply script has started", async () => {
     preview(MARKUP);
     const el = document.getElementById("a")!;
