@@ -320,7 +320,7 @@ describe("downloads on a render service through the egress proxy in HYPERFRAMES_
     egress = createServer();
     egress.on("connect", (request, client) => {
       tunnels.push(request.url ?? "");
-      if (request.url?.startsWith(DROPPED)) return void client.destroy();
+      if (request.url === `${DROPPED}:443`) return void client.destroy();
       const upstream = connect(originPort, "127.0.0.1", () => {
         client.write("HTTP/1.1 200 Connection Established\r\n\r\n");
         upstream.pipe(client).pipe(upstream);
