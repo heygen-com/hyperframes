@@ -66,8 +66,7 @@ export function drawPreviewDraft(element: Element, part: Partial<Drawn>): void {
   send(target.iframe, queue);
 }
 
-/** Ends the stand-in's draft keeping its drawn size, with the translate it drew taken back off. */
-export function endPreviewDraftKeepingSize(element: Element): void {
+export function endPreviewDraftKeepingSizeOnly(element: Element): void {
   const target = standIns.get(element);
   if (!target || !queueFor(target.iframe).drawn.has(target.handle)) return;
   drawPreviewDraft(element, { translate: null });

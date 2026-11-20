@@ -21,7 +21,7 @@ import {
 } from "../../hooks/draggedGsapPosition";
 import { editsPlainCss } from "../../hooks/gsapRuntimeKeyframes";
 import { readTranslatePx, UNREADABLE_TRANSLATE, writeTranslatePx } from "./plainTranslate";
-import { drawPreviewDraft, endPreviewDraft, endPreviewDraftKeepingSize } from "./previewDrafts";
+import { drawPreviewDraft, endPreviewDraft, endPreviewDraftKeepingSizeOnly } from "./previewDrafts";
 import type { PreviewGestureStart } from "./previewGestureStartRead";
 
 interface OffsetDragGsap {
@@ -541,7 +541,7 @@ export function endManualOffsetDragMembers(members: ManualOffsetDragMember[]): v
     if (!isStudioManualEditGestureCurrent(member.element, member.gestureToken)) continue;
     endStudioManualEditGesture(member.element, member.gestureToken);
     if (member.plainTranslate) endPreviewDraft(member.element, "keep");
-    else endPreviewDraftKeepingSize(member.element);
+    else endPreviewDraftKeepingSizeOnly(member.element);
     member.element.removeAttribute("data-hf-drag-initial-offset-x");
     member.element.removeAttribute("data-hf-drag-initial-offset-y");
     member.element.removeAttribute("data-hf-drag-gsap-base-x");
