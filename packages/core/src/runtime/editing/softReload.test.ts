@@ -10,6 +10,7 @@ const params = (over: Partial<SoftReloadParams> = {}): SoftReloadParams => ({
   sets: [],
   authored: [],
   timing: [],
+  restore: [],
   ...over,
 });
 
@@ -100,6 +101,47 @@ describe("soft-reload", () => {
   });
 });
 
+const restoreOf = (key: string, attributes: Array<[string, string]>) => ({
+  file: null,
+  elements: [{ key, attributes }],
+});
+
+// fails without the fix: a sealed undo of a keyframe edit could not re-run in place, so the preview reloaded.
+describe("soft-reload of an undo", () => {
+  const MARKUP = `<div data-composition-id="main"><div id="a" data-hf-id="h1" style="left: 90px" data-hf-studio-path-offset="1"></div></div>`;
+  const KEPT: Array<[string, string]> = [
+    ["id", "a"],
+    ["data-hf-id", "h1"],
+  ];
+
+  it("sets the restored attributes before the re-run, as restore-attributes would", async () => {
+    preview(MARKUP);
+    const el = document.getElementById("a")!;
+    const seen: Array<string | null> = [];
+    win.__hfForceTimelineRebind = () => seen.push(el.getAttribute("style"));
+
+    const restore = [restoreOf("hf:h1", [...KEPT, ["style", "left: 0px"]])];
+    expect(await softReload(params({ restore }))).toEqual({ result: "applied" });
+
+    expect(seen).toEqual(["left: 0px"]);
+    expect(el.hasAttribute("data-hf-studio-path-offset")).toBe(false);
+    expect(killed).toHaveBeenCalledOnce();
+  });
+
+  it("refuses the whole request and changes nothing when the restore carries an attribute it may not set", async () => {
+    preview(MARKUP);
+    const el = document.getElementById("a")!;
+    const restore = [restoreOf("hf:h1", [...KEPT, ["style", "left: 0px"], ["onclick", "x()"]])];
+
+    expect(await softReload(params({ restore }))).toEqual({ result: "cannot-soft-reload" });
+
+    expect(el.getAttribute("style")).toBe("left: 90px");
+    expect(el.hasAttribute("onclick")).toBe(false);
+    expect(killed).not.toHaveBeenCalled();
+    expect(document.querySelector("script")?.textContent).toBe(SCRIPT);
+  });
+});
+
 describe("soft-reload of a timing edit", () => {
   const MARKUP = `<div data-composition-id="main" data-hf-id="root" data-duration="5"><div id="clip" data-start="1" data-duration="2" data-hf-autostamped></div></div>`;
 
@@ -172,6 +214,8 @@ describe("parseSoftReload", () => {
     ["an authored entry with three parts", params({ authored: [["#a", "", ""] as never] })],
     ["a timing attribute that is not timing", params({ timing: [["#a", [["style", "x"]]]] })],
     ["no timing field", { ...params(), timing: undefined }],
+    ["no restore field", { ...params(), restore: undefined }],
+    ["a restore element keyed by neither id", params({ restore: [restoreOf("a", [])] })],
   ])("refuses %s", (_label, request) => {
     expect(parseSoftReload(request)).toBeNull();
   });

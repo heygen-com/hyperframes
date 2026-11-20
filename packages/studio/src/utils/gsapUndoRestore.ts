@@ -372,8 +372,6 @@ type SealedFile = { scripted: boolean; elements: SealedRestore["scopes"][number]
 
 /** One file's changed elements with their restored attributes, or null when it needs a reload. */
 function sealedFile(file: UndoRestoreFile, isActive: boolean): SealedFile | null {
-  // A changed script is re-run in the frame, which a sealed preview cannot be asked to do yet.
-  if (extractGsapScriptText(file.restored) !== extractGsapScriptText(file.previous)) return null;
   const prevDoc = parseRestoreSource(stamped(file.previous));
   const nextDoc = parseRestoreSource(stamped(file.restored));
   const scripted = restoreScripted(prevDoc, nextDoc, isActive);
@@ -398,7 +396,7 @@ function sealedRestore(activeDocPath: string, files: RestoreFiles): SealedRestor
     if (found.elements.length)
       restore.scopes.push({ file: isActive ? null : path, elements: found.elements });
   }
-  return restore.scopes.length ? restore : null;
+  return restore;
 }
 
 /** Sends the restore to a sealed preview; a refusal, or no answer, reloads it. */
@@ -410,16 +408,38 @@ function applySealedRestore(
   reloadPreview: () => void,
 ): "soft" | "full" {
   const restore = sealedRestore(activeDocPath, files);
-  if (!restore) {
-    reloadPreview();
-    return "full";
+  const active = files[activeDocPath];
+  const script = active ? extractGsapScriptText(active.restored) : null;
+  if (restore && active && script !== extractGsapScriptText(active.previous)) {
+    const rerun =
+      script &&
+      applySoftReload(iframe, script, {
+        onAsyncFailure: reloadPreview,
+        currentTimeOverride: currentTime,
+        authoredHtml: active.restored,
+        previousHtml: active.previous,
+        restore: restore.scopes,
+      });
+    if (rerun === "applied") return "soft";
+  } else if (restore?.scopes.length) {
+    sendSealedRestore(iframe, restore, currentTime, reloadPreview);
+    return "soft";
   }
+  reloadPreview();
+  return "full";
+}
+
+function sendSealedRestore(
+  iframe: HTMLIFrameElement,
+  restore: SealedRestore,
+  currentTime: number,
+  reloadPreview: () => void,
+): void {
   void previewRequest(iframe, "restore-attributes", { ...restore, time: currentTime }).then(
     (reply) => {
       if (!reply?.applied) reloadPreview();
     },
   );
-  return "soft";
 }
 
 /**
