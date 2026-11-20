@@ -137,6 +137,7 @@ export function useShadowPreviewReload({
   // Invalidation counter, separate from the live slot's key: bumping it never remounts the live Player.
   const shadowGenRef = useRef(0);
   const pendingCommitRef = useRef<{ gen: number; commit: () => void } | null>(null);
+  const acceptedTimelineGenRef = useRef<number | null>(null);
   const visuallyReadyGenRef = useRef<number | null>(null);
   const onPromotedRef = useRef(onPromoted);
   onPromotedRef.current = onPromoted;
@@ -198,18 +199,26 @@ export function useShadowPreviewReload({
     cancelPendingLoadRef.current();
     stopHoldRef.current();
     pendingCommitRef.current = null;
+    acceptedTimelineGenRef.current = null;
     visuallyReadyGenRef.current = null;
   }, []);
 
   const failShadow = useCallback(
     (gen: number, cause: string) => {
       if (gen !== shadowGenRef.current) return;
-      const waitingFor = !shadowPlayerReachable(shadowIframeRef.current)
-        ? "the page and its runtime to load"
-        : pendingCommitRef.current?.gen !== gen
-          ? "its timeline to be ready"
-          : "its loaders to clear";
-      const got = pageGotTo(shadowIframeRef.current);
+      const shadow = shadowIframeRef.current;
+      const sealed = shadow !== null && previewFrameOpaque(shadow);
+      const waitingFor =
+        !sealed && !shadowPlayerReachable(shadow)
+          ? "the page and its runtime to load"
+          : pendingCommitRef.current?.gen === gen
+            ? "its loaders to clear"
+            : acceptedTimelineGenRef.current === gen
+              ? "its restore seek to paint"
+              : sealed
+                ? "its runtime to report a timeline"
+                : "its timeline to be ready";
+      const got = sealed ? "" : pageGotTo(shadow);
       shadowGenRef.current += 1;
       const failedGen = shadowGenRef.current;
       stopPendingShadow();
@@ -328,6 +337,7 @@ export function useShadowPreviewReload({
   const markAdapterReady = useCallback(
     (iframe: HTMLIFrameElement | null, gen: number | undefined, commit: () => void) => {
       if (gen == null || gen !== shadowGenRef.current) return;
+      acceptedTimelineGenRef.current = gen;
       const register = () => {
         if (gen !== shadowGenRef.current) return;
         pendingCommitRef.current = { gen, commit };

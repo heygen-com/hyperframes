@@ -8,7 +8,7 @@ import {
   resolveLiveHandleSelection,
   timelineElementAddress,
 } from "./handles";
-import { previewDoc } from "./webmcpTestUtils";
+import { documentPreview, liveTarget, previewDoc } from "./webmcpTestUtils";
 
 function timelineElement(overrides: Partial<TimelineElement>): TimelineElement {
   return { id: "synthetic-id", tag: "div", start: 0, duration: 1, track: 0, ...overrides };
@@ -59,11 +59,11 @@ describe("resolveLiveHandleSelection", () => {
     let currentDoc = firstDoc;
 
     const result = await resolveLiveHandleSelection(
-      () => currentDoc,
+      documentPreview(() => currentDoc),
       "dom:headline",
       async (element) => {
         currentDoc = replacementDoc;
-        return { element };
+        return { element: liveTarget(element) };
       },
     );
 
@@ -74,9 +74,9 @@ describe("resolveLiveHandleSelection", () => {
     const doc = previewDoc("<main>settled</main>");
 
     const result = await resolveLiveHandleSelection(
-      () => doc,
+      documentPreview(() => doc),
       "dom:headline",
-      async (element) => ({ element }),
+      async (element) => ({ element: liveTarget(element) }),
     );
 
     expect(result).toEqual({ status: "not-found" });

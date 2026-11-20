@@ -5,8 +5,9 @@ import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
 import { usePreviewIframeStore } from "../../player/store/previewIframeStore";
-import type { DomEditSelection } from "./domEditing";
 import { LayersPanel } from "./LayersPanel";
+import type { LayerReorderEvent } from "./useLayerDrag";
+import type { DomEditLayerItem, DomEditSelection } from "./domEditing";
 import { announcePreviewDocumentLoaded } from "../../player/sceneSwap";
 import { describePreviewElements, queryPreviewElements } from "../../player/lib/previewElements";
 import { standInFor } from "./previewSelection";
@@ -22,7 +23,29 @@ const mocks = vi.hoisted(() => ({
   // While set, a layers read waits on it after the frame answers.
   hold: null as Promise<void> | null,
   answered: 0,
+  showToast: vi.fn(),
+  commitZ: vi.fn(async () => ({ durable: true })),
+  onReorder: null as ((event: LayerReorderEvent) => void) | null,
+  sorted: [] as DomEditLayerItem[],
 }));
+vi.mock("./layersPanelSort", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./layersPanelSort")>();
+  return {
+    ...actual,
+    sortLayersByZIndex: (layers: DomEditLayerItem[]) =>
+      (mocks.sorted = actual.sortLayersByZIndex(layers)),
+  };
+});
+vi.mock("./useLayerDrag", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./useLayerDrag")>();
+  return {
+    ...actual,
+    useLayerDrag: (options: Parameters<typeof actual.useLayerDrag>[0]) => {
+      mocks.onReorder = options.onReorder;
+      return actual.useLayerDrag(options);
+    },
+  };
+});
 vi.mock("../../player/lib/previewElements", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../player/lib/previewElements")>();
   return {
@@ -39,7 +62,7 @@ vi.mock("../../contexts/StudioContext", () => ({
   useStudioShellContextOptional: () => ({
     previewIframeRef: mocks.previewIframeRef,
     activeCompPath: "index.html",
-    showToast: vi.fn(),
+    showToast: mocks.showToast,
   }),
   useStudioPlaybackContextOptional: () => ({
     refreshKey: 0,
@@ -54,7 +77,7 @@ vi.mock("../../contexts/DomEditContext", () => ({
     activeGroupElement: mocks.activeGroupElement,
     applyDomSelection: mocks.applyDomSelection,
     updateDomEditHoverSelection: vi.fn(),
-    handleDomZIndexReorderCommit: vi.fn(),
+    handleDomZIndexReorderCommit: mocks.commitZ,
     setActiveGroupElement: mocks.setActiveGroupElement,
   }),
 }));
@@ -68,6 +91,7 @@ afterEach(() => {
   mocks.activeGroupElement = null;
   mocks.hold = null;
   mocks.answered = 0;
+  mocks.sorted = [];
   vi.clearAllMocks();
   usePreviewIframeStore.setState({ iframe: null });
   document.body.innerHTML = "";
@@ -93,7 +117,7 @@ it("lists an opaque frame's layers, selects a row, and drills into a group row",
   expect(named("Title").querySelector("[data-layer-kind]")!.getAttribute("data-layer-kind")).toBe(
     "text",
   );
-  expect(named("pair").title).toBe("This layer can't be reordered");
+  expect(named("pair").title).toBe("Double-click to enter group");
   const hostIcon = named("Intro").querySelector("[data-layer-kind]")!;
   expect(hostIcon.className).toContain("bg-on");
 
@@ -148,4 +172,49 @@ it("reads the layers once more when a refresh lands while a read is in flight", 
   act(() => announcePreviewDocumentLoaded(iframe));
   act(() => release());
   await vi.waitFor(() => expect(rows()).toEqual(["Late", "Card"]));
+});
+
+/** The panel's rows once listed, and a drop of `label` to the top of its siblings. */
+async function sealedStack(markup: string) {
+  document.body.innerHTML = `<main data-composition-id="main">${markup}</main>`;
+  const iframe = sealedPreviewFrame().iframe;
+  renderPanel(iframe);
+  await vi.waitFor(() => expect(mocks.sorted.length).toBeGreaterThan(1));
+  return (label: string) => {
+    const depth = mocks.sorted.find((layer) => layer.id === label)!.depth;
+    const siblingLayers = mocks.sorted.filter((layer) => layer.depth === depth);
+    const fromIndex = siblingLayers.findIndex((layer) => layer.id === label);
+    act(() => mocks.onReorder!({ siblingLayers, fromIndex, toIndex: 0 }));
+  };
+}
+
+it("restacks a sealed layer dragged to the top, saving its z-index through its stand-in", async () => {
+  const drop = await sealedStack(
+    `<div id="back" style="position: relative; z-index: 1"></div>
+     <div id="front" style="position: relative; z-index: 2"></div>`,
+  );
+  drop("back");
+  await vi.waitFor(() => expect(mocks.commitZ).toHaveBeenCalledOnce());
+  const [entries, , source] = mocks.commitZ.mock.calls[0]! as unknown as [
+    Array<{ element: HTMLElement; zIndex: number; id?: string }>,
+    string,
+    string,
+  ];
+  expect(source).toBe("layer-drag");
+  expect(entries).toEqual([expect.objectContaining({ id: "back", zIndex: 3 })]);
+  expect(entries[0]!.element.isConnected).toBe(false);
+});
+
+it("refuses to restack a sealed layer inside a locked clip, and saves nothing", async () => {
+  const drop = await sealedStack(
+    `<div data-timeline-locked>
+       <div id="back" style="position: relative; z-index: 1"></div>
+       <div id="front" style="position: relative; z-index: 2"></div>
+     </div>`,
+  );
+  drop("back");
+  await vi.waitFor(() =>
+    expect(mocks.showToast).toHaveBeenCalledWith("This layer can't be reordered", "info"),
+  );
+  expect(mocks.commitZ).not.toHaveBeenCalled();
 });

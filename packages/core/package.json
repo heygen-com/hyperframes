@@ -1,6 +1,6 @@
 {
   "name": "@hyperframes/core",
-  "version": "0.9.71",
+  "version": "0.9.72",
   "description": "",
   "repository": {
     "type": "git",
@@ -482,6 +482,12 @@
       "node": "./dist/runtime/editing/softReload.js",
       "import": "./src/runtime/editing/softReload.ts",
       "types": "./src/runtime/editing/softReload.ts"
+    },
+    "./runtime/scenes": {
+      "bun": "./src/runtime/editing/scenes.ts",
+      "node": "./dist/runtime/editing/scenes.js",
+      "import": "./src/runtime/editing/scenes.ts",
+      "types": "./src/runtime/editing/scenes.ts"
     },
     "./runtime/clip-window": {
       "bun": "./src/runtime/clipWindow.ts",
@@ -1002,6 +1008,10 @@
       "./runtime/soft-reload": {
         "import": "./dist/runtime/editing/softReload.js",
         "types": "./dist/runtime/editing/softReload.d.ts"
+      },
+      "./runtime/scenes": {
+        "import": "./dist/runtime/editing/scenes.js",
+        "types": "./dist/runtime/editing/scenes.d.ts"
       },
       "./runtime/clip-window": {
         "import": "./dist/runtime/clipWindow.js",

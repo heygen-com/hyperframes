@@ -2,6 +2,7 @@
 import { previewGestureStart } from "../../player/lib/previewElements";
 import { computeOverlayRootScale } from "./domEditOverlayBasis";
 import type { DomEditSelection } from "./domEditing";
+import type { CropFrameStart } from "./domEditOverlayCrop";
 import type { OverlayRect } from "./domEditOverlayGeometry";
 import { invertManualOffsetDragMatrix, type ManualOffsetDragMatrix } from "./manualOffsetDrag";
 import { flatVisibleRect, groupAwareRect } from "./previewOverlayRects";
@@ -15,6 +16,7 @@ export interface PreviewGestureStart {
   screenToOffset: ManualOffsetDragMatrix | null;
   /** GSAP's x/y when it owns the element's position, and whether a tween with a duration moves it. */
   gsap: { x: number; y: number; moving: boolean } | null;
+  gsapRotation?: number | null;
 }
 
 export interface PreviewGestureStarts {
@@ -67,6 +69,7 @@ export async function measurePreviewGestureStart(
             layout: start.layout,
             screenToOffset: screenToOffset(start.move),
             gsap: start.gsap,
+            gsapRotation: start.gsapRotation,
           },
         },
     ),
@@ -98,4 +101,14 @@ export async function readShownGestureStarts(
     return element ? [{ selection: { ...selection, handle: handles[i] }, ...element }] : [];
   });
   return read && shown.length === selections.length ? { shown, snap: read.snap } : null;
+}
+
+export async function readCropFrameStart(
+  iframe: HTMLIFrameElement,
+  handle: string,
+): Promise<CropFrameStart | null> {
+  const start = (await previewGestureStart(iframe, [handle]))?.elements[0];
+  return start && start.planar !== undefined
+    ? { planar: start.planar, layout: start.layout }
+    : null;
 }

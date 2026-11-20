@@ -66,6 +66,7 @@ export const RUNTIME_STAMPED_ATTR = "data-hf-autostamped";
 export const CLIP_HIDDEN_ATTR = "data-hf-clip-hidden";
 export const STUDIO_PREVIEW_FAR_SCENE_ATTR = "data-hf-far-scene";
 export const STUDIO_PREVIEW_PARKED_SCENE_ATTR = "data-hf-parked-scene";
+export const PREVIEW_FILE_SIZE_ATTR = "data-hf-file-size";
 export const PREVIEW_ONLY_ATTRS = [
   PREVIEW_VIDEO_FRAME_ATTR,
   PREVIEW_VIDEO_SOURCE_ATTR,
@@ -76,6 +77,7 @@ export const PREVIEW_ONLY_ATTRS = [
   STUDIO_PREVIEW_LAZY_ATTR,
   PREVIEW_RASTER_ATTR,
   RUNTIME_STAMPED_ATTR,
+  PREVIEW_FILE_SIZE_ATTR,
 ] as const;
 
 export const isClipHiddenByRuntime = (el: HTMLElement) =>

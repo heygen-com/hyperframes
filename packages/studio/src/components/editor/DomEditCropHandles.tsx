@@ -10,6 +10,8 @@ import {
   liftElementCrop,
   readElementCropFrame,
   readElementCropInsets,
+  type CropFrame,
+  type CropFrameStart,
   resolveCropInsetFromEdgeDrag,
   resolveCropInsetFromMoveDrag,
   rotateDeltaIntoFrame,
@@ -19,6 +21,8 @@ import { readCropFollowingResize } from "./cropResize";
 import { isCropBarTarget, useCropPresetBarStore } from "./cropPresetStore";
 import { CropPresetBar } from "./CropPresetBar";
 import { movesGesture } from "./domEditOverlayGestures";
+import { previewStandIn } from "./previewDrafts";
+import { readCropFrameStart } from "./previewGestureStartRead";
 
 interface CropGestureState {
   edge: CropEdge | "move";
@@ -32,6 +36,11 @@ interface CropGestureState {
   angleDeg: number;
   scaleX: number;
   scaleY: number;
+  width: number;
+  height: number;
+  /** A stand-in's press waits for the frame's measure; moves keep only the latest pointer. */
+  waiting: { x: number; y: number } | true | null;
+  released?: boolean;
 }
 
 interface DomEditCropHandlesProps {
@@ -105,6 +114,93 @@ const NO_CROP = { top: 0, right: 0, bottom: 0, left: 0, radius: 0 };
  * handle. Leaving the selection drops the lift. The element's clip-path
  * is the source of truth — nothing here mutates layout.
  */
+const gestureFrame = (frame: CropFrame) => ({
+  angleDeg: frame.angleDeg,
+  scaleX: frame.scaleX,
+  scaleY: frame.scaleY,
+  width: frame.width / frame.scaleX,
+  height: frame.height / frame.scaleY,
+});
+
+/** The frame's measure of a stand-in's element, taken into the press; undefined for an element Studio can read. */
+async function measurePressOnFrame(
+  element: HTMLElement,
+  overlayRect: OverlayRect,
+  gesture: CropGestureState,
+): Promise<CropFrameStart | null | undefined> {
+  const standIn = previewStandIn(element);
+  if (!standIn) return undefined;
+  gesture.waiting = true;
+  const start = await readCropFrameStart(standIn.iframe, standIn.handle);
+  if (start)
+    Object.assign(gesture, gestureFrame(readElementCropFrame(element, overlayRect, start)));
+  return start;
+}
+
+function insetsAfterDrag(gesture: CropGestureState, x: number, y: number): ClipPathInsetSides {
+  const local = rotateDeltaIntoFrame(x - gesture.startX, y - gesture.startY, gesture.angleDeg);
+  const drag = {
+    startInsets: gesture.startInsets,
+    deltaX: local.deltaX,
+    deltaY: local.deltaY,
+    scaleX: gesture.scaleX,
+    scaleY: gesture.scaleY,
+  };
+  if (gesture.edge === "move") return resolveCropInsetFromMoveDrag(drag);
+  const { edge, width, height } = gesture;
+  return resolveCropInsetFromEdgeDrag({ ...drag, edge, width, height });
+}
+
+function letGoOf(ref: { current: CropGestureState | null }, gesture: CropGestureState): void {
+  if (ref.current === gesture) ref.current = null;
+}
+
+const measuredStartOf = (
+  state: { element: HTMLElement; start?: CropFrameStart },
+  element: HTMLElement,
+) => (state.element === element ? state.start : undefined);
+
+/** The element's clip-path is the crop; state only holds a crop drag's draft. */
+const shownCropInsets = (dragging: boolean, draft: ClipPathInsetSides, element: HTMLElement) =>
+  dragging ? draft : (readCropFollowingResize(element) ?? NO_CROP);
+
+function settleMeasuredPress(
+  start: CropFrameStart | null | undefined,
+  gesture: CropGestureState,
+  current: CropGestureState | null,
+  on: { refuse: (gesture: CropGestureState) => void; resume: (start: CropFrameStart) => void },
+): void {
+  if (start === undefined || (current !== gesture && !gesture.released)) return;
+  if (start) on.resume(start);
+  else on.refuse(gesture);
+}
+
+function holdOrDrag(
+  gesture: CropGestureState,
+  x: number,
+  y: number,
+  drag: (gesture: CropGestureState, x: number, y: number) => void,
+): void {
+  if (gesture.waiting) gesture.waiting = { x, y };
+  else drag(gesture, x, y);
+}
+
+function holdOrCommit(gesture: CropGestureState, commit: (gesture: CropGestureState) => void) {
+  if (gesture.waiting) gesture.released = true;
+  else commit(gesture);
+}
+
+function resumeWaitingPress(
+  gesture: CropGestureState,
+  drag: (gesture: CropGestureState, x: number, y: number) => void,
+  commit: (gesture: CropGestureState) => void,
+): void {
+  const last = gesture.waiting;
+  gesture.waiting = null;
+  if (last && last !== true) drag(gesture, last.x, last.y);
+  if (gesture.released) commit(gesture);
+}
+
 export function DomEditCropHandles({
   selection,
   overlayRect,
@@ -120,7 +216,13 @@ export function DomEditCropHandles({
   const cropStateFor = (element: HTMLElement) => {
     const parsed = readElementCropInsets(element);
     const { top, right, bottom, left } = parsed ?? NO_CROP;
-    return { element, croppable: parsed !== null, insets: { top, right, bottom, left } };
+    const insets = { top, right, bottom, left };
+    return {
+      element,
+      croppable: parsed !== null,
+      insets,
+      start: undefined as CropFrameStart | undefined,
+    };
   };
   const [state, setState] = useState(() => cropStateFor(selection.element));
   const presetBarTarget = useCropPresetBarStore((s) => s.openFor);
@@ -133,9 +235,7 @@ export function DomEditCropHandles({
     setState(cropStateFor(selection.element));
   }
 
-  // The element's clip-path is the crop; state only holds a crop drag's draft.
-  const committed = readCropFollowingResize(selection.element) ?? NO_CROP;
-  const insets = dragging ? state.insets : committed;
+  const insets = shownCropInsets(dragging, state.insets, selection.element);
   const hasCrop = hasCropInsets(insets);
 
   // Lift the clip while the element is selected so the full content shows and the
@@ -151,7 +251,11 @@ export function DomEditCropHandles({
   // transform), so all crop UI is drawn inside a container rotated with the
   // element — on a rotated element an axis-aligned dim visually "straightens"
   // it by masking the rotated corners.
-  const frame = readElementCropFrame(selection.element, overlayRect);
+  const frame = readElementCropFrame(
+    selection.element,
+    overlayRect,
+    measuredStartOf(state, selection.element),
+  );
   const width = frame.width / frame.scaleX; // element CSS px
   const height = frame.height / frame.scaleY;
   // Crop rect in FRAME-LOCAL coordinates (origin = frame top-left).
@@ -170,7 +274,7 @@ export function DomEditCropHandles({
     event.currentTarget.setPointerCapture(event.pointerId);
     // Read at press: a resize may have rescaled the crop since the last render.
     const pressed = readCropFollowingResize(selection.element) ?? NO_CROP;
-    gestureRef.current = {
+    const gesture: CropGestureState = {
       edge,
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -178,14 +282,30 @@ export function DomEditCropHandles({
       startInsets: pressed,
       insets: pressed,
       radius: pressed.radius,
-      angleDeg: frame.angleDeg,
-      scaleX: frame.scaleX,
-      scaleY: frame.scaleY,
+      ...gestureFrame(frame),
+      waiting: null,
     };
+    gestureRef.current = gesture;
     // Clip is already lifted by the selection effect; just flag the drag so the
     // rule-of-thirds grid shows.
     setState((prev) => ({ ...prev, insets: pressed }));
     setDragging(true);
+    const { element } = selection;
+    void measurePressOnFrame(element, overlayRect, gesture).then((start) =>
+      settleMeasuredPress(start, gesture, gestureRef.current, {
+        refuse: refuseCropPress,
+        resume: (measuredStart) => {
+          setState((prev) => (prev.element === element ? { ...prev, start: measuredStart } : prev));
+          resumeWaitingPress(gesture, dragCropTo, commitCropGesture);
+        },
+      }),
+    );
+  };
+
+  const refuseCropPress = (gesture: CropGestureState) => {
+    letGoOf(gestureRef, gesture);
+    setDragging(false);
+    setState((prev) => ({ ...prev, insets: gesture.startInsets }));
   };
 
   const updateCropGesture = (event: ReactPointerEvent<HTMLElement>) => {
@@ -193,22 +313,11 @@ export function DomEditCropHandles({
     if (!gesture || !movesGesture(gesture, event)) return;
     event.preventDefault();
     event.stopPropagation();
-    const local = rotateDeltaIntoFrame(
-      event.clientX - gesture.startX,
-      event.clientY - gesture.startY,
-      gesture.angleDeg,
-    );
-    const drag = {
-      startInsets: gesture.startInsets,
-      deltaX: local.deltaX,
-      deltaY: local.deltaY,
-      scaleX: gesture.scaleX,
-      scaleY: gesture.scaleY,
-    };
-    const nextInsets =
-      gesture.edge === "move"
-        ? resolveCropInsetFromMoveDrag(drag)
-        : resolveCropInsetFromEdgeDrag({ ...drag, edge: gesture.edge, width, height });
+    holdOrDrag(gesture, event.clientX, event.clientY, dragCropTo);
+  };
+
+  const dragCropTo = (gesture: CropGestureState, x: number, y: number) => {
+    const nextInsets = insetsAfterDrag(gesture, x, y);
     gesture.insets = nextInsets;
     setState((prev) => ({ ...prev, insets: nextInsets }));
   };
@@ -226,6 +335,10 @@ export function DomEditCropHandles({
   const finishCropGesture = (event: ReactPointerEvent<HTMLElement>) => {
     const gesture = endCropGesture(event);
     if (!gesture) return;
+    holdOrCommit(gesture, commitCropGesture);
+  };
+
+  const commitCropGesture = (gesture: CropGestureState) => {
     // The commit writes the element's clip-path (and puts it back if the save fails);
     // the lift keeps it hidden while selected. A drag that ends where it started saves nothing.
     const value = buildInsetClipPathSides(gesture.insets, gesture.radius);

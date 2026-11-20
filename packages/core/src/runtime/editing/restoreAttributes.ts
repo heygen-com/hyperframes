@@ -1,5 +1,10 @@
 // `restore-attributes`: an undo or redo that only changes identified elements' attributes, applied in place.
 // The parent diffs the saved files and sends each changed element's full restored attribute set.
+import {
+  isStudioMotionMark,
+  STUDIO_REAPPLIED_MARKS,
+  STUDIO_SEEK_REAPPLY_STARTED,
+} from "../../studioReappliedMarks";
 
 /** `hf:<data-hf-id>` or `id:<id>`, the key the parent's restore diff uses. */
 export type RestoreElementKey = string;
@@ -40,8 +45,15 @@ const SAFE_TO_SET = new Set([
   "data-y",
   "data-hf-group",
 ]);
+const REAPPLIED = new Set<string>(STUDIO_REAPPLIED_MARKS.map(({ name }) => name));
+const isStudioEditMark = (name: string) =>
+  name.startsWith("data-hf-studio-") && !isStudioMotionMark(name);
+const safeToSet = (name: string) => SAFE_TO_SET.has(name) || isStudioEditMark(name);
 const safeToDrop = (name: string) =>
-  SAFE_TO_SET.has(name) || name === "loading" || name.startsWith("data-");
+  !isStudioMotionMark(name) && (safeToSet(name) || name === "loading" || name.startsWith("data-"));
+const reapplyScriptMissing = (plan: RestorePlan) =>
+  plan.some(([, , set]) => set.some(([name]) => REAPPLIED.has(name))) &&
+  (window as unknown as Record<string, unknown>)[STUDIO_SEEK_REAPPLY_STARTED] !== true;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Object.prototype.toString.call(value) === "[object Object]";
@@ -80,16 +92,21 @@ function scope(value: unknown): RestoreScope | null {
   return parsed.every(Boolean) ? { file, elements: parsed as RestoreScope["elements"] } : null;
 }
 
-export function parseRestoreAttributes(params: unknown): RestoreAttributesParams | null {
-  if (!isRecord(params) || !keysAre(params, "scopes,scripted,time")) return null;
-  const { scopes, scripted, time } = params;
-  if (typeof scripted !== "boolean") return null;
-  if (typeof time !== "number" || !Number.isFinite(time) || time < 0) return null;
-  if (!Array.isArray(scopes) || !scopes.length || scopes.length > MAX_SCOPES) return null;
+export function parseRestoreScopes(scopes: unknown): RestoreScope[] | null {
+  if (!Array.isArray(scopes) || scopes.length > MAX_SCOPES) return null;
   const parsed = scopes.map(scope);
   if (!parsed.every(Boolean)) return null;
   const count = (parsed as RestoreScope[]).reduce((n, s) => n + s.elements.length, 0);
-  return count <= MAX_ELEMENTS ? { scopes: parsed as RestoreScope[], scripted, time } : null;
+  return count <= MAX_ELEMENTS ? (parsed as RestoreScope[]) : null;
+}
+
+export function parseRestoreAttributes(params: unknown): RestoreAttributesParams | null {
+  if (!isRecord(params) || !keysAre(params, "scopes,scripted,time")) return null;
+  const { scripted, time } = params;
+  if (typeof scripted !== "boolean") return null;
+  if (typeof time !== "number" || !Number.isFinite(time) || time < 0) return null;
+  const scopes = parseRestoreScopes(params.scopes);
+  return scopes?.length ? { scopes, scripted, time } : null;
 }
 
 function identityKey(el: Element): RestoreElementKey | null {
@@ -119,7 +136,7 @@ function scopeRoots(file: string | null): ParentNode[] {
   );
 }
 
-type RestorePlan = [Element, drop: string[], set: RestoreAttribute[]][];
+export type RestorePlan = [Element, drop: string[], set: RestoreAttribute[]][];
 
 /** Adds `root`'s live elements to `plan`; false when any is missing, not the file's own, or unsafe to change. */
 function planRoot(
@@ -136,20 +153,27 @@ function planRoot(
     const keep = new Set(attributes.map(([name]) => name));
     const drop = el.getAttributeNames().filter((name) => !keep.has(name));
     const set = attributes.filter(([name, value]) => el.getAttribute(name) !== value);
-    if (!drop.every(safeToDrop) || !set.every(([name]) => SAFE_TO_SET.has(name))) return false;
+    if (!drop.every(safeToDrop) || !set.every(([name]) => safeToSet(name))) return false;
     plan.push([el, drop, set]);
   }
   return true;
 }
 
 /** Each live element with the attributes it drops and sets, or null when the restore cannot apply in place. */
-function planRestore(scopes: RestoreScope[]): RestorePlan | null {
+export function planRestore(scopes: RestoreScope[]): RestorePlan | null {
   const plan: RestorePlan = [];
   for (const { file, elements } of scopes) {
     const roots = scopeRoots(file);
     if (!roots.length || !roots.every((root) => planRoot(root, elements, plan))) return null;
   }
-  return plan;
+  return reapplyScriptMissing(plan) ? null : plan;
+}
+
+export function applyRestorePlan(plan: RestorePlan): void {
+  for (const [el, drop, set] of plan) {
+    for (const name of drop) el.removeAttribute(name);
+    for (const [name, value] of set) el.setAttribute(name, value);
+  }
 }
 
 type RestoreWindow = Window & {
@@ -180,10 +204,7 @@ export function restoreAttributes({ scopes, scripted, time }: RestoreAttributesP
   const plan = planRestore(scopes);
   if (!plan || typeof win.__player?.seek !== "function") return { applied: false };
   if (scripted && plan.some(([el]) => "_gsap" in el)) return { applied: false };
-  for (const [el, drop, set] of plan) {
-    for (const name of drop) el.removeAttribute(name);
-    for (const [name, value] of set) el.setAttribute(name, value);
-  }
+  applyRestorePlan(plan);
   rebindAt(win, time);
   return { applied: true };
 }
