@@ -289,6 +289,12 @@ export {
   type ToneMapSourceColour,
 } from "./hdrToneMap";
 export {
+  htmlHasStudioReappliedMark,
+  isStudioMotionMark,
+  STUDIO_REAPPLIED_MARKS,
+  STUDIO_SEEK_REAPPLY_STARTED,
+} from "./studioReappliedMarks";
+export {
   HEAVY_BITRATE,
   HEAVY_PIXEL_SHARE,
   PREVIEW_PROXY_BOX_PARAM,

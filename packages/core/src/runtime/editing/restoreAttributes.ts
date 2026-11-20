@@ -1,5 +1,10 @@
 // `restore-attributes`: an undo or redo that only changes identified elements' attributes, applied in place.
 // The parent diffs the saved files and sends each changed element's full restored attribute set.
+import {
+  isStudioMotionMark,
+  STUDIO_REAPPLIED_MARKS,
+  STUDIO_SEEK_REAPPLY_STARTED,
+} from "../../studioReappliedMarks";
 
 /** `hf:<data-hf-id>` or `id:<id>`, the key the parent's restore diff uses. */
 export type RestoreElementKey = string;
@@ -40,8 +45,15 @@ const SAFE_TO_SET = new Set([
   "data-y",
   "data-hf-group",
 ]);
+const REAPPLIED = new Set<string>(STUDIO_REAPPLIED_MARKS.map(({ name }) => name));
+const isStudioEditMark = (name: string) =>
+  name.startsWith("data-hf-studio-") && !isStudioMotionMark(name);
+const safeToSet = (name: string) => SAFE_TO_SET.has(name) || isStudioEditMark(name);
 const safeToDrop = (name: string) =>
-  SAFE_TO_SET.has(name) || name === "loading" || name.startsWith("data-");
+  !isStudioMotionMark(name) && (safeToSet(name) || name === "loading" || name.startsWith("data-"));
+const reapplyScriptMissing = (plan: RestorePlan) =>
+  plan.some(([, , set]) => set.some(([name]) => REAPPLIED.has(name))) &&
+  (window as unknown as Record<string, unknown>)[STUDIO_SEEK_REAPPLY_STARTED] !== true;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Object.prototype.toString.call(value) === "[object Object]";
@@ -141,7 +153,7 @@ function planRoot(
     const keep = new Set(attributes.map(([name]) => name));
     const drop = el.getAttributeNames().filter((name) => !keep.has(name));
     const set = attributes.filter(([name, value]) => el.getAttribute(name) !== value);
-    if (!drop.every(safeToDrop) || !set.every(([name]) => SAFE_TO_SET.has(name))) return false;
+    if (!drop.every(safeToDrop) || !set.every(([name]) => safeToSet(name))) return false;
     plan.push([el, drop, set]);
   }
   return true;
@@ -154,7 +166,7 @@ export function planRestore(scopes: RestoreScope[]): RestorePlan | null {
     const roots = scopeRoots(file);
     if (!roots.length || !roots.every((root) => planRoot(root, elements, plan))) return null;
   }
-  return plan;
+  return reapplyScriptMissing(plan) ? null : plan;
 }
 
 export function applyRestorePlan(plan: RestorePlan): void {
