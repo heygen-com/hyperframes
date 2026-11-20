@@ -138,18 +138,22 @@ function copyFound<T>(
   return target === null ? null : copy(target);
 }
 
-function savedMarkupElseLive(saved: Document, live: Element, sourceFile: string): string {
+function savedMarkupElseLive(
+  saved: Document,
+  live: Element,
+  sourceFile: string,
+): { html: string; saved: boolean } {
   const authored = findAuthoredElement(saved, live) ?? findAuthoredElementById(saved, live);
   return authored
-    ? authoredMarkup(authored, live, sourceFile)
-    : liveMarkupWithoutPreviewMarks(live);
+    ? { html: authoredMarkup(authored, live, sourceFile), saved: true }
+    : { html: liveMarkupWithoutPreviewMarks(live), saved: false };
 }
 
 async function readSavedMarkup(
   readSaved: (path: string) => Promise<string>,
   paths: string[],
   lives: Element[],
-): Promise<string[]> {
+): Promise<Array<{ html: string; saved: boolean }>> {
   const sources = new Map<string, Promise<Document>>();
   return Promise.all(
     paths.map(async (path, index) => {
@@ -184,9 +188,9 @@ export function resolveFreeTrack(preferred: PlacedClip, taken: readonly PlacedCl
 /** Gives a clone's root and every descendant a fresh data-hf-id, clear of `taken`. Minted here,
  *  inside the edit, or the server stamps them on the next preview load, behind undo's back.
  *  DOMParser, not a regex, so a `>` inside an attribute value can't defeat it. */
-function remintHfIds(html: string, parser: DOMParser, taken: Set<string>): string {
+function remintHfIds(html: string, parser: DOMParser, taken: Set<string>, saved = false): string {
   const doc = parser.parseFromString(html, "text/html");
-  if (unsafeMarkupAttributes(doc.documentElement).length > 0) {
+  if (!saved && unsafeMarkupAttributes(doc.documentElement).length > 0) {
     throw new Error("Couldn't paste: the copied element has an event handler or a script link");
   }
   const root = doc.body.firstElementChild;
@@ -212,10 +216,10 @@ const hfIdsInFile = (content: string) =>
 
 export function pasteElementHtml(
   content: string,
-  payload: { html: string; originSelector?: string; originSelectorIndex?: number },
+  payload: { html: string; saved?: boolean; originSelector?: string; originSelectorIndex?: number },
   fromThisFile = false,
 ): string {
-  const reminted = remintHfIds(payload.html, new DOMParser(), hfIdsInFile(content));
+  const reminted = remintHfIds(payload.html, new DOMParser(), hfIdsInFile(content), payload.saved);
   const deduped = deduplicateIds(reminted, collectHtmlIds(content));
   const result = insertAsSibling(
     content,
@@ -250,7 +254,7 @@ export function pasteTimelineClips(
   const domParser = new DOMParser();
   const takenHfIds = hfIdsInFile(content);
   for (const clip of clips) {
-    const reminted = remintHfIds(clip.html, domParser, takenHfIds);
+    const reminted = remintHfIds(clip.html, domParser, takenHfIds, clip.saved);
     const deduped = deduplicateIds(reminted, existingIds);
     existingIds = existingIds.concat(collectHtmlIds(deduped));
     const newStart = anchorTime + (clip.start - groupMinStart);
@@ -341,7 +345,7 @@ export function useClipboard({
       const paths = targets.elements.map((el) => el.sourceFile || activeCompPath || "index.html");
       const markup = await readSavedMarkup((path) => readSaved(path, pid), paths, targets.lives);
       return targets.elements.map((element, index) => ({
-        html: markup[index] as string,
+        ...(markup[index] as { html: string; saved: boolean }),
         start: element.start,
         duration: element.duration,
         // authoredTrack, not track: `track` can be a display-lane number
@@ -389,7 +393,7 @@ export function useClipboard({
           showToast("Copied element", "info");
           return {
             kind: "dom-element",
-            html: savedMarkupElseLive(parseSavedSource(content), live, sourceFile),
+            ...savedMarkupElseLive(parseSavedSource(content), live, sourceFile),
             sourceFile,
             projectId: pid ?? undefined,
             originSelector: domSelection.selector,

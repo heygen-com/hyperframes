@@ -26,14 +26,14 @@ afterEach(() => {
 });
 
 /** A sealed preview of SAVED, with the runtime's hide on the clip, and the saved file served. */
-function sealedClipboard(domSelection: DomEditSelection | null, scriptMade = "") {
-  const preview = new DOMParser().parseFromString(ensureHfIds(SAVED), "text/html");
+function sealedClipboard(domSelection: DomEditSelection | null, scriptMade = "", saved = SAVED) {
+  const preview = new DOMParser().parseFromString(ensureHfIds(saved), "text/html");
   document.body.innerHTML = preview.body.innerHTML;
   document.querySelector("[data-composition-id]")!.insertAdjacentHTML("beforeend", scriptMade);
   document.getElementById("title")!.style.cssText = "visibility: hidden; display: none";
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => new Response(JSON.stringify({ content: SAVED }))),
+    vi.fn(async () => new Response(JSON.stringify({ content: saved }))),
   );
   const { iframe } = sealedPreviewFrame();
   const writes: string[] = [];
@@ -150,6 +150,26 @@ it("pastes a sealed preview's own element only when its markup runs no code", as
     act(() => root?.unmount());
     root = null;
   }
+});
+
+it("pastes and duplicates a saved element with its own handler, as saved", async () => {
+  const saved = SAVED.replace(
+    "</div></body>",
+    '<button id="go" class="clip" onclick="next()" data-start="1" data-duration="1" data-track-index="2">Go</button>\n</div></body>',
+  );
+  const selection = { id: "go", selector: "#go", sourceFile: "index.html" } as DomEditSelection;
+  const pasted = sealedClipboard(selection, "", saved);
+  expect(pasted.clipboard().handleCopy()).toBe(true);
+  await pasted.clipboard().handlePaste();
+  expect(pasted.writes[0]?.match(/onclick="next\(\)"/g)).toHaveLength(2);
+  act(() => root?.unmount());
+  root = null;
+
+  usePlayerStore.setState({ elements: [clipOf("go", "button", 1, 2)] });
+  selectClip("go");
+  const duplicated = sealedClipboard(null, "", saved);
+  expect(await duplicated.clipboard().handleDuplicate()).toBe(true);
+  expect(duplicated.writes[0]?.match(/onclick="next\(\)"/g)).toHaveLength(2);
 });
 
 it("leaves the clipboard as it was when a sealed preview lacks the element", async () => {
