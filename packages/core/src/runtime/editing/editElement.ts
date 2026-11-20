@@ -19,7 +19,7 @@ export type EditElementResult = {
 
 export const MAX_EDIT_ENTRIES = 64;
 export const MAX_EDIT_VALUE = 200_000;
-const STYLE_NAME = /^(?:-?[a-z][a-z0-9-]*|--[\w\u0080-￿-]+)$/;
+const STYLE_NAME = /^(?:-?[a-z][a-z0-9-]*|--[\w\u0080-\uffff-]+)$/;
 const DATA_ATTRIBUTE = /^data-[a-z0-9_-]+$/;
 const PANEL_ATTRIBUTES = new Set(["loop", "muted", "alt", "title", "src"]);
 const MEDIA_TAGS = new Set(["img", "video", "audio"]);

@@ -13,6 +13,7 @@ import { escapeCssIdentifier, selectorIdTokens } from "./selectorIdTokens";
 import {
   SVG_REFERENCE_ALIASES_ATTR,
   readSvgReferenceAliases,
+  recordedSvgIds,
   rewriteSvgSelectors,
   type SvgReferenceAlias,
 } from "./svgSelectorAliases";
@@ -534,6 +535,7 @@ export function rewriteSvgIdReferencesInCss(
   css: string,
   idMap: SvgIdMap,
   references: readonly SvgReferenceAlias[] = [],
+  charge?: (bytes: number) => void,
 ): string {
   if (!css || (idMap.size === 0 && references.length === 0)) return css;
   if (!css.includes("#") && !css.includes("[") && !css.toLowerCase().includes("url(")) return css;
@@ -547,9 +549,14 @@ export function rewriteSvgIdReferencesInCss(
     return css;
   }
   let mutated = false;
-  const recordedIds = new Set(
-    references.filter((alias) => alias.name === ID_ATTR).map((alias) => alias.before),
-  );
+  let charged = 0;
+  const chargeSelector =
+    charge &&
+    ((bytes: number) => {
+      charged += bytes;
+      charge(bytes);
+    });
+  const recordedIds = recordedSvgIds(references);
   const idsNamedBy = (selector: string) =>
     selectorIdTokens(selector).flatMap((id) => {
       const renamed = recordedIds.has(id) ? undefined : idMap.get(id);
@@ -560,7 +567,7 @@ export function rewriteSvgIdReferencesInCss(
     });
   root.walkRules((rule) => {
     const rewritten = rule.selectors.map((selector) =>
-      rewriteSvgSelectors(selector, idsNamedBy(selector), references),
+      rewriteSvgSelectors(selector, idsNamedBy(selector), references, undefined, chargeSelector),
     );
     if (rewritten.some((selector, index) => selector !== rule.selectors[index])) {
       rule.selectors = rewritten;
@@ -583,5 +590,9 @@ export function rewriteSvgIdReferencesInCss(
     }
   });
 
-  return mutated ? root.toResult({ map: false }).css : css;
+  const rewritten = mutated ? root.toResult({ map: false }).css : css;
+  // Selector growth was charged as it was built; settle to the sheet's real growth.
+  const settle = Math.max(0, rewritten.length - css.length) - charged;
+  if (charge && settle !== 0) charge(settle);
+  return rewritten;
 }

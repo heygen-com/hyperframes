@@ -476,6 +476,12 @@
       "types": "./dist/runtime/editing/softReload.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/scenes": {
+      "source": "./src/runtime/editing/scenes.ts",
+      "runtime": "./dist/runtime/editing/scenes.js",
+      "types": "./dist/runtime/editing/scenes.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/clip-window": {
       "source": "./src/runtime/clipWindow.ts",
       "runtime": "./dist/runtime/clipWindow.js",

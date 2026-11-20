@@ -26,10 +26,11 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { availableParallelism, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   applyFaststart,
+  cpuBudget,
   muxVideoWithAudio,
   PROVENANCE_RENDERER_NAME,
   PROVENANCE_VERSION,
@@ -264,6 +265,43 @@ function diskKb(path: string): number {
 
 describe("assemble()", () => {
   const TIMEOUT_MS = 30_000;
+
+  it("rejects a WAV file in place of the planned M4A sidecar", async () => {
+    if (!hasFfmpeg) return;
+    const { planDir, chunkPaths, audioPath } = buildAudioFixture();
+    const wav = spawnSync("ffmpeg", [
+      "-v",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=1",
+      "-f",
+      "wav",
+      audioPath,
+    ]);
+    expect(wav.status).toBe(0);
+    const output = join(planDir, "audio-check.mp4");
+    await expect(assemble(planDir, chunkPaths, audioPath, output)).rejects.toThrow();
+    expect(existsSync(output)).toBe(false);
+  });
+
+  it("rejects an input list in place of an encoded chunk", async () => {
+    if (!hasFfmpeg) return;
+    const chunks = [
+      { index: 0, startFrame: 0, endFrame: 5 },
+      { index: 1, startFrame: 5, endFrame: 10 },
+    ];
+    const planDir = buildPlanDir("mp4", chunks, 10, false);
+    const video = join(planDir, "video.mp4");
+    const list = join(planDir, "list.mp4");
+    makeMp4Chunk(video, 5);
+    writeFileSync(list, "ffconcat version 1.0\n");
+    const output = join(planDir, "output.mp4");
+    await expect(assemble(planDir, [video, list], null, output)).rejects.toThrow();
+    expect(existsSync(output)).toBe(false);
+  });
 
   it(
     "concat-copies two mp4 chunks and applies faststart",
@@ -685,7 +723,7 @@ describe("assemble()", () => {
 
   it("cfr re-encode pins x264 threads to the CPU quota", () => {
     const args = cfrEncodeArgs(["-i", "chunk.mp4"], {}, "30");
-    expect(args[args.indexOf("-threads") + 1]).toBe(String(availableParallelism()));
+    expect(args[args.indexOf("-threads") + 1]).toBe(String(cpuBudget()));
   });
 
   it("cfr re-encode keeps the keyframe interval and the peak cap", () => {

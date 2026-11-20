@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { JSDOM } from "jsdom";
 import { parseHTML } from "linkedom";
 
 const hashCalls = vi.hoisted(() => [] as string[]);
@@ -519,6 +520,62 @@ it("reads a scope's size without walking its ids, however many styles ask", () =
   expect(lookups).toBeLessThan(500);
 });
 
+// fails without the fix: every attribute selector compared its name against the scope's whole alias list, and an
+// exact match still checked one copy per element that referenced the same symbol.
+it("rewrites attribute selectors in linear time however many fragment references the mount holds", () => {
+  const rewrite = (n: number, target: (i: number) => string) => {
+    let reads = 0;
+    const references = Array.from({ length: n }, (_, i) => {
+      const before = `#${target(i)}`;
+      return {
+        name: "href",
+        localName: "href",
+        namespaceURI: null,
+        get before() {
+          reads += 1;
+          return before;
+        },
+        after: `#m--${target(i)}`,
+      };
+    });
+    const css = Array.from({ length: n }, (_, i) => `[href="#${target(i)}"] { fill: red; }`).join(
+      "\n",
+    );
+    return { css: rewriteSvgIdReferencesInCss(css, new Map(), references), reads: () => reads };
+  };
+  const work = (n: number, target: (i: number) => string) => rewrite(n, target).reads();
+  const distinct = (i: number) => `g${i}`;
+  const sameSymbol = () => "g";
+
+  expect(rewrite(8, distinct).css).toContain(`:is([href="#g5"], [href="#m--g5"]) { fill: red; }`);
+  expect(rewrite(8, sameSymbol).css).toContain(`:is([href="#g"], [href="#m--g"]) { fill: red; }`);
+  // About 2 when linear, about 4 when every selector checks every alias.
+  expect(work(800, distinct) / work(400, distinct)).toBeLessThan(2.6);
+  expect(work(800, sameSymbol) / work(400, sameSymbol)).toBeLessThan(2.6);
+});
+
+// An alias escapes `<` itself, so its rule can't end its style element even without postcss.
+it("writes `<` in an aliased attribute value as a CSS escape itself, and the rule still matches it", () => {
+  const tail = "</style><script>window.ran = true</script>";
+  const after = `clip.mp4#url(#m--c)${tail}`;
+  const references = [
+    { name: "src", localName: "src", namespaceURI: null, before: `clip.mp4#url(#c)${tail}`, after },
+  ];
+  const css = rewriteSvgIdReferencesInCss(
+    `video[src*="url(#c)"] { opacity: 0.5; }`,
+    new Map(),
+    references,
+  );
+
+  expect(css).not.toMatch(/<\/style|<script/i);
+  const { document } = new JSDOM(`<style>${css}</style><video></video>`).window;
+  const video = document.querySelector("video")!;
+  video.setAttribute("src", after);
+  expect(document.querySelectorAll("style, script").length).toBe(1);
+  const rule = document.styleSheets[0]!.cssRules[0] as CSSStyleRule;
+  expect(video.matches(rule.selectorText)).toBe(true);
+});
+
 // fails without the fix: the whole namespace, however long, prefixed every renamed id.
 it("caps a long namespace's prefix, each mount's renamed ids still distinct", () => {
   const long = (end: string) => `${"x".repeat(5000)}${end}`;
@@ -587,3 +644,109 @@ it("hashes a long namespace once per mount, not once per renamed id", () => {
   expect(idMaps[1]!.size).toBe(200);
   expect(hashCalls.length).toBe(1);
 });
+
+// fails without the fix: the rewrite built every alternative, and its growth was charged only once the sheet existed.
+describe("rewriteSvgIdReferencesInCss charges its growth while it builds", () => {
+  const limit = 64 * 1024;
+  const references = Array.from({ length: 2000 }, (_, i) => ({
+    name: "href",
+    localName: "href",
+    namespaceURI: null,
+    before: "#a",
+    after: `#m-${i}-${"x".repeat(100)}`,
+  }));
+
+  it.each([
+    `[href="#a"]`,
+    `[href^="#"]`,
+    `[href$="a"]`,
+    `[href*="a"]`,
+    `[href~="#a"]`,
+    `[href|="#a"]`,
+    `[href="#A" i]`,
+  ])("stops within one alternative of the budget for %s", (predicate) => {
+    const css = Array.from({ length: 50 }, (_, i) => `${predicate} .r${i} { fill: red; }`).join(
+      "\n",
+    );
+    let charged = 0;
+    const charge = (bytes: number) => {
+      charged += bytes;
+      if (charged > limit) throw new Error("over budget");
+    };
+
+    expect(() => rewriteSvgIdReferencesInCss(css, new Map(), references, charge)).toThrow(
+      "over budget",
+    );
+    expect(charged).toBeLessThan(limit + 200);
+  });
+
+  it("stops within one id rename of the budget", () => {
+    const css = Array.from({ length: 2000 }, (_, i) => `#clip .r${i} { fill: red; }`).join("\n");
+    const idMap = new Map([["clip", `clip-${"x".repeat(200)}`]]);
+    let charged = 0;
+    const charge = (bytes: number) => {
+      charged += bytes;
+      if (charged > limit) throw new Error("over budget");
+    };
+    expect(() => rewriteSvgIdReferencesInCss(css, idMap, [], charge)).toThrow("over budget");
+    expect(charged).toBeLessThan(limit + 500);
+  });
+
+  // fails without the fix: the id's decoded length was charged against, not the escaped token it replaced.
+  const renamedClip = [
+    {
+      name: "id",
+      localName: "id",
+      namespaceURI: null,
+      before: "clip",
+      after: "m--clip-namespaced",
+    },
+  ];
+  it.each([
+    [`#\\63 lip { fill: red; }`, new Map([["clip", "m--clip-namespaced"]]), []],
+    [`#cl\\69 p .a { fill: red; }`, new Map([["clip", "m--clip-namespaced"]]), []],
+    [`#\\63 lip { fill: red; }`, new Map(), renamedClip],
+  ])("rewrites %j with exactly its growth left (%#)", (css, idMap, aliases) => {
+    const growth = rewriteSvgIdReferencesInCss(css, idMap, aliases).length - css.length;
+    let left = growth;
+    const rewritten = rewriteSvgIdReferencesInCss(css, idMap, aliases, (bytes) => {
+      left -= bytes;
+      if (left < 0) throw new Error("over budget");
+    });
+    expect(growth).toBeGreaterThan(0);
+    expect(rewritten).toContain("m--clip-namespaced");
+    expect(left).toBe(0);
+  });
+
+  it.each([
+    [`.x,[href="#a"],\n\n    .b { fill: red; }`, new Map()],
+    [`.x,#clip,\n\n    .b { fill: red; }`, new Map([["clip", "m--clip"]])],
+    [`[href="#a"] #clip { fill: url(#clip); }`, new Map([["clip", "m--clip"]])],
+  ])("charges exactly the growth of %j", (css, idMap) => {
+    let charged = 0;
+    const rewritten = rewriteSvgIdReferencesInCss(css, idMap, references.slice(0, 2), (bytes) => {
+      charged += bytes;
+    });
+    expect(rewritten).not.toBe(css);
+    expect(charged).toBe(Math.max(0, rewritten.length - css.length));
+  });
+
+  it("charges nothing for a sheet it leaves as it is", () => {
+    const charge = vi.fn();
+    expect(
+      rewriteSvgIdReferencesInCss(`[href="#b"] { fill: red; }`, new Map(), references, charge),
+    ).toBe(`[href="#b"] { fill: red; }`);
+    expect(charge).not.toHaveBeenCalled();
+  });
+});
+
+// fails without the fix: each opener with no closer rescanned the rest of the selector, quadratic in its length.
+it("rewriteSvgIdReferencesInCss scans a selector of 300000 unclosed brackets in time linear in its length", () => {
+  const references = [
+    { name: "href", localName: "href", namespaceURI: null, before: "#a", after: "#m-a" },
+  ];
+  const run = "[".repeat(300_000);
+  expect(
+    rewriteSvgIdReferencesInCss(`:is(${run}) { fill: red; }`, new Map(), references),
+  ).toContain(run);
+}, 10_000);

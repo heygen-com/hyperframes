@@ -2195,7 +2195,7 @@ export async function authorScriptsMayRegisterTimelines(
     const scripts = [
       ...Array.from(document.querySelectorAll("script")),
       ...Array.from(document.querySelectorAll("template")).flatMap((t) =>
-        Array.from(t.content.querySelectorAll("script")),
+        t.content ? Array.from(t.content.querySelectorAll("script")) : [],
       ),
     ].filter((script) => !script.hasAttribute(runtimeAttr));
     const scan = { opaque: false, mentions: false, ids: [] as string[] };

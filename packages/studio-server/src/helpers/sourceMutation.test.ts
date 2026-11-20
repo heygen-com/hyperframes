@@ -8,6 +8,7 @@ import {
   patchElementInHtml,
   probeElementInSource,
   probeElementsInSource,
+  dedupeClonedCompositionId,
 } from "./sourceMutation.js";
 
 describe("removeElementsFromHtml", () => {
@@ -774,5 +775,18 @@ describe("media replacement naming", () => {
     const source =
       '<video id="harbor" src="harbor.mp4"></video><style>#harbor {opacity: .5}</style>';
     expect(replace(source, "harbor", "library.mp4")).toContain('id="harbor"');
+  });
+});
+
+// fails without the fix: an SVG element named template with the matching id counted as the clone's mount.
+describe("dedupeClonedCompositionId", () => {
+  it("renames a cloned empty root whose id only an SVG element named template matches", () => {
+    const { document } = parseHTML(
+      `<html><body><svg><template id="card-template"></template></svg><div data-composition-id="card"></div></body></html>`,
+    );
+    const clone = document.querySelector("[data-composition-id]")!.cloneNode(true) as Element;
+    document.body.appendChild(clone);
+    dedupeClonedCompositionId(document as unknown as Document, clone);
+    expect(clone.getAttribute("data-composition-id")).toBe("card-split");
   });
 });

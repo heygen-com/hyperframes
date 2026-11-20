@@ -6,6 +6,7 @@
  * Supports CPU (libx264) and GPU encoding.
  */
 
+import { randomUUID } from "node:crypto";
 import { frameSequencePath } from "./extractedFrameIndex.js";
 import {
   closeSync,
@@ -50,7 +51,11 @@ import { appendVp9CpuUsedArg } from "./vp9Options.js";
 import { appendSoftwareEncoderThreadsArg } from "./softwareEncoderThreads.js";
 import { appendRenderProvenanceArgs } from "../utils/renderProvenance.js";
 import { createStagingDir } from "@hyperframes/core/atomic-file";
-import { concatListInputArgs, concatListText } from "@hyperframes/parsers/ff-binaries";
+import {
+  concatListInputArgs,
+  concatListText,
+  localContainerInputArgs,
+} from "@hyperframes/parsers/ff-binaries";
 
 export type { EncoderOptions, EncodeResult, MuxResult } from "./chunkEncoder.types.js";
 
@@ -102,6 +107,7 @@ export interface MuxVideoWithAudioOptions extends Partial<
    * depend on the file extension alone.
    */
   audioCodec?: "aac";
+  audioContainer?: "mov";
   /** Replaces `-i <videoPath>` (which is then unused), e.g. with a concat-demuxer input. */
   videoInputArgs?: readonly string[];
   /**
@@ -124,7 +130,9 @@ async function shouldCopyAacSidecar(
   if (KNOWN_NON_AAC_AUDIO_EXTENSIONS.has(audioExtension)) return false;
 
   try {
-    const metadata = await extractAudioMetadata(audioPath);
+    const metadata = options?.audioContainer
+      ? await extractAudioMetadata(audioPath, { inputContainer: options.audioContainer })
+      : await extractAudioMetadata(audioPath);
     return metadata.audioCodec === "aac";
   } catch {
     // Preserve the pre-existing fallback for invalid or unprobeable sidecars:
@@ -683,18 +691,13 @@ export function buildConcatArgs(concatListPath: string, outputPath: string): str
   return args;
 }
 
-/**
- * Sequence rather than a timestamp: two lists written in the same millisecond
- * into one directory would otherwise collide, and a concat that reads another
- * render's list produces a silently wrong video rather than an error.
- */
-let concatListSeq = 0;
-
-function writeConcatList(dir: string, inputPaths: readonly string[]): string {
-  concatListSeq += 1;
-  const listPath = join(dir, `concat-list-${process.pid}-${concatListSeq}.txt`);
-  const body = concatListText(inputPaths.map((p) => resolve(p)));
-  writeFileSync(listPath, body, "utf-8");
+export function writeVideoConcatList(dir: string, inputPaths: readonly string[]): string {
+  const listPath = join(dir, `concat-list-${randomUUID()}.txt`);
+  const body = concatListText(
+    inputPaths.map((path) => resolve(path)),
+    { videoContainersOnly: true },
+  );
+  writeFileSync(listPath, body, { flag: "wx", mode: 0o600 });
   return listPath;
 }
 
@@ -723,7 +726,7 @@ export async function concatVideoFiles(
   // and `--debug` keeps both so a bad concat can be reproduced from its list.
   let listPath: string;
   try {
-    listPath = writeConcatList(dirname(firstInput), inputPaths);
+    listPath = writeVideoConcatList(dirname(firstInput), inputPaths);
   } catch (error) {
     return { success: false, error: (error as Error).message, externalInterruption: false };
   }
@@ -891,7 +894,14 @@ export async function muxVideoWithAudio(
   const isWebm = outputExtension === ".webm";
   const isMov = outputExtension === ".mov";
   const shouldCopyAudio = isWebm ? false : await shouldCopyAacSidecar(audioPath, config);
-  const args = [...(config?.videoInputArgs ?? ["-i", videoPath]), "-i", audioPath, "-c:v", "copy"];
+  const args = [
+    ...(config?.videoInputArgs ?? ["-i", videoPath]),
+    ...localContainerInputArgs(config?.audioContainer),
+    "-i",
+    audioPath,
+    "-c:v",
+    "copy",
+  ];
 
   if (isWebm) {
     args.push("-c:a", "libopus", "-b:a", "128k");

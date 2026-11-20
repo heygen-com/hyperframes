@@ -1,4 +1,5 @@
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import {
   authoredKey,
   TIMING_ATTRIBUTES,
@@ -20,7 +21,13 @@ const rootsByDoc = new WeakMap<Document, ParentNode[]>();
 // A plain template is a runtime clone source, so ids inside it repeat across clones.
 function searchRoots(root: ParentNode): ParentNode[] {
   const templates = Array.from(root.querySelectorAll("template")).filter(isCompositionTemplate);
-  return [root, ...templates.flatMap((template) => searchRoots(template.content))];
+  return [
+    root,
+    ...templates.flatMap((template) => {
+      const content = templateContent(template);
+      return content ? searchRoots(content) : [];
+    }),
+  ];
 }
 
 function findByAttribute(doc: Document, name: string, value: string): Element | null {

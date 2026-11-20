@@ -3,6 +3,7 @@ import { isRichTextFormattingTag } from "../utils/richTextSanitize";
 import { isClipHiddenByRuntime } from "../studioPreviewMark";
 import { MAX_QUERY_MATCHES, type EditingElementHandle } from "./editingElement";
 import { elementForHandle, handleFor } from "./editingHandles";
+import type { EditingParams, EditingResult } from "./editingPort";
 import { isDomLayerElement } from "./editingTargets";
 import { isElementNode } from "./domRealm";
 
@@ -111,5 +112,45 @@ export function layersOf(
       zIndex: elementZIndex(element),
       kind: layerKindOf(element, childCount > 0),
     })),
+  };
+}
+
+/**
+ * Tags that never paint, so they take no z slot in a stacking family: audio (the qa-clean audio
+ * element), script/style/link/meta, and template/noscript, whose markup a renumber must not touch.
+ */
+export const NON_PAINTING_TAGS = new Set([
+  "AUDIO",
+  "SCRIPT",
+  "STYLE",
+  "LINK",
+  "META",
+  "TEMPLATE",
+  "NOSCRIPT",
+]);
+
+export interface EditingStackingSibling {
+  handle: EditingElementHandle;
+  zIndex: number;
+}
+
+export function stackingFamily({
+  handle,
+}: EditingParams<"stacking-family">): EditingResult<"stacking-family"> {
+  const element = elementForHandle(handle);
+  const parent = element?.parentElement;
+  if (!element || !parent) return { family: null, locked: false };
+  const siblings = Array.from(parent.children).filter(
+    (child) => child === element || (isElementNode(child) && !NON_PAINTING_TAGS.has(child.tagName)),
+  );
+  return {
+    family:
+      siblings.length > MAX_QUERY_MATCHES
+        ? null
+        : siblings.map((child) => ({
+            handle: handleFor(child),
+            zIndex: elementZIndex(child as HTMLElement),
+          })),
+    locked: !!element.closest("[data-timeline-locked]"),
   };
 }
