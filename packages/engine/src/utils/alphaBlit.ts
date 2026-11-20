@@ -816,6 +816,11 @@ function parseObjectPosition(css: string | undefined): {
   const tokens = css.trim().split(/\s+/);
   if (tokens.length === 1) {
     const single = tokens[0] ?? "";
+    const lower = single.trim().toLowerCase();
+    // A lone vertical keyword means 50% on x, not a left-edge x position.
+    if (lower === "top" || lower === "bottom") {
+      return { x: { kind: "fraction", value: 0.5 }, y: parseObjectPositionAxis(single, "y") };
+    }
     const v = parseObjectPositionAxis(single, "x");
     return { x: v, y: { kind: "fraction", value: 0.5 } };
   }

@@ -1361,6 +1361,17 @@ describe("resampleRgb48leObjectFit", () => {
     }
   });
 
+  it.each([
+    { position: "top", x: 2, y: 0 },
+    { position: "bottom", x: 2, y: 4 },
+    { position: "left", x: 0, y: 2 },
+    { position: "right", x: 4, y: 2 },
+  ])("places none-fit content at the single-keyword position $position", ({ position, x, y }) => {
+    const src = makeHdrFrame(2, 2, 40000, 30000, 20000);
+    const out = resampleRgb48leObjectFit(src, 2, 2, 6, 6, "none", position);
+    expect(readRgb16(out, 6, x, y)).toEqual([40000, 30000, 20000]);
+  });
+
   it("returns the same buffer unchanged for identity fill resample", () => {
     const src = makeHdrFrame(4, 4, 40000, 30000, 20000);
     const out = resampleRgb48leObjectFit(src, 4, 4, 4, 4, "fill");
