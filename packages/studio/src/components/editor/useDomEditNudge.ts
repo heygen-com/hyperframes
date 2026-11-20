@@ -300,20 +300,26 @@ export function useDomEditNudge(params: UseDomEditNudgeParams): { flushNudge: ()
     return read;
   };
 
+  const joinSealedRead = (delta: { dx: number; dy: number }): boolean => {
+    const reading = readingRef.current ?? (sessionRef.current ? null : readSealedStart());
+    if (!reading) return false;
+    readingRef.current = reading;
+    reading.accum = { x: reading.accum.x + delta.dx, y: reading.accum.y + delta.dy };
+    return true;
+  };
+
+  const openSession = (repeat: boolean) => {
+    const found = nudgeTargets();
+    return found && beginSession(found, repeat);
+  };
+
   const handleKeyDown = (event: KeyboardEvent) => {
     const p = paramsRef.current;
     if (shouldIgnoreNudgeKey(p, event)) return;
     const delta = resolveCanvasNudgeDelta(event);
     if (!delta) return;
-    const reading = readingRef.current ?? (sessionRef.current ? null : readSealedStart());
-    if (reading) {
-      readingRef.current = reading;
-      event.preventDefault();
-      reading.accum = { x: reading.accum.x + delta.dx, y: reading.accum.y + delta.dy };
-      return;
-    }
-    const found = sessionRef.current ? null : nudgeTargets();
-    const session = sessionRef.current ?? (found && beginSession(found, event.repeat));
+    if (joinSealedRead(delta)) return void event.preventDefault();
+    const session = sessionRef.current ?? openSession(event.repeat);
     if (session === "refused") return void event.preventDefault();
     if (!session) return;
     event.preventDefault();
