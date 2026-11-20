@@ -188,6 +188,34 @@ describe("probeMediaMetadata", () => {
     ).toMatchObject({ frameRate: 60, variableFrameRate: true });
   });
 
+  it("reads how a file's pixels stretch and turn, for the size it shows at", async () => {
+    const asked: string[][] = [];
+    const probe = (stream: object) =>
+      probeMediaMetadata("/tmp/clip.mp4", (_path, args) => {
+        asked.push(args);
+        return {
+          status: 0,
+          stdout: JSON.stringify({ streams: [{ codec_type: "video", ...stream }] }),
+          stderr: "",
+        };
+      });
+    const size = { width: 1440, height: 1080 };
+
+    expect(
+      (await probe({ ...size, sample_aspect_ratio: "4:3", side_data_list: [{ rotation: -90 }] }))
+        .source,
+    ).toMatchObject({ ...size, sampleAspectRatio: 4 / 3, rotation: -90 });
+    expect((await probe({ ...size, tags: { rotate: "90" } })).source).toMatchObject({
+      rotation: 90,
+    });
+    const plain = (await probe({ ...size, sample_aspect_ratio: "1:1" })).source;
+    expect(plain).not.toHaveProperty("sampleAspectRatio");
+    expect(plain).not.toHaveProperty("rotation");
+    expect(asked[0]?.join(" ")).toMatch(
+      /sample_aspect_ratio.*stream_tags=alpha_mode,rotate:stream_side_data_list:format/,
+    );
+  });
+
   it("lists every stream with its flags, for a failure report", async () => {
     const metadata = await probeMediaMetadata("/tmp/clip.mov", () => ({
       status: 0,
