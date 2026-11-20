@@ -232,7 +232,6 @@ export function useGsapAwareEditing({
           throw error;
         }
         const scaleRoute = targetAnimations.some((anim) => anim.propertyGroup === "scale");
-        if (route) route.sizeSavedAsScale = scaleRoute;
         const selector = selectorFromSelection(selection);
         const hasLivePositionTween = selector
           ? hasNonHoldTweenForElement(
@@ -315,6 +314,8 @@ export function useGsapAwareEditing({
                   stamp,
                 );
                 assertGsapEditPersisted(outcome);
+                if (route)
+                  route.sizeSavedAsScale = outcome.status === "persisted" && !!outcome.savedAsScale;
                 // Saved before the buffered GSAP writes, so their reload stays the gesture's last render.
                 if (outcome.status === "element-size") {
                   const result = await writes.drawKeepingUndone(() =>
