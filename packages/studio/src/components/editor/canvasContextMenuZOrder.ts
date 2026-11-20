@@ -42,6 +42,7 @@
  */
 
 import { COLOR_GRADING_SOURCE_HIDDEN_ATTR } from "@hyperframes/core/color-grading";
+import { NON_PAINTING_TAGS } from "@hyperframes/core/runtime/editing-port";
 import { readLayerRevealPriorZ } from "../../player/lib/timelineElementHelpers";
 
 export type ZOrderAction = "bring-forward" | "send-backward" | "bring-to-front" | "send-to-back";
@@ -94,7 +95,7 @@ export function isElementVisibleForZOrder(el: HTMLElement): boolean {
   }
 }
 
-interface RenderEntry {
+export interface RenderEntry {
   element: HTMLElement;
   zIndex: number;
   /** Position within the shared parent's children (DOM document order). */
@@ -128,25 +129,6 @@ export function readEffectiveZIndex(el: HTMLElement): number {
 function isElementNode(node: Node): node is HTMLElement {
   return node.nodeType === 1;
 }
-
-/**
- * Tags that never paint pixels and so must be excluded from z-order siblings.
- * `<audio>` is the real offender here: a prior renumber wrote a meaningless
- * z-index onto the qa-clean audio element, and counting it as a sibling skews the
- * renumber for the visible elements. `<script>/<style>/<link>/<meta>` are also
- * non-painting and could otherwise pad the family / eat a z slot.
- * `<template>/<noscript>` never paint either — letting them in meant renumber
- * fallbacks wrote z-index/position into template source markup.
- */
-const NON_PAINTING_TAGS = new Set([
-  "AUDIO",
-  "SCRIPT",
-  "STYLE",
-  "LINK",
-  "META",
-  "TEMPLATE",
-  "NOSCRIPT",
-]);
 
 /** A painting element: an element node whose tag actually renders pixels. */
 function isPaintingElement(node: Node): node is HTMLElement {
@@ -273,7 +255,7 @@ function realizeOrder(
   const targetPos = desiredOrder.findIndex((e) => e.element === target);
   if (targetPos === -1) return null;
 
-  const targetZ = readEffectiveZIndex(target);
+  const targetZ = desiredOrder[targetPos].zIndex;
 
   // ── Fast path: distinct z values → a single between-value move suffices.
   const zValues = currentOrder.map((e) => e.zIndex);
@@ -449,8 +431,8 @@ export function resolveZOrderChange(
 export function resolveZOrderReposition(
   target: HTMLElement,
   desiredOrderBottomToTop: readonly HTMLElement[],
+  entries: RenderEntry[] = getFamily(target).entries,
 ): ZOrderPatch[] | null {
-  const { entries } = getFamily(target);
   if (entries.length < 2) return null;
   const byElement = new Map(entries.map((entry) => [entry.element, entry]));
   const desired: RenderEntry[] = [];

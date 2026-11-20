@@ -10,6 +10,7 @@ import {
   MAX_ELEMENT_TEXT,
   MAX_ELEMENT_VALUE,
   MAX_GEOMETRY_CHILDREN,
+  MAX_QUERY_MATCHES,
   MAX_SNAP_TARGETS,
   MAX_SOURCE_GROUPS,
   type EditingElementBox,
@@ -20,6 +21,7 @@ import {
   type EditingElementMatch,
   type EditingElementSource,
   type EditingLayer,
+  type EditingStackingSibling,
 } from "@hyperframes/core/runtime/editing-port";
 import { resolveElementSourceFile } from "../../components/editor/domEditingDom";
 import { previewRequest } from "./previewChannel";
@@ -311,6 +313,19 @@ export async function previewLayers(
   return layers.every(isLayer) ? { layers, truncated, missingGroup } : null;
 }
 
+const isSibling = (value: unknown): value is EditingStackingSibling =>
+  isFields(value) && isHandle(value.handle) && Number.isSafeInteger(value.zIndex);
+
+export async function previewStackingSiblings(iframe: HTMLIFrameElement, handle: string) {
+  const reply = await previewRequest(iframe, "stacking-family", { handle });
+  const family: unknown = reply?.family;
+  const locked: unknown = reply?.locked;
+  if (!Array.isArray(family) || family.length > MAX_QUERY_MATCHES) return null;
+  if (typeof locked !== "boolean" || !family.every(isSibling)) return null;
+  const handles = new Set(family.map((sibling) => sibling.handle));
+  return handles.size === family.length && handles.has(handle) ? { family, locked } : null;
+}
+
 type EditEntry = [name: string, value: string | null];
 type StyleEntry = [name: string, value: string | null, priority?: "important"];
 const isEditEntries = (value: unknown, priority = false): value is StyleEntry[] =>
@@ -365,7 +380,10 @@ export function editPreviewElement(
 const SEALED_DRAW_WAIT_MS = 300;
 
 /** Saves a live edit at once; a sealed one once the frame says it drew it, else after the wait. */
-export function afterSealedDraw<T>(edit: PreviewElementEdit | null, save: (drawn: boolean) => T) {
+export function afterSealedDraw<T>(
+  edit: Pick<PreviewElementEdit, "drawn"> | null,
+  save: (drawn: boolean) => T,
+) {
   if (!edit) return save(true);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const late = new Promise<boolean>((resolve) => {
