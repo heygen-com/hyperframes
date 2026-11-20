@@ -13,7 +13,8 @@ import { fileURLToPath } from "node:url";
  *
  * URL routes:
  *   /                                  → host.html (default fixture: gsap-heavy)
- *   /host.html?fixture=<name>          → embed page hosting <hyperframes-player>
+ *   /host.html?fixture=<name>          → embed page hosting <hyperframes-player>, sealed
+ *   /host.html?...&trusted=1           → the same with sandbox-origin="same-origin", for benches that read the film
  *   /player/hyperframes-player.global.js
  *   /vendor/gsap.min.js
  *   /vendor/hyperframe.runtime.iife.js
@@ -79,7 +80,12 @@ function mimeFor(path: string): string {
   return MIME_TYPES[path.slice(dot).toLowerCase()] ?? "application/octet-stream";
 }
 
-function buildHostHtml(fixtureName: string, width: number, height: number): string {
+function buildHostHtml(
+  fixtureName: string,
+  width: number,
+  height: number,
+  trusted: boolean,
+): string {
   const playerSrc = "/player/hyperframes-player.global.js";
   const fixtureSrc = `/fixtures/${fixtureName}/index.html`;
   return `<!doctype html>
@@ -94,8 +100,7 @@ function buildHostHtml(fixtureName: string, width: number, height: number): stri
   </head>
   <body>
     <hyperframes-player
-      id="player"
-      sandbox-origin="same-origin"
+      id="player"${trusted ? '\n      sandbox-origin="same-origin"' : ""}
       src="${fixtureSrc}"
       width="${width}"
       height="${height}"
@@ -170,7 +175,7 @@ export function startServer(options: ServeOptions = {}): RunningServer {
         const fixture = url.searchParams.get("fixture") || "gsap-heavy";
         const width = Number(url.searchParams.get("width") || "1920");
         const height = Number(url.searchParams.get("height") || "1080");
-        const html = buildHostHtml(fixture, width, height);
+        const html = buildHostHtml(fixture, width, height, url.searchParams.get("trusted") === "1");
         return applyCacheHeaders(
           new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } }),
           noCache,
