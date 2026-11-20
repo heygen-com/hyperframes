@@ -75,6 +75,11 @@ function originalBoxSize(
   return Number.isFinite(inline) && inline > 0 ? inline : null;
 }
 
+const BOX_SIDES = [
+  ["width", STUDIO_ORIGINAL_BOX_WIDTH_ATTR],
+  ["height", STUDIO_ORIGINAL_BOX_HEIGHT_ATTR],
+] as const;
+
 /** The box's width and height before the draft. A sealed frame's draft marks the frame's element,
  *  not the stand-in, so there it is the box the press measured. */
 function preGestureBoxSize(
@@ -82,11 +87,12 @@ function preGestureBoxSize(
   el: HTMLElement | null = selection.element,
 ): Record<string, number> {
   const started = selection.handle ? gestureStartLayout(selection.handle) : null;
-  const width =
-    originalBoxSize(el, STUDIO_ORIGINAL_BOX_WIDTH_ATTR, "width") ?? (started?.width || null);
-  const height =
-    originalBoxSize(el, STUDIO_ORIGINAL_BOX_HEIGHT_ATTR, "height") ?? (started?.height || null);
-  return { ...(width != null && { width }), ...(height != null && { height }) };
+  const box: Record<string, number> = {};
+  for (const [side, attr] of BOX_SIDES) {
+    const value = originalBoxSize(el, attr, side) ?? (started?.[side] || null);
+    if (value != null) box[side] = value;
+  }
+  return box;
 }
 
 /** A size write at the playhead. When the same tween animates position, the resize's anchor move
