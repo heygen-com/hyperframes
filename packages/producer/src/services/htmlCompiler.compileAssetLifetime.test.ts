@@ -64,9 +64,16 @@ it("stops every download of a compile that fails", async () => {
 });
 
 // fails without the fix: each source was reserved on its own, so the first ones started before the cap refused.
-it("refuses a file's media past the cap before any of them downloads", async () => {
-  await expect(compile({ "index.html": root(videos("v", MAX_REMOTE_ASSETS + 1)) })).rejects.toThrow(
-    `at most ${MAX_REMOTE_ASSETS} are downloaded`,
-  );
-  expect(requests).toHaveLength(0);
-});
+it.each([
+  ["without", "<video "],
+  ["with", '<video data-duration="1" '],
+])(
+  "refuses a file's media %s a set duration past the cap before any of them downloads",
+  async (_with, tag) => {
+    const body = videos("v", MAX_REMOTE_ASSETS + 1).replaceAll("<video ", tag);
+    await expect(compile({ "index.html": root(body) })).rejects.toThrow(
+      `at most ${MAX_REMOTE_ASSETS} are downloaded`,
+    );
+    expect(requests).toHaveLength(0);
+  },
+);
