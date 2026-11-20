@@ -8,6 +8,7 @@ import {
   type StudioSelectResult,
 } from "./selectionTools";
 import {
+  documentPreview,
   expectFailure,
   expectOk,
   previewDoc,

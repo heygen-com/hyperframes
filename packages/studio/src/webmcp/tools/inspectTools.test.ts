@@ -5,6 +5,7 @@ import { studioInspect, type InspectToolDeps, type StudioInspectResult } from ".
 import {
   expectFailure,
   expectOk,
+  documentPreview,
   previewDoc,
   previewElement,
   selectionFor,

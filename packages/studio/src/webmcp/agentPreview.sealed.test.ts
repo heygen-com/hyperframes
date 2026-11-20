@@ -11,13 +11,20 @@ import { buildStudioLook, collectStudioLookScene, type StudioLook } from "./tool
 import { studioSelect } from "./tools/selectionTools";
 import { studioTransform, type StudioTransformResult } from "./tools/transformTools";
 import type { StudioSelectResult } from "./tools/selectionTools";
-import { expectOk, lookSnapshot, sourceHandle, studioAgentToolsDeps } from "./webmcpTestUtils";
+import {
+  expectOk,
+  lookSnapshot,
+  selectionFor,
+  sourceHandle,
+  studioAgentToolsDeps,
+} from "./webmcpTestUtils";
 
 const FIXTURE = `
   <div data-composition-id="main" data-width="1920" data-height="1080">
     <div id="card" class="clip"><h1 id="target">Ship it</h1></div>
   </div>`;
 const CONTEXT = { activeCompositionPath: "index.html", isMasterView: false };
+const selfTextField = selectionFor(document.createElement("h1")).textFields[0]!;
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -115,12 +122,20 @@ describe("agent tools on a sealed preview", () => {
 
   it("reads new text it wrote off the frame's element", async () => {
     const { deps, handle, target } = sealedStudio();
+    // A sealed selection lists no text fields yet; one is given here so the write reaches its read-back.
+    const buildSelection = async (found: Parameters<typeof deps.buildSelection>[0]) => {
+      const selection = await deps.buildSelection(found);
+      return selection && { ...selection, textFields: [selfTextField] };
+    };
     const setText = vi.fn(async (_selection: DomEditSelection, value: string) => {
       target.textContent = value;
       return { ok: true as const };
     });
 
-    const result = await studioSetText({ ...deps, setText }, { handle, text: "Shipped" });
+    const result = await studioSetText(
+      { ...deps, buildSelection, setText },
+      { handle, text: "Shipped" },
+    );
 
     expect(result).toMatchObject({ ok: true, text: "Shipped", changed: true });
   });

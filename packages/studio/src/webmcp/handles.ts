@@ -17,7 +17,6 @@ import type { TimelineElement } from "../player/store/timelineElement";
 import type { PreviewElement } from "../player/lib/previewElements";
 import { findElementForSelection } from "../components/editor/domEditingElement";
 import type { SelectionLookupTarget } from "../components/editor/domEditSelectionRules";
-import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import { standInHandle } from "../components/editor/previewSelection";
 import type { PatchTarget } from "../utils/sourcePatcher";
 
@@ -239,7 +238,7 @@ function previewMoved(
  * selection attached to the old document with a truthful-looking 0x0 box.
  * Reacquire once from the current load, then refuse if it moves again.
  */
-export async function resolveLiveHandleSelection<T extends DomEditSelection>(
+export async function resolveLiveHandleSelection<T extends { element: HTMLElement }>(
   preview: PreviewTargets,
   handle: string,
   buildSelection: (target: HTMLElement | PreviewElement) => Promise<T | null>,
