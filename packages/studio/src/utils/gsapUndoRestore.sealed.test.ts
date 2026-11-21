@@ -8,6 +8,8 @@ vi.mock("../player/lib/previewChannel", () => ({
   previewFrameOpaque: () => true,
   previewEditingClient: () => PREVIEW_LOAD,
   previewRequest: channel.request,
+  previewAnswer: channel.request,
+  PREVIEW_REJECTED: Symbol("preview-rejected"),
 }));
 import { applyUndoRestoreToPreview } from "./gsapUndoRestore";
 import { applySoftReload } from "./gsapSoftReload";

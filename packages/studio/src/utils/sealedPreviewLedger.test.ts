@@ -11,6 +11,7 @@ vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../player/lib/previewChannel")>()),
   previewFrameOpaque: () => true,
   previewRequest: channel.request,
+  previewAnswer: channel.request,
   previewEditingClient: () => channel.load,
 }));
 import { applySoftReload } from "./gsapSoftReload";
