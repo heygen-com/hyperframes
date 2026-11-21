@@ -84,6 +84,20 @@ describe("shellArg", () => {
     expect(shellArg("films/@scope", "win32")).toBe("films/@scope");
   });
 
+  // fails without the fix: the word was printed with the character inside its quotes.
+  it.each(["darwin", "linux", "win32"] as const)(
+    "prints nothing on %s for a name with a character a terminal does not show",
+    (platform) => {
+      for (const name of [
+        "a\nb",
+        "a\tb",
+        `a${String.fromCharCode(7)}b`,
+        `a${String.fromCharCode(27)}[2Jb`,
+      ])
+        expect(shellArg(name, platform), JSON.stringify(name)).toBeNull();
+    },
+  );
+
   it("prints nothing on Windows for a name no shell there reads literally", () => {
     for (const name of WINDOWS_UNPRINTABLE) expect(shellArg(name, "win32"), name).toBeNull();
   });
