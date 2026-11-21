@@ -7,6 +7,12 @@ let observer: MutationObserver | null = null;
 // MutationObserver callbacks run as a microtask after the insertion.
 const settled = () => Promise.resolve();
 
+/** The first frame of a load, of `url`: what makes a no-CORS fallback count as having played. */
+function playsFrom(media: HTMLMediaElement, url: string) {
+  Object.defineProperty(media, "currentSrc", { value: url, configurable: true });
+  media.dispatchEvent(new Event("loadeddata"));
+}
+
 function add(html: string): Element {
   const host = document.createElement("div");
   host.innerHTML = html;
@@ -105,7 +111,7 @@ describe("corsForSealedMedia", () => {
   });
 
   // fails without the fix: a host with no CORS headers failed every opted-in video, and nothing loaded it again.
-  it("loads a video again once without crossorigin when its CORS load fails, and says so", async () => {
+  it("loads a video again once without crossorigin when its CORS load fails, and says so once it plays", async () => {
     vi.stubGlobal("origin", "null");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     observer = corsForSealedMedia();
@@ -117,6 +123,8 @@ describe("corsForSealedMedia", () => {
     video.dispatchEvent(new Event("error"));
     expect(video.hasAttribute("crossorigin")).toBe(false);
     expect(load).toHaveBeenCalledTimes(1);
+    expect(warn).not.toHaveBeenCalled();
+    playsFrom(video, `${PREVIEW}media/plain-host.mp4`);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]![0]).toContain(`${PREVIEW}media/plain-host.mp4`);
 
@@ -134,6 +142,7 @@ describe("corsForSealedMedia", () => {
     await settled();
     vi.spyOn(first, "load").mockImplementation(() => {});
     first.dispatchEvent(new Event("error"));
+    playsFrom(first, `${PREVIEW}media/refused.mp4`);
 
     const second = add(`<video src="media/refused.mp4"></video>`).querySelector("video")!;
     first.src = `${PREVIEW}media/refused.mp4`;
@@ -161,7 +170,7 @@ describe("corsForSealedMedia", () => {
     expect(later.getAttribute("crossorigin")).toBe("anonymous");
   });
 
-  it("loads the element again without crossorigin once its last source fails", async () => {
+  it("loads the element again without crossorigin once its last source fails, and remembers the one that played", async () => {
     vi.stubGlobal("origin", "null");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     observer = corsForSealedMedia();
@@ -178,9 +187,9 @@ describe("corsForSealedMedia", () => {
     last!.dispatchEvent(new Event("error"));
     expect(video.hasAttribute("crossorigin")).toBe(false);
     expect(load).toHaveBeenCalledTimes(1);
+    playsFrom(video, `${PREVIEW}media/no-cors-a.mp4`);
     expect(warn.mock.calls.map(([line]) => String(line).split(" ")[1])).toEqual([
       `${PREVIEW}media/no-cors-a.mp4`,
-      `${PREVIEW}media/no-cors-b.mp4`,
     ]);
     warn.mockRestore();
   });
@@ -193,6 +202,7 @@ describe("corsForSealedMedia", () => {
     await settled();
     vi.spyOn(refused, "load").mockImplementation(() => {});
     refused.dispatchEvent(new Event("error"));
+    playsFrom(refused, `${PREVIEW}media/refused-once.mp4`);
     const host = add(
       `<video src="media/fine-a.mp4"></video><video src="media/fine-b.mp4" crossorigin="anonymous"></video>`,
     );
@@ -206,6 +216,22 @@ describe("corsForSealedMedia", () => {
       false,
       "anonymous",
     ]);
+    warn.mockRestore();
+  });
+
+  it("remembers nothing when the load without CORS fails too", async () => {
+    vi.stubGlobal("origin", "null");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    observer = corsForSealedMedia();
+    const video = add(`<video src="media/down.mp4"></video>`).querySelector("video")!;
+    await settled();
+    const load = vi.spyOn(video, "load").mockImplementation(() => {});
+    video.dispatchEvent(new Event("error"));
+    video.dispatchEvent(new Event("error"));
+    expect([load.mock.calls.length, warn.mock.calls.length]).toEqual([1, 0]);
+    const fresh = add(`<video src="media/down.mp4"></video>`).querySelector("video")!;
+    await settled();
+    expect(fresh.getAttribute("crossorigin")).toBe("anonymous");
     warn.mockRestore();
   });
 

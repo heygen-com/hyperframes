@@ -202,6 +202,41 @@ async function mediaCases() {
   const fellBack = await read("recovers");
   await add("fresh", `<video src="${flaky}"></video>`);
   const fresh = await read("fresh");
+
+  // A fallback that plays, then the same source loaded again beside a <source> whose media never matches.
+  await add(
+    "mismatch",
+    `<video><source src="${plain}?case=mismatch"><source src="${base}?case=mismatch-other" media="(max-width: 1px)"></video>`,
+  );
+  const mismatchFirst = await read("mismatch");
+  await frame.evaluate(() => {
+    const video = document.querySelector<HTMLVideoElement>('[data-case="mismatch"]')!;
+    const source = video.querySelector("source")!;
+    source.src = source.getAttribute("src")!;
+    video.load();
+  });
+  const mismatchAgain = await read("mismatch");
+
+  // An outage: 503 with CORS for the CORS try and for the fallback, then healthy for a fresh video.
+  const outage = "/fixtures-flaky/10-video-grid/sample.mp4?case=outage&fail=2&no-store";
+  await add("outage", `<video src="${outage}"></video>`);
+  const outageFirst = await read("outage");
+  await add("outage-fresh", `<video src="${outage}"></video>`);
+  const outageFresh = await read("outage-fresh");
+
+  // Two sources refusing CORS: the fallback plays the first, so only the first is remembered as refusing.
+  const pair = (side: string) => `${plain}?case=pair-${side}`;
+  await add("pair", `<video><source src="${pair("a")}"><source src="${pair("b")}"></video>`);
+  const pairPlayed = await read("pair");
+  const armedAtStart = (url: string) =>
+    frame.evaluate(async (src) => {
+      const video = document.createElement("video");
+      video.src = src;
+      document.body.append(video);
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      return video.getAttribute("crossorigin");
+    }, url);
+  const pairArmed = { a: await armedAtStart(pair("a")), b: await armedAtStart(pair("b")) };
   for (const [name, value] of [
     ["credentials", "use-credentials"],
     ["same", "anonymous"],
@@ -237,6 +272,7 @@ async function mediaCases() {
     requests,
     sameTask,
     recovery: { recovered, fellBack, fresh },
+    round5: { mismatchFirst, mismatchAgain, outageFirst, outageFresh, pairPlayed, pairArmed },
   };
 }
 
@@ -267,7 +303,7 @@ try {
   );
   console.log("[sealed-media] a host without CORS plays; a CORS host keeps pixel access");
 
-  const { results, authored, warnings, requests, sameTask, recovery } = await mediaCases();
+  const { results, authored, warnings, requests, sameTask, recovery, round5 } = await mediaCases();
   const failures: string[] = [];
   const check = (claim: string, ok: boolean, seen: unknown) => {
     if (!ok) failures.push(`${claim}: ${JSON.stringify(seen)}`);
@@ -291,10 +327,10 @@ try {
     results.unsupported,
   );
   check(
-    "a source that fails with and without CORS ends without CORS and is named once",
+    "a source that fails with and without CORS ends without CORS and is not remembered",
     !results.missing.playing &&
       results.missing.crossOrigin === null &&
-      warnings.filter((w) => w.includes("missing.mp4")).length === 1,
+      !warnings.some((w) => w.includes("missing.mp4")),
     { video: results.missing, warnings },
   );
   check(
@@ -333,6 +369,21 @@ try {
       recovery.fellBack.crossOrigin === null &&
       corsReadable(recovery.fresh),
     recovery,
+  );
+  check(
+    "a video that fell back plays again when its source is reloaded beside a <source> whose media never matches",
+    round5.mismatchFirst.playing && round5.mismatchAgain.playing,
+    { first: round5.mismatchFirst, again: round5.mismatchAgain },
+  );
+  check(
+    "a URL whose fallback also failed is not remembered: a fresh video gets CORS once it recovers",
+    corsReadable(round5.outageFresh),
+    { first: round5.outageFirst, fresh: round5.outageFresh },
+  );
+  check(
+    "only the source the fallback played is remembered as refusing CORS",
+    round5.pairPlayed.playing && round5.pairArmed.a === null && round5.pairArmed.b === "anonymous",
+    { played: round5.pairPlayed, armed: round5.pairArmed },
   );
   assert.deepEqual(failures, [], failures.join("\n"));
   console.log(

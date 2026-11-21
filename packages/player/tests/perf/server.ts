@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
  *   /vendor/gsap.min.js
  *   /vendor/hyperframe.runtime.iife.js
  *   /fixtures/<name>/<file>            → fixture HTML + assets
- *   /fixtures-flaky/<name>/<file>      → as /fixtures/, but a 503 the first time each URL is asked for
+ *   /fixtures-flaky/<name>/<file>      → as /fixtures/, but a 503 the first time each URL is asked (?fail=N: N times)
  *   ...?no-store                       → never cached, so every load reaches the server
  */
 
@@ -171,7 +171,7 @@ function applyCacheHeaders(res: Response, noCache: boolean): Response {
 export function startServer(options: ServeOptions = {}): RunningServer {
   const noCache = options.noCache ?? false;
 
-  const failedOnce = new Set<string>();
+  const failures = new Map<string, number>();
   const requested: string[] = [];
   const server = Bun.serve({
     port: options.port ?? 0,
@@ -211,8 +211,9 @@ export function startServer(options: ServeOptions = {}): RunningServer {
       }
 
       const served = /^\/(fixtures|fixtures-no-cors|fixtures-flaky)\//.exec(path);
-      if (served?.[1] === "fixtures-flaky" && !failedOnce.has(url.href)) {
-        failedOnce.add(url.href);
+      const failed = failures.get(url.href) ?? 0;
+      if (served?.[1] === "fixtures-flaky" && failed < Number(url.searchParams.get("fail") ?? 1)) {
+        failures.set(url.href, failed + 1);
         return new Response("Busy", {
           status: 503,
           headers: { "Access-Control-Allow-Origin": "*" },
