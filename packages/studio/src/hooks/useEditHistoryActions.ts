@@ -130,7 +130,7 @@ export function useEditHistoryActions({
           serverSteppedShown && predictedShown
             ? fromShown(result.files, predicted!.files)
             : result.files;
-        const restore = { paths: result.paths, files };
+        const restore = { paths: result.paths, files, revision: result.revision };
         onAfterUndoRedo?.(restore);
         if (activeCompPath && result.paths?.includes(activeCompPath)) {
           forceReloadSdkSession?.();

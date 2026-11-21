@@ -11,6 +11,7 @@ export interface PreviewWrite {
   previousHtml: string;
   nestedFiles?: Map<string, string> | null;
   timingEdit?: boolean;
+  version?: number;
 }
 
 /** How long a write carrying restored attributes or clip timing waits for the frame before it recovers. */
@@ -23,6 +24,7 @@ export interface PreviewSend {
   attributes: boolean;
   /** Clip timing: covered only by a newer re-run that carried the saved timing too. */
   timing: boolean;
+  version?: number;
 }
 
 export interface PreviewTicket {
@@ -35,9 +37,13 @@ export interface PreviewTicket {
   readonly sent: PreviewSend;
 }
 
+type Owner = { seq: number; version: number };
+
 interface Ledger {
   seq: number;
-  reruns: Map<string, { seq: number; version: number; timing: boolean }>;
+  reruns: Map<string, Owner>;
+  /** Kept apart: a later script-only re-run leaves the timing an earlier one applied in place. */
+  timedReruns: Map<string, Owner>;
   writes: Map<string, { seq: number; version: number; write: PreviewWrite }>;
   newestVersion: number;
 }
@@ -49,7 +55,13 @@ function ledgerOf(load: EditingPortClient): Ledger {
   if (!ledger)
     ledgers.set(
       load,
-      (ledger = { seq: 0, reruns: new Map(), writes: new Map(), newestVersion: 0 }),
+      (ledger = {
+        seq: 0,
+        reruns: new Map(),
+        timedReruns: new Map(),
+        writes: new Map(),
+        newestVersion: 0,
+      }),
     );
   return ledger;
 }
@@ -62,7 +74,7 @@ export function takePreviewTicket(iframe: HTMLIFrameElement, sent: PreviewSend):
     load,
     keys: timelineKeys(sent.scriptText),
     seq: ++ledger.seq,
-    version: studioFileRevision(),
+    version: sent.snapshot?.version ?? sent.version ?? studioFileRevision(),
     sent,
   };
   ledger.newestVersion = Math.max(ledger.newestVersion, ticket.version);
@@ -74,12 +86,13 @@ export function takePreviewTicket(iframe: HTMLIFrameElement, sent: PreviewSend):
 
 /** A re-run owns its timelines from its send: it applies, or it fails and recovers to the newest file itself. */
 export function confirmPreviewRerun(ticket: PreviewTicket): void {
-  const { reruns } = ledgerOf(ticket.load);
-  const owner = { seq: ticket.seq, version: ticket.version, timing: ticket.sent.timing };
-  for (const key of ticket.keys) {
-    const current = reruns.get(key);
-    if (!current || current.seq < ticket.seq) reruns.set(key, owner);
-  }
+  const { reruns, timedReruns } = ledgerOf(ticket.load);
+  const owner = { seq: ticket.seq, version: ticket.version };
+  for (const owners of ticket.sent.timing ? [reruns, timedReruns] : [reruns])
+    for (const key of ticket.keys) {
+      const current = owners.get(key);
+      if (!current || current.seq < ticket.seq) owners.set(key, owner);
+    }
 }
 
 /** An answer from a load that has since been replaced must not touch its replacement. */
@@ -89,14 +102,14 @@ export function ticketLoadLive(ticket: PreviewTicket): boolean {
 
 /** A later re-run read at this version or newer carries everything this write changed. */
 function ticketCovered(ticket: PreviewTicket): boolean {
-  const { reruns } = ledgerOf(ticket.load);
+  const { reruns, timedReruns } = ledgerOf(ticket.load);
+  const owners = ticket.sent.timing ? timedReruns : reruns;
   return (
     !ticket.sent.attributes &&
     ticket.keys.length > 0 &&
     ticket.keys.every((key) => {
-      const owner = reruns.get(key);
-      if (!owner || owner.seq <= ticket.seq || owner.version < ticket.version) return false;
-      return owner.timing || !ticket.sent.timing;
+      const owner = owners.get(key);
+      return owner !== undefined && owner.seq > ticket.seq && owner.version >= ticket.version;
     })
   );
 }
@@ -107,10 +120,14 @@ export function newestPreviewWrite(ticket: PreviewTicket): PreviewWrite | null {
   let newest = { seq: ticket.seq, version: ticket.version, write: ticket.sent.snapshot };
   for (const key of ticket.keys) {
     const sent = writes.get(key);
-    if (sent && sent.seq > newest.seq) newest = sent;
+    if (
+      sent &&
+      (sent.version > newest.version || (sent.version === newest.version && sent.seq > newest.seq))
+    )
+      newest = sent;
   }
   if (!newest.write || newest.version < newestVersion) return null;
-  return { ...newest.write, timingEdit: true };
+  return { ...newest.write, version: newest.version, timingEdit: true };
 }
 
 /** A late failure acts only for the live load and only when no later re-run carries its change. */

@@ -81,14 +81,37 @@ const next: Record<Save, (s: Saved, n: number) => Saved> = {
 };
 
 /** Sends `save` the way Studio does after writing the file from `before` to `after`. */
-function send(studioPage: Page, save: Save, before: Saved, after: Saved, two: boolean) {
+/** Marks a write request as Studio does when it goes out, and reads the file revision it took. */
+function mark(studioPage: Page) {
+  return studioPage.evaluate(() => {
+    const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+    studio.markStudioWriteToken(`save-${Math.random()}`);
+    return studio.studioFileRevision();
+  });
+}
+
+/** Sends `save` the way Studio does after writing the file from `before` to `after`. */
+function send(
+  studioPage: Page,
+  save: Save,
+  [before, after]: [Saved, Saved],
+  revision: number,
+  two: boolean,
+) {
   return studioPage.evaluate(
-    (kind, prev, saved, savedPage, x, text) => {
+    (kind, prev, saved, savedPage, x, text, version) => {
       const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
-      const w = window as unknown as { __saved: string; __reload: () => void; __refusals: number };
-      w.__saved = savedPage;
-      // Studio's own write of the file, as the save does before the preview sync.
-      studio.markStudioWriteToken(`save-${savedPage.length}-${Date.now()}`);
+      const w = window as unknown as {
+        __saved: string;
+        __savedVersion?: number;
+        __reload: () => void;
+        __refusals: number;
+      };
+      // The file on disk is the newest save's, whichever preview sync goes out last.
+      if (version > (w.__savedVersion ?? -1)) {
+        w.__saved = savedPage;
+        w.__savedVersion = version;
+      }
       // A reload Studio asks for because nothing can apply in place counts as a refusal that allows one.
       const reloadNow = () => {
         w.__refusals++;
@@ -103,7 +126,11 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved, two: bo
       // at the playhead then.
       if (kind === "liveRetime")
         void Promise.resolve(
-          studio.moveLiveTweens(iframe, text, time, w.__reload, { before: prev, after: saved }),
+          studio.moveLiveTweens(iframe, text, time, w.__reload, {
+            before: prev,
+            after: saved,
+            revision: version,
+          }),
         ).then((moved) => {
           if (moved) return;
           const now = studio.usePlayerStore.getState().currentTime;
@@ -111,13 +138,14 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved, two: bo
             ...rerun,
             currentTimeOverride: now,
             timingEdit: true,
+            version,
             onAsyncFailure: w.__reload,
           };
           if (studio.applySoftReload(iframe, text, options) === "cannot-soft-reload") reloadNow();
         });
       // As Studio's preview sync: a run nothing can apply in place reloads.
       const rerunOrReload = (timingEdit: boolean) => {
-        const options = { ...rerun, timingEdit, onAsyncFailure: w.__reload };
+        const options = { ...rerun, timingEdit, version, onAsyncFailure: w.__reload };
         if (studio.applySoftReload(iframe, text, options) === "cannot-soft-reload") reloadNow();
       };
       if (kind === "run") rerunOrReload(false);
@@ -127,7 +155,13 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved, two: bo
           selector: "#target",
           change: { kind: "set" as const, props: { x } },
         };
-        const result = { ok: true, scriptText: text, before: prev, after: saved };
+        const result = {
+          ok: true,
+          scriptText: text,
+          before: prev,
+          after: saved,
+          revision: version,
+        };
         studio.applyPreviewSync(
           iframe,
           result,
@@ -137,7 +171,7 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved, two: bo
       }
       if (kind.startsWith("undo")) {
         const files = { "index.html": { previous: prev, restored: saved } };
-        studio.applyUndoRestoreToPreview(iframe, null, files, time, reloadPreview);
+        studio.applyUndoRestoreToPreview(iframe, null, files, time, reloadPreview, null, version);
       }
       sending = false;
     },
@@ -147,6 +181,7 @@ function send(studioPage: Page, save: Save, before: Saved, after: Saved, two: bo
     page(after, two),
     after.x,
     script(after),
+    revision,
   );
 }
 
@@ -154,7 +189,9 @@ const fixture = (two: boolean): SequenceFixture<Saved, Save> => ({
   first: FIRST,
   page: (s) => page(s, two),
   next,
-  send: (studioPage, save, before, after) => send(studioPage, save, before, after, two),
+  mark,
+  send: (studioPage, save, before, after, revision) =>
+    send(studioPage, save, [before, after], revision, two),
   at: 2,
   /** What a viewer sees: the script that ran, the clip timing, the label and title, and the tween's values. */
   read: (frame) =>
@@ -194,7 +231,9 @@ const generated = (seed: number): Step[] => {
     if (roll < 0.06) return { reloadFrame: true };
     if (roll < 0.14) return { scrub: pick(SCRUBS) };
     if (roll < 0.2) return { pastDeadline: true };
-    if (roll < 0.47) return { answer: "any" };
+    // A timing sync's preview sync runs after the file lock, so a newer save's can go out first.
+    if (roll < 0.25) return { reversed: ["liveRetime", pick<Save>(["run", "patch", "undoLabel"])] };
+    if (roll < 0.5) return { answer: "any" };
     return { save: pick(SAVES), fate: pick(FATES) };
   });
 };

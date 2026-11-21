@@ -57,6 +57,7 @@ import {
   useSafeGsapCommitMutation,
 } from "./useSafeGsapCommitMutation";
 import { requestGsapMutation } from "./gsapMutationClient";
+import { studioFileRevision } from "../utils/studioFileVersion";
 import { whileScriptWrites } from "../player/previewReloading";
 
 async function mutateGsapScript(
@@ -65,11 +66,13 @@ async function mutateGsapScript(
   sourceFile: string,
   body: unknown,
 ): Promise<MutationResult> {
-  const res = await requestGsapMutation(projectId, route, sourceFile, body);
+  const pending = requestGsapMutation(projectId, route, sourceFile, body);
+  const revision = studioFileRevision();
+  const res = await pending;
   if (!res.ok) throw new GsapMutationHttpError(res.status, await readJsonResponseBody(res));
   const result = (await res.json()) as MutationResult;
   if (!result.ok) throw new Error(`Failed to update GSAP in ${sourceFile}`);
-  return result;
+  return { ...result, revision };
 }
 
 type ShowToast = (message: string, tone?: "error" | "info") => void;
@@ -224,7 +227,7 @@ type ShownFiles = Pick<PreviewWrite, "scriptText"> & Partial<PreviewWrite>;
 
 function softReloadOrEscalate(
   iframe: HTMLIFrameElement | null,
-  { scriptText, authoredHtml, previousHtml, nestedFiles, timingEdit }: ShownFiles,
+  { scriptText, authoredHtml, previousHtml, nestedFiles, timingEdit, version }: ShownFiles,
   reloadPreview: () => void,
   origin: "preview_sync" | "sdk_refresh",
 ): void {
@@ -239,6 +242,7 @@ function softReloadOrEscalate(
     previousHtml,
     nestedFiles,
     timingEdit,
+    version,
   });
   if (result === "applied") return;
   trackStudioEvent("gsap_soft_reload_outcome", {
@@ -273,6 +277,7 @@ export function applyPreviewSync(
     authoredHtml: result.after ?? undefined,
     previousHtml: result.before,
     nestedFiles,
+    version: result.revision,
   };
   const show = (shown: ShownFiles | null) => {
     if (!options.softReload || !shown?.scriptText) return reloadPreview();

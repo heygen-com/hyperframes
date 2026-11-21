@@ -10,6 +10,8 @@ export type SequenceStep<Save extends string> =
   | { save: Save; fate: SaveFate }
   | { answer: "any" | "oldest" | "newest" | string }
   | { scrub: number }
+  /** Two saves whose responses come back newest first, so the older one's preview sync goes out last. */
+  | { reversed: [Save, Save] }
   /** The oldest request deadline still pending passes; a reply after it arrives too late. */
   | { pastDeadline: true }
   | { reloadFrame: true };
@@ -19,8 +21,16 @@ export interface SequenceFixture<Saved, Save extends string> {
   /** The saved file as the preview loads it. */
   page(saved: Saved): string;
   next: Record<Save, (saved: Saved, step: number) => Saved>;
+  /** Marks a save's write request as Studio does when it goes out; resolves to the file revision it took. */
+  mark(studioPage: Page): Promise<number>;
   /** Sends `save` the way Studio does after writing the file; `window.__reload` is Studio's full reload. */
-  send(studioPage: Page, save: Save, before: Saved, after: Saved): Promise<unknown>;
+  send(
+    studioPage: Page,
+    save: Save,
+    before: Saved,
+    after: Saved,
+    revision: number,
+  ): Promise<unknown>;
   /** What a viewer sees, read once the preview has been sought to `at` seconds. */
   read(frame: Frame): Promise<unknown>;
   at: number;
@@ -233,6 +243,50 @@ const readPlayheads = (studioPage: Page, frame: Frame) =>
     ),
   ]).then(([shown, studio]) => ({ shown, studio }));
 
+/** Sends one save with its fate, and waits until Studio has posted its request or reloaded. */
+async function sendSave<Saved, Save extends string>(
+  studioPage: Page,
+  fixture: SequenceFixture<Saved, Save>,
+  save: Save,
+  fate: SaveFate,
+  [before, after]: [Saved, Saved],
+  revision: number,
+) {
+  await studioPage.evaluate(
+    (fate, kinds) => {
+      const w = window as unknown as {
+        __swallow: Set<string>;
+        __rejecting: boolean;
+        __neverAnswer: boolean;
+      };
+      w.__swallow = new Set(fate === "frame" ? [] : kinds);
+      w.__rejecting = fate === "rejected";
+      w.__neverAnswer = fate === "never";
+    },
+    fate,
+    SAVE_KINDS,
+  );
+  const sent = () =>
+    studioPage.evaluate(() => {
+      const w = window as unknown as { __posted: number; __reloads: number };
+      return w.__posted + w.__reloads;
+    });
+  const count = await sent();
+  await fixture.send(studioPage, save, before, after, revision);
+  // Studio posts the request a tick later, or reloads when nothing can apply in place; its fate holds until then.
+  await studioPage.waitForFunction(
+    (n) => {
+      const w = window as unknown as { __posted: number; __reloads: number };
+      return w.__posted + w.__reloads > n;
+    },
+    {},
+    count,
+  );
+  await studioPage.evaluate(() => {
+    (window as unknown as { __swallow: Set<string> }).__swallow = new Set();
+  });
+}
+
 /** Waits until a reload in flight has shown the newest saved file. */
 async function loaded(studioPage: Page, frame: Frame) {
   await studioPage.waitForFunction(() => !(window as unknown as { __loading: boolean }).__loading);
@@ -298,39 +352,17 @@ export async function playSequence<Saved, Save extends string>(
   for (const [n, step] of steps.entries()) {
     if ("save" in step) {
       const after = fixture.next[step.save](saved, n);
-      await studioPage.evaluate(
-        (fate, kinds) => {
-          const w = window as unknown as {
-            __swallow: Set<string>;
-            __rejecting: boolean;
-            __neverAnswer: boolean;
-          };
-          w.__swallow = new Set(fate === "frame" ? [] : kinds);
-          w.__rejecting = fate === "rejected";
-          w.__neverAnswer = fate === "never";
-        },
-        step.fate,
-        SAVE_KINDS,
-      );
-      const sent = () =>
-        studioPage.evaluate(() => {
-          const w = window as unknown as { __posted: number; __reloads: number };
-          return w.__posted + w.__reloads;
-        });
-      const before = await sent();
-      await fixture.send(studioPage, step.save, saved, after);
-      // Studio posts the request a tick later, or reloads when nothing can apply in place; its fate holds until then.
-      await studioPage.waitForFunction(
-        (n) => {
-          const w = window as unknown as { __posted: number; __reloads: number };
-          return w.__posted + w.__reloads > n;
-        },
-        {},
-        before,
-      );
-      await studioPage.evaluate(() => {
-        (window as unknown as { __swallow: Set<string> }).__swallow = new Set();
-      });
+      const revision = await fixture.mark(studioPage);
+      await sendSave(studioPage, fixture, step.save, step.fate, [saved, after], revision);
+      saved = after;
+    } else if ("reversed" in step) {
+      const [older, newer] = step.reversed;
+      const middle = fixture.next[older](saved, n);
+      const after = fixture.next[newer](middle, n);
+      const olderRevision = await fixture.mark(studioPage);
+      const newerRevision = await fixture.mark(studioPage);
+      await sendSave(studioPage, fixture, newer, "frame", [middle, after], newerRevision);
+      await sendSave(studioPage, fixture, older, "frame", [saved, middle], olderRevision);
       saved = after;
     } else if ("pastDeadline" in step) {
       await passDeadlines(studioPage, false);

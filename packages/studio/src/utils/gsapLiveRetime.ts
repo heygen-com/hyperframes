@@ -134,8 +134,8 @@ function sealedRetimeResult(reply: unknown): LiveRetimeResult {
   return RETIME_RESULTS.has(result) ? (result as LiveRetimeResult) : "failed";
 }
 
-/** The edited file as saved before and after the edit. */
-type SavedFiles = { before?: string; after?: string };
+/** The edited file as saved before and after, and the revision its save went out at. */
+type SavedFiles = { before?: string; after?: string; revision?: number };
 
 /** A `retime` plan from the file as saved before the edit; null when no single script there owns the timeline. */
 function planFromSavedFile(
@@ -179,6 +179,7 @@ async function moveSealedLiveTweens(
     authoredHtml: files.after,
     previousHtml: files.before,
     timingEdit: true,
+    version: files.revision,
   };
   const ticket = takePreviewTicket(iframe, {
     scriptText,

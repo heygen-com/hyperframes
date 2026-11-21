@@ -98,6 +98,8 @@ export interface SoftReloadOptions {
   previousHtml?: string;
   /** A timing edit, whose saved timing a sealed preview takes along: no commit could patch it live. */
   timingEdit?: boolean;
+  /** The Studio file revision `authoredHtml`'s save went out at. */
+  version?: number;
   /** Other composition files a reset element is written in, by path; null when one could not be read. */
   nestedFiles?: Map<string, string> | null;
   restore?: EditingParams<"soft-reload">["restore"];
@@ -211,6 +213,7 @@ function softReloadSealed(
     onShownInPlace,
     timingEdit,
     nestedFiles,
+    version,
     restore = [],
   }: SoftReloadOptions,
 ): SoftReloadResult {
@@ -219,7 +222,7 @@ function softReloadSealed(
   const rerun = sealedRerun(scriptText, { authoredHtml, previousHtml, timingEdit });
   const ticket = takePreviewTicket(iframe, {
     scriptText,
-    snapshot: { scriptText, authoredHtml, previousHtml, nestedFiles, timingEdit },
+    snapshot: { scriptText, authoredHtml, previousHtml, nestedFiles, timingEdit, version },
     attributes: restore.length > 0,
     timing: timingEdit === true,
   });

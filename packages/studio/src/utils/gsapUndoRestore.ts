@@ -435,6 +435,7 @@ function applySealedRestore(
   currentTime: number,
   reloadPreview: () => void,
   onShownInPlace?: () => void,
+  version?: number,
 ): "soft" | "full" {
   const restore = sealedRestore(activeDocPath, files);
   const active = files[activeDocPath];
@@ -449,12 +450,19 @@ function applySealedRestore(
         authoredHtml: active.restored,
         previousHtml: active.previous,
         restore: restore.scopes,
+        version,
       });
     if (rerun === "applied") return "soft";
   } else if (restore?.scopes.length) {
     const sent = withRerun(restore, active, script);
-    const snapshot = restoredSnapshot(sent, active);
-    sendSealedRestore(iframe, sent, snapshot, currentTime, reloadPreview, onShownInPlace);
+    const snapshot = restoredSnapshot(sent, active, version);
+    sendSealedRestore(
+      iframe,
+      { sent, snapshot, version },
+      currentTime,
+      reloadPreview,
+      onShownInPlace,
+    );
     return "soft";
   }
   reloadPreview();
@@ -465,15 +473,20 @@ function applySealedRestore(
 function restoredSnapshot(
   { rerun }: SealedRestore,
   active: RestoreFiles[string] | undefined,
+  version: number | undefined,
 ): PreviewWrite | null {
   if (!rerun || !active) return null;
-  return { scriptText: rerun.script, authoredHtml: active.restored, previousHtml: active.previous };
+  const { restored: authoredHtml, previous: previousHtml } = active;
+  return { scriptText: rerun.script, authoredHtml, previousHtml, version };
 }
 
 function sendSealedRestore(
   iframe: HTMLIFrameElement,
-  restore: SealedRestore,
-  snapshot: PreviewWrite | null,
+  {
+    sent: restore,
+    snapshot,
+    version,
+  }: { sent: SealedRestore; snapshot: PreviewWrite | null; version?: number },
   currentTime: number,
   reloadPreview: () => void,
   onShownInPlace?: () => void,
@@ -484,6 +497,7 @@ function sendSealedRestore(
     snapshot,
     attributes: true,
     timing: false,
+    version,
   });
   const params = { ...restore, time: currentTime };
   void previewRequest(iframe, "restore-attributes", params, SAVED_STATE_DEADLINE_MS).then(
@@ -532,6 +546,7 @@ export function applyUndoRestoreToPreview(
   currentTime: number,
   reload: () => void,
   nestedFiles?: Map<string, string> | null,
+  version?: number,
 ): "soft" | "full" {
   // The master view carries a NULL activeCompPath but the root iframe shows
   // index.html — the codebase-wide convention (`activeCompPath || "index.html"`).
@@ -544,8 +559,14 @@ export function applyUndoRestoreToPreview(
     reload();
   };
   if (iframe && files && previewFrameOpaque(iframe))
-    return applySealedRestore(iframe, activeDocPath, files, currentTime, reloadPreview, () =>
-      announcePreviewRestoredInPlace(iframe),
+    return applySealedRestore(
+      iframe,
+      activeDocPath,
+      files,
+      currentTime,
+      reloadPreview,
+      () => announcePreviewRestoredInPlace(iframe),
+      version,
     );
   const doc = iframe?.contentDocument;
   const win = iframe?.contentWindow as PreviewWindow | null;

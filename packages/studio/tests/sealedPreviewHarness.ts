@@ -18,6 +18,7 @@ export type Studio = typeof import("../src/utils/gsapSoftReload") & {
   moveLiveTweens: typeof import("../src/utils/gsapLiveRetime").moveLiveTweens;
   usePlayerStore: typeof import("../src/player/store/playerStore").usePlayerStore;
   markStudioWriteToken: typeof import("../src/utils/studioFileVersion").markStudioWriteToken;
+  studioFileRevision: typeof import("../src/utils/studioFileVersion").studioFileRevision;
 };
 
 /** Studio's preview code, bundled for the page as `window.hfStudio`. */
@@ -32,7 +33,7 @@ export async function buildStudioBundle(): Promise<string> {
         `export { applyUndoRestoreToPreview } from "./utils/gsapUndoRestore";`,
         `export { moveLiveTweens } from "./utils/gsapLiveRetime";`,
         `export { usePlayerStore } from "./player/store/playerStore";`,
-        `export { markStudioWriteToken } from "./utils/studioFileVersion";`,
+        `export { markStudioWriteToken, studioFileRevision } from "./utils/studioFileVersion";`,
       ].join(" "),
       resolveDir: fileURLToPath(new URL("../src", import.meta.url)),
     },
