@@ -16,7 +16,6 @@ import { describePreviewElements, previewTextEdit } from "../player/lib/previewE
 import { retirePreviewEditingClient } from "../player/lib/previewChannel";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
-import { forgetLandedText } from "./textSaves";
 import { previewReloadBegun, requestPreviewReload } from "../player/previewReloading";
 import { useInlineTextEdit, type InlineTextEditCommit } from "./useInlineTextEdit";
 import { hasStudioPendingEdits } from "../utils/studioPendingEdits";
@@ -215,6 +214,7 @@ function textCommits(
   current: DomEditSelection | null,
   persist: PersistDomEditOperations,
   lookups: Array<{ entered: () => void; wait: Promise<void> }> = [],
+  reloadPreview = vi.fn(),
 ) {
   let commits!: ReturnType<typeof useDomEditTextCommits>;
   mount(() => {
@@ -222,6 +222,7 @@ function textCommits(
       activeCompPath: PATH,
       previewIframeRef: { current: iframe },
       showToast: vi.fn(),
+      reloadPreview,
       domEditSelection: current,
       applyDomSelection: vi.fn(),
       refreshDomEditSelectionFromPreview: vi.fn(),
@@ -367,7 +368,7 @@ it("keeps a Design panel save made while an older inline save was still looking 
   expect(saved.at(-1)).toBe("other=Newer");
 });
 
-it("saves the inline edit last when the Design panel saved the heading while that edit was open", async () => {
+it("saves an open inline draft before a Design panel save made while it was open", async () => {
   const { iframe } = await sealedTitle();
   const plain = await select(iframe, "other");
   const shown = document.getElementById("other")!;
@@ -375,13 +376,10 @@ it("saves the inline edit last when the Design panel saved the heading while tha
   const { controls, commits } = wiredEditor(iframe, plain, persist);
   act(() => void controls().start(plain.element));
   await vi.waitFor(() => expect(shown.getAttribute("contenteditable")).toBe("true"));
-  await act(() => commits().handleDomTextCommitForSelection(plain, "Panel"));
-  expect(saved).toEqual(["other=Panel"]);
   shown.innerHTML = "Inline";
-  act(() => controls().commit());
-  await vi.waitFor(() => expect(saved.at(-1)).toBe("other=Inline"));
-  await settled(iframe, plain);
-  expect(saved.at(-1)).toBe("other=Inline");
+  await act(() => commits().handleDomTextCommitForSelection(plain, "Panel"));
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  expect(saved).toEqual(["other=Inline", "other=Panel"]);
 });
 
 it("lands the newer of two saves of a heading last when the older write is slow", async () => {
@@ -434,7 +432,8 @@ it("leaves another writer's text on the canvas when a later save fails after it"
   await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(2));
   await settled(iframe, selection);
   title.innerHTML = "Undone";
-  forgetLandedText();
+  requestPreviewReload();
+  previewReloadBegun();
   fail(new Error("disk full"));
   await later;
   await settled(iframe, selection);
@@ -815,16 +814,17 @@ it("wakes the selection box as the frame's text grows, and stops watching when t
   await vi.waitFor(() => expect(watched().at(-1)).toEqual([]));
 });
 
-it("saves a sealed rich text commit and puts the frame's text back when the save fails", async () => {
+it("saves a sealed rich text commit and draws the file again when its first save fails", async () => {
   const { title, iframe, selection } = await sealedTitle();
   const persist = vi.fn<PersistDomEditOperations>(async () => {
     throw new Error("disk full");
   });
+  const reloadPreview = vi.fn();
   title.innerHTML = "Typed";
-  await textCommits(iframe, selection, persist)(selection.element, "Typed");
+  await textCommits(iframe, selection, persist, [], reloadPreview)(selection.element, "Typed");
   expect(persist).toHaveBeenCalledOnce();
   expect(persist.mock.calls[0]![1]).toEqual([expect.objectContaining({ type: "rich-text" })]);
-  await vi.waitFor(() => expect(title.innerHTML).toBe(ORIGINAL));
+  await vi.waitFor(() => expect(reloadPreview).toHaveBeenCalledTimes(1));
 });
 
 it("shows the saved text when the frame put the original back before the save, as on a removed and re-added node", async () => {
