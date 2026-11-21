@@ -20,6 +20,7 @@ interface HistoryResult {
   undoes?: string;
   /** Per-file restored/previous content, used to soft-apply the preview. */
   files?: RestoreFiles;
+  revision?: number;
 }
 interface HistoryFileCallbacks {
   readFile: (path: string) => Promise<string>;

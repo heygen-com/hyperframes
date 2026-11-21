@@ -78,10 +78,19 @@ export function takePreviewTicket(iframe: HTMLIFrameElement, sent: PreviewSend):
     sent,
   };
   ledger.newestVersion = Math.max(ledger.newestVersion, ticket.version);
-  if (sent.snapshot)
-    for (const key of ticket.keys)
-      ledger.writes.set(key, { seq: ticket.seq, version: ticket.version, write: sent.snapshot });
+  if (sent.snapshot) {
+    const write = { seq: ticket.seq, version: ticket.version, write: sent.snapshot };
+    for (const key of ticket.keys) {
+      const kept = ledger.writes.get(key);
+      if (!kept || newer(write, kept)) ledger.writes.set(key, write);
+    }
+  }
   return ticket;
+}
+
+/** A later saved file wins; of one file's writes, the later sent. */
+function newer(a: { seq: number; version: number }, b: { seq: number; version: number }) {
+  return a.version > b.version || (a.version === b.version && a.seq > b.seq);
 }
 
 /** A re-run owns its timelines from its send: it applies, or it fails and recovers to the newest file itself. */
@@ -120,11 +129,7 @@ export function newestPreviewWrite(ticket: PreviewTicket): PreviewWrite | null {
   let newest = { seq: ticket.seq, version: ticket.version, write: ticket.sent.snapshot };
   for (const key of ticket.keys) {
     const sent = writes.get(key);
-    if (
-      sent &&
-      (sent.version > newest.version || (sent.version === newest.version && sent.seq > newest.seq))
-    )
-      newest = sent;
+    if (sent && newer(sent, newest)) newest = sent;
   }
   if (!newest.write || newest.version < newestVersion) return null;
   return { ...newest.write, version: newest.version, timingEdit: true };

@@ -76,6 +76,7 @@ function expectSoftReloadedWith(
     currentTimeOverride: 0,
     authoredHtml,
     previousHtml,
+    version: expect.any(Number),
   });
 }
 
