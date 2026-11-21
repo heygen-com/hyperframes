@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { c } from "./colors.js";
 import type { RenderJob } from "@hyperframes/producer";
 
@@ -9,7 +10,7 @@ export function renderProgress(percent: number, stage: string, row?: number): vo
   const empty = width - filled;
   const bar = c.progress("\u2588".repeat(filled)) + c.dim("\u2591".repeat(empty));
 
-  const line = `  ${bar}  ${c.bold(String(Math.round(percent)) + "%")}  ${c.dim(stage)}`;
+  const line = `  ${bar}  ${c.bold(String(Math.round(percent)) + "%")}  ${c.dim(terminalText(stage))}`;
 
   if (row !== undefined && stdout.isTTY) {
     stdout.write(`\x1b[${row};1H\x1b[2K${line}`);

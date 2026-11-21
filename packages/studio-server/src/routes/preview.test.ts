@@ -2117,7 +2117,9 @@ describe("hf-proxy negotiation and media codec map injection (U3)", () => {
       }
       expect((await second).status).toBe(200);
       for (const res of await Promise.all(busy)) expect(res.status).toBe(200);
-      expect(made).toEqual([1, 2, 3, 4, 10]);
+      // The four busy requests reach their slots in whichever order their file checks settle.
+      expect(made.slice(0, 4).sort()).toEqual([1, 2, 3, 4]);
+      expect(made.slice(4)).toEqual([10]);
     });
 
     it("honors If-None-Match on a repeat request with a 304, without re-invoking resolveProxy", async () => {

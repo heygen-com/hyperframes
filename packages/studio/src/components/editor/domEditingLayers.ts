@@ -85,6 +85,15 @@ function buildTextField(
   };
 }
 
+function spaceBefore(node: Node): Pick<DomEditTextField, "spaceBefore"> {
+  let space = "";
+  for (let at = node.previousSibling; at?.nodeType === 3 && !at.textContent?.trim(); ) {
+    space = (at.textContent ?? "") + space;
+    at = at.previousSibling;
+  }
+  return space ? { spaceBefore: space } : {};
+}
+
 // fallow-ignore-next-line complexity
 export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
   const childElements = Array.from(el.children).filter(isHtmlElement).filter(isEditableTextLeaf);
@@ -113,18 +122,26 @@ export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
           });
           childIdx++;
         } else if (isHtmlElement(node) && isEditableTextLeaf(node)) {
-          fields.push(
-            buildTextField(node, childIdx, childElements.length, "child", sameTagChildIndex(node)),
-          );
+          fields.push({
+            ...buildTextField(
+              node,
+              childIdx,
+              childElements.length,
+              "child",
+              sameTagChildIndex(node),
+            ),
+            ...spaceBefore(node),
+          });
           childIdx++;
         }
       }
       return fields;
     }
 
-    return childElements.map((child, index) =>
-      buildTextField(child, index, childElements.length, "child", sameTagChildIndex(child)),
-    );
+    return childElements.map((child, index) => ({
+      ...buildTextField(child, index, childElements.length, "child", sameTagChildIndex(child)),
+      ...spaceBefore(child),
+    }));
   }
 
   if (isEditableTextLeaf(el)) {
@@ -136,32 +153,6 @@ export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
 
 export function escapeHtmlText(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-function serializeTextFieldStyle(field: DomEditTextField): string {
-  const entries = Object.entries(field.inlineStyles).filter(([, value]) => Boolean(value));
-  if (entries.length === 0) return "";
-  return entries.map(([key, value]) => `${key}: ${value}`).join("; ");
-}
-
-export function serializeDomEditTextFields(fields: DomEditTextField[]): string {
-  return fields
-    .filter((field) => field.source === "child" || field.source === "text-node")
-    .map((field) => {
-      if (field.source === "text-node") {
-        return escapeHtmlText(field.value);
-      }
-      const attrs = [
-        ...field.attributes.filter((attribute) => attribute.name !== "data-hf-text-key"),
-        { name: "data-hf-text-key", value: field.key },
-      ]
-        .map((attribute) => ` ${attribute.name}="${attribute.value.replace(/"/g, "&quot;")}"`)
-        .join("");
-      const style = serializeTextFieldStyle(field);
-      const styleAttr = style ? ` style="${style.replace(/"/g, "&quot;")}"` : "";
-      return `<${field.tagName}${attrs}${styleAttr}>${escapeHtmlText(field.value)}</${field.tagName}>`;
-    })
-    .join("");
 }
 
 export function buildDefaultDomEditTextField(base?: Partial<DomEditTextField>): DomEditTextField {

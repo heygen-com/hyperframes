@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { parseHTML } from "linkedom";
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { readFile, stat as statFile } from "node:fs/promises";
 import { stripSdrPngColourTags } from "@hyperframes/core/compiler/png-colour-tags";
 import { Readable } from "node:stream";
 import { join, resolve } from "node:path";
@@ -46,6 +47,7 @@ import {
   projectRelativePath,
   resolveWithinProject,
 } from "../helpers/safePath.js";
+import { isPrivateProjectFileOff, statOrNull } from "../helpers/projectDisk.js";
 import { getMimeType } from "../helpers/mime.js";
 import { serveWhileOpen } from "../helpers/servedFiles.js";
 import { openRangeEnd } from "../helpers/mediaRange.js";
@@ -74,7 +76,11 @@ import {
 } from "../helpers/studioMotionRenderScript.js";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
 import { settledFileTag } from "../helpers/fileVersion.js";
-import { recordPreviewBuilt, recordPreviewRead } from "../helpers/previewReads.js";
+import {
+  recordPreviewBuilt,
+  recordPreviewRead,
+  recordPreviewReadOff,
+} from "../helpers/previewReads.js";
 import { isVariablesPayload, VARIABLES_PAYLOAD_ERROR } from "../helpers/variablesPayload.js";
 import { injectPreviewVariables } from "../helpers/previewVariables.js";
 import {
@@ -776,11 +782,11 @@ export function registerPreviewRoutes(
     // use resolveWithinProject because saves write their data-hf-id values.
     const candidate = resolve(project.dir, subPath);
     const file = isWithinProjectRoot(project.dir, candidate) ? candidate : null;
-    if (!file || isPrivateProjectFile(project.dir, file)) {
+    if (!file || (await isPrivateProjectFileOff(project.dir, file))) {
       return c.text("not found", 404);
     }
-    recordPreviewRead(project.dir, file);
-    const stat = existsSync(file) ? statSync(file) : null;
+    await recordPreviewReadOff(project.dir, file);
+    const stat = await statOrNull(file);
     if (!stat?.isFile()) {
       return c.text("not found", 404);
     }
@@ -839,7 +845,7 @@ export function registerPreviewRoutes(
             ? ask()
             : Promise.reject(err),
         );
-        return new Response(readFileSync(still), {
+        return new Response(await readFile(still), {
           headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600" },
         });
       } catch (err) {
@@ -911,11 +917,11 @@ export function registerPreviewRoutes(
     // 1KB slice of a multi-hundred-MB source must not readFileSync the whole
     // file on each one. The full read also blocked the event loop, so every
     // other Studio request (SSE, saves, the voice track) waited behind it.
-    const textBuffer = isText ? Buffer.from(readFileSync(file, "utf-8"), "utf-8") : null;
+    const textBuffer = isText ? Buffer.from(await readFile(file, "utf-8"), "utf-8") : null;
     const heldBuffer =
       textBuffer ??
-      (contentType === "image/png" ? stripSdrPngColourTags(readFileSync(file)) : null);
-    const totalSize = heldBuffer ? heldBuffer.length : statSync(servedPath).size;
+      (contentType === "image/png" ? stripSdrPngColourTags(await readFile(file)) : null);
+    const totalSize = heldBuffer ? heldBuffer.length : (await statFile(servedPath)).size;
     const bodyFor = (start: number, end: number): BodyInit =>
       heldBuffer
         ? new Uint8Array(heldBuffer.subarray(start, end + 1))

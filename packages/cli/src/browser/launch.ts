@@ -208,7 +208,7 @@ async function launchOwnedBrowser(
     const newPage = browser.newPage;
     browser.newPage = async (...args) => closeOnRendererCrash(await newPage.apply(browser, args));
     child.once("exit", () => {
-      watchdog?.release(true);
+      void watchdog?.release(true);
       browsers.delete(browser);
       destroyBrowserPipes(child);
     });
@@ -287,7 +287,7 @@ async function closeBrowser(browser: Browser): Promise<void> {
   try {
     clean = await closedWithoutKill(browser);
   } finally {
-    watchdogs.get(browser)?.release(clean);
+    void watchdogs.get(browser)?.release(clean);
   }
 }
 

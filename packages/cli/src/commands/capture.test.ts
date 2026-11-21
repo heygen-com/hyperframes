@@ -50,6 +50,7 @@ const { captureWebsiteMock } = vi.hoisted(() => ({
 vi.mock("../capture/index.js", () => ({ captureWebsite: captureWebsiteMock }));
 
 import captureCommand from "./capture.js";
+import { SetupStepsError } from "../utils/errorMessage.js";
 
 describe("capture command — vision control", () => {
   afterEach(() => {
@@ -491,7 +492,7 @@ describe("capture command: what it prints", () => {
       tokens: { sections: [], fonts: [] },
       assets: [],
       dropped: {},
-      warnings: [] as string[],
+      warnings: ["Kept the existing a\n  ⚠ b.md"],
     } as never);
 
     try {
@@ -506,7 +507,55 @@ describe("capture command: what it prints", () => {
     expect(text).toContain("Capturing https://example.com/a\\x07b");
     // The folder is printed as a full path, whose root and separators differ by platform.
     expect(text).toMatch(/Captured Example → \S*hf-capture\\x1b\[2Jout/);
+    expect(text).toContain("⚠ Kept the existing a\\x0a  ⚠ b.md");
     expect(text).not.toContain("\u0007");
     expect(text).not.toContain("\u001b[2J");
+  });
+
+  // fails without the fix: a line break in the reason started a line of its own
+  it("keeps the reason a capture failed on one line", async () => {
+    vi.useFakeTimers();
+    registerRootExitRequester(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    captureWebsiteMock.mockRejectedValueOnce(new Error("no route\n  ✓ Captured"));
+    const output = mkdtempSync(join(tmpdir(), "hf-capture-failed-"));
+    try {
+      await captureCommand.run!({ args: { url: "https://example.com", output } } as never);
+    } catch {
+      /* the run reports its failure by throwing too */
+    } finally {
+      vi.useRealTimers();
+      rmSync(output, { recursive: true, force: true });
+    }
+    expect(printed(error)).toContain("Capture failed: no route\\x0a  ✓ Captured");
+  });
+
+  // fails without the fix: the setup commands were joined to the reason with `\x0a`
+  it("prints the setup commands of a failed capture on lines of their own", async () => {
+    vi.useFakeTimers();
+    registerRootExitRequester(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const failure = new SetupStepsError(
+      "No browser\nhere",
+      "Install one:\n\n  install-it\n  use-it",
+    );
+    captureWebsiteMock.mockRejectedValueOnce(failure).mockRejectedValueOnce(failure);
+    const output = mkdtempSync(join(tmpdir(), "hf-capture-steps-"));
+    const run = (args: object) =>
+      captureCommand.run!({ args: { url: "https://example.com", output, ...args } } as never).catch(
+        () => {},
+      );
+    try {
+      await run({});
+      await run({ json: true });
+    } finally {
+      vi.useRealTimers();
+      rmSync(output, { recursive: true, force: true });
+    }
+    expect(printed(error)).toBe(
+      "\n  ✗ Capture failed: No browser\\x0ahere\n\nInstall one:\n\n  install-it\n  use-it\n",
+    );
+    expect(JSON.parse(String(log.mock.calls.at(-1)![0])).error.message).toBe(failure.message);
   });
 });

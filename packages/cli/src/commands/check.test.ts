@@ -24,6 +24,7 @@ vi.mock("../telemetry/events.js", () => ({
 import { contrastRatio, parseColorRGBA } from "./contrast-bg.js";
 import { createCheckCommand, parseCheckRange, parseSafeZone } from "./check.js";
 import { assertKnownFlags } from "../utils/reject-unknown-flags.js";
+import { LINUX_ARM_BROWSER_STEPS } from "../utils/errorMessage.js";
 import { readConfig } from "../telemetry/config.js";
 import {
   CheckCopiesUnfinishedError,
@@ -527,6 +528,72 @@ describe("check --prepare-media", () => {
     expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
     expect(human).toContain("video\\x1b]0;x\\x07\\x1b[2J");
     consumeCommandResult();
+  });
+
+  // fails without the fix: the setup commands were joined to the reason with `\x0a`
+  it("prints the setup commands of a failed check on lines of their own", async () => {
+    const reason = `No browser\nhere\n\n${LINUX_ARM_BROWSER_STEPS} (while launching)`;
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const run = (rawArgs: string[]) =>
+      runCommand(
+        createCheckCommand({
+          resolveProject: () => PROJECT,
+          runPipeline: vi.fn(async () => Promise.reject(new Error(reason))),
+          prepareMedia: vi.fn(async () => []),
+          withMeta: (value) => value,
+        }),
+        { rawArgs },
+      ).then(consumeCommandResult);
+    await run([]);
+    await run(["--json"]);
+    const { report } = await runScenario(fakeDriver());
+    const finding = { ...runtimeError(), code: "check_runtime_failure", message: reason };
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => PROJECT,
+        runPipeline: async () => ({
+          ...report,
+          runtime: { ...report.runtime, ok: false, errorCount: 1, findings: [finding] },
+        }),
+        prepareMedia: vi.fn(),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: [] },
+    ).then(consumeCommandResult);
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(human).toContain("check_runtime_failure: No browser\\x0ahere (while launching)\n");
+    expect(human).toContain(`\n\n${LINUX_ARM_BROWSER_STEPS}\n`);
+
+    const printed = error.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain(
+      `Check failed: No browser\\x0ahere (while launching)\n\n${LINUX_ARM_BROWSER_STEPS}\n`,
+    );
+    const answer = log.mock.calls.map((call) => String(call[0])).find((text) => text[0] === "{");
+    expect(JSON.parse(answer!).error.message).toBe(reason);
+  });
+
+  it("keeps a finding with another code on one line even when it carries the setup text", async () => {
+    const message = `From the page\n\n${LINUX_ARM_BROWSER_STEPS}`;
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const { report } = await runScenario(fakeDriver());
+    const finding = { ...runtimeError(), message };
+    expect(finding.code).not.toBe("check_runtime_failure");
+    await runCommand(
+      createCheckCommand({
+        resolveProject: () => PROJECT,
+        runPipeline: async () => ({
+          ...report,
+          runtime: { ...report.runtime, ok: false, errorCount: 1, findings: [finding] },
+        }),
+        prepareMedia: vi.fn(),
+        withMeta: (value) => value,
+      }),
+      { rawArgs: [] },
+    ).then(consumeCommandResult);
+    const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(human).toContain(`${finding.code}: ${message.replaceAll("\n", "\\x0a")}\n`);
+    expect(human).not.toContain(LINUX_ARM_BROWSER_STEPS);
   });
 });
 
@@ -2814,7 +2881,7 @@ describe("check pipeline", () => {
     expect(report.layout.errorCount).toBeGreaterThan(0);
     expect(report.runtime.findings).toContainEqual(
       expect.objectContaining({
-        code: "check_runtime_failure",
+        code: "check_deadline",
         message: "Check did not finish within its deadline.",
       }),
     );
@@ -2925,14 +2992,15 @@ describe("check pipeline", () => {
       const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
       await vi.advanceTimersByTimeAsync(120_000);
       const report = await pending;
-      const failure = report.runtime.findings.find(
-        (finding) => finding.code === "check_runtime_failure",
-      );
+      const failure = report.runtime.findings.find((finding) => finding.code === "check_deadline");
       expect(failure?.message).toMatch(/^Check did not finish within its deadline/);
       expect(failure?.message).toContain(
         "while running the overlap pass (overlap probes from 0s).",
       );
       expect(failure?.message).toContain("checking samples 0.0, running the overlap pass 120.0.");
+      expect(trackCheckReport).toHaveBeenCalledWith(
+        expect.objectContaining({ ok: false, stopCode: "check_deadline" }),
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -2951,11 +3019,12 @@ describe("check pipeline", () => {
       const pending = runCheckPipeline(PROJECT, DEFAULT_CHECK_OPTIONS, deps);
       await vi.advanceTimersByTimeAsync(180_000);
       const report = await pending;
-      const failure = report.runtime.findings.find(
-        (finding) => finding.code === "check_runtime_failure",
-      );
+      const failure = report.runtime.findings.find((finding) => finding.code === "check_deadline");
       expect(failure?.message).toMatch(/^Chrome did not start within 180 s while starting Chrome/);
       expect(report.ok).toBe(false);
+      expect(trackCheckReport).toHaveBeenCalledWith(
+        expect.objectContaining({ ok: false, stopCode: "check_deadline" }),
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -2988,9 +3057,7 @@ describe("check pipeline", () => {
       expect(aborted.aborted).toBe(false);
       await vi.advanceTimersByTimeAsync(110_000);
       const report = await pending;
-      const failure = report.runtime.findings.find(
-        (finding) => finding.code === "check_runtime_failure",
-      );
+      const failure = report.runtime.findings.find((finding) => finding.code === "check_deadline");
       expect(failure?.message).toContain("no progress for 410 s");
     } finally {
       vi.useRealTimers();
@@ -3033,9 +3100,9 @@ describe("check pipeline", () => {
         true,
       );
       expect(report.browserSkipped).toBe(false);
-      expect(
-        report.runtime.findings.some((finding) => finding.code === "check_runtime_failure"),
-      ).toBe(true);
+      expect(report.runtime.findings.some((finding) => finding.code === "check_deadline")).toBe(
+        true,
+      );
     } finally {
       vi.useRealTimers();
     }
