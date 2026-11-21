@@ -1,4 +1,7 @@
 import type { TimelineElement } from "../store/playerStore";
+import type { DragCommitDeps, TimelineMoveEdit } from "./timelineClipDragCommit";
+import type { DraggedClipState } from "./timelineClipDragTypes";
+import { isLinkedSelectionOn } from "../../utils/linkedClipPreferences";
 import { sharesLinkGroup } from "./audioClipLink";
 import { timeRangesOverlap } from "./timelineCollision";
 import { getTimelineEditCapabilities } from "./timelineEditing";
@@ -45,4 +48,27 @@ export function resolveMainTrackInsert(
   });
   const moves = [...main, ...partners];
   return moves.every((m) => getTimelineEditCapabilities(m.element).canMove) ? moves : null;
+}
+
+/** The insert's moves for a finished drag, or null when the drop is not an insert. */
+export function resolveMainTrackInsertEdits(
+  drag: DraggedClipState,
+  deps: DragCommitDeps,
+  movingKeys: ReadonlySet<string> | undefined,
+): TimelineMoveEdit[] | null {
+  if (drag.aimStart == null || (drag.desiredTrack ?? drag.previewTrack) !== drag.element.track) {
+    return null;
+  }
+  // A group drag inserts only when the group is the clip and its linked partners.
+  const groupOfOne = deps.elements.every(
+    (e) =>
+      !movingKeys?.has(keyOf(e)) ||
+      keyOf(e) === keyOf(drag.element) ||
+      sharesLinkGroup(e, drag.element),
+  );
+  if (!groupOfOne) return null;
+  const linked = isLinkedSelectionOn();
+  const moves = resolveMainTrackInsert(deps.elements, drag.element, drag.aimStart, linked);
+  if (!moves) return null;
+  return moves.map(({ element, start }) => ({ element, updates: { start, track: element.track } }));
 }
