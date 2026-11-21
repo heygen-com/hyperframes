@@ -21,6 +21,7 @@ import { fileURLToPath } from "node:url";
  *   /vendor/hyperframe.runtime.iife.js
  *   /fixtures/<name>/<file>            → fixture HTML + assets
  *   /fixtures-flaky/<name>/<file>      → as /fixtures/, but a 503 the first time each URL is asked (?fail=N: N times)
+ *   /fixtures-lapse/<name>/<file>?id=… → a 503 until recover(id), then the file (CORS headers only with ?cors)
  *   ...?no-store                       → never cached, so every load reaches the server
  */
 
@@ -59,6 +60,7 @@ export type RunningServer = {
   origin: string;
   /** Every URL asked for, in order. */
   requested: string[];
+  recover(id: string): void;
   stop(): Promise<void>;
 };
 
@@ -173,6 +175,7 @@ export function startServer(options: ServeOptions = {}): RunningServer {
 
   const failures = new Map<string, number>();
   const requested: string[] = [];
+  const recovered = new Set<string>();
   const server = Bun.serve({
     port: options.port ?? 0,
     async fetch(req) {
@@ -210,9 +213,14 @@ export function startServer(options: ServeOptions = {}): RunningServer {
         return applyCacheHeaders(await readBunFile(PATHS.gsap), noCache);
       }
 
-      const served = /^\/(fixtures|fixtures-no-cors|fixtures-flaky)\//.exec(path);
+      const served = /^\/(fixtures|fixtures-no-cors|fixtures-flaky|fixtures-lapse)\//.exec(path);
       const failed = failures.get(url.href) ?? 0;
-      if (served?.[1] === "fixtures-flaky" && failed < Number(url.searchParams.get("fail") ?? 1)) {
+      const lapsed =
+        served?.[1] === "fixtures-lapse" && !recovered.has(url.searchParams.get("id") ?? "");
+      if (
+        lapsed ||
+        (served?.[1] === "fixtures-flaky" && failed < Number(url.searchParams.get("fail") ?? 1))
+      ) {
         failures.set(url.href, failed + 1);
         return new Response("Busy", {
           status: 503,
@@ -226,7 +234,11 @@ export function startServer(options: ServeOptions = {}): RunningServer {
         }
         // A sealed player's film has an opaque origin and loads its own media with CORS, as from a CORS-capable host.
         const res = applyCacheHeaders(await readBunFile(filePath), noCache);
-        if (served[1] !== "fixtures-no-cors") res.headers.set("Access-Control-Allow-Origin", "*");
+        const cors =
+          served[1] === "fixtures-lapse"
+            ? url.searchParams.has("cors")
+            : served[1] !== "fixtures-no-cors";
+        if (cors) res.headers.set("Access-Control-Allow-Origin", "*");
         if (url.searchParams.has("no-store")) res.headers.set("Cache-Control", "no-store");
         return res;
       }
@@ -246,6 +258,7 @@ export function startServer(options: ServeOptions = {}): RunningServer {
     port,
     origin: `http://127.0.0.1:${port}`,
     requested,
+    recover: (id: string) => void recovered.add(id),
     async stop() {
       server.stop(true);
     },

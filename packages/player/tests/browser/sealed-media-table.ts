@@ -22,17 +22,21 @@ type Kind =
   | "foreignMissing"
   | "unmatched"
   | "down"
-  | "outage";
+  | "outage"
+  | "lapse"
+  | "lapseCors";
 type Source = { id: string; kind: Kind };
 type Step =
-  | { do: "create"; el: number; sources: Source[] }
+  | { do: "create"; el: number; sources: Source[]; attr?: true }
   | { do: "prepend" | "append"; el: number; source: Source }
   | { do: "remove"; el: number; index: number }
   | { do: "reverse" | "reload"; el: number }
   | { do: "author"; el: number; value: string; duringRetry?: boolean; replace?: Source }
   | { do: "play"; el: number; rate: number }
-  | { do: "interrupt"; el: number; action: Interrupt; source?: Source };
-// Done by the composition right after the runtime's next load of that element, or at the round's end without one.
+  | { do: "interrupt"; el: number; action: Interrupt; source?: Source }
+  | { do: "recover"; el: number; source: Source };
+// Interrupt: done by the composition right after the runtime's next load of that element, or at the round's end.
+// Recover: the source's host comes back (without CORS headers unless lapseCors), then the composition reloads el.
 type Interrupt = "pause" | "seek" | "rate" | "source" | "author";
 type Sequence = { name: string; rounds: Step[][]; keepsCors?: number[]; upgradesAtMost?: number };
 
@@ -48,11 +52,14 @@ const KINDS: Kind[] = [
   "foreignMissing",
   "unmatched",
   "down",
+  "lapse",
+  "lapseCors",
 ];
 const PLAYABLE = new Set<Kind>(["cors", "nocors", "foreignCors", "foreignNocors"]);
 // A host that fails some requests plays only if a later selection asks it again, as in unsealed Studio.
-const MAY_PLAY = new Set<Kind>([...PLAYABLE, "flaky", "outage"]);
-const SENDS_CORS = new Set<Kind>(["cors", "foreignCors", "flaky", "outage"]);
+const MAY_PLAY = new Set<Kind>([...PLAYABLE, "flaky", "outage", "lapse", "lapseCors"]);
+const SENDS_CORS = new Set<Kind>(["cors", "foreignCors", "flaky", "outage", "lapseCors"]);
+const lapses = (kind: Kind) => kind === "lapse" || kind === "lapseCors";
 const NOT_SELECTABLE = new Set<Kind>(["unsupported", "foreignUnsupported", "unmatched"]);
 const foreign = (kind: Kind) => kind.startsWith("foreign");
 // The accepted gap: a list whose selectable sources name another host is left as authored, so own media is not read.
@@ -77,6 +84,7 @@ function generated(seed: number): Sequence {
   const lists: Source[][] = [];
   const rounds: Step[][] = [];
   const elements = 2 + Math.floor(random() * 2);
+  const recovered = new Set<string>();
   for (let round = 0; round < 4; round++) {
     const steps: Step[] = [];
     for (let el = 0; el < elements; el++) {
@@ -88,8 +96,14 @@ function generated(seed: number): Sequence {
         if (random() < 0.5) steps.push({ do: "play", el, rate: pick([1, 1.5]) });
         continue;
       }
-      const action = pick(["prepend", "append", "remove", "reverse", "reload", "author", "none"]);
       const list = lists[el];
+      const lapsed = list.find((s) => lapses(s.kind) && !recovered.has(s.id));
+      if (lapsed && random() < 0.5) {
+        recovered.add(lapsed.id);
+        steps.push({ do: "recover", el, source: lapsed });
+        continue;
+      }
+      const action = pick(["prepend", "append", "remove", "reverse", "reload", "author", "none"]);
       const fresh = pool.filter((s) => !list.some((listed) => listed.id === s.id));
       if ((action === "prepend" || action === "append") && fresh.length) {
         const source = pick(fresh);
@@ -257,6 +271,36 @@ const FIXED: Sequence[] = [
       ],
     }),
   ),
+  ...(["lapse", "lapseCors"] as const).map(
+    (kind): Sequence => ({
+      name: `a playing element whose first own source was down and came back (${kind}), reloaded`,
+      rounds: [
+        [
+          { do: "create", el: 0, sources: [own(`r8${kind}-a`, kind), own(`r8${kind}-b`, "cors")] },
+          { do: "play", el: 0, rate: 1 },
+        ],
+        [{ do: "recover", el: 0, source: own(`r8${kind}-a`, kind) }],
+      ],
+    }),
+  ),
+  {
+    name: "an own source without CORS, played",
+    rounds: [
+      [
+        { do: "create", el: 0, sources: [own("r8b-a", "nocors")] },
+        { do: "play", el: 0, rate: 1 },
+      ],
+    ],
+  },
+  {
+    name: "an own src attribute without CORS, played",
+    rounds: [
+      [
+        { do: "create", el: 0, sources: [own("r8c-a", "nocors")], attr: true },
+        { do: "play", el: 0, rate: 1 },
+      ],
+    ],
+  },
 ];
 
 const server = startServer();
@@ -293,6 +337,10 @@ function urlFor(source: Source, run: string): SourceAttrs {
       return { src: `${server.origin}${path("/fixtures-flaky")}&fail=1000` };
     case "outage":
       return { src: `${server.origin}${path("/fixtures-flaky")}&fail=2` };
+    case "lapse":
+      return { src: `${server.origin}${path("/fixtures-lapse")}` };
+    case "lapseCors":
+      return { src: `${server.origin}${path("/fixtures-lapse")}&cors` };
   }
 }
 
@@ -307,6 +355,7 @@ type Seen = {
   restartRate?: string;
   seekGap?: string;
   interrupted?: string;
+  play?: string;
   pixels: string;
   currentSrc: string;
   loads: number;
@@ -394,7 +443,11 @@ async function installDriver(frame: Frame) {
     );
     Object.assign(window, {
       __table: {
-        create(key: string, sources: Array<{ src: string; type?: string; media?: string }>) {
+        create(
+          key: string,
+          sources: Array<{ src: string; type?: string; media?: string }>,
+          attr?: boolean,
+        ) {
           const video = document.createElement("video");
           video.dataset.table = key;
           video.muted = true;
@@ -408,10 +461,13 @@ async function installDriver(frame: Frame) {
               data.restartGap = String(Math.abs(video.currentTime - Number(data.savedTime)));
               data.restartRate = String(video.playbackRate);
             }
-            if (data.seekTo) {
-              data.seekGap = String(Math.abs(video.currentTime - Number(data.seekTo)));
-              delete data.seekTo;
-            }
+          });
+          // Every seek ends in seeked, also one on a playing video, which fires no new playing.
+          video.addEventListener("seeked", () => {
+            const data = video.dataset;
+            if (!data.seekTo) return;
+            data.seekGap = String(Math.abs(video.currentTime - Number(data.seekTo)));
+            delete data.seekTo;
           });
           for (const name of ["loadstart", "loadeddata", "emptied", "stalled"])
             video.addEventListener(name, () => touch(video));
@@ -419,7 +475,8 @@ async function installDriver(frame: Frame) {
             "loadstart",
             () => (video.dataset.loads = String(Number(video.dataset.loads ?? 0) + 1)),
           );
-          video.append(...sources.map(sourceEl));
+          if (attr) video.src = sources[0]!.src;
+          else video.append(...sources.map(sourceEl));
           state.set(key, { video, last: performance.now(), failed: new Set() });
           document.body.append(video);
         },
@@ -445,7 +502,11 @@ async function installDriver(frame: Frame) {
               check();
             }).then(() => {
               video.playbackRate = step.rate!;
-              void video.play().catch(() => undefined);
+              video.dataset.play = "pending";
+              video.play().then(
+                () => (video.dataset.play = "resolved"),
+                (error: Error) => (video.dataset.play = `rejected ${error.name}`),
+              );
             });
           }
           if (step.do === "interrupt") {
@@ -510,6 +571,7 @@ async function installDriver(frame: Frame) {
             restartRate: data.restartRate,
             seekGap: data.seekGap,
             interrupted: data.interrupted,
+            play: data.play,
             pixels,
             currentSrc: video.currentSrc,
             loads: Number(video.dataset.loads ?? 0),
@@ -524,7 +586,7 @@ async function installDriver(frame: Frame) {
 }
 
 type Table = {
-  create: (key: string, sources: SourceAttrs[]) => void;
+  create: (key: string, sources: SourceAttrs[], attr: boolean) => void;
   edit: (key: string, step: object) => unknown;
   settled: () => boolean;
   flush: () => boolean;
@@ -545,11 +607,13 @@ async function runAll(frame: Frame, sequences: Sequence[], run: string) {
     for (const [index, sequence] of sequences.entries()) {
       for (const step of sequence.rounds[round] ?? []) {
         const key = `${index}-${step.el}`;
+        if (step.do === "recover") server.recover(`${run}.${step.source.id}`);
         if (step.do === "create")
           await frame.evaluate(
-            (k, s) => window.__table.create(k, s),
+            (k, s, a) => window.__table.create(k, s, a),
             key,
             step.sources.map((source) => urlFor(source, run)),
+            step.attr ?? false,
           );
         else {
           const listed =
@@ -690,14 +754,21 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
           );
         if (movesPlain && !moves)
           problems.push(`${where}: the playhead stopped ${JSON.stringify(seen)}`);
+        if (seen.play !== plain.play)
+          problems.push(`${where}: play() ${seen.play}, without the helper ${plain.play}`);
       }
       const action = seen.interrupted;
       if (action === "pause" && !seen.paused)
         problems.push(`${where}: plays after the composition paused it`);
       if (action === "rate" && seen.rate !== 2)
         problems.push(`${where}: rate ${seen.rate}, set to 2`);
-      if (action === "seek" && !(Number(seen.seekGap ?? 1) <= FRAME))
-        problems.push(`${where}: resumed ${seen.seekGap} s off the composition's seek`);
+      const missed = (reading: Reading) => !(Number(reading.seekGap ?? 1) <= FRAME);
+      if (action === "seek" && missed(plain))
+        problems.push(
+          `${where}: the film without the helper missed the seek too, ${plain.seekGap}`,
+        );
+      else if (action === "seek" && missed(seen))
+        problems.push(`${where}: landed ${seen.seekGap} s off the composition's seek`);
       if (seen.savedRate !== undefined && !action && !variable && movesPlain) {
         if (!(Number(seen.restartGap ?? 1) <= FRAME))
           problems.push(`${where}: after our load it resumed ${seen.restartGap ?? "never"} s off`);
