@@ -239,6 +239,8 @@ type Copied =
   | "gone"
   | "changing";
 type Provenance = "no-step" | "read-before" | "unknown";
+/** went-ahead.json: files steps went ahead of whose copy is pending, and each open window's list. */
+type WentAhead = { pending: string[]; windows: Record<string, string[]> };
 
 const FIRST_COPY_FILE_MS = 10_000;
 
@@ -704,12 +706,13 @@ class Engine {
     }
     const left = this.readAdopting();
     const files = await this.historyFiles();
-    this.markWentAheadBeforeReopen(left, new Set(files.map((file) => file.path)));
+    const wentAhead = this.readJson<WentAhead>("went-ahead.json", { pending: [], windows: {} });
+    this.markWentAheadBeforeReopen(wentAhead.pending, left, new Set(files.map((f) => f.path)));
     const unadopted = (file: { path: string }) =>
       left.has(file.path) && !this.tracked.has(file.path);
     this.adoptMediaInBackground(files.filter(unadopted), this.now());
     // What changed while the project was closed is one outside entry, or the closed window's.
-    this.reopenClosedWindow();
+    this.reopenClosedWindow(wentAhead.windows);
     await this.settleAll();
   }
 
@@ -769,7 +772,7 @@ class Engine {
       this.overwritten.delete(path);
   }
 
-  reopenClosedWindow(): void {
+  reopenClosedWindow(wentAheadOf: WentAhead["windows"]): void {
     const closed = this.options.closedWindow;
     if (!closed || this.log.entries.some((entry) => entry.id === closed.id)) return;
     const { id, who, label, startedAt, lastWriteAt, idleMs } = closed;
@@ -783,6 +786,7 @@ class Engine {
       lastFileTime,
       idleMs,
       changes: new Map(),
+      ...(wentAheadOf[id] && { wentAheadOf: new Set(wentAheadOf[id]) }),
     });
   }
 
@@ -839,12 +843,12 @@ class Engine {
   }
 
   /** Files a step went ahead of before the last close, still owed their first copy or gone since. */
-  markWentAheadBeforeReopen(adopting: Set<string>, present: Set<string>): void {
-    for (const path of this.readJson<string[]>("went-ahead.json", [])) {
+  markWentAheadBeforeReopen(pending: string[], adopting: Set<string>, present: Set<string>): void {
+    for (const path of pending) {
       if (!adopting.has(path)) continue;
       this.tracked.delete(path);
       if (!present.has(path)) {
-        if (!this.log.baseline.has(path)) this.startUnseen(path, hashNoVersionHas());
+        this.startUnseen(path, this.log.baseline.get(path) ?? hashNoVersionHas());
         continue;
       }
       this.markWentAhead([path]);
@@ -856,14 +860,27 @@ class Engine {
   markWentAhead(paths: string[], group?: Group): boolean {
     const fresh = paths.filter((path) => !this.wentAhead.has(path));
     for (const path of fresh) this.wentAhead.add(path);
-    if (fresh.length) this.saveWentAhead();
+    this.nameAtStart(fresh);
     if (group && paths.length)
       group.wentAheadOf = new Set([...(group.wentAheadOf ?? []), ...paths]);
+    if (fresh.length || (group && paths.length)) this.saveWentAhead();
     return paths.length > 0;
   }
 
+  /** Every earlier point names the file, as not kept until its copy lands: no restore deletes it, in any app. */
+  nameAtStart(paths: string[]): void {
+    const unnamed = paths.filter((path) => !this.log.baseline.has(path));
+    for (const path of unnamed) this.log.baseline.set(path, hashNoVersionHas());
+    if (unnamed.length) this.persistLog(baselineRecord(this.log));
+  }
+
   saveWentAhead(): void {
-    this.saveList("went-ahead.json", this.wentAhead);
+    const windows = this.windows.filter((open) => open.wentAheadOf?.size);
+    const state: WentAhead = {
+      pending: [...this.wentAhead],
+      windows: Object.fromEntries(windows.map((open) => [open.id, [...open.wentAheadOf!]])),
+    };
+    this.saveJson("went-ahead.json", this.wentAhead.size || windows.length ? state : null);
   }
 
   provenanceOf(copied: Copied, path: string): Provenance {
@@ -875,6 +892,7 @@ class Engine {
   seenUnchanged(path: string): boolean {
     for (const group of this.windows) group.wentAheadOf?.delete(path);
     this.claimed?.group.wentAheadOf?.delete(path);
+    this.saveWentAhead();
     let rewrite = false;
     for (const entry of this.log.entries) {
       if (!entry.wentAheadOf?.includes(path)) continue;
@@ -909,15 +927,15 @@ class Engine {
   }
 
   saveAdopting(): void {
-    this.saveList("adopting.json", this.adopting.keys());
+    this.saveJson("adopting.json", this.adopting.size ? [...this.adopting.keys()] : null);
   }
 
-  saveList(name: string, paths: Iterable<string>): void {
+  /** Null removes the file. */
+  saveJson(name: string, value: unknown): void {
     const file = join(this.home, name);
-    const list = [...paths];
-    if (!list.length) return rmSync(file, { force: true });
+    if (value === null) return rmSync(file, { force: true });
     mkdirSync(this.home, { recursive: true });
-    replaceFileAtomically(file, JSON.stringify(list), 0o644);
+    replaceFileAtomically(file, JSON.stringify(value), 0o644);
   }
 
   /** A file still changing stays named until a whole copy of it lands; the next open retries it. */
@@ -1040,9 +1058,10 @@ class Engine {
   }
 
   adoptedStart(path: string, hash: string, provenance: Provenance): string {
+    // A save's receipt after a step went ahead may name the step's bytes as the ones it replaced.
+    if (provenance === "unknown") return hashNoVersionHas();
     const found = this.overwrittenBy({ path, before: null, after: hash }, undefined, new Set());
-    if (found && this.blobs.has(found)) return found;
-    return provenance === "unknown" ? hashNoVersionHas() : hash;
+    return found && this.blobs.has(found) ? found : hash;
   }
 
   manifest(): Manifest {
@@ -1850,7 +1869,8 @@ class Engine {
     const mine = (author: HistoryWho) => sameWho(author, who) || sameWho(author, OUTSIDE);
     const writes = (paths: Iterable<string>) => [...paths].some(this.studioWouldWrite);
     const pending = [...[...this.windows].reverse(), this.outside, this.claimed?.group].find(
-      (group) => group && writes(group.changes.keys()) && mine(group.who),
+      (group) =>
+        group && writes([...group.changes.keys(), ...(group.wentAheadOf ?? [])]) && mine(group.who),
     );
     if (pending) return direction === "back" ? this.pendingEntry(pending) : undefined;
     const everyone = this.options.undoScope === "everyone";
@@ -1961,6 +1981,7 @@ class Engine {
       step: (direction, who, { writeToken } = {}) =>
         this.operation(writeToken, async () => {
           const target = this.next(direction, who);
+          if (target) this.refuseUnseen(target);
           return target ? this.undoNow(target.id, who) : { ok: true, entry: null };
         }),
       undo: (id, { who, mode, writeToken }) =>
