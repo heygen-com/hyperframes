@@ -111,7 +111,7 @@ describe("init output without prompts", () => {
     [{ audio: `song-${ODD}.mp3` }, `Audio file not found: song-${SHOWN}.mp3`],
   ])("shows control characters in a refused %o as text", async (args, line) => {
     await expect(run({ name: join(work, `n-${ODD}`), ...args })).rejects.toThrow();
-    expect(printed()).toContain(line.replace("init n-", `init ${work}/n-`));
+    expect(printed()).toContain(line.replace("init n-", `init ${join(work, "n-")}`));
     expectNoControlCharacters();
   });
 
