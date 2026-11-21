@@ -129,10 +129,21 @@ export function createPreviewSeek(host: SeekHost) {
     wallClearTimeout(request?.deadline);
   };
   const holdPicture = () => {
+    const probe = ((globalThis as any).__hfProbe ??= []) as Array<[string, number]>;
+    let t = performance.now();
     const videos = host.videosToHold();
+    probe.push(["videosToHold", performance.now() - t]);
+    t = performance.now();
     const release = host.frames?.hold?.(videos);
+    probe.push(["frames.hold", performance.now() - t]);
     if (release) frameHolds.push(release);
+    t = performance.now();
+    const had = !!releasePicture;
     releasePicture ??= holdVideoFrames(videos);
+    probe.push([
+      had ? "holdVideoFrames(skipped)" : `holdVideoFrames(${videos.length})`,
+      performance.now() - t,
+    ]);
   };
   const cancel = (keepPicture = false) => {
     const request = pending ?? recovery;
@@ -263,8 +274,13 @@ export function createPreviewSeek(host: SeekHost) {
       controller.abort();
       frame?.release();
       frame = null;
+      const probe = ((globalThis as any).__hfProbe ??= []) as Array<[string, number]>;
+      let t = performance.now();
       host.frames?.prepareNative();
+      probe.push(["prepareNative", performance.now() - t]);
+      t = performance.now();
       host.prepare(host.clipsAt(time), time);
+      probe.push(["prepare(native)", performance.now() - t]);
       preparing = false;
       check();
     };

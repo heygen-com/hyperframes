@@ -153,6 +153,7 @@ function pageDetail(page: PageResult) {
       gapMs: num(x.gapMs),
       seekingAfterCall: num(x.seekingAfterCall),
       states: String(x.states ?? ""),
+      probe: String(x.probe ?? ""),
     })),
   };
 }

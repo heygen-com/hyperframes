@@ -171,9 +171,18 @@ export async function bench(cfg) {
       if (watching) requestAnimationFrame(watch);
     };
     requestAnimationFrame(watch);
+    window.__hfProbe = [];
     const t0 = now();
     host.seek(target);
     const syncMs = now() - t0;
+    const probeSums = {};
+    for (const [name, ms] of window.__hfProbe) {
+      const key = name.replace(/\(rs\d+p?\)/, (m) => m);
+      const s = (probeSums[key] ??= { n: 0, ms: 0, max: 0 });
+      s.n++;
+      s.ms += ms;
+      s.max = Math.max(s.max, ms);
+    }
     const seekingAfterCall = videos().filter((v) => v.seeking).length;
     let timeMs = null,
       framesMs = null;
@@ -210,6 +219,7 @@ export async function bench(cfg) {
       gapMs: gap,
       seekingAfterCall,
       states,
+      probe: JSON.stringify(probeSums),
     });
     await sleep(100);
   }

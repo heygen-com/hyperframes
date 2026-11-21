@@ -75,14 +75,22 @@ export function getPausedExternalVideoFrame(video: HTMLVideoElement): VideoFrame
 }
 
 export function captureNativeVideoFrame(video: HTMLVideoElement): HTMLCanvasElement | null {
+  const probe = ((globalThis as any).__hfProbe ??= []) as Array<[string, number]>;
+  let t = performance.now();
   const canvas = document.createElement("canvas");
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   const context = canvas.getContext("2d");
+  probe.push(["capture.canvas", performance.now() - t]);
   if (!context) return null;
   const frame = videoFrameOf(video);
   try {
+    t = performance.now();
     context.drawImage(frame ?? video, 0, 0);
+    probe.push([
+      `capture.drawImage(rs${video.readyState}${video.paused ? "p" : ""})`,
+      performance.now() - t,
+    ]);
     return canvas;
   } catch {
     return null;
