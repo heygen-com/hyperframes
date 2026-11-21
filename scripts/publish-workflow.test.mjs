@@ -805,7 +805,7 @@ test("publishing skips only identical uploads and fails on a version it did not 
       writeFileSync(log, "");
       writeFileSync(
         join(bin, "npm"),
-        `#!/bin/sh\necho "npm $*" >> "${log}"\nif [ "$1" = view ]; then [ -n "$VIEW_RESULT" ] || exit 1; echo "$VIEW_RESULT"; fi\n`,
+        `#!/bin/sh\necho "npm $*" >> "${log}"\nif [ "$1" = publish ]; then echo "$INTEGRITY" > "${temp}/on-npm"; fi\nif [ "$1" = view ]; then if [ -n "$VIEW_RESULT" ]; then echo "$VIEW_RESULT"; elif [ -s "${temp}/on-npm" ]; then cat "${temp}/on-npm"; else exit 1; fi; fi\n`,
       );
       chmodSync(join(bin, "npm"), 0o755);
       packTarball(temp, "core.tgz", { name: "@hyperframes/core", version: "1.2.3-alpha.1" });
@@ -825,6 +825,7 @@ test("publishing skips only identical uploads and fails on a version it did not 
           RUN_ATTEMPT: String(attempt),
           NODE_AUTH_TOKEN: "test-token",
           VIEW_RESULT: viewResult === "same" ? integrity : viewResult,
+          INTEGRITY: integrity,
         },
       });
       return { ...result, calls: readFileSync(log, "utf8") };
@@ -936,6 +937,71 @@ echo "$INTEGRITY" > "${seen}"
   assert.equal(others.status, 1);
   assert.equal(others.publishes, 1);
   assert.match(others.stdout, /this run did not publish it/);
+});
+
+test("a release is published only once npm serves every package it sent", () => {
+  const step = stepOf(publish, "Publish packages");
+  // The fake npm accepts each publish but serves the version only from the `servesAfter`th view after it.
+  const run = ({ servesAfter, waitSeconds = "60" }) => {
+    const temp = mkdtempSync(join(tmpdir(), "hyperframes-publish-visible-"));
+    try {
+      const bin = join(temp, "bin");
+      mkdirSync(bin);
+      const log = join(temp, "npm.log");
+      writeFileSync(log, "");
+      writeFileSync(
+        join(bin, "npm"),
+        `#!/bin/sh
+echo "npm $1 $2" >> "${log}"
+[ "$1" = view ] || exit 0
+grep -q "^npm publish" "${log}" || exit 1
+seen=$(sed -n '/^npm publish/,$p' "${log}" | grep -c "^npm view $2")
+[ "$seen" -ge "$SERVES_AFTER" ] || exit 1
+echo "$INTEGRITY"
+`,
+      );
+      chmodSync(join(bin, "npm"), 0o755);
+      packTarball(temp, "core.tgz", { name: "@hyperframes/core", version: "1.2.3-alpha.1" });
+      writeFileSync(
+        join(temp, "publish-order.tsv"),
+        `@hyperframes/core\t${join(temp, "core.tgz")}\n`,
+      );
+      const integrity = `sha512-${createHash("sha512")
+        .update(readFileSync(join(temp, "core.tgz")))
+        .digest("base64")}`;
+      const result = runStep(step, {
+        cwd: temp,
+        path: `${bin}:${process.env.PATH}`,
+        env: {
+          VERSION: "1.2.3-alpha.1",
+          DIST_TAG: "alpha",
+          NODE_AUTH_TOKEN: "",
+          PUBLISH_POLL_SECONDS: "0",
+          PUBLISH_VISIBLE_SECONDS: waitSeconds,
+          SERVES_AFTER: String(servesAfter),
+          INTEGRITY: integrity,
+        },
+      });
+      const calls = readFileSync(log, "utf8").trim().split("\n");
+      return { ...result, calls };
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  };
+
+  const late = run({ servesAfter: 3 });
+  assert.equal(late.status, 0, late.stdout + late.stderr);
+  assert.equal(late.calls.filter((c) => c.startsWith("npm publish")).length, 1);
+  assert.equal(late.calls.filter((c) => c.startsWith("npm view")).length, 4, late.calls.join("\n"));
+  assert.match(late.stdout, /@hyperframes\/core@1\.2\.3-alpha\.1 is on npm/);
+
+  // fails without the fix: a publish npm accepted counted as done, so a version npm never served passed the release.
+  const never = run({ servesAfter: 99, waitSeconds: "0" });
+  assert.equal(never.status, 1, never.stdout);
+  assert.match(
+    never.stdout,
+    /::error::@hyperframes\/core@1\.2\.3-alpha\.1 was sent to npm, but npm does not serve it/,
+  );
 });
 
 test("every publish runs in npm-publish, the environment npm trusted publishing names", () => {
