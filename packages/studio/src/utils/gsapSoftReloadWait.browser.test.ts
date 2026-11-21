@@ -185,47 +185,62 @@ async function settled({ page, frame }: Preview, sealed: boolean) {
 
 type Step = "scrub" | "same" | "other" | "attr" | "edit" | "move" | "ok" | "fail";
 
+/** Restores #c's left as Studio does: through the frame when sealed, by writing the same-origin DOM otherwise. */
+function restoreLeftOfC(preview: Preview, sealed: boolean, left: number) {
+  if (!sealed)
+    return preview.frame.evaluate(
+      (l) => document.getElementById("c")!.setAttribute("style", `left: ${l}px; top: 500px`),
+      left,
+    );
+  return preview.page.evaluate(
+    (scopes) =>
+      (window as unknown as { hfStudio: Studio }).hfStudio.previewRequest(
+        document.querySelector("iframe")!,
+        "restore-attributes",
+        { scopes: scopes as never, scripted: true, time: 4 },
+      ),
+    restoreC(left),
+  );
+}
+
+const styleTarget = (preview: Preview, name: string, value: string) =>
+  preview.frame.evaluate(
+    (n, v) => document.getElementById("target")!.style.setProperty(n, v),
+    name,
+    value,
+  );
+
+const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown>> = {
+  scrub: async (p) => {
+    for (const t of [3, 4]) await p.seek(t);
+  },
+  same: (p) => rerun(p.page, timeline("main", "newer", 200), 4),
+  other: (p) => rerun(p.page, timeline("other", "newer", 200), 4),
+  attr: (p, sealed) => restoreLeftOfC(p, sealed, 2),
+  edit: (p) => styleTarget(p, "color", "red"),
+  move: (p) => styleTarget(p, "transform", "translateX(300px)"),
+  ok: async (p, sealed) => {
+    await p.release(200);
+    await settled(p, sealed);
+  },
+  fail: async (p, sealed) => {
+    await p.release(404);
+    await settled(p, sealed);
+  },
+};
+
 /** Plays `steps` against an older "main" re-run waiting for the plugin, sent at 2 s with the player at 4 s. */
 async function play(mode: string, steps: Step[]) {
   const sealed = mode === "sealed";
   const preview = await openPreview(mode);
-  const { page, frame, held, release, seek, time } = preview;
-  const inFrame = <T>(fn: () => T) => frame.evaluate(fn);
-  const setC = (left: number) =>
-    frame.evaluate(
-      (l) => document.getElementById("c")!.setAttribute("style", `left: ${l}px; top: 500px`),
-      left,
-    );
+  const { page, frame, held, seek, time } = preview;
   await seek(4);
-  if (!sealed) await setC(1);
+  if (!sealed) await restoreLeftOfC(preview, sealed, 1);
   const older = rerun(page, timeline("main", "older", 60, true), 2, sealed ? restoreC(1) : []);
   await expect.poll(() => held.length).toBeGreaterThan(0);
-  for (const step of steps) {
-    if (step === "scrub") for (const t of [3, 4]) await seek(t);
-    if (step === "same") await rerun(page, timeline("main", "newer", 200), 4);
-    if (step === "other") await rerun(page, timeline("other", "newer", 200), 4);
-    if (step === "attr" && sealed)
-      await page.evaluate(
-        (scopes) =>
-          (window as unknown as { hfStudio: Studio }).hfStudio.previewRequest(
-            document.querySelector("iframe")!,
-            "restore-attributes",
-            { scopes: scopes as never, scripted: true, time: 4 },
-          ),
-        restoreC(2),
-      );
-    if (step === "attr" && !sealed) await setC(2);
-    if (step === "edit")
-      await inFrame(() => document.getElementById("target")!.style.setProperty("color", "red"));
-    if (step === "move")
-      await inFrame(() =>
-        document.getElementById("target")!.style.setProperty("transform", "translateX(300px)"),
-      );
-    if (step === "ok" || step === "fail") await release(step === "ok" ? 200 : 404);
-    if (step === "ok" || step === "fail") await settled(preview, sealed);
-  }
+  for (const step of steps) await STEPS[step](preview, sealed);
   const answer = await Promise.race([older, Promise.resolve("kept")]);
-  const state = await inFrame(() => {
+  const state = await frame.evaluate(() => {
     const target = document.getElementById("target")!;
     return {
       ran: (window as unknown as { __ran: Record<string, string> }).__ran,

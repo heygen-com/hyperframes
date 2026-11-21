@@ -178,34 +178,34 @@ describe("a re-run that waits for the MotionPath plugin", () => {
     return { seeks, kills };
   }
 
+  const plugin = () => document.head.querySelector<HTMLScriptElement>("script[src]")!;
+  const newer = async (key: string) =>
+    expect(await softReload(params({ script: run(key, "newer") }))).toEqual({ result: "applied" });
+  const STEPS: Record<Step, () => unknown> = {
+    scrub: () => {
+      for (const t of [3, 4]) {
+        countPlayerSeek(win);
+        (win.__player as { seek(t: number): void }).seek(t);
+      }
+    },
+    same: () => newer("main"),
+    other: () => newer("other"),
+    attr: () => restoreAttributesOrRerun({ scopes: restoreA(2), scripted: false, time: 4 }),
+    edit: () => document.getElementById("a")!.style.setProperty("color", "red"),
+    ok: () => {
+      win.MotionPathPlugin = {};
+      plugin().onload!(new Event("load"));
+    },
+    fail: () => plugin().onerror!(new Event("error")),
+  };
+
   async function play(steps: Step[]): Promise<Outcome> {
     const { seeks } = page();
     const older = softReload(
       params({ script: run("main", "older", true), time: 2, restore: restoreA(1) }),
     );
-    const plugin = () => document.head.querySelector<HTMLScriptElement>("script[src]")!;
     for (const step of steps) {
-      if (step === "scrub")
-        for (const t of [3, 4]) {
-          countPlayerSeek(win);
-          (win.__player as { seek(t: number): void }).seek(t);
-        }
-      if (step === "same")
-        expect(await softReload(params({ script: run("main", "newer") }))).toEqual({
-          result: "applied",
-        });
-      if (step === "other")
-        expect(await softReload(params({ script: run("other", "newer") }))).toEqual({
-          result: "applied",
-        });
-      if (step === "attr")
-        await restoreAttributesOrRerun({ scopes: restoreA(2), scripted: false, time: 4 });
-      if (step === "ok") {
-        win.MotionPathPlugin = {};
-        plugin().onload!(new Event("load"));
-      }
-      if (step === "edit") document.getElementById("a")!.style.setProperty("color", "red");
-      if (step === "fail") plugin().onerror!(new Event("error"));
+      await STEPS[step]();
       await Promise.resolve();
     }
     const { dataset } = document.body;
