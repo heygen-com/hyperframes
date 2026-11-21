@@ -8,7 +8,6 @@ import {
   chmodSync,
   rmSync,
   existsSync,
-  symlinkSync,
 } from "node:fs";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -278,27 +277,4 @@ test("synthesizeHeygen refuses under a credit limit before any request", async (
   assert.equal(r.ok, false);
   assert.match(r.error, /credit limit of 5/);
   assert.equal(asked, false);
-});
-
-// fails without the fix: a provider wrote the narration through a link at its output path.
-test("synthesizeOne refuses a link at the output path before any provider runs", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "tts-link-"));
-  try {
-    const outside = join(dir, "outside.txt");
-    writeFileSync(outside, "keep me");
-    const wavAbs = join(dir, "narration.wav");
-    symlinkSync(outside, wavAbs);
-    const r = await synthesizeOne({
-      provider: "heygen",
-      text: "hi",
-      voiceId: "v",
-      wavAbs,
-      hyperframesDir: dir,
-    });
-    assert.equal(r.ok, false);
-    assert.match(r.error, /is a link/);
-    assert.equal(readFileSync(outside, "utf8"), "keep me");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
 });

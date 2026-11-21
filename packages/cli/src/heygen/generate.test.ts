@@ -667,23 +667,81 @@ describe("generate", () => {
     },
   );
 
-  // fails without the fix: the download and the aspect-fit encode went through links at --out and `<out>.fit<ext>`.
-  it.skipIf(!ffmpeg)("never writes the result through a link at --out or beside it", async () => {
-    answers(textured("linked.mp4", "1344x768", false));
-    const out = join(project, "assets/linked-out.mp4");
-    mkdirSync(join(project, "assets"), { recursive: true });
-    const outsideOut = join(project, "outside-out.txt");
-    const outsideFit = join(project, "outside-fit.txt");
-    writeFileSync(outsideOut, "keep me");
-    writeFileSync(outsideFit, "keep me");
-    symlinkSync(outsideOut, out);
-    symlinkSync(outsideFit, `${out}.fit.mp4`);
-    const r = await generate({ type: "video", out, prompt: "p" });
-    expect(readFileSync(outsideOut, "utf8")).toBe("keep me");
-    expect(readFileSync(outsideFit, "utf8")).toBe("keep me");
-    expect(lstatSync(r.out).isSymbolicLink()).toBe(false);
-    expect(probeVideo(r.out)).toMatchObject({ width: 1344, height: 756 });
-  });
+  const canLink = (() => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-generate-link-"));
+    try {
+      symlinkSync(join(dir, "nowhere"), join(dir, "link"));
+      return true;
+    } catch {
+      return false;
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  })();
+
+  it.skipIf(!canLink)(
+    "replaces a live or dangling link at --out, never writing through it",
+    async () => {
+      const outside = mkdtempSync(join(tmpdir(), "hf-generate-outside-"));
+      try {
+        const kept = join(outside, "kept");
+        writeFileSync(kept, "keep me");
+        const live = join(project, "assets/linked-live.png");
+        const dangling = join(project, "assets/linked-dangling.png");
+        mkdirSync(join(project, "assets"), { recursive: true });
+        symlinkSync(kept, live);
+        symlinkSync(join(outside, "made"), dangling);
+        vi.stubGlobal("fetch", async (url: string) =>
+          url === "https://files.test/linked.png"
+            ? new Response(new Uint8Array([7]))
+            : json({
+                data: {
+                  id: "img-linked",
+                  status: "completed",
+                  images: [{ url: "https://files.test/linked.png" }],
+                },
+              }),
+        );
+        for (const out of [live, dangling]) {
+          await generate({ type: "image", out, prompt: "a linked picture" });
+          expect(lstatSync(out).isFile()).toBe(true);
+          expect(readFileSync(out)).toEqual(Buffer.from([7]));
+        }
+        expect(readFileSync(kept, "utf8")).toBe("keep me");
+        expect(existsSync(join(outside, "made"))).toBe(false);
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(!ffmpeg || !canLink)(
+    "crops past a live or dangling link at <out>.fit.mp4, never writing through it",
+    async () => {
+      const outside = mkdtempSync(join(tmpdir(), "hf-generate-outside-"));
+      try {
+        const kept = join(outside, "kept");
+        writeFileSync(kept, "keep me");
+        answers(textured("wide-linked.mp4", "1344x768", false));
+        const cases = [
+          [join(project, "assets/fit-live.mp4"), kept],
+          [join(project, "assets/fit-dangling.mp4"), join(outside, "made")],
+        ] as const;
+        for (const [out, target] of cases) {
+          symlinkSync(target, `${out}.fit.mp4`);
+          const r = await generate({ type: "video", out, prompt: "p" });
+          expect(lstatSync(r.out).isFile()).toBe(true);
+          const { width, height } = probeVideo(r.out);
+          expect([width, height]).toEqual([1344, 756]);
+          expect(lstatSync(`${out}.fit.mp4`).isSymbolicLink()).toBe(true);
+        }
+        expect(readFileSync(kept, "utf8")).toBe("keep me");
+        expect(existsSync(join(outside, "made"))).toBe(false);
+      } finally {
+        rmSync(outside, { recursive: true, force: true });
+      }
+    },
+  );
 
   const still = (name: string, size: string) => {
     const path = join(project, name);
@@ -1054,6 +1112,11 @@ describe("generate", () => {
     expect(check("nano-banana-2")).toThrow("nano-banana-2 is no longer offered here");
     expect(check("gpt-image-2.5", "16:9")).toThrow("gpt-image-2.5 is no longer offered here");
     expect(check("some-new-model", "7:5")).not.toThrow();
+    // A name every object carries is a model this build has no entry for, like any other.
+    for (const model of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      expect(check(model, "7:5")).not.toThrow();
+      expect(check(model, undefined, 20)).toThrow("no file at");
+    }
   });
 
   it("prices only a request the real call would accept", () => {

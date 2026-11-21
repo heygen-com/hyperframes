@@ -113,7 +113,13 @@ export function refuseLink(path) {
 export function writeTempBeside(path, content) {
   // Same shape as core atomicTempPath, which Studio's project history skips.
   const temp = `${path}.hf${randomBytes(3).toString("hex")}.tmp`;
-  writeFileSync(temp, content, { flag: "wx" });
+  try {
+    writeFileSync(temp, content, { flag: "wx" });
+  } catch (error) {
+    // EEXIST: the random name belongs to another writer, so it is left alone.
+    if (error?.code !== "EEXIST") rmSync(temp, { force: true });
+    throw error;
+  }
   return temp;
 }
 
@@ -121,10 +127,26 @@ export function writeTempBeside(path, content) {
 export function replaceFile(path, content) {
   const temp = writeTempBeside(path, content);
   try {
-    renameSync(temp, path);
+    renameRidingWindowsHolds(temp, path);
   } catch (error) {
     rmSync(temp, { force: true });
     throw error;
+  }
+}
+
+// Windows refuses a rename for a moment while antivirus or a just-exited process still holds the file.
+const WINDOWS_HOLD = new Set(["EPERM", "EACCES", "EBUSY"]);
+const HOLD_BACKOFF_MS = [10, 20, 40, 80, 160, 320, 640];
+
+function renameRidingWindowsHolds(from, to) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return renameSync(from, to);
+    } catch (error) {
+      const held = process.platform === "win32" && WINDOWS_HOLD.has(error?.code);
+      if (!held || attempt >= HOLD_BACKOFF_MS.length) throw error;
+      sleepMs(HOLD_BACKOFF_MS[attempt]);
+    }
   }
 }
 

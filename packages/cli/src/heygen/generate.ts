@@ -2,8 +2,8 @@
 // from one photo, a voice, or music. Every call is priced first with --plan, keyed for idempotency, downloaded into
 // the project and recorded in the media ledger as generated.
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
-import { createStagingDir, replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
@@ -17,7 +17,15 @@ import type {
   MusicCreateRequest,
 } from "../cloud/_gen/types.js";
 import { findCuts, signatures } from "../measure/cuts.js";
-import { Fix, probeVideo, projectOf, round, runFfmpeg, videoClip } from "../measure/media.js";
+import {
+  Fix,
+  ffmpegToFile,
+  probeVideo,
+  projectOf,
+  round,
+  runFfmpeg,
+  videoClip,
+} from "../measure/media.js";
 import { loadSharp } from "../utils/optionalPackages.js";
 import {
   chargedCredits,
@@ -203,11 +211,14 @@ const need = <T>(value: T | undefined, flag: string, example: string): T => {
   return value;
 };
 
+const ownEntry = <T>(table: Record<string, T>, name: string): T | undefined =>
+  Object.hasOwn(table, name) ? table[name] : undefined;
+
 function imageModel(r: GenerateRequest): string {
   const model = r.model ?? DEFAULTS.image;
-  const replacement = RETIRED_IMAGE_MODELS[model];
+  const replacement = ownEntry(RETIRED_IMAGE_MODELS, model);
   if (replacement) throw new Fix(`${model} is no longer offered here`, `--model ${replacement}`);
-  const spec = IMAGE_MODELS[model];
+  const spec = ownEntry(IMAGE_MODELS, model);
   if (!spec) return model;
   if (r.aspect && !spec.aspects.includes(r.aspect))
     throw new Fix(`${model} does not make ${r.aspect}`, `--aspect ${spec.aspects.join("|")}`);
@@ -565,29 +576,13 @@ function fitAspect(out: string, aspect: string): string | undefined {
   const even = (n: number) => n - (n % 2);
   const [w, h] =
     width / height > want ? [even(height * want), height] : [width, even(width / want)];
-  const privateFolderBesideOut = createStagingDir(dirname(out), ".hf-fit-");
-  const fitted = join(privateFolderBesideOut, `fit${extname(out)}`);
-  try {
-    runFfmpeg([
-      ...[
-        "-y",
-        "-i",
-        out,
-        "-vf",
-        `crop=${w}:${h}`,
-        "-c:v",
-        "libx264",
-        "-crf",
-        "12",
-        "-preset",
-        "slow",
-      ],
-      ...["-pix_fmt", "yuv420p", "-c:a", "copy", fitted],
-    ]);
-    renameSync(fitted, out);
-  } finally {
-    rmSync(privateFolderBesideOut, { recursive: true, force: true });
-  }
+  ffmpegToFile(
+    [
+      ...["-y", "-i", out, "-vf", `crop=${w}:${h}`, "-c:v", "libx264", "-crf", "12"],
+      ...["-preset", "slow", "-pix_fmt", "yuv420p", "-c:a", "copy"],
+    ],
+    out,
+  );
   return `HeyGen returned ${width}x${height} for ${aspect}; cropped to ${w}x${h} (centre), not stretched`;
 }
 
