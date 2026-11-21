@@ -88,7 +88,7 @@ const REENCODE_PRESETS = {
   video: {
     ext: ".mp4",
     contentType: "video/mp4",
-    args: ["-c:v", "libx264", "-preset", "slow", "-crf", "18", "-pix_fmt", "yuv420p"],
+    args: ["-c:v", "libx264", "-preset", "faster", "-crf", "18", "-pix_fmt", "yuv420p"],
     audio: ["-c:a", "aac", "-b:a", "320k", "-movflags", "+faststart"],
   },
   hdrVideo: {
