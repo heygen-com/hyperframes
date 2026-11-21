@@ -616,8 +616,8 @@ describe("an agent step that began while a file's first copy was pending", () =>
     const { file, historyRoot, opts } = project();
     const reading = stallRead(file("parts/p1.js"));
     const { release, reached } = holdFiling(Buffer.from("// B\n"));
-    // Over budget only by the original and the person's replaced index until the copy lands.
-    const history = await open({ ...opts, budgetBytes: 32, quietMs: 30 });
+    // The claim's prune and fold leave only what history still needs.
+    const history = await open({ ...opts, budgetBytes: 16, quietMs: 30 });
     const receipt = (bytes: string, overwrote: string) =>
       recordFileWriteReceipt(file("parts/p1.js"), {
         path: "parts/p1.js",
@@ -636,6 +636,34 @@ describe("an agent step that began while a file's first copy was pending", () =>
     release();
     await landed(historyRoot);
     expect(history.peek(START)!["parts/p1.js"]).toBe(sha256("// before\n"));
+  });
+
+  it("keeps undo history whole while an early save's original waits for its file's first copy", async () => {
+    const { file, historyRoot, opts } = project();
+    const original = `// before\n${"x".repeat(90)}\n`;
+    writeFileSync(file("parts/p1.js"), original);
+    const reading = stallRead(file("parts/p1.js"));
+    const { release, reached } = holdFiling(Buffer.from("// B\n"));
+    const history = await open({ ...opts, budgetBytes: 128, quietMs: 30 });
+    writeFileSync(file("parts/p1.js"), "// B\n");
+    recordFileWriteReceipt(file("parts/p1.js"), {
+      path: "parts/p1.js",
+      version: fileContentVersion("// B\n"),
+      writeToken: "studio",
+      overwrote: original,
+    });
+    reading();
+    await reached;
+    for (const label of ["One", "Two"]) {
+      writeFileSync(file("index.html"), `<html>${label}</html>`);
+      await history.claim(you, label, ["index.html"]);
+    }
+    expect(history.list().map((entry) => entry.label)).toEqual(
+      expect.arrayContaining(["One", "Two"]),
+    );
+    release();
+    await landed(historyRoot);
+    expect(history.peek(START)!["parts/p1.js"]).toBe(sha256(original));
   });
 
   it("answers a Studio claim on the pending file within the deadline", async () => {

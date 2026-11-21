@@ -751,7 +751,7 @@ class Engine {
         path,
         chainBackFrom(this.overwritten.get(path), replaced).set(after, replaced),
       );
-      if (!this.tracked.has(path))
+      if (this.adopting.has(path))
         this.heardBeforeCopy.set(path, (this.heardBeforeCopy.get(path) ?? new Set()).add(replaced));
       this.queue(async () => {
         if (!this.blobs.has(replaced) && !isUncopied(path, bytes.length))
@@ -1492,7 +1492,8 @@ class Engine {
   historyBytes(): number {
     let current = 0;
     const baseline = [...this.tracked.values()].map((file) => file.hash);
-    for (const hash of new Set([...baseline, ...this.blobs.pinned()]))
+    const owedStarts = [...this.heardBeforeCopy.values()].flatMap((replaced) => [...replaced]);
+    for (const hash of new Set([...baseline, ...this.blobs.pinned(), ...owedStarts]))
       current += this.blobs.size(hash);
     return this.blobs.bytes() - current;
   }

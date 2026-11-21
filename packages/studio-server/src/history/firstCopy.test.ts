@@ -198,14 +198,15 @@ describe("a project's first history copy", () => {
   });
 
   it("gives a queued first copy its deadline from when its read starts", async () => {
+    // Nine reads of 150 ms through four slots: the last round ends at 450 ms, each read well within 400 ms.
     const projectDir = projectOf(9, "queued");
     vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
       if (String(args[0]).startsWith(projectDir))
-        await new Promise((later) => setTimeout(later, 120));
+        await new Promise((later) => setTimeout(later, 150));
       return realOpen(...args);
     });
     const historyRoot = tempDir("hf-first-copy-root-");
-    const history = await openProjectHistory({ projectDir, historyRoot, firstCopyFileMs: 200 });
+    const history = await openProjectHistory({ projectDir, historyRoot, firstCopyFileMs: 400 });
     closes.push(() => history.close());
     expect(Object.keys(history.peek(START) ?? {}).sort()).toEqual(pathsOf(9).sort());
     expect(existsSync(join(homeIn(historyRoot), "adopting.json"))).toBe(false);
