@@ -25,6 +25,7 @@ import { beginStudioManualEditGesture } from "../components/editor/manualEdits";
 import { studioManualEditSavesIn } from "../components/editor/manualEditGesture";
 import { writePlainMove, writeTranslatePx } from "../components/editor/plainTranslate";
 import { onPreviewRestoredInPlace } from "../player/sceneSwap";
+import { beginStudioShownRestore } from "./studioPendingEdits";
 
 // ── Bug 2: undo/redo restore soft-apply ──────────────────────────────────────
 
@@ -579,15 +580,36 @@ describe("an undo or redo shown in place is announced once", () => {
   const moved = `<div id="a" style="left: 10px">t</div>`;
   const back = `<div id="a" style="left: 0px">t</div>`;
 
-  it("when it syncs attributes", () => {
+  const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("when it syncs attributes", async () => {
     const { iframe } = buildLiveIframe(moved);
     const count = announced(iframe);
     const files = { [ROOT]: { previous: wrap(moved), restored: wrap(back) } };
     expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn())).toBe("soft");
+    await settled();
     expect(count()).toBe(1);
   });
 
-  it("when it was shown before the server confirmed it", () => {
+  // fails without the fix: the panels re-read the preview inside the undo key, ahead of the undo's write.
+  it("after the write it was shown ahead of lands", async () => {
+    const { iframe } = buildLiveIframe(moved);
+    const count = announced(iframe);
+    showRestoreInPlace(
+      iframe,
+      ROOT,
+      { [ROOT]: { previous: wrap(moved), restored: wrap(back) } },
+      3,
+    );
+    const landed = beginStudioShownRestore();
+    await settled();
+    expect(count()).toBe(0);
+    landed();
+    await settled();
+    expect(count()).toBe(1);
+  });
+
+  it("when it was shown before the server confirmed it", async () => {
     const { iframe } = buildLiveIframe(moved);
     const count = announced(iframe);
     showRestoreInPlace(
@@ -598,10 +620,11 @@ describe("an undo or redo shown in place is announced once", () => {
     );
     const confirmed = { [ROOT]: { previous: wrap(back), restored: wrap(back) } };
     expect(applyUndoRestoreToPreview(iframe, ROOT, confirmed, 3, vi.fn())).toBe("soft");
+    await settled();
     expect(count()).toBe(1);
   });
 
-  it("when it re-runs a changed script", () => {
+  it("when it re-runs a changed script", async () => {
     const script = (extra: string) =>
       `<script>window.__timelines["root"]=gsap.timeline();${extra}</script>`;
     const film = (extra: string) => `<div data-composition-id="root">${back}</div>${script(extra)}`;
@@ -611,6 +634,7 @@ describe("an undo or redo shown in place is announced once", () => {
       [ROOT]: { previous: wrap(film(`tl.set("#a",{x:5},0);`)), restored: wrap(film("")) },
     };
     expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn())).toBe("soft");
+    await settled();
     expect(count()).toBe(1);
   });
 });
