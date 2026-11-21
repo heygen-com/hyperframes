@@ -188,13 +188,13 @@ describe("init output with prompts", () => {
   });
 
   // fails without the fix: a run that asked for JSON went to the questions, and a spinner drew the video's status on stdout.
-  it("asks nothing and draws no spinner when the run asked for JSON", async () => {
+  it.each([undefined, "gone"])("asks and spins nothing in a JSON run: %s", async (example) => {
     fake.json = true;
-    const clip = join(work, "clip.mov");
-    copyFileSync(new URL("./__fixtures__/mpeg4.mp4", import.meta.url), clip);
-    await run({ name: join(work, "film"), video: clip, "skip-transcribe": true });
+    const video = join(work, "clip.mov");
+    copyFileSync(new URL("./__fixtures__/mpeg4.mp4", import.meta.url), video);
+    await run({ name: join(work, "f"), video, example, "skip-transcribe": true }).catch(String);
     expect(printed()).toContain("Transcoded to clip.mp4\n");
-    expect(printed()).toContain("Get started:");
+    expect(printed()).toContain(example ? 'Failed to scaffold example "gone"' : "Get started:");
     expect(printed()).not.toContain("(spinner)");
   });
 
