@@ -483,9 +483,14 @@ async function installDriver(frame: Frame) {
             "timeupdate",
             () => (video.dataset.lastTime = String(video.currentTime)),
           );
+          // A seek fires timeupdate at its new time before seeked; where it came from is read at seeking.
+          video.addEventListener(
+            "seeking",
+            () => (video.dataset.seekFrom = video.dataset.lastTime),
+          );
           video.addEventListener("seeked", () => {
             const data = video.dataset;
-            const looped = Number(data.lastTime ?? 0) > video.duration - 1 && video.currentTime < 1;
+            const looped = Number(data.seekFrom ?? 0) > video.duration - 1 && video.currentTime < 1;
             if (data.seekAt !== undefined && !looped)
               data.extraSeeks = String(Number(data.extraSeeks ?? 0) + 1);
             if (!data.seekTo) return;
