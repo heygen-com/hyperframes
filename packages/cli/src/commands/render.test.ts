@@ -322,6 +322,51 @@ describe("renderLocal browser GPU config", () => {
     expect(renderLintContinuationHint(true)).not.toContain("Use --strict to block");
   });
 
+  // fails without the fix: the check's detail and hint, the probe failure and the job's warning are printed as they arrived.
+  it("shows control characters in a preflight warning, a probe failure and a job warning as text", async () => {
+    const esc = String.fromCharCode(27);
+    const odd = `od${esc}[2Jd${String.fromCharCode(7)}`;
+    const shown = "od\\x1b[2Jd\\x07";
+    const warned: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      warned.push(args.join(" "));
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const outcomes = preflightState.result.outcomes as Array<Record<string, unknown>>;
+    outcomes.push({
+      name: "Disk",
+      ok: true,
+      level: "warn",
+      detail: `low ${odd}`,
+      hint: `free ${odd}`,
+    });
+    ffmpegEncoderState.error = new Error(`probe ${odd}`);
+    producerState.executeImpl = async (job) => {
+      job.outcome = "completed_with_warnings";
+      job.warnings = [{ code: "late_media", message: `late ${odd}\nsecond line` }];
+    };
+    try {
+      await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: false,
+        throwOnError: true,
+      });
+    } finally {
+      outcomes.pop();
+    }
+    const said = warned.join("\n").replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "");
+    expect(said).toContain(`Disk: low ${shown}`);
+    expect(said).toContain(`free ${shown}`);
+    expect(said).toContain(`Unable to probe H.264 encoder capabilities: probe ${shown}`);
+    expect(said).toContain(`[late_media] late ${shown}\nsecond line`);
+    expect(said).not.toContain(esc);
+  });
+
   it("points non-strict renders to --strict for lint errors", () => {
     expect(renderLintContinuationHint(false)).toContain("Use --strict to block errors");
   });

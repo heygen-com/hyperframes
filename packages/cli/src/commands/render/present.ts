@@ -16,7 +16,7 @@ export async function presentRenderPlan(plan: RenderPlan): Promise<void> {
 async function presentRenderWarnings(plan: RenderPlan): Promise<void> {
   if (plan.invalidAuthoringSkill) {
     process.stderr.write(
-      `hyperframes: ignoring --skill="${plan.invalidAuthoringSkill}" — not a valid slug ` +
+      `hyperframes: ignoring --skill="${terminalText(plan.invalidAuthoringSkill)}" — not a valid slug ` +
         "(lowercase letters/digits/hyphens, max 64); this render will be unattributed.\n",
     );
   }
@@ -53,7 +53,7 @@ function presentRenderSummary(plan: RenderPlan): void {
 
 function qualityLabel(plan: Pick<RenderPlan, "qualityPreset" | "crf" | "videoBitrate">): string {
   if (plan.crf !== undefined) return `${plan.qualityPreset} (CRF ${plan.crf})`;
-  if (plan.videoBitrate) return `${plan.qualityPreset} (${plan.videoBitrate})`;
+  if (plan.videoBitrate) return `${plan.qualityPreset} (${terminalText(plan.videoBitrate)})`;
   return plan.qualityPreset;
 }
 
