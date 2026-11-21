@@ -53,7 +53,11 @@ the `timeline` edit commands use `--dir`.
 about files left out) print control characters in a repeated value as visible
 text such as `\x1b` and `\x07`, and keep the value on its line, with a line break
 shown as `\x0a`. [`capture`](#capture) does the same for its warnings and failure
-reason. `--json` output is not changed by this.
+reason. The same lines show the Unicode marks that switch text direction
+(U+202A to U+202E and U+2066 to U+2069) as visible text such as `\u202e`;
+right-to-left letters themselves are printed as they are. An `Unknown command:`
+line, and the suggestion under it, follow both rules for the word you typed.
+`--json` output is not changed by this.
 
 **`--json` for agents and scripts.** Most commands accept it, before or after
 the command name: `hyperframes --json info` is the same run as
