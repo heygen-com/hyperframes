@@ -103,8 +103,8 @@ describe("normalize-audio --write never writes through a link at its temp name",
       });
 
       expect(readFileSync(outside, "utf8")).toBe("keep me");
-      expect(lstatSync(path).isSymbolicLink()).toBe(false);
       expect(readFileSync(path, "utf8")).toMatch(/data-volume="(?!0")/);
+      expect(lstatSync(path).isSymbolicLink()).toBe(false);
     } finally {
       log.mockRestore();
       measureAudio.mockReset();

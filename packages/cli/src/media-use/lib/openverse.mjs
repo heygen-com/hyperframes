@@ -3,7 +3,16 @@
 // back to the bundled library when it is unavailable.
 
 import { randomBytes } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  constants,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
 
 const OPENVERSE_AUDIO_URL = "https://api.openverse.org/v1/audio/";
@@ -120,14 +129,21 @@ export function writeSfxCredit(creditsPath, file, sound) {
   const source = sourceUrl ? ` Source: ${sourceUrl}` : "";
   const name = oneLine(file);
   const line = `- \`${name}\`: ${oneLine(sound.credit)}${source}`;
-  if (lstatSync(creditsPath, { throwIfNoEntry: false })?.isSymbolicLink()) {
-    throw new Error(`${creditsPath} is a link; nothing was written through it`);
-  }
   let prior = "";
+  let fd;
   try {
-    prior = readFileSync(creditsPath, "utf8");
+    fd = openSync(creditsPath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   } catch (error) {
+    if (error.code === "ELOOP")
+      throw new Error(`${creditsPath} is a link; nothing was written through it`);
     if (error.code !== "ENOENT") throw error;
+  }
+  if (fd !== undefined) {
+    try {
+      prior = readFileSync(fd, "utf8");
+    } finally {
+      closeSync(fd);
+    }
   }
   const kept = prior
     .split("\n")
