@@ -46,6 +46,7 @@ import {
   removeWithin,
 } from "./containedPath.js";
 import { pruneGoneProjectHistoriesDaily } from "./pruneHistories.js";
+import { HistoryRefusedError, inTheWay, notKept } from "./historyRefused.js";
 import {
   ID_PATH,
   isRecordedFolder,
@@ -1372,7 +1373,7 @@ class Engine {
       ([, hash]) => hash !== null && !this.blobs.has(hash) && !setAsideByDeletesFirst.has(hash),
     );
     if (gone)
-      throw new Error(
+      throw notKept(
         `An earlier version of ${gone[0]} is not kept, so this cannot be brought back.`,
       );
     const deleted = new Set(changes.filter(([, hash]) => hash === null).map(([path]) => path));
@@ -1380,7 +1381,7 @@ class Engine {
       .filter(([, hash]) => hash !== null)
       .map(([path]) => this.inTheWay(path, deleted))
       .find(Boolean);
-    if (blocked) throw new Error(`${blocked} is in the way; move or delete it, then try again.`);
+    if (blocked) throw inTheWay(blocked);
     const group = this.newGroup(who, label);
     this.windows.push(group);
     try {
@@ -1480,7 +1481,7 @@ class Engine {
 
   entry(id: string): HistoryEntry {
     const entry = this.log.entries.find((candidate) => candidate.id === id);
-    if (!entry) throw new Error("That change is no longer kept in this project's history.");
+    if (!entry) throw notKept("That change is no longer kept in this project's history.");
     return entry;
   }
 
@@ -1596,13 +1597,14 @@ class Engine {
 
   async restoreNow(point: string, who: HistoryWho, label: string): Promise<HistoryEntry | null> {
     const files = manifestAt(this.log, point);
-    if (!files) throw new Error("That point is no longer kept in this project's history.");
+    if (!files) throw notKept("That point is no longer kept in this project's history.");
     const target = new Map<string, string | null>(
       [...this.tracked.keys()].map((path) => [path, null]),
     );
     for (const [path, hash] of files) target.set(path, hash);
     if (point === START && this.adopting.size > 0) {
       throw new HistoryRefusedError(
+        "starting_copy_saving",
         "The project's starting copy is still being saved; try again in a moment. Nothing was changed.",
       );
     }
@@ -1610,6 +1612,7 @@ class Engine {
     const keepsAny = [...target].some(([path, hash]) => hash !== null && isProjectFile(path));
     if ([...this.tracked.keys()].some(isProjectFile) && !keepsAny) {
       throw new HistoryRefusedError(
+        "removes_every_file",
         "Restoring this point would remove every file in this project, so nothing was changed.",
       );
     }
@@ -1682,7 +1685,7 @@ class Engine {
           const files = manifestAround(this.log, entryId, side)!;
           for (const [path, hash] of files)
             if (!this.blobs.has(hash))
-              throw new Error(`The version of ${path} from then is not kept.`);
+              throw notKept(`The version of ${path} from then is not kept.`);
           try {
             await mkdir(dest, { recursive: true });
             for (const [path, hash] of files) await this.blobs.writeTo(hash, dest, path);
@@ -1749,13 +1752,6 @@ export class HistoryClosedError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "HistoryClosedError";
-  }
-}
-
-export class HistoryRefusedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "HistoryRefusedError";
   }
 }
 
