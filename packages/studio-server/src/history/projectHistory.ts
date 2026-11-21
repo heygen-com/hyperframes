@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, rm, rmdir, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, realpath, rm, rmdir, stat, writeFile } from "node:fs/promises";
 import {
   type Dirent,
   type Stats,
@@ -477,12 +477,13 @@ class Engine {
 
   readonly records = (path: string) => isHistoryPath(path, this.options.ignores);
   readonly historyFiles = () => historyFiles(this.dir, this.options.ignores);
-  readonly recordsOnDisk = (path: string) => {
+  readonly recordsOnDisk = async (path: string) => {
     if (!this.records(path)) return false;
-    if (!existsSync(join(this.dir, path)) || lstatSync(join(this.dir, path)).isSymbolicLink())
-      return true;
-    const real = realpathSync.native(join(this.dir, path));
-    const onDisk = relative(realpathSync.native(this.dir), real).split(sep).join("/");
+    const at = join(this.dir, path);
+    const found = await lstat(at).catch(() => null);
+    if (!found || found.isSymbolicLink()) return true;
+    const [real, root] = await Promise.all([realpath(at), realpath(this.dir)]);
+    const onDisk = relative(root, real).split(sep).join("/");
     return onDisk.startsWith("../") || isAbsolute(onDisk) || this.records(onDisk);
   };
 
@@ -1310,12 +1311,12 @@ class Engine {
     extra: Partial<HistoryEntry>,
   ): Promise<HistoryEntry | null> {
     this.assertWritable();
-    const wanted = [...target].filter(
+    const candidates = [...target].filter(
       ([path, hash]) =>
-        this.studioWouldWrite(path) &&
-        this.recordsOnDisk(path) &&
-        (this.tracked.get(path)?.hash ?? null) !== hash,
+        this.studioWouldWrite(path) && (this.tracked.get(path)?.hash ?? null) !== hash,
     );
+    const onDisk = await Promise.all(candidates.map(([path]) => this.recordsOnDisk(path)));
+    const wanted = candidates.filter((_, i) => onDisk[i]);
     const named = await this.stillNamed(wanted);
     const changes = wanted
       .filter(([path, hash]) => hash !== null || !named.has(path))
