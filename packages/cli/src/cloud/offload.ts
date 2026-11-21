@@ -24,6 +24,7 @@ import { promisify } from "node:util";
 import { parseHTML } from "linkedom";
 import { parseAnimatedGifMetadata } from "@hyperframes/core";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import {
   cleanAssetUrl,
   isRemoteOrInlineUrl,
@@ -621,7 +622,10 @@ function scriptCode(fileMap: Map<string, StagedFile>): string {
     if (text === undefined) continue;
     if (/\.html?$/i.test(path)) {
       const { document } = parseHTML(text);
-      const pages = [document, ...[...document.querySelectorAll("template")].map((t) => t.content)];
+      const pages = [
+        document,
+        ...[...document.querySelectorAll("template")].flatMap((t) => templateContent(t) ?? []),
+      ];
       for (const script of pages.flatMap((p) => [...p.querySelectorAll("script:not([src])")])) {
         parts.push(script.textContent ?? "");
       }

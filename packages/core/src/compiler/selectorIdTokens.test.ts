@@ -3,8 +3,10 @@ import {
   decodeCssIdentifierAt,
   escapeCssAttributeValue,
   escapeCssIdentifier,
+  parseAttributeSelector,
   replaceSelectorAttributeTokens,
   replaceSelectorIdTokens,
+  selectorIdTokens,
 } from "./selectorIdTokens";
 
 describe("decodeCssIdentifierAt", () => {
@@ -100,6 +102,15 @@ it("serializes control characters inside CSS attribute string values", () => {
   expect(escapeCssAttributeValue('a\nb\rc\fd"e\\f')).toBe('a\\a b\\d c\\c d\\"e\\\\f');
 });
 
+// The escape writes `<` as `\3c `, so selector text can't end its style element even without postcss.
+it("hex-escapes `<` in an attribute string value, which still reads back as the same value", () => {
+  const value = "a</style><script>alert(1)</script>";
+  const escaped = escapeCssAttributeValue(value);
+
+  expect(escaped).toBe(String.raw`a\3c /style>\3c script>alert(1)\3c /script>`);
+  expect(parseAttributeSelector(`[src="${escaped}"]`)?.value).toBe(value);
+});
+
 it("keeps escaped closing brackets inside unquoted attribute tokens", () => {
   expect(
     replaceSelectorAttributeTokens(String.raw`use[href=\#sym\]bol]`, () => '[href="#renamed"]'),
@@ -109,4 +120,81 @@ it("keeps escaped closing brackets inside unquoted attribute tokens", () => {
 it("keeps commented brackets bounded when the closing bracket is missing", () => {
   const selector = "[" + "/*x*/".repeat(2000);
   expect(replaceSelectorAttributeTokens(selector, () => "changed")).toBe(selector);
+});
+
+// The guarded-segment regex the scan replaced: kept here only as the reference the scan must agree with.
+const REGEX_SEGMENTS =
+  /\/\*(?:[^*]|\*(?!\/))*\*\/|\\(?:[0-9a-fA-F]{1,6}(?:\r\n|[ \t\r\n\f])?|[\s\S])|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|\[(?:\/\*(?:[^*]|\*(?!\/))*\*\/|\\[\s\S]|"(?:[^"\\]|\\[\s\S])*"|'(?:[^'\\]|\\[\s\S])*'|[^\]"'\\/]|\/(?!\*))*\]/g;
+
+function regexIdTokens(selector: string): string[] {
+  const unguarded = new Array<boolean>(selector.length).fill(true);
+  for (const match of selector.matchAll(REGEX_SEGMENTS)) {
+    unguarded.fill(false, match.index, match.index + match[0].length);
+  }
+  const ids: string[] = [];
+  for (let index = 0; index < selector.length; index += 1) {
+    if (!unguarded[index] || selector[index] !== "#") continue;
+    const token = decodeCssIdentifierAt(selector, index + 1);
+    if (!token) continue;
+    ids.push(token.value);
+    index = token.end - 1;
+  }
+  return ids;
+}
+
+describe("the guarded-segment scan", () => {
+  // fails without the fix: each unclosed opener rescanned the rest of the selector, quadratic in its length.
+  it.each([
+    ["brackets", "[".repeat(300_000)],
+    ["comments", "/*a".repeat(100_000)],
+  ])(
+    "reads a selector of unclosed %s in time linear in its length",
+    (_, run) => {
+      const selector = `:is(${run}) #a`;
+      expect(replaceSelectorAttributeTokens(selector, (segment) => segment)).toBe(selector);
+      expect(selectorIdTokens(selector)).toEqual(["a"]);
+    },
+    10_000,
+  );
+
+  it("finds the segments the regex found, on 5000 random selectors", () => {
+    const alphabet = [
+      "[",
+      "]",
+      '"',
+      "'",
+      "\\",
+      "/",
+      "*",
+      "(",
+      ")",
+      "#",
+      "a",
+      "f",
+      "F",
+      "1",
+      " ",
+      "\n",
+      "\r",
+      "\t",
+      "=",
+      ",",
+    ];
+    let seed = 7;
+    const next = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+    for (let run = 0; run < 5000; run += 1) {
+      const selector = Array.from(
+        { length: Math.floor(next() * 32) },
+        () => alphabet[Math.floor(next() * alphabet.length)],
+      ).join("");
+      const mark = (segment: string) => `<${segment}>`;
+      const byRegex = selector.replace(REGEX_SEGMENTS, (segment) =>
+        segment.startsWith("[") ? mark(segment) : segment,
+      );
+      expect(replaceSelectorAttributeTokens(selector, mark), JSON.stringify(selector)).toBe(
+        byRegex,
+      );
+      expect(selectorIdTokens(selector), JSON.stringify(selector)).toEqual(regexIdTokens(selector));
+    }
+  });
 });

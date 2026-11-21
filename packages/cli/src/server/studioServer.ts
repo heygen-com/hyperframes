@@ -87,6 +87,9 @@ import {
   HistoryBusyError,
   HistoryClosedError,
   historyCache,
+  carriesOAuthReturn,
+  inertRefusal,
+  refuseOAuthReturn,
 } from "@hyperframes/studio-server";
 import { encoderJobOptions } from "@hyperframes/studio-server/encoder-options";
 import { isLinkFreeWithinProject } from "@hyperframes/studio-server/safe-path";
@@ -94,8 +97,9 @@ import { resolveAutoProxy } from "../utils/projectConfig.js";
 import {
   clearElementScreenshotIsolation,
   getElementScreenshotClip,
+  type ScreenshotClip,
+  thumbnailSeekReadyInBrowser,
 } from "@hyperframes/studio-server/screenshot-clip";
-import type { ScreenshotClip } from "@hyperframes/studio-server/screenshot-clip";
 import type { RenderJob } from "@hyperframes/producer";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import { seekCompositionTimeline } from "../capture/captureCompositionFrame.js";
@@ -609,6 +613,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
         );
         return html;
       } catch (err) {
+        const { isCompositionTooLargeError } = await import("@hyperframes/core/compiler");
+        if (isCompositionTooLargeError(err)) throw err;
         console.error("[studio] Bundle failed:", err);
         return null;
       }
@@ -887,15 +893,7 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
               requiresWebGpu && session.softwareWebGpu,
             );
             await page
-              .waitForFunction(
-                () => {
-                  const w = window as Window & {
-                    __timelines?: Record<string, unknown>;
-                  };
-                  return !!(w.__timelines && Object.keys(w.__timelines).length > 0);
-                },
-                { timeout: 5000 },
-              )
+              .waitForFunction(thumbnailSeekReadyInBrowser, { timeout: 5000 })
               .catch(() => {});
           },
           async (page) => {
@@ -993,6 +991,11 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
   const app = new Hono();
   // Extra hosts from HYPERFRAMES_PREVIEW_ALLOWED_HOSTS (Codespaces, tunnels).
   const allowedHosts = previewAllowedHostsFromEnv();
+
+  // No Studio route takes an OAuth return, and project script runs on this origin.
+  app.use(async function refuseOAuthReturnAtAnyPath(c, next) {
+    return carriesOAuthReturn(c.req.url) ? refuseOAuthReturn() : next();
+  });
 
   // Every route answers only loopback, the bind or an allowed host; a browser cannot forge Host.
   app.use(async function refuseUnknownHost(c, next) {
@@ -1254,8 +1257,8 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     return `<script>window.__HF_STUDIO_ENV__=${JSON.stringify(overrides)};</script>`;
   }
 
-  // SPA fallback. The shell's own requests pass every same-origin check, so only its own pages may frame it.
-  app.get("*", (c) => {
+  // Studio routes by hash, so only its entry paths get the shell, and only its own pages may frame it.
+  const serveStudioShell = (c: Context) => {
     for (const [name, value] of Object.entries(SAME_ORIGIN_FRAMING_HEADERS)) c.header(name, value);
     const indexPath = resolve(studioDir, "index.html");
     const indexContent = readBundleFile(indexPath);
@@ -1338,7 +1341,10 @@ export function createStudioServer(options: StudioServerOptions): StudioServer {
     // `no-cache` not `no-store`: same refetch without an ETag, but `no-store`
     // would blocklist the document from Chrome's bfcache.
     return c.html(html, 200, { "Cache-Control": "no-cache" });
-  });
+  };
+  app.get("/", serveStudioShell);
+  app.get("/index.html", serveStudioShell);
+  app.all("*", () => inertRefusal(404, "Not found."));
 
   const shutdown = async (): Promise<void> => {
     shuttingDown = true;

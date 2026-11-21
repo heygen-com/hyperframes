@@ -269,6 +269,7 @@ async function captureSegmentToEncoder(
   segment: SegmentSlice,
 ): Promise<StreamingEncoderResult> {
   const segmentPath = segmentOutputPath(ctx.segmentDir, segment.index);
+  rmSync(segmentPath, { force: true });
   let encoder: StreamingEncoder;
   try {
     encoder = await ctx.spawnEncoder(

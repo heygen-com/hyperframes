@@ -6,11 +6,21 @@ import { injectStudioPreviewAugmentations, withPreviewRuntime } from "../routes/
 import { previewReferences } from "./previewReads.js";
 import { injectPreviewVariables } from "./previewVariables.js";
 import { withRootImportMap } from "./rootImportMap.js";
+import { isCompositionTooLargeError } from "@hyperframes/core/compiler/composition-size-limit";
 import { buildSubCompositionHtml } from "./subComposition.js";
 import type { BuildJob, FinishJob, SubCompositionJob } from "./subCompositionBuild.js";
 
+function buildOrRefuse(buildPage: () => string | null): string | { refused: string } | null {
+  try {
+    return buildPage();
+  } catch (error) {
+    if (isCompositionTooLargeError(error)) return { refused: error.message };
+    throw error;
+  }
+}
+
 /** The page with its runtime and the files it names, hf-ids pinned to the source's; null once the file is gone. */
-function build(job: BuildJob): { html: string; references: string[] } | null {
+function build(job: BuildJob): { html: string; references: string[] } | { refused: string } | null {
   const { projectDir, compPath, compFile, runtimeUrl, baseHref, gsapBaseUrl } = job;
   let pinned: string | undefined;
   if (/\.html?$/i.test(compPath)) {
@@ -20,15 +30,10 @@ function build(job: BuildJob): { html: string; references: string[] } | null {
       return null; // removed between the route's stat and this read
     }
   }
-  const built = buildSubCompositionHtml(
-    projectDir,
-    compPath,
-    runtimeUrl,
-    baseHref,
-    pinned,
-    gsapBaseUrl,
+  const built = buildOrRefuse(() =>
+    buildSubCompositionHtml(projectDir, compPath, runtimeUrl, baseHref, pinned, gsapBaseUrl),
   );
-  if (!built) return null;
+  if (typeof built !== "string") return built;
   const html = withPreviewRuntime(withRootImportMap(built, baseHref), runtimeUrl);
   return { html, references: [...previewReferences(html)] };
 }

@@ -14,10 +14,22 @@ on:
       - ".github/workflows/player-safari.yml"
   schedule:
     - cron: "23 7 * * *"
+  # One film many times: a fault that shows once in fifty runs needs hundreds of runs to prove gone.
   workflow_dispatch:
+    inputs:
+      fixtures:
+        description: "Films to run, comma-separated (empty runs every heavy film)"
+        default: ""
+      runs:
+        description: "Runs of each film"
+        default: "2"
+      browsers:
+        description: "Browsers, comma-separated"
+        default: "safari,chrome"
 
 concurrency:
-  group: player-safari-${{ github.ref }}
+  # Each dispatch is its own group: the runs of one proof go side by side instead of cancelling each other.
+  group: player-safari-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'auto' }}
   cancel-in-progress: true
 
 jobs:
@@ -66,9 +78,14 @@ jobs:
 
       - name: Run heavy films in Safari and Chrome
         working-directory: packages/player
+        env:
+          FIXTURES: ${{ inputs.fixtures }}
+          RUNS: ${{ inputs.runs || '2' }}
+          BROWSERS: ${{ inputs.browsers || 'safari,chrome' }}
         run: |
           sw_vers
-          CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" bun run tests/perf/browsers/run.ts --browsers safari,chrome --runs 2
+          CHROMEDRIVER="$CHROMEWEBDRIVER/chromedriver" bun run tests/perf/browsers/run.ts \
+            --browsers "$BROWSERS" --runs "$RUNS" ${FIXTURES:+--fixtures "$FIXTURES"}
 
       - name: Upload results
         if: always()

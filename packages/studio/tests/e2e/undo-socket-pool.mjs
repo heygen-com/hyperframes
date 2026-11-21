@@ -119,8 +119,12 @@ try {
   await page.goto(STUDIO_URL, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.__undoPool?.has("studio_seek"), { timeout: 90_000 });
   await until(async () => (await call("studio_seek", { time: 1 }).catch(() => null))?.ok, 30_000);
-  const look = await call("studio_look", { limit: 50 });
-  const target = (look.elements ?? []).find((element) => element.label === "Target");
+  let look = null;
+  await until(async () => {
+    look = await call("studio_look", { limit: 50 }).catch(() => null);
+    return look?.sceneStatus === "ready";
+  }, 30_000);
+  const target = (look?.elements ?? []).find((element) => element.label === "Target");
   if (!target)
     throw new Error(`studio_look found no #target: ${JSON.stringify(look).slice(0, 400)}`);
   // Chrome cancels a paused video's request about 15 s after its last use, so on a slow runner the videos stopped

@@ -3,12 +3,17 @@
  * gesture draws on the stand-in is drawn on the frame's own element too, over the frame's channel,
  * so the preview follows the pointer. One request is in flight per frame; later draws wait and merge.
  */
-import { MAX_DESCRIBE_HANDLES, type EditingDraft } from "@hyperframes/core/runtime/editing-port";
+import {
+  MAX_DESCRIBE_HANDLES,
+  type EditingDraft,
+  type EditingDraftRotate,
+} from "@hyperframes/core/runtime/editing-port";
 import { previewRequest } from "../../player/lib/previewChannel";
 
 type Drawn = {
   translate: { x: number; y: number } | null;
   size: { width: number; height: number } | null;
+  rotate?: EditingDraftRotate | null;
 };
 
 interface Queue {
@@ -31,6 +36,11 @@ export function registerPreviewStandIn(
 }
 
 export const previewStandIn = (standIn: Element) => standIns.get(standIn);
+
+export function previewDraftLive(standIn: Element): boolean {
+  const target = standIns.get(standIn);
+  return !!target && !!queues.get(target.iframe)?.drawn.has(target.handle);
+}
 
 function queueFor(iframe: HTMLIFrameElement): Queue {
   let queue = queues.get(iframe);

@@ -26,17 +26,19 @@ afterEach(() => {
 });
 
 /** A sealed preview of SAVED, with the runtime's hide on the clip, and the saved file served. */
-function sealedClipboard(domSelection: DomEditSelection | null) {
-  const preview = new DOMParser().parseFromString(ensureHfIds(SAVED), "text/html");
+function sealedClipboard(domSelection: DomEditSelection | null, scriptMade = "", saved = SAVED) {
+  const preview = new DOMParser().parseFromString(ensureHfIds(saved), "text/html");
   document.body.innerHTML = preview.body.innerHTML;
+  document.querySelector("[data-composition-id]")!.insertAdjacentHTML("beforeend", scriptMade);
   document.getElementById("title")!.style.cssText = "visibility: hidden; display: none";
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () => new Response(JSON.stringify({ content: SAVED }))),
+    vi.fn(async () => new Response(JSON.stringify({ content: saved }))),
   );
   const { iframe } = sealedPreviewFrame();
   const writes: string[] = [];
   const deleted: string[] = [];
+  const toasts: string[] = [];
   const view = { projectId: "p" };
   let api: ReturnType<typeof useClipboard> | null = null;
   function Harness() {
@@ -44,7 +46,7 @@ function sealedClipboard(domSelection: DomEditSelection | null) {
       projectId: view.projectId,
       activeCompPath: "index.html",
       domEditSelectionRef: { current: domSelection },
-      showToast: () => {},
+      showToast: (message: string) => void toasts.push(message),
       writeProjectFile: async (_path: string, content: string) => void writes.push(content),
       recordEdit: async () => {},
       reloadPreview: () => {},
@@ -62,7 +64,13 @@ function sealedClipboard(domSelection: DomEditSelection | null) {
     view.projectId = projectId;
     act(() => root?.render(React.createElement(Harness)));
   };
-  return { clipboard: () => api as ReturnType<typeof useClipboard>, writes, deleted, openProject };
+  return {
+    clipboard: () => api as ReturnType<typeof useClipboard>,
+    writes,
+    deleted,
+    toasts,
+    openProject,
+  };
 }
 
 const clipOf = (id: string, tag: string, start: number, track: number): TimelineElement => ({
@@ -114,6 +122,56 @@ it("copies a canvas selection from a sealed preview, as saved", async () => {
   await clipboard().handlePaste();
   expect(writes[0]).toContain(">Title</h1>");
   expect(writes[0]).not.toContain("display: none");
+});
+
+// Elements the preview's own script made: not in the saved file, so a copy takes the preview's markup.
+const SCRIPT_MADE = [
+  ['<div id="made" class="clip" onclick="alert(1)">Made</div>', true],
+  ['<a id="made" class="clip" href="javascript:alert(1)">Made</a>', true],
+  ['<div id="made" class="clip"><script>alert(1)</script>Made</div>', true],
+  ['<iframe id="made" class="clip" srcdoc="<b>x</b>"></iframe>', true],
+  ['<video id="made" class="clip" src="clip.mp4" data-start="1" data-duration="2"></video>', false],
+] as const;
+
+it("pastes a sealed preview's own element only when its markup runs no code", async () => {
+  for (const [markup, refused] of SCRIPT_MADE) {
+    const selection = {
+      id: "made",
+      selector: "#made",
+      sourceFile: "index.html",
+    } as DomEditSelection;
+    const { clipboard, writes, toasts } = sealedClipboard(selection, markup);
+    expect(clipboard().handleCopy()).toBe(true);
+    await clipboard().handlePaste();
+    if (refused) {
+      expect(writes).toEqual([]);
+      expect(toasts.at(-1)).toMatch(/^Couldn't paste/);
+    } else {
+      expect(writes[0]).toContain('src="clip.mp4"');
+    }
+    act(() => root?.unmount());
+    root = null;
+  }
+});
+
+it("pastes and duplicates a saved element with its own handler, as saved", async () => {
+  const saved = SAVED.replace(
+    "</div></body>",
+    '<button id="go" class="clip" onclick="next()" data-start="1" data-duration="1" data-track-index="2">Go</button>\n</div></body>',
+  );
+  const selection = { id: "go", selector: "#go", sourceFile: "index.html" } as DomEditSelection;
+  const pasted = sealedClipboard(selection, "", saved);
+  expect(pasted.clipboard().handleCopy()).toBe(true);
+  await pasted.clipboard().handlePaste();
+  expect(pasted.writes[0]?.match(/onclick="next\(\)"/g)).toHaveLength(2);
+  act(() => root?.unmount());
+  root = null;
+
+  usePlayerStore.setState({ elements: [clipOf("go", "button", 1, 2)] });
+  selectClip("go");
+  const duplicated = sealedClipboard(null, "", saved);
+  expect(await duplicated.clipboard().handleDuplicate()).toBe(true);
+  expect(duplicated.writes[0]?.match(/onclick="next\(\)"/g)).toHaveLength(2);
 });
 
 it("leaves the clipboard as it was when a sealed preview lacks the element", async () => {

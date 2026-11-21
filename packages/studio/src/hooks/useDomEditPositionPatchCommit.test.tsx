@@ -61,6 +61,7 @@ function paramsWith(persistDomEditOperations: () => Promise<undefined>) {
     showToast,
     params: {
       activeCompPath: "index.html",
+      previewIframeRef: { current: null },
       persistDomEditOperations,
       showToast,
     },

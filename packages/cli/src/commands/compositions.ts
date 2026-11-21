@@ -3,6 +3,7 @@ import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import { readFileSync } from "node:fs";
 import { readProjectFile, resolveCompositionSrc } from "@hyperframes/parsers/asset-resolution";
+import { firstTemplateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { resolveCompositionDuration } from "@hyperframes/parsers/composition-duration";
 import { readDataDurationSeconds } from "@hyperframes/parsers/media-duration";
 import { dirname } from "node:path";
@@ -124,8 +125,7 @@ export function parseSubComposition(
 ): CompositionInfo {
   const parser = new DOMParser();
   const doc = parser.parseFromString(html, "text/html");
-  const template = doc.querySelector("template");
-  const searchDocument = template?.content ?? doc;
+  const searchDocument = firstTemplateContent(doc) ?? doc;
 
   // Sub-compositions may use <template> wrappers or direct divs
   const compDiv = searchDocument.querySelector("[data-composition-id]");

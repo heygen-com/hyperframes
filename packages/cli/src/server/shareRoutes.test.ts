@@ -17,6 +17,8 @@ const state: ShareState = {
   url: null,
   previousUrl: null,
   manageUrl: "https://hyperframes.dev/shares",
+  reviewId: null,
+  reviewTitle: null,
 };
 function fixture() {
   const service: ShareService = {
@@ -55,7 +57,14 @@ async function token(app: Hono) {
     throw new Error("missing token");
   return body.csrf;
 }
+// What Studio sends after the person confirms: the id of the review the popover named, null for none.
+function confirmed(body: unknown) {
+  if (!body || typeof body !== "object" || !("action" in body) || body.action === "login")
+    return body;
+  return "confirmedReview" in body ? body : { ...body, confirmedReview: state.reviewId };
+}
 function request(app: Hono, path: string, csrf: string, body?: unknown) {
+  body = path === "actions" ? confirmed(body) : body;
   return app.request(
     `/api/share/${path}`,
     {
@@ -181,6 +190,7 @@ it("keeps one server job alive after the request completes and recovers it on re
     audience: "private",
     space: "team1",
     videoOnly: undefined,
+    confirmedReview: null,
   });
 });
 it("returns failed jobs without changing access or retrying automatically", async () => {
@@ -255,6 +265,7 @@ it("passes explicit video-only recovery and rejects nonboolean bypass values", a
       audience: undefined,
       space: undefined,
       videoOnly: true,
+      confirmedReview: null,
     }),
   );
 });
@@ -457,4 +468,78 @@ it.each([undefined, true])("forwards only explicit source consent (%s)", async (
   expect(response.status).toBe(202);
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(service.run).toHaveBeenCalledWith(expect.objectContaining({ includeSource }));
+});
+
+describe("share actions need the review the person confirmed", () => {
+  const existing = "existing-project";
+  it.each([
+    ["share", { action: "share", audience: "public" }],
+    ["update", { action: "update" }],
+    ["access", { action: "access", audience: "public" }],
+    ["off", { action: "off" }],
+    ["on", { action: "on" }],
+  ])("refuses %s without a confirmed review and changes nothing", async (_, body) => {
+    const { app, service } = fixture();
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, { ...body, confirmedReview: undefined });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: "confirmation_required" });
+    for (const mutation of [service.run, service.setAccess, service.linkOff, service.linkOn])
+      expect(mutation).not.toHaveBeenCalled();
+  });
+  it("refuses a first share when the folder's record already names a review the person was not shown", async () => {
+    const { app, service } = fixture();
+    vi.mocked(service.status).mockResolvedValue({ ...state, reviewId: existing });
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, {
+      action: "share",
+      audience: "public",
+      confirmedReview: null,
+    });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: "share_target_changed" });
+    expect(service.run).not.toHaveBeenCalled();
+    const snapshot = await (await request(app, "snapshot", csrf)).json();
+    expect(snapshot.job).toBeNull();
+  });
+  it("refuses when the project now points to a different review than the one confirmed", async () => {
+    const { app, service } = fixture();
+    vi.mocked(service.status).mockResolvedValue({ ...state, reviewId: "another-project" });
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, {
+      action: "access",
+      audience: "public",
+      confirmedReview: existing,
+    });
+    expect(response.status).toBe(409);
+    expect(service.setAccess).not.toHaveBeenCalled();
+  });
+  it("refuses a confirmation that is not a review id", async () => {
+    const { app, service } = fixture();
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, {
+      action: "off",
+      confirmedReview: "https://hyperframes.studio/shares",
+    });
+    expect(response.status).toBe(400);
+    expect(service.linkOff).not.toHaveBeenCalled();
+  });
+  it("runs the action when the confirmed review is still the project's review", async () => {
+    const { app, service } = fixture();
+    vi.mocked(service.status).mockResolvedValue({ ...state, reviewId: existing });
+    const csrf = await token(app);
+    const response = await request(app, "actions", csrf, {
+      action: "access",
+      audience: "public",
+      confirmedReview: existing,
+    });
+    expect(response.status).toBe(202);
+    await vi.waitFor(() => expect(service.setAccess).toHaveBeenCalledWith("public"));
+  });
+  it("still signs in without a confirmed review", async () => {
+    const { app, login } = fixture();
+    const csrf = await token(app);
+    expect((await request(app, "actions", csrf, { action: "login" })).status).toBe(202);
+    await vi.waitFor(() => expect(login).toHaveBeenCalled());
+  });
 });

@@ -1,5 +1,5 @@
 import type { ExpectedOutputDimensions } from "./render/outputDimensions.js";
-import { audioFailureDiagnostics, usableCpuCount } from "@hyperframes/engine";
+import { audioFailureDiagnostics, cpuBudget } from "@hyperframes/engine";
 // fallow-ignore-file unused-type circular-dependency code-duplication complexity
 /**
  * Render Orchestrator Service
@@ -195,7 +195,7 @@ import {
   startRenderEtaGuard,
 } from "./render/renderEtaGuard.js";
 import { checkPageNeverReady } from "./render/pageNeverReady.js";
-import { planSegments, resolveSegmentFrames } from "./render/segmentPlan.js";
+import { resolveSegmentFrames } from "./render/segmentPlan.js";
 import { extractAllDeferredFrames } from "./render/deferredVideoFrames.js";
 import { measureLocalShownBoxes, oversizedVideos } from "./render/videoShownBoxes.js";
 import { createSegmentVideoFrames } from "./render/segmentVideoFrames.js";
@@ -388,7 +388,7 @@ export interface RenderConfig {
   quality: "draft" | "standard" | "high";
   /** Segmented capture: reuse segments recorded in a matching manifest (Phase 2b). */
   resumeSegments?: boolean;
-  /** Segmented capture: keep renders/.hf-segments/<planHash> after a successful render. */
+  /** Segmented capture: keep the local segment cache after a successful render. */
   keepSegments?: boolean;
   /**
    * Output container format. Defaults to `"mp4"`; set explicitly for other formats.
@@ -3351,6 +3351,7 @@ async function executeRenderPipeline(input: {
         needsAlpha,
         log,
         assertNotAborted,
+        abortSignal: executionSignal,
         variables: job.config.variables,
         pageMotionBlur: job.config.pageMotionBlur,
       }),
@@ -5004,7 +5005,7 @@ async function executeRenderPipeline(input: {
       audioFailed.abort(error);
     });
     const mixedAudio = () => audioWait.wait(audioReady);
-    if (usableCpuCount() < MIN_CPUS_TO_CAPTURE_DURING_MIX) await mixedAudio();
+    if (cpuBudget() < MIN_CPUS_TO_CAPTURE_DURING_MIX) await mixedAudio();
 
     resetCaptureAttemptProgress(job);
 
@@ -5111,31 +5112,8 @@ async function executeRenderPipeline(input: {
           pageMotionBlur: job.config.pageMotionBlur,
           captureQuality: captureOptions.quality,
         });
-        const segmentDir = segmentDirFor(join(projectDir, "renders"), segmentPlanHash);
+        const segmentDir = segmentDirFor(projectDir, segmentPlanHash);
         const manifestKey = loadResumeKeyOrWarn(job.config.resumeSegments === true, log);
-        let completedSegments: ReadonlySet<number> = new Set<number>();
-        if (job.config.resumeSegments === true) {
-          const existing = readSegmentManifest(segmentDir);
-          if (existing) {
-            completedSegments = await validateCompletedSegments(existing, {
-              expectedHash: segmentPlanHash,
-              segmentDir,
-              plan: planSegments(totalFrames, segmentFrames),
-              key: manifestKey,
-              probeFrames: (path) => probeSegmentFrameCount(path, extractMediaMetadata),
-            });
-            log.info(`[Render] resuming: ${completedSegments.size} segments complete`, {
-              segmentDir,
-            });
-          }
-          if (completedSegments.size === 0) {
-            rmSync(segmentDir, { recursive: true, force: true });
-          }
-        } else {
-          // Without --resume the directory is stale by definition: a previous
-          // run's segments must never be spliced into this output.
-          rmSync(segmentDir, { recursive: true, force: true });
-        }
         const emptySegmentManifest = (): SegmentManifest => ({
           version: 1,
           planHash: segmentPlanHash,
@@ -5143,7 +5121,26 @@ async function executeRenderPipeline(input: {
           segmentFrames,
           completed: [],
         });
-        let segmentManifest = readSegmentManifest(segmentDir) ?? emptySegmentManifest();
+        let segmentManifest = emptySegmentManifest();
+        let completedSegments: ReadonlySet<number> = new Set<number>();
+        const existing = job.config.resumeSegments ? readSegmentManifest(segmentDir) : null;
+        if (existing) {
+          completedSegments = await validateCompletedSegments(existing, {
+            expectedHash: segmentPlanHash,
+            segmentDir,
+            totalFrames,
+            segmentFrames,
+            key: manifestKey,
+            probeFrames: (path) => probeSegmentFrameCount(path, extractMediaMetadata),
+          });
+          segmentManifest.completed = existing.completed.filter((entry) =>
+            completedSegments.has(entry.index),
+          );
+          log.info(`[Render] resuming: ${completedSegments.size} segments complete`, {
+            segmentDir,
+          });
+        }
+        if (completedSegments.size === 0) rmSync(segmentDir, { recursive: true, force: true });
         const invokeSegmented = () => {
           if (capturePlan.kind !== "sdr_segmented") {
             throw new Error(`Cannot invoke segmented stage with ${capturePlan.kind} plan`);
@@ -5613,10 +5610,10 @@ async function executeRenderPipeline(input: {
         const overlap =
           !cfg.useDrawElement &&
           workerSizing !== undefined &&
-          canEncodeWhileCapturing(encodeInput, capturePlan.workerCount, workerSizing.cpuCount)
+          canEncodeWhileCapturing(encodeInput, capturePlan.workerCount, cpuBudget())
             ? encodeWhileCapturing(encodeInput, totalFrames, {
                 workerCount: capturePlan.workerCount,
-                cpuCount: workerSizing.cpuCount,
+                cpuCount: cpuBudget(),
               })
             : null;
         const captureFrameStart = Date.now();

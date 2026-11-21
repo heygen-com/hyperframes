@@ -60,3 +60,17 @@ export function clearElementScreenshotIsolation(): void {
   }
   page.__hfThumbnailFaded = [];
 }
+
+export const THUMBNAIL_NO_AUTHORED_CODE_META = "hyperframes-thumbnail-no-authored-code";
+
+// Serialised into the page, so the meta name is spelled out. A timeline may register late: only a marked page skips it.
+export function thumbnailSeekReadyInBrowser(): boolean {
+  const timelines: unknown = Reflect.get(window, "__timelines");
+  if (typeof timelines === "object" && timelines !== null && Object.keys(timelines).length > 0) {
+    return true;
+  }
+  return (
+    Boolean(Reflect.get(window, "__renderReady")) &&
+    document.querySelector('meta[name="hyperframes-thumbnail-no-authored-code"]') !== null
+  );
+}
