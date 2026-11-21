@@ -776,8 +776,9 @@ function judge(sequences: Sequence[], sealed: Readings[], control: Readings[], o
           );
         if (movesPlain && !moves)
           problems.push(`${where}: the playhead stopped ${JSON.stringify(seen)}`);
-        if (seen.play !== plain.play)
-          problems.push(`${where}: play() ${seen.play}, without the helper ${plain.play}`);
+        // A play() still pending is rejected by whichever load comes next, ours or the runtime's binding load.
+        if (plain.play === "resolved" && seen.play !== "resolved")
+          problems.push(`${where}: play() ${seen.play}, without the helper resolved`);
       }
       const action = seen.interrupted;
       if (action === "pause" && !seen.paused)
