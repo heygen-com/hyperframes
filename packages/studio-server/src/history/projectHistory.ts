@@ -547,8 +547,6 @@ class Engine {
   adopting = new Map<string, Adoption>();
   wentAhead = new Set<string>();
   wentAheadBeforeReopen = new Set<string>();
-  /** A went-ahead file's known original, until a sweep reads the file: the same bytes clear every step's list. */
-  verdictDue = new Map<string, string>();
   reading = new Map<string, Promise<unknown>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
@@ -889,22 +887,6 @@ class Engine {
     return copied.readAfterStep ? "unknown" : "read-before";
   }
 
-  seenUnchanged(path: string): boolean {
-    for (const group of this.windows) group.wentAheadOf?.delete(path);
-    this.claimed?.group.wentAheadOf?.delete(path);
-    this.saveWentAhead();
-    let rewrite = false;
-    for (const entry of this.log.entries) {
-      if (!entry.wentAheadOf?.includes(path)) continue;
-      const rest = entry.wentAheadOf.filter((named) => named !== path);
-      if (rest.length) entry.wentAheadOf = rest;
-      else delete entry.wentAheadOf;
-      entry.files = entry.files.filter((file) => file.path !== path || file.before !== file.after);
-      rewrite = true;
-    }
-    return rewrite;
-  }
-
   adoptMediaInBackground(
     files: ListedFile[],
     sweptAt: number,
@@ -1028,7 +1010,6 @@ class Engine {
     const start = this.adoptedStart(file.path, first.hash, provenance);
     if (provenance === "no-step") this.startSeen(file, sweptAt, start, first.hash);
     else this.startUnseen(file.path, start);
-    if (provenance === "read-before") this.verdictDue.set(file.path, start);
     return first;
   }
 
@@ -1038,14 +1019,6 @@ class Engine {
     if (start !== hash) addChange(this.outsideGroup(), file.path, start, hash);
     this.persistLog(baselineRecord(this.log));
     this.saveStatCache();
-  }
-
-  /** The first read after a went-ahead file's copy landed: its original bytes still there clear every list. */
-  judge(path: string, hash: string | null): void {
-    const original = this.verdictDue.get(path);
-    if (original === undefined) return;
-    this.verdictDue.delete(path);
-    if (hash === original && this.seenUnchanged(path)) this.persistLog();
   }
 
   /** A file a step went ahead of starts here; its next sweep takes in whatever stands there now. */
@@ -1168,7 +1141,6 @@ class Engine {
       }
       const known = this.tracked.get(path)!;
       this.tracked.delete(path);
-      this.judge(path, null);
       this.forgetWritesBefore(path, null, heard.get(path));
       await this.record(path, known.hash, null, when);
       changed = true;
@@ -1216,7 +1188,6 @@ class Engine {
     if (typeof copied === "string" || this.whereFolder() !== "here") return false;
     const { hash } = copied;
     this.tracked.set(path, { hash, stat });
-    this.judge(path, hash);
     this.forgetWritesBefore(path, hash, heard);
     if (known.hash !== hash) await this.record(path, known.hash, hash, when);
     return known.hash !== hash || known.stat !== stat;

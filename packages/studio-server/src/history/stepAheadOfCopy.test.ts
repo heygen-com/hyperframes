@@ -229,22 +229,29 @@ describe("an agent step that began while a file's first copy was pending", () =>
     expect(read("parts/p1.js")).toBe("// agent\n");
   });
 
-  it("undoes as usual once the copy lands and the file still holds its original bytes", async () => {
+  it("refuses the undo of every step that went ahead, though the file ends with its original bytes", async () => {
     const { file, read, historyRoot, opts } = project();
     const { release } = holdFiling(Buffer.from("// before\n"));
     const history = await open(opts);
-    const entry = await step(
+    const ahead = await step(history, () => {
+      writeFileSync(file("parts/p1.js"), "// B\n");
+      writeFileSync(file("index.html"), "<html>s1</html>");
+    }, [file("parts/p1.js"), file("index.html")]);
+    const back = await step(history, () => {
+      writeFileSync(file("parts/p1.js"), "// before\n");
+      writeFileSync(file("index.html"), "<html>s2</html>");
+    }, [file("parts/p1.js"), file("index.html")]);
+    const untouched = await step(
       history,
-      () => writeFileSync(file("index.html"), "<html>agent</html>"),
+      () => writeFileSync(file("index.html"), "<html>s3</html>"),
       [file("index.html")],
     );
     release();
     await landed(historyRoot);
     expect(history.peek(START)!["parts/p1.js"]).toBe(sha256("// before\n"));
-    await vi.waitFor(async () => {
-      expect(await history.undo(entry.id, { who: agent })).toMatchObject({ ok: true });
-    });
-    expect(read("index.html")).toBe("<html>before</html>");
+    for (const entry of [untouched, back, ahead])
+      await expect(history.undo(entry.id, { who: agent })).rejects.toThrow(NOT_KEPT);
+    expect(read("index.html")).toBe("<html>s3</html>");
     expect(read("parts/p1.js")).toBe("// before\n");
   });
 
@@ -315,27 +322,6 @@ describe("an agent step that began while a file's first copy was pending", () =>
     await expect(history.restore(START, agent)).rejects.toThrow(NOT_KEPT);
     await expect(history.undo(entry.id, { who: agent })).rejects.toThrow(NOT_KEPT);
     expect(read("index.html")).toBe("<html>agent</html>");
-  });
-
-  it("keeps the refusal when the file changes while its copy is being filed", async () => {
-    const { file, read, historyRoot, opts, later } = project();
-    const release = stallRead(file("parts/p1.js"));
-    const filing = holdFiling(Buffer.from("// before\n"));
-    const history = await open(opts);
-    const entry = await step(
-      history,
-      () => writeFileSync(file("index.html"), "<html>agent</html>"),
-      [file("index.html")],
-    );
-    later();
-    release();
-    await filing.reached;
-    writeFileSync(file("parts/p1.js"), "// while filed\n");
-    filing.release();
-    await landed(historyRoot);
-    await expect(history.undo(entry.id, { who: agent })).rejects.toThrow(NOT_KEPT);
-    expect(read("index.html")).toBe("<html>agent</html>");
-    expect(read("parts/p1.js")).toBe("// while filed\n");
   });
 
   it("refuses the whole undo in a history read by an app that ignores the list", async () => {
