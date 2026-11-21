@@ -56,7 +56,19 @@ export function unlistedCommits(commits, notes) {
   return commits.filter(({ sha, subject }) => !skipsChangelog(subject) && !notes.includes(sha));
 }
 
+/** A conventional `type(scope)!:` subject. Only the `!` is read: this repo marks breaking changes in the subject. */
 const BREAKING_SUBJECT = /^[a-z]+(?:\([^)]+\))?!:/;
+
+/** The commits still in effect, newest first: a later commit in effect that names one as reverted takes it out. */
+function inEffect(commits) {
+  const reverted = [];
+  return commits.filter(({ sha, body = "" }) => {
+    if (reverted.some((ref) => sha.startsWith(ref))) return false;
+    for (const [, ref] of body.matchAll(/This reverts commit ([0-9a-f]{7,40})/g))
+      reverted.push(ref);
+    return true;
+  });
+}
 
 /** The version a breaking change needs after `from`: the next minor below 1.0, the next major from 1.0 on. */
 function breakingVersionAfter(from) {
@@ -83,8 +95,12 @@ export function verifyRelease({ versions, previous = new Set() }, after, commits
     return problems;
   }
   const [version] = distinct;
-  const breaking = commits.find(({ subject }) => BREAKING_SUBJECT.test(subject));
-  const from = [...previous][0];
+  if (previous.size > 1) {
+    problems.push(`manifests move from different versions: ${[...previous].join(", ")}`);
+    return problems;
+  }
+  const breaking = inEffect(commits).find(({ subject }) => BREAKING_SUBJECT.test(subject));
+  const [from] = previous;
   if (breaking && from && !allowsBreaking(from, version))
     problems.push(
       `v${version} is too small a bump for a breaking change: ` +
@@ -121,19 +137,19 @@ const show = (ref) => (path) => {
   }
 };
 
-/** The commits between the last release commit and `base`; empty when `base` holds no earlier release. */
+/** The commits between the last release commit and `base`, newest first; empty when `base` holds no earlier release. */
 function commitsSinceLastRelease(base) {
   const last = git("log", "--format=%H%x09%s", base)
     .split("\n")
     .find((line) => releaseVersionOf(line.split("\t").slice(1).join("\t")) !== null)
     ?.split("\t")[0];
   if (!last) return [];
-  return git("log", "--no-merges", "--format=%H%x09%s", `${last}..${base}`)
-    .split("\n")
-    .filter(Boolean)
-    .map((line) => {
-      const [sha, ...subject] = line.split("\t");
-      return { sha, subject: subject.join("\t") };
+  return git("log", "--no-merges", "--format=%H%x1f%s%x1f%b%x1e", `${last}..${base}`)
+    .split("\x1e")
+    .filter((record) => record.trim())
+    .map((record) => {
+      const [sha, subject, body] = record.trim().split("\x1f");
+      return { sha, subject, body };
     });
 }
 
