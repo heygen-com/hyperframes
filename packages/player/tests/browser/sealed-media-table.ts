@@ -43,15 +43,9 @@ const KINDS: Kind[] = [
   "unmatched",
   "down",
 ];
-// An outage source plays once its host is back; only fixed sequences use it, reloading after the outage.
-const PLAYABLE = new Set<Kind>([
-  "cors",
-  "nocors",
-  "flaky",
-  "foreignCors",
-  "foreignNocors",
-  "outage",
-]);
+const PLAYABLE = new Set<Kind>(["cors", "nocors", "foreignCors", "foreignNocors"]);
+// A host that fails some requests plays only if a later selection asks it again, as in unsealed Studio.
+const MAY_PLAY = new Set<Kind>([...PLAYABLE, "flaky", "outage"]);
 
 function mulberry32(seed: number) {
   return () => {
@@ -141,6 +135,7 @@ const FIXED: Sequence[] = [
       ],
       [{ do: "create", el: 1, sources: [own("f4-a", "flaky")] }],
     ],
+    keepsCors: [1],
   },
   {
     name: "a no-CORS source beside one whose media never matches, reloaded",
@@ -222,12 +217,19 @@ async function installDriver(frame: Frame) {
       if (entry) entry.last = performance.now();
     };
     // On window, so it runs before the runtime's document listener can drop the attribute.
-    // A load() made while an element's error or first frame is being handled is the runtime's answer to it.
+    // A load() between this window listener and a document one added after the runtime's is the runtime's answer.
     const handling = new WeakSet<HTMLMediaElement>();
-    const handled = (video: HTMLVideoElement) => {
-      handling.add(video);
-      setTimeout(() => handling.delete(video));
-    };
+    const handled = (video: HTMLVideoElement) => handling.add(video);
+    for (const type of ["error", "loadeddata"])
+      document.addEventListener(
+        type,
+        (event) => {
+          const target = event.target as Element | null;
+          const video = target?.closest?.("video[data-table]") as HTMLVideoElement | null;
+          if (video) handling.delete(video);
+        },
+        true,
+      );
     const load = HTMLMediaElement.prototype.load;
     HTMLMediaElement.prototype.load = function (this: HTMLMediaElement) {
       if (this.dataset.table && handling.has(this))
@@ -438,8 +440,10 @@ async function judge(sequences: Sequence[], frame: Frame) {
             problems.push(`${where}: the composition's ${value} became ${seen.crossOrigin}`);
           continue;
         }
-        const canPlay = list.some((s) => PLAYABLE.has(s.kind));
-        if (seen.playing !== canPlay)
+        const canPlay =
+          list.some((s) => PLAYABLE.has(s.kind)) || Boolean(sequence.keepsCors?.includes(el));
+        const mayPlay = canPlay || list.some((s) => MAY_PLAY.has(s.kind));
+        if (seen.playing ? !mayPlay : canPlay)
           problems.push(`${where}: ${canPlay ? "does not play" : "plays"} ${JSON.stringify(seen)}`);
         if (!seen.playing) continue;
         // As in unsealed Studio, only the preview's own host is read with CORS; another host plays as authored.
