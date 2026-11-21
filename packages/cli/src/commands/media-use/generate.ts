@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
 import { jsonArg, num, runMeasure } from "../../measure/command.js";
@@ -199,7 +200,7 @@ export default defineCommand({
       checkLimit(credits, num(args["max-credits"], "--max-credits"), isVendorPriced(request));
       const made = await generate(
         request,
-        (status) => console.error(`generate: ${status}…`),
+        (status) => console.error(`generate: ${terminalText(status)}…`),
         credits ?? undefined,
       );
       return { ...made, price, credits, ...(voice ? { voice } : {}) };

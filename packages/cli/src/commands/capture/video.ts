@@ -199,7 +199,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
   const isW2hLayout = manifestPath === w2hPath;
   if (!existsSync(manifestPath)) {
     console.error(
-      `${c.error("✗")} no video-manifest.json at ${directPath} or ${w2hPath}\n` +
+      `${c.error("✗")} no video-manifest.json at ${shown(directPath)} or ${shown(w2hPath)}\n` +
         `  Was this directory produced by \`hyperframes capture\`?`,
     );
     setCommandExitCode(1);
@@ -222,7 +222,7 @@ export async function runVideoMode(args: VideoModeArgs): Promise<void> {
       return;
     }
     console.log(
-      `${manifest.length} video entr${manifest.length === 1 ? "y" : "ies"} in ${manifestPath}:`,
+      `${manifest.length} video entr${manifest.length === 1 ? "y" : "ies"} in ${shown(manifestPath)}:`,
     );
     for (const e of manifest) {
       console.log(
