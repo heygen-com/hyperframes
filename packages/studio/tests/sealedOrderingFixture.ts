@@ -232,7 +232,13 @@ const generated = (seed: number): Step[] => {
     if (roll < 0.14) return { scrub: pick(SCRUBS) };
     if (roll < 0.2) return { pastDeadline: true };
     // A timing sync's preview sync runs after the file lock, so a newer save's can go out first.
-    if (roll < 0.25) return { reversed: ["liveRetime", pick<Save>(["run", "patch", "undoLabel"])] };
+    if (roll < 0.25)
+      return {
+        reversed: [
+          pick<Save>(["liveRetime", "retime"]),
+          pick<Save>(["run", "patch", "undoLabel", "undoStart"]),
+        ],
+      };
     if (roll < 0.5) return { answer: "any" };
     return { save: pick(SAVES), fate: pick(FATES) };
   });

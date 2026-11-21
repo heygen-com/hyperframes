@@ -5,7 +5,7 @@
 import type { Browser } from "puppeteer-core";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { closeTestChrome, launchTestChrome } from "../../tests/chromeTestUtils";
-import { expectGenerated, playOrdering, type Step } from "../../tests/sealedOrderingFixture";
+import { playOrdering, type Step } from "../../tests/sealedOrderingFixture";
 import { buildStudioBundle } from "../../tests/sealedPreviewHarness";
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 60_000 });
@@ -144,6 +144,48 @@ const SEEDS: Fixed[] = [
     "a live retime and a newer run whose responses come back newest first, the retime refused",
     [{ reversed: ["liveRetime", "run"] }, { answer: "newest" }],
   ],
+  // The reviewer's round-11 probes: an older timing write's sync goes out after a newer undo of an unanimated
+  // clip's data-start, and the frame applies it; the clip must keep the undo's timing.
+  [
+    "an applied older live retime after a newer data-start undo of another clip",
+    [{ reversed: ["liveRetime", "undoStart"] }, { answer: "any" }, { answer: "any" }],
+  ],
+  [
+    "an applied older retime re-run after a newer data-start undo of another clip",
+    [{ reversed: ["retime", "undoStart"] }, { answer: "any" }, { answer: "any" }],
+  ],
+  // The round-10 generator's seeds that found reversed save responses, kept as it generated them: 52 an older
+  // script left on screen, 148 a newer patch's value lost.
+  ...(
+    [
+      [
+        52,
+        [
+          { save: "undoTitle", fate: "frame" },
+          { reloadFrame: true },
+          { save: "run", fate: "frame" },
+          { save: "retime", fate: "frame" },
+          { save: "retime", fate: "frame" },
+          { answer: "any" },
+          { scrub: 1 },
+          { reversed: ["liveRetime", "run"] },
+        ],
+      ],
+      [
+        148,
+        [
+          { reloadFrame: true },
+          { save: "run", fate: "frame" },
+          { reversed: ["liveRetime", "undoLabel"] },
+          { save: "run", fate: "rejected" },
+          { save: "run", fate: "frame" },
+          { reversed: ["liveRetime", "run"] },
+          { save: "run", fate: "refused" },
+          { reversed: ["liveRetime", "patch"] },
+        ],
+      ],
+    ] as Array<[number, Step[]]>
+  ).map(([seed, steps]): Fixed => [`round-10 seed ${seed}`, steps, { seed, two: seed % 2 === 1 }]),
   // The round-9 generator's seeds that found a class without the fix, kept as it generated them: 312 and 320 a
   // write of saved state never answered, then covered by a script-only run; 2101, 3037 and 3657 a two-script
   // file's newer timing undo overwritten.
@@ -314,9 +356,4 @@ describe("sealed preview after late answers in any order", () => {
     // The frame cannot set a title in place, so the refused undo recovers only by reloading.
     if (name.includes("title")) expect(reloads).toBeGreaterThan(0);
   });
-  // Generated seeds that found the reversed-response class without the fix: 52 an older script left on screen,
-  // 148 a newer patch's value lost.
-  it.each([52, 148])("generated sequence %i", (seed) =>
-    expectGenerated(browser, studioBundle, seed),
-  );
 });
