@@ -7,6 +7,7 @@ import {
   mkdirSync,
   existsSync,
   readdirSync,
+  symlinkSync,
 } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -23,6 +24,7 @@ import {
   mediaDir,
   typeDirPath,
   typeSubdir,
+  withMediaLock,
 } from "./manifest.mjs";
 import { regenerateIndex, generateIndexContent } from "./index-gen.mjs";
 import {
@@ -375,6 +377,43 @@ function runTests() {
   });
 
   // --- run ---
+
+  // fails without the fix: a .media/.lock that is a folder or a dead link spun forever at full CPU.
+  test("the media lock refuses a lock that is a folder or a link, at once", () => {
+    for (const plant of [
+      (lock) => mkdirSync(lock),
+      (lock) => symlinkSync(join(lock, "..", "gone"), lock),
+    ]) {
+      const project = mkdtempSync(join(tmpdir(), "mu-lock-"));
+      try {
+        mkdirSync(join(project, ".media"));
+        plant(join(project, ".media", ".lock"));
+        const started = Date.now();
+        assert.throws(() => withMediaLock(project, () => "ran"), /not a lock file/);
+        assert.ok(Date.now() - started < 5000);
+      } finally {
+        rmSync(project, { recursive: true, force: true });
+      }
+    }
+  });
+
+  // fails without the fix: a linked .media/audio folder took reserved files and records outside the project.
+  test("a media type folder that is a link is refused before anything is made through it", () => {
+    const project = mkdtempSync(join(tmpdir(), "mu-typedir-"));
+    const outside = mkdtempSync(join(tmpdir(), "mu-outside-"));
+    try {
+      mkdirSync(join(project, ".media"));
+      symlinkSync(outside, join(project, ".media", "audio"));
+      assert.throws(
+        () => allocateId(project, "sfx", ".mp3"),
+        /is a link; media is written only into real folders/,
+      );
+      assert.deepEqual(readdirSync(outside), []);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
 
   let passed = 0;
   let failed = 0;

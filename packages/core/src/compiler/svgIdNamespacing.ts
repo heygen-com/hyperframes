@@ -278,6 +278,7 @@ interface IdCensus {
   /** Every id in the document, extended with each minted id so no two
    *  renames (or a rename and an authored id) can ever coincide. */
   usedIds: Set<string>;
+  nextFreeSuffixByBase: Map<string, number>;
 }
 
 function currentAuthoredSvgId(el: Element): string | null {
@@ -306,16 +307,18 @@ function buildIdCensus(document: SvgIdQueryable): IdCensus {
       else elementsById.set(authored, [el]);
     }
   }
-  return { elementsById, usedIds };
+  return { elementsById, usedIds, nextFreeSuffixByBase: new Map() };
 }
 
 /** A namespaced id that is not already taken anywhere in the document. */
-function mintNamespacedId(prefix: string, originalId: string, usedIds: Set<string>): string {
+function mintNamespacedId(prefix: string, originalId: string, census: IdCensus): string {
   const base = `${prefix}--${originalId}`;
-  let candidate = base;
-  for (let n = 2; usedIds.has(candidate); n += 1) candidate = `${base}-${n}`;
-  usedIds.add(candidate);
-  return candidate;
+  const name = (n: number) => (n === 1 ? base : `${base}-${n}`);
+  let n = census.nextFreeSuffixByBase.get(base) ?? 1;
+  while (census.usedIds.has(name(n))) n += 1;
+  census.nextFreeSuffixByBase.set(base, n + 1);
+  census.usedIds.add(name(n));
+  return name(n);
 }
 
 function collisionScopes(
@@ -346,7 +349,7 @@ function planRenames(
     if (elements.length < 2) continue;
     for (const index of collisionScopes(id, elements, scopeIndexByRenamable)) {
       prefixes[index] ??= sanitizeNamespaceSegment(scopes[index]!.namespace);
-      idMaps[index]!.set(id, mintNamespacedId(prefixes[index]!, id, census.usedIds));
+      idMaps[index]!.set(id, mintNamespacedId(prefixes[index]!, id, census));
     }
   }
   return idMaps;
@@ -570,7 +573,14 @@ export function rewriteSvgIdReferencesInCss(
   root.walkRules((rule) => {
     const selectors = rule.selectors;
     const rewritten = selectors.map((selector) =>
-      rewriteSvgSelectors(selector, idsNamedBy(selector), references, undefined, chargeSelector),
+      rewriteSvgSelectors(
+        selector,
+        idsNamedBy(selector),
+        references,
+        undefined,
+        chargeSelector,
+        charge,
+      ),
     );
     if (rewritten.some((selector, index) => selector !== selectors[index])) {
       rule.selectors = rewritten;
@@ -594,7 +604,7 @@ export function rewriteSvgIdReferencesInCss(
   });
 
   const rewritten = mutated ? root.toResult({ map: false }).css : css;
-  // Selector growth was charged as it was built; settle to the sheet's real growth.
+  // Selector growth was charged as it was built; settle to the sheet's real growth. A scan's charge stays.
   const settle = Math.max(0, rewritten.length - css.length) - charged;
   if (charge && settle !== 0) charge(settle);
   return rewritten;

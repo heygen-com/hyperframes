@@ -71,6 +71,7 @@ export {
   clearElementScreenshotIsolation,
   getElementScreenshotClip,
   type ScreenshotClip,
+  thumbnailSeekReadyInBrowser,
 } from "./helpers/screenshotClip.js";
 export {
   thumbnailDeviceScaleFactor,

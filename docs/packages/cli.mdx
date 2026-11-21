@@ -134,7 +134,7 @@ when no login or API key is saved (see [`auth`](#hyperframes-auth)).
 **Flags, not prompts.** A missing required flag fails immediately with a usage
 example rather than waiting for input. These commands can ask questions on a TTY:
 `init` prompts for a project name and example unless you pass
-`--non-interactive`, `catalog --human-friendly` opens a picker, and `share` asks for a first-share audience. Nothing else
+`--non-interactive`, `catalog --human-friendly` opens a picker, and `share` asks for a first-share audience and, in a folder that came from someone else, confirms the existing review it would change. Nothing else
 prompts, apart from confirmations you can skip with `--yes` or `--no-confirm`.
 
 **Unattended runs never prompt.** A run is unattended when stdin or stdout is not
@@ -142,6 +142,22 @@ a terminal, under CI, inside a coding agent, or with `HYPERFRAMES_AGENT=1`.
 There, a command that would ask for confirmation, such as `publish` or `upgrade`,
 exits 2 instead and names the flag to pass (`--yes`), and spinners print only
 their final line, on stderr.
+
+**`npx` installs before the CLI runs.** The guarantee above starts once the CLI
+is running, and `npx` keeps it: with no terminal, npm skips its
+`Ok to proceed?` prompt, prints a warning, and installs. What `npx` adds is the
+install itself. An unversioned `npx hyperframes` asks the registry for the
+latest release on every run and installs it when it is new there, so two jobs
+that start together can collide in npm's cache (`_cacache` for the fetch,
+`_npx` for the install: `EEXIST` or `ENOTEMPTY`; a retry succeeds), and a new
+release silently changes
+what the same command renders. In scripts and CI, run the `npm run` scripts a
+scaffolded project ships (`npm run render` is `npx --yes hyperframes@X.Y.Z`,
+pinned to the version that created the project), or pin the same way yourself.
+An installed binary (`npm i hyperframes@X.Y.Z`, then
+`node_modules/.bin/hyperframes`, or a global install) skips the fetch
+entirely. Check the render's dimensions and duration with `ffprobe` before
+anything downstream consumes it.
 
 **Exit codes.** `0` means the command succeeded, `1` means it ran and failed, and
 `2` means the command line itself is wrong: an unknown command or flag, or a
@@ -3400,6 +3416,20 @@ visible while an update processes. Interrupted first uploads can resume when
 the source is unchanged; if it changed, explicitly use `--update`. If the
 project's review or audience changes while rendering, check the current share
 with `--status` before retrying.
+
+A folder that came from someone else can carry a review record that names their
+existing review. When the project's received-files record, or one above or inside
+it, marks the folder as received, `share` confirms that review before it changes
+who can open it, its link or its versions. This covers an audience flag,
+`--update`, and a share that would add a version or finish setting up the link. In an attended terminal it shows
+the review's title, id and link and asks first; declining changes nothing. An
+unattended run (`--yes`, `--json`, CI or no terminal) is refused with
+`review_confirmation_required` unless `--review <review-id>` names that same
+review; a `--review` that names another review is refused with `review_mismatch`.
+A folder whose received-files records cannot all be read counts as received.
+Reading the existing link, a first share with no existing review, and folders
+not marked as received are unchanged. To share a received folder as a new review
+instead, remove the review record in its `.hyperframes` folder.
 
 Completed renders accumulate in `.hyperframes/share-renders/`. To reclaim that
 space, wait for uploads to finish and close any running share commands, then

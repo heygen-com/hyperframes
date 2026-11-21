@@ -447,8 +447,25 @@ async function registerOnce(client, projectPath, record, title) {
  * @param {ReviewClient} client @param {ProjectDTO} project */
 async function unused(client, project) {
   if (project.latest_ready_version_id) return false;
-  const share = await readShare(client, project.project_id);
-  return share.access_mode === "private" && !share.revoked;
+  return untouched(project, await readShare(client, project.project_id));
+}
+
+/** A project as an unfinished first share leaves it: no ready version, its link never turned off, and private, or set
+ * to this share's audience already when only the reply to that change was lost.
+ * @param {ProjectDTO} project @param {ShareDTO} share @param {import("./types/share.js").AccessMode} [audience] */
+const untouched = (project, share, audience) =>
+  !project.latest_ready_version_id &&
+  !share.revoked &&
+  (share.access_mode === "private" || share.access_mode === audience);
+
+/** With no review a host confirmed, a record's project that no share finished names nothing the person agreed to: only
+ * a first share that stopped before it finished goes on. Anything else is refused, and the record stays as it is.
+ * @param {ReviewClient} client @param {ReviewRecord} read @param {ShareDTO} share
+ * @param {import("./types/share.js").AccessMode} [audience] */
+async function assertUnfinished(client, read, share, audience) {
+  if (!read.projectId || read.opened) return;
+  if (!untouched(await client.project(read.projectId), share, audience))
+    throw new ReviewFailed(409, "review_project_changed");
 }
 
 /** A space refused at registration. Only one picked before the workspace changed is replaced by the next press;
@@ -485,6 +502,7 @@ export const shareForReview = ({
     if (!read.projectId) await writeJsonAtomic(recordPath(projectPath), record);
     const share = await readShare(client, id, projectPath);
     if (takenDown(share)) return shown(client, share);
+    if (confirmed === undefined) await assertUnfinished(client, read, share, audience);
     if (!record.opened || share.revoked) await beforeOpen?.(id);
     return openLink(client, projectPath, record, id, share, audience).then(
       (opened) => shown(client, opened),
@@ -509,7 +527,8 @@ async function openLink(client, projectPath, record, id, share, audience) {
       expected_link_generation: share.link_generation,
       client_operation_id: randomUUID(),
     });
-  // A lost PATCH reply leaves the first share incomplete; a fresh explicit choice must still apply.
+  // Opens a first share. Unless the host confirmed this review, a retry after a lost reply reaches here only while
+  // the review is private or already has this audience (assertUnfinished).
   if (!record.opened) {
     share = await applyFirstAudience(client, id, share, audience);
     await writeJsonAtomic(recordPath(projectPath), { ...record, projectId: id, opened: true });
@@ -565,7 +584,8 @@ const SENTENCES = {
   review_subscription_required: "Restricted sharing requires a HyperFrames subscription.",
   review_public_consent_required: "Choose Share with anyone who has the link to continue.",
   review_entitlement_unavailable: "Couldn't confirm sharing availability. Try again.",
-  review_project_changed: "This project’s review changed. Reopen sharing and try again.",
+  review_project_changed:
+    "This project’s review changed. Reopen sharing and try again. If it keeps failing, remove .hyperframes/review.json to share this folder as a new review.",
   review_project_removed:
     "This review project was removed. Share again to create a new link and discussion.",
   moderation_hold: "This review was taken down for a policy violation, so it can't be shared.",

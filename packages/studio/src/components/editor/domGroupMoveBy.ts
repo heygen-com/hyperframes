@@ -2,7 +2,7 @@ import type { DomEditSelection } from "./domEditing";
 import type { DomEditGroupPathOffsetCommit } from "./domEditOverlayGestures";
 import { canCanvasNudgeTargets } from "./domEditNudge";
 import { isStudioManualEditGestureCurrent, restoreStudioPathOffset } from "./manualEdits";
-import { countStudioManualEditSave } from "./manualEditsDom";
+import { countStudioManualEditSave } from "./manualEditGesture";
 import {
   applyManualOffsetDragCommit,
   createManualOffsetDragMember,

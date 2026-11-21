@@ -1587,3 +1587,27 @@ describe("where a preview's session is kept", () => {
     expect(readdirSync(state)).toEqual([]);
   });
 });
+
+describe("background preview log warning", () => {
+  it("shows control characters in a log path that cannot be opened as text", async () => {
+    const bell = String.fromCharCode(7);
+    // A file where the state folder should be, so the log's folder cannot be made.
+    const blocker = join(tempDir("hf-preview-state-"), "file");
+    writeFileSync(blocker, "");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    onTestFinished(() => warn.mockRestore());
+
+    await startBackgroundPreview(projectDir, 3002, {
+      forceNew: true,
+      scan: async () => [],
+      spawn: () => ({ pid: 5432, unref: vi.fn() }),
+      sleep: async () => {},
+      stateHome: join(blocker, `state${bell}home`),
+    }).catch(() => {});
+
+    const printed = warn.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed).toContain("background preview log not written: cannot open ");
+    expect(printed).toContain("state\\x07home");
+    expect(printed).not.toContain(bell);
+  });
+});

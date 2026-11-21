@@ -1,4 +1,5 @@
 import { format, stripVTControlCharacters } from "node:util";
+import { terminalLines } from "@hyperframes/core";
 import {
   CliRuntimeError,
   CliUsageError,
@@ -33,7 +34,7 @@ export function failCaught(
   const message = failureMessage(error);
   const usage = error instanceof CliUsageError;
   if (json) print(jsonFailure(usage ? error.code : "runtime_error", message));
-  else console.error(line(message));
+  else console.error(line(terminalLines(message)));
   if (usage) failUsage();
   failCommand();
 }
@@ -49,6 +50,16 @@ export function writeJsonFailure(body: CliErrorBody): void {
  */
 let reported: { message: string; hint?: string } | undefined;
 let noticeDepth = 0;
+let asGiven: string | undefined;
+
+export function printFailureLine(line: (show: (text: string) => string) => string): void {
+  asGiven = line((text) => text);
+  try {
+    console.error(line(terminalLines));
+  } finally {
+    asGiven = undefined;
+  }
+}
 
 /** The failure a command reported to the person (errorBox); the envelope's message when it has none. */
 export function recordFailure(message: string, hint?: string): void {
@@ -106,7 +117,7 @@ export function watchOutput(): { wroteStdout: () => boolean; stderrText: () => s
   for (const name of ["error", "warn"] as const) {
     const original = console[name].bind(console);
     console[name] = (...args: unknown[]) => {
-      keep(`${format(...args)}\n`);
+      keep(`${asGiven ?? format(...args)}\n`);
       inConsole = true;
       try {
         original(...args);

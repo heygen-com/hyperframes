@@ -116,6 +116,12 @@
       "types": "./dist/missingPath.d.ts",
       "environments": ["bun", "node"]
     },
+    "./terminal-text": {
+      "source": "./src/terminalText.ts",
+      "runtime": "./dist/terminalText.js",
+      "types": "./dist/terminalText.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./rename-retry": {
       "source": "./src/renameWithRetry.ts",
       "runtime": "./dist/renameWithRetry.js",
@@ -482,6 +488,12 @@
       "types": "./dist/runtime/editing/scenes.d.ts",
       "environments": ["browser", "bun", "node"]
     },
+    "./runtime/live-retime": {
+      "source": "./src/runtime/editing/liveRetime.ts",
+      "runtime": "./dist/runtime/editing/liveRetime.js",
+      "types": "./dist/runtime/editing/liveRetime.d.ts",
+      "environments": ["browser", "bun", "node"]
+    },
     "./runtime/clip-window": {
       "source": "./src/runtime/clipWindow.ts",
       "runtime": "./dist/runtime/clipWindow.js",
@@ -523,6 +535,12 @@
       "runtime": "./dist/runtime/levelTap.js",
       "types": "./dist/runtime/levelTap.d.ts",
       "environments": ["browser", "bun", "node"]
+    },
+    "./compiler/composition-size-limit": {
+      "source": "./src/compiler/compositionSizeLimit.ts",
+      "runtime": "./dist/compiler/compositionSizeLimit.js",
+      "types": "./dist/compiler/compositionSizeLimit.d.ts",
+      "environments": ["bun", "node"]
     },
     "./compiler/html-document": {
       "source": "./src/compiler/htmlDocument.ts",

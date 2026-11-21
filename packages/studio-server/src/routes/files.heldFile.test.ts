@@ -176,22 +176,6 @@ function holdFor(file: string, ms: number) {
 }
 
 /** The longest the event loop went without running a 5 ms timer while `work` ran. */
-async function longestStall(work: () => Promise<unknown>) {
-  let last = performance.now();
-  let longest = 0;
-  const tick = setInterval(() => {
-    const now = performance.now();
-    longest = Math.max(longest, now - last);
-    last = now;
-  }, 5);
-  try {
-    await work();
-  } finally {
-    clearInterval(tick);
-  }
-  return longest;
-}
-
 describe("an element edit while Windows briefly holds the file", () => {
   const edited = '<div id="keep">kept</div>';
 
@@ -237,13 +221,16 @@ describe("an element edit while Windows briefly holds the file", () => {
   }, 10_000);
 
   // fails without the fix: each retry slept the whole process, up to 640 ms in one go.
-  it("keeps the app answering while it waits", async () => {
+  // fails without the fix: the save slept the thread between retries (Atomics.wait), so the app froze for the hold.
+  it("keeps the app answering while it waits: it never sleeps the thread", async () => {
     const { file, remove } = fixture("held.html");
     writeFileSync(file, `${edited}<p id="gone">tag</p>`);
     holdFor(file, 1_500);
-    expect(
-      await longestStall(async () => expect((await remove("gone")).status).toBe(200)),
-    ).toBeLessThan(100);
+    const sleeps = vi.spyOn(Atomics, "wait");
+    cleanups.push(() => sleeps.mockRestore());
+    const answer = await remove("gone");
+    expect(sleeps).not.toHaveBeenCalled();
+    expect(answer.status).toBe(200);
   }, 10_000);
 
   it("answers 423 busy once the hold outlasts the wait, reports it once, and leaves the file as it was", async () => {

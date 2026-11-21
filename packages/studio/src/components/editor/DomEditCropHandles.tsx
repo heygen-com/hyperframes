@@ -22,7 +22,7 @@ import { isCropBarTarget, useCropPresetBarStore } from "./cropPresetStore";
 import { CropPresetBar } from "./CropPresetBar";
 import { movesGesture } from "./domEditOverlayGestures";
 import { previewStandIn } from "./previewDrafts";
-import { readCropFrameStart } from "./previewGestureStartRead";
+import { gestureStartLayout, readCropFrameStart } from "./previewGestureStartRead";
 
 interface CropGestureState {
   edge: CropEdge | "move";
@@ -158,7 +158,12 @@ function letGoOf(ref: { current: CropGestureState | null }, gesture: CropGesture
 const measuredStartOf = (
   state: { element: HTMLElement; start?: CropFrameStart },
   element: HTMLElement,
-) => (state.element === element ? state.start : undefined);
+): CropFrameStart | undefined => {
+  if (state.element === element && state.start) return state.start;
+  const handle = previewStandIn(element)?.handle;
+  const layout = handle ? gestureStartLayout(handle) : null;
+  return layout ? { layout } : undefined;
+};
 
 /** The element's clip-path is the crop; state only holds a crop drag's draft. */
 const shownCropInsets = (dragging: boolean, draft: ClipPathInsetSides, element: HTMLElement) =>
