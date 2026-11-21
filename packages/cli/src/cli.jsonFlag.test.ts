@@ -13,7 +13,14 @@ const MOCKED = [
   "./utils/command-failure-tracking.js",
   "./telemetry/index.js",
   "./telemetry/events.js",
+  "./utils/workspaceBuildCheck.js",
 ];
+// The test job does not build the studio packages; `preview` only needs them once it runs.
+const studioBuilt = () =>
+  vi.doMock("./utils/workspaceBuildCheck.js", () => ({
+    checkStudioWorkspaceBuild: () => [],
+    formatWorkspaceBuildProblems: () => "",
+  }));
 
 afterEach(async () => {
   process.argv = [...originalArgv];
@@ -81,6 +88,7 @@ async function commandTree(): Promise<Leaf[]> {
     runCommand: async (command: CommandDef) => void (root = command),
   }));
   mockTelemetry();
+  studioBuilt();
   process.argv = ["node", "cli.ts", "info"];
   await import("./cli.js");
   await vi.dynamicImportSettled();
@@ -111,6 +119,7 @@ async function run(args: string[]): Promise<{ stdout: string; exit: unknown }> {
     };
   });
   mockTelemetry();
+  studioBuilt();
   const keep = (chunk: unknown): boolean => {
     stdout += String(chunk);
     return true;
