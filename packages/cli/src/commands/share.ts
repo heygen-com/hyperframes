@@ -25,8 +25,12 @@ export const examples: Example[] = [
   ["Open sharing settings on the web", "hyperframes share --manage"],
 ];
 
+function escapeTabs(text: string): string {
+  return text.replaceAll("\t", "\\x09");
+}
+
 function shareLine(text: string): string {
-  return terminalText(text).replaceAll("\t", "\\x09");
+  return terminalText(escapeTabs(text));
 }
 
 export default defineCommand({
@@ -96,7 +100,7 @@ export default defineCommand({
         console.log(
           JSON.stringify({ ...jsonFailure(failure.code, failure.message), error: failure }),
         );
-      else console.error(shareLine(failure.message));
+      else console.error(terminalText(escapeTabs(failure.message)));
       setCommandExitCode(error instanceof CliUsageError ? 2 : 1);
     }
   },
