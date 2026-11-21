@@ -192,6 +192,16 @@ describe("--json ahead of the command word", () => {
     expect(jsonFlagBeforeSeparator(argv)).toBe(asks);
   });
 
+  // fails without the fix: `--json help info` was answered as an unknown command named `help`.
+  it("prints a command's help the same in both positions", async () => {
+    const first = await run(["--json", "help", "info"]);
+    const after = await run(["help", "info", "--json"]);
+    expect(first).toEqual(after);
+    expect(first.exit).toBe(0);
+    expect(first.stdout).toContain("hyperframes info");
+    expect(first.stdout).not.toContain("unknown_command");
+  });
+
   it("answers the same in both positions, for every command", async () => {
     const tree = await commandTree();
     const named = (json: boolean) =>

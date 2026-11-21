@@ -52,13 +52,12 @@ import { existsSync } from "node:fs";
 // `hyperframes --version` near-instant (~10ms vs ~80ms).
 import { VERSION } from "./version.js";
 
+process.argv = [...process.argv.slice(0, 2), ...jsonFlagAfterCommand(process.argv.slice(2))];
 let argv = process.argv.slice(2);
 if (argv[0] === "help") {
   process.argv = [...process.argv.slice(0, 2), ...argv.slice(1), "--help"];
   argv = process.argv.slice(2);
 }
-process.argv = [...process.argv.slice(0, 2), ...jsonFlagAfterCommand(argv)];
-argv = process.argv.slice(2);
 const commandArg = argv[0];
 const rootVersionRequested =
   commandArg === "--version" ||

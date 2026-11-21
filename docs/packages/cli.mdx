@@ -47,8 +47,15 @@ default to the current directory: `npx hyperframes check ./my-video`. A few
 take it as a flag instead — `add`, `transcribe`, `feedback`, `skills`, `history`, and
 the `timeline` edit commands use `--dir`.
 
-**`--json` for agents and scripts.** Most commands accept it, and the ones
-that do not reject it with exit 2. The payload is wrapped with a `_meta` field
+**`--json` for agents and scripts.** Most commands accept it, before or after
+the command name: `hyperframes --json info` is the same run as
+`hyperframes info --json`. The commands that have no JSON output (`init`,
+`auth login`, `auth logout`, `auth refresh`, `billing`, `browser`, `docs`,
+`events`, `feedback`, the `figma` subcommands, `play`, `present`, `publish` and
+`templates`) refuse it in either position, without running: they print a
+`json_unsupported` error as JSON and exit 2. A `--json` after `--` is an
+argument, not the flag, so it does not turn JSON output or the JSON form of a
+failure on. The payload is wrapped with a `_meta` field
 so a script can spot an outdated CLI from any command's output, without a
 second call:
 
