@@ -152,11 +152,13 @@ describe("printFailureLine", () => {
     try {
       const { printFailureLine, watchOutput } = await import("./jsonError.js");
       const output = watchOutput();
-      printFailureLine((show) => `File not found: ${show("mis\u0007sing.wav")}`);
-      expect(shown).toEqual(["File not found: mis\\x07sing.wav"]);
-      expect(output.stderrText()).toBe("File not found: mis\u0007sing.wav");
-      console.error("later a\u0007b");
-      expect(output.stderrText()).toContain("later a\u0007b");
+      printFailureLine((show) => `File not found: ${show("mis\u0007s\ning.wav  ")}`);
+      expect(shown).toEqual(["File not found: mis\\x07s\ning.wav  "]);
+      expect(output.stderrText()).toBe("File not found: mis\\x07s ing.wav");
+      const failed = new CliRuntimeError("Command failed", { presented: true });
+      expect(jsonErrorBody(failed, runtime, output.stderrText()).message).toBe(
+        "File not found: mis\u0007s\ning.wav  ",
+      );
     } finally {
       process.stdout.write = saved.out;
       process.stderr.write = saved.err;

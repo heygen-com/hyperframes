@@ -11,6 +11,7 @@ const SHOWN = "od\\x1b[2Jd\\x07";
 const fake = vi.hoisted(() => ({
   lines: [] as string[],
   attended: false,
+  json: false,
   confirmAnswer: false,
   templates: [] as Array<Record<string, string>>,
   fetchRemoteTemplate: vi.fn(),
@@ -20,6 +21,10 @@ const fake = vi.hoisted(() => ({
 vi.mock("../utils/attendedTerminal.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../utils/attendedTerminal.js")>()),
   isUnattended: () => !fake.attended,
+}));
+vi.mock("../utils/jsonError.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/jsonError.js")>()),
+  isJsonRun: () => fake.json,
 }));
 vi.mock("@clack/prompts", () => {
   const say = (message: string) => void fake.lines.push(message);
@@ -84,6 +89,7 @@ function oddFile(name: string): string {
 beforeEach(() => {
   fake.lines.length = 0;
   fake.attended = false;
+  fake.json = false;
   fake.confirmAnswer = false;
   fake.templates = [];
   fake.fetchRemoteTemplate.mockReset().mockRejectedValue(new Error(`gone ${ODD}\nsecond line`));
@@ -179,6 +185,13 @@ describe("init output with prompts", () => {
     await expect(run({ name: join(work, "film"), ...args })).rejects.toThrow();
     expect(printed()).toContain(line);
     expectNoControlCharacters();
+  });
+
+  // fails without the fix: a run that asked for JSON went to the questions, which never answer in JSON.
+  it("asks nothing when the run asked for JSON", async () => {
+    fake.json = true;
+    await run({ name: join(work, "film") });
+    expect(printed()).toContain("Get started:");
   });
 
   // fails without the fix: the example name and the reason are printed as they arrived.

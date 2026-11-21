@@ -383,6 +383,7 @@ describe("hyperframes init flag rename", () => {
     try {
       const res = runInit([target, "--non-interactive", "--skip-transcribe", "--audio", audio]);
       expect(res.status).toBe(0);
+      expect(res.stdout.startsWith("Audio: track.wav\nCreated ")).toBe(true);
       const html = readFileSync(join(target, "index.html"), "utf-8");
       expect(html).toMatch(/<audio\b[^>]*src="track\.wav"/);
       expect(html).not.toMatch(/<video\b/);
@@ -566,7 +567,7 @@ describe("hyperframes init flag rename", () => {
 
   // fails without the fix: the next steps printed `cd` with a path that is not the folder's.
   it.skipIf(process.platform === "win32")(
-    "tells the user to go into a folder whose name cannot be typed back, with no cd line",
+    "prints the next steps as bare commands for a folder whose name cannot be typed back",
     () => {
       const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
       const target = join(dir, "my\nfilm");
@@ -574,8 +575,10 @@ describe("hyperframes init flag rename", () => {
         const res = runInit([target, "--example", "blank", "--non-interactive", "--skip-skills"]);
         expect(res.status).toBe(0);
         expect(existsSync(join(target, "index.html"))).toBe(true);
-        expect(res.stdout).toContain("go into the project folder && npm run dev");
-        expect(res.stdout).not.toMatch(/\bcd /);
+        expect(res.stdout).toContain("Get started, from the project folder:\n");
+        for (const step of ["dev", "check", "render"])
+          expect(res.stdout).toContain(`\n     npm run ${step}\n`);
+        expect(res.stdout).not.toMatch(/\bcd |&&/);
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -616,18 +619,6 @@ describe("hyperframes init flag rename", () => {
     },
   );
 
-  it("--template quotes an example value the shell would split", () => {
-    const res = runInit([
-      "my film",
-      "--template",
-      "two words",
-      "--non-interactive",
-      "--skip-skills",
-    ]);
-    expect(res.status).toBe(2);
-    expect(res.stderr).toContain(`npx hyperframes init "my film" --example "two words"`);
-  });
-
   // One row per init failure line that names something the caller typed.
   // fails without the fix: the answer's message was the line as people see it, escapes included.
   describe("with --json first, a failure answers with the value as given", () => {
@@ -636,10 +627,11 @@ describe("hyperframes init flag rename", () => {
       args: string[];
       before?: (dir: string) => void;
       after?: (dir: string) => void;
-      shown: string;
-      given: string;
+      shown?: string;
+      given?: string;
       exit: number;
       stderr?: string;
+      stdout?: string;
       // Windows refuses control characters in folder names; root ignores folder permissions.
       skip?: boolean;
     };
@@ -647,67 +639,100 @@ describe("hyperframes init flag rename", () => {
     const rows: Row[] = [
       {
         name: "the renamed --template flag",
-        args: ["proj", "--template", "bl\u0007ank"],
+        args: ["proj", "--template", "bl\u0007a\nnk  "],
         shown: "--example <example>",
-        given: "(given: --template bl\u0007ank)",
+        given: "(given: --template bl\u0007a\nnk  )",
         exit: 2,
         stderr:
           "The --template flag was renamed to --example. Example:\n  npx hyperframes init proj --example <example>\n",
       },
       {
         name: "the renamed -V flag",
-        args: ["proj", "-V", "cl\u0007ip.mp4"],
+        args: ["proj", "-V", "cl\u0007i\np.mp4  "],
         shown: "--video <file>",
-        given: "(given: -V cl\u0007ip.mp4)",
+        given: "(given: -V cl\u0007i\np.mp4  )",
         exit: 2,
         stderr:
           "The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init proj --video <file>\n",
       },
       {
         name: "a refused --resolution",
-        args: ["proj", "--resolution", "b\u0007ad"],
-        shown: 'Invalid --resolution: "b\\x07ad"',
-        given: 'Invalid --resolution: "b\u0007ad"',
+        args: ["proj", "--resolution", "b\u0007a\nd  "],
+        shown: 'Invalid --resolution: "b\\x07a\nd  "',
+        given: 'Invalid --resolution: "b\u0007a\nd  "',
         exit: 2,
       },
       {
         name: "a folder that is not empty",
-        args: ["fu\u0007ll"],
+        args: ["fu\u0007l\nl  "],
         before: (dir) => {
-          mkdirSync(join(dir, "fu\u0007ll"));
-          writeFileSync(join(dir, "fu\u0007ll", "notes.txt"), "");
+          mkdirSync(join(dir, "fu\u0007l\nl  "));
+          writeFileSync(join(dir, "fu\u0007l\nl  ", "notes.txt"), "");
         },
-        shown: "fu\\x07ll",
-        given: "fu\u0007ll",
+        shown: "fu\\x07l\nl  ",
+        given: "fu\u0007l\nl  ",
         exit: 1,
         skip: posixOnly,
       },
       {
         name: "a missing --video",
-        args: ["proj", "--video", "cl\u0007ip.mp4"],
-        shown: "Video file not found: cl\\x07ip.mp4",
-        given: "Video file not found: cl\u0007ip.mp4",
+        args: ["proj", "--video", "cl\u0007i\np.mp4  "],
+        shown: "Video file not found: cl\\x07i\np.mp4  ",
+        given: "Video file not found: cl\u0007i\np.mp4  ",
         exit: 1,
       },
       {
         name: "a missing --audio",
-        args: ["proj", "--audio", "so\u0007ng.mp3"],
-        shown: "Audio file not found: so\\x07ng.mp3",
-        given: "Audio file not found: so\u0007ng.mp3",
+        args: ["proj", "--audio", "so\u0007n\ng.mp3  "],
+        shown: "Audio file not found: so\\x07n\ng.mp3  ",
+        given: "Audio file not found: so\u0007n\ng.mp3  ",
         exit: 1,
       },
       {
         name: "an example that cannot be written",
-        args: ["lo\u0007cked", "--example", "blank"],
+        args: ["lo\u0007cked", "--audio", "lo\u0007cked/a.wav", "--skip-transcribe"],
         before: (dir) => {
           mkdirSync(join(dir, "lo\u0007cked"));
+          writeFileSync(join(dir, "lo\u0007cked", "a.wav"), "");
           chmodSync(join(dir, "lo\u0007cked"), 0o555);
         },
         after: (dir) => chmodSync(join(dir, "lo\u0007cked"), 0o755),
-        shown: 'Failed to scaffold example "blank": ',
+        shown: 'Failed to scaffold example "from-file": ',
         given: "lo\u0007cked",
         exit: 1,
         skip: posixOnly || process.getuid?.() === 0,
+      },
+      {
+        name: "a folder that cannot be made, in the words of the error itself",
+        args: ["fi\nle  /sub"],
+        before: (dir) => writeFileSync(join(dir, "fi\nle  "), ""),
+        given: "fi\nle  /sub'",
+        exit: 1,
+        skip: posixOnly,
+      },
+      {
+        name: "a finished project, whose status line still comes first",
+        args: ["done", "--audio", "a.wav", "--skip-transcribe"],
+        before: (dir) => writeFileSync(join(dir, "a.wav"), ""),
+        stdout: "Audio: a.wav\nCreated done/\n",
+        exit: 0,
+      },
+      {
+        name: "the renamed --template flag with values the shell would split",
+        args: ["my film", "--template", "two words"],
+        given: "The --template flag was renamed to --example (given: --template two words)",
+        exit: 2,
+        stderr:
+          'The --template flag was renamed to --example. Example:\n  npx hyperframes init "my film" --example "two words"\n',
+      },
+      {
+        name: "the renamed -V flag with a value in two words",
+        args: ["proj", "-V", "two words.mp4"],
+        given:
+          "The -V short flag no longer maps to --video; use --video or -v (given: -V two words.mp4)",
+        exit: 2,
+        stderr:
+          'The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init proj --video "two words.mp4"\n',
       },
     ];
 
@@ -726,44 +751,16 @@ describe("hyperframes init flag rename", () => {
           },
         );
         expect(res.status).toBe(row.exit);
-        expect(res.stderr).toContain(row.shown);
+        if (row.stdout !== undefined) return expect(res.stdout.startsWith(row.stdout)).toBe(true);
+        expect(res.stderr).toContain(row.shown ?? "");
         expect(res.stderr).not.toContain("\u0007");
         if (row.stderr !== undefined) expect(res.stderr).toBe(row.stderr);
         const body = JSON.parse(res.stdout.trim()) as { ok: boolean; error: { message: string } };
         expect(body.ok).toBe(false);
-        expect(body.error.message).toContain(row.given);
+        expect(body.error.message).toContain(row.given ?? "");
         expect(body.error.message).not.toContain("\\x07");
       } finally {
         row.after?.(dir);
-        rmSync(dir, { recursive: true, force: true });
-      }
-    });
-
-    it("keeps the renamed-flag lines people see for an ordinary value", () => {
-      const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
-      try {
-        const run = (flag: string, value: string) =>
-          spawnSync("bun", ["run", cliEntry, "--json", "init", "proj", flag, value], {
-            cwd: dir,
-            encoding: "utf-8",
-            timeout: 30_000,
-            env: { ...process.env, HYPERFRAMES_SKIP_SKILLS: "1" },
-          });
-        const template = run("--template", "blank");
-        expect(template.stderr).toBe(
-          "The --template flag was renamed to --example. Example:\n  npx hyperframes init proj --example blank\n",
-        );
-        expect(JSON.parse(template.stdout.trim()).error.message).toBe(
-          "The --template flag was renamed to --example (given: --template blank)",
-        );
-        const video = run("-V", "two words.mp4");
-        expect(video.stderr).toBe(
-          'The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init proj --video "two words.mp4"\n',
-        );
-        expect(JSON.parse(video.stdout.trim()).error.message).toBe(
-          "The -V short flag no longer maps to --video; use --video or -v (given: -V two words.mp4)",
-        );
-      } finally {
         rmSync(dir, { recursive: true, force: true });
       }
     });

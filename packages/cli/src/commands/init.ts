@@ -4,7 +4,7 @@
 // own task.
 // fallow-ignore-file complexity
 import { failCommand, finishCommand, failUsage } from "../utils/commandResult.js";
-import { printFailureLine } from "../utils/jsonError.js";
+import { isJsonRun, printFailureLine, releaseStatus, status } from "../utils/jsonError.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
 import { runCommand } from "citty";
 import { defineCommand } from "../utils/defineCommand.js";
@@ -508,7 +508,7 @@ async function handleVideoFile(
     if (interactive) {
       clack.log.warn(msg);
     } else {
-      console.log(c.warn(msg));
+      status(c.warn(msg));
     }
   }
 
@@ -521,7 +521,7 @@ async function handleVideoFile(
         ),
       );
     } else {
-      console.log(
+      status(
         c.warn(`Video codec "${terminalText(probed.videoCodec)}" is not supported by browsers.`),
       );
     }
@@ -573,8 +573,8 @@ async function handleVideoFile(
         clack.log.warn(c.dim("ffmpeg not installed — cannot transcode."));
         clack.log.info(c.accent(`Install: ${getFFmpegInstallHint()}`));
       } else {
-        console.log(c.warn("ffmpeg not installed — cannot transcode. Copying original."));
-        console.log(c.dim("Install: ") + c.accent(getFFmpegInstallHint()));
+        status(c.warn("ffmpeg not installed — cannot transcode. Copying original."));
+        status(c.dim("Install: ") + c.accent(getFFmpegInstallHint()));
       }
       copyIntoProjectUnlessAlreadyThere(videoPath, resolve(destDir, localVideoName));
     }
@@ -899,7 +899,7 @@ export default defineCommand({
       modelFlag ?? DEFAULT_MODEL,
       languageFlag,
     );
-    const interactive = !nonInteractive && !isUnattended();
+    const interactive = !nonInteractive && !isUnattended() && !isJsonRun();
 
     let resolutionPreset: CanvasResolution | undefined;
     if (args.resolution !== undefined) {
@@ -973,7 +973,7 @@ export default defineCommand({
         videoHasAudio = result.meta.hasAudio;
         videoDuration = result.meta.durationSeconds;
         videoSize = result.meta;
-        console.log(
+        status(
           `Video: ${result.meta.width}x${result.meta.height}, ${result.meta.durationSeconds.toFixed(1)}s`,
         );
       }
@@ -984,7 +984,7 @@ export default defineCommand({
         copyIntoProjectUnlessAlreadyThere(audioPath, resolve(destDir, basename(audioPath)));
         const { getMediaDurationSeconds } = await import("../whisper/transcribe.js");
         videoDuration = getMediaDurationSeconds(audioPath) ?? undefined;
-        console.log(`Audio: ${terminalText(basename(audioPath))}`);
+        status(`Audio: ${terminalText(basename(audioPath))}`);
       }
 
       // Transcribe
@@ -993,18 +993,16 @@ export default defineCommand({
           const { ensureWhisper, ensureModel } = await import("../whisper/manager.js");
           await ensureWhisper();
           await ensureModel(initialTranscriptionModel);
-          console.log("Transcribing...");
+          status("Transcribing...");
           const { transcribe: runTranscribe } = await import("../whisper/transcribe.js");
           const result = await runTranscribe(sourceFilePath, destDir, {
             model: modelFlag,
             language: languageFlag,
           });
-          console.log(
-            `Transcribed: ${result.wordCount} words (${result.durationSeconds.toFixed(1)}s)`,
-          );
+          status(`Transcribed: ${result.wordCount} words (${result.durationSeconds.toFixed(1)}s)`);
           if (!videoDuration) videoDuration = result.durationSeconds;
         } catch (err) {
-          console.log(
+          status(
             `Transcription skipped: ${terminalLines(err instanceof Error ? err.message : String(err))}`,
           );
         }
@@ -1027,15 +1025,19 @@ export default defineCommand({
           args.skill,
         );
       } catch (err) {
-        printFailureLine((show) =>
-          c.error(
-            `Failed to scaffold example "${show(templateId)}": ${show(err instanceof Error ? err.message : String(err))}`,
-          ),
+        printFailureLine(
+          (show) =>
+            c.error(
+              `Failed to scaffold example "${show(templateId)}": ${show(err instanceof Error ? err.message : String(err))}`,
+            ),
+          undefined,
+          "Use --example blank for offline use.",
         );
         console.error(c.dim("Use --example blank for offline use."));
         failCommand();
       }
       await finishScaffold(destDir, templateId, tailwind);
+      releaseStatus();
 
       console.log(c.success(`Created ${c.accent(terminalText(name) + "/")}`));
       for (const f of readdirSync(destDir).filter((f) => !f.startsWith("."))) {
@@ -1047,9 +1049,12 @@ export default defineCommand({
       }
 
       const shownName = shellArg(name);
-      const cdLine = shownName === null ? "go into the project folder" : `cd ${shownName}`;
+      const inFolder = (command: string) =>
+        shownName === null
+          ? c.accent(command)
+          : `${c.accent(`cd ${shownName}`)} && ${c.accent(command)}`;
       console.log();
-      console.log("Get started:");
+      console.log(shownName === null ? "Get started, from the project folder:" : "Get started:");
       console.log();
       if (skipSkills) {
         console.log(
@@ -1064,7 +1069,7 @@ export default defineCommand({
       console.log();
       console.log(`  ${c.accent("2.")} Open this project with your AI coding agent:`);
       console.log(
-        `     ${c.accent(cdLine)} then start ${c.accent("Claude Code")}, ${c.accent("Cursor")}, or your preferred agent`,
+        `     ${shownName === null ? "From the project folder, start" : `${c.accent(`cd ${shownName}`)} then start`} ${c.accent("Claude Code")}, ${c.accent("Cursor")}, or your preferred agent`,
       );
       console.log();
       console.log(`  ${c.accent("3.")} Try a starter prompt:`);
@@ -1076,13 +1081,13 @@ export default defineCommand({
       );
       console.log();
       console.log(`  ${c.accent("4.")} Preview in the browser:`);
-      console.log(`     ${c.accent(cdLine)} && ${c.accent("npm run dev")}`);
+      console.log(`     ${inFolder("npm run dev")}`);
       console.log();
       console.log(`  ${c.accent("5.")} Check the composition:`);
-      console.log(`     ${c.accent(cdLine)} && ${c.accent("npm run check")}`);
+      console.log(`     ${inFolder("npm run check")}`);
       console.log();
       console.log(`  ${c.accent("6.")} Render to MP4 when ready:`);
-      console.log(`     ${c.accent(cdLine)} && ${c.accent("npm run render")}`);
+      console.log(`     ${inFolder("npm run render")}`);
       console.log();
       console.log(`  ${c.dim(`Full docs: ${cliSourced("https://hyperframes.heygen.com")}`)}`);
       return;
