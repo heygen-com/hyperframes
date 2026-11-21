@@ -914,7 +914,13 @@ echo "$INTEGRITY" > "${seen}"
   const second = run({ failures: 1 });
   assert.equal(second.status, 0, second.stdout + second.stderr);
   assert.equal(second.publishes, 2);
-  assert.deepEqual(second.calls, ["npm view", "npm publish", "npm view", "npm publish"]);
+  assert.deepEqual(second.calls, [
+    "npm view",
+    "npm publish",
+    "npm view",
+    "npm publish",
+    "npm view",
+  ]);
 
   const third = run({ failures: 2 });
   assert.equal(third.status, 0, third.stdout);
