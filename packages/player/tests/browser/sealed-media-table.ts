@@ -311,7 +311,7 @@ type Seen = {
   currentSrc: string;
   loads: number;
   ours: number;
-  resets: number;
+  selections: number;
   failedWithCors: string[];
 };
 
@@ -322,20 +322,17 @@ async function installDriver(frame: Frame) {
       const entry = state.get(video.dataset.table ?? "");
       if (entry) entry.last = performance.now();
     };
-    // On window, so it runs before the runtime's document listener can drop the attribute.
-    // A load() between this window listener and a document one added after the runtime's is the runtime's answer.
-    const handling = new WeakSet<HTMLMediaElement>();
-    const handled = (video: HTMLVideoElement) => handling.add(video);
-    for (const type of ["error", "loadeddata"])
-      document.addEventListener(
-        type,
-        (event) => {
-          const target = event.target as Element | null;
-          const video = target?.closest?.("video[data-table]") as HTMLVideoElement | null;
-          if (video) handling.delete(video);
-        },
-        true,
-      );
+    // The composition here is this driver: every other load() of a table video is the runtime's.
+    let driving = false;
+    const driven = (video: HTMLMediaElement) => {
+      driving = true;
+      try {
+        video.load();
+      } finally {
+        driving = false;
+      }
+      video.dataset.selections = String(Number(video.dataset.selections ?? 1) + 1);
+    };
     const sourceEl = (src: { src: string; type?: string; media?: string }) => {
       const el = document.createElement("source");
       el.src = src.src;
@@ -357,16 +354,16 @@ async function installDriver(frame: Frame) {
       else if (step.action === "author") video.setAttribute("crossorigin", "anonymous");
       else {
         video.prepend(sourceEl(step.src!));
-        video.load();
+        driven(video);
       }
     };
     const load = HTMLMediaElement.prototype.load;
     HTMLMediaElement.prototype.load = function (this: HTMLMediaElement) {
-      if (this.dataset.table && handling.has(this)) {
+      if (this.dataset.table && !driving) {
         const data = this.dataset;
         data.ours = String(Number(data.ours ?? 0) + 1);
-        if (!this.hasAttribute("crossorigin")) data.dropped = "1";
-        else data.upgrades = String(Number(data.upgrades ?? 0) + 1);
+        if (this.hasAttribute("crossorigin"))
+          data.upgrades = String(Number(data.upgrades ?? 0) + 1);
         delete data.restartGap;
         if (!this.paused) {
           data.savedTime = String(this.currentTime);
@@ -378,29 +375,12 @@ async function installDriver(frame: Frame) {
       return load.call(this);
     };
     window.addEventListener(
-      "loadeddata",
-      (event) => {
-        const video = event.target as HTMLVideoElement;
-        if (!video.dataset?.table) return;
-        handled(video);
-        delete video.dataset.dropped;
-      },
-      true,
-    );
-    window.addEventListener(
       "error",
       (event) => {
         const target = event.target as Element | null;
         const video = target?.closest?.("video[data-table]") as HTMLVideoElement | null;
         if (!video) return;
-        handled(video);
         touch(video);
-        // A drop of CORS whose load fails too: the runtime forgets that source, so its budget starts over.
-        const exhausted = target === video || video.networkState === 3;
-        if (exhausted && video.dataset.dropped && !video.hasAttribute("crossorigin")) {
-          delete video.dataset.dropped;
-          video.dataset.resets = String(Number(video.dataset.resets ?? 0) + 1);
-        }
         const src = target === video ? video.currentSrc : (target as HTMLSourceElement).src;
         if (video.hasAttribute("crossorigin") && src)
           state.get(video.dataset.table!)!.failed.add(src);
@@ -476,7 +456,7 @@ async function installDriver(frame: Frame) {
             if (step.src) video.replaceChildren(sourceEl(step.src));
             video.setAttribute("crossorigin", step.value!);
           }
-          video.load();
+          driven(video);
         },
         flush() {
           const any = pending.size > 0;
@@ -526,7 +506,7 @@ async function installDriver(frame: Frame) {
             currentSrc: video.currentSrc,
             loads: Number(video.dataset.loads ?? 0),
             ours: Number(video.dataset.ours ?? 0),
-            resets: Number(video.dataset.resets ?? 0),
+            selections: Number(video.dataset.selections ?? 1),
             failedWithCors: [...failed],
           };
         },
@@ -661,14 +641,14 @@ function judge(sequences: Sequence[], sealed: Readings, control: Readings, open:
       const movesPlain = plain.moves;
       const where = `${sequence.name} (${describe(sequence)}), element ${el}`;
       const kinds = everListed.get(el)!;
-      const selections = seen.loads - seen.ours;
+      // The runtime loads media without the helper too; the helper's share is what the sealed film adds.
+      const helper = Math.max(0, seen.ours - plain.ours);
+      const selections = seen.loads - helper;
       for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + 2 * selections);
-      if (seen.ours > selections)
-        problems.push(`${where}: ${seen.ours} loads of ours for ${selections} other selections`);
-      const most = 2 * kinds.size * (seen.resets + 1);
-      if (seen.ours > most)
+      const most = 2 * kinds.size * seen.selections;
+      if (helper > most)
         problems.push(
-          `${where}: ${seen.ours} loads of ours, at most ${most} (${seen.resets} resets)`,
+          `${where}: ${helper} loads of the helper, at most ${most} for ${seen.selections} selections`,
         );
       if (sequence.upgradesAtMost !== undefined && seen.upgrades > sequence.upgradesAtMost)
         problems.push(`${where}: ${seen.upgrades} upgrades, at most ${sequence.upgradesAtMost}`);
