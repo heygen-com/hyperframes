@@ -209,6 +209,15 @@ const FIXED: Sequence[] = [
     ],
   },
   {
+    name: "an own CORS URL played again, all own, after the element played another own clip",
+    rounds: [
+      [{ do: "create", el: 0, sources: [own("r7g-n", "nocors")] }],
+      [{ do: "prepend", el: 0, source: own("r7g-a", "cors") }],
+      [{ do: "reverse", el: 0 }],
+      [{ do: "reverse", el: 0 }],
+    ],
+  },
+  {
     name: "an own source without CORS prepended to a playing own CORS source, then load()",
     rounds: [
       [
