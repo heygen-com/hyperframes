@@ -481,6 +481,7 @@ async function installDriver(frame: Frame) {
           await new Promise((resolve) => setTimeout(resolve, 300));
           return video.currentTime !== at;
         },
+        keys: () => [...state.keys()],
         settled: () =>
           [...state.values()].every(
             ({ video, last }) =>
@@ -530,6 +531,7 @@ type Table = {
   edit: (key: string, step: object) => void;
   settled: () => boolean;
   flush: () => boolean;
+  keys: () => string[];
   advancing: (key: string) => Promise<boolean>;
   read: (key: string) => Seen;
 };
@@ -581,7 +583,24 @@ const describe = (sequence: Sequence) =>
     )
     .join(" | ");
 
-type Runs = { sealed: Frame; control: Frame };
+type Reading = Seen & { moves: boolean };
+type Readings = Map<string, Reading>;
+
+// Every element of a run, read while its film is still the page in front.
+async function readAll(frame: Frame) {
+  const keys = await frame.evaluate(() => window.__table.keys());
+  const readings: Readings = new Map();
+  await Promise.all(
+    keys.map(async (key) => {
+      const [seen, moves] = await Promise.all([
+        frame.evaluate((k) => window.__table.read(k), key),
+        frame.evaluate((k) => window.__table.advancing(k), key),
+      ]);
+      readings.set(key, { ...seen, moves });
+    }),
+  );
+  return readings;
+}
 const idOf = (src: string) => (src ? new URL(src).searchParams.get("id")!.slice(2) : "");
 // One frame at 30 fps, with room for the timer that reads it.
 const FRAME = 1 / 30 + 0.01;
@@ -618,88 +637,80 @@ function history(sequence: Sequence) {
 // Per element, against the unsealed film: the same source, playing state and moving playhead; after a load of ours
 // while it played, it resumes where it was at the same rate. Pixels readable wherever the unsealed film reads them
 // from a source that sends CORS, except the known gap.
-async function judge(sequences: Sequence[], runs: Runs) {
+function judge(sequences: Sequence[], sealed: Readings, control: Readings) {
   const budget = new Map<string, number>();
   const gaps: string[] = [];
-  const all = await Promise.all(
-    sequences.map(async (sequence, index) => {
-      const { lists, everListed, authored } = history(sequence);
-      const problems: string[] = [];
-      for (const [el, list] of lists) {
-        const key = `${index}-${el}`;
-        const [seen, plain, moves, movesPlain] = await Promise.all([
-          runs.sealed.evaluate((k) => window.__table.read(k), key),
-          runs.control.evaluate((k) => window.__table.read(k), key),
-          runs.sealed.evaluate((k) => window.__table.advancing(k), key),
-          runs.control.evaluate((k) => window.__table.advancing(k), key),
-        ]);
-        const where = `${sequence.name} (${describe(sequence)}), element ${el}`;
-        const kinds = everListed.get(el)!;
-        const selections = seen.loads - seen.ours;
-        for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + 2 * selections);
-        if (seen.ours > selections)
-          problems.push(`${where}: ${seen.ours} loads of ours for ${selections} other selections`);
-        const most = 2 * kinds.size * (seen.resets + 1);
-        if (seen.ours > most)
+  const all = sequences.map((sequence, index) => {
+    const { lists, everListed, authored } = history(sequence);
+    const problems: string[] = [];
+    for (const [el, list] of lists) {
+      const key = `${index}-${el}`;
+      const seen = sealed.get(key)!;
+      const plain = control.get(key)!;
+      const { moves } = seen;
+      const movesPlain = plain.moves;
+      const where = `${sequence.name} (${describe(sequence)}), element ${el}`;
+      const kinds = everListed.get(el)!;
+      const selections = seen.loads - seen.ours;
+      for (const id of kinds.keys()) budget.set(id, (budget.get(id) ?? 0) + 2 * selections);
+      if (seen.ours > selections)
+        problems.push(`${where}: ${seen.ours} loads of ours for ${selections} other selections`);
+      const most = 2 * kinds.size * (seen.resets + 1);
+      if (seen.ours > most)
+        problems.push(
+          `${where}: ${seen.ours} loads of ours, at most ${most} (${seen.resets} resets)`,
+        );
+      if (sequence.upgradesAtMost !== undefined && seen.upgrades > sequence.upgradesAtMost)
+        problems.push(`${where}: ${seen.upgrades} upgrades, at most ${sequence.upgradesAtMost}`);
+      // A host failing some requests may play after the runtime's extra request and not without it.
+      const variable = [...kinds.values()].some((kind) => kind === "flaky" || kind === "outage");
+      if (!variable) {
+        if (idOf(seen.currentSrc) !== idOf(plain.currentSrc))
           problems.push(
-            `${where}: ${seen.ours} loads of ours, at most ${most} (${seen.resets} resets)`,
+            `${where}: plays ${idOf(seen.currentSrc)}, unsealed ${idOf(plain.currentSrc)}`,
           );
-        if (sequence.upgradesAtMost !== undefined && seen.upgrades > sequence.upgradesAtMost)
-          problems.push(`${where}: ${seen.upgrades} upgrades, at most ${sequence.upgradesAtMost}`);
-        // A host failing some requests may play after the runtime's extra request and not without it.
-        const variable = [...kinds.values()].some((kind) => kind === "flaky" || kind === "outage");
-        if (!variable) {
-          if (idOf(seen.currentSrc) !== idOf(plain.currentSrc))
-            problems.push(
-              `${where}: plays ${idOf(seen.currentSrc)}, unsealed ${idOf(plain.currentSrc)}`,
-            );
-          if (seen.playing !== plain.playing || seen.paused !== plain.paused)
-            problems.push(`${where}: ${JSON.stringify(seen)}, unsealed ${JSON.stringify(plain)}`);
-          if (movesPlain && !moves)
-            problems.push(`${where}: the playhead stopped ${JSON.stringify(seen)}`);
-        }
-        const action = seen.interrupted;
-        if (action === "pause" && !seen.paused)
-          problems.push(`${where}: plays after the composition paused it`);
-        if (action === "rate" && seen.rate !== 2)
-          problems.push(`${where}: rate ${seen.rate}, set to 2`);
-        if (action === "seek" && !(Number(seen.seekGap ?? 1) <= FRAME))
-          problems.push(`${where}: resumed ${seen.seekGap} s off the composition's seek`);
-        if (seen.savedRate !== undefined && !action && !variable && movesPlain) {
-          if (!(Number(seen.restartGap ?? 1) <= FRAME))
-            problems.push(
-              `${where}: after our load it resumed ${seen.restartGap ?? "never"} s off`,
-            );
-          else if (seen.restartRate !== seen.savedRate)
-            problems.push(
-              `${where}: rate ${seen.restartRate} after our load, was ${seen.savedRate}`,
-            );
-        }
-        const value = authored.get(el);
-        if (value !== undefined) {
-          if (seen.crossOrigin !== value)
-            problems.push(`${where}: the composition's ${value} became ${seen.crossOrigin}`);
-          continue;
-        }
-        const canPlay =
-          list.some((s) => PLAYABLE.has(s.kind)) || Boolean(sequence.keepsCors?.includes(el));
-        const mayPlay = canPlay || list.some((s) => MAY_PLAY.has(s.kind));
-        if (seen.playing ? !mayPlay : canPlay)
-          problems.push(`${where}: ${canPlay ? "does not play" : "plays"} ${JSON.stringify(seen)}`);
-        if (!seen.playing) continue;
-        const kind = kinds.get(idOf(seen.currentSrc))!;
-        const readable =
-          plain.pixels === "readable" &&
-          SENDS_CORS.has(kind) &&
-          (sequence.keepsCors?.includes(el) || !seen.failedWithCors.includes(seen.currentSrc));
-        if (!readable || seen.pixels === "readable") continue;
-        const line = `${where}: plays ${idOf(seen.currentSrc)} unreadable ${JSON.stringify(seen)}`;
-        if (mixed(list) && !foreign(kind)) gaps.push(line);
-        else problems.push(line);
+        if (seen.playing !== plain.playing || seen.paused !== plain.paused)
+          problems.push(`${where}: ${JSON.stringify(seen)}, unsealed ${JSON.stringify(plain)}`);
+        if (movesPlain && !moves)
+          problems.push(`${where}: the playhead stopped ${JSON.stringify(seen)}`);
       }
-      return problems;
-    }),
-  );
+      const action = seen.interrupted;
+      if (action === "pause" && !seen.paused)
+        problems.push(`${where}: plays after the composition paused it`);
+      if (action === "rate" && seen.rate !== 2)
+        problems.push(`${where}: rate ${seen.rate}, set to 2`);
+      if (action === "seek" && !(Number(seen.seekGap ?? 1) <= FRAME))
+        problems.push(`${where}: resumed ${seen.seekGap} s off the composition's seek`);
+      if (seen.savedRate !== undefined && !action && !variable && movesPlain) {
+        if (!(Number(seen.restartGap ?? 1) <= FRAME))
+          problems.push(`${where}: after our load it resumed ${seen.restartGap ?? "never"} s off`);
+        else if (seen.restartRate !== seen.savedRate)
+          problems.push(`${where}: rate ${seen.restartRate} after our load, was ${seen.savedRate}`);
+      }
+      const value = authored.get(el);
+      if (value !== undefined) {
+        if (seen.crossOrigin !== value)
+          problems.push(`${where}: the composition's ${value} became ${seen.crossOrigin}`);
+        continue;
+      }
+      const canPlay =
+        list.some((s) => PLAYABLE.has(s.kind)) || Boolean(sequence.keepsCors?.includes(el));
+      const mayPlay = canPlay || list.some((s) => MAY_PLAY.has(s.kind));
+      if (seen.playing ? !mayPlay : canPlay)
+        problems.push(`${where}: ${canPlay ? "does not play" : "plays"} ${JSON.stringify(seen)}`);
+      if (!seen.playing) continue;
+      const kind = kinds.get(idOf(seen.currentSrc))!;
+      const readable =
+        plain.pixels === "readable" &&
+        SENDS_CORS.has(kind) &&
+        (sequence.keepsCors?.includes(el) || !seen.failedWithCors.includes(seen.currentSrc));
+      if (!readable || seen.pixels === "readable") continue;
+      const line = `${where}: plays ${idOf(seen.currentSrc)} unreadable ${JSON.stringify(seen)}`;
+      if (mixed(list) && !foreign(kind)) gaps.push(line);
+      else problems.push(line);
+    }
+    return problems;
+  });
   return { problems: all.flat(), gaps, budget };
 }
 
@@ -717,15 +728,18 @@ async function filmFrame(page: import("puppeteer-core").Page, query: string) {
 
 const browser = await launchBrowser();
 try {
-  const runs: Runs = {
-    sealed: await filmFrame(await browser.newPage(), "&sealed=1"),
-    control: await filmFrame(await browser.newPage(), ""),
-  };
-  for (const frame of Object.values(runs)) await installDriver(frame);
+  const page = await browser.newPage();
   const seeds = Number(process.env.SEALED_MEDIA_SEEDS ?? 40);
   const sequences = [...FIXED, ...Array.from({ length: seeds }, (_, seed) => generated(seed + 1))];
-  await Promise.all([runAll(runs.sealed, sequences, "s"), runAll(runs.control, sequences, "c")]);
-  const { problems, gaps, budget } = await judge(sequences, runs);
+  const run = async (query: string, prefix: string) => {
+    const frame = await filmFrame(page, query);
+    await installDriver(frame);
+    await runAll(frame, sequences, prefix);
+    return readAll(frame);
+  };
+  const control = await run("", "c");
+  const sealed = await run("&sealed=1", "s");
+  const { problems, gaps, budget } = judge(sequences, sealed, control);
   const requests = new Map<string, number>();
   for (const url of server.requested) {
     const id = new URL(url).searchParams.get("id");
