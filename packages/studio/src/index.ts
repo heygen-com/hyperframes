@@ -215,7 +215,7 @@ export { useProjectFileWriter } from "./hooks/useProjectFileWriter";
 export type { UseProjectFileWriterOptions } from "./hooks/useProjectFileWriter";
 // A host's writeProjectFile throws this on a 409; catch it to know when
 // to show ExternalFileConflictBanner.
-export { StudioFileConflictError } from "./utils/studioSaveDiagnostics";
+export { StudioFileConflictError, type StudioSaveErrorKey } from "./utils/studioSaveDiagnostics";
 export { ExternalFileConflictBanner } from "./components/ExternalFileConflictBanner";
 export type {
   ExternalFileChangeCoordinatorHandle,

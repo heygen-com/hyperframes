@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PatchOperation } from "../utils/sourcePatcher";
 import { StudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 import {
+  DomEditPersistUnresolvableError,
   DomEditPersistUnsafeValueError,
   reportDomEditPersistFailure,
   warnDomEditPersistNoOp,
@@ -25,7 +26,11 @@ describe("reportDomEditPersistFailure", () => {
 
     reportDomEditPersistFailure(selection, operations, new Error("network down"), showToast);
 
-    expect(showToast).toHaveBeenCalledWith('Couldn\'t save "Hero title": network down', "error");
+    expect(showToast).toHaveBeenCalledWith(
+      'Couldn\'t save "Hero title": network down',
+      "error",
+      "unknown",
+    );
     expect(warnSpy).toHaveBeenCalledWith(
       "[Studio] DOM edit persist failed",
       expect.objectContaining({
@@ -65,13 +70,35 @@ describe("reportDomEditPersistFailure", () => {
     expect(showToast).toHaveBeenCalledWith(
       expect.stringContaining("Failed to patch index.html"),
       "error",
+      "http",
     );
     expect(showToast).toHaveBeenCalledWith(
       expect.stringContaining("DOM patch contains unsafe values: style.width"),
       "error",
+      "unsafe-value",
     );
     expect(warnSpy).toHaveBeenCalledTimes(2);
 
+    warnSpy.mockRestore();
+  });
+
+  // fails without the fix: a dom-save toast carried no cause, and an element missing from the source read as unknown.
+  it("a failed save names its cause beside the toast, from a closed list", () => {
+    const showToast = vi.fn<(message: string, tone?: "error" | "info", cause?: string) => void>();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    reportDomEditPersistFailure(
+      selection,
+      operations,
+      new DomEditPersistUnresolvableError("index.html"),
+      showToast,
+    );
+
+    expect(showToast).toHaveBeenCalledWith(
+      "Couldn't save \"Hero title\": Couldn't find this element in the source file (index.html)",
+      "error",
+      "unresolvable",
+    );
     warnSpy.mockRestore();
   });
 
