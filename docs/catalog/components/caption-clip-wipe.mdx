@@ -18,7 +18,7 @@ import { InstallCommand } from "/snippets/install-command.jsx";
   compositionSrc="compositions/components/caption-clip-wipe.html"
   title="Clip Wipe"
   variables={[]}
-  meta={{"category":"Captions","badge":"Stable","codeLines":226}}
+  meta={{"category":"Captions","badge":"Stable","codeLines":227}}
   attribution={{"path":"registry/components/caption-clip-wipe","tags":["captions","caption-style","wipe","clip-path","reveal"]}}
   hasCode
   rawUrl="https://raw.githubusercontent.com/heygen-com/hyperframes/main/registry/components/caption-clip-wipe/caption-clip-wipe.html"
@@ -182,7 +182,8 @@ import { InstallCommand } from "/snippets/install-command.jsx";
         var GROUPS = RAW_GROUPS.map(function (pair, gi) {
           var ws = pair[0],
             we = pair[1];
-          var nextStart = gi + 1 < RAW_GROUPS.length ? WORDS[RAW_GROUPS[gi + 1][0]].start : 8.0;
+          var nextStart =
+            gi + 1 < RAW_GROUPS.length ? WORDS[RAW_GROUPS[gi + 1][0]].start : Infinity;
           var gEnd = Math.min(WORDS[we].end + 0.5, nextStart - 0.05);
           return { wordStart: ws, wordEnd: we, start: WORDS[ws].start, end: gEnd };
         });
