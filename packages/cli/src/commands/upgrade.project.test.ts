@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -89,6 +97,19 @@ describe("upgradeProjectPins", () => {
 
     expect(readFileSync(fullCpu, "utf8")).toContain("hyperframes@0.7.55");
     expect(readFileSync(publish, "utf8")).toContain("hyperframes@0.7.55");
+  });
+
+  // fails without the fix: the rewritten wrapper came back 0644, so `./render.sh` no longer ran.
+  it.skipIf(process.platform === "win32")("keeps an executable wrapper executable", async () => {
+    const d = project({});
+    const wrapper = join(d, "render.sh");
+    writeFileSync(wrapper, "npx --yes hyperframes@0.7.48 render\n");
+    chmodSync(wrapper, 0o755);
+
+    await upgradeProjectPins(d, { json: false, check: false });
+
+    expect(readFileSync(wrapper, "utf8")).toContain("hyperframes@0.7.55");
+    expect(statSync(wrapper).mode & 0o777).toBe(0o755);
   });
 
   it.skipIf(process.platform === "win32")(
