@@ -43,7 +43,12 @@ vi.mock("../telemetry/events.js", async (importOriginal) => ({
   trackSkillCommandRan: (run: { skill: string; command: string }) => void commandRuns.push(run),
 }));
 
-import { pullTemplate, PullRefused, tagStyleSamplingProject, TEMPLATES } from "./templates.js";
+import templatesCmd, {
+  pullTemplate,
+  PullRefused,
+  tagStyleSamplingProject,
+  TEMPLATES,
+} from "./templates.js";
 
 const LINK = "https://signed.test/bundle.tar.gz?sig=1";
 let dir: string;
@@ -446,4 +451,36 @@ describe("tagStyleSamplingProject", () => {
     expect(existsSync(join(dir, "hyperframes.json"))).toBe(false);
     expect(existsSync(join(pulled, "hyperframes.json"))).toBe(false);
   });
+});
+
+describe("templates pull output for people", () => {
+  const ODD = "\u001b[2J\u0007";
+  const SHOWN = "\\x1b[2J\\x07";
+  const pull = (slug: string, into: string) =>
+    templatesCmd.run!({ args: { action: "pull", slug, dir: into }, rawArgs: [] } as never);
+
+  // fails without the fix: the slug is printed as it was typed.
+  it("shows control characters in an unknown slug as text", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(pull(`sam${ODD}ple`, dir)).rejects.toThrow();
+    const printed = error.mock.calls.flat().join("\n");
+    expect(printed).toContain(`sam${SHOWN}ple`);
+    expect(printed).not.toContain(ODD);
+  });
+
+  // fails without the fix: the folder name is printed as it is on disk.
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in the pulled folder's path as text",
+    async () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      const project = join(dir, `pro${ODD}ject`);
+      mkdirSync(project);
+      serve({});
+      await pull("sample", project);
+      const printed = log.mock.calls.flat().join("\n");
+      expect(printed).toContain(`pro${SHOWN}ject`);
+      expect(printed).not.toContain(ODD);
+      expect(existsSync(join(project, "templates", "sample", "SKILL.md"))).toBe(true);
+    },
+  );
 });

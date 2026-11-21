@@ -22,6 +22,7 @@ import { processIsAlive } from "../utils/processTree.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { resolveCloudAuthHeaders } from "../cloud/auth.js";
 import { billingBaseUrl } from "../heygen/plan.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { failCommand } from "../utils/commandResult.js";
 import { fetchExplained, NetworkFailure } from "../utils/networkFailure.js";
@@ -278,7 +279,7 @@ export async function pullTemplate(slug: string, dir: string): Promise<string> {
   if (aside)
     console.log(
       c.warn(
-        `${dest} did not match HeyGen's verified template, so it was moved to ${aside} and is no longer used.`,
+        `${terminalText(dest)} did not match HeyGen's verified template, so it was moved to ${terminalText(aside)} and is no longer used.`,
       ),
     );
   trackSkillCommandRan({ skill: STYLE_SAMPLING, command: "templates pull" });
@@ -415,11 +416,11 @@ export default defineCommand({
     try {
       const path = await pullTemplate(String(args.slug), args.dir ?? ".");
       tagStyleSamplingProject(args.dir ?? ".", path);
-      console.log(c.success(`✓ ${path}`));
+      console.log(c.success(`✓ ${terminalText(path)}`));
     } catch (error) {
       if (!(error instanceof PullRefused || error instanceof NetworkFailure)) throw error;
-      console.error(c.error(error.message));
-      if (error instanceof NetworkFailure) console.error(c.dim(error.hint));
+      console.error(c.error(terminalLines(error.message)));
+      if (error instanceof NetworkFailure) console.error(c.dim(terminalLines(error.hint)));
       failCommand();
     }
   },

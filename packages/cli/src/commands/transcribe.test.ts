@@ -1130,3 +1130,81 @@ Render video. Built for agents.
     );
   });
 });
+
+describe("transcribe output for people", () => {
+  const ODD = "\u001b[2J\u0007";
+  const SHOWN = "\\x1b[2J\\x07";
+  let dirs: string[] = [];
+
+  beforeEach(() => {
+    dirs = [];
+    consumeCommandResult();
+    replaceRunners();
+    transcribeMock.mockReset();
+    prepareWavMock.mockReset().mockImplementation((input: string) => input);
+    Object.assign(runners, { sherpa: false, mlx: false, whisper: true });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consumeCommandResult();
+    for (const d of dirs) rmSync(d, { recursive: true, force: true });
+    vi.restoreAllMocks();
+    syncBuiltinESMExports();
+  });
+
+  // fails without the fix: the input path is printed as it was typed.
+  it("shows control characters in a missing input's path as text", async () => {
+    const { dir } = dummyAudio();
+    dirs.push(dir);
+    await expect(
+      transcribeCmd.run!({ args: { input: join(dir, `na${ODD}rration.wav`) } } as never),
+    ).rejects.toThrow();
+    const printed = vi.mocked(console.error).mock.calls.flat().join("\n");
+    expect(printed).toContain(`na${SHOWN}rration.wav`);
+    expect(printed).not.toContain(ODD);
+  });
+
+  // fails without the fix: the caption file's name is printed as it is on disk.
+  it.skipIf(process.platform === "win32")(
+    "shows control characters in the exported caption path as text",
+    async () => {
+      const { dir, input } = dummyAudio();
+      dirs.push(dir);
+      transcribeMock.mockImplementation(async (_input, outputDir) =>
+        fakeTranscript(outputDir, "whisper"),
+      );
+      const output = join(dir, `ca${ODD}ps.vtt`);
+      await transcribeCmd.run!({
+        args: { input, dir, engine: "whisper", to: "vtt", output },
+      } as never);
+      const printed = vi.mocked(console.log).mock.calls.flat().join("\n");
+      expect(printed).toContain(`ca${SHOWN}ps.vtt`);
+      expect(printed).not.toContain(ODD);
+      expect(existsSync(output)).toBe(true);
+    },
+  );
+
+  // fails without the fix: the runner's own failure text is printed as it arrived.
+  it("shows control characters in a failed run's message as text", async () => {
+    const { dir, input } = dummyAudio();
+    dirs.push(dir);
+    transcribeMock.mockRejectedValue(new Error(`model fi${ODD}le unreadable`));
+    const written: string[] = [];
+    for (const stream of [process.stdout, process.stderr])
+      vi.spyOn(stream, "write").mockImplementation((chunk) => {
+        written.push(String(chunk));
+        return true;
+      });
+    await expect(
+      transcribeCmd.run!({
+        args: { input, dir, engine: "whisper", model: `sm${ODD}all` },
+      } as never),
+    ).rejects.toThrow();
+    const printed = written.join("");
+    expect(printed).toContain(`sm${SHOWN}all`);
+    expect(printed).toContain(`model fi${SHOWN}le unreadable`);
+    expect(printed).not.toContain(ODD);
+  });
+});
