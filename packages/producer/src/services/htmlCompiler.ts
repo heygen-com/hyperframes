@@ -107,6 +107,7 @@ import { extractMediaMetadata, extractAudioMetadata } from "../utils/ffprobe.js"
 import {
   assertCompositionFileSize,
   CompositionExpansionBudget,
+  ENTRY_PAGE,
   REMOTE_SCRIPTS,
   REMOTE_STYLESHEETS,
 } from "@hyperframes/core/compiler";
@@ -1139,15 +1140,32 @@ function promoteCssImportsToLinkTags(html: string): string {
 }
 
 class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentity> {
-  readonly #document: Document;
   readonly #lateInstanceByCompositionId = new Map<string, number>();
+  /** How many elements carry each composition id: the page once, then each mount's copy once. */
+  readonly #idCounts = new Map<string, number>();
+  /** Hosts whose copied content has not been counted yet; the inliner fills a host after asking for it. */
+  #uncounted: ParentNode[];
 
   constructor(document: Document, initialHosts: Element[]) {
     super(assignBundledRuntimeCompositionIds(initialHosts));
-    this.#document = document;
+    this.#uncounted = [document];
+  }
+
+  #countUncopied(): void {
+    for (const root of this.#uncounted.splice(0)) {
+      for (const element of Array.from(root.querySelectorAll("[data-composition-id]"))) {
+        this.#adjust(element.getAttribute("data-composition-id"), 1);
+      }
+    }
+  }
+
+  #adjust(id: string | null, by: number): void {
+    if (id) this.#idCounts.set(id, (this.#idCounts.get(id) ?? 0) + by);
   }
 
   override get(host: Element): BundledHostCompositionIdentity | undefined {
+    this.#countUncopied();
+    this.#uncounted.push(host);
     const existing = super.get(host);
     if (existing) return existing;
 
@@ -1166,21 +1184,20 @@ class ProducerHostIdentityMap extends Map<Element, BundledHostCompositionIdentit
       return identity;
     }
 
+    const ownId = host.getAttribute("data-composition-id");
+    const heldByOthers = (id: string) => (this.#idCounts.get(id) ?? 0) - (id === ownId ? 1 : 0) > 0;
     let instanceIndex = this.#lateInstanceByCompositionId.get(authoredCompositionId) || 0;
     let runtimeCompositionId: string;
     do {
       instanceIndex += 1;
       runtimeCompositionId = `${authoredCompositionId}__hf${instanceIndex}`;
-    } while (
-      Array.from(this.#document.querySelectorAll("[data-composition-id]")).some(
-        (element) =>
-          element !== host && element.getAttribute("data-composition-id") === runtimeCompositionId,
-      )
-    );
+    } while (heldByOthers(runtimeCompositionId));
     this.#lateInstanceByCompositionId.set(authoredCompositionId, instanceIndex);
 
     host.setAttribute("data-hf-original-composition-id", authoredCompositionId);
     host.setAttribute("data-composition-id", runtimeCompositionId);
+    this.#adjust(ownId, -1);
+    this.#adjust(runtimeCompositionId, 1);
     const identity = { authoredCompositionId, runtimeCompositionId };
     this.set(host, identity);
     return identity;
@@ -1275,6 +1292,7 @@ function inlineSubCompositions(
   budget: CompositionExpansionBudget,
 ): { html: string; variablesByComp: Record<string, Record<string, unknown>> } {
   const { document } = parseHTML(html);
+  budget.chargeElements(ENTRY_PAGE, document.querySelectorAll("*").length);
   const head = document.querySelector("head");
   const body = document.querySelector("body");
   const hosts = Array.from(document.querySelectorAll("[data-composition-src]"));
