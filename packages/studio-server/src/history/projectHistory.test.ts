@@ -56,17 +56,18 @@ vi.mock("./blobStore", async (importOriginal) => {
       const store = await real.openBlobStore(dir);
       return {
         ...store,
-        put: async (path: string) => {
+        put: (async (path, _pin, onRead) => {
           if (path.endsWith(".bin")) {
             mediaCopy.entered?.();
             await mediaCopy.held;
             mediaCopy.copies.push(basename(path));
             if (mediaCopy.fails?.(mediaCopy.copies.length)) throw new Error("The disk is full.");
           }
-          const hash = await store.put(path);
+          // These cases count media copies unpinned; pinning has its own cases in firstCopy.test.ts.
+          const hash = await store.put(path, false, onRead);
           if (path.endsWith(".bin")) await mediaCopy.stored?.();
           return hash;
-        },
+        }) satisfies typeof store.put,
       };
     },
   };
