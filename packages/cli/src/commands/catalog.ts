@@ -26,6 +26,7 @@ import { relative, resolve } from "node:path";
 import { CliUsageError, finishCommand } from "../utils/commandResult.js";
 import { printFailureLine } from "../utils/jsonError.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
+import { shellArg } from "../utils/shellArg.js";
 import { runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
 import {
@@ -342,9 +343,7 @@ export default defineCommand({
               // Withheld when the query never parsed: the catalog has not been
               // shown to be missing anything, so inviting a gap report here
               // would file noise against a search that never ran.
-              ...(unsearchable
-                ? {}
-                : { report_gap: searchMissCommand(query, tierToken(searched)) }),
+              ...(unsearchable ? {} : { report_gap: searchMissReport(query, tierToken(searched)) }),
               results: [],
             },
             null,
@@ -379,7 +378,7 @@ export default defineCommand({
           if (query) {
             console.log("");
             console.log(c.dim("  Nothing in the catalog does this? Report the gap:"));
-            console.log(c.dim(`  ${searchMissHint(query, tierToken(searched))}`));
+            console.log(c.dim(`  ${searchMissReport(query, tierToken(searched))}`));
           }
         }
       }
@@ -417,7 +416,7 @@ export default defineCommand({
             // plausible items and none of them did the thing — a judgement
             // only the reader can make, so the command has to already be in
             // the envelope by the time they make it.
-            report_gap: searchMissCommand(query, tierToken(searched)),
+            report_gap: searchMissReport(query, tierToken(searched)),
             results: output,
           },
           null,
@@ -471,7 +470,9 @@ export default defineCommand({
         // in. Every catalog gap reported to date came from the word tier. The
         // tier rides along in the command so a vocabulary miss stays
         // distinguishable from a meaning miss when the reports are read.
-        console.log(c.dim(`  None of these do it? ${searchMissHint(query, tierToken(searched))}`));
+        console.log(
+          c.dim(`  None of these do it? ${searchMissReport(query, tierToken(searched))}`),
+        );
       }
     }
 
@@ -699,7 +700,8 @@ function tierDetail(searched: { localMode: LocalMode } | null): string {
 }
 
 /**
- * The command that turns a fruitless search into a catalog gap report.
+ * The command that turns a fruitless search into a catalog gap report, or how
+ * to send one when no line would carry the query as typed in the user's shell.
  *
  * A search that returns nothing usable is the only moment anyone knows what
  * the catalog is missing, and it was also the one moment we said nothing:
@@ -712,21 +714,19 @@ function tierDetail(searched: { localMode: LocalMode } | null): string {
  * so plain `catalog --query` keeps its promise that the query text never
  * leaves the machine.
  */
-export function searchMissCommand(query: string, tier: "on-device" | "words"): string {
-  // Double quotes with the shell metacharacters escaped: the queries that
-  // matter are plain-language phrases, and half the real ones so far were
-  // CJK, which single-quoting renders no more safely and reads worse.
-  const quoted = query.replace(/(["\\$`])/g, "\\$1");
+export function searchMissReport(
+  query: string,
+  tier: "on-device" | "words",
+  platform: NodeJS.Platform = process.platform,
+): string {
+  const searched = shellArg(query, platform);
+  if (searched === null) {
+    return `Run hyperframes feedback with your query as --search-miss, the move you needed as --wanted, and --tier ${tier}.`;
+  }
   return (
-    `npx hyperframes feedback --search-miss "${quoted}" ` +
+    `npx hyperframes feedback --search-miss ${searched} ` +
     `--wanted "<the move you needed>" --tier ${tier}`
   );
-}
-
-function searchMissHint(query: string, tier: "on-device" | "words"): string {
-  const command = searchMissCommand(query, tier);
-  if (terminalText(command) === command) return command;
-  return `Run hyperframes feedback with your query as --search-miss, the move you needed as --wanted, and --tier ${tier}.`;
 }
 
 type LocalMode = "local-model" | "words";
