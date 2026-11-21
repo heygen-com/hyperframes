@@ -210,6 +210,7 @@ type Seen = {
   pixels: string;
   currentSrc: string;
   loads: number;
+  ours: number;
   failedWithCors: string[];
 };
 
@@ -221,12 +222,33 @@ async function installDriver(frame: Frame) {
       if (entry) entry.last = performance.now();
     };
     // On window, so it runs before the runtime's document listener can drop the attribute.
+    // A load() made while an element's error or first frame is being handled is the runtime's answer to it.
+    const handling = new WeakSet<HTMLMediaElement>();
+    const handled = (video: HTMLVideoElement) => {
+      handling.add(video);
+      setTimeout(() => handling.delete(video));
+    };
+    const load = HTMLMediaElement.prototype.load;
+    HTMLMediaElement.prototype.load = function (this: HTMLMediaElement) {
+      if (this.dataset.table && handling.has(this))
+        this.dataset.ours = String(Number(this.dataset.ours ?? 0) + 1);
+      return load.call(this);
+    };
+    window.addEventListener(
+      "loadeddata",
+      (event) => {
+        const video = event.target as HTMLVideoElement;
+        if (video.dataset?.table) handled(video);
+      },
+      true,
+    );
     window.addEventListener(
       "error",
       (event) => {
         const target = event.target as Element | null;
         const video = target?.closest?.("video[data-table]") as HTMLVideoElement | null;
         if (!video) return;
+        handled(video);
         touch(video);
         const src = target === video ? video.currentSrc : (target as HTMLSourceElement).src;
         if (video.hasAttribute("crossorigin") && src)
@@ -313,6 +335,7 @@ async function installDriver(frame: Frame) {
             pixels,
             currentSrc: video.currentSrc,
             loads: Number(video.dataset.loads ?? 0),
+            ours: Number(video.dataset.ours ?? 0),
             failedWithCors: [...failed],
           };
         },
@@ -359,30 +382,28 @@ async function runAll(frame: Frame, sequences: Sequence[]) {
   }
 }
 
-/** Each selection may fetch every source it lists at most twice: once with CORS, once without. */
-function requestBudget(sequences: Sequence[]) {
-  const budget = new Map<string, number>();
-  for (const sequence of sequences) {
-    const lists = new Map<number, Source[]>();
-    for (const steps of sequence.rounds)
-      for (const step of steps) {
-        const list = lists.get(step.el) ?? [];
-        if (step.do === "create") lists.set(step.el, [...step.sources]);
-        else if (step.do === "prepend" || step.do === "append")
-          lists.set(step.el, [...list, step.source]);
-        if (step.do === "author" && step.duringRetry) continue;
-        for (const source of lists.get(step.el)!)
-          budget.set(source.id, (budget.get(source.id) ?? 0) + 2);
-      }
-  }
-  return budget;
-}
+const describe = (sequence: Sequence) =>
+  sequence.rounds
+    .map((steps) =>
+      steps
+        .map((step) => {
+          const listed = "sources" in step ? step.sources : "source" in step ? [step.source] : [];
+          return `${step.do}${step.el}${listed.map((x) => ` ${x.kind}`).join("")}`;
+        })
+        .join(", "),
+    )
+    .join(" | ");
 
-function judge(sequences: Sequence[], frame: Frame) {
-  return Promise.all(
+/**
+ * Per element: plays iff a listed source can; CORS kept unless that source failed with it here; at most one load of
+ * ours per selection made by anyone else. Per source: at most two requests per selection of an element listing it.
+ */
+async function judge(sequences: Sequence[], frame: Frame) {
+  const budget = new Map<string, number>();
+  const all = await Promise.all(
     sequences.map(async (sequence, index) => {
       const lists = new Map<number, Source[]>();
-      const selections = new Map<number, number>();
+      const everListed = new Map<number, Set<string>>();
       const authored = new Map<number, string>();
       for (const steps of sequence.rounds)
         for (const step of steps) {
@@ -397,16 +418,20 @@ function judge(sequences: Sequence[], frame: Frame) {
             );
           else if (step.do === "reverse") lists.set(step.el, [...list].reverse());
           if (step.do === "author") authored.set(step.el, step.value);
-          if (!(step.do === "author" && step.duringRetry))
-            selections.set(step.el, (selections.get(step.el) ?? 0) + 1);
+          if (step.do === "author" && step.replace) lists.set(step.el, [step.replace]);
+          const ids = everListed.get(step.el) ?? new Set();
+          for (const source of lists.get(step.el)!) ids.add(source.id);
+          everListed.set(step.el, ids);
         }
       const problems: string[] = [];
       for (const [el, list] of lists) {
         const seen = await frame.evaluate((k) => window.__table.read(k), `${index}-${el}`);
-        const where = `${sequence.name}, element ${el} [${list.map((s) => s.kind).join(", ")}]`;
-        const bound = 2 * selections.get(el)!;
-        if (seen.loads > bound)
-          problems.push(`${where}: ${seen.loads} loads for ${bound / 2} selections`);
+        const where = `${sequence.name} (${describe(sequence)}), element ${el}`;
+        const selections = seen.loads - seen.ours;
+        for (const id of everListed.get(el)!)
+          budget.set(id, (budget.get(id) ?? 0) + 2 * selections);
+        if (seen.ours > selections)
+          problems.push(`${where}: ${seen.ours} loads of ours for ${selections} other selections`);
         const value = authored.get(el);
         if (value !== undefined) {
           if (seen.crossOrigin !== value)
@@ -428,7 +453,8 @@ function judge(sequences: Sequence[], frame: Frame) {
       }
       return problems;
     }),
-  ).then((all) => all.flat());
+  );
+  return { problems: all.flat(), budget };
 }
 
 const browser = await launchBrowser();
@@ -446,16 +472,15 @@ try {
   const seeds = Number(process.env.SEALED_MEDIA_SEEDS ?? 40);
   const sequences = [...FIXED, ...Array.from({ length: seeds }, (_, seed) => generated(seed + 1))];
   await runAll(frame, sequences);
-  const problems = await judge(sequences, frame);
+  const { problems, budget } = await judge(sequences, frame);
   const requests = new Map<string, number>();
   for (const url of server.requested) {
     const id = new URL(url).searchParams.get("id");
     if (id) requests.set(id, (requests.get(id) ?? 0) + 1);
   }
-  for (const [id, budget] of requestBudget(sequences)) {
-    const asked = requests.get(id) ?? 0;
-    if (asked > budget)
-      problems.push(`source ${id}: ${asked} requests, at most ${budget} expected`);
+  for (const [id, asked] of requests) {
+    const most = budget.get(id) ?? 0;
+    if (asked > most) problems.push(`source ${id}: ${asked} requests, at most ${most} expected`);
   }
   console.log(`[sealed-media-table] ${sequences.length} sequences, ${problems.length} problems`);
   assert.deepEqual(problems, [], problems.join("\n"));
