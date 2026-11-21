@@ -94,6 +94,8 @@ export interface ProjectHistoryOptions {
   onError?: (error: unknown) => void;
   /** How long an open waits for another process to close the same history (default 5 s). */
   ownerWaitMs?: number;
+  /** How long the first copy waits on one file before leaving it owed (default 10 s). */
+  firstCopyFileMs?: number;
   ownerUrl?: string;
   /** A CLI turn's window from an earlier open: writes since, within its idle limit, become the entry with its id. */
   closedWindow?: ClosedWindow;
@@ -224,7 +226,19 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
-type Copied = { hash: string } | "gone" | "changing";
+type Copied = { hash: string; referenced?: true; release?: () => void } | "gone" | "changing";
+
+const FIRST_COPY_FILE_MS = 10_000;
+
+async function owedAfter(copy: Promise<Copied>, ms: number): Promise<Copied> {
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<Copied>((owed) => (timer = setTimeout(() => owed("changing"), ms)));
+  try {
+    return await Promise.race([copy, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 const ADOPT_RETRY_AT_MOST_MS = 30_000;
 
 /** Owed until a whole copy is recorded, the file is gone or history closes; retryNow waits for a fresh try. */
@@ -473,6 +487,7 @@ class Engine {
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   adopting = new Map<string, Adoption>();
+  reading = new Map<string, Promise<unknown>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
   stopHearing: (() => void) | undefined;
@@ -691,18 +706,25 @@ class Engine {
     const sweptAt = this.now();
     const files = await this.historyFiles();
     const copied = files.filter((file) => file.size <= COPY_LATER_ABOVE_BYTES);
-    const hashes = await Promise.allSettled(
-      copied.map((file) => inFirstCopySlot(() => this.storeIfPresent(file.path))),
+    const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
+    const copies = copied.map((file) =>
+      inFirstCopySlot(() => this.storeIfPresent(file.path, true)),
     );
+    const hashes = await Promise.allSettled(copies.map((copy) => owedAfter(copy, waitMs)));
+    const late = new Map<string, Promise<Copied>>();
     // Nothing names these copies until the log below is written, so one look at the end covers the whole copy.
     if (this.whereFolder() !== "here") throw this.replaced();
     const owed: ListedFile[] = [];
     copied.forEach((file, i) => {
       const result = hashes[i]!;
       if (result.status === "rejected") throw result.reason;
-      if (result.value === "changing") owed.push(file);
-      else if (result.value !== "gone")
+      if (result.value === "changing") {
+        owed.push(file);
+        late.set(file.path, copies[i]!);
+      } else if (result.value !== "gone") {
         this.tracked.set(file.path, { hash: result.value.hash, stat: statKey(file, sweptAt) });
+        result.value.release?.();
+      }
     });
     this.log.baseline = this.manifest();
     this.log.keepsLedger = true;
@@ -711,14 +733,20 @@ class Engine {
     this.adoptMediaInBackground(
       [...owed, ...files.filter((file) => file.size > COPY_LATER_ABOVE_BYTES)],
       sweptAt,
+      late,
     );
   }
 
-  adoptMediaInBackground(files: ListedFile[], sweptAt: number): void {
+  adoptMediaInBackground(
+    files: ListedFile[],
+    sweptAt: number,
+    lateFirstCopies = new Map<string, Promise<Copied>>(),
+  ): void {
     let turn: Promise<unknown> = Promise.resolve();
     for (const file of files) {
-      const adoption = this.adopt(file, sweptAt, turn);
-      turn = adoption.firstTry;
+      const late = lateFirstCopies.get(file.path);
+      const adoption = this.adopt(file, sweptAt, turn, late);
+      if (!late) turn = adoption.firstTry;
       this.adopting.set(file.path, adoption);
     }
     this.saveAdopting();
@@ -732,13 +760,20 @@ class Engine {
   }
 
   /** A file still changing stays named until a whole copy of it lands; the next open retries it. */
-  adopt(file: ListedFile, sweptAt: number, turn: Promise<unknown>): Adoption {
+  adopt(
+    file: ListedFile,
+    sweptAt: number,
+    turn: Promise<unknown>,
+    late?: Promise<Copied>,
+  ): Adoption {
     let asked: Array<() => void> = [];
     let wake = () => {};
+    const owedFromOpen = late !== undefined;
     const tryOnce = async () => {
       const served = asked;
       asked = [];
-      const tried = await this.tryAdopting(file, sweptAt);
+      const tried = await this.tryAdopting(file, sweptAt, late, owedFromOpen);
+      late = undefined;
       for (const answer of served) answer();
       return tried === "over";
     };
@@ -766,17 +801,28 @@ class Engine {
     return { firstTry, ended, retryNow };
   }
 
-  async tryAdopting(file: ListedFile, sweptAt: number): Promise<"over" | "changing"> {
+  async tryAdopting(
+    file: ListedFile,
+    sweptAt: number,
+    late?: Promise<Copied>,
+    owedFromOpen = false,
+  ): Promise<"over" | "changing"> {
     try {
       if (this.whereFolder() !== "here") return "over";
-      const copied = await this.storeIfPresent(file.path);
-      return await this.queue(async () => {
+      const first = await late?.catch(() => undefined);
+      const fromOpen = typeof first === "object";
+      const read = () => this.storeIfPresent(file.path, true);
+      const copied = fromOpen ? first : await (owedFromOpen ? inFirstCopySlot(read) : read());
+      const record = this.queue(async () => {
         // Still named for the next open until recorded, so a failed record is never logged as added.
         if ((await this.recordAdopted(file, sweptAt, copied)) === "changing") return "changing";
         this.adopting.delete(file.path);
         this.saveAdopting();
+        // The sweeps since open passed this file by: one more takes in any edit since the bytes were read.
+        if (fromOpen) this.sweepIn(0);
         return "over";
       });
+      return await record.finally(() => typeof copied === "object" && copied.release?.());
     } catch (error) {
       if (!(error instanceof HistoryClosedError)) this.options.onError?.(error);
       return "over";
@@ -785,10 +831,9 @@ class Engine {
 
   async recordAdopted(file: ListedFile, sweptAt: number, first: Copied): Promise<Copied> {
     if (typeof first === "string" || this.whereFolder() !== "here") return first;
-    // A prune that ran while this copy waited for the queue may have taken its bytes.
-    const kept = this.blobs.has(first.hash) || isUncopied(file.path, file.size);
-    const copied = kept ? first : await this.storeIfPresent(file.path);
-    if (typeof copied === "string") return copied;
+    // Bytes gone from the store are read again on the next try, outside the history queue.
+    if (!first.referenced && !this.blobs.has(first.hash)) return "changing";
+    const copied = first;
     const { hash } = copied;
     const change = { path: file.path, before: null, after: hash };
     const found = this.overwrittenBy(change, undefined, new Set());
@@ -890,13 +935,24 @@ class Engine {
   }
 
   /** The file's hash once copied in, or why there is none: gone, or still changing through every read. */
-  async storeIfPresent(path: string): Promise<Copied> {
+  storeIfPresent(path: string, pin = false): Promise<Copied> {
+    const before = this.reading.get(path) ?? Promise.resolve();
+    const read = before.catch(() => {}).then(() => this.storeNow(path, pin));
+    const turn = read.catch(() => {});
+    this.reading.set(path, turn);
+    void turn.then(() => this.reading.get(path) === turn && this.reading.delete(path));
+    return read;
+  }
+
+  async storeNow(path: string, pin = false): Promise<Copied> {
     try {
       const abs = join(this.dir, path);
       const { size } = await stat(abs);
-      if (isUncopied(path, size)) return { hash: await this.blobs.reference(abs) };
-      const hash = await this.blobs.put(abs);
-      return hash === null ? "changing" : { hash };
+      if (isUncopied(path, size))
+        return { hash: await this.blobs.reference(abs), referenced: true };
+      const hash = await this.blobs.put(abs, pin);
+      if (hash === null) return "changing";
+      return pin ? { hash, release: () => this.blobs.unpin(hash) } : { hash };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return "gone";
       throw error;
@@ -1157,7 +1213,8 @@ class Engine {
   /** Stored bytes beyond what the current files need: a project larger than the budget still keeps its history. */
   historyBytes(): number {
     let current = 0;
-    for (const hash of new Set([...this.tracked.values()].map((file) => file.hash)))
+    const baseline = [...this.tracked.values()].map((file) => file.hash);
+    for (const hash of new Set([...baseline, ...this.blobs.pinned()]))
       current += this.blobs.size(hash);
     return this.blobs.bytes() - current;
   }
