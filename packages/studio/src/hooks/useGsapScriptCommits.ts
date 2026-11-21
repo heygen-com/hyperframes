@@ -321,6 +321,7 @@ function patchInstantly(
     snapshot,
     attributes: false,
     timing: false,
+    version: write.version,
   });
   patchSealedPreview(ticket, patches, !options.deferPreviewSync, () => {
     if (ticketNeedsRecovery(ticket)) show(newestPreviewWrite(ticket));
