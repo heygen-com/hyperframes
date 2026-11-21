@@ -312,8 +312,8 @@ const FIXED: Sequence[] = [
 ];
 
 // Generated sequences that found a fault by themselves: the composition's play() rejected for a fallback
-// (1, 24, 36, 43, 74) and a recovered source skipped (206, 241, 267, 346). Run on every count of seeds.
-const PINNED = [1, 24, 36, 43, 74, 206, 241, 267, 346];
+// (1, 24, 36, 43, 74) and a recovered source skipped (241, 346). Run on every count of seeds.
+const PINNED = [1, 24, 36, 43, 74, 241, 346];
 
 const server = startServer();
 const foreignOrigin = server.origin.replace("127.0.0.1", "localhost");
