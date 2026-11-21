@@ -170,7 +170,6 @@ export function useTimelineEditing({
   const { handleTimelineElementsDelete } = useTimelineDeleteOps({
     projectIdRef,
     activeCompPath,
-    timelineElements,
     showToast,
     writeProjectFile,
     recordEdit,
@@ -178,6 +177,7 @@ export function useTimelineEditing({
     isRecordingRef,
     forceReloadSdkSession,
     previewIframeRef,
+    editQueueRef,
     handleTimelineGroupMove: groupEditing.handleTimelineGroupMove,
   });
 

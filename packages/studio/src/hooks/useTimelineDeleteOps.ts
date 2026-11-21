@@ -45,7 +45,6 @@ export function applyRippleShifts(
 interface UseTimelineDeleteOpsOptions {
   projectIdRef: MutableRefObject<string | null>;
   activeCompPath: string | null;
-  timelineElements: TimelineElement[];
   showToast: (message: string, tone?: "error" | "info") => void;
   writeProjectFile: (path: string, content: string, expectedContent?: string) => Promise<void>;
   recordEdit: (input: RecordEditInput) => Promise<void>;
@@ -53,6 +52,7 @@ interface UseTimelineDeleteOpsOptions {
   isRecordingRef?: MutableRefObject<boolean>;
   forceReloadSdkSession?: () => void;
   previewIframeRef: RefObject<HTMLIFrameElement | null>;
+  editQueueRef: MutableRefObject<Promise<void>>;
   /** The same atomic multi-clip move commit the track-gap menu uses, reused
    *  to ripple the main track after a delete, folded into the delete's own
    *  undo entry via a shared coalesceKey. */
@@ -70,7 +70,6 @@ function unlinkInSource(source: string, survivors: readonly TimelineElement[]): 
 export function useTimelineDeleteOps({
   projectIdRef,
   activeCompPath,
-  timelineElements,
   showToast,
   writeProjectFile,
   recordEdit,
@@ -78,6 +77,7 @@ export function useTimelineDeleteOps({
   isRecordingRef,
   forceReloadSdkSession,
   previewIframeRef,
+  editQueueRef,
   handleTimelineGroupMove,
 }: UseTimelineDeleteOpsOptions) {
   // First-use-per-session notice for the ripple. Plain info toast: Studio's
@@ -110,8 +110,24 @@ export function useTimelineDeleteOps({
         // Shared with the ripple move below so a folded ripple is one undo step with the delete.
         const step = timingGestureStep("main-track-ripple-delete");
         const deleteHistoryLabel = "Delete timeline clip";
+        const deletedKeys = new Set(sameFile.map((te) => te.key ?? te.id));
+        const { elements } = usePlayerStore.getState();
+        const survivors = elements.filter((te) => !deletedKeys.has(te.key ?? te.id));
+
+        // Ripple: close the gap the delete left on the main track. Pure decision
+        // first (resolveMainTrackDeleteRippleShifts — off, no main-track clip
+        // deleted, already gapless, or a locked survivor all resolve to null),
+        // then the one write, folded into the delete's undo entry below.
+        const rippleShifts = resolveMainTrackDeleteRippleShifts(
+          survivors,
+          sameFile,
+          usePlayerStore.getState().rippleEditEnabled,
+        );
+        const rippleChanges = rippleShifts ? resolveShiftedElements(survivors, rippleShifts) : null;
+        // The timeline follows at once, so an edit made right after starts from this result.
+        usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
         let rollbackDuration = () => {};
-        try {
+        const deleted = editQueueRef.current.then(async () => {
           await saveServerRewriteWithHistory({
             projectId: pid,
             path: targetPath,
@@ -163,40 +179,39 @@ export function useTimelineDeleteOps({
               return { disk: removedContent, after: patchedContent };
             },
           });
+        });
+        editQueueRef.current = deleted.catch(() => undefined);
+        // One call queues both, so no later edit can land between the delete and its shift.
+        const shifted =
+          rippleChanges &&
+          handleTimelineGroupMove(rippleChanges, {
+            beforeTiming: deleted,
+            coalesceKey: step.coalesceKey,
+            // Coalescing keeps the LAST entry's label; without this the undo
+            // toast reads "Undid Move timeline clips" after a delete, naming
+            // the ripple's mechanics instead of what the user actually did.
+            label: deleteHistoryLabel,
+            // This call gets its own, more specific failure toast below —
+            // the generic one would tell the user about one action twice.
+            suppressFailureToast: true,
+          });
+        try {
+          await deleted;
         } catch (error) {
           rollbackDuration();
+          usePlayerStore.getState().setElements(elements);
+          if (shifted) {
+            void shifted.catch(() => undefined);
+            reloadPreview();
+          }
           throw error;
         }
 
         removeIframeTimelineElements(previewIframeRef.current, sameFile, activeCompPath);
-        const deletedKeys = new Set(sameFile.map((te) => te.key ?? te.id));
-        const survivors = timelineElements.filter((te) => !deletedKeys.has(te.key ?? te.id));
-
-        // Ripple: close the gap the delete left on the main track. Pure decision
-        // first (resolveMainTrackDeleteRippleShifts — off, no main-track clip
-        // deleted, already gapless, or a locked survivor all resolve to null),
-        // then the one write, folded into the delete's undo entry above.
-        const rippleShifts = resolveMainTrackDeleteRippleShifts(
-          survivors,
-          sameFile,
-          usePlayerStore.getState().rippleEditEnabled,
-        );
-        const rippleChanges = rippleShifts ? resolveShiftedElements(survivors, rippleShifts) : null;
-        // The timeline follows the delete's write at once, as the owner of the ripple's optimistic update.
-        usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
         let rippleFailed = false;
-        if (rippleChanges) {
+        if (shifted) {
           try {
-            await handleTimelineGroupMove(rippleChanges, {
-              coalesceKey: step.coalesceKey,
-              // Coalescing keeps the LAST entry's label; without this the undo
-              // toast reads "Undid Move timeline clips" after a delete, naming
-              // the ripple's mechanics instead of what the user actually did.
-              label: deleteHistoryLabel,
-              // This call gets its own, more specific failure toast below —
-              // the generic one would tell the user about one action twice.
-              suppressFailureToast: true,
-            });
+            await shifted;
           } catch (error) {
             // The delete already committed; a failed ripple leaves the gap the
             // toggle-off behaviour would have left anyway — not worth undoing
@@ -238,12 +253,12 @@ export function useTimelineDeleteOps({
       projectIdRef,
       recordEdit,
       showToast,
-      timelineElements,
       writeProjectFile,
       reloadPreview,
       isRecordingRef,
       forceReloadSdkSession,
       previewIframeRef,
+      editQueueRef,
       handleTimelineGroupMove,
     ],
   );
