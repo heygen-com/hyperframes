@@ -194,6 +194,14 @@ describe("billing with no action", () => {
     expect(opened).toEqual([]);
   });
 
+  // fails without the fix: the plan name reached the terminal with its control characters live.
+  it("shows a plan name's control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    const out = await printed([], { plan: `pro${esc}[2J`, credits: 500 });
+    expect(out).toContain("HyperFrames: pro\\x1b[2J");
+    expect(out).not.toContain(esc);
+  });
+
   it("shows Free with no manage line", async () => {
     const out = await printed([], { plan: "none", credits: 0 });
     expect(out).toContain("HyperFrames: Free");
@@ -245,6 +253,21 @@ describe("billing numeric flags", () => {
 });
 
 describe("billing without a terminal", () => {
+  // fails without the fix: the checkout link reached the terminal with its control characters live.
+  it("prints a checkout link's control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    held.checkout = Promise.resolve(`https://checkout.example.test/c${esc}[2J`);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    const done = runCommand(billing, { rawArgs: ["subscribe"] });
+    await vi.advanceTimersByTimeAsync(2000);
+    await done;
+    vi.useRealTimers();
+    const printed = log.mock.calls.flat().join("\n");
+    expect(printed).toContain("Checkout link: https://checkout.example.test/c\\x1b[2J");
+    expect(printed).not.toContain(esc);
+  });
+
   it("prints Stripe's checkout link instead of waiting for Enter, and opens only the pricing page", async () => {
     const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
     vi.useFakeTimers();

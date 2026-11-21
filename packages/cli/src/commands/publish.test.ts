@@ -320,6 +320,38 @@ describe("publish visibility messaging", () => {
     }
   });
 
+  // fails without the fix: the stored link of an earlier publish reached the terminal with its control characters live.
+  it("prints an earlier publish's link with control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    const project = mkdtempSync(join(tmpdir(), "hf-publish-prior-link-"));
+    const config = mkdtempSync(join(tmpdir(), "hf-publish-prior-link-config-"));
+    vi.stubEnv("HYPERFRAMES_CONFIG_DIR", config);
+    vi.stubEnv("HEYGEN_API_KEY", "");
+    vi.stubEnv("HYPERFRAMES_API_KEY", "");
+    writeFileSync(join(project, "index.html"), VISIBLE_INDEX);
+    writeProjectLink(project, {
+      projectId: "earlier",
+      url: `https://hyperframes.dev/p/e${esc}[2J`,
+    });
+    await writeStore({ oauth: { access_token: "fixture-token" } }, join(config, "credentials"));
+    mockPublished({
+      projectId: "earlier",
+      url: "https://hyperframes.dev/p/earlier",
+      updated: true,
+    });
+    try {
+      const printed = await captureLog(() =>
+        publishCommand.run?.({ args: { dir: project, yes: true, proxy: false } } as never),
+      );
+      expect(printed).toContain("Previously published at https://hyperframes.dev/p/e\\x1b[2J");
+      expect(printed).not.toContain(`e${esc}[2J`);
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(project, { recursive: true, force: true });
+      rmSync(config, { recursive: true, force: true });
+    }
+  });
+
   // fails without the fix: the sign-in failure reached the terminal with its control characters live.
   it("prints a sign-in failure with control characters as visible escapes", async () => {
     const esc = String.fromCharCode(27);

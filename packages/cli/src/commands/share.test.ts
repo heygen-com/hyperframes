@@ -344,3 +344,42 @@ describe("a received folder whose record names an existing review", () => {
     );
   });
 });
+
+// fails without the fix: the finished share's link reached the terminal with its control characters live.
+it("prints a ready share's link with control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "shared",
+    ready: true,
+    url: `https://hyperframes.dev/review/a${esc}[2J`,
+    previousUrl: null,
+    manageUrl: "https://hyperframes.dev/shares",
+    source: { at: "not_checked" },
+    version: {},
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(log).toHaveBeenLastCalledWith(
+    "Shared video ready: https://hyperframes.dev/review/a\\x1b[2J",
+  );
+});
+
+// fails without the fix: the earlier version's link reached the terminal with its control characters live.
+it("prints the earlier version's link with control characters as visible escapes", async () => {
+  const esc = String.fromCharCode(27);
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  mocks.run.mockResolvedValue({
+    state: "failed",
+    ready: false,
+    url: null,
+    previousUrl: `https://hyperframes.dev/review/b${esc}[2J`,
+    manageUrl: "https://hyperframes.dev/shares",
+    source: { at: "not_checked" },
+    version: { failure: "Export stopped" },
+  });
+  await runCommand(command, { rawArgs: ["--status"] });
+  expect(log).toHaveBeenLastCalledWith(
+    "Previous shared version: https://hyperframes.dev/review/b\\x1b[2J",
+  );
+});
