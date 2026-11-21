@@ -56,7 +56,7 @@ async function play(cors: boolean) {
   return { videos, pixels, warnings };
 }
 
-type CaseResult = { crossOrigin: string | null; playing: boolean; pixels: string };
+type CaseResult = { crossOrigin: string | null; playing: boolean; pixels: string; loads: number };
 
 /**
  * One sealed film, each case a video the test adds to it: the frame's own CORS decision per media element, read back
@@ -85,6 +85,11 @@ async function mediaCases() {
           `<video data-case="${caseName}" muted preload="auto"`,
         );
         const video = holder.querySelector("video")!;
+        // Each load() restarts the browser's source selection with a loadstart, fetch or not.
+        video.addEventListener(
+          "loadstart",
+          () => (video.dataset.loads = String(Number(video.dataset.loads ?? 0) + 1)),
+        );
         document.body.append(video);
         if (script) new Function("video", script)(video);
       },
@@ -120,6 +125,7 @@ async function mediaCases() {
       return {
         crossOrigin: video.getAttribute("crossorigin"),
         playing: video.readyState >= 2,
+        loads: Number(video.dataset.loads ?? 0),
         pixels,
       };
     }, name);
@@ -299,9 +305,14 @@ try {
   const corsReadable = (result: { crossOrigin: string | null; pixels: string }) =>
     result.crossOrigin === "anonymous" && result.pixels === "readable";
   check(
-    "a source the browser cannot play, before a CORS source, is skipped without a reload loop",
-    corsReadable(results.leading) && requests.leading <= 2,
-    { video: results.leading, requests: requests.leading },
+    "a source the browser cannot play, before a CORS source, leaves that source to play with CORS",
+    corsReadable(results.leading),
+    results.leading,
+  );
+  check(
+    "a source the browser cannot play, before a CORS source, starts at most two loads and two requests",
+    results.leading.loads <= 2 && requests.leading <= 2,
+    { loads: results.leading.loads, requests: requests.leading },
   );
   check(
     "a failing first CORS source leaves the second to play with CORS, with no fallback",
