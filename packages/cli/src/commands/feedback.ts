@@ -1,6 +1,7 @@
 import { failUsage } from "../utils/commandResult.js";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { terminalLines } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import * as clack from "../ui/prompts.js";
 import open from "open";
@@ -169,7 +170,7 @@ async function publishRepro(
     return published.url;
   } catch (err: unknown) {
     spinner.stop(c.error("Publish failed"));
-    console.error(`  ${(err as Error).message}`);
+    console.error(`  ${terminalLines((err as Error).message)}`);
     console.log(`  ${c.dim("Filing the issue without a repro link.")}`);
     return undefined;
   }

@@ -12,7 +12,7 @@ import {
 } from "@hyperframes/core/beats";
 import { parseHTMLContent } from "@hyperframes/core/compiler";
 import { walkCompositionDescendants } from "@hyperframes/parsers";
-import { isSafePath, resolveWithinProject } from "@hyperframes/core";
+import { isSafePath, resolveWithinProject, terminalLines } from "@hyperframes/core";
 import type { Example } from "./_examples.js";
 import { resolveProject, type ProjectDir } from "../utils/project.js";
 import type { AudioSignal } from "@hyperframes/core/audio-analysis";
@@ -26,7 +26,7 @@ export const examples: Example[] = [
 ];
 
 function fail(message: string): never {
-  console.error(c.error(message));
+  console.error(c.error(terminalLines(message)));
   failCommand();
 }
 

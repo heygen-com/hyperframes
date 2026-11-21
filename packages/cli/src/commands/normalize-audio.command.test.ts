@@ -346,3 +346,26 @@ describe("reference normalize-audio command", () => {
     }
   });
 });
+
+// fails without the fix: the audio src from index.html reached the terminal with its control characters live.
+describe("normalize-audio on a clip whose file is missing", () => {
+  it("prints the src's control characters as visible escapes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-normalize-command-test-"));
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      writeFileSync(
+        join(dir, "index.html"),
+        `<audio id="voice" src="vo\u001b[2Jice.wav" data-volume="1" data-duration="2"></audio>`,
+      );
+      await expect(
+        runCommand(normalizeAudioCommand, { rawArgs: [dir, "--target", "voice"] }),
+      ).rejects.toBeInstanceOf(CliRuntimeError);
+      const printed = error.mock.calls.map((call) => call.join(" ")).join("\n");
+      expect(printed).toContain("Audio #voice file was not found: vo\\x1b[2Jice.wav");
+      expect(printed).not.toContain("vo\u001b[2Jice");
+    } finally {
+      error.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

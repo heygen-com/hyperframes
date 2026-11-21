@@ -346,3 +346,17 @@ describe.skipIf(!canDecode)("beats source discovery", () => {
     expectMusicFile("bed.wav");
   });
 });
+
+// fails without the fix: the music src from index.html reached the terminal with its control characters live.
+it("prints a missing track's control characters as visible escapes", async () => {
+  const dir = join(root, "odd-src");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "index.html"),
+    `<div data-composition-id="main"><audio id="music" src="assets/so\u001b[2Jng.wav"></audio></div>`,
+  );
+  const { exitCode, out } = await runBeats(dir, false);
+  expect(exitCode).not.toBe(0);
+  expect(out).toContain("Audio file not found: assets/so\\x1b[2Jng.wav");
+  expect(out).not.toContain("so\u001b[2Jng");
+});

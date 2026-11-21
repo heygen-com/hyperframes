@@ -1589,3 +1589,28 @@ describe("renderNotReadyError", () => {
     expect(error.message).toContain("not render-ready after 5000ms");
   });
 });
+
+// fails without the fix: the --against path reached the terminal with its control characters live.
+it("prints a missing --against path's control characters as visible escapes", async () => {
+  const project = mkdtempSync(join(tmpdir(), "hf-snapshot-against-"));
+  writeFileSync(
+    join(project, "index.html"),
+    `<div data-composition-id="main" data-width="320" data-height="180" data-duration="1"></div>`,
+  );
+  const lines: string[] = [];
+  const log = vi.spyOn(console, "log").mockImplementation((...parts: unknown[]) => {
+    lines.push(parts.map(String).join(" "));
+  });
+  try {
+    await expect(
+      snapshotCommand.run?.({
+        args: { dir: project, against: join(project, "re\u001b[2Jf.mp4") },
+      } as never),
+    ).rejects.toMatchObject({ name: "CliRuntimeError" });
+    expect(lines.join("\n")).toContain("re\\x1b[2Jf.mp4");
+    expect(lines.join("\n")).not.toContain("re\u001b[2Jf");
+  } finally {
+    log.mockRestore();
+    rmSync(project, { recursive: true, force: true });
+  }
+});

@@ -902,3 +902,10 @@ describe.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
     });
   },
 );
+
+// fails without the fix: a refusal reached the terminal with its control characters live.
+it("prints a refusal's control characters as visible escapes", async () => {
+  const { hf } = project();
+  const refused = await hf("--since", "20\u001b[2J26");
+  expect([refused.code, refused.err]).toEqual([2, 'No entry "20\\x1b[2J26" in this history']);
+});

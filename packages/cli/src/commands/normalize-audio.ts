@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { terminalLines } from "@hyperframes/core";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { relative, resolve } from "node:path";
 import {
@@ -42,7 +43,7 @@ function fail(message: string, json: boolean, cause?: unknown): never {
     console.log(
       JSON.stringify(jsonFailure(usage ? cause.code : "runtime_error", message), null, 2),
     );
-  } else console.error(c.error(message));
+  } else console.error(c.error(terminalLines(message)));
   if (usage) failUsage();
   failCommand(1, cause);
 }

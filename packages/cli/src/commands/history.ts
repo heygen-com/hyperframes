@@ -1,4 +1,5 @@
 import { type ArgsDef } from "citty";
+import { terminalLines } from "@hyperframes/core";
 import { defineCommand } from "../utils/defineCommand.js";
 import {
   HISTORY_START,
@@ -333,7 +334,7 @@ function guarded<A>(run: (args: A) => Promise<void>) {
           ? `This project is open in another app (pid ${error.pid}), which keeps its history: undo, restore or pin there.`
           : (error as Error).message;
       if ((args as { json?: boolean }).json) print(true, jsonFailure("refused", message), message);
-      else console.error(message);
+      else console.error(terminalLines(message));
     }
   };
 }

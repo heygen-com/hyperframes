@@ -1962,7 +1962,7 @@ export default defineCommand({
     const zoomScale = parseZoomScale(args["zoom-scale"]);
     const against = args.against ? resolve(String(args.against)) : undefined;
     if (against && !existsSync(against))
-      fail(`${c.error("✗")} --against video not found: ${against}`);
+      fail(`${c.error("✗")} --against video not found: ${terminalText(against)}`);
 
     const label = reviewMode
       ? "review frames (beats, seams, phone)"
@@ -2021,14 +2021,14 @@ export default defineCommand({
           log(`   ${p}`);
         }
         if (short) {
-          const gone = onDisk.missing.map((path) => `\n   missing: ${path}`).join("");
+          const gone = onDisk.missing.map((path) => `\n   missing: ${terminalText(path)}`).join("");
           fail(
-            `${c.error("✗")} Only ${paths.length} of ${captured.paths.length} snapshots are on disk in ${snapshotDir}.${gone}`,
+            `${c.error("✗")} Only ${paths.length} of ${captured.paths.length} snapshots are on disk in ${terminalText(snapshotDir)}.${gone}`,
           );
         }
         if (captured.unreadVideoFrames > 0) {
           fail(
-            `${c.error("✗")} ${captured.unreadVideoFrames} video frame(s) could not be read, so those videos are black or stale in the snapshots saved to ${snapshotDir}.`,
+            `${c.error("✗")} ${captured.unreadVideoFrames} video frame(s) could not be read, so those videos are black or stale in the snapshots saved to ${terminalText(snapshotDir)}.`,
           );
         }
         if (against) {
