@@ -827,3 +827,88 @@ it("mints names for many mounts sharing a namespace with probes linear in the re
   expect(new Set(minted).size).toBe(minted.length);
   expect(probes).toBeLessThan(100 * minted.length);
 });
+
+// fails without the fix: every ^=, $=, ~= and |= predicate compared its value against every alias.
+it("looks up prefix, suffix, token and dash predicates without reading every alias", () => {
+  let reads = 0;
+  const references = Array.from({ length: 2000 }, (_, i) => ({
+    name: "href",
+    localName: "href",
+    namespaceURI: null,
+    get before() {
+      reads++;
+      return `#a${i}`;
+    },
+    after: `#m${i}`,
+  }));
+  const css = ["^=", "$=", "~=", "|="]
+    .flatMap((operator) =>
+      Array.from({ length: 200 }, (_, i) => `[href${operator}"none${i}"] { fill: red; }`),
+    )
+    .join("\n");
+
+  expect(rewriteSvgIdReferencesInCss(css, new Map(), references)).toBe(css);
+  expect(reads).toBeLessThan(10 * references.length);
+});
+
+// fails without the fix: a *= predicate that matched nothing scanned every alias uncharged.
+it("charges a substring predicate's scan to the budget, so it stops many non-matching ones", () => {
+  const references = Array.from({ length: 2000 }, (_, i) => ({
+    name: "href",
+    localName: "href",
+    namespaceURI: null,
+    before: `#a${i}`,
+    after: `#m${i}`,
+  }));
+  const css = Array.from({ length: 500 }, (_, i) => `[href*="none${i}"] { fill: red; }`).join("\n");
+  const limit = 1024 * 1024;
+  let charged = 0;
+  const charge = (bytes: number) => {
+    charged += bytes;
+    if (charged > limit) throw new Error("over budget");
+  };
+
+  expect(() => rewriteSvgIdReferencesInCss(css, new Map(), references, charge)).toThrow(
+    "over budget",
+  );
+});
+
+it("gives each attribute operator the same alternatives as matching every alias in turn", () => {
+  const befores = ["#a", "#a-b", "#ab", "#A", "x #a y", "#b", "#a", "url(#a)", "#A-B"];
+  const references = befores.map((before, i) => ({
+    name: "href",
+    localName: "href",
+    namespaceURI: null,
+    before,
+    after: `#m${i}`,
+  }));
+  const matchers: Record<string, (before: string, value: string) => boolean> = {
+    "=": (before, value) => before === value,
+    "~=": (before, value) => before.split(/[ \t\r\n\f]+/).includes(value),
+    "|=": (before, value) => before === value || before.startsWith(`${value}-`),
+    "^=": (before, value) => before.startsWith(value),
+    "$=": (before, value) => before.endsWith(value),
+    "*=": (before, value) => before.includes(value),
+  };
+  for (const [operator, matches] of Object.entries(matchers))
+    for (const value of ["#a", "#A", "a", "#a-", "b", ")", "#"])
+      for (const flag of ["", " i"]) {
+        const fold = (text: string) => (flag ? text.toLowerCase() : text);
+        const predicate = `[href${operator}"${value}"${flag}]`;
+        const alternatives = [
+          ...new Set(
+            references
+              .filter(({ before }) => matches(fold(before), fold(value)))
+              .map(({ after }) => `[href="${after}"${flag}]`),
+          ),
+        ];
+        const expected = alternatives.length
+          ? `:is(${[predicate, ...alternatives].join(", ")})`
+          : predicate;
+
+        expect(
+          rewriteSvgIdReferencesInCss(`${predicate} { fill: red; }`, new Map(), references),
+          predicate,
+        ).toBe(`${expected} { fill: red; }`);
+      }
+});

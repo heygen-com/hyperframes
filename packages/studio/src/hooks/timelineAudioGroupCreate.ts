@@ -181,10 +181,17 @@ async function patchSealedGroup(
     elements.map((element) => findOpaqueTimelineElement(iframe, element, lookup)),
   );
   const handles = found.flatMap((element) => (element ? [element.handle] : []));
-  const assigned = await previewRequest(iframe, "assign-audio-group", {
+  const reply = await previewRequest(iframe, "assign-audio-group", {
     members: handles.map((handle) => ({ handle, group: groupId })),
     element: { id: groupId, label: groupLabel ?? null, present: true },
   });
+  const previous: unknown = reply?.previous;
+  const assigned =
+    Array.isArray(previous) &&
+    previous.length === handles.length &&
+    typeof reply?.changed === "boolean"
+      ? { previous, changed: reply.changed }
+      : null;
   return async () => {
     if (!assigned) return;
     await previewRequest(iframe, "assign-audio-group", {

@@ -2,7 +2,7 @@
 // null removing one. The reply carries what each name held before, so a failed save can put it back.
 import { EDITING_ELEMENT_HANDLE, type EditingElementHandle } from "../editingElement";
 import { elementForHandle } from "../editingHandles";
-import { isStylableElement } from "../domRealm";
+import { isStylableElement, type StylableElement } from "../domRealm";
 
 export type ElementEditEntry = [name: string, value: string | null];
 export type StyleEditEntry = [name: string, value: string | null, priority?: "important"];
@@ -10,11 +10,13 @@ export type EditElementParams = {
   handle: EditingElementHandle;
   styles: StyleEditEntry[];
   attributes: ElementEditEntry[];
+  html?: string;
 };
 export type EditElementResult = {
   applied: boolean;
   styles: StyleEditEntry[];
   attributes: ElementEditEntry[];
+  html?: string;
 };
 
 export const MAX_EDIT_ENTRIES = 64;
@@ -25,6 +27,34 @@ const PANEL_ATTRIBUTES = new Set(["loop", "muted", "alt", "title", "src"]);
 const MEDIA_TAGS = new Set(["img", "video", "audio"]);
 
 const isAttributeName = (name: string) => DATA_ATTRIBUTE.test(name) || PANEL_ATTRIBUTES.has(name);
+const TEXT_TAGS = new Set([
+  "span",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "u",
+  "s",
+  "br",
+  "sub",
+  "sup",
+  "small",
+]);
+const TEXT_ATTRIBUTES = new Set(["class", "id", "style", "title", "lang", "dir"]);
+
+/** Markup a text field writes: text in inline text tags, no URL, no handler. */
+export function isTextMarkup(html: string): boolean {
+  if (html.length > MAX_EDIT_VALUE) return false;
+  const holder = document.createElement("template");
+  holder.innerHTML = html;
+  return Array.from(holder.content.querySelectorAll("*")).every(
+    (el) =>
+      TEXT_TAGS.has(el.localName) &&
+      el
+        .getAttributeNames()
+        .every((name) => TEXT_ATTRIBUTES.has(name) || DATA_ATTRIBUTE.test(name)),
+  );
+}
 const isValue = (value: unknown) =>
   value === null || (typeof value === "string" && value.length <= MAX_EDIT_VALUE);
 
@@ -47,40 +77,61 @@ const attributeEntry = ([name, value, ...rest]: unknown[]) =>
 export function parseEditElement(params: unknown): EditElementParams | null {
   if (Object.prototype.toString.call(params) !== "[object Object]") return null;
   const record = params as Record<string, unknown>;
-  if (Object.keys(record).sort().join() !== "attributes,handle,styles") return null;
-  const { handle } = record;
+  const keys = Object.keys(record).sort().join();
+  if (keys !== "attributes,handle,styles" && keys !== "attributes,handle,html,styles") return null;
+  const { handle, html } = record;
   if (typeof handle !== "string" || !EDITING_ELEMENT_HANDLE.test(handle)) return null;
+  if (html !== undefined && (typeof html !== "string" || html.length > MAX_EDIT_VALUE)) return null;
   const styles = entries<StyleEditEntry>(record.styles, styleEntry);
   const attributes = entries<ElementEditEntry>(record.attributes, attributeEntry);
-  return styles && attributes ? { handle, styles, attributes } : null;
+  if (!styles || !attributes) return null;
+  return html === undefined ? { handle, styles, attributes } : { handle, styles, attributes, html };
 }
 
 const NOT_APPLIED: EditElementResult = { applied: false, styles: [], attributes: [] };
 
-/** Draws nothing it could not put back: a `src` off media, or a value too long to send back. */
-export function editElement({ handle, styles, attributes }: EditElementParams): EditElementResult {
-  const element = elementForHandle(handle);
-  if (!isStylableElement(element)) return NOT_APPLIED;
+function refused(element: StylableElement, attributes: ElementEditEntry[], html?: string) {
+  if (attributes.some(([name]) => name === "src") && !MEDIA_TAGS.has(element.localName))
+    return true;
+  return html !== undefined && !(isTextMarkup(element.innerHTML) && isTextMarkup(html));
+}
+
+function valuesBefore(
+  element: StylableElement,
+  { styles, attributes, html }: EditElementParams,
+): EditElementResult {
   const style = element.style;
-  const media = MEDIA_TAGS.has(element.localName);
-  if (attributes.some(([name]) => name === "src") && !media) return NOT_APPLIED;
-  const before: EditElementResult = {
+  return {
     applied: true,
     styles: styles.map(([name]): StyleEditEntry => {
       const value = style.getPropertyValue(name) || null;
       return style.getPropertyPriority(name) ? [name, value, "important"] : [name, value];
     }),
     attributes: attributes.map(([name]): ElementEditEntry => [name, element.getAttribute(name)]),
+    ...(html !== undefined && { html: element.innerHTML }),
   };
-  if (![...before.styles, ...before.attributes].every(([, value]) => isValue(value)))
-    return NOT_APPLIED;
+}
+
+function draw(element: StylableElement, { styles, attributes, html }: EditElementParams) {
   for (const [name, value, priority] of styles) {
-    if (value === null) style.removeProperty(name);
-    else style.setProperty(name, value, priority ?? "");
+    if (value === null) element.style.removeProperty(name);
+    else element.style.setProperty(name, value, priority ?? "");
   }
   for (const [name, value] of attributes) {
     if (value === null) element.removeAttribute(name);
     else element.setAttribute(name, value);
   }
+  if (html !== undefined) element.innerHTML = html;
+}
+
+/** Draws nothing it could not put back: `src` off media, a too-long value, or non-text markup. */
+export function editElement(params: EditElementParams): EditElementResult {
+  const element = elementForHandle(params.handle);
+  if (!isStylableElement(element) || refused(element, params.attributes, params.html))
+    return NOT_APPLIED;
+  const before = valuesBefore(element, params);
+  if (![...before.styles, ...before.attributes].every(([, value]) => isValue(value)))
+    return NOT_APPLIED;
+  draw(element, params);
   return before;
 }

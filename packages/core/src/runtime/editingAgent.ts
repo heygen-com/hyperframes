@@ -44,6 +44,7 @@ import { gsapSet } from "./editing/gsapSet";
 import { patchTweens } from "./editing/patchTween";
 import { softReload } from "./editing/softReload";
 import { holdScenes, markScenesStale, swapScenes } from "./editing/scenes";
+import { liveRetime } from "./editing/liveRetime";
 import { previewAssetsUnloaded } from "../lottieReadiness";
 import {
   getLogicalOpacity,
@@ -64,6 +65,7 @@ import { audioMeter } from "./editing/audioMeter";
 import { documentMarkup } from "./editing/documentMarkup";
 import { setAudioGroupAttribute } from "./editing/setAudioGroupAttribute";
 import { editElement } from "./editing/editElement";
+import { endTextEdit, textEdit } from "./editing/textEdit";
 
 type Handlers = {
   [K in EditingRequestKind]: (
@@ -233,7 +235,9 @@ const HANDLERS: Handlers = {
   "hold-scenes": holdScenes,
   "mark-scenes-stale": markScenesStale,
   "swap-scenes": swapScenes,
+  "live-retime": liveRetime,
   "assets-unloaded": () => ({ unloaded: previewAssetsUnloaded(document, window.__hfLottie) }),
+  "text-edit": (params, port) => textEdit(params, port, EDITING_PROTOCOL_VERSION),
 };
 
 function serve(port: MessagePort): void {
@@ -314,6 +318,7 @@ export function installEditingAgent(parent: Window = window.parent): { dispose: 
       keyWatches.clear();
       listenForKeys(false);
       stopWatchingGeometry();
+      endTextEdit();
     },
   };
 }

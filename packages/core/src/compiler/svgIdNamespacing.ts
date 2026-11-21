@@ -573,7 +573,14 @@ export function rewriteSvgIdReferencesInCss(
   root.walkRules((rule) => {
     const selectors = rule.selectors;
     const rewritten = selectors.map((selector) =>
-      rewriteSvgSelectors(selector, idsNamedBy(selector), references, undefined, chargeSelector),
+      rewriteSvgSelectors(
+        selector,
+        idsNamedBy(selector),
+        references,
+        undefined,
+        chargeSelector,
+        charge,
+      ),
     );
     if (rewritten.some((selector, index) => selector !== selectors[index])) {
       rule.selectors = rewritten;
@@ -597,7 +604,7 @@ export function rewriteSvgIdReferencesInCss(
   });
 
   const rewritten = mutated ? root.toResult({ map: false }).css : css;
-  // Selector growth was charged as it was built; settle to the sheet's real growth.
+  // Selector growth was charged as it was built; settle to the sheet's real growth. A scan's charge stays.
   const settle = Math.max(0, rewritten.length - css.length) - charged;
   if (charge && settle !== 0) charge(settle);
   return rewritten;

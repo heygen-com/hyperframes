@@ -90,6 +90,8 @@ function run() {
   const outPath = resolve(args.out);
   mkdirSync(dirname(outPath), { recursive: true });
   const tmpDir = mkdtempSync(join(tmpdir(), "media-use-cut-"));
+  // The encode lands in a new private folder beside --out, so nothing already next to it is written through.
+  let outDir = null;
   const keptSeconds = sumDurations(segments);
   const totalSeconds = probeDuration(inputPath);
 
@@ -122,9 +124,10 @@ function run() {
       listPath,
       parts.map((part) => `file '${escapeConcatPath(part)}'`).join("\n") + "\n",
     );
-    // Encode to a sibling temp (same extension so ffmpeg picks the right muxer),
+    // Encode to a temp beside --out (same extension so ffmpeg picks the right muxer),
     // then atomic-rename so a SIGKILL mid-encode can't leave a truncated outPath.
-    const tmpOut = `${outPath}.part${extname(outPath) || ".mp4"}`;
+    outDir = mkdtempSync(join(dirname(outPath), ".media-use-cut-"));
+    const tmpOut = join(outDir, `out${extname(outPath) || ".mp4"}`);
     // --copy already produced final-codec segments, so concat can stream-copy.
     // Otherwise the PCM intermediates are encoded here, once, for the whole file.
     const concatCodecs = args.copy
@@ -142,6 +145,7 @@ function run() {
     renameSync(tmpOut, outPath);
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
+    if (outDir) rmSync(outDir, { recursive: true, force: true });
   }
 
   // Stream copy can only cut on keyframes; on sparse-keyframe footage the snap

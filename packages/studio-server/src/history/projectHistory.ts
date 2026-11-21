@@ -45,6 +45,7 @@ import {
   sameFolder,
   projectHistoryId,
   readId,
+  statOffThread,
   recordProject,
   type FolderIdentity,
 } from "./historyId.js";
@@ -1584,9 +1585,9 @@ export class HistoryRefusedError extends Error {
 
 /** Opens a project's history: every write to its files becomes an entry that can be undone or restored. */
 export async function openProjectHistory(options: ProjectHistoryOptions): Promise<ProjectHistory> {
-  if (!existsSync(options.projectDir))
+  if (!(await statOffThread(options.projectDir)))
     throw new HistoryClosedError(`${options.projectDir} is gone or now another project.`);
-  const projectId = projectHistoryId(options.projectDir, options.historyRoot);
+  const projectId = await projectHistoryId(options.projectDir, options.historyRoot);
   const release = await takeHistoryOwnership(
     join(options.historyRoot, projectId),
     options.ownerWaitMs ?? 5000,

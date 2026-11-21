@@ -19,7 +19,10 @@ import { announcePreviewRestoredInPlace, markScenesStale } from "../player/scene
 import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
 import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
 import { STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR } from "../components/editor/manualEditsTypes";
-import { countStudioPreviewChange, studioGestureDraws } from "../components/editor/manualEditsDom";
+import {
+  countStudioPreviewChange,
+  studioGestureDraws,
+} from "../components/editor/manualEditGesture";
 
 type PreviewWindow = Window & {
   __player?: { seek?: (t: number) => void };
@@ -297,8 +300,15 @@ function finalizeInPlace(
   iframe: HTMLIFrameElement,
   win: PreviewWindow,
   currentTime: number,
+  changed: boolean,
 ): boolean {
-  if (applySoftReloadFinalization(iframe, currentTime)) return true;
+  const finalized =
+    applySoftReloadFinalization(iframe, currentTime) || seekAndReapply(win, currentTime);
+  if (finalized && changed) announcePreviewRestoredInPlace(iframe);
+  return finalized;
+}
+
+function seekAndReapply(win: PreviewWindow, currentTime: number): boolean {
   try {
     win.__player?.seek?.(currentTime);
     win.__hfStudioManualEditsApply?.();
@@ -328,9 +338,9 @@ export function showRestoreInPlace(
   const putBack = (time: number) => {
     if (iframe.contentDocument !== doc) return false;
     for (const [live, attributes, shown] of before) syncElementAttributes(live, attributes, shown);
-    return finalizeInPlace(iframe, win, time);
+    return finalizeInPlace(iframe, win, time, before.length > 0);
   };
-  if (finalizeInPlace(iframe, win, currentTime)) return putBack;
+  if (finalizeInPlace(iframe, win, currentTime, before.length > 0)) return putBack;
   putBack(currentTime);
   return null;
 }
@@ -530,11 +540,12 @@ export function applyUndoRestoreToPreview(
       reloadPreview();
       return "full";
     }
+    announcePreviewRestoredInPlace(iframe);
     return "soft";
   }
   // Script unchanged or absent — the live timelines are still valid; only the
   // synced attributes need to take effect.
-  if (finalizeInPlace(iframe, win, currentTime)) return "soft";
+  if (finalizeInPlace(iframe, win, currentTime, plan.targets.length > 0)) return "soft";
   reloadPreview();
   return "full";
 }
