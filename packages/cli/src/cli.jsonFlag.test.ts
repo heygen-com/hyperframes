@@ -22,6 +22,21 @@ const studioBuilt = () =>
     formatWorkspaceBuildProblems: () => "",
   }));
 
+// Each load of the entry point adds its own listeners; drop the ones a row added.
+function keepListeners(): () => void {
+  const watched = [
+    ...["exit", "uncaughtException", "unhandledRejection"].map((event) => [process, event]),
+    [process.stdout, "error"],
+    [process.stderr, "error"],
+  ] as Array<[NodeJS.EventEmitter, string]>;
+  const before = watched.map(([emitter, event]) => emitter.listeners(event));
+  return () =>
+    watched.forEach(([emitter, event], i) => {
+      for (const added of emitter.listeners(event))
+        if (!before[i]!.includes(added)) emitter.removeListener(event, added as () => void);
+    });
+}
+
 afterEach(async () => {
   process.argv = [...originalArgv];
   process.exitCode = originalExitCode;
@@ -53,10 +68,15 @@ const WITHOUT_JSON = names(`
   figma component, figma tokens, init, play, present, publish, templates
 `);
 
+// Command words that take subcommands, run on their own. REFUSED answer `json_unsupported`.
+const REFUSED_PARENTS = names("auth, cloud, figma, media-use, skills");
+const OTHER_PARENTS = names("history, measure, reverse, timeline");
+
 interface Leaf {
   path: string[];
   json: boolean;
   required: string[];
+  parent?: true;
 }
 
 const load = async (entry: unknown): Promise<CommandDef> =>
@@ -68,7 +88,8 @@ async function leaves(command: CommandDef, path: string[] = []): Promise<Leaf[]>
     const nested = Object.entries(subs).map(async ([name, entry]) =>
       leaves(await load(entry), [...path, name]),
     );
-    return (await Promise.all(nested)).flat();
+    const own: Leaf[] = path.length ? [{ path, json: false, required: [], parent: true }] : [];
+    return [...own, ...(await Promise.all(nested)).flat()];
   }
   const args = Object.entries((command.args ?? {}) as ArgsDef);
   // Enough words for citty's own required-argument check to pass.
@@ -90,8 +111,10 @@ async function commandTree(): Promise<Leaf[]> {
   mockTelemetry();
   studioBuilt();
   process.argv = ["node", "cli.ts", "info"];
+  const restoreListeners = keepListeners();
   await import("./cli.js");
   await vi.dynamicImportSettled();
+  restoreListeners();
   vi.doUnmock("citty");
   vi.resetModules();
   return leaves(root!);
@@ -100,12 +123,20 @@ async function commandTree(): Promise<Leaf[]> {
 // A leaf's own work is replaced by one line; its flag checks stay real.
 function stubLeafRuns(command: CommandDef): CommandDef {
   const subs = command.subCommands as Record<string, unknown> | undefined;
-  if (!subs) return { ...command, run: ({ args }) => console.log(`ran json=${args.json}`) };
+  const run: CommandDef["run"] = ({ args }) => console.log(`ran json=${args.json}`);
+  if (!subs) return { ...command, run };
   const stubbed = Object.entries(subs).map(([name, entry]) => [
     name,
     async () => stubLeafRuns(await load(entry)),
   ]);
-  return { ...command, subCommands: Object.fromEntries(stubbed) };
+  // citty also calls a parent's handler after its subcommand; the stand-in speaks only when run bare.
+  const bare: CommandDef["run"] = (context) =>
+    context.rawArgs.some((arg) => arg in subs) ? undefined : run(context);
+  return {
+    ...command,
+    ...(command.run ? { run: bare } : {}),
+    subCommands: Object.fromEntries(stubbed),
+  };
 }
 
 async function run(args: string[]): Promise<{ stdout: string; exit: unknown }> {
@@ -129,8 +160,10 @@ async function run(args: string[]): Promise<{ stdout: string; exit: unknown }> {
   vi.spyOn(console, "error").mockImplementation(() => {});
   process.exitCode = undefined;
   process.argv = ["node", "cli.ts", ...args];
+  const restoreListeners = keepListeners();
   await import("./cli.js");
   await vi.dynamicImportSettled();
+  restoreListeners();
   const exit = process.exitCode ?? 0;
   vi.restoreAllMocks();
   vi.resetModules();
@@ -206,7 +239,7 @@ describe("--json ahead of the command word", () => {
     const tree = await commandTree();
     const named = (json: boolean) =>
       tree
-        .filter((leaf) => leaf.json === json)
+        .filter((leaf) => !leaf.parent && leaf.json === json)
         .map((leaf) => leaf.path.join(" "))
         .sort();
     expect({ with: named(true), without: named(false) }).toEqual({
@@ -214,11 +247,18 @@ describe("--json ahead of the command word", () => {
       without: WITHOUT_JSON,
     });
 
+    const parents = tree.filter((leaf) => leaf.parent).map((leaf) => leaf.path.join(" "));
+    expect(parents.sort()).toEqual([...REFUSED_PARENTS, ...OTHER_PARENTS].sort());
+
     const wrong: unknown[] = [];
     for (const leaf of tree) {
       const words = [...leaf.path, ...leaf.required];
       const first = await run(["--json", ...words]);
       const after = await run([...words, "--json"]);
+      if (leaf.parent && !REFUSED_PARENTS.includes(leaf.path.join(" "))) {
+        if (JSON.stringify(first) !== JSON.stringify(after)) wrong.push({ words, first, after });
+        continue;
+      }
       const expected = leaf.json
         ? { stdout: "ran json=true\n", exit: 0 }
         : {
