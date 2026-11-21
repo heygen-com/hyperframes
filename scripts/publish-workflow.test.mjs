@@ -1058,6 +1058,58 @@ test("npm publishes only what the check read: name, version and every file", () 
   );
 });
 
+test("a rerun passes the check for a version already on npm only when the contents are the same", () => {
+  const step = stepOf(publish, "Check what npm will publish");
+  const name = "@hyperframes/core";
+  const version = "1.2.3-alpha.1";
+  const run = (viewResult) => {
+    const temp = mkdtempSync(join(tmpdir(), "hyperframes-npm-rerun-"));
+    try {
+      const bin = join(temp, "bin");
+      mkdirSync(bin);
+      const log = join(temp, "npm.log");
+      writeFileSync(log, "");
+      // Like npm 11: a dry run of a version the registry has is refused, and prints no reading of the tarball.
+      writeFileSync(
+        join(bin, "npm"),
+        `#!/bin/sh\necho "npm $*" >> "${log}"\nif [ "$1" = view ]; then [ -n "$VIEW_RESULT" ] || exit 1; echo "$VIEW_RESULT"; exit 0; fi\necho '{"error":{"summary":"You cannot publish over the previously published versions: ${version}."}}'\nexit 1\n`,
+      );
+      chmodSync(join(bin, "npm"), 0o755);
+      packTarball(temp, "core.tgz", { name, version });
+      writeFileSync(join(temp, "publish-order.tsv"), `${name}\t${join(temp, "core.tgz")}\n`);
+      const integrity = `sha512-${createHash("sha512")
+        .update(readFileSync(join(temp, "core.tgz")))
+        .digest("base64")}`;
+      const result = runStep(step, {
+        cwd: temp,
+        path: `${bin}:${process.env.PATH}`,
+        env: {
+          VERSION: version,
+          DIST_TAG: "alpha",
+          VIEW_RESULT: viewResult === "same" ? integrity : viewResult,
+        },
+      });
+      return { ...result, calls: readFileSync(log, "utf8") };
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+  };
+  // fails without the fix: the dry run of an already published version failed every rerun before the publish step.
+  const identical = run("same");
+  assert.equal(identical.status, 0, identical.stdout + identical.stderr);
+  assert.match(identical.stdout, /already on npm with these contents/);
+  assert.doesNotMatch(identical.calls, /npm publish/);
+  const other = run("sha512-other");
+  assert.equal(other.status, 1);
+  assert.match(other.stdout, /already on npm with other contents than core\.tgz/);
+  assert.doesNotMatch(other.calls, /npm publish/);
+  // Nothing on npm, or npm did not answer: the dry run still decides.
+  const unanswered = run("");
+  assert.equal(unanswered.status, 1);
+  assert.match(unanswered.stdout, /npm cannot read core\.tgz/);
+  assert.match(unanswered.calls, /npm publish .*--dry-run/);
+});
+
 const stepIndex = (job, name) => {
   const index = job.steps.findIndex((step) => step.name === name);
   assert.ok(index >= 0, `missing step ${name}`);
