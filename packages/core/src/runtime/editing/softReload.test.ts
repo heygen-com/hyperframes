@@ -220,6 +220,19 @@ describe("a re-run that waits for the MotionPath plugin", () => {
     };
   }
 
+  it("starts a fresh plugin load for the next re-run after one failed", async () => {
+    page();
+    const motion = params({ script: run("main", "older", true) });
+    const first = softReload(motion);
+    plugin().onerror!(new Event("error"));
+    expect(await first).toEqual({ result: "cannot-soft-reload" });
+    const second = softReload(motion);
+    expect(document.head.querySelectorAll("script[src]")).toHaveLength(2);
+    win.MotionPathPlugin = {};
+    document.head.querySelectorAll<HTMLScriptElement>("script[src]")[1]!.onload!(new Event("load"));
+    expect(await second).toEqual({ result: "applied" });
+  });
+
   // fails without the fix: rows "scrub,ok", "same,ok", "same,fail", "other,ok", "other,fail" and "attr,ok".
   it.each<[string, Step[], Partial<Outcome>]>([
     ["ok", ["ok"], { answer: "applied", main: "older", left: "1px", at: 2 }],
