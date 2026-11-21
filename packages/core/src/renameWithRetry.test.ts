@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -44,8 +44,9 @@ describe("renameWithRetry", () => {
     expect(missing.calls()).toBe(1);
   });
 
-  it("gives up at once on win32 when the target is a folder that already exists, which no wait clears", async () => {
+  it("gives up at once on win32 when the target is a folder with files in it, which no wait clears", async () => {
     const folder = mkdtempSync(join(tmpdir(), "hf-rename-onto-folder-"));
+    writeFileSync(join(folder, "frame_00001.jpg"), "winner");
     try {
       const rename = failing("EPERM", 99);
       expect(() => renameWithRetry("a", folder, { platform: "win32", rename: rename.fn })).toThrow(
@@ -61,6 +62,40 @@ describe("renameWithRetry", () => {
       rmSync(folder, { recursive: true, force: true });
     }
   });
+
+  it("still waits on win32 for an empty folder target, which may be a removed folder still held open", () => {
+    const folder = mkdtempSync(join(tmpdir(), "hf-rename-onto-empty-"));
+    try {
+      const rename = failing("EPERM", 2);
+      renameWithRetry("a", folder, { platform: "win32", rename: rename.fn });
+      expect(rename.calls()).toBe(3);
+    } finally {
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "keeps waiting and keeps the rename's own error when the target cannot be looked at",
+    () => {
+      const parent = mkdtempSync(join(tmpdir(), "hf-rename-unreadable-"));
+      const folder = join(parent, "entry");
+      mkdirSync(folder);
+      writeFileSync(join(folder, "frame_00001.jpg"), "winner");
+      chmodSync(parent, 0);
+      try {
+        const rename = failing("EPERM", 2);
+        renameWithRetry("a", folder, { platform: "win32", rename: rename.fn });
+        expect(rename.calls()).toBe(3);
+        const always = failing("EPERM", 99);
+        expect(() =>
+          renameWithRetry("a", folder, { platform: "win32", rename: always.fn }),
+        ).toThrow(/EPERM: rename/);
+      } finally {
+        chmodSync(parent, 0o700);
+        rmSync(parent, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("async twin retries EPERM on win32", async () => {
     const rename = failing("EPERM", 2);
