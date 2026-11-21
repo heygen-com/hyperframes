@@ -24,6 +24,7 @@ import { readRegistryManifest } from "../registry/remote.js";
 import { loadProjectConfig, DEFAULT_PROJECT_CONFIG } from "../utils/projectConfig.js";
 import { relative, resolve } from "node:path";
 import { CliUsageError, finishCommand } from "../utils/commandResult.js";
+import { printFailureLine } from "../utils/jsonError.js";
 import { isUnattended } from "../utils/attendedTerminal.js";
 import { runAdd } from "./add.js";
 import { hasNoSearchableTokens, searchByWords } from "../registry/localSearch.js";
@@ -239,7 +240,7 @@ export default defineCommand({
     // Asked for the whole manifest on purpose: its item list defines coverage,
     // and its artifact revision is the one owner of vector freshness.
     const manifest = await readRegistryManifest(config.registry).catch((error: unknown) => {
-      console.error(terminalText(error instanceof Error ? error.message : String(error)));
+      printFailureLine((show) => show(error instanceof Error ? error.message : String(error)));
       return finishCommand(1);
     });
     const entries = manifest.items;
@@ -359,7 +360,9 @@ export default defineCommand({
           args.tag ? `tag "${args.tag}"` : null,
         ].filter(Boolean);
         if (unsearchable) {
-          console.error(c.error(`No searchable words in query "${terminalText(String(query))}".`));
+          printFailureLine((show) =>
+            c.error(`No searchable words in query "${show(String(query))}".`),
+          );
           console.error("");
           console.error(
             c.warn(

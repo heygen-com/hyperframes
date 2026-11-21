@@ -197,7 +197,7 @@ export default defineCommand({
       } else {
         spin?.stop(c.error(`Speech synthesis failed: ${terminalLines(message)}`));
       }
-      failCommand();
+      failCommand(1, err);
     }
   },
 });
