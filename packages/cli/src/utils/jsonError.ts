@@ -24,12 +24,7 @@ export function jsonFailure(code: string, message: string, hint?: string): JsonF
   return { ok: false, error: hint ? { code, message, hint } : { code, message } };
 }
 
-/**
- * Reports a caught failure as the --json envelope or one stderr line; exit 2 if usage, else 1.
- * The message can quote project text (a file name, an attribute value), so the stderr line shows
- * control characters as text such as \\x1b. To reproduce: `compare` on a project whose
- * data-composition-src holds an ESC byte and is mounted past the mount limit.
- */
+/** Reports a caught failure as the --json envelope or one stderr line; exit 2 if usage, else 1. */
 export function failCaught(
   error: unknown,
   json: boolean,
