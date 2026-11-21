@@ -12,20 +12,13 @@ import {
   sealedRerun,
   timelineKeys,
 } from "./gsapSoftReload";
-import {
-  SAVED_STATE_DEADLINE_MS,
-  confirmPreviewRerun,
-  takePreviewTicket,
-  ticketLoadLive,
-  type PreviewWrite,
-} from "./sealedPreviewLedger";
+import { restoredSnapshot, sendSealedRestore, type SealedRestore } from "./sealedRestoreSend";
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
 import { STUDIO_EDIT_ATTRS } from "../components/editor/manualEditsSeekReapply";
 import { announcePreviewRestoredInPlace, markScenesStale } from "../player/sceneSwap";
-import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
-import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
+import { previewFrameOpaque } from "../player/lib/previewChannel";
 import { STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR } from "../components/editor/manualEditsTypes";
 import {
   countStudioPreviewChange,
@@ -378,8 +371,6 @@ function repaintWhileReloading(win: PreviewWindow, doc: Document, restored?: str
   );
 }
 
-type SealedRestore = Omit<EditingParams<"restore-attributes">, "time">;
-
 const restoredAttributes = (el: Element): [string, string][] =>
   el.getAttributeNames().map((name) => [name, el.getAttribute(name) ?? ""]);
 
@@ -467,48 +458,6 @@ function applySealedRestore(
   }
   reloadPreview();
   return "full";
-}
-
-/** The restored file as a complete snapshot, when the restore re-runs its script. */
-function restoredSnapshot(
-  { rerun }: SealedRestore,
-  active: RestoreFiles[string] | undefined,
-  version: number | undefined,
-): PreviewWrite | null {
-  if (!rerun || !active) return null;
-  const { restored: authoredHtml, previous: previousHtml } = active;
-  return { scriptText: rerun.script, authoredHtml, previousHtml, version };
-}
-
-function sendSealedRestore(
-  iframe: HTMLIFrameElement,
-  {
-    sent: restore,
-    snapshot,
-    version,
-  }: { sent: SealedRestore; snapshot: PreviewWrite | null; version?: number },
-  currentTime: number,
-  reloadPreview: () => void,
-  onShownInPlace?: () => void,
-): void {
-  const scriptText = restore.rerun?.script ?? "";
-  const ticket = takePreviewTicket(iframe, {
-    scriptText,
-    snapshot,
-    attributes: true,
-    timing: false,
-    version,
-  });
-  const params = { ...restore, time: currentTime };
-  void previewRequest(iframe, "restore-attributes", params, SAVED_STATE_DEADLINE_MS).then(
-    (reply) => {
-      if (!ticketLoadLive(ticket)) return;
-      // Refused: its attributes are not on screen, and a newer re-run does not set them.
-      if (!reply?.applied) return reloadPreview();
-      if (reply.reran === true) confirmPreviewRerun(ticket);
-      onShownInPlace?.();
-    },
-  );
 }
 
 /**

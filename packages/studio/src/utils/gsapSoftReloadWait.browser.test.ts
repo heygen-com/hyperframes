@@ -179,7 +179,13 @@ const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown
       w.__drag = (w.__drag ?? 140) + 10;
       w.gsap.set(document.getElementById("target")!, { x: w.__drag });
     }),
-  two: (p) => void rerun(p.page, timeline("other", "newer", 200, true), 3),
+  // A second run that waits too: it counts only once the frame holds both swaps.
+  two: async (p) => {
+    void rerun(p.page, timeline("other", "newer", 200, true), 3);
+    await p.frame.waitForFunction(
+      () => ((window as unknown as { __hfSwapsWaiting?: number }).__hfSwapsWaiting ?? 0) >= 2,
+    );
+  },
   patch: async (p, sealed) => {
     const patched = await p.page.evaluate(async (isSealed) => {
       const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
