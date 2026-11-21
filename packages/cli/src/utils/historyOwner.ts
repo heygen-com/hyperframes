@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { accessSync, constants } from "node:fs";
 import { join, resolve } from "node:path";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import {
   DEFAULT_HISTORY_ROOT,
   HistoryBusyError,
@@ -223,7 +224,7 @@ async function relistWrites(projectDir: string, entry: HistoryEntry | null): Pro
   if (!entry?.files.length) return;
   const { relistHistoryWrites } = await import("./receivedRecordFollow.js");
   await relistHistoryWrites(projectDir, entry).catch((error: unknown) =>
-    console.warn(`Could not update the received-files record: ${String(error)}`),
+    console.warn(`Could not update the received-files record: ${terminalText(String(error))}`),
   );
 }
 
@@ -373,7 +374,7 @@ export async function withReader<T>(
     if (ran || !(error instanceof HistoryBusyError || unwritable)) throw error;
     if (unwritable)
       console.error(
-        `[hyperframes] Could not write this project's history (${(error as Error).message}); showing it as last recorded.`,
+        `[hyperframes] Could not write this project's history (${terminalText((error as Error).message)}); showing it as last recorded.`,
       );
   }
   // Opening failed, so the task has not run; an open turn's marker is left as it is.

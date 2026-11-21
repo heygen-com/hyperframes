@@ -1,5 +1,6 @@
 import { existsSync, statSync } from "node:fs";
 import type { Context, Hono } from "hono";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { requestSubPath } from "@hyperframes/studio-server";
 import { resolveWritableWithinProject } from "@hyperframes/studio-server/safe-path";
 import {
@@ -24,7 +25,9 @@ const listAt = (value: unknown, key: string): unknown[] =>
   isObject(value) && Array.isArray(value[key]) ? value[key] : [];
 
 const warn = (error: unknown) =>
-  console.warn(`[studio] Could not update the received-files record: ${String(error)}`);
+  console.warn(
+    `[studio] Could not update the received-files record: ${terminalText(String(error))}`,
+  );
 
 const busy = (c: Context) =>
   c.json(

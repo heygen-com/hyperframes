@@ -713,8 +713,7 @@ async function executeCli(): Promise<void> {
       if (!typed || !error.result.presented) {
         const message = error instanceof Error ? error.message : String(error);
         const oneLine = error instanceof CliUsageError || isCittyUsageError(error);
-        const shown = oneLine ? terminalText : terminalLines;
-        console.error(shown(message));
+        console.error(oneLine ? terminalText(message) : terminalLines(message));
       }
       if (usage && error.hint) console.error(terminalText(error.hint));
     }

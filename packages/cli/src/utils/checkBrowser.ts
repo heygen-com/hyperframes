@@ -46,6 +46,7 @@ import { resolveAutoProxy } from "./projectConfig.js";
 import { findStageProxyBox } from "./compositionViewport.js";
 import { mediaUsedSeconds } from "./mediaUsedSeconds.js";
 import type { PreviewProxyBox } from "@hyperframes/core";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
 import {
   STUDIO_PREVIEW_CAPTURE_MODE,
@@ -261,7 +262,7 @@ export async function preResolveHostileMediaProxies(
     codecMap = await scanProjectMediaCodecMap(projectDir, [{ html }]);
   } catch (err) {
     console.error(
-      `[hyperframes] media proxy pre-resolve: scan failed (${normalizeErrorMessage(err)})`,
+      `[hyperframes] media proxy pre-resolve: scan failed (${terminalText(normalizeErrorMessage(err))})`,
     );
     return none;
   }
