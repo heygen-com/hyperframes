@@ -3,9 +3,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AGENT_PROBE_MS,
+  PREVIEW_REJECTED,
+  previewAnswer,
   previewClipManifest,
   previewEditingClient,
   previewFrameOpaque,
+  previewRequest,
   previewSeekPainted,
   setFrameLoopStart,
 } from "./previewChannel";
@@ -128,6 +131,23 @@ describe("previewEditingClient", () => {
     const again = Date.now();
     await previewSeekPainted(iframe, 15_000);
     expect(Date.now() - again).toBeLessThan(100);
+  });
+
+  it("keeps a frame's error answer apart from no answer; previewRequest answers null for both", async () => {
+    const frame: Record<string, unknown> = {};
+    const iframe = detachedFakeIframe(frame);
+    const answerWithError = (port: MessagePort) =>
+      queueMicrotask(() => {
+        port.onmessage = (event: MessageEvent<{ id: number; kind: string }>) => {
+          if (event.data.kind === "runtime-snapshot") return;
+          const error = { code: "invalid-params", message: "timing value too long" };
+          port.postMessage({ v: 1, id: event.data.id, ok: false, error });
+        };
+      });
+    closers.push(serveEditingRequests(frame, () => null, answerWithError));
+    expect(await previewAnswer(iframe, "wait-for-seek", {})).toBe(PREVIEW_REJECTED);
+    expect(await previewRequest(iframe, "wait-for-seek", {})).toBeNull();
+    expect(await previewAnswer(iframe, "runtime-snapshot", {}, 50)).toBeNull();
   });
 
   it("returns the runtime's manifest only when its reply has the manifest's shape", async () => {

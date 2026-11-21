@@ -9,8 +9,16 @@ import {
   findGsapScriptElements,
   readNestedFiles,
   repaintDroppedTweenStyle,
+  sealedRerun,
   timelineKeys,
 } from "./gsapSoftReload";
+import {
+  SAVED_STATE_DEADLINE_MS,
+  confirmPreviewRerun,
+  takePreviewTicket,
+  ticketLoadLive,
+  type PreviewWrite,
+} from "./sealedPreviewLedger";
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
@@ -409,7 +417,17 @@ function sealedRestore(activeDocPath: string, files: RestoreFiles): SealedRestor
   return restore;
 }
 
-/** Sends the restore to a sealed preview; a refusal, or no answer, reloads it. */
+function withRerun(
+  restore: SealedRestore,
+  active: UndoRestoreFile | undefined,
+  script: string | null,
+): SealedRestore {
+  if (!restore.scripted || !active || !script) return restore;
+  const files = { authoredHtml: active.restored, previousHtml: active.previous };
+  return { ...restore, rerun: sealedRerun(script, files) };
+}
+
+/** Sends the restore to a sealed preview, with the script re-run an element GSAP parsed needs; a refusal reloads. */
 function applySealedRestore(
   iframe: HTMLIFrameElement,
   activeDocPath: string,
@@ -434,24 +452,47 @@ function applySealedRestore(
       });
     if (rerun === "applied") return "soft";
   } else if (restore?.scopes.length) {
-    sendSealedRestore(iframe, restore, currentTime, reloadPreview, onShownInPlace);
+    const sent = withRerun(restore, active, script);
+    const snapshot = restoredSnapshot(sent, active);
+    sendSealedRestore(iframe, sent, snapshot, currentTime, reloadPreview, onShownInPlace);
     return "soft";
   }
   reloadPreview();
   return "full";
 }
 
+/** The restored file as a complete snapshot, when the restore re-runs its script. */
+function restoredSnapshot(
+  { rerun }: SealedRestore,
+  active: RestoreFiles[string] | undefined,
+): PreviewWrite | null {
+  if (!rerun || !active) return null;
+  return { scriptText: rerun.script, authoredHtml: active.restored, previousHtml: active.previous };
+}
+
 function sendSealedRestore(
   iframe: HTMLIFrameElement,
   restore: SealedRestore,
+  snapshot: PreviewWrite | null,
   currentTime: number,
   reloadPreview: () => void,
   onShownInPlace?: () => void,
 ): void {
-  void previewRequest(iframe, "restore-attributes", { ...restore, time: currentTime }).then(
+  const scriptText = restore.rerun?.script ?? "";
+  const ticket = takePreviewTicket(iframe, {
+    scriptText,
+    snapshot,
+    attributes: true,
+    timing: false,
+  });
+  const params = { ...restore, time: currentTime };
+  void previewRequest(iframe, "restore-attributes", params, SAVED_STATE_DEADLINE_MS).then(
     (reply) => {
-      if (!reply?.applied) reloadPreview();
-      else onShownInPlace?.();
+      if (!ticketLoadLive(ticket)) return;
+      // Refused: its attributes are not on screen, and a newer re-run does not set them.
+      if (!reply?.applied) return reloadPreview();
+      if (reply.reran === true) confirmPreviewRerun(ticket);
+      onShownInPlace?.();
     },
   );
 }
