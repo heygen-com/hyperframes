@@ -54,10 +54,9 @@ import {
   mkdirSync,
   rmSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { createStagingDir } from "@hyperframes/core/atomic-file";
+import { createStagingDir, replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { sumOf } from "../measure/media.js";
 import { resolve, join, relative, isAbsolute, basename, posix } from "node:path";
 import {
@@ -2166,7 +2165,7 @@ export default defineCommand({
               }
 
               const descPath = join(snapshotDir, "descriptions.md");
-              writeFileSync(descPath, descriptions.join("\n"));
+              replaceFileAtomically(descPath, descriptions.join("\n"));
               describedPath = descPath;
               log(`   ${c.dim("descriptions.md")} (Gemini frame analysis)`);
             }
