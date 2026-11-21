@@ -1,9 +1,9 @@
-// A first open whose read of one file never answers; an agent step goes ahead and rewrites it, then the process dies.
-import { writeFileSync } from "node:fs";
+// One file's first read never answers; a step rewrites or deletes it, then the process dies (mode "open": mid-step).
+import { unlinkSync, writeFileSync } from "node:fs";
 import fsp from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 
-const [projectDir, historyRoot, stuck] = process.argv.slice(2);
+const [projectDir, historyRoot, stuck, mode = "close"] = process.argv.slice(2);
 const realOpen = fsp.open;
 fsp.open = (async (...args: Parameters<typeof realOpen>) => {
   if (String(args[0]) === stuck) await new Promise(() => {});
@@ -19,7 +19,8 @@ const history = await openProjectHistory({
   now: () => Date.now() + 60_000,
 });
 const step = await history.beginWindow({ kind: "agent", name: "Framey" }, "Step");
-writeFileSync(stuck!, "// agent\n");
+if (mode === "delete") unlinkSync(stuck!);
+else writeFileSync(stuck!, "// agent\n");
 history.noteChange(stuck!);
-await step.close();
+if (mode !== "open") await step.close();
 process.kill(process.pid, "SIGKILL");

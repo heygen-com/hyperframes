@@ -202,7 +202,12 @@ describe("a file still being written when the history first opens", () => {
     changing.set("media.txt", 4);
     const history = await openProjectHistory({ projectDir, historyRoot });
     cleanup.push(() => history.close());
-    expect(await history.claim(you, "Edited", ["media.txt"])).toBeNull();
+    const edit = await history.claim(you, "Edited", ["media.txt"]);
     expect(history.peek(START)).not.toHaveProperty("media.txt");
+    // The claim goes ahead of the copy, so its entry refuses an undo until the copy is saved.
+    await expect(history.undo(edit!.id, { who: you })).rejects.toThrow(
+      "The project's starting copy is still being saved",
+    );
+    expect(readFileSync(join(projectDir, "media.txt"), "utf-8")).toBe("recorded");
   });
 });

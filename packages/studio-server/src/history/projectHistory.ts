@@ -238,7 +238,7 @@ type Copied =
   | { hash: string; referenced?: true; release?: () => void; readAfterStep?: true }
   | "gone"
   | "changing";
-type Provenance = "no-step" | "unchanged" | "read-before" | "unknown";
+type Provenance = "no-step" | "read-before" | "unknown";
 
 const FIRST_COPY_FILE_MS = 10_000;
 
@@ -545,6 +545,8 @@ class Engine {
   adopting = new Map<string, Adoption>();
   wentAhead = new Set<string>();
   wentAheadBeforeReopen = new Set<string>();
+  /** A went-ahead file's known original, until a sweep reads the file: the same bytes clear every step's list. */
+  verdictDue = new Map<string, string>();
   reading = new Map<string, Promise<unknown>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
@@ -701,10 +703,11 @@ class Engine {
       this.tracked.set(path, { hash, stat: cached?.hash === hash ? cached.stat : "" });
     }
     const left = this.readAdopting();
-    this.markListedBeforeReopen(left);
+    const files = await this.historyFiles();
+    this.markWentAheadBeforeReopen(left, new Set(files.map((file) => file.path)));
     const unadopted = (file: { path: string }) =>
       left.has(file.path) && !this.tracked.has(file.path);
-    this.adoptMediaInBackground((await this.historyFiles()).filter(unadopted), this.now());
+    this.adoptMediaInBackground(files.filter(unadopted), this.now());
     // What changed while the project was closed is one outside entry, or the closed window's.
     this.reopenClosedWindow();
     await this.settleAll();
@@ -835,25 +838,37 @@ class Engine {
     await Promise.all([...this.adopting.values()].map((adoption) => adoption.stepMayBegin));
   }
 
-  markListedBeforeReopen(adopting: Set<string>): void {
-    const listed = this.log.entries.flatMap((entry) => entry.wentAheadOf ?? []);
-    const pending = listed.filter((path) => adopting.has(path));
-    this.markWentAhead(pending);
-    for (const path of pending) this.wentAheadBeforeReopen.add(path);
+  /** Files a step went ahead of before the last close, still owed their first copy or gone since. */
+  markWentAheadBeforeReopen(adopting: Set<string>, present: Set<string>): void {
+    for (const path of this.readJson<string[]>("went-ahead.json", [])) {
+      if (!adopting.has(path)) continue;
+      this.tracked.delete(path);
+      if (!present.has(path)) {
+        if (!this.log.baseline.has(path)) this.startUnseen(path, hashNoVersionHas());
+        continue;
+      }
+      this.markWentAhead([path]);
+      this.wentAheadBeforeReopen.add(path);
+    }
+    this.saveWentAhead();
   }
 
   markWentAhead(paths: string[], group?: Group): boolean {
-    for (const path of paths) this.wentAhead.add(path);
+    const fresh = paths.filter((path) => !this.wentAhead.has(path));
+    for (const path of fresh) this.wentAhead.add(path);
+    if (fresh.length) this.saveWentAhead();
     if (group && paths.length)
       group.wentAheadOf = new Set([...(group.wentAheadOf ?? []), ...paths]);
     return paths.length > 0;
   }
 
-  async provenanceOf(copied: Copied, file: ListedFile): Promise<Provenance> {
-    if (!this.wentAhead.has(file.path)) return "no-step";
-    if (typeof copied !== "object") return "unknown";
-    const thisOpen = !this.wentAheadBeforeReopen.has(file.path);
-    if (thisOpen && (await this.unchangedSinceListed(file))) return "unchanged";
+  saveWentAhead(): void {
+    this.saveList("went-ahead.json", this.wentAhead);
+  }
+
+  provenanceOf(copied: Copied, path: string): Provenance {
+    if (!this.wentAhead.has(path)) return "no-step";
+    if (typeof copied !== "object" || this.wentAheadBeforeReopen.has(path)) return "unknown";
     return copied.readAfterStep ? "unknown" : "read-before";
   }
 
@@ -866,19 +881,10 @@ class Engine {
       const rest = entry.wentAheadOf.filter((named) => named !== path);
       if (rest.length) entry.wentAheadOf = rest;
       else delete entry.wentAheadOf;
+      entry.files = entry.files.filter((file) => file.path !== path || file.before !== file.after);
       rewrite = true;
     }
     return rewrite;
-  }
-
-  async unchangedSinceListed(file: ListedFile): Promise<boolean> {
-    try {
-      const { size, mtimeMs, ctimeMs } = await stat(join(this.dir, file.path));
-      const seen = this.statKey({ path: file.path, size, mtimeMs, ctimeMs }, this.now());
-      return seen !== "" && seen === statOf(file);
-    } catch {
-      return false;
-    }
   }
 
   adoptMediaInBackground(
@@ -891,7 +897,6 @@ class Engine {
     let stalledAhead = Promise.resolve(false);
     for (const file of files) {
       const late = lateFirstCopies.get(file.path);
-      this.statKey(file, sweptAt);
       const adoption = this.adopt(file, sweptAt, turn, late);
       const landed = adoption.firstTry.then(() => false);
       const stepMayBegin = late
@@ -904,10 +909,15 @@ class Engine {
   }
 
   saveAdopting(): void {
-    const file = join(this.home, "adopting.json");
-    if (!this.adopting.size) return rmSync(file, { force: true });
+    this.saveList("adopting.json", this.adopting.keys());
+  }
+
+  saveList(name: string, paths: Iterable<string>): void {
+    const file = join(this.home, name);
+    const list = [...paths];
+    if (!list.length) return rmSync(file, { force: true });
     mkdirSync(this.home, { recursive: true });
-    replaceFileAtomically(file, JSON.stringify([...this.adopting.keys()]), 0o644);
+    replaceFileAtomically(file, JSON.stringify(list), 0o644);
   }
 
   /** A file still changing stays named until a whole copy of it lands; the next open retries it. */
@@ -964,13 +974,14 @@ class Engine {
       const fromOpen = typeof first === "object";
       const read = () => this.storeIfPresent(file.path, true);
       const copied = fromOpen ? first : await (owedFromOpen ? inFirstCopySlot(read) : read());
-      const provenance = await this.provenanceOf(copied, file);
+      const provenance = this.provenanceOf(copied, file.path);
       const record = this.queue(async () => {
         // Still named for the next open until recorded, so a failed record is never logged as added.
         if ((await this.recordAdopted(file, sweptAt, copied, provenance)) === "changing")
           return "changing";
         this.adopting.delete(file.path);
         this.wentAhead.delete(file.path);
+        this.saveWentAhead();
         this.saveAdopting();
         // The sweeps since open passed this file by: one more takes in any edit since the bytes were read.
         if (fromOpen) this.sweepIn(0);
@@ -997,25 +1008,26 @@ class Engine {
     // Bytes gone from the store are read again on the next try, outside the history queue.
     if (!first.referenced && !this.blobs.has(first.hash)) return "changing";
     const start = this.adoptedStart(file.path, first.hash, provenance);
-    if (provenance === "no-step" || provenance === "unchanged")
-      this.startSeen(file, sweptAt, start, first.hash, provenance);
+    if (provenance === "no-step") this.startSeen(file, sweptAt, start, first.hash);
     else this.startUnseen(file.path, start);
+    if (provenance === "read-before") this.verdictDue.set(file.path, start);
     return first;
   }
 
-  startSeen(
-    file: ListedFile,
-    sweptAt: number,
-    start: string,
-    hash: string,
-    provenance: Provenance,
-  ) {
+  startSeen(file: ListedFile, sweptAt: number, start: string, hash: string) {
     this.tracked.set(file.path, { hash, stat: this.statKey(file, sweptAt) });
     this.log.baseline.set(file.path, start);
     if (start !== hash) addChange(this.outsideGroup(), file.path, start, hash);
-    const rewrite = provenance === "unchanged" && this.seenUnchanged(file.path);
-    this.persistLog(rewrite ? undefined : baselineRecord(this.log));
+    this.persistLog(baselineRecord(this.log));
     this.saveStatCache();
+  }
+
+  /** The first read after a went-ahead file's copy landed: its original bytes still there clear every list. */
+  judge(path: string, hash: string | null): void {
+    const original = this.verdictDue.get(path);
+    if (original === undefined) return;
+    this.verdictDue.delete(path);
+    if (hash === original && this.seenUnchanged(path)) this.persistLog();
   }
 
   /** A file a step went ahead of starts here; its next sweep takes in whatever stands there now. */
@@ -1047,12 +1059,14 @@ class Engine {
   }
 
   readAdopting(): Set<string> {
+    return new Set(this.readJson<string[]>("adopting.json", []));
+  }
+
+  readJson<T>(name: string, missing: T): T {
     try {
-      return new Set(
-        JSON.parse(readFileSync(join(this.home, "adopting.json"), "utf-8")) as string[],
-      );
+      return JSON.parse(readFileSync(join(this.home, name), "utf-8")) as T;
     } catch {
-      return new Set();
+      return missing;
     }
   }
 
@@ -1135,6 +1149,7 @@ class Engine {
       }
       const known = this.tracked.get(path)!;
       this.tracked.delete(path);
+      this.judge(path, null);
       this.forgetWritesBefore(path, null, heard.get(path));
       await this.record(path, known.hash, null, when);
       changed = true;
@@ -1182,6 +1197,7 @@ class Engine {
     if (typeof copied === "string" || this.whereFolder() !== "here") return false;
     const { hash } = copied;
     this.tracked.set(path, { hash, stat });
+    this.judge(path, hash);
     this.forgetWritesBefore(path, hash, heard);
     if (known.hash !== hash) await this.record(path, known.hash, hash, when);
     return known.hash !== hash || known.stat !== stat;
@@ -1212,6 +1228,7 @@ class Engine {
     await this.sweep(new Set(paths.map((path) => this.logPath(path))));
     const taken = await this.takeClaimed(who, paths, overwrote);
     this.markWentAhead(pending);
+    if (!taken.length && pending.length) return this.claimUnseen(who, label, pending);
     if (!taken.length) return this.claimNothing(coalesceKey);
     const held = this.heldFor(coalesceKey, taken);
     if (!held) await this.commitClaim();
@@ -1232,6 +1249,16 @@ class Engine {
       if (group.changes.has(normalized.file)) unique.set(targetKey(normalized), normalized);
     }
     group.targets = [...unique.values()];
+  }
+
+  /** A claim on files whose first copy is pending only: its entry holds them, so its undo refuses. */
+  async claimUnseen(who: HistoryWho, label: string, pending: string[]): Promise<{ id: string }> {
+    await this.commitClaim();
+    await this.commitPending();
+    const group = this.newGroup(who, label);
+    this.markWentAhead(pending, group);
+    const entry = await this.commit(group);
+    return { id: entry!.id };
   }
 
   /** A claim that took nothing still ends a held claim under another key. */
@@ -1339,6 +1366,7 @@ class Engine {
    * so the writer's next write to a cut file would otherwise span the claimer's edit. */
   async commitCut(window: Group, paths: readonly string[]): Promise<void> {
     const part = { ...this.newGroup(window.who, window.label), startedAt: window.startedAt };
+    if (window.wentAheadOf) part.wentAheadOf = new Set(window.wentAheadOf);
     for (const path of paths) {
       part.changes.set(path, window.changes.get(path)!);
       window.changes.delete(path);
@@ -1399,8 +1427,13 @@ class Engine {
     if (group) await this.commit(group);
   }
 
-  becomesEntry(group: Group, extra: Partial<HistoryEntry>): boolean {
-    return group.changes.size > 0 || Boolean(group.wentAheadOf?.size) || this.keepsEmpty(extra);
+  /** A change no version can bring back, for each file the step could not see: older apps refuse its undo too. */
+  holdUnseen(group: Group): void {
+    for (const path of group.wentAheadOf ?? []) {
+      if (group.changes.has(path)) continue;
+      const unseen = hashNoVersionHas();
+      group.changes.set(path, { path, before: unseen, after: unseen });
+    }
   }
 
   keepsEmpty(extra: Partial<HistoryEntry>): boolean {
@@ -1411,7 +1444,8 @@ class Engine {
   }
 
   async commit(group: Group, extra: Partial<HistoryEntry> = {}): Promise<HistoryEntry | null> {
-    if (!this.becomesEntry(group, extra)) return null;
+    this.holdUnseen(group);
+    if (!group.changes.size && !this.keepsEmpty(extra)) return null;
     const pending = this.pendingEntry(group);
     const endedAt = Math.max(pending.endedAt, this.log.entries.at(-1)?.endedAt ?? 0);
     const entry = keepTargetsOfItsFiles({ ...pending, endedAt, ...extra });

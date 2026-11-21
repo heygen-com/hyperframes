@@ -18,7 +18,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("node:fs/promises", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
-  return { ...actual, writeFile: vi.fn(actual.writeFile), open: vi.fn(actual.open) };
+  return {
+    ...actual,
+    writeFile: vi.fn(actual.writeFile),
+    open: vi.fn(actual.open),
+    stat: vi.fn(actual.stat),
+  };
 });
 
 import * as fsp from "node:fs/promises";
@@ -27,8 +32,11 @@ import { readLog, START, type HistoryWho } from "./historyLog.js";
 import { blobPath } from "./blobStore.js";
 import { openProjectHistory, type ProjectHistory } from "./projectHistory.js";
 
-const { writeFile: realWriteFile, open: realOpen } =
-  await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+const {
+  writeFile: realWriteFile,
+  open: realOpen,
+  stat: realStat,
+} = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
 const sha256 = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
 const agent: HistoryWho = { kind: "agent", name: "Framey" };
 const you: HistoryWho = { kind: "person", name: "You" };
@@ -40,6 +48,7 @@ const closes: (() => Promise<void>)[] = [];
 afterEach(async () => {
   vi.mocked(fsp.writeFile).mockImplementation(realWriteFile);
   vi.mocked(fsp.open).mockImplementation(realOpen);
+  vi.mocked(fsp.stat).mockImplementation(realStat);
   for (const close of closes.splice(0)) await close();
   for (const dir of temps.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
@@ -88,17 +97,22 @@ function stallRead(path: string): () => void {
 }
 
 /** The first filing of `bytes` into the blob store waits until released; the read before it is not held. */
-function holdFiling(bytes: Buffer): () => void {
+function holdFiling(bytes: Buffer): { release: () => void; reached: Promise<void> } {
   const releases: (() => void)[] = [];
+  let reach = () => {};
+  const reached = new Promise<void>((held) => (reach = held));
   vi.mocked(fsp.writeFile).mockImplementation(async (...args: Parameters<typeof realWriteFile>) => {
     const [to, written] = args;
-    if (!releases.length && String(to).includes("incoming-") && bytes.equals(written as Buffer))
-      await new Promise<void>((answer) => releases.push(answer));
+    if (!releases.length && String(to).includes("incoming-") && bytes.equals(written as Buffer)) {
+      const wait = new Promise<void>((answer) => releases.push(answer));
+      reach();
+      await wait;
+    }
     return realWriteFile(...args);
   });
   const release = () => releases.forEach((answer) => answer());
   closes.push(async () => release());
-  return release;
+  return { release, reached };
 }
 
 async function open(opts: Parameters<typeof openProjectHistory>[0]) {
@@ -134,10 +148,31 @@ describe("an agent step that began while a file's first copy was pending", () =>
       writeFileSync(file("parts/p1.js"), "// agent\n");
       writeFileSync(file("index.html"), "<html>agent</html>");
     }, [file("parts/p1.js"), file("index.html")]);
+    const cursor = history.next("back", agent)?.id;
+    const listed = history.list().length;
     await expect(history.undo(entry.id, { who: agent })).rejects.toThrow(STILL_SAVING);
+    await expect(history.step("back", agent)).rejects.toThrow(STILL_SAVING);
     await expect(history.restore(START, agent)).rejects.toThrow(STILL_SAVING);
     await expect(history.restore(entry.id, agent)).rejects.toThrow(STILL_SAVING);
+    expect(history.next("back", agent)?.id).toBe(cursor);
+    expect(history.list()).toHaveLength(listed);
     expect(read("index.html")).toBe("<html>agent</html>");
+    expect(read("parts/p1.js")).toBe("// agent\n");
+  });
+
+  it("stops Cmd+Z at a step whose only write was the pending file", async () => {
+    const { file, read, opts } = project();
+    stallRead(file("parts/p1.js"));
+    const history = await open(opts);
+    await step(history, () => writeFileSync(file("index.html"), "<html>first</html>"), [
+      file("index.html"),
+    ]);
+    const entry = await step(history, () => writeFileSync(file("parts/p1.js"), "// agent\n"), [
+      file("parts/p1.js"),
+    ]);
+    expect(history.next("back", agent)?.id).toBe(entry.id);
+    await expect(history.step("back", agent)).rejects.toThrow(STILL_SAVING);
+    expect(read("index.html")).toBe("<html>first</html>");
     expect(read("parts/p1.js")).toBe("// agent\n");
   });
 
@@ -161,27 +196,49 @@ describe("an agent step that began while a file's first copy was pending", () =>
     expect(read("parts/p1.js")).toBe("// agent\n");
   });
 
-  it("undoes as usual once the copy lands showing the file unchanged", async () => {
-    const { file, read, historyRoot, opts, later } = project();
-    const release = stallRead(file("parts/p1.js"));
+  it("undoes as usual once the copy lands and the file still holds its original bytes", async () => {
+    const { file, read, historyRoot, opts } = project();
+    const { release } = holdFiling(Buffer.from("// before\n"));
     const history = await open(opts);
     const entry = await step(
       history,
       () => writeFileSync(file("index.html"), "<html>agent</html>"),
       [file("index.html")],
     );
-    later();
     release();
     await landed(historyRoot);
     expect(history.peek(START)!["parts/p1.js"]).toBe(sha256("// before\n"));
-    expect(await history.undo(entry.id, { who: agent })).toMatchObject({ ok: true });
+    await vi.waitFor(async () => {
+      expect(await history.undo(entry.id, { who: agent })).toMatchObject({ ok: true });
+    });
     expect(read("index.html")).toBe("<html>before</html>");
     expect(read("parts/p1.js")).toBe("// before\n");
   });
 
+  it("refuses its undo when the step rewrote the file in the same time step, size and times unchanged", async () => {
+    const { file, read, historyRoot, opts, later } = project();
+    const { release } = holdFiling(Buffer.from("// before\n"));
+    const listed = await realStat(file("parts/p1.js"));
+    const history = await open(opts);
+    const entry = await step(history, () => {
+      writeFileSync(file("parts/p1.js"), "// BEFORE\n");
+      writeFileSync(file("index.html"), "<html>agent</html>");
+    }, [file("parts/p1.js"), file("index.html")]);
+    // A drive with coarse times reports the rewrite with the stat it listed at the open.
+    vi.mocked(fsp.stat).mockImplementation(async (...args: Parameters<typeof realStat>) =>
+      String(args[0]) === file("parts/p1.js") ? listed : realStat(...args),
+    );
+    later();
+    release();
+    await landed(historyRoot);
+    await expect(history.undo(entry.id, { who: agent })).rejects.toThrow(NOT_KEPT);
+    expect(read("index.html")).toBe("<html>agent</html>");
+    expect(read("parts/p1.js")).toBe("// BEFORE\n");
+  });
+
   it("keeps an original read before the step, though filing it waited until after", async () => {
     const { file, read, historyRoot, opts } = project();
-    const release = holdFiling(Buffer.from("// before\n"));
+    const { release } = holdFiling(Buffer.from("// before\n"));
     const history = await open(opts);
     const entry = await step(history, () => {
       writeFileSync(file("parts/p1.js"), "// agent\n");
@@ -227,6 +284,55 @@ describe("an agent step that began while a file's first copy was pending", () =>
     expect(read("index.html")).toBe("<html>agent</html>");
   });
 
+  it("keeps the refusal when the file changes while its copy is being filed", async () => {
+    const { file, read, historyRoot, opts, later } = project();
+    const release = stallRead(file("parts/p1.js"));
+    const filing = holdFiling(Buffer.from("// before\n"));
+    const history = await open(opts);
+    const entry = await step(
+      history,
+      () => writeFileSync(file("index.html"), "<html>agent</html>"),
+      [file("index.html")],
+    );
+    later();
+    release();
+    await filing.reached;
+    writeFileSync(file("parts/p1.js"), "// while filed\n");
+    filing.release();
+    await landed(historyRoot);
+    await expect(history.undo(entry.id, { who: agent })).rejects.toThrow(NOT_KEPT);
+    expect(read("index.html")).toBe("<html>agent</html>");
+    expect(read("parts/p1.js")).toBe("// while filed\n");
+  });
+
+  it("refuses the whole undo in a history read by an app that ignores the list", async () => {
+    const { file, read, historyRoot, opts } = project();
+    const release = stallRead(file("parts/p1.js"));
+    let history = await open(opts);
+    const entry = await step(history, () => {
+      writeFileSync(file("parts/p1.js"), "// agent\n");
+      writeFileSync(file("index.html"), "<html>agent</html>");
+    }, [file("parts/p1.js"), file("index.html")]);
+    release();
+    await landed(historyRoot);
+    await history.close();
+    const logFile = join(homeIn(historyRoot), "log.jsonl");
+    const lines = readFileSync(logFile, "utf8").split("\n").filter(Boolean);
+    const older = lines.map((line) => {
+      const record = JSON.parse(line);
+      if (record.type === "entry") delete record.entry.wentAheadOf;
+      return JSON.stringify(record);
+    });
+    writeFileSync(logFile, `${older.join("\n")}\n`);
+    history = await open(opts);
+    for (const mode of [undefined, "back-to-before"] as const) {
+      const result = await history.undo(entry.id, { who: agent, mode }).catch((error) => error);
+      expect(result).not.toMatchObject({ ok: true });
+    }
+    expect(read("index.html")).toBe("<html>agent</html>");
+    expect(read("parts/p1.js")).toBe("// agent\n");
+  });
+
   it("refuses its whole undo when the step deleted the pending file", async () => {
     const { file, read, historyRoot, opts } = project();
     const release = stallRead(file("parts/p1.js"));
@@ -251,11 +357,14 @@ describe("an agent step that began while a file's first copy was pending", () =>
       writeFileSync(file("parts/p1.js"), "// agent\n");
       writeFileSync(file("index.html"), "<html>agent</html>");
     }, [file("parts/p1.js"), file("index.html")]);
-    const second = await history.beginWindow(agent, "Look");
-    await second.close();
+    const look = await history.beginWindow(agent, "Look");
+    const second = (await look.close())!;
+    for (const id of [first.id, second.id])
+      await expect(history.undo(id, { who: agent })).rejects.toThrow(STILL_SAVING);
     release();
     await landed(historyRoot);
-    await expect(history.undo(first.id, { who: agent })).rejects.toThrow(NOT_KEPT);
+    for (const id of [first.id, second.id])
+      await expect(history.undo(id, { who: agent })).rejects.toThrow(NOT_KEPT);
     expect(read("index.html")).toBe("<html>agent</html>");
     expect(read("parts/p1.js")).toBe("// agent\n");
   });
@@ -279,14 +388,15 @@ describe("an agent step that began while a file's first copy was pending", () =>
     });
     const claimed = history.claim(you, "Edit", ["parts/p1.js"]);
     release();
-    await claimed;
+    expect(await claimed).toMatchObject({ id: expect.any(String) });
     await landed(historyRoot);
     await history.undo(entry.id, { who: agent }).catch(() => undefined);
     expect(read("parts/p1.js")).toBe("// person\n");
     expect(history.list().find((item) => item.id === entry.id)).toBeDefined();
     const log = readLog(join(homeIn(historyRoot), "log.jsonl"), () => {});
     const agentEntry = log!.entries.find((logged) => logged.id === entry.id)!;
-    expect(agentEntry.files.map((change) => change.path)).toEqual(["index.html"]);
+    const recorded = agentEntry.files.filter((change) => change.before !== change.after);
+    expect(recorded.map((change) => change.path)).toEqual(["index.html"]);
   });
 
   it("answers a Studio claim on the pending file within the deadline", async () => {
@@ -294,28 +404,66 @@ describe("an agent step that began while a file's first copy was pending", () =>
     stallRead(file("parts/p1.js"));
     const history = await open(opts);
     writeFileSync(file("parts/p1.js"), "// person\n");
-    const answered = history.claim(you, "Edit", ["parts/p1.js"]).then(() => "answered");
+    const answered = history.claim(you, "Edit", ["parts/p1.js"]);
     const waited = new Promise((late) => setTimeout(() => late("still waiting"), 3000));
-    expect(await Promise.race([answered, waited])).toBe("answered");
+    const claimed = await Promise.race([answered, waited]);
+    expect(claimed).toMatchObject({ id: expect.any(String) });
+    await expect(history.undo((claimed as { id: string }).id, { who: you })).rejects.toThrow(
+      STILL_SAVING,
+    );
     await expect(history.restore(START, agent)).rejects.toThrow(STILL_SAVING);
   });
 
-  it("keeps the start out of reach for a file whose copy lands after a restart", async () => {
-    const { dir, file, historyRoot } = project();
-    const died = await new Promise<NodeJS.Signals | number | null>((done) => {
-      const fixture = join(import.meta.dirname, "__fixtures__", "stepThenDie.ts");
-      fork(fixture, [dir, historyRoot, file("parts/p1.js")], {
-        execArgv: ["--import", "tsx"],
-      }).once("exit", (code, signal) => done(signal ?? code));
+  for (const [mode, written] of [
+    ["close", "// agent\n"],
+    ["open", "// agent\n"],
+    ["delete", null],
+  ] as const)
+    it(`keeps the start out of reach for a file its step went ahead of before a restart (${mode})`, async () => {
+      const { dir, file, read, historyRoot } = project();
+      const died = await new Promise<NodeJS.Signals | number | null>((done) => {
+        const fixture = join(import.meta.dirname, "__fixtures__", "stepThenDie.ts");
+        fork(fixture, [dir, historyRoot, file("parts/p1.js"), mode], {
+          execArgv: ["--import", "tsx"],
+        }).once("exit", (code, signal) => done(signal ?? code));
+      });
+      expect(died).toBe("SIGKILL");
+      const history = await open({ projectDir: dir, historyRoot });
+      await landed(historyRoot);
+      const start = history.peek(START)!["parts/p1.js"]!;
+      expect(start).toBeDefined();
+      expect(start).not.toBe(sha256("// agent\n"));
+      expect(() => blobPath(historyRoot, start)).not.toThrow();
+      await expect(history.restore(START, agent)).rejects.toThrow(NOT_KEPT);
+      expect(written === null ? existsSync(file("parts/p1.js")) : read("parts/p1.js")).toBe(
+        written ?? false,
+      );
+      const stepEntry = history.list().find((item) => item.label === "Step");
+      if (stepEntry)
+        await expect(history.undo(stepEntry.id, { who: agent })).rejects.toThrow(NOT_KEPT);
     });
-    expect(died).toBe("SIGKILL");
-    const history = await open({ projectDir: dir, historyRoot });
+
+  it("refuses the undo of every part a Studio claim splits from the step", async () => {
+    const { file, read, historyRoot, opts } = project();
+    const release = stallRead(file("parts/p1.js"));
+    const history = await open(opts);
+    const window = await history.beginWindow(agent, "Step");
+    writeFileSync(file("parts/p1.js"), "// agent\n");
+    writeFileSync(file("index.html"), "<html>agent</html>");
+    history.noteChange(file("parts/p1.js"));
+    history.noteChange(file("index.html"));
+    writeFileSync(file("notes.txt"), "person");
+    // A claim scans first, so the step's writes so far become their own part.
+    await history.claim(you, "Note", ["notes.txt"]);
+    writeFileSync(file("index.html"), "<html>agent 2</html>");
+    history.noteChange(file("index.html"));
+    await window.close();
+    release();
     await landed(historyRoot);
-    const start = history.peek(START)!["parts/p1.js"]!;
-    expect(start).not.toBe(sha256("// agent\n"));
-    expect(() => blobPath(historyRoot, start)).not.toThrow();
-    await expect(history.restore(START, agent)).rejects.toThrow(NOT_KEPT);
-    const [stepEntry] = history.list().filter((item) => item.label === "Step");
-    await expect(history.undo(stepEntry!.id, { who: agent })).rejects.toThrow(NOT_KEPT);
+    const parts = history.list().filter((item) => item.label === "Step");
+    expect(parts).toHaveLength(2);
+    for (const part of parts)
+      await expect(history.undo(part.id, { who: agent })).rejects.toThrow(NOT_KEPT);
+    expect(read("index.html")).toBe("<html>agent 2</html>");
   });
 });
