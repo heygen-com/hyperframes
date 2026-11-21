@@ -1,8 +1,10 @@
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveChromeExecutable } from "./e2e/chrome-executable.mjs";
 
 const SYSTEM = "/usr/bin/google-chrome";
-const DOWNLOADED = "/cache/chrome/linux-155.0.8059.39/chrome-linux64/chrome";
+// Joined as the finder joins it, so the path matches on a Windows runner too.
+const DOWNLOADED = join("/cache", "chrome", "linux-155.0.8059.39", "chrome-linux64", "chrome");
 const OLD = () => "Google Chrome 113.0.5672.63";
 
 describe("the Chrome Studio's browser test scripts launch", () => {
