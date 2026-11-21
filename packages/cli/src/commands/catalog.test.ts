@@ -767,6 +767,7 @@ describe("catalog meaning search, on a terminal", () => {
 
     expect(output).toContain("None of these do it?");
     expect(output).toContain("--tier words");
+    expect(output).toContain('--search-miss "count up"');
   });
 
   // fails without the fix: the command was printed with the query rewritten, so pasting it reported other text.
