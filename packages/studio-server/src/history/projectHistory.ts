@@ -223,6 +223,7 @@ interface Group {
   idleTimer?: NodeJS.Timeout;
   entry?: HistoryEntry | null;
   parts?: Set<string>;
+  wentAheadOf?: Set<string>;
 }
 
 /**
@@ -235,11 +236,11 @@ const statKey = (file: { size: number; mtimeMs: number; ctimeMs: number }, swept
     ? ""
     : `${file.size}:${file.mtimeMs}:${file.ctimeMs}`;
 
-type WentAhead = { since: "this-open" | "before-reopen"; step: string | null };
 type Copied =
-  | { hash: string; referenced?: true; release?: () => void; wentAhead?: WentAhead }
+  | { hash: string; referenced?: true; release?: () => void; readAfterStep?: true }
   | "gone"
   | "changing";
+type Provenance = "no-step" | "unchanged" | "read-before" | "unknown";
 
 const FIRST_COPY_FILE_MS = 10_000;
 
@@ -252,6 +253,11 @@ async function orAfter<T, L>(work: Promise<T>, ms: number, late: L): Promise<T |
     clearTimeout(timer);
   }
 }
+const startingCopySaving = () =>
+  new HistoryRefusedError(
+    "starting_copy_saving",
+    "The project's starting copy is still being saved; try again in a moment. Nothing was changed.",
+  );
 const hashNoVersionHas = () => createHash("sha256").update(randomUUID()).digest("hex");
 const ADOPT_RETRY_AT_MOST_MS = 30_000;
 
@@ -267,6 +273,8 @@ const FIRST_COPY_SLOTS_IN_PROCESS = 4;
 let firstCopiesRunning = 0;
 const firstCopiesWaiting: (() => void)[] = [];
 
+const firstCopyProgress = new Set<() => void>();
+
 async function inFirstCopySlot<T>(copy: () => Promise<T>): Promise<T> {
   if (firstCopiesRunning < FIRST_COPY_SLOTS_IN_PROCESS) firstCopiesRunning += 1;
   else await new Promise<void>((yours) => firstCopiesWaiting.push(yours));
@@ -276,7 +284,31 @@ async function inFirstCopySlot<T>(copy: () => Promise<T>): Promise<T> {
     const next = firstCopiesWaiting.shift();
     if (next) next();
     else firstCopiesRunning -= 1;
+    for (const restart of firstCopyProgress) restart();
   }
+}
+
+/** Owed `ms` after its read starts; while queued, `ms` after the last first copy that finished. */
+function firstCopyOrOwed(copy: () => Promise<Copied>, ms: number) {
+  let timer: NodeJS.Timeout | undefined;
+  let owe = () => {};
+  const owed = new Promise<"changing">((resolve) => (owe = () => resolve("changing")));
+  const restart = () => {
+    clearTimeout(timer);
+    timer = setTimeout(owe, ms);
+  };
+  firstCopyProgress.add(restart);
+  restart();
+  const work = inFirstCopySlot(() => {
+    firstCopyProgress.delete(restart);
+    restart();
+    return copy();
+  });
+  const result = Promise.race([work, owed]).finally(() => {
+    clearTimeout(timer);
+    firstCopyProgress.delete(restart);
+  });
+  return { work, result };
 }
 
 const MEDIA_LEDGER = ".media/manifest.jsonl";
@@ -508,7 +540,8 @@ class Engine {
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
   claimed: { group: Group; key: string; timer?: NodeJS.Timeout } | null = null;
   adopting = new Map<string, Adoption>();
-  stepWentAheadOf = new Map<string, WentAhead>();
+  wentAhead = new Set<string>();
+  wentAheadBeforeReopen = new Set<string>();
   reading = new Map<string, Promise<unknown>>();
   /** Per path and hash an API write left, the hash of the bytes it replaced, until walked or written past. */
   overwritten = new Map<string, Map<string, string>>();
@@ -639,8 +672,8 @@ class Engine {
       const cached = cache.get(path);
       this.tracked.set(path, { hash, stat: cached?.hash === hash ? cached.stat : "" });
     }
-    const left = new Set(this.readJson<string[]>("adopting.json", []));
-    this.markWentAheadBeforeReopen(left);
+    const left = this.readAdopting();
+    this.markListedBeforeReopen(left);
     const unadopted = (file: { path: string }) =>
       left.has(file.path) && !this.tracked.has(file.path);
     this.adoptMediaInBackground((await this.historyFiles()).filter(unadopted), this.now());
@@ -731,11 +764,9 @@ class Engine {
     const copied = files.filter((file) => file.size <= COPY_LATER_ABOVE_BYTES);
     const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
     const copies = copied.map((file) =>
-      inFirstCopySlot(() => this.storeIfPresent(file.path, true)),
+      firstCopyOrOwed(() => this.storeIfPresent(file.path, true), waitMs),
     );
-    const hashes = await Promise.allSettled(
-      copies.map((copy) => orAfter(copy, waitMs, "changing" as const)),
-    );
+    const hashes = await Promise.allSettled(copies.map((copy) => copy.result));
     const late = new Map<string, Promise<Copied>>();
     // Nothing names these copies until the log below is written, so one look at the end covers the whole copy.
     if (this.whereFolder() !== "here") throw this.replaced();
@@ -745,7 +776,7 @@ class Engine {
       if (result.status === "rejected") throw result.reason;
       if (result.value === "changing") {
         owed.push(file);
-        late.set(file.path, copies[i]!);
+        late.set(file.path, copies[i]!.work);
       } else if (result.value !== "gone") {
         this.tracked.set(file.path, { hash: result.value.hash, stat: statKey(file, sweptAt) });
         result.value.release?.();
@@ -766,26 +797,40 @@ class Engine {
     await Promise.all([...this.adopting.values()].map((adoption) => adoption.stepMayBegin));
   }
 
-  markWentAhead(step: string): void {
-    for (const path of this.adopting.keys())
-      this.stepWentAheadOf.set(path, {
-        since: "this-open",
-        ...this.stepWentAheadOf.get(path),
-        step,
-      });
-    if (this.adopting.size) this.saveAdopting();
+  markListedBeforeReopen(adopting: Set<string>): void {
+    const listed = this.log.entries.flatMap((entry) => entry.wentAheadOf ?? []);
+    const pending = listed.filter((path) => adopting.has(path));
+    this.markWentAhead(pending);
+    for (const path of pending) this.wentAheadBeforeReopen.add(path);
   }
 
-  markWentAheadBeforeReopen(adopting: Set<string>): void {
-    const steps = this.readJson<Record<string, string | null>>("went-ahead.json", {});
-    for (const [path, step] of Object.entries(steps))
-      if (adopting.has(path)) this.stepWentAheadOf.set(path, { since: "before-reopen", step });
+  markWentAhead(paths: string[], group?: Group): boolean {
+    for (const path of paths) this.wentAhead.add(path);
+    if (group && paths.length)
+      group.wentAheadOf = new Set([...(group.wentAheadOf ?? []), ...paths]);
+    return paths.length > 0;
   }
 
-  async readBeforeAnyStep(copied: { wentAhead?: WentAhead }, file: ListedFile, sweptAt: number) {
-    const { wentAhead } = copied;
-    if (!wentAhead) return true;
-    return wentAhead.since === "this-open" && this.unchangedSinceListed(file, sweptAt);
+  async provenanceOf(copied: Copied, file: ListedFile, sweptAt: number): Promise<Provenance> {
+    if (!this.wentAhead.has(file.path)) return "no-step";
+    if (typeof copied !== "object") return "unknown";
+    const thisOpen = !this.wentAheadBeforeReopen.has(file.path);
+    if (thisOpen && (await this.unchangedSinceListed(file, sweptAt))) return "unchanged";
+    return copied.readAfterStep ? "unknown" : "read-before";
+  }
+
+  seenUnchanged(path: string): boolean {
+    for (const group of this.windows) group.wentAheadOf?.delete(path);
+    this.claimed?.group.wentAheadOf?.delete(path);
+    let rewrite = false;
+    for (const entry of this.log.entries) {
+      if (!entry.wentAheadOf?.includes(path)) continue;
+      const rest = entry.wentAheadOf.filter((named) => named !== path);
+      if (rest.length) entry.wentAheadOf = rest;
+      else delete entry.wentAheadOf;
+      rewrite = true;
+    }
+    return rewrite;
   }
 
   async unchangedSinceListed(file: ListedFile, sweptAt: number): Promise<boolean> {
@@ -820,16 +865,10 @@ class Engine {
   }
 
   saveAdopting(): void {
-    this.saveJson("adopting.json", [...this.adopting.keys()], this.adopting.size);
-    const steps = [...this.stepWentAheadOf].map(([path, { step }]) => [path, step]);
-    this.saveJson("went-ahead.json", Object.fromEntries(steps), steps.length);
-  }
-
-  saveJson(name: string, value: unknown, entries: number): void {
-    const file = join(this.home, name);
-    if (!entries) return rmSync(file, { force: true });
+    const file = join(this.home, "adopting.json");
+    if (!this.adopting.size) return rmSync(file, { force: true });
     mkdirSync(this.home, { recursive: true });
-    replaceFileAtomically(file, JSON.stringify(value), 0o644);
+    replaceFileAtomically(file, JSON.stringify([...this.adopting.keys()]), 0o644);
   }
 
   /** A file still changing stays named until a whole copy of it lands; the next open retries it. */
@@ -886,14 +925,13 @@ class Engine {
       const fromOpen = typeof first === "object";
       const read = () => this.storeIfPresent(file.path, true);
       const copied = fromOpen ? first : await (owedFromOpen ? inFirstCopySlot(read) : read());
-      const trusted =
-        typeof copied !== "object" || (await this.readBeforeAnyStep(copied, file, sweptAt));
+      const provenance = await this.provenanceOf(copied, file, sweptAt);
       const record = this.queue(async () => {
         // Still named for the next open until recorded, so a failed record is never logged as added.
-        if ((await this.recordAdopted(file, sweptAt, copied, trusted)) === "changing")
+        if ((await this.recordAdopted(file, sweptAt, copied, provenance)) === "changing")
           return "changing";
         this.adopting.delete(file.path);
-        this.stepWentAheadOf.delete(file.path);
+        this.wentAhead.delete(file.path);
         this.saveAdopting();
         // The sweeps since open passed this file by: one more takes in any edit since the bytes were read.
         if (fromOpen) this.sweepIn(0);
@@ -910,45 +948,50 @@ class Engine {
     file: ListedFile,
     sweptAt: number,
     first: Copied,
-    trusted: boolean,
+    provenance: Provenance,
   ): Promise<Copied> {
-    if (typeof first === "string" || this.whereFolder() !== "here") return first;
+    if (first === "changing" || this.whereFolder() !== "here") return first;
+    if (first === "gone") {
+      if (provenance !== "no-step") this.startUnseen(file.path, hashNoVersionHas());
+      return first;
+    }
     // Bytes gone from the store are read again on the next try, outside the history queue.
     if (!first.referenced && !this.blobs.has(first.hash)) return "changing";
-    const copied = first;
-    const { hash } = copied;
-    const change = { path: file.path, before: null, after: hash };
-    const start = this.adoptedStart(change, trusted);
+    const start = this.adoptedStart(file.path, first.hash, provenance);
+    if (provenance === "no-step" || provenance === "unchanged")
+      this.startSeen(file, sweptAt, start, first.hash, provenance);
+    else this.startUnseen(file.path, start);
+    return first;
+  }
+
+  startSeen(
+    file: ListedFile,
+    sweptAt: number,
+    start: string,
+    hash: string,
+    provenance: Provenance,
+  ) {
     this.tracked.set(file.path, { hash, stat: statKey(file, sweptAt) });
     this.log.baseline.set(file.path, start);
-    this.persistStart(file.path, start, copied, trusted);
+    if (start !== hash) addChange(this.outsideGroup(), file.path, start, hash);
+    const rewrite = provenance === "unchanged" && this.seenUnchanged(file.path);
+    this.persistLog(rewrite ? undefined : baselineRecord(this.log));
     this.saveStatCache();
-    return copied;
   }
 
-  persistStart(
-    path: string,
-    start: string,
-    copied: { hash: string; wentAhead?: WentAhead },
-    trusted: boolean,
-  ) {
-    const step = trusted ? null : (copied.wentAhead?.step ?? null);
-    const intoEntry = start !== copied.hash && this.fileWithStep(step, path, start, copied.hash);
-    this.persistLog(intoEntry ? undefined : baselineRecord(this.log));
+  /** A file a step went ahead of starts here; its next sweep takes in whatever stands there now. */
+  startUnseen(path: string, start: string): void {
+    this.tracked.set(path, { hash: start, stat: "" });
+    this.log.baseline.set(path, start);
+    this.persistLog(baselineRecord(this.log));
+    this.saveStatCache();
+    this.sweepIn(0);
   }
 
-  fileWithStep(step: string | null, path: string, before: string, after: string): boolean {
-    const open = this.windows.find((window) => window.id === step);
-    const entry = this.log.entries.find((logged) => logged.id === step);
-    if (!open && entry) entry.files.push({ path, before, after });
-    else addChange(open ?? this.outsideGroup(), path, before, after);
-    return !open && entry !== undefined;
-  }
-
-  adoptedStart(change: HistoryFileChange & { after: string }, trusted: boolean): string {
-    const found = this.overwrittenBy(change, undefined, new Set());
+  adoptedStart(path: string, hash: string, provenance: Provenance): string {
+    const found = this.overwrittenBy({ path, before: null, after: hash }, undefined, new Set());
     if (found && this.blobs.has(found)) return found;
-    return trusted ? change.after : hashNoVersionHas();
+    return provenance === "unknown" ? hashNoVersionHas() : hash;
   }
 
   manifest(): Manifest {
@@ -964,11 +1007,13 @@ class Engine {
     }
   }
 
-  readJson<T>(name: string, missing: T): T {
+  readAdopting(): Set<string> {
     try {
-      return JSON.parse(readFileSync(join(this.home, name), "utf-8")) as T;
+      return new Set(
+        JSON.parse(readFileSync(join(this.home, "adopting.json"), "utf-8")) as string[],
+      );
     } catch {
-      return missing;
+      return new Set();
     }
   }
 
@@ -1069,16 +1114,17 @@ class Engine {
     try {
       const abs = join(this.dir, path);
       const { size } = await stat(abs);
-      let wentAhead: WentAhead | undefined;
-      const read = () => (wentAhead = this.stepWentAheadOf.get(path));
+      let readAfterStep: true | undefined;
+      const read = () => (readAfterStep = this.wentAhead.has(path) || undefined);
       if (isUncopied(path, size)) {
         const hash = await this.blobs.reference(abs);
         read();
-        return { hash, referenced: true, wentAhead };
+        return { hash, referenced: true, readAfterStep };
       }
       const hash = await this.blobs.put(abs, pin, read);
       if (hash === null) return "changing";
-      return pin ? { hash, release: () => this.blobs.unpin(hash), wentAhead } : { hash, wentAhead };
+      const release = pin ? { release: () => this.blobs.unpin(hash) } : {};
+      return { hash, ...release, readAfterStep };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return "gone";
       throw error;
@@ -1118,15 +1164,18 @@ class Engine {
     label: string,
     paths: readonly string[],
     { coalesceKey, idleMs, overwrote = {}, targets = [] }: ClaimOptions,
+    pending: string[] = [],
   ): Promise<{ id: string } | null> {
     await this.sweep(new Set(paths.map((path) => this.logPath(path))));
     const taken = await this.takeClaimed(who, paths, overwrote);
+    this.markWentAhead(pending);
     if (!taken.length) return this.claimNothing(coalesceKey);
     const held = this.heldFor(coalesceKey, taken);
     if (!held) await this.commitClaim();
     await this.commitPending();
     const group = held ?? this.newGroup(who, label);
     for (const change of taken) addChange(group, change.path, change.before, change.after);
+    this.markWentAhead(pending, group);
     this.addTargets(group, targets);
     if (coalesceKey) return this.holdClaim(group, coalesceKey, idleMs);
     const entry = await this.commit(group);
@@ -1307,6 +1356,10 @@ class Engine {
     if (group) await this.commit(group);
   }
 
+  becomesEntry(group: Group, extra: Partial<HistoryEntry>): boolean {
+    return group.changes.size > 0 || Boolean(group.wentAheadOf?.size) || this.keepsEmpty(extra);
+  }
+
   keepsEmpty(extra: Partial<HistoryEntry>): boolean {
     if (extra.undoes === undefined) return false;
     const target = this.log.entries.find((entry) => entry.id === extra.undoes);
@@ -1315,7 +1368,7 @@ class Engine {
   }
 
   async commit(group: Group, extra: Partial<HistoryEntry> = {}): Promise<HistoryEntry | null> {
-    if (!group.changes.size && !this.keepsEmpty(extra)) return null;
+    if (!this.becomesEntry(group, extra)) return null;
     const pending = this.pendingEntry(group);
     const endedAt = Math.max(pending.endedAt, this.log.entries.at(-1)?.endedAt ?? 0);
     const entry = keepTargetsOfItsFiles({ ...pending, endedAt, ...extra });
@@ -1641,8 +1694,18 @@ class Engine {
     return `Redid: ${original?.label ?? entry.label}`;
   }
 
+  refuseUnseen(entry: HistoryEntry): void {
+    const unseen = entry.wentAheadOf ?? [];
+    if (unseen.some((path) => this.adopting.has(path))) throw startingCopySaving();
+    if (unseen.length)
+      throw notKept(
+        `An earlier version of ${unseen[0]} is not kept, so this cannot be brought back.`,
+      );
+  }
+
   async undoNow(id: string, who: HistoryWho, mode?: UndoMode): Promise<HistoryResult> {
     const entry = this.entry(id);
+    this.refuseUnseen(entry);
     const hashOf = (path: string) => this.tracked.get(path)?.hash ?? null;
     const steps = this.stepsOf(entry);
     const changed = steps.filter((step) => hashOf(step.path) !== step.holds);
@@ -1732,6 +1795,7 @@ class Engine {
       endedAt: lastWriteAt ?? this.now(),
       files,
       ...(group.targets?.length && { targets: group.targets }),
+      ...(group.wentAheadOf?.size && { wentAheadOf: [...group.wentAheadOf].sort() }),
     };
   }
 
@@ -1752,12 +1816,8 @@ class Engine {
       [...this.tracked.keys()].map((path) => [path, null]),
     );
     for (const [path, hash] of files) target.set(path, hash);
-    if (point === START && this.adopting.size > 0) {
-      throw new HistoryRefusedError(
-        "starting_copy_saving",
-        "The project's starting copy is still being saved; try again in a moment. Nothing was changed.",
-      );
-    }
+    if (this.adopting.size > 0 && (point === START || this.wentAhead.size > 0))
+      throw startingCopySaving();
     const isProjectFile = (path: string) => !KEPT_HIDDEN_PATHS.has(path);
     const keepsAny = [...target].some(([path, hash]) => hash !== null && isProjectFile(path));
     if ([...this.tracked.keys()].some(isProjectFile) && !keepsAny) {
@@ -1797,13 +1857,19 @@ class Engine {
           options.idleMs ?? this.options.maxGroupMs ?? 30_000,
           options.exclusive === true,
         );
-        this.markWentAhead(window.id);
+        const group = this.windows.find((open) => open.id === window.id);
+        this.markWentAhead([...this.adopting.keys()], group);
         return window;
       },
       unsavedBlobBytes: () => this.unsavedBlobBytes(),
       claim: async (who, label, paths, options = {}) => {
-        await Promise.all(paths.map((path) => this.adopting.get(this.logPath(path))?.retryNow()));
-        return this.queue(() => this.claimNow(who, label, paths, options));
+        const waitMs = this.options.firstCopyFileMs ?? FIRST_COPY_FILE_MS;
+        const owed = (path: string) => this.adopting.get(this.logPath(path));
+        await Promise.all(
+          paths.map((path) => orAfter(Promise.resolve(owed(path)?.retryNow()), waitMs, undefined)),
+        );
+        const pending = paths.filter(owed).map((path) => this.logPath(path));
+        return this.queue(() => this.claimNow(who, label, paths, options, pending));
       },
       noteChange: (path) => {
         if (!this.closed) this.noteChange(path);
