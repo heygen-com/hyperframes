@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { terminalText } from "@hyperframes/core/terminal-text";
 import { randomUUID } from "node:crypto";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
 import { telemetryRuntimeOverride } from "./policy.js";
@@ -131,7 +132,7 @@ function warnSeedBackfillFailed(error: string | undefined): void {
   // all. `hyperframes doctor` still surfaces it on demand.
   if (telemetryRuntimeOverride() !== null) return;
   console.warn(
-    `[hyperframes] Could not persist telemetry config${error ? `: ${error}` : ""}. ` +
+    `[hyperframes] Could not persist telemetry config${error ? `: ${terminalText(String(error))}` : ""}. ` +
       "Canary cohort assignment will not be stable across runs.",
   );
 }
@@ -930,7 +931,7 @@ function warnSettingsLockedOnce(error: unknown): void {
     process.argv.some((arg) => arg === "--json" || arg.startsWith("--json="))
   )
     return;
-  console.error(`${(error as Error).message} (see \`hyperframes doctor\`).`);
+  console.error(`${terminalText((error as Error).message)} (see \`hyperframes doctor\`).`);
 }
 
 export function updateLocalModelConsent(

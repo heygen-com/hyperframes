@@ -12,12 +12,13 @@ import { explainChromeLaunchFailure } from "@hyperframes/engine/chrome-startup";
 import type { Browser, LaunchOptions, Page, PuppeteerNode } from "puppeteer-core";
 import { withHyperframesBrowserMarker } from "@hyperframes/core/browser-marker";
 import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
+import { terminalLines } from "@hyperframes/core/terminal-text";
 import {
   resolveCaptureBrowserGpuMode,
   type BrowserGpuMode,
   type ResolvedBrowserGpuMode,
 } from "./gpuPolicy.js";
-import { normalizeErrorMessage, notePageCrash } from "../utils/errorMessage.js";
+import { normalizeErrorMessage, notePageCrash, stackOrMessage } from "../utils/errorMessage.js";
 import { requestCliExit } from "../utils/commandResult.js";
 import { processIsAlive, terminateWindowsProcessTree } from "../utils/processTree.js";
 import { chromeDescendants, reapChromeTree } from "./chromeTree.js";
@@ -55,7 +56,7 @@ function stopForSignal(signal: "SIGINT" | "SIGTERM"): void {
   void shutdown.then(
     () => requestCliExit(signal === "SIGINT" ? 130 : 143),
     (error: unknown) => {
-      console.error("Browser shutdown failed:", error);
+      console.error("Browser shutdown failed:", terminalLines(stackOrMessage(error)));
       requestCliExit(1);
     },
   );
@@ -208,7 +209,7 @@ async function launchOwnedBrowser(
     const newPage = browser.newPage;
     browser.newPage = async (...args) => closeOnRendererCrash(await newPage.apply(browser, args));
     child.once("exit", () => {
-      watchdog?.release(true);
+      void watchdog?.release(true);
       browsers.delete(browser);
       destroyBrowserPipes(child);
     });
@@ -287,7 +288,7 @@ async function closeBrowser(browser: Browser): Promise<void> {
   try {
     clean = await closedWithoutKill(browser);
   } finally {
-    watchdogs.get(browser)?.release(clean);
+    void watchdogs.get(browser)?.release(clean);
   }
 }
 
@@ -320,7 +321,7 @@ async function closedWithoutKill(browser: Browser): Promise<boolean> {
   try {
     await Promise.race([
       closeGracefully(browser).catch((error: unknown) =>
-        console.warn("Browser close failed:", error),
+        console.warn("Browser close failed:", terminalLines(stackOrMessage(error))),
       ),
       grace,
     ]);

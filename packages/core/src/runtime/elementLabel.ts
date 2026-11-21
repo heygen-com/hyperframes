@@ -32,7 +32,12 @@ export function buildElementLabel(el: Element): string {
   const text = renderedTextOf(el, LABEL_SOURCE_CHARS).trim().replace(/\s+/g, " ");
   const trimLabel = (value: string, maxChars: number) => {
     const chars = Array.from(value);
-    return chars.length > maxChars ? `${chars.slice(0, maxChars - 1).join("")}…` : value;
+    if (chars.length <= maxChars) return value;
+    const kept = chars.slice(0, maxChars - 1).join("");
+    const cutInsideWord = chars[maxChars - 1] !== " ";
+    const lastWordEnd = cutInsideWord ? kept.lastIndexOf(" ") : -1;
+    const keepsMostOfIt = lastWordEnd >= kept.length / 2;
+    return `${(keepsMostOfIt ? kept.slice(0, lastWordEnd) : kept).trimEnd()}…`;
   };
   const heading = /^h[1-6]$/.test(tag);
   if (heading || tag === "p" || tag === "span" || tag === "div")

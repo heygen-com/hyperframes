@@ -1,5 +1,6 @@
 import { execFileSync, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
+import { win32 } from "node:path";
 
 interface SpawnedProcess {
   once(event: "error", listener: (error: Error) => void): unknown;
@@ -56,6 +57,15 @@ async function waitForProcessGroupExit(pid: number): Promise<void> {
 
 export function windowsProcessTreeKillArgs(pid: number): string[] {
   return ["/PID", String(pid), "/T", "/F"];
+}
+
+export function windowsOwnTreeKillArgs(pid: string, image: string): string[] {
+  return ["/F", "/T", "/FI", `PID eq ${pid}`, "/FI", `IMAGENAME eq ${image}`];
+}
+
+export function windowsImageOf(spawnfile: string): string {
+  const name = win32.basename(spawnfile);
+  return win32.extname(name) ? name : `${name}.exe`;
 }
 
 export function terminateWindowsProcessTree(

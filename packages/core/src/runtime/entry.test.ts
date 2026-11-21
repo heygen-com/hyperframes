@@ -472,7 +472,7 @@ describe("runtime entry", () => {
       els.map((el) => loads.filter((loaded) => loaded === el).length);
     const videos = (root: HTMLElement, ...starts: string[]) =>
       starts.map((start) => timed(root, "video", start));
-    const armed = (...els: HTMLMediaElement[]) => els.map((el) => el.preload === "auto");
+    const armed = (...els: HTMLMediaElement[]) => els.map((el) => el.preload !== "none");
     afterEach(() => vi.restoreAllMocks());
 
     it("loads a preview's media only on screen or due within the look-ahead, and frees what the playhead left", async () => {
@@ -734,7 +734,7 @@ describe("runtime entry", () => {
       let fillCalls = 0;
       while (settled.size < candidates.length) {
         const active = candidates.filter(
-          (element) => !settled.has(element) && element.preload === "auto",
+          (element) => !settled.has(element) && element.preload !== "none",
         );
         if (active.length === 0) break;
         for (const element of active) {
@@ -752,6 +752,20 @@ describe("runtime entry", () => {
       expect(armed(...waiting).filter(Boolean)).toHaveLength(waiting.length);
       getAttribute.mockRestore();
     }, 20_000);
+
+    it("loads a clip due soon at preload metadata from its in-point, an audio clip too", async () => {
+      spyLoad();
+      servePreview();
+      const root = mountRoot();
+      const [now] = videos(root, "0");
+      const voice = timed(root, "audio", "1");
+      voice.setAttribute("data-media-start", "6");
+
+      await evaluateRuntime();
+      voice.dispatchEvent(new Event("loadedmetadata"));
+      expect([now.preload, voice.preload]).toEqual(["auto", "metadata"]);
+      expect(voice.currentTime).toBe(mediaElementTime(6));
+    });
 
     it("prepares a queued split only after a prefetch slot opens", async () => {
       spyLoad();
@@ -774,7 +788,7 @@ describe("runtime entry", () => {
 
       first.dispatchEvent(new Event("error"));
       queued.dispatchEvent(new Event("loadedmetadata"));
-      expect(queued.preload).toBe("auto");
+      expect(queued.preload).toBe("metadata");
       expect(queued.currentTime).toBe(mediaElementTime(6));
       expect(loadsOf(queued)).toEqual([1]);
     });

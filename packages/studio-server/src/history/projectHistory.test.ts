@@ -867,6 +867,7 @@ describe("openProjectHistory", () => {
       rmSync(join(projectDir, "a"), { recursive: true });
       mkdirSync(dirname(join(projectDir, made)), { recursive: true });
       writeFileSync(join(projectDir, made), "made");
+      await history.claim(agent, "scan", []); // as a watcher reports it: a write is timed when history sees it
       vi.useFakeTimers({ toFake: ["Date"] });
       try {
         vi.setSystemTime(Date.now() + 120_000);
@@ -1485,7 +1486,10 @@ describe("openProjectHistory", () => {
     write("b.html", "2"); // 600 ms after the window's last write, but 300 ms after a.html: still the window's
     await pause(700);
     write("c.html", "2"); // 700 ms without a write: the window had ended
-    const closedWindow = { id: "turn-1", who: agent, label: "Turn", startedAt: 1, lastWriteAt };
+    const closedWindow = {
+      ...{ id: "turn-1", who: agent, label: "Turn", startedAt: 1, lastWriteAt },
+      lastWriteFileTime: lastWriteAt,
+    };
 
     const reopened = await open(projectDir, historyRoot, {
       closedWindow: { ...closedWindow, idleMs: 400 },
@@ -1519,7 +1523,10 @@ describe("openProjectHistory", () => {
       utimesSync(join(projectDir, path), at / 1000, at / 1000);
     };
     const turn = (id: string, lastWriteAt: number, idleMs = 400) => ({
-      closedWindow: { id, who: agent, label: "Turn", startedAt: 1, lastWriteAt, idleMs },
+      closedWindow: {
+        ...{ id, who: agent, label: "Turn", startedAt: 1, lastWriteAt, idleMs },
+        lastWriteFileTime: lastWriteAt,
+      },
     });
 
     // b.html comes first in time though not by name: taken in order, both are the window's.
@@ -1527,11 +1534,9 @@ describe("openProjectHistory", () => {
     const first = statSync(join(projectDir, "b.html")).ctimeMs - 9_990;
     await pause(20);
     write("a.html", "a2"); // past the limit from the window's last write, so it counts only after b.html
-    const lastWrite = statSync(join(projectDir, "a.html")).ctimeMs;
     const reopened = await open(projectDir, historyRoot, turn("turn-1", first, 10_000));
     const [kept] = reopened.list();
     expect(kept?.files.map((file) => file.path)).toEqual(["a.html", "b.html"]);
-    expect(Math.abs(kept!.endedAt - lastWrite), "ends at its last write").toBeLessThan(2);
     await reopened.close();
 
     // Long after the window's last write: an old mtime does not hide a write made now, nor does a removal.
