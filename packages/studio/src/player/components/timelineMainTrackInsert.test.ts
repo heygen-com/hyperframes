@@ -34,6 +34,13 @@ describe("resolveMainTrackInsert", () => {
     expect(resolveMainTrackInsert([a, b, c], b, 2.5, true)).toEqual([]);
   });
 
+  it("is null when a linked partner would land on a clip that stays in its lane", () => {
+    const cLinked = { ...c, link: "l1" };
+    const cAudio = { ...el("c-audio", 4, 2, 1), tag: "audio", link: "l1" };
+    const music = { ...el("music", 0, 2, 1), tag: "audio" };
+    expect(resolveMainTrackInsert([a, b, cLinked, cAudio, music], cLinked, 0, true)).toBeNull();
+  });
+
   it("is null when a clip that would move is locked", () => {
     const lockedA = { ...a, timelineLocked: true };
     expect(resolveMainTrackInsert([lockedA, b, c], c, 0, true)).toBeNull();

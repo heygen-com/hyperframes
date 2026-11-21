@@ -47,6 +47,22 @@ export function resolveMainTrackInsert(
     return [{ element: partner, start: round3(partner.start + lead.start - lead.element.start) }];
   });
   const moves = [...main, ...partners];
+  const moving = new Set(moves.map((m) => keyOf(m.element)));
+  // A partner may not land on a clip that stays put in its lane; main-track moves only reorder, so they cannot.
+  const lands = partners.some(({ element, start }) =>
+    elements.some(
+      (other) =>
+        other.track === element.track &&
+        !moving.has(keyOf(other)) &&
+        timeRangesOverlap(
+          start,
+          start + element.duration,
+          other.start,
+          other.start + other.duration,
+        ),
+    ),
+  );
+  if (lands) return null;
   return moves.every((m) => getTimelineEditCapabilities(m.element).canMove) ? moves : null;
 }
 
