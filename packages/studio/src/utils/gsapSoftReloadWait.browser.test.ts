@@ -148,10 +148,10 @@ type Studio = typeof import("./gsapSoftReload") & {
 };
 type Preview = Awaited<ReturnType<typeof openPreview>>;
 
-/** Studio's re-run of `script` at `time`; resolves "reload" when Studio falls back to a full reload. */
-function rerun(page: Page, script: string, time: number, restore: unknown[] = []) {
+/** Studio's re-run of `script` at `time`: its answer now, or with `late`, "reload" if Studio falls back later. */
+function rerun(page: Page, script: string, time: number, restore: unknown[] = [], late = false) {
   return page.evaluate(
-    (text, at, scopes) =>
+    (text, at, scopes, waitLate) =>
       new Promise<string>((resolve) => {
         const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
         const iframe = document.querySelector("iframe")!;
@@ -163,18 +163,19 @@ function rerun(page: Page, script: string, time: number, restore: unknown[] = []
           restore: scopes as never,
           onAsyncFailure: () => resolve("reload"),
         });
-        if (result !== "applied") resolve(result);
+        if (result !== "applied" || !waitLate) resolve(result);
       }),
     script,
     time,
     restore,
+    late,
   );
 }
 
 /** Waits until every answer the frame owes Studio has reached it. */
 async function settled({ page, frame }: Preview, sealed: boolean) {
   await frame.waitForFunction(
-    () => !(window as { __hfMotionPathPluginLoading?: boolean }).__hfMotionPathPluginLoading,
+    () => !(window as { __hfMotionPathWaiters?: unknown }).__hfMotionPathWaiters,
   );
   if (sealed)
     await page.evaluate(async () => {
@@ -236,7 +237,13 @@ async function play(mode: string, steps: Step[]) {
   const { page, frame, held, seek, time } = preview;
   await seek(4);
   if (!sealed) await restoreLeftOfC(preview, sealed, 1);
-  const older = rerun(page, timeline("main", "older", 60, true), 2, sealed ? restoreC(1) : []);
+  const older = rerun(
+    page,
+    timeline("main", "older", 60, true),
+    2,
+    sealed ? restoreC(1) : [],
+    true,
+  );
   await expect.poll(() => held.length).toBeGreaterThan(0);
   for (const step of steps) await STEPS[step](preview, sealed);
   const answer = await Promise.race([older, Promise.resolve("kept")]);

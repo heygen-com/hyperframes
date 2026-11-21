@@ -567,12 +567,7 @@ describe("installEditingAgent", () => {
       result: { result: "verify-failed" },
     });
     expect(document.body.querySelector("script")?.textContent).toBe(`(function(){${script}\n})();`);
-    for (const key of [
-      "gsap",
-      "__timelines",
-      "__hfForceTimelineRebind",
-      "__hfMotionPathPluginLoading",
-    ])
+    for (const key of ["gsap", "__timelines", "__hfForceTimelineRebind", "__hfMotionPathWaiters"])
       delete frame[key];
     document.head.querySelector("script[src]")?.remove();
   });

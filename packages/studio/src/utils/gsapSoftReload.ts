@@ -5,7 +5,7 @@ import {
   compositionFile,
   finalizeSoftReload,
   findGsapScriptElements,
-  previewMotionPathUrl,
+  preloadMotionPath,
   restoreAuthoredStyle,
   scriptsRegistering,
   softReloadFrame,
@@ -65,27 +65,7 @@ export function ensureMotionPathPluginLoaded(iframe: HTMLIFrameElement | null): 
     window.addEventListener("message", retry);
     return;
   }
-  // A load is already in flight for this iframe — don't queue a second script.
-  if (win.__hfMotionPathPluginLoading) return;
-
-  try {
-    win.__hfMotionPathPluginLoading = true;
-    const pluginScript = doc.createElement("script");
-    pluginScript.src = previewMotionPathUrl(doc, win.gsap?.version);
-    const finalize = () => {
-      win.__hfMotionPathPluginLoading = false;
-      try {
-        if (win.MotionPathPlugin && win.gsap?.registerPlugin) {
-          win.gsap.registerPlugin(win.MotionPathPlugin);
-        }
-      } catch {}
-    };
-    pluginScript.onload = finalize;
-    pluginScript.onerror = finalize;
-    doc.head.appendChild(pluginScript);
-  } catch {
-    win.__hfMotionPathPluginLoading = false;
-  }
+  preloadMotionPath(win, doc);
 }
 
 /**

@@ -33,8 +33,8 @@ export type SoftReloadWindow = Window & {
   __hfForceTimelineRebind?: () => void;
   __hfSuppressSceneMutations?: <T>(fn: () => T) => T;
   __hfStudioManualEditsApply?: () => void;
-  // Set while a MotionPathPlugin script is fetched, so overlapping reloads queue no second one.
-  __hfMotionPathPluginLoading?: boolean;
+  // Everyone waiting on the one MotionPathPlugin script being fetched; absent when none is.
+  __hfMotionPathWaiters?: [ready: () => void, failed: () => void][];
   __hfPlayerSeeks?: number;
   __hfTimelineGenerations?: Map<string, number>;
   gsap?: {
@@ -398,32 +398,18 @@ function whenMotionPathLoaded(
   ready: () => void,
   failed: () => void,
 ): void {
-  // A load already in flight is the one to wait for; a second plugin script re-flashes the frame.
-  if (win.__hfMotionPathPluginLoading) {
-    const started = Date.now();
-    const poll = win.setInterval(() => {
-      if (win.MotionPathPlugin) {
-        win.clearInterval(poll);
-        ready();
-      } else if (!win.__hfMotionPathPluginLoading || Date.now() - started > 10000) {
-        win.clearInterval(poll);
-        failed();
-      }
-    }, 50);
-    return;
-  }
-  win.__hfMotionPathPluginLoading = true;
+  if (win.__hfMotionPathWaiters) return void win.__hfMotionPathWaiters.push([ready, failed]);
+  const waiters: [() => void, () => void][] = [[ready, failed]];
+  win.__hfMotionPathWaiters = waiters;
+  const settle = (loaded: boolean) => {
+    win.__hfMotionPathWaiters = undefined;
+    for (const [onReady, onFailed] of waiters) (loaded ? onReady : onFailed)();
+  };
   const pluginScript = doc.createElement("script");
   pluginScript.src = previewMotionPathUrl(doc, win.gsap?.version);
-  pluginScript.onload = () => {
-    win.__hfMotionPathPluginLoading = false;
-    ready();
-  };
+  pluginScript.onload = () => settle(Boolean(win.MotionPathPlugin));
   // Running the script without the plugin would leave a motionPath tween that cannot play.
-  pluginScript.onerror = () => {
-    win.__hfMotionPathPluginLoading = false;
-    failed();
-  };
+  pluginScript.onerror = () => settle(false);
   doc.head.appendChild(pluginScript);
 }
 
@@ -474,7 +460,7 @@ export function preloadMotionPath(
   win: SoftReloadWindow = window as SoftReloadWindow,
   doc: Document = document,
 ): void {
-  if (win.MotionPathPlugin || win.__hfMotionPathPluginLoading || !win.gsap) return;
+  if (win.MotionPathPlugin || win.__hfMotionPathWaiters || !win.gsap) return;
   const register = () => win.MotionPathPlugin && win.gsap?.registerPlugin?.(win.MotionPathPlugin);
   whenMotionPathLoaded(win, doc, register, () => {});
 }

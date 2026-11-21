@@ -53,7 +53,7 @@ afterEach(() => {
     "__player",
     "__hfStudioSeekReapplyStarted",
     "MotionPathPlugin",
-    "__hfMotionPathPluginLoading",
+    "__hfMotionPathWaiters",
     "__hfPlayerSeeks",
     "__hfTimelineGenerations",
   ])
@@ -135,6 +135,7 @@ describe("a re-run that waits for the MotionPath plugin", () => {
         {
           key: "hf:a",
           attributes: [
+            ["id", "a"],
             ["data-hf-id", "a"],
             ["style", `left: ${left}px`],
           ],
