@@ -102,10 +102,18 @@ afterEach(() => {
 });
 
 describe("init output without prompts", () => {
-  // fails without the fix: the old flag's value and the name are repeated as they were typed.
+  // fails without the fix: the example command repeats the old flag's value and the name as they were typed.
   it.each([
-    [{ template: `tpl-${ODD}` }, `init n-${SHOWN} --example "tpl-${SHOWN}"`],
-    [{ "video-legacy": `clip-${ODD}` }, `init n-${SHOWN} --video "clip-${SHOWN}"`],
+    [{ template: `tpl-${ODD}` }, "npx hyperframes init <name> --example <example>"],
+    [{ "video-legacy": `clip-${ODD}` }, "npx hyperframes init <name> --video <file>"],
+  ])("leaves values that cannot be typed back out of the example for %o", async (args, line) => {
+    await expect(run({ name: join(work, `n-${ODD}`), ...args })).rejects.toThrow();
+    expect(printed()).toContain(line);
+    expectNoControlCharacters();
+  });
+
+  // fails without the fix: the refused value and the name are repeated as they were typed.
+  it.each([
     [{ resolution: `res-${ODD}` }, `Invalid --resolution: "res-${SHOWN}".`],
     [{ video: `clip-${ODD}.mp4` }, `Video file not found: clip-${SHOWN}.mp4`],
     [{ audio: `song-${ODD}.mp3` }, `Audio file not found: song-${SHOWN}.mp3`],

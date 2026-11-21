@@ -564,6 +564,79 @@ describe("hyperframes init flag rename", () => {
     }
   });
 
+  // fails without the fix: the next steps printed `cd` with a path that is not the folder's.
+  it.skipIf(process.platform === "win32")(
+    "tells the user to go into a folder whose name cannot be typed back, with no cd line",
+    () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+      const target = join(dir, "my\nfilm");
+      try {
+        const res = runInit([target, "--example", "blank", "--non-interactive", "--skip-skills"]);
+        expect(res.status).toBe(0);
+        expect(existsSync(join(target, "index.html"))).toBe(true);
+        expect(res.stdout).toContain("go into the project folder && npm run dev");
+        expect(res.stdout).not.toMatch(/\bcd /);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("prints next steps a shell runs as written for a name with a space", () => {
+    const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
+    const target = join(dir, "my film");
+    try {
+      const res = runInit([target, "--example", "blank", "--non-interactive", "--skip-skills"]);
+      expect(res.status).toBe(0);
+      expect(res.stdout).toContain(`cd "${target}" && npm run dev`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // fails without the fix: the example command carried the values as shown, which is not what was typed.
+  it.each([
+    ["--template", "--example <example>"],
+    ["-V", "--video <file>"],
+  ])(
+    "%s prints an example with placeholders for values that cannot be typed back",
+    (flag, shown) => {
+      const bell = String.fromCharCode(7);
+      const res = runInit([
+        `pro${bell}j`,
+        flag,
+        `bl${bell}ank`,
+        "--non-interactive",
+        "--skip-skills",
+      ]);
+      expect(res.status).toBe(2);
+      expect(res.stderr).toContain(`npx hyperframes init <name> ${shown}`);
+      expect(res.stderr).not.toContain(bell);
+      expect(res.stderr).not.toContain("\\x07");
+    },
+  );
+
+  it("--template quotes an example value the shell would split", () => {
+    const res = runInit([
+      "my film",
+      "--template",
+      "two words",
+      "--non-interactive",
+      "--skip-skills",
+    ]);
+    expect(res.status).toBe(2);
+    expect(res.stderr).toContain(`npx hyperframes init "my film" --example "two words"`);
+  });
+
+  it("refuses --json before a refused value is read, so no printed line reaches the answer", () => {
+    const bell = String.fromCharCode(7);
+    const res = runInit(["proj", "--resolution", `b${bell}ad`, "--non-interactive", "--json"]);
+    expect(res.status).toBe(2);
+    const body = JSON.parse(res.stdout.trim()) as { ok: boolean; error: { code: string } };
+    expect(body).toMatchObject({ ok: false, error: { code: "json_unsupported" } });
+    expect(res.stdout + res.stderr).not.toContain("resolution");
+  });
+
   it("--template prints a rename hint and exits 2", () => {
     const dir = mkdtempSync(join(tmpdir(), "hf-init-test-"));
     const target = join(dir, "proj");
@@ -571,7 +644,7 @@ describe("hyperframes init flag rename", () => {
       const res = runInit([target, "--template", "blank", "--non-interactive", "--skip-skills"]);
       expect(res.status).toBe(2);
       expect(res.stderr).toContain("--template flag was renamed to --example");
-      expect(res.stderr).toContain(`--example "blank"`);
+      expect(res.stderr).toContain("--example blank");
       expect(existsSync(target)).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });

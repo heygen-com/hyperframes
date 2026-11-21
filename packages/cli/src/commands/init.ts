@@ -863,11 +863,9 @@ export default defineCommand({
   },
   async run({ args }) {
     if (args.template !== undefined) {
-      // Quote the value in case it looks flag-like — keeps the suggested
-      // command copy-pasteable.
       console.error(
         c.error(
-          `The --template flag was renamed to --example. Example:\n  npx hyperframes init ${terminalText(args.name ?? "my-video")} --example "${terminalText(args.template)}"`,
+          `The --template flag was renamed to --example. Example:\n  npx hyperframes init ${shellArg(args.name ?? "my-video") ?? "<name>"} --example ${shellArg(args.template) ?? "<example>"}`,
         ),
       );
       failUsage();
@@ -875,7 +873,7 @@ export default defineCommand({
     if (args["video-legacy"] !== undefined) {
       console.error(
         c.error(
-          `The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init ${terminalText(args.name ?? "my-video")} --video "${terminalText(args["video-legacy"])}"`,
+          `The -V short flag no longer maps to --video. Use --video (or -v). Example:\n  npx hyperframes init ${shellArg(args.name ?? "my-video") ?? "<name>"} --video ${shellArg(args["video-legacy"]) ?? "<file>"}`,
         ),
       );
       failUsage();
@@ -1040,8 +1038,7 @@ export default defineCommand({
       }
 
       const shownName = shellArg(name);
-      const cdLine =
-        shownName === null ? "go into the project folder" : `cd ${terminalText(shownName)}`;
+      const cdLine = shownName === null ? "go into the project folder" : `cd ${shownName}`;
       console.log();
       console.log("Get started:");
       console.log();

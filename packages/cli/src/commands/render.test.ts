@@ -17,6 +17,7 @@ const producerState = vi.hoisted(() => ({
     _job: Record<string, unknown>,
     _abortSignal?: AbortSignal,
     _assertRenderActive?: () => void,
+    _onProgress?: (job: { progress: number }, message: string) => void,
   ): Promise<void> => undefined,
 }));
 
@@ -146,10 +147,10 @@ vi.mock("../utils/producer.js", () => ({
         job: Record<string, unknown>,
         _projectDir: string,
         _outputPath: string,
-        _onProgress: unknown,
+        onProgress: ((job: { progress: number }, message: string) => void) | undefined,
         abortSignal?: AbortSignal,
         assertRenderActive?: () => void,
-      ) => producerState.executeImpl(job, abortSignal, assertRenderActive),
+      ) => producerState.executeImpl(job, abortSignal, assertRenderActive, onProgress),
     ),
   })),
 }));
@@ -320,6 +321,40 @@ describe("renderLocal browser GPU config", () => {
   it("points strict warning-only renders to --strict-all", () => {
     expect(renderLintContinuationHint(true)).toContain("--strict-all");
     expect(renderLintContinuationHint(true)).not.toContain("Use --strict to block");
+  });
+
+  // fails without the fix: a failure reported as progress was written as it arrived, over several lines.
+  it("writes a progress update whose text has line breaks as one line", async () => {
+    const written: string[] = [];
+    const isTTY = process.stdout.isTTY;
+    Object.defineProperty(process.stdout, "isTTY", { value: false, configurable: true });
+    const out = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+      written.push(String(chunk));
+      return true;
+    }) as never);
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    producerState.executeImpl = async (_job, _signal, _active, onProgress) => {
+      onProgress?.({ progress: 40 }, "Failed: encoder said\nno such filter\r\nexit 1");
+    };
+    try {
+      await renderLocal(PROJECT_DIR, "/tmp/out.mp4", {
+        fps: { num: 30, den: 1 },
+        quality: "standard",
+        format: "mp4",
+        gpu: false,
+        browserGpuMode: "software",
+        hdrMode: "auto",
+        quiet: false,
+        throwOnError: true,
+      });
+    } finally {
+      out.mockRestore();
+      Object.defineProperty(process.stdout, "isTTY", { value: isTTY, configurable: true });
+    }
+    const update = written.find((chunk) => chunk.includes("Failed: encoder said"));
+    expect(update).toContain("Failed: encoder said\\x0ano such filter\\x0d\\x0aexit 1");
+    expect(update?.trimEnd()).not.toMatch(/[\r\n]/);
   });
 
   // fails without the fix: the check's detail and hint, the probe failure and the job's warning are printed as they arrived.
