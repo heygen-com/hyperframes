@@ -32,10 +32,10 @@ vi.mock("../history/blobStore", async (importOriginal) => {
       const store = await real.openBlobStore(dir);
       return {
         ...store,
-        put: async (path: string) => {
+        put: (async (path, ...rest) => {
           if (path.endsWith(".bin")) await mediaCopy.held;
-          return store.put(path);
-        },
+          return store.put(path, ...rest);
+        }) satisfies typeof store.put,
       };
     },
   };

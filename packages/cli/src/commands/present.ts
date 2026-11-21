@@ -62,7 +62,7 @@ export default defineCommand({
     try {
       startPort = parsePort(args.port ?? "3004");
     } catch (error) {
-      clack.log.error(normalizeErrorMessage(error));
+      clack.log.error(terminalText(normalizeErrorMessage(error)));
       failUsage();
     }
     const project = resolveProject(args.dir);
@@ -86,7 +86,7 @@ export default defineCommand({
         args["remote-debugging-port"] as string | undefined,
       );
     } catch (err) {
-      clack.log.error((err as Error).message);
+      clack.log.error(terminalText((err as Error).message));
       failUsage();
     }
 

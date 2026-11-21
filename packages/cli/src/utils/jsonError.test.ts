@@ -138,3 +138,31 @@ describe("failCaught", () => {
     ]);
   });
 });
+
+describe("printFailureLine", () => {
+  // fails without the fix: a --json run's error message was built from the line as people see it.
+  it("shows control characters as text and leaves the text as given for a --json envelope", async () => {
+    const saved = {
+      out: process.stdout.write,
+      err: process.stderr.write,
+      console: { ...console },
+    };
+    const shown: string[] = [];
+    console.error = (...args: unknown[]) => void shown.push(args.map(String).join(" "));
+    try {
+      const { printFailureLine, watchOutput } = await import("./jsonError.js");
+      const output = watchOutput();
+      printFailureLine((show) => `File not found: ${show("mis\u0007s\ning.wav  ")}`);
+      expect(shown).toEqual(["File not found: mis\\x07s\ning.wav  "]);
+      expect(output.stderrText()).toBe("File not found: mis\\x07s ing.wav");
+      const failed = new CliRuntimeError("Command failed", { presented: true });
+      expect(jsonErrorBody(failed, runtime, output.stderrText()).message).toBe(
+        "File not found: mis\u0007s\ning.wav  ",
+      );
+    } finally {
+      process.stdout.write = saved.out;
+      process.stderr.write = saved.err;
+      Object.assign(console, saved.console);
+    }
+  });
+});

@@ -2,6 +2,7 @@ import { lstatSync, mkdirSync, renameSync, rmdirSync, rmSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { atomicTempPath } from "@hyperframes/core/atomic-file";
 import { realpath, realProjectRoot } from "@hyperframes/core/safe-path";
+import { inTheWay } from "./historyRefused.js";
 
 const DRIVE = /^[a-z]:/i;
 
@@ -21,9 +22,6 @@ const isPlainName = (name: string) =>
 export function isRelativeProjectPath(path: string): boolean {
   return !path.includes("\\") && path.split("/").every(isPlainName);
 }
-
-const inTheWay = (at: string) =>
-  new Error(`${at} is in the way; move or delete it, then try again.`);
 
 const changedWhileWriting = (folder: string) =>
   new Error(`${folder} changed while history was writing to it, so it stopped.`);

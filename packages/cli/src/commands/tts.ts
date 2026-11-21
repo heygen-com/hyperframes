@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { failCommand, failUsage } from "../utils/commandResult.js";
 import { isTextFile } from "../utils/textFile.js";
 // fallow-ignore-file code-duplication
@@ -145,7 +146,7 @@ export default defineCommand({
     if (!args.json && args.lang != null && lang !== inferredLang) {
       console.log(
         c.dim(
-          `  Note: voice "${voice}" is ${inferredLang}, rendering with --lang ${lang} instead.`,
+          `  Note: voice "${terminalText(voice)}" is ${inferredLang}, rendering with --lang ${lang} instead.`,
         ),
       );
     }
@@ -153,14 +154,14 @@ export default defineCommand({
     // ── Synthesize ────────────────────────────────────────────────────
     const { synthesize } = await import("../tts/synthesize.js");
     const spin = args.json ? null : clack.spinner();
-    spin?.start(`Generating speech with ${c.accent(voice)} (${lang})...`);
+    spin?.start(`Generating speech with ${c.accent(terminalText(voice))} (${lang})...`);
 
     try {
       const result = await synthesize(text, output, {
         voice,
         speed,
         lang,
-        onProgress: spin ? (msg) => spin.message(msg) : undefined,
+        onProgress: spin ? (msg) => spin.message(terminalText(msg)) : undefined,
       });
 
       if (args.json) {
@@ -178,7 +179,7 @@ export default defineCommand({
       } else {
         spin?.stop(
           c.success(
-            `Generated ${c.accent(result.durationSeconds.toFixed(1) + "s")} of speech → ${c.accent(result.outputPath)}`,
+            `Generated ${c.accent(result.durationSeconds.toFixed(1) + "s")} of speech → ${c.accent(terminalText(result.outputPath))}`,
           ),
         );
         if (args.lang != null && !result.langApplied) {
@@ -194,9 +195,9 @@ export default defineCommand({
       if (args.json) {
         console.log(JSON.stringify(jsonFailure("runtime_error", message)));
       } else {
-        spin?.stop(c.error(`Speech synthesis failed: ${message}`));
+        spin?.stop(c.error(`Speech synthesis failed: ${terminalLines(message)}`));
       }
-      failCommand();
+      failCommand(1, err);
     }
   },
 });
