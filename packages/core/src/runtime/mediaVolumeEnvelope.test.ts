@@ -1,12 +1,19 @@
 /** @vitest-environment jsdom */
 import gsap from "gsap";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   interpolateVolumeGain,
   probeAndCacheElementVolume,
   probeElementVolumeKeyframes,
   volumeMoversOf,
 } from "./mediaVolumeEnvelope";
+import { hideTimedClipsUntilFirstPass, revealTimedClipsAfterFirstPass } from "./timedClipHide";
+
+afterEach(() => {
+  revealTimedClipsAfterFirstPass();
+  document.head.innerHTML = "";
+  document.body.innerHTML = "";
+});
 
 describe("probeElementVolumeKeyframes", () => {
   it("treats trailing-garbage duration as unknown instead of truncating preview sampling", () => {
@@ -469,5 +476,49 @@ describe("probeAndCacheElementVolume", () => {
     expect(() => {
       audio.volume = 5;
     }).toThrow();
+  });
+
+  it("does not record the until-first-pass hide as an autoAlpha tween's start value (#7193)", () => {
+    // With a media element on the page, the probe sweeps the live timeline
+    // before the first visibility pass, while the until-first-pass sheet hides
+    // every clip with `visibility: hidden !important`. The sweep is the tween's
+    // first render, so GSAP records the inherited `hidden` as the value to
+    // restore — and the probe's own restore seek writes it back, leaving the
+    // layer hidden in preview (render is right because it skips the sweep).
+    hideTimedClipsUntilFirstPass();
+
+    const box = document.createElement("div");
+    box.dataset.start = "6";
+    document.body.append(box);
+
+    const audio = document.createElement("audio");
+    audio.dataset.start = "0";
+    audio.dataset.duration = "10";
+    audio.dataset.volume = "1";
+    document.body.append(audio);
+
+    // Any setter tween forces the probe to sweep the live timeline.
+    const counter = { set v(_: number) {} };
+    const timeline = gsap.timeline({ paused: true });
+    timeline.to(counter, { v: 1, duration: 1, ease: "none" }, 0);
+    timeline.fromTo(
+      box,
+      { autoAlpha: 1 },
+      { autoAlpha: 0, immediateRender: false, duration: 1.5, ease: "none" },
+      6,
+    );
+
+    const cache = new WeakMap<HTMLMediaElement, VolumeKeyframe[]>();
+    probeAndCacheElementVolume(audio, timeline, 10, cache);
+
+    // The probe's restore seek must write back the visible state the tween saw
+    // with the sheet lifted — not the sheet's `hidden`.
+    expect(box.style.visibility).not.toBe("hidden");
+    expect(box.style.opacity).not.toBe("0");
+
+    // And the tween still plays its authored fade afterwards.
+    timeline.totalTime(6.5);
+    expect(box.style.visibility).not.toBe("hidden");
+    expect(box.style.opacity).toBe("0.6667");
   });
 });
