@@ -29,6 +29,8 @@ afterEach(async () => {
   vi.resetModules();
 });
 
+const PLAIN = "(no --json)";
+
 describe("CLI lifecycle", () => {
   it("queues a command failure before exit, without waiting on a network flush", async () => {
     let resolveEvents!: (events: {
@@ -508,6 +510,125 @@ describe("CLI lifecycle", () => {
     }
   });
 
+  // fails without the fix: the envelope's message was the line as people see it, escapes included.
+  it.each([
+    [
+      "a capture URL that does not parse",
+      ["capture", "ht tp\u0007"],
+      "Invalid URL: ht tp\u0007",
+      2,
+    ],
+    [
+      "a capture --video folder with no manifest",
+      ["capture", "--video", join(tmpdir(), "hf-no\u0007ne")],
+      `no video-manifest.json at ${join(tmpdir(), "hf-no\u0007ne", "extracted")}`,
+      1,
+    ],
+    [
+      "a refused remove-background device",
+      ["remove-background", "in.mp4", "-o", "out.webm", "--device", "g\u0007pu"],
+      "Invalid --device 'g\u0007pu'.",
+      2,
+    ],
+    [
+      "a refused remove-background quality",
+      ["remove-background", "in.mp4", "-o", "out.webm", "--quality", "be\u0007st"],
+      "Invalid --quality 'be\u0007st'.",
+      2,
+    ],
+    // The rows below run without --json: with it these commands refuse or answer in their own JSON.
+    ["an unknown docs topic", [PLAIN, "docs", "to\u0007pic"], "Unknown topic: to\u0007pic", 2],
+    [
+      "an unknown telemetry subcommand",
+      [PLAIN, "telemetry", "fo\u0007o"],
+      "Unknown subcommand: fo\u0007o",
+      2,
+    ],
+    [
+      "a telemetry preference that cannot be saved",
+      [PLAIN, "telemetry", "disable"],
+      "Reason: EACCES /ho\u0007me",
+      1,
+      () =>
+        vi.doMock("./telemetry/config.js", async () => ({
+          ...(await vi.importActual<typeof import("./telemetry/config.js")>(
+            "./telemetry/config.js",
+          )),
+          readConfigFresh: () => ({}),
+          writeConfigWithResult: () => ({ ok: false, error: "EACCES /ho\u0007me" }),
+        })),
+    ],
+    [
+      "a catalog query with no searchable words",
+      [PLAIN, "catalog", "--query", "!!\u0007"],
+      'No searchable words in query "!!\u0007".',
+      1,
+      () => mockCatalogRegistry(),
+    ],
+    [
+      "a catalog whose registry cannot be read",
+      ["catalog"],
+      "The registry could not be read: no route to ho\u0007st",
+      1,
+      () => mockCatalogRegistry("The registry could not be read: no route to ho\u0007st"),
+    ],
+    [
+      "speech that cannot be generated",
+      [PLAIN, "tts", "hello", "--voice", "af_\u0007x"],
+      "no model at /mo\u0007dels",
+      1,
+      () =>
+        vi.doMock("./tts/synthesize.js", () => ({
+          synthesize: async () => {
+            throw new Error("no model at /mo\u0007dels");
+          },
+        })),
+    ],
+  ] as [string, string[], string, number, (() => void)?][])(
+    "shows %s as text, and answers a --json run with the value as given",
+    async (_name, argv, given, exit, mock) => {
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      let answered = "";
+      const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(((chunk: unknown) => {
+        answered += String(chunk);
+        return true;
+      }) as never);
+      // A spinner's lines go straight to the stream when nobody is watching.
+      let written = "";
+      const errSpy = vi.spyOn(process.stderr, "write").mockImplementation(((chunk: unknown) => {
+        written += String(chunk);
+        return true;
+      }) as never);
+      try {
+        mockTelemetry();
+        mock?.();
+        const plain = argv[0] === PLAIN;
+        process.argv = ["node", "cli.ts", ...(plain ? argv.slice(1) : [...argv, "--json"])];
+        await import("./cli.js");
+
+        const said =
+          errorSpy.mock.calls.map((call) => call.map(String).join(" ")).join("\n") + written;
+        expect(said).toContain(given.replace("\u0007", "\\x07"));
+        expect(said).not.toContain("\u0007");
+        expect(process.exitCode).toBe(exit);
+        if (plain) return;
+        const body = JSON.parse(answered.trim().split("\n").at(-1) ?? "") as {
+          ok: boolean;
+          error: { message: string };
+        };
+        expect(body.ok).toBe(false);
+        expect(body.error.message).toContain(given);
+        expect(body.error.message).not.toContain("\\x07");
+      } finally {
+        errSpy.mockRestore();
+        outSpy.mockRestore();
+        errorSpy.mockRestore();
+        exitSpy.mockRestore();
+      }
+    },
+  );
+
   it("exits 1 and scores a failure when the pipe closes before the run delivered", async () => {
     const trackCommandResult = vi.fn();
     const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
@@ -579,6 +700,11 @@ describe("stale-skills notice under --json", () => {
 });
 
 const MOCKED_MODULES = [
+  "./telemetry/config.js",
+  "./tts/synthesize.js",
+  "./registry/remote.js",
+  "./registry/resolver.js",
+  "./registry/localModel.js",
   "./commands/init.js",
   "./telemetry/events.js",
   "./telemetry/index.js",
@@ -610,6 +736,28 @@ async function runCli(args: string[]): Promise<Record<string, unknown>[]> {
     logSpy.mockRestore();
   }
   return sent;
+}
+
+/** A one-item registry searched by words, or one that cannot be read for the given reason. */
+function mockCatalogRegistry(unreadable?: string): void {
+  vi.doMock("./registry/remote.js", async () => ({
+    ...(await vi.importActual<typeof import("./registry/remote.js")>("./registry/remote.js")),
+    readRegistryManifest: async () => {
+      if (unreadable) throw new Error(unreadable);
+      return { items: [{ name: "fade", type: "hyperframes:block" }] };
+    },
+  }));
+  vi.doMock("./registry/resolver.js", () => ({
+    loadAllItems: async () => [
+      { name: "fade", type: "hyperframes:block", title: "Fade", description: "A fade", tags: [] },
+    ],
+  }));
+  vi.doMock("./registry/localModel.js", async () => ({
+    ...(await vi.importActual<typeof import("./registry/localModel.js")>(
+      "./registry/localModel.js",
+    )),
+    localModelStatus: () => ({ status: "declined" }),
+  }));
 }
 
 function mockRenderCommand(run: () => void | Promise<void>): void {

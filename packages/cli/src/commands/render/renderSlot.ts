@@ -1,3 +1,4 @@
+import { terminalText } from "@hyperframes/core";
 import { c } from "../../ui/colors.js";
 import { errorBox } from "../../ui/format.js";
 import { failCommand } from "../../utils/commandResult.js";
@@ -28,9 +29,9 @@ export async function acquireRenderSlot(
       onWait: (holder, path) =>
         console.error(
           c.warn(
-            `  Waiting for another render to finish (${describeRenderLockHolder(holder, Date.now())}). ` +
+            `  Waiting for another render to finish (${terminalText(describeRenderLockHolder(holder, Date.now()))}). ` +
               "Renders run one at a time per user account; pass --no-wait to stop instead.",
-          ) + c.dim(`\n  Lock: ${path}`),
+          ) + c.dim(`\n  Lock: ${terminalText(path)}`),
         ),
       ...lock,
     });

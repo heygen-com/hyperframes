@@ -140,7 +140,13 @@ async function updateState(dir: string, update: (state: VideoState) => void): Pr
   let timer: ReturnType<typeof setTimeout> | undefined;
   const gaveUp = new Promise<never>((_, reject) => {
     timer = setTimeout(
-      () => reject(new Error(`The video state did not answer within ${STATE_WAIT_MS} ms.`)),
+      () =>
+        reject(
+          new Error(
+            `The video state did not answer within ${STATE_WAIT_MS} ms. The save may still land later, so save ` +
+              "again only through updateState, which waits for it.",
+          ),
+        ),
       STATE_WAIT_MS,
     );
   });

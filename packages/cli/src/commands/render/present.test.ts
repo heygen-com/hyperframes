@@ -43,6 +43,23 @@ describe("presentRenderPlan", () => {
     expect(await settingsLine(args)).toContain(`30fps · ${label} · 2 workers`);
   });
 
+  // fails without the fix: the bitrate and the refused --skill value are repeated as they were typed.
+  it("prints a bitrate and a refused skill name with control characters as visible escapes", async () => {
+    const esc = String.fromCharCode(27);
+    const odd = `od${esc}[2Jd${String.fromCharCode(7)}`;
+    const refused: string[] = [];
+    vi.spyOn(process.stderr, "write").mockImplementation((chunk: unknown) => {
+      refused.push(String(chunk));
+      return true;
+    });
+
+    const line = await settingsLine({ "video-bitrate": `10M${odd}`, skill: `Bad ${odd}` });
+
+    expect(line).toContain("looks (10Mod\\x1b[2Jd\\x07)");
+    expect(refused.join("")).toContain('ignoring --skill="Bad od\\x1b[2Jd\\x07"');
+    expect(printed.join("\n") + refused.join("")).not.toContain(odd);
+  });
+
   // Windows refuses control characters in folder names.
   it.skipIf(process.platform === "win32")(
     "prints a folder name with control characters as visible escapes",

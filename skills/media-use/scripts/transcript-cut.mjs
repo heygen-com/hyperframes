@@ -4,9 +4,10 @@ import "./lib/windows-exe-search.mjs";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 import { compileCutList } from "./lib/cutlist.mjs";
+import { ownFolder } from "./lib/manifest.mjs";
 import { fadeFilterFor } from "./lib/transcriptCutFade.mjs";
 import { track } from "./lib/telemetry.mjs";
 import { terminalText } from "./lib/terminal-text.mjs";
@@ -88,7 +89,11 @@ function run() {
 
   const inputPath = resolve(args.input);
   const outPath = resolve(args.out);
-  mkdirSync(dirname(outPath), { recursive: true });
+  // An --out inside the project (the folder this runs in) is written only into its real folders.
+  const rel = relative(process.cwd(), dirname(outPath));
+  const outsideProject = rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+  if (outsideProject) mkdirSync(dirname(outPath), { recursive: true });
+  else ownFolder(process.cwd(), rel);
   const tmpDir = mkdtempSync(join(tmpdir(), "media-use-cut-"));
   // The encode lands in a new private folder beside --out, so nothing already next to it is written through.
   let outDir = null;

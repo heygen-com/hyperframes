@@ -10,6 +10,7 @@ import {
   normalizeHfColorGrading,
   serializeHfColorGrading,
   terminalLines,
+  terminalText,
 } from "@hyperframes/core";
 import {
   COLOR_GRADING_SOURCE_TAGS,
@@ -779,10 +780,10 @@ function printAnalysis(args: MediaTreatmentCommandArgs): void {
     console.log(JSON.stringify(withMeta(result), null, 2));
     return;
   }
-  console.log(`${c.success("◇")}  Analyzed ${c.accent(result.selector)}`);
-  for (const diagnosis of result.diagnosis) console.log(`   ${diagnosis}`);
-  for (const warning of result.warnings) console.log(`   ${c.warn(warning)}`);
-  console.log(`   suggested patch: ${JSON.stringify(result.suggestedPatch)}`);
+  console.log(`${c.success("◇")}  Analyzed ${c.accent(terminalText(result.selector))}`);
+  for (const diagnosis of result.diagnosis) console.log(`   ${terminalLines(diagnosis)}`);
+  for (const warning of result.warnings) console.log(`   ${c.warn(terminalLines(warning))}`);
+  console.log(`   suggested patch: ${terminalText(JSON.stringify(result.suggestedPatch))}`);
 }
 
 async function printMutation(args: MediaTreatmentCommandArgs): Promise<void> {
@@ -797,7 +798,9 @@ async function printMutation(args: MediaTreatmentCommandArgs): Promise<void> {
     result.targets.length > 1
       ? ` (${changedCount} of ${result.targets.length} elements ${payload.dryRun ? "would change" : "changed"})`
       : "";
-  console.log(`${c.success("◇")}  ${verb} media treatment on ${c.accent(selector)}${count}`);
+  console.log(
+    `${c.success("◇")}  ${verb} media treatment on ${c.accent(terminalText(selector))}${count}`,
+  );
 }
 
 function printFailure(error: unknown, json: boolean): void {
