@@ -3,8 +3,6 @@ export function admittedAnswer(request: (...args: unknown[]) => unknown, stale: 
   return (...args: unknown[]) => {
     const admit = args[4] as (() => boolean) | undefined;
     if (admit && !admit()) return Promise.resolve(stale);
-    const sent = args.slice(0, 4);
-    while (sent.length > 3 && sent.at(-1) === undefined) sent.pop();
-    return request(...sent);
+    return request(...args.slice(0, 4));
   };
 }

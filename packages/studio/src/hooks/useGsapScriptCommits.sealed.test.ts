@@ -44,13 +44,18 @@ it("sends a sealed preview's value edits to the frame in one request, without em
     vi.fn(),
   );
 
-  expect(previewRequest).toHaveBeenCalledExactlyOnceWith(iframe, "patch-tweens", {
-    patches: [
-      { selector: "#a", change: { kind: "set", props: { x: 10 } } },
-      { selector: "#b", change: { kind: "global-set", props: { rotation: 45 } } },
-    ],
-    seek: true,
-  });
+  expect(previewRequest).toHaveBeenCalledExactlyOnceWith(
+    iframe,
+    "patch-tweens",
+    {
+      patches: [
+        { selector: "#a", change: { kind: "set", props: { x: 10 } } },
+        { selector: "#b", change: { kind: "global-set", props: { rotation: 45 } } },
+      ],
+      seek: true,
+    },
+    undefined,
+  );
   const sent = previewRequest.mock.calls[0]?.[2] as {
     patches: Array<{ change: { props: object } }>;
   };
