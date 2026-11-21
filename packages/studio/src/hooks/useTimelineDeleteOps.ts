@@ -124,8 +124,9 @@ export function useTimelineDeleteOps({
           usePlayerStore.getState().rippleEditEnabled,
         );
         const rippleChanges = rippleShifts ? resolveShiftedElements(survivors, rippleShifts) : null;
-        // The timeline follows at once, so an edit made right after starts from this result.
+        // Timeline and preview follow at once, so the next edit starts from this result.
         usePlayerStore.getState().setElements(applyRippleShifts(survivors, rippleChanges));
+        removeIframeTimelineElements(previewIframeRef.current, sameFile, activeCompPath);
         let rollbackDuration = () => {};
         const deleted = editQueueRef.current.then(async () => {
           await saveServerRewriteWithHistory({
@@ -200,14 +201,10 @@ export function useTimelineDeleteOps({
         } catch (error) {
           rollbackDuration();
           usePlayerStore.getState().setElements(elements);
-          if (shifted) {
-            void shifted.catch(() => undefined);
-            reloadPreview();
-          }
+          void shifted?.catch(() => undefined);
+          reloadPreview();
           throw error;
         }
-
-        removeIframeTimelineElements(previewIframeRef.current, sameFile, activeCompPath);
         let rippleFailed = false;
         if (shifted) {
           try {
