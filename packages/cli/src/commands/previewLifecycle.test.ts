@@ -1610,6 +1610,7 @@ describe("background preview log warning", () => {
       forceNew: true,
       scan: async () => [],
       spawn: () => ({ pid: 5432, unref: vi.fn() }),
+      kill: vi.fn(),
       sleep: async () => {},
       stateHome: join(blocker, `state${bell}home`),
     }).catch(() => {});
