@@ -8,8 +8,9 @@
 
 import { usableCpuCount } from "./systemMemory.js";
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
-import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, statSync } from "fs";
 import { basename, isAbsolute, join, normalize, relative, win32 } from "path";
+import { tmpdir } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { parseHTML } from "linkedom";
 import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
@@ -45,6 +46,7 @@ import {
   hdrToSdrToneMapFilter,
   parseFirstFrameColour,
   readsKeyframeTransfers,
+  terminalText,
 } from "@hyperframes/core";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import { isKnownInactiveTimelineWindow } from "./mediaTimelineWindow.js";
@@ -1337,6 +1339,61 @@ export async function buildVideoLayerInput(
   };
 }
 
+// VLC-muxed MP4s can leave the first IDR out of `stss`; ffmpeg then cannot input-seek before the next one.
+const SEEK_INDEX_MISSING = /Cannot find an index entry before timestamp|could not seek to position/;
+
+/** The probed size of a source the mov/mp4 demuxer reads; undefined for a playlist, a list or any other format. */
+async function movSourceBytes(
+  videoPath: string,
+  signal?: AbortSignal,
+): Promise<number | undefined> {
+  try {
+    const probed = JSON.parse(
+      await runFfprobe(
+        videoPath,
+        ["-show_entries", "format=format_name,size", "-of", "json"],
+        signal,
+      ),
+    ) as { format?: { format_name?: string; size?: string } };
+    const bytes = Number(probed.format?.size);
+    return probed.format?.format_name === "mov,mp4,m4a,3gp,3g2,mj2" && bytes > 0
+      ? bytes
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A mov/mp4 copy past this replays data, so it fails. `-fs` caps the media; the index written after grows in step. */
+const seekIndexCopyLimit = (sourceBytes: number) => 2 * sourceBytes + 1024 * 1024;
+
+async function streamCopyWithRebuiltSeekIndex(
+  videoPath: string,
+  signal: AbortSignal | undefined,
+  timeout: number,
+): Promise<{ dir: string; path: string } | undefined> {
+  const sourceBytes = await movSourceBytes(videoPath, signal);
+  if (sourceBytes === undefined) return undefined;
+  const limit = seekIndexCopyLimit(sourceBytes);
+  const dir = mkdtempSync(join(tmpdir(), "hf-seek-index-"));
+  const path = join(dir, "source.mov");
+  let kept = false;
+  try {
+    const result = await runFfmpeg(
+      [
+        ...urlInputArgs(videoPath),
+        ...["-f", "mov", "-i", videoPath, "-map", "0:v:0", "-map", "0:a?", "-c", "copy"],
+        ...["-fs", String(limit), "-y", path],
+      ],
+      { signal, timeout },
+    );
+    kept = result.success && existsSync(path) && statSync(path).size < limit;
+    return kept ? { dir, path } : undefined;
+  } finally {
+    if (!kept) rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function extractVideoFramesRangeUnredacted(
   videoPath: string,
   videoId: string,
@@ -1347,6 +1404,7 @@ async function extractVideoFramesRangeUnredacted(
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
   /** Frames go straight here, with no per-videoId subdir (the cache layer's keyed entry). */
   outputDirOverride?: string,
+  seekIndexRebuilt = false,
 ): Promise<ExtractedFrames> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const { outputDir, quality = 95 } = options;
@@ -1359,7 +1417,7 @@ async function extractVideoFramesRangeUnredacted(
 
   let metadata: VideoMetadata;
   try {
-    metadata = await extractMediaMetadata(videoPath);
+    metadata = await extractMediaMetadata(videoPath, { signal });
   } catch (error) {
     throw classifyVideoExtractionError(error);
   }
@@ -1525,6 +1583,37 @@ async function extractVideoFramesRangeUnredacted(
   const videoToolboxWasOptional = decodeWithVideoToolbox && !keepsHdrForChrome;
   if (ffmpegExitedFailing && videoToolboxWasOptional && !DISK_FULL.test(processResult.stderr))
     processResult = await extract([]);
+  // The same failed seek exits 0 or not depending on the frame encoder, so match ffmpeg's message.
+  if (
+    processResult.terminationReason === "exit" &&
+    !seekIndexRebuilt &&
+    SEEK_INDEX_MISSING.test(processResult.stderr)
+  ) {
+    const rebuilt = await inExtractionSlot(
+      () => streamCopyWithRebuiltSeekIndex(videoPath, signal, ffmpegProcessTimeout),
+      signal,
+    );
+    if (rebuilt) {
+      for (const stale of framePathsFromDirectory(videoOutputDir, format, true).values())
+        rmSync(stale, { force: true });
+      try {
+        const frames = await extractVideoFramesRangeUnredacted(
+          rebuilt.path,
+          videoId,
+          startTime,
+          duration,
+          options,
+          signal,
+          config,
+          outputDirOverride,
+          true,
+        );
+        return { ...frames, srcPath: videoPath };
+      } finally {
+        rmSync(rebuilt.dir, { recursive: true, force: true });
+      }
+    }
+  }
   if (processResult.failureReason === "external_interruption") {
     throw new VideoSourceExtractionError(
       "external_interruption",
@@ -2307,8 +2396,8 @@ export async function extractAllVideoFrames(
         if (!warnedSrcs.has(video.src)) {
           warnedSrcs.add(video.src);
           process.stderr.write(
-            `[hyperframes:render] WARNING: video src="${video.src}" ` +
-              `could not be resolved on disk (looked for ${videoPath}). ` +
+            `[hyperframes:render] WARNING: video src="${terminalText(video.src)}" ` +
+              `could not be resolved on disk (looked for ${terminalText(videoPath)}). ` +
               `The rendered output will show this video's first frame for the entire clip duration. ` +
               `If your <video> lives inside a sub-composition, prefer project-root-relative paths ` +
               `(e.g. src="assets/foo.mp4") over "../assets/foo.mp4".\n`,
@@ -2371,8 +2460,8 @@ export async function extractAllVideoFrames(
         const attempted =
           !options.collectProbeFailures &&
           boundedTransientRetryBudget(options.maxTransientRetries) === 0
-            ? { result: await extractMediaMetadata(videoPath), retries: 0 }
-            : await runVideoExtractionWithRetry(() => extractMediaMetadata(videoPath), {
+            ? { result: await extractMediaMetadata(videoPath, { signal }), retries: 0 }
+            : await runVideoExtractionWithRetry(() => extractMediaMetadata(videoPath, { signal }), {
                 signal,
                 maxTransientRetries: options.maxTransientRetries,
                 onRetry: () => recordTransientRetries(1),
@@ -2876,7 +2965,8 @@ export async function extractAllVideoFrames(
         throw new Error("Video frame extraction cancelled");
       }
       try {
-        const metadata = videoMetadata[index] ?? (await extractMediaMetadata(videoPath));
+        const metadata =
+          videoMetadata[index] ?? (await extractMediaMetadata(videoPath, { signal }));
         alignClipStartToFirstOutputFrame(video, fps);
         const initialWindow = resolveVideoExtractionWindow(video, metadata, options.timelineEnd);
         const window = await resolveFinalFrameExtractionWindow(

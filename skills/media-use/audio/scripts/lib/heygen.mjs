@@ -1,4 +1,6 @@
 import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
+import { receivedFileState } from "../../../scripts/lib/received-env.mjs";
+import { terminalText } from "../../../scripts/lib/terminal-text.mjs";
 // heygen.mjs — vendored HeyGen REST helpers (auth + transport) for the audio
 // pipeline. The credential resolver matches the hyperframes CLI auth: first
 // usable source wins — a host gateway ($HEYGEN_API_BASE with its own
@@ -11,7 +13,7 @@ import { fetchMedia } from "../../../scripts/lib/media-fetch.mjs";
 // heygen CLI; plain HTTP needs $HEYGEN_ALLOW_HTTP=1, as there.
 // Vendored so the skill ships standalone. Pure node.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -88,12 +90,130 @@ function projectKeyDir(name) {
   return set !== undefined && set.val === process.env[name] ? set.dir : undefined;
 }
 
+const GEMINI_CREDENTIALS = [
+  "GEMINI_API_KEY",
+  "GOOGLE_API_KEY",
+  "GOOGLE_APPLICATION_CREDENTIALS",
+  "GCS_CREDS",
+];
+
+// The hyperframes CLI names the folder whose .env set each key it passes on, so a key it loaded is not the shell's.
+function inheritProjectKeyOrigins() {
+  let origins;
+  try {
+    origins = JSON.parse(process.env.HYPERFRAMES_PROJECT_ENV_ORIGINS || "{}");
+  } catch {
+    return;
+  }
+  for (const name of [...GEMINI_CREDENTIALS, "ELEVENLABS_API_KEY"]) {
+    const dir = origins?.[name];
+    if (typeof dir === "string" && process.env[name] && !projectEnvValues.has(name))
+      projectEnvValues.set(name, { val: process.env[name], dir });
+  }
+}
+
+function realFolder(dir) {
+  try {
+    return realpathSync(dir);
+  } catch {
+    return resolve(dir);
+  }
+}
+
+// The keys the CLI unset from a folder's .env, as `<real folder>\0<name>`, so loading that .env again under any
+// spelling of the folder leaves them out.
+function inheritedYieldedKeys() {
+  try {
+    const yielded = JSON.parse(process.env.HYPERFRAMES_PROJECT_ENV_YIELDED || "[]");
+    if (!Array.isArray(yielded)) return new Set();
+    return new Set(
+      yielded.map((entry) => `${realFolder(String(entry?.[1]))}\0${String(entry?.[0])}`),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+const RECEIVED_ORIGIN = {
+  received: "a received project",
+  unchecked: "a project whose origin could not be checked (too many folders to scan)",
+};
+const envFileStates = new Map();
+
+// How a project key's .env is not the person's own by the CLI's received-files rule: received, or unchecked when its
+// folders are too many to scan. Null when it is theirs or the key is not from a .env. A .env found in a folder above
+// the working one is judged only by records and host state at or above that folder.
+function untrustedOrigin(name) {
+  const dir = projectKeyDir(name);
+  if (dir === undefined) return null;
+  const atOrAboveOnly = projectEnvValues.get(name)?.parent === true;
+  const id = `${dir}\0${atOrAboveOnly}`;
+  if (!envFileStates.has(id))
+    envFileStates.set(id, receivedFileState(dir, ".env", { atOrAboveOnly }));
+  const state = envFileStates.get(id);
+  return state === null ? null : RECEIVED_ORIGIN[state];
+}
+
+// The person's own credential that the provider of a received project's key competes with, named for the note;
+// undefined when the key is the person's own or nothing competes.
+function ownCompetingCredential(name) {
+  if (untrustedOrigin(name) === null) return undefined;
+  const own = (other) => other !== name && process.env[other] && untrustedOrigin(other) === null;
+  if (name !== "ELEVENLABS_API_KEY") return GEMINI_CREDENTIALS.find(own);
+  if (process.env.HEYGEN_ACCESS_TOKEN) return "HEYGEN_ACCESS_TOKEN";
+  const heygenKey = ["HEYGEN_API_KEY", "HYPERFRAMES_API_KEY"].find(own);
+  if (heygenKey) return heygenKey;
+  return storedCredential() ? "saved HeyGen credentials" : undefined;
+}
+
+const projectOrigin = (name) => untrustedOrigin(name) ?? "a project .env";
+
+// A received project .env's provider key gives way to the person's own credential for a competing provider.
+function yieldProjectProviderKeys() {
+  for (const name of ["GEMINI_API_KEY", "GOOGLE_API_KEY", "ELEVENLABS_API_KEY"]) {
+    const dir = projectKeyDir(name);
+    const own = dir === undefined ? undefined : ownCompetingCredential(name);
+    if (own === undefined) continue;
+    const origin = projectOrigin(name);
+    delete process.env[name];
+    projectEnvValues.delete(name);
+    process.stderr.write(
+      `[hyperframes] .env: ignoring ${name} from ${origin} (${terminalText(join(dir, ".env"))}); using your own ${own}\n`,
+    );
+  }
+}
+
+const projectKeysNoted = new Set();
+
+// Says once per key, before a provider uses it, that the key came from a project .env.
+export function noteProjectProviderKey(name, use) {
+  const dir = projectKeyDir(name);
+  if (dir === undefined || projectKeysNoted.has(name)) return;
+  projectKeysNoted.add(name);
+  process.stderr.write(
+    `[hyperframes] Using ${name} from ${terminalText(join(dir, ".env"))}, ${projectOrigin(name)}: ${use}.\n`,
+  );
+}
+
+export function noteProjectElevenLabsKey() {
+  noteProjectProviderKey("ELEVENLABS_API_KEY", "speech goes to that key's ElevenLabs account");
+}
+
 // Walk up ≤5 dirs from startDir; load the first .env (shell env always wins).
 export function loadEnvFromDir(startDir) {
-  let dir = resolve(startDir);
+  inheritProjectKeyOrigins();
+  loadFirstEnvFile(startDir);
+  yieldProjectProviderKeys();
+}
+
+function loadFirstEnvFile(startDir) {
+  const yielded = inheritedYieldedKeys();
+  const start = resolve(startDir);
+  let dir = start;
   for (let i = 0; i < 5; i++) {
     const text = envFileText(join(dir, ".env"));
     if (text != null) {
+      const real = realFolder(dir);
       for (const raw of text.split("\n")) {
         let line = raw.trim();
         if (!line || line.startsWith("#")) continue;
@@ -107,9 +227,10 @@ export function loadEnvFromDir(startDir) {
           const end = val.indexOf(q, 1);
           val = end > 0 ? val.slice(1, end) : val.slice(1);
         }
-        if (PROJECT_ENV_KEYS.has(key) && !(key in process.env)) {
+        const skip = key in process.env || yielded.has(`${real}\0${key}`);
+        if (PROJECT_ENV_KEYS.has(key) && !skip) {
           process.env[key] = val;
-          projectEnvValues.set(key, { val, dir });
+          projectEnvValues.set(key, { val, dir, parent: dir !== start });
         }
       }
       return;

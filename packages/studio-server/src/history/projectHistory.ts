@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { isStudioPrivatePath } from "@hyperframes/core/safe-path";
 import {
   DELETED_VERSION,
   fileContentVersion,
@@ -22,7 +23,7 @@ import {
   onFileOverwritten,
   recordFileWriteReceipt,
 } from "../helpers/fileVersion.js";
-import { realFilePath } from "../helpers/safePath.js";
+import { isWritableInProject, realFilePath } from "../helpers/safePath.js";
 import {
   STUDIO_SIGNATURE_MANIFEST_PATHS,
   affectsProjectSignature,
@@ -44,10 +45,12 @@ import {
   sameFolder,
   projectHistoryId,
   readId,
+  statOffThread,
   recordProject,
   type FolderIdentity,
 } from "./historyId.js";
 import { takeHistoryOwnership } from "./ownerLock.js";
+import { canNameFiles, fileNames } from "../helpers/fileReferences.js";
 import { writeHistoryState } from "./videoState.js";
 import {
   START,
@@ -60,6 +63,7 @@ import {
   referencedHashes,
   stepTarget,
   undoneIds,
+  stepPaths,
   writeLog,
   type HistoryEntry,
   type HistoryTarget,
@@ -248,9 +252,9 @@ async function inFirstCopySlot<T>(copy: () => Promise<T>): Promise<T> {
 const MEDIA_LEDGER = ".media/manifest.jsonl";
 const KEPT_HIDDEN_PATHS = new Set<string>([...STUDIO_SIGNATURE_MANIFEST_PATHS, MEDIA_LEDGER]);
 
-/** A hidden name (a tool's own record, .DS_Store) is nobody's work, except the kept ones above; nor is a path out. */
+/** A hidden name (a tool's own record) is nobody's work, except the kept ones above; nor is a path out or a private file. */
 function isHistoryPath(path: string): boolean {
-  if (!isRelativeProjectPath(path)) return false;
+  if (!isRelativeProjectPath(path) || isStudioPrivatePath(path)) return false;
   if (KEPT_HIDDEN_PATHS.has(path)) return true;
   return !path.split("/").some((segment) => segment.startsWith("."));
 }
@@ -269,6 +273,13 @@ function listOf(log: HistoryLog): HistoryListItem[] {
 function peekOf(log: HistoryLog, point: string): Record<string, string> | null {
   const files = manifestAt(log, point);
   return files && Object.fromEntries(files);
+}
+
+function namesBlob(log: HistoryLog, hash: string): boolean {
+  for (const kept of log.baseline.values()) if (kept === hash) return true;
+  return log.entries.some((entry) =>
+    entry.files.some((file) => file.before === hash || file.after === hash),
+  );
 }
 
 function withoutHiddenPaths(log: HistoryLog): HistoryLog {
@@ -362,6 +373,23 @@ function chainBackFrom(
   return chain;
 }
 
+const SEEN_PER_PATH = 32;
+
+/** Per path, the latest hashes the server itself found or replaced there; a claim's word counts only for these. */
+class SeenVersions extends Map<string, Set<string>> {
+  note(path: string, hash: string): void {
+    const hashes = this.get(path) ?? new Set<string>();
+    hashes.delete(hash);
+    hashes.add(hash);
+    const oldest = hashes.values().next().value;
+    if (hashes.size > SEEN_PER_PATH && oldest !== undefined) hashes.delete(oldest);
+    this.set(path, hashes);
+  }
+  sawAt(path: string, hash: string | undefined): string | undefined {
+    return hash && this.get(path)?.has(hash) ? hash : undefined;
+  }
+}
+
 /** Files one change to a group; a later change to the same path keeps the group's first "before". */
 function addChange(group: Group, path: string, before: string | null, after: string | null): void {
   const earlier = group.changes.get(path);
@@ -372,6 +400,9 @@ function addChange(group: Group, path: string, before: string | null, after: str
 
 const targetKey = (target: HistoryTarget) =>
   JSON.stringify([target.file, target.id, target.hfId, target.selector, target.selectorIndex]);
+
+const keptHash = (kept: Record<string, string>, path: string) =>
+  Object.hasOwn(kept, path) ? kept[path] : undefined;
 
 function keepTargetsOfItsFiles(entry: HistoryEntry): HistoryEntry {
   const targets = entry.targets?.filter((target) =>
@@ -384,11 +415,15 @@ function keepTargetsOfItsFiles(entry: HistoryEntry): HistoryEntry {
 
 /** The tracked files; any change owes the project's video-state.json a rewrite. */
 class TrackedFiles extends Map<string, Tracked> {
-  constructor(private readonly changed: () => void) {
+  constructor(
+    private readonly changed: () => void,
+    private readonly seen: (path: string, hash: string) => void,
+  ) {
     super();
   }
   override set(path: string, file: Tracked): this {
     this.changed();
+    this.seen(path, file.hash);
     return super.set(path, file);
   }
   override delete(path: string): boolean {
@@ -404,7 +439,11 @@ class Engine {
   readonly home: string;
   log: HistoryLog = { baseline: new Map(), entries: [], pins: new Set() };
   owesVideoState = true;
-  tracked = new TrackedFiles(() => (this.owesVideoState = true));
+  seen = new SeenVersions();
+  tracked = new TrackedFiles(
+    () => (this.owesVideoState = true),
+    (path, hash) => this.seen.note(path, hash),
+  );
   windows: Group[] = [];
   outside: Group | null = null;
   /** A coalescing claim, open until another key, its idle timer, an operation, a window, or another write. */
@@ -548,6 +587,8 @@ class Engine {
       if (!replaced || replaced === after) return;
       const path = relative(realDir, absPath).split(sep).join("/");
       if (!isHistoryPath(path)) return;
+      this.seen.note(path, replaced);
+      this.seen.note(path, after);
       // One chain per file, a new Map per write (forgetWritesBefore checks identity); off-chain notes were overwritten.
       this.overwritten.set(
         path,
@@ -911,6 +952,8 @@ class Engine {
       : null;
   }
 
+  studioWouldWrite = (path: string): boolean => isWritableInProject(this.dir, path);
+
   logPath(path: string): string {
     return relative(this.dir, resolve(this.dir, path)).split(sep).join("/");
   }
@@ -921,12 +964,12 @@ class Engine {
     paths: readonly string[],
     overwrote: Readonly<Record<string, string>>,
   ): Promise<HistoryFileChange[]> {
-    const wanted = new Set(paths.map((path) => this.logPath(path)));
+    const wanted = new Set(paths.map((path) => this.logPath(path)).filter(this.studioWouldWrite));
     const at = new Map(
-      Object.entries(overwrote).map(([path, version]) => [
-        this.logPath(path),
-        hashOfVersion(version),
-      ]),
+      Object.entries(overwrote).map(([path, version]) => {
+        const logPath = this.logPath(path);
+        return [logPath, this.seen.sawAt(logPath, hashOfVersion(version))];
+      }),
     );
     const others = this.windows.filter((open) => !sameWho(open.who, who));
     const groups = this.outside ? [this.outside, ...others] : others;
@@ -1037,10 +1080,15 @@ class Engine {
     if (group) await this.commit(group);
   }
 
+  keepsEmpty(extra: Partial<HistoryEntry>): boolean {
+    if (extra.undoes === undefined) return false;
+    const target = this.log.entries.find((entry) => entry.id === extra.undoes);
+    // Only an older log's emptied entry: a kept undo has paths, so skipping them all leaves it in effect.
+    return extra.keptInPlace !== undefined || (target !== undefined && !stepPaths(target).length);
+  }
+
   async commit(group: Group, extra: Partial<HistoryEntry> = {}): Promise<HistoryEntry | null> {
-    const undoesEmptied =
-      this.log.entries.find((entry) => entry.id === extra.undoes)?.files.length === 0;
-    if (!group.changes.size && !undoesEmptied) return null;
+    if (!group.changes.size && !this.keepsEmpty(extra)) return null;
     const pending = this.pendingEntry(group);
     const endedAt = Math.max(pending.endedAt, this.log.entries.at(-1)?.endedAt ?? 0);
     const entry = keepTargetsOfItsFiles({ ...pending, endedAt, ...extra });
@@ -1230,8 +1278,13 @@ class Engine {
     extra: Partial<HistoryEntry>,
   ): Promise<HistoryEntry | null> {
     this.assertWritable();
-    const changes = [...target]
-      .filter(([path, hash]) => (this.tracked.get(path)?.hash ?? null) !== hash)
+    const wanted = [...target].filter(
+      ([path, hash]) =>
+        this.studioWouldWrite(path) && (this.tracked.get(path)?.hash ?? null) !== hash,
+    );
+    const named = await this.stillNamed(wanted);
+    const changes = wanted
+      .filter(([path, hash]) => hash !== null || !named.has(path))
       .sort(([, a], [, b]) => Number(a !== null) - Number(b !== null));
     const setAsideByDeletesFirst = new Set(
       changes.filter(([, hash]) => hash === null).map(([path]) => this.tracked.get(path)?.hash),
@@ -1260,7 +1313,62 @@ class Engine {
     } finally {
       this.windows = this.windows.filter((open) => open !== group);
     }
-    return this.commit(group, extra);
+    const leftInPlace = [...named].map((path) => [path, this.tracked.get(path)!.hash]);
+    const kept = { ...extra.keptInPlace, ...Object.fromEntries(leftInPlace) };
+    return this.commit(group, { ...extra, ...(Object.keys(kept).length && { keptInPlace: kept }) });
+  }
+
+  async stillNamed(changes: readonly (readonly [string, string | null])[]): Promise<Set<string>> {
+    const deleting = changes.flatMap(([path, hash]) => (hash === null ? [path] : []));
+    const named = new Set<string>();
+    if (!deleting.length) return named;
+    const after = this.filesAfter(changes);
+    const existing = [...after].flatMap(([path, hash]) => (hash === null ? [] : [path]));
+    let pages = this.pagesOf(after);
+    while (pages.length) {
+      const candidates = deleting.filter((path) => !named.has(path));
+      const rescued = await this.namedBy(pages, candidates, existing);
+      for (const path of rescued) named.add(path);
+      pages = this.pagesOf(new Map(rescued.map((path) => [path, this.tracked.get(path)!.hash])));
+    }
+    return named;
+  }
+
+  filesAfter(changes: readonly (readonly [string, string | null])[]): Map<string, string | null> {
+    const after = new Map(
+      [...this.tracked].map(([path, file]) => [path, file.hash as string | null]),
+    );
+    for (const [path, hash] of changes) after.set(path, hash);
+    return after;
+  }
+
+  pagesOf(files: Map<string, string | null>): [string, string][] {
+    return [...files].filter(
+      (entry): entry is [string, string] =>
+        entry[1] !== null && this.studioWouldWrite(entry[0]) && canNameFiles(entry[0]),
+    );
+  }
+
+  async namedBy(
+    pages: readonly [string, string][],
+    candidates: readonly string[],
+    existing: readonly string[],
+  ): Promise<string[]> {
+    const found = new Set<string>();
+    for (const [page, hash] of pages) {
+      const text = await this.pageText(page, hash);
+      for (const path of candidates) if (fileNames(page, text, path, existing)) found.add(path);
+    }
+    return [...found];
+  }
+
+  async pageText(page: string, hash: string): Promise<string> {
+    try {
+      if (this.blobs.has(hash)) return (await this.blobs.read(hash)).toString("utf-8");
+      return readFileSync(join(this.dir, page), "utf-8");
+    } catch {
+      return "";
+    }
   }
 
   /** Writes one project file (null deletes it), first leaving the running operation's receipt for its echo. */
@@ -1305,7 +1413,9 @@ class Engine {
 
   async undoNow(id: string, who: HistoryWho, mode?: UndoMode): Promise<HistoryResult> {
     const entry = this.entry(id);
-    const changed = this.movedOn(entry);
+    const hashOf = (path: string) => this.tracked.get(path)?.hash ?? null;
+    const steps = this.stepsOf(entry);
+    const changed = steps.filter((step) => hashOf(step.path) !== step.holds);
     if (changed.length && !mode) return { ok: false, conflict: this.conflict(entry, changed) };
     if (mode === "back-to-before") {
       const index = this.log.entries.indexOf(entry);
@@ -1315,29 +1425,59 @@ class Engine {
         entry: await this.restoreNow(point, who, `Went back to before: ${entry.label}`),
       };
     }
-    const target = new Map(
-      entry.files
-        .filter((file) => mode !== "keep-later-edits" || !changed.includes(file))
-        .map((file) => [file.path, file.before]),
+    const taken = steps.filter((step) => mode !== "keep-later-edits" || !changed.includes(step));
+    const inPlace = taken.flatMap((step) =>
+      step.to !== null && hashOf(step.path) === step.to ? [[step.path, step.to]] : [],
     );
     return {
       ok: true,
-      entry: await this.writeAs(who, this.undoLabel(entry), target, {
-        undoes: id,
-        ...(entry.targets && { targets: entry.targets }),
-      }),
+      entry: await this.writeAs(
+        who,
+        this.undoLabel(entry),
+        new Map(taken.map((step) => [step.path, step.to])),
+        {
+          undoes: id,
+          ...(entry.targets && { targets: entry.targets }),
+          ...(inPlace.length && { keptInPlace: Object.fromEntries(inPlace) }),
+        },
+      ),
     };
   }
 
-  movedOn(entry: HistoryEntry): HistoryFileChange[] {
-    return entry.files.filter((file) => (this.tracked.get(file.path)?.hash ?? null) !== file.after);
+  /** Each file a step over `entry` writes, what it writes there, and what the file must still hold so the step undoes
+   * nobody's later work: the entry's own files, and the files an undo that kept them left (back to the original's). */
+  stepsOf(entry: HistoryEntry): { path: string; to: string | null; holds: string | null }[] {
+    const redoKept = this.keptByRedo(entry);
+    const own = entry.files.map((file) => ({
+      path: file.path,
+      to: file.before,
+      holds: keptHash(redoKept, file.path) ?? file.after,
+    }));
+    const original = entry.undoes ? this.log.entries.find((e) => e.id === entry.undoes) : undefined;
+    const left = entry.keptInPlace ?? {};
+    const kept = Object.keys(left).flatMap((path) => {
+      const file = original?.files.find((change) => change.path === path);
+      return file ? [{ path, to: file.after, holds: left[path]! }] : [];
+    });
+    return [...own, ...kept];
+  }
+
+  /** What the redo of `entry` now in effect left in place of its changes, path to hash; empty when it kept none. */
+  keptByRedo(entry: HistoryEntry): Record<string, string> {
+    const undone = undoneIds(this.log.entries);
+    const undoOf = (id: string) => this.log.entries.find((e) => e.id === id)?.undoes;
+    const redo = [...this.log.entries]
+      .reverse()
+      .find((e) => e.undoes !== undefined && !undone.has(e.id) && undoOf(e.undoes) === entry.id);
+    return redo?.keptInPlace ?? {};
   }
 
   next(direction: "back" | "forward", who: HistoryWho): HistoryEntry | undefined {
     // An outside change has no known author, so it is everyone's; a step commits it after the held claim.
     const mine = (author: HistoryWho) => sameWho(author, who) || sameWho(author, OUTSIDE);
+    const writes = (paths: Iterable<string>) => [...paths].some(this.studioWouldWrite);
     const pending = [...[...this.windows].reverse(), this.outside, this.claimed?.group].find(
-      (group) => group?.changes.size && mine(group.who),
+      (group) => group && writes(group.changes.keys()) && mine(group.who),
     );
     if (pending) return direction === "back" ? this.pendingEntry(pending) : undefined;
     const everyone = this.options.undoScope === "everyone";
@@ -1346,7 +1486,7 @@ class Engine {
     return stepTarget(
       this.log.entries,
       direction,
-      (entry) => entry.files.length > 0 && (mine(entry.who) || (everyone && !ofOpenTurn(entry))),
+      (entry) => writes(stepPaths(entry)) && (mine(entry.who) || (everyone && !ofOpenTurn(entry))),
     );
   }
 
@@ -1367,7 +1507,7 @@ class Engine {
 
   conflict(
     entry: HistoryEntry,
-    changed: HistoryFileChange[],
+    changed: readonly { path: string }[],
   ): { files: string[]; newer: string[] } {
     const paths = new Set(changed.map((file) => file.path));
     const after = this.log.entries.slice(this.log.entries.indexOf(entry) + 1);
@@ -1478,6 +1618,7 @@ class Engine {
       },
       readBlob: async (hash) => {
         this.assertOpen();
+        if (!namesBlob(this.log, hash)) throw new Error("That is not a history blob.");
         return this.blobs.read(hash);
       },
       pin: (id, pinned) => {
@@ -1540,9 +1681,9 @@ export class HistoryRefusedError extends Error {
 
 /** Opens a project's history: every write to its files becomes an entry that can be undone or restored. */
 export async function openProjectHistory(options: ProjectHistoryOptions): Promise<ProjectHistory> {
-  if (!existsSync(options.projectDir))
+  if (!(await statOffThread(options.projectDir)))
     throw new HistoryClosedError(`${options.projectDir} is gone or now another project.`);
-  const projectId = projectHistoryId(options.projectDir, options.historyRoot);
+  const projectId = await projectHistoryId(options.projectDir, options.historyRoot);
   const release = await takeHistoryOwnership(
     join(options.historyRoot, projectId),
     options.ownerWaitMs ?? 5000,
@@ -1594,7 +1735,7 @@ export function readProjectHistory(
     list: () => listOf(log),
     peek: (point) => peekOf(log, point),
     readBlob: async (hash) => {
-      if (!home) throw new Error("That is not a history blob.");
+      if (!home || !namesBlob(log, hash)) throw new Error("That is not a history blob.");
       return readBlob(join(home, "blobs"), hash);
     },
   };

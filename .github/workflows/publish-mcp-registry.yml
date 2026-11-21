@@ -1,9 +1,10 @@
 name: Publish to MCP Registry
 
-# Lists the hosted HyperFrames MCP (server.json) in the official MCP registry. The registry gives the
-# io.github.heygen-com/* name to a run that GitHub vouches for as this repo (OIDC), so no secret is stored.
+# Lists the hosted HyperFrames MCP (server.json) in the official MCP registry as com.heygen/*: the registry checks a
+# signature against heygen.com's MCPv1 TXT record, and only the mcp-registry environment holds the key. Its GitHub
+# login is not used: that grants io.github.heygen-com/* to an OIDC token from any job in any heygen-com repo.
 # The registry rejects a version it already has: to change the listing, edit server.json and raise "version".
-# Steps follow https://modelcontextprotocol.io/registry/github-actions
+# Steps follow https://modelcontextprotocol.io/registry/authentication (DNS).
 
 permissions: {}
 
@@ -15,12 +16,12 @@ on:
 
 jobs:
   publish:
-    # The registry trusts any OIDC token from this repo, so only main may request one.
+    # The environment admits only main.
     if: github.ref == 'refs/heads/main'
+    environment: mcp-registry
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      id-token: write
       contents: read
     env:
       MCP_PUBLISHER_VERSION: v1.8.9
@@ -49,7 +50,9 @@ jobs:
           rm -f "$archive" "$archive.sigstore.json"
 
       - name: Log in to the MCP registry
-        run: ./mcp-publisher login github-oidc
+        env:
+          MCP_PRIVATE_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
+        run: ./mcp-publisher login dns --domain heygen.com --private-key "$MCP_PRIVATE_KEY"
 
       - name: Publish server.json
         run: ./mcp-publisher publish

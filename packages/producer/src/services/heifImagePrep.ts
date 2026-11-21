@@ -81,7 +81,7 @@ export interface PrepareHeifImageInputsOptions {
   sourceAssets?: Map<string, string>;
   timeoutMs?: number;
   transcode?: (input: HeifTranscodeRequest) => Promise<void>;
-  assetRoot?: string;
+  allowOutsideFiles?: boolean;
   /** Leaves an image whose conversion failed as authored and reports it, instead of throwing. */
   onFailure?: (error: HeifImageConversionError | HeifToolUnavailableError) => void;
 }

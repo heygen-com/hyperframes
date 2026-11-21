@@ -1,6 +1,6 @@
 import type { DomEditSelection } from "./domEditingTypes";
 import { findPreviewNode } from "./domEditingElement";
-import { previewFrameOpaque } from "../../player/lib/previewChannel";
+import { previewFrameOpaque, previewRequest } from "../../player/lib/previewChannel";
 
 /**
  * Build the "live preview" callback the 3D-transform sub-view fires while a
@@ -13,7 +13,11 @@ import { previewFrameOpaque } from "../../player/lib/previewChannel";
 export function createGsapLivePreview(iframeRef: { readonly current: HTMLIFrameElement | null }) {
   return (el: DomEditSelection, props: Record<string, number>) => {
     const iframe = iframeRef.current;
-    if (!iframe || previewFrameOpaque(iframe)) return;
+    if (!iframe) return;
+    if (previewFrameOpaque(iframe)) {
+      if (el.handle) void previewRequest(iframe, "gsap-set", { handle: el.handle, props });
+      return;
+    }
     const win = iframe?.contentWindow as
       | { gsap?: { set: (t: Element, v: Record<string, number>) => void } }
       | null

@@ -5,6 +5,11 @@ import { debuglog } from "node:util";
 import { release } from "node:os";
 import { dirname, join } from "node:path";
 import { buildChromeLaunchEnv } from "@hyperframes/core/chrome-env";
+import {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  startsWithChromeSandboxFallback,
+} from "@hyperframes/core/chrome-sandbox";
 
 /** Chrome 151 dropped macOS 12 and older (Darwin < 22); 150 is the last major that launches there. */
 const MACOS_12_LAST_CHROME_MAJOR = 150;
@@ -25,9 +30,9 @@ export function exceedsChromeCeiling(versionName: string, ceiling: number | unde
   return major > ceiling;
 }
 
-// Deliberately Beta, not Canary: 153.0.8000.0 measured identical to this build on every probe. macOS 12 gets 150,
-// the last headless shell that launches there; it exposes canvas.drawElementImage under CanvasDrawElement.
-const CHROME_VERSION = "152.0.7977.30";
+// Chrome Stable, so the managed shell keeps receiving stable security fixes. macOS 12 gets 150, the last headless
+// shell that launches there; it exposes canvas.drawElementImage under CanvasDrawElement.
+const CHROME_VERSION = "158.0.8127.36";
 const MACOS_12_CHROME_VERSION = "150.0.7871.124";
 
 export function managedChromeVersion(
@@ -42,19 +47,19 @@ export function managedChromeVersion(
 /** Each pinned build's headless shell folder (Chrome for Testing), by `headlessShellDigest`, one per platform.
  * Regenerate with `bun run --cwd packages/cli pin:chrome <builds>` whenever a version above moves. */
 export const PINNED_SHELL_DIGESTS: Readonly<Record<string, readonly string[]>> = {
-  "152.0.7977.30": [
-    "36d776bdf60c0905d45fbd0ab22e110212a9fc1ecbfe2ab9635f2e189f063cee",
-    "b73346545b700f0971b40523b1de11568098738453af4fca4d7e89ef81345b82",
-    "f657ca808c956e3ec04d8be73b72a1205d8b6ec9778eee2b6117f30974da0164",
-    "799dccb1f0f0042632c9959477a8e65a1673570b09855ffdc5609d1a8644cbf6",
-    "d9abf42d234878c1320053caecccf1863dd27daf9d67c828686672dcd3748287",
+  "158.0.8127.36": [
+    "564ba9876826b3a3ce71f862a37c85ee7938191975afad9f427918db6b073e13",
+    "32499804ce68213b7a3d5f622c8c94004522b02ed35bab7913495e6c8986c904",
+    "2ba780aa9f4afc4f79f4d6c1b32eb0fb9c0217faaa88ac56b5c82facfb31742d",
+    "ca7a3db192eb40cf690d8c338e5e15b62ebaaee4b02e0996521e22f6081c6db3",
+    "dee5819f7bd47d82915bc0598a80288b7f09b9b3f819eef4008fdc208dc6f345",
   ],
   "150.0.7871.124": [
     "8c1c8a8f68f53b66b2ca340bcf0d6b3f50f9961b3042b759cefdecc7d2eacd4b",
     "fc5a7041fc62b0740093077cb476cae232853a0b4272c6851add5f60ce11d1c6",
   ],
 };
-const CHROME_WRITES_WHILE_RUNNING = ["debug.log", "chrome_debug.log"];
+export const CHROME_WRITES_WHILE_RUNNING: readonly string[] = ["debug.log", "chrome_debug.log"];
 
 function filesUnder(folder: string, prefix = ""): string[] | undefined {
   const names: string[] = [];
@@ -156,18 +161,25 @@ const starts = new Map<string, boolean>();
 const debug = debuglog("hyperframes:browser");
 
 /** Whether a shell loads a blank page and exits: an old build can die at launch on a newer OS. Asked once per path. */
-export function shellStarts(binary: string, timeoutMs = 10_000): boolean {
+export function shellStarts(
+  binary: string,
+  timeoutMs = 10_000,
+  sandbox = chromeSandboxEnabled(),
+): boolean {
   let answer = starts.get(binary);
   if (answer === undefined) {
-    const probe = ["--no-sandbox", "--dump-dom", "about:blank"];
-    answer =
-      spawnSync(binary, probe, {
-        env: buildChromeLaunchEnv(),
-        stdio: "ignore",
-        timeout: timeoutMs,
-        killSignal: "SIGKILL",
-        windowsHide: true,
-      })?.status === 0;
+    const probe = [...chromeSandboxArgs(sandbox), "--dump-dom", "about:blank"];
+    answer = startsWithChromeSandboxFallback(
+      probe,
+      (args) =>
+        spawnSync(binary, args, {
+          env: buildChromeLaunchEnv(),
+          stdio: "ignore",
+          timeout: timeoutMs,
+          killSignal: "SIGKILL",
+          windowsHide: true,
+        })?.status === 0,
+    );
     if (!answer) debug("skipping %s: it did not start", binary);
     starts.set(binary, answer);
   }

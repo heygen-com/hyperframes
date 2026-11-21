@@ -1,5 +1,5 @@
 // fallow-ignore-file code-duplication
-import { describe, expect, it, mock, beforeAll } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,6 +8,7 @@ import { runInThisContext } from "node:vm";
 import { parseHTML } from "linkedom";
 import { interpolateVolumeGain } from "@hyperframes/core/media-volume-envelope";
 import { redactTelemetryString } from "@hyperframes/core";
+import { _clearGoogleFontCssCacheForTests } from "@hyperframes/core/fonts/embed";
 import { defaultLogger } from "../logger.js";
 import { NotMediaPayloadError, _setDownloadFetchForTests } from "@hyperframes/engine";
 import {
@@ -664,8 +665,8 @@ describe("inlineExternalScripts", () => {
         <script src="https://cdn.example.com/gsap.min.js"></script>
       </body></html>`;
       const result = await inlineExternalScripts(html);
-      // Both identical script tags should be fetched and replaced independently.
-      expect(fetchCount).toBe(2);
+      // The URL is fetched once and both tags are replaced.
+      expect(fetchCount).toBe(1);
       expect(
         result.match(/\/\* inlined: https:\/\/cdn\.example\.com\/gsap\.min\.js \*\//g)?.length,
       ).toBe(2);
@@ -1472,6 +1473,32 @@ describe("detectShaderTransitionUsage", () => {
 });
 
 describe("system-primary font normalization", () => {
+  // Google Fonts answers from a stub and a fresh cache, so a cold cache never waits on the network.
+  const FACE = "https://fonts.gstatic.com/s/stub/face.woff2";
+  let restore = () => {};
+  beforeEach(() => {
+    const previousFetch = globalThis.fetch;
+    const previousCacheDir = process.env.HYPERFRAMES_FONT_CACHE_DIR;
+    process.env.HYPERFRAMES_FONT_CACHE_DIR = mkdtempSync(join(tmpdir(), "hf-font-cache-"));
+    _clearGoogleFontCssCacheForTests();
+    globalThis.fetch = (async (input: unknown) => {
+      const url = new URL(String(input));
+      if (url.href === FACE) return new Response(new Uint8Array(64));
+      if (url.hostname !== "fonts.googleapis.com") throw new TypeError(`offline: ${url.href}`);
+      const family = (url.searchParams.get("family") ?? "").split(":")[0];
+      return new Response(
+        `@font-face { font-family: '${family}'; src: url(${FACE}) format('woff2'); }`,
+      );
+    }) as unknown as typeof fetch;
+    restore = () => {
+      _clearGoogleFontCssCacheForTests();
+      globalThis.fetch = previousFetch;
+      if (previousCacheDir === undefined) delete process.env.HYPERFRAMES_FONT_CACHE_DIR;
+      else process.env.HYPERFRAMES_FONT_CACHE_DIR = previousCacheDir;
+    };
+  });
+  afterEach(() => restore());
+
   it("promotes Inter before system/generic primary stacks before distributed plan validation", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "hf-system-primary-font-"));
     writeFileSync(
@@ -2622,6 +2649,51 @@ h1 { font-size: 2rem; }`;
       expect(remoteMediaAssets.size).toBe(1);
     } finally {
       _setDownloadFetchForTests();
+    }
+  });
+
+  // fails without the fix: the embed looked for _remote_media/ in the project, logged ENOENT and kept the file URL.
+  it("inlines a downloaded remote font as a data URI instead of warning it is missing", async () => {
+    const font = readFileSync(
+      join(
+        import.meta.dirname,
+        "../../../../docs/public/catalog/items/frost-sequence-camera-orbit/assets/fonts/Geist-Regular.ttf",
+      ),
+    );
+    stubDownloadFetch.fetch = async () => new Response(font, { status: 200 });
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-remote-font-embed-"));
+    const downloadDir = mkdtempSync(join(tmpdir(), "hf-remote-font-dl-"));
+    writeFileSync(
+      join(projectDir, "index.html"),
+      `<!DOCTYPE html>
+<html><head><style>
+  @font-face { font-family: "Remote"; src: url("https://fonts.example.com/remote.ttf"); }
+</style></head><body>
+  <div data-composition-id="root" data-width="640" data-height="360" data-duration="1">Text</div>
+</body></html>`,
+    );
+    const originalWarn = defaultLogger.warn;
+    const warnings: string[] = [];
+    defaultLogger.warn = (message) => {
+      warnings.push(message);
+    };
+    try {
+      const { html } = await compileForRender(
+        projectDir,
+        join(projectDir, "index.html"),
+        downloadDir,
+      );
+      const inlined = html.match(/data:font\/ttf;base64,([A-Za-z0-9+/=]+)/)?.[1] ?? "";
+      expect(Buffer.from(inlined, "base64").equals(font)).toBe(true);
+      expect(html).not.toContain('url("_remote_media/');
+      expect(warnings.filter((message) => message.includes("Could not embed local font"))).toEqual(
+        [],
+      );
+    } finally {
+      defaultLogger.warn = originalWarn;
+      _setDownloadFetchForTests();
+      rmSync(projectDir, { recursive: true, force: true });
+      rmSync(downloadDir, { recursive: true, force: true });
     }
   });
 

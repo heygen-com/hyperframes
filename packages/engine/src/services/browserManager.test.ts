@@ -1,4 +1,5 @@
 // fallow-ignore-file code-duplication
+import { _resetChromeSandboxFallbackForTests } from "@hyperframes/core/chrome-sandbox";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { EventEmitter } from "node:events";
@@ -52,6 +53,7 @@ describe("BeginFrame capability probe", () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto,
         createCDPSession: vi.fn().mockResolvedValue({ send, detach }),
         close,
@@ -78,6 +80,7 @@ describe("BeginFrame capability probe", () => {
     const send = vi.fn().mockResolvedValue({ hasDamage: false });
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -106,6 +109,7 @@ describe("BeginFrame capability probe", () => {
     const send = vi.fn().mockResolvedValue({ screenshotData: jpeg.toString("base64") });
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -142,6 +146,7 @@ describe("BeginFrame capability probe", () => {
       });
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -167,6 +172,7 @@ describe("BeginFrame capability probe", () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -192,6 +198,7 @@ describe("BeginFrame capability probe", () => {
       .mockResolvedValueOnce({ hasDamage: true, screenshotData: png.toString("base64") });
     const browser = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send,
@@ -210,12 +217,14 @@ describe("BeginFrame capability probe", () => {
   it("marks a probe that ran out of time as timed out, and a rejection as not", async () => {
     const stuck = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockReturnValue(new Promise<never>(() => {})),
         close: vi.fn().mockResolvedValue(undefined),
       }),
     } as unknown as Browser;
     const rejecting = {
       newPage: vi.fn().mockResolvedValue({
+        mainFrame: () => ({}),
         goto: vi.fn().mockResolvedValue(null),
         createCDPSession: vi.fn().mockResolvedValue({
           send: vi.fn().mockRejectedValue(new Error("'HeadlessExperimental.enable' wasn't found")),
@@ -696,6 +705,18 @@ describe("browser launch capture-mode contract", () => {
     expect(fingerprint().publicOnly).toEqual({ pageServerHost: "localhost:4321" });
     vi.unstubAllEnvs();
   });
+
+  // fails without the fix: a page server on its scheme's default port gave a direct host with no port, which
+  // Chrome's bypass list takes as every port on that host.
+  it("names the page server's port even when the URL leaves out the default", () => {
+    vi.stubEnv("PRODUCER_RESTRICT_PAGE_NETWORK", "true");
+    const host = (pageServerUrl: string) =>
+      _createBrowserLaunchFingerprintForTests([], { pageServerUrl }).publicOnly?.pageServerHost;
+    expect(host("http://localhost/")).toBe("localhost:80");
+    expect(host("https://127.0.0.1/")).toBe("127.0.0.1:443");
+    expect(host("http://[::1]:4321/")).toBe("[::1]:4321");
+    vi.unstubAllEnvs();
+  });
 });
 
 describe("resolveBrowserGpuMode", () => {
@@ -703,7 +724,7 @@ describe("resolveBrowserGpuMode", () => {
     const close = vi.fn().mockResolvedValue(undefined);
     const evaluate = vi.fn().mockResolvedValue(info);
     const launch = vi.fn().mockResolvedValue({
-      newPage: vi.fn().mockResolvedValue({ evaluate }),
+      newPage: vi.fn().mockResolvedValue({ mainFrame: () => ({}), evaluate }),
       close,
     });
     _setPuppeteerForTests({ launch } as unknown as PuppeteerNode);
@@ -752,6 +773,36 @@ describe("resolveBrowserGpuMode", () => {
         expect(existsSync(marker)).toBe(false);
       } finally {
         rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it("probes the GPU with Chrome's sandbox where the host allows it, as the render runs", async () => {
+    const { launch } = setMockWebGlProbe({ hasWebGL: true, vendor: "NVIDIA", renderer: "NVIDIA" });
+    await resolveBrowserGpuMode("auto", { sandbox: true });
+    const args: string[] = launch.mock.calls[0]?.[0]?.args ?? [];
+    expect(args).toContain("--enable-webgl");
+    for (const flag of ["--no-sandbox", "--disable-setuid-sandbox", "--no-zygote"])
+      expect(args).not.toContain(flag);
+  });
+
+  it.skipIf(process.platform !== "linux")(
+    "retries the GPU probe without the sandbox when Chrome refuses it, as the render does",
+    async () => {
+      const { launch } = setMockWebGlProbe({
+        hasWebGL: true,
+        vendor: "NVIDIA",
+        renderer: "NVIDIA",
+      });
+      const browser = await launch();
+      launch.mockReset();
+      launch.mockRejectedValueOnce(new Error("No usable sandbox!")).mockResolvedValue(browser);
+      try {
+        await resolveBrowserGpuMode("auto", { sandbox: true });
+        const args = launch.mock.calls.map(([options]) => options.args.includes("--no-sandbox"));
+        expect(args).toEqual([false, true]);
+      } finally {
+        _resetChromeSandboxFallbackForTests();
       }
     },
   );
@@ -868,7 +919,9 @@ describe("resolveBrowserGpuMode", () => {
       spy.mock.calls.map((call) => String(call[0])).join("\n");
     const neverAnsweringProbe = () => {
       const launch = vi.fn().mockResolvedValue({
-        newPage: vi.fn().mockResolvedValue({ evaluate: () => new Promise(() => {}) }),
+        newPage: vi
+          .fn()
+          .mockResolvedValue({ mainFrame: () => ({}), evaluate: () => new Promise(() => {}) }),
         close: () => new Promise(() => {}),
         process: () => ({ kill: vi.fn() }),
         disconnect: vi.fn().mockResolvedValue(undefined),
@@ -1026,7 +1079,9 @@ describe("resolveBrowserGpuMode", () => {
     try {
       const kill = vi.fn();
       const launch = vi.fn().mockResolvedValue({
-        newPage: vi.fn().mockResolvedValue({ evaluate: () => new Promise(() => {}) }),
+        newPage: vi
+          .fn()
+          .mockResolvedValue({ mainFrame: () => ({}), evaluate: () => new Promise(() => {}) }),
         close: () => new Promise(() => {}),
         process: () => ({ kill }),
         disconnect: vi.fn().mockResolvedValue(undefined),
@@ -1211,7 +1266,7 @@ const RESOLVE_HEADLESS_SHELL_SUBPROCESS_SCRIPT = `
           for (const name of list(join(root, version))) {
             const folder = join(root, version, name);
             if (!["chrome-headless-shell", "chrome-headless-shell.exe"].some((shell) => isShell(join(folder, shell)))) continue;
-            try { PINNED_SHELL_DIGESTS["152.0.7977.30"].push(headlessShellDigest(folder)); } catch {}
+            try { PINNED_SHELL_DIGESTS["158.0.8127.36"].push(headlessShellDigest(folder)); } catch {}
           }
     });
   trust.then(() => import(process.env.HF_TEST_MODULE_URL)).then(({ resolveHeadlessShellPath }) => {
@@ -1530,7 +1585,7 @@ describe("resolveHeadlessShellPath", () => {
           ".cache",
           ...cache,
           "chrome-headless-shell",
-          "linux-152.0.7977.30",
+          "linux-158.0.8127.36",
         );
         mkdirSync(join(folder, "chrome-headless-shell-linux64"), { recursive: true });
         writeFileSync(
@@ -1602,7 +1657,7 @@ describe("resolveHeadlessShellPath", () => {
         );
       mkdirSync(shell("153.0.7990.1"), { recursive: true });
       for (const [version, content] of [
-        ["152.0.7977.30", ""],
+        ["158.0.8127.36", ""],
         ["150.0.7871.124", "shell"],
       ]) {
         mkdirSync(join(shell(version), ".."), { recursive: true });
@@ -1943,6 +1998,7 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
     process: () => ({ kill: vi.fn(), killed: false }),
   };
   const healthyPage = () => ({
+    mainFrame: () => ({}),
     goto: vi.fn().mockResolvedValue(null),
     createCDPSession: vi.fn().mockResolvedValue({
       send: vi
@@ -1955,6 +2011,7 @@ describe.runIf(process.platform === "linux")("BeginFrame launch on a slow first 
     close: vi.fn().mockResolvedValue(undefined),
   });
   const slowPage = () => ({
+    mainFrame: () => ({}),
     goto: vi.fn().mockReturnValue(new Promise<never>(() => {})),
     close: vi.fn().mockResolvedValue(undefined),
   });

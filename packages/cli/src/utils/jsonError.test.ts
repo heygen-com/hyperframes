@@ -1,6 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CliRuntimeError, CliUsageError } from "./commandResult.js";
-import { failureMessage, jsonErrorBody, jsonFailure, recordFailure } from "./jsonError.js";
+import {
+  failCaught,
+  failureMessage,
+  jsonErrorBody,
+  jsonFailure,
+  recordFailure,
+} from "./jsonError.js";
 
 const runtime = { exitCode: 1, kind: "runtime_error" } as const;
 
@@ -56,5 +62,79 @@ describe("jsonErrorBody", () => {
       message: "No composition found",
       hint: "Run npx hyperframes init",
     });
+  });
+
+  it("keeps a runtime error's own code next to the failure the command reported", () => {
+    recordFailure("FFmpeg not found", "Configured path does not exist");
+    const error = new CliRuntimeError("Command failed", {
+      presented: true,
+      code: "ffmpeg_not_found",
+    });
+    expect(jsonErrorBody(error, runtime, "x")).toEqual({
+      code: "ffmpeg_not_found",
+      message: "FFmpeg not found",
+      hint: "Configured path does not exist",
+    });
+  });
+
+  it("keeps a runtime error's own code when the message comes from its cause", () => {
+    const error = new CliRuntimeError("Command failed", {
+      presented: true,
+      cause: new Error("Another render is running (pid 7)"),
+      code: "render_locked",
+    });
+    expect(jsonErrorBody(error, runtime, "x")).toEqual({
+      code: "render_locked",
+      message: "Another render is running (pid 7)",
+    });
+  });
+});
+
+describe("failCaught", () => {
+  const controls = "\x1b[2J\x1b]0;title\x07 \u009b31m \x7f \r";
+  const shown = "\\x1b[2J\\x1b]0;title\\x07 \\x9b31m \\x7f \\x0d";
+  const caught = (run: () => never): unknown => {
+    try {
+      run();
+    } catch (error) {
+      return error;
+    }
+  };
+
+  it("prints control characters in the message as text and keeps the formatter's own colour", () => {
+    const written: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((text: string) => {
+      written.push(text);
+    });
+    try {
+      const error = caught(() =>
+        failCaught(
+          new Error(`Composition file "${controls}" is too large\nsecond line`),
+          false,
+          (message) => `\x1b[31m✗\x1b[39m Compare failed: ${message}`,
+        ),
+      );
+      expect(error).toBeInstanceOf(CliRuntimeError);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(written).toEqual([
+      `\x1b[31m✗\x1b[39m Compare failed: Composition file "${shown}" is too large\nsecond line`,
+    ]);
+  });
+
+  it("leaves the --json envelope's message as the error wrote it", () => {
+    const printed: object[] = [];
+    caught(() =>
+      failCaught(
+        new Error(`file "${controls}"`),
+        true,
+        (m) => m,
+        (payload) => printed.push(payload),
+      ),
+    );
+    expect(printed).toEqual([
+      { ok: false, error: { code: "runtime_error", message: `file "${controls}"` } },
+    ]);
   });
 });

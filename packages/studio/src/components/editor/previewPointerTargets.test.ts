@@ -3,8 +3,6 @@
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-// The frame's real runtime agent, serving the opaque frame from this document.
-import { installEditingAgent } from "../../../../core/src/runtime/editingAgent";
 import {
   getAllPreviewTargetsFromPointer,
   getPreviewTargetFromPointer,
@@ -23,6 +21,7 @@ import { useDomSelection } from "../../hooks/useDomSelection";
 import { usePreviewInteraction } from "../../hooks/usePreviewInteraction";
 import { useCanvasContextMenuState } from "./useCanvasContextMenuState";
 import type { TimelineElement } from "../../player";
+import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
 installReactActEnvironment();
 
@@ -92,24 +91,8 @@ function liveFrame(): HTMLIFrameElement {
 
 /** A frame Studio cannot read, whose runtime is the real editing agent over this document. */
 function opaqueFrame(): HTMLIFrameElement {
-  const frame: Record<string, unknown> = {};
-  const iframe = sized(detachedFakeIframe(frame), FRAME) as HTMLIFrameElement;
-  Object.defineProperty(iframe, "contentDocument", { value: null });
-  Object.defineProperty(frame, "document", {
-    get: () => {
-      throw new DOMException("blocked", "SecurityError");
-    },
-  });
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
-      ),
-  } as unknown as Window;
-  const agent = installEditingAgent(parent);
-  frame.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
-  closers.push(() => agent.dispose());
+  const { iframe: sealed } = sealedPreviewFrame();
+  const iframe = sized(sealed, FRAME) as HTMLIFrameElement;
   return iframe;
 }
 

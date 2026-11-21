@@ -85,7 +85,7 @@ describe("deploySite", () => {
     expect(handle.projectGcsUri).toBe("gs://b/sites/my-git-sha/project.tar.gz");
   });
 
-  it("packs a symlinked project and its symlinked files as content", async () => {
+  it("packs a symlinked project, and its files linked in from outside only when included", async () => {
     const gcs = new FakeGcs();
     const scratch = mkdtempSync(join(tmpdir(), "hf-site-scratch-"));
     tmpDirs.push(scratch);
@@ -93,15 +93,20 @@ describe("deploySite", () => {
     writeFileSync(join(scratch, "logo.txt"), "logo");
     symlinkSync(join(scratch, "logo.txt"), join(real, "logo.txt"));
     symlinkSync(real, join(scratch, "fx"));
-    const handle = await deploySite({
-      projectDir: join(scratch, "fx"),
-      bucketName: "b",
-      storage: asStorage(gcs),
-    });
-    const file = join(scratch, "uploaded.tar.gz");
-    writeFileSync(file, gcs.objects.get(handle.projectGcsUri) ?? "");
-    const entries: string[] = [];
-    await tar.list({ file, onReadEntry: (entry) => entries.push(`${entry.type} ${entry.path}`) });
-    expect(entries).toEqual(["File index.html", "File logo.txt"]);
+    async function packed(includeOutsideFiles: boolean): Promise<string[]> {
+      const handle = await deploySite({
+        projectDir: join(scratch, "fx"),
+        bucketName: "b",
+        includeOutsideFiles,
+        storage: asStorage(gcs),
+      });
+      const file = join(scratch, "uploaded.tar.gz");
+      writeFileSync(file, gcs.objects.get(handle.projectGcsUri) ?? "");
+      const entries: string[] = [];
+      await tar.list({ file, onReadEntry: (entry) => entries.push(`${entry.type} ${entry.path}`) });
+      return entries;
+    }
+    expect(await packed(false)).toEqual(["File index.html"]);
+    expect(await packed(true)).toEqual(["File index.html", "File logo.txt"]);
   });
 });

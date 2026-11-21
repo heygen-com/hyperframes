@@ -46,7 +46,8 @@ describe("mediaPath", () => {
     expect(mediaPath("media/id_rsa", dir)).toBeNull();
     expect(mediaPath("../../outside.mp4", dir)).toBeNull();
     expect(mediaPath("media/clip.mp4", dir)).toBe(join(dir, "media", "clip.mp4"));
-    expect(mediaPath("https://cdn.example.com/a.mp4", dir)).toBe("https://cdn.example.com/a.mp4");
+    expect(mediaPath("https://cdn.example.com/a.mp4", dir)).toBeNull();
+    expect(mediaPath("HTTP://127.0.0.1:8080/a.mp4", dir)).toBeNull();
   });
 
   it("does not probe a private file a scene's audio names", async () => {
@@ -56,6 +57,18 @@ describe("mediaPath", () => {
     writeFileSync(join(root, ".git", "voice.wav"), "x");
     await heardClips(root, { seconds: async (path) => (seen.push(path), 6) });
     expect(seen).toEqual([]);
+  });
+
+  it("does not probe a remote clip, which keeps the end it was given", async () => {
+    const seen: string[] = [];
+    const root = project(
+      '<audio id="a" src="http://127.0.0.1:8080/voice.wav" data-start="0" data-duration="4"></audio>',
+    );
+    const clips = await heardClips(root, { seconds: async (path) => (seen.push(path), 2) });
+    expect(seen).toEqual([]);
+    expect(clips.map(({ src, start, end }) => ({ src, start, end }))).toEqual([
+      { src: "http://127.0.0.1:8080/voice.wav", start: 10, end: 14 },
+    ]);
   });
 });
 

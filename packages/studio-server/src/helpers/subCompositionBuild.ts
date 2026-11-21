@@ -39,7 +39,7 @@ export interface PartsJob {
 
 export type SubCompositionJob = BuildJob | BaseJob | FinishJob | PartsJob;
 type Result<J> = J extends BuildJob
-  ? { html: string; references: string[] } | null
+  ? { html: string; references: string[] } | { refused: string } | null
   : J extends BaseJob
     ? { html: string; references: string[] }
     : string;

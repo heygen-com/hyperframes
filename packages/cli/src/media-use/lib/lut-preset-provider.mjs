@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { withReservedFile, withReservedFileSync } from "./manifest.mjs";
+import { withReservedFile, withReservedFileSync, writeTempBeside } from "./manifest.mjs";
 import { freezeUrl } from "./freeze.mjs";
 import { tokenOverlap } from "./match.mjs";
 import { buildCube } from "./cube-build.mjs";
@@ -245,13 +245,13 @@ export async function freezeLibraryLut(match, { projectDir, type, localOnly = fa
 
   if (match.params) {
     return withReservedFileSync(projectDir, type, ".cube", ({ id, localPath, fullPath }) => {
-      const tmpPath = `${fullPath}.tmp`;
+      let tmpPath = null;
       try {
         const cube = buildCube(match.params);
         assertValidCubeText(cube, `invalid library LUT ${match.id}`);
-        // Write + validate at .tmp, then atomic rename — same no-orphan guarantee
+        // Write + validate at a temp file, then atomic rename — same no-orphan guarantee
         // as the url path above.
-        writeFileSync(tmpPath, cube);
+        tmpPath = writeTempBeside(fullPath, cube);
         assertValidCubeFile(tmpPath, `invalid frozen LUT ${localPath}`);
         renameSync(tmpPath, fullPath);
         return libraryRecord(match, {
@@ -261,7 +261,7 @@ export async function freezeLibraryLut(match, { projectDir, type, localOnly = fa
           via: match.url ? "params-fallback" : "params",
         });
       } finally {
-        rmSync(tmpPath, { force: true });
+        if (tmpPath) rmSync(tmpPath, { force: true });
       }
     });
   }

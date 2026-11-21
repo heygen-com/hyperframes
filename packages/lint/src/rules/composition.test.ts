@@ -25,6 +25,7 @@ describe("composition rules", () => {
       `<template>${scene("a")}</template>`,
       `<template><svg></svg></template><template>${scene("a")}</template>`,
       `<template>${scene("a")}</template><template>${scene("b")}</template>${scene("live")}`,
+      `<svg><template>${scene("a")}</template></svg><template>${scene("b")}</template>`,
     ])("is quiet for %s", async (html) => {
       expect(await find(html)).toBeUndefined();
     });
@@ -1836,6 +1837,30 @@ ${Array.from({ length: 10 }, (_, i) => `    <div class="clip" data-start="${i}" 
       expect(find(result.findings)).toBeDefined();
     });
 
+    it("stays silent when the mount resolves its start at runtime", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="20">
+          <div class="clip" id="intro" data-start="0" data-duration="15"></div>
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="intro + 0.5" data-duration="5"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      expect(find(result.findings)).toBeUndefined();
+    });
+
+    it("measures a negative start from zero, as the renderer does", async () => {
+      const html = `<html><body>
+        <div id="root" data-composition-id="main" data-start="0" data-duration="10">
+          <div data-composition-id="sub" data-composition-src="compositions/sub.html" data-start="-2" data-duration="3"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html, { filePath: "/project/index.html" });
+      const finding = find(result.findings);
+      expect(finding?.message).toContain("ends at 3s");
+      expect(finding?.message).toContain("~7s");
+      expect(finding?.fixHint).toContain("data-duration to 10");
+    });
+
     it("stays silent on an intentional short intro followed by another clip", async () => {
       const html = `<html><body>
         <div id="root" data-composition-id="main" data-start="0" data-duration="60">
@@ -1952,6 +1977,32 @@ ${Array.from({ length: 10 }, (_, i) => `    <div class="clip" data-start="${i}" 
       const derived = result.findings.find((f) => f.code === "root_composition_duration_derived");
       expect(derived?.message).toContain("at least 3s");
       expect(derived?.message).toContain("2 clip(s) whose length is only known at runtime");
+    });
+
+    it("falls back to a valid data-end when data-duration is not numeric", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="clip" data-start="0" data-duration="abc" data-end="4"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+      expect(
+        result.findings.find((f) => f.code === "root_composition_duration_derived")?.message,
+      ).toContain("at least 4s");
+    });
+
+    it("derives from a negative start like the parser does", async () => {
+      const html = `<html><body>
+        <div data-composition-id="main" data-start="0" data-width="1920" data-height="1080">
+          <div class="clip" data-start="-2" data-duration="1"></div>
+        </div>
+      </body></html>`;
+      const result = await lintHyperframeHtml(html);
+      expect(find(result.findings)).toBeUndefined();
+      expect(
+        result.findings.find((f) => f.code === "root_composition_duration_derived")?.message,
+      ).toContain("at least 1s");
     });
 
     it("does not count a clip whose data-end is before its start", async () => {

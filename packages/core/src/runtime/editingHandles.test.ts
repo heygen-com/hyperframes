@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { installEditingAgent } from "./editingAgent";
+import { installMarkedEditingAgent } from "./editingAgent.test-helpers";
 import { trackedHandleCount } from "./editingHandles";
 import {
   EDITING_ELEMENT_HANDLE,
@@ -46,7 +46,7 @@ describe("element handles over the editing port", () => {
     const parent = iframe.contentWindow!;
     const handoff = vi.fn();
     parent.postMessage = handoff as unknown as Window["postMessage"];
-    agent = installEditingAgent(parent);
+    agent = installMarkedEditingAgent(parent);
     window.dispatchEvent(new MessageEvent("message", { source: parent, data: CONNECT }));
     port = (handoff.mock.calls[0]![2] as MessagePort[])[0]!;
   });
@@ -77,6 +77,7 @@ describe("element handles over the editing port", () => {
       handle: top!.handle,
       parent: below!.handle,
       tag: "p",
+      label: "Hi there",
       id: null,
       selector: ".title",
       matchesBefore: [],
@@ -96,6 +97,12 @@ describe("element handles over the editing port", () => {
     expect(root).toMatchObject({ tag: "div", selector: '[data-composition-id="card__hf1"]' });
     expect(root!.matchesBefore).toBeNull();
     expect(JSON.parse(JSON.stringify(described))).toEqual(described);
+  });
+
+  it("names an element by its rendered text, never its script or style source", async () => {
+    document.body.innerHTML = `<div><style>.card{color:red}</style><script>window.x=1</script>Card title</div>`;
+    const described = await describeOne(document.querySelector("div")!);
+    expect(described).toMatchObject({ label: "Card title", text: "Card title" });
   });
 
   it("keeps an element's handle for the page load, answering null only while it is detached", async () => {
@@ -155,6 +162,14 @@ describe("element handles over the editing port", () => {
     } finally {
       draw.mockRestore();
     }
+  });
+
+  it("leaves out an id, selector or attribute name it would have to cut, and says so", async () => {
+    const long = "x".repeat(MAX_ELEMENT_VALUE + 1);
+    document.body.innerHTML = `<div id="${long}" data-${long}="1" data-kept="2"></div>`;
+    const described = await describeOne(document.querySelector("div")!);
+    expect(described).toMatchObject({ id: null, selector: null, truncated: true });
+    expect(described.attributes.map(([name]) => name)).toEqual(["id", "data-kept"]);
   });
 
   it("cuts long values, keeps only a long data: value's header, and leaves script and style text out", async () => {
@@ -237,6 +252,28 @@ describe("element handles over the editing port", () => {
     expect(chain).toHaveLength(MAX_DESCRIBE_HANDLES);
     const [top] = await describeHandles([chain!.at(-1)!]);
     expect(top!.parent).not.toBeNull();
+  });
+
+  it("describes no element whose inherited source it would have to cut, and leaves out a style name it would", async () => {
+    const long = "x".repeat(MAX_ELEMENT_VALUE + 1);
+    document.body.innerHTML = `<div data-composition-file="${long}.html"><p class="t"></p></div>
+      <div data-composition-id="${long}"><p class="t"></p></div>
+      <div data-hf-original-composition-id="${long}" data-composition-id="c"><p class="t"></p></div>`;
+    for (const p of document.querySelectorAll("p")) expect(await describeOne(p)).toBeNull();
+    const { result } = await ask<never>("query", { selector: ".t" });
+    expect(result).toEqual({ matches: [], truncated: true });
+
+    document.body.innerHTML = `<div data-composition-file="${long}.html"><i class="u"></i></div><i class="u"></i>`;
+    const later = document.querySelectorAll("i")[1]!;
+    later.style.setProperty(`--${long}`, "1");
+    later.style.setProperty("left", "4px");
+    const described = await describeOne(later);
+    expect(described).toMatchObject({
+      selector: ".u",
+      matchesBefore: null,
+      inlineStyles: { left: "4px" },
+      truncated: true,
+    });
   });
 
   it("answers a query with each match's handle and source, in document order", async () => {

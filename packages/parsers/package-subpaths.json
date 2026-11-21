@@ -122,6 +122,12 @@
       "types": "./dist/ffBinaries.d.ts",
       "environments": ["bun", "node"]
     },
+    "./literal-media-input": {
+      "source": "./src/literalMediaInput.ts",
+      "runtime": "./dist/literalMediaInput.js",
+      "types": "./dist/literalMediaInput.d.ts",
+      "environments": ["bun", "node"]
+    },
     "./media-alpha": {
       "source": "./src/mediaAlpha.ts",
       "runtime": "./dist/mediaAlpha.js",
@@ -138,6 +144,12 @@
       "source": "./src/assetResolution.ts",
       "runtime": "./dist/assetResolution.js",
       "types": "./dist/assetResolution.d.ts",
+      "environments": ["bun", "node"]
+    },
+    "./private-path": {
+      "source": "./src/privatePath.ts",
+      "runtime": "./dist/privatePath.js",
+      "types": "./dist/privatePath.d.ts",
       "environments": ["bun", "node"]
     },
     "./html-attribute-spans": {

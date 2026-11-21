@@ -1,4 +1,5 @@
 import { format, stripVTControlCharacters } from "node:util";
+import { terminalLines } from "@hyperframes/core";
 import {
   CliRuntimeError,
   CliUsageError,
@@ -33,7 +34,7 @@ export function failCaught(
   const message = failureMessage(error);
   const usage = error instanceof CliUsageError;
   if (json) print(jsonFailure(usage ? error.code : "runtime_error", message));
-  else console.error(line(message));
+  else console.error(line(terminalLines(message)));
   if (usage) failUsage();
   failCommand();
 }
@@ -54,6 +55,8 @@ let noticeDepth = 0;
 export function recordFailure(message: string, hint?: string): void {
   reported = { message, hint };
 }
+
+export const failureShown = (): boolean => reported !== undefined;
 
 /** Writes a notice (telemetry disclosure, deprecation, progress) that is never an error message. */
 export function asNotice(write: () => void): void {
@@ -130,7 +133,7 @@ function withHint(body: CliErrorBody, hint: string | undefined): CliErrorBody {
 }
 
 function errorCode(error: unknown, result: CommandResult): string {
-  if (error instanceof CliUsageError) return error.code;
+  if (error instanceof CliUsageError || error instanceof CliRuntimeError) return error.code;
   return result.kind === "usage_error" ? "usage_error" : "runtime_error";
 }
 

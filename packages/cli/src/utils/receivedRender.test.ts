@@ -1,3 +1,4 @@
+import { realpath } from "@hyperframes/core/safe-path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   chmodSync,
@@ -5,16 +6,29 @@ import {
   linkSync,
   mkdirSync,
   mkdtempSync,
-  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { compileForRender } from "../../../producer/src/services/htmlCompiler.js";
 import { outsideAssetsAllowed } from "./receivedRender.js";
 import { terminalText } from "@hyperframes/core";
+
+const walk = vi.hoisted(() => ({ maxEntries: undefined as number | undefined }));
+
+vi.mock("./walkBudget.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("./walkBudget.js")>();
+  const capped = (max: number) => {
+    let seen = 0;
+    return (entries: number) => (seen += entries) <= max;
+  };
+  return {
+    walkBudget: () => (walk.maxEntries === undefined ? real.walkBudget() : capped(walk.maxEntries)),
+  };
+});
 
 const SIGNATURES = {
   png: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]),
@@ -27,6 +41,7 @@ const SIGNATURES = {
 let root: string | undefined;
 
 afterEach(() => {
+  walk.maxEntries = undefined;
   if (root) rmSync(root, { recursive: true, force: true });
   root = undefined;
 });
@@ -238,11 +253,29 @@ describe("outsideAssetsAllowed", () => {
     expect(decide(project(received())).allowed).toBe(true);
   });
 
-  it("keeps outside files for an empty record in a project with very many files", () => {
+  it("refuses outside files for a received entry that an emptied record lost, as the host's kept copy shows", () => {
+    const dir = project(received());
+    const state = join(root as string, "state.json");
+    writeFileSync(state, JSON.stringify({ projects: [{ path: dir, received: "expected" }] }));
+    const kept = { project: dir, identity: null, files: ["index.html", "style.css"], seenAt: 1 };
+    const name = `${createHash("sha256").update(dir).digest("hex")}.json`;
+    write(join(root as string, "received-records", name), JSON.stringify(kept));
+    vi.stubEnv("HYPERFRAMES_RECEIVED_STATE_FILE", state);
+    try {
+      const { allowed, line } = decide(dir);
+      expect(allowed).toBe(false);
+      expect(line).toContain(`index.html ${SOMEONE_ELSE}`);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps outside files for an empty record in a project with more files than a walk may list", () => {
+    walk.maxEntries = 10;
     const dir = project(received());
     const many = join(dir, "node_modules");
     mkdirSync(many);
-    for (let i = 0; i <= 20_000; i++) writeFileSync(join(many, `f${i}`), "");
+    for (let i = 0; i <= 10; i++) writeFileSync(join(many, `f${i}`), "");
     const { allowed, warn } = decide(dir);
     expect(allowed).toBe(true);
     expect(warn).not.toHaveBeenCalled();
@@ -290,9 +323,24 @@ describe("outsideAssetsAllowed", () => {
       const dir = withNested("{not json");
       const { allowed, line } = decide(dir);
       expect(allowed).toBe(false);
-      const path = join(realpathSync(dir), NESTED, ".hyperframes", "received-files.json");
+      const path = join(realpath(dir), NESTED, ".hyperframes", "received-files.json");
       expect(line).toContain(`Could not read ${path}`);
     });
+
+    it.each(["renders/x", "dist", ".next/x", "coverage/x", ".hyperframes/requests/x"])(
+      "refuses outside files when the copy sits in %s",
+      (folder) => {
+        const dir = project();
+        write(join(dir, "index.html"), `<div data-composition-src="${folder}/index.html"></div>`);
+        const up = "../".repeat(folder.split("/").length + 1);
+        write(join(dir, folder, "index.html"), `<img src="${up}outside/pic.png">`);
+        write(join(dir, folder, ".hyperframes", "received-files.json"), received("index.html"));
+        const { allowed, line } = decide(dir);
+        expect(allowed).toBe(false);
+        expect(line).toContain(`${join(folder, "index.html")} ${SOMEONE_ELSE}`);
+        expect(line).toContain(`${up}outside/pic.png`);
+      },
+    );
 
     it("keeps outside files for a folder with no record of its own", () => {
       const { allowed, warn } = decide(withNested());
@@ -300,11 +348,12 @@ describe("outsideAssetsAllowed", () => {
       expect(warn).not.toHaveBeenCalled();
     });
 
-    it("keeps outside files for a project whose tool folders hold very many folders", () => {
+    it("keeps outside files for a project whose tool folders hold more folders than a walk may list", () => {
+      walk.maxEntries = 25;
       const dir = withNested();
       for (const tool of ["node_modules", "renders", ".git"]) {
         mkdirSync(join(dir, tool));
-        for (let i = 0; i <= 7_000; i++) mkdirSync(join(dir, tool, `d${i}`));
+        for (let i = 0; i <= 10; i++) mkdirSync(join(dir, tool, `d${i}`));
       }
       const { allowed, warn } = decide(dir);
       expect(allowed).toBe(true);
@@ -312,13 +361,51 @@ describe("outsideAssetsAllowed", () => {
     });
 
     it("refuses outside files when the project has too many folders to search", () => {
+      walk.maxEntries = 10;
       const dir = withNested();
       const many = join(dir, "folders");
       mkdirSync(many);
-      for (let i = 0; i <= 20_000; i++) mkdirSync(join(many, `d${i}`));
+      for (let i = 0; i <= 10; i++) mkdirSync(join(many, `d${i}`));
       const { allowed, line } = decide(dir);
       expect(allowed).toBe(false);
       expect(line).toContain("Could not check every project folder");
+    });
+  });
+
+  describe("content of a received file that left the record", () => {
+    const hashOf = (text: string) => createHash("sha256").update(text).digest("hex");
+    function withLeftContent(text: string): string {
+      const dir = project(received());
+      write(
+        join(dir, ".hyperframes", "received-content.json"),
+        JSON.stringify({ hashes: [hashOf(text)] }),
+      );
+      return dir;
+    }
+
+    it("refuses outside files when a project file holds it, and names that file", () => {
+      const dir = withLeftContent(`<video src="../../outside/clip.mp4"></video>`);
+      const { allowed, line } = decide(dir);
+      expect(allowed).toBe(false);
+      expect(line).toContain(
+        `${join("compositions", "scene.html")} holds the content of a file that came from someone else`,
+      );
+    });
+
+    it("refuses outside files and names the received content when it cannot be read", () => {
+      const dir = project(received());
+      write(join(dir, ".hyperframes", "received-content.json"), "{not json");
+      const { allowed, line } = decide(dir);
+      expect(allowed).toBe(false);
+      expect(line).toContain(
+        `Could not read ${join(realpath(dir), ".hyperframes", "received-content.json")}`,
+      );
+    });
+
+    it("keeps outside files when only Studio's backups hold it", () => {
+      const dir = withLeftContent("<p>theirs</p>");
+      write(join(dir, ".hyperframes", "backup", "scene.html"), "<p>theirs</p>");
+      expect(decide(dir).allowed).toBe(true);
     });
   });
 
@@ -351,7 +438,7 @@ describe("outsideAssetsAllowed", () => {
       expect(allowed).toBe(false);
       expect(warn).toHaveBeenCalledTimes(1);
       expect(line).toContain(
-        `Could not read ${join(realpathSync(dir), ".hyperframes", "received-files.json")}`,
+        `Could not read ${join(realpath(dir), ".hyperframes", "received-files.json")}`,
       );
       expect(line).toContain("../outside/secret.js");
     },
@@ -583,9 +670,11 @@ describe("outsideAssetsAllowed", () => {
       expect(line).toContain("scene.html is another name for a file that came from someone else");
     });
 
+    // With --include-outside-files, so a scene in a linked folder outside the project is read too.
     async function compiledPage(dir: string) {
       const compiled = await compileForRender(dir, join(dir, "index.html"), join(dir, ".dl"), {
         allowOutsideProjectAssets: true,
+        includeOutsideScripts: true,
       });
       const rendered = [compiled.html, ...compiled.subCompositions.values()].join("\n");
       return { rendered, outside: [...compiled.externalAssets.values()] };

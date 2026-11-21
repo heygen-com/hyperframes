@@ -14,11 +14,14 @@ export const examples: Example[] = [
 
 import { existsSync, readFileSync } from "node:fs";
 import { parseHTML } from "linkedom";
+import { firstTemplateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { join, resolve, relative, sep } from "node:path";
 import {
   isProjectRootMissing,
   ITEM_TYPE_DIRS,
   realpath,
+  terminalLines,
+  terminalText,
   type RegistryItem,
 } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
@@ -82,6 +85,8 @@ export function remapTarget(
   return originalTarget;
 }
 
+const registryError = (message: string): string => c.error(terminalLines(message));
+
 // ── Include-snippet builders ────────────────────────────────────────────────
 // Shown to the user after install so they know how to wire the item into
 // their host composition. Copied to clipboard by default.
@@ -123,7 +128,7 @@ export function primaryInstalledTarget(item: RegistryItem): string {
 /** The id a composition file's root declares (inside its `<template>` when templated); a host must carry the same one. */
 export function compositionRootId(html: string): string | undefined {
   const { document } = parseHTML(html);
-  const content = document.querySelector("template")?.content ?? document;
+  const content = firstTemplateContent(document) ?? document;
   return (
     content.querySelector("[data-composition-id]")?.getAttribute("data-composition-id") ?? undefined
   );
@@ -201,13 +206,14 @@ async function installOne(name: string, context: InstallContext): Promise<Instal
       vars: context.vars,
     });
     if (!context.json) {
-      for (const warning of result.warnings) console.log(`  ${c.warn("Warning:")} ${warning}`);
+      for (const warning of result.warnings)
+        console.log(`  ${c.warn("Warning:")} ${terminalText(warning)}`);
       console.log(`  ${c.success("✓")} ${result.name}`);
     }
     return { result };
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    if (!context.json) console.log(`  ${c.error("✗")} ${name} (skipped: ${reason})`);
+    if (!context.json) console.log(`  ${c.error("✗")} ${name} (skipped: ${terminalText(reason)})`);
     return { name, error: reason };
   }
 }
@@ -659,19 +665,19 @@ export default defineCommand({
         console.log(c.dim(`Wrote default ${projectConfigPath(projectDir)}`));
       }
       for (const warning of result.warnings) {
-        console.warn(c.warn(`Warning: ${warning}`));
+        console.warn(c.warn(`Warning: ${terminalText(warning)}`));
       }
       console.log("");
       console.log(`${c.success("✓")} Added ${c.accent(result.name)} (${result.type})`);
       const root = realpath(projectDir);
       for (const file of result.preserved) {
         console.log(
-          `  ${c.warn("kept")} ${relative(root, file) || file} — you have edited this; --force to overwrite`,
+          `  ${c.warn("kept")} ${terminalText(relative(root, file) || file)} — you have edited this; --force to overwrite`,
         );
       }
 
       for (const file of result.written) {
-        console.log(`  ${c.dim(relative(root, file))}`);
+        console.log(`  ${c.dim(terminalText(relative(root, file)))}`);
       }
       if (result.variablesApplied.length > 0) {
         // Say it out loud. A component's values are baked into the file rather
@@ -682,7 +688,7 @@ export default defineCommand({
       if (result.snippet) {
         console.log("");
         console.log(c.dim("Include snippet:"));
-        console.log(`  ${result.snippet}`);
+        console.log(`  ${terminalText(result.snippet)}`);
         console.log("");
         console.log(
           result.clipboardCopied
@@ -693,7 +699,7 @@ export default defineCommand({
     } catch (singleErr) {
       // Not a single item — try as a tag for bulk install
       if (!(singleErr instanceof AddError) || singleErr.code !== "unknown-item") {
-        failCaught(singleErr, json, c.error);
+        failCaught(singleErr, json, registryError);
       }
 
       let config = loadProjectConfig(projectDir);
@@ -713,7 +719,7 @@ export default defineCommand({
       }
 
       if (items.length === 0) {
-        failCaught(singleErr, json, c.error);
+        failCaught(singleErr, json, registryError);
       }
 
       if (!json) {

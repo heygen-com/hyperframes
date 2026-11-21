@@ -81,6 +81,7 @@ export interface DockerRenderOptions {
   protocolTimeoutMs?: number;
   /** Player readiness timeout in milliseconds. */
   playerReadyTimeoutMs?: number;
+  refuseOutsideFiles?: boolean;
 }
 
 /**
@@ -208,5 +209,6 @@ export function buildDockerRunArgs(input: DockerRunArgsInput): string[] {
     ...(options.playerReadyTimeoutMs != null
       ? ["--player-ready-timeout", String(options.playerReadyTimeoutMs)]
       : []),
+    ...(options.refuseOutsideFiles ? ["--refuse-outside-files"] : []),
   ];
 }

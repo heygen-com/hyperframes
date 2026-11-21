@@ -308,6 +308,15 @@ describe("add command pure helpers", () => {
       expect(compositionRootId(`<div>no root</div>`)).toBeUndefined();
     });
 
+    // fails without the fix: an SVG element named template came first and has no content.
+    it("reads the root inside the HTML template after an SVG element named template", () => {
+      expect(
+        compositionRootId(
+          `<svg><template></template></svg><template id="t"><div data-composition-id="templated"></div></template>`,
+        ),
+      ).toBe("templated");
+    });
+
     it("gives the block host the composition id that check requires", async () => {
       const snip = buildSnippet(BLOCK_ITEM, "compositions/my-block.html", null, "my-block-root");
       const html = `<!doctype html><html><body><div data-composition-id="root" data-width="1080" data-height="1350">${snip}</div></body></html>`;
@@ -604,6 +613,24 @@ describe("add command run() — several names", () => {
     });
     expect(existsSync(join(dir, "compositions", "my-block.html"))).toBe(true);
     expect(existsSync(join(dir, "compositions", "deprecated-block.html"))).toBe(true);
+  });
+
+  it("prints a deprecation note from the registry with control characters escaped", async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    const note = DEPRECATED_BLOCK_ITEM.deprecated;
+    DEPRECATED_BLOCK_ITEM.deprecated = `gone${esc}]52;c;cA==${String.fromCharCode(7)}`;
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await runWrapped(["deprecated-block", "--dir", dir, "--no-clipboard"]);
+    } finally {
+      DEPRECATED_BLOCK_ITEM.deprecated = note;
+    }
+
+    const printed = warn.mock.calls.map((call) => call.join(" ")).join("\n");
+    expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(printed).toContain("is deprecated: gone\\x1b]52;c;cA==\\x07");
   });
 
   it("keeps the installs that worked when one name is unknown, and fails the call", async () => {

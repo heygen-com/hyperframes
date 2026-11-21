@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { relative, resolve } from "node:path";
 import {
   HF_COLOR_GRADING_ATTR,
@@ -8,6 +9,7 @@ import {
   isPathInside,
   normalizeHfColorGrading,
   serializeHfColorGrading,
+  terminalLines,
 } from "@hyperframes/core";
 import {
   COLOR_GRADING_SOURCE_TAGS,
@@ -733,7 +735,7 @@ async function prepareMutation(args: MediaTreatmentCommandArgs) {
   const lintResult = await lintHyperframeHtml(result.html);
   const findings = lintResult.findings.filter(({ code }) => code.startsWith("color_grading_"));
   const lint = { ok: findings.every(({ severity }) => severity !== "error"), findings };
-  if (result.changed && !dryRun) writeFileSync(filePath, result.html);
+  if (result.changed && !dryRun) replaceFileAtomically(filePath, result.html);
 
   const action: "clear" | "apply" = result.targets.every(({ value }) => value === null)
     ? "clear"
@@ -805,7 +807,7 @@ function printFailure(error: unknown, json: boolean): void {
     console.log(
       JSON.stringify(withMeta(jsonFailure(usage ? error.code : "runtime_error", message))),
     );
-  } else console.error(`${c.error("✗")} ${message}`);
+  } else console.error(`${c.error("✗")} ${terminalLines(message)}`);
   if (usage) failUsage();
   failCommand(1, error);
 }

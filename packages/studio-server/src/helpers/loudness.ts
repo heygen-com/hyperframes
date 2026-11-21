@@ -8,7 +8,7 @@ import { findFfBinary } from "@hyperframes/parsers/ff-binaries";
 import { readMediaOffsetSeconds } from "@hyperframes/parsers/media-duration";
 import { requestedProjectPath } from "./requestSubPath.js";
 import { probeAudioTrack } from "./mediaMetadata.js";
-import { MEDIA_INPUT_ARGS } from "./mediaExtensions.js";
+import { mediaInputArgs } from "./mediaExtensions.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -455,7 +455,7 @@ export function loudnessMeasureArgs(file: string, tag: MeasuredWindow, stream: n
   const sourceSpan = tag.duration === null ? null : tag.duration * (tag.playbackRate ?? 1);
   if (sourceSpan !== null && sourceSpan > 0) args.push("-t", String(sourceSpan));
   args.push(
-    ...MEDIA_INPUT_ARGS,
+    ...mediaInputArgs(file),
     "-i",
     file,
     "-map",

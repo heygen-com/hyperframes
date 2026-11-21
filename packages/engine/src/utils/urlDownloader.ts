@@ -27,6 +27,10 @@ import {
   NonPublicHostError,
   resolvePublicAddress,
 } from "../services/publicNetwork/publicNetwork.js";
+import {
+  captureUpstreamProxy,
+  type UpstreamProxy,
+} from "../services/publicNetwork/upstreamProxy.js";
 import { dirname, extname, join } from "path";
 import { Readable, Transform } from "stream";
 import { pipeline } from "stream/promises";
@@ -509,10 +513,55 @@ function undiciTransport(lookup: LookupFunction): Promise<DownloadFetch> {
   return transport;
 }
 
+const proxyTransports = new Map<string, Promise<DownloadFetch>>();
+
+function egressProxyTransport(proxy: UpstreamProxy): Promise<DownloadFetch> {
+  const uri = `http://${proxy.host.includes(":") ? `[${proxy.host}]` : proxy.host}:${proxy.port}`;
+  const key = `${uri} ${proxy.authorization ?? ""}`;
+  let transport = proxyTransports.get(key);
+  if (!transport) {
+    transport = importUndiciPackageEvenUnderBun().then(({ ProxyAgent, fetch: undiciFetch }) => {
+      const dispatcher = new ProxyAgent({ uri, token: proxy.authorization });
+      return (target, options) =>
+        undiciFetch(target, { ...(options as object), dispatcher }) as unknown as Promise<Response>;
+    });
+    proxyTransports.set(key, transport);
+  }
+  return transport;
+}
+
+const UNRESOLVED_HOST_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "EAI_FAIL"]);
+
+/** Behind an env proxy, refuses a host this machine resolves to a non-public address; the proxy resolves the rest. */
+function assertProxiedHostResolvesPublic(url: string, signal?: AbortSignal | null): Promise<void> {
+  const hostname = new URL(url).hostname.replace(/^\[|\]$/g, "");
+  return new Promise((resolvePromise, reject) => {
+    const abort = () => reject(signal?.reason);
+    if (signal?.aborted) return abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    dns.lookup(hostname, { all: true }, (error, answers) => {
+      signal?.removeEventListener("abort", abort);
+      if (error) {
+        return UNRESOLVED_HOST_CODES.has(error.code ?? "") ? resolvePromise() : reject(error);
+      }
+      if (answers.some((a) => isBlockedNetworkHost(a.address.split("%")[0]!))) {
+        return reject(nonPublicAddressError());
+      }
+      resolvePromise();
+    });
+  });
+}
+
 const fetchPublic: DownloadFetch = async (url, init) => {
-  if (resolveRestrictPageNetwork()) return (await undiciTransport(capturePolicyLookup))(url, init);
-  // Behind an env proxy the proxy resolves the name; the URL and redirect checks are the guard then.
-  if (fetchGoesThroughEnvProxy()) return fetch(url, init);
+  if (resolveRestrictPageNetwork()) {
+    const upstream = captureUpstreamProxy();
+    if (upstream) return (await egressProxyTransport(upstream))(url, init);
+    return (await undiciTransport(capturePolicyLookup))(url, init);
+  }
+  if (fetchGoesThroughEnvProxy()) {
+    await assertProxiedHostResolvesPublic(url, init.signal);
+    return fetch(url, init);
+  }
   return (await undiciTransport(publicOnlyLookup))(url, init);
 };
 

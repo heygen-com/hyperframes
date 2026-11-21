@@ -4,8 +4,6 @@ import { act, createElement, useRef } from "react";
 import { MAX_QUERY_MATCHES } from "@hyperframes/core/runtime/editing-port";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-// The frame's real runtime agent, serving the opaque frame from this document.
-import { installEditingAgent } from "../../../../core/src/runtime/editingAgent";
 import { installReactActEnvironment } from "../../hooks/domSelectionTestHarness";
 import { watchPreviewFrame } from "../../player/lib/bridgePlayback";
 import { getElementZIndex } from "../../player/lib/layerOrdering";
@@ -21,6 +19,7 @@ import { useMarqueeGestures } from "./marqueeCommit";
 import { collectPreviewLayerItems, layerDataAttribute } from "./previewLayers";
 import { findPreviewElementForSelection, resolvePreviewSelection } from "./previewSelection";
 import { isLayerDraggable } from "./useLayerDrag";
+import { sealedPreviewFrame } from "../../player/lib/sealedPreviewFrame.test-helpers";
 
 installReactActEnvironment();
 HTMLElement.prototype.setPointerCapture ??= () => {};
@@ -83,24 +82,8 @@ function liveFrame() {
 
 /** A frame Studio cannot read, whose runtime is the real editing agent over this document. */
 function opaqueFrame() {
-  const frame: Record<string, unknown> = {};
-  const iframe = sized(detachedFakeIframe(frame), FRAME) as HTMLIFrameElement;
-  Object.defineProperty(iframe, "contentDocument", { value: null });
-  Object.defineProperty(frame, "document", {
-    get: () => {
-      throw new DOMException("blocked", "SecurityError");
-    },
-  });
-  const parent = {
-    postMessage: (data: unknown, _origin: string, ports: MessagePort[]) =>
-      window.dispatchEvent(
-        new MessageEvent("message", { source: frame as unknown as Window, data, ports }),
-      ),
-  } as unknown as Window;
-  const agent = installEditingAgent(parent);
-  frame.postMessage = (data: unknown) =>
-    window.dispatchEvent(new MessageEvent("message", { source: parent, data }));
-  closers.push(() => agent.dispose());
+  const { iframe: sealed, frame } = sealedPreviewFrame();
+  const iframe = sized(sealed, FRAME) as HTMLIFrameElement;
   watchPreviewFrame(iframe);
   window.dispatchEvent(
     new MessageEvent("message", {
@@ -162,7 +145,7 @@ describe("Layers rows on an opaque frame match same-origin ones", () => {
     expect(pair.element.hasAttribute("data-hf-group")).toBe(false);
     const host = remote.find((item) => item.id === "host")!;
     expect(layerDataAttribute(host, "data-composition-src")).toBe("compositions/a.html");
-    expect(isLayerDraggable(pair)).toBe(false);
+    expect(isLayerDraggable(pair)).toBe(true);
   });
 });
 

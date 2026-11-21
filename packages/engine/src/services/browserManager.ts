@@ -18,6 +18,7 @@ import {
 } from "./sandboxLaunch.js";
 import { scanHtmlOpeningTags } from "@hyperframes/parsers/html-attribute-spans";
 import type { Browser, LaunchOptions, Page, PuppeteerNode } from "puppeteer-core";
+import { openPage } from "./openPage.js";
 import { execFileSync } from "child_process";
 import { existsSync, readdirSync } from "fs";
 import { join } from "path";
@@ -36,11 +37,16 @@ import {
   browserProxyArgs,
   createPublicOnlyProfile,
   logRefusal,
+  pageServerDirectHost,
   startCaptureProxy,
 } from "./publicNetwork/captureProxy.js";
 import { removeTreeBestEffortAsync } from "@hyperframes/core/remove-tree";
 import { getSystemTotalMb, LOW_MEMORY_TOTAL_MB_THRESHOLD } from "./systemMemory.js";
-import { chromeSandboxArgs, launchWithChromeSandboxFallback } from "./chromeSandbox.js";
+import {
+  chromeSandboxArgs,
+  chromeSandboxEnabled,
+  launchWithChromeSandboxFallback,
+} from "@hyperframes/core/chrome-sandbox";
 import { describeWslGpuAccess, detectWsl, type WslHostFacts } from "./wslHost.js";
 import {
   BrowserLeasePool,
@@ -56,7 +62,7 @@ export type {
   BrowserPoolState,
   CaptureMode,
 } from "./browserLeasePool.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import { foreignWritablePath, trustedCacheRoot } from "@hyperframes/core/cache-dir";
 import { findTrustedExecutable } from "@hyperframes/parsers/ff-binaries";
 
 let _puppeteer: PuppeteerNode | undefined;
@@ -108,6 +114,7 @@ interface GpuProbeOptions {
   platform?: NodeJS.Platform;
   probeLifecycle?: GpuProbeLifecycle;
   wslHost?: WslHostFacts;
+  sandbox?: boolean;
 }
 
 const GPU_PROBE_TIMEOUT_MS = 15_000;
@@ -124,19 +131,21 @@ async function probeHardwareWebGlInfo(
 ): Promise<WebGlProbeInfo> {
   let probeBrowser: Browser | undefined;
   try {
-    const launchOptions: LaunchOptions = {
-      ...ownedLaunchOptions(),
-      headless: true,
-      args: withHyperframesBrowserMarker(options.args),
-      defaultViewport: { width: 64, height: 64 },
-      executablePath: options.executablePath,
-      env: buildChromeLaunchEnv(options.env),
-      timeout: options.browserTimeout,
-      waitForInitialPage: false,
-    };
-    probeBrowser = options.probeLifecycle
-      ? await options.probeLifecycle.launch(ppt, launchOptions)
-      : await ppt.launch(launchOptions);
+    probeBrowser = await launchWithChromeSandboxFallback(options.args, (args) => {
+      const launchOptions: LaunchOptions = {
+        ...ownedLaunchOptions(),
+        headless: true,
+        args: withHyperframesBrowserMarker(args),
+        defaultViewport: { width: 64, height: 64 },
+        executablePath: options.executablePath,
+        env: buildChromeLaunchEnv(options.env),
+        timeout: options.browserTimeout,
+        waitForInitialPage: false,
+      };
+      return options.probeLifecycle
+        ? options.probeLifecycle.launch(ppt, launchOptions)
+        : ppt.launch(launchOptions);
+    });
     return await rejectAfter(
       readWebGlInfo(probeBrowser),
       GPU_PROBE_TIMEOUT_MS,
@@ -151,7 +160,7 @@ async function probeHardwareWebGlInfo(
 }
 
 async function readWebGlInfo(browser: Browser): Promise<WebGlProbeInfo> {
-  const page = await browser.newPage();
+  const page = await openPage(browser);
   return await page.evaluate(() => {
     const unavailable = { hasWebGL: false, vendor: "", renderer: "" };
     const c = document.createElement("canvas");
@@ -265,12 +274,15 @@ export function resolveHeadlessShellPath(
     }
     return fromEnv.path;
   }
-  const ours = hyperframesCacheDir("chrome", "chrome-headless-shell");
+  const root = trustedCacheRoot();
+  const ours = join(root, "chrome", "chrome-headless-shell");
   const shared = join(homedir(), ".cache", "puppeteer", "chrome-headless-shell");
+  const trusted = (binary: string | undefined) =>
+    binary && !foreignWritablePath(binary, root) ? binary : undefined;
   return (
-    findManagedHeadlessShell(ours) ??
+    trusted(findManagedHeadlessShell(ours)) ??
     findSharedHeadlessShell(shared) ??
-    findCachedHeadlessShell(ours)
+    trusted(findCachedHeadlessShell(ours))
   );
 }
 
@@ -418,7 +430,7 @@ async function probeBeginFrameSupport(
   let page;
   let result: BeginFrameProbeResult;
   try {
-    page = await awaitBeforeDeadline(browser.newPage(), deadline, "newPage");
+    page = await awaitBeforeDeadline(openPage(browser), deadline, "newPage");
     // `browser.newPage()` resolves before a cold renderer has necessarily
     // submitted its first surface. Cloud Run exposed this as a false
     // "unsupported Chromium" result: probing the untouched about:blank
@@ -566,10 +578,9 @@ async function getPuppeteerOrNull(): Promise<PuppeteerNode | null> {
   }
 }
 
-function getHardwareGpuProbeArgs(platform: NodeJS.Platform): string[] {
+function getHardwareGpuProbeArgs(platform: NodeJS.Platform, sandbox: boolean): string[] {
   return [
-    "--no-sandbox",
-    "--disable-setuid-sandbox",
+    ...chromeSandboxArgs(sandbox),
     "--disable-dev-shm-usage",
     "--enable-webgl",
     "--ignore-gpu-blocklist",
@@ -619,7 +630,10 @@ async function probeWebGlMode(
 ): Promise<GpuProbeOutcome> {
   try {
     const info = await probeHardwareWebGlInfo(ppt, {
-      args: getHardwareGpuProbeArgs(options.platform ?? process.platform),
+      args: getHardwareGpuProbeArgs(
+        options.platform ?? process.platform,
+        options.sandbox ?? chromeSandboxEnabled(),
+      ),
       browserTimeout: options.browserTimeout ?? DEFAULT_CONFIG.browserTimeout,
       executablePath: launchableBrowserPath({ chromePath: options.chromePath }),
       probeLifecycle: options.probeLifecycle,
@@ -855,7 +869,8 @@ function createBrowserLaunchFingerprint(
     requestedCaptureMode,
     publicOnly: resolveRestrictPageNetwork()
       ? {
-          pageServerHost: launchConfig.pageServerUrl && new URL(launchConfig.pageServerUrl).host,
+          pageServerHost:
+            launchConfig.pageServerUrl && pageServerDirectHost(launchConfig.pageServerUrl),
         }
       : undefined,
   };
@@ -863,6 +878,7 @@ function createBrowserLaunchFingerprint(
 
 /** Test-only export for launch-argument/capture-mode agreement. */
 export const _createBrowserLaunchFingerprintForTests = createBrowserLaunchFingerprint;
+export const _publicOnlyNetworkForTests = publicOnlyNetwork;
 
 export async function acquireBrowser(
   chromeArgs: string[],
@@ -886,7 +902,7 @@ async function launchInsideSandbox(ppt: PuppeteerNode, options: LaunchOptions): 
 }
 
 async function publicOnlyNetwork(pageServerHost: string | undefined) {
-  const proxy = await startCaptureProxy(null, logRefusal);
+  const proxy = await startCaptureProxy(undefined, logRefusal);
   try {
     const userDataDir = await createPublicOnlyProfile("hf-render-profile-");
     return {

@@ -43,8 +43,6 @@ export interface ElementBox {
 }
 
 export interface TransformToolDeps extends TargetedWriteDeps {
-  /** The element's box as it renders right now. */
-  readBox: (selection: DomEditSelection) => ElementBox;
   moveTo: (
     selection: DomEditSelection,
     next: { x: number; y: number },
@@ -178,10 +176,10 @@ async function observeResize(
   selection: DomEditSelection,
   size: NonNullable<TransformRequest["size"]>,
 ): Promise<TransformObservation | ToolFailure> {
-  const before = deps.readBox(selection);
+  const before = (await deps.readNow(selection)).box;
   const outcome = await deps.resizeTo(selection, size);
   if (outcome && !outcome.ok) return outcomeFailure(outcome.reason);
-  const after = deps.readBox(selection);
+  const after = (await deps.readNow(selection)).box;
   const changed = after.width !== before.width || after.height !== before.height;
   return {
     operation: "resize",
@@ -196,10 +194,10 @@ async function observeMove(
   selection: DomEditSelection,
   move: NonNullable<TransformRequest["move"]>,
 ): Promise<TransformObservation | ToolFailure> {
-  const before = deps.readBox(selection);
+  const before = (await deps.readNow(selection)).box;
   const outcome = await deps.moveTo(selection, move);
   if (outcome && !outcome.ok) return outcomeFailure(outcome.reason);
-  const after = deps.readBox(selection);
+  const after = (await deps.readNow(selection)).box;
   const changed = after.x !== before.x || after.y !== before.y;
   return {
     operation: "move",
@@ -277,7 +275,7 @@ async function writeTransform(
   selection: DomEditSelection,
   request: TransformRequest,
 ): Promise<StudioWriteAdapterSuccess<StudioTransformResult> | ToolFailure> {
-  const initial = deps.readBox(selection);
+  const initial = (await deps.readNow(selection)).box;
   const observations: TransformObservation[] = [];
   if (request.size) {
     const observation = await observeResize(deps, selection, request.size);
@@ -288,7 +286,7 @@ async function writeTransform(
     const observation = await observeMove(deps, selection, request.move);
     if (isFailure(observation)) {
       if (observations.length === 0) return observation;
-      return transformReceipt(request, initial, deps.readBox(selection), observations, {
+      return transformReceipt(request, initial, (await deps.readNow(selection)).box, observations, {
         operation: "move",
         reason: observation.reason,
       });
@@ -299,14 +297,14 @@ async function writeTransform(
     const observation = await observeRotation(deps, selection, request.rotate);
     if (isFailure(observation)) {
       if (observations.length === 0) return observation;
-      return transformReceipt(request, initial, deps.readBox(selection), observations, {
+      return transformReceipt(request, initial, (await deps.readNow(selection)).box, observations, {
         operation: "rotate",
         reason: observation.reason,
       });
     }
     observations.push(observation);
   }
-  return transformReceipt(request, initial, deps.readBox(selection), observations);
+  return transformReceipt(request, initial, (await deps.readNow(selection)).box, observations);
 }
 
 export async function studioTransform(

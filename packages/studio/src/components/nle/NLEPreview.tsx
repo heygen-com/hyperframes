@@ -29,11 +29,7 @@ import {
 } from "./previewZoom";
 import { RULER_GUTTER_PX, usePreviewGuidesStore } from "../editor/previewGuidesStore";
 import { PreviewZoomOverlay, usePreviewZoomOverlay } from "./PreviewZoomOverlay";
-import {
-  PREVIEW_STAGE_INSET_PX,
-  resolvePreviewStageSize,
-  SHADOW_IFRAME_STYLE,
-} from "./previewStage";
+import { PREVIEW_STAGE_INSET_PX, resolvePreviewStageSize, shadowIframeStyle } from "./previewStage";
 import { usePreviewFirstFrameTelemetry } from "../../player/hooks/usePreviewFirstFrameTelemetry";
 import { PreviewPoster, usePreviewPoster } from "./PreviewPoster";
 interface NLEPreviewProps extends Pick<
@@ -60,6 +56,7 @@ interface NLEPreviewProps extends Pick<
   fillBox?: boolean;
   compositionSizeHint?: PreviewCompositionSize;
   sandboxOrigin?: "opaque";
+  noLoadTimeout?: boolean;
 }
 
 export function getPreviewPlayerKey({
@@ -95,6 +92,7 @@ export const NLEPreview = memo(function NLEPreview({
   fillBox,
   compositionSizeHint,
   sandboxOrigin,
+  noLoadTimeout,
 }: NLEPreviewProps) {
   const activeKey = getPreviewPlayerKey({ projectId, directUrl });
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -183,6 +181,15 @@ export const NLEPreview = memo(function NLEPreview({
   useEffect(() => {
     onCompositionSizeChangeRef.current?.(compositionSize);
   }, [compositionSize]);
+
+  const showLive = poster.onLiveReadyToShowChange;
+  const onLiveReadyToShowChange = useCallback(
+    (ready: boolean) => {
+      showLive(ready);
+      if (ready) updateCompositionSizeFromPreview();
+    },
+    [showLive, updateCompositionSizeFromPreview],
+  );
 
   const setPreviewIframeRef = useCallback(
     (node: HTMLIFrameElement | null) => {
@@ -507,12 +514,13 @@ export const NLEPreview = memo(function NLEPreview({
                     applyInitialZoom();
                   }}
                   onCompositionLoadingChange={onCompositionLoadingChange}
-                  onReadyToShowChange={poster.onLiveReadyToShowChange}
+                  onReadyToShowChange={onLiveReadyToShowChange}
                   onPreviewError={poster.onPreviewError}
                   onPainted={(details) => reportPreviewFirstFrame(slot, details)}
                   portrait={portrait}
                   suppressLoadingOverlay={suppressLoadingOverlay}
                   loadingUi={loadingUi}
+                  noLoadTimeout={noLoadTimeout}
                   sandboxOrigin={sandboxOrigin}
                   style={
                     directUrl?.includes("/components/")
@@ -534,7 +542,7 @@ export const NLEPreview = memo(function NLEPreview({
                   suppressLoadingOverlay
                   noLoadTimeout
                   sandboxOrigin={sandboxOrigin}
-                  style={SHADOW_IFRAME_STYLE}
+                  style={shadowIframeStyle(sandboxOrigin)}
                 />
               ),
             )}

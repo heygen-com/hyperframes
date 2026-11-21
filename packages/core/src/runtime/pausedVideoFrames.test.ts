@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
+  captureNativeVideoFrame,
   createPausedVideoFrames,
   getPausedVideoFrame,
   ownsPausedVideoTime,
@@ -268,6 +269,8 @@ it("does not retire an adopted decoded picture when its native snapshot lease en
   expect(video.currentTime).toBe(3);
 });
 
+const MAC_SAFARI =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.2 Safari/605.1.15";
 const MAC_CHROME =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36";
 
@@ -309,5 +312,71 @@ it("leaves the paused frame of a source the scan did not report as it was decode
   batch!.present();
   batch!.refresh();
   expect(getPausedVideoFrame(video)!.style.filter).not.toContain("__hf_native_video_look");
+  vi.unstubAllGlobals();
+});
+
+// fails without the fix: drawImage(video) left each decoded frame in the renderer's image cache; a strip capture of a
+// 1080p film held 7.9 MB per seek there, never reused.
+it("draws a held picture through a VideoFrame closed after the draw, else from the video itself", () => {
+  const draws: Array<{ source: unknown; closed: boolean }> = [];
+  class FakeVideoFrame {
+    closed = false;
+    constructor(readonly video: HTMLVideoElement) {}
+    close() {
+      this.closed = true;
+    }
+  }
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage: (source: unknown) =>
+      draws.push({ source, closed: source instanceof FakeVideoFrame && source.closed }),
+  } as unknown as CanvasRenderingContext2D);
+  const video = document.createElement("video");
+  Object.defineProperty(video, "videoWidth", { value: 64 });
+  Object.defineProperty(video, "videoHeight", { value: 36 });
+  vi.stubGlobal("navigator", { userAgent: MAC_CHROME });
+  vi.stubGlobal("VideoFrame", FakeVideoFrame);
+  expect(captureNativeVideoFrame(video)?.width).toBe(64);
+  const [first] = draws;
+  const source = first?.source;
+  expect(source).toBeInstanceOf(FakeVideoFrame);
+  expect(first?.closed).toBe(false);
+  expect(source instanceof FakeVideoFrame && source.closed).toBe(true);
+  vi.stubGlobal(
+    "VideoFrame",
+    class {
+      constructor() {
+        throw new DOMException("tainted", "SecurityError");
+      }
+    },
+  );
+  expect(captureNativeVideoFrame(video)).not.toBeNull();
+  expect(draws[1]?.source).toBe(video);
+  vi.unstubAllGlobals();
+});
+
+// fails without the fix: seeking a film of 16 1080p videos, Safari never came back from making a VideoFrame of a
+// video it had just paused. The frame route is for Chromium's image cache, which WebKit does not have.
+it("draws a held picture from the video itself in WebKit, making no VideoFrame", () => {
+  const draws: unknown[] = [];
+  let framesMade = 0;
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage: (source: unknown) => draws.push(source),
+  } as unknown as CanvasRenderingContext2D);
+  const video = document.createElement("video");
+  Object.defineProperty(video, "videoWidth", { value: 64 });
+  Object.defineProperty(video, "videoHeight", { value: 36 });
+  vi.stubGlobal("navigator", { userAgent: MAC_SAFARI });
+  vi.stubGlobal(
+    "VideoFrame",
+    class {
+      constructor() {
+        framesMade++;
+      }
+      close() {}
+    },
+  );
+  expect(captureNativeVideoFrame(video)?.width).toBe(64);
+  expect(framesMade).toBe(0);
+  expect(draws).toEqual([video]);
   vi.unstubAllGlobals();
 });

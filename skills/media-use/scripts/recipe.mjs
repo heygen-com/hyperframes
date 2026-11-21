@@ -22,6 +22,7 @@
  */
 import { parseArgs } from "node:util";
 import { freezeRecipe, listRecipes, useRecipe } from "./lib/recipe-store.mjs";
+import { terminalText } from "./lib/terminal-text.mjs";
 
 const { values: args, positionals } = parseArgs({
   options: {
@@ -37,7 +38,7 @@ const { values: args, positionals } = parseArgs({
 const verb = positionals[0];
 
 function fail(message) {
-  console.error(message);
+  console.error(terminalText(message));
   process.exit(1);
 }
 
@@ -58,10 +59,14 @@ try {
     if (args.json) console.log(JSON.stringify({ ok: true, ...frozen }));
     else {
       console.log(
-        `froze recipe ${frozen.slug} (v${frozen.version}, ${frozen.workflow}) → ${frozen.dir}`,
+        terminalText(
+          `froze recipe ${frozen.slug} (v${frozen.version}, ${frozen.workflow}) → ${frozen.dir}`,
+        ),
       );
       if (frozen.workflowOverridden)
-        console.log(`  (BRIEF.md says "${frozen.workflow}" — the --workflow flag was ignored)`);
+        console.log(
+          terminalText(`  (BRIEF.md says "${frozen.workflow}" — the --workflow flag was ignored)`),
+        );
       if (!frozen.briefSkeleton)
         console.log("  (no BRIEF.md in the project — brief skeleton skipped)");
     }
@@ -72,7 +77,9 @@ try {
     else {
       for (const r of list) {
         console.log(
-          `${r.name}  v${r.version}  ${r.workflow}  (${r.source}; approved ${String(r.approved_at ?? "?").slice(0, 10)})`,
+          terminalText(
+            `${r.name}  v${r.version}  ${r.workflow}  (${r.source}; approved ${String(r.approved_at ?? "?").slice(0, 10)})`,
+          ),
         );
       }
     }
@@ -82,13 +89,16 @@ try {
     if (args.json) console.log(JSON.stringify({ ok: true, ...used }));
     else {
       console.log(
-        `using recipe ${used.recipe.name} (v${used.recipe.version}, ${used.recipe.workflow})`,
+        terminalText(
+          `using recipe ${used.recipe.name} (v${used.recipe.version}, ${used.recipe.workflow})`,
+        ),
       );
-      console.log(`  frame spec → ${used.frameSpecPath} (copied over)`);
-      console.log(`  storyboard skeleton → ${used.skeletonPath}`);
-      if (used.briefSkeletonPath) console.log(`  brief skeleton → ${used.briefSkeletonPath}`);
+      console.log(terminalText(`  frame spec → ${used.frameSpecPath} (copied over)`));
+      console.log(terminalText(`  storyboard skeleton → ${used.skeletonPath}`));
+      if (used.briefSkeletonPath)
+        console.log(terminalText(`  brief skeleton → ${used.briefSkeletonPath}`));
       for (const key of ["destination", "aspect", "language", "voice", "style_preset"]) {
-        if (used.recipe[key]) console.log(`  ${key}: ${used.recipe[key]}`);
+        if (used.recipe[key]) console.log(terminalText(`  ${key}: ${used.recipe[key]}`));
       }
     }
   } else {

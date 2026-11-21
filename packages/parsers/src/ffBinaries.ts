@@ -10,6 +10,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join, resolve } from "node:path";
+import type { Readable } from "node:stream";
 import { isTrustedExecutablePath, trustedPathDirs } from "./trustedExecutable.js";
 
 /**
@@ -26,6 +27,7 @@ export {
   pathEntries,
   trustedPathDirs,
 } from "./trustedExecutable.js";
+import { assertLiteralMediaInput } from "./literalMediaInput.js";
 
 export const FFMPEG_PATH_ENV = "HYPERFRAMES_FFMPEG_PATH";
 export const FFPROBE_PATH_ENV = "HYPERFRAMES_FFPROBE_PATH";
@@ -247,6 +249,49 @@ export function clearFfBinaryLookupCache(): void {
   skippedX86Binaries.clear();
 }
 
+const endsAListLine = (text: string) => ["\n", "\r", "\u0000"].some((char) => text.includes(char));
+
+/** One `file` entry per path; a path holding what ends a list line (LF, CR, NUL) is refused. */
+export function concatListText(
+  entries: readonly (string | { path: string; durationSeconds: number })[],
+  options: { videoContainersOnly?: boolean } = {},
+): string {
+  const entryOptions = options.videoContainersOnly ? "option format_whitelist mov,matroska\n" : "";
+  return entries
+    .map((entry) => {
+      const path = typeof entry === "string" ? entry : entry.path;
+      if (endsAListLine(path)) {
+        throw new Error(
+          `A file to join holds a line break or NUL in its path: ${JSON.stringify(path)}`,
+        );
+      }
+      const placed =
+        typeof entry === "string" ? "" : `inpoint 0\nduration ${entry.durationSeconds}\n`;
+      return `file '${path.replace(/'/g, "'\\''")}'\n${placed}${entryOptions}`;
+    })
+    .join("");
+}
+
+/**
+ * Concat input for a list HyperFrames wrote: entries open only as local mov, matroska or concat
+ * files (an ffconcat entry is followed in safe mode), and `-xerror` fails at a refused entry.
+ */
+export function concatListInputArgs(concatListPath: string): string[] {
+  return [
+    "-xerror",
+    "-protocol_whitelist",
+    "file",
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-format_whitelist",
+    "concat,mov,matroska",
+    "-i",
+    concatListPath,
+  ];
+}
+
 /** What a render service lets a media input open: containers that name no other file. */
 export const SELF_CONTAINED_FORMATS =
   "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
@@ -268,6 +313,8 @@ const PATH_OPENING_DEMUXERS = new Set([
   "lavfi",
 ]);
 
+const TEXT_ART_DEMUXERS = new Set(["tty", "bin", "xbin", "idf", "adf"]);
+
 /** A `-format_whitelist` value from a `-demuxers` listing; undefined when no row parses. */
 function demuxersFromListing(listing: string): string | undefined {
   const row = /Is a device/.test(listing) ? /^ D[E ]([d ]) (\S+)/ : /^ D[E ]() (\S+)/;
@@ -276,7 +323,8 @@ function demuxersFromListing(listing: string): string | undefined {
     const match = row.exec(line);
     if (!match || match[1] === "d") continue;
     const aliases = match[2]!.split(",");
-    if (aliases.some((alias) => PATH_OPENING_DEMUXERS.has(alias))) continue;
+    if (aliases.some((alias) => PATH_OPENING_DEMUXERS.has(alias) || TEXT_ART_DEMUXERS.has(alias)))
+      continue;
     for (const alias of aliases) names.add(alias);
   }
   return names.size > 0 ? [...names].join(",") : undefined;
@@ -291,8 +339,15 @@ export function _setDemuxerListingForTests(listing?: string): void {
   demuxerLists.clear();
 }
 
-/** Every demuxer `listingBinary` reports that opens nothing by itself; one that cannot be asked gets the self-contained list, and is asked again. */
-export function mediaInputFormatArgs(listingBinary: string): string[] {
+export function localContainerInputArgs(container: "mov" | "matroska" | undefined): string[] {
+  return container ? ["-protocol_whitelist", "file", "-format_whitelist", container] : [];
+}
+
+export { assertLiteralMediaInput };
+
+/** Every demuxer `listingBinary` reports that opens nothing by itself and is not text art, for reading `input`; one that cannot be asked gets the self-contained list, and is asked again. */
+export function mediaInputFormatArgs(listingBinary: string, input: string): string[] {
+  assertLiteralMediaInput(input);
   let formats = demuxerLists.get(listingBinary);
   if (formats === undefined) {
     try {
@@ -312,4 +367,24 @@ export function mediaInputFormatArgs(listingBinary: string): string[] {
     demuxerLists.set(listingBinary, formats);
   }
   return ["-format_whitelist", formats];
+}
+
+const OUT_TIME = /^out_time_(?:us|ms)=(\d+)$/;
+
+/** Hears the furthest output time, in seconds, that ffmpeg's `-progress pipe:1` lines on `stream` report. */
+export function followFfmpegProgress(stream: Readable, onSeconds: (seconds: number) => void): void {
+  let furthest = 0;
+  let lineTail = "";
+  stream.on("data", (chunk: Buffer) => {
+    const lines = (lineTail + chunk.toString()).split("\n");
+    lineTail = lines.pop() ?? "";
+    for (const line of lines) {
+      const reached = OUT_TIME.exec(line.trim());
+      if (!reached) continue;
+      const seconds = Number(reached[1]) / 1e6;
+      if (seconds <= furthest) continue;
+      furthest = seconds;
+      onSeconds(seconds);
+    }
+  });
 }

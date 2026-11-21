@@ -1,6 +1,10 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from "vitest";
-import { syncStoredAutomationFromPreview, syncStoredElementAttribute } from "./automationStoreSync";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  syncStoredAutomationFromFrame,
+  syncStoredAutomationFromPreview,
+  syncStoredElementAttribute,
+} from "./automationStoreSync";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 
 const TWO_POINTS = '{"version":1,"lanes":[{"target":"volume","points":[{"t":0,"v":1}]}]}';
@@ -28,8 +32,26 @@ function previewWith(attrs: Record<string, string>): Document {
   return doc;
 }
 
+// A sealed frame's document copy, answered when the test says.
+const copies = vi.hoisted(() => [] as Array<(doc: Document) => void>);
+vi.mock("./previewChannel", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./previewChannel")>()),
+  previewFrameOpaque: (iframe: HTMLIFrameElement) => iframe.dataset.sealed === "true",
+  previewDocumentCopy: () => new Promise<Document>((resolve) => copies.push(resolve)),
+}));
+
+function frame(sealed: boolean, doc?: Document): HTMLIFrameElement {
+  const iframe = document.createElement("iframe");
+  iframe.dataset.sealed = String(sealed);
+  if (doc) Object.defineProperty(iframe, "contentDocument", { value: doc });
+  return iframe;
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve));
+
 beforeEach(() => {
   usePlayerStore.getState().reset();
+  copies.length = 0;
 });
 
 describe("syncStoredElementAttribute", () => {
@@ -161,5 +183,52 @@ describe("syncStoredAutomationFromPreview", () => {
     const stored = usePlayerStore.getState().elements[0];
     expect(stored?.audioGroupAutomation).toBe(groupAutomation);
     expect(stored?.audioGroupFxChain).toBe(chain);
+  });
+});
+
+describe("syncStoredAutomationFromFrame", () => {
+  beforeEach(() =>
+    usePlayerStore.setState({ elements: [el({ volume: 1 })], timelineProjectId: "a" }),
+  );
+  const volume = () => usePlayerStore.getState().elements[0]?.volume;
+
+  it("records a sealed frame's copy once it arrives", async () => {
+    syncStoredAutomationFromFrame(frame(true));
+    copies[0]!(previewWith({ "data-volume": "0.2" }));
+    await settle();
+    expect(volume()).toBe(0.2);
+  });
+
+  it("keeps the later of two sealed reads when the earlier answers last", async () => {
+    syncStoredAutomationFromFrame(frame(true));
+    syncStoredAutomationFromFrame(frame(true));
+    copies[1]!(previewWith({ "data-volume": "0.8" }));
+    copies[0]!(previewWith({ "data-volume": "0.2" }));
+    await settle();
+    expect(volume()).toBe(0.8);
+  });
+
+  it("drops a sealed read once a live sync ran after it", async () => {
+    syncStoredAutomationFromFrame(frame(true));
+    syncStoredAutomationFromFrame(frame(false, previewWith({ "data-volume": "0.8" })));
+    copies[0]!(previewWith({ "data-volume": "0.2" }));
+    await settle();
+    expect(volume()).toBe(0.8);
+  });
+
+  it("drops a sealed read once the timeline saved a newer value", async () => {
+    syncStoredAutomationFromFrame(frame(true));
+    syncStoredElementAttribute(el(), "data-volume", "0.8");
+    copies[0]!(previewWith({ "data-volume": "0.2" }));
+    await settle();
+    expect(volume()).toBe(0.8);
+  });
+
+  it("drops a sealed read once another project is open", async () => {
+    syncStoredAutomationFromFrame(frame(true));
+    usePlayerStore.setState({ timelineProjectId: "b" });
+    copies[0]!(previewWith({ "data-volume": "0.2" }));
+    await settle();
+    expect(volume()).toBe(1);
   });
 });

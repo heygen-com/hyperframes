@@ -81,7 +81,7 @@ function createFakeProc(): FakeProc {
   return proc;
 }
 
-type SpawnOptions = { windowsHide?: boolean; signal?: AbortSignal };
+type SpawnOptions = { windowsHide?: boolean; signal?: AbortSignal; cwd?: string };
 type SpawnCall = { command: string; args: string[]; options?: SpawnOptions; proc: FakeProc };
 type SpawnImpl = (command: string, args: string[], options?: SpawnOptions) => FakeProc;
 
@@ -164,13 +164,16 @@ async function loadModule(
   codecName?: string,
   durationSeconds?: number,
   streams?: string[],
+  token: string | null = "a".repeat(64),
 ): Promise<typeof import("./proxyTranscoder.js")> {
   vi.resetModules();
+  vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => token }));
   vi.doMock("node:child_process", () => {
     const mocked = { spawn };
     return { ...mocked, default: mocked };
   });
-  vi.doMock("@hyperframes/parsers/ff-binaries", () => ({
+  vi.doMock("@hyperframes/parsers/ff-binaries", async (importOriginal) => ({
+    ...(await importOriginal<typeof import("@hyperframes/parsers/ff-binaries")>()),
     findFfBinary: () => ffmpegPath,
   }));
   vi.doMock("./mediaMetadata.js", () => ({
@@ -242,6 +245,348 @@ describe("resolveProxy on a long source", () => {
     expect(heard.at(-1)).toEqual({ doneSeconds: LONG_SECONDS, totalSeconds: LONG_SECONDS });
     expect(calls.at(-1)!.args).toEqual(expect.arrayContaining(["-f", "concat", "-c", "copy"]));
     expect(copiesIn(cacheDirectory)).toEqual([cachePath.split("/").at(-1)]);
+  });
+
+  const answerAll = async (calls: SpawnCall[]): Promise<void> => {
+    for (let answered = 0; ; answered = calls.length) {
+      await flush(50);
+      if (calls.length === answered) break;
+      calls.slice(answered).forEach((call) => succeed(call));
+    }
+  };
+
+  it("joins pieces through the shared concat input, which allows only local mp4, mov or webm files", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "long.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const result = resolveProxy(projectDir, sourcePath);
+    await answerAll(calls);
+    await result;
+    const joinArgs = calls.at(-1)!.args;
+    expect(joinArgs.slice(1, 15)).toEqual([
+      "-copyts",
+      "-xerror",
+      "-protocol_whitelist",
+      "file",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-format_whitelist",
+      "concat,mov,matroska",
+      "-i",
+      expect.stringMatching(/\.txt$/),
+      "-c",
+      "copy",
+    ]);
+  });
+
+  async function loadWithSound(probePiece: (signal?: AbortSignal) => unknown = () => undefined) {
+    const { spawn, calls } = createSpawnSpy();
+    vi.resetModules();
+    vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
+    vi.doMock("node:child_process", () => ({ spawn, default: { spawn } }));
+    vi.doMock("@hyperframes/parsers/ff-binaries", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@hyperframes/parsers/ff-binaries")>()),
+      findFfBinary: () => FFMPEG_PATH,
+    }));
+    vi.doMock("./mediaMetadata.js", () => ({
+      probeMediaMetadata: async (path: string, _runner?: unknown, signal?: AbortSignal) =>
+        (path.includes(".part-") && probePiece(signal)) || {
+          kind: "video",
+          color: { isHdr: false, hdrTransfer: null },
+          durationSeconds: LONG_SECONDS,
+          audioStream: 0,
+        },
+      probeFirstFrameColour: async () => ({}),
+    }));
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "talk.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const leftIn = () =>
+      readdirSync(join(projectDir, ".transcode-cache")).filter((name) =>
+        /^\.(part|tmp)-/.test(name),
+      );
+    return { ...(await import("./proxyTranscoder.js")), calls, projectDir, sourcePath, leftIn };
+  }
+  const isJoin = (call: SpawnCall) => call.args.includes("concat");
+
+  it("makes every piece again after a join ffmpeg refuses, and leaves no picture behind", async () => {
+    const { resolveProxy, getProxyCachePath, clearFailedTranscodesForTest, ...made } =
+      await loadWithSound();
+    const { calls, projectDir, sourcePath, leftIn } = made;
+
+    const refused = resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
+    await answerUntilIdle(calls, (call) => {
+      if (!isJoin(call)) return succeed(call);
+      writeFileSync(call.args.at(-1)!, "partial picture");
+      fail(call, 1, "Impossible to open piece");
+    });
+    expect(await refused).toBeInstanceOf(Error);
+    expect(leftIn()).toEqual([]);
+
+    clearFailedTranscodesForTest();
+    const piecesBefore = startsOf(calls).length;
+    const answered = new Set(calls);
+    const whole = resolveProxy(projectDir, sourcePath);
+    await answerUntilIdle(calls, (call) => answered.has(call) || succeed(call));
+    expect(await whole).toBe(getProxyCachePath(projectDir, sourcePath));
+    expect(startsOf(calls).length - piecesBefore).toBe(piecesBefore);
+    expect(leftIn()).toEqual([]);
+  });
+
+  it("keeps its finished pieces and no picture when its last caller leaves during the join", async () => {
+    const { resolveProxy, calls, projectDir, sourcePath, leftIn } = await loadWithSound();
+    const leave = new AbortController();
+
+    const left = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+      signal: leave.signal,
+    }).catch((error: unknown) => error);
+    await answerUntilIdle(calls, (call) => {
+      if (!isJoin(call)) return succeed(call);
+      writeFileSync(call.args.at(-1)!, "partial picture");
+      leave.abort();
+      call.proc.emit("close", null, "SIGKILL");
+    });
+    expect(await left).toBe(leave.signal.reason);
+    await flush(50);
+    expect(leftIn().every((name) => name.startsWith(".part-"))).toBe(true);
+    expect(leftIn()).toHaveLength(3);
+  });
+
+  it("measures left pieces one at a time and stops when its last caller leaves", async () => {
+    const probing: AbortSignal[] = [];
+    let hang = false;
+    const { resolveProxy, getProxyCachePath, calls, projectDir, sourcePath } = await loadWithSound(
+      (signal) =>
+        hang &&
+        new Promise((resolve) => {
+          probing.push(signal!);
+          if (signal!.aborted) resolve({ kind: "video", color: {} });
+          signal!.addEventListener("abort", () => resolve({ kind: "video", color: {} }));
+        }),
+    );
+    const leave = new AbortController();
+    const left = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+      signal: leave.signal,
+    }).catch((error: unknown) => error);
+    await answerUntilIdle(calls, (call) => {
+      if (!isJoin(call)) return succeed(call);
+      leave.abort();
+      call.proc.emit("close", null, "SIGKILL");
+    });
+    expect(await left).toBe(leave.signal.reason);
+    hang = true;
+    const leaveAgain = new AbortController();
+    const resumed = resolveProxy(projectDir, sourcePath, "h264", undefined, {
+      signal: leaveAgain.signal,
+    }).catch((error: unknown) => error);
+    await flush(50);
+    expect(probing).toHaveLength(1);
+    leaveAgain.abort();
+    expect(await resumed).toBe(leaveAgain.signal.reason);
+    await flush(50);
+    expect(probing).toHaveLength(1);
+    expect(probing[0]!.aborted).toBe(true);
+    hang = false;
+    const answered = new Set(calls);
+    const whole = resolveProxy(projectDir, sourcePath);
+    await answerUntilIdle(calls, (call) => answered.has(call) || succeed(call));
+    expect(await whole).toBe(getProxyCachePath(projectDir, sourcePath));
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "runs the join from the cache folder and names the list there by its bare name",
+    async () => {
+      const { spawn, calls } = createSpawnSpy();
+      const { resolveProxy, getProxyCachePath } = await loadModule(
+        spawn,
+        FFMPEG_PATH,
+        false,
+        null,
+        undefined,
+        LONG_SECONDS,
+      );
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "long.mov");
+      writeFileSync(sourcePath, "source-bytes");
+      const result = resolveProxy(projectDir, sourcePath);
+      await answerAll(calls);
+      await result;
+      const joinCall = calls.at(-1)!;
+      expect(joinCall.options?.cwd).toBe(dirname(getProxyCachePath(projectDir, sourcePath)));
+      expect(joinCall.args[joinCall.args.indexOf("-i") + 1]).toMatch(/^[^/\\]+\.txt$/);
+    },
+  );
+
+  it.skipIf(!realFfmpeg || !findFfBinary("ffprobe") || process.platform === "win32")(
+    "joins only its own pieces when a folder above the project has line breaks and list lines in its name",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("./mediaMetadata.js");
+      vi.doMock("@hyperframes/core/preview-proof", () => ({ previewToken: () => "a".repeat(64) }));
+      const { resolveProxy } = await import("./proxyTranscoder.js");
+      const base = realpathSync(tmpProject());
+      const clip = (path: string, colour: string, seconds: number) =>
+        execFileSync(realFfmpeg!, [
+          ...["-v", "error", "-f", "lavfi", "-i", `color=c=${colour}:s=32x32:r=2:d=${seconds}`],
+          ...["-c:v", "libx264", "-pix_fmt", "yuv420p", path],
+        ]);
+      clip(join(base, "a.mp4"), "blue", 2);
+      clip(join(base, "other.mp4"), "red", 2);
+      const projectDir = `${base}/a.mp4\nfile ${base}/other.mp4\n#/project`;
+      mkdirSync(projectDir, { recursive: true });
+      const sourcePath = join(projectDir, "long.mp4");
+      clip(sourcePath, "blue", LONG_SECONDS);
+
+      const proxyPath = await resolveProxy(projectDir, sourcePath);
+      const seconds = execFileSync(
+        findFfBinary("ffprobe")!,
+        ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", "--", proxyPath],
+        { encoding: "utf8" },
+      );
+      expect(Number(seconds)).toBeCloseTo(LONG_SECONDS, 0);
+      // Red frames carry a high V (red difference) average; the source and a.mp4 are blue.
+      const redness = execFileSync(
+        realFfmpeg!,
+        [
+          "-v",
+          "error",
+          "-i",
+          proxyPath,
+          "-vf",
+          "signalstats,metadata=print:file=-",
+          "-f",
+          "null",
+          "-",
+        ],
+        { encoding: "utf8" },
+      )
+        .split("\n")
+        .flatMap((line) => /VAVG=([\d.]+)/.exec(line)?.[1] ?? [])
+        .map(Number);
+      expect(redness.length).toBeGreaterThan(0);
+      expect(Math.max(...redness)).toBeLessThan(160);
+    },
+    60_000,
+  );
+
+  it("encodes every piece again when the project shipped pieces at the names it can predict", async () => {
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy, getProxyCachePath } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+    );
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "long.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const stem = basename(getProxyCachePath(projectDir, sourcePath), ".mp4");
+    const cacheDirectory = join(projectDir, ".transcode-cache");
+    mkdirSync(cacheDirectory, { recursive: true });
+    for (const index of [0, 1, 2]) {
+      writeFileSync(join(cacheDirectory, `.part-${stem}-${index}.mp4`), "shipped-playlist");
+    }
+
+    const result = resolveProxy(projectDir, sourcePath);
+    await answerAll(calls);
+    await result;
+    expect(startsOf(calls)).toEqual(["0", String(PIECE_SECONDS), String(2 * PIECE_SECONDS)]);
+  });
+
+  it("continues its own stopped copy after a restart, but not pieces another user made", async () => {
+    const projectDir = tmpProject();
+    const sourcePath = join(projectDir, "long.mov");
+    writeFileSync(sourcePath, "source-bytes");
+    const stopAfterFirstPiece = async (token: string) => {
+      const { spawn, calls } = createSpawnSpy();
+      const mod = await loadModule(
+        spawn,
+        FFMPEG_PATH,
+        false,
+        null,
+        undefined,
+        LONG_SECONDS,
+        undefined,
+        token,
+      );
+      const run = mod.resolveProxy(projectDir, sourcePath).catch((error: unknown) => error);
+      await flush();
+      succeed(calls[0]!);
+      await flush(50);
+      calls[1]!.proc.emit("close", null, "SIGKILL");
+      expect(await run).toBeInstanceOf(Error);
+    };
+    const resumeStarts = async (token: string) => {
+      const { spawn, calls } = createSpawnSpy();
+      const mod = await loadModule(
+        spawn,
+        FFMPEG_PATH,
+        false,
+        null,
+        undefined,
+        LONG_SECONDS,
+        undefined,
+        token,
+      );
+      const run = mod.resolveProxy(projectDir, sourcePath);
+      await answerAll(calls);
+      await run;
+      return startsOf(calls);
+    };
+
+    await stopAfterFirstPiece("a".repeat(64));
+    expect(await resumeStarts("b".repeat(64))).toEqual([
+      "0",
+      String(PIECE_SECONDS),
+      String(2 * PIECE_SECONDS),
+    ]);
+    rmSync(join(projectDir, ".transcode-cache"), { recursive: true, force: true });
+    await stopAfterFirstPiece("a".repeat(64));
+    expect(await resumeStarts("a".repeat(64))).toEqual([
+      String(PIECE_SECONDS),
+      String(2 * PIECE_SECONDS),
+    ]);
+  });
+
+  it("warns once when no preview token can be read, and still makes the copy", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { spawn, calls } = createSpawnSpy();
+    const { resolveProxy } = await loadModule(
+      spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      LONG_SECONDS,
+      undefined,
+      null,
+    );
+    const projectDir = tmpProject();
+    for (const name of ["one.mov", "two.mov"]) {
+      const sourcePath = join(projectDir, name);
+      writeFileSync(sourcePath, `source-${name}`);
+      const result = resolveProxy(projectDir, sourcePath);
+      await answerAll(calls);
+      await result;
+    }
+    const tokenWarnings = warn.mock.calls.filter(([message]) =>
+      String(message).includes("no preview token"),
+    );
+    expect(tokenWarnings).toHaveLength(1);
+    warn.mockRestore();
   });
 
   it("copies only the first stretch when asked, as a copy of its own", async () => {
@@ -596,6 +941,31 @@ describe("resolveProxy", () => {
     expect(result).toBe(cachePath);
     expect(calls).toHaveLength(0);
   });
+
+  it.skipIf(process.platform === "win32")(
+    "makes the copy again when a link stands at its name, and never returns the link's target",
+    async () => {
+      const { spawn, calls } = createSpawnSpy();
+      const { resolveProxy, getProxyCachePath } = await loadModule(spawn, FFMPEG_PATH);
+      const projectDir = tmpProject();
+      const sourcePath = join(projectDir, "video.mov");
+      writeFileSync(sourcePath, "source-bytes");
+      const outside = join(tmpProject(), "id_rsa");
+      writeFileSync(outside, "PRIVATE KEY");
+      const cachePath = getProxyCachePath(projectDir, sourcePath);
+      mkdirSync(dirname(cachePath), { recursive: true });
+      symlinkSync(outside, cachePath);
+
+      const resultPromise = resolveProxy(projectDir, sourcePath);
+      await flush();
+      expect(calls).toHaveLength(1);
+      succeed(calls[0]!);
+      const result = await resultPromise;
+
+      expect(readFileSync(result, "utf8")).toBe("fake-h264-bytes");
+      expect(readFileSync(outside, "utf8")).toBe("PRIVATE KEY");
+    },
+  );
 
   it("tone-maps HDR input before emitting browser-safe BT.709", async () => {
     const { spawn, calls } = createSpawnSpy();
@@ -1776,7 +2146,10 @@ describe("resolveProxy", () => {
       const mocked = { spawn };
       return { ...mocked, default: mocked };
     });
-    vi.doMock("@hyperframes/parsers/ff-binaries", () => ({ findFfBinary: ffmpegPath }));
+    vi.doMock("@hyperframes/parsers/ff-binaries", async (importOriginal) => ({
+      ...(await importOriginal<typeof import("@hyperframes/parsers/ff-binaries")>()),
+      findFfBinary: ffmpegPath,
+    }));
     vi.doMock("./mediaMetadata.js", () => ({
       probeMediaMetadata: () =>
         new Promise((resolveProbe) => setTimeout(resolveProbe, 5)).then(probe),
@@ -1965,6 +2338,45 @@ describe("resolveProxy", () => {
       await expect(result).resolves.toBe(cachePath);
       expect(existsSync(lockPath)).toBe(false);
     });
+
+    it("gives up on a lock dated ahead of the clock within the stall window, and frees its slot", async () => {
+      vi.useFakeTimers();
+      process.env.HYPERFRAMES_PROXY_MAX_CONCURRENCY = "1";
+      const { spawn, calls } = createSpawnSpy();
+      const { resolveProxy, getProxyCachePath, TRANSCODE_STALL_MS } = await loadModule(
+        spawn,
+        FFMPEG_PATH,
+      );
+      const projectDir = tmpProject();
+      const lockedSource = join(projectDir, "locked.mov");
+      const otherSource = join(projectDir, "other.mov");
+      writeFileSync(lockedSource, "locked-bytes");
+      writeFileSync(otherSource, "other-bytes");
+      const cachePath = getProxyCachePath(projectDir, lockedSource);
+      mkdirSync(dirname(cachePath), { recursive: true });
+      const nextYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+      for (const name of [`.lock-${basename(cachePath)}`, `.tmp-1234-${basename(cachePath)}`]) {
+        writeFileSync(join(dirname(cachePath), name), String(process.pid));
+        utimesSync(join(dirname(cachePath), name), nextYear, nextYear);
+      }
+
+      try {
+        const locked = resolveProxy(projectDir, lockedSource).catch((error: unknown) => error);
+        const other = resolveProxy(projectDir, otherSource);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(calls).toHaveLength(0);
+        await vi.advanceTimersByTimeAsync(TRANSCODE_STALL_MS + 1_000);
+
+        expect(await locked).toEqual(
+          expect.objectContaining({ message: expect.stringMatching(/no progress/) }),
+        );
+        expect(calls).toHaveLength(1);
+        succeed(calls[0]!);
+        await expect(other).resolves.toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("throws a typed error when ffmpeg cannot be resolved, without spawning", async () => {
@@ -2134,6 +2546,24 @@ describe("resolveStill", () => {
       expect(exitSignal).toBe("SIGKILL");
     },
   );
+
+  it("starts no ffmpeg for a still past the end of the source", async () => {
+    const spy = createSpawnSpy();
+    const { resolveStill, StillPastEndError } = await loadModule(
+      spy.spawn,
+      FFMPEG_PATH,
+      false,
+      null,
+      undefined,
+      2,
+    );
+    const projectDir = tmpProject();
+    const clip = join(projectDir, "clip.mp4");
+    writeFileSync(clip, "clip");
+
+    await expect(resolveStill(projectDir, clip, 2.5)).rejects.toBeInstanceOf(StillPastEndError);
+    expect(spy.calls).toHaveLength(0);
+  });
 
   it("starts no ffmpeg for a request that already left", async () => {
     const { calls, ask } = await stillSetup();

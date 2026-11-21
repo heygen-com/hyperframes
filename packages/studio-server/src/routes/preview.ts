@@ -36,6 +36,8 @@ import {
   normalizeGsapLocalRoot,
 } from "@hyperframes/core/gsap-cdn";
 import { findStartTags, injectTagsAtHeadStart } from "@hyperframes/core/compiler/html-document";
+import { hasAuthoredCode } from "../helpers/authoredCode.js";
+import { THUMBNAIL_NO_AUTHORED_CODE_META } from "../helpers/screenshotClip.js";
 import { isWithinProjectRoot } from "@hyperframes/parsers/asset-resolution";
 import type { ResolvedProject, StudioApiAdapter } from "../types.js";
 import {
@@ -85,6 +87,7 @@ import {
   ProxyTranscodeError,
   ProxyWaitTimeoutError,
   PROXY_PENDING_RETRY_AFTER_SECONDS,
+  StillPastEndError,
 } from "../helpers/proxyTranscoder.js";
 import {
   decideMediaProxyEligibility,
@@ -103,12 +106,14 @@ import {
   type PreviewApiAdapter,
 } from "../helpers/mediaProxyPreview.js";
 import { requestSubPath } from "../helpers/requestSubPath.js";
+import { previewRefusalPage } from "../helpers/previewErrorPage.js";
+import { isCompositionTooLargeError } from "@hyperframes/core/compiler/composition-size-limit";
 import { lazyPreviewImages } from "../helpers/lazyPreviewImages.js";
 import { corsProjectVideos } from "../helpers/captureVideos.js";
-import { createJobSlots, JobAbandonedError } from "../helpers/jobSlots.js";
+import { createJobSlots, JobAbandonedError, JobQueueFullError } from "../helpers/jobSlots.js";
 
 const PROJECT_SIGNATURE_META = "hyperframes-project-signature";
-const runStillJob = createJobSlots(4);
+const runStillJob = createJobSlots(4, 16);
 
 function escapeGsapUrl(url: string): string {
   return url.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -355,6 +360,7 @@ function previewVariablesFromRequest(rawVariables: string | undefined):
 
 /** Captures screenshot right after a seek, so they get every image eager; media loads near the playhead. */
 export const PREVIEW_CAPTURE_PARAM = "hf-capture";
+export const PREVIEW_PROXY_PARAM = "hf-proxy";
 
 export function scriptJson(value: unknown): string {
   return JSON.stringify(value)
@@ -380,10 +386,15 @@ export function injectStudioPreviewAugmentations(
   activeCompositionPath: string,
   options: { capture: boolean; gsapBaseUrl: string; sandboxedCapture: boolean },
 ): string {
+  const studioMotion = readStudioMotion(projectDir, activeCompositionPath);
+  const noTimelineToCome =
+    options.capture && !studioMotion && !hasAuthoredCode(html)
+      ? `<meta name="${THUMBNAIL_NO_AUTHORED_CODE_META}">`
+      : "";
   const marked = options.capture
     ? injectTagsAtHeadStart(
         options.sandboxedCapture ? corsProjectVideos(html) : html,
-        `<meta name="${STUDIO_PREVIEW_MARK_META}" content="${STUDIO_PREVIEW_CAPTURE_MODE}">`,
+        `<meta name="${STUDIO_PREVIEW_MARK_META}" content="${STUDIO_PREVIEW_CAPTURE_MODE}">${noTimelineToCome}`,
       )
     : injectTagsAtHeadStart(
         lazyPreviewImages(html),
@@ -399,7 +410,6 @@ export function injectStudioPreviewAugmentations(
     ),
     options.gsapBaseUrl,
   );
-  const studioMotion = readStudioMotion(projectDir, activeCompositionPath);
   // Studio motion's GSAP core goes in first, so a MotionPathPlugin injected next lands after it.
   const withMotionDependencies = studioMotion
     ? injectStudioMotionDependencies(
@@ -600,6 +610,7 @@ export function registerPreviewRoutes(
       }
       return bundled;
     } catch (error) {
+      if (isCompositionTooLargeError(error)) return previewRefusalPage(error.message);
       console.warn("[Studio] preview build failed, building from the saved file:", error);
       // Re-read disk on bundle failure so we serve the latest file content,
       // not the pre-request snapshot that may have been saved over.
@@ -721,6 +732,7 @@ export function registerPreviewRoutes(
         compPath,
       );
       if (!built) return c.text("not found", 404);
+      if ("refused" in built) return c.html(previewRefusalPage(built.refused), 200);
       for (const path of built.references) recordPreviewRead(project.dir, path);
       const transformed = await withinDeadline(
         transformPreviewHtml(built.html, adapter, project, compPath),
@@ -780,7 +792,7 @@ export function registerPreviewRoutes(
     // only a video asset can be proxied, and only when auto-proxy is enabled
     // for this adapter/project. Checked BEFORE any transcode or 304 shortcut
     // so a bogus/disabled request never spawns ffmpeg.
-    const proxyParam = c.req.query("hf-proxy");
+    const proxyParam = c.req.query(PREVIEW_PROXY_PARAM);
     const boxParam = c.req.query(PREVIEW_PROXY_BOX_PARAM);
     const proxyBox = boxParam === undefined ? undefined : parsePreviewProxyBox(boxParam);
     const lightRequested = c.req.query(PREVIEW_PROXY_LIGHT_PARAM) !== undefined;
@@ -831,6 +843,10 @@ export function registerPreviewRoutes(
           headers: { "Content-Type": "image/jpeg", "Cache-Control": "private, max-age=3600" },
         });
       } catch (err) {
+        if (err instanceof JobQueueFullError) {
+          return c.text(err.message, 503, { "Retry-After": "5" });
+        }
+        if (err instanceof StillPastEndError) return c.text("not found", 404);
         if (isProjectRootMissing(err)) throw err;
         return c.text("media still failed", 502);
       }

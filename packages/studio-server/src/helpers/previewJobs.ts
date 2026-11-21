@@ -1,4 +1,5 @@
 // The preview build passes that parse the page, run on the build worker (subCompositionWorker.ts).
+import { isCompositionTooLargeError } from "@hyperframes/core/compiler/composition-size-limit";
 import { readFileSync } from "node:fs";
 import { addScenePartsManifest } from "@hyperframes/core/compiler";
 import { ensureHfIds } from "@hyperframes/parsers/hf-ids";
@@ -20,7 +21,16 @@ import type {
 } from "./subCompositionBuild.js";
 
 /** The page with its runtime and the files it names, hf-ids pinned to the source's; null once the file is gone. */
-function build(job: BuildJob): { html: string; references: string[] } | null {
+function buildOrRefuse(buildPage: () => string | null): string | { refused: string } | null {
+  try {
+    return buildPage();
+  } catch (error) {
+    if (isCompositionTooLargeError(error)) return { refused: error.message };
+    throw error;
+  }
+}
+
+function build(job: BuildJob): { html: string; references: string[] } | { refused: string } | null {
   const { projectDir, compPath, compFile, runtimeUrl, baseHref, gsapBaseUrl } = job;
   let pinned: string | undefined;
   if (/\.html?$/i.test(compPath)) {
@@ -30,15 +40,10 @@ function build(job: BuildJob): { html: string; references: string[] } | null {
       return null; // removed between the route's stat and this read
     }
   }
-  const built = buildSubCompositionHtml(
-    projectDir,
-    compPath,
-    runtimeUrl,
-    baseHref,
-    pinned,
-    gsapBaseUrl,
+  const built = buildOrRefuse(() =>
+    buildSubCompositionHtml(projectDir, compPath, runtimeUrl, baseHref, pinned, gsapBaseUrl),
   );
-  if (!built) return null;
+  if (typeof built !== "string") return built;
   const html = withPreviewRuntime(withRootImportMap(built, baseHref), runtimeUrl);
   return { html, references: [...previewReferences(html)] };
 }

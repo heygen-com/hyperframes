@@ -331,6 +331,7 @@ export function useDomSelection({
         return null;
       }
       if (!doc) {
+        await holdScenesOf(iframe, element);
         const found = await findOpaqueTimelineElement(iframe, element, lookup);
         return found
           ? buildDomSelectionFromTarget(found, { preferClipAncestor: false }, iframe)

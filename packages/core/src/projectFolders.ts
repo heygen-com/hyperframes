@@ -21,3 +21,5 @@ export const RENDER_TEMP_DIR =
 
 export const isProjectIgnoredDir = (name: string): boolean =>
   PREVIEW_IGNORED_DIRS.has(name) || RENDER_TEMP_DIR.test(name);
+
+export const RENDER_VARIABLES_FILE = ".hyperframes/render-variables.json";

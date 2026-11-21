@@ -1,8 +1,14 @@
 import { rawCssUrlMatches, replaceMatches } from "@hyperframes/parsers/css-url-scans";
-import { findSceneTemplate } from "@hyperframes/parsers/sub-composition-validity";
+import {
+  findSceneTemplate,
+  firstHtmlTemplate,
+  isHtmlTemplate,
+  templateContent,
+} from "@hyperframes/parsers/sub-composition-validity";
 import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   SVG_REFERENCE_ALIASES_ATTR,
+  dropAuthoredSvgReferenceAliases,
   readSvgReferenceAliases,
   refreshSvgSelectorAliases,
 } from "../compiler/svgSelectorAliases";
@@ -182,14 +188,26 @@ function rewriteSubCompositionAssetPaths(root: ParentNode, compositionUrl: URL |
   rewritePathAttrsInTree(root, compositionUrl);
   rewriteInlineStyleUrlsInTree(root, compositionUrl);
   rewriteStyleElementUrlsInTree(root, compositionUrl);
-  for (const templateEl of Array.from(root.querySelectorAll<HTMLTemplateElement>("template"))) {
-    rewriteSubCompositionAssetPaths(templateEl.content, compositionUrl);
+  for (const templateEl of Array.from(root.querySelectorAll("template"))) {
+    const content = templateContent(templateEl);
+    if (content) rewriteSubCompositionAssetPaths(content, compositionUrl);
   }
 }
 
-function sceneOrFirstTemplate(doc: Document): HTMLTemplateElement | null {
-  const templates = Array.from(doc.querySelectorAll<HTMLTemplateElement>("template"));
-  return findSceneTemplate(templates) ?? templates[0] ?? null;
+function sceneOrFirstTemplateContent(doc: Document): DocumentFragment | null {
+  const templates = Array.from(doc.querySelectorAll("template"));
+  const template = findSceneTemplate(templates) ?? firstHtmlTemplate(templates);
+  return template ? templateContent(template) : null;
+}
+
+export function inlineMountTemplate(root: ParentNode, compositionId: string): Element | null {
+  const template = root.querySelector(`template#${CSS.escape(compositionId)}-template`);
+  return template && isHtmlTemplate(template) ? template : null;
+}
+
+function mountTemplateContent(root: ParentNode, compositionId: string): DocumentFragment | null {
+  const template = inlineMountTemplate(root, compositionId);
+  return template && templateContent(template);
 }
 
 function uniqueCompositionId(baseId: string, index: number): string {
@@ -317,7 +335,7 @@ function countAuthoredCompositionIds(hosts: Element[]): Map<string, number> {
 function hasMatchingInlineTemplate(host: Element): boolean {
   const authoredCompositionId = getHostCompositionIdentity(host).authoredCompositionId;
   if (!authoredCompositionId) return false;
-  return !!document.querySelector(`template#${CSS.escape(authoredCompositionId)}-template`);
+  return !!inlineMountTemplate(document, authoredCompositionId);
 }
 
 function isMountedInlineCompositionHost(host: Element): boolean {
@@ -488,7 +506,9 @@ async function mountCompositionContent(params: {
   // `querySelector('[data-composition-id="..."]')`.
   const scriptScopeCompositionId = plan.scriptCompositionId;
   // No fallback to the authored id: an anonymous host has no runtime id, and
-  // the compiler emits no runtime scope selector and no variable table for one.
+  // the compiler emits no runtime scope selector for one. (Its declared
+  // defaults are keyed by the authored id its restored wrapper carries — see
+  // inlineSubCompositions — which is also the scope variableScope.ts resolves.)
   const runtimeScopeCompositionId = params.runtimeCompositionId || null;
   const authoredRootId = plan.authoredRootId;
   const runtimeScopeSelector = runtimeScopeCompositionId
@@ -687,7 +707,7 @@ async function mountInlineTemplateCompositions(
     if (host.children.length > 0) return false;
     const compId = hostIdentityByElement.get(host)?.authoredCompositionId;
     if (!compId) return false;
-    return !!document.querySelector(`template#${CSS.escape(compId)}-template`);
+    return !!mountTemplateContent(document, compId);
   });
 
   const mounted: MountedComposition[] = [];
@@ -695,9 +715,7 @@ async function mountInlineTemplateCompositions(
     const hostIdentity = hostIdentityByElement.get(host);
     const compId = hostIdentity?.authoredCompositionId;
     if (!compId) continue;
-    const template = document.querySelector<HTMLTemplateElement>(
-      `template#${CSS.escape(compId)}-template`,
-    )!;
+    const sourceNode = mountTemplateContent(document, compId)!;
 
     resetCompositionHost(host);
     const composition = await mountCompositionContent({
@@ -705,7 +723,7 @@ async function mountInlineTemplateCompositions(
       authoredCompositionId: compId,
       runtimeCompositionId: hostIdentity?.runtimeCompositionId || compId,
       hostCompositionSrc: `template#${compId}-template`,
-      sourceNode: template.content,
+      sourceNode,
       hasTemplate: true,
       fallbackBodyInnerHtml: "",
       compositionUrl: null,
@@ -770,19 +788,17 @@ async function mountExternalCompositions(
         return composition;
       };
       try {
-        const localTemplate =
+        const localContent =
           authoredCompositionId != null
-            ? document.querySelector<HTMLTemplateElement>(
-                `template#${CSS.escape(authoredCompositionId)}-template`,
-              )
+            ? mountTemplateContent(document, authoredCompositionId)
             : null;
-        if (localTemplate) {
+        if (localContent) {
           return await mount({
             host,
             authoredCompositionId,
             runtimeCompositionId,
             hostCompositionSrc: src,
-            sourceNode: localTemplate.content,
+            sourceNode: localContent,
             hasTemplate: true,
             fallbackBodyInnerHtml: "",
             compositionUrl,
@@ -803,22 +819,20 @@ async function mountExternalCompositions(
         const html = await response.text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
+        dropAuthoredSvgReferenceAliases(doc);
         // Resolve parent-relative assets against the fetched composition before mounting.
         rewriteSubCompositionAssetPaths(doc, compositionUrl);
-        const template =
-          (authoredCompositionId
-            ? doc.querySelector<HTMLTemplateElement>(
-                `template#${CSS.escape(authoredCompositionId)}-template`,
-              )
-            : null) ?? sceneOrFirstTemplate(doc);
-        const sourceNode = template ? template.content : doc.body;
+        const content =
+          (authoredCompositionId ? mountTemplateContent(doc, authoredCompositionId) : null) ??
+          sceneOrFirstTemplateContent(doc);
+        const sourceNode = content ?? doc.body;
         return await mount({
           host,
           authoredCompositionId,
           runtimeCompositionId,
           hostCompositionSrc: src,
           sourceNode,
-          hasTemplate: Boolean(template),
+          hasTemplate: Boolean(content),
           fallbackBodyInnerHtml: doc.body.innerHTML,
           compositionUrl,
           injectedStyles: params.injectedStyles,

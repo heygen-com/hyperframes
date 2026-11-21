@@ -17,6 +17,10 @@ writeFileSync(
 );
 writeFileSync(join(projectDir, "fonts", "Brand.woff2"), Buffer.from("wOF2font"));
 writeFileSync(join(projectDir, "fonts", "Brand.ttf"), Buffer.from("ttf-font"));
+writeFileSync(
+  join(projectDir, "sized.html"),
+  '<div data-composition-id="sized"><div id="card" data-hf-studio-box-size="true"></div></div>',
+);
 writeFileSync(join(projectDir, "scene.js"), "export const scene = 1;");
 writeFileSync(join(projectDir, "scene.mjs"), "export const scene = 2;");
 writeFileSync(join(projectDir, "data.json"), '{"secret":true}');
@@ -206,6 +210,19 @@ describe("an opaque preview frame's loads under its token", () => {
     expect(html.replaceAll(tokened, "")).not.toContain("/api/projects/demo/preview/");
   });
 
+  it("puts Studio's seek reapply last in a sealed document with a Studio edit, and only there", async () => {
+    const reapply = "//# sourceURL=hyperframes://position-seek-reapply</script>";
+    const sealed = await (await load("comp/sized.html", { "sec-fetch-dest": "iframe" })).text();
+    expect(sealed).toContain(reapply);
+    expect(sealed.indexOf(reapply)).toBeGreaterThan(sealed.indexOf('id="card"'));
+    const plain = await api.request("http://localhost/projects/demo/preview/comp/sized.html", {
+      headers: { "sec-fetch-site": "same-origin", "sec-fetch-dest": "iframe" },
+    });
+    expect(await plain.text()).not.toContain(reapply);
+    const unedited = await (await load("comp/scene.html", { "sec-fetch-dest": "iframe" })).text();
+    expect(unedited).not.toContain(reapply);
+  });
+
   it("serves the main preview under the token, re-based", async () => {
     const res = await api.request(`http://localhost/projects/demo/preview/~${token}`, {
       headers: { "sec-fetch-site": "same-origin", "sec-fetch-dest": "iframe" },
@@ -316,5 +333,52 @@ describe("an opaque preview frame's wait for a video's proxy copy", () => {
       "X-HF-Proxy-Progress",
       "Content-Range",
     ]);
+  });
+});
+
+describe("a media proxy asked for by another site", () => {
+  const ask = (prefix: string, site: string) =>
+    api.request(`http://localhost/projects/demo/preview/${prefix}clip.mp4?hf-proxy=h264`, {
+      headers: { "sec-fetch-site": site },
+    });
+
+  it.each(["cross-site", "same-site"])(
+    "is refused on the plain path to a %s request",
+    async (site) => {
+      const res = await ask("", site);
+      expect(res.status).toBe(403);
+      expect(await res.text()).toBe("forbidden: media proxy requested by another site");
+    },
+  );
+
+  // fails without the fix: a request carrying neither fetch metadata nor a Referer counted as the Studio's.
+  it("is refused on the plain path to a request with no fetch metadata and no Referer", async () => {
+    const res = await api.request("http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264");
+    expect(res.status).toBe(403);
+  });
+
+  it("is refused on the plain path even with a still query", async () => {
+    const res = await api.request(
+      "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264&hf-proxy-still=1",
+      { headers: { "sec-fetch-site": "cross-site" } },
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("goes through under the project's frame token, and from the Studio itself", async () => {
+    expect((await ask(`~${token}/`, "cross-site")).status).not.toBe(403);
+    expect((await ask("", "same-origin")).status).not.toBe(403);
+    const referred = await api.request(
+      "http://localhost/projects/demo/preview/clip.mp4?hf-proxy=h264",
+      { headers: { referer: "http://localhost/projects/demo/preview/index.html" } },
+    );
+    expect(referred.status).not.toBe(403);
+  });
+
+  it("leaves another site's plain load of a video without the proxy query alone", async () => {
+    const res = await api.request("http://localhost/projects/demo/preview/clip.mp4", {
+      headers: { "sec-fetch-site": "cross-site" },
+    });
+    expect(res.status).not.toBe(403);
   });
 });

@@ -124,7 +124,9 @@ Use **Edit** to change a variable's label, description, or saved default. For fo
 At the bottom of the panel, **Use this template** can copy either:
 
 - the effective values as JSON;
-- a ready-to-run `npx hyperframes render ... --variables ...` command.
+- a ready-to-run `npx hyperframes render -c <composition> --variables-file .hyperframes/render-variables.json` command.
+
+Copying the command also saves the values you are previewing to `.hyperframes/render-variables.json`, so run it from the project folder. The values travel in that file rather than in the command, so no value can be read as shell syntax in bash, zsh, fish, PowerShell or Command Prompt. If the composition's file name has characters other than letters, digits, `_`, `.`, `/` and `-`, the browser editor offers only the JSON; rename the file to get the command.
 
 This keeps the values you just reviewed attached to the render request instead of asking the next person to reconstruct them.
 

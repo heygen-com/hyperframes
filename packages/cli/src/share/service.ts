@@ -36,6 +36,7 @@ export interface ShareAction {
   waitSeconds?: number;
   videoOnly?: boolean;
   includeSource?: boolean;
+  confirmedReview?: string | null;
 }
 function linkState(share: ReviewShare | null, ready: boolean, failed: boolean): string {
   if (!share) return "not_shared";
@@ -78,7 +79,22 @@ async function readStatus(
     ready,
     source: uncheckedSource(),
     ...statusLinks(activeUrl, ready, processing || failed, project),
+    ...(await reviewTarget(dir, client, share, project)),
   };
+}
+async function reviewTarget(
+  dir: string,
+  client: ReviewClient,
+  share: ReviewShare | null,
+  project: Awaited<ReturnType<typeof readProject>>,
+) {
+  const reviewId = share?.projectId ?? (await recordedReview(dir));
+  const linked = project ?? (reviewId ? await client.project(reviewId).catch(() => null) : null);
+  return { reviewId, reviewTitle: linked?.title ?? null };
+}
+async function recordedReview(dir: string) {
+  const record = await reviewRecord(dir);
+  return record && !record.removed ? record.projectId : null;
 }
 async function readProject(share: ReviewShare | null, client: ReviewClient) {
   return share?.projectId ? client.project(share.projectId) : null;
@@ -115,6 +131,11 @@ function assertUploadProject(
   if (!id || (expectedId && id !== expectedId))
     throw new ReviewFailed(409, "review_binding_changed");
 }
+function assertConfirmedReview(reviewId: string | null, input: ShareAction) {
+  if (input.confirmedReview !== undefined && reviewId !== input.confirmedReview)
+    throw new ReviewFailed(409, "review_binding_changed");
+}
+const confirmedId = (input: ShareAction) => input.confirmedReview ?? undefined;
 function assertExistingIntent(share: ReviewShare | null, input: ShareAction) {
   if (!share) {
     if (input.action === "update") throw new ReviewFailed(404, "not_shared");
@@ -251,8 +272,9 @@ export function createShareService(
           client,
           spaceId: space,
           audience: input.audience,
+          confirmed: input.confirmedReview,
         });
-    assertUploadProject(share, current?.projectId);
+    assertUploadProject(share, current?.projectId ?? confirmedId(input));
     if (share.takedown) throw new ReviewFailed(409, "moderation_hold");
     assertExistingIntent(share, {
       ...input,
@@ -279,6 +301,7 @@ export function createShareService(
     await auth.access();
     attempt.authenticated();
     let current = await readStatus(dir, client, undefined, attempt.recover);
+    assertConfirmedReview(current.reviewId, input);
     if (current.share && input.audience && changesAudience(input, current.share)) {
       assertExistingIntent(current.share, { ...input, audience: undefined });
       const projectId = current.share.projectId;
@@ -352,6 +375,17 @@ function hasFailedVersion(version: Awaited<ReturnType<typeof reviewVersion>>): b
   return Boolean(version.failure && !version.held);
 }
 
+export function changesNamedReview(current: ShareState, input: ShareAction): boolean {
+  if (!current.reviewId) return false;
+  if (input.action === "update" || shareStillInProgress(current)) return true;
+  if (input.action !== "share") return false;
+  if (current.share && changesAudience(input, current.share)) return true;
+  return !retrievesExisting(current, input);
+}
+
+function shareStillInProgress(current: ShareState) {
+  return Boolean(current.activity);
+}
 function changesAudience(input: ShareAction, share: ReviewShare) {
   return input.action === "share" && Boolean(input.audience) && share.access !== input.audience;
 }

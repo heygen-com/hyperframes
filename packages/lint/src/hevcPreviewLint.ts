@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { rewriteAssetPath } from "@hyperframes/parsers/asset-paths";
 import { parseNumeric } from "@hyperframes/parsers/composition-contract";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { findFfBinary, mediaInputFormatArgs } from "@hyperframes/parsers/ff-binaries";
 import {
   cleanAssetUrl,
@@ -88,7 +89,7 @@ async function probeIsHevc(ffprobePath: string, filePath: string): Promise<boole
     const stdout = await execFileAsync(ffprobePath, [
       "-v",
       "error",
-      ...mediaInputFormatArgs(ffprobePath),
+      ...mediaInputFormatArgs(ffprobePath, filePath),
       "-select_streams",
       "v:0",
       "-show_entries",
@@ -157,7 +158,8 @@ function collectVideoElements(html: string): Element[] {
     if (!root) continue;
     videos.push(...root.querySelectorAll("video"));
     for (const template of root.querySelectorAll("template")) {
-      roots.push((template as HTMLTemplateElement).content);
+      const content = templateContent(template);
+      if (content) roots.push(content);
     }
   }
   return videos;
@@ -245,7 +247,7 @@ async function probePlayableVideoDuration(
       await execFileAsync(ffprobePath, [
         "-v",
         "error",
-        ...mediaInputFormatArgs(ffprobePath),
+        ...mediaInputFormatArgs(ffprobePath, filePath),
         "-select_streams",
         "v:0",
         "-show_entries",

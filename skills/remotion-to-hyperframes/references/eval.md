@@ -1,5 +1,7 @@
 # Eval: how to validate a translation end-to-end
 
+<!-- skill-scripts: relative-ok, runs inside a HyperFrames checkout -->
+
 Every translation should be measured. The skill ships a source linter and
 a tiered test corpus; the CLI's `diff` command scores the result. Together
 they gate translation quality.
@@ -14,6 +16,8 @@ they gate translation quality.
 Run them in this order: **lint → render → diff → (if fail) read the sheet**.
 
 ## Per-fixture flow
+
+This flow is for the fixtures this skill ships. Do not run `npm install` or a project's scripts in a Remotion project someone else wrote; ask the person for its baseline render instead.
 
 ```bash
 # 1. Lint the source — blockers mean stop

@@ -131,7 +131,7 @@ function parseRecord(record) {
 }
 
 const DOC_FILE = /\.mdx?$/i;
-const TEST_PATH = /\/(?:tests|__tests__)\/|\.(?:test|spec)\./;
+const TEST_PATH = /\/(?:tests|__tests__)\/|\.(?:test|spec)(?:-helpers)?\./;
 const isWatched = (path) =>
   path !== "" &&
   WATCHED_PREFIXES.some((prefix) => path.startsWith(prefix)) &&

@@ -34,9 +34,8 @@ vi.mock("../../player", async () => {
       ref: React.ForwardedRef<HTMLIFrameElement>,
     ) {
       if (!props.suppressLoadingOverlay) livePlayerProps = props;
-      React.useEffect(() => {
-        props.onLoad?.();
-      }, [props]);
+      const onLoad = React.useRef(props.onLoad);
+      React.useEffect(() => onLoad.current?.(), []);
       React.useState(() => playerMounts.push(props.suppressLoadingOverlay ? "shadow" : "live"));
 
       return React.createElement("div", {
@@ -556,6 +555,22 @@ describe("NLEPreview", () => {
     }
   });
 
+  it("takes a sealed preview's size once its film is ready to show, after the frame has loaded", () => {
+    const box = { width: 800, height: 600 };
+    const sealed = renderPreview(undefined, { box, sandboxOrigin: "opaque" });
+    try {
+      expect([sealed.stage.style.width, sealed.stage.style.height]).toEqual(["784px", "441px"]);
+      measured.size = { width: 1080, height: 1920 };
+      act(() => livePlayerProps.onReadyToShowChange?.(true));
+      const shape = parseFloat(sealed.stage.style.width) / parseFloat(sealed.stage.style.height);
+      expect(shape).toBeCloseTo(1080 / 1920, 3);
+      expect(sealed.stage.style.height).toBe("584px");
+    } finally {
+      measured.size = null;
+      sealed.cleanup();
+    }
+  });
+
   it("clips a shadow reload so its own loading overlay cannot paint over the live frame", () => {
     const view = renderPreview([
       { gen: 0, role: "live" },
@@ -586,6 +601,30 @@ describe("NLEPreview", () => {
       for (const player of players) {
         expect(player.getAttribute("data-sandbox-origin")).toBe(sandboxOrigin ?? null);
       }
+      view.cleanup();
+    },
+  );
+
+  // Chrome stops rendering a hidden or clipped cross-origin frame, and a sealed one is cross-origin.
+  it.each([
+    ["opaque" as const, ["opacity: 0"], ["visibility", "clip-path", "z-index"]],
+    [undefined, ["visibility: hidden", "clip-path: inset(100%)"], ["opacity"]],
+  ])(
+    "keeps a reload's preview out of sight, and a sealed one rendering (%s)",
+    (sandboxOrigin, present, absent) => {
+      const view = renderPreview(
+        [
+          { gen: 0, role: "live" },
+          { gen: 1, role: "shadow", url: "/api/projects/p/preview?_t=1" },
+        ],
+        { sandboxOrigin },
+      );
+      const shadow = [...view.stage.querySelectorAll('[data-testid="mock-player"]')]
+        .map((player) => player.getAttribute("style") ?? "")
+        .filter((style) => style.includes("pointer-events: none"));
+      expect(shadow).toHaveLength(1);
+      for (const rule of present) expect(shadow[0]).toContain(rule);
+      for (const rule of absent) expect(shadow[0]).not.toContain(rule);
       view.cleanup();
     },
   );

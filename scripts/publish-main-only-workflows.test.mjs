@@ -103,6 +103,7 @@ test("a publishing job that can be dispatched runs only for main", () => {
 test("the ClawHub token reaches only the pinned CLI login step", () => {
   const { source, doc } = workflows.find(({ file }) => file === "sync-skills-to-clawhub.yml");
   const sync = doc.jobs.sync;
+  assert.equal(sync.environment, "clawhub");
   assert.equal(source.match(/secrets\.CLAWHUB_TOKEN/g).length, 1);
   assert.ok(!usesPublishSecret(doc.env));
   assert.ok(!usesPublishSecret(sync.env));
@@ -151,4 +152,56 @@ test("dispatch arrays and OR suffixes cannot evade the main guard", () => {
       [],
     );
   }
+});
+
+test("a job that reads a stored secret binds an environment", () => {
+  const unbound = workflows.flatMap(({ file, doc }) =>
+    Object.entries(doc.jobs ?? {})
+      .filter(([, job]) => usesPublishSecret(job) && !job.environment)
+      .map(([name]) => `${file} ${name}`),
+  );
+  assert.deepEqual(unbound, []);
+});
+
+test("a job that can request an OIDC token binds an environment", () => {
+  const unbound = workflows.flatMap(({ file, doc }) =>
+    Object.entries(doc.jobs ?? {})
+      .filter(([, job]) => {
+        const permissions = job.permissions ?? doc.permissions ?? {};
+        return (
+          (permissions === "write-all" || permissions["id-token"] === "write") && !job.environment
+        );
+      })
+      .map(([name]) => `${file} ${name}`),
+  );
+  assert.deepEqual(unbound, []);
+});
+
+// The registry's GitHub login grants io.github.<owner>/* to an OIDC token from any job in the owner's repos, so the
+// listing lives under heygen.com, whose signing key only the mcp-registry environment holds.
+test("the MCP listing publishes as com.heygen with the environment's domain key, minting no OIDC token", () => {
+  const server = JSON.parse(readFileSync(join(import.meta.dirname, "..", "server.json"), "utf8"));
+  assert.match(server.name, /^com\.heygen\//);
+  const { doc } = workflows.find(({ file }) => file === "publish-mcp-registry.yml");
+  const job = doc.jobs.publish;
+  assert.equal(job.environment, "mcp-registry");
+  assert.notEqual((job.permissions ?? doc.permissions ?? {})["id-token"], "write");
+  const runs = job.steps.map((step) => step.run ?? "").join("\n");
+  assert.doesNotMatch(runs, /github-oidc/);
+  assert.match(
+    runs,
+    /mcp-publisher login dns --domain heygen\.com --private-key "\$MCP_PRIVATE_KEY"/,
+  );
+  assert.match(JSON.stringify(job), /"MCP_PRIVATE_KEY":"\$\{\{ secrets\.MCP_PRIVATE_KEY \}\}"/);
+});
+
+test("the old io.github listing is retired only by hand, from main, in the mcp-registry environment", () => {
+  const { doc } = workflows.find(({ file }) => file === "deprecate-mcp-github-name.yml");
+  assert.deepEqual(Object.keys(triggers(doc)), ["workflow_dispatch"]);
+  const [job] = Object.values(doc.jobs);
+  assert.equal(normalize(job.if), MAIN_GUARD);
+  assert.equal(job.environment, "mcp-registry");
+  const runs = job.steps.map((step) => step.run ?? "").join("\n");
+  assert.match(runs, /mcp-publisher status --status deprecated --all-versions --yes/);
+  assert.match(runs, /io\.github\.heygen-com\/hyperframes/);
 });

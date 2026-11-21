@@ -1,5 +1,14 @@
 import { resolve, sep, join, dirname, basename, relative, isAbsolute, parse } from "node:path";
 import { lstatSync, mkdirSync, realpathSync, statSync } from "node:fs";
+import { projectPathSegments } from "@hyperframes/parsers/private-path";
+
+export {
+  isCredentialOrToolStatePath,
+  isPrivateFileUnder,
+  isStudioPrivatePath,
+  isVcsOrSecretPath,
+  projectPathSegments,
+} from "@hyperframes/parsers/private-path";
 
 export function realpath(path: string): string {
   try {
@@ -49,11 +58,6 @@ function namesAnotherNetworkRoot(base: string, target: string): boolean {
  * can't redirect the path outside `base` right now. (A symlink swapped in between
  * this check and the subsequent fs call is an inherent TOCTOU race this helper
  * does not, and cannot by itself, defend against.)
- *
- * Lives at the package root rather than under `studio-api/` because callers span
- * layers — `studio-api` routes, the `compiler`, the CLI, and the engine — and
- * `compiler` sits below `studio-api` in the dependency graph, so it cannot import
- * from there without a backwards edge.
  */
 export function isSafePath(base: string, resolved: string): boolean {
   const target = resolve(resolved);
@@ -105,116 +109,126 @@ export function resolveWithinProject(base: string, relativePath: string): string
   return isSafePath(base, resolved) ? resolved : null;
 }
 
-/** Segments as Windows opens them: any case, no trailing dots or spaces, no `:stream` suffix. */
-export function projectPathSegments(relPath: string): string[] {
-  return relPath
-    .toLowerCase()
-    .split(/[\\/]/)
-    .map((segment) => withoutTrailingDotsOrSpaces(segment.split(":", 1)[0] ?? ""));
-}
-
-function withoutTrailingDotsOrSpaces(segment: string): string {
-  let end = segment.length;
-  while (end > 0 && (segment[end - 1] === "." || segment[end - 1] === " ")) end--;
-  return segment.slice(0, end);
-}
-
-// Git metadata and env files hold commands other tools run and secrets: nothing serves or inlines them.
-export function isVcsOrSecretPath(relPath: string): boolean {
-  return projectPathSegments(relPath).some(
-    (segment) => segment === ".git" || segment.startsWith(".env"),
+// Files another program runs or trusts with the developer's rights: a package manager, a shell, a build or IDE tool, or
+// a coding agent. No composition needs one, so registry content never installs one (an example may bring its own
+// project configuration) and Studio's write routes never write, rename onto or delete one.
+const PROJECT_CONFIG_FILES = new Set(["package.json", "hyperframes.json", "hyperframes.lock.json"]);
+const LOCK_FILES = new Set([
+  "package-lock.json",
+  "npm-shrinkwrap.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  "yarn.lock",
+  "bun.lock",
+  "bun.lockb",
+  "deno.lock",
+]);
+const TOOL_CONFIG_FILES = new Set([
+  "tsconfig.json",
+  "jsconfig.json",
+  "deno.json",
+  "deno.jsonc",
+  "bunfig.toml",
+  "makefile",
+  "gnumakefile",
+  "justfile",
+  "procfile",
+  "turbo.json",
+  "nx.json",
+  "pyproject.toml",
+  // Agents that read their settings, including commands to run, from the project folder.
+  "opencode.json",
+  "opencode.jsonc",
+  "crush.json",
+  // Dev servers, environment managers and deploy CLIs that run a command the file names.
+  "nodemon.json",
+  "devbox.json",
+  "devenv.yaml",
+  "wrangler.toml",
+  "wrangler.json",
+  "wrangler.jsonc",
+  "vercel.json",
+  "netlify.toml",
+  "composer.json",
+  // Ruby and other build files that are code in their own right.
+  "rakefile",
+  "gemfile",
+  "vagrantfile",
+  "tiltfile",
+  "earthfile",
+  "brewfile",
+]);
+// The same tools' other spellings and the files they load alongside their main config.
+const TOOL_CONFIG_FAMILIES = [
+  /^(?:docker-)?compose(?:\.override)?\.ya?ml$/,
+  /^(?:dockerfile|containerfile)(?:\..+)?$|\.(?:docker|container)file$/,
+  /^lefthook(?:-local)?\.(?:ya?ml|jsonc?|toml)$/,
+  /^taskfile(?:\.dist)?\.ya?ml$/,
+  /^mise(?:\.[^.]+)*\.toml$/,
+  /^simple-git-hooks\.(?:json|[cm]?js)$/,
+  /^[jt]sconfig\..+\.json$/,
+  /\.gypi?$/,
+];
+const RUN_BY_PACKAGE_MANAGER_DEFAULT = new Set(["server.js"]);
+// Tools load these on their own: vite.config.ts, jest.config.json, docker-compose.yml, gulpfile.js and the like.
+const TOOL_CONFIG =
+  /\.config\.(?:[cm]?[jt]sx?|json[c5]?|ya?ml|toml)$|^(?:gulp|grunt)file\.[cm]?[jt]s$/;
+// Coding agents load these on their own, wherever they sit.
+const AGENT_INSTRUCTIONS =
+  /^(agents?|claude|gemini|qwen|crush|warp|conventions|copilot-instructions)(\.[a-z]+)?\.md$/;
+// Programs and scripts a shell, an OS or another tool runs; a browser composition never needs them.
+const PROGRAM_EXTENSIONS =
+  "exe com bat cmd ps1 psm1 vbs vbe wsf hta msi scr pif cpl lnk dll so dylib node sh bash zsh fish command jar appimage py rb pl php nix".split(
+    " ",
   );
+const PROGRAM = new RegExp(`\\.(?:${PROGRAM_EXTENSIONS.join("|")})$`);
+// A Windows short name such as `CLAUDE~1` or `PACKAG~1.JSO` opens a long name on NTFS. Its extension is the first three
+// letters of the long one, so `take~2.mp4` cannot stand for any of the files above; a name with none may be a folder.
+const SHORT_NAME = /^([^.]{1,6}~\d{1,6})(?:\.([^.]{1,3}))?$/;
+const TRUSTED_EXTENSIONS = [
+  ...PROGRAM_EXTENSIONS,
+  ...["json", "jsonc", "json5", "yaml", "yml", "toml", "lock", "lockb", "md"],
+  ...["js", "mjs", "cjs", "jsx", "ts", "mts", "cts", "tsx"],
+];
+
+function isShortName(segment: string): boolean {
+  const match = SHORT_NAME.exec(segment);
+  if (!match || match[1]!.length > 8) return false;
+  const extension = match[2];
+  return !extension || TRUSTED_EXTENSIONS.some((trusted) => trusted.startsWith(extension));
 }
 
-// `.hyperframes/` holds the desktop app's and the CLI's own records (a hand-off, chat history, read marks): no file
-// server serves any of it, the folder itself included, but Studio's own files and the assets compositions load. Studio
-// reads and writes those only in the project's own `.hyperframes/`, so one in a subfolder holds records only.
-const STUDIO_FILES = new Set([
-  ".hyperframes/studio-motion.json",
-  ".hyperframes/studio-manual-edits.json",
-]);
-const STUDIO_FOLDERS = [".hyperframes/prepared-assets", ".hyperframes/requests"];
+function isToolConfig(name: string, segments: readonly string[]): boolean {
+  if (TOOL_CONFIG_FILES.has(name) || TOOL_CONFIG.test(name)) return true;
+  if (TOOL_CONFIG_FAMILIES.some((family) => family.test(name))) return true;
+  return name === "config.toml" && segments.at(-2) === "mise";
+}
 
-// Credentials and coding-tool state that projects often sit next to: registry tokens, MCP and agent settings, cloud and
-// SSH keys. No composition loads one, so no file server serves one and no upload ships one.
-const CREDENTIAL_FILES = new Set([
-  ".npmrc",
-  ".yarnrc",
-  ".yarnrc.yml",
-  ".pypirc",
-  "pip.conf",
-  "pip.ini",
-  ".netrc",
-  "_netrc",
-  ".git-credentials",
-  ".gitconfig",
-  ".mcp.json",
-]);
-const CREDENTIAL_FOLDERS = new Set([
-  ".ssh",
-  ".aws",
-  ".gnupg",
-  ".docker",
-  ".kube",
-  ".azure",
-  ".claude",
-  ".codex",
-  ".cursor",
-  ".agents",
-  ".gemini",
-  ".vscode",
-  ".idea",
-]);
-const CREDENTIAL_CONFIG_FOLDERS = new Set(["gcloud", "gh"]);
-const KEY_FILE = /^(?:id_(?:rsa|dsa|ecdsa|ed25519).*|.*\.(?:pem|key|p12|pfx))$/;
+/** What makes a file one another program runs or trusts; see `toolTrustedFileKind`. */
+export type ToolTrustedKind =
+  | "short-name"
+  | "project-config"
+  | "lock-file"
+  | "tool-config"
+  | "agent-instructions"
+  | "program";
 
-/** Credential files and tool or agent state, for a project-relative path in any spelling Windows opens. */
-export function isCredentialOrToolStatePath(relPath: string): boolean {
+/**
+ * Why another program runs or trusts the file at a project-relative path, or null for an ordinary project file. The
+ * path is read in every spelling a case-insensitive file system or Windows opens: any case or Unicode form, either
+ * separator, trailing dots or spaces, a `:stream` suffix, or a short name for any of these.
+ */
+export function toolTrustedFileKind(relPath: string): ToolTrustedKind | null {
   const segments = projectPathSegments(relPath);
+  while (segments.length > 1 && segments.at(-1) === "") segments.pop();
   const name = segments.at(-1) ?? "";
-  return (
-    CREDENTIAL_FILES.has(name) ||
-    KEY_FILE.test(name) ||
-    segments.some(
-      (segment, at) =>
-        CREDENTIAL_FOLDERS.has(segment) ||
-        (segment === ".config" && CREDENTIAL_CONFIG_FOLDERS.has(segments[at + 1] ?? "")),
-    )
-  );
-}
-
-/** Files no composition loads, for a project-relative path in any spelling Windows opens: git, env, credentials, tool
- * state, app records. */
-export function isStudioPrivatePath(relPath: string): boolean {
-  if (isVcsOrSecretPath(relPath) || isCredentialOrToolStatePath(relPath)) return true;
-  const segments = projectPathSegments(relPath);
-  return segments.some((segment, at) => {
-    if (segment !== ".hyperframes") return false;
-    const atRoot = segments.slice(0, at).every((before) => before === "");
-    return !atRoot || !isStudioOwnFile(segments.slice(at).join("/"));
-  });
-}
-
-function isStudioOwnFile(path: string): boolean {
-  return (
-    STUDIO_FILES.has(path) ||
-    STUDIO_FOLDERS.some((folder) => path === folder || path.startsWith(`${folder}/`))
-  );
-}
-
-/** Whether `isPrivate` holds for a file under `projectDir`, spelled as given or with its links resolved. */
-export function isPrivateFileUnder(
-  projectDir: string,
-  filePath: string,
-  isPrivate: (relPath: string) => boolean,
-): boolean {
-  const rel = (from: string, to: string) => relative(from, to).split(sep).join("/");
-  if (isPrivate(rel(resolve(projectDir), resolve(filePath)))) return true;
-  try {
-    return isPrivate(rel(realpath(resolve(projectDir)), realpath(filePath)));
-  } catch {
-    return false;
-  }
+  if (segments.some(isShortName)) return "short-name";
+  if (PROJECT_CONFIG_FILES.has(name)) return "project-config";
+  if (LOCK_FILES.has(name)) return "lock-file";
+  if (isToolConfig(name, segments)) return "tool-config";
+  if (AGENT_INSTRUCTIONS.test(name)) return "agent-instructions";
+  if (PROGRAM.test(name) || RUN_BY_PACKAGE_MANAGER_DEFAULT.has(name)) return "program";
+  return null;
 }
 
 /** The project folder is gone, renamed or deleted while open; a write must not bring it back. */

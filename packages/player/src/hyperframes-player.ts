@@ -55,6 +55,7 @@ const ASSETS_LOADING_UI_ATTR = "assets-loading-ui";
 const BUFFERING_ATTR = "buffering";
 const LOW_POWER_IDLE_ATTR = "low-power-idle";
 const DISABLE_CLICK_TO_PLAY_ATTR = "disable-click-to-play";
+const DISABLE_FULLSCREEN_ATTR = "disable-fullscreen";
 const RANGE_START_ATTR = "range-start";
 const RANGE_END_ATTR = "range-end";
 // paint-and-idle now always has a frame to wait on, so the overlay would
@@ -487,10 +488,11 @@ class HyperframesPlayer extends HTMLElement {
     this._media.stopAdoptedMedia();
   }
 
-  seek(timeInSeconds: number) {
-    // seek()'s own contract is that it lands paused, so a play still queued
-    // from the asset-buffering window is cancelled here too — same reason as
-    // pause() above.
+  seek(timeInSeconds: number, options?: { keepPlaying?: boolean }) {
+    const playOn = options?.keepPlaying === true && (!this._paused || this._pendingPlay);
+    // A plain seek() lands paused, so a play still queued from the
+    // asset-buffering window is cancelled here too — same reason as pause()
+    // above. keepPlaying plays on from the new time, as <video>'s currentTime does.
     this._pendingPlay = false;
     if (!this._trySyncSeek(timeInSeconds) && !this._tryDirectTimelineSeek(timeInSeconds)) {
       this._sendControl("seek", {
@@ -523,6 +525,7 @@ class HyperframesPlayer extends HTMLElement {
     this._paused = true;
     this.controlsApi?.updatePlaying(false);
     this.controlsApi?.updateTime(this._currentTime, this._duration);
+    if (playOn) this._play(false);
   }
 
   setColorGrading(target: ColorGradingTarget, grading: unknown) {
@@ -716,6 +719,13 @@ class HyperframesPlayer extends HTMLElement {
   }
   set disableClickToPlay(disabled: boolean) {
     this.toggleAttribute(DISABLE_CLICK_TO_PLAY_ATTR, disabled);
+  }
+
+  get disableFullscreen() {
+    return this.hasAttribute(DISABLE_FULLSCREEN_ATTR);
+  }
+  set disableFullscreen(disabled: boolean) {
+    this.toggleAttribute(DISABLE_FULLSCREEN_ATTR, disabled);
   }
 
   get loop() {
@@ -1451,6 +1461,7 @@ class HyperframesPlayer extends HTMLElement {
   /** Every host-driven navigation or teardown: the old document's handshake, asset wait and
    *  data deliveries end here. A queued play is the caller's, so only its owners clear it. */
   private _abandonComposition(reason: string): void {
+    this.probe.latchUntilNextLoad();
     this.probe.stop();
     this._ready = false;
     this._readyDocument = null;

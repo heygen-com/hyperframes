@@ -11,6 +11,7 @@ import { clipTimingStart, resolveClipTimingBasis } from "../../hooks/gsapShared"
 import { toAuthoredStart } from "../store/timelineElement";
 import { computeResizePreview } from "../components/timelineClipDragPreview";
 import type { TimelineElement } from "../store/playerStore";
+import { readTimelineText } from "./timelineText";
 import {
   MAX_PLAYBACK_RATE,
   MIN_PLAYBACK_RATE,
@@ -311,6 +312,119 @@ describe("parseTimelineFromDOM — hfId from data-hf-id", () => {
     });
     expect(element.link).toBe("lk-1");
     expect(element.syncOrigin).toBe("lk-1");
+  });
+
+  it("names a sealed preview's files by their project path, not the frame's passing token", () => {
+    const token = "A".repeat(43);
+    const preview = `${window.location.origin}/api/projects/p1/preview`;
+    const clip = (kind: "element" | "composition", tagName: string) => ({
+      id: tagName,
+      label: tagName,
+      kind,
+      tagName,
+      start: 0,
+      duration: 5,
+      track: 0,
+      compositionId: kind === "composition" ? "intro" : null,
+      parentCompositionId: null,
+      compositionSrc:
+        kind === "composition" ? `${preview}/~${token}/compositions/intro.html` : null,
+      assetUrl: kind === "element" ? `${preview}/~${token}/assets/a%20b.mp4?t=1` : null,
+    });
+
+    const video = createTimelineElementFromManifestClip({
+      clip: clip("element", "video"),
+      fallbackIndex: 0,
+    });
+    const scene = createTimelineElementFromManifestClip({
+      clip: clip("composition", "div"),
+      fallbackIndex: 1,
+    });
+
+    expect(video.src).toBe(`${preview}/assets/a%20b.mp4?t=1`);
+    expect(scene.compositionSrc).toBe(`${preview}/compositions/intro.html`);
+  });
+
+  it("keeps a file on another site as written, even when its path looks like a preview's", () => {
+    const elsewhere = `http://media.example:9000/api/projects/p1/preview/~${"A".repeat(43)}/assets/v.mp4`;
+    const video = createTimelineElementFromManifestClip({
+      clip: {
+        id: "v",
+        label: "v",
+        kind: "element",
+        tagName: "video",
+        start: 0,
+        duration: 5,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: elsewhere,
+      },
+      fallbackIndex: 0,
+    });
+
+    expect(video.src).toBe(elsewhere);
+  });
+});
+
+describe("a sealed preview's text rows", () => {
+  const LOOK = {
+    fontFamily: "Inter",
+    fontWeight: "700",
+    color: "rgb(255, 255, 255)",
+    backgroundColor: "rgba(0, 0, 0, 0)",
+  };
+  const rowFor = (text: unknown) =>
+    createTimelineElementFromManifestClip({
+      clip: {
+        id: "title",
+        label: "Title",
+        kind: "element",
+        tagName: "h1",
+        start: 0,
+        duration: 5,
+        track: 0,
+        compositionId: null,
+        parentCompositionId: null,
+        compositionSrc: null,
+        assetUrl: null,
+        text,
+      },
+      fallbackIndex: 0,
+    });
+
+  it("draws a text layer from the words and look in the runtime's clip message", () => {
+    expect(rowFor({ value: "Title", ...LOOK }).text).toEqual({
+      value: "Title",
+      fontFamily: "Inter",
+      fontWeight: "700",
+      color: "rgb(255, 255, 255)",
+      background: undefined,
+    });
+  });
+
+  it("keeps the clip and drops a text field that is missing, not text, or over the runtime's cap", () => {
+    for (const text of [
+      { value: "Title" },
+      { ...LOOK, value: 5 },
+      { ...LOOK, value: "x".repeat(201) },
+      { ...LOOK, value: "Title", color: "x".repeat(2_001) },
+      "Title",
+    ]) {
+      const row = rowFor(text);
+      expect(row.id).toBe("title");
+      expect(row.text).toBeUndefined();
+    }
+  });
+
+  it("leaves an open preview's own text rows uncapped", () => {
+    const title = document.createElement("h1");
+    title.textContent = "x".repeat(500);
+    document.body.appendChild(title);
+
+    expect(readTimelineText(title)?.value).toHaveLength(500);
+    title.remove();
   });
 });
 

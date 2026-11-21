@@ -10,6 +10,7 @@ import {
   logsTick,
   resolveCloudFpsArg,
   parseAspectRatioFlag,
+  reencodeProgressLines,
   resolveAspectRatioForSubmit,
   validateDryRunSource,
   type ProjectInputSource,
@@ -281,6 +282,21 @@ describe("assertArchiveFits", () => {
       "data/scan.tiff",
     );
   });
+
+  it("names the largest files with control characters, line feeds included, as visible escapes", () => {
+    const esc = String.fromCharCode(27);
+    const errors = vi.mocked(console.error);
+    errors.mockClear();
+    expect(() =>
+      assertArchiveFits(200 * 1024 * 1024 + 1, [
+        { path: `a${esc}[2J\n  190.0 MB  b.tiff`, size_bytes: 190 * 1024 * 1024 },
+      ]),
+    ).toThrow(CliRuntimeError);
+    const printed = errors.mock.calls.flat().join("\n");
+
+    expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(printed).toContain("a\\x1b[2J\\x0a  190.0 MB  b.tiff");
+  });
 });
 
 describe("parseAspectRatioFlag", () => {
@@ -412,5 +428,55 @@ describe("resolveAspectRatioForSubmit — local dir", () => {
     const output = printed.mock.calls.flat().join("\n");
     expect(output).toContain(`resolves to ${resolve(dir, "missing.html")}`);
     expect(output).toContain(`project directory ${resolve(dir)}`);
+  });
+});
+
+describe("reencodeProgressLines", () => {
+  it("writes one JSON line on stderr per whole percent, and per second when the length is unknown", () => {
+    const lines: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((line: string) => void lines.push(line));
+    let clock = 0;
+    const report = reencodeProgressLines(() => clock);
+
+    report({ path: "take.mkv", doneSeconds: 0.5, totalSeconds: 100 });
+    report({ path: "take.mkv", doneSeconds: 0.9, totalSeconds: 100 });
+    report({ path: "take.mkv", doneSeconds: 1.2, totalSeconds: 100 });
+    report({ path: "raw.mxf", doneSeconds: 3, totalSeconds: null });
+    clock = 400;
+    report({ path: "raw.mxf", doneSeconds: 3.5, totalSeconds: null });
+    clock = 1200;
+    report({ path: "raw.mxf", doneSeconds: 4, totalSeconds: null });
+
+    expect(lines.map((line) => JSON.parse(line))).toEqual([
+      {
+        event: "reencode_progress",
+        file: "take.mkv",
+        percent: 0,
+        done_seconds: 0.5,
+        total_seconds: 100,
+      },
+      {
+        event: "reencode_progress",
+        file: "take.mkv",
+        percent: 1,
+        done_seconds: 1.2,
+        total_seconds: 100,
+      },
+      {
+        event: "reencode_progress",
+        file: "raw.mxf",
+        percent: null,
+        done_seconds: 3,
+        total_seconds: null,
+      },
+      {
+        event: "reencode_progress",
+        file: "raw.mxf",
+        percent: null,
+        done_seconds: 4,
+        total_seconds: null,
+      },
+    ]);
+    vi.restoreAllMocks();
   });
 });

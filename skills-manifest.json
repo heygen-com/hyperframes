@@ -6,27 +6,27 @@
       "files": 3
     },
     "hyperframes": {
-      "hash": "90b4e96c091ebe16",
-      "files": 80
+      "hash": "cca611faf7aaea9a",
+      "files": 81
     },
     "hyperframes-cli": {
-      "hash": "a1b8be77ce157ce4",
-      "files": 13
+      "hash": "132e56038dbd2365",
+      "files": 14
     },
     "hyperframes-registry": {
-      "hash": "560a5f11064f82c9",
+      "hash": "25e0d7a72fe285a0",
       "files": 13
     },
     "media-use": {
-      "hash": "fa655ce936dab4a5",
-      "files": 128
+      "hash": "e31a0f67f111ee82",
+      "files": 131
     },
     "remotion-to-hyperframes": {
-      "hash": "e7982839c333759e",
+      "hash": "52ec1ac28a9251ae",
       "files": 76
     },
     "reverse-any-video": {
-      "hash": "addcf365498eb4aa",
+      "hash": "e429671078249b3e",
       "files": 5
     },
     "slideshow": {
@@ -34,7 +34,7 @@
       "files": 2
     },
     "style-sampling": {
-      "hash": "5378b0a22d46cd0d",
+      "hash": "59e52f3f688b9277",
       "files": 2
     }
   }

@@ -7,8 +7,9 @@ import {
   openSync,
   readSync,
   unlinkSync,
+  writeSync,
 } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 
 // The records the CLI and the desktop app keep in a project's .hyperframes/. A project can be a clone of someone
@@ -37,10 +38,21 @@ function recordsDir(projectDir: string, name: string, create = false): string | 
 
 const recordFile = (name: string) => name.split("/").at(-1) ?? name;
 
+function plainFileAt(fd: number, path: string) {
+  const stats = fstatSync(fd);
+  const named = lstatSync(path);
+  return stats.isFile() && named.isFile() && named.ino === stats.ino && named.dev === stats.dev
+    ? stats
+    : null;
+}
+
 /** The last `maxBytes` of a plain file, and whether that is all of it; null for a link, a device, or a missing file.
- * The file is opened first and read only when `lstat` then finds the same plain file at the path, so this holds
- * where O_NOFOLLOW doesn't exist (Windows), and nothing path-based follows the check. */
-function readPlainTail(path: string, maxBytes: number): { text: string; whole: boolean } | null {
+ * The file is opened first and read only when `lstat` then finds the same plain file at the path, so nothing
+ * path-based follows the check. */
+export function readPlainTail(
+  path: string,
+  maxBytes: number,
+): { text: string; whole: boolean } | null {
   let fd: number;
   try {
     fd = openSync(path, constants.O_RDONLY | NO_FOLLOW | NON_BLOCK);
@@ -48,10 +60,8 @@ function readPlainTail(path: string, maxBytes: number): { text: string; whole: b
     return null;
   }
   try {
-    const stats = fstatSync(fd);
-    const named = lstatSync(path);
-    if (!stats.isFile() || !named.isFile() || named.ino !== stats.ino || named.dev !== stats.dev)
-      return null;
+    const stats = plainFileAt(fd, path);
+    if (!stats) return null;
     const length = Math.min(stats.size, maxBytes);
     const buffer = Buffer.alloc(length);
     readSync(fd, buffer, 0, length, stats.size - length);
@@ -108,8 +118,56 @@ export function writeRecord(projectDir: string, name: string, data: string): boo
   return dir !== null && replaceFile(join(dir, recordFile(name)), data, 0o600);
 }
 
+export function appendRecord(projectDir: string, name: string, data: string): boolean {
+  const dir = recordsDir(projectDir, name, true);
+  if (!dir) return false;
+  const path = join(dir, recordFile(name));
+  if (recordKind(projectDir, name) === "other") return false;
+  let fd: number;
+  try {
+    const flags = constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT;
+    fd = openSync(path, flags | NO_FOLLOW | NON_BLOCK, 0o600);
+  } catch {
+    return false;
+  }
+  try {
+    if ((plainFileAt(fd, path)?.nlink ?? 2) > 1) return false;
+    writeSync(fd, data);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+export function recordKind(projectDir: string, name: string): "absent" | "file" | "other" {
+  const parts = [".hyperframes", ...name.split("/")];
+  let path = projectDir;
+  for (const [index, part] of parts.entries()) {
+    path = join(path, part);
+    try {
+      const stats = lstatSync(path, { throwIfNoEntry: false });
+      if (!stats) return "absent";
+      if (!(index === parts.length - 1 ? stats.isFile() : stats.isDirectory())) return "other";
+    } catch {
+      return "other";
+    }
+  }
+  return "file";
+}
+
 export function recordFolder(projectDir: string, folder: string): string | null {
   return recordsDir(projectDir, `${folder.replaceAll("\\", "/")}/`, true);
+}
+
+export function projectFolder(projectDir: string, folder: string): string | null {
+  const inside = relative(join(resolve(projectDir), ".hyperframes"), resolve(folder));
+  if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
+    mkdirSync(folder, { recursive: true });
+    return folder;
+  }
+  return recordFolder(projectDir, inside);
 }
 
 /** Deletes a record that is a plain file; false when there is none to delete. */

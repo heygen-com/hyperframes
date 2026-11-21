@@ -88,6 +88,7 @@ export {
   getSystemTotalMb,
   hostCpuCount,
   usableCpuCount,
+  cpuBudget,
   isLowMemorySystem,
   LOW_MEMORY_TOTAL_MB_THRESHOLD,
 } from "./services/systemMemory.js";
@@ -198,10 +199,12 @@ export {
 } from "./services/screenshotService.js";
 
 // ── Encoding ───────────────────────────────────────────────────────────────────
+export { concatListInputArgs, concatListText } from "@hyperframes/parsers/ff-binaries";
 export {
   buildEncoderArgs,
   encodeFramesFromDir,
   buildConcatArgs,
+  writeVideoConcatList,
   concatVideoFiles,
   encodeFramesChunkedConcat,
   muxVideoWithAudio,
@@ -394,6 +397,7 @@ export {
 } from "./utils/loopbackOnly.js";
 
 export { readWebGlVendorInfoFromCanvas } from "./utils/readWebGlVendorInfoFromCanvas.js";
+export { createConcurrencyLimit } from "./utils/concurrencyLimit.js";
 
 export {
   extractMediaMetadata,
@@ -414,7 +418,7 @@ export {
   type KeyframeAnalysis,
 } from "./utils/ffprobe.js";
 
-export { urlInputArgs } from "./utils/urlInput.js";
+export { urlInputArgs, withPublicOnlyProxy } from "./utils/urlInput.js";
 
 export { mediaIdPathSegment } from "./utils/mediaPathSegment.js";
 
@@ -453,6 +457,7 @@ export { onRenderRefusal } from "./services/publicNetwork/captureProxy.js";
 export type { RefusedHostClass } from "./services/publicNetwork/publicNetwork.js";
 export {
   runFfmpeg,
+  withFfmpegProgress,
   formatFfmpegError,
   describeFfmpegFailure,
   isExternalFfmpegInterruption,
@@ -590,7 +595,7 @@ export {
   chromeSandboxEnabled,
   launchWithChromeSandboxFallback,
   type ChromeSandboxHost,
-} from "./services/chromeSandbox.js";
+} from "@hyperframes/core/chrome-sandbox";
 export {
   VariablesInvalidError,
   type VariablesIssue,
