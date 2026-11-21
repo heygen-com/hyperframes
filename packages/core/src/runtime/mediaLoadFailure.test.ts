@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { postRuntimeMessage } from "./bridge";
 import { watchAudioLoadErrors } from "./mediaLoadFailure";
 import { RUNTIME_MEDIA_LOAD_FAILED } from "./protocol";
+import { recordOpenedAtInPoint } from "./proxySrc";
 import { WebAudioTransport } from "./webAudioTransport";
 
 vi.mock("./bridge", () => ({ postRuntimeMessage: vi.fn() }));
@@ -37,6 +38,18 @@ afterEach(() => {
 });
 
 describe("a preview media load that fails is reported, not swallowed", () => {
+  it("names the src the author wrote, not the in-point fragment the runtime added", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: false, status: 404 })),
+    );
+    const el = audio("assets/take.wav", "take");
+    recordOpenedAtInPoint(el, "assets/take.wav", "assets/take.wav#t=30");
+    el.setAttribute("src", "assets/take.wav#t=30");
+    await transport(async () => ({}) as AudioBuffer).decodeAudioElement(el);
+    expect(failures()[0]).toMatchObject({ asset: "assets/take.wav" });
+  });
+
   it("a fetch the server refuses says its status, once however often playback retries", async () => {
     vi.stubGlobal(
       "fetch",

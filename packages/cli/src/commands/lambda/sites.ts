@@ -7,6 +7,7 @@
 
 import { resolve as resolvePath } from "node:path";
 import { c } from "../../ui/colors.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { DEFAULT_STACK_NAME, requireStack } from "./state.js";
 
 // `@hyperframes/aws-lambda` is a workspace devDependency in `packages/cli`
@@ -22,6 +23,7 @@ export interface SitesCreateArgs {
   projectDir: string;
   stackName: string;
   siteId?: string;
+  includeOutsideFiles?: boolean;
   /** Print machine-readable JSON instead of the human-friendly summary. */
   json: boolean;
 }
@@ -30,14 +32,16 @@ export async function runSitesCreate(args: SitesCreateArgs): Promise<void> {
   const stack = requireStack(args.stackName);
   const projectDir = resolvePath(args.projectDir);
 
-  const { assertStackReadsSites, deploySite } = await loadSDK();
+  const { assertStackReadsSites, deploySite, parseStateMachineArn } = await loadSDK();
   await assertStackReadsSites({ stateMachineArn: stack.stateMachineArn, region: stack.region });
   const handle = await deploySite({
     projectDir,
     bucketName: stack.bucketName,
+    expectedBucketOwner: parseStateMachineArn(stack.stateMachineArn).account,
     region: stack.region,
     siteId: args.siteId,
-    onNotice: (message) => console.error(c.dim(message)),
+    includeOutsideFiles: args.includeOutsideFiles,
+    onNotice: (message) => console.error(c.dim(terminalLines(message))),
   });
 
   if (args.json) {
@@ -48,15 +52,17 @@ export async function runSitesCreate(args: SitesCreateArgs): Promise<void> {
   console.log(
     c.success(handle.uploaded ? "Site uploaded." : "Site already up to date (skipped upload)."),
   );
-  console.log(`  ${c.dim("Site ID:")}       ${handle.siteId}`);
-  console.log(`  ${c.dim("S3 URI:")}        ${handle.projectS3Uri}`);
+  console.log(`  ${c.dim("Site ID:")}       ${terminalText(handle.siteId)}`);
+  console.log(`  ${c.dim("S3 URI:")}        ${terminalText(handle.projectS3Uri)}`);
   console.log(`  ${c.dim("Bytes:")}         ${handle.bytes}`);
-  console.log(`  ${c.dim("Uploaded at:")}   ${handle.uploadedAt}`);
+  console.log(`  ${c.dim("Uploaded at:")}   ${terminalText(handle.uploadedAt)}`);
   console.log();
   console.log(
     c.dim(
-      `Render with: hyperframes lambda render ${args.projectDir} --site-id=${handle.siteId}` +
-        (args.stackName === DEFAULT_STACK_NAME ? "" : ` --stack-name=${args.stackName}`),
+      terminalText(
+        `Render with: hyperframes lambda render ${args.projectDir} --site-id=${handle.siteId}` +
+          (args.stackName === DEFAULT_STACK_NAME ? "" : ` --stack-name=${args.stackName}`),
+      ),
     ),
   );
 }

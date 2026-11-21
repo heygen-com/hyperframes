@@ -32,7 +32,7 @@ export default defineCommand({
     },
     event: {
       type: "string",
-      description: "Event name: skill_invoked | skill_completed (default: skill_invoked)",
+      description: "Event name: skill_invoked | skill_completed",
       default: "skill_invoked",
     },
     outcome: {

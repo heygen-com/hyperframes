@@ -25,22 +25,23 @@
 
 import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync, openSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { resolve } from "node:path";
+import { globalInstallLocation } from "./homeCliCommand.js";
 import { compareVersions } from "compare-versions";
 import { withFileLock } from "../media-use/lib/config-lock.mjs";
 import { readConfig, writeConfig } from "../telemetry/config.js";
 import { isUnattended } from "./attendedTerminal.js";
 import { updateCheckDisabled } from "./updateCheck.js";
-import { RUNNING_DIR, RUNNING_STALE_MS } from "./runningCli.js";
+import { RUNNING_STALE_MS, registeredAsRunning, runningDir } from "./runningCli.js";
 import {
   detectInstaller,
   installInvocation,
   type InstallInvocation,
 } from "./installerDetection.js";
+import { hyperframesConfigDir, seededConfigFile } from "./configDir.js";
 
-const CONFIG_DIR = join(homedir(), ".hyperframes");
-const LOG_FILE = join(CONFIG_DIR, "auto-update.log");
+const configDir = () => hyperframesConfigDir();
+const logFile = () => hyperframesConfigDir("auto-update.log");
 /** An install that hasn't finished after this many ms is considered stuck. */
 const PENDING_TIMEOUT_MS = 10 * 60 * 1000;
 /** A waiting installer gives up after this long; the next run schedules it again. */
@@ -66,14 +67,15 @@ function breakingLine(version: string): string | null {
  */
 function log(line: string): void {
   try {
-    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-    appendFileSync(LOG_FILE, `${new Date().toISOString()} ${line}\n`, { mode: 0o600 });
+    mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+    appendFileSync(logFile(), `${new Date().toISOString()} ${line}\n`, { mode: 0o600 });
   } catch {
     /* best-effort */
   }
 }
 
 export interface InstallerScriptOptions {
+  cwd: string;
   configFile: string;
   version: string;
   bin: string;
@@ -145,7 +147,7 @@ export function installerScript(o: InstallerScriptOptions): string {
       clearInterval(lockBeat);
       if (ownsLock()) { try { fs.unlinkSync(INSTALL_LOCK); } catch (e) {} }
     };
-    const install = () => execFile(BIN, ARGS, { windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
+    const install = () => execFile(BIN, ARGS, { cwd: ${JSON.stringify(o.cwd)}, windowsHide: true, maxBuffer: 4 * 1024 * 1024 }, (err, _stdout, stderr) => {
       withLock(() => {
         let cfg = {};
         try { cfg = JSON.parse(readFileSync(CFG, "utf-8")); } catch (e) { if (e.code !== "ENOENT") return; }
@@ -206,30 +208,38 @@ function launchDetachedInstall(
   invocation: InstallInvocation,
   displayCommand: string,
   version: string,
+  cwd: string,
 ): void {
-  mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
-  const configFile = join(CONFIG_DIR, "config.json");
+  mkdirSync(configDir(), { recursive: true, mode: 0o700 });
+  const configFile = seededConfigFile("config.json");
 
   const nodeScript = installerScript({
-    configFile,
+    cwd,
+    configFile: resolve(configFile),
     version,
     bin: invocation.bin,
     args: invocation.args,
-    runningDir: RUNNING_DIR,
+    runningDir: resolve(runningDir()),
     pollMs: INSTALL_POLL_MS,
     maxWaitMs: INSTALL_MAX_WAIT_MS,
     staleMs: RUNNING_STALE_MS,
   });
 
-  const out = openSync(LOG_FILE, "a", 0o600);
+  const out = openSync(logFile(), "a", 0o600);
   const child = spawn(process.execPath, ["-e", nodeScript], {
+    cwd,
     detached: true,
     stdio: ["ignore", out, out],
     windowsHide: true,
     env: { ...process.env, HYPERFRAMES_NO_UPDATE_CHECK: "1", HYPERFRAMES_NO_AUTO_INSTALL: "1" },
   });
+  if (child.pid === undefined) {
+    // A vanished cwd makes spawn return without a pid and emit its error on the next tick.
+    child.once("error", (err) => log(`[error] ${err.message}`));
+    throw new Error("Detached installer did not start");
+  }
   child.unref();
-  log(`[launch] pid=${child.pid ?? "?"} cmd=${displayCommand} version=${version}`);
+  log(`[launch] pid=${child.pid} cmd=${displayCommand} version=${version}`);
 }
 
 function isSilentUpgrade(latestVersion: string, currentVersion: string): boolean {
@@ -277,9 +287,21 @@ function backgroundInstaller(
 export function scheduleBackgroundInstall(latestVersion: string, currentVersion: string): boolean {
   if (isAutoInstallDisabled()) return false;
   if (!isSilentUpgrade(latestVersion, currentVersion)) return false;
-
   const installer = backgroundInstaller(latestVersion);
   if (!installer) return false;
+  const location = globalInstallLocation();
+  if ("reason" in location) {
+    // The rejected home may be shared or belong to another user, so avoid opening a log in it.
+    process.stderr.write(`  Skipping CLI auto-update: ${location.reason}\n`);
+    return false;
+  }
+  if (!registeredAsRunning()) {
+    log(
+      `[skip] ${latestVersion}: this CLI is not on record as running, so an install could replace it mid-run`,
+    );
+    return false;
+  }
+
   const { installCommand, invocation } = installer;
 
   const config = readConfig();
@@ -308,7 +330,7 @@ export function scheduleBackgroundInstall(latestVersion: string, currentVersion:
   if (!writeConfig(config)) return false;
 
   try {
-    launchDetachedInstall(invocation, installCommand, latestVersion);
+    launchDetachedInstall(invocation, installCommand, latestVersion, location.cwd);
     return true;
   } catch (err) {
     log(`[error] spawn failed: ${String(err)}`);

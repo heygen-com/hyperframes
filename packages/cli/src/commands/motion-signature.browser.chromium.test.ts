@@ -346,6 +346,21 @@ describe.skipIf(!RUNS_CHROMIUM)("motion-signature.browser in Chromium", () => {
     expect(after.liveness).not.toBe(before.liveness);
   });
 
+  it("sees an SVG stroke drawing on, which moves no box and no color", async () => {
+    await load(
+      composition(
+        "",
+        '<svg width="400" height="200"><path id="line" d="M10 150 C 100 10, 300 10, 390 150" fill="none" stroke="#111" stroke-width="8" stroke-dasharray="600" stroke-dashoffset="600" /></svg>',
+      ),
+    );
+    const before = await sample();
+    await mutate('document.getElementById("line").style.strokeDashoffset = "300"');
+    const after = await sample();
+
+    expect(after.sweep).not.toBe(before.sweep);
+    expect(after.liveness).not.toBe(before.liveness);
+  });
+
   it("sees an SVG shape's fill color change", async () => {
     await load(
       composition(

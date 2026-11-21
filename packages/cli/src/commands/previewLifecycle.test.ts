@@ -29,7 +29,9 @@ const server: ActiveServer = {
   projectName: "preview-lifecycle-project",
   projectDir,
   version: "test",
+  proven: true,
   pid: "4321",
+  pidSource: "os",
 };
 
 function tempDir(prefix: string): string {
@@ -476,6 +478,7 @@ describe("background preview lifecycle", () => {
                 projectName: "managed-custom-port",
                 projectDir: otherProjectDir,
                 version: "test",
+                proven: true,
                 pid: "8765",
                 pidSource: "os",
               },
@@ -1379,6 +1382,83 @@ describe("background preview lifecycle", () => {
     expect(kill).not.toHaveBeenCalled();
   });
 
+  it("refuses a PID the listener reported about itself when the system named no owner", async () => {
+    const stateHome = tempDir("hf-preview-state-");
+    const claimed = { ...server, pid: "999", pidSource: "self-reported" as const };
+    const kill = vi.fn();
+
+    await expect(
+      stopBackgroundPreview(projectDir, 3002, {
+        scan: async () => [claimed],
+        probe: async () => claimed,
+        kill,
+        sleep: async () => {},
+        stateHome,
+      }),
+    ).rejects.toThrow(/ownership could not be proven/);
+
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it("stops only its own saved wrapper when the listener's PID is self-reported", async () => {
+    const stateHome = tempDir("hf-preview-state-");
+    writePreviewSession(
+      {
+        pid: 4321,
+        wrapperIdentity: "wrapper-birth",
+        port: 3210,
+        projectDir,
+        logPath: "/tmp/p.log",
+      },
+      stateHome,
+    );
+    let running = true;
+    const claimed = { ...server, pid: "999", pidSource: "self-reported" as const };
+    const kill = vi.fn((pid: number) => {
+      if (pid === 4321) running = false;
+    });
+
+    const result = await stopBackgroundPreview(projectDir, 3002, {
+      probe: async () => (running ? claimed : null),
+      kill,
+      isDescendant: () => false,
+      identity: (pid) => (pid === 4321 ? "wrapper-birth" : null),
+      sleep: async () => {},
+      stateHome,
+    });
+
+    expect(result).toBe(true);
+    expect(kill.mock.calls).toEqual([[4321]]);
+  });
+
+  it("refuses a self-reported PID when the saved wrapper's birth identity has changed", async () => {
+    const stateHome = tempDir("hf-preview-state-");
+    writePreviewSession(
+      {
+        pid: 4321,
+        wrapperIdentity: "wrapper-birth",
+        port: 3210,
+        projectDir,
+        logPath: "/tmp/p.log",
+      },
+      stateHome,
+    );
+    const claimed = { ...server, pid: "999", pidSource: "self-reported" as const };
+    const kill = vi.fn();
+
+    await expect(
+      stopBackgroundPreview(projectDir, 3002, {
+        probe: async () => claimed,
+        kill,
+        identity: () => "reused-pid-birth",
+        sleep: async () => {},
+        stateHome,
+      }),
+    ).rejects.toThrow(/ownership could not be proven/);
+
+    expect(kill).not.toHaveBeenCalled();
+  });
+
   it("reaps the saved wrapper when the live server is proven to be its descendant", async () => {
     const stateHome = tempDir("hf-preview-state-");
     writePreviewSession(
@@ -1488,5 +1568,22 @@ describe("background preview lifecycle", () => {
     expect(stopped).toBe(true);
     expect(kill).toHaveBeenCalledWith(4321);
     expect(existsSync(previewSessionPath(projectDir, stateHome))).toBe(false);
+  });
+});
+
+describe("where a preview's session is kept", () => {
+  it("is under HYPERFRAMES_CACHE_DIR when it is set, not the state folder", () => {
+    const cache = tempDir("hf-preview-cache-");
+    const state = tempDir("hf-preview-state-");
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cache);
+    vi.stubEnv("XDG_STATE_HOME", state);
+    vi.stubEnv("LOCALAPPDATA", state);
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    writePreviewSession({ pid: 4321, port: 3210, projectDir, logPath: "/tmp/preview.log" });
+    expect(previewSessionPath(projectDir).startsWith(cache)).toBe(true);
+    expect(existsSync(previewSessionPath(projectDir))).toBe(true);
+    expect(readdirSync(state)).toEqual([]);
   });
 });

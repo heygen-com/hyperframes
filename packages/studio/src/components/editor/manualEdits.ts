@@ -21,6 +21,9 @@ export {
   beginStudioManualEditGesture,
   endStudioManualEditGesture,
   isStudioManualEditGestureCurrent,
+} from "./manualEditGesture";
+
+export {
   readStudioPathOffset,
   readAppliedStudioPathOffset,
   readStudioBoxSize,
@@ -41,6 +44,7 @@ export {
   restoreStudioBoxSize,
   restoreStudioRotation,
   restoreStudioPathOffset,
+  restoreStudioPathOffsetStyles,
   clearStudioPathOffset,
   clearStudioRotation,
   clearStudioBoxSize,

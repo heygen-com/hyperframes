@@ -1,22 +1,22 @@
-export type ThumbnailGenerationValue = Buffer | null;
-export type ThumbnailGenerationWork = (signal: AbortSignal) => Promise<ThumbnailGenerationValue>;
+type ThumbnailGenerationValue = Buffer | null;
+type GenerationWork<T> = (signal: AbortSignal) => Promise<T>;
 
-interface GenerationEntry {
+interface GenerationEntry<T> {
   key: string;
   controller: AbortController;
   leases: number;
   state: "queued" | "active";
-  work: ThumbnailGenerationWork;
-  promise: Promise<ThumbnailGenerationValue>;
-  resolve: (value: ThumbnailGenerationValue) => void;
+  work: GenerationWork<T>;
+  promise: Promise<T>;
+  resolve: (value: T) => void;
   reject: (reason: unknown) => void;
 }
 
 /** Sole server owner for same-key dedupe, concurrency, cancellation, and queue order. */
-export class ThumbnailGenerationCoordinator {
-  private readonly entries = new Map<string, GenerationEntry>();
-  private readonly queue: GenerationEntry[] = [];
-  private readonly activeEntries = new Set<GenerationEntry>();
+export class ThumbnailGenerationCoordinator<T = ThumbnailGenerationValue> {
+  private readonly entries = new Map<string, GenerationEntry<T>>();
+  private readonly queue: GenerationEntry<T>[] = [];
+  private readonly activeEntries = new Set<GenerationEntry<T>>();
   private active = 0;
 
   constructor(private readonly concurrency = 1) {
@@ -25,18 +25,14 @@ export class ThumbnailGenerationCoordinator {
     }
   }
 
-  acquire(
-    key: string,
-    signal: AbortSignal,
-    work: ThumbnailGenerationWork,
-  ): Promise<ThumbnailGenerationValue> {
+  acquire(key: string, signal: AbortSignal, work: GenerationWork<T>): Promise<T> {
     if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
 
     let entry = this.entries.get(key);
     if (!entry) {
-      let resolve!: (value: ThumbnailGenerationValue) => void;
+      let resolve!: (value: T) => void;
       let reject!: (reason: unknown) => void;
-      const promise = new Promise<ThumbnailGenerationValue>((resolvePromise, rejectPromise) => {
+      const promise = new Promise<T>((resolvePromise, rejectPromise) => {
         resolve = resolvePromise;
         reject = rejectPromise;
       });
@@ -63,7 +59,7 @@ export class ThumbnailGenerationCoordinator {
     return new Set([...this.entries.keys(), ...[...this.activeEntries].map((entry) => entry.key)]);
   }
 
-  private lease(entry: GenerationEntry, signal: AbortSignal): Promise<ThumbnailGenerationValue> {
+  private lease(entry: GenerationEntry<T>, signal: AbortSignal): Promise<T> {
     return new Promise((resolve, reject) => {
       let released = false;
       const release = () => {
@@ -112,7 +108,7 @@ export class ThumbnailGenerationCoordinator {
     }
   }
 
-  private async run(entry: GenerationEntry): Promise<void> {
+  private async run(entry: GenerationEntry<T>): Promise<void> {
     try {
       entry.resolve(await entry.work(entry.controller.signal));
     } catch (error) {

@@ -79,7 +79,7 @@ export default defineCommand({
     },
     quality: {
       type: "string",
-      description: `Encoder quality preset for .webm output: ${QUALITIES.join(", ")} (default: ${DEFAULT_QUALITY}). Higher quality = closer color match when overlaying on the source mp4, larger file. Ignored for .mov / .png.`,
+      description: `Encoder quality preset for .webm output: ${QUALITIES.join(", ")}. Higher quality = closer color match when overlaying on the source mp4, larger file. Ignored for .mov / .png.`,
       default: DEFAULT_QUALITY,
     },
     info: {

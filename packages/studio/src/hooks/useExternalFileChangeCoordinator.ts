@@ -1,3 +1,4 @@
+import { announceExternalFileChange } from "./fileChangeFanout";
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import {
   mergeFileChangePayloads,
@@ -247,7 +248,7 @@ export function useExternalFileChangeCoordinator({
     return () => {
       cancelled = true;
     };
-  }, [loadConflictSnapshot, projectId, recoveryFilePath, setBlocked]);
+  }, [loadConflictSnapshot, projectId, activeCompPath, recoveryFilePath, setBlocked]);
 
   // What a settled change owes: thumbnails (unless its own write's echo brings them), then reloads.
   const deliverOwed = useCallback(
@@ -477,7 +478,11 @@ export function useExternalFileChangeCoordinator({
   processChangeRef.current = processChange;
   useEffect(() => {
     // One decoder for all three transports; the rungs only choose the channel.
-    const handler = (delivery?: unknown) => processChangeRef.current(decodeFileChange(delivery));
+    const handler = (delivery?: unknown) => {
+      const payload = decodeFileChange(delivery);
+      announceExternalFileChange(payload);
+      processChangeRef.current(payload);
+    };
     const adapter = testHotAdapter();
     if (adapter) {
       adapter.on("hf:file-change", handler);

@@ -6,15 +6,17 @@
  * Videos are replaced with <img> elements during capture.
  */
 
+import { usableCpuCount } from "./systemMemory.js";
 import { audioGroupsById, isMemberGroupHidden, isSelfOrAncestorHidden } from "./mediaHidden.js";
-import { copyFileSync, existsSync, linkSync, mkdirSync, rmSync } from "fs";
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, statSync } from "fs";
 import { basename, isAbsolute, join, normalize, relative, win32 } from "path";
-import { cpus } from "os";
+import { tmpdir } from "os";
 import { createConcurrencyLimit } from "../utils/concurrencyLimit.js";
 import { parseHTML } from "linkedom";
 import { HF_COLOR_GRADING_ATTR } from "@hyperframes/core";
 import { isPathInside } from "@hyperframes/parsers/asset-paths";
 import { resolveProjectRelativeSrc } from "@hyperframes/parsers/asset-resolution";
+import { assetRootsRefusal } from "../utils/assetRoots.js";
 import { alphaDecoderFor } from "@hyperframes/parsers/media-alpha";
 import {
   MEDIA_RENDER_ID_ATTR,
@@ -38,8 +40,13 @@ import {
   type Fps,
   type FpsInput,
   firstFrameColourArgs,
+  keyframeTransferArgs,
+  parseKeyframeTransfers,
+  type ToneMapFrameColour,
   hdrToSdrToneMapFilter,
   parseFirstFrameColour,
+  readsKeyframeTransfers,
+  terminalText,
 } from "@hyperframes/core";
 import { resolveReferencedStart, type RefResolverEl } from "./referenceResolver.js";
 import { isKnownInactiveTimelineWindow } from "./mediaTimelineWindow.js";
@@ -53,13 +60,19 @@ import {
   readMetadataCache,
   readStoredFinalFrame,
   resolvePlayableVideoDuration,
+  runFfprobe,
   videoStartOnMediaTimeline,
   writeMetadataCache,
   type MediaProbeCacheEntry,
   type VideoMetadata,
 } from "../utils/ffprobe.js";
 import { inputAlphaOpaqueWarning, probeInputAlphaPlane } from "../utils/alphaPlaneProbe.js";
-import { redactUrlQueriesInError, urlInputArgs } from "../utils/urlInput.js";
+import {
+  redactUrlQueriesInError,
+  selfContainedFormatArgs,
+  urlInputArgs,
+} from "../utils/urlInput.js";
+import { assertMediaPayload, NotMediaPayloadError } from "../utils/notMediaPayload.js";
 import {
   analyzeCompositionHdr,
   isHdrColorSpace as isHdrColorSpaceUtil,
@@ -79,15 +92,18 @@ import {
 } from "../utils/psnrFilterAvailability.js";
 import { DEFAULT_CONFIG, type EngineConfig } from "../config.js";
 import { unwrapTemplate } from "../utils/htmlTemplate.js";
+import { mediaIdPathSegment } from "../utils/mediaPathSegment.js";
 import {
   FRAME_FILENAME_PREFIX,
+  createPartialCacheEntryDir,
+  createPartialDir,
   gcExtractionCache,
   gcSweepDue,
   lookupCacheEntry,
-  partialCacheEntryDir,
   publishCacheEntry,
   readContentSha256,
   readKeyStat,
+  privateCacheRoot,
   rehydrateCacheEntry,
   touchCacheEntry,
   type CacheEntry,
@@ -143,14 +159,10 @@ export function isVideoFrameFormat(value: unknown): value is VideoFrameFormat {
   return typeof value === "string" && (VIDEO_FRAME_FORMATS as readonly string[]).includes(value);
 }
 
+const SLOT_EDGE_TOLERANCE_BELOW_EXPORT_SNAP_FRAMES = 1e-4;
 /**
- * Resolve the frame count produced for a requested extraction duration.
- *
- * Both paths sample with FFmpeg's fps filter. A CFR window ends at the nearest
- * frame boundary; a VFR window rounds up, keeping the slot a trailing still
- * covers. Keep this calculation shared by superset slicing and
- * producer coverage accounting so a complete VFR extraction cannot be
- * rejected because the two paths disagree by one frame.
+ * Frames a window gets: one per output slot it covers (CFR), or rounded up (VFR).
+ * Superset slicing and the coverage gate share it, so they never disagree by a frame.
  */
 export function extractionFrameCountForDuration(
   durationSeconds: number,
@@ -210,9 +222,11 @@ export function extractionFrameCountForDuration(
 
   const frameNumerator = microseconds * fpsNumerator;
   const frameDenominator = 1_000_000n * fpsDenominator;
+  const slotsPerTolerance = BigInt(Math.round(1 / SLOT_EDGE_TOLERANCE_BELOW_EXPORT_SNAP_FRAMES));
   const frameCount = isVFR
     ? (frameNumerator + frameDenominator - 1n) / frameDenominator
-    : (2n * frameNumerator + frameDenominator) / (2n * frameDenominator);
+    : (slotsPerTolerance * (frameNumerator + frameDenominator) - frameDenominator - 1n) /
+      (slotsPerTolerance * frameDenominator);
   const frames = Number(frameCount);
   return Math.max(1, Number.isSafeInteger(frames) ? frames : Number.MAX_SAFE_INTEGER);
 }
@@ -307,10 +321,25 @@ export interface ExtractionOptions {
   /** Directories the caller rewrites on every render (downloaded media); their sources are cached by content. */
   contentKeyedDirs?: readonly string[];
   urlByAbsentLocalPath?: ReadonlyMap<string, string>;
+  /** Folders a local source must be in; one outside them, or private there, is never opened. Unset allows any folder. */
+  assetRoots?: readonly string[];
   shownBox?: { width: number; height: number };
+  shownBoxes?: ReadonlyMap<string, { width: number; height: number }>;
 }
 
 const DOWNLOAD_SUBDIR = "_downloads";
+
+/** A downloaded video passes the not-media sniff, and on a render service opens only as a self-contained container, before anything reads it as media. */
+async function assertDownloadedVideoIsMedia(
+  path: string,
+  videoId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  await assertMediaPayload(path, videoId);
+  const formatLimit = selfContainedFormatArgs();
+  if (formatLimit.length === 0) return;
+  await runFfprobe(path, [...formatLimit, "-show_entries", "format=format_name"], signal);
+}
 
 export const EXTRACT_CACHE_MIN_AGE_MS = 60 * 60 * 1000;
 const GC_STALENESS_MS = 24 * 60 * 60 * 1000;
@@ -318,11 +347,15 @@ const SDR_TO_HDR_COLORSPACE_FILTER = "colorspace=all=bt2020:iall=bt709:range=tv"
 const HDR_TO_SDR_ZSCALE_TRANSFORM_KEY = "hdr2sdr-hable-srgb";
 const HDR_TO_SDR_VIDEOTOOLBOX_TRANSFORM_KEY = "hdr2sdr-videotoolbox-hdr";
 const SDR_CANVAS_PASSTHROUGH_FILTER = "setparams=color_primaries=bt709:color_trc=iec61966-2-1";
+function shownBoxKey(box: { width: number; height: number } | undefined): string | undefined {
+  return box && `shown-${Math.ceil(box.width)}x${Math.ceil(box.height)}`;
+}
+
 function halveToCoverScaleFilter(box: { width: number; height: number }): string {
   const fit = `max(${Math.ceil(box.width)}/iw\\,${Math.ceil(box.height)}/ih)`;
   const halvings = `floor(log(1/${fit})/log(2))`;
   const side = (dim: "iw" | "ih") =>
-    `if(lt(${fit}\\,0.5)\\,2*ceil(${dim}/pow(2\\,${halvings})/2)\\,${dim})`;
+    `if(lte(${fit}\\,0.5)\\,2*ceil(${dim}/pow(2\\,${halvings})/2)\\,${dim})`;
   return `scale=w=${side("iw")}:h=${side("ih")}:flags=area+accurate_rnd`;
 }
 
@@ -412,6 +445,7 @@ export type VideoExtractionFailureKind =
   | "ffmpeg_timeout"
   | "ffmpeg_transient"
   | "ffmpeg_failed"
+  | "disk_full"
   | "zero_output"
   | "internal";
 
@@ -557,6 +591,9 @@ function ffmpegReasonFrom(stderr: string, paths: readonly string[]): string {
     .slice(-FFMPEG_REASON_CHARS);
 }
 
+// ffmpeg ends a full disk with its last frames' summary, so the strerror text is the only sign of it
+const DISK_FULL = /no space left on device|disk quota exceeded/i;
+
 export function isVideoSourceExtractionError(error: unknown): error is VideoSourceExtractionError {
   return (
     typeof error === "object" &&
@@ -630,6 +667,14 @@ export function classifyVideoExtractionError(error: unknown): VideoSourceExtract
       "internal",
       false,
       "Video source download failed internally",
+      diagnostic,
+    );
+  }
+  if (error instanceof NotMediaPayloadError) {
+    return new VideoSourceExtractionError(
+      "invalid_media",
+      false,
+      "Video source is a text document, not media",
       diagnostic,
     );
   }
@@ -944,25 +989,44 @@ export function parseImageElements(html: string): ImageElement[] {
   return images;
 }
 
-const firstFrameColourCache = new Map<
-  string,
-  MediaProbeCacheEntry<ReturnType<typeof parseFirstFrameColour>>
->();
+const firstFrameColourCache = new Map<string, MediaProbeCacheEntry<ToneMapFrameColour>>();
+
+/** A source's SPS transfers, read as the trace streams (a run keeps only stderr's tail); null when the read failed. */
+function readKeyframeTransfers(videoPath: string, codec: string) {
+  let traced = "";
+  let rest = "";
+  const onStderr = (chunk: string) => {
+    const lines = (rest + chunk).split("\n");
+    rest = lines.pop() ?? "";
+    for (const line of lines) if (line.includes("transfer_characteristics")) traced += `${line}\n`;
+  };
+  return inExtractionSlot(() =>
+    runFfmpeg([...urlInputArgs(videoPath), ...keyframeTransferArgs(videoPath, codec)], {
+      onStderr,
+    }),
+  ).then((result) => (result.success ? parseKeyframeTransfers(traced + rest) : null));
+}
 
 /** The first shown frame's colour tags (see {@link firstFrameColourArgs}), probed once per source file. */
-function readFirstFrameColour(videoPath: string) {
+function readFirstFrameColour(videoPath: string, codec: string) {
   const identity = mediaFileIdentity(videoPath);
   const cached = readMetadataCache(firstFrameColourCache, videoPath, identity);
   if (cached) return cached;
   // In an extraction slot, so it never adds a decoder; unsignalled, so one cancel cannot cut it short for others.
   const probe = inExtractionSlot(() =>
     runFfmpeg([...urlInputArgs(videoPath), ...firstFrameColourArgs(videoPath)]),
-  ).then((result) => {
+  ).then(async (result): Promise<ToneMapFrameColour> => {
+    const forget = () => {
+      if (firstFrameColourCache.get(videoPath)?.promise === probe)
+        firstFrameColourCache.delete(videoPath);
+    };
     // A failed probe answers this cut only; the next one probes again.
-    if (!result.success && firstFrameColourCache.get(videoPath)?.promise === probe) {
-      firstFrameColourCache.delete(videoPath);
-    }
-    return parseFirstFrameColour(result.stderr);
+    if (!result.success) forget();
+    const first = parseFirstFrameColour(result.stderr);
+    if (!result.success || !readsKeyframeTransfers(first)) return first;
+    const keyframeTransfers = await readKeyframeTransfers(videoPath, codec);
+    if (!keyframeTransfers) forget();
+    return { ...first, keyframeTransfers: keyframeTransfers ?? [] };
   });
   writeMetadataCache(firstFrameColourCache, videoPath, identity, probe);
   return probe;
@@ -1009,17 +1073,23 @@ async function leadInSecondsUnlessAborted(
 function stallTimeoutMs(baseMs: number, skippedSeconds: number, sourceFps: number): number {
   return baseMs + Math.ceil((skippedSeconds * sourceFps * 1000) / SKIP_DECODE_FPS_FLOOR);
 }
+const KEEP_END_PAST_A_ONE_TICK_FINAL_FRAME_THROUGH_THE_SNAP = "tpad=stop_mode=clone:stop=1";
 /** Frame times since file start are `PTS*TB + seek`; snapping them to `lead + k/FR` gives every process one grid. */
-function undoTickRoundingOnTheSourceFrameGrid(seek: number, lead: number): string[] {
+function undoTickRoundingOnTheSourceFrameGrid(
+  seek: number,
+  lead: number,
+  sourceFps: number,
+): string[] {
   const sinceFileStart = `(PTS*TB+${seek}-${lead})`;
   return [
+    ...(sourceFps > 0 ? [KEEP_END_PAST_A_ONE_TICK_FINAL_FRAME_THROUGH_THE_SNAP] : []),
     "settb=AVTB",
     `setpts=if(isnan(FR)\\,PTS\\,(${lead}+round(${sinceFileStart}*FR)/FR-${seek})/TB)`,
   ];
 }
 
 // Caps extraction ffmpeg runs across all clips; uncapped, dozens of clips starved each other into timeouts.
-const EXTRACTION_SLOTS = Math.max(1, Math.floor(cpus().length / 2));
+const EXTRACTION_SLOTS = Math.max(1, Math.floor(usableCpuCount() / 2));
 const inExtractionSlot = createConcurrencyLimit(EXTRACTION_SLOTS);
 const TAIL_PROBE_SLOTS = Math.max(1, Number(process.env.HF_TAIL_PROBE_SLOTS) || 16);
 const inTailProbeSlot = createConcurrencyLimit(TAIL_PROBE_SLOTS);
@@ -1050,13 +1120,18 @@ function framesWrittenReader(onProgress: ExtractionOptions["onProgress"]) {
 }
 
 /** Split runs so no single ffmpeg process extracts more than `segmentFrames` frames. */
-function splitFrameRanges(ranges: readonly FrameRange[], segmentFrames: number): FrameRange[] {
+function splitFrameRanges(
+  ranges: readonly FrameRange[],
+  segmentFrames: number,
+  frameLimit: number,
+): FrameRange[] {
   const segments: FrameRange[] = [];
   for (const range of ranges) {
-    for (let offset = 0; offset < range.frames; offset += segmentFrames) {
+    const frames = Math.min(range.frames, frameLimit - range.firstFrame);
+    for (let offset = 0; offset < frames; offset += segmentFrames) {
       segments.push({
         firstFrame: range.firstFrame + offset,
-        frames: Math.min(segmentFrames, range.frames - offset),
+        frames: Math.min(segmentFrames, frames - offset),
       });
     }
   }
@@ -1155,7 +1230,7 @@ interface VideoFilterChainInput {
   sampleAtOutputFps: boolean;
   keepsHdrForChrome: boolean;
   /** The first frame's colour tags; set exactly when HDR is tone-mapped to SDR. */
-  toneMapFrom?: Awaited<ReturnType<typeof readFirstFrameColour>>;
+  toneMapFrom?: ToneMapFrameColour;
   isHdr: boolean;
   sdrToHdrTransfer?: ExtractionOptions["sdrToHdrTransfer"];
   shownBox?: ExtractionOptions["shownBox"];
@@ -1178,7 +1253,11 @@ function videoFilterChain(input: VideoFilterChainInput): (seek: number) => strin
       ? [
           ...(metadata.isVFR
             ? []
-            : undoTickRoundingOnTheSourceFrameGrid(seek, videoStartOnMediaTimeline(metadata))),
+            : undoTickRoundingOnTheSourceFrameGrid(
+                seek,
+                videoStartOnMediaTimeline(metadata),
+                metadata.fps,
+              )),
           "settb=intb/2",
           "setpts=PTS-lte(TB\\,0.001)",
           `fps=${ffmpegFps}:start_time=0:round=up`,
@@ -1260,6 +1339,61 @@ export async function buildVideoLayerInput(
   };
 }
 
+// VLC-muxed MP4s can leave the first IDR out of `stss`; ffmpeg then cannot input-seek before the next one.
+const SEEK_INDEX_MISSING = /Cannot find an index entry before timestamp|could not seek to position/;
+
+/** The probed size of a source the mov/mp4 demuxer reads; undefined for a playlist, a list or any other format. */
+async function movSourceBytes(
+  videoPath: string,
+  signal?: AbortSignal,
+): Promise<number | undefined> {
+  try {
+    const probed = JSON.parse(
+      await runFfprobe(
+        videoPath,
+        ["-show_entries", "format=format_name,size", "-of", "json"],
+        signal,
+      ),
+    ) as { format?: { format_name?: string; size?: string } };
+    const bytes = Number(probed.format?.size);
+    return probed.format?.format_name === "mov,mp4,m4a,3gp,3g2,mj2" && bytes > 0
+      ? bytes
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A mov/mp4 copy past this replays data, so it fails. `-fs` caps the media; the index written after grows in step. */
+const seekIndexCopyLimit = (sourceBytes: number) => 2 * sourceBytes + 1024 * 1024;
+
+async function streamCopyWithRebuiltSeekIndex(
+  videoPath: string,
+  signal: AbortSignal | undefined,
+  timeout: number,
+): Promise<{ dir: string; path: string } | undefined> {
+  const sourceBytes = await movSourceBytes(videoPath, signal);
+  if (sourceBytes === undefined) return undefined;
+  const limit = seekIndexCopyLimit(sourceBytes);
+  const dir = mkdtempSync(join(tmpdir(), "hf-seek-index-"));
+  const path = join(dir, "source.mov");
+  let kept = false;
+  try {
+    const result = await runFfmpeg(
+      [
+        ...urlInputArgs(videoPath),
+        ...["-f", "mov", "-i", videoPath, "-map", "0:v:0", "-map", "0:a?", "-c", "copy"],
+        ...["-fs", String(limit), "-y", path],
+      ],
+      { signal, timeout },
+    );
+    kept = result.success && existsSync(path) && statSync(path).size < limit;
+    return kept ? { dir, path } : undefined;
+  } finally {
+    if (!kept) rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function extractVideoFramesRangeUnredacted(
   videoPath: string,
   videoId: string,
@@ -1270,6 +1404,7 @@ async function extractVideoFramesRangeUnredacted(
   config?: Partial<Pick<EngineConfig, "ffmpegProcessTimeout">>,
   /** Frames go straight here, with no per-videoId subdir (the cache layer's keyed entry). */
   outputDirOverride?: string,
+  seekIndexRebuilt = false,
 ): Promise<ExtractedFrames> {
   const ffmpegProcessTimeout = config?.ffmpegProcessTimeout ?? DEFAULT_CONFIG.ffmpegProcessTimeout;
   const { outputDir, quality = 95 } = options;
@@ -1277,12 +1412,12 @@ async function extractVideoFramesRangeUnredacted(
   const fps = fpsToNumber(normalizedFps);
   const ffmpegFps = fpsToFfmpegArg(normalizedFps);
 
-  const videoOutputDir = outputDirOverride ?? join(outputDir, videoId);
+  const videoOutputDir = outputDirOverride ?? join(outputDir, mediaIdPathSegment(videoId));
   if (!existsSync(videoOutputDir)) mkdirSync(videoOutputDir, { recursive: true });
 
   let metadata: VideoMetadata;
   try {
-    metadata = await extractMediaMetadata(videoPath);
+    metadata = await extractMediaMetadata(videoPath, { signal });
   } catch (error) {
     throw classifyVideoExtractionError(error);
   }
@@ -1367,7 +1502,9 @@ async function extractVideoFramesRangeUnredacted(
     );
   }
 
-  const frameColour = toneMappedToSdr ? await readFirstFrameColour(videoPath) : undefined;
+  const frameColour = toneMappedToSdr
+    ? await readFirstFrameColour(videoPath, metadata.videoCodec)
+    : undefined;
   const filtersFor = videoFilterChain({
     metadata,
     format,
@@ -1390,13 +1527,17 @@ async function extractVideoFramesRangeUnredacted(
     return filters.length > 0 ? ["-vf", filters.join(",")] : [];
   };
   const segmentFrames = Math.round(EXTRACTION_SEGMENT_SECONDS * fps);
-  const totalFrames = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
-  // A VFR window rounds its frame count up, and only the segments' `-frames:v` bound
-  // emits that last slot: the fps filter ends a `-t` window at the nearest slot. A
-  // decimal rate counts zero frames here and keeps the `-t` window.
-  const boundVfrFrameCount = metadata.isVFR && totalFrames > 0;
+  const windowFrames = extractionFrameCountForDuration(duration, normalizedFps, metadata.isVFR);
+  const framesBeforeSourceEnd = extractionFrameCountForDuration(
+    playableDuration - startTime,
+    normalizedFps,
+    false,
+  );
+  const totalFrames = metadata.isVFR ? windowFrames : Math.min(windowFrames, framesBeforeSourceEnd);
+  // A `-t` window ends at the nearest slot; segments read a frame past and keep exactly their own.
+  // A decimal rate counts zero frames here and keeps the `-t` window.
   const extract = (hwaccel: string[]) =>
-    sampleAtOutputFps && (options.frameRanges || boundVfrFrameCount || totalFrames > segmentFrames)
+    sampleAtOutputFps && (options.frameRanges || totalFrames > 0)
       ? runSegmentedExtraction({
           decodeArgs: [...hwaccel, ...decodeArgs],
           filterAndEncodeArgs: (seek) => [...filterArgsFor(seek), ...encodeArgs],
@@ -1409,6 +1550,7 @@ async function extractVideoFramesRangeUnredacted(
           segments: splitFrameRanges(
             options.frameRanges ?? [{ firstFrame: 0, frames: totalFrames }],
             segmentFrames,
+            totalFrames > 0 ? totalFrames : Number.POSITIVE_INFINITY,
           ),
           runOptions,
           onProgress: options.onProgress,
@@ -1439,7 +1581,39 @@ async function extractVideoFramesRangeUnredacted(
     !processResult.success &&
     !processResult.failureReason;
   const videoToolboxWasOptional = decodeWithVideoToolbox && !keepsHdrForChrome;
-  if (ffmpegExitedFailing && videoToolboxWasOptional) processResult = await extract([]);
+  if (ffmpegExitedFailing && videoToolboxWasOptional && !DISK_FULL.test(processResult.stderr))
+    processResult = await extract([]);
+  // The same failed seek exits 0 or not depending on the frame encoder, so match ffmpeg's message.
+  if (
+    processResult.terminationReason === "exit" &&
+    !seekIndexRebuilt &&
+    SEEK_INDEX_MISSING.test(processResult.stderr)
+  ) {
+    const rebuilt = await inExtractionSlot(
+      () => streamCopyWithRebuiltSeekIndex(videoPath, signal, ffmpegProcessTimeout),
+      signal,
+    );
+    if (rebuilt) {
+      for (const stale of framePathsFromDirectory(videoOutputDir, format, true).values())
+        rmSync(stale, { force: true });
+      try {
+        const frames = await extractVideoFramesRangeUnredacted(
+          rebuilt.path,
+          videoId,
+          startTime,
+          duration,
+          options,
+          signal,
+          config,
+          outputDirOverride,
+          true,
+        );
+        return { ...frames, srcPath: videoPath };
+      } finally {
+        rmSync(rebuilt.dir, { recursive: true, force: true });
+      }
+    }
+  }
   if (processResult.failureReason === "external_interruption") {
     throw new VideoSourceExtractionError(
       "external_interruption",
@@ -1477,6 +1651,15 @@ async function extractVideoFramesRangeUnredacted(
         "ffmpeg_timeout",
         true,
         "Video frame extraction timed out",
+        diagnostic,
+        ffmpegReason,
+      );
+    }
+    if (DISK_FULL.test(processResult.stderr)) {
+      throw new VideoSourceExtractionError(
+        "disk_full",
+        false,
+        "The disk filled up while video frames were extracted",
         diagnostic,
         ffmpegReason,
       );
@@ -2091,8 +2274,6 @@ function sliceSupersetMember(
   configuredFps: FpsInput,
 ): ExtractedFrames {
   const { work } = member.miss;
-  rmSync(outputDir, { recursive: true, force: true });
-  mkdirSync(outputDir, { recursive: true });
 
   // Sample-time correctness: member frame k uses superset frame
   // offset_i + k, so its source time is
@@ -2111,7 +2292,11 @@ function sliceSupersetMember(
     linkOrCopyFrame(sourceFrame, join(outputDir, frameFileName(i + 1, work.format)));
   }
 
-  return extractedFramesFromDirectory(work, outputDir, work.videoPath, fps);
+  const sliced = extractedFramesFromDirectory(work, outputDir, work.videoPath, fps);
+  if (sliced.totalFrames !== frameCount) {
+    throw new Error(`superset slice holds ${sliced.totalFrames} frames, not ${frameCount}`);
+  }
+  return sliced;
 }
 
 export async function extractAllVideoFrames(
@@ -2178,6 +2363,17 @@ export async function extractAllVideoFrames(
         resolvedVideos.push({ video, videoPath: remoteUrl });
         continue;
       }
+      const roots = options.assetRoots;
+      const refusal = !isHttpUrl(videoPath) && roots ? assetRootsRefusal(videoPath, roots) : null;
+      if (refusal) {
+        errors.push({
+          videoId: video.id,
+          kind: "source_missing",
+          retryable: false,
+          error: `Video source is ${refusal}: ${video.src}`,
+        });
+        continue;
+      }
 
       if (isHttpUrl(videoPath)) {
         const downloadDir = join(options.outputDir, DOWNLOAD_SUBDIR);
@@ -2190,6 +2386,7 @@ export async function extractAllVideoFrames(
           () => recordTransientRetries(1),
           { onTelemetry: writeUrlDownloadTelemetry },
         );
+        await assertDownloadedVideoIsMedia(videoPath, video.id, signal);
       }
 
       if (!existsSync(videoPath)) {
@@ -2199,8 +2396,8 @@ export async function extractAllVideoFrames(
         if (!warnedSrcs.has(video.src)) {
           warnedSrcs.add(video.src);
           process.stderr.write(
-            `[hyperframes:render] WARNING: video src="${video.src}" ` +
-              `could not be resolved on disk (looked for ${videoPath}). ` +
+            `[hyperframes:render] WARNING: video src="${terminalText(video.src)}" ` +
+              `could not be resolved on disk (looked for ${terminalText(videoPath)}). ` +
               `The rendered output will show this video's first frame for the entire clip duration. ` +
               `If your <video> lives inside a sub-composition, prefer project-root-relative paths ` +
               `(e.g. src="assets/foo.mp4") over "../assets/foo.mp4".\n`,
@@ -2263,8 +2460,8 @@ export async function extractAllVideoFrames(
         const attempted =
           !options.collectProbeFailures &&
           boundedTransientRetryBudget(options.maxTransientRetries) === 0
-            ? { result: await extractMediaMetadata(videoPath), retries: 0 }
-            : await runVideoExtractionWithRetry(() => extractMediaMetadata(videoPath), {
+            ? { result: await extractMediaMetadata(videoPath, { signal }), retries: 0 }
+            : await runVideoExtractionWithRetry(() => extractMediaMetadata(videoPath, { signal }), {
                 signal,
                 maxTransientRetries: options.maxTransientRetries,
                 onRetry: () => recordTransientRetries(1),
@@ -2405,11 +2602,14 @@ export async function extractAllVideoFrames(
   let cacheRootDir: string | undefined;
   if (configuredCacheRootDir) {
     try {
-      mkdirSync(configuredCacheRootDir, { recursive: true });
-      cacheRootDir = configuredCacheRootDir;
+      cacheRootDir = privateCacheRoot(configuredCacheRootDir);
+      if (cacheRootDir) mkdirSync(cacheRootDir, { recursive: true });
     } catch {
+      cacheRootDir = undefined;
+    }
+    if (!cacheRootDir) {
       process.stderr.write(
-        `[hyperframes:render] WARNING: extraction cache dir ${configuredCacheRootDir} is not writable; caching disabled for this render\n`,
+        `[hyperframes:render] WARNING: extraction cache dir ${configuredCacheRootDir} is not a writable directory of this user; caching disabled for this render\n`,
       );
     }
   }
@@ -2439,6 +2639,7 @@ export async function extractAllVideoFrames(
       sdrToHdrTransfer: work.sdrToHdrTransfer,
       toneMapHdrToSdr: work.hdrToSdrTransformKey !== undefined,
       finalFrameOnly: work.finalFrameOnly,
+      shownBox: options.shownBoxes?.get(work.video.id) ?? options.shownBox,
     };
   }
 
@@ -2481,6 +2682,7 @@ export async function extractAllVideoFrames(
       work.sdrToHdrTransfer ? sdrToHdrTransformKey(work.sdrToHdrTransfer) : undefined,
       work.hdrToSdrTransformKey,
       work.finalFrameOnly ? "final-frame" : undefined,
+      shownBoxKey(options.shownBoxes?.get(work.video.id) ?? options.shownBox),
     ].filter((part): part is string => part !== undefined);
     const transform = transformParts.length > 0 ? transformParts.join("+") : undefined;
 
@@ -2514,7 +2716,7 @@ export async function extractAllVideoFrames(
   ): Promise<ExtractedFrames> {
     const { work, cacheTarget } = miss;
     if (!cacheTarget) {
-      const outputDir = join(options.outputDir, work.video.id);
+      const outputDir = join(options.outputDir, mediaIdPathSegment(work.video.id));
       const attempted = await runVideoExtractionWithRetry(
         () =>
           extractVideoFramesRange(
@@ -2538,9 +2740,7 @@ export async function extractAllVideoFrames(
       return attempted.result;
     }
 
-    const partialDir = partialCacheEntryDir(cacheTarget.entry);
-    rmSync(partialDir, { recursive: true, force: true });
-    mkdirSync(partialDir, { recursive: true });
+    let partialDir = createPartialCacheEntryDir(cacheTarget.entry);
     const attempted = await runVideoExtractionWithRetry(
       () =>
         extractVideoFramesRange(
@@ -2559,12 +2759,12 @@ export async function extractAllVideoFrames(
         onRetry: () => {
           recordTransientRetries(1);
           rmSync(partialDir, { recursive: true, force: true });
-          mkdirSync(partialDir, { recursive: true });
+          partialDir = createPartialCacheEntryDir(cacheTarget.entry);
         },
       },
     );
     const result = attempted.result;
-    const published = publishCacheEntry(cacheTarget.entry, partialDir);
+    const published = publishCacheEntry(cacheTarget.entry, partialDir, result.totalFrames);
     if (!published.published) {
       breakdown.cachePublishFailures += 1;
       return { ...result, ownedByLookup: false };
@@ -2593,7 +2793,7 @@ export async function extractAllVideoFrames(
     const tailFrames = Math.min(expectedFrames, Math.ceil(fps));
     if (expectedFrames <= tailFrames) return null;
     const deferred = (totalFrames: number): ExtractedFrames => {
-      const outputDir = join(options.outputDir, work.video.id);
+      const outputDir = join(options.outputDir, mediaIdPathSegment(work.video.id));
       mkdirSync(outputDir, { recursive: true });
       return {
         videoId: work.video.id,
@@ -2637,7 +2837,7 @@ export async function extractAllVideoFrames(
       const totalFrames = firstTailFrame + storedTailFrames;
       return totalFrames <= expectedFrames * 0.6 ? null : deferred(totalFrames);
     }
-    const probeDir = join(options.outputDir, `${work.video.id}.tail-probe`);
+    const probeDir = join(options.outputDir, `${mediaIdPathSegment(work.video.id)}.tail-probe`);
     try {
       const tail = await extractVideoFramesRange(
         work.videoPath,
@@ -2682,18 +2882,15 @@ export async function extractAllVideoFrames(
     const { miss } = member;
     const { work, cacheTarget } = miss;
     if (!cacheTarget) {
-      return sliceSupersetMember(
-        member,
-        superset,
-        join(options.outputDir, work.video.id),
-        fps,
-        configuredFps,
-      );
+      const outputDir = join(options.outputDir, mediaIdPathSegment(work.video.id));
+      rmSync(outputDir, { recursive: true, force: true });
+      mkdirSync(outputDir, { recursive: true });
+      return sliceSupersetMember(member, superset, outputDir, fps, configuredFps);
     }
 
-    const partialDir = partialCacheEntryDir(cacheTarget.entry);
+    const partialDir = createPartialCacheEntryDir(cacheTarget.entry);
     const sliced = sliceSupersetMember(member, superset, partialDir, fps, configuredFps);
-    const published = publishCacheEntry(cacheTarget.entry, partialDir);
+    const published = publishCacheEntry(cacheTarget.entry, partialDir, sliced.totalFrames);
     if (!published.published) {
       breakdown.cachePublishFailures += 1;
       return { ...sliced, ownedByLookup: false };
@@ -2710,15 +2907,11 @@ export async function extractAllVideoFrames(
     // members link into partial dirs under cacheRootDir, which is commonly a
     // different mount than the render's outputDir — extracting the superset
     // next to the cache keeps linkSync viable there (the EXDEV copyFileSync
-    // fallback would silently multiply disk usage per member). The
-    // `.partial-` name puts crashed leftovers under the GC's aged-partial
-    // sweep.
-    const tempDir = cacheRootDir
-      ? join(cacheRootDir, `${group.groupId}.partial-${process.pid}`)
-      : join(options.outputDir, group.groupId);
-
+    // fallback would silently multiply disk usage per member). Renders share the
+    // cache root and group ids, so each gets a new folder of its own.
+    let tempDir: string | undefined;
     try {
-      rmSync(tempDir, { recursive: true, force: true });
+      tempDir = createPartialDir(cacheRootDir ?? options.outputDir, group.groupId);
       // A long union can fail even when each shorter
       // member range succeeds. Do not retry the optimization itself; preserve
       // the established grouped→direct fallback and apply bounded retries only
@@ -2762,7 +2955,7 @@ export async function extractAllVideoFrames(
       );
       return fallback;
     } finally {
-      rmSync(tempDir, { recursive: true, force: true });
+      if (tempDir) rmSync(tempDir, { recursive: true, force: true });
     }
   }
 
@@ -2772,7 +2965,8 @@ export async function extractAllVideoFrames(
         throw new Error("Video frame extraction cancelled");
       }
       try {
-        const metadata = videoMetadata[index] ?? (await extractMediaMetadata(videoPath));
+        const metadata =
+          videoMetadata[index] ?? (await extractMediaMetadata(videoPath, { signal }));
         alignClipStartToFirstOutputFrame(video, fps);
         const initialWindow = resolveVideoExtractionWindow(video, metadata, options.timelineEnd);
         const window = await resolveFinalFrameExtractionWindow(

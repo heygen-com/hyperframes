@@ -2,7 +2,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { commandWordIndex, openShortcutArgv } from "./projectShortcut.js";
+import {
+  commandWordIndex,
+  measureProbeShortcutArgv,
+  openShortcutArgv,
+  registryAliasArgv,
+} from "./projectShortcut.js";
 
 const commands = new Set(["open", "render", "lint"]);
 const cwd = mkdtempSync(join(tmpdir(), "hf-shortcut-"));
@@ -46,6 +51,48 @@ describe("openShortcutArgv", () => {
   });
 });
 
+describe("measureProbeShortcutArgv", () => {
+  const ops = new Set(["probe", "cuts", "events"]);
+  writeFileSync(join(cwd, "ref.mp4"), "");
+  writeFileSync(join(cwd, "ref one.mp4"), "");
+
+  it.each([
+    [
+      ["measure", "ref.mp4"],
+      ["measure", "probe", "ref.mp4"],
+    ],
+    [
+      ["measure", "ref.mp4", "--json"],
+      ["measure", "probe", "ref.mp4", "--json"],
+    ],
+    [
+      ["--verbose", "measure", "ref.mp4"],
+      ["--verbose", "measure", "probe", "ref.mp4"],
+    ],
+    [
+      ["measure", "ref", "one.mp4"],
+      ["measure", "probe", "ref one.mp4"],
+    ],
+    [
+      ["measure", "ref", "one.mp4", "--json"],
+      ["measure", "probe", "ref one.mp4", "--json"],
+    ],
+  ])("probes %j", (argv, expected) => {
+    expect(measureProbeShortcutArgv(argv, ops, cwd)).toEqual(expected);
+  });
+
+  it.each([
+    [["measure", "cuts", "ref.mp4"]], // an op was named
+    [["measure", "ref.mp4", "--map"]], // other flags: which op is a guess
+    [["measure", "missing.mp4"]], // not a file
+    [["measure", "my-video"]], // a folder
+    [["measure"]],
+    [["render", "ref.mp4"]],
+  ])("leaves %j alone", (argv) => {
+    expect(measureProbeShortcutArgv(argv, ops, cwd)).toEqual(argv);
+  });
+});
+
 describe("commandWordIndex", () => {
   it.each([
     [["render", "x"], 0],
@@ -56,5 +103,31 @@ describe("commandWordIndex", () => {
     [[], -1],
   ] as const)("%j -> %i", (argv, index) => {
     expect(commandWordIndex(argv)).toBe(index);
+  });
+});
+
+describe("registryAliasArgv", () => {
+  it.each([
+    [
+      ["registry", "search", "rain", "snow", "--json"],
+      ["catalog", "rain", "snow", "--json"],
+    ],
+    [
+      ["registry", "crossfade"],
+      ["catalog", "crossfade"],
+    ],
+    [
+      ["--verbose", "registry", "search", "title"],
+      ["--verbose", "catalog", "title"],
+    ],
+    [["registry"], ["catalog"]],
+  ])("runs %j as %j", (argv, expected) => {
+    expect(registryAliasArgv(argv)).toEqual(expected);
+  });
+
+  it("leaves every other command alone", () => {
+    const argv = ["catalog", "search", "rain"];
+    expect(registryAliasArgv(argv)).toBe(argv);
+    expect(registryAliasArgv(["render", "registry"])).toEqual(["render", "registry"]);
   });
 });

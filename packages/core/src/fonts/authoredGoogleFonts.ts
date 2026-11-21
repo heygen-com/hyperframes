@@ -1,4 +1,4 @@
-import { parseHTML } from "linkedom";
+import { readPage } from "./pageTree.js";
 import postcss from "postcss";
 
 function screenStylesheet(media: string | null): boolean {
@@ -66,7 +66,7 @@ function stylesheetUrls(element: StylesheetElement): string[] {
 
 export function authoredGoogleFontStylesheets(html: string): Map<string, string[]> {
   const byFamily = new Map<string, string[]>();
-  const { document } = parseHTML(html);
+  const document = readPage(html);
   for (const element of document.querySelectorAll("link, style")) {
     for (const url of stylesheetUrls(element)) {
       for (const family of googleStylesheetFamilies(url)) {

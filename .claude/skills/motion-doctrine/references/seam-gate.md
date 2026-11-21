@@ -91,3 +91,7 @@ Lives at the project root. One row per seam; this is the vector ledger as data.
 
 Velocities are measured on `getBoundingClientRect` (center for x/y, width-ratio for z),
 so ancestor wrapper transforms are automatically included.
+
+`__player.seek()` resolves asynchronously, so the gate awaits each seek before it reads. If every
+seam fails the same way (`exit-visible op 0.00`, `exit-moving 0 px/s`) and `probe` finds no movers,
+the reads landed before the seek did and the gate measured t=0, not the film.

@@ -180,6 +180,10 @@ describe("hyperframes init flag rename", () => {
       expect(res.status).toBe(0);
       expect(res.stdout).not.toContain("Checking AI coding skills");
       expect(res.stdout).not.toContain("temporarily ignored");
+      // Installing skills is the person's step, so the hint is addressed to them.
+      expect(res.stdout).toContain(
+        "For the user: use your HyperFrames plugin, or install standalone skills with:",
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -616,6 +620,25 @@ describe("applyResolutionPreset", () => {
       expect(out).toContain("width: 3840px");
       expect(out).toContain("height: 2160px");
       expect(out).toContain('content="width=3840, height=2160"');
+      expect(out).not.toContain("1920");
+      expect(out).not.toContain("1080");
+    });
+  });
+
+  it("rewrites every dimension fingerprint for landscape-1440p", () => {
+    withFixture((dir) => {
+      const file = join(dir, "index.html");
+      writeFileSync(file, sampleHtml, "utf-8");
+
+      applyResolutionPreset(dir, "landscape-1440p");
+      const out = readFileSync(file, "utf-8");
+
+      expect(out).toContain('data-resolution="landscape-1440p"');
+      expect(out).toContain('data-width="2560"');
+      expect(out).toContain('data-height="1440"');
+      expect(out).toContain("width: 2560px");
+      expect(out).toContain("height: 1440px");
+      expect(out).toContain('content="width=2560, height=1440"');
       expect(out).not.toContain("1920");
       expect(out).not.toContain("1080");
     });

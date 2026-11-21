@@ -1,7 +1,6 @@
 import {
   existsSync,
   lstatSync,
-  mkdtempSync,
   readFileSync,
   readdirSync,
   readlinkSync,
@@ -9,8 +8,9 @@ import {
   writeFileSync,
 } from "node:fs";
 import { hostname, uptime } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { RENDER_TEMP_DIR } from "@hyperframes/core/project-folders";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 
 const OWNER_FILE = "owner.json";
 /** Where a staging dir parks the previous output while swapping in the new one. */
@@ -42,7 +42,7 @@ function pidScope(): { host: string; boot?: string; pidns?: string } {
 
 /** A render's private temp dir, stamped with the process that owns it so a later sweep can tell it was abandoned. */
 export function createOwnedRenderDir(prefix: string): string {
-  const dir = mkdtempSync(prefix);
+  const dir = createStagingDir(dirname(prefix), basename(prefix));
   const owner = { pid: process.pid, ...pidScope() };
   writeFileSync(join(dir, OWNER_FILE), JSON.stringify(owner));
   return dir;

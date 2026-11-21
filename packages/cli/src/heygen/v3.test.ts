@@ -1,4 +1,13 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  linkSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +23,7 @@ vi.mock("../cloud/auth.js", () => ({
   resolveCloudBaseUrl: () => "https://api.test",
 }));
 
-const { idempotencyKey, runJob } = await import("./v3.js");
+const { idempotencyKey, keepVoice, ownVoices, runJob } = await import("./v3.js");
 
 /** A job route through the generated client: the create and the status GET it polls. */
 const X: JobRoute = {
@@ -77,24 +86,257 @@ describe("runJob", () => {
     expect(rows()).toEqual(["completed", "pending", "completed"]);
   });
 
+  describe("with a run credit limit", () => {
+    const project = (limit: number) => {
+      const projectDir = mkdtempSync(join(tmpdir(), "hf-v3-limit-"));
+      mkdirSync(join(projectDir, ".hyperframes"));
+      writeFileSync(
+        join(projectDir, ".hyperframes/credit-limit.json"),
+        JSON.stringify({ credits: limit }),
+      );
+      return { projectDir, what: "a line" };
+    };
+    const sent = () => {
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", async (url: string) => {
+        calls.push(url);
+        return reply(200, { data: { id: "j", status: "completed" } });
+      });
+      return calls;
+    };
+
+    it("refuses a call over what is left, before sending, with no --max-credits given", async () => {
+      const calls = sent();
+      const log = project(100);
+      await runJob(X, {}, "k1", { log, credits: 60 });
+      await expect(runJob(X, {}, "k2", { log, credits: 60 })).rejects.toThrow(/leaves 40/);
+      expect(calls).toHaveLength(1);
+      await runJob(X, {}, "k3", { log, credits: 40 });
+      expect(calls).toHaveLength(2);
+    });
+
+    it("counts what HeyGen charged in HyperFrames credits, else the estimate", async () => {
+      const done = (charged: unknown) =>
+        vi.stubGlobal("fetch", async () =>
+          reply(200, { data: { id: "j", status: "completed", charged } }),
+        );
+      const log = project(100);
+      done({ amount: 41, pool: "hyperframes_credits" });
+      await runJob(X, {}, "k1", { log, credits: 60 });
+      done(null);
+      await runJob(X, {}, "k2", { log, credits: 59 });
+      await expect(runJob(X, {}, "k3", { log, credits: 1 })).rejects.toThrow(/leaves 0/);
+      const other = project(100);
+      done({ amount: 2, pool: "api_credits" });
+      await runJob(X, {}, "k1", { log: other, credits: 60 });
+      await expect(runJob(X, {}, "k2", { log: other, credits: 59 })).rejects.toThrow(/leaves 40/);
+    });
+
+    it("holds a running vendor-priced call at its headroom until HeyGen says what it charged", async () => {
+      const log = project(87);
+      vi.stubGlobal("fetch", async () => {
+        throw new Error("socket hang up");
+      });
+      await expect(runJob(X, {}, "k1", { log, credits: 40, vendorPriced: true })).rejects.toThrow();
+      await expect(runJob(X, {}, "k2", { log, credits: 40, vendorPriced: true })).rejects.toThrow(
+        /leaves 43/,
+      );
+      const polled = project(87);
+      const answers = [reply(200, { data: { id: "j", status: "pending" } })];
+      vi.stubGlobal("fetch", async () => {
+        const answer = answers.shift();
+        if (!answer) throw new Error("socket hang up");
+        return answer;
+      });
+      await expect(
+        runJob(X, {}, "k1", { log: polled, credits: 40, vendorPriced: true, intervalMs: 1 }),
+      ).rejects.toThrow();
+      await expect(
+        runJob(X, {}, "k2", { log: polled, credits: 40, vendorPriced: true }),
+      ).rejects.toThrow(/leaves 43/);
+    });
+
+    it("refuses a call that cannot be priced ahead", async () => {
+      const calls = sent();
+      await expect(runJob(X, {}, "k", { log: project(100) })).rejects.toThrow(/cannot be priced/);
+      expect(calls).toHaveLength(0);
+    });
+
+    it.each([429, 422])(
+      "keeps a lost job's reservation through a resume refused with %i",
+      async (status) => {
+        const log = project(100);
+        vi.stubGlobal("fetch", async () => {
+          throw new Error("socket hang up");
+        });
+        await expect(runJob(X, {}, "k1", { log, credits: 100 })).rejects.toThrow();
+        vi.stubGlobal("fetch", async () => reply(status, { error: { code: "no", message: "no" } }));
+        await expect(runJob(X, {}, "k1", { log, credits: 100 })).rejects.toThrow();
+        const calls = sent();
+        await expect(runJob(X, {}, "k2", { log, credits: 100 })).rejects.toThrow(/leaves 0/);
+        expect(calls).toHaveLength(0);
+      },
+    );
+
+    it("keeps the reservation of a fresh call refused with 429, which says nothing about the job", async () => {
+      const log = project(100);
+      vi.stubGlobal("fetch", async () => reply(429, { error: { code: "rate", message: "slow" } }));
+      await expect(runJob(X, {}, "k1", { log, credits: 100 })).rejects.toThrow();
+      await expect(runJob(X, {}, "k2", { log, credits: 100 })).rejects.toThrow(/leaves 0/);
+    });
+
+    it("counts a logged row of negative or non-finite credits as nothing", async () => {
+      const calls = sent();
+      const log = project(100);
+      writeFileSync(
+        join(log.projectDir, ".hyperframes/heygen-jobs.jsonl"),
+        '{"key":"a","credits":-1000}\n{"key":"b","credits":-1e999}\n{"key":"c","credits":40}\n',
+      );
+      await expect(runJob(X, {}, "k1", { log, credits: 61 })).rejects.toThrow(/leaves 60/);
+      expect(calls).toHaveLength(0);
+    });
+
+    it("checks a logged key this account never sent as a new call", async () => {
+      const calls = sent();
+      const log = project(100);
+      writeFileSync(
+        join(log.projectDir, ".hyperframes/heygen-jobs.jsonl"),
+        '{"key":"k1","status":"completed","credits":1}\n',
+      );
+      await expect(runJob(X, {}, "k1", { log, credits: 150 })).rejects.toThrow(/leaves 100/);
+      expect(calls).toHaveLength(0);
+      await runJob(X, {}, "k1", { log, credits: 100 });
+      expect(calls).toHaveLength(1);
+    });
+
+    it("resumes a job this account sent unchecked, though its estimate is above what it was charged", async () => {
+      const log = project(100);
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", async (url: string) => {
+        calls.push(url);
+        const charged = { amount: 50, pool: "hyperframes_credits" };
+        return reply(200, { data: { id: "j", status: "completed", charged } });
+      });
+      await runJob(X, {}, "k1", { log, credits: 60 });
+      await runJob(X, {}, "k2", { log, credits: 50 });
+      await runJob(X, {}, "k1", { log, credits: 60 });
+      expect(calls).toHaveLength(3);
+    });
+
+    it("checks a key this account sent for another project as a new call here", async () => {
+      const calls = sent();
+      await runJob(X, {}, "k1", { log: project(100), credits: 10 });
+      const log = project(100);
+      writeFileSync(
+        join(log.projectDir, ".hyperframes/heygen-jobs.jsonl"),
+        '{"key":"k1","status":"completed","credits":1}\n',
+      );
+      await expect(runJob(X, {}, "k1", { log, credits: 150 })).rejects.toThrow(/leaves 100/);
+      expect(calls).toHaveLength(1);
+    });
+
+    it("keeps the account's ledger private, its newest lines, and every key this project holds", async () => {
+      sent();
+      const file = join(process.env["HYPERFRAMES_CONFIG_DIR"]!, "heygen-job-ledger");
+      const log = project(100);
+      await runJob(X, {}, "k0", { log, credits: 10 });
+      const old = (n: number) =>
+        `${JSON.stringify({ at: "old", kind: "own", key: `k${n}`, credits: 1 })}\n`;
+      appendFileSync(file, Array.from({ length: 10_000 }, (_, n) => old(n)).join(""));
+      await runJob(X, {}, "k1", { log, credits: 10 });
+      const rows = readFileSync(file, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(rows).toHaveLength(10_000);
+      expect(rows.filter((row) => row.at !== "old").map((row) => row.key)).toEqual(["k0", "k1"]);
+      expect(rows.at(-1)).toMatchObject({ kind: "own", key: "k1", credits: 10 });
+      await expect(runJob(X, {}, "k2", { log, credits: 81 })).rejects.toThrow(/leaves 80/);
+      if (process.platform === "win32") return;
+      const fresh = mkdtempSync(join(tmpdir(), "hf-v3-config-"));
+      vi.stubEnv("HYPERFRAMES_CONFIG_DIR", join(fresh, "nested"));
+      await runJob(X, {}, "k1", { log: project(100), credits: 10 });
+      expect(lstatSync(join(fresh, "nested")).mode & 0o777).toBe(0o700);
+      expect(lstatSync(join(fresh, "nested", "heygen-job-ledger")).mode & 0o777).toBe(0o600);
+    });
+
+    it("names the ledger when rows gone from the job log still count", async () => {
+      sent();
+      const log = project(100);
+      const file = join(log.projectDir, ".hyperframes/heygen-jobs.jsonl");
+      writeFileSync(file, '{"key":"other","credits":60}\n');
+      await runJob(X, {}, "k1", { log, credits: 10 });
+      writeFileSync(file, "");
+      await expect(runJob(X, {}, "k2", { log, credits: 40 })).rejects.toThrow(
+        /leaves 30.*60 of the credits counted are from job log rows no longer in the project, noted in .*heygen-job-ledger/,
+      );
+    });
+
+    it("refuses a call under a limit when the signed-in account can't be named", async () => {
+      vi.stubEnv("HEYGEN_API_KEY", "");
+      vi.stubEnv("HYPERFRAMES_API_KEY", "");
+      vi.stubEnv("HEYGEN_ACCESS_TOKEN", "token");
+      const calls: string[] = [];
+      vi.stubGlobal("fetch", async (url: string) => {
+        if (String(url).includes("/users/me")) return reply(500, { error: "down" });
+        calls.push(url);
+        return reply(200, { data: { id: "j", status: "completed" } });
+      });
+      await expect(runJob(X, {}, "k1", { log: project(100), credits: 10 })).rejects.toThrow(
+        "can't tell which account is signed in, so the limit can't be checked; nothing was made",
+      );
+      expect(calls).toHaveLength(0);
+      const unlimited = mkdtempSync(join(tmpdir(), "hf-v3-unlimited-"));
+      await runJob(X, {}, "k1", { log: { projectDir: unlimited, what: "a line" }, credits: 10 });
+      expect(calls).toHaveLength(1);
+    });
+
+    it("keeps what this account spent, and the most another key held, when rows are added to the log", async () => {
+      const calls = sent();
+      const log = project(100);
+      await runJob(X, {}, "k1", { log, credits: 30 });
+      const file = join(log.projectDir, ".hyperframes/heygen-jobs.jsonl");
+      appendFileSync(file, '{"key":"other","credits":40}\n');
+      await expect(runJob(X, {}, "k2", { log, credits: 31 })).rejects.toThrow(/leaves 30/);
+      appendFileSync(file, '{"key":"k1","credits":0}\n{"key":"other","credits":0}\n');
+      await expect(runJob(X, {}, "k2", { log, credits: 31 })).rejects.toThrow(/leaves 30/);
+      expect(calls).toHaveLength(1);
+    });
+
+    it("lets the same job resume, and gives back a refused call's credits", async () => {
+      const log = project(100);
+      const calls = sent();
+      await runJob(X, {}, "k1", { log, credits: 100 });
+      await runJob(X, {}, "k1", { log, credits: 100 });
+      expect(calls).toHaveLength(2);
+      const fresh = project(100);
+      vi.stubGlobal("fetch", async () => reply(422, { error: { code: "bad", message: "no" } }));
+      await expect(runJob(X, {}, "k2", { log: fresh, credits: 100 })).rejects.toThrow();
+      vi.stubGlobal("fetch", async () => reply(200, { data: { id: "j", status: "completed" } }));
+      await runJob(X, {}, "k3", { log: fresh, credits: 100 });
+    });
+  });
+
   it("turns refusals into what to do next", async () => {
     vi.stubGlobal("fetch", async () =>
       reply(402, { error: { code: "insufficient_credit", message: "no" } }),
     );
     await expect(runJob(X, {}, "k")).rejects.toMatchObject({
-      fix: expect.stringContaining("top up"),
+      fix: expect.stringContaining("add-on credits"),
     });
     vi.stubGlobal("fetch", async () =>
       reply(402, { error: { code: "hf_subscription_required", message: "no plan" } }),
     );
     await expect(runJob(X, {}, "k")).rejects.toMatchObject({
-      fix: "Subscribe: https://hyperframes.studio/pricing?from=cli",
+      fix: "Subscribe: https://hyperframes.studio/pricing?from=cli&utm_source=cli&skill=media-use",
+      url: "https://hyperframes.studio/pricing?from=cli&utm_source=cli&skill=media-use",
     });
     vi.stubGlobal("fetch", async () =>
       reply(402, { code: "hf_usage_exhausted", url: "https://pay.test/credits" }),
     );
     await expect(runJob(X, {}, "k")).rejects.toMatchObject({
-      fix: "Add credits: https://pay.test/credits",
+      fix: "Buy add-on credits: https://pay.test/credits",
+      url: "https://pay.test/credits",
     });
     vi.stubGlobal("fetch", async () => reply(401, { message: "bad" }));
     await expect(runJob(X, {}, "k")).rejects.toMatchObject({
@@ -108,13 +350,27 @@ describe("runJob", () => {
     });
   });
 
+  it.each(["hf_subscription_required", "hf_usage_exhausted"])(
+    "gives no purchase link for %s when HeyGen withholds it (url: null)",
+    async (code) => {
+      vi.stubGlobal("fetch", async () => reply(402, { error: { code, url: null } }));
+      const refused = await runJob(X, {}, "k").catch((err: unknown) => err);
+      expect(refused).toMatchObject({
+        fix: expect.stringContaining("can't be purchased right now"),
+      });
+      expect(refused).toMatchObject({ url: undefined });
+      expect(JSON.stringify(refused)).not.toContain("https://");
+      expect(String((refused as Error).message)).not.toContain("https://");
+    },
+  );
+
   it("names what an out-of-credits step needs, from the call's own price when HeyGen does not say", async () => {
     vi.stubGlobal("fetch", async () => reply(402, { error: { code: "hf_usage_exhausted" } }));
     await expect(runJob(X, {}, "k", { credits: 782 })).rejects.toMatchObject({
       message: expect.stringContaining("this step needs about 782 in total"),
     });
     await expect(runJob(X, {}, "k", { credits: 782 })).rejects.toMatchObject({
-      message: expect.stringContaining("billing top-up --needed 782"),
+      message: expect.stringContaining("billing add-credits --needed 782"),
       fix: expect.stringContaining("needed_credits=782"),
     });
     vi.stubGlobal("fetch", async () =>
@@ -224,7 +480,8 @@ describe("runJob", () => {
   it("does not let one account's failure move another account's key", async () => {
     const keys: (string | null)[] = [];
     const run = (answers: Response[]) => {
-      vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+        if (url.endsWith("/v1/pacific/account.get")) return reply(404, {}); // the refusal link's workspace read
         keys.push(new Headers(init.headers).get("Idempotency-Key"));
         return answers.shift()!;
       });
@@ -252,6 +509,7 @@ describe("runJob", () => {
     ) => {
       const keys: (string | null)[] = [];
       vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+        if (url.endsWith("/v1/pacific/account.get")) return reply(404, {}); // the refusal link's workspace read
         if (!url.endsWith("/v3/users/me")) {
           if (init.method === "POST") keys.push(new Headers(init.headers).get("Idempotency-Key"));
           const answer = answers.shift()!;
@@ -424,5 +682,86 @@ describe("runJob", () => {
       idempotencyKey("/v3/x", ["a", Buffer.from("b")]),
     );
     expect(idempotencyKey("/v3/x", ["a"])).not.toBe(idempotencyKey("/v3/y", ["a"]));
+  });
+});
+
+describe("ownVoices", () => {
+  it("lists the clones of the HyperFrames sign-in's workspace only, never another account's", async () => {
+    const asked: { url: string; key: string | null }[] = [];
+    const clonesByKey: Record<string, string> = {
+      k: "film-account-clone",
+      "heygen-cli-login": "other-account-clone",
+    };
+    vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+      const key = new Headers(init.headers).get("x-api-key");
+      asked.push({ url, key });
+      return reply(200, { data: [{ voice_id: "v1", name: clonesByKey[key ?? ""] }] });
+    });
+    expect(await ownVoices(5)).toEqual([
+      { voice_id: "v1", name: "film-account-clone", language: undefined, gender: undefined },
+    ]);
+    expect(asked).toHaveLength(1);
+    expect(new URL(asked[0]!.url).searchParams.get("type")).toBe("private");
+    expect(asked[0]!.key).toBe("k");
+  });
+
+  it("refuses with the sign-in fix when the HyperFrames account cannot be reached, instead of listing anything", async () => {
+    vi.stubGlobal("fetch", async () => reply(401, { message: "no" }));
+    await expect(ownVoices(5)).rejects.toMatchObject({ fix: "npx hyperframes auth login" });
+  });
+});
+
+describe("a project's job log in place of which a link was planted", () => {
+  const VICTIM = "victim bytes\n";
+  const planted = (linkJobLog: boolean) => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-v3-planted-"));
+    const outside = mkdtempSync(join(tmpdir(), "hf-v3-outside-"));
+    const victim = join(outside, "heygen-jobs.jsonl");
+    writeFileSync(victim, VICTIM);
+    if (linkJobLog) {
+      mkdirSync(join(projectDir, ".hyperframes"));
+      symlinkSync(victim, join(projectDir, ".hyperframes/heygen-jobs.jsonl"));
+    } else {
+      symlinkSync(outside, join(projectDir, ".hyperframes"));
+    }
+    return { projectDir, victim };
+  };
+
+  for (const [what, linkJobLog] of [
+    ["the job log", true],
+    ["the .hyperframes folder", false],
+  ] as const) {
+    it(`never appends a job or a voice pick through a link in place of ${what}`, async () => {
+      const { projectDir, victim } = planted(linkJobLog);
+      vi.stubGlobal("fetch", async () => reply(200, { data: { id: "j1", status: "completed" } }));
+      await expect(runJob(X, {}, "k1", { log: { projectDir, what: "a line" } })).rejects.toThrow(
+        /never written through/,
+      );
+      expect(() => keepVoice(projectDir, "en", { voice_id: "v1", name: "Ann" })).toThrow(
+        /never written through/,
+      );
+      expect(readFileSync(victim, "utf8")).toBe(VICTIM);
+      expect(
+        lstatSync(
+          join(projectDir, linkJobLog ? ".hyperframes/heygen-jobs.jsonl" : ".hyperframes"),
+        ).isSymbolicLink(),
+      ).toBe(true);
+    });
+  }
+
+  it("never appends to a job log hard-linked to a file outside the project", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "hf-v3-planted-"));
+    mkdirSync(join(projectDir, ".hyperframes"));
+    const victim = join(mkdtempSync(join(tmpdir(), "hf-v3-outside-")), "victim");
+    writeFileSync(victim, VICTIM);
+    linkSync(victim, join(projectDir, ".hyperframes/heygen-jobs.jsonl"));
+    vi.stubGlobal("fetch", async () => reply(200, { data: { id: "j1", status: "completed" } }));
+    await expect(runJob(X, {}, "k1", { log: { projectDir, what: "a line" } })).rejects.toThrow(
+      /never written through/,
+    );
+    expect(() => keepVoice(projectDir, "en", { voice_id: "v1", name: "Ann" })).toThrow(
+      /never written through/,
+    );
+    expect(readFileSync(victim, "utf8")).toBe(VICTIM);
   });
 });

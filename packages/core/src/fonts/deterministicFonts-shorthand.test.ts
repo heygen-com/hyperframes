@@ -38,6 +38,10 @@ describe("a bundled family named only in the font shorthand loads", () => {
     ["a keyword size", "p { font: bold large Inter; }"],
     ["a calc() size", "p { font: calc(10px + 2vw) Inter; }"],
     ["a nested calc() size", 'p { font: calc(var(--size) * 1px)/1 "Inter"; }'],
+    ["a spaced line-height slash", "p { font: 24px / 1.5 Inter; }"],
+    ["a custom-property weight before the size", "p { font: var(--weight) 24px Inter; }"],
+    ["a custom-property size", "p { font: var(--size) Inter; }"],
+    ["a custom-property size with a line-height", 'p { font: 700 var(--size)/1.1 "Inter"; }'],
   ])("%s", async (_case, css) => {
     expect(await inject(css)).toMatch(/@font-face\s*\{[^}]*font-family:\s*"Inter"/i);
   });

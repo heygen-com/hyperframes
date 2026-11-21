@@ -40,8 +40,14 @@ import type {
   RenderChunkEvent,
   StitchPartsEvent,
 } from "./events.js";
-import { handler as handleEvent, stitchHelper, unwrapEvent } from "./handler.js";
+import {
+  handler as handleEvent,
+  stitchHelper,
+  unwrapEvent,
+  useBundledBinaries,
+} from "./handler.js";
 import { S3PlanV2ArtifactPublisher } from "./s3PlanV2Publisher.js";
+import { resolveRestrictPageNetwork } from "../../engine/src/config.js";
 
 interface FakeS3Op {
   kind: "download" | "upload" | "copy";
@@ -255,6 +261,70 @@ describe("unwrapEvent", () => {
     expect(() => unwrapEvent({ Action: "doSomething" } as unknown as LambdaEvent)).toThrow(
       /no recognised Action/,
     );
+  });
+});
+
+describe("render page address rules", () => {
+  it("are on for every invocation unless the function turns them off", async () => {
+    const before = process.env.PRODUCER_RESTRICT_PAGE_NETWORK;
+    try {
+      delete process.env.PRODUCER_RESTRICT_PAGE_NETWORK;
+      await handleEvent({ Action: "warm" } as never, { skipChromeResolution: true });
+      expect(process.env.PRODUCER_RESTRICT_PAGE_NETWORK).toBe("true");
+      expect(resolveRestrictPageNetwork()).toBe(true);
+
+      process.env.PRODUCER_RESTRICT_PAGE_NETWORK = "false";
+      await handleEvent({ Action: "warm" } as never, { skipChromeResolution: true });
+      expect(resolveRestrictPageNetwork()).toBe(false);
+    } finally {
+      if (before === undefined) delete process.env.PRODUCER_RESTRICT_PAGE_NETWORK;
+      else process.env.PRODUCER_RESTRICT_PAGE_NETWORK = before;
+    }
+  });
+});
+
+describe("useBundledBinaries", () => {
+  function taskRoot(...binaries: string[]): string {
+    const root = mkdtempSync(join(tmpdir(), "hf-lambda-task-"));
+    mkdirSync(join(root, "bin"));
+    for (const name of binaries) writeFileSync(join(root, "bin", name), "");
+    return root;
+  }
+
+  it("names the bundled ffmpeg and ffprobe by path, since the task root is the working directory", () => {
+    const root = taskRoot("ffmpeg", "ffprobe");
+    const env: NodeJS.ProcessEnv = { PATH: "/usr/bin" };
+    try {
+      useBundledBinaries(root, env);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+
+    expect(env).toEqual({
+      PATH: `${join(root, "bin")}:/usr/bin`,
+      HYPERFRAMES_FFMPEG_PATH: join(root, "bin", "ffmpeg"),
+      HYPERFRAMES_FFPROBE_PATH: join(root, "bin", "ffprobe"),
+    });
+  });
+
+  it("keeps an override already set and skips a binary the bundle lacks", () => {
+    const root = taskRoot("ffprobe");
+    const env: NodeJS.ProcessEnv = { HYPERFRAMES_FFPROBE_PATH: "/opt/ffprobe" };
+    try {
+      useBundledBinaries(root, env);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+
+    expect(env.HYPERFRAMES_FFPROBE_PATH).toBe("/opt/ffprobe");
+    expect(env.HYPERFRAMES_FFMPEG_PATH).toBeUndefined();
+  });
+
+  it("changes nothing without a bundled bin folder", () => {
+    const env: NodeJS.ProcessEnv = { PATH: "/usr/bin" };
+    useBundledBinaries(join(tmpdir(), "hf-lambda-no-such-task"), env);
+
+    expect(env).toEqual({ PATH: "/usr/bin" });
   });
 });
 

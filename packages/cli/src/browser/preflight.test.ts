@@ -130,6 +130,7 @@ describe("runEnvironmentChecks", () => {
         ok: false,
         level: "error",
         title: "FFprobe not found",
+        code: "ffprobe_not_found",
       }),
     );
     expect(result.ffprobePath).toBeUndefined();
@@ -143,6 +144,7 @@ describe("runEnvironmentChecks", () => {
 
     expect(ffmpeg).toMatchObject({
       ok: false,
+      code: "ffmpeg_not_found",
       detail: 'Configured path does not exist: HYPERFRAMES_FFMPEG_PATH="/missing/ffmpeg.exe"',
     });
   });
@@ -168,6 +170,24 @@ describe("runEnvironmentChecks", () => {
     expect(ffmpeg?.detail).toContain(process.execPath);
     expect(ffmpeg?.detail).toContain("3221225781");
     expect(result.ffmpegPath).toBeUndefined();
+  });
+
+  it.each([
+    { error: { code: "ENOENT" }, said: "(ENOENT)" },
+    { error: { code: "EACCES" }, said: "(EACCES)" },
+    { error: { signal: "SIGKILL" }, said: "(signal SIGKILL)" },
+    { error: { code: "ETIMEDOUT", signal: "SIGTERM" }, said: "(ETIMEDOUT)" },
+  ])("names how FFmpeg failed to start: $said", async ({ error, said }) => {
+    runProcess.mockImplementation((binaryPath: string) => {
+      if (binaryPath !== process.env.HYPERFRAMES_FFMPEG_PATH)
+        return Promise.resolve({ stdout: "ffprobe version 7.1.1\n", stderr: "" });
+      throw Object.assign(new Error("spawn failed"), error);
+    });
+
+    const result = await runEnvironmentChecks();
+    const ffmpeg = result.outcomes.find((outcome) => outcome.name === "FFmpeg");
+
+    expect(ffmpeg?.detail).toBe(`Failed to run "${process.execPath}" -version ${said}.`);
   });
 
   // Windows DLL advice only on Windows; elsewhere the platform install hint.
@@ -271,6 +291,7 @@ describe("runEnvironmentChecks", () => {
       expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
         ok: false,
         title: "Chrome not found",
+        code: "chrome_not_found",
         detail: "ENOTDIR: not a directory, scandir 'chrome-headless-shell'",
         hint: "Run: npx hyperframes browser ensure",
       });
@@ -323,6 +344,7 @@ describe("runEnvironmentChecks", () => {
     expect(result.outcomes.find((outcome) => outcome.name === "Chrome")).toMatchObject({
       ok: false,
       title: "Chrome not found",
+      code: "chrome_not_found",
     });
   });
 });

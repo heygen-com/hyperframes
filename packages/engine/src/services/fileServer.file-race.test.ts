@@ -70,6 +70,9 @@ describe("file server checked reads", () => {
     fs.rmSync(root, { recursive: true, force: true });
   });
 
+  const unmarked = (text: string) =>
+    text.replace(/\n?<meta name="hyperframes-preview-for-another-site">\n?/, "");
+
   function expectClosed() {
     // HTTP sockets can reuse an already-closed fd before fetch resolves.
     // Track successful real closes instead of probing stale descriptor numbers.
@@ -96,7 +99,7 @@ describe("file server checked reads", () => {
     server = await createFileServer({ projectDir, compiledDir });
     const response = await fetch(`${server.url}/${name}`);
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe("checked bytes");
+    expect(unmarked(await response.text())).toBe("checked bytes");
     expectClosed();
   });
 
@@ -193,7 +196,7 @@ describe("file server checked reads", () => {
     expect(text).toContain("compiled");
     expect(text).toContain("window.headTest = 1;");
     expect(text).toContain("window.bodyTest = 1;");
-    expect(await (await fetch(`${server.url}/other.html`)).text()).toBe(html);
+    expect(unmarked(await (await fetch(`${server.url}/other.html`)).text())).toBe(html);
     expectClosed();
   });
 

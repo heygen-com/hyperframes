@@ -61,9 +61,8 @@ describe("runCompileStage — asset media-type preflight", () => {
     workDir = mkdtempSync(join(tmpdir(), "compile-stage-media-type-"));
     const projectDir = join(workDir, "project");
     mkdirSync(projectDir);
-    const htmlPath = join(projectDir, "index.html");
     writeFileSync(
-      htmlPath,
+      join(projectDir, "index.html"),
       `<!doctype html><html><body>
         <div data-composition-id="root" data-width="320" data-height="180" data-duration="1">
           <img id="hero" src="voice.asset" data-start="0" data-end="1" />
@@ -92,7 +91,6 @@ describe("runCompileStage — asset media-type preflight", () => {
       runCompileStage({
         projectDir,
         workDir,
-        htmlPath,
         entryFile: "index.html",
         job: {
           id: "media-type-test",

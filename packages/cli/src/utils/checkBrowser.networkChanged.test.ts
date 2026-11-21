@@ -33,4 +33,29 @@ describe("networkChangesStillFailing", () => {
       `${base}/clip.mp4`,
     ]);
   });
+
+  it("rechecks as the page itself, so a server that wants a same-site signal answers", async () => {
+    const server = createServer((req, res) => {
+      res.statusCode = req.headers.referer === `${base}/` ? 206 : 403;
+      res.end("x");
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    try {
+      const url = `${base}/clip.mp4?hf-proxy=h264`;
+      const failing = await networkChangesStillFailing([
+        {
+          code: "request_failed",
+          severity: "error",
+          message: url,
+          time: 1,
+          url,
+          networkChanged: true,
+        },
+      ]);
+      expect([...failing]).toEqual([]);
+    } finally {
+      server.close();
+    }
+  });
 });

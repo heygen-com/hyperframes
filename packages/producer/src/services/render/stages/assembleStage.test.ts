@@ -92,6 +92,17 @@ describe("runAssembleStage audio duration parity", () => {
     );
   });
 
+  it("normalizes from the PCM the audio stage kept, not from its AAC", async () => {
+    await runAssembleStage(makeInput({ audioPcmPath: "/tmp/audio-source.wav" }));
+
+    expect(padOrTrimAudioMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        audioPath: "/tmp/audio.m4a",
+        sourcePath: "/tmp/audio-source.wav",
+      }),
+    );
+  });
+
   it("gives a silent mp4's faststart the render's configured ffmpeg timeout", async () => {
     await runAssembleStage(makeInput({ hasAudio: false }));
 

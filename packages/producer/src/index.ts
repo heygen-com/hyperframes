@@ -45,6 +45,7 @@ export {
   createOwnedRenderDir,
   listAbandonedRenderDirs,
 } from "./services/render/renderDirOwner.js";
+export type { MissingPathFacts } from "./services/render/missingPath.js";
 export {
   RENDER_REQUEST_VERSION,
   createRenderRequest,
@@ -109,6 +110,7 @@ export { prepareHeifImageInputs } from "./services/heifImagePrep.js";
 
 // ── Video frame injection (Hyperframes-specific hook) ───────────────────────
 export { createVideoFrameInjector } from "@hyperframes/engine";
+export { isBlockedNetworkHost, onRenderRefusal, type RefusedHostClass } from "@hyperframes/engine";
 
 // ── Configuration ───────────────────────────────────────────────────────────
 export { resolveConfig, DEFAULT_CONFIG, type ProducerConfig } from "./config.js";

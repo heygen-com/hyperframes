@@ -33,7 +33,7 @@ Picture-in-picture, 28 px from the edges (bottom-right: y = H − h − 28):
 
 - Lower-third, overlay and picture-in-picture scenes need a transparent root, or they hide the speaker.
 - Glass over bright footage goes white on white: put a dark scrim behind it (about `rgba(0,0,0,.55)` fading out from the top, `.72` at the bottom) and a dark glass base such as `rgba(15,16,22,.78)` with `backdrop-filter: blur(22px)`.
-- More than 3 timed elements on one track warns `timeline_track_too_dense`: give each chapter its own sub-composition.
+- More than 3 timed elements in one file warns `timeline_track_too_dense`, whatever their lanes: give each chapter its own sub-composition.
 - Footage with keyframes more than about 1 s apart freezes on seek: re-encode with `-g <fps>`.
 
 Text behind the speaker (a caption between the footage and a cutout of the person): `captions.md`.

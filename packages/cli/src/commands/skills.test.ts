@@ -2,8 +2,11 @@
 // `node:child_process` at the loader level and inspect the spawned
 // child's env.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "node:events";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 
 async function commandExitCode(): Promise<number> {
   const { consumeCommandResult } = await import("../utils/commandResult.js");
@@ -19,6 +22,7 @@ type SpawnCall = {
   command: string;
   args: ReadonlyArray<string>;
   env: NodeJS.ProcessEnv | undefined;
+  cwd: string | undefined;
 };
 
 type ExecCall = {
@@ -53,8 +57,12 @@ vi.mock("node:child_process", () => ({
     return Buffer.from("11.0.0");
   }),
   spawn: vi.fn(
-    (command: string, args: ReadonlyArray<string>, opts?: { env?: NodeJS.ProcessEnv }) => {
-      state.spawnCalls.push({ command, args, env: opts?.env });
+    (
+      command: string,
+      args: ReadonlyArray<string>,
+      opts?: { env?: NodeJS.ProcessEnv; cwd?: string },
+    ) => {
+      state.spawnCalls.push({ command, args, env: opts?.env, cwd: opts?.cwd });
       const fake = new EventEmitter();
       setImmediate(() => fake.emit("close", state.spawnExitCode, null));
       return fake;
@@ -177,8 +185,13 @@ function skillFlagValues(args: ReadonlyArray<string>): string[] {
   return values;
 }
 
+// Any test that plays a Mac gets developer tools, unless it says otherwise, wherever it runs.
+const developerDir = mkdtempSync(join(tmpdir(), "hf-developer-"));
+mkdirSync(join(developerDir, "usr", "bin"), { recursive: true });
+
 describe("hyperframes skills", () => {
   beforeEach(async () => {
+    vi.stubEnv("DEVELOPER_DIR", developerDir);
     state.execCalls = [];
     state.spawnCalls = [];
     state.spawnExitCode = 0;
@@ -197,6 +210,7 @@ describe("hyperframes skills", () => {
 
   afterEach(async () => {
     setPlatform(originalPlatform);
+    vi.unstubAllEnvs();
     vi.restoreAllMocks();
     await resetCommandResult();
   });
@@ -406,6 +420,15 @@ describe("hyperframes skills", () => {
     expect(skillFlagValues(state.spawnCalls[0]?.args ?? [])).toEqual(["hyperframes-registry"]);
   });
 
+  it("runs the global skills install from the home folder, not the project it was started in", async () => {
+    setPlatform("linux");
+    const { updateSkills } = await import("./skills.js");
+
+    await updateSkills({ onlyMissing: true, cwd: "/projects/cloned" });
+
+    expect(state.spawnCalls[0]?.cwd).toBe(homedir());
+  });
+
   it("checks freshness against the canonical manifest, never a possibly-stale local one", async () => {
     setPlatform("linux");
     const { checkSkills } = await import("../utils/skillsManifest.js");
@@ -442,6 +465,18 @@ describe("hyperframes skills", () => {
     expect(await commandExitCode()).toBe(0);
     // Diagnostic instrumentation: the skip records why, so rare boxes hitting
     // this (fresh Windows without git) are visible instead of silently no-op.
+    expect(trackSkillsInstallSkipped).toHaveBeenCalledWith({ reason: "git_missing" });
+  });
+
+  it("bare `skills` on a Mac without the developer tools skips without running macOS's git stub", async () => {
+    setPlatform("darwin");
+    vi.stubEnv("PATH", "/usr/bin");
+    vi.stubEnv("DEVELOPER_DIR", "/nonexistent-developer-dir");
+
+    const { default: skillsCmd } = await import("./skills.js");
+    await skillsCmd.run?.({ args: {}, rawArgs: [], cmd: skillsCmd } as never);
+
+    expect(state.execCalls.map((call) => call.command)).not.toContain("git");
     expect(trackSkillsInstallSkipped).toHaveBeenCalledWith({ reason: "git_missing" });
   });
 
@@ -609,6 +644,8 @@ describe("hyperframes skills", () => {
       expect(invalidateSkillsCache).toHaveBeenCalled();
     });
   });
+
+  afterAll(() => rmSync(developerDir, { recursive: true, force: true }));
 });
 
 // The router contract: `/hyperframes` picks a workflow, then runs

@@ -1,6 +1,7 @@
 // fallow-ignore-file complexity
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, unlinkSync } from "node:fs";
+import { existsSync, readdirSync, unlinkSync } from "node:fs";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { join, dirname, basename } from "node:path";
 import {
   ensureModel,
@@ -11,7 +12,13 @@ import {
 } from "./manager.js";
 import { findPython, hasPythonPackage, workingPythonEnv } from "./python.js";
 import { writeNewFileSync } from "../utils/writeNewFile.js";
-import { hyperframesCacheDir } from "@hyperframes/core/cache-dir";
+import {
+  assertPrivateCachePath,
+  ensurePrivateCacheDir,
+  foreignWritablePath,
+  sealCacheInstall,
+  trustedCacheRoot,
+} from "@hyperframes/core/cache-dir";
 
 // ---------------------------------------------------------------------------
 // Inline Python script for Kokoro synthesis
@@ -115,13 +122,17 @@ const ESPEAK_LANG_OVERRIDES: Partial<Record<SupportedLang, string>> = {
 // Cache the script to avoid rewriting it on every invocation.
 // The filename carries a version suffix so older installs automatically
 // upgrade when the script body changes (e.g., adding the `lang` kwarg).
-const SCRIPT_DIR = hyperframesCacheDir("tts");
+const CODE_ROOT = trustedCacheRoot();
+const SCRIPT_DIR = join(CODE_ROOT, "tts");
 const SCRIPT_PATH = join(SCRIPT_DIR, "synth-v4.py");
 
 function ensureSynthScript(): string {
+  ensurePrivateCacheDir(SCRIPT_DIR, CODE_ROOT);
+  if (existsSync(SCRIPT_PATH) && foreignWritablePath(SCRIPT_PATH, CODE_ROOT))
+    unlinkSync(SCRIPT_PATH);
   if (!existsSync(SCRIPT_PATH)) {
-    mkdirSync(SCRIPT_DIR, { recursive: true });
     writeNewFileSync(SCRIPT_PATH, SYNTH_SCRIPT);
+    sealCacheInstall(SCRIPT_PATH, CODE_ROOT);
     // Best-effort: delete older versioned scripts left behind by previous
     // CLI releases so users don't accumulate stale files in ~/.cache.
     const currentName = basename(SCRIPT_PATH);
@@ -139,7 +150,7 @@ function ensureSynthScript(): string {
       // Ignore — directory read is best-effort.
     }
   }
-  return SCRIPT_PATH;
+  return assertPrivateCachePath(SCRIPT_PATH, CODE_ROOT);
 }
 
 // ---------------------------------------------------------------------------
@@ -211,7 +222,7 @@ export async function synthesize(
   const scriptPath = ensureSynthScript();
 
   // 4. Ensure output directory exists
-  mkdirSync(dirname(outputPath), { recursive: true });
+  makeOutputFolder(dirname(outputPath));
 
   // 5. Run synthesis
   options?.onProgress?.(`Generating speech with voice ${voice} (${lang})...`);

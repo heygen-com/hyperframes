@@ -16,15 +16,37 @@ export interface StudioSaveFailureInput {
   targetSourceFile?: string | null;
 }
 
+const SERVER_WHY = new Set([
+  "nul",
+  "dangling_symlink",
+  "outside_project",
+  "protected_path",
+  "busy",
+  "permission",
+  "not_a_file",
+  "too_large",
+  "binary",
+  "link",
+  "project_dir_missing",
+]);
+
 export class StudioSaveHttpError extends Error {
   readonly statusCode: number;
   readonly alreadyToasted: boolean;
+  readonly heldFile: boolean;
+  readonly why: string | null;
 
-  constructor(message: string, statusCode: number, options: { alreadyToasted?: boolean } = {}) {
+  constructor(
+    message: string,
+    statusCode: number,
+    options: { alreadyToasted?: boolean; heldFile?: boolean; why?: string | null } = {},
+  ) {
     super(message);
     this.name = "StudioSaveHttpError";
     this.statusCode = statusCode;
     this.alreadyToasted = options.alreadyToasted ?? false;
+    this.heldFile = options.heldFile ?? false;
+    this.why = options.why ?? null;
   }
 }
 
@@ -156,7 +178,7 @@ export function buildStudioSaveFailureProperties(
   const attempt = input.attempt ?? getStudioSaveAttempt(input.error) ?? undefined;
   return {
     source: input.source,
-    error_message: getStudioSaveErrorMessage(input.error),
+    ...studioSaveErrorCodes(input.error),
     status_code: statusCode,
     file_path: input.filePath ?? input.targetSourceFile ?? undefined,
     mutation_type: input.mutationType ?? undefined,
@@ -169,10 +191,45 @@ export function buildStudioSaveFailureProperties(
   };
 }
 
+const isNamed = (name: string) => (error: unknown) => error instanceof Error && error.name === name;
+const ERROR_KEYS: ReadonlyArray<readonly [string, (error: unknown) => boolean]> = [
+  ["conflict", (error) => findCause(error, StudioFileConflictError) !== null],
+  ["held", (error) => findCause(error, StudioSaveHttpError)?.heldFile === true],
+  ["http", (error) => findCause(error, StudioSaveHttpError) !== null],
+  ["network", (error) => findCause(error, StudioSaveNetworkError) !== null],
+  ["aborted", isNamed("AbortError")],
+  ["blocked", isNamed("GsapEditBlockedError")],
+];
+
+export function studioSaveErrorCodes(error: unknown): Record<string, StudioTelemetryValue> {
+  const failure = error instanceof Error ? error : null;
+  const http = findCause(error, StudioSaveHttpError);
+  const errorKey = ERROR_KEYS.find(([, matches]) => matches(error))?.[0] ?? "unknown";
+  return {
+    error_class: failure?.name ?? typeof error,
+    error_key: errorKey,
+    server_why: http ? (http.why ?? "other") : undefined,
+    block_reason: blockReason(error),
+  };
+}
+
+function findCause<T extends Error>(error: unknown, type: new (...args: never[]) => T): T | null {
+  for (let at = error, depth = 0; at && typeof at === "object" && depth < 5; depth++) {
+    if (at instanceof type) return at;
+    at = (at as { cause?: unknown }).cause;
+  }
+  return null;
+}
+
+function blockReason(error: unknown): string | undefined {
+  if (!(error instanceof Error) || error.name !== "GsapEditBlockedError") return undefined;
+  const reason = (error as { reason?: unknown }).reason;
+  return typeof reason === "string" ? reason : undefined;
+}
+
 /**
- * The specific cause behind a blocked GSAP edit. `error_message` only carries
- * the coarse copy, and one of those strings covers six different situations,
- * so the message alone cannot say which one a user hit.
+ * The specific cause behind a blocked GSAP edit: one block reason covers six
+ * different situations, so the reason alone cannot say which one a user hit.
  */
 function gsapBlockDetail(error: unknown): string | undefined {
   if (!(error instanceof Error) || error.name !== "GsapEditBlockedError") return undefined;
@@ -188,10 +245,39 @@ export function trackStudioEditBlocked(input: StudioSaveFailureInput): void {
   trackStudioEvent("edit_blocked", buildStudioSaveFailureProperties(input));
 }
 
+const HELD_FILE_WORDS = {
+  busy: (file: string) => `${file} is open in another program. Close it there, then try again.`,
+  permission: (file: string) =>
+    `${file} can't be changed: it is read-only or protected. Check its permissions, then try again.`,
+} as const;
+
+function heldFileMessage(body: string, path: string | undefined): string | null {
+  if (!path) return null;
+  try {
+    const why: unknown = (JSON.parse(body) as { why?: unknown }).why;
+    if (why !== "busy" && why !== "permission") return null;
+    return HELD_FILE_WORDS[why](path.split(/[\\/]/).pop() ?? path);
+  } catch {
+    return null;
+  }
+}
+
+export const withStatus = (words: string, response: Response) => `${words} (${response.status})`;
+
+export async function heldFileWordsOf(response: Response, path: string): Promise<string | null> {
+  return heldFileMessage(
+    await response
+      .clone()
+      .text()
+      .catch(() => ""),
+    path,
+  );
+}
+
 export async function createStudioSaveHttpError(
   response: Response,
   fallbackMessage: string,
-  options: { alreadyToasted?: boolean } = {},
+  options: { alreadyToasted?: boolean; path?: string } = {},
 ): Promise<StudioSaveHttpError> {
   let body = "";
   try {
@@ -200,11 +286,31 @@ export async function createStudioSaveHttpError(
     body = "";
   }
   const detail = body.trim().slice(0, 300);
-  const message = detail
-    ? `${fallbackMessage} (${response.status}): ${detail}`
-    : `${fallbackMessage} (${response.status})`;
-  return new StudioSaveHttpError(message, response.status, options);
+  const held = heldFileMessage(body, options.path);
+  const why = serverWhy(body);
+  const message =
+    held ??
+    (detail
+      ? `${fallbackMessage} (${response.status}): ${detail}`
+      : `${fallbackMessage} (${response.status})`);
+  return new StudioSaveHttpError(message, response.status, {
+    ...options,
+    heldFile: held !== null,
+    why,
+  });
 }
+
+function serverWhy(body: string): string | null {
+  try {
+    const why: unknown = (JSON.parse(body) as { why?: unknown }).why;
+    return typeof why === "string" && SERVER_WHY.has(why) ? why : null;
+  } catch {
+    return null;
+  }
+}
+
+export const heldFileWords = (error: unknown): string | null =>
+  error instanceof StudioSaveHttpError && error.heldFile ? error.message : null;
 
 export async function retryStudioSave<T>(
   operation: (attempt: number) => Promise<T>,

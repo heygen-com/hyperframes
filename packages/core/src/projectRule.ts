@@ -5,3 +5,7 @@ export function isHyperframesProject(fileNames: Iterable<string>): boolean {
   const names = new Set(fileNames);
   return names.has("index.html") && PROJECT_MARKER_FILES.some((name) => names.has(name));
 }
+
+export function isCompositionFolder(fileNames: Iterable<string>): boolean {
+  return new Set(fileNames).has("index.html");
+}

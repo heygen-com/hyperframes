@@ -32,7 +32,7 @@ const OFF_HINTS: Record<string, string> = {
   "nested-capture-canvas":
     "remove the inner <canvas layoutsubtree> / content=drawable, or drop motion blur",
 };
-const CHOSEN = new Set(["translation-only", "tier-attribute"]);
+const CHOSEN = new Set(["tier-auto", "tier-attribute"]);
 const GENERIC_OFF_HINT = "remove what the reason names, or drop data-motion-blur";
 
 const ASKED = 'data-motion-blur="on" is set but';

@@ -1,3 +1,4 @@
+import { elementZIndex } from "@hyperframes/core/runtime/editing-port";
 import { readLayerRevealPriorZ } from "./timelineElementHelpers";
 
 export interface StackingContextDescriptor {
@@ -16,17 +17,7 @@ export function getElementZIndex(element: HTMLElement): number {
     // An active Layers-panel reveal lift reports the element's TRUE z.
     const prior = readLayerRevealPriorZ(element);
     if (prior != null) return prior;
-    const inline = element.style?.zIndex;
-    if (inline && inline !== "auto") {
-      const parsed = parseInt(inline, 10);
-      if (Number.isFinite(parsed)) return parsed;
-    }
-    const win = element.ownerDocument?.defaultView;
-    if (!win) return 0;
-    const value = win.getComputedStyle(element).zIndex;
-    if (value === "auto" || value === "") return 0;
-    const parsed = parseInt(value, 10);
-    return Number.isFinite(parsed) ? parsed : 0;
+    return elementZIndex(element);
   } catch {
     return 0;
   }

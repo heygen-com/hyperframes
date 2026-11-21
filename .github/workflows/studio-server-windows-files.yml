@@ -1,0 +1,29 @@
+name: Studio server files on Windows
+
+# A file another program holds open, or a read-only one, must not read as missing or as a server error.
+on:
+  pull_request:
+    paths:
+      - packages/studio-server/src/routes/files.ts
+      - packages/studio-server/src/routes/files.heldFile.test.ts
+      - packages/core/src/renameWithRetry.ts
+      - .github/workflows/studio-server-windows-files.yml
+
+permissions:
+  contents: read
+
+jobs:
+  held-file:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - run: bun install --frozen-lockfile --ignore-scripts --linker=hoisted
+      - run: bun run --filter '@hyperframes/{parsers,lint,studio-server}' build
+      - run: bun run --cwd packages/core build
+      - run: npx vitest run src/routes/files.heldFile.test.ts
+        working-directory: packages/studio-server

@@ -4,7 +4,7 @@ import { errorBox } from "../ui/format.js";
 import { failUsage } from "./commandResult.js";
 
 export type CompositionEntryParseError = {
-  kind: "outside-project" | "not-found" | "not-a-file";
+  kind: "outside-project" | "not-found" | "not-a-file" | "not-html";
   entryFile: string;
   entryPath: string;
   projectDir: string;
@@ -56,6 +56,7 @@ export function parseCompositionEntryArg(
     // A directory would pass existsSync downstream and fail with EISDIR in the producer.
     return fail("not-a-file");
   }
+  if (!/\.html?$/i.test(entryPath)) return fail("not-html");
   return { ok: true, value: relativeEntry.split(sep).join("/") };
 }
 
@@ -91,6 +92,12 @@ export function compositionEntryErrorMessage(error: CompositionEntryParseError):
         title: "Invalid composition path",
         message: `${resolved}, a directory, not an .html file (project directory ${error.projectDir}).`,
         hint: "Pass a path to a .html file (e.g. compositions/intro.html), or omit --composition to render index.html.",
+      };
+    case "not-html":
+      return {
+        title: "Invalid composition path",
+        message: `${resolved}, which is not an .html file, so it is refused.`,
+        hint: "Pass a path to a .html or .htm file (e.g. compositions/intro.html).",
       };
   }
 }

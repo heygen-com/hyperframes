@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { runCommand } from "citty";
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
@@ -53,6 +54,9 @@ const mocks = vi.hoisted(() => {
 });
 const FakeProxyTranscodeError = mocks.ProxyTranscodeError;
 
+/** What the page itself sends for its media; a proxy copy needs a same-site signal. */
+const OWN_PAGE = { headers: { "Sec-Fetch-Site": "same-origin" } };
+
 const mediaMocks = vi.hoisted(() => ({
   probeAssetCodec: vi.fn(async () => ({
     codecName: "hevc",
@@ -101,7 +105,25 @@ vi.mock("@hyperframes/studio-server/media-proxy-preview", () => ({
   ),
 }));
 
-const { registerCompositionRoute } = await import("./play.js");
+const server = vi.hoisted(() => ({
+  fetch: undefined as ((request: Request) => Response | Promise<Response>) | undefined,
+}));
+vi.mock("@hono/node-server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hono/node-server")>()),
+  createAdaptorServer: (options: { fetch: (request: Request) => Response | Promise<Response> }) => {
+    server.fetch = options.fetch;
+    return {};
+  },
+}));
+vi.mock("../utils/compositionServer.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../utils/compositionServer.js")>()),
+  resolveRuntimePath: () => "/unused-runtime.js",
+  resolvePlayerPath: () => "/unused-player.js",
+  listenOnFreePort: async () => 3003,
+}));
+
+const { default: play, buildPlayApp, registerCompositionRoute } = await import("./play.js");
+const { INERT_REFUSAL_HEADERS } = await import("../utils/strayRequestRefusal.js");
 
 let dir: string | undefined;
 
@@ -135,7 +157,7 @@ it("serves direct VP8 proxy requests for alpha sources", async () => {
   mocks.resolveProxy.mockResolvedValueOnce(proxyPath);
   const app = await buildApp(project, true);
 
-  const res = await app.request("/composition/clip.mov?hf-proxy=auto");
+  const res = await app.request("/composition/clip.mov?hf-proxy=auto", OWN_PAGE);
 
   expect(res.status).toBe(200);
   expect(res.headers.get("content-type")).toBe("video/webm");
@@ -153,6 +175,24 @@ async function buildApp(project: ProjectDir, autoProxy: boolean): Promise<Hono> 
 }
 
 describe("registerCompositionRoute", () => {
+  it("does not serve env files, Git data or the tools' own records", async () => {
+    const project = tmpProject();
+    mkdirSync(join(project.dir, ".git"));
+    mkdirSync(join(project.dir, ".hyperframes"));
+    writeFileSync(join(project.dir, ".env"), "KEY=secret");
+    writeFileSync(join(project.dir, ".env.local"), "KEY=secret");
+    writeFileSync(join(project.dir, ".git", "config"), "[core]");
+    writeFileSync(join(project.dir, ".hyperframes", "lambda-stack-x.json"), "{}");
+    writeFileSync(join(project.dir, "logo.png"), "png");
+    const app = await buildApp(project, false);
+
+    for (const path of [".env", ".ENV", ".env.local", ".git/config"]) {
+      expect((await app.request(`/composition/${path}`)).status).toBe(404);
+    }
+    expect((await app.request("/composition/.hyperframes/lambda-stack-x.json")).status).toBe(404);
+    expect((await app.request("/composition/logo.png")).status).toBe(200);
+  });
+
   it("lets a browser revalidate the composition and its assets instead of refetching them", async () => {
     const project = tmpProject();
     writeFileSync(join(project.dir, "index.html"), "<html><head></head><body></body></html>");
@@ -161,17 +201,21 @@ describe("registerCompositionRoute", () => {
 
     const etags: Record<string, string> = {};
     for (const path of ["/composition/index.html", "/composition/clip.mp4"]) {
-      const first = await app.request(path);
+      const own = { "Sec-Fetch-Site": "same-origin" };
+      const first = await app.request(path, { headers: own });
       etags[path] = first.headers.get("ETag") ?? "";
       expect(etags[path]).not.toBe("");
       expect(first.headers.get("Cache-Control")).toBe("no-cache");
-      const again = await app.request(path, { headers: { "If-None-Match": etags[path] } });
+      const again = await app.request(path, { headers: { ...own, "If-None-Match": etags[path] } });
       expect(again.status).toBe(304);
     }
 
     writeFileSync(join(project.dir, "clip.mp4"), Buffer.from("0123456789abc", "utf-8"));
     const edited = await app.request("/composition/clip.mp4", {
-      headers: { "If-None-Match": etags["/composition/clip.mp4"] ?? "" },
+      headers: {
+        "Sec-Fetch-Site": "same-origin",
+        "If-None-Match": etags["/composition/clip.mp4"] ?? "",
+      },
     });
     expect(edited.status).toBe(200);
   });
@@ -274,7 +318,7 @@ describe("registerCompositionRoute", () => {
     mocks.resolveProxy.mockResolvedValue(proxyPath);
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/clip.mp4?hf-proxy=h264");
+    const res = await app.request("/composition/clip.mp4?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("transcoded-h264-bytes");
@@ -293,7 +337,7 @@ describe("registerCompositionRoute", () => {
     mocks.resolveProxy.mockResolvedValue(proxyPath);
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/clip.mov?hf-proxy=h264");
+    const res = await app.request("/composition/clip.mov?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("video/mp4");
@@ -310,7 +354,7 @@ describe("registerCompositionRoute", () => {
       mocks.resolveProxy.mockResolvedValue(proxyPath);
       const app = await buildApp(project, true);
 
-      const res = await app.request(`/composition/clip.${extension}?hf-proxy=h264`);
+      const res = await app.request(`/composition/clip.${extension}?hf-proxy=h264`, OWN_PAGE);
 
       expect(res.status).toBe(200);
       expect(await res.text()).toBe("transcoded-h264-bytes");
@@ -325,7 +369,7 @@ describe("registerCompositionRoute", () => {
     );
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/clip.mp4?hf-proxy=h264");
+    const res = await app.request("/composition/clip.mp4?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(502);
   });
@@ -336,7 +380,7 @@ describe("registerCompositionRoute", () => {
     mocks.resolveProxy.mockRejectedValue(new mocks.ProxyCapacityError());
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/clip.mp4?hf-proxy=h264");
+    const res = await app.request("/composition/clip.mp4?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(503);
     expect(res.headers.get("retry-after")).toBe("1");
@@ -347,10 +391,57 @@ describe("registerCompositionRoute", () => {
     writeFileSync(join(project.dir, "image.png"), "not-a-video");
     const app = await buildApp(project, true);
 
-    const res = await app.request("/composition/image.png?hf-proxy=h264");
+    const res = await app.request("/composition/image.png?hf-proxy=h264", OWN_PAGE);
 
     expect(res.status).toBe(404);
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
+  });
+
+  // fails without the fix: another site's page could make this machine transcode the asset,
+  // and a request carrying neither fetch metadata nor a Referer counted as this site's.
+  it.each([
+    ["cross-site", { "Sec-Fetch-Site": "cross-site" }],
+    ["same-site", { "Sec-Fetch-Site": "same-site" }],
+    ["no fetch metadata and no Referer", {}],
+  ])(
+    "refuses ?hf-proxy for a request from another site (%s) without starting a transcode",
+    async (_label, headers: Record<string, string>) => {
+      const project = tmpProject();
+      writeFileSync(join(project.dir, "clip.mp4"), "original-hevc-bytes");
+      const app = await buildApp(project, true);
+
+      const res = await app.request("/composition/clip.mp4?hf-proxy=h264", { headers });
+
+      expect(res.status).toBe(403);
+      expect(mocks.resolveProxy).not.toHaveBeenCalled();
+      expect(mediaMocks.probeAssetCodec).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still serves ?hf-proxy to the play page itself and plain assets to another site", async () => {
+    const project = tmpProject();
+    writeFileSync(join(project.dir, "clip.mp4"), "original-hevc-bytes");
+    const proxyPath = join(project.dir, "proxy.mp4");
+    writeFileSync(proxyPath, "transcoded-h264-bytes");
+    mocks.resolveProxy.mockResolvedValue(proxyPath);
+    const app = await buildApp(project, true);
+
+    const own = await app.request("/composition/clip.mp4?hf-proxy=h264", {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+    });
+    expect(own.status).toBe(200);
+    expect(await own.text()).toBe("transcoded-h264-bytes");
+
+    const referred = await app.request("http://localhost/composition/clip.mp4?hf-proxy=h264", {
+      headers: { Referer: "http://localhost/" },
+    });
+    expect(referred.status).toBe(200);
+
+    const plain = await app.request("/composition/clip.mp4", {
+      headers: { "Sec-Fetch-Site": "cross-site" },
+    });
+    expect(plain.status).toBe(200);
+    expect(await plain.text()).toBe("original-hevc-bytes");
   });
 
   it("serves the runtime script ahead of every author script", async () => {
@@ -410,8 +501,150 @@ describe("registerCompositionRoute", () => {
     expect(await htmlRes.text()).not.toContain("__HF_MEDIA_CODEC_MAP__");
     expect(mocks.scanProjectMediaCodecMap).not.toHaveBeenCalled();
 
-    const proxyRes = await app.request("/composition/clip.mp4?hf-proxy=h264");
+    const proxyRes = await app.request("/composition/clip.mp4?hf-proxy=h264", OWN_PAGE);
     expect(proxyRes.status).toBe(404);
     expect(mocks.resolveProxy).not.toHaveBeenCalled();
+  });
+});
+
+describe("a composition document another site loads", () => {
+  const MARK = '<meta name="hyperframes-preview-for-another-site">';
+  const SANDBOX = "sandbox allow-scripts";
+
+  async function setup() {
+    const project = tmpProject();
+    writeFileSync(join(project.dir, "index.html"), "<html><head></head><body></body></html>");
+    return buildApp(project, false);
+  }
+
+  it("is marked and sandboxed when another site frames it", async () => {
+    const app = await setup();
+    const res = await app.request("/composition/index.html", {
+      headers: { "Sec-Fetch-Site": "cross-site", "Sec-Fetch-Dest": "iframe" },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(MARK);
+    expect(res.headers.get("Content-Security-Policy")).toBe(SANDBOX);
+    expect(res.headers.get("ETag")).toBeNull();
+  });
+
+  it("gets a marked 200, not a 304, for the unmarked copy's validators", async () => {
+    const app = await setup();
+    const own = await app.request("/composition/index.html", {
+      headers: { "Sec-Fetch-Site": "same-origin" },
+    });
+    const etag = own.headers.get("ETag") ?? "";
+    expect(etag).not.toBe("");
+    const res = await app.request("/composition/index.html", {
+      headers: { "Sec-Fetch-Site": "cross-site", "If-None-Match": etag },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain(MARK);
+  });
+
+  it("stays unmarked for the play page's own player", async () => {
+    const app = await setup();
+    const res = await app.request("/composition/index.html", {
+      headers: { "Sec-Fetch-Site": "same-origin", "Sec-Fetch-Dest": "iframe" },
+    });
+    expect(await res.text()).not.toContain(MARK);
+    expect(res.headers.get("Content-Security-Policy")).toBeNull();
+  });
+
+  it("is marked on a LAN name with no fetch metadata unless the play page sent it", async () => {
+    const app = await setup();
+    const lan = "http://192.168.1.20:3003";
+    const foreign = await app.request(`${lan}/composition/index.html`);
+    expect(await foreign.text()).toContain(MARK);
+    const own = await app.request(`${lan}/composition/index.html`, {
+      headers: { Referer: `${lan}/` },
+    });
+    expect(await own.text()).not.toContain(MARK);
+  });
+
+  // fails without the fix: a loopback load with no fetch metadata counted as the play page's own.
+  it("is marked on loopback with no fetch metadata unless the play page sent it", async () => {
+    const app = await setup();
+    const local = "http://localhost:3003";
+    const bare = await app.request(`${local}/composition/index.html`);
+    expect(await bare.text()).toContain(MARK);
+    expect(bare.headers.get("Content-Security-Policy")).toBe(SANDBOX);
+    const foreign = await app.request(`${local}/composition/index.html`, {
+      headers: { Referer: "http://elsewhere.example/page" },
+    });
+    expect(await foreign.text()).toContain(MARK);
+    const own = await app.request(`${local}/composition/index.html`, {
+      headers: { Referer: `${local}/` },
+    });
+    expect(await own.text()).not.toContain(MARK);
+    for (const res of [bare, own]) expect(res.headers.get("Vary")).toBe("Sec-Fetch-Site, Referer");
+  });
+});
+
+// Windows refuses control characters in folder names.
+it.skipIf(process.platform === "win32")(
+  "shows a folder name with control characters as visible escapes and as HTML text",
+  async () => {
+    // Built rather than written: a literal control character in the source is a lint error.
+    const esc = String.fromCharCode(27);
+    dir = mkdtempSync(join(tmpdir(), "hf-play-test-"));
+    const project = join(dir, `video<b>${esc}]0;x${String.fromCharCode(7)}${esc}[2J`);
+    mkdirSync(project);
+    writeFileSync(join(project, "index.html"), "<html></html>");
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      void runCommand(play, { rawArgs: [project, "--no-open"] });
+      await vi.waitFor(() => expect(log.mock.calls.flat().join("\n")).toContain("Project"));
+      const human = log.mock.calls.map((call) => call.join(" ")).join("\n");
+      const page = await (await server.fetch!(new Request("http://localhost:3003/"))).text();
+
+      expect(human.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+      expect(human).toContain("video<b>\\x1b]0;x\\x07\\x1b[2J");
+      expect(page).not.toContain("video<b>");
+      expect(page).toContain("<title>video&lt;b&gt;");
+    } finally {
+      log.mockRestore();
+    }
+  },
+);
+describe("a request the play server has no page for", () => {
+  async function playApp() {
+    const project = tmpProject();
+    writeFileSync(join(project.dir, "index.html"), "<html><head></head><body></body></html>");
+    writeFileSync(join(project.dir, "player.js"), "");
+    writeFileSync(join(project.dir, "runtime.js"), "");
+    return buildPlayApp(project, false, {
+      playerPath: join(project.dir, "player.js"),
+      runtimePath: join(project.dir, "runtime.js"),
+    });
+  }
+
+  // fails without the fix: these were a 404 document on the play page's own origin, readable by
+  // composition script in a frame or popup, or (for `/` and composition files) the page itself.
+  it.each([
+    "/oauth/callback?code=c0de&state=st4te",
+    "/callback?code=c0de&state=st4te",
+    "/?code=c0de&state=st4te",
+    "/composition/index.html?code=c0de",
+    "/no-such-page",
+    "/composition/missing.html",
+  ])("gets an inert plain-text refusal: %s", async (path) => {
+    const app = await playApp();
+    const res = await app.request(path, { headers: { "Sec-Fetch-Site": "cross-site" } });
+    expect(res.status).toBe(404);
+    expect(Object.fromEntries(res.headers)).toEqual(
+      Object.fromEntries(
+        Object.entries(INERT_REFUSAL_HEADERS).map(([name, value]) => [name.toLowerCase(), value]),
+      ),
+    );
+    expect(await res.text()).toBe("Not found");
+  });
+
+  it("leaves the player page and its bundles as they were", async () => {
+    const app = await playApp();
+    for (const path of ["/", "/player.js", "/runtime.js", "/composition/index.html"]) {
+      const res = await app.request(path, { headers: { "Sec-Fetch-Site": "same-origin" } });
+      expect(res.status).toBe(200);
+    }
   });
 });

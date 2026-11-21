@@ -822,6 +822,61 @@ describe("timeline edit command", () => {
     }
   });
 
+  describe("a plan that shifts adjacent clips", () => {
+    const row = (id: string, start: number) =>
+      `<div id="${id}" data-hf-id="${id}" data-start="${start}" data-duration="2" data-track-index="0"></div>`;
+    const track = () => {
+      const dir = mkdtempSync(join(tmpdir(), "hf-timeline-shift-"));
+      writeFileSync(
+        join(dir, "index.html"),
+        `<div data-composition-id="main" data-duration="12">${row("a", 0)}${row("b", 2)}${row("c", 4)}</div>`,
+      );
+      return dir;
+    };
+    const apply = (dir: string, edits: object[]) => {
+      const planPath = join(dir, "edits.json");
+      writeFileSync(planPath, JSON.stringify(edits));
+      return run(dir, "apply", planPath);
+    };
+
+    it("applies when each clip moves forward ahead of the clip it passes", () => {
+      const dir = track();
+      try {
+        const result = apply(dir, [
+          { verb: "move", ref: "#a", time: "1" },
+          { verb: "move", ref: "#b", time: "3" },
+          { verb: "move", ref: "#c", time: "5" },
+        ]);
+        expect(result.status, result.stdout).toBe(0);
+        const source = readFileSync(join(dir, "index.html"), "utf8");
+        for (const [id, start] of [
+          ["a", 1],
+          ["b", 3],
+          ["c", 5],
+        ] as const)
+          expect(source).toMatch(new RegExp(`id="${id}"[^>]*data-start="${start}"`));
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("refuses a plan whose end state overlaps, and writes nothing", () => {
+      const dir = track();
+      try {
+        const before = readFileSync(join(dir, "index.html"), "utf8");
+        const result = apply(dir, [
+          { verb: "move", ref: "#a", time: "1" },
+          { verb: "move", ref: "#b", time: "3" },
+        ]);
+        expect(result.status).toBe(2);
+        expect(result.stdout).toContain("would overlap");
+        expect(readFileSync(join(dir, "index.html"), "utf8")).toBe(before);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+  });
+
   it("applies a JSON plan atomically and undoes its receipt", () => {
     const dir = project();
     try {

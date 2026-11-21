@@ -6,7 +6,9 @@ import { homedir } from "node:os";
 import { join, win32 as pathWin32 } from "node:path";
 import {
   getElementScreenshotClip,
+  grantCaptureLoads,
   thumbnailDeviceScaleFactor,
+  thumbnailSeekReadyInBrowser,
   type ScreenshotClip,
 } from "@hyperframes/studio-server";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
@@ -227,6 +229,7 @@ async function prepareThumbnailPage(
     height: opts.height,
     deviceScaleFactor: thumbnailDeviceScaleFactor(opts),
   });
+  await grantCaptureLoads(await page.createCDPSession(), opts.previewUrl);
   await page.goto(opts.previewUrl, { waitUntil: "domcontentloaded", timeout: 10000 });
   await page.evaluate(() => {
     document.documentElement.style.background = "#1c2028";
@@ -234,11 +237,7 @@ async function prepareThumbnailPage(
     document.body.style.margin = "0";
     document.body.style.overflow = "hidden";
   });
-  await page
-    .waitForFunction(`!!(window.__timelines && Object.keys(window.__timelines).length > 0)`, {
-      timeout: 5000,
-    })
-    .catch(() => {});
+  await page.waitForFunction(thumbnailSeekReadyInBrowser, { timeout: 5000 }).catch(() => {});
   await seekThumbnailPreview(page, opts.seekTime);
   await page.evaluate("window.__hfWaitForSeekCompletion?.()");
   await applyStudioRenderBodyScriptsToThumbnailPage(page, opts.project.dir, opts.compPath);

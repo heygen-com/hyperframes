@@ -1,10 +1,20 @@
 import { defineCommand } from "../utils/defineCommand.js";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { finishCommand } from "../utils/commandResult.js";
 import { withMediaAuthEnvironment } from "../auth/media-environment.js";
+import {
+  PROJECT_ENV_ORIGINS,
+  PROJECT_ENV_YIELDED,
+  projectEnvOrigins,
+  projectEnvYielded,
+} from "../utils/dotEnv.js";
+import {
+  skipWorkingDirectoryInExeSearch,
+  withOnlyTrustedPathFolders,
+} from "../utils/windowsExeSearch.js";
 
 const MEDIA_USE_ARGS = {
   type: { type: "string", description: "What to find: bgm, sfx, image, icon, logo, voice" },
@@ -75,6 +85,21 @@ export function mediaUseVerbFlags(verb: MediaUseVerb): string[] {
   return verb === "resolve" ? [] : [`--${verb}`];
 }
 
+export function mediaUseEngineEnv(
+  env: NodeJS.ProcessEnv,
+  entry: string | undefined = process.argv[1],
+  platform: NodeJS.Platform = process.platform,
+  origins: Record<string, string> = projectEnvOrigins(),
+  yielded: [string, string][] = projectEnvYielded(),
+): NodeJS.ProcessEnv {
+  const scoped = withOnlyTrustedPathFolders(env, platform);
+  skipWorkingDirectoryInExeSearch(scoped, platform);
+  if (Object.keys(origins).length > 0) scoped[PROJECT_ENV_ORIGINS] = JSON.stringify(origins);
+  if (yielded.length > 0) scoped[PROJECT_ENV_YIELDED] = JSON.stringify(yielded);
+  if (!entry || /\.[cm]?ts$/.test(entry)) return scoped;
+  return { ...scoped, HYPERFRAMES_CLI_ENTRY: resolve(entry) };
+}
+
 type InvokeMediaUse = (verb: MediaUseVerb) => never | Promise<never>;
 
 async function invokeEngine(verb: MediaUseVerb): Promise<never> {
@@ -84,7 +109,7 @@ async function invokeEngine(verb: MediaUseVerb): Promise<never> {
   const result = await withMediaAuthEnvironment((env) =>
     spawnSync(process.execPath, [resolveMediaUseEnginePath(here), ...flag, ...passed], {
       stdio: "inherit",
-      env,
+      env: mediaUseEngineEnv(env),
     }),
   );
   if (result.error) throw result.error;
@@ -103,6 +128,8 @@ export function createMediaUseCommand(invoke: InvokeMediaUse = invokeEngine) {
   const subCommands = {
     ...Object.fromEntries(MEDIA_USE_VERBS.map((name) => [name, () => subcommand(name, invoke)])),
     generate: () => import("./media-use/generate.js").then((m) => m.default),
+    voices: () => import("./media-use/voices.js").then((m) => m.default),
+    avatars: () => import("./media-use/avatars.js").then((m) => m.default),
   };
   return defineCommand({
     meta: { name: "media-use", description: "Resolve and operate on project media" },

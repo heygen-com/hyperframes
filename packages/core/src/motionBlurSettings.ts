@@ -3,6 +3,7 @@
 export const MOTION_BLUR_ATTR = {
   enable: "data-motion-blur",
   shutter: "data-motion-blur-shutter",
+  phase: "data-motion-blur-phase",
   samples: "data-motion-blur-samples",
   events: "data-motion-blur-events",
   tier: "data-motion-blur-tier",
@@ -10,6 +11,7 @@ export const MOTION_BLUR_ATTR = {
 
 export const MOTION_BLUR_LIMITS = {
   shutterDeg: { min: 0, max: 720, default: 240 },
+  phaseDeg: { min: -360, max: 360 },
   samples: { min: 2, max: 64 },
 } as const;
 
@@ -18,6 +20,7 @@ export type MotionBlurTier = "auto" | "capture" | "filter";
 export interface MotionBlurSettings {
   enabled: boolean;
   shutterDeg: number;
+  phaseDeg: number | null;
   /** A fixed count per frame; null sizes it to each smear, never under 32. */
   samples: number | null;
   events: boolean;
@@ -34,12 +37,14 @@ function number(value: string | null): number | null {
 
 export function readMotionBlurSettings(attr: (name: string) => string | null): MotionBlurSettings {
   const shutter = number(attr(MOTION_BLUR_ATTR.shutter));
+  const phase = number(attr(MOTION_BLUR_ATTR.phase));
   const samples = number(attr(MOTION_BLUR_ATTR.samples));
   const tier = attr(MOTION_BLUR_ATTR.tier);
-  const { shutterDeg, samples: bounds } = MOTION_BLUR_LIMITS;
+  const { shutterDeg, phaseDeg, samples: bounds } = MOTION_BLUR_LIMITS;
   return {
     enabled: attr(MOTION_BLUR_ATTR.enable) === "on",
     shutterDeg: clamp(shutter ?? shutterDeg.default, shutterDeg.min, shutterDeg.max),
+    phaseDeg: phase === null ? null : clamp(phase, phaseDeg.min, phaseDeg.max),
     samples: samples === null ? null : Math.round(clamp(samples, bounds.min, bounds.max)),
     events: attr(MOTION_BLUR_ATTR.events) === "on",
     tier: tier === "capture" || tier === "filter" ? tier : "auto",
@@ -58,6 +63,7 @@ export function motionBlurAttributeEdits(
     [MOTION_BLUR_ATTR.enable]: settings.enabled ? "on" : null,
     [MOTION_BLUR_ATTR.shutter]:
       settings.shutterDeg === shutterDeg.default ? null : String(settings.shutterDeg),
+    [MOTION_BLUR_ATTR.phase]: settings.phaseDeg === null ? null : String(settings.phaseDeg),
     [MOTION_BLUR_ATTR.samples]: settings.samples === null ? null : String(settings.samples),
     [MOTION_BLUR_ATTR.events]: settings.events ? "on" : null,
     [MOTION_BLUR_ATTR.tier]: settings.tier === "auto" ? null : settings.tier,

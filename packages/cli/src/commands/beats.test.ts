@@ -132,12 +132,29 @@ describe.skipIf(!canDecode)("hyperframes beats", () => {
     expect(out).toMatch(/No music track found/);
   });
 
-  it("writes nothing for a track with no steady beat", async () => {
+  it("answers a track with no steady beat with an empty result and writes nothing", async () => {
     const dir = project("silent", null);
     const { exitCode, out } = await runBeats(dir);
-    expect(exitCode).toBe(1);
-    expect(out).toMatch(/No beats detected in assets\/song\.wav/);
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(out)).toEqual({
+      ok: true,
+      track: "assets/song.wav",
+      file: null,
+      count: 0,
+      bpm: null,
+    });
     expect(existsSync(join(dir, "beats"))).toBe(false);
+  });
+
+  it("answers one ambient file with an empty beat list, for a person and for --json", async () => {
+    const dir = project("silent-file", null);
+    const song = join(dir, "assets", "song.wav");
+    const json = await runBeats(song);
+    expect(json.exitCode).toBe(0);
+    expect(JSON.parse(json.out)).toMatchObject({ ok: true, file: song, count: 0, beatTimes: [] });
+    const person = await runBeats(song, false);
+    expect(person.exitCode).toBe(0);
+    expect(person.out).toMatch(/No beats in /);
   });
 
   it("refuses a music src that resolves outside the project", async () => {
@@ -328,4 +345,35 @@ describe.skipIf(!canDecode)("beats source discovery", () => {
     );
     expectMusicFile("bed.wav");
   });
+});
+
+// fails without the fix: the track name from index.html reached the terminal with its control characters live.
+describe.skipIf(!canDecode || process.platform === "win32")("beats on an oddly named track", () => {
+  it("prints the track's control characters as visible escapes while it works", async () => {
+    const dir = project("odd-track", 120);
+    writeFileSync(join(dir, "be\u001b[2Jd.wav"), readFileSync(join(dir, "assets", "song.wav")));
+    writeFileSync(
+      join(dir, "index.html"),
+      `<div data-composition-id="main"><audio id="music" src="be%1B[2Jd.wav"></audio></div>`,
+    );
+    const { exitCode, out } = await runBeats(dir, false);
+    expect(exitCode).toBe(0);
+    expect(out).toContain("Analyzing be\\x1b[2Jd.wav…");
+    expect(out).toContain("beats/be\\x1b[2Jd.wav.json");
+    expect(out).not.toContain("be\u001b[2Jd");
+  });
+});
+
+// fails without the fix: the music src from index.html reached the terminal with its control characters live.
+it("prints a missing track's control characters as visible escapes", async () => {
+  const dir = join(root, "odd-src");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "index.html"),
+    `<div data-composition-id="main"><audio id="music" src="assets/so\u001b[2Jng.wav"></audio></div>`,
+  );
+  const { exitCode, out } = await runBeats(dir, false);
+  expect(exitCode).not.toBe(0);
+  expect(out).toContain("Audio file not found: assets/so\\x1b[2Jng.wav");
+  expect(out).not.toContain("so\u001b[2Jng");
 });

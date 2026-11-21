@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolve } from "node:path";
 import { defaultProbe, resolvePythonCommand, pythonInvocation } from "./python.mjs";
 
 // Regression: on Windows a standard python.org install has no `python3.exe`
@@ -123,14 +125,74 @@ test("defaultProbe rejects a command that doesn't exist", () => {
   assert.equal(defaultProbe("/nonexistent/hf-python", ["--version"]), false);
 });
 
+const DROP_CWD = "import sys\nif sys.path and sys.path[0] == '': del sys.path[0]\n";
+
 test("pythonInvocation prepends the resolved prefix ahead of caller args", () => {
   assert.deepEqual(pythonInvocation(["-c", "import x"], ["python"]), {
     cmd: "python",
-    args: ["-c", "import x"],
+    args: ["-c", `${DROP_CWD}import x`],
   });
   // The py launcher's -3 must stay ahead of the caller's own arguments.
-  assert.deepEqual(pythonInvocation(["-c", "import x"], ["py", "-3"]), {
+  assert.deepEqual(pythonInvocation(["-c", "import x", "arg"], ["py", "-3"]), {
     cmd: "py",
-    args: ["-3", "-c", "import x"],
+    args: ["-3", "-c", `${DROP_CWD}import x`, "arg"],
   });
+  assert.deepEqual(pythonInvocation(["/abs/script.py", "--flag"], ["python"]), {
+    cmd: "python",
+    args: ["/abs/script.py", "--flag"],
+  });
+});
+
+test("pythonInvocation runs modules without the working directory on sys.path", () => {
+  const { args } = pythonInvocation(["-m", "pip", "install", "-q", "numpy"], ["python"]);
+  assert.deepEqual(args.slice(2), ["install", "-q", "numpy"]);
+  assert.equal(args[0], "-c");
+  assert.match(
+    args[1],
+    /^import sys\n.*\nimport runpy\nrunpy\.run_module\("pip", run_name="__main__", alter_sys=True\)\n$/s,
+  );
+});
+
+function hasPython3() {
+  return spawnSync("python3", ["--version"], { encoding: "utf-8" }).status === 0;
+}
+
+test("a module planted in the working directory is never imported", { skip: !hasPython3() }, () => {
+  const project = mkdtempSync(join(tmpdir(), "hf-py-cwd-"));
+  try {
+    const marker = join(project, "ran");
+    writeFileSync(
+      join(project, "hf_probe_module.py"),
+      `open(${JSON.stringify(marker)}, "w").write("x")\n`,
+    );
+    writeFileSync(
+      join(project, "hf_probe_main.py"),
+      `open(${JSON.stringify(marker)}, "w").write("x")\n`,
+    );
+    const env = { ...process.env, PYTHONSAFEPATH: "" };
+    const inline = pythonInvocation(["-c", "import hf_probe_module"], ["python3"]);
+    assert.notEqual(spawnSync(inline.cmd, inline.args, { cwd: project, env }).status, 0);
+    const module = pythonInvocation(["-m", "hf_probe_main"], ["python3"]);
+    assert.notEqual(spawnSync(module.cmd, module.args, { cwd: project, env }).status, 0);
+    assert.equal(existsSync(marker), false);
+    const pip = pythonInvocation(["-m", "json.tool", "--help"], ["python3"]);
+    assert.equal(spawnSync(pip.cmd, pip.args, { cwd: project, env }).status, 0);
+  } finally {
+    rmSync(project, { recursive: true, force: true });
+  }
+});
+
+// fails without the fix: a relative HYPERFRAMES_PYTHON was probed in the caller's folder but run
+// from wherever the child started, so MusicGen, which starts in the home folder, could not find it.
+test("a HYPERFRAMES_PYTHON with a folder in it means the caller's folder; a bare name keeps PATH lookup", () => {
+  const probed = [];
+  const probe = (cmd) => (probed.push(cmd), true);
+  assert.deepEqual(
+    resolvePythonCommand("linux", probe, { HYPERFRAMES_PYTHON: "./venv/bin/python" }),
+    [resolve("venv/bin/python")],
+  );
+  assert.deepEqual(probed, [resolve("venv/bin/python")]);
+  assert.deepEqual(resolvePythonCommand("linux", probe, { HYPERFRAMES_PYTHON: "python3.12" }), [
+    "python3.12",
+  ]);
 });

@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, it, mock } from "bun:test";
+import { afterAll, describe, expect, it, mock, spyOn } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,8 +14,10 @@ import { collectRenderMedia } from "../../renderMediaCollector.js";
 const workDir = mkdtempSync(join(tmpdir(), "hf-stage-test-"));
 afterAll(() => rmSync(workDir, { recursive: true, force: true }));
 import { createHash } from "node:crypto";
+import { parseHTML } from "linkedom";
 import {
   hasAutoStartVideos,
+  hasRuntimeMediaChanges,
   hasScriptedAudioVolumeAutomation,
   hasVariableBoundMedia,
   reportedLengthSource,
@@ -212,7 +214,9 @@ mock.module("../../htmlCompiler.js", () => ({
   resolveCompositionDurations: async () => [],
 }));
 
+const notedStaticDedupActivity: object[] = [];
 mock.module("../shared.js", () => ({
+  noteStaticDedupActivity: (job: object) => notedStaticDedupActivity.push(job),
   BROWSER_MEDIA_EPSILON: 0.0001,
   projectBrowserEndToCompositionTimeline: (
     existingStart: number,
@@ -264,7 +268,7 @@ function makeProbeInput(overrides: {
   };
 
   return {
-    projectDir: "/tmp/hf-probe-test-project",
+    projectDir: workDir,
     workDir: workDir,
     job: {
       id: "probe-test",
@@ -400,7 +404,300 @@ describe("hasVariableBoundMedia", () => {
 
     expect(hasVariableBoundMedia(`${declared}${video}</body></html>`, undefined)).toBe(true);
   });
+
+  it("requires a browser probe when an inlined sub-composition declared the default", () => {
+    // Inlining drops a full-document sub-composition's <html data-composition-variables> and the
+    // inner root's data-composition-id; the compiled table, keyed by the host, keeps the merged value.
+    const mount =
+      `<div data-composition-id="card" data-composition-file="compositions/card.html">` +
+      `<div data-hf-inner-root="true"><video id="v" src="placeholder.mp4" data-var-src="src"></video></div>` +
+      `</div>`;
+    const html = `<html><body>${mount}</body></html>`;
+
+    expect(hasVariableBoundMedia(html, undefined, { card: { src: "clip.mp4" } })).toBe(true);
+    expect(hasVariableBoundMedia(html, undefined, { card: { other: "clip.mp4" } })).toBe(false);
+    expect(hasVariableBoundMedia(html, undefined, {})).toBe(false);
+  });
+
+  it("matches a repeated mount through the host's runtime composition id", () => {
+    const mount =
+      `<div data-composition-id="card__hf2" data-hf-original-composition-id="card">` +
+      `<div data-hf-inner-root="true"><video id="v" src="placeholder.mp4" data-var-src="src"></video></div>` +
+      `</div>`;
+
+    expect(
+      hasVariableBoundMedia(`<html><body>${mount}</body></html>`, undefined, {
+        card__hf1: { src: "a.mp4" },
+        card__hf2: { src: "b.mp4" },
+      }),
+    ).toBe(true);
+  });
+
+  it("lets the nearest scope's table entry answer alone, like the runtime", () => {
+    const nested =
+      `<div data-composition-id="outer"><div data-composition-id="inner">` +
+      `<video id="v" src="placeholder.mp4" data-var-src="src"></video></div></div>`;
+    const html = `<html><body>${nested}</body></html>`;
+
+    expect(
+      hasVariableBoundMedia(html, undefined, { outer: { src: "a.mp4" }, inner: { title: "x" } }),
+    ).toBe(false);
+    expect(hasVariableBoundMedia(html, undefined, { outer: { src: "a.mp4" } })).toBe(false);
+    expect(hasVariableBoundMedia(html, undefined, { inner: { src: "b.mp4" } })).toBe(true);
+  });
 });
+
+describe("hasVariableBoundMedia — page size", () => {
+  it("parses a large variables attribute once, not once per bound element", () => {
+    const values = JSON.stringify(
+      Object.fromEntries(Array.from({ length: 1_000 }, (_, i) => [`k${i}`, "v"])),
+    );
+    const images = `<img src="a.png" data-var-src="missing">`.repeat(2_000);
+    const html = `<html><body><div data-variable-values='${values}'>${images}</div></body></html>`;
+    const parse = spyOn(JSON, "parse");
+    try {
+      expect(hasVariableBoundMedia(html, undefined)).toBe(false);
+      expect(parse.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      parse.mockRestore();
+    }
+  });
+
+  it("takes the conservative answer when the ancestor walks run past their budget", () => {
+    const depth = 600;
+    const images = `<img src="a.png" data-var-src="missing">`.repeat(2_000);
+    const html = `<html><body>${"<div>".repeat(depth)}${images}${"</div>".repeat(depth)}</body></html>`;
+
+    expect(hasVariableBoundMedia(html, undefined)).toBe(true);
+  });
+});
+
+describe("hasRuntimeMediaChanges", () => {
+  const page = (body: string, script: string) =>
+    `<html><body>${body}<script>${script}</script></body></html>`;
+
+  it("finds a source write aimed at a video by id or by selector", () => {
+    const video = `<div class="scene"><video id="clip" src="a.mp4"></video></div>`;
+    expect(
+      hasRuntimeMediaChanges(page(video, `document.getElementById("clip").src = "b.mp4";`)),
+    ).toBe(true);
+    expect(
+      hasRuntimeMediaChanges(page(video, `document.querySelector(".scene video").src = "b.mp4";`)),
+    ).toBe(true);
+    expect(
+      hasRuntimeMediaChanges(
+        page(
+          `<video><source id="s" src="a.mp4"></video>`,
+          `document.getElementById("s").src = "b";`,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("ignores source writes aimed at other elements", () => {
+    const body = `<img id="poster" class="still" src="a.png"><video id="clip" src="a.mp4"></video>`;
+    const script = `document.getElementById("poster").src = "b.png";
+      document.querySelector(".still").setAttribute("src", "c.png");`;
+    expect(hasRuntimeMediaChanges(page(body, script))).toBe(false);
+    const malformed = `document.querySelector("[[bad").src = "d.png";`;
+    expect(hasRuntimeMediaChanges(page(body, malformed))).toBe(true);
+    expect(
+      hasRuntimeMediaChanges(page(`<img id="clip">`, `document.getElementById("clip").src = "b";`)),
+    ).toBe(false);
+  });
+
+  it("answers id writes from one index, with no document lookup per write", () => {
+    const count = 2_000;
+    const divs = Array.from({ length: count }, (_, i) => `<div id="d${i}"></div>`);
+    const writes = Array.from(
+      { length: count },
+      (_, i) => `document.getElementById("n${i}").src = "x";`,
+    );
+    const html = page(`${divs.join("")}<video id="clip" src="a.mp4"></video>`, writes.join("\n"));
+    const lookups = documentLookupSpies();
+    try {
+      expect(hasRuntimeMediaChanges(html)).toBe(false);
+      expect(lookups.getElementById.mock.calls.length).toBe(0);
+      expect(lookups.querySelectorAll.mock.calls.length).toBeLessThanOrEqual(1);
+    } finally {
+      lookups.restore();
+    }
+  });
+
+  it("finds a source write on a page written without the html, head or body tags", () => {
+    const html =
+      `<!doctype html><head><script>document.getElementById("clip").src = "b.mp4";</script></head>` +
+      `<body><video id="clip" src="a.mp4"></video></body>`;
+    expect(hasRuntimeMediaChanges(html)).toBe(true);
+  });
+
+  it("lets the browser probe decide when there are too many selectors to check", () => {
+    const videos = `<video src="a.mp4"></video>`.repeat(50);
+    const writes = Array.from(
+      { length: 8_000 },
+      (_, i) => `document.querySelector(".q${i}").src = "x";`,
+    );
+    expect(hasRuntimeMediaChanges(page(videos, writes.join("\n")))).toBe(true);
+  });
+
+  it("lets the browser probe decide a long selector against many media elements", () => {
+    const videos = `<video src="a.mp4"></video>`.repeat(100);
+    const selector = `${".nope > ".repeat(2_000)}video`;
+    const script = `document.querySelector(${JSON.stringify(selector)}).src = "x";`;
+    expect(hasRuntimeMediaChanges(page(videos, script))).toBe(true);
+    expect(hasRuntimeMediaChanges(page(`<video></video>`, script))).toBe(false);
+  });
+
+  it("lets the browser probe decide a selector with a sibling combinator", () => {
+    const script = `document.querySelector(".nope ~ .none").src = "x";`;
+    expect(hasRuntimeMediaChanges(page(`<video src="a.mp4"></video>`, script))).toBe(true);
+  });
+
+  it("still checks tag, class, attribute and child selectors without the browser", () => {
+    const body = `<div class="scene" data-x="a,b"><p><video src="a.mp4"></video></p></div>`;
+    const write = (selector: string) =>
+      page(body, `document.querySelector(${JSON.stringify(selector)}).src = "x";`);
+    const matches = elementMatchesSpy();
+    try {
+      expect(hasRuntimeMediaChanges(write(".scene > p > video"))).toBe(true);
+      expect(hasRuntimeMediaChanges(write('[data-x="a,b"] video'))).toBe(true);
+      expect(hasRuntimeMediaChanges(write(".other video, div > video"))).toBe(false);
+      expect(matches.mock.calls.length).toBe(3);
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("leaves page-walking selectors on a deep page to the browser without matching them", () => {
+    const depth = 5_000;
+    const body = `${"<div class='d'>".repeat(depth)}<video src="a.mp4"></video>${"</div>".repeat(depth)}`;
+    const selectors = [
+      ".d:has(.none) video",
+      "div:not(.none) video",
+      ":nth-child(1) video",
+      "p:contains(x)",
+      ".d .d .d video",
+      "div video audio",
+    ];
+    const matches = elementMatchesSpy();
+    try {
+      for (const selector of selectors) {
+        const writes = Array.from(
+          { length: 500 },
+          (_, i) => `document.querySelector(${JSON.stringify(`${selector}.n${i}`)}).src = "x";`,
+        );
+        expect(hasRuntimeMediaChanges(page(body, writes.join("\n")))).toBe(true);
+      }
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("charges each check for the media's ancestors and their attributes", () => {
+    const wide = `<div data-x="${"x".repeat(400_000)}">`;
+    const writes = Array.from(
+      { length: 2_000 },
+      (_, i) => `document.querySelector(".q${i} video").src = "x";`,
+    );
+    const deep = `${"<div>".repeat(20_000)}<video src="a.mp4"></video>${"</div>".repeat(20_000)}`;
+    const matches = elementMatchesSpy();
+    try {
+      expect(hasRuntimeMediaChanges(page(`${wide}<video></video></div>`, writes.join("\n")))).toBe(
+        true,
+      );
+      expect(hasRuntimeMediaChanges(page(deep, writes.join("\n")))).toBe(true);
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("charges a long selector's whole text against every media element", () => {
+    const videos = `<div data-x="a"><video src="a.mp4"></video></div>`.repeat(100);
+    const longValue = `[data-x="${"y".repeat(20_000)}"] video`;
+    const longGap = `div${" ".repeat(20_000)}video`;
+    const matches = elementMatchesSpy();
+    try {
+      for (const selector of [longValue, longGap]) {
+        const script = `document.querySelector(${JSON.stringify(selector)}).src = "x";`;
+        expect(hasRuntimeMediaChanges(page(videos, script))).toBe(true);
+      }
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("charges each simple test in a compound for the attribute text it reads", () => {
+    const video = `<video data-x="${"v".repeat(1_000)}" src="a.mp4"></video>`;
+    const selector = `video${"[data-x]".repeat(2_000)}`;
+    const script = `document.querySelector(${JSON.stringify(selector)}).src = "x";`;
+    const matches = elementMatchesSpy();
+    try {
+      expect(hasRuntimeMediaChanges(page(video, script))).toBe(true);
+      expect(matches).not.toHaveBeenCalled();
+    } finally {
+      matches.mockRestore();
+    }
+  });
+
+  it("reads no attribute text when every write targets an id", () => {
+    let proto = Object.getPrototypeOf(parseHTML("<p></p>").document.querySelector("p"));
+    while (proto && !Object.getOwnPropertyDescriptor(proto, "attributes")) {
+      proto = Object.getPrototypeOf(proto);
+    }
+    const original = Object.getOwnPropertyDescriptor(proto, "attributes")!;
+    let reads = 0;
+    Object.defineProperty(proto, "attributes", {
+      ...original,
+      get(this: Element) {
+        reads += 1;
+        return original.get!.call(this);
+      },
+    });
+    try {
+      const body = `<div data-x="a"><video id="clip" src="a.mp4"></video></div>`;
+      expect(hasRuntimeMediaChanges(page(body, `document.getElementById("x").src = "b";`))).toBe(
+        false,
+      );
+      expect(reads).toBe(0);
+    } finally {
+      Object.defineProperty(proto, "attributes", original);
+    }
+  });
+});
+
+/** Spies on linkedom's `Element.matches`, wherever on the prototype chain it lives. */
+function elementMatchesSpy() {
+  let proto = Object.getPrototypeOf(parseHTML("<p></p>").document.querySelector("p"));
+  while (proto && !Object.hasOwn(proto, "matches")) proto = Object.getPrototypeOf(proto);
+  return spyOn(proto as Element, "matches");
+}
+
+/** Spies on the linkedom document's own lookups, wherever on its prototype chain they live. */
+function documentLookupSpies() {
+  const owner = (name: string): object => {
+    for (
+      let proto = Object.getPrototypeOf(parseHTML("<html></html>").document);
+      proto;
+      proto = Object.getPrototypeOf(proto)
+    ) {
+      if (Object.hasOwn(proto, name)) return proto;
+    }
+    throw new Error(`no ${name} on the document`);
+  };
+  const getElementById = spyOn(owner("getElementById") as Document, "getElementById");
+  const querySelectorAll = spyOn(owner("querySelectorAll") as Document, "querySelectorAll");
+  return {
+    getElementById,
+    querySelectorAll,
+    restore() {
+      getElementById.mockRestore();
+      querySelectorAll.mockRestore();
+    },
+  };
+}
 
 describe("runProbeStage — forceScreenshot threading", () => {
   it("runs media-type preflight after the browser-reconciliation phase", async () => {
@@ -824,6 +1121,54 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(mediaPreflightComposition).toBe(input.composition);
   });
 
+  it.each(["take one.mp4", "café.mp4", "take%20one.mp4", "caf%C3%A9.mp4"])(
+    "mixes the sound of a clip whose src is written %s once, however the browser spells it",
+    async (name) => {
+      resetRetryMocks();
+      const timing = { start: 0, end: 5, duration: 5, mediaStart: 0, loop: false, volume: 1 };
+      browserMediaResults = [
+        {
+          id: "clip",
+          tagName: "video",
+          src: new URL(name, "http://127.0.0.1:0/").href,
+          hasAudio: true,
+          muted: false,
+          ...timing,
+        },
+      ];
+      const { runProbeStage } = await import("./probeStage.js");
+      const { appendAutoDetectedVideoAudio } = await import("./extractVideosStage.js");
+      const input = makeProbeInput({});
+      input.composition.duration = 5;
+      input.composition.videos.push({
+        id: "clip",
+        src: name,
+        start: 0,
+        end: 5,
+        mediaStart: 0,
+        loop: false,
+        hasAudio: true,
+      });
+      input.composition.audios.push({
+        id: videoAudioId("clip"),
+        src: name,
+        start: 0,
+        end: 5,
+        mediaStart: 0,
+        layer: 0,
+        type: "video",
+      });
+
+      await runProbeStage({ ...input, measuresShownBoxes: true });
+      appendAutoDetectedVideoAudio(input.composition, [
+        { videoId: "clip", metadata: { hasAudio: true } },
+      ]);
+
+      expect(input.composition.videos[0]?.src).toBe(name);
+      expect(input.composition.audios.map((audio) => audio.id)).toEqual([videoAudioId("clip")]);
+    },
+  );
+
   it("uses selected intrinsic duration only when the variable-bound duration was inferred", async () => {
     resetRetryMocks();
     const media = (
@@ -1113,6 +1458,21 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(capturedCfgs).toHaveLength(0);
   });
 
+  it("opens a page for a video larger than the canvas, and none for a film without one", async () => {
+    resetRetryMocks();
+    const { runProbeStage } = await import("./probeStage.js");
+    for (const measuresShownBoxes of [false, true]) {
+      capturedCfgs.length = 0;
+      const input = makeProbeInput({});
+      input.composition.duration = 5;
+      input.compiled.html = `<video id="clip" src="clip.mp4" data-start="0" data-duration="5"></video>`;
+      await runProbeStage({ ...input, measuresShownBoxes });
+      expect(capturedCfgs.length > 0, `measuresShownBoxes ${measuresShownBoxes}`).toBe(
+        measuresShownBoxes,
+      );
+    }
+  });
+
   it("probes when a source child of existing media is mutated", async () => {
     resetRetryMocks();
     capturedCfgs.length = 0;
@@ -1206,6 +1566,32 @@ describe("runProbeStage — forceScreenshot threading", () => {
     expect(capturedCfg.forceScreenshot).toBe(true);
     // Caller-owned cfg must not be mutated
     expect(input.cfg.forceScreenshot).toBe(false);
+  });
+
+  it("defers the probe's still-frame check and gives its session the render's memo and page hash", async () => {
+    capturedOptions.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const staticDedupMemo = {};
+    await runProbeStage({ ...makeProbeInput({}), staticDedupMemo });
+    const options = capturedOptions[0] as {
+      deferStaticDedup?: boolean;
+      staticDedupMemo?: object;
+      compositionHash?: string;
+    };
+    expect(options.deferStaticDedup).toBe(true);
+    expect(options.staticDedupMemo).toBe(staticDedupMemo);
+    expect(options.compositionHash).toMatch(/^[0-9a-f]{16}$/);
+  });
+
+  it("reports the deferred check's screenshots to the render's stall watcher when its session is reused", async () => {
+    capturedOptions.length = 0;
+    notedStaticDedupActivity.length = 0;
+    const { runProbeStage } = await import("./probeStage.js");
+    const input = makeProbeInput({});
+    await runProbeStage(input);
+    const options = capturedOptions[0] as { onStaticDedupActivity?: () => void };
+    options.onStaticDedupActivity?.();
+    expect(notedStaticDedupActivity).toEqual([input.job]);
   });
 
   it("passes forceScreenshot:false through unchanged when neither cfg nor stage input forces it", async () => {

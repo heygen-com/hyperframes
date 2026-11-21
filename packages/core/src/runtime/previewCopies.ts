@@ -1,3 +1,4 @@
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import { postRuntimeMessage } from "./bridge";
 
 type CopyState = {
@@ -45,7 +46,7 @@ function scheduleReport(): void {
     return;
   }
   if (!report()) return;
-  timer = setTimeout(() => {
+  timer = wallSetTimeout(() => {
     timer = undefined;
     if (dirtyWhileWaiting) {
       dirtyWhileWaiting = false;
@@ -58,7 +59,7 @@ function scheduleReport(): void {
 export function setCopyReportingLevel(level: number): void {
   for (const [el, copy] of copies) if (copy.light) copies.delete(el);
   reporting = level < 1;
-  clearTimeout(timer);
+  wallClearTimeout(timer);
   timer = undefined;
   dirtyWhileWaiting = false;
   scheduleReport();
@@ -66,7 +67,7 @@ export function setCopyReportingLevel(level: number): void {
 
 export function resetCopyReporting(): void {
   copies.clear();
-  clearTimeout(timer);
+  wallClearTimeout(timer);
   timer = undefined;
   reporting = false;
   reportedAny = false;

@@ -1,13 +1,33 @@
 import { execFileSync } from "node:child_process";
-import { accessSync, closeSync, constants, existsSync, openSync, readSync } from "node:fs";
+import {
+  accessSync,
+  closeSync,
+  constants,
+  existsSync,
+  openSync,
+  readSync,
+  statSync,
+} from "node:fs";
 import { createRequire } from "node:module";
-import { basename, delimiter, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
+import type { Readable } from "node:stream";
+import { isTrustedExecutablePath, trustedPathDirs } from "./trustedExecutable.js";
 
 /**
  * Shared FFmpeg/FFprobe binary resolution for every package that shells out
  * to them (engine, cli, lint, studio-server). Node-only: import via the
  * `@hyperframes/parsers/ff-binaries` subpath, never from a browser bundle.
  */
+
+export {
+  executableIn,
+  findTrustedExecutable,
+  isTrustedDirectory,
+  isTrustedExecutablePath,
+  pathEntries,
+  trustedPathDirs,
+} from "./trustedExecutable.js";
+import { assertLiteralMediaInput } from "./literalMediaInput.js";
 
 export const FFMPEG_PATH_ENV = "HYPERFRAMES_FFMPEG_PATH";
 export const FFPROBE_PATH_ENV = "HYPERFRAMES_FFPROBE_PATH";
@@ -83,18 +103,14 @@ function isExecutablePathCandidate(candidate: string): boolean {
   if (process.platform === "win32") return existsSync(candidate);
   try {
     accessSync(candidate, constants.X_OK);
-    return runsOnThisMac(candidate);
+    return statSync(candidate).isFile() && runsOnThisMac(candidate);
   } catch {
     return false;
   }
 }
 
 function scanPath(name: FfBinaryName): string | undefined {
-  const pathValue = process.env.PATH;
-  const searchDirs = [
-    ...(process.platform === "win32" ? [process.cwd()] : []),
-    ...(pathValue ? pathValue.split(delimiter) : []),
-  ].filter(Boolean);
+  const searchDirs = trustedPathDirs();
   if (searchDirs.length === 0) return undefined;
 
   const extensions =
@@ -111,7 +127,7 @@ function scanPath(name: FfBinaryName): string | undefined {
         ]
       : [""];
   const candidates: string[] = [];
-  for (const dir of new Set(searchDirs)) {
+  for (const dir of searchDirs) {
     for (const ext of extensions) {
       const candidate = join(dir, `${name}${ext}`);
       if (isExecutablePathCandidate(candidate)) candidates.push(candidate);
@@ -121,9 +137,9 @@ function scanPath(name: FfBinaryName): string | undefined {
 }
 
 // GUI/Dock/launchd-spawned processes on macOS don't inherit the shell PATH, so
-// `which ffmpeg` fails even when ffmpeg is installed via Homebrew. Probe the
-// well-known install dirs as a last resort. (No-op on Windows, where `where`
-// and installer-added PATH entries cover it.)
+// a PATH lookup fails even when ffmpeg is installed via Homebrew. Probe the
+// well-known install dirs as a last resort. (No-op on Windows, where
+// installer-added PATH entries cover it.)
 const COMMON_BIN_DIRS =
   process.platform === "win32"
     ? []
@@ -133,18 +149,15 @@ const COMMON_BIN_DIRS =
 function findInCommonDirsOrInstallerPackage(name: FfBinaryName): string | undefined {
   for (const dir of COMMON_BIN_DIRS) {
     const candidate = `${dir}/${name}`;
-    if (existsSync(candidate) && runsOnThisMac(candidate)) return candidate;
+    if (isTrustedExecutablePath(candidate) && existsSync(candidate) && runsOnThisMac(candidate)) {
+      return candidate;
+    }
   }
   return findInInstallerPackage(name);
 }
 
 function binaryFileName(name: FfBinaryName): string {
   return process.platform === "win32" ? `${name}.exe` : name;
-}
-
-function findInProjectLocalBin(name: FfBinaryName): string | undefined {
-  const candidate = resolve(".hyperframes", "bin", binaryFileName(name));
-  return existsSync(candidate) && runsOnThisMac(candidate) ? candidate : undefined;
 }
 
 function tryResolve(fromFile: string, request: string): string | undefined {
@@ -155,42 +168,24 @@ function tryResolve(fromFile: string, request: string): string | undefined {
   }
 }
 
-// An @ffmpeg-installer / @ffprobe-installer package reachable from the current folder, located
-// but never loaded. The platform package is resolved via the installer package first (pnpm layout).
+// An @ffmpeg-installer / @ffprobe-installer package installed next to HyperFrames itself (a global
+// or npx install), located but never loaded. A copy in the working directory is project content,
+// so it is skipped. The platform package is resolved via the installer package first (pnpm layout).
 function findInInstallerPackage(name: FfBinaryName): string | undefined {
-  const project = resolve("package.json");
+  const project = import.meta.url;
   const platformManifest = `@${name}-installer/${process.platform}-${process.arch}/package.json`;
   const installer = tryResolve(project, `@${name}-installer/${name}/package.json`);
   const manifest =
     (installer && tryResolve(installer, platformManifest)) ?? tryResolve(project, platformManifest);
   const candidate = manifest && join(dirname(manifest), binaryFileName(name));
-  return candidate && isExecutablePathCandidate(candidate) ? candidate : undefined;
+  return candidate && isTrustedExecutablePath(candidate) && isExecutablePathCandidate(candidate)
+    ? candidate
+    : undefined;
 }
 
+// No lookup program (`which`, `where`) runs by name: it could itself come from the project.
 function searchSystem(name: FfBinaryName): string | undefined {
-  let found: string | undefined;
-  if (process.platform === "win32") {
-    // `where.exe` writes bytes in the active console code page, while Node
-    // decodes its stdout using a caller-selected encoding. Enumerating the
-    // same current-directory + PATH search space from Node keeps Unicode
-    // paths as native JS strings and avoids mojibake entirely.
-    found = scanPath(name);
-  } else {
-    try {
-      const output = execFileSync("which", [name], {
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-        timeout: 5000,
-      });
-      const candidate = chooseBestPathCandidate(name, output.split(/\r?\n/));
-      found = candidate && isExecutablePathCandidate(candidate) ? candidate : scanPath(name);
-    } catch {
-      found = scanPath(name);
-    }
-  }
-  found ??= findInProjectLocalBin(name);
-  found ??= findInCommonDirsOrInstallerPackage(name);
-  return found;
+  return scanPath(name) ?? findInCommonDirsOrInstallerPackage(name);
 }
 
 function lookupOnSystem(name: FfBinaryName): string | undefined {
@@ -220,9 +215,9 @@ export interface FindFfBinaryOptions {
 
 /**
  * Resolve an FFmpeg-family binary: env override first, then a native
- * current-directory/PATH scan on Windows or `which` plus PATH scan on Unix,
- * then a project-local `.hyperframes/bin`, then well-known Unix install dirs, then an
- * `@ffmpeg-installer`/`@ffprobe-installer` package reachable from the current folder.
+ * in-process PATH scan, then well-known Unix install dirs,
+ * then an `@ffmpeg-installer`/`@ffprobe-installer` package installed next to HyperFrames.
+ * Discovery never returns a file in the working directory (see trustedExecutable.ts).
  * A found binary is cached for the process lifetime; a miss only for a few
  * seconds, so a long-running server sees an install made after it started. The env
  * override is re-read on every call.
@@ -239,9 +234,157 @@ export function findFfBinary(
   return lookupOnSystem(name);
 }
 
+/** {@link findFfBinary}, or an ENOENT error naming the override. Never the bare name for the OS to look up. */
+export function requireFfBinary(name: FfBinaryName): string {
+  const found = findFfBinary(name);
+  if (found) return found;
+  const message = `[FFmpeg] ${name} not found. Install FFmpeg or set ${ENV_BY_NAME[name]} to its absolute path.`;
+  throw Object.assign(new Error(message), { code: "ENOENT" });
+}
+
 /** Test hook: drop cached system lookups so resolution can be re-exercised. */
 export function clearFfBinaryLookupCache(): void {
   pathLookupCache.clear();
   lastMissAt.clear();
   skippedX86Binaries.clear();
+}
+
+const endsAListLine = (text: string) => ["\n", "\r", "\u0000"].some((char) => text.includes(char));
+
+/** One `file` entry per path; a path holding what ends a list line (LF, CR, NUL) is refused. */
+export function concatListText(
+  entries: readonly (string | { path: string; durationSeconds: number })[],
+  options: { videoContainersOnly?: boolean } = {},
+): string {
+  const entryOptions = options.videoContainersOnly ? "option format_whitelist mov,matroska\n" : "";
+  return entries
+    .map((entry) => {
+      const path = typeof entry === "string" ? entry : entry.path;
+      if (endsAListLine(path)) {
+        throw new Error(
+          `A file to join holds a line break or NUL in its path: ${JSON.stringify(path)}`,
+        );
+      }
+      const placed =
+        typeof entry === "string" ? "" : `inpoint 0\nduration ${entry.durationSeconds}\n`;
+      return `file '${path.replace(/'/g, "'\\''")}'\n${placed}${entryOptions}`;
+    })
+    .join("");
+}
+
+/**
+ * Concat input for a list HyperFrames wrote: entries open only as local mov, matroska or concat
+ * files (an ffconcat entry is followed in safe mode), and `-xerror` fails at a refused entry.
+ */
+export function concatListInputArgs(concatListPath: string): string[] {
+  return [
+    "-xerror",
+    "-protocol_whitelist",
+    "file",
+    "-f",
+    "concat",
+    "-safe",
+    "0",
+    "-format_whitelist",
+    "concat,mov,matroska",
+    "-i",
+    concatListPath,
+  ];
+}
+
+/** What a render service lets a media input open: containers that name no other file. */
+export const SELF_CONTAINED_FORMATS =
+  "mov,matroska,mxf,avi,mpeg,mpegts,mpegvideo,flv,asf,ogg,wav,mp3,aac,flac,aiff,gif,image2,png_pipe,jpeg_pipe,webp_pipe,bmp_pipe,tiff_pipe";
+
+// Demuxers that open other files or URLs on their own. hls and concat stay allowed: ffmpeg copies the
+// format whitelist into every nested open, so a list cannot reach these, and the folder walk confines its paths.
+const PATH_OPENING_DEMUXERS = new Set([
+  "dash",
+  "imf",
+  "mlv",
+  "vobsub",
+  "dvdvideo",
+  "sdp",
+  "rtsp",
+  "rtp",
+  "sap",
+  "avisynth",
+  "vapoursynth",
+  "lavfi",
+]);
+
+const TEXT_ART_DEMUXERS = new Set(["tty", "bin", "xbin", "idf", "adf"]);
+
+/** A `-format_whitelist` value from a `-demuxers` listing; undefined when no row parses. */
+function demuxersFromListing(listing: string): string | undefined {
+  const row = /Is a device/.test(listing) ? /^ D[E ]([d ]) (\S+)/ : /^ D[E ]() (\S+)/;
+  const names = new Set<string>();
+  for (const line of listing.split("\n")) {
+    const match = row.exec(line);
+    if (!match || match[1] === "d") continue;
+    const aliases = match[2]!.split(",");
+    if (aliases.some((alias) => PATH_OPENING_DEMUXERS.has(alias) || TEXT_ART_DEMUXERS.has(alias)))
+      continue;
+    for (const alias of aliases) names.add(alias);
+  }
+  return names.size > 0 ? [...names].join(",") : undefined;
+}
+
+const demuxerLists = new Map<string, string>();
+let listingOverride: string | undefined;
+
+/** Tests feed a `-demuxers` listing so none spawns a binary; no argument forgets it. */
+export function _setDemuxerListingForTests(listing?: string): void {
+  listingOverride = listing;
+  demuxerLists.clear();
+}
+
+export function localContainerInputArgs(container: "mov" | "matroska" | undefined): string[] {
+  return container ? ["-protocol_whitelist", "file", "-format_whitelist", container] : [];
+}
+
+export { assertLiteralMediaInput };
+
+/** Every demuxer `listingBinary` reports that opens nothing by itself and is not text art, for reading `input`; one that cannot be asked gets the self-contained list, and is asked again. */
+export function mediaInputFormatArgs(listingBinary: string, input: string): string[] {
+  assertLiteralMediaInput(input);
+  let formats = demuxerLists.get(listingBinary);
+  if (formats === undefined) {
+    try {
+      formats = demuxersFromListing(
+        listingOverride ??
+          execFileSync(listingBinary, ["-hide_banner", "-demuxers"], {
+            encoding: "utf8",
+            timeout: 10_000,
+            windowsHide: true,
+            stdio: ["ignore", "pipe", "ignore"],
+          }),
+      );
+    } catch {
+      formats = undefined;
+    }
+    if (formats === undefined) return ["-format_whitelist", SELF_CONTAINED_FORMATS];
+    demuxerLists.set(listingBinary, formats);
+  }
+  return ["-format_whitelist", formats];
+}
+
+const OUT_TIME = /^out_time_(?:us|ms)=(\d+)$/;
+
+/** Hears the furthest output time, in seconds, that ffmpeg's `-progress pipe:1` lines on `stream` report. */
+export function followFfmpegProgress(stream: Readable, onSeconds: (seconds: number) => void): void {
+  let furthest = 0;
+  let lineTail = "";
+  stream.on("data", (chunk: Buffer) => {
+    const lines = (lineTail + chunk.toString()).split("\n");
+    lineTail = lines.pop() ?? "";
+    for (const line of lines) {
+      const reached = OUT_TIME.exec(line.trim());
+      if (!reached) continue;
+      const seconds = Number(reached[1]) / 1e6;
+      if (seconds <= furthest) continue;
+      furthest = seconds;
+      onSeconds(seconds);
+    }
+  });
 }

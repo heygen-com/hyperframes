@@ -25,6 +25,8 @@ import type {
   TimelineGroupMoveChange,
 } from "./useTimelineGroupEditing";
 import { studioApiFetch } from "../utils/studioApiFetch";
+import { countOf } from "../utils/countOf";
+import { createStudioSaveHttpError } from "../utils/studioSaveDiagnostics";
 
 /** Apply already-resolved ripple changes to the surviving elements for the
  *  optimistic store update after a delete. Pure — no IO. */
@@ -139,7 +141,11 @@ export function useTimelineDeleteOps({
                 },
               );
               if (!removeResponse.ok) {
-                throw new Error(`Failed to delete ${sameFile.length} clips from ${targetPath}`);
+                throw await createStudioSaveHttpError(
+                  removeResponse,
+                  `Failed to delete ${countOf(sameFile.length, "clip")} from ${targetPath}`,
+                  { path: targetPath },
+                );
               }
               const removeData = (await removeResponse.json()) as { content?: string };
               const removedContent =

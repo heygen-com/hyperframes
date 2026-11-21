@@ -12,6 +12,7 @@ import {
   useInlinePortal,
   type PopupPreviewState,
   type PortalContainer,
+  useTopLayerEscape,
 } from "./Menu";
 
 /** Matches Menu's gap from its trigger, and its viewport margin. */
@@ -71,9 +72,10 @@ export function Popover({
   ...root
 }: PopoverProps) {
   const inline = useInlinePortal(container);
+  const escape = useTopLayerEscape(root.onOpenChange);
   return (
-    <BasePopover.Root {...root}>
-      <BasePopover.Trigger render={trigger} aria-describedby={describedBy} />
+    <BasePopover.Root {...root} onOpenChange={escape.onOpenChange}>
+      <BasePopover.Trigger ref={escape.trigger} render={trigger} aria-describedby={describedBy} />
       {inline.host}
       <BasePopover.Portal {...inline.portal}>
         <BasePopover.Positioner
@@ -86,6 +88,7 @@ export function Popover({
           className={POPUP_LAYER}
         >
           <BasePopover.Popup
+            ref={escape.popup}
             aria-label={ariaLabel}
             initialFocus={initialFocus}
             data-preview-state={previewState}

@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { homedir } from "node:os";
 import { describeDownload, probeSpecs } from "./specs.mjs";
 import { buildArgv, selectModel, selectModelLadder } from "./local-models.mjs";
+import { discardPrivateOutput, privateOutputPath } from "./private-output.mjs";
+import { terminalLines } from "./terminal-text.mjs";
 
 export async function ltxVideoGenerate(
   intent,
@@ -22,7 +23,7 @@ export async function ltxVideoGenerate(
     return null;
   }
 
-  // Each attempt mints its own timestamped output path, so a partial artifact
+  // Each attempt gets its own private output folder, so a partial artifact
   // from a failed tier is orphaned rather than overwritten - and a lower tier
   // then succeeding hides it. Discard it before demoting. Best-effort: a
   // partial we cannot remove must never mask the real failure.
@@ -32,6 +33,7 @@ export async function ltxVideoGenerate(
     } catch {
       // nothing actionable: the generate failure below is the real story
     }
+    discardPrivateOutput(path);
   };
 
   // Walk the whole ladder, best tier first. A tier that cannot run on this
@@ -50,7 +52,7 @@ export async function ltxVideoGenerate(
       continue;
     }
 
-    const outPath = join(tmpdir(), `media-use-ltx-${process.pid}-${Date.now()}.mp4`);
+    const outPath = privateOutputPath("ltx", ".mp4");
     const argv = buildArgv(model.invoke, {
       prompt: intent,
       w: ctx?.width || 512,
@@ -61,7 +63,9 @@ export async function ltxVideoGenerate(
     argv.shift();
 
     try {
+      // The runner reads a model id as a folder when one exists in its working directory.
       execFn(bin, argv, {
+        cwd: homedir(),
         encoding: "utf8",
         timeout: 1_800_000,
         stdio: ["ignore", "pipe", "pipe"],
@@ -69,11 +73,14 @@ export async function ltxVideoGenerate(
     } catch (err) {
       discardPartial(outPath);
       console.error(
-        `media-use: local video gen (${model.id}) failed: ${err.stderr?.toString().trim().slice(-200) || err.message}`,
+        terminalLines(
+          `media-use: local video gen (${model.id}) failed: ${err.stderr?.toString().trim().slice(-200) || err.message}`,
+        ),
       );
       continue;
     }
     if (!pathExists(outPath)) {
+      discardPartial(outPath);
       console.error(
         `media-use: local video gen (${model.id}) exited cleanly but wrote no output file`,
       );

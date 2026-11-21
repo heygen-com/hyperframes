@@ -18,6 +18,7 @@ import {
   _setDownloadFetchForTests,
   assertPublicHttpsUrl,
   downloadToTemp,
+  fetchPublicHttpsBytes,
   fetchPublicHttpsText,
   UrlDownloadError,
 } from "./urlDownloader.js";
@@ -29,6 +30,7 @@ const fsRaceControls = vi.hoisted(() => ({
   deleteBeforeLstatPath: undefined as string | undefined,
   deleteInjectedWinnerBeforeLstatPath: undefined as string | undefined,
   injectRaceAtLinkPath: undefined as string | undefined,
+  failLinkWith: undefined as string | undefined,
   deleteBeforeReadPath: undefined as string | undefined,
   replaceStaleLockAfterObservationPath: undefined as string | undefined,
   replaceLockOnReleasePath: undefined as string | undefined,
@@ -76,6 +78,11 @@ vi.mock("fs", async (importOriginal) => {
       if (destination === fsRaceControls.injectRaceAtLinkPath) {
         fsRaceControls.injectRaceAtLinkPath = undefined;
         actual.writeFileSync(destination, "concurrent-winner");
+      }
+      if (fsRaceControls.failLinkWith) {
+        throw Object.assign(new Error("hard links are not supported"), {
+          code: fsRaceControls.failLinkWith,
+        });
       }
       return Reflect.apply(actual.linkSync, actual, args);
     }) as typeof actual.linkSync,
@@ -156,6 +163,7 @@ afterEach(() => {
   fsRaceControls.deleteBeforeLstatPath = undefined;
   fsRaceControls.deleteInjectedWinnerBeforeLstatPath = undefined;
   fsRaceControls.injectRaceAtLinkPath = undefined;
+  fsRaceControls.failLinkWith = undefined;
   fsRaceControls.deleteBeforeReadPath = undefined;
   fsRaceControls.replaceStaleLockAfterObservationPath = undefined;
   fsRaceControls.replaceLockOnReleasePath = undefined;
@@ -334,6 +342,15 @@ describe("fetchPublicHttpsText", () => {
         timeoutMs: 20,
       }),
     ).rejects.toMatchObject({ kind: "timeout", retryable: true });
+  });
+});
+
+describe("fetchPublicHttpsBytes", () => {
+  it("returns the body's bytes undecoded, byte order mark included", async () => {
+    stubFetch(vi.fn().mockResolvedValue(new Response(Uint8Array.from([0xef, 0xbb, 0xbf, 0x61]))));
+
+    const bytes = await fetchPublicHttpsBytes("https://cdn.example/a.js", { maxBytes: 16 });
+    expect(Array.from(bytes)).toEqual([0xef, 0xbb, 0xbf, 0x61]);
   });
 });
 
@@ -875,6 +892,46 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     } satisfies Partial<UrlDownloadError>);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(temporaryDownloadEntries(dir)).toEqual([]);
+  });
+
+  it.each([
+    ["names a file outside its folder", () => "/var/renders/other/out.mp4"],
+    [
+      "names a list beside it that leaves the folder",
+      (dir: string) => {
+        writeFileSync(
+          join(dir, "download_000000000000.m3u8"),
+          "#EXTM3U\n#EXTINF:1,\n/var/renders/other/out.mp4\n",
+        );
+        return "download_000000000000.m3u8";
+      },
+    ],
+  ])("never publishes a downloaded playlist that %s", async (_name, entry) => {
+    const dir = makeTempDir();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(`#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\n${entry(dir)}\n`));
+    stubFetch(fetchMock);
+
+    await expect(downloadToTemp("https://cdn.example/clip.m3u8", dir, 1_000)).rejects.toMatchObject(
+      {
+        kind: "invalid_payload",
+        retryable: false,
+      },
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const published = `download_${createHash("md5").update("https://cdn.example/clip.m3u8").digest("hex").slice(0, 12)}.m3u8`;
+    expect(readdirSync(dir)).not.toContain(published);
+    expect(temporaryDownloadEntries(dir)).toEqual([]);
+  });
+
+  it("publishes a downloaded playlist whose segments sit beside it", async () => {
+    const dir = makeTempDir();
+    stubFetch(vi.fn().mockResolvedValue(new Response("#EXTM3U\n#EXTINF:1,\nseg0.ts\n")));
+
+    const path = await downloadToTemp("https://cdn.example/clip.m3u8", dir, 1_000);
+
+    expect(readFileSync(path, "utf8")).toContain("seg0.ts");
   });
 
   it("rejects a BOM-prefixed remote error document without retrying", async () => {
@@ -1525,6 +1582,33 @@ describe("downloadToTemp atomic publication and bounded retry", () => {
     expect(readFileSync(firstPath)).toEqual(firstBytes);
     expect(readFileSync(secondPath)).toEqual(secondBytes);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  // fails without the fix: on a drive without hard links (EISDIR on a Google Drive folder) every download failed.
+  it("publishes on a drive without hard links", async () => {
+    const url = "https://cdn.example/no-hard-links.mp4";
+    const dir = makeTempDir();
+    fsRaceControls.failLinkWith = "EISDIR";
+    stubFetch(vi.fn().mockImplementation(() => Promise.resolve(new Response("complete"))));
+
+    const path = await downloadToTemp(url, dir, 1_000);
+
+    expect(readFileSync(path, "utf8")).toBe("complete");
+    expect(temporaryDownloadEntries(dir)).toEqual([]);
+  });
+
+  it("still never overwrites a race winner on a drive without hard links", async () => {
+    const url = "https://cdn.example/no-hard-links-race.mp4";
+    const dir = makeTempDir();
+    const cacheName = `download_${createHash("md5").update(url).digest("hex").slice(0, 12)}.mp4`;
+    const cachePath = join(dir, cacheName);
+    fsRaceControls.failLinkWith = "EISDIR";
+    fsRaceControls.injectRaceAtLinkPath = cachePath;
+    stubFetch(vi.fn().mockImplementation(() => Promise.resolve(new Response("complete"))));
+
+    await downloadToTemp(url, dir, 1_000).catch(() => undefined);
+
+    expect(readFileSync(cachePath, "utf8")).toBe("concurrent-winner");
   });
 
   it("locally refetches when a concurrent race winner disappears before validation", async () => {

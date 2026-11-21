@@ -11,6 +11,7 @@ import { createCloudClient } from "../../cloud/index.js";
 import { reportApiError } from "../../cloud/errors.js";
 import { withMeta } from "../../utils/updateCheck.js";
 import { c } from "../../ui/colors.js";
+import { terminalText } from "@hyperframes/core";
 import { isUnattended } from "../../utils/attendedTerminal.js";
 import { errorBox } from "../../ui/format.js";
 
@@ -37,7 +38,7 @@ export default defineCommand({
     confirm: {
       type: "boolean",
       description:
-        "Prompt before deleting (default: true). Pass `--no-confirm` to skip — required for scripts and --json.",
+        "Prompt before deleting. Pass `--no-confirm` to skip — required for scripts and --json.",
       default: true,
     },
   },
@@ -78,7 +79,7 @@ export default defineCommand({
         );
         return;
       }
-      console.log(`${c.success("✓")}  Deleted ${c.accent(response.render_id)}`);
+      console.log(`${c.success("✓")}  Deleted ${c.accent(terminalText(response.render_id))}`);
     } catch (err) {
       reportApiError("Could not delete render", err, {
         notFound: `No render found with id "${args.id}".`,
@@ -90,7 +91,7 @@ export default defineCommand({
 async function confirmDelete(id: string): Promise<boolean> {
   const clack = await import("../../ui/prompts.js");
   const answer = await clack.confirm({
-    message: `Delete render ${id}? This is irreversible.`,
+    message: `Delete render ${terminalText(id)}? This is irreversible.`,
     initialValue: false,
   });
   return answer === true;

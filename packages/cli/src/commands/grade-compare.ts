@@ -1,12 +1,13 @@
 import {
   copyFileSync,
   existsSync,
-  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { makeOutputFolder } from "../utils/outputFolder.js";
 import { readJsonFileText } from "../utils/jsonFlag.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve } from "node:path";
@@ -31,6 +32,7 @@ import { serveStaticProjectHtml } from "../utils/staticProjectServer.js";
 import { withMeta } from "../utils/updateCheck.js";
 import { failCaught } from "../utils/jsonError.js";
 import { CliUsageError } from "../utils/commandResult.js";
+import { parseTimeoutMs } from "../utils/timeoutArg.js";
 
 const COMPOSITION_ID = "grade-compare";
 const COMPOSITION_DURATION = "1";
@@ -40,6 +42,7 @@ const MAX_COLUMNS = 4;
 const GRID_PADDING = 16;
 const LABEL_HEIGHT = 32;
 const FFMPEG_EXTRACT_TIMEOUT_MS = 30_000;
+const DEFAULT_RENDER_READY_TIMEOUT_MS = 5_000;
 
 export interface GradeCompareCell {
   label: string;
@@ -289,7 +292,7 @@ export function parseGradeCompareArgs(args: {
       ? { kind: "grades", path: resolveFromBase(projectDir, gradesArg) }
       : { kind: "luts", value: lutsArg ?? "" },
     json: args.json === true,
-    timeoutMs: Number.parseInt(readOptionalString(args.timeout) ?? "", 10) || 5000,
+    timeoutMs: parseTimeoutMs(args.timeout, DEFAULT_RENDER_READY_TIMEOUT_MS),
   };
 }
 
@@ -612,7 +615,8 @@ export default defineCommand({
     },
     timeout: {
       type: "string",
-      description: "Render-ready timeout in ms before capture (default: 5000)",
+      description:
+        "Render-ready timeout before capture: a number of ms, or a duration such as 30s (default: 5000)",
     },
     baseline: {
       type: "boolean",
@@ -670,8 +674,8 @@ export default defineCommand({
         prepared.tempDir,
         parsed.timeoutMs,
       );
-      mkdirSync(dirname(parsed.outPath), { recursive: true });
-      copyFileSync(tempSheet, parsed.outPath);
+      makeOutputFolder(dirname(parsed.outPath));
+      replaceFileAtomically(parsed.outPath, readFileSync(tempSheet));
       trackCompareSheet({
         command: "grade-compare",
         cells: prepared.cells.length,

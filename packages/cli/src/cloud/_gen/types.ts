@@ -9,6 +9,11 @@
 // Add a new path/method to TARGET_ENDPOINTS in
 // scripts/generate_hyperframes_cli_client.py to extend this list.
 
+export interface AbortAssetUploadResponse {
+  asset_id: string;
+  status: "aborted";
+}
+
 export interface AssetBase64 {
   type: "base64";
   media_type: string;
@@ -74,10 +79,14 @@ export interface CaptionSetting {
 
 export type CaptionStyle = "default";
 
+export type ChargedPool = "api_credits" | "hyperframes_credits" | "web_credits" | "free_images";
+
 export type CinematicAvatarModel = "seedance_2" | "heygen_video_1";
 
 export interface CompleteAssetUploadRequest {
   checksum_sha256?: string | null;
+  multipart_upload_id?: string | null;
+  parts?: Array<CompletedPart> | null;
 }
 
 export interface CompleteAssetUploadResponse {
@@ -88,11 +97,17 @@ export interface CompleteAssetUploadResponse {
   status: "processing";
 }
 
+export interface CompletedPart {
+  part_number: number;
+  etag: string;
+}
+
 export interface CreateAssetUploadRequest {
   filename: string;
   content_type: string;
   size_bytes: number;
   checksum_sha256?: string | null;
+  multipart?: boolean | null;
 }
 
 export interface CreateAssetUploadResponse {
@@ -102,6 +117,7 @@ export interface CreateAssetUploadResponse {
   expires_in_seconds: number;
   max_bytes: number;
   status: "pending_upload";
+  multipart?: MultipartUploadPlan | null;
 }
 
 export interface CreateBackgroundRemovalRequest {
@@ -117,6 +133,8 @@ export interface CreateHyperframesRenderRequest {
   quality?: "draft" | "standard" | "high";
   format?: "mp4" | "webm" | "mov";
   crf?: number | null;
+  max_bitrate?: string | null;
+  buffer_size?: string | null;
   resolution?: HyperframesResolution;
   aspect_ratio?: HyperframesAspectRatio;
   composition?: string | null;
@@ -124,6 +142,7 @@ export interface CreateHyperframesRenderRequest {
   title?: string | null;
   callback_id?: string | null;
   callback_url?: string | null;
+  reverse_session_id?: string | null;
 }
 
 export interface CreateHyperframesRenderResponse {
@@ -200,6 +219,7 @@ export interface CreateVideoFromAvatar {
   remove_background?: boolean | null;
   callback_url?: string | null;
   callback_id?: string | null;
+  output_upload?: OutputUploadRequest | null;
   watermark?: WatermarkInput | null;
   caption?: CaptionSetting | null;
   output_format?: VideoOutputFormat;
@@ -241,6 +261,7 @@ export interface CreateVideoFromImage {
   remove_background?: boolean | null;
   callback_url?: string | null;
   callback_id?: string | null;
+  output_upload?: OutputUploadRequest | null;
   watermark?: WatermarkInput | null;
   caption?: CaptionSetting | null;
   output_format?: VideoOutputFormat;
@@ -288,6 +309,19 @@ export interface DeleteHyperframesRenderResponse {
   render_id: string;
 }
 
+export type DeliveryArtifact = "video" | "captions" | "thumbnail";
+
+export type DeliveryErrorCode =
+  | "upload_url_expired"
+  | "upload_rejected"
+  | "upload_target_not_found"
+  | "output_too_large"
+  | "provider_unavailable"
+  | "source_missing"
+  | "internal_error";
+
+export type DeliveryStatus = "pending" | "in_progress" | "succeeded" | "failed";
+
 export interface ElevenLabsEngineSettings {
   model?: ElevenLabsModel | null;
   similarity_boost?: number | null;
@@ -316,6 +350,15 @@ export interface ElevenLabsSpeechSettings {
 
 export type Expressiveness = "high" | "medium" | "low";
 
+export interface FileDeliveryStatus {
+  artifact: DeliveryArtifact;
+  status: DeliveryStatus;
+  target_host: string;
+  size_bytes?: number | null;
+  error_code?: DeliveryErrorCode | null;
+  completed_at?: number | null;
+}
+
 export interface FishEngineSettings {
   model?: FishModel | null;
   stability?: number | null;
@@ -333,11 +376,32 @@ export interface GptImage25Request {
   reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
 }
 
+export interface GptImage26FlareRequest {
+  model: "gpt-image-2.6-flare";
+  prompt: string;
+  num_images?: number;
+  aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | null;
+  reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
+export interface GptImage26Request {
+  model: "gpt-image-2.6";
+  prompt: string;
+  num_images?: number;
+  aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | null;
+  reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
 export interface HeyGenVoiceEngineSettings {
   engine_type: "heygen_voice" | "orca";
 }
 
 export type HyperframesAspectRatio = "16:9" | "9:16" | "1:1";
+
+export interface HyperframesReferenceBackground {
+  kind: "solid" | "none" | "unsupported_non_solid" | "unknown";
+  rgb?: Array<unknown> | null;
+}
 
 export interface HyperframesRenderDetail {
   render_id: string;
@@ -353,6 +417,7 @@ export interface HyperframesRenderDetail {
   resolution?: HyperframesResolution | null;
   aspect_ratio?: HyperframesAspectRatio | null;
   composition?: string | null;
+  reference_background?: HyperframesReferenceBackground | null;
   created_at?: number | null;
   completed_at?: number | null;
   failure_message?: string | null;
@@ -363,7 +428,12 @@ export type HyperframesRenderStatus = "queued" | "rendering" | "completed" | "fa
 
 export type HyperframesResolution = "1080p" | "4k";
 
-export type ImageCreateRequest = GptImage25Request | NanoBanana2Request | NanoBanana21Request;
+export type ImageCreateRequest =
+  | GptImage25Request
+  | GptImage26Request
+  | GptImage26FlareRequest
+  | NanoBanana2Request
+  | NanoBanana21Request;
 
 export interface ImageScene {
   type: "image";
@@ -409,6 +479,10 @@ export interface LipsyncDetail {
   failure_code?: string | null;
 }
 
+export interface ListUploadedPartsResponse {
+  parts: Array<UploadedPart>;
+}
+
 export interface LyriaMusicRequest {
   model: "lyria-3-pro";
   prompt: string;
@@ -417,6 +491,16 @@ export interface LyriaMusicRequest {
   intensity?: number | null;
   instrumental?: boolean;
   lyrics?: string | null;
+}
+
+export interface MintPartUrlsRequest {
+  multipart_upload_id: string;
+  part_numbers: Array<number>;
+}
+
+export interface MintPartUrlsResponse {
+  parts: Array<PartUrl>;
+  expires_in_seconds: number;
 }
 
 export interface ModelVideoResponse {
@@ -438,6 +522,12 @@ export interface ModelVideoResponse {
 
 export interface ModelVideoTimings {
   inference: number;
+}
+
+export interface MultipartUploadPlan {
+  multipart_upload_id: string;
+  part_size_bytes: number;
+  part_count: number;
 }
 
 export type MusicCreateRequest = LyriaMusicRequest;
@@ -481,6 +571,17 @@ export interface NanoBanana2Request {
   num_images?: number;
   aspect_ratio?: "1:1" | "16:9" | "9:16" | "4:3" | "3:4" | "3:2" | "2:3" | "21:9" | null;
   reference_images?: Array<AssetUrl | AssetId | AssetBase64>;
+}
+
+export interface OutputUploadRequest {
+  video: UploadTargetRequest;
+  captions?: UploadTargetRequest | null;
+  thumbnail?: UploadTargetRequest | null;
+}
+
+export interface PartUrl {
+  part_number: number;
+  upload_url: string;
 }
 
 export interface PlaybackInput {
@@ -592,6 +693,11 @@ export interface ThirdPartyGeneratedImage {
   height: number;
 }
 
+export interface ThirdPartyImageCharge {
+  amount: number;
+  pool: ChargedPool;
+}
+
 export type ThirdPartyImageFailureCode =
   | "content_policy_violation"
   | "partial_generation"
@@ -609,6 +715,7 @@ export interface ThirdPartyImageResponse {
   images: Array<ThirdPartyGeneratedImage>;
   failure_code?: ThirdPartyImageFailureCode | null;
   failure_message?: string | null;
+  charged?: ThirdPartyImageCharge | null;
 }
 
 export type TranscriptionCreateRequest = ScribeV2TranscriptionRequest;
@@ -660,6 +767,17 @@ export interface UploadAssetV3Response {
   size_bytes: number;
 }
 
+export interface UploadTargetRequest {
+  url: string;
+  headers?: Record<string, unknown>;
+}
+
+export interface UploadedPart {
+  part_number: number;
+  size_bytes: number;
+  etag: string;
+}
+
 export type VideoAspectRatio = "16:9" | "9:16" | "4:5" | "5:4" | "1:1" | "auto";
 
 export interface VideoDetail {
@@ -679,6 +797,7 @@ export interface VideoDetail {
   failure_code?: string | null;
   failure_message?: string | null;
   video_page_url?: string | null;
+  delivery?: Array<FileDeliveryStatus> | null;
 }
 
 export type VideoGenerationModel = "heygen-video-1";

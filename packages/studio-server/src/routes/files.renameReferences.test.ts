@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
-import { referenceRewriter, registerFileRoutes } from "./files";
+import { registerFileRoutes } from "./files";
+import { referenceRewriter } from "../helpers/fileReferences";
 import type { StudioApiAdapter } from "../types";
 
 const rewrite = (text: string, from: string, to: string, folder: boolean) =>

@@ -17,8 +17,8 @@
 
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 
@@ -111,17 +111,19 @@ const FETCH_TIMEOUT_MS = 4000;
 //              structurally (sibling `../hyperframes/references/…` paths,
 //              "call /media-use" preambles). These must be present and current
 //              for any video work, so `init` / `skills update` keep them fresh.
-//   on-demand — everything else: decks, Remotion ports, video rebuilds
-//              (reverse-any-video, style-sampling) and optional integrations (figma).
-//              They install when named (`hyperframes skills update <name>`),
+//              So are the video rebuilds, which only trigger when installed.
+//   on-demand — everything else: decks, Remotion ports and optional integrations
+//              (figma). They install when named (`hyperframes skills update <name>`),
 //              instead of being sprayed onto every machine that runs `init`.
 
 /** The entry skill — read first for any video request. */
 const ENTRY_SKILL = "hyperframes";
 
-/** True for skills every other skill depends on (see "Skill tiers" above). */
+const NAMED_CORE_SKILLS = new Set(["media-use", "reverse-any-video", "style-sampling"]);
+
+/** True for skills every machine gets with `init` / `skills update` (see "Skill tiers" above). */
 export function isCoreSkill(name: string): boolean {
-  return name === ENTRY_SKILL || name.startsWith("hyperframes-") || name === "media-use";
+  return name === ENTRY_SKILL || name.startsWith("hyperframes-") || NAMED_CORE_SKILLS.has(name);
 }
 
 /**
@@ -138,6 +140,8 @@ export const FALLBACK_CORE_SKILLS: readonly string[] = [
   "hyperframes-cli",
   "hyperframes-registry",
   "media-use",
+  "reverse-any-video",
+  "style-sampling",
 ];
 
 /**
@@ -392,6 +396,14 @@ function locateInstall(
   return null;
 }
 
+function globalInstallRoot(home = homedir()): SkillRoot {
+  return {
+    dir: join(process.env.CLAUDE_CONFIG_DIR?.trim() || join(home, ".claude"), "skills"),
+    agent: "claude-code",
+    scope: "global",
+  };
+}
+
 /**
  * Names from `skillNames` that are present (their SKILL.md exists) in the
  * located install. Local-only — no manifest fetch — so callers can verify the
@@ -399,9 +411,11 @@ function locateInstall(
  */
 export function presentSkills(
   skillNames: readonly string[],
-  opts: { dir?: string; cwd?: string; home?: string } = {},
+  opts: { dir?: string; cwd?: string; home?: string; installTarget?: boolean } = {},
 ): string[] {
-  const root = locateInstall([...skillNames], opts);
+  const root = opts.installTarget
+    ? globalInstallRoot(opts.home)
+    : locateInstall([...skillNames], opts);
   if (!root) return [];
   return skillNames.filter((name) => existsSync(join(root.dir, name, "SKILL.md")));
 }
@@ -549,6 +563,17 @@ export function hyperframesSkillNames(opts: {
   return skillsAttributedToSource(readSkillLock(lockPath), DEFAULT_REPO_SLUG);
 }
 
+export function foreignSkillNames(opts: {
+  scope: "project" | "global";
+  cwd?: string;
+  home?: string;
+}): string[] {
+  const lock = readSkillLock(lockPathForScope(opts.scope, opts));
+  return Object.entries(lock?.skills ?? {})
+    .filter(([, entry]) => isFromOtherSource(entry, DEFAULT_REPO_SLUG))
+    .map(([name]) => name);
+}
+
 // ── Resolving the "latest" manifest ──────────────────────────────────────────
 
 /** Walk up from `cwd` to find a repo checkout that ships the manifest. */
@@ -608,10 +633,13 @@ async function fetchManifest(url: string): Promise<SkillsManifest> {
  * Credential Manager (the Git for Windows default) answers a private or missing
  * repo's auth challenge with a blocking sign-in window. An empty credential.helper
  * clears every helper; an empty GIT_ASKPASS also skips core.askPass and SSH_ASKPASS.
+ * Git's folder and repository are an empty folder of its own, so no project's repo config is read.
  */
 async function remoteHeadSha(repoSlug: string): Promise<string | null> {
   if (!REPO_SLUG_PATTERN.test(repoSlug)) return null;
+  let noRepo: string | undefined;
   try {
+    noRepo = mkdtempSync(join(tmpdir(), "hyperframes-git-"));
     const { stdout } = await execFileAsync(
       "git",
       [
@@ -623,8 +651,10 @@ async function remoteHeadSha(repoSlug: string): Promise<string | null> {
       ],
       {
         timeout: FETCH_TIMEOUT_MS,
+        cwd: noRepo,
         env: {
           ...process.env,
+          GIT_DIR: noRepo,
           GIT_TERMINAL_PROMPT: "0",
           GIT_ASKPASS: "",
           GCM_INTERACTIVE: "never",
@@ -636,6 +666,8 @@ async function remoteHeadSha(repoSlug: string): Promise<string | null> {
     return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
   } catch {
     return null;
+  } finally {
+    if (noRepo) rmSync(noRepo, { recursive: true, force: true });
   }
 }
 
@@ -757,6 +789,8 @@ export async function checkSkills(
     canonical?: boolean;
     /** Read the remote manifest at this CLI version's release tag (see fetchRemoteManifest). */
     cliVersion?: string;
+    /** Check the global store written by the installer, even before it exists. */
+    installTarget?: boolean;
   } = {},
 ): Promise<SkillsCheckResult> {
   const { manifest: latest, ref } = await resolveLatestManifest(opts.source, opts.cwd, {
@@ -764,14 +798,14 @@ export async function checkSkills(
     cliVersion: opts.cliVersion,
   });
   const skillNames = Object.keys(latest.skills);
-  const root = locateInstall(skillNames, { dir: opts.dir, cwd: opts.cwd, home: opts.home });
+  const root = opts.installTarget ? globalInstallRoot(opts.home) : locateInstall(skillNames, opts);
   // A directory sharing a name with one of ours can belong to another publisher.
   // The lock says so; such a skill is never compared, refreshed or overwritten.
   const lock = root ? readSkillLock(lockPathForScope(root.scope, opts)) : null;
   const foreign = root
     ? skillNames.filter(
         (name) =>
-          existsSync(join(root.dir, name, "SKILL.md")) &&
+          (opts.installTarget || existsSync(join(root.dir, name, "SKILL.md"))) &&
           isFromOtherSource(lock?.skills?.[name], latest.source),
       )
     : [];

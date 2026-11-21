@@ -1,8 +1,8 @@
 import { CLIP_HIDDEN_ATTR, olderShaderBuildOnPage, revealClip } from "./clipReveal";
 import {
+  capturePageIn,
   defersMediaIn,
   RUNTIME_STAMPED_ATTR,
-  STUDIO_PREVIEW_CAPTURE_MODE,
   STUDIO_PREVIEW_MARK_META,
   STUDIO_PREVIEW_UPCOMING_ATTR,
 } from "../studioPreviewMark";
@@ -24,11 +24,13 @@ const HIDDEN_CLIP_DOUBLED_FOR_WEIGHT = `[${CLIP_HIDDEN_ATTR}][${CLIP_HIDDEN_ATTR
 const HIDDEN_CLIP_BY_INLINE_STYLE = `[${CLIP_HIDDEN_ATTR}][style*="visibility: hidden"]`;
 const skipHiddenImages = (clip: string) =>
   `${SKIPPABLE_CLIP}${clip} img { display: none !important; }`;
+const LAYER_OUTRANKING_UNLAYERED_IMPORTANT = "hf-hidden-clip";
 const hideHiddenClipContents = (clip: string) => {
   const filterOutputLayers = [clip, `${clip} *`]
     .flatMap((layer) => [layer, `${layer}::before`, `${layer}::after`])
     .join(", ");
-  return `${clip} * { visibility: hidden !important; } ${filterOutputLayers} { filter: none !important; }`;
+  const rules = `${clip} * { visibility: hidden !important; } ${filterOutputLayers} { filter: none !important; }`;
+  return `${rules} @layer ${LAYER_OUTRANKING_UNLAYERED_IMPORTANT} { ${rules} }`;
 };
 
 export function showHiddenClips(only: (el: HTMLElement) => boolean = () => true): () => void {
@@ -73,9 +75,8 @@ export function hideTimedClipsUntilFirstPass(): void {
   if (typeof document === "undefined") return;
   const parent = document.head ?? document.documentElement;
   if (!parent) return;
-  const mark = document.querySelector(STUDIO_PREVIEW_MARK);
-  const preview = mark !== null;
-  const capture = mark?.getAttribute("content") === STUDIO_PREVIEW_CAPTURE_MODE;
+  const preview = document.querySelector(STUDIO_PREVIEW_MARK) !== null;
+  const capture = capturePageIn(document);
   if (preview && !capture && !skipsHiddenImages())
     appendStyle(parent, SKIP_ATTR, skipHiddenImages(HIDDEN_CLIP_DOUBLED_FOR_WEIGHT));
   if (!document.querySelector(`style[${CONTENTS_ATTR}]`))

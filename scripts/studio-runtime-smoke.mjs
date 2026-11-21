@@ -23,6 +23,7 @@ function text(body, contentType = "text/plain") {
 
 const PROJECT_PATH = `/api/projects/${PROJECT_ID}`;
 const GET_RESPONSES = new Map([
+  ["/api/share/bootstrap", json({ csrf: "s".repeat(43) })],
   [
     "/api/projects",
     json({ projects: [{ id: PROJECT_ID, dir: "/tmp/smoke-test", title: "Smoke test" }] }),
@@ -42,6 +43,7 @@ const GET_RESPONSES = new Map([
   [`${PROJECT_PATH}/renders`, json({ renders: [] })],
   [`${PROJECT_PATH}/lint`, json({ findings: [] })],
   [`${PROJECT_PATH}/selection`, json({ selection: null, updatedAt: null })],
+  [`${PROJECT_PATH}/recovery-drafts/index.html`, json({ draft: null })],
   [`${PROJECT_PATH}/history`, json({ entries: [], back: null, forward: null })],
   ["/api/registry/blocks", json([])],
   ["/api/fonts", json({ fonts: [] })],

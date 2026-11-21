@@ -14,24 +14,27 @@ MP4.
 - `/hyperframes-cli` — the CLI by job: scaffold, check, look at frames, edit the timeline, preview, render, publish, project history.
 - `/hyperframes-registry` — ready-made blocks and components installed as editable source. Search it before hand-building any named visual.
 - `/media-use` — get or make any media (music, sound effects, images, voiceover, avatar and generated video, transcripts, cutouts, colour grades) and mix placed audio.
+- `/reverse-any-video` — rebuild any video file as an editable HyperFrames project and check it against the original frame by frame (HyperFrames Pro).
+- `/style-sampling` — make a new episode on your topic in one of five proven styles (HyperFrames Pro).
 - `/figma` — bring a Figma design, frame, logo or brand into a video.
 - `/slideshow` — a presentation or pitch deck. Output is a navigable deck, not a rendered MP4.
 - `/remotion-to-hyperframes` — bring existing video code or footage into HyperFrames (Remotion first; also Motion Canvas, Lottie, Three.js, canvas, or renders from other tools) and verify it frame by frame against the original.
-- `/reverse-any-video` — rebuild any video file as an editable HyperFrames project and check it against the original frame by frame (HyperFrames Pro).
-- `/style-sampling` — make a new episode on your topic in one of five proven styles (HyperFrames Pro).
 
 **Changing how real footage or images look or reveal?** Load `/media-use` and read its `references/media-treatments.md` before editing, even when the request only says dark, flat, boring, retro, private, or “make the reveal cooler.” It governs how footage is treated, never whether media may be used. Use canonical media treatments and seek-safe motion; do not improvise equivalent CSS/SVG filters or overlays.
 
 > **Tailwind v4 projects** (`hyperframes init --tailwind`): see `hyperframes-cli/references/init-and-scaffold.md` (Tailwind).
 
-> **Using a HyperFrames plugin?** Load skills from that installed bundle and follow
-> its `hyperframes/references/plugin-installation.md` execution rules. Update via
-> the plugin manager, not the standalone commands below.
+> Follow the loaded skill’s launcher instructions for every CLI command below.
 >
-> **Standalone skill missing or stale?** Run `npx hyperframes skills update <name>` to install/refresh
-> the specific skill you need, or bare `npx hyperframes skills update` to refresh the core set plus
-> everything already installed — neither pulls the full set. Restart the agent session so
-> newly installed skills load.
+> **Using a HyperFrames plugin?** Load skills from that installed bundle and follow
+> its `hyperframes/references/plugin-installation.md` execution rules. The person updates
+> the plugin through its plugin manager; the standalone commands below do not apply.
+>
+> **Standalone skill missing or stale?** Installing and updating skills is the person's step:
+> tell them which skill is missing or stale, and do not run the install yourself. For the user:
+> `npx hyperframes skills update <name>` installs/refreshes that skill, and bare
+> `npx hyperframes skills update` refreshes the core set plus everything already installed —
+> neither pulls the full set. Newly installed skills load in a new agent session.
 
 ## Commands
 
@@ -52,12 +55,14 @@ npx hyperframes docs <topic> # reference docs in terminal
 > **Agents must use `npx hyperframes preview --background` for Studio handoff.** Do not rely
 > on a shell/tool `run_in_background` wrapper around `npm run dev`: that foreground process
 > remains owned by the invoking session and can disappear while the browser stays open,
-> leaving refreshes at `ERR_CONNECTION_TIMED_OUT`. Verify with `preview --status`, keep it
+> leaving refreshes at `ERR_CONNECTION_TIMED_OUT`. Verify with `preview --status`. The desktop
+> app can't edit the project while this preview runs, so `npx hyperframes open` stops it first.
+> If you hand the project to the app another way, run `preview --stop` before you do. Otherwise keep it
 > alive through review, and stop it explicitly with `preview --stop` afterward.
 
 > **Back from the desktop app.** Once this project was opened in the HyperFrames desktop app, run `npx hyperframes catch-up` before your next change here: it lists what the person asked Framey in the app and which files changed since.
 
-> **Pinned CLI version.** These scripts pin an exact `hyperframes@X.Y.Z` so this project re-renders identically over time. Weeks later that pin lags fixes shipped since. To move up: `npx hyperframes@latest upgrade --project . --check` (shows the delta), then `npx hyperframes@latest upgrade --project .` to rewrite the pins. Always unpinned — the pinned script re-runs the old version against itself.
+> **Pinned CLI version.** These scripts pin an exact `hyperframes@X.Y.Z` so this project re-renders identically over time. Weeks later that pin lags fixes shipped since. With standalone skills, run the installed launcher with `--cli-version latest upgrade --project . --check` to see the delta. Repeat without `--check` to rewrite the pins. Plugin workflows keep their bundled CLI.
 
 ## Documentation
 

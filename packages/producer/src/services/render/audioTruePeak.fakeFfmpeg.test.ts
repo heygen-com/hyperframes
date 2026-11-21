@@ -123,6 +123,7 @@ describe("the true-peak correction", () => {
     const scan = (dbfs: string) =>
       ran(true, `${FRAME.replaceAll("-3.0", dbfs)}\n${SUMMARY.replace("-3.0", dbfs)}`);
     vi.mocked(runFfmpeg).mockImplementation(async (args, opts) => {
+      if (args.includes("pcm_f32le")) writeFileSync(args.at(-1)!, "cut mix");
       const result = scan(args.some((arg) => arg.includes(".true-peak-")) ? "-1.6" : "-0.3");
       opts?.onStderr?.(result.stderr);
       return result;

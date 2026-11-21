@@ -228,23 +228,14 @@ function emptyHfIdValue(html: string, tag: StartTag): number | null {
 }
 
 function outsideQuotes(open: string): string {
-  let quote = "";
-  let out = "";
-  for (const c of open) {
-    out += quotedChar(quote, c);
-    quote = quoteOf(quote, c);
-  }
-  return out;
-}
-
-function quoteOf(quote: string, c: string): string {
-  if (quote) return c === quote ? "" : quote;
-  return c === '"' || c === "'" ? c : "";
-}
-
-function quotedChar(quote: string, c: string): string {
-  if (!quote || c === quote) return c;
-  return " ".repeat(c.length);
+  return open.replace(/"[^"]*"?|'[^']*'?/g, (quoted) => {
+    const closed = quoted.length > 1 && quoted.endsWith(quoted.charAt(0));
+    return (
+      quoted.charAt(0) +
+      " ".repeat(quoted.length - (closed ? 2 : 1)) +
+      (closed ? quoted.charAt(0) : "")
+    );
+  });
 }
 
 function spliceIds(html: string, inserts: Insert[]): string {

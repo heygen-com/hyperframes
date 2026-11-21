@@ -7,7 +7,10 @@ import { fileURLToPath } from "node:url";
 
 import {
   assertArchiveFits,
+  logsTick,
   resolveCloudFpsArg,
+  parseAspectRatioFlag,
+  reencodeProgressLines,
   resolveAspectRatioForSubmit,
   validateDryRunSource,
   type ProjectInputSource,
@@ -57,6 +60,15 @@ describe("resolveCloudFpsArg", () => {
       resolveCloudFpsArg({ kind: "dir", dir: writeComposition(1, 1) }, undefined, undefined),
     ).toBeUndefined();
     expect(resolveCloudFpsArg(withFps("29.97"), undefined, undefined)).toBeUndefined();
+  });
+});
+
+describe("logsTick", () => {
+  it("logs a long render once a minute while its status holds, so a slow render does not read as a hang", () => {
+    const logged = { status: "rendering", at: 2_000 };
+    expect(logsTick("rendering", 30_000, logged)).toBe(false);
+    expect(logsTick("rendering", 62_000, logged)).toBe(true);
+    expect(logsTick("completed", 3_000, logged)).toBe(true);
   });
 });
 
@@ -128,8 +140,48 @@ describe("cloud render --dry-run", () => {
   });
 });
 
+describe("cloud render --dry-run of an imported project", () => {
+  it("leaves out an outside file an imported page references, and names it", () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-cloud-render-received-"));
+    onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+    const dir = join(root, "p");
+    mkdirSync(join(dir, ".hyperframes"), { recursive: true });
+    writeFileSync(join(root, "notes.txt"), "outside");
+    writeFileSync(
+      join(dir, "index.html"),
+      `<!doctype html><html><body><div data-composition-id="main" data-width="1920" data-height="1080"><link href="../notes.txt"></div></body></html>`,
+    );
+    writeFileSync(
+      join(dir, ".hyperframes", "received-files.json"),
+      JSON.stringify({ files: ["index.html"] }),
+    );
+    const result = spawnSync(
+      "bun",
+      ["run", cliEntry, "cloud", "render", dir, "--dry-run", "--json"],
+      {
+        encoding: "utf-8",
+        timeout: 30_000,
+        env: {
+          ...process.env,
+          CI: "1",
+          HEYGEN_API_URL: "http://127.0.0.1:1",
+          HYPERFRAMES_NO_UPDATE_CHECK: "1",
+          HOME: root,
+        },
+      },
+    );
+
+    expect(result.status).toBe(0);
+    const { archive } = JSON.parse(result.stdout) as { archive: { file_count: number } };
+    expect(archive.file_count).toBe(1);
+    expect(result.stderr).toContain(
+      "index.html references ../notes.txt, which leads outside the project and came in with an imported project; it was left out of the upload.",
+    );
+  });
+});
+
 describe("cloud render --dry-run with heavy media", () => {
-  it("plans the media as HeyGen asset uploads and leaves it out of the archive", () => {
+  it("sends every file in the zip when the project fits, with no uploads", () => {
     const dir = writeComposition(1920, 1080);
     writeFileSync(
       join(dir, "index.html"),
@@ -141,6 +193,7 @@ describe("cloud render --dry-run with heavy media", () => {
       join(dir, "clip.mp4"),
       Buffer.concat([mp4Header, Buffer.alloc(6 * 1024 * 1024 - mp4Header.length, 1)]),
     );
+    writeFileSync(join(dir, "unused-take.mp4"), Buffer.concat([mp4Header, Buffer.alloc(1024, 2)]));
     const result = spawnSync(
       "bun",
       ["run", cliEntry, "cloud", "render", dir, "--dry-run", "--json"],
@@ -163,13 +216,16 @@ describe("cloud render --dry-run with heavy media", () => {
         file_count: number;
         size_bytes: number;
         offloaded_media: Array<{ path: string; action: string; size_bytes: number }>;
+        largest_files: Array<{ path: string; size_bytes: number }>;
       };
     };
-    expect(archive.offloaded_media).toEqual([
-      { path: "clip.mp4", action: "upload", size_bytes: 6 * 1024 * 1024 },
+    // One zip is faster than any per-file upload, so media leaves it only when the zip would not fit.
+    expect(archive.offloaded_media).toEqual([]);
+    expect(archive.largest_files.map((file) => file.path)).toEqual([
+      "clip.mp4",
+      "unused-take.mp4",
+      "index.html",
     ]);
-    expect(archive.file_count).toBe(1);
-    expect(archive.size_bytes).toBeLessThan(64 * 1024);
   });
 });
 
@@ -226,6 +282,30 @@ describe("assertArchiveFits", () => {
       "data/scan.tiff",
     );
   });
+
+  it("names the largest files with control characters, line feeds included, as visible escapes", () => {
+    const esc = String.fromCharCode(27);
+    const errors = vi.mocked(console.error);
+    errors.mockClear();
+    expect(() =>
+      assertArchiveFits(200 * 1024 * 1024 + 1, [
+        { path: `a${esc}[2J\n  190.0 MB  b.tiff`, size_bytes: 190 * 1024 * 1024 },
+      ]),
+    ).toThrow(CliRuntimeError);
+    const printed = errors.mock.calls.flat().join("\n");
+
+    expect(printed.replace(new RegExp(`${esc}\\[[0-9;]*m`, "g"), "")).not.toContain(esc);
+    expect(printed).toContain("a\\x1b[2J\\x0a  190.0 MB  b.tiff");
+  });
+});
+
+describe("parseAspectRatioFlag", () => {
+  it("takes any W:H and refuses anything else as a usage error", () => {
+    expect(parseAspectRatioFlag("2:1")).toBe("2:1");
+    expect(parseAspectRatioFlag("16:9")).toBe("16:9");
+    expect(() => parseAspectRatioFlag("wide")).toThrow(CliUsageError);
+    expect(() => parseAspectRatioFlag("0:1")).toThrow(CliUsageError);
+  });
 });
 
 describe("resolveAspectRatioForSubmit — non-local sources", () => {
@@ -269,6 +349,64 @@ describe("resolveAspectRatioForSubmit — local dir", () => {
     ).toThrow(CliRuntimeError);
   });
 
+  it("keeps a 2:1 composition's own size at 1080p and does not claim a 16:9 default", () => {
+    const dir = writeComposition(1920, 960);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    expect(resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, false)).toBe(
+      undefined,
+    );
+    const said = log.mock.calls.flat().join("\n");
+    expect(said).toContain("2:1");
+    expect(said).toContain("keeps that size");
+    expect(said).not.toContain("16:9");
+  });
+
+  it("accepts --aspect-ratio 2:1 for a 2:1 composition", () => {
+    const dir = writeComposition(1920, 960);
+    expect(resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, "2:1", true)).toBe(
+      undefined,
+    );
+  });
+
+  it("refuses a 4k render of a 2:1 composition before upload, since no 4K preset fits it", () => {
+    const dir = writeComposition(1920, 960);
+    expect(() =>
+      resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, true, "4k"),
+    ).toThrow(CliRuntimeError);
+  });
+
+  it.each([
+    [1920, 1055],
+    [1000, 980],
+    [1055, 1920],
+  ])(
+    "refuses a 4k render of %ix%i, near a preset ratio but not one the 4K preset fits",
+    (width, height) => {
+      const dir = writeComposition(width, height);
+      expect(() =>
+        resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, true, "4k"),
+      ).toThrow(CliRuntimeError);
+    },
+  );
+
+  it.each([
+    [1920, 1080, "16:9"],
+    [1080, 1920, "9:16"],
+    [1080, 1080, "1:1"],
+  ])("sends %ix%i at 4k as %s", (width, height, ratio) => {
+    const dir = writeComposition(width, height);
+    expect(
+      resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, true, "4k"),
+    ).toBe(ratio);
+  });
+
+  it("keeps sending a near-16:9 composition's preset at 1080p, where the render keeps its own size", () => {
+    const dir = writeComposition(1920, 1055);
+    expect(resolveAspectRatioForSubmit({ kind: "dir", dir }, undefined, undefined, true)).toBe(
+      "16:9",
+    );
+  });
+
   it("fails fast when the --composition entry is missing", () => {
     const dir = writeComposition(1920, 1080);
     expect(() =>
@@ -290,5 +428,55 @@ describe("resolveAspectRatioForSubmit — local dir", () => {
     const output = printed.mock.calls.flat().join("\n");
     expect(output).toContain(`resolves to ${resolve(dir, "missing.html")}`);
     expect(output).toContain(`project directory ${resolve(dir)}`);
+  });
+});
+
+describe("reencodeProgressLines", () => {
+  it("writes one JSON line on stderr per whole percent, and per second when the length is unknown", () => {
+    const lines: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((line: string) => void lines.push(line));
+    let clock = 0;
+    const report = reencodeProgressLines(() => clock);
+
+    report({ path: "take.mkv", doneSeconds: 0.5, totalSeconds: 100 });
+    report({ path: "take.mkv", doneSeconds: 0.9, totalSeconds: 100 });
+    report({ path: "take.mkv", doneSeconds: 1.2, totalSeconds: 100 });
+    report({ path: "raw.mxf", doneSeconds: 3, totalSeconds: null });
+    clock = 400;
+    report({ path: "raw.mxf", doneSeconds: 3.5, totalSeconds: null });
+    clock = 1200;
+    report({ path: "raw.mxf", doneSeconds: 4, totalSeconds: null });
+
+    expect(lines.map((line) => JSON.parse(line))).toEqual([
+      {
+        event: "reencode_progress",
+        file: "take.mkv",
+        percent: 0,
+        done_seconds: 0.5,
+        total_seconds: 100,
+      },
+      {
+        event: "reencode_progress",
+        file: "take.mkv",
+        percent: 1,
+        done_seconds: 1.2,
+        total_seconds: 100,
+      },
+      {
+        event: "reencode_progress",
+        file: "raw.mxf",
+        percent: null,
+        done_seconds: 3,
+        total_seconds: null,
+      },
+      {
+        event: "reencode_progress",
+        file: "raw.mxf",
+        percent: null,
+        done_seconds: 4,
+        total_seconds: null,
+      },
+    ]);
+    vi.restoreAllMocks();
   });
 });

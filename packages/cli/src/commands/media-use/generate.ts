@@ -6,6 +6,7 @@ import {
   GENERATE_TYPES,
   checkRequest,
   generate,
+  isVendorPriced,
   parseMask,
   voiceFor,
   type GenerateRequest,
@@ -116,7 +117,8 @@ export default defineCommand({
     script: { type: "string", description: "avatar, voice: the words spoken" },
     voice: {
       type: "string",
-      description: "avatar, voice: a HeyGen voice id, or a language for its first voice in it",
+      description:
+        "avatar, voice: a HeyGen voice id, or a language (English, Chinese, en, zh-CN) for its first voice in it",
     },
     seconds: {
       type: "string",
@@ -126,7 +128,11 @@ export default defineCommand({
       type: "string",
       description: "Aspect ratio, e.g. 9:16 (image, video without a first frame, avatar)",
     },
-    model: { type: "string", description: "image: nano-banana-2 (default) or gpt-image-2.5" },
+    model: {
+      type: "string",
+      description:
+        "image: nano-banana-2.1 (default), gpt-image-2.6, gpt-image-2.6-flare, minimax-h3-image (2K) or minimax-h3-image-4k",
+    },
     bpm: { type: "string", description: "music: tempo, 60–180" },
     vocals: {
       type: "boolean",
@@ -136,7 +142,7 @@ export default defineCommand({
     "max-credits": {
       type: "string",
       description:
-        "The person's credit limit, less what earlier calls used: make nothing when this call would cost more",
+        "The person's credit limit, less what earlier calls used: make nothing when this call would cost more. A gpt-image or minimax-h3-image call is charged on the vendor's bill, so it is checked against its estimate plus 10%; that is not a hard ceiling, and an edit with many references can still go over. The project's credit-limit.json follows the same rule",
     },
     plan: {
       type: "boolean",
@@ -176,10 +182,10 @@ export default defineCommand({
       };
       const voice = await voiceFor(request);
       if (voice) request.voice = voice.voice_id;
+      checkRequest(request);
       const price = priceOf(request);
       const credits = creditsOf(price);
       if (args.plan) {
-        checkRequest(request);
         return {
           plan: true,
           type,
@@ -190,7 +196,7 @@ export default defineCommand({
           next: "run the same command without --plan to make it",
         };
       }
-      checkLimit(credits, num(args["max-credits"], "--max-credits"));
+      checkLimit(credits, num(args["max-credits"], "--max-credits"), isVendorPriced(request));
       const made = await generate(
         request,
         (status) => console.error(`generate: ${status}…`),

@@ -257,6 +257,34 @@ describe("seek-dispatch", () => {
     }
   });
 
+  it("a seek's deadline still fires while the render shim holds page timers for the next seek", async () => {
+    const page = window as unknown as Record<string, unknown>;
+    const realSetTimeout = globalThis.setTimeout;
+    const realClearTimeout = globalThis.clearTimeout;
+    const held = ((): number => 0) as unknown as typeof setTimeout;
+    page.__HF_VIRTUAL_TIME__ = {
+      originalSetTimeout: realSetTimeout,
+      originalClearTimeout: realClearTimeout,
+    };
+    globalThis.setTimeout = held;
+    window.setTimeout = held;
+    try {
+      registerSeekCompletion(new Promise(() => {}), "vfx");
+      const outcome = await Promise.race([
+        waitForSeekCompletion({ timeoutMs: 50 }).then(
+          () => "resolved",
+          (err: Error) => err.message,
+        ),
+        new Promise((resolve) => realSetTimeout(() => resolve("still pending"), 1000)),
+      ]);
+      expect(outcome).toBe("seek did not settle within 50 ms: still waiting on vfx");
+    } finally {
+      globalThis.setTimeout = realSetTimeout;
+      window.setTimeout = realSetTimeout;
+      delete page.__HF_VIRTUAL_TIME__;
+    }
+  });
+
   it("a seek whose holds settle in time resolves as before", async () => {
     registerSeekCompletion(new Promise((resolve) => setTimeout(resolve, 5)), "scene-window");
     await expect(waitForSeekCompletion({ timeoutMs: 1000 })).resolves.toBeUndefined();

@@ -128,3 +128,30 @@ test("CLI exits zero for valid files and non-zero for invalid files", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("the command prints a bad value from the file with control characters as visible escapes", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cube-validate-escape-"));
+  try {
+    const file = join(dir, "bad.cube");
+    writeFileSync(file, "LUT_3D_SIZE 2\n0 0 1\x1b]52;c;aGk=\x07\n");
+    assert.throws(
+      () =>
+        execFileSync(
+          process.execPath,
+          [new URL("./cube-validate.mjs", import.meta.url).pathname, file],
+          {
+            encoding: "utf8",
+            stdio: "pipe",
+          },
+        ),
+      (err) => {
+        const stderr = String(err.stderr);
+        assert.ok(stderr.includes("1\\x1b]52;c;aGk=\\x07"), stderr);
+        for (const raw of ["\x07", "\x1b"]) assert.ok(!stderr.includes(raw), stderr);
+        return err.status === 1;
+      },
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

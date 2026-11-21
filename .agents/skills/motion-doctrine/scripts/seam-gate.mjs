@@ -294,7 +294,7 @@ async function openPage(compUrl) {
 
 // ---------- in-page harness ----------
 const HARNESS = `window.__seamGate = {
-  seek(t){ __player.pause(); __player.seek(t); void document.body.offsetHeight; },
+  async seek(t){ __player.pause(); await __player.seek(t); void document.body.offsetHeight; },
   cumOp(el){
     let op = 1, n = el;
     while (n && n.nodeType === 1) {
@@ -314,7 +314,7 @@ const HARNESS = `window.__seamGate = {
     return { cx: r.x + r.width/2, cy: r.y + r.height/2, w: r.width, h: r.height,
              op: this.cumOp(el), es: r.width / lw, onscreen };
   },
-  sample(t, sels){ this.seek(t); const o = {}; for (const s of sels) o[s] = this.read(s); return o; },
+  async sample(t, sels){ await this.seek(t); const o = {}; for (const s of sels) o[s] = this.read(s); return o; },
   pathOf(el){
     if (el.id) return "#" + CSS.escape(el.id);
     const hf = el.getAttribute && el.getAttribute("data-hf-id");
@@ -330,8 +330,8 @@ const HARNESS = `window.__seamGate = {
     }
     return p.join(">");
   },
-  scan(t, rootSel, cap){
-    this.seek(t);
+  async scan(t, rootSel, cap){
+    await this.seek(t);
     const root = document.querySelector(rootSel || "#root");
     if (!root) return [];
     const els = [root, ...root.querySelectorAll("*")].slice(0, cap || 900);
@@ -389,7 +389,7 @@ async function verify() {
     ].filter(Boolean);
     const S = {};
     for (const t of [tA1, tA2, tB1, tB2])
-      S[t] = await evalJs(`__seamGate.sample(${t}, ${JSON.stringify([...new Set(sels)])})`);
+      S[t] = await evalJs(`__seamGate.sample(${t}, ${JSON.stringify([...new Set(sels)])})`, true);
 
     if (type === "cut") {
       const ex = seam.exit,
@@ -470,8 +470,8 @@ async function verify() {
       // Z-sign scan: the incoming scene's OWN entrances must not fight the seam's Z sign
       if (en.axis === "z") {
         const scanRoot = en.scanRoot || en.selector;
-        const s1 = await evalJs(`__seamGate.scan(${tB1}, ${JSON.stringify(scanRoot)})`);
-        const s2 = await evalJs(`__seamGate.scan(${tB2}, ${JSON.stringify(scanRoot)})`);
+        const s1 = await evalJs(`__seamGate.scan(${tB1}, ${JSON.stringify(scanRoot)})`, true);
+        const s2 = await evalJs(`__seamGate.scan(${tB2}, ${JSON.stringify(scanRoot)})`, true);
         const m1 = new Map(s1.map((e) => [e.sel, e]));
         const offenders = [];
         for (const e2 of s2) {
@@ -539,7 +539,7 @@ async function probe() {
   const dt = DT;
   const scans = {};
   for (const tt of [t - win, t - dt, t + dt, t + win])
-    scans[tt] = await evalJs(`__seamGate.scan(${Math.max(0, tt)}, "#root")`);
+    scans[tt] = await evalJs(`__seamGate.scan(${Math.max(0, tt)}, "#root")`, true);
   const join = (a, b) => {
     const m = new Map(a.map((e) => [e.sel, e]));
     return b.map((e2) => ({ e1: m.get(e2.sel), e2 })).filter((p) => p.e1);

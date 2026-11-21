@@ -229,10 +229,14 @@ function actionEnvironment() {
   return { repository, run, endpoint: `repos/${repository}/git` };
 }
 
+class MainAdvanced extends Error {}
+
 function assertCurrentMain(endpoint, base) {
   const current = commitOid(api(`${endpoint}/ref/heads/main`, "GET", undefined, ".object.sha"));
   if (current !== base)
-    throw new Error("Main advanced during publication; the next push run will regenerate it.");
+    throw new MainAdvanced(
+      "Main advanced during publication; the next push run will regenerate it.",
+    );
 }
 
 function updateStandingBranch(endpoint, exists, head) {
@@ -334,6 +338,15 @@ function publishSnapshot(context, base, exists, batches) {
 }
 
 export function publish(root) {
+  try {
+    publishMain(root);
+  } catch (error) {
+    if (!(error instanceof MainAdvanced)) throw error;
+    console.log(`::notice::${error.message}`);
+  }
+}
+
+function publishMain(root) {
   const base = commitOid(git(root, ["rev-parse", "HEAD"]));
   const changes = catalogChanges(root, base);
   const batches = commitBatches(changes);

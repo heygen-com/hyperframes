@@ -256,9 +256,9 @@ function boxAt(
     const filters = [
       `select=${sumOf(unique.map((k) => `eq(n\\,${k})`))}`,
       `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=bicubic`,
+      "format=rgb24",
       `crop=${w}:${h}`,
       `crop=${box[2]}:${box[3]}:${box[0]}:${box[1]}`,
-      "format=rgb24",
     ].join(",");
     runFfmpeg(
       [
@@ -331,7 +331,7 @@ function stillBox(path: string, box: Roi, w: number, h: number): Uint8Array | un
   try {
     const raw = runFfmpeg([
       ...["-i", path, "-frames:v", "1", "-vf"],
-      `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=bicubic,crop=${w}:${h},crop=${box[2]}:${box[3]}:${box[0]}:${box[1]},format=rgb24`,
+      `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=bicubic,format=rgb24,crop=${w}:${h},crop=${box[2]}:${box[3]}:${box[0]}:${box[1]}`,
       ...["-f", "rawvideo", "-"],
     ]);
     return raw.length >= box[2] * box[3] * 3 ? new Uint8Array(raw) : undefined;

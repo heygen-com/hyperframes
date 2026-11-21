@@ -129,14 +129,29 @@ publish creates a claimable link. Sign in when the CLI should own the project
 immediately, update an existing link, or publish into a shared space.
 
 A local video poster referenced with a relative path, such as
-`../shared/poster.png`, is copied into the published project even when it lives
-outside the project directory. Percent-encoded paths work too, such as
+`../shared/poster.png`, can be copied into the published project even when it
+lives outside the project directory, once you approve it (see below).
+Percent-encoded paths work too, such as
 `../shared/poster%20art.svg` for `poster art.svg` or
 `../shared/%E5%B0%81%E9%9D%A2.svg` for `封面.svg`.
 
 Local images outside the project referenced by an `<img>` or `<source>` element's
-`srcset` are included too. Their size or pixel-density descriptors are preserved,
+`srcset` can be included the same way. Their size or pixel-density descriptors are preserved,
 and your source files stay unchanged.
+
+Only images, video, audio, fonts and CSS files are copied from outside the
+project. Any other outside file, such as a script, a Lottie `.json` or a `.pdf`,
+is left out with a warning naming it; move it into the project folder to include
+it.
+
+Nothing from outside the project folder is uploaded without your say. Before
+uploading, `publish` lists each such file, including files the project only
+links to, and asks whether to upload them. The answer defaults to no, which
+leaves them out. A yes is remembered for that project in your user config
+folder (`~/.hyperframes/outside-files.json`), never in the project, so the next
+publish asks only about new files. With `--yes`, or when nobody can answer the
+prompt, outside files are left out with a warning naming each one. Pass
+`--include-outside-files` to upload them without asking.
 
 Before sharing source, remove secrets and confirm that every included media file
 can be shared. Tell a reviewer whether you need feedback on story, visuals,
@@ -161,3 +176,43 @@ editor or its render queue.
 - [Export and manage renders in the browser editor](/studio/export)
 - [Use advanced rendering options](/guides/rendering)
 - [Diagnose a project or render failure](/help)
+
+## Share from the local Studio preview
+
+Open a project with `hyperframes preview`, then choose **Share** beside **Export**.
+Choose **Sign in** if prompted. You can also run
+`hyperframes auth login` in your terminal, then return to Studio. Sharing reconnects
+automatically after browser sign-in or when you return to the panel. Credentials stay
+in the local CLI process. If you switch accounts in the terminal, reload Studio
+or sign in from the panel before retrying.
+
+Choose the workspace and who can access the project, then choose **Create share
+link**. Studio finishes saving pending edits before it renders and uploads the
+project. The five free shared-project allowance is the same allowance used by
+Desktop and the CLI. The workspace meter comes from the server; retries of an
+existing registration do not need an extra slot.
+
+Before Studio creates a link, uploads a version, or changes who can open a review or
+whether its link is on, it asks you to confirm and names the review and who can open
+it. A project folder remembers its review in `.hyperframes/review.json`,
+so a folder someone sent you can arrive already linked to their review. If the
+confirmation names a review you didn't share, cancel.
+
+Project files are included only when you choose **Include editable project files**. The panel reports
+whether the last Studio upload included files or was video only. If attaching
+files fails, retry the upload or explicitly choose **Retry with video only**.
+
+When the video is ready, choose **Copy link**. Local edits do not automatically
+replace the shared video: **Update shared version** uploads the saved project to
+the same review page. Changes to access use a separate **Save access** action.
+**Turn link off** keeps the project and comments; updating the video keeps an
+off link off. Turning the link off does not free a shared-project slot.
+
+You can close the Share panel while sharing continues, but keep the local Studio
+server running. Reopen the panel to recover progress, or use **Refresh** after a
+connection problem. **Manage sharing** opens the web page for invites and owner
+settings. Existing published project URLs continue to open separately.
+
+The local sharing bridge is available only from the same-origin loopback Studio
+page. It does not expose CLI credentials or accept a different project path.
+As with local preview, open projects whose scripts you trust.

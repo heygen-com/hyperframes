@@ -1,7 +1,7 @@
 # The arm64 Lambda video function's native ffmpeg, built on the Lambda Node 22 base it runs on:
 #   docker buildx build --platform linux/arm64 --target artifact --output type=local,dest=out packages/aws-lambda/image
 # The artifact stage depends on the check stage, so no tarball comes out of a build whose codecs fail.
-ARG BASE=public.ecr.aws/lambda/nodejs:22@sha256:d138eff445f6ea04c51091d8e6cbb064d5663e850cddfa62396061586f98b126
+ARG BASE=public.ecr.aws/lambda/nodejs:22@sha256:f571ad6becf9000980068fab79b9aac30c369fdd69817c0803f33ecaa9206834
 
 FROM ${BASE} AS build
 ENV SOURCE_DATE_EPOCH=1722643200
@@ -37,7 +37,28 @@ COPY --from=check /check.txt /hf-media-check.txt
 
 # The video function. /var/task comes from scripts/stage-arm64-image.ts as the `task` build context:
 #   docker buildx build --platform linux/arm64 --target video --build-context task=<out>/task packages/aws-lambda/image
-# Copy only, so any host builds it without emulation.
+# Its Chrome is Chrome for Testing's linux-arm64 chrome-headless-shell, the whole folder: the executable
+# alone finds no ICU data or .pak resources. The base has none of the shared libraries the shell links, so
+# they come from the base's own repository; this RUN needs an arm64 host or emulation. Its fonts are the
+# x86 function's: stage-arm64-image.ts unpacks @sparticuz/chromium's fonts and fonts.conf into /var/task/fonts.
+# Bump the version and the archive's sha256 together, with the rest of the repo's pins.
 FROM ${BASE} AS video
+ARG CHROME_HEADLESS_SHELL_VERSION=158.0.8127.36
+ARG CHROME_HEADLESS_SHELL_SHA256=176ee5c55486c22de43128871189061365ea28e881fc96016fd18e7cb59437c8
+COPY fetch.sh /fetch.sh
+RUN . /fetch.sh && retry microdnf install -y --nodocs --setopt=install_weak_deps=0 --releasever=2023.12.20260914 \
+      alsa-lib at-spi2-atk at-spi2-core atk dbus-libs expat fontconfig libX11 libXcomposite libXdamage \
+      libXext libXfixes libXrandr libxcb libxkbcommon mesa-libgbm nspr nss nss-util \
+      systemd-libs unzip && \
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 --max-time 600 -o /tmp/chs.zip \
+      "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_HEADLESS_SHELL_VERSION}/linux-arm64/chrome-headless-shell-linux-arm64.zip" && \
+    echo "${CHROME_HEADLESS_SHELL_SHA256}  /tmp/chs.zip" | sha256sum -c - && \
+    unzip -q /tmp/chs.zip -d /opt && rm /tmp/chs.zip /fetch.sh && \
+    microdnf remove -y unzip && microdnf clean all && \
+    /opt/chrome-headless-shell-linux-arm64/chrome-headless-shell --version | grep -F "${CHROME_HEADLESS_SHELL_VERSION}"
+# src/chromium.ts launches this executable.
+ENV HYPERFRAMES_LAMBDA_CHROME_SOURCE=chrome-headless-shell \
+    HYPERFRAMES_LAMBDA_CHROME_PATH=/opt/chrome-headless-shell-linux-arm64/chrome-headless-shell \
+    FONTCONFIG_PATH=/var/task/fonts
 COPY --from=task / /var/task/
 CMD ["handler.handler"]

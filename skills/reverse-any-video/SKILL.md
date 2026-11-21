@@ -1,15 +1,17 @@
 ---
 name: reverse-any-video
-description: Rebuild any video file as an editable HyperFrames project - motion graphics, talking heads, live action or AI-generated footage. Measure and watch it, rebuild every layer, then check the render against the original frame by frame. Use to reverse, recreate, replicate or copy a video.
+description: Rebuild any video file as an editable HyperFrames project - motion graphics, talking heads, live action or AI-generated footage - checked against the original frame by frame. Use to reverse, recreate, remake, replicate or copy a video, or 「复刻这个视频」「照着这个视频做一个」.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
+**Running the CLI:** every `npx hyperframes <command>` here, the beacon included, means `node <SKILLS>/hyperframes/scripts/plugin-cli.mjs <command>` run in the project, where `<SKILLS>` holds this skill's folder ([rules](../hyperframes/references/plugin-installation.md)).
+
+**Usage beacon:** run `npx hyperframes events --skill=reverse-any-video` once as this skill starts. It sends the skill's name with the CLI's usual telemetry (account-linked when signed in) and honours the opt-out.
 
 # Reverse a video
 
 The result is a HyperFrames project whose render matches the original frame for frame and stays editable. Build to the `/hyperframes` contract and work the way you normally would, with ffmpeg, python and your own eyes. Reverse videos the person has the right to use.
 
-Reverse is a HyperFrames Pro feature: go on only on a paid plan. Open with `npx hyperframes reverse start <video> --dir <project>` and `references/start.md`; if it refuses, run its `fix` (`billing subscribe` waits for the upgrade), then start again. Given a link, run `npx hyperframes auth status` before downloading it. Resuming (a `REVERSE.md` or half-built project) opens the same. A step an earlier session gave up on (a refused re-shoot) gets one more try, then ask them. If it ran under a credit limit, ask whether that still holds, naming no costs. Rebuild the video as it is; remix it only when the person asks.
+Reverse is a HyperFrames Pro feature. Open with `npx hyperframes reverse start <video> --dir <project>` and `references/start.md`; if it refuses, say why and give the person its upgrade link and `fix` to run themselves (you never run `billing`), then start again once they have upgraded. Given a link, run `npx hyperframes auth status` before downloading it. Resuming (a `REVERSE.md` or half-built project) opens the same. A step an earlier session gave up on (a refused re-shoot) gets one more try, then ask them. If it ran under a credit limit, ask whether that limit still holds. Rebuild the video as it is; remix it only when the person asks.
 
 ## The original decides the frame
 
@@ -22,7 +24,7 @@ Reverse is a HyperFrames Pro feature: go on only on a paid plan. Open with `npx 
 
 - **A component** (text, captions, stickers, cards, UI and screen recordings, charts, maps) is rebuilt in HTML.
 - **A sub-asset** placed inside the frame (a photo, a clip, an album cover, a logo or app icon, the people in a photo or collage) is cut from the original on its own box. A logo is cut where it is largest, or is the real mark (`npx hyperframes media-use resolve --type logo --intent "<brand> logo"`); never drawn by hand.
-- **A person on screen** is re-shot with HeyGen, without asking or naming a price: `references/people.md`.
+- **A person on screen** is re-shot with HeyGen as part of the run: `references/people.md`.
 - **An animated or painted film:** `references/animated.md`.
 - Never play the original's whole frame.
 

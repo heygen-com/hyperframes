@@ -8,6 +8,7 @@
 import { DEFAULT_MAX_SCREENSHOTS } from "./types.js";
 import { CaptureDirRefusedError } from "./captureErrors.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { screenshotOnceMore } from "../utils/screenshotOnceMore.js";
 import type { Page } from "puppeteer-core";
 import { isDegradableEvaluateTimeoutError } from "./captureTimeout.js";
 import { waitForPageReady } from "./navigateForCapture.js";
@@ -124,7 +125,7 @@ export async function captureFullPagePlate(
     if (docHeight > MAX_PLATE_HEIGHT_PX) return { kind: "omitted", reason: "height-limit" };
     if ((budget.remainingMs?.() ?? 1) <= 0) return { kind: "omitted", reason: "budget-exhausted" };
 
-    const buffer = await page.screenshot({ type: "png", fullPage: true });
+    const buffer = await screenshotOnceMore(() => page.screenshot({ type: "png", fullPage: true }));
     // Confirm what Chrome produced instead of trusting the measurement: the capture itself can
     // trigger another round of lazy loading. A clipped plate is undetectable downstream — the
     // skill only teaches the tile fallback when the file is *absent* — so emit nothing rather
@@ -324,7 +325,7 @@ export async function captureScrollScreenshots(
       if (budgetSpent()) break;
       let buffer: Uint8Array;
       try {
-        buffer = await page.screenshot({ type: "png" });
+        buffer = await screenshotOnceMore(() => page.screenshot({ type: "png" }));
       } catch (err) {
         result.failures.push(shotFailure(err, `screenshots/${filename}`, finalPositions[i]!));
         continue;

@@ -1,3 +1,5 @@
+import { templateContent } from "./subCompositionValidity.js";
+
 // Non-editable / non-visual elements that should never receive a stable id.
 export const EXCLUDED_TAGS = new Set([
   "script",
@@ -29,6 +31,9 @@ function toHfId(hash: number): string {
   const four = s.length >= 4 ? s.slice(-4) : s.padStart(4, "0");
   return `hf-${four}`;
 }
+
+// Per set, each key's last dup: ids only join a set, so every slot below it is still taken.
+const lastDup = new WeakMap<Set<string>, Map<string, number>>();
 
 // Element's own direct text (TEXT_NODE children), not descendants'.
 function ownText(el: Element): string {
@@ -69,6 +74,12 @@ function contentKey(el: Element): string {
  * twin added or removed), so a save carrying an id served before the edit misses or hits the other
  * twin until the watcher reloads the preview.
  */
+// Past 10,000 twins the 4-char window is crowded: widen the id with the dup counter, still checked against the set.
+function dupId(key: string, dup: number): string {
+  if (dup > 10000) return `hf-${(fnv1a(key) >>> 0).toString(36)}-${dup}`;
+  return toHfId(fnv1a(dup ? `${key}#${dup}` : key));
+}
+
 // WIRE CONTRACT: id minting is content-keyed (FNV1a of tag, sorted attrs, own text). R7's
 // preview route relies on mintHfId producing identical ids across mint contexts
 // (served copy vs. the source a save parses) — see preview.test.ts
@@ -78,20 +89,12 @@ function contentKey(el: Element): string {
 // drag-to-edit targeting.
 export function mintHfId(el: Element, assigned: Set<string>): string {
   const key = contentKey(el);
-  let id = toHfId(fnv1a(key));
-  let dup = 0;
-  while (assigned.has(id)) {
-    dup += 1;
-    // Graceful fallback instead of a hard throw: rehashing only fails to find a
-    // free 4-char slot in a pathological document (~1.6M identical elements).
-    // Rather than crash the whole parse, widen the id with the dup counter —
-    // still deterministic and unique, just longer than the 4-char norm.
-    if (dup > 10000) {
-      id = `hf-${(fnv1a(key) >>> 0).toString(36)}-${dup}`;
-      break;
-    }
-    id = toHfId(fnv1a(`${key}#${dup}`));
-  }
+  const twins = lastDup.get(assigned) ?? new Map<string, number>();
+  lastDup.set(assigned, twins);
+  let dup = twins.get(key) ?? 0;
+  let id = dupId(key, dup);
+  while (assigned.has(id)) id = dupId(key, ++dup);
+  twins.set(key, dup);
   assigned.add(id);
   return id;
 }
@@ -110,8 +113,8 @@ export function mintHfId(el: Element, assigned: Set<string>): string {
  */
 export function getChildElements(parent: Element): Element[] {
   const directChildren = Array.from(parent.children);
-  if (directChildren.length || parent.tagName.toLowerCase() !== "template") return directChildren;
-  const content = (parent as HTMLTemplateElement).content;
+  if (directChildren.length) return directChildren;
+  const content = templateContent(parent);
   if (content?.children.length) return Array.from(content.children);
   return directChildren;
 }

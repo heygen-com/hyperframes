@@ -1,9 +1,13 @@
 import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pythonInvocation } from "./python.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { geminiAuth, geminiConfigured } from "./gemini-auth.mjs";
+import { loadEnvFromDir } from "./heygen.mjs";
 import { pickProvider } from "./tts.mjs";
 
 function env(t) {
@@ -29,6 +33,37 @@ test("API keys take precedence over service accounts without invoking Python", (
   assert.deepEqual(geminiAuth({ run }).headers, { "x-goog-api-key": "gemini-key" });
   delete process.env.GEMINI_API_KEY;
   assert.deepEqual(geminiAuth({ run }).headers, { "x-goog-api-key": "google-key" });
+});
+
+// fails without the fix: a received project's Gemini key was used for speech with no note.
+test("a received .env's Gemini key is used with one note naming the file", (t) => {
+  env(t);
+  delete process.env.HYPERFRAMES_PROJECT_ENV_ORIGINS;
+  // Windows refuses control characters in folder names, so there the path is plain.
+  const esc = process.platform === "win32" ? "" : String.fromCharCode(27);
+  const project = mkdtempSync(join(tmpdir(), `hf-gemini-${esc}[31m-`));
+  const write = process.stderr.write;
+  const notes = [];
+  t.after(() => {
+    process.stderr.write = write;
+    rmSync(project, { recursive: true, force: true });
+  });
+  writeFileSync(join(project, ".env"), "GEMINI_API_KEY=received\n");
+  mkdirSync(join(project, ".hyperframes"));
+  writeFileSync(
+    join(project, ".hyperframes", "received-files.json"),
+    JSON.stringify({ files: [".env"] }),
+  );
+  process.stderr.write = (line) => notes.push(String(line));
+  loadEnvFromDir(project);
+  const run = () => assert.fail("must not spawn Python");
+  assert.deepEqual(geminiAuth({ run }).headers, { "x-goog-api-key": "received" });
+  geminiAuth({ run });
+  process.stderr.write = write;
+  const shown = join(project, ".env").replace(esc || "\0", "\\x1b");
+  assert.deepEqual(notes, [
+    `[hyperframes] Using GEMINI_API_KEY from ${shown}, a received project: speech goes to that key's Gemini account.\n`,
+  ]);
 });
 
 test("service-account configuration selects Gemini and returns scoped helper headers", (t) => {

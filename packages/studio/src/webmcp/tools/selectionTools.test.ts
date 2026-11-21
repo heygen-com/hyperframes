@@ -8,6 +8,7 @@ import {
   type StudioSelectResult,
 } from "./selectionTools";
 import {
+  documentPreview,
   expectFailure,
   expectOk,
   previewDoc,
@@ -26,7 +27,7 @@ describe("studioSelect", () => {
     const applySelection = vi.fn();
 
     const result = await studioSelect(
-      selectionDeps({ getPreviewDocument: () => doc, applySelection }),
+      selectionDeps({ preview: documentPreview(() => doc), applySelection }),
       sourceHandle("headline", "project-b"),
     );
 
@@ -43,7 +44,7 @@ describe("studioSelect", () => {
     const applySelection = vi.fn();
 
     const result = await studioSelect(
-      selectionDeps({ getPreviewDocument: () => doc, applySelection }),
+      selectionDeps({ preview: documentPreview(() => doc), applySelection }),
       "hf:abc",
     );
 
@@ -62,7 +63,7 @@ describe("studioSelect", () => {
     const handle = "dom:v1:index.html:index.html:headline";
 
     const ok = expectOk<StudioSelectResult>(
-      await studioSelect(selectionDeps({ getPreviewDocument: () => doc }), handle),
+      await studioSelect(selectionDeps({ preview: documentPreview(() => doc) }), handle),
     );
 
     expect(ok.handle).toBe(handle);
@@ -86,7 +87,7 @@ describe("studioSelect", () => {
     const ok = expectOk<StudioSelectResult>(
       await studioSelect(
         selectionDeps({
-          getPreviewDocument: () => currentDoc,
+          preview: documentPreview(() => currentDoc),
           buildSelection,
           applySelection,
         }),
@@ -117,7 +118,7 @@ describe("studioSelect", () => {
     const failure = expectFailure(
       await studioSelect(
         selectionDeps({
-          getPreviewDocument: () => documents[currentIndex] ?? documents.at(-1)!,
+          preview: documentPreview(() => documents[currentIndex] ?? documents.at(-1)!),
           buildSelection,
           applySelection,
         }),
@@ -141,7 +142,7 @@ describe("studioSelect", () => {
 
     const doc = previewDoc('<h1 id="headline">Ship it</h1>');
     const noMatch = expectFailure(
-      await studioSelect(selectionDeps({ getPreviewDocument: () => doc }), "dom:missing"),
+      await studioSelect(selectionDeps({ preview: documentPreview(() => doc) }), "dom:missing"),
     );
     expect(noMatch.kind).toBe("invalid");
     expect(noMatch.reason).toMatch(/no element matches/);
@@ -154,7 +155,7 @@ describe("studioSelect", () => {
 
     const result = expectFailure(
       await studioSelect(
-        selectionDeps({ getPreviewDocument: () => doc, buildSelection: async () => null }),
+        selectionDeps({ preview: documentPreview(() => doc), buildSelection: async () => null }),
         "dom:headline",
       ),
     );
@@ -164,12 +165,16 @@ describe("studioSelect", () => {
   });
 
   it("rejects a missing handle without touching the preview", async () => {
-    const getPreviewDocument = vi.fn(() => null);
+    const load = vi.fn(() => null);
+    const find = vi.fn(async () => null);
 
-    const result = expectFailure(await studioSelect(selectionDeps({ getPreviewDocument }), "  "));
+    const result = expectFailure(
+      await studioSelect(selectionDeps({ preview: { load, find } }), "  "),
+    );
 
     expect(result.kind).toBe("invalid");
-    expect(getPreviewDocument).not.toHaveBeenCalled();
+    expect(load).not.toHaveBeenCalled();
+    expect(find).not.toHaveBeenCalled();
   });
 
   it("leaves the existing selection alone when it fails", async () => {
@@ -177,7 +182,7 @@ describe("studioSelect", () => {
     const applySelection = vi.fn();
 
     await studioSelect(
-      selectionDeps({ getPreviewDocument: () => doc, applySelection }),
+      selectionDeps({ preview: documentPreview(() => doc), applySelection }),
       "dom:missing",
     );
 

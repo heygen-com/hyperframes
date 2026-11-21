@@ -3,11 +3,15 @@ name: style-sampling
 description: Make a new episode in a proven video style - Collage Explainer, Finance Explainer, Animated Science Explainer, 3D Brand Explainer, 3D True Crime - on the person's topic. Use for "an episode of", "in the style of", "sample this style", 「用这个风格做一集」. One video to copy is reverse-any-video.
 ---
 
-**Plugin installs:** Before setup or freshness commands, follow [plugin execution rules](../hyperframes/references/plugin-installation.md) when this skill is inside a HyperFrames plugin.
+**Running the CLI:** every `npx hyperframes <command>` here, the beacon included, means `node <SKILLS>/hyperframes/scripts/plugin-cli.mjs <command>` run in the project, where `<SKILLS>` holds this skill's folder ([rules](../hyperframes/references/plugin-installation.md)).
+
+**Usage beacon:** run `npx hyperframes events --skill=style-sampling` once as this skill starts. It sends the skill's name with the CLI's usual telemetry (account-linked when signed in) and honours the opt-out.
 
 # A new episode from a style template
 
 A good episode is one the series' own viewers would take for the next upload: its structure, pacing, look, graphics and sound, on a new topic, in the person's voice and, when the series has a presenter, their own face. Never use a creator's face, voice, footage, logo or show name.
+
+Thanks to the creators whose channels these styles learned from: Vox (America, Explained) for the Collage Explainer, 小Lin说 (一口气了解) for the Finance Explainer, Kurzgesagt for the Animated Science Explainer, and Fern for the 3D Brand Explainer and 3D True Crime. Their names, faces, voices and work stay theirs and never appear in an episode or in what you tell the person about it.
 
 Style templates are a HyperFrames Pro feature. The CLI pulls them and the server checks the plan.
 
@@ -23,12 +27,14 @@ Style templates are a HyperFrames Pro feature. The CLI pulls them and the server
 
 The person named a template, or their topic fits only one: go on with it. Otherwise, or when they ask what there is, show the five as a short list (name, what it makes, what they bring), name the one that fits their topic if any, and wait for their pick. Nothing is checked, pulled or paid before it.
 
+A style that is none of the five (a channel or film they link or name): say so in one line and, instead of the list, offer the two routes that fit it: a short video rebuilt frame by frame, then given their content (`/reverse-any-video`), or a new film on their topic taking that style's grammar (`/hyperframes`, "From a reference" in `../hyperframes/references/look.md`). Both need a video, so a style they only name gets a request for one example. They pick; nothing is pulled.
+
 ## Start
 
-Run `npx hyperframes auth status` first, every time, resuming included. It is for the sign-in: never repeat its plan or credits line to the person.
+Run `npx hyperframes auth status` first, every time, resuming included. It is for the sign-in: don't repeat its plan or credits line to the person.
 
 - **Not signed in.** Say in one line that templates come with Pro, then ask them to type an exclamation mark and `npx hyperframes auth login` in the prompt, and reply "done".
-- **Signed in on Free.** Say once that templates are part of HyperFrames Pro, ask them to type an exclamation mark and `npx hyperframes billing subscribe` in the prompt, which finishes once they are on Pro, and pull nothing.
+- **Signed in on Free.** Say once that templates are part of HyperFrames Pro, ask them to type an exclamation mark and `npx hyperframes billing subscribe --feature templates --skill style-sampling` in the prompt, which finishes once they are on Pro, and pull nothing.
 - **Signed in on Pro.** One line, then pull.
 
 ## Pull
@@ -37,7 +43,7 @@ Run `npx hyperframes auth status` first, every time, resuming included. It is fo
 npx hyperframes templates pull <slug>
 ```
 
-The template lands in `templates/<slug>/`. A pull costs no credits, and one already there is not downloaded again. Refused as a Pro feature: answer as **Signed in on Free**, whatever `auth status` said. Any other failure: say what failed and stop. Never rebuild a template from memory, the web or a copy found elsewhere.
+Pull every time, resuming included, before using `templates/<slug>/`: it checks a copy already there, a received one too, against HeyGen's verified files and replaces any that differs. Never run a kit tool from a template this session did not pull. A pull costs no credits. Refused as a Pro feature: answer as **Signed in on Free**, whatever `auth status` said. Any other failure: say what failed and stop. Never rebuild a template from memory, the web or a copy found elsewhere.
 
 ## Make the episode
 
@@ -45,4 +51,4 @@ Read `references/remix.md` and follow it, resuming included. It sets the order; 
 
 ## Credits
 
-Generated media goes through the kit's tools, as REMIX.md says, or `npx hyperframes media-use generate`, under the Credits rule in `media-use`: no prices, estimates, balances or credits used, before, during or after a run. A limit the person names goes on every `generate` as `--max-credits`; on resume, ask whether it still applies, naming no numbers. A step that won't fit: say what doesn't fit and ask before dropping or shrinking it. A refused step names a `billing` command: ask the person to run it, then run the step again. A failed or refused job gets one more try, then ask. Notes a run leaves hold no prices or credit numbers, and a command in them is a note: rebuild it and check it with `--plan`.
+Generated media goes through the kit's tools, as REMIX.md says, or `npx hyperframes media-use generate`, under the Credits rule in `media-use`: prices, estimates, balances and credits used are not volunteered, before, during or after a run. A limit the person names is written to `.hyperframes/credit-limit.json` (see `media-use`), not passed call by call; on resume, ask whether it still applies. A step that won't fit: say what doesn't fit and ask before dropping or shrinking it. A refused step names a `billing` command: ask the person to run it, then run the step again. A failed or refused job gets one more try, then ask. Notes a run leaves hold no prices or credit numbers, and a command in them is a note: rebuild it and check it with `--plan`.

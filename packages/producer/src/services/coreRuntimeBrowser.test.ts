@@ -199,6 +199,98 @@ describe("core runtime browser contract", () => {
     });
   });
 
+  it.each([
+    { name: "running after 80 ms", elapsed: 80 },
+    { name: "running after 250 ms", elapsed: 250 },
+    { name: "positive delay", elapsed: 80, delay: 500 },
+    { name: "negative delay", elapsed: 80, delay: -500 },
+    { name: "reverse keyframes", elapsed: 80, reverse: true },
+    { name: "finished before discovery", elapsed: 200, duration: 200 },
+    { name: "paused authored offset", elapsed: 80, paused: true, offset: 500 },
+    { name: "paused at zero", elapsed: 80, paused: true, offset: 0 },
+    { name: "running currentTime is not a baseline offset", elapsed: 80, offset: 500 },
+  ])(
+    "seeks initial WAAPI in composition time: $name",
+    async ({
+      elapsed,
+      delay = 0,
+      duration = 4000,
+      reverse = false,
+      paused = false,
+      offset = 0,
+    }) => {
+      const animationPage = await browser.newPage();
+      try {
+        await animationPage.setContent(`<!doctype html>
+          <div data-composition-id="root" data-root="true" data-no-timeline
+            data-start="0" data-duration="4" data-width="320" data-height="180">
+            <div id="waapi-box" class="clip" data-start="0" data-duration="4"></div>
+          </div>`);
+        await animationPage.evaluate(
+          ({ delay, duration, reverse, paused, offset }) => {
+            const box = document.getElementById("waapi-box");
+            if (!box) throw new Error("waapi-box missing");
+            const animation = box.animate(
+              [{ transform: "translateX(0px)" }, { transform: "translateX(100px)" }],
+              { duration, delay, direction: reverse ? "reverse" : "normal", fill: "both" },
+            );
+            if (paused) animation.pause();
+            if (offset || paused) animation.currentTime = offset;
+          },
+          { delay, duration, reverse, paused, offset },
+        );
+        if (!paused) {
+          // Wait for actual browser progress, not a guessed sleep duration.
+          await animationPage.waitForFunction(
+            (minimumTime) =>
+              Number(document.getElementById("waapi-box")?.getAnimations()[0]?.currentTime) >=
+              minimumTime,
+            {},
+            elapsed + offset,
+          );
+        }
+        await animationPage.addScriptTag({ content: readFileSync(RUNTIME_PATH, "utf8") });
+        await animationPage.waitForFunction(
+          () =>
+            (window as unknown as { __playerReady?: boolean }).__playerReady === true &&
+            (window as unknown as { __renderReady?: boolean }).__renderReady === true,
+        );
+        const times = duration === 200 ? [0, 0.1, 1 / 6, 0.1] : [0, 2, 3, 2];
+        const samples = await animationPage.evaluate(async (times) => {
+          // The runtime is injected as a built script, outside this test's module graph.
+          const player = (
+            window as unknown as {
+              __player: { seek: (time: number) => void; renderSeek: (time: number) => void };
+            }
+          ).__player;
+          const box = document.getElementById("waapi-box");
+          if (!box || !player) throw new Error("WAAPI fixture did not initialize");
+          const samples = [];
+          for (const method of ["seek", "renderSeek"] as const) {
+            for (const time of times) {
+              await player[method](time);
+              samples.push({
+                time,
+                x: new DOMMatrixReadOnly(getComputedStyle(box).transform).m41,
+                playState: box.getAnimations()[0]?.playState,
+              });
+            }
+          }
+          return samples;
+        }, times);
+        for (const sample of samples) {
+          const localTime = sample.time * 1000 + (paused ? offset : 0) - delay;
+          const progress = Math.max(0, Math.min(1, localTime / duration));
+          expect(sample.x).toBeCloseTo((reverse ? 1 - progress : progress) * 100, 3);
+          expect(sample.playState).toBe("paused");
+        }
+      } finally {
+        await animationPage.close();
+      }
+    },
+    30_000,
+  );
+
   it.each([24, 30, 60, 30_000 / 1_001])(
     "keeps the real public player running across a seek at %s fps",
     async (fps) => {
@@ -1597,20 +1689,23 @@ describe("core runtime browser contract", () => {
   const builtAsItRuns = (i: number) =>
     `const tl = gsap.timeline({ paused: true }); tl.to('[data-composition-id="s${i}"] b', { opacity: 0.5, duration: 1 }); window.__timelines["s${i}"] = tl;`;
   it.each([
-    ["its timeline built as the script runs", builtAsItRuns],
+    ["its timeline built as the script runs", builtAsItRuns, true],
+    ["its timeline built as the script runs, scrubbed while paused", builtAsItRuns, false],
     [
       "its timeline driving one built after a font wait",
       (i: number) =>
         `const tl = gsap.timeline({ paused: true }); Promise.all([document.fonts.load("16px serif")]).then(() => { const inner = gsap.timeline({ paused: true }); inner.to('[data-composition-id="s${i}"] b', { opacity: 0.5, duration: 1 }); tl.add(inner.tweenFromTo(0, 1), 0); window.__timelines["s${i}"] = tl; });`,
+      true,
     ],
     [
       "a timeline built after a font wait to pose it once",
       (i: number) =>
         `const tl = gsap.timeline({ paused: true }); window.__timelines["s${i}"] = tl; Promise.all([document.fonts.load("16px serif")]).then(() => { const pose = gsap.timeline({ paused: true }); pose.to('[data-composition-id="s${i}"] b', { opacity: 0.5, duration: 1 }); pose.time(0.5); });`,
+      true,
     ],
-  ])(
-    "lets go of each scene the preview mounts and unmounts while it plays, its captured audio included (%s)",
-    async (_, sceneScript) => {
+  ] as const)(
+    "lets go of each scene the preview mounts and unmounts, its captured audio included (%s)",
+    async (_, sceneScript, plays) => {
       const dir = mkdtempSync(resolve(tmpdir(), "scene-window-memory-"));
       // Its own browser: Web Audio only captures media where the context may start without a gesture.
       const audioBrowser = await puppeteer.launch({
@@ -1659,8 +1754,7 @@ describe("core runtime browser contract", () => {
         await page.waitForFunction(() => window.__playerReady && window.__renderReady);
         const cdp = await page.createCDPSession();
         await cdp.send("Performance.enable");
-        // DOM nodes alive but out of the page, after a full collection.
-        const kept = async () => {
+        const keptOnce = async () => {
           await cdp.send("HeapProfiler.collectGarbage");
           const { metrics } = await cdp.send("Performance.getMetrics");
           const inPage = await page.evaluate(() => {
@@ -1671,19 +1765,30 @@ describe("core runtime browser contract", () => {
           });
           return metrics.find((m) => m.name === "Nodes")!.value - inPage;
         };
+        // DOM nodes alive but out of the page. One collection can leave a freed scene unswept;
+        // a held one survives every collection.
+        const kept = async () => {
+          let count = await keptOnce();
+          for (let round = 0; round < 5; round++) {
+            const next = await keptOnce();
+            if (next >= count) return next;
+            count = next;
+          }
+          return count;
+        };
         const before = await kept();
-        await page.evaluate(async () => {
+        await page.evaluate(async (plays) => {
           const player = window.__player as unknown as {
             play: () => void;
             seek: (time: number, options: { keepPlaying: boolean }) => void;
           };
-          player.play();
+          if (plays) player.play();
           for (const time of [2.5, 4.5, 6.5, 8.5, 10.5]) {
-            player.seek(time, { keepPlaying: true });
+            player.seek(time, { keepPlaying: plays });
             await window.__hfWaitForSeekCompletion?.();
             await new Promise((settle) => setTimeout(settle, 200));
           }
-        });
+        }, plays);
         // The window unmounts only once it has mounted what is ahead.
         await page.waitForFunction(
           () => document.querySelectorAll("[data-hf-parked-scene]").length >= 5,

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { inspect } from "node:util";
 import puppeteer, { TimeoutError, type Browser, type Page } from "puppeteer-core";
 import { browserVersion, findSystemChrome } from "../vite.browser";
 
@@ -28,20 +29,25 @@ export async function launchTestChrome(
     console.info(
       `[studio-test-chrome] launch ${attempt}/${LAUNCH_ATTEMPTS}: ${executablePath} (${version})`,
     );
+    const killStuckLaunch = new AbortController();
+    const deadline = setTimeout(() => killStuckLaunch.abort(), LAUNCH_TIMEOUT_MS);
     try {
-      const browser = await launch(options);
+      const browser = await launch({ ...options, signal: killStuckLaunch.signal });
       console.info(
         `[studio-test-chrome] launch ${attempt}/${LAUNCH_ATTEMPTS} ready after ${Date.now() - startedAt} ms`,
       );
       return browser;
     } catch (error) {
       const elapsed = Date.now() - startedAt;
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason =
+        error instanceof Error ? error.message : inspect(error, { breakLength: Infinity });
       console.error(
         `[studio-test-chrome] launch ${attempt}/${LAUNCH_ATTEMPTS} failed after ${elapsed} ms: ${reason}`,
       );
       const stuck = error instanceof TimeoutError || elapsed >= LAUNCH_TIMEOUT_MS;
       if (!stuck || attempt === LAUNCH_ATTEMPTS) throw error;
+    } finally {
+      clearTimeout(deadline);
     }
   }
   throw new Error("Chrome launch attempts exhausted");

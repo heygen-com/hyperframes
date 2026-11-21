@@ -15,6 +15,7 @@
  * prefix as a composition script error, which fails a render whose timeline wait times out.
  */
 
+import { wallClearTimeout, wallSetTimeout } from "./wallClock";
 import {
   HF_VFX_ATTR,
   VfxChainError,
@@ -1210,14 +1211,14 @@ function awaitCanvasPaint(canvas: HTMLCanvasElement): Promise<"painted" | "timeo
     const finish = (outcome: "painted" | "timeout"): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      wallClearTimeout(timer);
       canvas.removeEventListener("paint", onPaint);
       resolve(outcome);
     };
     const onPaint = (): void => finish("painted");
     // Cleared by `finish`, so the common case adds no latency and leaves no
     // timer behind; on a canvas that never paints it is the only way out.
-    const timer = setTimeout(() => finish("timeout"), CAPTURE_PAINT_TIMEOUT_MS);
+    const timer = wallSetTimeout(() => finish("timeout"), CAPTURE_PAINT_TIMEOUT_MS);
     canvas.addEventListener("paint", onPaint, { once: true });
     try {
       (canvas as RequestPaintCanvas).requestPaint?.();

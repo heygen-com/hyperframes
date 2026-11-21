@@ -1,19 +1,20 @@
 import type { BrowserGpuMode } from "../browser/gpuPolicy.js";
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { c } from "./colors.js";
 import { recordFailure } from "../utils/jsonError.js";
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  const kb = Math.round((bytes / 1024) * 10) / 10;
+  if (kb < 1024) return `${kb.toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function formatDuration(ms: number): string {
-  const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(1)}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remaining = seconds - minutes * 60;
-  return `${minutes}m ${remaining.toFixed(1)}s`;
+  const tenths = Math.round(ms / 100);
+  if (tenths < 600) return `${(tenths / 10).toFixed(1)}s`;
+  const minutes = Math.floor(tenths / 600);
+  return `${minutes}m ${((tenths - minutes * 600) / 10).toFixed(1)}s`;
 }
 
 /**
@@ -132,17 +133,17 @@ export function label(name: string, value: string): string {
 
 export function errorBox(title: string, hint?: string, suggestion?: string): void {
   recordFailure(title, hint ?? suggestion);
-  console.error(`\n${c.error("\u2717")}  ${c.bold(title)}`);
+  console.error(`\n${c.error("\u2717")}  ${c.bold(terminalText(title))}`);
   if (hint) {
     // Indent EVERY hint line, not just the first \u2014 a multi-line hint (e.g. the
     // NO_TOKEN numbered setup list) otherwise had line 1 indented and the rest
     // flush-left, mangling the list. Single-line hints are unchanged.
-    const indented = hint
+    const indented = terminalLines(hint)
       .split("\n")
       .map((line) => `   ${line}`)
       .join("\n");
     console.error(`\n${c.dim(indented)}`);
   }
-  if (suggestion) console.error(`   ${c.accent(suggestion)}`);
+  if (suggestion) console.error(`   ${c.accent(terminalLines(suggestion))}`);
   console.error();
 }

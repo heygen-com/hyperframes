@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { registerRenderOutput, readRenderOutputs } from "./renderOutputs.js";
-import { listProjectFiles, affectsProjectSignature } from "./projectSignature.js";
+import { listProjectFilesAsync, affectsProjectSignature } from "./projectSignature.js";
 import { openProjectHistory } from "../history/projectHistory.js";
 import { beginArtifactCapture, recordRenderSuccess } from "../history/videoState.js";
 
@@ -66,7 +66,7 @@ it("registers concurrent custom outputs and directory renders without excluding 
     writeFileSync(join(root, "hls", "chunk.ts"), "output");
     writeFileSync(join(root, "a.webm"), "output");
     writeFileSync(join(root, "b.webm"), "input");
-    expect(listProjectFiles(root).map((file) => file.path)).toEqual(["b.webm"]);
+    expect((await listProjectFilesAsync(root)).map((file) => file.path)).toEqual(["b.webm"]);
     await registerRenderOutput(root, join(root, "..", "external.mp4"));
     expect(readRenderOutputs(root)).toEqual(["a.webm", "hls"]);
     await expect(registerRenderOutput(root, root)).rejects.toThrow("project directory");
@@ -75,7 +75,7 @@ it("registers concurrent custom outputs and directory renders without excluding 
   }
 });
 
-it("lists project files when the render output registry is unreadable", () => {
+it("lists project files when the render output registry is unreadable", async () => {
   const project = mkdtempSync(join(tmpdir(), "hf-render-registry-"));
   try {
     writeFileSync(join(project, "index.html"), "x");
@@ -85,7 +85,7 @@ it("lists project files when the render output registry is unreadable", () => {
     mkdirSync(join(project, ".hyperframes"));
     writeFileSync(join(project, ".hyperframes", "render-outputs.json"), "{not json");
     expect(() => readRenderOutputs(project)).toThrow();
-    expect(listProjectFiles(project).length).toBeGreaterThan(0);
+    expect((await listProjectFilesAsync(project)).length).toBeGreaterThan(0);
     expect(affectsProjectSignature(project, join(project, "index.html"))).toBe(true);
   } finally {
     rmSync(project, { recursive: true, force: true });

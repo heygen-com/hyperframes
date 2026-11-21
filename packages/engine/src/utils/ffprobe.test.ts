@@ -77,6 +77,63 @@ describe("extractMediaMetadata", () => {
   });
 });
 
+describe("a phone clip's display size", () => {
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  async function probed(stream: Record<string, unknown>) {
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [
+            {
+              codec_type: "video",
+              codec_name: "hevc",
+              width: 1920,
+              height: 1080,
+              r_frame_rate: "30/1",
+              avg_frame_rate: "30/1",
+              ...stream,
+            },
+          ],
+          format: { duration: "3" },
+        }),
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked, displaySize } = await import("./ffprobe.js");
+    const dir = mkdtempSync(`${tmpdir()}/hf-turned-`);
+    try {
+      writeFileSync(`${dir}/clip.mov`, "");
+      return displaySize(await mocked(`${dir}/clip.mov`));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("is portrait for an iPhone clip stored landscape with a -90 display matrix", async () => {
+    const shown = await probed({ side_data_list: [{ rotation: -90 }] });
+    expect(shown).toEqual({ width: 1080, height: 1920 });
+  });
+
+  it("reads an older muxer's rotate tag, and keeps a half turn's size", async () => {
+    expect(await probed({ tags: { rotate: "270" } })).toEqual({ width: 1080, height: 1920 });
+    expect(await probed({ side_data_list: [{ rotation: 180 }] })).toEqual({
+      width: 1920,
+      height: 1080,
+    });
+  });
+
+  it("widens anamorphic pixels, then turns, as Chrome lays the element out", async () => {
+    const shown = await probed({ sample_aspect_ratio: "4:3", side_data_list: [{ rotation: 90 }] });
+    expect(shown).toEqual({ width: 1080, height: 2560 });
+  });
+});
+
 describe("extractMediaMetadata nb_frames duration cross-check", () => {
   afterEach(() => {
     vi.resetModules();
@@ -291,6 +348,56 @@ describe("probeMediaProfile", () => {
     vi.resetModules();
     vi.doUnmock("child_process");
   });
+
+  it.each([
+    { format_name: "tty", codec_name: "ansi" },
+    { format_name: "bin", codec_name: "bintext" },
+    { format_name: "xbin", codec_name: "xbin" },
+    { format_name: "idf", codec_name: "idf" },
+    { format_name: "tty", codec_name: undefined },
+  ])(
+    "refuses a text file ffmpeg reads as $format_name video",
+    async ({ format_name, codec_name }) => {
+      const outcome = {
+        kind: "exit" as const,
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", codec_name }],
+          format: { format_name },
+        }),
+      };
+      const { spawn } = createSpawnSpy([outcome, outcome]);
+      vi.resetModules();
+      vi.doMock("child_process", () => ({ spawn }));
+      const { probeMediaProfile, extractMediaMetadata } = await import("./ffprobe.js");
+      const { NotMediaPayloadError } = await import("./notMediaPayload.js");
+
+      await expect(probeMediaProfile("/tmp/notes-profile")).rejects.toBeInstanceOf(
+        NotMediaPayloadError,
+      );
+      await expect(extractMediaMetadata("/tmp/notes-meta")).rejects.toThrow(/text file/);
+    },
+  );
+
+  it.skipIf(spawnSync("ffprobe", ["-version"]).status !== 0)(
+    "refuses a real .asc or .nfo text file named as media",
+    async () => {
+      vi.resetModules();
+      vi.doUnmock("child_process");
+      const dir = mkdtempSync(resolve(tmpdir(), "hf-text-art-"));
+      const { probeMediaProfile, extractMediaMetadata } = await import("./ffprobe.js");
+      try {
+        for (const name of ["notes.asc", "notes.nfo"]) {
+          const path = resolve(dir, name);
+          writeFileSync(path, "API_TOKEN=not-for-the-frame\nhello\n");
+          await expect(probeMediaProfile(path)).rejects.toThrow(/text file/);
+          await expect(extractMediaMetadata(path)).rejects.toThrow(/text file/);
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("classifies still, moving, audio-only, and mixed streams from probe data", async () => {
     const { spawn } = createSpawnSpy([
@@ -1074,6 +1181,33 @@ describe("ffprobe missing-binary fallback", () => {
       extractAudioMetadata("/tmp/aborted.audio", { signal: controller.signal }),
     ).rejects.toThrow();
     expect(calls).toHaveLength(2);
+  });
+
+  // fails without the fix: extractMediaMetadata took no signal, so its probe ran to the end after a cancel.
+  it("extractMediaMetadata stops on a cancel raised while it probes", async () => {
+    const controller = new AbortController();
+    const { spawn: baseSpawn, calls } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", codec_name: "h264", width: 16, height: 16 }],
+          format: { duration: "1" },
+        }),
+      },
+    ]);
+    const spawn = (command: string, args: readonly string[]) => {
+      controller.abort(new Error("render cancelled"));
+      return baseSpawn(command, args);
+    };
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+
+    const { extractMediaMetadata } = await import("./ffprobe.js");
+    await expect(
+      extractMediaMetadata("/tmp/aborted.video", { signal: controller.signal }),
+    ).rejects.toThrow("render cancelled");
+    expect(calls).toHaveLength(1);
   });
 
   it("extractMediaMetadata falls back to PNG cICP metadata when ffprobe is missing", async () => {
@@ -2289,5 +2423,71 @@ describe("the audio tail probe's read interval", () => {
     });
     expect(intervals.length).toBeGreaterThan(0);
     for (const interval of intervals) expect(interval.split("%")[0]).toMatch(/^\d+(\.\d+)?$/);
+  });
+});
+
+describe("a video whose headers state no duration", () => {
+  it("is measured from its packets, so a recorder's WebM or Matroska is not refused", async () => {
+    const dir = mkdtempSync(resolve(tmpdir(), "hf-no-duration-"));
+    const file = resolve(dir, "recording.mkv");
+    writeFileSync(file, "x");
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", width: 32, height: 24, avg_frame_rate: "10/1" }],
+          format: {},
+        }),
+      },
+      {
+        kind: "exit",
+        code: 0,
+        stdout: "0.000000,0.100000\n2.800000,0.100000\n2.700000,0.100000\n",
+      },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked, resolvePlayableVideoDuration } =
+      await import("./ffprobe.js");
+    try {
+      const metadata = await mocked(file);
+      expect(resolvePlayableVideoDuration(metadata)).toBeCloseTo(2.9);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      vi.resetModules();
+      vi.doUnmock("child_process");
+    }
+  });
+
+  it("ignores the half line a long film's output is cut at, and counts a packet with no stated duration as one frame", async () => {
+    const file = resolve(mkdtempSync(resolve(tmpdir(), "hf-no-duration-long-")), "long.mkv");
+    writeFileSync(file, "x");
+    const packets = (n: number) =>
+      Array.from({ length: n }, (_, i) => `${(i / 30).toFixed(6)},N/A`).join("\n") + "\n";
+    // The cut must land just after a decimal point, so its leftover digits read as a huge time.
+    let frames = 5000;
+    while (packets(frames).at(-(64 * 1024) - 1) !== ".") frames++;
+    const { spawn } = createSpawnSpy([
+      {
+        kind: "exit",
+        code: 0,
+        stdout: JSON.stringify({
+          streams: [{ codec_type: "video", width: 32, height: 24, avg_frame_rate: "30/1" }],
+          format: {},
+        }),
+      },
+      { kind: "exit", code: 0, stdout: packets(frames) },
+    ]);
+    vi.resetModules();
+    vi.doMock("child_process", () => ({ spawn }));
+    const { extractMediaMetadata: mocked, resolvePlayableVideoDuration } =
+      await import("./ffprobe.js");
+    try {
+      expect(resolvePlayableVideoDuration(await mocked(file))).toBeCloseTo(frames / 30, 1);
+    } finally {
+      vi.resetModules();
+      vi.doUnmock("child_process");
+    }
   });
 });

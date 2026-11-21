@@ -12,11 +12,17 @@ import {
   timelineKeys,
 } from "./gsapSoftReload";
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
+import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
 import { STUDIO_EDIT_ATTRS } from "../components/editor/manualEditsSeekReapply";
-import { markScenesStale } from "../player/sceneSwap";
+import { announcePreviewRestoredInPlace, markScenesStale } from "../player/sceneSwap";
+import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
+import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
 import { STUDIO_ORIGINAL_INLINE_TRANSLATE_ATTR } from "../components/editor/manualEditsTypes";
-import { countStudioPreviewChange, studioGestureDraws } from "../components/editor/manualEditsDom";
+import {
+  countStudioPreviewChange,
+  studioGestureDraws,
+} from "../components/editor/manualEditGesture";
 
 type PreviewWindow = Window & {
   __player?: { seek?: (t: number) => void };
@@ -66,7 +72,8 @@ function parseRestoreSource(html: string): Document {
   for (const template of Array.from(doc.querySelectorAll("template")).filter(
     isCompositionTemplate,
   )) {
-    template.replaceWith(template.content);
+    const content = templateContent(template);
+    if (content) template.replaceWith(content);
   }
   return doc;
 }
@@ -293,8 +300,15 @@ function finalizeInPlace(
   iframe: HTMLIFrameElement,
   win: PreviewWindow,
   currentTime: number,
+  changed: boolean,
 ): boolean {
-  if (applySoftReloadFinalization(iframe, currentTime)) return true;
+  const finalized =
+    applySoftReloadFinalization(iframe, currentTime) || seekAndReapply(win, currentTime);
+  if (finalized && changed) announcePreviewRestoredInPlace(iframe);
+  return finalized;
+}
+
+function seekAndReapply(win: PreviewWindow, currentTime: number): boolean {
   try {
     win.__player?.seek?.(currentTime);
     win.__hfStudioManualEditsApply?.();
@@ -324,9 +338,9 @@ export function showRestoreInPlace(
   const putBack = (time: number) => {
     if (iframe.contentDocument !== doc) return false;
     for (const [live, attributes, shown] of before) syncElementAttributes(live, attributes, shown);
-    return finalizeInPlace(iframe, win, time);
+    return finalizeInPlace(iframe, win, time, before.length > 0);
   };
-  if (finalizeInPlace(iframe, win, currentTime)) return putBack;
+  if (finalizeInPlace(iframe, win, currentTime, before.length > 0)) return putBack;
   putBack(currentTime);
   return null;
 }
@@ -353,6 +367,92 @@ function repaintWhileReloading(win: PreviewWindow, doc: Document, restored?: str
     parseRestoreSource(restored),
     keys,
     extractGsapScriptText(restored),
+  );
+}
+
+type SealedRestore = Omit<EditingParams<"restore-attributes">, "time">;
+
+const restoredAttributes = (el: Element): [string, string][] =>
+  el.getAttributeNames().map((name) => [name, el.getAttribute(name) ?? ""]);
+
+// The preview server stamps data-hf-id on every page it serves.
+const stamped = (html: string) => (html.includes("data-hf-id") ? html : ensureHfIds(html));
+
+type SealedFile = { scripted: boolean; elements: SealedRestore["scopes"][number]["elements"] };
+
+/** One file's changed elements with their restored attributes, or null when it needs a reload. */
+function sealedFile(file: UndoRestoreFile, isActive: boolean): SealedFile | null {
+  const prevDoc = parseRestoreSource(stamped(file.previous));
+  const nextDoc = parseRestoreSource(stamped(file.restored));
+  const scripted = restoreScripted(prevDoc, nextDoc, isActive);
+  const keys = diffRestoreDocs(prevDoc, nextDoc);
+  const restoredByKey = identityElementMap(nextDoc);
+  if (scripted === null || !keys || !restoredByKey) return null;
+  const elements = keys.map((key) => ({
+    key,
+    attributes: restoredAttributes(restoredByKey.get(key)!),
+  }));
+  return { scripted, elements };
+}
+
+/** A sealed preview's in-place restore from the files alone, or null when it needs a reload. */
+function sealedRestore(activeDocPath: string, files: RestoreFiles): SealedRestore | null {
+  const restore: SealedRestore = { scopes: [], scripted: false };
+  for (const [path, file] of Object.entries(files)) {
+    const isActive = path === activeDocPath;
+    const found = sealedFile(file, isActive);
+    if (!found) return null;
+    restore.scripted ||= found.scripted;
+    if (found.elements.length)
+      restore.scopes.push({ file: isActive ? null : path, elements: found.elements });
+  }
+  return restore;
+}
+
+/** Sends the restore to a sealed preview; a refusal, or no answer, reloads it. */
+function applySealedRestore(
+  iframe: HTMLIFrameElement,
+  activeDocPath: string,
+  files: RestoreFiles,
+  currentTime: number,
+  reloadPreview: () => void,
+  onShownInPlace?: () => void,
+): "soft" | "full" {
+  const restore = sealedRestore(activeDocPath, files);
+  const active = files[activeDocPath];
+  const script = active ? extractGsapScriptText(active.restored) : null;
+  if (restore && active && script !== extractGsapScriptText(active.previous)) {
+    const rerun =
+      script &&
+      applySoftReload(iframe, script, {
+        onAsyncFailure: reloadPreview,
+        onShownInPlace,
+        currentTimeOverride: currentTime,
+        authoredHtml: active.restored,
+        previousHtml: active.previous,
+        restore: restore.scopes,
+      });
+    if (rerun === "applied") return "soft";
+  } else if (restore?.scopes.length) {
+    sendSealedRestore(iframe, restore, currentTime, reloadPreview, onShownInPlace);
+    return "soft";
+  }
+  reloadPreview();
+  return "full";
+}
+
+function sendSealedRestore(
+  iframe: HTMLIFrameElement,
+  restore: SealedRestore,
+  currentTime: number,
+  reloadPreview: () => void,
+  onShownInPlace?: () => void,
+): void {
+  void previewRequest(iframe, "restore-attributes", { ...restore, time: currentTime }).then(
+    (reply) => {
+      if (!reply?.applied) reloadPreview();
+      else onShownInPlace?.();
+    },
   );
 }
 
@@ -402,6 +502,10 @@ export function applyUndoRestoreToPreview(
     markScenesStale(iframe, paths);
     reload();
   };
+  if (iframe && files && previewFrameOpaque(iframe))
+    return applySealedRestore(iframe, activeDocPath, files, currentTime, reloadPreview, () =>
+      announcePreviewRestoredInPlace(iframe),
+    );
   const doc = iframe?.contentDocument;
   const win = iframe?.contentWindow as PreviewWindow | null;
   const plan = doc && files && win ? planRestoreTargets(doc, activeDocPath, files) : null;
@@ -436,11 +540,12 @@ export function applyUndoRestoreToPreview(
       reloadPreview();
       return "full";
     }
+    announcePreviewRestoredInPlace(iframe);
     return "soft";
   }
   // Script unchanged or absent — the live timelines are still valid; only the
   // synced attributes need to take effect.
-  if (finalizeInPlace(iframe, win, currentTime)) return "soft";
+  if (finalizeInPlace(iframe, win, currentTime, plan.targets.length > 0)) return "soft";
   reloadPreview();
   return "full";
 }

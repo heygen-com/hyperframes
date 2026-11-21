@@ -3,18 +3,21 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { LintResult, StudioApiAdapter } from "../types.js";
 import { isInHiddenOrVendorDir, walkDir } from "../helpers/safePath.js";
+import { resolveProjectSignature } from "../helpers/projectSignature.js";
+import { ThumbnailGenerationCoordinator } from "./thumbnailGenerationCoordinator.js";
 
 type LintFinding = LintResult["findings"][number];
 
 async function collectProjectFindings(
   adapter: StudioApiAdapter,
   projectDir: string,
+  signal: AbortSignal,
 ): Promise<{ findings: LintFinding[]; coveredFiles: Set<string> }> {
   const findings: LintFinding[] = [];
   const coveredFiles = new Set<string>();
   if (!adapter.lintProject) return { findings, coveredFiles };
 
-  const result = await adapter.lintProject(projectDir);
+  const result = await adapter.lintProject(projectDir, signal);
   for (const entry of result.results) {
     coveredFiles.add(entry.file);
     for (const finding of entry.result.findings) {
@@ -46,22 +49,38 @@ async function lintUncoveredHtml(
   return findings;
 }
 
+async function lintProjectDir(
+  adapter: StudioApiAdapter,
+  projectDir: string,
+  signal: AbortSignal,
+): Promise<LintFinding[]> {
+  const htmlFiles = walkDir(projectDir).filter(
+    (f) => f.endsWith(".html") && !isInHiddenOrVendorDir(f),
+  );
+  const projectLint = await collectProjectFindings(adapter, projectDir, signal);
+  const extraFindings = await lintUncoveredHtml(
+    adapter,
+    projectDir,
+    htmlFiles,
+    projectLint.coveredFiles,
+  );
+  return [...projectLint.findings, ...extraFindings];
+}
+
+const MAX_CONCURRENT_LINT_RUNS = 2;
+
 export function registerLintRoutes(api: Hono, adapter: StudioApiAdapter): void {
+  const runs = new ThumbnailGenerationCoordinator<LintFinding[]>(MAX_CONCURRENT_LINT_RUNS);
   api.get("/projects/:id/lint", async (c) => {
     const project = await adapter.resolveProject(c.req.param("id"));
     if (!project) return c.json({ error: "not found" }, 404);
     try {
-      const htmlFiles = walkDir(project.dir).filter(
-        (f) => f.endsWith(".html") && !isInHiddenOrVendorDir(f),
+      const signature = await resolveProjectSignature(adapter, project.dir);
+      const key = JSON.stringify([project.dir, signature]);
+      const findings = await runs.acquire(key, c.req.raw.signal, (signal) =>
+        lintProjectDir(adapter, project.dir, signal),
       );
-      const projectLint = await collectProjectFindings(adapter, project.dir);
-      const extraFindings = await lintUncoveredHtml(
-        adapter,
-        project.dir,
-        htmlFiles,
-        projectLint.coveredFiles,
-      );
-      return c.json({ findings: [...projectLint.findings, ...extraFindings] });
+      return c.json({ findings });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       return c.json({ error: `Lint failed: ${msg}` }, 500);

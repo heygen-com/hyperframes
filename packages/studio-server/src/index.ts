@@ -1,4 +1,13 @@
-export { createStudioApi } from "./createStudioApi.js";
+export { createStudioApi, type StudioApiOptions } from "./createStudioApi.js";
+export {
+  refuseServiceWorkerScripts,
+  serviceWorkerScriptFetch,
+} from "./helpers/serviceWorkerScripts.js";
+export {
+  PREVIEW_ALLOWED_HOSTS_ENV,
+  previewAllowedHostsFromEnv,
+} from "./helpers/requestIdentity.js";
+export { carriesOAuthReturn, inertRefusal, refuseOAuthReturn } from "./helpers/inertRefusal.js";
 export { MAX_UPLOAD_BYTES } from "./routes/files.js";
 export {
   createProjectSignature,
@@ -13,6 +22,8 @@ export { cleanupProxyCache } from "./helpers/proxyCache.js";
 export { CACHE_DIR_NAME as PROXY_CACHE_DIR_NAME } from "./helpers/proxyTranscoder.js";
 export type {
   StudioApiAdapter,
+  StudioRefusal,
+  StudioRefusalWhy,
   ResolvedProject,
   RenderJobState,
   MediaProcessingJobState,
@@ -44,6 +55,7 @@ export { PREVIEW_BUNDLE_OPTIONS } from "./routes/preview.js";
 export { createPreviewDocumentStore } from "./helpers/previewDocumentStore.js";
 export { getMimeType, MIME_TYPES } from "./helpers/mime.js";
 export { decodeWellFormedEscapes, requestSubPath } from "./helpers/requestSubPath.js";
+export { originForListeningAddress } from "./helpers/serverOrigin.js";
 export { MAX_OPEN_MEDIA_RANGE_BYTES, openRangeEnd } from "./helpers/mediaRange.js";
 export {
   consumeFileWriteReceipt,
@@ -54,10 +66,12 @@ export {
   type FileWriteReceipt,
 } from "./helpers/fileVersion.js";
 export { buildSubCompositionHtml } from "./helpers/subComposition.js";
+export { captureLoadGrant, grantCaptureLoads } from "./helpers/captureLoads.js";
 export {
   clearElementScreenshotIsolation,
   getElementScreenshotClip,
   type ScreenshotClip,
+  thumbnailSeekReadyInBrowser,
 } from "./helpers/screenshotClip.js";
 export {
   thumbnailDeviceScaleFactor,
@@ -78,3 +92,12 @@ export {
   createStudioMotionRenderBodyScript,
   type StudioMotionRenderScriptOptions,
 } from "./helpers/studioMotionRenderScript.js";
+export type {
+  LocalShareAudience,
+  LocalShareSpace,
+  LocalShareState,
+  LocalShareJob,
+  LocalShareSnapshot,
+  LocalShareAction,
+  LocalShareInteraction,
+} from "./localShare.js";

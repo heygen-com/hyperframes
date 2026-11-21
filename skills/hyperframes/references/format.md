@@ -74,7 +74,7 @@ The detail behind the contract in `SKILL.md`. Full references: `npx hyperframes 
 | Attribute                                      | Meaning                                                                                             |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `data-start`, `data-duration`                  | Seconds, local to the file that declares the element                                                |
-| `data-track-index`                             | Studio lane only; paint order is CSS `z-index`                                                      |
+| `data-track-index`                             | Studio lane only (see Lanes); paint order is CSS `z-index`                                          |
 | `data-track-kind`                              | `graphics` or `captions` on scene hosts (video and audio come from the tag)                         |
 | `data-composition-src`, `data-variable-values` | Mount a scene file; per-mount variable values (a JSON object)                                       |
 | `data-media-start`                             | Offset into the source media (a trim)                                                               |
@@ -84,6 +84,15 @@ The detail behind the contract in `SKILL.md`. Full references: `npx hyperframes 
 | `data-link`, `data-sync-origin`                | A video and audio edited as one (see Linked clips)                                                  |
 | `data-hidden`                                  | Hidden in preview and render; reversible                                                            |
 | `data-no-timeline`                             | On the root of a still composition: no timeline to wait for                                         |
+
+## Lanes
+
+`data-track-index` never changes the render; it is how the edit reads in Studio. Clips that never overlap in time share a lane:
+
+- Scenes and full-frame sections, back to back: one lane.
+- Overlays, cards and captions over a scene: the next lane; another only where two of them overlap.
+- Every sound effect: one lane; a second only where two of them overlap. Music: its own lane. Voice: its own lane.
+- A new clip goes on the lowest lane of its kind where it overlaps nothing, never on a new lane of its own.
 
 ## Variables
 
@@ -95,7 +104,7 @@ The detail behind the contract in `SKILL.md`. Full references: `npx hyperframes 
 
 - Bundled, so they resolve by name: Inter, Montserrat, Outfit, Nunito, Oswald, League Gothic, Archivo Black, Space Mono, IBM Plex Mono, JetBrains Mono, EB Garamond, Playfair Display, Source Code Pro, Noto Sans JP, Roboto, Open Sans, Lato, Poppins. Common system fonts (Helvetica, Arial, Times, Menlo and the like) are swapped for the nearest of these.
 - The bundle only has Latin text at a few weights per family (Inter: 400, 700, 900). The compiler still fetches each of these families from Google Fonts for the other weights and scripts, and caches the result in `~/.cache/hyperframes/fonts`.
-- Any other family needs `@font-face` in the file that uses it, or lint fails `font_family_without_font_face`: `src: url('assets/fonts/x.woff2')` for a file in the project (a capture's own fonts, or one you download there), or `local('Exact Name')` for a font installed on this machine.
+- Any other family needs `@font-face` in the file that uses it, or lint fails `font_family_without_font_face`: `src: url('assets/fonts/x.woff2')` for a file in the project (a capture's own fonts, or one you download there), A `local('Exact Name')`-only face draws the font installed on this machine; a cloud render has no copy of it (lint warns `font_face_local_only`), so ship the file instead when the video may render in the cloud.
 
 ## Timing and the timeline
 
@@ -113,7 +122,7 @@ The detail behind the contract in `SKILL.md`. Full references: `npx hyperframes 
 
 Write what a Studio drop writes, so the clip behaves like one the person dropped:
 
-- `id`, `class="clip"`, `data-start` (the playhead or the requested time, never a silent 0) and `data-track-index`. Video with sound: `playsinline data-has-audio="true"`; silent footage: `muted playsinline`. Audio: `data-volume="1"`.
+- `id`, `class="clip"`, `data-start` (the playhead or the requested time, never a silent 0) and `data-track-index` (see Lanes). Video with sound: `playsinline data-has-audio="true"`; silent footage: `muted playsinline`. Audio: `data-volume="1"`.
 - Images and video fill the frame: `position: absolute; left: 0; top: 0`, width and height equal to the canvas, `object-fit: contain`.
 - `z-index` is the number of top-level clips already in that file plus one.
 - Raise the root's `data-duration` to cover the new clip's end, or it never plays.
@@ -146,7 +155,7 @@ Studio's Detach audio writes a muted `<video>` and an `<audio>` of the same file
 | `video_missing_muted`                                  | A timed `<video>` gets `data-has-audio="true"` or `muted`                                              |
 | `gsap_css_transform_conflict`                          | Set the start inside the tween (`gsap.fromTo`) instead of a CSS `transform`                            |
 | `gsap_animates_clip_element`                           | Animate a child of the `.clip`, or its `opacity`                                                       |
-| `video_nested_in_timed_element`                        | Time the `<video>` or its wrapper, not both                                                            |
+| `video_nested_in_timed_element`                        | Time the `<video>`; its wrapper stays untimed and gives it no timing                                   |
 | `media_missing_id`, `media_crossorigin_breaks_preview` | Give every `<audio>` an `id`; drop `crossorigin`                                                       |
 | `gsap_timeline_registered_before_async_build`          | Register the timeline at the end of the async callback                                                 |
 | `standalone_composition_wrapped_in_template`           | Only scene files use `<template>`                                                                      |

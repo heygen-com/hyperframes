@@ -7,7 +7,7 @@ import {
   type HistoryWindow,
   type ProjectHistory,
 } from "../history/projectHistory.js";
-import type { HistoryWho, HistoryTarget } from "../history/historyLog.js";
+import { stepPaths, type HistoryWho, type HistoryTarget } from "../history/historyLog.js";
 import { HistoryBusyError } from "../history/ownerLock.js";
 
 const YOU: HistoryWho = { kind: "person", name: "You" };
@@ -66,6 +66,8 @@ function targetOf(item: unknown): HistoryTarget | null {
   if (typeof fields.file !== "string") return null;
   const target: HistoryTarget = { file: fields.file, ...identityOf(fields) };
   if (!target.id && !target.hfId && !target.selector) return null;
+  const name = nameOf(fields.name);
+  if (name) target.name = name;
   if (isSelectorIndex(fields.selectorIndex)) target.selectorIndex = fields.selectorIndex;
   return target;
 }
@@ -81,6 +83,13 @@ function identityOf(
   return identity;
 }
 
+const MAX_TARGET_NAME = 200;
+
+function nameOf(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return value.trim().slice(0, MAX_TARGET_NAME) || undefined;
+}
+
 const isSelectorIndex = (value: unknown): value is number =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
@@ -88,7 +97,7 @@ const isSelectorIndex = (value: unknown): value is number =>
 function nextStep(history: ProjectHistory, direction: "back" | "forward") {
   const target = history.next(direction, YOU);
   if (!target) return null;
-  const paths = target.files.map((file) => file.path);
+  const paths = stepPaths(target);
   return { id: target.id, label: target.label, endedAt: target.endedAt, paths };
 }
 

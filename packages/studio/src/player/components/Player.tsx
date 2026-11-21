@@ -1,6 +1,5 @@
 import { buildProjectApiPath } from "../../utils/projectRouting";
 import { forwardRef, useEffect, useRef, useState } from "react";
-import { isLottieAnimationLoaded } from "@hyperframes/core/runtime/lottie-readiness";
 import { installAcceleratedCanvasTracker } from "@hyperframes/core/page-motion-blur";
 import { useMountEffect } from "../../hooks/useMountEffect";
 import { applyPreviewVariablesToUrl } from "../../hooks/previewVariablesStore";
@@ -8,6 +7,10 @@ import { HyperframesLoader } from "../../components/ui";
 import { usePlayerStore } from "../store/playerStore";
 import { announcePreviewDocumentLoaded } from "../sceneSwap";
 import type { IframeWindow } from "../lib/playbackTypes";
+import { watchPreviewFrame } from "../lib/bridgePlayback";
+import { previewUnderFrameToken } from "../lib/frameToken";
+import { retirePreviewEditingClient } from "../lib/previewChannel";
+import { type AssetWaitState, waitForPreviewAssets } from "./previewAssetWait";
 // Importing "@hyperframes/player" registers a class extending HTMLElement at
 // module load, which throws under SSR, hence the dynamic import behind a
 // `typeof window` guard. Kicking it here rather than in the mount effect puts
@@ -42,6 +45,7 @@ interface PlayerProps {
   suppressLoadingOverlay?: boolean;
   loadingUi?: "studio" | "host";
   noLoadTimeout?: boolean;
+  sandboxOrigin?: "opaque";
 }
 
 interface HyperframesPlayerElement extends HTMLElement {
@@ -49,9 +53,6 @@ interface HyperframesPlayerElement extends HTMLElement {
   ready?: boolean;
   painted?: boolean;
 }
-
-const MEDIA_HAVE_FUTURE_DATA = 3;
-const MEDIA_NETWORK_NO_SOURCE = 3;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -95,47 +96,11 @@ function enableInteractiveIframe(player: HyperframesPlayerElement): void {
 const studioDraws = (wait: boolean, loadingUi: PlayerProps["loadingUi"]) =>
   wait && loadingUi !== "host";
 
-function isPreviewMediaElement(el: Element): el is HTMLMediaElement {
-  const tagName = el.tagName.toLowerCase();
-  return tagName === "video" || tagName === "audio";
-}
-
-// Assets are considered ready when every `<video>`/`<audio>` has enough data
-// to play through without buffering, and every registered Lottie animation has
-// finished loading.
-//
-// Returns whichever value was returned last on cross-origin / transient DOM
-// races so a brief access failure (e.g. an iframe that just swapped src)
-// doesn't flicker the overlay state — we keep showing whatever was most
-// recently true.
-export function hasUnloadedAssets(iframe: HTMLIFrameElement, lastResult: boolean): boolean {
-  try {
-    const win = iframe.contentWindow as unknown as (Window & { __hfLottie?: unknown[] }) | null;
-    const doc = iframe.contentDocument;
-    if (!win || !doc) return lastResult;
-
-    for (const el of doc.querySelectorAll("video, audio")) {
-      if (
-        isPreviewMediaElement(el) &&
-        !el.error &&
-        el.networkState !== MEDIA_NETWORK_NO_SOURCE &&
-        el.readyState < MEDIA_HAVE_FUTURE_DATA
-      ) {
-        return true;
-      }
-    }
-
-    const lotties = win.__hfLottie;
-    if (lotties?.length) {
-      for (const anim of lotties) {
-        if (!isLottieAnimationLoaded(anim)) return true;
-      }
-    }
-
-    return false;
-  } catch {
-    return lastResult;
-  }
+async function playerSrc(previewSource: string, opaque: boolean): Promise<string> {
+  const url = new URL(previewSource, window.location.origin);
+  applyPreviewVariablesToUrl(url);
+  const src = url.pathname + url.search;
+  return opaque ? previewUnderFrameToken(src) : src;
 }
 
 const runtimeBootedIn = (iframe: HTMLIFrameElement) =>
@@ -184,7 +149,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     const onPreviewErrorRef = useRef(onPreviewError);
     onPreviewErrorRef.current = onPreviewError;
     const [loaded, setLoaded] = useState(false);
-    const [assetsLoading, setAssetsLoading] = useState(false);
+    const [assetsLoading, setAssetsLoading] = useState<AssetWaitState>(false);
     const [assetOverlayVisible, setAssetOverlayVisible] = useState(false);
     const [assetOverlayFading, setAssetOverlayFading] = useState(false);
     const [assetWaitLong, setAssetWaitLong] = useState(false);
@@ -218,14 +183,13 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
       let canceled = false;
       let cleanup: (() => void) | undefined;
 
-      void loadPlayerModule().then(() => {
+      const opaque = host.sandboxOrigin === "opaque";
+
+      void Promise.all([loadPlayerModule(), playerSrc(previewSource, opaque)]).then(([, src]) => {
         if (canceled) return;
 
         // Create the web component imperatively to avoid JSX custom-element typing.
         const player = document.createElement("hyperframes-player") as HyperframesPlayerElement;
-        const srcUrl = new URL(previewSource, window.location.origin);
-        applyPreviewVariablesToUrl(srcUrl);
-        const src = srcUrl.pathname + srcUrl.search;
         const retryPreview = () => {
           retryCountRef.current += 1;
           const retryUrl = new URL(src, window.location.origin);
@@ -298,28 +262,14 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // cold video or a broken asset can legitimately exceed 10 s on a
           // slow network.
           if (assetPollRef.current) clearInterval(assetPollRef.current);
-          const isContentRefresh = loadCountRef.current > 1;
-          let lastUnloaded = isContentRefresh ? false : hasUnloadedAssets(iframe, false);
-          if (lastUnloaded) {
-            setAssetsLoading(true);
-            let attempts = 0;
-            assetPollRef.current = setInterval(() => {
-              attempts += 1;
-              lastUnloaded = hasUnloadedAssets(iframe, lastUnloaded);
-              if (!lastUnloaded || attempts > 100) {
-                if (lastUnloaded && attempts > 100) {
-                  console.debug(
-                    "[studio] asset readiness poll hit the 10s cap, continuing with unloaded assets",
-                  );
-                }
-                if (assetPollRef.current) clearInterval(assetPollRef.current);
-                assetPollRef.current = null;
-                setAssetsLoading(false);
-              }
-            }, 100);
-          } else {
-            setAssetsLoading(false);
-          }
+          assetPollRef.current = null;
+          const load = loadCountRef.current;
+          waitForPreviewAssets(iframe, {
+            refresh: load > 1,
+            pollRef: assetPollRef,
+            isCurrent: () => loadCountRef.current === load,
+            setLoading: setAssetsLoading,
+          });
         };
 
         // Attach lifecycle listeners before assigning src or connecting the
@@ -332,7 +282,8 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         player.addEventListener("painted", handlePainted);
         player.addEventListener("error", handleError);
 
-        // Bridge the inner iframe to the forwarded ref for useTimelinePlayer.
+        // Sealed before the ref (useTimelinePlayer's bridge) sees the frame, never unsealed: a host may seal it too.
+        if (opaque) player.toggleAttribute("sandbox-origin", true);
         if (typeof ref === "function") {
           ref(iframe);
         } else if (ref) {
@@ -353,6 +304,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         loadIdRef.current += 1;
         player.setAttribute("src", src);
         container.appendChild(player);
+        watchPreviewFrame(iframe);
 
         enableInteractiveIframe(player);
 
@@ -365,6 +317,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           player.removeEventListener("error", handleError);
           if (assetPollRef.current) clearInterval(assetPollRef.current);
           assetPollRef.current = null;
+          retirePreviewEditingClient(iframe);
           // `remove()` rather than `container.removeChild(player)`: by the time
           // this cleanup runs the element may already be detached — React can
           // re-render the container, a crossfade refresh can swap it, or a
@@ -377,11 +330,11 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
           // During crossfade refreshes the retiring Player unmounts after the
           // new Player has already assigned its iframe to the same ref — blindly
           // nulling it would break seeking in the new Player.
-          // Callback refs are skipped — we can't read back the current value to
-          // guard against clobbering a newer assignment. The mutable-ref branch
-          // (the only path used today) is guarded by identity check.
+          // Callback refs are left alone: a shadow reload's promotion repoints
+          // the live frame without calling them, so a null here would wipe it.
+          // Their owners check `isConnected` instead (useShadowPreviewReload).
           if (typeof ref === "function") {
-            // no-op: can't safely guard callback refs
+            // no-op
           } else if (ref) {
             const mutableRef = ref as React.MutableRefObject<HTMLIFrameElement | null>;
             if (mutableRef.current === iframe) {
@@ -400,7 +353,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
     // Surface a "Continue anyway" escape hatch once the asset wait drags on.
     // eslint-disable-next-line no-restricted-syntax
     useEffect(() => {
-      if (!assetsLoading) {
+      if (assetsLoading !== true) {
         setAssetWaitLong(false);
         return;
       }
@@ -414,7 +367,7 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
         assetFadeRef.current = null;
       }
 
-      if (assetsLoading) {
+      if (assetsLoading === true) {
         setAssetOverlayVisible(true);
         setAssetOverlayFading(false);
         return;

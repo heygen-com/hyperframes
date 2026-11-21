@@ -28,7 +28,7 @@ const transformInput = (input: Record<string, unknown>) => ({
 function boxStore(initial: ElementBox) {
   const box = { ...initial };
   return {
-    read: () => ({ ...box }),
+    read: async () => ({ box: { ...box }, text: null }),
     set: (next: Partial<ElementBox>) => Object.assign(box, next),
   };
 }
@@ -38,7 +38,7 @@ function transformDeps(overrides: Partial<TransformToolDeps> = {}): TransformToo
   const selection = selectionFor(element);
   return {
     ...targetedWriteDeps(selection),
-    readBox: () => ({ x: 0, y: 0, width: 100, height: 50 }),
+    readNow: async () => ({ box: { x: 0, y: 0, width: 100, height: 50 }, text: null }),
     moveTo: async () => undefined,
     resizeTo: async () => undefined,
     rotateTo: async () => undefined,
@@ -54,7 +54,7 @@ async function resizeAndMove(moveLands: boolean): Promise<StudioTransformResult>
   const moveTo = vi.fn(async () => {
     if (moveLands) store.set({ x: 40, y: 40 });
   });
-  const result = await studioTransform(transformDeps({ readBox: store.read, resizeTo, moveTo }), {
+  const result = await studioTransform(transformDeps({ readNow: store.read, resizeTo, moveTo }), {
     ...transformInput({ x: 40, y: 40, width: 200, height: 80 }),
   });
   return expectOk<StudioTransformResult>(result);
@@ -69,7 +69,7 @@ describe("studioTransform", () => {
       store.set({ width: 300, height: 120 });
     });
 
-    const result = await studioTransform(transformDeps({ readBox: store.read, resizeTo }), {
+    const result = await studioTransform(transformDeps({ readNow: store.read, resizeTo }), {
       ...transformInput({ width: 999, height: 999 }),
     });
 
@@ -88,7 +88,7 @@ describe("studioTransform", () => {
 
     const result = expectOk<StudioTransformResult>(
       await studioTransform(
-        transformDeps({ readBox: store.read, moveTo }),
+        transformDeps({ readNow: store.read, moveTo }),
         transformInput({ x: 500, y: 400 }),
       ),
     );
@@ -119,7 +119,7 @@ describe("studioTransform", () => {
     const result = expectOk<StudioTransformResult>(
       await studioTransform(
         transformDeps({
-          readBox: store.read,
+          readNow: store.read,
           resizeTo: async () => {
             store.set({ width: 200, height: 80 });
             return {
@@ -151,7 +151,7 @@ describe("studioTransform", () => {
     const result = expectOk<StudioTransformResult>(
       await studioTransform(
         transformDeps({
-          readBox: store.read,
+          readNow: store.read,
           resizeTo: async () => {
             store.set({ width: 200, height: 80 });
             return {

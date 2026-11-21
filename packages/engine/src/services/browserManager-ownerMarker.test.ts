@@ -10,7 +10,9 @@ import {
   resolveBrowserGpuMode,
 } from "./browserManager.js";
 
-function fakeChrome(newPage = vi.fn().mockResolvedValue({ evaluate: vi.fn() })) {
+function fakeChrome(
+  newPage = vi.fn().mockResolvedValue({ mainFrame: () => ({}), evaluate: vi.fn() }),
+) {
   const launch = vi.fn(async (_options: LaunchOptions) => ({
     connected: true,
     newPage,
@@ -56,6 +58,15 @@ describe("every engine Chrome carries the HyperFrames marker", () => {
     await lease.release();
     expect(launchedArgs(launch)).toEqual([["--no-sandbox", HYPERFRAMES_BROWSER_MARKER_ARG]]);
     expect(args).toEqual(["--no-sandbox"]);
+  });
+
+  // fails without the fix: a caller running several renders at once could not tell whose browser was whose.
+  it("names the caller's owner on the capture browser", async () => {
+    vi.stubEnv("HYPERFRAMES_OWNER", "run-7");
+    const launch = fakeChrome();
+    const lease = await acquireBrowser([], { forceScreenshot: true });
+    await lease.release();
+    expect(launchedArgs(launch)[0]).toContain("--hyperframes-owner=run-7");
   });
 
   it.runIf(process.platform === "linux")(
