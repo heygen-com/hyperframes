@@ -34,10 +34,12 @@ interface Saved {
   x: number;
   start: number;
   dur: number;
+  /** `data-start` of a clip no script animates, so the frame restores it in place. */
+  dStart: number;
   label: string;
   title: string;
 }
-const FIRST: Saved = { gen: 0, x: 10, start: 0, dur: 4, label: "a", title: "a" };
+const FIRST: Saved = { gen: 0, x: 10, start: 0, dur: 4, dStart: 0, label: "a", title: "a" };
 
 const script = (s: Saved) => `(function () {
     window.__timelines = window.__timelines || {};
@@ -51,6 +53,7 @@ const root = (s: Saved) =>
   `<div id="root" data-hf-id="root" data-composition-id="main" data-start="0" data-duration="4" data-width="1920" data-height="1080">` +
   `<div id="target" data-hf-id="target" class="clip box" data-start="${s.start}" data-duration="4" data-track-index="1" style="left: 100px; top: 100px"></div>` +
   `<div id="c" data-hf-id="c" class="clip box" data-start="0" data-duration="4" data-track-index="2" data-label="${s.label}" title="${s.title}" style="left: 0px; top: 500px"></div>` +
+  `<div id="d" data-hf-id="d" class="clip box" data-start="${s.dStart}" data-duration="3" data-track-index="3" style="left: 400px; top: 500px"></div>` +
   `</div>`;
 /** A second GSAP script, so the file has no single script to re-run. */
 const SIDE = `window.__timelines = window.__timelines || {};
@@ -86,7 +89,7 @@ const next: Record<Save, (s: Saved, n: number) => Saved> = {
   undoLabel: (s) => ({ ...s, label: s.label === "a" ? "b" : "a" }),
   undoTitle: (s) => ({ ...s, title: s.title === "a" ? "b" : "a" }),
   undoBoth: (s) => ({ ...s, gen: s.gen + 1, title: s.title === "a" ? "b" : "a" }),
-  undoStart: (s) => ({ ...s, start: 1 - s.start }),
+  undoStart: (s) => ({ ...s, dStart: 1 - s.dStart }),
 };
 
 /** Sends `save` the way Studio does after writing the file from `before` to `after`. */
@@ -164,6 +167,7 @@ const fixture = (two: boolean): SequenceFixture<Saved, Save> => ({
       return {
         ran: (window as unknown as { __ran: { main: string } }).__ran.main,
         start: target.getAttribute("data-start"),
+        dStart: document.getElementById("d")!.getAttribute("data-start"),
         label: document.getElementById("c")!.getAttribute("data-label"),
         title: document.getElementById("c")!.getAttribute("title"),
         x: Math.round(m.m41),
