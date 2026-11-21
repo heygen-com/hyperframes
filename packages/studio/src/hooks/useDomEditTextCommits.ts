@@ -15,7 +15,7 @@ import {
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { canEditElementTextInline } from "../components/editor/domEditInlineText";
-import { buildNextDomTextFields, planDomTextCommit } from "./domEditTextCommitPlan";
+import { buildNextDomTextFields, planDomTextCommit, spacedAround } from "./domEditTextCommitPlan";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
   bumpDomEditCommitMapVersion,
@@ -152,6 +152,7 @@ export function useDomEditTextCommits({
   latestSelectionRef.current = domEditSelection;
   const domTextCommitVersionRef = useRef(new Map<string, symbol>());
   const domStyleCommitVersionRef = useRef(new Map<string, symbol>());
+  const addedAwaitingFirstValueRef = useRef(new Set<string>());
 
   const {
     handleDomAttributeCommit,
@@ -221,7 +222,11 @@ export function useDomEditTextCommits({
         domTextCommitVersionRef.current,
         getDomEditTargetKey(selection),
       );
-      const nextTextFields = buildNextDomTextFields(selection.textFields, value, fieldKey);
+      const valued = buildNextDomTextFields(selection.textFields, value, fieldKey);
+      const nextTextFields =
+        fieldKey && addedAwaitingFirstValueRef.current.delete(fieldKey)
+          ? spacedAround(valued, fieldKey)
+          : valued;
       const textCommit = planDomTextCommit(selection.textFields, nextTextFields, value);
       const write = textWriteSteps({
         iframe: previewIframeRef.current,
@@ -480,13 +485,14 @@ export function useDomEditTextCommits({
       const baseField =
         domEditSelection.textFields[insertionIndex >= 0 ? insertionIndex : 0] ??
         domEditSelection.textFields[0];
-      const nextField = buildDefaultDomEditTextField(baseField);
       const nextTextFields = [...domEditSelection.textFields];
+      const nextField = buildDefaultDomEditTextField(baseField);
       nextTextFields.splice(
         insertionIndex >= 0 ? insertionIndex + 1 : nextTextFields.length,
         0,
         nextField,
       );
+      addedAwaitingFirstValueRef.current.add(nextField.key);
 
       await commitDomTextFields(domEditSelection, nextTextFields);
       return nextField.key;

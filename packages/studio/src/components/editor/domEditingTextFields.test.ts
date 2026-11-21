@@ -7,7 +7,7 @@ import {
 import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
 import { serializeDomEditTextFields, type DomEditTextField } from "./domEditing";
 import { buildDefaultDomEditTextField, collectDomEditTextFields } from "./domEditingLayers";
-import { planDomTextCommit } from "../../hooks/domEditTextCommitPlan";
+import { planDomTextCommit, spacedAround } from "../../hooks/domEditTextCommitPlan";
 
 describe("serializeDomEditTextFields — mixed content", () => {
   it("round-trips text-node + child element fields", () => {
@@ -114,5 +114,46 @@ describe("text fields — spaces between child elements", () => {
     expect(written(`${SPANS} <span>Three</span>`, (fields) => [fields[0]!, fields[2]!])).toBe(
       "<span>One</span> <span>Three</span>",
     );
+  });
+});
+
+describe("text fields — the spaces around a field added from the panel", () => {
+  const field = (key: string, value: string, spaceBefore?: string): DomEditTextField => ({
+    ...buildDefaultDomEditTextField(),
+    key,
+    value,
+    ...(spaceBefore === undefined ? {} : { spaceBefore }),
+  });
+  const spaces = (fields: DomEditTextField[]) =>
+    spacedAround(fields, "new").map((entry) => entry.spaceBefore ?? "");
+
+  it.each([
+    ["after a word", [field("a", "Hello"), field("new", "again")], ["", " "]],
+    ["after text ending in a space", [field("a", "Hello "), field("new", "again")], ["", ""]],
+    ["starting with punctuation", [field("a", "Hello"), field("new", ", again")], ["", ""]],
+    ["with no text before it", [field("new", "again"), field("b", "world", " ")], ["", " "]],
+    ["after empty text", [field("a", ""), field("new", "again")], ["", ""]],
+    [
+      "between two words",
+      [field("a", "Hello "), field("new", "again"), field("b", "world")],
+      ["", "", " "],
+    ],
+    [
+      "before punctuation",
+      [field("a", "Hello"), field("new", "world"), field("b", "!")],
+      ["", " ", ""],
+    ],
+    [
+      "ending in a space",
+      [field("a", "Hello "), field("new", "again "), field("b", "world")],
+      ["", "", ""],
+    ],
+    [
+      "between authored spaces",
+      [field("a", "One"), field("new", "new", " "), field("b", "Two", " ")],
+      ["", " ", " "],
+    ],
+  ])("%s", (_, fields, expected) => {
+    expect(spaces(fields)).toEqual(expected);
   });
 });
