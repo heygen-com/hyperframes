@@ -1,6 +1,5 @@
 const MENU_MARGIN = 8;
 
-/** The box a menu opens from; a pointer press is the zero-height box at its point. */
 export interface MenuAnchor {
   left: number;
   top: number;
