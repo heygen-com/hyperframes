@@ -23,6 +23,7 @@ import {
 } from "../browser/manager.js";
 import { trackBrowserInstall } from "../telemetry/events.js";
 import { normalizeErrorMessage } from "../utils/errorMessage.js";
+import { printFailureLine } from "../utils/jsonError.js";
 
 function failSpinner(s: ReturnType<typeof clack.spinner>, label: string, err: unknown): never {
   s.stop(c.error(label));
@@ -114,7 +115,9 @@ async function runPath(): Promise<void> {
       const ensured = await ensureBrowser();
       process.stdout.write(ensured.executablePath + "\n");
     } catch (err: unknown) {
-      console.error(terminalLines(err instanceof Error ? err.message : "Failed to find browser"));
+      printFailureLine((show) =>
+        show(err instanceof Error ? err.message : "Failed to find browser"),
+      );
       failCommand(1, err);
     }
     return;
@@ -180,8 +183,9 @@ ${c.bold("EXAMPLES:")}
       case "clear":
         return runClear();
       default:
-        console.error(
-          `${c.error("Unknown subcommand:")} ${terminalText(String(subcommand))}\n\nRun ${c.accent("hyperframes browser --help")} for usage.`,
+        printFailureLine(
+          (show) =>
+            `${c.error("Unknown subcommand:")} ${show(String(subcommand))}\n\nRun ${c.accent("hyperframes browser --help")} for usage.`,
         );
         failUsage();
     }

@@ -22,9 +22,10 @@ import { processIsAlive } from "../utils/processTree.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { resolveCloudAuthHeaders } from "../cloud/auth.js";
 import { billingBaseUrl } from "../heygen/plan.js";
-import { terminalLines, terminalText } from "@hyperframes/core";
+import { terminalText } from "@hyperframes/core";
 import { c } from "../ui/colors.js";
 import { failCommand } from "../utils/commandResult.js";
+import { printFailureLine } from "../utils/jsonError.js";
 import { fetchExplained, NetworkFailure } from "../utils/networkFailure.js";
 import { defineCommand } from "../utils/defineCommand.js";
 import { projectConfigPath, seedProjectAuthoringSkill } from "../utils/projectConfig.js";
@@ -419,8 +420,8 @@ export default defineCommand({
       console.log(c.success(`✓ ${terminalText(path)}`));
     } catch (error) {
       if (!(error instanceof PullRefused || error instanceof NetworkFailure)) throw error;
-      console.error(c.error(terminalLines(error.message)));
-      if (error instanceof NetworkFailure) console.error(c.dim(terminalLines(error.hint)));
+      printFailureLine((show) => c.error(show(error.message)));
+      if (error instanceof NetworkFailure) printFailureLine((show) => c.dim(show(error.hint)));
       failCommand();
     }
   },

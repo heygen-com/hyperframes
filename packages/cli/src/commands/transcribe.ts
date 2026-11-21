@@ -15,7 +15,7 @@ import {
   type TranscribeEngineEvent,
   type TranscribeResult,
 } from "../api/transcribe.js";
-import { jsonFailure } from "../utils/jsonError.js";
+import { jsonFailure, printFailureLine } from "../utils/jsonError.js";
 
 export const examples: Example[] = [
   ["Transcribe an audio file", "hyperframes transcribe audio.mp3"],
@@ -221,7 +221,7 @@ function isRunFailure(err: TranscribeError): boolean {
 
 function reportSetupFailure(err: TranscribeError, json: boolean, timeoutFlag?: string): never {
   if (err.code === "input_not_found") {
-    console.error(c.error(terminalLines(err.message)));
+    printFailureLine((show) => c.error(show(err.message)));
     failCommand(1, err.message);
   }
   // An unreadable transcript file keeps failing the way it always has: with the parser's own error.
