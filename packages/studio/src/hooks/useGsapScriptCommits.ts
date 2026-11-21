@@ -262,8 +262,20 @@ export function applyPreviewSync(
   const patches = instantPatchesFor(options);
   const writtenWithoutPatch = patches.length === 0;
   let needsFallback = options.previewFallbackLatch?.pending === true || writtenWithoutPatch;
+  const fallback = () => {
+    if (!options.softReload || !result.scriptText) return reloadPreview();
+    softReloadOrEscalate(
+      iframe,
+      result.scriptText,
+      reloadPreview,
+      "preview_sync",
+      result.after ?? undefined,
+      nestedFiles,
+      result.before,
+    );
+  };
   if (patches.length > 0) {
-    if (!patchInstantly(iframe, patches, options, reloadPreview)) needsFallback = true;
+    if (!patchInstantly(iframe, patches, options, fallback)) needsFallback = true;
     // Patched in place: no reload unless an earlier deferred batch left one member unpatched.
     if (!needsFallback) return;
   }
@@ -274,37 +286,21 @@ export function applyPreviewSync(
   }
   if (options.deferPreviewSync && !needsFallback) return;
   if (options.previewFallbackLatch) options.previewFallbackLatch.pending = false;
-  if (options.softReload && result.scriptText) {
-    // A soft-reloadable edit escalates to a full iframe remount ONLY on the
-    // PERMANENT "cannot-soft-reload" result (the preview is genuinely stale/
-    // broken). The TRANSIENT "verify-failed" does NOT escalate — the value is
-    // already correct on screen, and a remount re-flashes the WebGL context AND
-    // re-inlines subcomps (reverting their keyframes). The async MotionPath-plugin
-    // load failure escalates separately via `onAsyncFailure`.
-    softReloadOrEscalate(
-      iframe,
-      result.scriptText,
-      reloadPreview,
-      "preview_sync",
-      result.after ?? undefined,
-      nestedFiles,
-      result.before,
-    );
-  } else {
-    reloadPreview();
-  }
+  // A soft-reloadable edit escalates to a full remount only on "cannot-soft-reload"; "verify-failed" is
+  // transient (the value is already on screen), and a remount re-flashes WebGL and reverts subcomp keyframes.
+  fallback();
 }
 
-/** A sealed preview patches itself (and reloads on its own if it must); a reachable one is patched here. */
+/** A sealed preview patches itself (and re-runs the saved script if it refuses); a reachable one is patched here. */
 function patchInstantly(
   iframe: HTMLIFrameElement | null,
   patches: NonNullable<CommitMutationOptions["instantPatches"]>,
   options: CommitMutationOptions,
-  reloadPreview: () => void,
+  fallback: () => void,
 ): boolean {
   if (!iframe || !previewFrameOpaque(iframe))
     return patchReachablePreview(iframe, patches, options.deferPreviewSync === true);
-  patchSealedPreview(iframe, patches, !options.deferPreviewSync, reloadPreview);
+  patchSealedPreview(iframe, patches, !options.deferPreviewSync, fallback);
   return true;
 }
 

@@ -105,3 +105,35 @@ it("leaves the render to the group's last write", () => {
 
   expect(previewRequest.mock.calls[0]?.[2]).toMatchObject({ seek: false });
 });
+
+// fails without the fix: a refused sealed patch remounted the whole preview instead of re-running the script.
+it("re-runs the saved script in place when the frame refuses a patch of a soft-reloadable edit", async () => {
+  const saved = {
+    ok: true,
+    scriptText: `window.__timelines["main"] = gsap.timeline().set("#a", { x: 10 });`,
+    before: "<html><body><div id='a'></div></body></html>",
+    after: "<html><body><div id='a'></div></body></html>",
+  };
+  previewRequest.mockImplementation(async (_iframe, kind) =>
+    kind === "patch-tweens" ? { patched: false } : { result: "applied" },
+  );
+  const reloadPreview = vi.fn();
+  applyPreviewSync(
+    iframe,
+    saved,
+    {
+      label: "drag",
+      softReload: true,
+      instantPatch: { selector: "#a", change: { kind: "set", props: { x: 10 } } },
+    },
+    reloadPreview,
+  );
+
+  await vi.waitFor(() =>
+    expect(previewRequest.mock.calls.map(([, kind]) => kind)).toEqual([
+      "patch-tweens",
+      "soft-reload",
+    ]),
+  );
+  expect(reloadPreview).not.toHaveBeenCalled();
+});

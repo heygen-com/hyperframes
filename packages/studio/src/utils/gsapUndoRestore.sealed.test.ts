@@ -37,7 +37,9 @@ const sentToFrame = () =>
     .map(([, request, params]) => [request, params] as const)
     .filter(([request]) => request !== "mark-scenes-stale");
 
-beforeEach(() => channel.request.mockReset());
+beforeEach(() => {
+  channel.request.mockReset();
+});
 
 describe("undo on a sealed preview", () => {
   it("sends the restored attributes to the frame instead of reloading", async () => {

@@ -190,6 +190,7 @@ async function settled({ page, frame }: Preview, sealed: boolean) {
 }
 
 type Step =
+  | "drag"
   | "scrub"
   | "play"
   | "late"
@@ -229,14 +230,31 @@ const styleTarget = (preview: Preview, name: string, value: string) =>
   );
 
 const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown>> = {
-  play: (p) =>
-    p.page.evaluate(() =>
-      document
-        .querySelector("iframe")!
-        .contentWindow!.postMessage({ source: "hf-parent", type: "control", action: "play" }, "*"),
-    ),
+  // Playback runs past 1 s during the wait, then pauses: the swap must leave the playhead there.
+  play: async (p) => {
+    const control = (action: string) =>
+      p.page.evaluate((a) => {
+        const msg = { source: "hf-parent", type: "control", action: a };
+        document.querySelector("iframe")!.contentWindow!.postMessage(msg, "*");
+      }, action);
+    await control("play");
+    await expect.poll(p.time).toBeGreaterThan(1);
+    await control("pause");
+    await expect.poll(p.time).toBeLessThan(3);
+    pausedAt = Math.round((await p.time()) * 100) / 100;
+  },
   // Studio's editing port gives a request 5 s (editingPort.ts); the plugin stays held past that.
   late: () => new Promise((done) => setTimeout(done, 5_500)),
+  // A drag's live preview is a gsap.set on the element per frame; each call moves it 10 px further.
+  drag: (p) =>
+    p.frame.evaluate(() => {
+      const w = window as unknown as {
+        gsap: { set(t: Element, v: object): void };
+        __drag?: number;
+      };
+      w.__drag = (w.__drag ?? 140) + 10;
+      w.gsap.set(document.getElementById("target")!, { x: w.__drag });
+    }),
   two: (p) => void rerun(p.page, timeline("other", "newer", 200, true), 3),
   patch: async (p, sealed) => {
     const patched = await p.page.evaluate(async (isSealed) => {
@@ -270,9 +288,12 @@ const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown
   },
 };
 
+let pausedAt: number | undefined;
+
 /** Plays `steps` against an older "main" re-run waiting for the plugin, sent at 2 s with the player at 4 s. */
 async function play(mode: string, steps: Step[]) {
   const sealed = mode === "sealed";
+  pausedAt = undefined;
   const preview = await openPreview(mode);
   const { page, frame, held, seek, time } = preview;
   await seek(4);
@@ -297,7 +318,12 @@ async function play(mode: string, steps: Step[]) {
     };
   });
   const at = Math.round((await time()) * 100) / 100;
-  const outcome = { answer, ...state, at, rewound: at < 3.9 };
+  const outcome = {
+    answer,
+    ...state,
+    at,
+    ...(pausedAt === undefined ? {} : { moved: at !== pausedAt }),
+  };
   await page.close();
   return outcome;
 }
@@ -325,9 +351,10 @@ const ROWS: [string, Step[], Record<string, unknown>][] = [
   ["ok,edit", ["ok", "edit"], { answer: "kept", color: "red", x: 60 }],
   ["move,ok", ["move", "ok"], { answer: "kept", x: 60 }],
   ["ok,move", ["ok", "move"], { answer: "kept", x: 300 }],
-  ["play,ok", ["play", "ok"], { answer: "kept", rewound: false }],
+  ["play,ok", ["play", "ok"], { answer: "kept", moved: false }],
   ["same,late,ok", ["same", "late", "ok"], { answer: "kept", ran: { main: "newer" } }],
   ["two,ok", ["two", "ok"], { answer: "kept", ran: { main: "older", other: "newer" }, at: 4 }],
+  ["drag,ok,drag", ["drag", "ok", "drag"], { answer: "kept", ran: { main: "older" }, x: 160 }],
   ["patch,ok", ["patch", "ok"], { answer: "kept", ran: { main: "older" }, x: 60 }],
 ];
 
