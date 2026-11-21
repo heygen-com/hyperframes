@@ -109,7 +109,7 @@ export function refuseLink(path) {
   }
 }
 
-/** A new temp file beside `path` holding `content`: a random name, created exclusively, so nothing already there is written through. */
+/** A new temp file beside `path` holding `content`, with a random name, created exclusively. */
 export function writeTempBeside(path, content) {
   // Same shape as core atomicTempPath, which Studio's project history skips.
   const temp = `${path}.hf${randomBytes(3).toString("hex")}.tmp`;
@@ -117,7 +117,7 @@ export function writeTempBeside(path, content) {
   return temp;
 }
 
-/** Replaces the file at `path` with `content` by writing a temp file beside it and renaming it over, so a link there is replaced, never followed. */
+/** Writes `content` to a temp file beside `path`, then renames it over: a link at `path` is replaced, not followed. */
 export function replaceFile(path, content) {
   const temp = writeTempBeside(path, content);
   try {

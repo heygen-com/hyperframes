@@ -4,7 +4,7 @@ import { defineCommand } from "../utils/defineCommand.js";
 import type { Example } from "./_examples.js";
 import * as clack from "../ui/prompts.js";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { join, resolve } from "node:path";
 import { c } from "../ui/colors.js";
@@ -300,7 +300,7 @@ export async function upgradeProjectPins(
   }
   if (!opts.check) {
     for (const wrapper of wrapperRewrites) {
-      if (wrapper.rewrite.changed) writeFileSync(wrapper.path, wrapper.rewrite.text, "utf-8");
+      if (wrapper.rewrite.changed) replaceFileAtomically(wrapper.path, wrapper.rewrite.text);
     }
   }
   const from = new Set(rewrite.fromVersions);

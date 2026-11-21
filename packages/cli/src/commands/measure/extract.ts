@@ -1,10 +1,11 @@
 // Pixels from the original, as project media: a still at one moment or a clip over a window, cropped to a region,
 // frame-exact, recorded in the media ledger as cut from the original. A rebuild reuses footage, photos and people
 // this way instead of drawing or generating them.
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { createStagingDir } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../../utils/outputFolder.js";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { defineCommand } from "../../utils/defineCommand.js";
 import type { Example } from "../_examples.js";
 import { jsonArg, num, roiArg, runMeasure, videoAndRoi, videoArg } from "../../measure/command.js";
@@ -17,6 +18,17 @@ import {
   type Roi,
   type VideoInfo,
 } from "../../measure/media.js";
+
+function encodeOnto(out: string, encode: (staged: string) => void): void {
+  const staging = createStagingDir(dirname(out), ".hf-extract-");
+  try {
+    const staged = join(staging, basename(out));
+    encode(staged);
+    renameSync(staged, out);
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
+}
 
 export const examples: Example[] = [
   [
@@ -76,7 +88,9 @@ export async function cutStill(info: VideoInfo, at: number, roi: Roi, out: strin
   try {
     const full = join(work, "frame.png");
     writeFileSync(full, png);
-    runFfmpeg(["-y", "-i", full, "-vf", crop(roi), "-frames:v", "1", out]);
+    encodeOnto(out, (staged) =>
+      runFfmpeg(["-y", "-i", full, "-vf", crop(roi), "-frames:v", "1", staged]),
+    );
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
@@ -100,25 +114,36 @@ export function cutClip(
   const sound = Boolean(opts.audio && info.audio);
   // Frames picked by index, as diff and the event map count them: a seek keeps whichever frame is showing at the
   // seek time, which at some rates is the one before k0.
-  runFfmpeg([
-    ...["-y", "-i", info.path],
-    ...[
-      "-vf",
-      `trim=start_frame=${k0}:end_frame=${k1},setpts=PTS-STARTPTS,${crop(roi)},format=yuv420p`,
-    ],
-    ...["-r", info.fpsText, "-c:v", "libx264", "-crf", String(opts.crf ?? 14), "-preset", "medium"],
-    ...(sound
-      ? [
-          "-af",
-          `atrim=start=${a}:end=${k1 / info.fps},asetpts=PTS-STARTPTS`,
-          "-c:a",
-          "aac",
-          "-b:a",
-          "192k",
-        ]
-      : ["-an"]),
-    ...["-movflags", "+faststart", out],
-  ]);
+  encodeOnto(out, (staged) =>
+    runFfmpeg([
+      ...["-y", "-i", info.path],
+      ...[
+        "-vf",
+        `trim=start_frame=${k0}:end_frame=${k1},setpts=PTS-STARTPTS,${crop(roi)},format=yuv420p`,
+      ],
+      ...[
+        "-r",
+        info.fpsText,
+        "-c:v",
+        "libx264",
+        "-crf",
+        String(opts.crf ?? 14),
+        "-preset",
+        "medium",
+      ],
+      ...(sound
+        ? [
+            "-af",
+            `atrim=start=${a}:end=${k1 / info.fps},asetpts=PTS-STARTPTS`,
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+          ]
+        : ["-an"]),
+      ...["-movflags", "+faststart", staged],
+    ]),
+  );
   return {
     window: [round(a, 3), round(k1 / info.fps, 3)],
     frames: n,
@@ -138,7 +163,20 @@ export function cutSound(info: VideoInfo, from: number, to: number, out: string)
     : /\.mp3$/i.test(out)
       ? ["-c:a", "libmp3lame", "-q:a", "2"]
       : ["-c:a", "aac", "-b:a", "256k"];
-  runFfmpeg(["-y", "-ss", String(a), "-i", info.path, "-t", String(b - a), "-vn", ...codec, out]);
+  encodeOnto(out, (staged) =>
+    runFfmpeg([
+      "-y",
+      "-ss",
+      String(a),
+      "-i",
+      info.path,
+      "-t",
+      String(b - a),
+      "-vn",
+      ...codec,
+      staged,
+    ]),
+  );
   return { window: [round(a, 3), round(b, 3)], duration: round(b - a, 3) };
 }
 

@@ -3,7 +3,7 @@
 // the project and recorded in the media ledger as generated.
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
-import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
+import { createStagingDir, replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
@@ -565,7 +565,7 @@ function fitAspect(out: string, aspect: string): string | undefined {
   const even = (n: number) => n - (n % 2);
   const [w, h] =
     width / height > want ? [even(height * want), height] : [width, even(width / want)];
-  const privateFolderBesideOut = mkdtempSync(join(dirname(out), ".hf-fit-"));
+  const privateFolderBesideOut = createStagingDir(dirname(out), ".hf-fit-");
   const fitted = join(privateFolderBesideOut, `fit${extname(out)}`);
   try {
     runFfmpeg([

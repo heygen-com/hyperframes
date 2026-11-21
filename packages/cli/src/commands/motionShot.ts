@@ -12,7 +12,8 @@ import { launchWithPageNetwork } from "../browser/pageNetwork.js";
 // exactly what it's editing. All geometry + SVG live in ./motionShotLayout.ts
 // (pure, tested); this file only drives the browser and SAMPLES.
 
-import { statSync, writeFileSync } from "node:fs";
+import { statSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { dirname, resolve } from "node:path";
 import { pageNavigationTimeoutMs } from "../utils/renderArgs.js";
@@ -676,7 +677,7 @@ async function captureGhostOnionSkin(
   )) as string;
   const b64 = String(dataUrl).replace(/^data:image\/png;base64,/, "");
   if (!b64) throw new Error("ghost composite returned no data");
-  writeFileSync(outPath, Buffer.from(b64, "base64"));
+  replaceFileAtomically(outPath, Buffer.from(b64, "base64"));
   return outPath;
 }
 
@@ -734,7 +735,7 @@ async function captureRenderedSvgStrip(
   await new Promise((resolveWait) => setTimeout(resolveWait, 60));
   const output = await page.screenshot({ type: "png" });
   if (!output) throw new Error("screenshot returned no data");
-  writeFileSync(outPath, output as Uint8Array);
+  replaceFileAtomically(outPath, output as Uint8Array);
   return outPath;
 }
 
@@ -777,7 +778,7 @@ async function captureMarkerOnionSkin(
 
   const buf = await page.screenshot({ type: "png" });
   if (!buf) throw new Error("screenshot returned no data");
-  writeFileSync(outPath, buf as Uint8Array);
+  replaceFileAtomically(outPath, buf as Uint8Array);
   return outPath;
 }
 
