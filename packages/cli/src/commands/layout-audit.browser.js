@@ -2318,6 +2318,13 @@
     return false;
   }
 
+  // A shadow layer draws the glyph shapes in its own colour, so a visible one
+  // keeps transparent-fill text legible.
+  function textShadowPaints(textShadow) {
+    if (!textShadow || textShadow === "none") return false;
+    return splitTopLevelCommas(textShadow).some((layer) => colorAlpha(layer) > 0.05);
+  }
+
   // Text whose glyphs paint with an effectively transparent fill renders
   // invisibly even though the element, its box, opacity and color all read as
   // present — so geometry/occlusion/contrast audits miss it (contrast reads
@@ -2345,6 +2352,7 @@
       colorAlpha(cs.webkitTextStrokeColor) > 0.05
     )
       return null;
+    if (textShadowPaints(cs.textShadow)) return null;
     const clip = cs.webkitBackgroundClip || cs.backgroundClip || "";
     if (/text/i.test(clip)) {
       const bgImage = cs.backgroundImage || "none";
