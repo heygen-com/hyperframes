@@ -721,6 +721,25 @@ describe("catalog meaning search, on a terminal", () => {
     expect(output).toContain("--tier words");
   });
 
+  // fails without the fix: the command was printed with the query rewritten, so pasting it reported other text.
+  it.each([
+    ["some results", "count\nup"],
+    ["no result", "zzqx\nyyqx"],
+  ])(
+    "explains the gap report in words when the query cannot be shown as typed: %s",
+    async (_n, query) => {
+      state.modelStatus = "declined";
+      state.ranking = null;
+
+      const output = await runCatalog({ query });
+
+      expect(output).toContain(
+        "Run hyperframes feedback with your query as --search-miss, the move you needed as --wanted, and --tier words.",
+      );
+      expect(output).not.toContain('--search-miss "');
+    },
+  );
+
   it("offers the gap report on the on-device tier too", async () => {
     const output = await runCatalog({ query: "make a number count up" });
 

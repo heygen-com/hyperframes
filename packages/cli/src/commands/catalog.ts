@@ -379,7 +379,7 @@ export default defineCommand({
           if (query) {
             console.log("");
             console.log(c.dim("  Nothing in the catalog does this? Report the gap:"));
-            console.log(c.dim(`  ${terminalText(searchMissCommand(query, tierToken(searched)))}`));
+            console.log(c.dim(`  ${searchMissHint(query, tierToken(searched))}`));
           }
         }
       }
@@ -471,11 +471,7 @@ export default defineCommand({
         // in. Every catalog gap reported to date came from the word tier. The
         // tier rides along in the command so a vocabulary miss stays
         // distinguishable from a meaning miss when the reports are read.
-        console.log(
-          c.dim(
-            `  None of these do it? ${terminalText(searchMissCommand(query, tierToken(searched)))}`,
-          ),
-        );
+        console.log(c.dim(`  None of these do it? ${searchMissHint(query, tierToken(searched))}`));
       }
     }
 
@@ -725,6 +721,12 @@ export function searchMissCommand(query: string, tier: "on-device" | "words"): s
     `npx hyperframes feedback --search-miss "${quoted}" ` +
     `--wanted "<the move you needed>" --tier ${tier}`
   );
+}
+
+function searchMissHint(query: string, tier: "on-device" | "words"): string {
+  const command = searchMissCommand(query, tier);
+  if (terminalText(command) === command) return command;
+  return `Run hyperframes feedback with your query as --search-miss, the move you needed as --wanted, and --tier ${tier}.`;
 }
 
 type LocalMode = "local-model" | "words";
