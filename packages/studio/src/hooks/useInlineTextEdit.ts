@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import { usePreviewReadOnly } from "../components/editor/previewReadOnlyContext";
 import { settleOnDrain, trackStudioPendingEdit } from "../utils/studioPendingEdits";
+import { isTextSaving, landedText, nextTextSaveOrder, orderedSave } from "./textSaves";
 import {
   beginStudioManualEditGesture,
   endStudioManualEditGesture,
@@ -124,19 +125,28 @@ const PREVIEW_DID_NOT_ANSWER = "the preview did not answer";
 // The newest session per element: an older one that settles late must not write over it.
 const latestEdit = new WeakMap<HTMLElement, InlineTextEditSession>();
 const openSealedEdit = new WeakMap<HTMLElement, InlineTextEditSession>();
-const redrawsAfter = new WeakMap<InlineTextEditSession, Array<() => void>>();
+const settledWhileSaving = new WeakMap<HTMLElement, InlineTextEditSession>();
 
-/** Runs a saved text's redraw now, or once the sealed edit open on its element settles, which owns what shows. */
-export function redrawAfterInlineEdit(element: HTMLElement, redraw: () => void): void {
-  const open = openSealedEdit.get(element);
-  if (!open) return redraw();
-  redrawsAfter.set(open, [...(redrawsAfter.get(open) ?? []), redraw]);
+// The frame shows this session's original once it ends unsaved; a save that landed meanwhile shows over it.
+function showLanded(open: InlineTextEditSession): void {
+  const saved = landedText(open.element);
+  const { sealed, original } = open;
+  if (!sealed || saved === undefined || saved === original) return;
+  void editPreviewElement(sealed.iframe, sealed.handle, { html: saved, expect: original });
 }
 
 function sealedEditSettled(open: InlineTextEditSession): void {
   if (openSealedEdit.get(open.element) === open) openSealedEdit.delete(open.element);
-  redrawsAfter.get(open)?.forEach((redraw) => redraw());
-  redrawsAfter.delete(open);
+  if (isTextSaving(open.element)) settledWhileSaving.set(open.element, open);
+  else showLanded(open);
+}
+
+/** A text save of `element` ended: an edit that ended while it ran shows what landed, once nothing else runs. */
+export function textSaveEnded(element: HTMLElement): void {
+  const open = settledWhileSaving.get(element);
+  if (!open || isTextSaving(element) || openSealedEdit.has(element)) return;
+  settledWhileSaving.delete(element);
+  showLanded(open);
 }
 
 function frameGone(open: InlineTextEditSession, keep: boolean, onLost?: (reason: string) => void) {
@@ -293,6 +303,7 @@ export function useInlineTextEdit({
   const endSealed = useCallback(
     (open: InlineTextEditSession, keep: boolean) => {
       const sealed = open.sealed!;
+      const order = nextTextSaveOrder();
       // A session the frame already closed (a blur) posted its outcome ahead of this end's reply.
       let endedFirst: { html: string | null; previous: string } | null = null;
       const stopListening = previewEditingClient(sealed.iframe).onTextEditEnded((ended) => {
@@ -305,7 +316,7 @@ export function useInlineTextEdit({
         if (!outcome) return reply === null && frameGone(open, keep, onLost);
         const kept = keptMarkup(outcome);
         if (!kept) return;
-        if (keep) return onCommit({ element: open.element, ...kept });
+        if (keep) return onCommit(orderedSave({ element: open.element, ...kept }, order));
         if (outcome === endedFirst) {
           const back = { html: kept.previousHtml, expect: kept.html };
           void editPreviewElement(sealed.iframe, sealed.handle, back);
@@ -335,7 +346,7 @@ export function useInlineTextEdit({
       teardown();
       // After teardown, so the commit path's own resync does not fight an
       // element that is still editable.
-      return onCommit({ element: open.element, html, previousHtml: open.original });
+      return onCommit(orderedSave({ element: open.element, html, previousHtml: open.original }));
     };
     settle(countStudioManualEditSave(open.element, commitText));
     return saving;
@@ -364,7 +375,9 @@ export function useInlineTextEdit({
       const kept = keptMarkup(ended);
       if (ended.html === null) endWithOriginal(sealed);
       else if (kept)
-        trackStudioPendingEdit(Promise.resolve(onCommit({ element: session.element, ...kept })));
+        trackStudioPendingEdit(
+          Promise.resolve(onCommit(orderedSave({ element: session.element, ...kept }))),
+        );
       sealedEditSettled(session);
     });
     return () => {

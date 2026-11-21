@@ -37,15 +37,39 @@ export interface DomEditCommitVersionGuard {
   release: () => void;
 }
 
-/** Claims `key` for a commit numbered before its first await; one below the key's kept last claim is stale. */
-export function claimDomEditCommitInOrder<TKey>(
-  claims: Map<TKey, number>,
-  key: TKey,
-  begun: number,
-): (() => boolean) | null {
-  if ((claims.get(key) ?? 0) > begun) return null;
-  claims.set(key, begun);
-  return () => claims.get(key) === begun;
+export interface TextWriteOrder {
+  claims: Map<string, number>;
+  chains: Map<string, Promise<void>>;
+}
+
+export type TextWriteClaim = DomEditCommitVersionGuard & {
+  write: <T>(run: () => Promise<T>) => Promise<T>;
+};
+
+/**
+ * Claims `key` for a save numbered at its request; null when a later-numbered save already claimed it. Writes to one
+ * key run one after another in claim order, so the newest claim also lands last.
+ */
+export function claimTextWrite(
+  order: TextWriteOrder,
+  key: string,
+  number: number,
+): TextWriteClaim | null {
+  if ((order.claims.get(key) ?? 0) > number) return null;
+  order.claims.set(key, number);
+  const before = order.chains.get(key) ?? Promise.resolve();
+  let open!: () => void;
+  const slot = new Promise<void>((resolve) => (open = resolve));
+  order.chains.set(key, slot);
+  const release = () => {
+    open();
+    if (order.chains.get(key) === slot) order.chains.delete(key);
+  };
+  const isLatest = () => order.claims.get(key) === number;
+  return Object.assign(isLatest, {
+    release,
+    write: <T>(run: () => Promise<T>) => before.then(run).finally(release),
+  });
 }
 
 export function bumpDomEditCommitMapVersion<TKey>(

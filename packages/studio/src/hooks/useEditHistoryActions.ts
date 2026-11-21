@@ -4,6 +4,7 @@ import { STUDIO_MOTION_PATH } from "../components/editor/studioMotion";
 import { serializeStudioFileMutations } from "../utils/studioFileMutationCoordinator";
 import type { RestoreFiles } from "../utils/gsapUndoRestore";
 import { whileScriptWrites } from "../player/previewReloading";
+import { forgetLandedText } from "./textSaves";
 import {
   beginStudioShownRestore,
   cancelNewestStudioWaitingPress,
@@ -81,6 +82,7 @@ export function useEditHistoryActions({
   const apply = useCallback(
     async (direction: "undo" | "redo") => {
       const noun = direction === "undo" ? "Undo" : "Redo";
+      forgetLandedText();
       if (direction === "undo" && cancelNewestStudioWaitingPress()) return;
       // An edit still saving is newer than any step this tab predicts, so it paints back first.
       const pendingEditShown = direction === "undo" ? paintBackNewestStudioPendingEdit() : null;

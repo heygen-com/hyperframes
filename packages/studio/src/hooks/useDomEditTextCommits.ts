@@ -22,8 +22,9 @@ import { previewStandIn } from "../components/editor/previewDrafts";
 import { buildNextDomTextFields, planDomTextCommit } from "./domEditTextCommitPlan";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
-  bumpDomEditCommitMapVersion,
-  claimDomEditCommitInOrder,
+  claimTextWrite,
+  type TextWriteClaim,
+  type TextWriteOrder,
   domEditCommitDeclined,
   runDomEditCommit,
   runReportedDomEditCommit,
@@ -39,7 +40,14 @@ import {
   type PreviewElementEdit,
 } from "../player/lib/previewElements";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
-import { redrawAfterInlineEdit, type InlineTextEditCommit } from "./useInlineTextEdit";
+import { textSaveEnded, type InlineTextEditCommit } from "./useInlineTextEdit";
+import {
+  landedText,
+  nextTextSaveOrder,
+  requestedOrder,
+  textSaveLanded,
+  textSaveStarted,
+} from "./textSaves";
 import type { UseDomSelectionReturn } from "./useDomSelectionTypes";
 
 // ── Types ──
@@ -92,7 +100,7 @@ function textWriteSteps(input: {
   activeCompPath: string | null;
   textCommit: ReturnType<typeof planDomTextCommit>;
   text: string;
-  isLatest: ReturnType<typeof bumpDomEditCommitMapVersion>;
+  isLatest: TextWriteClaim;
   showToast: UseDomEditTextCommitsParams["showToast"];
   resync: TextResync;
 }) {
@@ -189,8 +197,7 @@ export function useDomEditTextCommits({
   latestReadOnlyPreviewRef.current = readOnlyPreview;
   const latestSelectionRef = useRef(domEditSelection);
   latestSelectionRef.current = domEditSelection;
-  const domTextCommitVersionRef = useRef(new Map<string, symbol>());
-  const richTextOrderRef = useRef({ begun: 0, claims: new Map<string, number>() });
+  const textWritesRef = useRef<TextWriteOrder>({ claims: new Map(), chains: new Map() });
   const domStyleCommitVersionRef = useRef(new Map<string, symbol>());
 
   const {
@@ -257,10 +264,11 @@ export function useDomEditTextCommits({
       if (!isTextEditableSelection(selection)) {
         return domEditCommitDeclined("not-text-editable");
       }
-      const isLatestTextCommit = bumpDomEditCommitMapVersion(
-        domTextCommitVersionRef.current,
+      const claim = claimTextWrite(
+        textWritesRef.current,
         getDomEditTargetKey(selection),
-      );
+        nextTextSaveOrder(),
+      )!;
       const nextTextFields = buildNextDomTextFields(selection.textFields, value, fieldKey);
       const textCommit = planDomTextCommit(selection.textFields, nextTextFields, value);
       const write = textWriteSteps({
@@ -269,7 +277,7 @@ export function useDomEditTextCommits({
         activeCompPath,
         textCommit,
         text: value,
-        isLatest: isLatestTextCommit,
+        isLatest: claim,
         showToast,
         resync: {
           buildDomSelectionFromTarget,
@@ -281,12 +289,14 @@ export function useDomEditTextCommits({
       return runReportedDomEditCommit({
         ...write.steps,
         persist: () =>
-          afterSealedDraw(write.sealedEdit(), (drawn) =>
-            persistDomEditOperations(selection, textCommit.operations, {
-              label: "Edit text",
-              skipRefresh: drawn,
-              shouldSave: isLatestTextCommit,
-            }),
+          claim.write(async () =>
+            afterSealedDraw(write.sealedEdit(), (drawn) =>
+              persistDomEditOperations(selection, textCommit.operations, {
+                label: "Edit text",
+                skipRefresh: drawn,
+                shouldSave: claim,
+              }),
+            ),
           ),
       });
     },
@@ -319,17 +329,15 @@ export function useDomEditTextCommits({
    * already holds what the user typed, so there is nothing to apply, only
    * something to save and something to put back if saving fails.
    */
-  const handleDomRichTextCommit = useCallback(
-    async ({ element, html, previousHtml }: InlineTextEditCommit) => {
-      const order = richTextOrderRef.current;
-      const begun = ++order.begun;
+  const commitRichText = useCallback(
+    async (element: HTMLElement, html: string, previousHtml: string, number: number) => {
       const sealed = previewStandIn(element);
+      // Back to the newest text that reached the file, and only over this save's own draft.
       const putBack = () => {
-        if (sealed) {
-          const edit = { html: previousHtml, expect: html };
-          void editPreviewElement(sealed.iframe, sealed.handle, edit);
-        } else if (element.isConnected && element.innerHTML === html)
-          element.innerHTML = previousHtml;
+        const back = landedText(element) ?? previousHtml;
+        if (sealed)
+          void editPreviewElement(sealed.iframe, sealed.handle, { html: back, expect: html });
+        else if (element.isConnected && element.innerHTML === html) element.innerHTML = back;
       };
       if (latestReadOnlyPreviewRef.current) return putBack();
       const refuse = (reason: string) => {
@@ -342,53 +350,38 @@ export function useDomEditTextCommits({
         ? await sealedInlineTextSelection(element, sealed, buildDomSelectionFromTarget)
         : await liveInlineTextSelection(element, doc, buildDomSelectionFromTarget);
       if (typeof selection === "string") return refuse(selection);
-      const targetKey = getDomEditTargetKey(selection);
-      const inOrder = claimDomEditCommitInOrder(order.claims, targetKey, begun);
-      if (!inOrder) return;
-      const latestOfKind = bumpDomEditCommitMapVersion(domTextCommitVersionRef.current, targetKey);
-      const isLatestTextCommit = () => inOrder() && latestOfKind();
+      const claim = claimTextWrite(textWritesRef.current, getDomEditTargetKey(selection), number);
+      if (!claim) return;
       const operations = [buildDomEditRichTextPatchOperation(html)];
-      let appliedHtml = "";
-      let redrawn: Promise<boolean> = Promise.resolve(true);
-      const showSavedOverOriginal = () =>
-        sealed && editPreviewElement(sealed.iframe, sealed.handle, { html, expect: previousHtml });
 
       await runDomEditCommit({
         capture: () => {},
         apply: () => {
-          const drawing = showSavedOverOriginal();
-          if (drawing) return void (redrawn = drawing.drawn);
+          if (sealed)
+            return void editPreviewElement(sealed.iframe, sealed.handle, {
+              html,
+              expect: previousHtml,
+            });
           // Idempotent: the caret put this there. Assigned anyway so a commit
           // raised from anywhere but the element itself still lands.
           element.innerHTML = html;
-          appliedHtml = element.innerHTML;
         },
         persist: async () => {
-          const result = await persistDomEditOperations(selection, operations, {
-            label: "Edit text",
-            skipRefresh: true,
-            shouldSave: isLatestTextCommit,
-          });
+          const result = await claim.write(() =>
+            persistDomEditOperations(selection, operations, {
+              label: "Edit text",
+              skipRefresh: true,
+              shouldSave: claim,
+            }),
+          );
+          textSaveLanded(element, number, html);
           if (result?.changed) trackPreviewFeatureUsed("text_edit", "field");
-          // A redraw refused under a newer open edit is that edit's to show once it settles.
-          if (sealed && isLatestTextCommit())
-            void redrawn.then(
-              (drawn) =>
-                drawn || redrawAfterInlineEdit(element, () => void showSavedOverOriginal()),
-            );
         },
-        shouldRevert: () => isLatestTextCommit(),
-        revert: () => {
-          if (sealed) return putBack();
-          // An external actor that changed the live node while the request was
-          // in flight owns its new value; only roll back the value we submitted.
-          if (element.isConnected && element.innerHTML === appliedHtml) {
-            element.innerHTML = previousHtml;
-          }
-        },
+        shouldRevert: () => claim(),
+        revert: putBack,
         onError: (error) => reportDomEditPersistFailure(selection, operations, error, showToast),
         // Re-select only what is still selected: the selection may have moved on, or a host cleared it.
-        shouldResync: () => isLatestTextCommit() && latestSelectionRef.current?.element === element,
+        shouldResync: () => claim() && latestSelectionRef.current?.element === element,
         resync: () =>
           sealed
             ? refreshDomEditSelectionFromPreview(selection)
@@ -399,7 +392,7 @@ export function useDomEditTextCommits({
                 buildDomSelectionFromTarget,
                 applyDomSelection,
               ),
-        onFinally: latestOfKind.release,
+        onFinally: claim.release,
       });
     },
     [
@@ -413,16 +406,32 @@ export function useDomEditTextCommits({
     ],
   );
 
+  const handleDomRichTextCommit = useCallback(
+    async (commit: InlineTextEditCommit) => {
+      const { element, html, previousHtml } = commit;
+      const number = requestedOrder(commit) ?? nextTextSaveOrder();
+      const saveDone = textSaveStarted(element);
+      try {
+        await commitRichText(element, html, previousHtml, number);
+      } finally {
+        saveDone();
+        textSaveEnded(element);
+      }
+    },
+    [commitRichText],
+  );
+
   const commitDomTextFields = useCallback(
     async (
       selection: DomEditSelection,
       nextTextFields: DomEditTextField[],
       options?: { importedFont?: ImportedFontAsset | null; fontFamily?: boolean },
     ) => {
-      const isLatestTextCommit = bumpDomEditCommitMapVersion(
-        domTextCommitVersionRef.current,
+      const claim = claimTextWrite(
+        textWritesRef.current,
         getDomEditTargetKey(selection),
-      );
+        nextTextSaveOrder(),
+      )!;
       const textCommit = planDomTextCommit(
         selection.textFields,
         nextTextFields,
@@ -435,7 +444,7 @@ export function useDomEditTextCommits({
         activeCompPath,
         textCommit,
         text: textCommit.nextContent,
-        isLatest: isLatestTextCommit,
+        isLatest: claim,
         showToast,
         resync: {
           buildDomSelectionFromTarget,
@@ -448,12 +457,14 @@ export function useDomEditTextCommits({
         ...write.steps,
         persist: async () => {
           const sealedFontNeedsReload = Boolean(write.sealedEdit() && options?.fontFamily);
-          await afterSealedDraw(write.sealedEdit(), (drawn) =>
-            persistDomEditOperations(selection, textCommit.operations, {
-              label: "Edit text",
-              skipRefresh: drawn && !sealedFontNeedsReload,
-              importedFont: importedFont ?? undefined,
-            }),
+          await claim.write(async () =>
+            afterSealedDraw(write.sealedEdit(), (drawn) =>
+              persistDomEditOperations(selection, textCommit.operations, {
+                label: "Edit text",
+                skipRefresh: drawn && !sealedFontNeedsReload,
+                importedFont: importedFont ?? undefined,
+              }),
+            ),
           );
         },
       });
