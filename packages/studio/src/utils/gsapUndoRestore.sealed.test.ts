@@ -13,6 +13,7 @@ vi.mock("../player/lib/previewChannel", () => ({
 }));
 import { applyUndoRestoreToPreview } from "./gsapUndoRestore";
 import { applySoftReload } from "./gsapSoftReload";
+import { SAVED_STATE_DEADLINE_MS } from "./sealedPreviewLedger";
 import { onPreviewRestoredInPlace } from "../player/sceneSwap";
 
 const page = (body: string) => `<html><body>${body}</body></html>`;
@@ -50,24 +51,29 @@ describe("undo on a sealed preview", () => {
     channel.request.mockResolvedValue({ applied: true });
     const { reload, strategy, iframe } = undo(box(90), box(0));
     expect(strategy).toBe("soft");
-    expect(channel.request).toHaveBeenCalledWith(iframe, "restore-attributes", {
-      scopes: [
-        {
-          file: null,
-          elements: [
-            {
-              key: "hf:box",
-              attributes: [
-                ["data-hf-id", "box"],
-                ["style", "left: 0px"],
-              ],
-            },
-          ],
-        },
-      ],
-      scripted: false,
-      time: 2,
-    });
+    expect(channel.request).toHaveBeenCalledWith(
+      iframe,
+      "restore-attributes",
+      {
+        scopes: [
+          {
+            file: null,
+            elements: [
+              {
+                key: "hf:box",
+                attributes: [
+                  ["data-hf-id", "box"],
+                  ["style", "left: 0px"],
+                ],
+              },
+            ],
+          },
+        ],
+        scripted: false,
+        time: 2,
+      },
+      SAVED_STATE_DEADLINE_MS,
+    );
     await settled();
     expect(reload).not.toHaveBeenCalled();
   });
@@ -102,6 +108,7 @@ describe("undo on a sealed preview", () => {
       iframe,
       "soft-reload",
       expect.objectContaining({ script: expect.stringContaining("{ x: 2 }"), time: 2, restore }),
+      restore.length > 0 ? SAVED_STATE_DEADLINE_MS : undefined,
     );
     await settled();
     expect(reload).not.toHaveBeenCalled();
@@ -115,17 +122,22 @@ describe("undo on a sealed preview", () => {
       box(0) + script("{ x: 1 }"),
     );
     expect(strategy).toBe("soft");
-    expect(channel.request).toHaveBeenCalledExactlyOnceWith(iframe, "restore-attributes", {
-      scopes: [{ file: null, elements: [BOX_AT_0] }],
-      scripted: true,
-      time: 2,
-      rerun: {
-        script: expect.stringContaining("{ x: 1 }"),
-        sets: [],
-        authored: expect.any(Array),
-        timing: [],
+    expect(channel.request).toHaveBeenCalledExactlyOnceWith(
+      iframe,
+      "restore-attributes",
+      {
+        scopes: [{ file: null, elements: [BOX_AT_0] }],
+        scripted: true,
+        time: 2,
+        rerun: {
+          script: expect.stringContaining("{ x: 1 }"),
+          sets: [],
+          authored: expect.any(Array),
+          timing: [],
+        },
       },
-    });
+      SAVED_STATE_DEADLINE_MS,
+    );
     await settled();
     expect(reload).not.toHaveBeenCalled();
   });

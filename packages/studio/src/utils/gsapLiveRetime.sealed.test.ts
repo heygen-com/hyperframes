@@ -10,6 +10,7 @@ vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
 }));
 
 import { moveLiveTweens } from "./gsapLiveRetime";
+import { SAVED_STATE_DEADLINE_MS } from "./sealedPreviewLedger";
 
 const iframe = document.createElement("iframe");
 const script = (start: number) =>
@@ -32,23 +33,28 @@ it("sends a sealed preview the move planned from the saved file before and after
 
   expect(await moveLiveTweens(iframe, script(1.5), 2, reload, files)).toBe(true);
 
-  expect(previewRequest).toHaveBeenCalledExactlyOnceWith(iframe, "live-retime", {
-    key: "t",
-    after: script(1.5),
-    tweens: [
-      {
-        selector: "#a",
-        start: 1.5,
-        duration: 1,
-        wasStart: 0.5,
-        wasDuration: 1,
-        moved: true,
-        source: 0,
-      },
-    ],
-    time: 2,
-    timing: [[expect.any(String), [["data-start", "1.5"]]]],
-  });
+  expect(previewRequest).toHaveBeenCalledExactlyOnceWith(
+    iframe,
+    "live-retime",
+    {
+      key: "t",
+      after: script(1.5),
+      tweens: [
+        {
+          selector: "#a",
+          start: 1.5,
+          duration: 1,
+          wasStart: 0.5,
+          wasDuration: 1,
+          moved: true,
+          source: 0,
+        },
+      ],
+      time: 2,
+      timing: [[expect.any(String), [["data-start", "1.5"]]]],
+    },
+    SAVED_STATE_DEADLINE_MS,
+  );
   expect(reload).not.toHaveBeenCalled();
 });
 

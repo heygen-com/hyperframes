@@ -21,7 +21,7 @@ export interface PreviewSend {
   snapshot: PreviewWrite | null;
   /** Restored attributes: no other write sends them again, so nothing covers them. */
   attributes: boolean;
-  /** Clip timing: covered only by a newer applied re-run that carried the saved timing too. */
+  /** Clip timing: covered only by a newer re-run that carried the saved timing too. */
   timing: boolean;
 }
 
@@ -72,7 +72,7 @@ export function takePreviewTicket(iframe: HTMLIFrameElement, sent: PreviewSend):
   return ticket;
 }
 
-/** The frame said it re-ran the ticket's timelines; it owns them from its send order, never a later owner's. */
+/** A re-run owns its timelines from its send: it applies, or it fails and recovers to the newest file itself. */
 export function confirmPreviewRerun(ticket: PreviewTicket): void {
   const { reruns } = ledgerOf(ticket.load);
   const owner = { seq: ticket.seq, version: ticket.version, timing: ticket.sent.timing };
@@ -87,7 +87,7 @@ export function ticketLoadLive(ticket: PreviewTicket): boolean {
   return previewEditingClient(ticket.iframe) === ticket.load;
 }
 
-/** A later applied re-run read at this version or newer carries everything this write changed. */
+/** A later re-run read at this version or newer carries everything this write changed. */
 export function ticketCovered(ticket: PreviewTicket): boolean {
   const { reruns } = ledgerOf(ticket.load);
   return (
@@ -113,7 +113,7 @@ export function newestPreviewWrite(ticket: PreviewTicket): PreviewWrite | null {
   return { ...newest.write, timingEdit: true };
 }
 
-/** A late failure acts only for the live load and only when no later applied re-run carries its change. */
+/** A late failure acts only for the live load and only when no later re-run carries its change. */
 export function ticketNeedsRecovery(ticket: PreviewTicket): boolean {
   return ticketLoadLive(ticket) && !ticketCovered(ticket);
 }

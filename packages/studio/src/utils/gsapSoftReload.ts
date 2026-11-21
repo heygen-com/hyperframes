@@ -223,6 +223,7 @@ function softReloadSealed(
     attributes: restore.length > 0,
     timing: timingEdit === true,
   });
+  confirmPreviewRerun(ticket);
   const savedState = ticket.sent.attributes || ticket.sent.timing;
   const deadline = savedState ? SAVED_STATE_DEADLINE_MS : undefined;
   const params = { ...rerun, time: currentTimeOverride, restore };
@@ -230,7 +231,6 @@ function softReloadSealed(
     // No answer, a refusal and a rejection all leave the change unproven on screen.
     const result =
       answer === PREVIEW_REJECTED ? "cannot-soft-reload" : sealedSoftReloadResult(answer);
-    if (result === "applied") confirmPreviewRerun(ticket);
     if (!ticketNeedsRecovery(ticket)) return;
     if (result === "cannot-soft-reload") onAsyncFailure?.();
     else if (result !== "superseded") onShownInPlace?.();
