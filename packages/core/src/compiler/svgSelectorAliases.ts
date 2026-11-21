@@ -40,6 +40,19 @@ const namespacedKey = (localName: string, uri: string | null) =>
 // A scope's alias list is read once and then only passed around, so its index is built once per list.
 const aliasIndexes = new WeakMap<readonly SvgReferenceAlias[], AliasIndex>();
 
+function addTo(map: Map<string, AttributeAliases>, key: string, alias: SvgReferenceAlias): void {
+  let entry = map.get(key);
+  if (!entry) map.set(key, (entry = { all: [], lookups: new Map() }));
+  entry.all.push(alias);
+}
+
+function indexByAttribute(index: AliasIndex, alias: SvgReferenceAlias): void {
+  const { namespaceURI } = alias;
+  if (namespaceURI === null) addTo(index.unprefixed, lower(alias.name), alias);
+  addTo(index.anyNamespace, lower(alias.localName), alias);
+  addTo(index.inNamespace, namespacedKey(alias.localName, namespaceURI), alias);
+}
+
 function aliasIndex(references: readonly SvgReferenceAlias[]): AliasIndex {
   let index = aliasIndexes.get(references);
   if (index) return index;
@@ -51,11 +64,6 @@ function aliasIndex(references: readonly SvgReferenceAlias[]): AliasIndex {
     inNamespace: new Map(),
   };
   const ids = new Map<string, Set<string>>();
-  const add = (map: Map<string, AttributeAliases>, key: string, alias: SvgReferenceAlias) => {
-    let entry = map.get(key);
-    if (!entry) map.set(key, (entry = { all: [], lookups: new Map() }));
-    entry.all.push(alias);
-  };
   // Every element that references one symbol records the same alias; one copy is enough.
   const seen = new Set<string>();
   for (const alias of references) {
@@ -70,10 +78,7 @@ function aliasIndex(references: readonly SvgReferenceAlias[]): AliasIndex {
     ]);
     if (seen.has(key)) continue;
     seen.add(key);
-    const { namespaceURI } = alias;
-    if (namespaceURI === null) add(index.unprefixed, lower(alias.name), alias);
-    add(index.anyNamespace, lower(alias.localName), alias);
-    add(index.inNamespace, namespacedKey(alias.localName, namespaceURI), alias);
+    indexByAttribute(index, alias);
     if (alias.name !== "id") continue;
     let targets = ids.get(alias.before);
     if (!targets)
