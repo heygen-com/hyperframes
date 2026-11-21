@@ -138,6 +138,7 @@ function textWriteSteps(input: {
   return { steps, sealedEdit: () => sealedEdit };
 }
 
+export const textEditNotSaved = (reason: string) => `Couldn't save the text edit: ${reason}`;
 const NOT_FOUND = "this text was not found in the composition's source";
 const GONE = "the text's element is gone from the preview";
 // The same gate that let the edit open, not the design panel's field rule: an element
@@ -329,7 +330,7 @@ export function useDomEditTextCommits({
       if (latestReadOnlyPreviewRef.current) return putBack();
       const refuse = (reason: string) => {
         console.error("[Studio] text edit not saved:", reason, element);
-        showToast(`Couldn't save the text edit: ${reason}`, "error");
+        showToast(textEditNotSaved(reason), "error");
         putBack();
       };
       const doc = previewIframeRef.current?.contentDocument;

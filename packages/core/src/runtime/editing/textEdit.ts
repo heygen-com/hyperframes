@@ -100,8 +100,8 @@ function close(keep: boolean): { html: string | null; previous: string } | null 
   open.stop();
   const { element } = open;
   openTextEdits.delete(element);
-  const html = keep && element.isConnected ? keptMarkup(element) : null;
-  if (html === null) element.innerHTML = open.original;
+  const html = keep ? keptMarkup(element) : null;
+  if (html === null || !element.isConnected) element.innerHTML = open.original;
   element.removeAttribute("contenteditable");
   element.style.outline = open.outline;
   element.style.outlineOffset = open.outlineOffset;
@@ -175,7 +175,7 @@ function listen(element: Editable, endInFrame: () => void): () => void {
     endInFrame();
   };
   const removed = new MutationObserver(() => {
-    if (!element.isConnected) close(false);
+    if (!element.isConnected) endInFrame();
   });
   removed.observe(element.ownerDocument, { childList: true, subtree: true });
   const view = element.ownerDocument.defaultView;

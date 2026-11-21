@@ -2,6 +2,8 @@ import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { InlineTextCaret } from "./InlineTextCaret";
 import { InlineTextToolbar } from "./InlineTextToolbar";
 import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
+import { useStudioShellContextOptional } from "../../contexts/StudioContext";
+import { textEditNotSaved } from "../../hooks/useDomEditTextCommits";
 import { useInlineTextEdit } from "../../hooks/useInlineTextEdit";
 import { usePlayerStore } from "../../player/store/playerStore";
 import { getPreviewTargetFromPointer } from "../../utils/studioPreviewHelpers";
@@ -49,8 +51,10 @@ export function useInlineTextEditing(
   toolbar: ReactNode;
 } {
   const actions = useDomEditActionsContextOptional();
+  const shell = useStudioShellContextOptional();
   const inlineText = useInlineTextEdit({
     onCommit: (commit) => actions?.handleDomRichTextCommit(commit),
+    onLost: (reason) => shell?.showToast(textEditNotSaved(reason), "error"),
     onPause: () => usePlayerStore.getState().setIsPlaying(false),
   });
   const lastPressRef = useRef<PressMark | null>(null);

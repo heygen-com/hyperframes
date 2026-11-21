@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeRichTextChildren } from "@hyperframes/core/rich-text-sanitize";
 import { usePreviewReadOnly } from "../components/editor/previewReadOnlyContext";
-import { trackStudioPendingEdit } from "../utils/studioPendingEdits";
+import { settleOnDrain, trackStudioPendingEdit } from "../utils/studioPendingEdits";
 import {
   beginStudioManualEditGesture,
   endStudioManualEditGesture,
@@ -118,8 +118,12 @@ function keptMarkup(outcome: { html: string | null; previous: string | null }) {
   return { html: outcome.html, previousHtml: outcome.previous };
 }
 
-function putOriginalBack({ sealed, original }: InlineTextEditSession) {
+const PREVIEW_DID_NOT_ANSWER = "the preview did not answer";
+
+function frameGone(open: InlineTextEditSession, onLost?: (reason: string) => void) {
+  const { sealed, original } = open;
   if (sealed && original) void editPreviewElement(sealed.iframe, sealed.handle, { html: original });
+  onLost?.(PREVIEW_DID_NOT_ANSWER);
 }
 
 function endWithOriginal(sealed: NonNullable<InlineTextEditSession["sealed"]>): void {
@@ -129,9 +133,12 @@ function endWithOriginal(sealed: NonNullable<InlineTextEditSession["sealed"]>): 
 export function useInlineTextEdit({
   onCommit,
   onPause,
+  onLost,
 }: {
   /** Where the edited text goes. The caller owns persistence. */
   onCommit: (commit: InlineTextEditCommit) => unknown;
+  /** Told why typed text could not be saved, when no save was attempted. */
+  onLost?: (reason: string) => void;
   /** Stop playback, so the element is not animating under the caret. */
   onPause?: () => void;
 }): InlineTextEditControls {
@@ -239,7 +246,8 @@ export function useInlineTextEdit({
       const ended = previewTextEdit(sealed.iframe, params).then((reply) => {
         stopListening();
         const outcome = reply?.applied ? reply : endedFirst;
-        if (!outcome) return reply === null && putOriginalBack(open);
+        if (!outcome && reply === null) return frameGone(open, keep ? onLost : undefined);
+        if (!outcome) return;
         const kept = keptMarkup(outcome);
         if (!kept) return;
         if (keep) return onCommit({ element: open.element, ...kept });
@@ -248,12 +256,12 @@ export function useInlineTextEdit({
           void editPreviewElement(sealed.iframe, sealed.handle, back);
         }
       });
-      trackStudioPendingEdit(ended);
+      return trackStudioPendingEdit(ended);
     },
-    [onCommit],
+    [onCommit, onLost],
   );
 
-  const commit = useCallback(() => {
+  const save = useCallback(() => {
     const open = openRef.current;
     if (!open) return;
     if (open.sealed) {
@@ -265,23 +273,25 @@ export function useInlineTextEdit({
     sanitizeRichTextChildren(open.element);
     const html = open.element.innerHTML;
     // Counted and pending before the edit closes, so a reload waits for the save, not the mark.
-    let save: (saving: unknown) => void = () => {};
-    trackStudioPendingEdit(new Promise((resolve) => (save = resolve)));
+    let settle: (saving: unknown) => void = () => {};
+    const saving = trackStudioPendingEdit(new Promise((resolve) => (settle = resolve)));
     const commitText = () => {
       teardown();
       // After teardown, so the commit path's own resync does not fight an
       // element that is still editable.
       return onCommit({ element: open.element, html, previousHtml: open.original });
     };
-    save(countStudioManualEditSave(open.element, commitText));
+    settle(countStudioManualEditSave(open.element, commitText));
+    return saving;
   }, [onCommit, teardown, endSealed]);
+  const commit = useCallback(() => void save(), [save]);
 
   const cancel = useCallback(() => {
     const open = openRef.current;
     if (!open) return;
     if (open.sealed) {
       teardown();
-      return endSealed(open, false);
+      return void endSealed(open, false);
     }
     if (open.element.isConnected) open.element.innerHTML = open.original;
     teardown();
@@ -349,9 +359,14 @@ export function useInlineTextEdit({
 
   // Unmount keeps the typed words, as blur does. Read through a ref so a new
   // onCommit never closes the session mid-edit.
-  const commitRef = useRef(commit);
-  commitRef.current = commit;
-  useEffect(() => () => commitRef.current(), []);
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => () => void saveRef.current(), []);
+  useEffect(
+    () =>
+      session ? settleOnDrain(() => openRef.current === session && saveRef.current()) : undefined,
+    [session],
+  );
 
   return { session, start, commit, cancel };
 }
