@@ -17,6 +17,7 @@ import { retirePreviewEditingClient } from "../player/lib/previewChannel";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
 import { useDomEditTextCommits } from "./useDomEditTextCommits";
 import { forgetLandedText } from "./textSaves";
+import { previewReloadBegun, requestPreviewReload } from "../player/previewReloading";
 import { useInlineTextEdit, type InlineTextEditCommit } from "./useInlineTextEdit";
 import { hasStudioPendingEdits } from "../utils/studioPendingEdits";
 
@@ -267,11 +268,13 @@ function wiredEditor(
 ) {
   let controls!: ReturnType<typeof useInlineTextEdit>;
   let commits!: ReturnType<typeof useDomEditTextCommits>;
+  const reloads = vi.fn();
   mount(() => {
     commits = useDomEditTextCommits({
       activeCompPath: PATH,
       previewIframeRef: { current: iframe },
       showToast: vi.fn(),
+      reloadPreview: reloads,
       domEditSelection: selection,
       applyDomSelection: vi.fn(),
       refreshDomEditSelectionFromPreview: vi.fn(),
@@ -287,7 +290,7 @@ function wiredEditor(
     });
     controls = useInlineTextEdit({ onCommit: commits.handleDomRichTextCommit });
   });
-  return { controls: () => controls, commits: () => commits };
+  return { controls: () => controls, commits: () => commits, reloads };
 }
 
 /** A sealed heading whose frame answers `end` only when the test lets it. */
@@ -466,6 +469,229 @@ it("keeps the last saved text on the canvas when an Enter-submitted draft fails 
   await nextTask();
   await settled(iframe, selection);
   expect(title.innerHTML).toBe("First");
+});
+
+/** A sealed frame whose messages to Studio (by default its `text-edit-ended` notices) wait until the test lets them. */
+async function sealedFrameHoldingEndedNotices() {
+  let holding: MessageEvent[] | null = null;
+  let held: (data: unknown) => boolean = () => false;
+  let deliver: (event: MessageEvent) => void = () => {};
+  const frame = await sealedTitle([], (port) => {
+    const accessor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(port), "onmessage")!;
+    Object.defineProperty(port, "onmessage", {
+      set(handler: (event: MessageEvent) => void) {
+        deliver = handler;
+        accessor.set!.call(port, (event: MessageEvent) => {
+          return holding && held(event.data) ? holding.push(event) : handler(event);
+        });
+      },
+    });
+    return port;
+  });
+  const isNotice = (data: unknown) => (data as { event?: unknown })?.event === "text-edit-ended";
+  const holdEndedNotices = (which: (data: unknown) => boolean = isNotice) => {
+    held = which;
+    holding = [];
+    return () => {
+      const events = holding ?? [];
+      holding = null;
+      events.forEach((event) => deliver(event));
+    };
+  };
+  return { ...frame, holdEndedNotices };
+}
+
+it("saves a Design panel edit last when an older blur's notice reaches Studio after it", async () => {
+  const { iframe, holdEndedNotices } = await sealedFrameHoldingEndedNotices();
+  const plain = await select(iframe, "other");
+  const shown = document.getElementById("other")!;
+  const { saved, persist } = fileWrites();
+  const { controls, commits } = wiredEditor(iframe, plain, persist);
+  act(() => void controls().start(plain.element));
+  await vi.waitFor(() => expect(shown.getAttribute("contenteditable")).toBe("true"));
+  shown.innerHTML = "Blur";
+  const release = holdEndedNotices();
+  shown.dispatchEvent(new FocusEvent("blur"));
+  await settled(iframe, plain);
+  const panel = commits().handleDomTextCommitForSelection(plain, "Panel");
+  await nextTask();
+  release();
+  await act(() => panel);
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  expect(saved.at(-1)).toBe("other=Panel");
+});
+
+it("keeps a Design panel save on the canvas when a later inline draft is cancelled", async () => {
+  const { iframe } = await sealedTitle();
+  const plain = await select(iframe, "other");
+  const shown = document.getElementById("other")!;
+  const { saved, persist } = fileWrites();
+  const { controls, commits } = wiredEditor(iframe, plain, persist);
+  await act(() =>
+    commits().handleDomRichTextCommit({
+      element: plain.element,
+      html: "Inline",
+      previousHtml: "x",
+    }),
+  );
+  await act(() => commits().handleDomTextCommitForSelection(plain, "Panel"));
+  await settled(iframe, plain);
+  expect([saved.at(-1), shown.innerHTML]).toEqual(["other=Panel", "Panel"]);
+  act(() => void controls().start(plain.element));
+  await vi.waitFor(() => expect(shown.getAttribute("contenteditable")).toBe("true"));
+  shown.innerHTML = "Draft";
+  act(() => controls().cancel());
+  await settled(iframe, plain);
+  await nextTask();
+  await settled(iframe, plain);
+  expect(shown.innerHTML).toBe("Panel");
+});
+
+it("shows the reloaded file's text when a draft is cancelled after the file changed outside Studio", async () => {
+  const { iframe, reload } = await sealedTitle();
+  const plain = await select(iframe, "other");
+  const shown = document.getElementById("other")!;
+  const { saved, persist } = fileWrites();
+  const { commits } = wiredEditor(iframe, plain, persist);
+  await act(() =>
+    commits().handleDomRichTextCommit({
+      element: plain.element,
+      html: "Inline",
+      previousHtml: "x",
+    }),
+  );
+  await settled(iframe, plain);
+  expect([saved.at(-1), shown.innerHTML]).toEqual(["other=Inline", "Inline"]);
+
+  shown.innerHTML = "Agent";
+  requestPreviewReload();
+  reload();
+  previewReloadBegun();
+  const again = await select(iframe, "other");
+  const { controls } = wiredEditor(iframe, again, persist);
+  act(() => void controls().start(again.element));
+  await vi.waitFor(() => expect(shown.getAttribute("contenteditable")).toBe("true"));
+  shown.innerHTML = "Draft";
+  act(() => controls().cancel());
+  await settled(iframe, again);
+  await nextTask();
+  await settled(iframe, again);
+  expect(shown.innerHTML).toBe("Agent");
+});
+
+it("rolls a failed save back to the file's text, not to an older save that was skipped", async () => {
+  const { iframe } = await sealedTitle();
+  const plain = await select(iframe, "other");
+  const shown = document.getElementById("other")!;
+  let releaseFirst!: () => void;
+  const written: string[] = [];
+  const persist = vi.fn<PersistDomEditOperations>(async (_, operations, options) => {
+    const value = String(operations[0]!.value);
+    if (value === "First") await new Promise<void>((resolve) => (releaseFirst = resolve));
+    if (options?.shouldSave?.() === false) return;
+    if (value === "Second") throw new Error("disk full");
+    written.push(value);
+  });
+  const { commits, reloads } = wiredEditor(iframe, plain, persist);
+  const commit = (html: string, previousHtml: string) =>
+    commits().handleDomRichTextCommit({ element: plain.element, html, previousHtml });
+  const first = commit("First", "x");
+  await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(1));
+  const second = commit("Second", "First");
+  await vi.waitFor(() => expect(shown.innerHTML).toBe("Second"));
+  releaseFirst();
+  await act(() => Promise.all([first, second]));
+  await vi.waitFor(() => expect(reloads).toHaveBeenCalledTimes(1));
+  expect(written).toEqual([]);
+  expect(shown.innerHTML).not.toBe("First");
+});
+
+it("retires an inline edit whose frame was replaced while its end was pending, so its late notice saves nothing", async () => {
+  const { iframe, reload, holdEndedNotices } = await sealedFrameHoldingEndedNotices();
+  const plain = await select(iframe, "other");
+  const shown = document.getElementById("other")!;
+  const { saved, persist } = fileWrites();
+  const { controls, commits } = wiredEditor(iframe, plain, persist);
+  act(() => void controls().start(plain.element));
+  await vi.waitFor(() => expect(shown.getAttribute("contenteditable")).toBe("true"));
+  shown.innerHTML = "Blur";
+  const release = holdEndedNotices(() => true);
+  shown.dispatchEvent(new FocusEvent("blur"));
+  const panel = commits().handleDomTextCommitForSelection(plain, "Panel");
+  await nextTask();
+  reload();
+  await act(() => panel);
+  release();
+  await vi.waitFor(() => expect(hasStudioPendingEdits()).toBe(false));
+  await nextTask();
+  expect(saved).not.toContain("other=Blur");
+  expect(saved.at(-1)).toBe("other=Panel");
+});
+
+it("keeps nothing to redraw from a save that completes after the preview reloaded", async () => {
+  const { iframe, reload } = await sealedTitle();
+  const plain = await select(iframe, "other");
+  const shown = document.getElementById("other")!;
+  let finish!: () => void;
+  const persist = vi.fn<PersistDomEditOperations>(async (_, __, options) => {
+    await new Promise<void>((resolve) => (finish = resolve));
+    options?.shouldSave?.();
+  });
+  const { commits } = wiredEditor(iframe, plain, persist);
+  const saving = commits().handleDomRichTextCommit({
+    element: plain.element,
+    html: "Inline",
+    previousHtml: "x",
+  });
+  await vi.waitFor(() => expect(persist).toHaveBeenCalledTimes(1));
+  shown.innerHTML = "Agent";
+  requestPreviewReload();
+  reload();
+  previewReloadBegun();
+  finish();
+  await act(() => saving);
+  const again = await select(iframe, "other");
+  const { controls } = wiredEditor(iframe, again, persist);
+  act(() => void controls().start(again.element));
+  await vi.waitFor(() => expect(shown.getAttribute("contenteditable")).toBe("true"));
+  shown.innerHTML = "Draft";
+  act(() => controls().cancel());
+  await settled(iframe, again);
+  await nextTask();
+  await settled(iframe, again);
+  expect(shown.innerHTML).toBe("Agent");
+});
+
+it("saves another heading's open draft before the reload a failed first save asks for", async () => {
+  const { title, iframe, selection } = await sealedTitle();
+  const plain = await select(iframe, "other");
+  const { saved, persist: write } = fileWrites();
+  const persist = vi.fn<PersistDomEditOperations>(async (target, operations, options) => {
+    if (target.id === "other") throw new Error("disk full");
+    return write(target, operations, options);
+  });
+  const { controls, commits, reloads } = wiredEditor(iframe, selection, persist);
+  act(() => void controls().start(selection.element));
+  await vi.waitFor(() => expect(title.getAttribute("contenteditable")).toBe("true"));
+  title.innerHTML = "B draft";
+  await act(() =>
+    commits().handleDomRichTextCommit({ element: plain.element, html: "A", previousHtml: "x" }),
+  );
+  await vi.waitFor(() => expect(reloads).toHaveBeenCalledTimes(1));
+  expect(saved).toContain("title=B draft");
+});
+
+it("asks for no reload when the text's element is gone from the preview", async () => {
+  const { iframe } = await sealedTitle();
+  const plain = await select(iframe, "other");
+  const { persist } = fileWrites();
+  const { commits, reloads } = wiredEditor(iframe, plain, persist);
+  document.getElementById("other")!.remove();
+  await act(() =>
+    commits().handleDomRichTextCommit({ element: plain.element, html: "A", previousHtml: "x" }),
+  );
+  await nextTask();
+  expect([persist.mock.calls.length, reloads.mock.calls.length]).toEqual([0, 0]);
 });
 
 it("shows the newer of two saves whose redraws were refused once the open edit is cancelled", async () => {
