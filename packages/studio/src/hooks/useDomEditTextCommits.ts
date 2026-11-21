@@ -19,7 +19,11 @@ import {
 import { previewStandIn } from "../components/editor/previewDrafts";
 import { buildNextDomTextFields, planDomTextCommit } from "./domEditTextCommitPlan";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
-import { drawFileAgain, textWriteSteps } from "./domEditTextWriteSteps";
+import {
+  drawFileAgain,
+  resyncDomTextSelectionFromPreview,
+  textWriteSteps,
+} from "./domEditTextWriteSteps";
 import {
   claimTextWrite,
   textWriteOrder,

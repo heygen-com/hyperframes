@@ -9,7 +9,7 @@ import { refreshTimelineRowText } from "./refreshTimelineRowText";
 import type { UseDomEditTextCommitsParams } from "./useDomEditTextCommits";
 import { flushStudioPendingEdits } from "../utils/studioPendingEdits";
 
-async function resyncDomTextSelectionFromPreview(
+export async function resyncDomTextSelectionFromPreview(
   doc: Document | null | undefined,
   selection: DomEditSelection,
   activeCompPath: string | null,
