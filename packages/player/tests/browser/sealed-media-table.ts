@@ -478,10 +478,15 @@ async function installDriver(frame: Frame) {
               data.restartRate = String(video.playbackRate);
             }
           });
-          // Where the composition's seek settles, and any seek after it.
+          // Where the composition's seek settles, and any seek after it other than the loop starting over.
+          video.addEventListener(
+            "timeupdate",
+            () => (video.dataset.lastTime = String(video.currentTime)),
+          );
           video.addEventListener("seeked", () => {
             const data = video.dataset;
-            if (data.seekAt !== undefined)
+            const looped = Number(data.lastTime ?? 0) > video.duration - 1 && video.currentTime < 1;
+            if (data.seekAt !== undefined && !looped)
               data.extraSeeks = String(Number(data.extraSeeks ?? 0) + 1);
             if (!data.seekTo) return;
             data.seekAt = String(video.currentTime);
