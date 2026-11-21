@@ -98,6 +98,7 @@ function commitParams(
     buildDomSelectionFromTarget: vi.fn(async () => null),
     persistDomEditOperations: vi.fn().mockResolvedValue(undefined),
     resolveImportedFontAsset: () => null,
+    reloadPreview: vi.fn(),
     readOnlyPreview: false,
     ...overrides,
   };
@@ -132,12 +133,14 @@ describe("useDomEditTextCommits", () => {
     const { iframe, element } = previewElement(html, "t");
     const persist = vi.fn().mockResolvedValue(undefined);
     const showToast = vi.fn();
+    const reloadPreview = vi.fn();
     const base = commitParams({
       previewIframeRef: { current: iframe },
       domEditSelection: selectionFor(element),
-      buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) => selectionFor(target)),
+      buildDomSelectionFromTarget: vi.fn(async (target) => selectionFor(target as HTMLElement)),
       persistDomEditOperations: persist,
       showToast,
+      reloadPreview,
       ...overrides(element.ownerDocument),
     });
     const captured: { hook: ReturnType<typeof useDomEditTextCommits> | null } = { hook: null };
@@ -155,6 +158,7 @@ describe("useDomEditTextCommits", () => {
       Probe,
       persist,
       showToast,
+      reloadPreview,
       element,
       save: () => act(async () => save(commit)),
     };
@@ -186,12 +190,12 @@ describe("useDomEditTextCommits", () => {
     );
   });
 
-  it("refuses in-place text once the preview turns read-only, through an earlier handler, and puts the old text back", async () => {
-    const { root, Probe, persist, element, save } = richTextProbe();
+  it("refuses in-place text once the preview turns read-only, through an earlier handler, and draws the file again", async () => {
+    const { root, Probe, persist, reloadPreview, save } = richTextProbe();
     act(() => root.render(<Probe readOnlyPreview />));
     await save();
     expect(persist).not.toHaveBeenCalled();
-    expect(element.innerHTML).toBe("Old");
+    await vi.waitFor(() => expect(reloadPreview).toHaveBeenCalledTimes(1));
   });
 
   it("saves the edited element, and leaves the selection alone, when the selection is another element or none", async () => {
@@ -202,8 +206,8 @@ describe("useDomEditTextCommits", () => {
         (doc) => ({
           domEditSelection: selected ? selectionFor(doc.getElementById(selected)!) : null,
           applyDomSelection,
-          buildDomSelectionFromTarget: vi.fn(async (target: HTMLElement) => ({
-            ...selectionFor(target),
+          buildDomSelectionFromTarget: vi.fn(async (target) => ({
+            ...selectionFor(target as HTMLElement),
             label: "Resolved from the edited element",
           })),
         }),
@@ -220,16 +224,16 @@ describe("useDomEditTextCommits", () => {
     }
   });
 
-  it("says so and puts the old text back when the edited text cannot be saved", async () => {
+  it("says so and draws the file again when the edited text cannot be saved", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
-    const { persist, showToast, element, save } = richTextProbe(undefined, () => ({
+    const { persist, showToast, reloadPreview, save } = richTextProbe(undefined, () => ({
       buildDomSelectionFromTarget: vi.fn(async () => null),
     }));
     await save();
     expect(persist).not.toHaveBeenCalled();
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining("Couldn't save"), "error");
     expect(error).toHaveBeenCalled();
-    expect(element.innerHTML).toBe("Old");
+    await vi.waitFor(() => expect(reloadPreview).toHaveBeenCalledTimes(1));
   });
 
   it("keeps concurrent text commit ownership isolated by target", async () => {
@@ -246,11 +250,13 @@ describe("useDomEditTextCommits", () => {
       .mockImplementationOnce(() => firstPersist.promise)
       .mockResolvedValueOnce(undefined);
     vi.spyOn(console, "warn").mockImplementation(() => {});
+    const reloadPreview = vi.fn();
     const hook = renderTextCommitHook(
       commitParams({
         previewIframeRef: { current: iframe },
         domEditSelection: firstSelection,
         persistDomEditOperations,
+        reloadPreview,
       }),
     );
 
@@ -266,7 +272,7 @@ describe("useDomEditTextCommits", () => {
       await firstCommit;
     });
 
-    expect(firstElement.textContent).toBe("First");
+    await vi.waitFor(() => expect(reloadPreview).toHaveBeenCalledTimes(1));
     expect(secondElement.textContent).toBe("Saved second");
   });
 
@@ -288,16 +294,18 @@ describe("useDomEditTextCommits", () => {
     );
 
     let staleCommit: Promise<void> | undefined;
+    let newestCommit: Promise<void> | undefined;
     act(() => {
       staleCommit = hook.commitDomTextFields(selection, [textField("Stale")]);
-    });
-    await act(async () => {
-      await hook.commitDomTextFields(selection, [textField("Newest")]);
+      newestCommit = hook.commitDomTextFields(selection, [textField("Newest")]);
     });
     stalePersist.reject(new Error("stale request failed"));
     await act(async () => {
       await staleCommit;
+      await newestCommit;
     });
+
+    expect(persistDomEditOperations).toHaveBeenCalledTimes(2);
 
     expect(element.innerHTML).toBe("Newest");
   });
@@ -435,11 +443,13 @@ describe("useDomEditTextCommits", () => {
   it("reports persist failure from a text commit instead of resolving silently", async () => {
     const { iframe, element } = previewElement("<div id='card'>Original</div>", "card");
     const selection = selectionFor(element);
+    const reloadPreview = vi.fn();
     const hook = renderTextCommitHook(
       commitParams({
         previewIframeRef: { current: iframe },
         domEditSelection: selection,
         persistDomEditOperations: vi.fn().mockRejectedValue(new Error("server said no")),
+        reloadPreview,
       }),
     );
 
@@ -449,7 +459,7 @@ describe("useDomEditTextCommits", () => {
     });
 
     expect(outcome).toEqual({ ok: false, reason: "persist-failed" });
-    expect(element.innerHTML).toBe("Original");
+    await vi.waitFor(() => expect(reloadPreview).toHaveBeenCalledTimes(1));
   });
 
   it("reports a text commit declined for an unselected target", async () => {

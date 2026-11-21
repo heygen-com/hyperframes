@@ -1,11 +1,9 @@
 import { trackPreviewFeatureUsed } from "../utils/previewFeatureUsage";
 import { useCallback, useRef } from "react";
-import { refreshTimelineRowText } from "./refreshTimelineRowText";
 import { normalizeDomEditStyleValue } from "../utils/studioHelpers";
 import { injectPreviewGoogleFont, injectPreviewImportedFont } from "../utils/studioFontHelpers";
 import {
   buildDomEditRichTextPatchOperation,
-  findElementForSelection,
   getDomEditTargetKey,
   isTextEditableSelection,
   buildDefaultDomEditTextField,
@@ -14,23 +12,37 @@ import {
 } from "../components/editor/domEditing";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import type { PersistDomEditOperations } from "./domEditCommitTypes";
-import { canEditElementTextInline } from "../components/editor/domEditInlineText";
+import {
+  canEditElementTextInline,
+  canEditSealedTextInline,
+} from "../components/editor/domEditInlineText";
+import { previewStandIn } from "../components/editor/previewDrafts";
 import { buildNextDomTextFields, planDomTextCommit } from "./domEditTextCommitPlan";
 import { reportDomEditPersistFailure } from "./domEditPersistFailure";
 import {
-  bumpDomEditCommitMapVersion,
+  drawFileAgain,
+  resyncDomTextSelectionFromPreview,
+  textWriteSteps,
+} from "./domEditTextWriteSteps";
+import {
+  claimTextWrite,
+  textWriteOrder,
+  type TextWriteOrder,
   domEditCommitDeclined,
   runDomEditCommit,
   runReportedDomEditCommit,
   type DomEditCommitOutcome,
 } from "./domEditCommitRunner";
 import { commitDomStyles } from "./domStyleCommit";
-import { editSealedSelection } from "../components/editor/previewSelection";
-import { escapeHtmlText } from "../components/editor/domEditingLayers";
-import { afterSealedDraw, type PreviewElementEdit } from "../player/lib/previewElements";
+import {
+  afterSealedDraw,
+  describePreviewElements,
+  editPreviewElement,
+} from "../player/lib/previewElements";
 import { useDomEditAttributeCommits } from "./useDomEditAttributeCommits";
-import type { InlineTextEditCommit } from "./useInlineTextEdit";
-import type { ResolveDomSelectionOptions } from "./useDomSelectionTypes";
+import { endInlineEditOn, textSaveEnded, type InlineTextEditCommit } from "./useInlineTextEdit";
+import { landedTextFor, nextTextSaveOrder, rememberTextTarget, requestedOrder } from "./textSaves";
+import type { UseDomSelectionReturn } from "./useDomSelectionTypes";
 
 // ── Types ──
 
@@ -44,13 +56,12 @@ export interface UseDomEditTextCommitsParams {
     options?: { revealPanel?: boolean; additive?: boolean; preserveGroup?: boolean },
   ) => void;
   refreshDomEditSelectionFromPreview: (selection: DomEditSelection) => void;
-  buildDomSelectionFromTarget: (
-    target: HTMLElement,
-    options?: ResolveDomSelectionOptions,
-  ) => Promise<DomEditSelection | null>;
+  buildDomSelectionFromTarget: UseDomSelectionReturn["buildDomSelectionFromTarget"];
   persistDomEditOperations: PersistDomEditOperations;
   resolveImportedFontAsset: (fontFamilyValue: string) => ImportedFontAsset | null;
   readOnlyPreview: boolean;
+  /** Draws the file again: what a failed save falls back to when no save of its target reached the file. */
+  reloadPreview: () => void;
 }
 
 function canCommitInlineTextSelection(selection: DomEditSelection, element: HTMLElement): boolean {
@@ -58,78 +69,42 @@ function canCommitInlineTextSelection(selection: DomEditSelection, element: HTML
   return canEditElementTextInline(element);
 }
 
-async function resyncDomTextSelectionFromPreview(
-  doc: Document | null | undefined,
-  selection: DomEditSelection,
-  activeCompPath: string | null,
-  buildDomSelectionFromTarget: UseDomEditTextCommitsParams["buildDomSelectionFromTarget"],
-  applyDomSelection: UseDomEditTextCommitsParams["applyDomSelection"],
-): Promise<void> {
-  if (!doc) return;
-  const refreshed = findElementForSelection(doc, selection, activeCompPath);
-  if (!refreshed) return;
-  refreshTimelineRowText(refreshed);
-  const nextSelection = await buildDomSelectionFromTarget(refreshed);
-  if (!nextSelection) return;
-  applyDomSelection(nextSelection, { revealPanel: false, preserveGroup: true });
+export const textEditNotSaved = (reason: string) => `Couldn't save the text edit: ${reason}`;
+
+function claimTextFor(order: TextWriteOrder, element: HTMLElement, key: string, number: number) {
+  const claim = claimTextWrite(order, key, number, () => textSaveEnded(element));
+  if (claim) rememberTextTarget(element, order, key);
+  return claim;
+}
+const NOT_FOUND = "this text was not found in the composition's source";
+const GONE = "the text's element is gone from the preview";
+// The same gate that let the edit open, not the design panel's field rule: an element
+// whose text holds a line break has no fields, and editing in place rewrites its markup.
+const NOT_EDITABLE = "this text can't be edited in place";
+
+/** The edited stand-in's own selection: the frame's reply can land after a click moved or cleared the current one. */
+async function sealedInlineTextSelection(
+  element: HTMLElement,
+  sealed: { iframe: HTMLIFrameElement; handle: string },
+  build: UseDomEditTextCommitsParams["buildDomSelectionFromTarget"],
+): Promise<DomEditSelection | string> {
+  const [described] = (await describePreviewElements(sealed.iframe, [sealed.handle])) ?? [];
+  if (!described) return GONE;
+  const selection = await build(described, { exactTarget: true, skipSourceProbe: true });
+  if (selection?.element !== element) return NOT_FOUND;
+  return canEditSealedTextInline(selection) ? selection : NOT_EDITABLE;
 }
 
-type TextResync = Pick<
-  UseDomEditTextCommitsParams,
-  "buildDomSelectionFromTarget" | "applyDomSelection" | "refreshDomEditSelectionFromPreview"
->;
-
-function textWriteSteps(input: {
-  iframe: HTMLIFrameElement | null;
-  selection: DomEditSelection;
-  activeCompPath: string | null;
-  textCommit: ReturnType<typeof planDomTextCommit>;
-  text: string;
-  isLatest: ReturnType<typeof bumpDomEditCommitMapVersion>;
-  showToast: UseDomEditTextCommitsParams["showToast"];
-  resync: TextResync;
-}) {
-  const { iframe, selection, activeCompPath, textCommit, text, isLatest } = input;
-  const doc = iframe?.contentDocument;
-  let editedElement: HTMLElement | null = null;
-  let previousInnerHtml: string | null = null;
-  let sealedEdit: PreviewElementEdit | null = null;
-  const steps = {
-    capture: () => {
-      const el = doc ? findElementForSelection(doc, selection, activeCompPath) : null;
-      if (!el) return;
-      editedElement = el;
-      previousInnerHtml = el.innerHTML;
-    },
-    apply: () => {
-      const serialized = textCommit.usesSerializedTextFields;
-      if (!editedElement) {
-        const html = serialized ? textCommit.nextContent : escapeHtmlText(text);
-        sealedEdit = editSealedSelection(iframe, selection, { html });
-      } else if (serialized) editedElement.innerHTML = textCommit.nextContent;
-      else editedElement.textContent = text;
-    },
-    shouldRevert: () => isLatest(),
-    revert: () => {
-      sealedEdit?.restore();
-      if (editedElement && previousInnerHtml !== null) editedElement.innerHTML = previousInnerHtml;
-    },
-    onError: (error: unknown) =>
-      reportDomEditPersistFailure(selection, textCommit.operations, error, input.showToast),
-    shouldResync: isLatest,
-    resync: () =>
-      sealedEdit
-        ? input.resync.refreshDomEditSelectionFromPreview(selection)
-        : resyncDomTextSelectionFromPreview(
-            doc,
-            selection,
-            activeCompPath,
-            input.resync.buildDomSelectionFromTarget,
-            input.resync.applyDomSelection,
-          ),
-    onFinally: isLatest.release,
-  };
-  return { steps, sealedEdit: () => sealedEdit };
+/** The edited node, not the current selection: a press can open an edit on a child of what is selected. */
+async function liveInlineTextSelection(
+  element: HTMLElement,
+  doc: Document | null | undefined,
+  build: UseDomEditTextCommitsParams["buildDomSelectionFromTarget"],
+): Promise<DomEditSelection | string> {
+  if (!doc || !element.isConnected || element.ownerDocument !== doc) return GONE;
+  const selection = await build(element, { exactTarget: true, skipSourceProbe: true });
+  if (selection?.element !== element) return NOT_FOUND;
+  return canCommitInlineTextSelection(selection, element) ? selection : NOT_EDITABLE;
 }
 
 // ── Hook ──
@@ -145,12 +120,13 @@ export function useDomEditTextCommits({
   persistDomEditOperations,
   resolveImportedFontAsset,
   readOnlyPreview,
+  reloadPreview,
 }: UseDomEditTextCommitsParams) {
   const latestReadOnlyPreviewRef = useRef(readOnlyPreview);
   latestReadOnlyPreviewRef.current = readOnlyPreview;
   const latestSelectionRef = useRef(domEditSelection);
   latestSelectionRef.current = domEditSelection;
-  const domTextCommitVersionRef = useRef(new Map<string, symbol>());
+  const textWritesRef = useRef<TextWriteOrder>(textWriteOrder());
   const domStyleCommitVersionRef = useRef(new Map<string, symbol>());
 
   const {
@@ -217,10 +193,16 @@ export function useDomEditTextCommits({
       if (!isTextEditableSelection(selection)) {
         return domEditCommitDeclined("not-text-editable");
       }
-      const isLatestTextCommit = bumpDomEditCommitMapVersion(
-        domTextCommitVersionRef.current,
+      const ending = endInlineEditOn(selection.element);
+      const number = nextTextSaveOrder();
+      await ending;
+      const claim = claimTextFor(
+        textWritesRef.current,
+        selection.element,
         getDomEditTargetKey(selection),
+        number,
       );
+      if (!claim) return { ok: true, changed: false };
       const nextTextFields = buildNextDomTextFields(selection.textFields, value, fieldKey);
       const textCommit = planDomTextCommit(selection.textFields, nextTextFields, value);
       const write = textWriteSteps({
@@ -229,25 +211,30 @@ export function useDomEditTextCommits({
         activeCompPath,
         textCommit,
         text: value,
-        isLatest: isLatestTextCommit,
+        isLatest: claim,
         showToast,
         resync: {
           buildDomSelectionFromTarget,
           applyDomSelection,
           refreshDomEditSelectionFromPreview,
         },
+        reloadFromFile: () => drawFileAgain(reloadPreview),
       });
 
       return runReportedDomEditCommit({
         ...write.steps,
         persist: () =>
-          afterSealedDraw(write.sealedEdit(), (drawn) =>
-            persistDomEditOperations(selection, textCommit.operations, {
-              label: "Edit text",
-              skipRefresh: drawn,
-              shouldSave: isLatestTextCommit,
-            }),
-          ),
+          claim.write(async () => {
+            const result = await afterSealedDraw(write.sealedEdit(), (drawn) =>
+              persistDomEditOperations(selection, textCommit.operations, {
+                label: "Edit text",
+                skipRefresh: drawn,
+                shouldSave: claim.shouldSave,
+              }),
+            );
+            claim.landed(write.drawn());
+            return result;
+          }),
       });
     },
     [
@@ -257,6 +244,7 @@ export function useDomEditTextCommits({
       persistDomEditOperations,
       previewIframeRef,
       refreshDomEditSelectionFromPreview,
+      reloadPreview,
       showToast,
     ],
   );
@@ -279,78 +267,76 @@ export function useDomEditTextCommits({
    * already holds what the user typed, so there is nothing to apply, only
    * something to save and something to put back if saving fails.
    */
-  const handleDomRichTextCommit = useCallback(
-    async ({ element, html, previousHtml }: InlineTextEditCommit) => {
+  const commitRichText = useCallback(
+    async (element: HTMLElement, html: string, previousHtml: string, number: number) => {
+      const sealed = previewStandIn(element);
+      // Back to what reached the file, only over this save's own draft; with nothing saved yet, the file drawn again.
       const putBack = () => {
-        if (element.isConnected && element.innerHTML === html) element.innerHTML = previousHtml;
+        const back = landedTextFor(element);
+        if (back === undefined) return drawFileAgain(reloadPreview);
+        if (sealed)
+          void editPreviewElement(sealed.iframe, sealed.handle, { html: back, expect: html });
+        else if (element.isConnected && element.innerHTML === html) element.innerHTML = back;
       };
       if (latestReadOnlyPreviewRef.current) return putBack();
       const refuse = (reason: string) => {
         console.error("[Studio] text edit not saved:", reason, element);
-        showToast(`Couldn't save the text edit: ${reason}`, "error");
-        putBack();
+        showToast(textEditNotSaved(reason), "error");
+        if (reason !== GONE) putBack();
       };
-      // The edited node, not the current selection: a press can open an edit on a child of what
-      // is selected, and a host can clear the selection before the edit closes.
       const doc = previewIframeRef.current?.contentDocument;
-      if (!doc || !element.isConnected || element.ownerDocument !== doc) {
-        return refuse("the text's element is gone from the preview");
-      }
-      const selection = await buildDomSelectionFromTarget(element, {
-        exactTarget: true,
-        skipSourceProbe: true,
-      });
-      if (selection?.element !== element) {
-        return refuse("this text was not found in the composition's source");
-      }
-      // The same gate that let the edit open, not the design panel's field rule: an element
-      // whose text holds a line break has no fields, and editing in place rewrites its markup.
-      if (!canCommitInlineTextSelection(selection, element)) {
-        return refuse("this text can't be edited in place");
-      }
-      const isLatestTextCommit = bumpDomEditCommitMapVersion(
-        domTextCommitVersionRef.current,
+      const selection = sealed
+        ? await sealedInlineTextSelection(element, sealed, buildDomSelectionFromTarget)
+        : await liveInlineTextSelection(element, doc, buildDomSelectionFromTarget);
+      if (typeof selection === "string") return refuse(selection);
+      const claim = claimTextFor(
+        textWritesRef.current,
+        element,
         getDomEditTargetKey(selection),
+        number,
       );
+      if (!claim) return;
       const operations = [buildDomEditRichTextPatchOperation(html)];
-      let appliedHtml = "";
 
       await runDomEditCommit({
         capture: () => {},
         apply: () => {
+          if (sealed)
+            return void editPreviewElement(sealed.iframe, sealed.handle, {
+              html,
+              expect: previousHtml,
+            });
           // Idempotent: the caret put this there. Assigned anyway so a commit
           // raised from anywhere but the element itself still lands.
           element.innerHTML = html;
-          appliedHtml = element.innerHTML;
         },
         persist: async () => {
-          const result = await persistDomEditOperations(selection, operations, {
-            label: "Edit text",
-            skipRefresh: true,
-            shouldSave: isLatestTextCommit,
-          });
+          const result = await claim.write(() =>
+            persistDomEditOperations(selection, operations, {
+              label: "Edit text",
+              skipRefresh: true,
+              shouldSave: claim.shouldSave,
+            }),
+          );
+          claim.landed(html);
           if (result?.changed) trackPreviewFeatureUsed("text_edit", "field");
         },
-        shouldRevert: () => isLatestTextCommit(),
-        revert: () => {
-          // An external actor that changed the live node while the request was
-          // in flight owns its new value; only roll back the value we submitted.
-          if (element.isConnected && element.innerHTML === appliedHtml) {
-            element.innerHTML = previousHtml;
-          }
-        },
+        shouldRevert: () => claim(),
+        revert: putBack,
         onError: (error) => reportDomEditPersistFailure(selection, operations, error, showToast),
         // Re-select only what is still selected: the selection may have moved on, or a host cleared it.
-        shouldResync: () => isLatestTextCommit() && latestSelectionRef.current?.element === element,
+        shouldResync: () => claim() && latestSelectionRef.current?.element === element,
         resync: () =>
-          resyncDomTextSelectionFromPreview(
-            doc,
-            selection,
-            activeCompPath,
-            buildDomSelectionFromTarget,
-            applyDomSelection,
-          ),
-        onFinally: isLatestTextCommit.release,
+          sealed
+            ? refreshDomEditSelectionFromPreview(selection)
+            : resyncDomTextSelectionFromPreview(
+                doc,
+                selection,
+                activeCompPath,
+                buildDomSelectionFromTarget,
+                applyDomSelection,
+              ),
+        onFinally: claim.release,
       });
     },
     [
@@ -359,8 +345,21 @@ export function useDomEditTextCommits({
       buildDomSelectionFromTarget,
       persistDomEditOperations,
       previewIframeRef,
+      refreshDomEditSelectionFromPreview,
+      reloadPreview,
       showToast,
     ],
+  );
+
+  const handleDomRichTextCommit = useCallback(
+    (commit: InlineTextEditCommit) =>
+      commitRichText(
+        commit.element,
+        commit.html,
+        commit.previousHtml,
+        requestedOrder(commit) ?? nextTextSaveOrder(),
+      ),
+    [commitRichText],
   );
 
   const commitDomTextFields = useCallback(
@@ -369,10 +368,16 @@ export function useDomEditTextCommits({
       nextTextFields: DomEditTextField[],
       options?: { importedFont?: ImportedFontAsset | null; fontFamily?: boolean },
     ) => {
-      const isLatestTextCommit = bumpDomEditCommitMapVersion(
-        domTextCommitVersionRef.current,
+      const ending = endInlineEditOn(selection.element);
+      const number = nextTextSaveOrder();
+      await ending;
+      const claim = claimTextFor(
+        textWritesRef.current,
+        selection.element,
         getDomEditTargetKey(selection),
+        number,
       );
+      if (!claim) return;
       const textCommit = planDomTextCommit(
         selection.textFields,
         nextTextFields,
@@ -385,26 +390,30 @@ export function useDomEditTextCommits({
         activeCompPath,
         textCommit,
         text: textCommit.nextContent,
-        isLatest: isLatestTextCommit,
+        isLatest: claim,
         showToast,
         resync: {
           buildDomSelectionFromTarget,
           applyDomSelection,
           refreshDomEditSelectionFromPreview,
         },
+        reloadFromFile: () => drawFileAgain(reloadPreview),
       });
 
       await runDomEditCommit({
         ...write.steps,
         persist: async () => {
           const sealedFontNeedsReload = Boolean(write.sealedEdit() && options?.fontFamily);
-          await afterSealedDraw(write.sealedEdit(), (drawn) =>
-            persistDomEditOperations(selection, textCommit.operations, {
-              label: "Edit text",
-              skipRefresh: drawn && !sealedFontNeedsReload,
-              importedFont: importedFont ?? undefined,
-            }),
-          );
+          await claim.write(async () => {
+            await afterSealedDraw(write.sealedEdit(), (drawn) =>
+              persistDomEditOperations(selection, textCommit.operations, {
+                label: "Edit text",
+                skipRefresh: drawn && !sealedFontNeedsReload,
+                importedFont: importedFont ?? undefined,
+              }),
+            );
+            claim.landed(write.drawn());
+          });
         },
       });
     },
@@ -415,6 +424,7 @@ export function useDomEditTextCommits({
       persistDomEditOperations,
       previewIframeRef,
       refreshDomEditSelectionFromPreview,
+      reloadPreview,
       showToast,
     ],
   );

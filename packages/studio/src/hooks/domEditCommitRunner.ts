@@ -1,3 +1,5 @@
+import { previewChangesOutsideTextSaves } from "../player/previewReloading";
+import { savedTextIn, type TextTargets } from "./textSaves";
 import type { DomEditPersistOutcome } from "./domEditCommitTypes";
 
 interface DomEditCommitRunnerConfig {
@@ -35,6 +37,71 @@ export function bumpDomEditCommitVersion(versionRef: CommitVersionRef): () => bo
 export interface DomEditCommitVersionGuard {
   (): boolean;
   release: () => void;
+}
+
+export interface TextWriteOrder extends TextTargets {
+  claims: Map<string, number>;
+  chains: Map<string, Promise<void>>;
+}
+
+export const textWriteOrder = (): TextWriteOrder => ({
+  claims: new Map(),
+  chains: new Map(),
+  landed: new Map(),
+  writing: new Map(),
+});
+
+export type TextWriteClaim = DomEditCommitVersionGuard & {
+  write: <T>(run: () => Promise<T>) => Promise<T>;
+  /** The persistence guard: a false answer also marks this write as skipped. */
+  shouldSave: () => boolean;
+  /** Records `markup` as what the file holds, unless the write was skipped or the preview changed since the claim. */
+  landed: (markup: string) => void;
+  /** What the file holds for the key, as far as this pipeline saw it reach the file since the preview last changed. */
+  saved: () => string | undefined;
+};
+
+/**
+ * Claims `key` for a save numbered at its request; null when a later-numbered save already claimed it. Writes to one
+ * key run one after another in claim order, so the newest claim also lands last.
+ */
+export function claimTextWrite(
+  order: TextWriteOrder,
+  key: string,
+  number: number,
+  onSettled?: () => void,
+): TextWriteClaim | null {
+  if ((order.claims.get(key) ?? 0) > number) return null;
+  order.claims.set(key, number);
+  const changes = previewChangesOutsideTextSaves();
+  const before = order.chains.get(key) ?? Promise.resolve();
+  let open!: () => void;
+  const slot = new Promise<void>((resolve) => (open = resolve));
+  order.chains.set(key, slot);
+  order.writing.set(key, (order.writing.get(key) ?? 0) + 1);
+  let released = false;
+  let skipped = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    open();
+    if (order.chains.get(key) === slot) order.chains.delete(key);
+    order.writing.set(key, order.writing.get(key)! - 1);
+    onSettled?.();
+  };
+  const isLatest = () => order.claims.get(key) === number;
+  return Object.assign(isLatest, {
+    release,
+    write: <T>(run: () => Promise<T>) => before.then(run).finally(release),
+    shouldSave: () => isLatest() || !(skipped = true),
+    landed: (markup: string) => {
+      const last = order.landed.get(key);
+      if (skipped || previewChangesOutsideTextSaves() !== changes) return;
+      if (last?.changes === changes && last.number > number) return;
+      order.landed.set(key, { number, markup, changes });
+    },
+    saved: () => savedTextIn(order, key),
+  });
 }
 
 export function bumpDomEditCommitMapVersion<TKey>(
