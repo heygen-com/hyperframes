@@ -182,12 +182,51 @@ const SEEDS: Array<[string, Step[]]> = [
       { answer: "patch-tweens" },
     ],
   ],
+  // The reviewer's round-8 probes, as written.
+  [
+    "a refused patch, a held live retime and a static undo, then the patch's refusal",
+    [
+      { save: "patch", fate: "refused" },
+      { save: "liveRetime", fate: "frame" },
+      { save: "undoLabel", fate: "frame" },
+      { answer: "patch-tweens" },
+    ],
+  ],
+  [
+    "a refused live retime, then a script-only run, then the retime's refusal",
+    [
+      { save: "liveRetime", fate: "refused" },
+      { save: "run", fate: "frame" },
+      { answer: "newest" },
+      { answer: "live-retime" },
+    ],
+  ],
+  [
+    "a refused live retime at 2 s, a newer run, a scrub to 4 s, then the retime's refusal",
+    [
+      { save: "liveRetime", fate: "refused" },
+      { save: "run", fate: "frame" },
+      { answer: "newest" },
+      { scrub: 4 },
+      { answer: "live-retime" },
+    ],
+  ],
+  [
+    "a retime the port rejects before applying, answered after a newer script-only run painted",
+    [
+      { save: "retime", fate: "rejected" },
+      { save: "run", fate: "frame" },
+      { answer: "newest" },
+      { answer: "soft-reload" },
+    ],
+  ],
 ];
 
 describe("sealed preview after late answers in any order", () => {
   it.each(SEEDS)("%s", async (name, steps) => {
-    const { shown, fresh, reloads, reloadRefusals } = await play(steps);
+    const { shown, fresh, reloads, reloadRefusals, playhead } = await play(steps);
     expect(shown).toEqual(fresh);
+    expect(playhead.shown).toBeCloseTo(playhead.studio, 1);
     if (reloadRefusals === 0) expect(reloads).toBe(0);
     // The frame cannot set a title in place, so the refused undo recovers only by reloading.
     if (name.includes("title")) expect(reloads).toBeGreaterThan(0);
