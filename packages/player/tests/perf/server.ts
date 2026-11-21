@@ -20,6 +20,7 @@ import { fileURLToPath } from "node:url";
  *   /vendor/gsap.min.js
  *   /vendor/hyperframe.runtime.iife.js
  *   /fixtures/<name>/<file>            → fixture HTML + assets
+ *   /fixtures-flaky/<name>/<file>      → as /fixtures/, but a 503 the first time each URL is asked for
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -55,6 +56,8 @@ export type ServeOptions = {
 export type RunningServer = {
   port: number;
   origin: string;
+  /** Every URL asked for, in order. */
+  requested: string[];
   stop(): Promise<void>;
 };
 
@@ -167,10 +170,13 @@ function applyCacheHeaders(res: Response, noCache: boolean): Response {
 export function startServer(options: ServeOptions = {}): RunningServer {
   const noCache = options.noCache ?? false;
 
+  const failedOnce = new Set<string>();
+  const requested: string[] = [];
   const server = Bun.serve({
     port: options.port ?? 0,
     async fetch(req) {
       const url = new URL(req.url);
+      requested.push(url.href);
       const path = url.pathname;
 
       if (path === "/" || path === "/host.html") {
@@ -203,7 +209,14 @@ export function startServer(options: ServeOptions = {}): RunningServer {
         return applyCacheHeaders(await readBunFile(PATHS.gsap), noCache);
       }
 
-      const served = /^\/(fixtures|fixtures-no-cors)\//.exec(path);
+      const served = /^\/(fixtures|fixtures-no-cors|fixtures-flaky)\//.exec(path);
+      if (served?.[1] === "fixtures-flaky" && !failedOnce.has(url.href)) {
+        failedOnce.add(url.href);
+        return new Response("Busy", {
+          status: 503,
+          headers: { "Access-Control-Allow-Origin": "*" },
+        });
+      }
       if (served) {
         const filePath = join(PATHS.fixturesDir, path.slice(served[0].length));
         if (!filePath.startsWith(PATHS.fixturesDir)) {
@@ -211,7 +224,7 @@ export function startServer(options: ServeOptions = {}): RunningServer {
         }
         // A sealed player's film has an opaque origin and loads its own media with CORS, as from a CORS-capable host.
         const res = applyCacheHeaders(await readBunFile(filePath), noCache);
-        if (served[1] === "fixtures") res.headers.set("Access-Control-Allow-Origin", "*");
+        if (served[1] !== "fixtures-no-cors") res.headers.set("Access-Control-Allow-Origin", "*");
         return res;
       }
 
@@ -229,6 +242,7 @@ export function startServer(options: ServeOptions = {}): RunningServer {
   return {
     port,
     origin: `http://127.0.0.1:${port}`,
+    requested,
     async stop() {
       server.stop(true);
     },

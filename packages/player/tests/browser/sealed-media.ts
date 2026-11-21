@@ -140,6 +140,14 @@ async function mediaCases() {
     `<video><source src="${plain}?case=unsupported" type="video/mp4"><source src="${base}" type="video/x-nope"></video>`,
   );
   await add("missing", `<video src="/fixtures/10-video-grid/missing.mp4"></video>`);
+  await add(
+    "leading",
+    `<video><source src="${base}?case=skipped" type="video/x-nope"><source src="${base}?case=leading"></video>`,
+  );
+  await add(
+    "second",
+    `<video><source src="/fixtures/10-video-grid/missing.mp4?case=first"><source src="${base}?case=second"></video>`,
+  );
   const results = {
     refused,
     healthy: await read("healthy"),
@@ -147,7 +155,47 @@ async function mediaCases() {
     explicit: await read("explicit"),
     unsupported: await read("unsupported"),
     missing: await read("missing"),
+    leading: await read("leading"),
+    second: await read("second"),
   };
+  const asked = (marker: string) => server.requested.filter((url) => url.includes(marker)).length;
+  const requests = { leading: asked("case=leading"), second: asked("case=second") };
+
+  const authoredLater = (script: string, url: string) =>
+    frame.evaluate(
+      (body, target) =>
+        new Promise<string | null>((resolve) => {
+          const video = new Function("url", body)(target) as HTMLVideoElement;
+          setTimeout(() => setTimeout(() => resolve(video.getAttribute("crossorigin"))));
+        }),
+      script,
+      url,
+    );
+  await add("sametask", `<video src="${base}?case=sametask"></video>`);
+  await read("sametask");
+  const sameTask = await authoredLater(
+    `const video = document.querySelector('[data-case="sametask"]');
+     video.src = url;
+     video.crossOrigin = "use-credentials";
+     return video;`,
+    plain,
+  );
+
+  // A URL that failed once and then served CORS, while a sibling played, is not remembered as refusing CORS.
+  const flaky = "/fixtures-flaky/10-video-grid/sample.mp4?case=flaky";
+  await add(
+    "recovers",
+    `<video><source src="${flaky}"><source src="${base}?case=recovers"></video>`,
+  );
+  const recovered = await read("recovers");
+  await frame.evaluate((url) => {
+    const video = document.querySelector<HTMLVideoElement>('[data-case="recovers"]')!;
+    video.replaceChildren();
+    video.src = url;
+  }, `${plain}?case=recovers-plain`);
+  const fellBack = await read("recovers");
+  await add("fresh", `<video src="${flaky}"></video>`);
+  const fresh = await read("fresh");
   for (const [name, value] of [
     ["credentials", "use-credentials"],
     ["same", "anonymous"],
@@ -176,7 +224,14 @@ async function mediaCases() {
     ),
   );
   await page.close();
-  return { results, authored, warnings };
+  return {
+    results,
+    authored,
+    warnings,
+    requests,
+    sameTask,
+    recovery: { recovered, fellBack, fresh },
+  };
 }
 
 try {
@@ -206,7 +261,7 @@ try {
   );
   console.log("[sealed-media] a host without CORS plays; a CORS host keeps pixel access");
 
-  const { results, authored, warnings } = await mediaCases();
+  const { results, authored, warnings, requests, sameTask, recovery } = await mediaCases();
   const failures: string[] = [];
   const check = (claim: string, ok: boolean, seen: unknown) => {
     if (!ok) failures.push(`${claim}: ${JSON.stringify(seen)}`);
@@ -240,6 +295,33 @@ try {
     "a crossorigin the composition set is the composition's, also when it is the same value",
     authored[0] === "use-credentials" && authored[1] === "anonymous",
     authored,
+  );
+  const corsReadable = (result: { crossOrigin: string | null; pixels: string }) =>
+    result.crossOrigin === "anonymous" && result.pixels === "readable";
+  check(
+    "a source the browser cannot play, before a CORS source, is skipped without a reload loop",
+    corsReadable(results.leading) && requests.leading <= 2,
+    { video: results.leading, requests: requests.leading },
+  );
+  check(
+    "a failing first CORS source leaves the second to play with CORS, with no fallback",
+    corsReadable(results.second) &&
+      requests.second <= 2 &&
+      !warnings.some((w) => w.includes("case=first")),
+    { video: results.second, requests: requests.second },
+  );
+  check(
+    "a crossorigin the composition sets in the same task as a new src is the composition's",
+    sameTask === "use-credentials",
+    sameTask,
+  );
+  check(
+    "a URL that failed once and then loaded with CORS keeps CORS for a fresh video",
+    corsReadable(recovery.recovered) &&
+      recovery.fellBack.playing &&
+      recovery.fellBack.crossOrigin === null &&
+      corsReadable(recovery.fresh),
+    recovery,
   );
   assert.deepEqual(failures, [], failures.join("\n"));
   console.log(

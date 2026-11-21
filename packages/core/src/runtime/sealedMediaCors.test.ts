@@ -173,6 +173,8 @@ describe("corsForSealedMedia", () => {
     const load = vi.spyOn(video, "load").mockImplementation(() => {});
     const [first, last] = video.querySelectorAll("source");
     first!.dispatchEvent(new Event("error"));
+    expect(load).not.toHaveBeenCalled();
+    Object.defineProperty(video, "networkState", { value: HTMLMediaElement.NETWORK_NO_SOURCE });
     last!.dispatchEvent(new Event("error"));
     expect(video.hasAttribute("crossorigin")).toBe(false);
     expect(load).toHaveBeenCalledTimes(1);
@@ -205,6 +207,19 @@ describe("corsForSealedMedia", () => {
       "anonymous",
     ]);
     warn.mockRestore();
+  });
+
+  it("keeps a crossorigin the composition sets on media that was there when it started", async () => {
+    vi.stubGlobal("origin", "null");
+    const video = add(`<video src="media/clip.mp4"></video>`).querySelector("video")!;
+    observer = corsForSealedMedia();
+    expect(video.getAttribute("crossorigin")).toBe("anonymous");
+    await settled();
+    video.setAttribute("crossorigin", "use-credentials");
+    await settled();
+    video.setAttribute("src", "https://cdn.example.com/clip.mp4");
+    await settled();
+    expect(video.getAttribute("crossorigin")).toBe("use-credentials");
   });
 
   it("leaves an authored crossorigin and its errors alone", async () => {
