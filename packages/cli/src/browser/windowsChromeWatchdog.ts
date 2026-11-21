@@ -10,7 +10,7 @@ process.stdin.on("end", done);
 process.stdin.on("error", done);`;
 
 export interface ChromeWatchdog {
-  release(clean: boolean): void;
+  release(clean: boolean): Promise<void>;
 }
 
 export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefined {
@@ -26,12 +26,13 @@ export function watchChromeTree(chrome: ChildProcess): ChromeWatchdog | undefine
   watchdog.stdin?.on("error", () => {});
   watchdog.unref();
   (watchdog.stdin as unknown as { unref?: () => void } | null)?.unref?.();
+  const ended = new Promise<void>((resolve) => watchdog.once("close", () => resolve()));
   let released = false;
   return {
     release(clean) {
-      if (released) return;
+      if (!released) watchdog.stdin?.end(clean ? "clean" : "");
       released = true;
-      watchdog.stdin?.end(clean ? "clean" : "");
+      return ended;
     },
   };
 }
