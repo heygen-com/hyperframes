@@ -478,6 +478,18 @@ describe("check --prepare-media", () => {
     consumeCommandResult();
   });
 
+  it("keeps a failed media file's name on its line and the reason's own lines", async () => {
+    const { log } = await runPrepare(
+      [{ file: "a\nb.mov", state: "failed", reason: "ffmpeg: bad\nsecond line" }],
+      ["--prepare-media"],
+    );
+
+    expect(log.mock.calls.map(([line]) => String(line))).toContain(
+      "   a\\x0ab.mov: ffmpeg: bad\nsecond line",
+    );
+    consumeCommandResult();
+  });
+
   it("prints snapshot paths with control characters as visible escapes", async () => {
     // Built rather than written: a literal control character in the source is a lint error.
     const esc = String.fromCharCode(27);
