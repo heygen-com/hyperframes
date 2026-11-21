@@ -1353,8 +1353,9 @@ function recordedMatch(record) {
 async function result(record, source, match = recordedMatch(record)) {
   warnLowConfidence(record, match);
   const { provider, license, credit, source_url: sourceUrl } = record.provenance ?? {};
-  // Under the media lock: two resolves at once each read, then rewrite, the whole credits file.
-  if (provider === OPENVERSE_SFX_PROVIDER)
+  // Under the media lock: two resolves at once each read, then rewrite, the whole credits file. A project
+  // manifest's record ("cached") is the project's own text, so its provider claim never writes a credit.
+  if (provider === OPENVERSE_SFX_PROVIDER && source !== "cached")
     withMediaLock(projectDir, () =>
       writeSfxCredit(join(ownTypeDir(projectDir, "sfx"), "CREDITS.md"), record.path, {
         license,
