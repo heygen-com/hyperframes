@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,10 +15,10 @@ interface Run {
   stderr: string;
 }
 
-function runCli(args: string[]): Promise<Run> {
+function runCli(args: string[], cwd = home): Promise<Run> {
   return new Promise((resolve, reject) => {
     const child = spawn("bun", ["run", cliEntry, ...args], {
-      cwd: home,
+      cwd,
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 30_000,
       env: { PATH: process.env.PATH, HOME: home, USERPROFILE: home, CI: "1" },
@@ -50,4 +50,30 @@ it("shows control characters in an unknown command word as visible text", async 
   expect(lines.stderr).toContain("Unknown command: a\\x0aError: b.html\n");
   expect(lines.stderr).toContain("'a\\x0aError: b.html' ");
   expect(lines.stderr.split("\n").filter((line) => line.startsWith("Error:"))).toEqual([]);
+}, 60_000);
+
+const startsALine = (run: Run, text: string) =>
+  run.stderr.split("\n").filter((line) => line.startsWith(text));
+
+it("keeps a usage failure that repeats a typed flag on one line", async () => {
+  const run = await runCli(["info", "--x\nError: y"]);
+  expect(run.stderr).toContain("--x\\x0aError: y");
+  expect(startsALine(run, "Error:")).toEqual([]);
+}, 60_000);
+
+it("shows control characters in a project .env key name as visible text", async () => {
+  const project = mkdtempSync(join(home, "env-"));
+  writeFileSync(join(project, ".env"), "KEY\u001b[2J\u202e=1\n");
+  const run = await runCli(["info"], project);
+  expect(run.stderr).toContain(".env: ignoring KEY\\x1b[2J\\u202e ");
+  expect(run.stderr).not.toContain("\u001b");
+  expect(run.stderr).not.toContain("\u202e");
+}, 60_000);
+
+it("shows direction marks in the file name the measure shortcut repeats", async () => {
+  const folder = mkdtempSync(join(home, "measure-"));
+  writeFileSync(join(folder, "clip\u202e\u0085.mp4"), "");
+  const run = await runCli(["measure", "clip\u202e\u0085.mp4"], folder);
+  expect(run.stderr).toContain("running 'probe \"clip\\u202e\\x85.mp4\"'");
+  expect(run.stderr).not.toContain("\u202e");
 }, 60_000);

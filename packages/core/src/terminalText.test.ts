@@ -18,6 +18,10 @@ describe("terminalText", () => {
     ).toBe("clip\\u202egpj.exe\\u202c \\u2066a\\u2069 \\u202a\\u202b\\u202d\\u2067\\u2068");
     expect(terminalText("שלום \u200f مرحبا")).toBe("שלום \u200f مرحبا");
   });
+
+  it("writes the line and paragraph separators out as visible escapes", () => {
+    expect(terminalText("a\u2028b\u2029c\u200d\u061c")).toBe("a\\u2028b\\u2029c\u200d\u061c");
+  });
 });
 
 describe("terminalLines", () => {
