@@ -5,11 +5,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MutableRefObject } from "react";
 import { patchElementInHtml } from "@hyperframes/studio-server/source-mutation";
-import {
-  collectDomEditTextFields,
-  type DomEditSelection,
-  type DomEditTextField,
-} from "../components/editor/domEditing";
+import type { DomEditSelection, DomEditTextField } from "../components/editor/domEditing";
+import { collectDomEditTextFields } from "../components/editor/domEditingLayers";
 import type { PatchOperation, PatchTarget } from "../utils/sourcePatcher";
 import type { ImportedFontAsset } from "../components/editor/fontAssets";
 import { usePlayerStore } from "../player";
