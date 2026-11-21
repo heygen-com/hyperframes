@@ -1,0 +1,3 @@
+# Tests read a clock ten years ahead, so one that depends on today's date fails on the day it is written.
+[test]
+preload = ["../../scripts/test-clock-ahead.mjs"]
