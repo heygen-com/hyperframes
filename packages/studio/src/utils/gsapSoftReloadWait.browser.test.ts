@@ -165,6 +165,10 @@ const STEPS: Record<Step, (preview: Preview, sealed: boolean) => Promise<unknown
     await p.frame.waitForFunction(
       () => !(window as unknown as { __player: { isPlaying(): boolean } }).__player.isPlaying(),
     );
+    // A playback tick already scheduled can still land after the pause; read the frame it leaves.
+    await p.frame.evaluate(
+      () => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))),
+    );
     pausedAt = Math.round((await p.time()) * 100) / 100;
   },
   // Studio's editing port gives a request 5 s (editingPort.ts); the plugin stays held past that.
@@ -252,7 +256,7 @@ async function play(mode: string, steps: Step[]) {
     answer,
     ...state,
     at,
-    ...(pausedAt === undefined ? {} : { moved: Math.abs(at - pausedAt) > 1 / 30 }),
+    ...(pausedAt === undefined ? {} : { moved: Math.abs(at - pausedAt) > 1 / 30, pausedAt }),
   };
   await page.close();
   return outcome;
