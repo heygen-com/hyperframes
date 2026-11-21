@@ -172,6 +172,7 @@ export async function bench(cfg) {
     };
     requestAnimationFrame(watch);
     win.__hfProbe = [];
+    win.__hfProbeN = 0;
     const t0 = now();
     host.seek(target);
     const syncMs = now() - t0;

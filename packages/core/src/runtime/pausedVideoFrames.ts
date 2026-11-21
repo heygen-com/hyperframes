@@ -88,7 +88,7 @@ export function captureNativeVideoFrame(video: HTMLVideoElement): HTMLCanvasElem
     t = performance.now();
     context.drawImage(frame ?? video, 0, 0);
     probe.push([
-      `capture.drawImage(rs${video.readyState}${video.paused ? "p" : ""})`,
+      `draw#${((globalThis as any).__hfProbeN = ((globalThis as any).__hfProbeN ?? 0) + 1)}`,
       performance.now() - t,
     ]);
     return canvas;
