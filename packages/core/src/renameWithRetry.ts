@@ -1,10 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { copyFileSync, renameSync } from "node:fs";
+import { copyFileSync, renameSync, statSync } from "node:fs";
 import { copyFile, rename } from "node:fs/promises";
 import { removeScratch } from "./removeScratch.js";
 
-// Windows reports EPERM/EACCES/EBUSY while antivirus or a just-exited process still holds the
-// file; the hold clears within milliseconds. Total wait before giving up: about 1.3 s.
+// Windows reports EPERM/EACCES/EBUSY while antivirus or a just-exited process holds the file (it clears in ms; about
+// 1.3 s of waits in all), and EPERM for a rename onto a folder that exists, which no wait clears.
 const RETRYABLE = new Set(["EPERM", "EACCES", "EBUSY"]);
 const BACKOFF_MS = [10, 20, 40, 80, 160, 320, 640];
 
@@ -46,11 +46,20 @@ function handOverHold(error: unknown): void {
 }
 
 /** What a refused rename does next: wait and try again, fall back to a copy, or give up with the error. */
-function nextStep(error: unknown, attempt: number, options: Options, platform: NodeJS.Platform) {
-  if (!isWindowsHold(error, platform)) return "throw";
+function nextStep(
+  error: unknown,
+  attempt: number,
+  options: Options,
+  platform: NodeJS.Platform,
+  to: string,
+) {
+  if (!isWindowsHold(error, platform) || isFolder(to)) return "throw";
   if (attempt < BACKOFF_MS.length) return "wait";
   return options.copyFallback ? "copy" : "throw";
 }
+
+const isFolder = (path: string) =>
+  statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
 
 function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -73,7 +82,7 @@ export function renameWithRetry(
       doRename(from, to);
       return;
     } catch (error) {
-      const step = nextStep(error, attempt, options, platform);
+      const step = nextStep(error, attempt, options, platform, to);
       if (step === "throw") throw error;
       handOverHold(error);
       if (step === "wait") {
@@ -108,7 +117,7 @@ export async function renameWithRetryAsync(
       await doRename(from, to);
       return;
     } catch (error) {
-      const step = nextStep(error, attempt, options, platform);
+      const step = nextStep(error, attempt, options, platform, to);
       if (step === "throw") throw error;
       if (step === "wait") {
         await new Promise((resolve) => setTimeout(resolve, BACKOFF_MS[attempt]));
