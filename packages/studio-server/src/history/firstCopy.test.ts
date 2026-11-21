@@ -197,7 +197,7 @@ describe("a project's first history copy", () => {
     }
   });
 
-  it("begins an agent step about a deadline after the open while a file's read never answers", async () => {
+  it("begins an agent step with no second deadline while a file's read never answers", async () => {
     const projectDir = projectOf(6, "stuck");
     const stuck = join(projectDir, "parts", "p1.js");
     const releases: (() => void)[] = [];
@@ -206,15 +206,16 @@ describe("a project's first history copy", () => {
       return realOpen(...args);
     });
     try {
+      const openedAt = Date.now();
       const history = await openProjectHistory({
         projectDir,
         historyRoot: tempDir("hf-first-copy-root-"),
-        firstCopyFileMs: 100,
+        firstCopyFileMs: 1000,
       });
       closes.push(() => history.close());
-      const askedAt = Date.now();
       await history.beginWindow(agent, "Step");
-      expect(Date.now() - askedAt).toBeGreaterThanOrEqual(90);
+      expect(Date.now() - openedAt).toBeGreaterThanOrEqual(990);
+      expect(Date.now() - openedAt).toBeLessThan(1800);
     } finally {
       for (const answer of releases) answer();
     }
@@ -264,8 +265,10 @@ describe("a project's first history copy", () => {
     closes.push(() => history.close());
     const step = await history.beginWindow(agent, "Step");
     writeFileSync(stuck, "// agent\n");
+    writeFileSync(join(projectDir, "index.html"), "<html>agent</html>");
     history.noteChange(stuck);
-    await step.close();
+    history.noteChange(join(projectDir, "index.html"));
+    const entry = await step.close();
     for (const answer of releases) answer();
     await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["parts/p1.js"]), {
       timeout: 10_000,
@@ -274,7 +277,9 @@ describe("a project's first history copy", () => {
     expect(start).not.toBe(sha256(Buffer.from("// agent\n")));
     const notKept = "An earlier version of parts/p1.js is not kept";
     await expect(history.restore(START, agent)).rejects.toThrow(notKept);
+    await expect(history.undo(entry!.id, { who: agent })).rejects.toThrow(notKept);
     expect(readFileSync(stuck, "utf8")).toBe("// agent\n");
+    expect(readFileSync(join(projectDir, "index.html"), "utf8")).toBe("<html>agent</html>");
     // What any version of the app reads back: the log as parsed, a blob path for every hash, a reopened history.
     await history.close();
     const log = readLog(join(homeIn(historyRoot), "log.jsonl"), () => {});
@@ -282,6 +287,78 @@ describe("a project's first history copy", () => {
     expect(() => blobPath(historyRoot, start)).not.toThrow();
     history = await openProjectHistory(opts);
     await expect(history.restore(START, agent)).rejects.toThrow(notKept);
+  });
+
+  it("keeps an original read before an agent step rewrote it, while its copy was still being filed", async () => {
+    const projectDir = projectOf(2, "filed");
+    const p1 = join(projectDir, "parts", "p1.js");
+    const original = readFileSync(p1);
+    const releases: (() => void)[] = [];
+    vi.mocked(fsp.writeFile).mockImplementation(
+      async (...args: Parameters<typeof realWriteFile>) => {
+        const [to, bytes] = args;
+        if (
+          !releases.length &&
+          String(to).includes("incoming-") &&
+          original.equals(bytes as Buffer)
+        )
+          await new Promise<void>((answer) => releases.push(answer));
+        return realWriteFile(...args);
+      },
+    );
+    closes.push(async () => releases.forEach((answer) => answer()));
+    const history = await openProjectHistory({
+      projectDir,
+      historyRoot: tempDir("hf-first-copy-root-"),
+      firstCopyFileMs: 100,
+      now: () => Date.now() + 60_000,
+    });
+    closes.push(() => history.close());
+    const step = await history.beginWindow(agent, "Step");
+    writeFileSync(p1, "// agent\n");
+    history.noteChange(p1);
+    await step.close();
+    for (const answer of releases) answer();
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["parts/p1.js"]), {
+      timeout: 10_000,
+    });
+    expect(history.peek(START)!["parts/p1.js"]).toBe(sha256(original));
+  });
+
+  it("keeps no start for a file whose first reads kept changing until an agent step rewrote it", async () => {
+    const projectDir = projectOf(2, "saving");
+    const p1 = join(projectDir, "parts", "p1.js");
+    let saving = true;
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      const handle = await realOpen(...args);
+      if (String(args[0]) !== p1 || !saving) return handle;
+      const readFile = handle.readFile.bind(handle);
+      handle.readFile = (async (...options: Parameters<typeof readFile>) => {
+        const bytes = await readFile(...options);
+        if (saving) appendFileSync(p1, "// saved while read\n");
+        return bytes;
+      }) as typeof handle.readFile;
+      return handle;
+    });
+    const history = await openProjectHistory({
+      projectDir,
+      historyRoot: tempDir("hf-first-copy-root-"),
+      firstCopyFileMs: 100,
+      now: () => Date.now() + 60_000,
+    });
+    closes.push(() => history.close());
+    const step = await history.beginWindow(agent, "Step");
+    saving = false;
+    writeFileSync(p1, "// agent\n");
+    history.noteChange(p1);
+    await step.close();
+    await vi.waitFor(() => expect(history.peek(START)).toHaveProperty(["parts/p1.js"]), {
+      timeout: 10_000,
+    });
+    expect(history.peek(START)!["parts/p1.js"]).not.toBe(sha256(Buffer.from("// agent\n")));
+    await expect(history.restore(START, agent)).rejects.toThrow(
+      "An earlier version of parts/p1.js is not kept",
+    );
   });
 
   it("keeps no start for a file an agent step went ahead of, when its read lands after a restart", async () => {
