@@ -361,6 +361,49 @@ describe("corsForSealedMedia", () => {
     expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 4]);
   });
 
+  // fails without the fix: the runtime's preload load() 2 ms after our reload cleared the mark, costing two loads.
+  it("keeps a down mark through a load() made before our reload's selection starts", async () => {
+    vi.stubGlobal("origin", "null");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+    observer = corsForSealedMedia();
+    const video = add(
+      `<video><source src="media/down.mp4"><source src="media/own.mp4"></video>`,
+    ).querySelector("video")!;
+    await settled();
+    const down = video.querySelector("source")!;
+    down.dispatchEvent(new Event("error"));
+    down.dispatchEvent(new Event("error"));
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    video.load();
+    video.dispatchEvent(new Event("loadstart"));
+    down.dispatchEvent(new Event("error"));
+    expect([video.getAttribute("crossorigin"), load.mock.calls.length]).toEqual(["anonymous", 3]);
+  });
+
+  // fails if every load() before loadstart joined our selection: the author's swapped sources kept the old mark.
+  it("counts a load() after the author swaps sources before loadstart as a new attempt", async () => {
+    vi.stubGlobal("origin", "null");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+    observer = corsForSealedMedia();
+    const video = add(
+      `<video><source src="media/down.mp4"><source src="media/own.mp4"></video>`,
+    ).querySelector("video")!;
+    await settled();
+    const [first, second] = [...video.querySelectorAll("source")];
+    first!.dispatchEvent(new Event("error"));
+    first!.dispatchEvent(new Event("error"));
+    playsFrom(video, `${PREVIEW}media/own.mp4`);
+    first!.setAttribute("src", "media/own.mp4");
+    second!.setAttribute("src", "media/down.mp4");
+    await settled();
+    video.load();
+    video.dispatchEvent(new Event("loadstart"));
+    second!.dispatchEvent(new Event("error"));
+    expect([video.hasAttribute("crossorigin"), load.mock.calls.length]).toEqual([false, 4]);
+  });
+
   it("settles the composition's play() with the playback its load retried", async () => {
     vi.stubGlobal("origin", "null");
     const play = vi
