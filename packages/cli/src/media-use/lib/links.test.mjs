@@ -1,9 +1,13 @@
 import { strict as assert } from "node:assert";
 import {
+  closeSync,
+  constants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readdirSync,
   readFileSync,
   realpathSync,
@@ -171,8 +175,14 @@ test("a project preference never writes through links at predictable temp names"
 
     recordPreference({ projectDir: project, key: "aspect", value: "16:9" });
 
-    assert.ok(lstatSync(prefs).isFile());
-    assert.equal(JSON.parse(readFileSync(prefs, "utf8")).preferences.aspect.value, "16:9");
+    // Opened without following a link, so a link left at the name would fail the open itself.
+    const fd = openSync(prefs, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    try {
+      assert.ok(fstatSync(fd).isFile());
+      assert.equal(JSON.parse(readFileSync(fd, "utf8")).preferences.aspect.value, "16:9");
+    } finally {
+      closeSync(fd);
+    }
     assert.equal(existsSync(join(outside, `planted-${process.pid}`)), false);
     outsideUnchanged();
   }),
