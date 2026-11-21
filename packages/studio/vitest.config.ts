@@ -5,5 +5,6 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     esbuild: { define: { "import.meta.hot": "undefined" } },
+    test: { globalSetup: ["tests/warmChrome.globalSetup.ts"] },
   }),
 );

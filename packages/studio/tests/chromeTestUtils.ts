@@ -8,6 +8,36 @@ const require = createRequire(import.meta.url);
 
 const LAUNCH_TIMEOUT_MS = 20_000;
 const LAUNCH_ATTEMPTS = 2;
+const WARM_TIMEOUT_MS = 60_000;
+const CHROME_ARGS = ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"];
+
+const reasonOf = (error: unknown): string =>
+  error instanceof Error ? error.message : inspect(error, { breakLength: Infinity });
+
+/** Starts Chrome once and closes it. A job's first Chrome start is cold: on a CI runner busy with the suite it took
+ * 17 s and timed out launches, and later starts take 0.3 s. Vitest's global setup calls this before any test runs.
+ * A failed warm start is reported and the suite goes on: the browser tests then fail with their own message. */
+export async function warmTestChrome(
+  launch: typeof puppeteer.launch = (options) => puppeteer.launch(options),
+): Promise<void> {
+  const executablePath = findSystemChrome();
+  if (!executablePath) return;
+  const startedAt = Date.now();
+  try {
+    const browser = await launch({
+      executablePath,
+      headless: true,
+      args: CHROME_ARGS,
+      timeout: WARM_TIMEOUT_MS,
+    });
+    await closeTestChrome(browser);
+    console.info(`[studio-test-chrome] warm start took ${Date.now() - startedAt} ms`);
+  } catch (error) {
+    console.error(
+      `[studio-test-chrome] warm start failed after ${Date.now() - startedAt} ms: ${reasonOf(error)}`,
+    );
+  }
+}
 
 /** Headless Chrome with the e2e launcher's flags. A launch stuck past 20 s (seen on Windows runners)
  * is killed and tried once more. On Windows Puppeteer reports it as "already running", not a timeout. */
@@ -20,7 +50,7 @@ export async function launchTestChrome(
     executablePath,
     headless: true,
     dumpio: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+    args: CHROME_ARGS,
     timeout: LAUNCH_TIMEOUT_MS,
   };
   const version = browserVersion(executablePath) ?? "version unavailable";
@@ -39,10 +69,8 @@ export async function launchTestChrome(
       return browser;
     } catch (error) {
       const elapsed = Date.now() - startedAt;
-      const reason =
-        error instanceof Error ? error.message : inspect(error, { breakLength: Infinity });
       console.error(
-        `[studio-test-chrome] launch ${attempt}/${LAUNCH_ATTEMPTS} failed after ${elapsed} ms: ${reason}`,
+        `[studio-test-chrome] launch ${attempt}/${LAUNCH_ATTEMPTS} failed after ${elapsed} ms: ${reasonOf(error)}`,
       );
       const stuck = error instanceof TimeoutError || elapsed >= LAUNCH_TIMEOUT_MS;
       if (!stuck || attempt === LAUNCH_ATTEMPTS) throw error;
