@@ -293,6 +293,7 @@ describe("corsForSealedMedia", () => {
 
   it("keeps the playhead, rate and play state across its own load", async () => {
     vi.stubGlobal("origin", "null");
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     observer = corsForSealedMedia();
     const video = add(`<video><source src="media/a.mp4"></video>`).querySelector("video")!;
     await settled();
@@ -303,7 +304,6 @@ describe("corsForSealedMedia", () => {
       video.currentTime = 0;
       video.playbackRate = 1;
     });
-    const play = vi.spyOn(video, "play").mockResolvedValue(undefined);
     video.querySelector("source")!.dispatchEvent(new Event("error"));
     expect(video.currentTime).toBeCloseTo(2, 4);
     expect([video.playbackRate, play.mock.calls.length]).toEqual([1.5, 1]);
@@ -365,6 +365,7 @@ describe("corsForSealedMedia", () => {
     vi.stubGlobal("origin", "null");
     const play = vi
       .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValue(undefined)
       .mockImplementationOnce(() => Promise.reject(new DOMException("load()", "AbortError")))
       .mockImplementationOnce(() => Promise.resolve())
       .mockImplementationOnce(() => Promise.reject(new DOMException("load()", "AbortError")))
