@@ -25,7 +25,7 @@ import { beginStudioManualEditGesture } from "../components/editor/manualEdits";
 import { studioManualEditSavesIn } from "../components/editor/manualEditGesture";
 import { writePlainMove, writeTranslatePx } from "../components/editor/plainTranslate";
 import { onPreviewRestoredInPlace } from "../player/sceneSwap";
-import { beginStudioShownRestore } from "./studioPendingEdits";
+import { beginStudioShownRestore, trackStudioPendingEdit } from "./studioPendingEdits";
 
 // ── Bug 2: undo/redo restore soft-apply ──────────────────────────────────────
 
@@ -606,6 +606,32 @@ describe("an undo or redo shown in place is announced once", () => {
     expect(count()).toBe(0);
     landed();
     await settled();
+    expect(count()).toBe(1);
+  });
+
+  it("after a write that failed, since the preview did change", async () => {
+    const { iframe } = buildLiveIframe(moved);
+    const count = announced(iframe);
+    let fail: (error: Error) => void = () => {};
+    const write = new Promise((_resolve, reject) => (fail = reject));
+    write.catch(() => {});
+    trackStudioPendingEdit(write);
+    const files = { [ROOT]: { previous: wrap(moved), restored: wrap(back) } };
+    expect(applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn())).toBe("soft");
+    await settled();
+    expect(count()).toBe(0);
+    fail(new Error("refused"));
+    await settled();
+    expect(count()).toBe(1);
+  });
+
+  it("within a microtask when no write is pending, as a sealed undo is after its write", async () => {
+    const { iframe } = buildLiveIframe(moved);
+    const count = announced(iframe);
+    const files = { [ROOT]: { previous: wrap(moved), restored: wrap(back) } };
+    applyUndoRestoreToPreview(iframe, ROOT, files, 3, vi.fn());
+    expect(count()).toBe(0);
+    await Promise.resolve();
     expect(count()).toBe(1);
   });
 

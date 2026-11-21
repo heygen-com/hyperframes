@@ -64,7 +64,7 @@ describe("useDomEditPreviewSync", () => {
   it.each([
     ["loads a new page", announcePreviewDocumentLoaded],
     ["restores an undo in place", announcePreviewRestoredInPlace],
-  ])("re-resolves the selection when a sealed preview %s", (_label, announce) => {
+  ])("re-resolves the selection when a sealed preview %s", async (_label, announce) => {
     const iframe = document.createElement("iframe");
     Object.defineProperty(iframe, "contentDocument", { value: null });
     Object.defineProperty(iframe, "contentWindow", {
@@ -93,7 +93,7 @@ describe("useDomEditPreviewSync", () => {
     act(() => root.render(createElement(Harness)));
     refresh.mockClear();
 
-    act(() => announce(iframe));
+    await act(async () => announce(iframe));
     expect(refresh).toHaveBeenCalledWith(selection, iframe);
     act(() => root.unmount());
   });

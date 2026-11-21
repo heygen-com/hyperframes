@@ -306,7 +306,7 @@ describe("LayersPanel preview promotion", () => {
   });
 
   // fails without the fix: an in-place undo announced nothing the panel reads, so its rows kept the old order.
-  it("recollects layers when an undo restacks them in place", () => {
+  it("recollects layers when an undo restacks them in place", async () => {
     const restack = (z: number) =>
       `<div data-composition-id="a" data-hf-id="a"><div id="back" data-hf-id="back" style="z-index: ${z}"></div></div>`;
     const doc = new Window().document;
@@ -324,7 +324,9 @@ describe("LayersPanel preview promotion", () => {
     const page = (z: number) => `<html><body>${restack(z)}</body></html>`;
     const files = { "index.html": { previous: page(1), restored: page(3) } };
     let strategy = "";
-    act(() => void (strategy = applyUndoRestoreToPreview(iframe, "index.html", files, 0, vi.fn())));
+    await act(async () => {
+      strategy = applyUndoRestoreToPreview(iframe, "index.html", files, 0, vi.fn());
+    });
     expect(strategy).toBe("soft");
     expect(doc.getElementById("back")!.getAttribute("style")).toBe("z-index: 3");
     expect(collectedRootIds()).toEqual(["a"]);
