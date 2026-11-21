@@ -60,19 +60,23 @@ const laterSourceRemains = (media: HTMLMediaElement, failed: Element) => {
   return failed !== media && sources.indexOf(failed as HTMLSourceElement) < sources.length - 1;
 };
 
-function fallBackWithoutCors(event: Event, home: string): void {
+function optedInFailure(event: Event): { el: Element; media: HTMLMediaElement } | null {
   const target = event.target as Node | null;
-  const el = target?.nodeType === 1 ? (target as Element) : null;
-  const media = el && mediaOf(el);
-  if (!el || !media || !optedIn.has(media)) return;
+  if (target?.nodeType !== 1) return null;
+  const media = mediaOf(target as Element);
+  return media && optedIn.has(media) ? { el: target as Element, media } : null;
+}
+
+function recordFailure(media: HTMLMediaElement, el: Element, home: string): Set<string> {
   const failed = failedWithCors.get(media) ?? new Set<string>();
   failedWithCors.set(media, failed);
   const src = el.getAttribute("src");
   if (src) failed.add(resolved(src, home));
-  if (laterSourceRemains(media, el)) return;
-  optedIn.delete(media);
-  failedWithCors.delete(media);
-  for (const url of failed) {
+  return failed;
+}
+
+function rememberRefused(urls: Set<string>): void {
+  for (const url of urls) {
     if (loadsWithoutCors.has(url)) continue;
     loadsWithoutCors.add(url);
     console.warn(
@@ -80,6 +84,17 @@ function fallBackWithoutCors(event: Event, home: string): void {
         "audio effects are off for it. Serve it with Access-Control-Allow-Origin to keep them.",
     );
   }
+}
+
+function fallBackWithoutCors(event: Event, home: string): void {
+  const failure = optedInFailure(event);
+  if (!failure) return;
+  const { el, media } = failure;
+  const failed = recordFailure(media, el, home);
+  if (laterSourceRemains(media, el)) return;
+  optedIn.delete(media);
+  failedWithCors.delete(media);
+  rememberRefused(failed);
   media.removeAttribute("crossorigin");
   media.load();
 }
