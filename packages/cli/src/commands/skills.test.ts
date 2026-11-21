@@ -48,14 +48,18 @@ vi.mock("node:child_process", () => ({
   // never invoke it (no skills-check path runs here), so a bare stub is enough
   // to satisfy the named import — we deliberately don't spread the real module.
   execFile: vi.fn(),
-  execFileSync: vi.fn((command: string, args: ReadonlyArray<string>) => {
-    state.execCalls.push({ command, args });
-    // Simulate `git` absent from PATH: execFileSync throws ENOENT like the OS would.
-    if (state.gitMissing && command === "git") {
-      throw Object.assign(new Error("spawn git ENOENT"), { code: "ENOENT" });
-    }
-    return Buffer.from("11.0.0");
-  }),
+  execFileSync: vi.fn(
+    (command: string, args: ReadonlyArray<string>, opts?: { encoding?: string | null }) => {
+      state.execCalls.push({ command, args });
+      // Simulate `git` absent from PATH: execFileSync throws ENOENT like the OS would.
+      if (state.gitMissing && command === "git") {
+        throw Object.assign(new Error("spawn git ENOENT"), { code: "ENOENT" });
+      }
+      // A real capture (the skills mirror reads `git rev-parse`) gets a commit;
+      // the version probes keep their buffer to match what the call sites expect.
+      return opts?.encoding ? "abcdef1234567890" : Buffer.from("11.0.0");
+    },
+  ),
   spawn: vi.fn(
     (
       command: string,
@@ -190,8 +194,17 @@ const developerDir = mkdtempSync(join(tmpdir(), "hf-developer-"));
 mkdirSync(join(developerDir, "usr", "bin"), { recursive: true });
 
 describe("hyperframes skills", () => {
+  // Keep the skills mirror out of the developer's real ~/.cache/hyperframes:
+  // every run tries to build/refresh it, so point it at a throwaway root.
+  const cacheRoot = mkdtempSync(join(tmpdir(), "hf-skills-cache-"));
+  const formatDir = join(cacheRoot, "skills-repo", "1");
+  const mirrorDir = join(formatDir, "mirror");
+  const snapshotsDir = join(formatDir, "snapshots");
+
   beforeEach(async () => {
     vi.stubEnv("DEVELOPER_DIR", developerDir);
+    vi.stubEnv("HYPERFRAMES_CACHE_DIR", cacheRoot);
+    rmSync(formatDir, { recursive: true, force: true });
     state.execCalls = [];
     state.spawnCalls = [];
     state.spawnExitCode = 0;
@@ -353,6 +366,30 @@ describe("hyperframes skills", () => {
       "https://github.com/heygen-com/hyperframes#v0.9.3",
     ]);
     expect(args).toContain("--full-depth");
+  });
+
+  // Cloning the published monorepo for 4 MB of skills/ is what made this install
+  // take minutes (and blow the spawn timeout) on a slow link: when the sparse
+  // mirror is already on disk, the install reads that checkout instead.
+  it("installs from the local skills mirror when it is already checked out", async () => {
+    setPlatform("linux");
+    mkdirSync(join(mirrorDir, ".git"), { recursive: true });
+    mkdirSync(join(mirrorDir, "skills", "hyperframes"), { recursive: true });
+
+    await runSkillsUpdate();
+
+    expect(await commandExitCode()).toBe(0);
+    const args = state.spawnCalls[0]?.args ?? [];
+    // An immutable snapshot of the ref the check resolved — never the URL (and no
+    // `#ref` suffix: the checkout is already at that ref).
+    expect(args.slice(0, 2)).toEqual(["skills@1.5.13", "add"]);
+    expect(args[2]?.startsWith(join(snapshotsDir, ""))).toBe(true);
+    expect(args.some((arg) => arg.startsWith("https://github.com/"))).toBe(false);
+    expect(args).toContain("--copy");
+    // Never a `git clone` of the repo — only the mirror's own delta fetch.
+    expect(
+      state.execCalls.filter((call) => call.command === "git").map((call) => call.args[0]),
+    ).not.toContain("clone");
   });
 
   it("skills update refreshes an outdated installed workflow (but never expands)", async () => {
