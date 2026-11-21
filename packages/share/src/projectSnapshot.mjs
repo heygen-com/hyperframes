@@ -8,6 +8,8 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { isOutsideFilm } from "./appOwnedPaths.mjs";
 
+export { readSourceIgnore };
+
 export const HF_ID_ATTRIBUTE = /\sdata-hf-id\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/g;
 
 const sha256 = (/** @type {import("node:crypto").BinaryLike} */ data) =>

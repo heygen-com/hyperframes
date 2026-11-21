@@ -13,6 +13,7 @@ import { projectFingerprint } from "../src/projectSnapshot.mjs";
 import { captureProject } from "../src/sources/capture.mjs";
 import { sourceApi } from "../src/sources/api.mjs";
 import { SyncApiError } from "../src/sources/errors.mjs";
+import { parseStoredManifest } from "../src/sources/manifest.mjs";
 import { V1_LIMITS } from "../src/sources/limits.mjs";
 import { bindShareHost } from "../src/host.mjs";
 
@@ -222,6 +223,37 @@ test("lost Begin response retries the durable idempotency key, without creating 
   assert.equal((await shareSources(opts).prepare(f.root, f.rendered)).at, "ready");
   assert.equal(server.calls.begin[0].idempotencyKey, server.calls.begin[1].idempotencyKey);
   assert.deepEqual(server.calls.begin[0].manifest, server.calls.begin[1].manifest);
+});
+
+test("a saved Begin with a newly excluded path is replaced by the current capture", async (t) => {
+  const f = await fixture(t);
+  const server = fakeServer();
+  const source = shareSources({ access: async () => signed, spaceId: "personal", ...server });
+  const begin = server.api.begin;
+  server.api.begin = async () => {
+    throw new Error("offline");
+  };
+  await assert.rejects(source.prepare(f.root, f.rendered), /offline/);
+  const binding = await f.store.read(f.key);
+  const saved = binding.inflight;
+  const legacy = parseStoredManifest({
+    ...saved.manifest,
+    files: [
+      ...saved.manifest.files,
+      { path: ".docker/config.json", size: 7, sha256: "a".repeat(64) },
+    ],
+  });
+  binding.inflight = { ...saved, manifest: legacy.document, manifestSha256: legacy.sha256 };
+  await f.store.write(binding);
+  server.api.begin = begin;
+  assert.equal((await source.prepare(f.root, f.rendered)).at, "ready");
+  assert.equal(server.calls.begin.length, 1);
+  assert.notEqual(server.calls.begin[0].idempotencyKey, saved.idempotencyKey);
+  assert.ok(
+    server.calls.begin[0].manifest.document.files.every(
+      ({ path }) => path !== ".docker/config.json",
+    ),
+  );
 });
 
 test("confirmed expired upload clears its intent so a retry starts with a new key", async (t) => {

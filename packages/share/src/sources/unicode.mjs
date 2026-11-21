@@ -146,17 +146,35 @@ export function allAssigned(value) {
   return true;
 }
 
+/** @type {RegExp | null} */
+let ignorableLoaded = null;
+/** The path policy's `unicode.ignorable_code_points`, inclusive [first, last] hex ranges, as one character class. */
+const ignorable = () =>
+  (ignorableLoaded ??= new RegExp(
+    `[${readContract("path-policy.json")
+      .unicode.ignorable_code_points.map(
+        (/** @type {[string, string]} */ [first, last]) => `\\u{${first}}-\\u{${last}}`,
+      )
+      .join("")}]`,
+    "gu",
+  ));
+
+/** `value` without the code points HFS+ skips when it compares names (ZWNJ, ZWJ, bidi controls, BOM).
+ * @param {string} value */
+export const withoutIgnorable = (value) =>
+  ASCII.test(value) ? value : value.replace(ignorable(), "");
+
 /** Directory names repeat across a manifest's paths, and each segment is keyed twice (policy, then collisions). */
 const KEYS_KEPT = 16384;
 /** @type {Map<string, string>} */
 const keys = new Map();
 
-/** The spelling two names share on a case-insensitive or normalizing filesystem: NFC(casefold(NFC(value))).
- * @param {string} value */
+/** The spelling two names share on a case-insensitive, normalizing or HFS+ filesystem:
+ * NFC(casefold(NFC(value))) once the code points HFS+ ignores are removed. @param {string} value */
 export function comparisonKey(value) {
   const known = keys.get(value);
   if (known !== undefined) return known;
-  const key = nfc(fullCasefold(nfc(value)));
+  const key = nfc(fullCasefold(nfc(withoutIgnorable(value))));
   if (keys.size >= KEYS_KEPT) keys.clear();
   keys.set(value, key);
   return key;
