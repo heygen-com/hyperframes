@@ -197,7 +197,7 @@ describe("an older live retime whose preview sync goes out after a newer file's"
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it("is not sent after a newer undo of another clip, and reloads the saved file", async () => {
+  it("is not sent after a newer undo of another clip, and re-runs the undone file in place", async () => {
     const reload = vi.fn();
     const undo = { "index.html": { previous: file(1, 2, 0), restored: file(1, 2, 1) } };
     applyUndoRestoreToPreview(iframe, null, undo, 1, vi.fn(), undefined, 5);
@@ -208,7 +208,10 @@ describe("an older live retime whose preview sync goes out after a newer file's"
       revision: 4,
     });
     await settled();
-    expect(kinds()).toEqual(["restore-attributes"]);
-    expect(reload).toHaveBeenCalledOnce();
+    expect(kinds()).toEqual(["restore-attributes", "soft-reload"]);
+    const recovery = held[1]!.params as { timing: unknown[] };
+    expect(recovery.timing).toContainEqual(["hf:b", [["data-start", "1"]]]);
+    expect(recovery.timing).toContainEqual(["hf:a", [["data-start", "1"]]]);
+    expect(reload).not.toHaveBeenCalled();
   });
 });
