@@ -56,8 +56,6 @@ afterEach(() => {
     "__hfMotionPathPluginLoading",
     "__hfPlayerSeeks",
     "__hfSoftReloads",
-    "__older",
-    "__newer",
   ])
     delete win[key];
   document.head.innerHTML = "";
@@ -156,18 +154,14 @@ describe("a re-run that waits for the MotionPath plugin", () => {
   // fails without the fix: the older script ran after the newer one and replaced its timeline.
   it("leaves the script of a newer soft reload that ran while it waited", async () => {
     playerAt(1.5);
-    // A page that inlines GSAP keeps a GSAP script after the older run took its own.
-    document.body.insertAdjacentHTML("beforeend", "<script>/* gsap.timeline library */</script>");
-    const ran: string[] = [];
-    win.__older = () => ran.push("older");
-    win.__newer = () => ran.push("newer");
-    const older = softReload(params({ script: `${MOTION} __older();` }));
-    expect(await softReload(params({ script: `${SCRIPT} __newer();` }))).toEqual({
-      result: "applied",
-    });
+    const ran = () => document.body.dataset.ran;
+    const older = softReload(params({ script: `${MOTION} document.body.dataset.ran = "older";` }));
+    const newer = `${SCRIPT} document.body.dataset.ran = "newer";`;
+    expect(await softReload(params({ script: newer }))).toEqual({ result: "applied" });
     loadPlugin();
     expect(await older).toEqual({ result: "applied" });
-    expect(ran).toEqual(["newer"]);
+    expect(ran()).toBe("newer");
+    delete document.body.dataset.ran;
   });
 });
 

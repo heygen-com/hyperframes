@@ -574,7 +574,7 @@ describe("installEditingAgent", () => {
       "__hfMotionPathPluginLoading",
     ])
       delete frame[key];
-    document.head.innerHTML = "";
+    document.head.querySelector("script[src]")?.remove();
   });
 
   it("holds and swaps scenes through the port, and refuses a hold carrying anything extra", async () => {

@@ -527,6 +527,7 @@ export function softReloadFrame(
 
   const executeScript = () => {
     if (pending && mark.superseded()) return deferred?.("applied");
+    for (const stale of staleScripts) stale.remove();
     builtDom = runScript(win, doc, script);
     finalizeSoftReload(win, pending ? mark.timeAfter(currentTime) : currentTime);
     deferred?.(builtDom ? "cannot-soft-reload" : "applied");
@@ -539,7 +540,6 @@ export function softReloadFrame(
     killTimelines(win, targetKeys);
     resetTargetStyles(win, targets, authored);
     forgetLiveSets(targets);
-    for (const stale of staleScripts) stale.remove();
     const needsMotionPath = /motionPath\s*[:{]/.test(script);
     if (!needsMotionPath || win.MotionPathPlugin || !win.gsap) return executeScript();
     pending = new Promise<SoftReloadResult>((resolve) => (deferred = resolve));

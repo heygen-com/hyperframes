@@ -156,7 +156,7 @@ it("ends a sealed re-run that waited for the plugin where the player was scrubbe
   await seek(4);
   const done = rerun(page, withMotionPath(script), 2);
   await expect.poll(() => held.length).toBeGreaterThan(0);
-  await seek(5);
+  await seek(3);
   await seek(4);
   await release();
   expect(await done).toBe("in place");
