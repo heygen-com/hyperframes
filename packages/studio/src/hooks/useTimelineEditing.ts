@@ -23,6 +23,7 @@ import {
 } from "./timelineTrackVisibility";
 import { useTimelineGroupEditing } from "./useTimelineGroupEditing";
 import { useTimelineClipTimingEditing } from "./useTimelineClipTimingEditing";
+import { useTimelineTrimRipple } from "./useTimelineTrimRipple";
 import { useBlockedTimelineEditToast } from "./useBlockedTimelineEditToast";
 import { useTimelineEditGate, type TimelineEditOutcome } from "./timelineEditPermission";
 import type { UseTimelineEditingOptions } from "./useTimelineEditingTypes";
@@ -87,6 +88,13 @@ export function useTimelineEditing({
     handleDomZIndexReorderCommitRef,
     editQueueRef,
     projectIdRef,
+  });
+
+  const { handleTrimElement, handleTrimElements } = useTimelineTrimRipple({
+    handleTimelineElementResize,
+    handleTimelineGroupResize: groupEditing.handleTimelineGroupResize,
+    handleTimelineGroupMove: groupEditing.handleTimelineGroupMove,
+    showToast,
   });
 
   const handleToggleTrackHidden = useTimelineTrackVisibilityEditing({
@@ -271,7 +279,7 @@ export function useTimelineEditing({
   );
   const editing = {
     handleTimelineElementMove: track(guard((element) => [element], handleTimelineElementMove)),
-    handleTimelineElementResize: track(guard((element) => [element], handleTimelineElementResize)),
+    handleTimelineElementResize: track(guard((element) => [element], handleTrimElement)),
     handleToggleTrackHidden: track(
       guard(
         (trackIndex) => timelineElements.filter((el) => el.track === trackIndex),
@@ -315,7 +323,7 @@ export function useTimelineEditing({
       guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupMove),
     ),
     handleTimelineGroupResize: track(
-      guard((changes) => changes.map((c) => c.element), groupEditing.handleTimelineGroupResize),
+      guard((changes) => changes.map((c) => c.element), handleTrimElements),
     ),
     restoreLiveLanes: (restore: Parameters<typeof setElementFxAttribute.restoreLive>[0]) => {
       setElementFxAttribute.restoreLive(restore);
