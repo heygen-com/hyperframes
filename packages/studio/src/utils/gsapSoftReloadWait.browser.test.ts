@@ -483,7 +483,10 @@ describe("late answers held in transit, sealed", () => {
 
   it("drops an older explicit refusal that arrives after a newer run painted", async () => {
     const p = await openPreview("sealed");
-    const older = rerun(p.page, timeline("main", "older", 60, true), 2, [], true);
+    // A page closed under a still-waiting run rejects its evaluate.
+    const older = rerun(p.page, timeline("main", "older", 60, true), 2, [], true).catch(
+      () => "closed",
+    );
     await expect.poll(() => p.held.length).toBeGreaterThan(0);
     await hold(p.page, true);
     await p.release(404);
@@ -498,7 +501,7 @@ describe("late answers held in transit, sealed", () => {
 
   it("re-runs the newest script when a patch refusal held across the swap arrives late", async () => {
     const p = await openPreview("sealed");
-    void rerun(p.page, timeline("main", "older", 60, true), 2, [], true);
+    void rerun(p.page, timeline("main", "older", 60, true), 2, [], true).catch(() => {});
     await expect.poll(() => p.held.length).toBeGreaterThan(0);
     await hold(p.page, true);
     await commit(p.page, timeline("main", "p1", 10), 10);
