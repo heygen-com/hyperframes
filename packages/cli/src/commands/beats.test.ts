@@ -347,6 +347,23 @@ describe.skipIf(!canDecode)("beats source discovery", () => {
   });
 });
 
+// fails without the fix: the track name from index.html reached the terminal with its control characters live.
+describe.skipIf(!canDecode || process.platform === "win32")("beats on an oddly named track", () => {
+  it("prints the track's control characters as visible escapes while it works", async () => {
+    const dir = project("odd-track", 120);
+    writeFileSync(join(dir, "be\u001b[2Jd.wav"), readFileSync(join(dir, "assets", "song.wav")));
+    writeFileSync(
+      join(dir, "index.html"),
+      `<div data-composition-id="main"><audio id="music" src="be%1B[2Jd.wav"></audio></div>`,
+    );
+    const { exitCode, out } = await runBeats(dir, false);
+    expect(exitCode).toBe(0);
+    expect(out).toContain("Analyzing be\\x1b[2Jd.wav…");
+    expect(out).toContain("beats/be\\x1b[2Jd.wav.json");
+    expect(out).not.toContain("be\u001b[2Jd");
+  });
+});
+
 // fails without the fix: the music src from index.html reached the terminal with its control characters live.
 it("prints a missing track's control characters as visible escapes", async () => {
   const dir = join(root, "odd-src");

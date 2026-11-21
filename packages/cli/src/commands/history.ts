@@ -192,7 +192,7 @@ const changeOf = (file: HistoryEntry["files"][number]) =>
   file.before === null ? "added" : file.after === null ? "deleted" : "modified";
 
 function print(json: boolean, data: object, text: string): void {
-  console.log(json ? JSON.stringify(withMeta(data), null, 2) : text);
+  console.log(json ? JSON.stringify(withMeta(data), null, 2) : terminalLines(text));
 }
 
 async function textDiff(reader: Reader, entry: HistoryEntry): Promise<string> {
