@@ -185,7 +185,7 @@ export const playOrdering = (
 const SAVES = Object.keys(next) as Save[];
 const FATES: SaveFate[] = ["frame", "frame", "refused", "rejected", "never"];
 const SCRUBS = [1, 3, 4];
-export const generated = (seed: number): Step[] => {
+const generated = (seed: number): Step[] => {
   let state = seed;
   const random = () => (state = (state * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
   const pick = <T>(list: T[]) => list[Math.floor(random() * list.length)]!;
