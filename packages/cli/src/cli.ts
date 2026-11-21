@@ -57,6 +57,8 @@ if (argv[0] === "help") {
   process.argv = [...process.argv.slice(0, 2), ...argv.slice(1), "--help"];
   argv = process.argv.slice(2);
 }
+process.argv = [...process.argv.slice(0, 2), ...jsonFlagAfterCommand(argv)];
+argv = process.argv.slice(2);
 const commandArg = argv[0];
 const rootVersionRequested =
   commandArg === "--version" ||
@@ -112,7 +114,9 @@ import {
 } from "./utils/commandResult.js";
 import { registerRunningCli } from "./utils/runningCli.js";
 import {
+  jsonFlagBeforeSeparator,
   commandWordIndex,
+  jsonFlagAfterCommand,
   measureProbeShortcutArgv,
   openShortcutArgv,
   registryAliasArgv,
@@ -246,7 +250,7 @@ const cliCommandArg = process.argv[2];
 // (in the failure reporter) and `command` references `subCommands` (the `in`
 // check), so its type can't be inferred from its own initializer.
 const command: string = cliCommandArg && cliCommandArg in subCommands ? cliCommandArg : "unknown";
-const hasJsonFlag = process.argv.includes("--json");
+const hasJsonFlag = jsonFlagBeforeSeparator(argv);
 // Under --json a failure always answers on stdout with the shared envelope (see executeCli).
 const jsonOutput = hasJsonFlag ? watchOutput() : undefined;
 
