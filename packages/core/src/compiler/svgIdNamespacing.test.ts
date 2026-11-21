@@ -912,3 +912,29 @@ it("gives each attribute operator the same alternatives as matching every alias 
         ).toBe(`${expected} { fill: red; }`);
       }
 });
+
+// fails without the fix: each predicate visited every alias of its name in any namespace, then dropped them unpaid.
+it("reads only aliases in the predicate's namespace, so other-namespace matches cost nothing per predicate", () => {
+  let namespaceReads = 0;
+  const references = Array.from({ length: 2000 }, (_, i) => ({
+    name: "xlink:href",
+    localName: "href",
+    get namespaceURI() {
+      namespaceReads++;
+      return "http://www.w3.org/1999/xlink";
+    },
+    before: `#a${i}`,
+    after: `#m${i}`,
+  }));
+  const predicates = ['="#a1"', '^="#a"', '$="1"', '|="#a1"', '~="#a1"'].flatMap((match) => [
+    `[xlink\\:href${match}]`,
+    `[xlink\\:href${match} i]`,
+  ]);
+  const css = Array.from({ length: 100 }, () => predicates)
+    .flat()
+    .map((selector) => `${selector} { fill: red; }`)
+    .join("\n");
+
+  expect(rewriteSvgIdReferencesInCss(css, new Map(), references)).toBe(css);
+  expect(namespaceReads).toBeLessThan(10 * references.length);
+});
