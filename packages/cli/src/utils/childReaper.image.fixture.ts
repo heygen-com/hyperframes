@@ -7,7 +7,10 @@ const [readyPath] = process.argv.slice(2);
 if (!readyPath) throw new Error("Missing fixture arguments");
 
 const standIn = () => {
-  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });
+  const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+    detached: true,
+    stdio: "ignore",
+  });
   child.unref();
   return child.pid!;
 };
