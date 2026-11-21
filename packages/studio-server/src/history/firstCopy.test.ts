@@ -26,7 +26,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 import * as fsp from "node:fs/promises";
 import { fileContentVersion, recordFileWriteReceipt } from "../helpers/fileVersion.js";
 import { blobPath } from "./blobStore.js";
-import { START } from "./historyLog.js";
+import { START, type HistoryWho } from "./historyLog.js";
 import { openProjectHistory } from "./projectHistory.js";
 
 const { writeFile: realWriteFile, open: realOpen } =
@@ -53,6 +53,29 @@ function projectOf(count: number, tag: string): string {
   writeFileSync(join(dir, "index.html"), `<html>${tag}</html>`);
   for (let i = 0; i < count; i++) writeFileSync(join(dir, "parts", `p${i}.js`), `// ${tag} ${i}\n`);
   return dir;
+}
+/** A project with `count` 2 MiB files, copied in the background after the open, one after another. */
+function mediaProject(count: number): string {
+  const dir = tempDir("hf-first-copy-");
+  writeFileSync(join(dir, "index.html"), "<html></html>");
+  for (let i = 0; i < count; i++)
+    writeFileSync(join(dir, `m${i}.bin`), Buffer.alloc(2 * 1024 ** 2, i + 1));
+  return dir;
+}
+const agent: HistoryWho = { kind: "agent", name: "Framey" };
+/** The first open of `path` waits until an answer is called, at the latest before the test's histories close. */
+function stallFirstOpenOf(path: string): (() => void)[] {
+  const releases: (() => void)[] = [];
+  let stalled = false;
+  vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+    if (String(args[0]) === path && !stalled) {
+      stalled = true;
+      await new Promise<void>((answer) => releases.push(answer));
+    }
+    return realOpen(...args);
+  });
+  closes.push(async () => releases.forEach((answer) => answer()));
+  return releases;
 }
 const homeIn = (historyRoot: string) => {
   const homes = readdirSync(historyRoot, { withFileTypes: true }).filter((e) => e.isDirectory());
@@ -223,11 +246,32 @@ describe("a project's first history copy", () => {
     expect(existsSync(join(homeIn(historyRoot), "adopting.json"))).toBe(false);
   });
 
+  it("arms no deadline for a read already owed when its slot comes", async () => {
+    const projectDir = projectOf(4, "owed-queued");
+    const releases: (() => void)[] = [];
+    closes.push(async () => releases.forEach((answer) => answer()));
+    let opened = 0;
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      if (String(args[0]).startsWith(projectDir) && ++opened <= 4)
+        await new Promise<void>((answer) => releases.push(answer));
+      return realOpen(...args);
+    });
+    const armed = vi.spyOn(globalThis, "setTimeout");
+    closes.push(async () => armed.mockRestore());
+    const historyRoot = tempDir("hf-first-copy-root-");
+    const history = await openProjectHistory({ projectDir, historyRoot, firstCopyFileMs: 777 });
+    closes.push(() => history.close());
+    const deadlines = () => armed.mock.calls.filter(([, ms]) => ms === 777).length;
+    const before = deadlines();
+    releases.shift()!();
+    await vi.waitFor(() => expect(opened).toBeGreaterThanOrEqual(5));
+    expect(deadlines()).toBe(before);
+  });
+
   it("does not stretch a stalled read's deadline while other first copies finish", async () => {
     const projectDir = projectOf(1, "stretch");
     const stuck = join(projectDir, "parts", "p0.js");
-    const releases: (() => void)[] = [];
-    closes.push(async () => releases.forEach((answer) => answer()));
+    const releases = stallFirstOpenOf(stuck);
     vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
       if (String(args[0]) === stuck) await new Promise<void>((answer) => releases.push(answer));
       if (String(args[0]) === join(projectDir, "index.html"))
@@ -242,6 +286,63 @@ describe("a project's first history copy", () => {
     expect(JSON.parse(readFileSync(join(homeIn(historyRoot), "adopting.json"), "utf8"))).toEqual([
       "parts/p0.js",
     ]);
+  });
+
+  it("begins an agent step with no second deadline while a file's read never answers", async () => {
+    const projectDir = projectOf(6, "stuck");
+    const stuck = join(projectDir, "parts", "p1.js");
+    const releases: (() => void)[] = [];
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      if (String(args[0]) === stuck) await new Promise<void>((answer) => releases.push(answer));
+      return realOpen(...args);
+    });
+    try {
+      const openedAt = Date.now();
+      const history = await openProjectHistory({
+        projectDir,
+        historyRoot: tempDir("hf-first-copy-root-"),
+        firstCopyFileMs: 1000,
+      });
+      closes.push(() => history.close());
+      await history.beginWindow(agent, "Step");
+      expect(Date.now() - openedAt).toBeGreaterThanOrEqual(990);
+      expect(Date.now() - openedAt).toBeLessThan(1800);
+    } finally {
+      for (const answer of releases) answer();
+    }
+  });
+
+  it("begins an agent step after one deadline when media waits behind a read that never answers", async () => {
+    const projectDir = mediaProject(6);
+    stallFirstOpenOf(join(projectDir, "m0.bin"));
+    const history = await openProjectHistory({
+      projectDir,
+      historyRoot: tempDir("hf-first-copy-root-"),
+      firstCopyFileMs: 500,
+    });
+    closes.push(() => history.close());
+    const askedAt = Date.now();
+    await history.beginWindow(agent, "Step");
+    expect(Date.now() - askedAt).toBeLessThan(1500);
+  });
+
+  it("holds an agent step for media that copies slowly, each file within its deadline", async () => {
+    const projectDir = mediaProject(3);
+    const delayed = new Set([0, 1, 2].map((i) => join(projectDir, `m${i}.bin`)));
+    vi.mocked(fsp.open).mockImplementation(async (...args: Parameters<typeof realOpen>) => {
+      if (delayed.delete(String(args[0]))) await new Promise((later) => setTimeout(later, 300));
+      return realOpen(...args);
+    });
+    const history = await openProjectHistory({
+      projectDir,
+      historyRoot: tempDir("hf-first-copy-root-"),
+      firstCopyFileMs: 600,
+    });
+    closes.push(() => history.close());
+    await history.beginWindow(agent, "Step");
+    expect(Object.keys(history.peek(START) ?? {}).sort()).toEqual(
+      ["index.html", "m0.bin", "m1.bin", "m2.bin"].sort(),
+    );
   });
 
   it("keeps the original as the start of a late copy when a save writes it back over a later change", async () => {
