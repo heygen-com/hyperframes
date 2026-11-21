@@ -17,6 +17,7 @@ import { authoredStyles, findAuthoredElement, savedTiming } from "./authoredSour
 import { fileDocs, standaloneSets } from "./softReloadTargets";
 import type { EditingParams } from "@hyperframes/core/runtime/editing-port";
 import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
+import { takePreviewTicket, ticketCovered, ticketNeedsRecovery } from "./sealedPreviewLedger";
 
 export {
   findGsapScriptElements,
@@ -175,16 +176,6 @@ function sealedSoftReloadResult(reply: unknown): SoftReloadResult {
   return result as SoftReloadResult;
 }
 
-const sentRuns = new WeakMap<HTMLIFrameElement, Map<string, number>>();
-
-export function sendSealedRun(iframe: HTMLIFrameElement, script: string): () => boolean {
-  const sent = sentRuns.get(iframe) ?? new Map<string, number>();
-  sentRuns.set(iframe, sent);
-  const numbered = timelineKeys(script).map((key) => [key, (sent.get(key) ?? 0) + 1] as const);
-  for (const [key, n] of numbered) sent.set(key, n);
-  return () => numbered.every(([key, n]) => sent.get(key) === n);
-}
-
 /** What a sealed frame needs to re-run `scriptText`, from the saved files alone. */
 export function sealedRerun(
   scriptText: string,
@@ -214,22 +205,27 @@ function softReloadSealed(
     onAsyncFailure,
     onShownInPlace,
     timingEdit,
+    nestedFiles,
     restore = [],
   }: SoftReloadOptions,
 ): SoftReloadResult {
   if (authoredHtml === undefined || previousHtml === undefined || currentTimeOverride === undefined)
     return "cannot-soft-reload";
   const rerun = sealedRerun(scriptText, { authoredHtml, previousHtml, timingEdit });
-  const newest = sendSealedRun(iframe, scriptText);
+  const ticket = takePreviewTicket(
+    iframe,
+    { scriptText, authoredHtml, previousHtml, nestedFiles, timingEdit },
+    true,
+  );
   void previewRequest(iframe, "soft-reload", {
     ...rerun,
     time: currentTimeOverride,
     restore,
   }).then((reply) => {
-    if (reply === null && !newest()) return;
+    if (!ticketNeedsRecovery(ticket)) return;
     const result = sealedSoftReloadResult(reply);
     if (result === "cannot-soft-reload") onAsyncFailure?.();
-    else if (result !== "superseded") onShownInPlace?.();
+    else if (result !== "superseded" && !ticketCovered(ticket)) onShownInPlace?.();
   });
   return "applied";
 }

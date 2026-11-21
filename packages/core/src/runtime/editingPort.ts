@@ -333,7 +333,10 @@ export interface EditingRequests {
   /** The frame cancels these combos outside the elements that own keys, and forwards them and their
    * keyups to this port; an empty list stops. */
   "watch-keys": { params: { combos: string[] }; result: { watching: number } };
-  "restore-attributes": { params: RestoreAttributesParams; result: { applied: boolean } };
+  "restore-attributes": {
+    params: RestoreAttributesParams;
+    result: { applied: boolean; reran?: boolean };
+  };
   /** Boxes of the words of visible caption groups; a group written as plain text is split into word spans. */
   "caption-words": { params: CaptionWordsParams; result: { boxes: CaptionWordBox[] } };
   "caption-transform": { params: CaptionTransformParams; result: { words: CaptionWordState[] } };

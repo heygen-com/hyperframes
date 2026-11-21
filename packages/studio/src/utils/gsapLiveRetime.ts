@@ -7,6 +7,7 @@ import {
   type TweenTiming,
 } from "@hyperframes/core/runtime/live-retime";
 import {
+  applySoftReload,
   applySoftReloadFinalization,
   findGsapScriptElements,
   scriptsRegistering,
@@ -14,6 +15,12 @@ import {
 } from "./gsapSoftReload";
 import { previewFrameOpaque, previewRequest } from "../player/lib/previewChannel";
 import { savedTiming } from "./authoredSource";
+import {
+  newestPreviewWrite,
+  takePreviewTicket,
+  ticketNeedsRecovery,
+  type PreviewWrite,
+} from "./sealedPreviewLedger";
 
 /**
  * How a saved script differs from the live one: `retime` when only tween starts and lengths moved
@@ -141,6 +148,16 @@ function planFromSavedFile(
   return plan.kind === "retime" ? plan : null;
 }
 
+function rerunNewest(
+  iframe: HTMLIFrameElement,
+  { scriptText, ...write }: PreviewWrite,
+  currentTime: number,
+  reloadPreview: () => void,
+): void {
+  const options = { ...write, currentTimeOverride: currentTime, onAsyncFailure: reloadPreview };
+  if (applySoftReload(iframe, scriptText, options) === "cannot-soft-reload") reloadPreview();
+}
+
 // Planned from the saved files alone; the frame checks its timeline matches the plan before moving anything.
 async function moveSealedLiveTweens(
   iframe: HTMLIFrameElement,
@@ -153,6 +170,11 @@ async function moveSealedLiveTweens(
   const plan = planFromSavedFile(scriptText, files.before);
   if (!plan) return false;
   const { key: planKey, after, tweens } = plan;
+  const ticket = takePreviewTicket(
+    iframe,
+    { scriptText, authoredHtml: files.after, previousHtml: files.before, timingEdit: true },
+    false,
+  );
   const reply = await previewRequest(iframe, "live-retime", {
     key: planKey,
     after,
@@ -161,8 +183,12 @@ async function moveSealedLiveTweens(
     timing: savedTiming(files.after),
   });
   const result = sealedRetimeResult(reply);
-  if (result === "unchanged") return false;
+  if (result === "moved" || !ticketNeedsRecovery(ticket)) return true;
+  const newest = newestPreviewWrite(ticket);
   if (result === "failed") reloadPreview();
+  // A newer save to these timelines is the one to re-run: the caller would re-run this older script.
+  else if (newest !== ticket.write) rerunNewest(iframe, newest, currentTime, reloadPreview);
+  else return false;
   return true;
 }
 

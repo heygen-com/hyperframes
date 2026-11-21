@@ -3,8 +3,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const channel = vi.hoisted(() => ({ request: vi.fn() }));
+const PREVIEW_LOAD = vi.hoisted(() => ({}));
 vi.mock("../player/lib/previewChannel", () => ({
   previewFrameOpaque: () => true,
+  previewEditingClient: () => PREVIEW_LOAD,
   previewRequest: channel.request,
 }));
 import { applyUndoRestoreToPreview } from "./gsapUndoRestore";

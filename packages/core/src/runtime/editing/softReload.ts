@@ -675,13 +675,17 @@ function parsedRerun(rerun: unknown, restore: RestoreAttributesParams): SoftRelo
 /** An element GSAP has parsed is restored by re-running the script, in the same request that sent it. */
 export async function restoreAttributesOrRerun(
   params: RestoreAttributesParams,
-): Promise<{ applied: boolean }> {
+): Promise<{ applied: boolean; reran: boolean }> {
   const outcome = restoreInPlace(params);
-  if (outcome !== "gsap-parsed" || !params.rerun) return { applied: outcome === "applied" };
+  if (outcome !== "gsap-parsed" || !params.rerun)
+    return { applied: outcome === "applied", reran: false };
   const { result } = await softReload({
     ...params.rerun,
     time: params.time,
     restore: params.scopes,
   });
-  return { applied: result !== "cannot-soft-reload" };
+  return {
+    applied: result !== "cannot-soft-reload",
+    reran: result === "applied" || result === "verify-failed",
+  };
 }

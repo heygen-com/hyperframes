@@ -28,6 +28,12 @@ import { patchRuntimeTweenInPlace } from "./gsapRuntimePatch";
 import { lastTweenPatch } from "@hyperframes/core/runtime/patch-tween";
 import { previewFrameOpaque } from "../player/lib/previewChannel";
 import { patchSealedPreview } from "./sealedTweenPatch";
+import {
+  newestPreviewWrite,
+  takePreviewTicket,
+  ticketNeedsRecovery,
+  type PreviewWrite,
+} from "../utils/sealedPreviewLedger";
 import { createKeyedSerializer } from "./serializeByKey";
 import {
   GsapMutationHttpError,
@@ -262,20 +268,27 @@ export function applyPreviewSync(
   const patches = instantPatchesFor(options);
   const writtenWithoutPatch = patches.length === 0;
   let needsFallback = options.previewFallbackLatch?.pending === true || writtenWithoutPatch;
-  const fallback = () => {
-    if (!options.softReload || !result.scriptText) return reloadPreview();
+  const write: PreviewWrite = {
+    scriptText: result.scriptText ?? "",
+    authoredHtml: result.after ?? undefined,
+    previousHtml: result.before,
+    nestedFiles,
+  };
+  const show = (shown: PreviewWrite) => {
+    if (!options.softReload || !shown.scriptText) return reloadPreview();
     softReloadOrEscalate(
       iframe,
-      result.scriptText,
+      shown.scriptText,
       reloadPreview,
       "preview_sync",
-      result.after ?? undefined,
-      nestedFiles,
-      result.before,
+      shown.authoredHtml,
+      shown.nestedFiles,
+      shown.previousHtml,
     );
   };
+  const fallback = () => show(write);
   if (patches.length > 0) {
-    if (!patchInstantly(iframe, patches, options, fallback)) needsFallback = true;
+    if (!patchInstantly(iframe, patches, options, write, show)) needsFallback = true;
     // Patched in place: no reload unless an earlier deferred batch left one member unpatched.
     if (!needsFallback) return;
   }
@@ -291,16 +304,20 @@ export function applyPreviewSync(
   fallback();
 }
 
-/** A sealed preview patches itself (and re-runs the saved script if it refuses); a reachable one is patched here. */
+/** A sealed preview patches itself; its late refusal re-runs the newest saved script unless a re-run covers it. */
 function patchInstantly(
   iframe: HTMLIFrameElement | null,
   patches: NonNullable<CommitMutationOptions["instantPatches"]>,
   options: CommitMutationOptions,
-  fallback: () => void,
+  write: PreviewWrite,
+  show: (shown: PreviewWrite) => void,
 ): boolean {
   if (!iframe || !previewFrameOpaque(iframe))
     return patchReachablePreview(iframe, patches, options.deferPreviewSync === true);
-  patchSealedPreview(iframe, patches, !options.deferPreviewSync, fallback);
+  const ticket = takePreviewTicket(iframe, write, false);
+  patchSealedPreview(iframe, patches, !options.deferPreviewSync, () => {
+    if (ticketNeedsRecovery(ticket)) show(newestPreviewWrite(ticket));
+  });
   return true;
 }
 

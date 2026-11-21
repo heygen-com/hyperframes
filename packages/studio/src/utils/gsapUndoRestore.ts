@@ -10,9 +10,14 @@ import {
   readNestedFiles,
   repaintDroppedTweenStyle,
   sealedRerun,
-  sendSealedRun,
   timelineKeys,
 } from "./gsapSoftReload";
+import {
+  confirmPreviewRerun,
+  takePreviewTicket,
+  ticketCovered,
+  ticketLoadLive,
+} from "./sealedPreviewLedger";
 import { ensureHfIds, isCompositionTemplate } from "@hyperframes/parsers/hf-ids";
 import { templateContent } from "@hyperframes/parsers/sub-composition-validity";
 import { findAuthoredElement, parseSavedSource } from "./authoredSource";
@@ -461,12 +466,14 @@ function sendSealedRestore(
   reloadPreview: () => void,
   onShownInPlace?: () => void,
 ): void {
-  const newest = restore.rerun ? sendSealedRun(iframe, restore.rerun.script) : () => true;
+  const ticket = takePreviewTicket(iframe, { scriptText: restore.rerun?.script ?? "" }, false);
   void previewRequest(iframe, "restore-attributes", { ...restore, time: currentTime }).then(
     (reply) => {
-      if (reply === null && !newest()) return;
-      if (!reply?.applied) reloadPreview();
-      else onShownInPlace?.();
+      if (!ticketLoadLive(ticket)) return;
+      // Refused: its attributes are not on screen, and a newer re-run does not set them.
+      if (!reply?.applied) return reloadPreview();
+      if (reply.reran === true) confirmPreviewRerun(ticket);
+      if (!ticketCovered(ticket)) onShownInPlace?.();
     },
   );
 }

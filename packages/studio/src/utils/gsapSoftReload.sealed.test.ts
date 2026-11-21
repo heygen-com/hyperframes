@@ -2,9 +2,11 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
 const { previewRequest } = vi.hoisted(() => ({ previewRequest: vi.fn() }));
+const PREVIEW_LOAD = vi.hoisted(() => ({}));
 vi.mock("../player/lib/previewChannel", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../player/lib/previewChannel")>()),
   previewFrameOpaque: () => true,
+  previewEditingClient: () => PREVIEW_LOAD,
   previewRequest,
 }));
 

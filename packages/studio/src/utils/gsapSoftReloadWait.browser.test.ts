@@ -20,7 +20,13 @@ beforeAll(async () => {
   browser = await launchTestChrome();
   const out = await build({
     stdin: {
-      contents: `export * from "./gsapSoftReload"; export { previewRequest } from "../player/lib/previewChannel"; export { patchRuntimeTweenInPlace } from "../hooks/gsapRuntimePatch";`,
+      contents: [
+        `export * from "./gsapSoftReload";`,
+        `export { previewRequest } from "../player/lib/previewChannel";`,
+        `export { patchRuntimeTweenInPlace } from "../hooks/gsapRuntimePatch";`,
+        `export { applyPreviewSync } from "../hooks/useGsapScriptCommits";`,
+        `export { applyUndoRestoreToPreview } from "./gsapUndoRestore";`,
+      ].join(" "),
       resolveDir: dirname(fileURLToPath(import.meta.url)),
     },
     bundle: true,
@@ -80,6 +86,30 @@ function previewHtml(): string {
     <script>${runtime}</script></body></html>`;
 }
 
+/** Studio's end of the editing port keeps the frame's replies while `__hold` is set, to deliver them later. */
+function holdReplies() {
+  const w = window as unknown as { __hold: boolean; __held: Array<(result?: unknown) => void> };
+  w.__hold = false;
+  w.__held = [];
+  const own = Object.getOwnPropertyDescriptor(MessagePort.prototype, "onmessage")!;
+  Object.defineProperty(MessagePort.prototype, "onmessage", {
+    configurable: true,
+    get() {
+      return own.get!.call(this);
+    },
+    set(handler: ((event: MessageEvent) => void) | null) {
+      own.set!.call(this, (event: MessageEvent) => {
+        const reply = typeof event.data?.id === "number";
+        if (!reply || !w.__hold) return handler?.call(this, event);
+        w.__held.push((result) => {
+          const data = result === undefined ? event.data : { ...event.data, result };
+          handler?.call(this, new MessageEvent("message", { data }));
+        });
+      });
+    },
+  });
+}
+
 /** Opens the preview in Studio's page; the plugin request waits until `release` is called. */
 async function openPreview(mode: string) {
   const page: Page = await browser.newPage();
@@ -105,6 +135,7 @@ async function openPreview(mode: string) {
   };
   const html = previewHtml();
   await page.setContent("<!doctype html><html><body></body></html>");
+  await page.evaluate(holdReplies);
   await page.evaluate(studioBundle);
   await page.evaluate(
     (srcdoc, sealed) => {
@@ -146,6 +177,8 @@ async function openPreview(mode: string) {
 type Studio = typeof import("./gsapSoftReload") & {
   previewRequest: typeof import("../player/lib/previewChannel").previewRequest;
   patchRuntimeTweenInPlace: typeof import("../hooks/gsapRuntimePatch").patchRuntimeTweenInPlace;
+  applyPreviewSync: typeof import("../hooks/useGsapScriptCommits").applyPreviewSync;
+  applyUndoRestoreToPreview: typeof import("./gsapUndoRestore").applyUndoRestoreToPreview;
 };
 type Preview = Awaited<ReturnType<typeof openPreview>>;
 
@@ -385,3 +418,145 @@ it.each(MODES)(
     await page.close();
   },
 );
+
+// fails without the fix: all but "still recovers an older script refusal after an unrelated successful patch",
+// which guards the coverage rule against dropping a refusal no re-run carries.
+describe("late answers held in transit, sealed", () => {
+  const hold = (page: Page, on: boolean) =>
+    page.evaluate((h) => ((window as unknown as { __hold: boolean }).__hold = h), on);
+  const heldCount = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __held: unknown[] }).__held.length);
+  /** Delivers the held replies in order; `results` overrides the result of the one at that index. */
+  const deliver = (page: Page, results: Record<number, unknown> = {}) =>
+    page.evaluate(
+      (overrides) => {
+        const w = window as unknown as { __hold: boolean; __held: Array<(r?: unknown) => void> };
+        w.__hold = false;
+        w.__held.splice(0).forEach((send, i) => send(overrides[i]));
+      },
+      results as Record<number, unknown>,
+    );
+  const ran = (p: Preview) =>
+    p.frame.evaluate(() => (window as unknown as { __ran: Record<string, string> }).__ran.main);
+  /** A sealed commit of `script` whose value edit Studio patches in place; resolves "reload" on a full reload. */
+  const commit = (page: Page, script: string, x: number) =>
+    page.evaluate(
+      (text, value) => {
+        const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+        const html = `<html><body><script>${text}</script></body></html>`;
+        const result = { ok: true, scriptText: text, before: html, after: html };
+        const instantPatch = {
+          selector: "#target",
+          change: { kind: "set" as const, props: { x: value } },
+        };
+        const options = { label: "drag", softReload: true, instantPatch };
+        studio.applyPreviewSync(document.querySelector("iframe"), result, options, () => {
+          (window as unknown as { __reloads?: number }).__reloads = 1;
+        });
+      },
+      script,
+      x,
+    );
+  const undoLeftOfC = (page: Page, left: number) =>
+    page.evaluate(
+      (l, script) => {
+        const studio = (window as unknown as { hfStudio: Studio }).hfStudio;
+        const c = (at: number) =>
+          `<div id="c" data-hf-id="c" class="clip box" style="left: ${at}px; top: 500px"></div>`;
+        const file = (at: number) =>
+          `<html><body><div id="root" data-composition-id="main">${c(at)}</div><script>${script}</script></body></html>`;
+        const files = { "index.html": { previous: file(0), restored: file(l) } };
+        const reload = () => ((window as unknown as { __reloads?: number }).__reloads = 1);
+        return studio.applyUndoRestoreToPreview(
+          document.querySelector("iframe"),
+          null,
+          files,
+          2,
+          reload,
+        );
+      },
+      left,
+      timeline("main", "file", 120),
+    );
+  const reloads = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __reloads?: number }).__reloads ?? 0);
+
+  it("drops an older explicit refusal that arrives after a newer run painted", async () => {
+    const p = await openPreview("sealed");
+    const older = rerun(p.page, timeline("main", "older", 60, true), 2, [], true);
+    await expect.poll(() => p.held.length).toBeGreaterThan(0);
+    await hold(p.page, true);
+    await p.release(404);
+    await expect.poll(() => heldCount(p.page)).toBe(1);
+    await rerun(p.page, timeline("main", "newer", 200), 2);
+    await expect.poll(() => ran(p)).toBe("newer");
+    await deliver(p.page);
+    await settled(p, true);
+    expect(await Promise.race([older, Promise.resolve("kept")])).toBe("kept");
+    await p.page.close();
+  });
+
+  it("re-runs the newest script when a patch refusal held across the swap arrives late", async () => {
+    const p = await openPreview("sealed");
+    void rerun(p.page, timeline("main", "older", 60, true), 2, [], true);
+    await expect.poll(() => p.held.length).toBeGreaterThan(0);
+    await hold(p.page, true);
+    await commit(p.page, timeline("main", "p1", 10), 10);
+    await expect.poll(() => heldCount(p.page)).toBe(1);
+    await p.release(200);
+    await expect.poll(() => ran(p)).toBe("older");
+    await commit(p.page, timeline("main", "p2", 20), 20);
+    await expect.poll(() => heldCount(p.page)).toBe(3);
+    await deliver(p.page, { 0: { patched: false }, 2: { patched: true } });
+    await expect.poll(() => ran(p)).toBe("p2");
+    await settled(p, true);
+    expect(await ran(p)).toBe("p2");
+    await p.page.close();
+  });
+
+  it("still recovers an older script refusal after an unrelated successful patch", async () => {
+    const p = await openPreview("sealed");
+    const older = rerun(p.page, timeline("main", "older", 60, true), 2, [], true);
+    await expect.poll(() => p.held.length).toBeGreaterThan(0);
+    await hold(p.page, true);
+    await p.release(404);
+    await expect.poll(() => heldCount(p.page)).toBe(1);
+    await commit(p.page, timeline("main", "file", 120), 30);
+    await expect.poll(() => heldCount(p.page)).toBe(2);
+    await deliver(p.page, { 1: { patched: true } });
+    expect(await older).toBe("reload");
+    await p.page.close();
+  });
+
+  it("still recovers an older run that times out after an attribute-only undo", async () => {
+    const p = await openPreview("sealed");
+    const older = rerun(p.page, timeline("main", "older", 60, true), 2, [], true);
+    await expect.poll(() => p.held.length).toBeGreaterThan(0);
+    expect(await undoLeftOfC(p.page, 5)).toBe("soft");
+    await expect
+      .poll(() => p.frame.evaluate(() => document.getElementById("c")!.style.left))
+      .toBe("5px");
+    await hold(p.page, true);
+    await p.release(404);
+    // Studio's editing port gives a request 5 s (editingPort.ts); the refusal stays held past that.
+    expect(await older).toBe("reload");
+    await p.page.close();
+  });
+
+  it("does not reload a new preview load for a restore its old load never answered", async () => {
+    const p = await openPreview("sealed");
+    await hold(p.page, true);
+    expect(await undoLeftOfC(p.page, 5)).toBe("soft");
+    await p.page.evaluate(
+      () =>
+        new Promise<void>((loaded) => {
+          const iframe = document.querySelector("iframe")!;
+          iframe.addEventListener("load", () => setTimeout(loaded, 0), { once: true });
+          iframe.srcdoc = iframe.srcdoc + " ";
+        }),
+    );
+    await deliver(p.page);
+    expect(await reloads(p.page)).toBe(0);
+    await p.page.close();
+  });
+});
