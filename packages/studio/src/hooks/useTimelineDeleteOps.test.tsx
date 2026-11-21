@@ -143,15 +143,17 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
     );
   });
 
-  // fails without the fix: the second delete saved between the first delete and its ripple.
-  it("saves a delete made right after another after the first one's ripple", async () => {
+  // Deletes hf-a, then hf-b once hf-a's ripple slid it to 0, both saving through one edit queue.
+  async function deleteTwoInARow(refused?: string) {
     const writes: string[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         if (String(input).includes("/file-mutations/remove-elements/")) {
           const { targets } = JSON.parse(String(init?.body)) as { targets: Array<{ id: string }> };
-          writes.push(`delete ${targets.map((t) => t.id).join(",")}`);
+          const write = `delete ${targets.map((t) => t.id).join(",")}`;
+          writes.push(write);
+          if (write === refused) return new Response("{}", { status: 500 });
         }
         return new Response(JSON.stringify({ content: html }), { status: 200 });
       }),
@@ -166,7 +168,9 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       const run = editQueueRef.current.then(async () => {
         await options?.beforeTiming;
         await serializeStudioFileMutations(writeProjectFile, ["index.html"], async () => {
-          writes.push(`move ${changes.map((c) => c.element.id).join(",")}`);
+          const write = `move ${changes.map((c) => c.element.id).join(",")}`;
+          writes.push(write);
+          if (write === refused) throw new Error("refused");
         });
       });
       editQueueRef.current = run.catch(() => undefined);
@@ -183,10 +187,36 @@ describe("useTimelineDeleteOps: ripple undo label", () => {
       const shiftedB = usePlayerStore.getState().elements.find((e) => e.id === "hf-b")!;
       await Promise.all([first, getHook().handleTimelineElementDelete(shiftedB)]);
     });
+    return writes;
+  }
+
+  // fails without the fix: the second delete saved between the first delete and its ripple.
+  it("saves a delete made right after another after the first one's ripple", async () => {
+    const writes = await deleteTwoInARow();
 
     expect(writes).toEqual(["delete hf-a", "move hf-b,hf-c", "delete hf-b", "move hf-c"]);
     expect(usePlayerStore.getState().elements).toEqual([el("hf-c", 0, 2)]);
   });
+
+  // fails without the fix: the refused write restored the timeline from before it, so hf-b came back.
+  it.each([
+    [
+      "delete hf-a",
+      ["delete hf-a", "delete hf-b", "move hf-c"],
+      [el("hf-c", 2, 2), el("hf-a", 0, 2)],
+    ],
+    [
+      "move hf-b,hf-c",
+      ["delete hf-a", "move hf-b,hf-c", "delete hf-b", "move hf-c"],
+      [el("hf-c", 2, 2)],
+    ],
+  ])(
+    "a refused %s rolls back only itself, so the next delete stays gone",
+    async (refused, tried, after) => {
+      expect(await deleteTwoInARow(refused)).toEqual(tried);
+      expect(usePlayerStore.getState().elements).toEqual(after);
+    },
+  );
 
   it("removes a multi-clip selection with one request, however many clips it holds", async () => {
     const handleTimelineGroupMove = vi.fn().mockResolvedValue(undefined);
