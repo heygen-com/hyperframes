@@ -555,6 +555,26 @@ describe.runIf(executablePath)("layout audit in Chromium", () => {
       style: "color:transparent;-webkit-text-stroke:0 #fff",
       flagged: true,
     },
+    {
+      name: "shadow text (transparent fill, visible text-shadow)",
+      style: "color:#000;-webkit-text-fill-color:transparent;text-shadow:0 8px 0 rgb(255,255,255)",
+      flagged: false,
+    },
+    {
+      name: "transparent text whose second shadow layer is visible",
+      style: "color:transparent;text-shadow:0 0 4px rgba(0,0,0,0),2px 2px 0 rgba(255,255,255,0.9)",
+      flagged: false,
+    },
+    {
+      name: "transparent text with an invisible text-shadow",
+      style: "color:transparent;text-shadow:0 8px 0 rgba(255,255,255,0)",
+      flagged: true,
+    },
+    {
+      name: "transparent text whose text-shadow takes the transparent color",
+      style: "color:transparent;text-shadow:0 8px 0",
+      flagged: true,
+    },
   ])("judges $name by what it paints", async ({ style, flagged }) => {
     const codes = await auditCodes(`
       <div data-composition-id="main" data-width="1920" data-height="1080" style="position:relative;width:1920px;height:1080px;background:#000">
