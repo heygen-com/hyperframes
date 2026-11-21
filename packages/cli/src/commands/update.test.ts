@@ -359,3 +359,51 @@ describe("hyperframes update (install)", () => {
     expect(json().updated).toEqual({ cli: { status: "current" }, skills: { status: "current" } });
   });
 });
+
+describe("hyperframes update lines for people", () => {
+  const ESC = String.fromCharCode(27);
+  const ODD = `od${ESC}[2Jd\x07`;
+  const SHOWN = "od\\x1b[2Jd\\x07";
+  const text = () => stdout.join("\n").replace(new RegExp(`${ESC}\\[[0-9;]*m`, "g"), "");
+
+  // fails without the fix: the install path and the skills folder are printed as they are on disk.
+  it("shows control characters in the install path and the skills folder as text", async () => {
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockResolvedValueOnce({
+      ...OUTDATED_CHECK,
+      location: `/home/${ODD}/.claude/skills`,
+    } as never);
+    await runUpdate(`/usr/local/${ODD}/lib/node_modules/hyperframes/dist/cli.js`, { check: true });
+    expect(text()).toContain(`/usr/local/${SHOWN}/lib/node_modules/hyperframes/dist/cli.js`);
+    expect(text()).toContain(
+      `2 outdated, 0 core missing at v0.9.5 · /home/${SHOWN}/.claude/skills`,
+    );
+    expect(text()).not.toContain(ESC);
+    expect(text()).not.toContain("\x07");
+  });
+
+  // fails without the fix: the reason the skills check failed is printed as it arrived.
+  it("shows control characters in a failed skills check as text", async () => {
+    const { checkSkills } = await import("../utils/skillsManifest.js");
+    vi.mocked(checkSkills).mockRejectedValueOnce(new Error(`no list ${ODD}`));
+    await runUpdate(ENTRIES.npm, { check: true });
+    expect(text()).toContain(`Could not check: no list ${SHOWN}`);
+    expect(text()).not.toContain(ESC);
+    expect(text()).not.toContain("\x07");
+  });
+
+  // fails without the fix: the reason the skills install failed is printed as it arrived.
+  it("shows control characters in a failed skills install as text", async () => {
+    state.registryLatest = "0.9.5";
+    const { spawn } = await import("node:child_process");
+    vi.mocked(spawn).mockImplementationOnce(() => {
+      const child = new EventEmitter();
+      setImmediate(() => child.emit("error", new Error(`no install ${ODD}`)));
+      return child as never;
+    });
+    expect(await runUpdate(ENTRIES.npm, { yes: true })).toBe(1);
+    expect(text()).toContain(`Skills update failed: no install ${SHOWN}`);
+    expect(text()).not.toContain(ESC);
+    expect(text()).not.toContain("\x07");
+  });
+});

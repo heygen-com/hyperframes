@@ -1,3 +1,4 @@
+import { terminalLines, terminalText } from "@hyperframes/core";
 import { existsSync, mkdtempSync, realpathSync, renameSync, rmSync, statSync } from "node:fs";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { tmpdir } from "node:os";
@@ -217,7 +218,7 @@ function stageHtmlVariant(variant: CompareVariantSpec): PreparedCompareVariant {
       `compare ${variant.displayPath}`,
       stageReferencedFiles(dirname(source), [source], stagedDir),
     );
-    if (notice) console.warn(c.dim(notice));
+    if (notice) console.warn(c.dim(terminalLines(notice)));
     const sourceName = basename(source);
     if (sourceName !== "index.html") {
       renameSync(join(stagedDir, sourceName), join(stagedDir, "index.html"));
@@ -410,7 +411,9 @@ export default defineCommand({
       if (parsed.json) {
         printJson(payload);
       } else {
-        console.log(`\n${c.success("◇")}  Comparison sheet saved to ${payload.sheet}`);
+        console.log(
+          `\n${c.success("◇")}  Comparison sheet saved to ${terminalText(payload.sheet)}`,
+        );
       }
     } catch (err) {
       failCaught(err, jsonRequested, (m) => `\n${c.error("✗")} Compare failed: ${m}`, printJson);
