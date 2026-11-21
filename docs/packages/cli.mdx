@@ -53,7 +53,11 @@ the `timeline` edit commands use `--dir`.
 about files left out) print control characters in a repeated value as visible
 text such as `\x1b` and `\x07`, and keep the value on its line, with a line break
 shown as `\x0a`. [`capture`](#capture) does the same for its warnings and failure
-reason. `--json` output is not changed by this.
+reason. So do the notices that repeat the reason something went wrong: the
+`[studio]` lines of `preview`, the `Error:` line `auth login` prints when sign-in
+is not set up, the `Browser close failed` and `Browser shutdown failed` lines,
+and the notices about telemetry settings, project history, the received-files
+record and `HF_TOOL_CONTEXT` events. `--json` output is not changed by this.
 
 **`--json` for agents and scripts.** Most commands accept it, before or after
 the command name: `hyperframes --json info` is the same run as
