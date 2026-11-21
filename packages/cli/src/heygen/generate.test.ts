@@ -1,5 +1,14 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -657,6 +666,24 @@ describe("generate", () => {
       );
     },
   );
+
+  // fails without the fix: the download and the aspect-fit encode went through links at --out and `<out>.fit<ext>`.
+  it.skipIf(!ffmpeg)("never writes the result through a link at --out or beside it", async () => {
+    answers(textured("linked.mp4", "1344x768", false));
+    const out = join(project, "assets/linked-out.mp4");
+    mkdirSync(join(project, "assets"), { recursive: true });
+    const outsideOut = join(project, "outside-out.txt");
+    const outsideFit = join(project, "outside-fit.txt");
+    writeFileSync(outsideOut, "keep me");
+    writeFileSync(outsideFit, "keep me");
+    symlinkSync(outsideOut, out);
+    symlinkSync(outsideFit, `${out}.fit.mp4`);
+    const r = await generate({ type: "video", out, prompt: "p" });
+    expect(readFileSync(outsideOut, "utf8")).toBe("keep me");
+    expect(readFileSync(outsideFit, "utf8")).toBe("keep me");
+    expect(lstatSync(r.out).isSymbolicLink()).toBe(false);
+    expect(probeVideo(r.out)).toMatchObject({ width: 1344, height: 756 });
+  });
 
   const still = (name: string, size: string) => {
     const path = join(project, name);

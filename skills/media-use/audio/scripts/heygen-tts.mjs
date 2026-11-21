@@ -15,7 +15,7 @@
 //   --voice (starfish id), --speed, --lang, --list.
 // Requires: $HEYGEN_API_KEY / OAuth ~/.hyperframes credentials and ffmpeg for .wav output.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { heygenAuthHeaders, heygenJSON, loadEnvFromDir } from "./lib/heygen.mjs";
 import { terminalText } from "../../scripts/lib/terminal-text.mjs";
@@ -58,6 +58,10 @@ const output = resolve(
     "narration.wav",
 );
 const wordsPath = typeof flag("words") === "string" ? resolve(flag("words")) : null;
+for (const path of [output, wordsPath]) {
+  if (path && lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink())
+    die(`${path} is a link; nothing was written through it`);
+}
 const userVoice = typeof flag("voice") === "string" ? flag("voice") : null;
 const speedRaw = typeof flag("speed") === "string" ? Number(flag("speed")) : 1.0;
 const speed = isFinite(speedRaw) && speedRaw > 0 ? speedRaw : 1.0;

@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCommand } from "citty";
@@ -67,6 +75,40 @@ describe("absolute normalize-audio command", () => {
       log.mockRestore();
       measureAudio.mockReset();
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// fails without the fix: the rewrite went through a link at its pid-named temp file, onto a file outside.
+describe("normalize-audio --write never writes through a link at its temp name", () => {
+  it("leaves the link's target alone and writes the composition in the project", async () => {
+    const root = mkdtempSync(join(tmpdir(), "hf-normalize-link-test-"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const dir = join(root, "project");
+      mkdirSync(dir);
+      const outside = join(root, "outside.txt");
+      writeFileSync(outside, "keep me");
+      const path = join(dir, "index.html");
+      writeFileSync(
+        path,
+        `<audio id="voice" src="voice.wav" data-volume="0" data-duration="2"></audio>`,
+      );
+      writeFileSync(join(dir, "voice.wav"), "audio bytes");
+      symlinkSync(outside, `${path}.hf-normalize-${process.pid}.tmp`);
+      measureAudio.mockResolvedValue({ integratedLufs: -20, truePeakDbfs: -12.3 });
+
+      await runCommand(normalizeAudioCommand, {
+        rawArgs: [dir, "--target", "voice", "--json", "--write"],
+      });
+
+      expect(readFileSync(outside, "utf8")).toBe("keep me");
+      expect(lstatSync(path).isSymbolicLink()).toBe(false);
+      expect(readFileSync(path, "utf8")).toMatch(/data-volume="(?!0")/);
+    } finally {
+      log.mockRestore();
+      measureAudio.mockReset();
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

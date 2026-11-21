@@ -2,7 +2,8 @@
 // Anonymous use is rate limited (20 requests a minute, 200 a day); callers fall
 // back to the bundled library when it is unavailable.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { lstatSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const OPENVERSE_AUDIO_URL = "https://api.openverse.org/v1/audio/";
@@ -117,7 +118,11 @@ export function writeSfxCredit(creditsPath, file, sound) {
   // The sound may come from a saved record, not this run's pick: clean it again here.
   const sourceUrl = httpsUrl(sound.sourceUrl, SOURCE_HOSTS);
   const source = sourceUrl ? ` Source: ${sourceUrl}` : "";
-  const line = `- \`${file}\`: ${oneLine(sound.credit)}${source}`;
+  const name = oneLine(file);
+  const line = `- \`${name}\`: ${oneLine(sound.credit)}${source}`;
+  if (lstatSync(creditsPath, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    throw new Error(`${creditsPath} is a link; nothing was written through it`);
+  }
   let prior = "";
   try {
     prior = readFileSync(creditsPath, "utf8");
@@ -126,9 +131,17 @@ export function writeSfxCredit(creditsPath, file, sound) {
   }
   const kept = prior
     .split("\n")
-    .filter((l) => l.startsWith("- ") && !l.startsWith(`- \`${file}\`:`));
+    .filter((l) => l.startsWith("- ") && !l.startsWith(`- \`${name}\`:`));
   const header =
     "# Sound effect credits\n\nThese sounds are licensed CC BY: credit them wherever the video is published.\n\n";
   mkdirSync(dirname(creditsPath), { recursive: true });
-  writeFileSync(creditsPath, `${header}${[...kept, line].join("\n")}\n`);
+  // The audio skill ships this file alone, so it cannot use manifest.mjs's replaceFile.
+  const temp = `${creditsPath}.hf${randomBytes(3).toString("hex")}.tmp`;
+  writeFileSync(temp, `${header}${[...kept, line].join("\n")}\n`, { flag: "wx" });
+  try {
+    renameSync(temp, creditsPath);
+  } catch (error) {
+    rmSync(temp, { force: true });
+    throw error;
+  }
 }

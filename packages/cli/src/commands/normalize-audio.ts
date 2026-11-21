@@ -1,4 +1,5 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { relative, resolve } from "node:path";
 import {
   absoluteLoudnessPlan,
@@ -122,12 +123,6 @@ async function measuredPlan(
   );
 }
 
-function writeAtomically(path: string, contents: string): void {
-  const temporary = `${path}.hf-normalize-${process.pid}.tmp`;
-  writeFileSync(temporary, contents);
-  renameSync(temporary, path);
-}
-
 function parsedTolerance(raw: string): number {
   const tolerance = Number(raw);
   if (!Number.isFinite(tolerance) || tolerance < 0) {
@@ -195,7 +190,7 @@ async function normalizeAudio(options: NormalizeAudioOptions): Promise<Normalize
   const heldByLimit = targetTag.volume > 0 && heldAtLimit(plan, tolerance);
   const wrote = options.write && !withinTolerance && !heldByLimit;
   if (wrote) {
-    writeAtomically(
+    replaceFileAtomically(
       filePath,
       updateAudioVolume(readFileSync(filePath, "utf8"), targetTag.id, plan.volume),
     );

@@ -17,7 +17,15 @@ import { refuseUnderLimit } from "../../../scripts/lib/credit-limit.mjs";
 // by the CLI — see the note above.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
 import {
@@ -298,6 +306,10 @@ export async function synthesizeOne({
   wavAbs,
   hyperframesDir,
 }) {
+  // Every provider writes in place at wavAbs (ffmpeg -y, Python, the CLI), so a link there is refused once, here.
+  if (lstatSync(wavAbs, { throwIfNoEntry: false })?.isSymbolicLink()) {
+    return { ok: false, words: null, error: `${wavAbs} is a link; nothing was written through it` };
+  }
   if (provider === "heygen") return synthesizeHeygen({ text, voiceId, lang, speed, wavAbs });
   if (provider === "gemini")
     return synthesizeGemini({ text, voiceId, model, style, speed, wavAbs });

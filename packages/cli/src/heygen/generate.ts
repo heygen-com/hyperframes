@@ -2,7 +2,8 @@
 // from one photo, a voice, or music. Every call is priced first with --plan, keyed for idempotency, downloaded into
 // the project and recorded in the media ledger as generated.
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { replaceFileAtomically } from "@hyperframes/core/atomic-file";
 import { makeOutputFolder } from "../utils/outputFolder.js";
 import { tmpdir } from "node:os";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
@@ -564,24 +565,29 @@ function fitAspect(out: string, aspect: string): string | undefined {
   const even = (n: number) => n - (n % 2);
   const [w, h] =
     width / height > want ? [even(height * want), height] : [width, even(width / want)];
-  const fitted = `${out}.fit${extname(out)}`;
-  runFfmpeg([
-    ...[
-      "-y",
-      "-i",
-      out,
-      "-vf",
-      `crop=${w}:${h}`,
-      "-c:v",
-      "libx264",
-      "-crf",
-      "12",
-      "-preset",
-      "slow",
-    ],
-    ...["-pix_fmt", "yuv420p", "-c:a", "copy", fitted],
-  ]);
-  renameSync(fitted, out);
+  const privateFolderBesideOut = mkdtempSync(join(dirname(out), ".hf-fit-"));
+  const fitted = join(privateFolderBesideOut, `fit${extname(out)}`);
+  try {
+    runFfmpeg([
+      ...[
+        "-y",
+        "-i",
+        out,
+        "-vf",
+        `crop=${w}:${h}`,
+        "-c:v",
+        "libx264",
+        "-crf",
+        "12",
+        "-preset",
+        "slow",
+      ],
+      ...["-pix_fmt", "yuv420p", "-c:a", "copy", fitted],
+    ]);
+    renameSync(fitted, out);
+  } finally {
+    rmSync(privateFolderBesideOut, { recursive: true, force: true });
+  }
   return `HeyGen returned ${width}x${height} for ${aspect}; cropped to ${w}x${h} (centre), not stretched`;
 }
 
@@ -753,7 +759,7 @@ export async function generate(
         `could not download the result (${res.status})`,
         "run the same command again; it re-reads the job",
       );
-    writeFileSync(out, Buffer.from(await res.arrayBuffer()));
+    replaceFileAtomically(out, Buffer.from(await res.arrayBuffer()));
     const charged = chargedCredits(job);
     // HeyGen sometimes cuts inside a shot on its own; the shot is paid for and kept, the cuts are reported.
     let cuts: number[] | null | undefined;
