@@ -349,7 +349,7 @@ function buildPlayerPage(projectName: string): string {
   </head>
   <body>
     <div class="player-wrap">
-      <hyperframes-player sandbox-origin="same-origin" src="/composition/index.html" controls muted></hyperframes-player>
+      <hyperframes-player src="/composition/index.html" controls muted></hyperframes-player>
     </div>
     <div class="info">${shownName} — hyperframes play</div>
     ${scriptsAfterWorkersDropped(["/player.js"])}
