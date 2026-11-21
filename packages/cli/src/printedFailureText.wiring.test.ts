@@ -149,8 +149,11 @@ const handsOverAHelper = (node: ts.Node) =>
   ts.isCallExpression(node) &&
   node.arguments.some((each) => ts.isIdentifier(each) && SHOWS_TEXT_AS_WRITTEN.has(each.text));
 
+const countOf = (node: ts.Node) =>
+  ts.isPropertyAccessExpression(node) && node.name.text === "length";
+
 function readsAnyValue(node: ts.Node, written: Set<string>): boolean {
-  if (shownAsWritten(node) || handsOverAHelper(node)) return false;
+  if (shownAsWritten(node) || handsOverAHelper(node) || countOf(node)) return false;
   if (ts.isConditionalExpression(node))
     return readsAnyValue(node.whenTrue, written) || readsAnyValue(node.whenFalse, written);
   if (ts.isIdentifier(node))
@@ -161,7 +164,24 @@ function readsAnyValue(node: ts.Node, written: Set<string>): boolean {
   return !!ts.forEachChild(node, (child) => readsAnyValue(child, written) || undefined);
 }
 
-function valuesPrintedAsTheyCame(name: string, text: string, writtenByCli: string[]): string[] {
+function functionsNamed(file: ts.SourceFile, names: readonly string[]): ts.Node[] {
+  const found: ts.FunctionDeclaration[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isFunctionDeclaration(node) && node.name && names.includes(node.name.text))
+      found.push(node);
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  expect(found.map((each) => each.name?.text).sort()).toEqual([...names].sort());
+  return found;
+}
+
+function valuesPrintedAsTheyCame(
+  name: string,
+  text: string,
+  writtenByCli: string[],
+  within?: readonly string[],
+): string[] {
   const file = ts.createSourceFile(name, text, ts.ScriptTarget.Latest, true);
   const written = new Set(writtenByCli);
   const found: string[] = [];
@@ -174,7 +194,7 @@ function valuesPrintedAsTheyCame(name: string, text: string, writtenByCli: strin
       found.push(`${name}:${file.getLineAndCharacterOfPosition(node.getStart()).line + 1}`);
     ts.forEachChild(node, visit);
   };
-  visit(file);
+  for (const root of within ? functionsNamed(file, within) : [file]) visit(root);
   return found;
 }
 
@@ -183,6 +203,28 @@ it("prints a value in the files that run before a command only through the text 
     valuesPrintedAsTheyCame(name, readFileSync(join(SRC, name), "utf8"), written),
   );
   expect(sites).toEqual([]);
+});
+
+const MEDIA_COPY_PRINTERS = ["startCopyHeartbeat", "preResolveHostileMediaProxies"];
+const MEDIA_COPY_NAMES_WRITTEN_BY_CLI = [
+  "Date",
+  "Math",
+  "done",
+  "doneSeconds",
+  "elapsedText",
+  "finished",
+  "settled",
+  "startedAt",
+  "toMake",
+  "total",
+];
+
+it("prints the media-copy progress lines only through the text helpers", () => {
+  const name = "utils/checkBrowser.ts";
+  const text = readFileSync(join(SRC, name), "utf8");
+  expect(
+    valuesPrintedAsTheyCame(name, text, MEDIA_COPY_NAMES_WRITTEN_BY_CLI, MEDIA_COPY_PRINTERS),
+  ).toEqual([]);
 });
 
 it("finds a value printed as it came in a file that runs before a command", () => {
@@ -195,8 +237,10 @@ it("finds a value printed as it came in a file that runs before a command", () =
       "console.error(build(terminalText));",
       "console.error(short ? terminalText(text) : text);",
       "console.log(JSON.stringify({ error: text }));",
+      "console.error(`${files.length} copies; ${files[0].file} first`);",
+      "console.error(`${files.length} copies`);",
     ].join("\n"),
     ["group"],
   );
-  expect(found).toEqual(["sample.ts:1", "sample.ts:5"]);
+  expect(found).toEqual(["sample.ts:1", "sample.ts:5", "sample.ts:7"]);
 });
