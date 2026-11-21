@@ -171,12 +171,12 @@ export async function bench(cfg) {
       if (watching) requestAnimationFrame(watch);
     };
     requestAnimationFrame(watch);
-    window.__hfProbe = [];
+    win.__hfProbe = [];
     const t0 = now();
     host.seek(target);
     const syncMs = now() - t0;
     const probeSums = {};
-    for (const [name, ms] of window.__hfProbe) {
+    for (const [name, ms] of win.__hfProbe) {
       const key = name.replace(/\(rs\d+p?\)/, (m) => m);
       const s = (probeSums[key] ??= { n: 0, ms: 0, max: 0 });
       s.n++;
